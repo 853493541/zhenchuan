@@ -55,6 +55,7 @@ type Props = {
   gameId: string;
   selfUserId: string;
   selfUsername: string;
+  authToken?: string;
 };
 
 /* ================= COMPONENT ================= */
@@ -62,6 +63,7 @@ type Props = {
 export default function InGameClient({
   gameId,
   selfUserId,
+  authToken,
 }: Props) {
   const router = useRouter();
 
@@ -74,7 +76,7 @@ export default function InGameClient({
     isWinner,
     playCard,
     endTurn,
-  } = useGameState(gameId, selfUserId);
+  } = useGameState(gameId, selfUserId, authToken);
 
   /* ================= PRELOAD ================= */
 

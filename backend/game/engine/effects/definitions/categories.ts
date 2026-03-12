@@ -1,8 +1,8 @@
 // backend/game/engine/effects/categories.ts
 
-import { EffectCategory, EffectType } from "../state/types";
+import { EffectType } from "../../state/types/effects";
 
-export const EFFECT_CATEGORY_MAP: Record<EffectType, EffectCategory> = {
+export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DAMAGE: "DEBUFF",
   HEAL: "BUFF",
   DRAW: "BUFF",
@@ -38,6 +38,6 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, EffectCategory> = {
   SCHEDULED_DAMAGE: "DEBUFF",
 };
 
-export function getEffectCategory(type: EffectType): EffectCategory {
+export function getEffectCategory(type: EffectType): string {
   return EFFECT_CATEGORY_MAP[type] ?? "BUFF";
 }

@@ -13,6 +13,7 @@ import { autoDrawAtTurnStart } from "../flow/draw";
 import { pushEvent } from "../flow/events";
 import { diffState } from "../flow/stateDiff";
 import { applyOnPlayBuffEffects } from "../../engine/flow/play/onPlayEffects";
+import { broadcastGameUpdate } from "../broadcast";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -62,6 +63,16 @@ export async function playCard(
   game.markModified("state");
   await game.save();
 
+  // Broadcast to all connected WebSocket clients
+  broadcastGameUpdate({
+    gameId,
+    version: state.version,
+    diff,
+    events: state.events,
+    gameOver: state.gameOver,
+    winnerUserId: state.winnerUserId,
+  });
+
   return {
     version: state.version,
     diff,
@@ -98,6 +109,16 @@ export async function passTurn(gameId: string, userId: string) {
   game.state = state;
   game.markModified("state");
   await game.save();
+
+  // Broadcast to all connected WebSocket clients
+  broadcastGameUpdate({
+    gameId,
+    version: state.version,
+    diff,
+    events: state.events,
+    gameOver: state.gameOver,
+    winnerUserId: state.winnerUserId,
+  });
 
   return {
     version: state.version,

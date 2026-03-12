@@ -38,15 +38,30 @@ function applyDiff<T extends object>(prev: T, diff: DiffPatch[]): T {
   return next;
 }
 
+/* ================= WEBSOCKET MESSAGE TYPES ================= */
+
+type WSMessage = {
+  type: "STATE_DIFF" | "GAME_OVER" | "PONG";
+  version?: number;
+  diff?: DiffPatch[];
+  events?: any[];
+  winnerUserId?: string;
+};
+
 /* ================= HOOK ================= */
 
-export function useGameState(gameId: string, selfUserId: string) {
+export function useGameState(gameId: string, selfUserId: string, initialAuthToken?: string) {
   const [game, setGame] = useState<GameResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
 
   // track last known version
   const versionRef = useRef<number>(0);
+  
+  // WebSocket connection
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   /* ================= INITIAL SNAPSHOT ================= */
 
@@ -70,41 +85,159 @@ export function useGameState(gameId: string, selfUserId: string) {
     fetchInitialGame();
   }, [fetchInitialGame]);
 
-  /* ================= DIFF POLLING ================= */
+  /* ================= WEBSOCKET CONNECTION ================= */
 
-  useEffect(() => {
-    if (!game) return;
+  const connectWebSocket = useCallback(async () => {
+    if (wsRef.current) return; // Already connecting/connected
 
-    const poll = async () => {
+    let token = initialAuthToken;
+
+    // If no token provided, try to fetch it
+    if (!token) {
       try {
-        const res = await fetch(
-          `/api/game/${gameId}/diff?sinceVersion=${versionRef.current}`,
-          { credentials: "include" }
-        );
-
-        if (!res.ok) return;
-
-        const patch = await res.json();
-
-        if (!patch.diff || patch.diff.length === 0) return;
-
-        versionRef.current = patch.version;
-
-        setGame((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            state: applyDiff(prev.state, patch.diff),
-          };
+        const res = await fetch("/api/auth/token", {
+          credentials: "include",
         });
-      } catch {
-        // ignore polling errors
+
+        if (!res.ok) {
+          const err = await res.text();
+          console.error("[WS] Token endpoint failed:", res.status, err);
+          // Retry after delay
+          if (!reconnectTimeoutRef.current) {
+            reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2000);
+          }
+          return;
+        }
+
+        const data = await res.json();
+        token = data.token;
+
+        if (!token) {
+          console.error("[WS] No token in response");
+          return;
+        }
+      } catch (err) {
+        console.error("[WS] Failed to fetch token:", err);
+        // Retry after delay
+        if (!reconnectTimeoutRef.current) {
+          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2000);
+        }
+        return;
+      }
+    }
+
+    // Build WebSocket URL
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const wsUrl = `${protocol}://${window.location.host}/ws?gameId=${gameId}&token=${token}`;
+
+    console.log(`[WS] Connecting to: ${wsUrl}`);
+    console.log(`[WS] Token: ${token.substring(0, 50)}...`);
+    console.log(`[WS] GameID: ${gameId}`);
+
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log("[WS] ✅ Connected successfully!");
+      wsRef.current = ws;
+
+      // Clear reconnect timeout if it was set
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      // Start heartbeat
+      heartbeatIntervalRef.current = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "PING" }));
+        }
+      }, 25000); // Every 25 seconds
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const message: WSMessage = JSON.parse(event.data);
+
+        if (message.type === "PONG") {
+          // Keep-alive pong, ignore
+          return;
+        }
+
+        if (message.type === "STATE_DIFF" || message.type === "GAME_OVER") {
+          if (!message.diff || message.diff.length === 0) return;
+
+          versionRef.current = message.version ?? 0;
+
+          setGame((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              state: applyDiff(prev.state, message.diff!),
+            };
+          });
+
+          console.log(
+            `[WS] Received ${message.diff.length} patches (v${message.version})`
+          );
+        }
+      } catch (err) {
+        console.error("[WS] Failed to parse message:", err);
       }
     };
 
-    const t = setInterval(poll, 2000);
-    return () => clearInterval(t);
-  }, [game, gameId]);
+    ws.onerror = (err) => {
+      console.error("[WS] ❌ WebSocket Error:", err);
+      console.error("[WS] Error details:", {
+        type: (err as any).type,
+        code: (ws as any).code,
+        reason: (ws as any).reason,
+        readyState: ws.readyState
+      });
+    };
+
+    ws.onclose = () => {
+      console.log("[WS] ❌ Disconnected", {
+        code: (ws as any).code,
+        reason: (ws as any).reason,
+        wasClean: (ws as any).wasClean
+      });
+      wsRef.current = null;
+
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+
+      // Try to reconnect after 2 seconds
+      if (!reconnectTimeoutRef.current) {
+        reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectTimeoutRef.current = null;
+          connectWebSocket();
+        }, 2000);
+      }
+    };
+  }, [gameId, initialAuthToken]);
+
+  // Connect WebSocket when game is loaded
+  useEffect(() => {
+    if (game && !wsRef.current) {
+      connectWebSocket();
+    }
+
+    return () => {
+      // Cleanup on unmount
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+      }
+    };
+  }, [game, connectWebSocket]);
 
   /* ================= GUARDS ================= */
 
