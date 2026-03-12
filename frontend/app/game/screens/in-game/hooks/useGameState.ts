@@ -279,9 +279,10 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
   // Connect WebSocket when game is loaded
   useEffect(() => {
-    if (game && !wsRef.current) {
-      connectWebSocket();
-    }
+    if (!game || loading) return; // Wait until game data is loaded
+    if (wsRef.current) return; // Already connected
+
+    connectWebSocket();
 
     return () => {
       // Cleanup on unmount
@@ -296,7 +297,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         clearInterval(heartbeatIntervalRef.current);
       }
     };
-  }, [game, connectWebSocket]);
+  }, [gameId, loading]);
 
   /* ================= GUARDS ================= */
 

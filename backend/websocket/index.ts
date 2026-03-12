@@ -152,7 +152,7 @@ export function setupWebSocket(server: HTTPServer) {
       ws.isAlive = false;
       ws.ping();
     });
-  }, 30000); // 30 seconds
+  }, 10000); // 10 seconds
 
   // Cleanup on server close
   wss.on("close", () => {
