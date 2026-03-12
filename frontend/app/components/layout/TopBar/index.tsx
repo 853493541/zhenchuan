@@ -29,13 +29,13 @@ export default function TopBar({ onMenuClick, username }: TopBarProps) {
       {/* Logo + Title */}
       <Link href="/" className={styles.titleWrap}>
         <Image
-          src="/icons/app_icon_no_background.webp"
+          src="/icons/app_icon_no_background.webp?v=4"
           alt="logo"
-          width={22}
-          height={22}
+          width={32}
+          height={32}
           priority
         />
-        <span className={styles.title}>百战异闻录</span>
+        <span className={styles.title}>真传卡牌</span>
       </Link>
 
       {/* Right side user menu */}

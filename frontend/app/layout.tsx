@@ -10,11 +10,16 @@ import AuthGate from "./components/auth/AuthGate";
    ✅ GLOBAL METADATA
    ====================================================== */
 export const metadata = {
-  title: "百战",
-  description: "百战统计排表工具",
+  title: "真传",
+  description: "真传卡牌对战游戏",
   icons: {
-    icon: "/icons/app_icon_no_background.webp",        // browser tab
-    apple: "/icons/app_icon_no_background.png",       // iOS fallback
+    icon: [
+      { url: "/icons/app_icon_no_background.webp?v=4", sizes: "any" },
+      { url: "/icons/app_icon_no_background.png?v=4", sizes: "any" },
+    ],
+    apple: [
+      { url: "/icons/app_icon_no_background.png?v=4", sizes: "180x180" },
+    ],
   },
 };
 /* ======================================================

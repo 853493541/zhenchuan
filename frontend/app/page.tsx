@@ -9,7 +9,7 @@ export default function HomePage() {
     <div className={styles.container}>
       {/* ================= Header ================= */}
       <div className={styles.header}>
-        <h1 className={styles.title}>百战</h1>
+        <h1 className={styles.title}>真传</h1>
         <p className={styles.subtitle}>Card Game Platform</p>
       </div>
 

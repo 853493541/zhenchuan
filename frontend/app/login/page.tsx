@@ -51,7 +51,7 @@ export default function LoginPage() {
     <div className={styles.page}>
       <div className={styles.card}>
         {/* App logo / name */}
-        <div className={styles.logo}>百战异闻录</div>
+        <div className={styles.logo}>真传卡牌</div>
 
         {/* Header */}
         <div className={styles.header}>

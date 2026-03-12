@@ -11,7 +11,7 @@ async function getMe() {
   const cookieStore = cookies();
 
   const backendUrl =
-    process.env.BACKEND_URL ?? "https://baizhan.renstoolbox.com";
+    process.env.BACKEND_URL ?? "http://localhost:5000";
 
   const res = await fetch(`${backendUrl}/api/auth/me`, {
     cache: "no-store",
