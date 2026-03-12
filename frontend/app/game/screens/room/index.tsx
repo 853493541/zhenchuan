@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./styles.module.css";
 
@@ -26,6 +26,7 @@ export default function RoomPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [starting, setStarting] = useState(false);
   const [loadingGame, setLoadingGame] = useState(true);
+  const hasAttemptedJoin = useRef(false);
 
   /* =========================================================
      获取当前用户
@@ -65,10 +66,52 @@ export default function RoomPage() {
   useEffect(() => {
     if (!gameId) return;
 
+    hasAttemptedJoin.current = false; // Reset for new game
     fetchGame();
     const t = setInterval(fetchGame, 2000);
     return () => clearInterval(t);
   }, [gameId]);
+
+  /* =========================================================
+     自动加入房间（如果还未加入）- 只尝试一次
+  ========================================================= */
+  useEffect(() => {
+    if (!gameId || !me || !game) return;
+    if (hasAttemptedJoin.current) return;
+
+    const playerIds: string[] = Array.isArray(game.players)
+      ? game.players
+      : [];
+
+    const isInGame = playerIds.includes(me.uid);
+    const isHost = playerIds[0] === me.uid;
+
+    // Auto-join if not already in game and not the host
+    if (!isInGame && !isHost) {
+      hasAttemptedJoin.current = true;
+
+      (async () => {
+        try {
+          const res = await fetch(`/api/game/join/${gameId}`, {
+            method: "POST",
+            credentials: "include",
+          });
+
+          if (res.ok) {
+            const updated = await res.json();
+            setGame(updated);
+          }
+        } catch (err) {
+          console.error("Auto-join error:", err);
+        }
+      })();
+    }
+
+    // Mark host as already joined
+    if (isHost) {
+      hasAttemptedJoin.current = true;
+    }
+  }, [gameId, me, game?.players, game?.started]);
 
   /* =========================================================
      游戏开始后自动跳转（任何玩家）
@@ -216,12 +259,6 @@ export default function RoomPage() {
       )}
 
       {/* 操作按钮 */}
-      {canJoin && (
-        <button className={styles.primaryBtn} onClick={joinGame}>
-          加入房间
-        </button>
-      )}
-
       {/* 房主自动开始切换 */}
       {isHost && !ready && (
         <div className={styles.toggleSection}>
