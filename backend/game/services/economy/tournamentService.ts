@@ -115,13 +115,23 @@ export function completeBattle(
   tournament.phase = "DRAFT";
   const playerIds = Object.keys(tournament.gameHp) as PlayerID[];
   
+  console.log("[completeBattle] Transitioning to next draft:");
+  console.log("  Battle completed:", tournament.battleNumber);
+  console.log("  Game HP:", tournament.gameHp);
+  
   for (const playerId of playerIds) {
     const eco = tournament.economy[playerId];
+    const selectedCount = tournament.selectedAbilities[playerId]?.length || 0;
+    const benchCount = tournament.bench[playerId]?.length || 0;
+    console.log(`  Player ${playerId}: Selected=${selectedCount}, Bench=${benchCount}, Gold=${eco.gold}`);
+    
     tournament.shop[playerId] = {
       cards: generateShop(eco.level),
       locked: [false, false, false, false, false, false],
     };
   }
+  
+  console.log("[completeBattle] Next draft ready with persisted selectedAbilities and bench");
 
   return tournament;
 }

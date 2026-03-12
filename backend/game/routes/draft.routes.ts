@@ -390,6 +390,14 @@ router.post("/battle/start", async (req, res) => {
     const playerIds = game.players as [string, string];
     const battleState = initializeBattleState(game.tournament, playerIds);
 
+    console.log("[battle/start] Initializing battle state:");
+    console.log("  Battle number:", game.tournament.battleNumber);
+    console.log("  Game HP:", game.tournament.gameHp);
+    console.log("  Player 0 game HP:", game.tournament.gameHp[playerIds[0]]);
+    console.log("  Player 1 game HP:", game.tournament.gameHp[playerIds[1]]);
+    console.log("  Battle state player 0 HP:", battleState.players[0].hp);
+    console.log("  Battle state player 1 HP:", battleState.players[1].hp);
+
     // Award gold income to both players
     for (const playerId of playerIds) {
       const eco = game.tournament.economy[playerId];
@@ -436,14 +444,29 @@ router.post("/battle/complete", async (req, res) => {
       game.state.winnerUserId = game.tournament.winnerId;
       // Keep players array for GameOverModal to access
     } else if (game.tournament.phase === "DRAFT") {
-      // Reset state for next draft phase - keep players but clear battle state
+      // Reset state for next draft phase - create fresh state without old battle data
       game.state = {
-        ...game.state,
         version: 1,
         turn: 0,
         activePlayerIndex: 0,
         gameOver: false,
-        events: [], // Keep players intact for tournament tracking
+        players: [
+          {
+            userId: game.players[0],
+            hp: 30,
+            hand: [],
+            buffs: [],
+            gcd: 0,
+          },
+          {
+            userId: game.players[1],
+            hp: 30,
+            hand: [],
+            buffs: [],
+            gcd: 0,
+          },
+        ],
+        events: [],
       };
     }
 
