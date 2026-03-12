@@ -239,10 +239,24 @@ export default function DraftScreen({
         return;
       }
 
+      const result = await res.json();
+      console.log("[DraftScreen] Finalize result:", result);
+
       // Finalization successful - refetch parent state
       if (onStateChange) {
         await onStateChange();
       }
+
+      // If both players are ready and battle is starting, do an additional refetch
+      if (result.battleStarting) {
+        console.log("[DraftScreen] Both players ready! Refetching for battle...");
+        // Wait a moment for backend to fully process
+        await new Promise((r) => setTimeout(r, 500));
+        if (onStateChange) {
+          await onStateChange();
+        }
+      }
+
       // Then call parent handler
       await onFinalizeDraft();
     } catch (err: any) {

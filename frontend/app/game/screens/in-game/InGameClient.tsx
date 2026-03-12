@@ -161,6 +161,12 @@ export default function InGameClient({
 
   /* ================= RENDER BATTLE ================= */
 
+  console.log("[InGameClient] Rendering BATTLE, player hand cards:", {
+    myHandSize: me?.hand?.length || 0,
+    opponentHandSize: opponent?.hand?.length || 0,
+    myCards: me?.hand?.map((c) => ({ cardId: c.cardId, cooldown: c.cooldown })),
+  });
+
   return (
     <GamePreloadProvider value={preload}>
       <GameBoard

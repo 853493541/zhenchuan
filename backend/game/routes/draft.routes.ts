@@ -307,12 +307,62 @@ router.post("/draft/finalize", async (req, res) => {
       game.tournament.phase = "BATTLE";
       game.draftReady = {};
 
-      // Create new battle state with selected abilities
-      // (actual battle state will be created by battle initiation route)
+      // Put selected abilities into player hands
+      const player0Id = game.players[0];
+      const player1Id = game.players[1];
+      const player0Selected = game.tournament.selectedAbilities[player0Id];
+      const player1Selected = game.tournament.selectedAbilities[player1Id];
+
+      console.log("[draft/finalize] DEBUG - selectedAbilities structure:", {
+        player0Id,
+        player1Id,
+        player0SelectedLength: player0Selected?.length || 0,
+        player1SelectedLength: player1Selected?.length || 0,
+        player0SelectedCards: player0Selected?.map((c: any) => c.name) || [],
+        player1SelectedCards: player1Selected?.map((c: any) => c.name) || [],
+      });
+
+      // Update game state players' hands with selected abilities
+      game.state.players[0].hand = player0Selected;
+      game.state.players[1].hand = player1Selected;
+
+      console.log("[draft/finalize] DEBUG - After assignment:", {
+        player0HandLength: game.state.players[0].hand?.length || 0,
+        player1HandLength: game.state.players[1].hand?.length || 0,
+      });
+
+      // Force Mongoose to recognize nested changes - create new player objects and reassign
+      game.state.players[0] = {
+        ...game.state.players[0],
+        hand: player0Selected, // Explicitly include hand
+      };
+      game.state.players[1] = {
+        ...game.state.players[1],
+        hand: player1Selected, // Explicitly include hand
+      };
+      game.markModified("state");
+      game.markModified("state.players");
+
+      console.log("[draft/finalize] DEBUG - After Mongoose fix:", {
+        player0HandLength: game.state.players[0].hand?.length || 0,
+        player1HandLength: game.state.players[1].hand?.length || 0,
+      });
+
+      // Log transition
+      console.log("[draft/finalize] Both players ready, transitioning to BATTLE phase");
+      console.log(`[draft/finalize] Player 0 hand saved: ${game.state.players[0].hand.length} cards`);
+      console.log(`[draft/finalize] Player 1 hand saved: ${game.state.players[1].hand.length} cards`);
     }
 
     game.markModified("tournament");
     await game.save();
+
+    console.log("[draft/finalize] DEBUG - After save to DB:", {
+      player0HandLength: game.state.players[0].hand?.length || 0,
+      player1HandLength: game.state.players[1].hand?.length || 0,
+      player0HandCards: game.state.players[0].hand?.map((c: any) => c.name) || [],
+      player1HandCards: game.state.players[1].hand?.map((c: any) => c.name) || [],
+    });
 
     res.json({ status: "ready", battleStarting: bothReady });
   } catch (err: any) {
