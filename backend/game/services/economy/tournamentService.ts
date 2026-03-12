@@ -33,6 +33,10 @@ export function initializeTournament(playerIds: [PlayerID, PlayerID]): Tournamen
       [playerIds[0]]: [],
       [playerIds[1]]: [],
     },
+    bench: {
+      [playerIds[0]]: [],
+      [playerIds[1]]: [],
+    },
     battleHistory: [],
     shop: {
       [playerIds[0]]: {

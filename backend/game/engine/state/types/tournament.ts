@@ -55,6 +55,9 @@ export interface TournamentState {
   /** Each player's selected 6 abilities for current battle */
   selectedAbilities: Record<PlayerID, CardInstance[]>;
 
+  /** Each player's benched abilities (12 slots max, persist across battles) */
+  bench: Record<PlayerID, CardInstance[]>;
+
   /** History of battles completed */
   battleHistory: BattleInstance[];
 

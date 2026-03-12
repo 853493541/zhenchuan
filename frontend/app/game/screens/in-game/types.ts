@@ -136,6 +136,7 @@ export interface TournamentState {
   gameHp: Record<string, number>;
   economy: Record<string, PlayerEconomy>;
   selectedAbilities: Record<string, CardInstance[]>;
+  bench: Record<string, CardInstance[]>; // New: 12-slot bench area
   battleHistory: any[];
   shop: Record<string, Shop>;
   phase: "DRAFT" | "BATTLE" | "GAME_OVER";

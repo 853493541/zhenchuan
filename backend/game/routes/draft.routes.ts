@@ -9,6 +9,7 @@ import { generateShop, REFRESH_COST } from "../services/economy/economyService";
 import { getIncomePerRound } from "../services/economy/economyService";
 import { initializeBattleState } from "../services/battle/battleService";
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
+import type { CardInstance } from "../engine/state/types";
 
 const router = express.Router();
 
@@ -43,12 +44,12 @@ router.get("/draft/shop/:gameId", async (req, res) => {
 
 /**
  * POST /draft/select - Select an ability from shop to add to selection
- * Body: { gameId, cardInstanceId }
+ * Body: { gameId, cardInstanceId, destination: "selected" | "bench" }
  */
 router.post("/draft/select", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, cardInstanceId } = req.body;
+    const { gameId, cardInstanceId, destination = "selected" } = req.body;
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -58,21 +59,29 @@ router.post("/draft/select", async (req, res) => {
 
     const shop = game.tournament.shop[userId];
     const selected = game.tournament.selectedAbilities[userId];
+    const bench = game.tournament.bench[userId];
 
-    // Check if already selected 6 abilities
-    if (selected.length >= 6) {
-      return res.status(400).json({ error: "Already selected 6 abilities" });
+    // Check destination capacity
+    if (destination === "selected" && selected.length >= 6) {
+      return res.status(400).json({ error: "选择栏已满(最多6个)" });
+    }
+    if (destination === "bench" && bench.length >= 12) {
+      return res.status(400).json({ error: "备战区已满(最多12个)" });
     }
 
     // Find card in shop
     const cardIndex = shop.cards.findIndex((c: any) => c.instanceId === cardInstanceId);
     if (cardIndex === -1) {
-      return res.status(400).json({ error: "Card not in shop" });
+      return res.status(400).json({ error: "卡牌不在商店中" });
     }
 
-    // Move card from shop to selected
+    // Move card from shop to destination
     const [card] = shop.cards.splice(cardIndex, 1);
-    selected.push(card);
+    if (destination === "selected") {
+      selected.push(card);
+    } else {
+      bench.push(card);
+    }
 
     // Remove locked status for this position
     shop.locked.splice(cardIndex, 1);
@@ -82,8 +91,105 @@ router.post("/draft/select", async (req, res) => {
 
     res.json({
       selectedAbilities: selected,
+      bench: bench,
       shop: shop.cards,
       locked: shop.locked,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /draft/move - Move card between selected and bench
+ * Body: { gameId, cardInstanceId, from: "selected" | "bench", to: "selected" | "bench" }
+ */
+router.post("/draft/move", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, cardInstanceId, from, to } = req.body;
+
+    if (!from || !to || from === to) {
+      return res.status(400).json({ error: "Invalid move" });
+    }
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+
+    const selected = game.tournament.selectedAbilities[userId];
+    const bench = game.tournament.bench[userId];
+
+    // Check destination capacity
+    if (to === "selected" && selected.length >= 6) {
+      return res.status(400).json({ error: "选择栏已满(最多6个)" });
+    }
+    if (to === "bench" && bench.length >= 12) {
+      return res.status(400).json({ error: "备战区已满(最多12个)" });
+    }
+
+    // Find and move card
+    const fromArray = from === "selected" ? selected : bench;
+    const cardIdx = fromArray.findIndex((c: CardInstance) => c.instanceId === cardInstanceId);
+    if (cardIdx === -1) {
+      return res.status(400).json({ error: "卡牌不存在" });
+    }
+
+    const [card] = fromArray.splice(cardIdx, 1);
+    if (to === "selected") {
+      selected.push(card);
+    } else {
+      bench.push(card);
+    }
+
+    game.markModified("tournament");
+    await game.save();
+
+    res.json({
+      selectedAbilities: selected,
+      bench: bench,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /draft/sell - Sell a benched card for gold
+ * Body: { gameId, cardInstanceId }
+ */
+router.post("/draft/sell", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, cardInstanceId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+
+    const bench = game.tournament.bench[userId];
+    const eco = game.tournament.economy[userId];
+
+    // Find and remove card from bench
+    const cardIdx = bench.findIndex((c: CardInstance) => c.instanceId === cardInstanceId);
+    if (cardIdx === -1) {
+      return res.status(400).json({ error: "卡牌不在备战区" });
+    }
+
+    const [card] = bench.splice(cardIdx, 1);
+    
+    // Get card cost from preload data (default 3 if not found)
+    const cardCost = 3; // You could look this up from card definitions
+    eco.gold += cardCost;
+
+    game.markModified("tournament");
+    await game.save();
+
+    res.json({
+      bench: bench,
+      gold: eco.gold,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

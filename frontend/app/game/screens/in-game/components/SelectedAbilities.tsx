@@ -15,7 +15,7 @@ type Props = {
 export default function SelectedAbilities({ selected, cardMap }: Props) {
   return (
     <div className={styles.selection}>
-      <h2>Your Lineup</h2>
+      <h2>⚔️ 出战阵容</h2>
       <div className={styles.slotGrid}>
         {Array.from({ length: 6 }).map((_, idx) => {
           const card = selected[idx];
@@ -30,7 +30,7 @@ export default function SelectedAbilities({ selected, cardMap }: Props) {
                 </div>
               ) : (
                 <div className={styles.empty}>
-                  <span>Slot {idx + 1}</span>
+                  <span>位置 {idx + 1}</span>
                 </div>
               )}
             </div>

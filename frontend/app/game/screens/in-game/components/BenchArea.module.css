@@ -1,0 +1,201 @@
+.container {
+  background: #1a1a2e;
+  border: 2px solid #16a085;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+  flex-shrink: 0;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.title {
+  color: #16a085;
+  font-size: 13px;
+  font-weight: bold;
+  margin: 0 0 10px 0;
+  text-align: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.emptySlot {
+  aspect-ratio: 1;
+  background: rgba(22, 160, 133, 0.1);
+  border: 2px dashed #16a085;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #16a08588;
+  font-size: 10px;
+}
+
+.slotNumber {
+  font-weight: bold;
+}
+
+.benchCard {
+  aspect-ratio: 1;
+  background: #0f3460;
+  border-radius: 6px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  border: 2px solid #16a085;
+  font-size: 11px;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(22, 160, 133, 0.3);
+  }
+
+  &.rarity-legendary {
+    border-color: #ffd700;
+    background: linear-gradient(135deg, #1a0f00, #3a2f00);
+  }
+
+  &.rarity-epic {
+    border-color: #d946ef;
+    background: linear-gradient(135deg, #1a0f1a, #3a1f3a);
+  }
+
+  &.rarity-rare {
+    border-color: #3b82f6;
+    background: linear-gradient(135deg, #0f1f3f, #1f2f5f);
+  }
+
+  &.rarity-common {
+    border-color: #6b7280;
+    background: linear-gradient(135deg, #1a1a2e, #2a2a4e);
+  }
+}
+
+.cardContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.cardName {
+  color: #e8f5e9;
+  font-size: 10px;
+  font-weight: bold;
+  text-align: center;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cardCost {
+  color: #ffd700;
+  font-size: 9px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.actions {
+  display: flex;
+  gap: 3px;
+}
+
+.moveBtn,
+.sellBtn {
+  flex: 1;
+  padding: 2px 1px;
+  font-size: 9px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.moveBtn {
+  background: #16a085;
+
+  &:hover:not(:disabled) {
+    background: #1abc9c;
+  }
+}
+
+.sellBtn {
+  background: #e74c3c;
+
+  &:hover:not(:disabled) {
+    background: #c0392b;
+  }
+}
+
+/* ===== TABLET ===== */
+@media (max-width: 1024px) {
+  .container {
+    padding: 10px;
+    max-height: 200px;
+  }
+
+  .title {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 5px;
+  }
+}
+
+/* ===== PHONE ===== */
+@media (max-width: 640px) {
+  .container {
+    padding: 8px;
+    max-height: 180px;
+    margin-top: 8px;
+  }
+
+  .title {
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+
+  .benchCard {
+    padding: 4px;
+    gap: 2px;
+  }
+
+  .cardName {
+    font-size: 9px;
+  }
+
+  .cardCost {
+    font-size: 8px;
+  }
+
+  .moveBtn,
+  .sellBtn {
+    padding: 1px;
+    font-size: 8px;
+  }
+}
