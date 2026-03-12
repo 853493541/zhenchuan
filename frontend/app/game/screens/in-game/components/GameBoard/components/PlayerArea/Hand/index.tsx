@@ -27,6 +27,7 @@ export default function Hand({
             cardId={card.cardId}
             card={card.card}              // card data
             remainingGcd={remainingGcd}   // 🔑 MAY BE UNDEFINED — SAFE
+            cooldown={card.cooldown}      // NEW: show cooldown
             variant={isMyTurn ? "hand" : "disabled"}
             onClick={isMyTurn ? () => onPlayCard(card) : undefined}
           />

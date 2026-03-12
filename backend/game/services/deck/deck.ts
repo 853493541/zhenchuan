@@ -16,7 +16,7 @@ export function buildDeck(): CardInstance[] {
       throw new Error(`Unknown card id in deck: ${cardId}`);
     }
     for (let i = 0; i < n; i++) {
-      deck.push({ instanceId: randomUUID(), cardId });
+      deck.push({ instanceId: randomUUID(), cardId, cooldown: 0 });
     }
   };
 

@@ -43,6 +43,12 @@ export function validatePlayCard(
     throw new Error("ERR_CARD_NOT_FOUND");
   }
 
+  /* ================= COOLDOWN ================= */
+
+  if (instance.cooldown > 0) {
+    throw new Error("ERR_ON_COOLDOWN");
+  }
+
   /* ================= GCD ================= */
 
   if (player.gcd < card.gcdCost) {

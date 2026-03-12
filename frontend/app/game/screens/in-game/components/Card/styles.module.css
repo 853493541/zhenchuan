@@ -54,6 +54,33 @@
   z-index: 5;
 }
 
+/* ================= COOLDOWN OVERLAY ================= */
+
+.cooldownOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 10px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  pointer-events: none;
+  z-index: 10;
+}
+
+.cooldownText {
+  font-size: 32px;
+  font-weight: bold;
+  color: #ff6b6b;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
 /* ================= VARIANTS ================= */
 
 .hand {

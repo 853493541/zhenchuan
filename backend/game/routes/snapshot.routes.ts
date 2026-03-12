@@ -24,9 +24,24 @@ router.get("/:id", async (req, res) => {
       gameObj.playerNames = {};
     }
     
-    console.log(`[snapshot] GET /${req.params.id} - playerNames in response:`, gameObj.playerNames);
-    res.json(gameObj);
+    console.log(`[snapshot] GET /${req.params.id}`, {
+      hasTournament: !!gameObj.tournament,
+      tournamentPhase: gameObj.tournament?.phase,
+      battleNumber: gameObj.tournament?.battleNumber,
+      playerNames: Object.keys(gameObj.playerNames),
+    });
+
+    // Explicitly return all fields including tournament
+    res.json({
+      _id: gameObj._id,
+      players: gameObj.players,
+      state: gameObj.state,
+      playerNames: gameObj.playerNames,
+      tournament: gameObj.tournament, // EXPLICITLY INCLUDE
+      started: gameObj.started,
+    });
   } catch (err: any) {
+    console.error("[snapshot] Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });

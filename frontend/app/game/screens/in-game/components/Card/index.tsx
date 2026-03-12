@@ -10,7 +10,8 @@ type CardVariant = "hand" | "arena" | "preview" | "disabled";
 type Props = {
   cardId: string;
   variant?: CardVariant;
-  remainingGcd?: number; // 👈 NEW
+  remainingGcd?: number; // 👈 
+  cooldown?: number; // NEW: cooldown on this card instance
   onClick?: () => void;
 };
 
@@ -29,6 +30,7 @@ export default function Card({
   cardId,
   variant = "hand",
   remainingGcd,
+  cooldown = 0,
   onClick,
 }: Props) {
   const preload = useGamePreload();
@@ -50,7 +52,8 @@ export default function Card({
     variant === "hand" &&
     gcdValue !== undefined &&
     remainingGcd !== undefined &&
-    remainingGcd >= gcdValue;
+    remainingGcd >= gcdValue &&
+    (cooldown ?? 0) === 0; // Can only play if cooldown is 0
 
   return (
     <div
@@ -68,6 +71,13 @@ export default function Card({
       {/* ================= GCD DISPLAY ================= */}
       {variant === "hand" && gcdValue !== undefined && (
         <div className={styles.gcdCrystal}>{String(gcdValue)}</div>
+      )}
+
+      {/* ================= COOLDOWN DISPLAY ================= */}
+      {variant === "hand" && (cooldown ?? 0) > 0 && (
+        <div className={styles.cooldownOverlay}>
+          <div className={styles.cooldownText}>{cooldown}</div>
+        </div>
       )}
 
       <div className={styles.icon}>

@@ -18,6 +18,12 @@ const GameSessionSchema = new mongoose.Schema(
 
     // 🔄 Auto-start when room is full
     autoStart: { type: Boolean, default: true },
+
+    // 🎮 Tournament/Draft/Economy state (persists across battles)
+    tournament: { type: mongoose.Schema.Types.Mixed, default: null },
+
+    // 📋 Track which players are ready to start battle (userId -> true)
+    draftReady: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   { timestamps: true }
 );

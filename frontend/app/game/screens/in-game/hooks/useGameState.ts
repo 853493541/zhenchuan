@@ -78,6 +78,13 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     }
 
     const full = await res.json();
+    console.log("[useGameState] Snapshot fetched:", {
+      hasGame: !!full,
+      hasTournament: !!full.tournament,
+      tournamentPhase: full.tournament?.phase,
+      gameId: full._id,
+    });
+    
     versionRef.current = full.state.version;
     setGame(full);
     setLoading(false);
@@ -444,6 +451,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   return {
     loading,
     state,
+    tournament: game?.tournament,
     me,
     opponent,
     isMyTurn,
@@ -451,5 +459,6 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     playCard,
     endTurn,
     rtt,
+    refetch: fetchInitialGame, // Expose refetch for draft screen
   };
 }

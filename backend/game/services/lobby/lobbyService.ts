@@ -8,6 +8,7 @@ import { User } from "../../../models/User";
 import { GameState } from "../../engine/state/types";
 import { buildDeck, shuffle } from "../deck/deck";
 import { draw } from "../flow/draw";
+import { initializeTournament } from "../economy/tournamentService";
 
 /**
  * Helper: fetch username by user ID
@@ -142,27 +143,15 @@ export async function startGame(gameId: string, userId: string) {
       {
         userId: game.players[0],
         hp: 100,
-        hand: [],
+        hand: [], // No cards during draft phase
         buffs: [],
-
-        /**
-         * GCD
-         * - Active player at game start
-         * - Gets exactly 1 GCD for their first turn
-         */
-        gcd: 1,
+        gcd: 0,
       },
       {
         userId: game.players[1],
         hp: 100,
-        hand: [],
+        hand: [], // No cards during draft phase
         buffs: [],
-
-        /**
-         * GCD
-         * - Not the active player yet
-         * - Will be set to 1 when their turn starts
-         */
         gcd: 0,
       },
     ],
@@ -170,13 +159,43 @@ export async function startGame(gameId: string, userId: string) {
     events: [],
   };
 
-  draw(state, 0, 6);
-  draw(state, 1, 6);
+  // Don't draw cards yet - wait until battle phase after draft
+  // draw(state, 0, 6);
+  // draw(state, 1, 6);
+
+  // Initialize tournament state for draft/economy/progression
+  const tournament = initializeTournament([game.players[0], game.players[1]]);
 
   game.state = state;
+  game.tournament = tournament;
   game.started = true;
-  await game.save();
-  return game;
+  
+  // Mark tournament as modified so Mongoose persists it
+  game.markModified('tournament');
+  
+  console.log("[startGame] Before save, game.tournament:", {
+    exists: !!game.tournament,
+    phase: game.tournament?.phase,
+  });
+  
+  try {
+    const savedGame = await game.save();
+    
+    console.log("[startGame] After save, savedGame.tournament:", {
+      exists: !!savedGame.tournament,
+      phase: savedGame.tournament?.phase,
+    });
+    
+    console.log(`[startGame] Game ${game._id} started with tournament:`, {
+      battleNumber: tournament.battleNumber,
+      phase: tournament.phase,
+    });
+    
+    return savedGame;
+  } catch (error: any) {
+    console.error("[startGame] ERROR saving game:", error.message);
+    throw error;
+  }
 }
 
 export async function getGame(gameId: string, userId: string) {

@@ -41,4 +41,13 @@ export interface Card {
 export interface CardInstance {
   instanceId: string;
   cardId: string;
+  
+  /**
+   * Cooldown for this card instance
+   * - Starts at 0 (ready to play)
+   * - Increments to 1 when played
+   * - Decrements each turn
+   * - Can play when cooldown === 0
+   */
+  cooldown: number;
 }

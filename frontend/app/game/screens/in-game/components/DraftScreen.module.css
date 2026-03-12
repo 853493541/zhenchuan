@@ -1,0 +1,106 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  padding: 20px;
+  background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
+  color: white;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.header h1 {
+  font-size: 28px;
+  margin: 0;
+}
+
+.gameHp {
+  font-size: 16px;
+  color: #ff6b6b;
+  font-weight: bold;
+}
+
+.mainLayout {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 20px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.rightPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+}
+
+.refreshBtn,
+.finalizeBtn {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.refreshBtn {
+  background: #4ecdc4;
+  color: #1e1e2e;
+}
+
+.refreshBtn:hover:not(:disabled) {
+  background: #45b8b0;
+  transform: scale(1.02);
+}
+
+.refreshBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.finalizeBtn {
+  background: #ffd700;
+  color: #1e1e2e;
+}
+
+.finalizeBtn:hover:not(:disabled) {
+  background: #ffed4e;
+  transform: scale(1.02);
+}
+
+.finalizeBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  padding: 12px;
+  background: #ff6b6b;
+  color: white;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.progress {
+  padding: 10px;
+  background: rgba(78, 205, 196, 0.2);
+  border-left: 3px solid #4ecdc4;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: center;
+}

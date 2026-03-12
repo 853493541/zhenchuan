@@ -5,6 +5,7 @@
 export interface CardInstance {
   instanceId: string;
   cardId: string;
+  cooldown?: number;
 }
 
 /* =========================================================
@@ -112,4 +113,31 @@ export interface GameResponse {
   players: string[];
   state: GameState;
   playerNames?: Record<string, string>;
+  tournament?: TournamentState;
+}
+
+/* =========================================================
+   Tournament / Draft / Economy
+========================================================= */
+
+export interface PlayerEconomy {
+  gold: number;
+  level: number;
+  experience: number;
+}
+
+export interface Shop {
+  cards: CardInstance[];
+  locked: boolean[];
+}
+
+export interface TournamentState {
+  battleNumber: number;
+  gameHp: Record<string, number>;
+  economy: Record<string, PlayerEconomy>;
+  selectedAbilities: Record<string, CardInstance[]>;
+  battleHistory: any[];
+  shop: Record<string, Shop>;
+  phase: "DRAFT" | "BATTLE" | "GAME_OVER";
+  winnerId?: string;
 }

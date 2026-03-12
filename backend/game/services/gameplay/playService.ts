@@ -67,6 +67,9 @@ export async function playCard(
   applyEffects(state, card, playerIndex, targetIndex);
   applyOnPlayBuffEffects(state, playerIndex);
 
+  // Set cooldown after card is played
+  played.cooldown = 1;
+
   state.discard.push(played);
 
   state.version = (state.version ?? 0) + 1;

@@ -1,0 +1,61 @@
+.selection {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  overflow-y: auto;
+}
+
+.selection h2 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #ffd700;
+}
+
+.slotGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  flex: 1;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px dashed rgba(255, 215, 0, 0.3);
+  border-radius: 6px;
+  min-height: 80px;
+}
+
+.selectedCard {
+  width: 100%;
+  text-align: center;
+  background: rgba(255, 215, 0, 0.1);
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.selectedCard h4 {
+  margin: 0 0 4px 0;
+  font-size: 13px;
+  font-weight: bold;
+  word-break: break-word;
+}
+
+.selectedCard .type {
+  margin: 0;
+  font-size: 11px;
+  color: #ffd700;
+  text-transform: uppercase;
+}
+
+.empty {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  text-align: center;
+}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import GameBoard from "./components/GameBoard";
 import GameOverModal from "./components/GameBoard/components/GameOverModal";
+import DraftScreen from "./components/DraftScreen";
 import { toastError } from "@/app/components/toast/toast";
 import { useGameState } from "./hooks/useGameState";
 import {
@@ -70,6 +71,7 @@ export default function InGameClient({
   const {
     loading,
     state,
+    tournament,
     me,
     opponent,
     isMyTurn,
@@ -77,6 +79,7 @@ export default function InGameClient({
     playCard,
     endTurn,
     rtt,
+    refetch,
   } = useGameState(gameId, selfUserId, authToken);
 
   /* ================= PRELOAD ================= */
@@ -128,7 +131,35 @@ export default function InGameClient({
     return <div>Loading game…</div>;
   }
 
-  /* ================= RENDER ================= */
+  /* ================= DRAFT PHASE ================= */
+
+  console.log("[InGameClient] Tournament state:", {
+    tournament: tournament ? { phase: tournament.phase, battleNumber: tournament.battleNumber } : null,
+    loading,
+    hasState: !!state,
+    hasMe: !!me,
+    hasOpponent: !!opponent,
+    hasPreload: !!preload,
+  });
+
+  if (tournament && tournament.phase === "DRAFT") {
+    console.log("[InGameClient] Showing DRAFT screen");
+    return (
+      <DraftScreen
+        gameId={gameId}
+        selfUserId={selfUserId}
+        tournament={tournament}
+        cardMap={preload.cardMap}
+        onFinalizeDraft={async () => {
+          // Finalization API call is handled within DraftScreen
+          // Just need to wait for state update via WebSocket
+        }}
+        onStateChange={refetch}
+      />
+    );
+  }
+
+  /* ================= RENDER BATTLE ================= */
 
   return (
     <GamePreloadProvider value={preload}>
