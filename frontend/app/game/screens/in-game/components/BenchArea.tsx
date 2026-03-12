@@ -6,6 +6,7 @@
 "use client";
 
 import type { CardInstance } from "../types";
+import { useState } from "react";
 import styles from "./BenchArea.module.css";
 
 type Props = {
@@ -25,6 +26,11 @@ export default function BenchArea({
   loading,
   fullSlots = 0,
 }: Props) {
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+
+  const handleImageError = (cardId: string) => {
+    setFailedImages(prev => new Set([...prev, cardId]));
+  };
   const benchSlots = Array.from({ length: 12 }, (_, i) => {
     const card = bench[i];
     return { index: i, card };
@@ -37,43 +43,40 @@ export default function BenchArea({
         {benchSlots.map(({ index, card }) => {
           if (!card) {
             return (
-              <div key={index} className={styles.emptySlot}>
-                <div className={styles.slotNumber}>{index + 1}</div>
+              <div key={index} className={`${styles.card} ${styles.empty}`}>
+                <div className={styles.emptySlot}>{index + 1}</div>
               </div>
             );
           }
 
           const cardDef = cardMap[card.cardId];
-          const cost = cardDef?.cost || 1;
-          const rarity = cardDef?.rarity || "common";
 
           return (
             <div
               key={card.instanceId}
-              className={`${styles.benchCard} ${styles[`rarity-${rarity}`]}`}
+              className={styles.card}
+              onClick={() => onMoveToSelected(card.instanceId)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onSell(card.instanceId);
+              }}
+              style={{ cursor: "pointer" }}
+              title="左键移到选择栏 或右键出售"
             >
-              <div className={styles.cardContent}>
-                <div className={styles.cardName}>{cardDef?.name || "Unknown"}</div>
-                <div className={styles.cardCost}>${cost}</div>
-              </div>
-
-              <div className={styles.actions}>
-                <button
-                  className={styles.moveBtn}
-                  onClick={() => onMoveToSelected(card.instanceId)}
-                  disabled={loading}
-                  title="移到选择栏"
-                >
-                  ➜ 选
-                </button>
-                <button
-                  className={styles.sellBtn}
-                  onClick={() => onSell(card.instanceId)}
-                  disabled={loading}
-                  title="出售获得金币"
-                >
-                  💰 卖
-                </button>
+              {!failedImages.has(card.cardId) ? (
+                <img 
+                  src={`/game/icons/Skills/${cardDef?.name}.png`} 
+                  alt={cardDef?.name} 
+                  className={styles.portrait}
+                  onError={() => handleImageError(card.cardId)}
+                />
+              ) : (
+                <div className={styles.portrait}>
+                  <div className={styles.portraitInner}>{cardDef?.name?.charAt(0) || "?"}</div>
+                </div>
+              )}
+              <div className={styles.cardInfo}>
+                <h3 className={styles.cardName}>{cardDef?.name || "Unknown"}</h3>
               </div>
             </div>
           );

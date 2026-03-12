@@ -35,12 +35,6 @@ export interface GameState {
 
   players: PlayerState[];
 
-  /** shared draw pile */
-  deck: CardInstance[];
-
-  /** shared discard pile */
-  discard: CardInstance[];
-
   /** global turn counter */
   turn: number;
 

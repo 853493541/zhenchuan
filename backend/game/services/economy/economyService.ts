@@ -23,7 +23,7 @@ export function calculateInterest(gold: number): number {
 
 /**
  * Get rarity distribution for a shop level
- * Returns an array of 5 random card rarities
+ * Returns an array of 6 random card rarities
  */
 function getRandomRarities(level: number): number[] {
   const distribution = RARITY_POOLS[level] || RARITY_POOLS[10];
@@ -31,14 +31,14 @@ function getRandomRarities(level: number): number[] {
 
   // Build a pool of rarities based on percentages
   for (const [rarity, percentage] of Object.entries(distribution)) {
-    const count = Math.round(5 * percentage);
+    const count = Math.round(6 * percentage);
     for (let i = 0; i < count; i++) {
       pool.push(parseInt(rarity));
     }
   }
 
-  // Ensure exactly 5 rarities
-  while (pool.length < 5) {
+  // Ensure exactly 6 rarities
+  while (pool.length < 6) {
     const rarity = parseInt(
       Object.keys(distribution).sort(
         (a, b) => distribution[parseInt(b)] - distribution[parseInt(a)]
@@ -46,7 +46,7 @@ function getRandomRarities(level: number): number[] {
     );
     pool.push(rarity);
   }
-  pool.length = 5;
+  pool.length = 6;
 
   // Shuffle
   return pool.sort(() => Math.random() - 0.5);
@@ -64,7 +64,7 @@ function getCardsByRarity(rarity: number): string[] {
 
 /**
  * Generate a shop for a player at a given level
- * Creates 5 random ability cards
+ * Creates 6 random ability cards
  */
 export function generateShop(level: number): CardInstance[] {
   const rarities = getRandomRarities(level);

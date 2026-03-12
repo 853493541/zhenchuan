@@ -1,201 +1,153 @@
 .container {
-  background: #1a1a2e;
-  border: 2px solid #16a085;
-  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding: 12px;
-  margin-top: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  border: 2px solid rgba(78, 205, 196, 0.2);
   flex-shrink: 0;
-  max-height: 250px;
-  overflow-y: auto;
 }
 
 .title {
-  color: #16a085;
-  font-size: 13px;
+  font-size: 12px;
+  color: #4ecdc4;
   font-weight: bold;
-  margin: 0 0 10px 0;
-  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 10px;
 }
 
-.emptySlot {
-  aspect-ratio: 1;
-  background: rgba(22, 160, 133, 0.1);
-  border: 2px dashed #16a085;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #16a08588;
-  font-size: 10px;
-}
-
-.slotNumber {
-  font-weight: bold;
-}
-
-.benchCard {
-  aspect-ratio: 1;
-  background: #0f3460;
-  border-radius: 6px;
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-  border: 2px solid #16a085;
-  font-size: 11px;
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(22, 160, 133, 0.3);
-  }
-
-  &.rarity-legendary {
-    border-color: #ffd700;
-    background: linear-gradient(135deg, #1a0f00, #3a2f00);
-  }
-
-  &.rarity-epic {
-    border-color: #d946ef;
-    background: linear-gradient(135deg, #1a0f1a, #3a1f3a);
-  }
-
-  &.rarity-rare {
-    border-color: #3b82f6;
-    background: linear-gradient(135deg, #0f1f3f, #1f2f5f);
-  }
-
-  &.rarity-common {
-    border-color: #6b7280;
-    background: linear-gradient(135deg, #1a1a2e, #2a2a4e);
-  }
-}
-
-.cardContent {
-  flex: 1;
+.card {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  background: linear-gradient(135deg, rgba(78, 205, 196, 0.1), rgba(100, 150, 220, 0.1));
+  border: 2px solid rgba(78, 205, 196, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  min-height: 100px;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(78, 205, 196, 0.2), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.card:hover::before {
+  opacity: 1;
+}
+
+.card:hover {
+  background: linear-gradient(135deg, rgba(78, 205, 196, 0.15), rgba(100, 150, 220, 0.15));
+  border-color: rgba(78, 205, 196, 0.6);
+  box-shadow: 0 0 12px rgba(78, 205, 196, 0.3);
+  transform: translateY(-2px);
+}
+
+.card.empty {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  border-style: dashed;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.2);
+  font-size: 12px;
+}
+
+.portrait {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.cardInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: center;
+  font-size: 9px;
 }
 
 .cardName {
-  color: #e8f5e9;
-  font-size: 10px;
   font-weight: bold;
-  text-align: center;
-  line-height: 1.1;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.cardCost {
-  color: #ffd700;
-  font-size: 9px;
-  text-align: center;
-  font-weight: bold;
+.cardType {
+  color: #4ecdc4;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
 }
 
-.actions {
-  display: flex;
-  gap: 3px;
-}
-
-.moveBtn,
-.sellBtn {
-  flex: 1;
-  padding: 2px 1px;
-  font-size: 9px;
+.removeBtn {
+  background: linear-gradient(135deg, #ff6b6b, #ff5252);
+  color: white;
   border: none;
+  padding: 3px 6px;
   border-radius: 3px;
   cursor: pointer;
+  font-size: 8px;
   font-weight: bold;
-  transition: all 0.2s;
-  color: white;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  transition: all 0.2s ease;
+  opacity: 0;
+  margin-top: 4px;
 }
 
-.moveBtn {
-  background: #16a085;
-
-  &:hover:not(:disabled) {
-    background: #1abc9c;
-  }
+.card:hover .removeBtn {
+  opacity: 1;
 }
 
-.sellBtn {
-  background: #e74c3c;
-
-  &:hover:not(:disabled) {
-    background: #c0392b;
-  }
+.removeBtn:hover {
+  background: linear-gradient(135deg, #ff5252, #ff3838);
+  transform: scale(1.05);
 }
 
-/* ===== TABLET ===== */
-@media (max-width: 1024px) {
-  .container {
-    padding: 10px;
-    max-height: 200px;
-  }
-
-  .title {
-    font-size: 12px;
-    margin-bottom: 8px;
-  }
-
+@media (max-width: 1200px) {
   .grid {
     grid-template-columns: repeat(6, 1fr);
-    gap: 5px;
   }
 }
 
-/* ===== PHONE ===== */
-@media (max-width: 640px) {
-  .container {
-    padding: 8px;
-    max-height: 180px;
-    margin-top: 8px;
-  }
-
-  .title {
-    font-size: 11px;
-    margin-bottom: 6px;
-  }
-
+@media (max-width: 768px) {
   .grid {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 4px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
   }
 
-  .benchCard {
-    padding: 4px;
-    gap: 2px;
+  .card {
+    min-height: 80px;
+    padding: 8px;
   }
 
   .cardName {
     font-size: 9px;
-  }
-
-  .cardCost {
-    font-size: 8px;
-  }
-
-  .moveBtn,
-  .sellBtn {
-    padding: 1px;
-    font-size: 8px;
   }
 }

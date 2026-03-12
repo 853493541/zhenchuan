@@ -94,9 +94,6 @@ export interface GameState {
   turn: number;
   activePlayerIndex: number;
 
-  deck: CardInstance[];
-  discard: CardInstance[];
-
   gameOver: boolean;
   winnerUserId?: string;
 

@@ -268,67 +268,73 @@ export default function DraftScreen({
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <h1>第 {tournament.battleNumber} 场战斗</h1>
-        <div className={styles.gameHp}>
-          <span>🏥 竞技场血量: {tournament.gameHp[selfUserId]}</span>
-        </div>
-      </div>
-
-      <div className={styles.mainLayout}>
-        {/* Left: Shop */}
-        <DraftShop
-          shop={shop}
-          cardMap={cardMap}
-          onSelectCard={handleSelectCard}
-          onLockCard={handleLockCard}
-          loading={loading}
-        />
-
-        {/* Center: Selected Abilities */}
-        <div className={styles.centerPanel}>
-          <SelectedAbilities selected={selected} cardMap={cardMap} />
-          
-          {selected.length > 0 && (
-            <div className={styles.moveToSelectText}>
-              ← 从备战区移过来
-            </div>
-          )}
+      <div className={styles.mainArea}>
+        {/* Left Sidebar - Class/Unit Icons */}
+        <div className={styles.leftSidebar}>
+          <div className={styles.sidebarTitle}>势力</div>
+          {/* Placeholder for class icons */}
         </div>
 
-        {/* Right: Economy & Controls */}
-        <div className={styles.rightPanel}>
-          <DraftEconomy eco={eco} battleNumber={tournament.battleNumber} />
-
-          <div className={styles.buttonGroup}>
+        {/* Center Content Area */}
+        <div className={styles.centerArea}>
+          {/* Header with Refresh */}
+          <div className={styles.header}>
+            <h1>第 {tournament.battleNumber} 场战斗</h1>
             <button
               className={styles.refreshBtn}
               onClick={handleRefreshShop}
               disabled={loading || eco.gold < 1}
             >
-              🔄 刷新 (1金币)
+              🔄 刷新
             </button>
-
-            <button
-              className={`${styles.benchBtn}`}
-              disabled={true}
-              title="备战区最多12个能力"
-            >
-              📦 备战区 {bench.length}/12
-            </button>
+            <div className={styles.gameHp}>🏥 {tournament.gameHp[selfUserId]}</div>
           </div>
 
-          {selected.length === 6 && (
+          {/* Shop - Horizontal Row */}
+          <DraftShop
+            shop={shop}
+            cardMap={cardMap}
+            onSelectCard={handleSelectCard}
+            onLockCard={handleLockCard}
+            loading={loading}
+          />
+
+          {/* Selected Abilities - Large Row */}
+          <SelectedAbilities 
+            selected={selected} 
+            cardMap={cardMap}
+            onMoveToBench={(cardInstanceId) => handleMoveCard(cardInstanceId, "selected", "bench")}
+            loading={loading}
+          />
+
+          {/* Bench Area - Grid */}
+          <BenchArea
+            bench={bench}
+            cardMap={cardMap}
+            onMoveToSelected={(cardInstanceId) => handleMoveCard(cardInstanceId, "bench", "selected")}
+            onSell={handleSellCard}
+            loading={loading}
+            fullSlots={bench.length}
+          />
+        </div>
+
+        {/* Right Panel - Fixed Controls */}
+        <div className={styles.rightPanel}>
+          <DraftEconomy eco={eco} battleNumber={tournament.battleNumber} />
+
+          <div className={styles.buttonGroup}>
             <button
               className={styles.finalizeBtn}
               onClick={handleFinalize}
-              disabled={loading}
+              disabled={loading || selected.length !== 6}
+              title={selected.length !== 6 ? `必须选择6个能力 (当前${selected.length}个)` : ""}
             >
-              ✓ 确认出战 {loading ? "..." : ""}
+              ✓ 确认 {loading ? "..." : ""}
             </button>
-          )}
+          </div>
 
           {error && <div className={styles.error}>{error}</div>}
+          
           {selected.length > 0 && (
             <div className={styles.progress}>
               已选 {selected.length} / 6
@@ -336,16 +342,6 @@ export default function DraftScreen({
           )}
         </div>
       </div>
-
-      {/* Bench Area */}
-      <BenchArea
-        bench={bench}
-        cardMap={cardMap}
-        onMoveToSelected={(cardInstanceId) => handleMoveCard(cardInstanceId, "bench", "selected")}
-        onSell={handleSellCard}
-        loading={loading}
-        fullSlots={bench.length}
-      />
     </div>
   );
 }

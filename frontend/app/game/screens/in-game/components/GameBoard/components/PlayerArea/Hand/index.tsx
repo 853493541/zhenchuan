@@ -25,7 +25,6 @@ export default function Hand({
         <AnimatedHandSlot key={card.instanceId}>
           <Card
             cardId={card.cardId}
-            card={card.card}              // card data
             remainingGcd={remainingGcd}   // 🔑 MAY BE UNDEFINED — SAFE
             cooldown={card.cooldown}      // NEW: show cooldown
             variant={isMyTurn ? "hand" : "disabled"}

@@ -9,7 +9,7 @@ import { applyEffects } from "../../engine/flow/play/executeCard";
 import { resolveTurnEnd } from "../../engine/flow/turn/advanceTurn";
 import { validatePlayCard } from "../../engine/rules/validateAction";
 import { GameState } from "../../engine/state/types";
-import { autoDrawAtTurnStart } from "../flow/draw";
+
 import { pushEvent } from "../flow/events";
 import { diffState } from "../flow/stateDiff";
 import { applyOnPlayBuffEffects } from "../../engine/flow/play/onPlayEffects";
@@ -58,7 +58,7 @@ export async function playCard(
 
   const player = state.players[playerIndex];
   const idx = player.hand.findIndex((c) => c.instanceId === cardInstanceId);
-  const [played] = player.hand.splice(idx, 1);
+  const played = player.hand[idx]; // Don't remove from hand - abilities are reusable
 
   const card = CARDS[played.cardId];
   const targetIndex =
@@ -67,10 +67,8 @@ export async function playCard(
   applyEffects(state, card, playerIndex, targetIndex);
   applyOnPlayBuffEffects(state, playerIndex);
 
-  // Set cooldown after card is played
-  played.cooldown = 1;
-
-  state.discard.push(played);
+  // Set cooldown after ability is used (2 turn cooldown)
+  played.cooldown = 2;
 
   state.version = (state.version ?? 0) + 1;
 
@@ -146,7 +144,6 @@ export async function passTurn(gameId: string, userId: string) {
   });
 
   resolveTurnEnd(state);
-  autoDrawAtTurnStart(state);
 
   state.version = (state.version ?? 0) + 1;
 

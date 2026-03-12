@@ -14,26 +14,44 @@ type Props = {
 
 export default function DraftEconomy({ eco, battleNumber }: Props) {
   return (
-    <div className={styles.economy}>
-      <div className={styles.stat}>
-        <span className={styles.label}>💰 金币</span>
-        <span className={styles.value}>{eco.gold}</span>
+    <div className={styles.container}>
+      {/* Gold - Prominent Display */}
+      <div className={`${styles.section} ${styles.goldSection}`}>
+        <div className={styles.goldDisplay}>
+          <span className={styles.goldLabel}>💰 金币</span>
+          <span className={styles.goldValue}>{eco.gold}</span>
+        </div>
       </div>
 
-      <div className={styles.stat}>
-        <span className={styles.label}>⭐ 等级</span>
-        <span className={styles.value}>{eco.level}</span>
+      {/* Level and Battle Info */}
+      <div className={styles.section}>
+        <div className={styles.row}>
+          <span className={styles.label}>⭐ 等级</span>
+          <span className={styles.value}>{eco.level}</span>
+        </div>
+        <div className={styles.row}>
+          <span className={styles.label}>⚔️ 战斗</span>
+          <span className={styles.value}>{battleNumber} / 8</span>
+        </div>
       </div>
 
-      <div className={styles.stat}>
-        <span className={styles.label}>⚔️ 战斗</span>
-        <span className={styles.value}>{battleNumber} / 8</span>
-      </div>
-
-      <div className={styles.info}>
-        <p>• 刷新: 1个金币</p>
-        <p>• 利息: 每10金币1个 (最多5)</p>
-        <p>• 选择6个能力出战</p>
+      {/* Tips */}
+      <div className={styles.section}>
+        <div className={styles.header}>阶段说明</div>
+        <div className={styles.stats}>
+          <div className={styles.stat}>
+            <span>🔄 刷新</span>
+            <span className={styles.statValue}>1金</span>
+          </div>
+          <div className={styles.stat}>
+            <span>📊 利息</span>
+            <span className={styles.statValue}>每10金+1</span>
+          </div>
+          <div className={styles.stat}>
+            <span>📋 选择</span>
+            <span className={styles.statValue}>6个能力</span>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -110,7 +110,8 @@ export function completeBattle(
     return tournament;
   }
 
-  // Regenerate shops and reset selected abilities for next draft
+  // Regenerate shops for next draft
+  // NOTE: selectedAbilities, bench, and gold persist across battles
   tournament.phase = "DRAFT";
   const playerIds = Object.keys(tournament.gameHp) as PlayerID[];
   
@@ -118,9 +119,8 @@ export function completeBattle(
     const eco = tournament.economy[playerId];
     tournament.shop[playerId] = {
       cards: generateShop(eco.level),
-      locked: [false, false, false, false, false],
+      locked: [false, false, false, false, false, false],
     };
-    tournament.selectedAbilities[playerId] = [];
   }
 
   return tournament;

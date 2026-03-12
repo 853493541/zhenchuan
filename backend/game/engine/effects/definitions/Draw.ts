@@ -7,8 +7,6 @@ export function handleDraw(
   source: { hand: any[] },
   effect: CardEffect
 ) {
-  for (let i = 0; i < (effect.value ?? 0); i++) {
-    const c = state.deck.shift();
-    if (c) source.hand.push(c);
-  }
+  // Draw mechanic disabled - abilities are reusable with cooldowns instead
+  // This is a no-op placeholder for backward compatibility
 }

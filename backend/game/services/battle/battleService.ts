@@ -7,6 +7,7 @@ import { GameState, PlayerState } from "../../engine/state/types";
 import { TournamentState } from "../../engine/state/types";
 import { STARTING_BATTLE_HP } from "../../engine/state/types";
 import { PlayerID } from "../../engine/state/types/common";
+import { CardInstance } from "../../engine/state/types/cards";
 import { CARDS } from "../../cards/cards";
 import { randomUUID } from "crypto";
 
@@ -24,28 +25,19 @@ export function initializeBattleState(
   const abilities0 = tournament.selectedAbilities[player0Id];
   const abilities1 = tournament.selectedAbilities[player1Id];
 
-  // Create "decks" from selected abilities
-  // Shuffle and draw initial hands
-  const deck0Shuffled = abilities0
-    .map((a) => ({ ...a, instanceId: randomUUID() })) // Create new instances for this battle
-    .sort(() => Math.random() - 0.5);
+  // Create fresh instances of abilities for this battle with cooldown reset
+  const hand0: CardInstance[] = abilities0
+    .map((a) => ({ ...a, instanceId: randomUUID(), cooldown: 0 }));
 
-  const deck1Shuffled = abilities1
-    .map((a) => ({ ...a, instanceId: randomUUID() }))
-    .sort(() => Math.random() - 0.5);
+  const hand1: CardInstance[] = abilities1
+    .map((a) => ({ ...a, instanceId: randomUUID(), cooldown: 0 }));
 
-  // Draw opening hands (3 cards each for now - can adjust)
-  const hand0 = deck0Shuffled.splice(0, 3);
-  const hand1 = deck1Shuffled.splice(0, 3);
-
-  // Remaining cards go to deck
+  // All abilities in hand - no deck, no drawing, reusable with cooldowns
   const state: GameState = {
     version: 1,
     turn: 0,
     activePlayerIndex: 0,
 
-    deck: [...deck0Shuffled, ...deck1Shuffled], // Shared deck (not really used, abilities stay in hand)
-    discard: [],
     gameOver: false,
 
     players: [

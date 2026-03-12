@@ -357,6 +357,24 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const meIndex = players.findIndex(
     (p) => p.userId === selfUserId
   );
+
+  // Guard: if player not found or invalid state, return safe defaults
+  if (meIndex === -1 || !players[meIndex] || !players[meIndex === 0 ? 1 : 0]) {
+    return {
+      loading: false,
+      state,
+      tournament: game?.tournament,
+      me: null,
+      opponent: null,
+      isMyTurn: false,
+      isWinner: false,
+      playCard: async () => ({ ok: false }),
+      endTurn: async () => ({ ok: false }),
+      rtt,
+      refetch: fetchInitialGame,
+    };
+  }
+
   const opponentIndex = meIndex === 0 ? 1 : 0;
 
   const me = {

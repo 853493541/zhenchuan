@@ -24,12 +24,16 @@ export default function DraftShop({
   onLockCard,
   loading,
 }: Props) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+
+  const handleImageError = (cardId: string) => {
+    setFailedImages(prev => new Set([...prev, cardId]));
+  };
 
   return (
     <div className={styles.shop}>
-      <h2>🛒 商店</h2>
-      <div className={styles.cards}>
+      <h2 className={styles.title}>🛒 商店</h2>
+      <div className={styles.grid}>
         {shop.cards.map((card, idx) => {
           const cardDef = cardMap[card.cardId];
           if (!cardDef) return null;
@@ -37,39 +41,27 @@ export default function DraftShop({
           return (
             <div
               key={card.instanceId}
-              className={`${styles.card} ${
-                shop.locked[idx] ? styles.locked : ""
-              }`}
+              className={styles.card}
               onClick={() => !loading && onSelectCard(card, "bench")}
-              onMouseEnter={() => setHoveredIndex(idx)}
-              onMouseLeave={() => setHoveredIndex(null)}
             >
-              <div className={styles.cardContent}>
-                <div className={styles.cardName}>{cardDef.name}</div>
-                <p className={styles.type}>{cardDef.type}</p>
+              {!failedImages.has(card.cardId) ? (
+                <img 
+                  src={`/game/icons/Skills/${cardDef.name}.png`} 
+                  alt={cardDef.name} 
+                  className={styles.portrait}
+                  onError={() => handleImageError(card.cardId)}
+                />
+              ) : (
+                <div className={styles.portrait}>
+                  <div className={styles.portraitInner}>{cardDef.name.charAt(0)}</div>
+                </div>
+              )}
+              <div className={styles.cardInfo}>
+                <h3 className={styles.cardName}>{cardDef.name}</h3>
                 <p className={styles.description}>
                   {cardDef.description}
                 </p>
               </div>
-
-              {hoveredIndex === idx && (
-                <div className={styles.cardOverlay}>
-                  <div className={styles.buyHint}>点击购买</div>
-                  <button
-                    className={`${styles.lockBtn} ${
-                      shop.locked[idx] ? styles.isLocked : ""
-                    }`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onLockCard(idx);
-                    }}
-                    disabled={loading}
-                    title={shop.locked[idx] ? "已锁定" : "锁定"}
-                  >
-                    {shop.locked[idx] ? "🔒" : "🔓"}
-                  </button>
-                </div>
-              )}
             </div>
           );
         })}

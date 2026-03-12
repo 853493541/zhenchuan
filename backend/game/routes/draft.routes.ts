@@ -433,17 +433,16 @@ router.post("/battle/complete", async (req, res) => {
     if (game.tournament.phase === "GAME_OVER") {
       game.state.gameOver = true;
       game.state.winnerUserId = game.tournament.winnerId;
+      // Keep players array for GameOverModal to access
     } else if (game.tournament.phase === "DRAFT") {
-      // Reset state for next draft phase
+      // Reset state for next draft phase - keep players but clear battle state
       game.state = {
+        ...game.state,
         version: 1,
         turn: 0,
         activePlayerIndex: 0,
-        deck: [],
-        discard: [],
         gameOver: false,
-        players: [],
-        events: [],
+        events: [], // Keep players intact for tournament tracking
       };
     }
 

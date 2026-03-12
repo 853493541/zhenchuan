@@ -6,8 +6,7 @@
  * Rules:
  * - NEVER replace root
  * - events: append-only
- * - discard: append-only
- * - deck: shift / append only (no full replace except forced)
+ * - hand arrays: replace (abilities are permanent, cooldown tracked)
  * - small arrays: replace
  *
  * IMPORTANT:
@@ -21,8 +20,7 @@ export type DiffPatch = {
   value: any;
 };
 
-const APPEND_ONLY_KEYS = new Set(["events", "discard"]);
-const DECK_KEY = "deck";
+const APPEND_ONLY_KEYS = new Set(["events"]);
 
 export function diffState(
   prev: any,
@@ -56,7 +54,7 @@ export function diffState(
   if (Array.isArray(prev) && Array.isArray(next)) {
     const key = basePath.split("/").pop();
 
-    /* ---------- append-only arrays (events / discard) ---------- */
+    /* ---------- append-only arrays (events) ---------- */
     if (key && APPEND_ONLY_KEYS.has(key)) {
       if (next.length > prev.length) {
         for (let i = prev.length; i < next.length; i++) {
@@ -69,32 +67,7 @@ export function diffState(
       return patches;
     }
 
-    /* ---------- deck (draw = shift, add = append) ---------- */
-    if (key === DECK_KEY) {
-      // draw / shuffle / force change → replace
-      if (next.length < prev.length) {
-        patches.push({
-          path: basePath,
-          value: next,
-        });
-        return patches;
-      }
-
-      // append-only (rare but allowed)
-      if (next.length > prev.length) {
-        for (let i = prev.length; i < next.length; i++) {
-          patches.push({
-            path: `${basePath}/${i}`,
-            value: next[i],
-          });
-        }
-        return patches;
-      }
-
-      return patches;
-    }
-
-    /* ---------- small arrays ---------- */
+    /* ---------- small arrays (hand, buffs, etc) ---------- */
     if (JSON.stringify(prev) !== JSON.stringify(next)) {
       patches.push({ path: basePath, value: next });
     }

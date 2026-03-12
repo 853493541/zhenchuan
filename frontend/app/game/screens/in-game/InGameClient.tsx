@@ -32,6 +32,12 @@ function showGameError(rawCode: string) {
     case "ERR_CARD_NOT_IN_HAND":
       toastError("这张牌不在你的手牌中");
       break;
+    case "ERR_ON_COOLDOWN":
+      toastError("这个能力正在冷却");
+      break;
+    case "ERR_NO_GCD":
+      toastError("行动值不足");
+      break;
     case "ERR_GAME_OVER":
       toastError("对局已经结束");
       break;
@@ -118,6 +124,76 @@ export default function InGameClient({
     };
   }, []);
 
+  /* ================= BATTLE INITIALIZATION ================= */
+
+  useEffect(() => {
+    if (
+      tournament &&
+      tournament.phase === "BATTLE" &&
+      state &&
+      state.players.some((p: any) => p.hand.length === 0)
+    ) {
+      // Both players have empty hands, need to initialize battle
+      (async () => {
+        try {
+          console.log("[InGameClient] Initializing battle state...");
+          const res = await fetch("/api/game/battle/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ gameId }),
+          });
+
+          if (res.ok) {
+            console.log("[InGameClient] Battle initialized, refetching state...");
+            await new Promise((r) => setTimeout(r, 300)); // Wait for state to update
+            refetch();
+          } else {
+            console.error("[InGameClient] Battle start failed:", res.status);
+          }
+        } catch (err) {
+          console.error("[InGameClient] Battle initialization error:", err);
+        }
+      })();
+    }
+  }, [tournament?.phase, gameId, refetch, state]);
+
+  /* ================= BATTLE COMPLETION ================= */
+
+  useEffect(() => {
+    if (
+      tournament &&
+      tournament.phase === "BATTLE" &&
+      state &&
+      state.gameOver &&
+      state.winnerUserId
+    ) {
+      // Battle is over, call battle/complete to advance tournament
+      (async () => {
+        try {
+          console.log("[InGameClient] Battle ended, completing tournament battle...");
+          const res = await fetch("/api/game/battle/complete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ gameId }),
+          });
+
+          if (res.ok) {
+            const result = await res.json();
+            console.log("[InGameClient] Battle completed:", result);
+            await new Promise((r) => setTimeout(r, 300));
+            refetch();
+          } else {
+            console.error("[InGameClient] Battle complete failed:", res.status);
+          }
+        } catch (err) {
+          console.error("[InGameClient] Battle completion error:", err);
+        }
+      })();
+    }
+  }, [tournament?.phase, state?.gameOver, state?.winnerUserId, gameId, refetch]);
+
   /* ================= LOADING ================= */
 
   if (
@@ -161,6 +237,11 @@ export default function InGameClient({
 
   /* ================= RENDER BATTLE ================= */
 
+  // Only render GameBoard if we have valid player data
+  if (!me || !opponent) {
+    return <div>Loading battle state...</div>;
+  }
+
   console.log("[InGameClient] Rendering BATTLE, player hand cards:", {
     myHandSize: me?.hand?.length || 0,
     opponentHandSize: opponent?.hand?.length || 0,
@@ -190,7 +271,7 @@ export default function InGameClient({
         }}
       />
 
-      {state.gameOver && (
+      {tournament?.phase === "GAME_OVER" && (
         <GameOverModal
           isWinner={isWinner}
           onExit={() => router.push("/game")}

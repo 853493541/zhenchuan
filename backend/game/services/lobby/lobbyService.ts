@@ -6,8 +6,6 @@
 import GameSession from "../../models/GameSession";
 import { User } from "../../../models/User";
 import { GameState } from "../../engine/state/types";
-import { buildDeck, shuffle } from "../deck/deck";
-import { draw } from "../flow/draw";
 import { initializeTournament } from "../economy/tournamentService";
 
 /**
@@ -22,7 +20,6 @@ async function getUsernameById(userId: string): Promise<string> {
 
 export async function createGame(userId: string) {
   const username = await getUsernameById(userId);
-  const deck = shuffle(buildDeck());
 
   const state: GameState = {
     /** authoritative state version */
@@ -31,8 +28,6 @@ export async function createGame(userId: string) {
     turn: 0,
     activePlayerIndex: 0,
 
-    deck,
-    discard: [],
     gameOver: false,
 
     players: [
@@ -53,8 +48,6 @@ export async function createGame(userId: string) {
 
     events: [],
   };
-
-  draw(state, 0, 6);
 
   const created = await GameSession.create({
     players: [userId],
@@ -126,8 +119,6 @@ export async function startGame(gameId: string, userId: string) {
   if (game.players[0] !== userId) throw new Error("Only host can start");
   if (game.players.length !== 2) throw new Error("Game not ready");
 
-  const deck = shuffle(buildDeck());
-
   const state: GameState = {
     /** authoritative state version */
     version: 1,
@@ -135,8 +126,6 @@ export async function startGame(gameId: string, userId: string) {
     turn: 0,
     activePlayerIndex: 0,
 
-    deck,
-    discard: [],
     gameOver: false,
 
     players: [
