@@ -109,6 +109,13 @@ export async function joinGame(gameId: string, userId: string) {
   
   console.log(`[joinGame] playerNames in response:`, result.playerNames);
   
+  // Auto-start if enabled and room is full
+  if (result.autoStart && saved.players.length === 2) {
+    console.log(`[joinGame] Auto-starting game (autoStart=${result.autoStart})`);
+    const startedGame = await startGame(gameId, saved.players[0]);
+    return startedGame;
+  }
+  
   return result;
 }
 

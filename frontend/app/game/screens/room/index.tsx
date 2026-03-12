@@ -14,6 +14,7 @@ type GameData = {
   players: string[];
   playerNames?: Record<string, string>;
   started: boolean;
+  autoStart?: boolean;
 };
 
 export default function RoomPage() {
@@ -70,7 +71,7 @@ export default function RoomPage() {
   }, [gameId]);
 
   /* =========================================================
-     非房主：游戏开始后自动跳转
+     游戏开始后自动跳转（任何玩家）
   ========================================================= */
   useEffect(() => {
     if (!gameId || !game || !me) return;
@@ -79,9 +80,9 @@ export default function RoomPage() {
       ? game.players
       : [];
 
-    const isHost = playerIds[0] === me.uid;
+    const isInGame = playerIds.includes(me.uid);
 
-    if (game.started && !isHost) {
+    if (game.started && isInGame) {
       router.replace(`/game/in-game?gameId=${gameId}`);
     }
   }, [game, me, gameId, router]);
@@ -121,6 +122,28 @@ export default function RoomPage() {
       router.push(`/game/in-game?gameId=${gameId}`);
     } finally {
       setStarting(false);
+    }
+  };
+
+  /* =========================================================
+     切换自动开始
+  ========================================================= */
+  const toggleAutoStart = async () => {
+    try {
+      const res = await fetch(`/api/game/toggle-autostart/${gameId}`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        alert(await res.text());
+        return;
+      }
+
+      const updated = await res.json();
+      setGame(updated);
+    } catch (err) {
+      console.error("Error toggling autostart:", err);
     }
   };
 
@@ -199,7 +222,26 @@ export default function RoomPage() {
         </button>
       )}
 
-      {ready && isHost && (
+      {/* 房主自动开始切换 */}
+      {isHost && !ready && (
+        <div className={styles.toggleSection}>
+          <label className={styles.toggleLabel}>
+            <input
+              type="checkbox"
+              checked={game?.autoStart !== false}
+              onChange={toggleAutoStart}
+              className={styles.toggleCheckbox}
+            />
+            <span>
+              {game?.autoStart !== false
+                ? "✓ 人满自动开始"
+                : "✗ 手动开始"}
+            </span>
+          </label>
+        </div>
+      )}
+
+      {ready && isHost && !game?.autoStart && (
         <button
           className={styles.primaryBtn}
           onClick={startGame}
@@ -209,9 +251,17 @@ export default function RoomPage() {
         </button>
       )}
 
+      {ready && game?.autoStart && (
+        <p className={styles.waiting}>
+          👥 人满，游戏自动开始中…
+        </p>
+      )}
+
       {ready && !isHost && (
         <p className={styles.waiting}>
-          等待房主开始游戏…
+          {game?.autoStart !== false
+            ? "👥 人满，游戏即将开始…"
+            : "🔵 等待房主开始游戏…"}
         </p>
       )}
     </div>

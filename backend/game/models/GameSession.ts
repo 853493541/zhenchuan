@@ -15,6 +15,9 @@ const GameSessionSchema = new mongoose.Schema(
 
     // 👤 Player names/metadata: maps userId -> username (as plain object for JSON serialization)
     playerNames: { type: mongoose.Schema.Types.Mixed, default: {} },
+
+    // 🔄 Auto-start when room is full
+    autoStart: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
