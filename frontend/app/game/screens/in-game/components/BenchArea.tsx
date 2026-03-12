@@ -1,5 +1,5 @@
 /**
- * BenchArea - Shows 12 benched abilities that persist across battles
+ * BenchArea - Shows 8 benched abilities that persist across battles
  * Can move to selected, sell for gold, or hover to see stats
  */
 
@@ -31,14 +31,14 @@ export default function BenchArea({
   const handleImageError = (cardId: string) => {
     setFailedImages(prev => new Set([...prev, cardId]));
   };
-  const benchSlots = Array.from({ length: 12 }, (_, i) => {
+  const benchSlots = Array.from({ length: 8 }, (_, i) => {
     const card = bench[i];
     return { index: i, card };
   });
 
   return (
     <div className={styles.container}>
-      <h3 className={styles.title}>备战区 {fullSlots}/12</h3>
+      <h3 className={styles.title}>备战区 {fullSlots}/8</h3>
       <div className={styles.grid}>
         {benchSlots.map(({ index, card }) => {
           if (!card) {

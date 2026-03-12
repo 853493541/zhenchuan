@@ -65,8 +65,8 @@ router.post("/draft/select", async (req, res) => {
     if (destination === "selected" && selected.length >= 6) {
       return res.status(400).json({ error: "选择栏已满(最多6个)" });
     }
-    if (destination === "bench" && bench.length >= 12) {
-      return res.status(400).json({ error: "备战区已满(最多12个)" });
+    if (destination === "bench" && bench.length >= 8) {
+      return res.status(400).json({ error: "备战区已满 (最多8个)" });
     }
 
     // Find card in shop
@@ -125,8 +125,8 @@ router.post("/draft/move", async (req, res) => {
     if (to === "selected" && selected.length >= 6) {
       return res.status(400).json({ error: "选择栏已满(最多6个)" });
     }
-    if (to === "bench" && bench.length >= 12) {
-      return res.status(400).json({ error: "备战区已满(最多12个)" });
+    if (to === "bench" && bench.length >= 8) {
+      return res.status(400).json({ error: "备战区已满 (最多8个)" });
     }
 
     // Find and move card
@@ -399,6 +399,7 @@ router.post("/battle/start", async (req, res) => {
 
     // Update game state with new battle
     game.state = battleState;
+    game.markModified("state");
     game.markModified("tournament");
 
     await game.save();

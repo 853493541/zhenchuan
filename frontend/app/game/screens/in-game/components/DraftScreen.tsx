@@ -48,7 +48,7 @@ export default function DraftScreen({
       return;
     }
     if (destination === "bench" && bench.length >= 12) {
-      setError("备战区已满 (最多12个)");
+      setError("备战区已满 (最多8个)");
       return;
     }
 

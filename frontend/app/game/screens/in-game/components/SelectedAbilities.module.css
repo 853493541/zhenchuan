@@ -164,28 +164,28 @@
 }
 
 @media (max-width: 768px) {
+  .container {
+    padding: 8px;
+  }
+
+  .title {
+    font-size: 11px;
+  }
+
   .slotGrid {
     gap: 8px;
   }
 
   .slot {
-    width: 80px;
-    height: 100px;
+    width: 75px;
+    height: 110px;
   }
 
   .portrait {
-    height: 50px;
+    height: 60px;
   }
 
   .cardName {
     font-size: 9px;
-  }
-
-  .cardType {
-    font-size: 8px;
-  }
-
-  .cardDescription {
-    font-size: 7px;
   }
 }
