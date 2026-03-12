@@ -27,6 +27,7 @@ export default function RoomPage() {
   const [starting, setStarting] = useState(false);
   const [loadingGame, setLoadingGame] = useState(true);
   const hasAttemptedJoin = useRef(false);
+  const wsRef = useRef<WebSocket | null>(null);
 
   /* =========================================================
      获取当前用户
@@ -71,6 +72,75 @@ export default function RoomPage() {
     const t = setInterval(fetchGame, 2000);
     return () => clearInterval(t);
   }, [gameId]);
+
+  /* =========================================================
+     WebSocket 连接（保持在房间）
+  ========================================================= */
+  useEffect(() => {
+    if (!gameId || !me) return;
+
+    const connectWebSocket = async () => {
+      if (wsRef.current) return; // Already connecting/connected
+
+      try {
+        // Fetch auth token
+        const res = await fetch("/api/auth/token", {
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          console.error("[WS] Failed to fetch token:", res.status);
+          return;
+        }
+
+        const data = await res.json();
+        const token = data.token;
+
+        if (!token) {
+          console.error("[WS] No token in response");
+          return;
+        }
+
+        // Build WebSocket URL
+        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const wsUrl = `${protocol}://${window.location.host}/ws?gameId=${gameId}&token=${token}`;
+
+        console.log(`[WS Room] Connecting to ${wsUrl.substring(0, 80)}...`);
+
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log(`[WS Room] ✅ Connected to game ${gameId}`);
+          wsRef.current = ws;
+        };
+
+        ws.onerror = (err) => {
+          console.error("[WS Room] Connection error:", err);
+        };
+
+        ws.onclose = () => {
+          console.log("[WS Room] 🔌 Disconnected");
+          wsRef.current = null;
+        };
+
+        ws.onmessage = () => {
+          // Room just listens for disconnect, no message handling needed
+        };
+      } catch (err) {
+        console.error("[WS Room] Failed to connect:", err);
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      // Cleanup on unmount or when leaving room
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [gameId, me]);
 
   /* =========================================================
      自动加入房间（如果还未加入）- 只尝试一次

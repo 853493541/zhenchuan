@@ -5,6 +5,7 @@
  */
 
 import { WebSocket } from "ws";
+import GameSession from "../game/models/GameSession";
 
 export type DiffPatch = {
   path: string;
@@ -59,6 +60,8 @@ export class GameSubscriptionManager {
       gameClients.delete(ws);
       if (gameClients.size === 0) {
         this.gameClients.delete(client.gameId);
+        // Disband waiting rooms when all players disconnect
+        this.disbandEmptyRoom(client.gameId);
       }
     }
 
@@ -66,6 +69,33 @@ export class GameSubscriptionManager {
     console.log(
       `[WS] User ${client.userId} unsubscribed from game ${client.gameId}`
     );
+  }
+
+  /**
+   * Disband a waiting room if it has no connected clients
+   * Only disbands rooms that haven't started yet
+   */
+  private async disbandEmptyRoom(gameId: string) {
+    try {
+      const game = await GameSession.findById(gameId);
+      if (!game) return;
+
+      // Only disband waiting rooms (not started games)
+      if (game.started) {
+        console.log(`[WS] Game ${gameId} is already started, keeping it`);
+        return;
+      }
+
+      // Verify no clients are connected
+      if (this.getGameClientCount(gameId) === 0) {
+        await GameSession.findByIdAndDelete(gameId);
+        console.log(
+          `[WS] ✨ Disbanded empty waiting room ${gameId}`
+        );
+      }
+    } catch (err) {
+      console.error(`[WS] Error disbanding room ${gameId}:`, err);
+    }
   }
 
   /**
