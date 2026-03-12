@@ -55,6 +55,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const [game, setGame] = useState<GameResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
+  const [rtt, setRtt] = useState<number | null>(null); // Network latency
 
   // track last known version
   const versionRef = useRef<number>(0);
@@ -214,11 +215,14 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             // Convert: performance.now() gives total milliseconds from page load
             // We need: now_ms - timestamp_ms
             const now = Date.now(); // Current time in ms
-            const rtt = now - message.timestamp; // RTT in ms
+            const rttValue = now - message.timestamp; // RTT in ms
             
-            const emoji = rtt < 20 ? "⚡" : rtt < 50 ? "✅" : rtt < 100 ? "⚠️" : "❌";
+            // Update RTT state for display
+            setRtt(rttValue);
+            
+            const emoji = rttValue < 20 ? "⚡" : rttValue < 50 ? "✅" : rttValue < 100 ? "⚠️" : "❌";
             console.log(
-              `${emoji} [Sync] RTT: ${rtt}ms (${message.diff.length} patches, v${message.version})`
+              `${emoji} [Sync] RTT: ${rttValue}ms (${message.diff.length} patches, v${message.version})`
             );
           }
 
@@ -330,6 +334,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       isWinner: false,
       playCard: async () => ({ ok: false }),
       endTurn: async () => ({ ok: false }),
+      rtt,
     };
   }
 
@@ -433,5 +438,6 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     isWinner,
     playCard,
     endTurn,
+    rtt,
   };
 }

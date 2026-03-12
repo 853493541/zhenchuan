@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import GameBoard from "./components/GameBoard";
 import GameOverModal from "./components/GameBoard/components/GameOverModal";
+import NetworkIndicator from "./components/NetworkIndicator";
 import { toastError } from "@/app/components/toast/toast";
 import { useGameState } from "./hooks/useGameState";
 import {
@@ -76,6 +77,7 @@ export default function InGameClient({
     isWinner,
     playCard,
     endTurn,
+    rtt,
   } = useGameState(gameId, selfUserId, authToken);
 
   /* ================= PRELOAD ================= */
@@ -131,6 +133,7 @@ export default function InGameClient({
 
   return (
     <GamePreloadProvider value={preload}>
+      <NetworkIndicator rtt={rtt} />
       <GameBoard
         me={me}
         opponent={opponent}
