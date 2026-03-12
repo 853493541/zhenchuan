@@ -41,7 +41,7 @@ function applyDiff<T extends object>(prev: T, diff: DiffPatch[]): T {
 /* ================= WEBSOCKET MESSAGE TYPES ================= */
 
 type WSMessage = {
-  type: "STATE_DIFF" | "GAME_OVER" | "PONG";
+  type: "STATE_DIFF" | "GAME_OVER" | "PONG" | "PING";
   version?: number;
   diff?: DiffPatch[];
   events?: any[];
@@ -183,12 +183,12 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         reconnectTimeoutRef.current = null;
       }
 
-      // Start heartbeat
+      // Heartbeat + RTT measurement every second
       heartbeatIntervalRef.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "PING" }));
+          ws.send(JSON.stringify({ type: "PING", timestamp: Date.now() }));
         }
-      }, 25000); // Every 25 seconds
+      }, 1000); // Every 1 second (was 25 seconds)
     };
 
     ws.onmessage = (event) => {
@@ -197,7 +197,13 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         const receiveTime = performance.now();
 
         if (message.type === "PONG") {
-          // Keep-alive pong, ignore
+          // Measure RTT from ping/pong
+          if (message.timestamp) {
+            const now = Date.now();
+            const rttValue = now - message.timestamp;
+            setRtt(rttValue);
+            console.log(`📡 [Ping] RTT: ${rttValue}ms`);
+          }
           return;
         }
 

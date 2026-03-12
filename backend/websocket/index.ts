@@ -100,7 +100,8 @@ export function setupWebSocket(server: HTTPServer) {
 
         switch (message.type) {
           case "PING":
-            ws.send(JSON.stringify({ type: "PONG" }));
+            // Echo back PONG with the same timestamp for RTT measurement
+            ws.send(JSON.stringify({ type: "PONG", timestamp: message.timestamp }));
             ws.isAlive = true;
             break;
 

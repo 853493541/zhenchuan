@@ -7,6 +7,7 @@ import PlayerArea from "./components/PlayerArea";
 import CurrentAction from "./components/CurrentAction";
 import ActionHistory from "./components/ActionHistory";
 import EndTurn from "./components/EndTurn";
+import NetworkIndicator from "../NetworkIndicator";
 
 import type {
   CardInstance,
@@ -22,6 +23,7 @@ type Props = {
   onPlayCard: (card: CardInstance) => void;
   onEndTurn: () => void;
   currentTurn: number;
+  rtt?: number | null;
 };
 
 export default function GameBoard({
@@ -32,9 +34,11 @@ export default function GameBoard({
   onPlayCard,
   onEndTurn,
   currentTurn,
+  rtt,
 }: Props) {
   return (
     <div className={styles.boardRoot}>
+      <NetworkIndicator rtt={rtt} />
       <div className={styles.board}>
         {/* 🟥 OPPONENT AREA */}
         <div className={styles.region}>
