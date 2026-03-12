@@ -95,13 +95,16 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     // If no token provided, try to fetch it
     if (!token) {
       try {
+        console.log("[WS] 1️⃣ Fetching token from /api/auth/token...");
         const res = await fetch("/api/auth/token", {
           credentials: "include",
         });
 
+        console.log(`[WS] 2️⃣ Token endpoint response: ${res.status}`);
+
         if (!res.ok) {
           const err = await res.text();
-          console.error("[WS] Token endpoint failed:", res.status, err);
+          console.error("[WS] ❌ Token endpoint failed:", res.status, err);
           // Retry after delay
           if (!reconnectTimeoutRef.current) {
             reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2000);
@@ -113,11 +116,12 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         token = data.token;
 
         if (!token) {
-          console.error("[WS] No token in response");
+          console.error("[WS] ❌ No token in response:", data);
           return;
         }
+        console.log(`[WS] 3️⃣ Got token: ${token.substring(0, 30)}...`);
       } catch (err) {
-        console.error("[WS] Failed to fetch token:", err);
+        console.error("[WS] ❌ Failed to fetch token:", err);
         // Retry after delay
         if (!reconnectTimeoutRef.current) {
           reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2000);
@@ -130,14 +134,45 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     const wsUrl = `${protocol}://${window.location.host}/ws?gameId=${gameId}&token=${token}`;
 
-    console.log(`[WS] Connecting to: ${wsUrl}`);
-    console.log(`[WS] Token: ${token.substring(0, 50)}...`);
+    console.log(`[WS] 4️⃣ Creating WebSocket connection`);
+    console.log(`[WS] Protocol: ${protocol}`);
+    console.log(`[WS] Host: ${window.location.host}`);
     console.log(`[WS] GameID: ${gameId}`);
+    console.log(`[WS] URL: ${wsUrl.substring(0, 100)}...`);
 
     const ws = new WebSocket(wsUrl);
 
+    console.log(`[WS] 5️⃣ WebSocket object created, readyState: ${ws.readyState}`);
+    console.log(`[WS] Initial state check - ReadyState ${ws.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)`);
+    console.log(`[WS] URL being attempted:`, wsUrl);
+    console.log(`[WS] Full request details:`, {
+      url: wsUrl,
+      protocol: protocol,
+      host: window.location.host,
+      secured: window.location.protocol === "https:"
+    });
+
+    // Track readyState changes
+    const stateCheckInterval = setInterval(() => {
+      if (ws.readyState !== 0) {
+        console.log(`[WS] ⚠️ ReadyState changed to ${ws.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)`);
+        clearInterval(stateCheckInterval);
+      }
+    }, 100);
+
+    // Set a timeout to see if connection never opens
+    const connectionTimeoutRef = setTimeout(() => {
+      console.error(`[WS] ❌ Connection timeout after 5 seconds - readyState: ${ws.readyState}`);
+      console.error(`[WS] URL was: ${wsUrl}`);
+      console.error(`[WS] If readyState=0, connection is stuck in CONNECTING state`);
+      console.error(`[WS] If readyState=3, connection was closed`);
+    }, 5000);
+
     ws.onopen = () => {
-      console.log("[WS] ✅ Connected successfully!");
+      clearTimeout(connectionTimeoutRef);
+      clearInterval(stateCheckInterval);
+      console.log("[WS] 6️⃣✅ WebSocket OPENED successfully!");
+      console.log("[WS] Connection established - readyState:", ws.readyState);
       wsRef.current = ws;
 
       // Clear reconnect timeout if it was set
@@ -186,21 +221,45 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     };
 
     ws.onerror = (err) => {
-      console.error("[WS] ❌ WebSocket Error:", err);
-      console.error("[WS] Error details:", {
-        type: (err as any).type,
-        code: (ws as any).code,
-        reason: (ws as any).reason,
-        readyState: ws.readyState
-      });
+      clearTimeout(connectionTimeoutRef);
+      clearInterval(stateCheckInterval);
+      console.error("[WS] 7️⃣❌ WebSocket ERROR event fired!");
+      console.error("[WS] Error details:");
+      console.error("  - Error object:", err);
+      console.error("  - Error message:", (err as any)?.message);
+      console.error("  - ReadyState:", ws.readyState, "(0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)");
+      console.error("  - URL:", ws.url);
+      console.error("  - Protocol negotiated:", ws.protocol);
+      console.error("  - Extensions:", (ws as any).extensions);
+      
+      // Check if it's a network error
+      if ((err as any)?.code === 'ECONNREFUSED' || (err as any)?.message?.includes('refused')) {
+        console.error("[WS] ⚠️ Connection refused - backend might not be accepting connections");
+      }
     };
 
     ws.onclose = () => {
-      console.log("[WS] ❌ Disconnected", {
+      clearTimeout(connectionTimeoutRef);
+      clearInterval(stateCheckInterval);
+      console.log("[WS] 8️⃣ WebSocket CLOSE event fired");
+      console.log("[WS] Closure details:", {
         code: (ws as any).code,
         reason: (ws as any).reason,
-        wasClean: (ws as any).wasClean
+        wasClean: (ws as any).wasClean,
+        readyState: ws.readyState
       });
+      console.log("[WS] Closure reason explanation:");
+      const code = (ws as any).code;
+      if (code === 1000) console.log("  - Normal closure");
+      else if (code === 1001) console.log("  - Going away");
+      else if (code === 1002) console.log("  - Protocol error");
+      else if (code === 1003) console.log("  - Unsupported data");
+      else if (code === 1006) console.log("  - Abnormal closure (no close frame received)");
+      else if (code === 1007) console.log("  - Invalid frame payload");
+      else if (code === 1008) console.log("  - Policy violation");
+      else if (code === 1011) console.log("  - Unexpected error on server");
+      else console.log(`  - Unknown code: ${code}`);
+      
       wsRef.current = null;
 
       if (heartbeatIntervalRef.current) {

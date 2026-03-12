@@ -46,25 +46,36 @@ export function setupWebSocket(server: HTTPServer) {
 
   console.log("🔌 WebSocket server initialized on path /ws");
 
+  // Log when clients try to connect but before they authenticate
   wss.on("connection", (ws: AuthenticatedWebSocket, req: IncomingMessage) => {
-    console.log(`[WS] New connection attempt`);
-    console.log(`[WS] URL: ${req.url}`);
-    console.log(`[WS] Headers:`, req.headers);
+    console.log("[WS] Backend: 1️⃣ New connection attempt received!");
+    console.log("[WS] Backend: Connection details:");
+    console.log("[WS]   - URL:", req.url);
+    console.log("[WS]   - Method:", req.method);
+    console.log("[WS]   - Headers:", {
+      host: req.headers.host,
+      origin: req.headers.origin,
+      "user-agent": req.headers["user-agent"],
+      upgrade: req.headers.upgrade,
+      connection: req.headers.connection,
+    });
+    console.log("[WS]   - Remote address:", req.socket.remoteAddress);
     
     // Extract and verify credentials
     const credentials = extractUserIdFromUrl(req.url || "");
     if (!credentials) {
-      console.log(`[WS] ❌ Missing gameId or token in URL: ${req.url}`);
+      console.log(`[WS] Backend: 2️⃣❌ Missing gameId or token in URL: ${req.url}`);
       ws.close(4000, "Missing gameId or token");
       return;
     }
 
-    console.log(`[WS] Extracted - gameId: ${credentials.gameId}, token: ${credentials.token.substring(0, 20)}...`);
-    console.log(`[WS] Verifying token for game ${credentials.gameId}...`);
+    console.log(`[WS] Backend: 3️⃣ Extracted - gameId: ${credentials.gameId}`);
+    console.log(`[WS] Backend: Token: ${credentials.token.substring(0, 30)}...`);
+    console.log(`[WS] Backend: 4️⃣ Verifying token...`);
 
     const verified = verifyToken(credentials.token);
     if (!verified) {
-      console.log("[WS] ❌ Invalid token");
+      console.log("[WS] Backend: 5️⃣❌ Token verification failed!");
       ws.close(4001, "Invalid token");
       return;
     }
@@ -74,11 +85,13 @@ export function setupWebSocket(server: HTTPServer) {
     ws.isAlive = true;
 
     console.log(
-      `[WS] ✅ User ${ws.userId} connected to game ${ws.gameId}`
+      `[WS] Backend: 6️⃣✅ User ${ws.userId} connected to game ${ws.gameId}`
     );
 
     // Subscribe to game updates
+    console.log("[WS] Backend: 7️⃣ Adding to subscription manager...");
     subscriptionManager.subscribe(ws, credentials.gameId, verified.userId);
+    console.log("[WS] Backend: 8️⃣ Subscription complete!");
 
     // Handle incoming messages
     ws.on("message", (data: Buffer) => {
@@ -115,6 +128,16 @@ export function setupWebSocket(server: HTTPServer) {
     ws.on("error", (err) => {
       console.error(`[WS] Error:`, err);
     });
+  });
+
+  // Log WebSocket server-level errors
+  wss.on("error", (err) => {
+    console.error("[WS] WebSocket Server Error:", err);
+  });
+
+  // Log when server is closed
+  wss.on("close", () => {
+    console.log("[WS] WebSocket Server closed");
   });
 
   // Heartbeat interval to detect dead connections

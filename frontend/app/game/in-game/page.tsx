@@ -2,16 +2,17 @@ import { cookies } from "next/headers";
 import InGameClient from "@/app/game/screens/in-game/InGameClient";
 
 type PageProps = {
-  searchParams: {
+  searchParams: Promise<{
     gameId?: string;
-  };
+  }>;
 };
 
 export default async function Page({ searchParams }: PageProps) {
-  const gameId = searchParams.gameId;
+  const params = await searchParams;
+  const gameId = params.gameId;
   if (!gameId) return <div>Missing gameId</div>;
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
 
   // Only used for server-side calls to backend for auth verification
   // In production, this would be set via BACKEND_URL env var pointing to internal backend
