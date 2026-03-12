@@ -14,6 +14,16 @@
   padding-bottom: 16px;
 }
 
+/* ================= PLAYER NAME ================= */
+.playerName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5e7eb;
+  text-transform: capitalize;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
 /* Bottom stack holds Status+HP+Hand together */
 .bottomStack {
   width: 100%;

@@ -16,7 +16,16 @@ router.get("/:id", async (req, res) => {
       gameStateCache.set(req.params.id, game.state as any);
     }
     
-    res.json(game);
+    // Convert to plain object to ensure all fields are properly serialized
+    const gameObj = game.toObject();
+    
+    // Ensure playerNames exists (for backward compatibility with old games)
+    if (!gameObj.playerNames) {
+      gameObj.playerNames = {};
+    }
+    
+    console.log(`[snapshot] GET /${req.params.id} - playerNames in response:`, gameObj.playerNames);
+    res.json(gameObj);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

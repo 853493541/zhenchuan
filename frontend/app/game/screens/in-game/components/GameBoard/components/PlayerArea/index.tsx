@@ -27,6 +27,11 @@ export default function PlayerArea({
 }: Props) {
   return (
     <div className={styles.playerHalf}>
+      {/* PLAYER NAME */}
+      <div className={styles.playerName}>
+        You {me.username ? `(${me.username})` : ""}
+      </div>
+
       {/* Everything bottom-aligned as one stack */}
       <div className={styles.bottomStack}>
         {/* RESERVED STATUS SLOT (keeps space even when empty) */}

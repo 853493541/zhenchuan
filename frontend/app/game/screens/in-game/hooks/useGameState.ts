@@ -352,8 +352,14 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   );
   const opponentIndex = meIndex === 0 ? 1 : 0;
 
-  const me = players[meIndex];
-  const opponent = players[opponentIndex];
+  const me = {
+    ...players[meIndex],
+    username: game.playerNames?.[players[meIndex].userId],
+  };
+  const opponent = {
+    ...players[opponentIndex],
+    username: game.playerNames?.[players[opponentIndex].userId],
+  };
 
   const isMyTurn = state.activePlayerIndex === meIndex;
   const isWinner = state.winnerUserId === selfUserId;

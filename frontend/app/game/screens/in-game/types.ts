@@ -48,6 +48,7 @@ export interface ActiveBuff {
 
 export interface PlayerState {
   userId: string;
+  username?: string;
   hp: number;
   hand: CardInstance[];
   buffs: ActiveBuff[];
@@ -110,4 +111,5 @@ export interface GameResponse {
   _id: string;
   players: string[];
   state: GameState;
+  playerNames?: Record<string, string>;
 }

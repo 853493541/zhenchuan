@@ -7,6 +7,15 @@
   padding-top: 8px;
 }
 
+/* ================= PLAYER NAME ================= */
+.playerName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5e7eb;
+  text-transform: capitalize;
+  margin-bottom: 4px;
+}
+
 /* ================= TOP ROW ================= */
 .topRow {
   display: flex;

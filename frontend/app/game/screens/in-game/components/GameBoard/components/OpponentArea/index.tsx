@@ -18,6 +18,11 @@ export default function OpponentArea({
 }: Props) {
   return (
     <div className={styles.enemyHalf} data-label="OpponentArea">
+      {/* ================= PLAYER NAME ================= */}
+      <div className={styles.playerName}>
+        {opponent.username || "Opponent"}
+      </div>
+
       {/* ================= TOP ROW: HAND + HEALTH ================= */}
       <div className={styles.topRow}>
         {/* ENEMY HAND COUNT (SMALL) */}

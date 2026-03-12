@@ -12,6 +12,9 @@ const GameSessionSchema = new mongoose.Schema(
     // ✅ ADD THESE (nothing else)
     started: { type: Boolean, default: false },
     turn: { type: String, default: null },
+
+    // 👤 Player names/metadata: maps userId -> username (as plain object for JSON serialization)
+    playerNames: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   { timestamps: true }
 );

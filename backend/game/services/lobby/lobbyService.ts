@@ -4,11 +4,23 @@
  */
 
 import GameSession from "../../models/GameSession";
+import { User } from "../../../models/User";
 import { GameState } from "../../engine/state/types";
 import { buildDeck, shuffle } from "../deck/deck";
 import { draw } from "../flow/draw";
 
+/**
+ * Helper: fetch username by user ID
+ */
+async function getUsernameById(userId: string): Promise<string> {
+  const user = await User.findById(userId).lean();
+  const username = user?.username || `User${userId.slice(-4)}`;
+  console.log(`[getUsernameById] userId=${userId} -> username=${username}`);
+  return username;
+}
+
 export async function createGame(userId: string) {
+  const username = await getUsernameById(userId);
   const deck = shuffle(buildDeck());
 
   const state: GameState = {
@@ -43,23 +55,61 @@ export async function createGame(userId: string) {
 
   draw(state, 0, 6);
 
-  return GameSession.create({
+  const created = await GameSession.create({
     players: [userId],
     state,
     started: false,
+    playerNames: {
+      [userId]: username,
+    },
   });
+
+  console.log(`[createGame] Created game ${created._id} with playerNames:`, created.playerNames);
+  
+  const obj = created.toObject();
+  if (!obj.playerNames) obj.playerNames = {};
+  
+  return obj;
 }
 
 export async function joinGame(gameId: string, userId: string) {
+  const username = await getUsernameById(userId);
   const game = await GameSession.findById(gameId);
   if (!game) throw new Error("Game not found");
 
-  if (game.players.includes(userId)) return game;
+  if (game.players.includes(userId)) {
+    console.log(`[joinGame] User already in game`);
+    const obj = game.toObject();
+    if (!obj.playerNames) obj.playerNames = {};
+    return obj;
+  }
   if (game.players.length >= 2) throw new Error("Game already full");
 
+  console.log(`[joinGame] Adding user ${userId} (${username}) to game ${gameId}`);
   game.players.push(userId);
+  
+  // Ensure playerNames exists and add the new player
+  if (!game.playerNames) {
+    game.playerNames = {};
+  }
+  (game.playerNames as any)[userId] = username;
+  
+  console.log(`[joinGame] playerNames before save:`, game.playerNames);
+  
+  // Mark field as modified so Mongoose persists the change
+  game.markModified('playerNames');
+  
   await game.save();
-  return game;
+  
+  const saved = await GameSession.findById(gameId);
+  if (!saved) throw new Error("Failed to retrieve game after save");
+  
+  const result = saved.toObject();
+  if (!result.playerNames) result.playerNames = {};
+  
+  console.log(`[joinGame] playerNames in response:`, result.playerNames);
+  
+  return result;
 }
 
 export async function startGame(gameId: string, userId: string) {

@@ -9,12 +9,19 @@ type Me = {
   username: string;
 };
 
+type GameData = {
+  _id: string;
+  players: string[];
+  playerNames?: Record<string, string>;
+  started: boolean;
+};
+
 export default function RoomPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const gameId = searchParams.get("gameId");
 
-  const [game, setGame] = useState<any>(null);
+  const [game, setGame] = useState<GameData | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [starting, setStarting] = useState(false);
   const [loadingGame, setLoadingGame] = useState(true);
@@ -154,6 +161,7 @@ export default function RoomPage() {
       <div className={styles.playerList}>
         {[0, 1].map((slot) => {
           const uid = playerIds[slot];
+          const username = game?.playerNames?.[uid] || "Unknown";
           const isMe = uid && uid === myId;
 
           return (
@@ -162,7 +170,7 @@ export default function RoomPage() {
                 <>
                   <span>
                     {slot === 0 ? "👑 房主" : "👤 玩家"}{" "}
-                    {isMe ? "（你）" : ""}
+                    {isMe ? "（你）" : username}
                   </span>
                 </>
               ) : (
