@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import styles from "./LoginPage.module.css";
 import { toastError } from "@/app/components/toast/toast";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,22 +20,28 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
+      console.log("🔐 Attempting login with:", { username });
+      const res = await fetch(`/api/auth/login`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
 
+      console.log("📡 Login response status:", res.status);
       const data = await res.json().catch(() => ({}));
+      console.log("📦 Login response data:", data);
+      
       if (!res.ok) {
         setError(data?.error || "登录失败");
         setLoading(false);
         return;
       }
 
+      console.log("✅ Login successful, redirecting...");
       router.replace("/");
-    } catch {
+    } catch (err) {
+      console.error("❌ Login error:", err);
       setError("网络错误，请稍后再试");
       setLoading(false);
     }

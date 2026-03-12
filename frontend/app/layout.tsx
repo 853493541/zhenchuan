@@ -5,7 +5,6 @@ import { ReactNode } from "react";
 import LayoutShell from "./components/layout/LayoutShell";
 import ToastProvider from "@/app/components/toast/ToastProvider";
 import AuthGate from "./components/auth/AuthGate";
-import "./styles/material-symbols.css";
 
 /* ======================================================
    ✅ GLOBAL METADATA

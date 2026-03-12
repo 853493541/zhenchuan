@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import styles from "./ChangePasswordModal.module.css";
 import { toastError } from "@/app/components/toast/toast";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
-
 export default function ChangePasswordModal({
   onClose,
 }: {
@@ -52,7 +50,7 @@ export default function ChangePasswordModal({
     setError(null);
     setLoading(true);
 
-    const res = await fetch(`${API_BASE}/api/auth/change-password`, {
+    const res = await fetch(`/api/auth/change-password`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },

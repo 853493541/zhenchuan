@@ -1,1 +1,0 @@
-{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"week":{"$numberInt":"1"}},"name":"week_1","background":true,"unique":true}],"uuid":"28b6279a4c2f4e38a3df197484c3e5f5","collectionName":"weeklymaps","type":"collection"}

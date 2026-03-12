@@ -1,1 +1,0 @@
-{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"planId":{"$numberInt":"1"}},"name":"planId_1","background":true,"unique":true}],"uuid":"735742c483c6494e99125ae321ee167a","collectionName":"targetedplans","type":"collection"}
