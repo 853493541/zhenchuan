@@ -46,6 +46,7 @@ type WSMessage = {
   diff?: DiffPatch[];
   events?: any[];
   winnerUserId?: string;
+  timestamp?: number; // Server timestamp for RTT measurement
 };
 
 /* ================= HOOK ================= */
@@ -192,6 +193,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     ws.onmessage = (event) => {
       try {
         const message: WSMessage = JSON.parse(event.data);
+        const receiveTime = performance.now();
 
         if (message.type === "PONG") {
           // Keep-alive pong, ignore
@@ -202,6 +204,23 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
           if (!message.diff || message.diff.length === 0) return;
 
           versionRef.current = message.version ?? 0;
+
+          // Measure round-trip time if server sent timestamp
+          // RTT = (client receive time in ms) - (server timestamp in ms)
+          // This is accurate to ~1ms precision (browser RTT + server processing)
+          if (message.timestamp) {
+            // message.timestamp is in milliseconds (Date.now())
+            // receiveTime is in microseconds (performance.now())
+            // Convert: performance.now() gives total milliseconds from page load
+            // We need: now_ms - timestamp_ms
+            const now = Date.now(); // Current time in ms
+            const rtt = now - message.timestamp; // RTT in ms
+            
+            const emoji = rtt < 20 ? "⚡" : rtt < 50 ? "✅" : rtt < 100 ? "⚠️" : "❌";
+            console.log(
+              `${emoji} [Sync] RTT: ${rtt}ms (${message.diff.length} patches, v${message.version})`
+            );
+          }
 
           setGame((prev) => {
             if (!prev) return prev;

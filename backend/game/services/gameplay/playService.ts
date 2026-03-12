@@ -14,6 +14,8 @@ import { pushEvent } from "../flow/events";
 import { diffState } from "../flow/stateDiff";
 import { applyOnPlayBuffEffects } from "../../engine/flow/play/onPlayEffects";
 import { broadcastGameUpdate } from "../broadcast";
+import { globalTimer } from "../../../utils/timing";
+import { gameStateCache } from "../gameStateCache";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -29,10 +31,24 @@ export async function playCard(
   userId: string,
   cardInstanceId: string
 ) {
-  const game = await GameSession.findById(gameId);
-  if (!game || !game.state) throw new Error("Game not found");
+  const startTime = performance.now();
+  globalTimer.start(`play_card_${gameId}`);
 
-  const state = game.state as GameState;
+  const dbFetchStart = performance.now();
+  
+  // Try cache first, then fall back to DB
+  let state = gameStateCache.get(gameId);
+  let cacheHit = true;
+  
+  if (!state) {
+    cacheHit = false;
+    const game = await GameSession.findById(gameId);
+    if (!game || !game.state) throw new Error("Game not found");
+    state = game.state as GameState;
+  }
+
+  const dbFetchTime = performance.now() - dbFetchStart;
+
   if (!state.events) state.events = [];
 
   const prevState: GameState = structuredClone(state);
@@ -57,13 +73,14 @@ export async function playCard(
 
   pruneOldEvents(state, 10);
 
+  const diffStart = performance.now();
   const diff = diffState(prevState, state);
+  const diffTime = performance.now() - diffStart;
 
-  game.state = state;
-  game.markModified("state");
-  await game.save();
+  // Update cache with new state
+  gameStateCache.update(gameId, state);
 
-  // Broadcast to all connected WebSocket clients
+  // Broadcast BEFORE waiting for DB save (fire-and-forget)
   broadcastGameUpdate({
     gameId,
     version: state.version,
@@ -71,22 +88,50 @@ export async function playCard(
     events: state.events,
     gameOver: state.gameOver,
     winnerUserId: state.winnerUserId,
+    timestamp: Date.now(), // Use Date.now for network round-trip (matches client)
   });
+
+  // Save to DB in background (don't wait for it)
+  GameSession.findByIdAndUpdate(gameId, { state }, { new: true }).catch((err) => {
+    console.error(`[DB] Failed to save game ${gameId}:`, err.message);
+  });
+
+  const totalTime = globalTimer.log(`play_card_${gameId}`);
+  const cacheStatus = cacheHit ? "HIT" : "MISS";
+
+  console.log(
+    `[Timing] PlayCard ${gameId}: DBFetch=${dbFetchTime.toFixed(2)}ms (${cacheStatus}), Diff=${diffTime.toFixed(2)}ms, Total=${totalTime?.toFixed(2) || '?'}ms, Patches=${diff.length}`
+  );
 
   return {
     version: state.version,
     diff,
     events: state.events,
+    serverTimestamp: Date.now(),
   };
 }
 
 /* ================= PASS TURN ================= */
 
 export async function passTurn(gameId: string, userId: string) {
-  const game = await GameSession.findById(gameId);
-  if (!game || !game.state) throw new Error("Game not found");
+  const startTime = performance.now();
+  globalTimer.start(`pass_turn_${gameId}`);
 
-  const state = game.state as GameState;
+  const dbFetchStart = performance.now();
+  
+  // Try cache first, then fall back to DB
+  let state = gameStateCache.get(gameId);
+  let cacheHit = true;
+  
+  if (!state) {
+    cacheHit = false;
+    const game = await GameSession.findById(gameId);
+    if (!game || !game.state) throw new Error("Game not found");
+    state = game.state as GameState;
+  }
+
+  const dbFetchTime = performance.now() - dbFetchStart;
+
   if (!state.events) state.events = [];
 
   const prevState: GameState = structuredClone(state);
@@ -104,13 +149,14 @@ export async function passTurn(gameId: string, userId: string) {
 
   pruneOldEvents(state, 10);
 
+  const diffStart = performance.now();
   const diff = diffState(prevState, state);
+  const diffTime = performance.now() - diffStart;
 
-  game.state = state;
-  game.markModified("state");
-  await game.save();
+  // Update cache with new state
+  gameStateCache.update(gameId, state);
 
-  // Broadcast to all connected WebSocket clients
+  // Broadcast BEFORE waiting for DB save (fire-and-forget)
   broadcastGameUpdate({
     gameId,
     version: state.version,
@@ -118,11 +164,25 @@ export async function passTurn(gameId: string, userId: string) {
     events: state.events,
     gameOver: state.gameOver,
     winnerUserId: state.winnerUserId,
+    timestamp: Date.now(), // Use Date.now for network round-trip (matches client)
   });
+
+  // Save to DB in background (don't wait for it)
+  GameSession.findByIdAndUpdate(gameId, { state }, { new: true }).catch((err) => {
+    console.error(`[DB] Failed to save game ${gameId}:`, err.message);
+  });
+
+  const totalTime = globalTimer.log(`pass_turn_${gameId}`);
+  const cacheStatus = cacheHit ? "HIT" : "MISS";
+
+  console.log(
+    `[Timing] PassTurn ${gameId}: DBFetch=${dbFetchTime.toFixed(2)}ms (${cacheStatus}), Diff=${diffTime.toFixed(2)}ms, Total=${totalTime?.toFixed(2) || '?'}ms, Patches=${diff.length}`
+  );
 
   return {
     version: state.version,
     diff,
     events: state.events,
+    serverTimestamp: Date.now(),
   };
 }

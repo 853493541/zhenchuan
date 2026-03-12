@@ -12,16 +12,18 @@ export interface BroadcastParams {
   events?: any[];
   gameOver?: boolean;
   winnerUserId?: string;
+  timestamp?: number; // When the action was processed for RTT measurement
 }
 
 export function broadcastGameUpdate(params: BroadcastParams) {
-  const { gameId, version, diff, events, gameOver, winnerUserId } = params;
+  const { gameId, version, diff, events, gameOver, winnerUserId, timestamp } = params;
 
   const message: GameMessage = {
     type: gameOver ? "GAME_OVER" : "STATE_DIFF",
     version,
     diff,
     events,
+    timestamp,
     ...(gameOver && { winnerUserId }),
   } as GameMessage;
 

@@ -17,6 +17,7 @@ export type GameMessage = {
   diff?: DiffPatch[];
   events?: any[];
   winnerUserId?: string;
+  timestamp?: number; // Server timestamp for RTT measurement
 };
 
 interface SubscribedClient {
