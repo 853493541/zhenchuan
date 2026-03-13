@@ -34,7 +34,7 @@ export class GameLoop {
   private playerInputs: Map<number, MovementInput | null> = new Map();
   private lastBroadcast = 0;
   private ticksSinceBroadcast = 0;
-  private broadcastTickInterval = 2; // Broadcast every 2 ticks (so at 2Hz, broadcasts ~1/second)
+  private broadcastTickInterval = 1; // Broadcast every tick for consistent client-side prediction
 
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
@@ -164,14 +164,25 @@ export class GameLoop {
         value: p.position,
       }));
       
-      broadcastGameUpdate({
-        gameId: this.gameId,
-        version: this.state.version,
-        diff,
-        gameOver: this.state.gameOver,
-        winnerUserId: this.state.winnerUserId,
-        timestamp: Date.now(),
-      });
+      // During gameplay, send compact movement-only broadcasts
+      if (!this.state.gameOver) {
+        broadcastGameUpdate({
+          gameId: this.gameId,
+          version: this.state.version,
+          diff,
+          isMovementOnly: true, // Compact format - skip events/timestamp for speed
+        });
+      } else {
+        // When game ends, send full broadcast with winner info
+        broadcastGameUpdate({
+          gameId: this.gameId,
+          version: this.state.version,
+          diff,
+          gameOver: this.state.gameOver,
+          winnerUserId: this.state.winnerUserId,
+          timestamp: Date.now(),
+        });
+      }
       
       broadcastTime = performance.now() - bcastStart;
       this.ticksSinceBroadcast = 0;

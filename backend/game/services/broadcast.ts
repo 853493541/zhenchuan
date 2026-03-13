@@ -12,25 +12,31 @@ export interface BroadcastParams {
   events?: any[];
   gameOver?: boolean;
   winnerUserId?: string;
-  timestamp?: number; // When the action was processed for RTT measurement
+  timestamp?: number;
+  isMovementOnly?: boolean; // Compact format for position broadcasts
 }
 
 export function broadcastGameUpdate(params: BroadcastParams) {
-  const { gameId, version, diff, events, gameOver, winnerUserId, timestamp } = params;
+  const { gameId, version, diff, events, gameOver, winnerUserId, timestamp, isMovementOnly } = params;
 
-  const message: GameMessage = {
-    type: gameOver ? "GAME_OVER" : "STATE_DIFF",
-    version,
-    diff,
-    events,
-    timestamp,
-    ...(gameOver && { winnerUserId }),
-  } as GameMessage;
-
-  subscriptionManager.broadcast(gameId, message);
-
-  // Disabled: too much spam in logs
-  // console.log(
-  //   `[Broadcast] Game ${gameId} v${version}: ${diff.length} patches, ${events?.length || 0} events`
-  // );
+  // Compact message for movement-only updates (no events, no timestamp)
+  if (isMovementOnly) {
+    const message: GameMessage = {
+      type: "STATE_DIFF",
+      version,
+      diff,
+    } as GameMessage;
+    subscriptionManager.broadcast(gameId, message);
+  } else {
+    // Full message for other updates
+    const message: GameMessage = {
+      type: gameOver ? "GAME_OVER" : "STATE_DIFF",
+      version,
+      diff,
+      events,
+      timestamp,
+      ...(gameOver && { winnerUserId }),
+    } as GameMessage;
+    subscriptionManager.broadcast(gameId, message);
+  }
 }

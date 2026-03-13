@@ -60,74 +60,68 @@ export default function BattleArena({
     d: false,
   });
   const [abilities, setAbilities] = useState<AbilityInfo[]>([]);
-  const [localPosition, setLocalPosition] = useState<Position | null>(null); // Client-side prediction
-  const lastMovementSendTime = useRef(0);
-  const movementSendInterval = 50; // Send movement updates every 50ms
-
-  // Send movement input to server
+  const localPositionRef = useRef<Position | null>(null); // client-predicted position
+  const localVelocityRef = useRef({ x: 0, y: 0 });       // client-predicted velocity
+  const keysRef = useRef({ w: false, a: false, s: false, d: false });
+  const lastFrameRef = useRef(0);
+  const opponentPrevRef = useRef<Position | null>(null);  // for opponent interpolation
+  const opponentNextRef = useRef<Position | null>(null);
+  const opponentLerpRef = useRef(0);
+  const abilitiesRef = useRef<AbilityInfo[]>([]);         // synced for stable render loop
+  const distanceRef = useRef(0);
+  const initializedRef = useRef(false);
+  // Send movement input to server — reads keysRef directly (no stale state closure)
   const sendMovement = useCallback(async () => {
-    const now = Date.now();
-    if (now - lastMovementSendTime.current < movementSendInterval) return;
-
-    const hasInput = Object.values(wasdKeys).some((v) => v);
+    const keys = keysRef.current;
+    const hasInput = keys.w || keys.a || keys.s || keys.d;
 
     try {
-      const res = await fetch('/api/game/movement', {
+      await fetch('/api/game/movement', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           gameId,
           direction: hasInput
-            ? {
-                up: wasdKeys.w,
-                down: wasdKeys.s,
-                left: wasdKeys.a,
-                right: wasdKeys.d,
-              }
+            ? { up: keys.w, down: keys.s, left: keys.a, right: keys.d }
             : null,
         }),
       });
-
-      // Apply server response position immediately (client-side prediction)
-      if (res.ok) {
-        const data = await res.json();
-        if (data.position) {
-          // Predict next position based on input
-          // This approximates what the server will calculate in the next tick
-          let predictedX = data.position.x;
-          let predictedY = data.position.y;
-          
-          // Apply movement based on input (moveSpeed = 3, acceleration = 0.3 per tick)
-          const MOVE_SPEED = 3;
-          const ACCELERATION = 0.3;
-          
-          if (hasInput) {
-            let targetVx = 0, targetVy = 0;
-            if (wasdKeys.w) targetVy -= MOVE_SPEED;
-            if (wasdKeys.s) targetVy += MOVE_SPEED;
-            if (wasdKeys.a) targetVx -= MOVE_SPEED;
-            if (wasdKeys.d) targetVx += MOVE_SPEED;
-            
-            // Accelerate velocity
-            const vel = data.velocity || { vx: 0, vy: 0 };
-            const newVx = vel.vx + (targetVx - vel.vx) * ACCELERATION;
-            const newVy = vel.vy + (targetVy - vel.vy) * ACCELERATION;
-            
-            // Apply velocity to position
-            predictedX += newVx;
-            predictedY += newVy;
-          }
-          
-          setLocalPosition({ x: predictedX, y: predictedY });
-        }
-      }
     } catch (err) {
-      console.error('[Movement] Failed to send:', err);
+      // Fire-and-forget: prediction handles display, drops are recoverable
     }
+  }, [gameId]);
 
-    lastMovementSendTime.current = now;
-  }, [wasdKeys, gameId]);
+  // Seed local prediction from first server position
+  useEffect(() => {
+    if (me?.position && !initializedRef.current) {
+      localPositionRef.current = { ...me.position };
+      initializedRef.current = true;
+    }
+  }, [me?.position?.x, me?.position?.y]);
+
+  // Server correction — smooth blend toward server position instead of hard snap.
+  // When moving: gentle nudge (10%) so prediction stays smooth.
+  // When stopped: stronger pull (30%) to anchor resting position.
+  useEffect(() => {
+    if (!me?.position || !initializedRef.current) return;
+    const local = localPositionRef.current;
+    if (!local) return;
+    const isMoving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
+    const blend = isMoving ? 0.1 : 0.3;
+    localPositionRef.current = {
+      x: local.x + (me.position.x - local.x) * blend,
+      y: local.y + (me.position.y - local.y) * blend,
+    };
+  }, [me?.position?.x, me?.position?.y]);
+
+  // Record new opponent target on each broadcast for interpolation
+  useEffect(() => {
+    if (!opponent?.position) return;
+    opponentPrevRef.current = opponentNextRef.current ?? { ...opponent.position };
+    opponentNextRef.current = { ...opponent.position };
+    opponentLerpRef.current = performance.now();
+  }, [opponent?.position?.x, opponent?.position?.y]);
 
   // Update abilities list based on hand
   useEffect(() => {
@@ -154,9 +148,10 @@ export default function BattleArena({
           isReady: canCast && inRange,
         };
       })
-      .filter((ability): ability is AbilityInfo => ability !== null);
+      .filter((ability) => ability !== null) as AbilityInfo[];
 
     setAbilities(updatedAbilities);
+    abilitiesRef.current = updatedAbilities;
   }, [me.hand, distance, cards]);
 
   // WASD key listeners
@@ -165,15 +160,19 @@ export default function BattleArena({
       const key = e.key.toLowerCase();
       if (key === 'w') {
         e.preventDefault();
+        keysRef.current.w = true;
         setWasdKeys((prev) => ({ ...prev, w: true }));
       } else if (key === 'a') {
         e.preventDefault();
+        keysRef.current.a = true;
         setWasdKeys((prev) => ({ ...prev, a: true }));
       } else if (key === 's') {
         e.preventDefault();
+        keysRef.current.s = true;
         setWasdKeys((prev) => ({ ...prev, s: true }));
       } else if (key === 'd') {
         e.preventDefault();
+        keysRef.current.d = true;
         setWasdKeys((prev) => ({ ...prev, d: true }));
       }
     };
@@ -181,12 +180,16 @@ export default function BattleArena({
     const handleKeyUp = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       if (key === 'w') {
+        keysRef.current.w = false;
         setWasdKeys((prev) => ({ ...prev, w: false }));
       } else if (key === 'a') {
+        keysRef.current.a = false;
         setWasdKeys((prev) => ({ ...prev, a: false }));
       } else if (key === 's') {
+        keysRef.current.s = false;
         setWasdKeys((prev) => ({ ...prev, s: false }));
       } else if (key === 'd') {
+        keysRef.current.d = false;
         setWasdKeys((prev) => ({ ...prev, d: false }));
       }
     };
@@ -200,100 +203,142 @@ export default function BattleArena({
     };
   }, []);
 
-  // Send movement updates
+  // Send movement at 33ms — matches server tick rate, minimises ticks with stale input
   useEffect(() => {
-    const interval = setInterval(() => {
-      sendMovement();
-    }, movementSendInterval);
-
+    const interval = setInterval(sendMovement, 33);
     return () => clearInterval(interval);
   }, [sendMovement]);
 
-  // Draw canvas
+  // Keep distanceRef in sync for the stable render loop
+  useEffect(() => {
+    distanceRef.current = distance;
+  }, [distance]);
+
+  // Single stable loop: client-side prediction + opponent interpolation + canvas render
+  // Uses only refs so it never restarts on prop/state changes
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Debug: log player positions
-    if (!me?.position) {
-      console.warn('[BattleArena] Me position is missing:', { me });
-    }
-    if (!opponent?.position) {
-      console.warn('[BattleArena] Opponent position is missing:', { opponent });
-    }
+    const TICK_MS = 33;    // server tick duration (30 Hz)
+    const MAX_SPEED = 0.5; // units/tick — matches server's player.moveSpeed
+    const ACCEL = 0.3;     // must match server
+    const DECEL = 0.9;     // must match server
 
-    if (!me?.position || !opponent?.position) {
-      // Show loading state
+    let animId: number;
+
+    const loop = (now: number) => {
+      const dt = lastFrameRef.current ? (now - lastFrameRef.current) / TICK_MS : 1;
+      lastFrameRef.current = now;
+
+      // --- Client-side prediction for your dot ---
+      const pos = localPositionRef.current;
+      if (pos) {
+        const vel = localVelocityRef.current;
+        const keys = keysRef.current;
+        let ix = 0, iy = 0;
+        if (keys.w) iy -= 1;
+        if (keys.s) iy += 1;
+        if (keys.a) ix -= 1;
+        if (keys.d) ix += 1;
+
+        if (ix !== 0 || iy !== 0) {
+          const len = Math.sqrt(ix * ix + iy * iy);
+          ix /= len; iy /= len;
+          vel.x += (ix * MAX_SPEED - vel.x) * ACCEL * dt;
+          vel.y += (iy * MAX_SPEED - vel.y) * ACCEL * dt;
+        } else {
+          const decel = Math.pow(DECEL, dt);
+          vel.x *= decel;
+          vel.y *= decel;
+        }
+
+        localPositionRef.current = {
+          x: Math.max(2, Math.min(98, pos.x + vel.x * dt)),
+          y: Math.max(2, Math.min(98, pos.y + vel.y * dt)),
+        };
+      }
+
+      // --- Opponent interpolation ---
+      const opElapsed = now - opponentLerpRef.current;
+      const opT = Math.min(opElapsed / 50, 1);
+      const opPrev = opponentPrevRef.current;
+      const opNext = opponentNextRef.current;
+      let opPos: Position | null = opNext;
+      if (opPrev && opNext) {
+        opPos = {
+          x: opPrev.x + (opNext.x - opPrev.x) * opT,
+          y: opPrev.y + (opNext.y - opPrev.y) * opT,
+        };
+      }
+
+      // --- Canvas render ---
       ctx.fillStyle = '#1a1a1a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Waiting for arena data...', canvas.width / 2, canvas.height / 2);
-      return;
-    }
 
-    // Clear canvas
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#444';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, ARENA_WIDTH * CANVAS_SCALE, ARENA_HEIGHT * CANVAS_SCALE);
 
-    // Draw arena border
-    ctx.strokeStyle = '#444';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(0, 0, ARENA_WIDTH * CANVAS_SCALE, ARENA_HEIGHT * CANVAS_SCALE);
+      const p1Pos = localPositionRef.current;
+      if (!p1Pos || !opPos) {
+        ctx.fillStyle = '#fff';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Waiting for arena data...', canvas.width / 2, canvas.height / 2);
+        animId = requestAnimationFrame(loop);
+        return;
+      }
 
-    // Draw player 1 (me) - use local position if available (client-side prediction)
-    const displayPosition = localPosition || me.position;
-    const p1X = displayPosition.x * CANVAS_SCALE;
-    const p1Y = displayPosition.y * CANVAS_SCALE;
-    ctx.fillStyle = '#3899ec';
-    ctx.beginPath();
-    ctx.arc(p1X, p1Y, 8, 0, Math.PI * 2);
-    ctx.fill();
+      const p1X = p1Pos.x * CANVAS_SCALE;
+      const p1Y = p1Pos.y * CANVAS_SCALE;
+      const p2X = opPos.x * CANVAS_SCALE;
+      const p2Y = opPos.y * CANVAS_SCALE;
 
-    // Draw player 2 (opponent)
-    const p2X = opponent.position.x * CANVAS_SCALE;
-    const p2Y = opponent.position.y * CANVAS_SCALE;
-    ctx.fillStyle = '#ec3838';
-    ctx.beginPath();
-    ctx.arc(p2X, p2Y, 8, 0, Math.PI * 2);
-    ctx.fill();
+      // Range circle
+      const firstAbilityWithRange = abilitiesRef.current.find((a) => a.range);
+      if (firstAbilityWithRange) {
+        ctx.strokeStyle = 'rgba(100, 200, 100, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(p1X, p1Y, (firstAbilityWithRange.range || 0) * CANVAS_SCALE, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
-    // Draw range circles for abilities (if any has range)
-    const firstAbilityWithRange = abilities.find((a) => a.range);
-    if (firstAbilityWithRange) {
-      ctx.strokeStyle = 'rgba(100, 200, 100, 0.5)';
+      // Distance line
+      ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(
-        p1X,
-        p1Y,
-        (firstAbilityWithRange.range || 0) * CANVAS_SCALE,
-        0,
-        Math.PI * 2
-      );
+      ctx.moveTo(p1X, p1Y);
+      ctx.lineTo(p2X, p2Y);
       ctx.stroke();
-    }
 
-    // Draw distance line
-    ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(p1X, p1Y);
-    ctx.lineTo(p2X, p2Y);
-    ctx.stroke();
+      // Distance label
+      ctx.fillStyle = '#fff';
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(distanceRef.current.toFixed(1), (p1X + p2X) / 2, (p1Y + p2Y) / 2 - 10);
 
-    // Draw distance text
-    const midX = (p1X + p2X) / 2;
-    const midY = (p1Y + p2Y) / 2;
-    ctx.fillStyle = '#fff';
-    ctx.font = '12px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(distance.toFixed(1), midX, midY - 10);
-  }, [me, opponent, abilities, distance]);
+      // Player 1 (me) — blue
+      ctx.fillStyle = '#3899ec';
+      ctx.beginPath();
+      ctx.arc(p1X, p1Y, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Player 2 (opponent) — red
+      ctx.fillStyle = '#ec3838';
+      ctx.beginPath();
+      ctx.arc(p2X, p2Y, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      animId = requestAnimationFrame(loop);
+    };
+
+    animId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animId);
+  }, []); // stable — all data accessed via refs
 
   return (
     <div className={styles.container}>
