@@ -60,6 +60,7 @@ export default function BattleArena({
     d: false,
   });
   const [abilities, setAbilities] = useState<AbilityInfo[]>([]);
+  const [localPosition, setLocalPosition] = useState<Position | null>(null); // Client-side prediction
   const lastMovementSendTime = useRef(0);
   const movementSendInterval = 50; // Send movement updates every 50ms
 
@@ -71,7 +72,7 @@ export default function BattleArena({
     const hasInput = Object.values(wasdKeys).some((v) => v);
 
     try {
-      await fetch('/api/game/movement', {
+      const res = await fetch('/api/game/movement', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -87,6 +88,40 @@ export default function BattleArena({
             : null,
         }),
       });
+
+      // Apply server response position immediately (client-side prediction)
+      if (res.ok) {
+        const data = await res.json();
+        if (data.position) {
+          // Predict next position based on input
+          // This approximates what the server will calculate in the next tick
+          let predictedX = data.position.x;
+          let predictedY = data.position.y;
+          
+          // Apply movement based on input (moveSpeed = 3, acceleration = 0.3 per tick)
+          const MOVE_SPEED = 3;
+          const ACCELERATION = 0.3;
+          
+          if (hasInput) {
+            let targetVx = 0, targetVy = 0;
+            if (wasdKeys.w) targetVy -= MOVE_SPEED;
+            if (wasdKeys.s) targetVy += MOVE_SPEED;
+            if (wasdKeys.a) targetVx -= MOVE_SPEED;
+            if (wasdKeys.d) targetVx += MOVE_SPEED;
+            
+            // Accelerate velocity
+            const vel = data.velocity || { vx: 0, vy: 0 };
+            const newVx = vel.vx + (targetVx - vel.vx) * ACCELERATION;
+            const newVy = vel.vy + (targetVy - vel.vy) * ACCELERATION;
+            
+            // Apply velocity to position
+            predictedX += newVx;
+            predictedY += newVy;
+          }
+          
+          setLocalPosition({ x: predictedX, y: predictedY });
+        }
+      }
     } catch (err) {
       console.error('[Movement] Failed to send:', err);
     }
@@ -210,9 +245,10 @@ export default function BattleArena({
     ctx.lineWidth = 2;
     ctx.strokeRect(0, 0, ARENA_WIDTH * CANVAS_SCALE, ARENA_HEIGHT * CANVAS_SCALE);
 
-    // Draw player 1 (me)
-    const p1X = me.position.x * CANVAS_SCALE;
-    const p1Y = me.position.y * CANVAS_SCALE;
+    // Draw player 1 (me) - use local position if available (client-side prediction)
+    const displayPosition = localPosition || me.position;
+    const p1X = displayPosition.x * CANVAS_SCALE;
+    const p1Y = displayPosition.y * CANVAS_SCALE;
     ctx.fillStyle = '#3899ec';
     ctx.beginPath();
     ctx.arc(p1X, p1Y, 8, 0, Math.PI * 2);

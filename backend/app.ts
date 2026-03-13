@@ -18,29 +18,26 @@ const app = express();
 console.log("📦 Creating Express app...");
 
 /* =====================================================
-   � VERY EARLY REQUEST LOGGER (catch ALL requests)
+   VERY EARLY REQUEST LOGGER (DISABLED - causes CPU load)
 ===================================================== */
-app.use((req, res, next) => {
-  // Log EVERY incoming request before anything else processes it
-  // Skip health checks and movement spam but log everything else
-  if (req.path !== '/' && !req.path.includes('movement')) {
-    console.log(`[HTTP-In] ${req.method} ${req.path} from ${req.ip}`);
-  }
-  
-  // Capture response to log status code
-  const originalSend = res.send;
-  res.send = function(data) {
-    const status = res.statusCode;
-    if (req.path !== '/' && !req.path.includes('movement')) {
-      const indicator = status >= 500 ? '❌' : status >= 400 ? '⚠️' : '✅';
-      console.log(`[HTTP-Out] ${indicator} ${status} ${req.method} ${req.path}`);
-    }
-    return originalSend.call(this, data);
-  };
-  next();
-});
+// Disabled to reduce CPU/IO load during gameplay
+// app.use((req, res, next) => {
+//   if (req.path !== '/' && !req.path.includes('movement')) {
+//     console.log(`[HTTP-In] ${req.method} ${req.path} from ${req.ip}`);
+//   }
+//   const originalSend = res.send;
+//   res.send = function(data) {
+//     const status = res.statusCode;
+//     if (req.path !== '/' && !req.path.includes('movement')) {
+//       const indicator = status >= 500 ? '❌' : status >= 400 ? '⚠️' : '✅';
+//       console.log(`[HTTP-Out] ${indicator} ${status} ${req.method} ${req.path}`);
+//     }
+//     return originalSend.call(this, data);
+//   };
+//   next();
+// });
 
-console.log("✅ Early request logger enabled with response codes");
+console.log("✅ Early request logger disabled (CPU optimization)");
 
 /* =====================================================
    �📊 REQUEST LOGGER (disabled during movement spam)

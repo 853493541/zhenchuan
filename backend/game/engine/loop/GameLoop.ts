@@ -185,16 +185,8 @@ export class GameLoop {
       saveTime = performance.now() - saveStart;
     }
 
-    const tickTotal = performance.now() - tickStart;
-    
-    // Only log when operations take significant time (>50ms)
-    if (tickTotal > 50 || broadcastTime > 10 || saveTime > 5) {
-      console.log(
-        `[GameLoop] Tick ${this.state.version} | Total: ${tickTotal.toFixed(2)}ms | ` +
-        `Move: ${moveTime.toFixed(2)}ms | Win: ${winTime.toFixed(2)}ms | ` +
-        `Broadcast: ${broadcastTime.toFixed(2)}ms | Save: ${saveTime.toFixed(2)}ms`
-      );
-    }
+    // Timing logs disabled to reduce backend load
+    // const tickTotal = performance.now() - tickStart;
   }
 
   /**

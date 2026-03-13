@@ -539,7 +539,7 @@ router.post("/battle/start", async (req, res) => {
     // Reduced to 2Hz to prevent event loop blocking on free VM
     // At 10Hz (100ms/tick), event loop can't process other requests (player 2 gets 503s)
     // At 2Hz (500ms/tick), gives event loop 400ms to handle other requests
-    GameLoop.start(gameId, battleState, { tickRate: 30 });
+    GameLoop.start(gameId, battleState, { tickRate: 20 });
     // Disabled: spam during testing
     // console.log(`[battle/start] ✅ GameLoop started for ${gameId}`);
 

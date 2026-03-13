@@ -85,7 +85,16 @@ router.post("/movement", async (req, res) => {
         : null;
 
       loop.setPlayerInput(playerIndex, input);
-      res.json({ success: true });
+      
+      // Return current position immediately so client can update without waiting for broadcast
+      // Also include any pending input so client can predict the next position
+      const player = state.players[playerIndex];
+      res.json({ 
+        success: true,
+        position: player.position,
+        velocity: player.velocity,
+        input: input // Send input back so client can predict next position
+      });
     } catch (loopErr: any) {
       console.error(`[MOVEMENT] GameLoop error: ${loopErr.message}`);
       console.error(loopErr.stack);
