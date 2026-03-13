@@ -90,7 +90,7 @@ async function playCastAbility(
     throw new Error("ERR_CARD_NOT_FOUND");
   }
 
-  const targetIndex = playerIndex === 0 ? 1 : 0;
+  const targetIndex = card.target === 'SELF' ? playerIndex : (playerIndex === 0 ? 1 : 0);
 
   // Apply ability effects
   applyEffects(state, card, playerIndex, targetIndex);

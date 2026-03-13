@@ -646,7 +646,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
 
   zhenshen_xingsi: {
     id: "zhenshen_xingsi",
-    name: "真身行思",
+    name: "龙牙",
     description: "冲向敌人（最远20码）\n距离内冲向敌方位置",
     type: "CONTROL",
     target: "OPPONENT",

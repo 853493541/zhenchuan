@@ -798,16 +798,19 @@ export default function BattleArena({
               className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
               disabled={!ability.isReady}
               onClick={() => onCastAbility(ability.id)}
-              title={`${ability.name} | Range: ${ability.range || '∞'} | CD: ${ability.cooldown}`}
+              title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${ability.cooldown > 0 ? ` | CD: ${ability.cooldown}` : ''}`}
             >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/game/icons/Skills/${ability.name}.png`}
+                alt={ability.name}
+                className={styles.abilityIcon}
+                draggable={false}
+              />
               {ability.cooldown > 0 && (
                 <span className={styles.cdOverlay}>{ability.cooldown}</span>
               )}
               <span className={styles.abilityKey}>{idx + 1}</span>
-              <span className={styles.abilityName}>{ability.name}</span>
-              {ability.range && (
-                <span className={styles.abilityRange}>{ability.range.toFixed(0)}</span>
-              )}
             </button>
           ))}
         </div>

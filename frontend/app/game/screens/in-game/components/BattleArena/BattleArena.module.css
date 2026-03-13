@@ -300,102 +300,101 @@
 }
 
 /* ============================================================
-   ABILITY BUTTONS
+   ABILITY BUTTONS — icon only
    ============================================================ */
 .abilityBtn {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  display: block;
   width: 72px;
   height: 72px;
-  padding: 5px 3px 3px;
+  padding: 0;
   background: rgba(5, 12, 28, 0.92);
   border: 2px solid rgba(50, 80, 150, 0.5);
   border-radius: 8px;
-  color: #bbb;
   cursor: pointer;
-  font-family: inherit;
-  text-align: center;
-  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
-  /* Top inner highlight line */
+  overflow: hidden;
+  transition: border-color 0.12s, box-shadow 0.12s;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.abilityIcon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 6px;
+  /* slight desaturate when not ready — brightened by .ready override */
+  filter: brightness(0.75) saturate(0.7);
+  transition: filter 0.12s;
+}
+
+.abilityBtn.ready .abilityIcon {
+  filter: brightness(1) saturate(1);
 }
 
 .abilityBtn:hover:not(:disabled) {
   border-color: rgba(80, 150, 255, 0.85);
-  background: rgba(15, 35, 90, 0.75);
-  box-shadow: 0 0 16px rgba(80, 150, 255, 0.25), inset 0 1px 0 rgba(255,255,255,0.08);
+  box-shadow: 0 0 16px rgba(80, 150, 255, 0.25);
 }
 
 .abilityBtn.ready {
   border-color: rgba(50, 200, 80, 0.75);
-  background: rgba(5, 28, 14, 0.9);
-  box-shadow: 0 0 12px rgba(50, 200, 80, 0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+  box-shadow: 0 0 12px rgba(50, 200, 80, 0.2);
 }
 
 .abilityBtn.ready:hover {
-  box-shadow: 0 0 24px rgba(50, 200, 80, 0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+  box-shadow: 0 0 24px rgba(50, 200, 80, 0.45);
 }
 
 .abilityBtn.notReady {
-  opacity: 0.65;   /* was 0.38 — dark buttons on dark canvas were invisible */
+  opacity: 0.65;
   cursor: not-allowed;
 }
 .abilityBtn:disabled { cursor: not-allowed; }
 
+/* Key number badge — bottom-left corner */
 .abilityKey {
-  font-size: 9px;
-  color: #555;
-  line-height: 1;
-  margin-bottom: 3px;
-  letter-spacing: 0.5px;
-}
-
-.abilityName {
+  position: absolute;
+  bottom: 3px;
+  left: 4px;
   font-size: 9px;
   font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: #ddd;
-  word-break: break-word;
-  line-height: 1.2;
-  max-width: 64px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  pointer-events: none;
+  z-index: 2;
 }
 
-.abilityRange {
-  font-size: 8px;
-  color: #666;
-  margin-top: 3px;
-}
-
-/* Cooldown badge */
+/* Cooldown badge — top-right corner */
 .cdOverlay {
   position: absolute;
   top: 3px;
   right: 3px;
-  background: rgba(200, 40, 40, 0.92);
+  background: rgba(200, 40, 40, 0.95);
   color: #fff;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: bold;
-  min-width: 16px;
-  height: 16px;
-  border-radius: 3px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 3px;
+  pointer-events: none;
+  z-index: 2;
 }
 
-/* Grey cooldown sweep overlay — full button dimmed when on cooldown */
+/* Grey dimming overlay when on cooldown */
 .abilityBtn.notReady::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.30);  /* reduced from 0.45 so buttons stay legible */
+  background: rgba(0, 0, 0, 0.30);
   border-radius: 6px;
   pointer-events: none;
+  z-index: 1;
 }
 
 /* ============================================================
