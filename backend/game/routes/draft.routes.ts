@@ -11,6 +11,8 @@ import { initializeBattleState } from "../services/battle/battleService";
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
 import { GameLoop } from "../engine/loop/GameLoop";
 import { CARDS } from "../cards/cards";
+import { broadcastGameUpdate } from "../services/broadcast";
+import { diffState } from "../services/flow/stateDiff";
 import type { CardInstance } from "../engine/state/types";
 
 const router = express.Router();
@@ -364,6 +366,40 @@ router.post("/draft/finalize", async (req, res) => {
       game.state.players[0].hand = player0Hand;
       game.state.players[1].hand = player1Hand;
 
+      // ✅ Initialize arena positions when phase transitions to BATTLE
+      // This ensures both players have position data immediately, even before /battle/start is called
+      const ARENA_WIDTH = 100;
+      const ARENA_HEIGHT = 100;
+      
+      if (!game.state.players[0].position) {
+        game.state.players[0].position = {
+          x: ARENA_WIDTH * 0.25,
+          y: ARENA_HEIGHT / 2,
+        };
+      }
+      if (!game.state.players[1].position) {
+        game.state.players[1].position = {
+          x: ARENA_WIDTH * 0.75,
+          y: ARENA_HEIGHT / 2,
+        };
+      }
+
+      // Initialize velocity if not present
+      if (!game.state.players[0].velocity) {
+        game.state.players[0].velocity = { vx: 0, vy: 0 };
+      }
+      if (!game.state.players[1].velocity) {
+        game.state.players[1].velocity = { vx: 0, vy: 0 };
+      }
+
+      // Initialize moveSpeed if not present
+      if (!game.state.players[0].moveSpeed) {
+        game.state.players[0].moveSpeed = 0.5;
+      }
+      if (!game.state.players[1].moveSpeed) {
+        game.state.players[1].moveSpeed = 0.5;
+      }
+
       // Force Mongoose to recognize nested changes
       game.state.players[0] = {
         ...game.state.players[0],
@@ -382,6 +418,7 @@ router.post("/draft/finalize", async (req, res) => {
     }
 
     game.markModified("tournament");
+    const prevState = bothReady ? structuredClone(game.state) : null;
     await game.save();
 
     console.log("[draft/finalize] DEBUG - After save to DB:", {
@@ -389,7 +426,21 @@ router.post("/draft/finalize", async (req, res) => {
       player1HandLength: game.state.players[1].hand?.length || 0,
       player0HandCards: game.state.players[0].hand?.map((c: any) => ({ id: c.id, name: c.name })) || [],
       player1HandCards: game.state.players[1].hand?.map((c: any) => ({ id: c.id, name: c.name })) || [],
+      player0Position: game.state.players[0].position,
+      player1Position: game.state.players[1].position,
     });
+
+    // ✅ Broadcast BATTLE phase transition to both players immediately
+    if (bothReady && prevState) {
+      const diff = diffState(prevState, game.state);
+      console.log(`[draft/finalize] Broadcasting BATTLE phase with ${diff.length} patches and positions`);
+      broadcastGameUpdate({
+        gameId: gameId,
+        version: game.state.version,
+        diff,
+        timestamp: Date.now(),
+      });
+    }
 
     res.json({ status: "ready", battleStarting: bothReady });
   } catch (err: any) {
@@ -454,7 +505,8 @@ router.post("/battle/start", async (req, res) => {
     console.log(`[battle/start] Saved to DB, now starting GameLoop`);
 
     // ✅ START LOOP (only once)
-    GameLoop.start(gameId, battleState, { tickRate: 60 });
+    // Test with very low tick rate to diagnose event loop starvation
+    GameLoop.start(gameId, battleState, { tickRate: 10 });
     console.log(`[battle/start] ✅ GameLoop started for ${gameId}`);
 
     res.json({ status: "battle_started" });

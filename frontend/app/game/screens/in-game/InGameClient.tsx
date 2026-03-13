@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 import GameBoard from "./components/GameBoard";
@@ -97,6 +97,39 @@ export default function InGameClient({
     rtt,
     refetch,
   } = useGameState(gameId, selfUserId, authToken);
+
+  // Track if we've already initiated battle to prevent duplicate calls
+  const battleInitiatedRef = useRef(false);
+
+  // Auto-call /battle/start when phase transitions to BATTLE (only once)
+  useEffect(() => {
+    if (tournament?.phase === "BATTLE" && state && !loading && !battleInitiatedRef.current) {
+      battleInitiatedRef.current = true; // Mark as initiated immediately
+      
+      const initiateBattle = async () => {
+        try {
+          console.log("[InGameClient] Initiating battle via /battle/start");
+          const res = await fetch("/api/game/battle/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ gameId }),
+          });
+          
+          if (!res.ok) {
+            const errText = await res.text();
+            console.error("[InGameClient] /battle/start failed:", res.status, errText);
+          } else {
+            console.log("[InGameClient] ✅ /battle/start succeeded, GameLoop should now be running");
+          }
+        } catch (err) {
+          console.error("[InGameClient] Error calling /battle/start:", err);
+        }
+      };
+      
+      initiateBattle();
+    }
+  }, [tournament?.phase, gameId]); // Only depend on phase and gameId, not state
 
   /* ================= PRELOAD ================= */
 

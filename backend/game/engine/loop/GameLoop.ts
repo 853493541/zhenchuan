@@ -116,6 +116,8 @@ export class GameLoop {
     this.tickInterval = setInterval(() => {
       try {
         this.tick();
+        // Yield to event loop to prevent blocking other requests
+        setImmediate(() => {});
       } catch (err) {
         console.error(`[GameLoop] Error in tick for ${this.gameId}:`, err);
         this.stop();
@@ -132,7 +134,6 @@ export class GameLoop {
       return;
     }
 
-    const prevState = structuredClone(this.state);
     const now = Date.now();
 
     // 1. Apply player movement
@@ -144,17 +145,31 @@ export class GameLoop {
     // 2. Check win condition
     checkGameOver(this.state);
 
-    // 3. Increment version
-    this.state.version = (this.state.version ?? 0) + 1;
-
-    // 4. Broadcast position updates (throttled)
+    // 3. Broadcast position updates (throttled to 30Hz, only when needed)
     if (now - this.lastBroadcast >= this.broadcastInterval) {
-      this.broadcast(prevState);
+      // Increment version only on broadcasts
+      this.state.version = (this.state.version ?? 0) + 1;
+      
+      // Send only position changes (lightweight diff, no structuredClone)
+      const diff = this.state.players.map((p) => ({
+        path: `/players/${this.state.players.indexOf(p)}/position`,
+        value: p.position,
+      }));
+      
+      broadcastGameUpdate({
+        gameId: this.gameId,
+        version: this.state.version,
+        diff,
+        gameOver: this.state.gameOver,
+        winnerUserId: this.state.winnerUserId,
+        timestamp: Date.now(),
+      });
+      
       this.lastBroadcast = now;
     }
 
-    // 5. Auto-save to DB (less frequently - every 5 ticks)
-    if (this.state.version % 5 === 0) {
+    // 4. Auto-save to DB (every 50 ticks ≈ 0.8s intervals to reduce DB load on free VM)
+    if (this.state.version % 50 === 0) {
       this.saveToDB();
     }
   }

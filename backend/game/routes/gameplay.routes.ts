@@ -48,32 +48,52 @@ router.post("/movement", async (req, res) => {
     const userId = getUserIdFromCookie(req);
     const { gameId, direction } = req.body;
 
+    if (!gameId || !userId) {
+      console.error('[MOVEMENT] Missing gameId or userId');
+      return res.status(400).json({ error: "Missing gameId or userId" });
+    }
+
     const loop = GameLoop.get(gameId);
     if (!loop) {
+      console.warn(`[MOVEMENT] GameLoop not active for ${gameId}`);
+      // Return 400 instead of crashing - battle may be pending start
       return res.status(400).json({ error: "Battle not in progress" });
     }
 
-    // Get player index
-    const state = loop.getState();
-    const playerIndex = state.players.findIndex((p) => p.userId === userId);
-    if (playerIndex === -1) {
-      return res.status(403).json({ error: "Not in this game" });
+    try {
+      // Get player index
+      const state = loop.getState();
+      if (!state || !state.players) {
+        console.error('[MOVEMENT] Invalid game state');
+        return res.status(400).json({ error: "Invalid game state" });
+      }
+
+      const playerIndex = state.players.findIndex((p) => p.userId === userId);
+      if (playerIndex === -1) {
+        console.warn(`[MOVEMENT] User ${userId} not found in game ${gameId}`);
+        return res.status(403).json({ error: "Not in this game" });
+      }
+
+      // Update movement input
+      const input: MovementInput | null = direction
+        ? {
+            up: direction.up === true,
+            down: direction.down === true,
+            left: direction.left === true,
+            right: direction.right === true,
+          }
+        : null;
+
+      loop.setPlayerInput(playerIndex, input);
+      res.json({ success: true });
+    } catch (loopErr: any) {
+      console.error(`[MOVEMENT] GameLoop error: ${loopErr.message}`);
+      console.error(loopErr.stack);
+      res.status(500).json({ error: "GameLoop error: " + loopErr.message });
     }
-
-    // Update movement input
-    const input: MovementInput | null = direction
-      ? {
-          up: direction.up === true,
-          down: direction.down === true,
-          left: direction.left === true,
-          right: direction.right === true,
-        }
-      : null;
-
-    loop.setPlayerInput(playerIndex, input);
-    res.json({ success: true });
   } catch (err: any) {
     console.error(`[MOVEMENT] ❌ ERROR: ${err.message}`);
+    console.error(err.stack);
     res.status(400).json({ error: err.message });
   }
 });

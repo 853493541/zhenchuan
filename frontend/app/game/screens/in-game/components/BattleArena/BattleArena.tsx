@@ -182,6 +182,25 @@ export default function BattleArena({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Debug: log player positions
+    if (!me?.position) {
+      console.warn('[BattleArena] Me position is missing:', { me });
+    }
+    if (!opponent?.position) {
+      console.warn('[BattleArena] Opponent position is missing:', { opponent });
+    }
+
+    if (!me?.position || !opponent?.position) {
+      // Show loading state
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#fff';
+      ctx.font = '16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Waiting for arena data...', canvas.width / 2, canvas.height / 2);
+      return;
+    }
+
     // Clear canvas
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
