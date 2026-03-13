@@ -428,8 +428,10 @@ export default function BattleArena({
         signal:      movementAbortRef.current.signal,
         body: JSON.stringify({
           gameId,
+          // W = forward on screen = camera+Y = server "down" (+vy)
+          // S = backward on screen = camera-Y = server "up"  (-vy)
           direction: (k.w || k.a || k.s || k.d)
-            ? { up: k.w, down: k.s, left: k.a, right: k.d }
+            ? { up: k.s, down: k.w, left: k.a, right: k.d }
             : null,
         }),
       });
@@ -469,18 +471,40 @@ export default function BattleArena({
   useEffect(() => {
     const updated = me.hand
       .map((instance: any) => {
-        const card = instance.cardId ? cards[instance.cardId] : instance;
-        if (!card || !card.name) return null;
+        // Try every possible card lookup strategy:
+        // 1. CardInstance format from GameLoop: instance.cardId -> cardMap key
+        // 2. Merged draft format: instance.id -> cardMap key
+        // 3. Merged draft format: instance itself is the card (has .name)
+        const card =
+          (instance.cardId && cards[instance.cardId]) ||
+          (instance.id    && cards[instance.id])     ||
+          (instance.name  ? instance : null);
+
+        const instanceId = instance.instanceId || instance.id || String(Math.random());
+        if (!card) {
+          console.warn('[BattleArena] card lookup failed for hand item:', instance);
+          // Still show a placeholder so the slot is visible
+          return {
+            id:       instanceId,
+            name:     instance.name || instance.cardId || instance.id || '?',
+            range:    undefined as number | undefined,
+            minRange: undefined as number | undefined,
+            cooldown: instance.cooldown || 0,
+            isReady:  (instance.cooldown ?? 0) === 0,
+          };
+        }
         return {
-          id:       instance.instanceId || instance.id,
+          id:       instanceId,
           name:     card.name,
           range:    card.range,
           minRange: card.minRange,
           cooldown: instance.cooldown || 0,
           isReady:  (instance.cooldown ?? 0) === 0 && (!card.range || distance <= card.range),
         };
-      })
-      .filter(Boolean) as AbilityInfo[];
+      }) as AbilityInfo[];
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[BattleArena] hand: ${me.hand.length} items → ${updated.length} abilities`);
+    }
     setAbilities(updated);
     abilitiesRef.current = updated;
   }, [me.hand, distance, cards]);
@@ -526,8 +550,8 @@ export default function BattleArena({
       const vel = localVelocityRef.current;
       const k   = keysRef.current;
       let ix = 0, iy = 0;
-      if (k.w) iy -= 1;
-      if (k.s) iy += 1;
+      if (k.w) iy += 1;  // W = +Y = forward into scene (matches server "down" = +vy)
+      if (k.s) iy -= 1;  // S = -Y = backward toward camera
       if (k.a) ix -= 1;
       if (k.d) ix += 1;
       if (ix !== 0 || iy !== 0) {
@@ -685,6 +709,16 @@ export default function BattleArena({
   const oppHpPct = Math.max(0, Math.min(100, ((opponent?.hp ?? 0) / maxHp) * 100));
   const isMoving = Object.values(wasdKeys).some(v => v);
 
+  // Facing direction arrow derived from current movement keys
+  const facingArrow = (() => {
+    const { w, a, s, d } = wasdKeys;
+    if (w && d) return '↗'; if (w && a) return '↖';
+    if (s && d) return '↘'; if (s && a) return '↙';
+    if (w) return '↑'; if (s) return '↓';
+    if (a) return '←'; if (d) return '→';
+    return '·';
+  })();
+
   return (
     <div className={styles.container}>
 
@@ -695,7 +729,10 @@ export default function BattleArena({
 
       {/* ===== TOP-LEFT: My HP panel ===== */}
       <div className={styles.playerPanel}>
-        <span className={styles.playerLabel}>YOU</span>
+        <div className={styles.playerLabelRow}>
+          <span className={styles.playerLabel}>YOU</span>
+          <span className={styles.facingDir}>{facingArrow}</span>
+        </div>
         <div className={styles.myHpRow}>
           <div className={styles.myHpTrack}>
             <div
