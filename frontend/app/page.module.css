@@ -1,166 +1,151 @@
-/* ================= Container ================= */
+/* =========================================================
+   Page Layout
+========================================================= */
 
-.container {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-
-  padding: 10px 20px;
-  min-height: 100%;
-  box-sizing: border-box;
-
-  max-width: 1280px;
+.page {
+  padding: 32px;
+  max-width: 1200px;
   margin: 0 auto;
-}
-
-/* ================= Header ================= */
-
-.header {
-  text-align: center;
-  margin-bottom: 24px;
 }
 
 .title {
-  font-size: 2.2rem;
+  font-size: 32px;
+  margin-bottom: 12px;
+}
+
+/* =========================================================
+   Create Button
+========================================================= */
+
+.createBtn {
+  padding: 10px 16px;
+  border-radius: 6px;
+  border: none;
+  background: #2563eb;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.createBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   Grid List (Rooms)
+========================================================= */
+
+.list {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+/* =========================================================
+   Empty State
+========================================================= */
+
+.empty {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* =========================================================
+   Room Card Base
+========================================================= */
+
+.card {
+  position: relative;               /* for bottom-right time */
+  border-radius: 12px;
+  padding: 18px 18px 44px;           /* space for time */
+  min-height: 150px;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+/* subtle lift on hover (desktop only) */
+@media (hover: hover) {
+  .waiting:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.cardTitle {
+  font-size: 16px;
   font-weight: 700;
+  margin-bottom: 10px;
+}
+
+/* =========================================================
+   Card Content
+========================================================= */
+
+.playerCount {
+  font-size: 14px;
   margin-bottom: 6px;
 }
 
-.subtitle {
-  font-size: 1.1rem;
-  color: #666;
+.status {
+  font-size: 13px;
+  font-weight: 500;
 }
 
-/* ================= Quick Access ================= */
-
-.quickAccess {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-
-  width: 100%;
-  max-width: 900px;
-  margin: 0 auto;
+/* time bottom-right (minute only) */
+.time {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  font-size: 12px;
+  opacity: 0.6;
 }
 
-.card {
-  height: 96px;
+/* =========================================================
+   Room States
+========================================================= */
 
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  border: 1.5px solid #bfdbfe;
-  border-radius: 12px;
-  background: #ffffff;
-
-  text-decoration: none;
-  color: inherit;
-  font-weight: 600;
-  font-size: 1.05rem;
-
-  transition:
-    box-shadow 0.15s ease,
-    transform 0.15s ease,
-    border-color 0.15s ease;
+/* Normal waiting room */
+.waiting {
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  cursor: pointer;
 }
 
-.card:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 8px 18px rgba(59, 130, 246, 0.18);
-  transform: translateY(-2px);
+.waiting:hover {
+  background: #d1fae5;
 }
 
-/* ================= Week Section ================= */
+/* =========================================================
+   My Room (yellow highlight)
+========================================================= */
 
-.weekSection {
-  width: 85%;
-  max-width: 900px;
-
-  margin: 40px auto 20px;
-  padding-top: 12px;
-
-  border-top: 1px solid #eef2f7;
+.mine {
+  background: #fff7ed;              /* light yellow */
+  border: 1px solid #facc15;        /* warm yellow border */
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.35);
 }
 
-.sectionTitle {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin-bottom: 16px;
-  text-align: center;
+.mine:hover {
+  background: #ffedd5;
 }
 
-.muted {
-  color: #888;
-  font-size: 0.95rem;
-}
+/* =========================================================
+   Responsive Rules
+========================================================= */
 
-/* ================= Footer ================= */
-
-.footer {
-  margin-top: auto;
-  text-align: center;
-  font-size: 0.9rem;
-  color: #888;
-
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* ================= Mobile (Phone) ================= */
-
+/* Phone: 1 card per row */
 @media (max-width: 640px) {
-  /* Container */
-  .container {
-    padding: 5px 12px;
+  .list {
+    grid-template-columns: 1fr;
   }
+}
 
-  /* Header */
-  .header {
-    margin-bottom: 5px;
+/* Tablet: exactly 4 cards per row */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .list {
+    grid-template-columns: repeat(4, 1fr);
   }
-
-  .title {
-    font-size: 1.85rem;
-  }
-
-  .subtitle {
-    font-size: 0.95rem;
-  }
-
-  /* Quick Access — keep 2 per row */
-  .quickAccess {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    margin-bottom: 0px;
-  }
-
-  .card {
-    height: 64px;
-    font-size: 0.95rem;
-  }
-
-  /* Week Section */
-  .weekSection {
-    width: 95%;
-    margin: 10px auto 5px;
-  padding-top: 10px;
-
-  border-top: 1px solid #eef2f7;
-
-  }
-
-  .sectionTitle {
-    font-size: 1.2rem;
-    margin-bottom: 5px;
-  }
-
-  /* Footer */
-  .footer {
-    font-size: 0.85rem;
-  }
-
-
-
 }
