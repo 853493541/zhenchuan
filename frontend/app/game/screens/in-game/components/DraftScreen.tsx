@@ -278,9 +278,17 @@ export default function DraftScreen({
 
         {/* Center Content Area */}
         <div className={styles.centerArea}>
-          {/* Header with Refresh */}
+          {/* Header with Refresh and Confirm */}
           <div className={styles.header}>
-            <h1>第 {tournament.battleNumber} 场战斗</h1>
+            <h1>第 {tournament.battleNumber} 场</h1>
+            <button
+              className={styles.confirmBtn}
+              onClick={handleFinalize}
+              disabled={loading}
+              title="确认选择"
+            >
+              ✓ 确认
+            </button>
             <button
               className={styles.refreshBtn}
               onClick={handleRefreshShop}
@@ -319,20 +327,9 @@ export default function DraftScreen({
           />
         </div>
 
-        {/* Right Panel - Fixed Controls */}
+        {/* Right Panel - Fixed Controls (Desktop) / Economy Info (Mobile) */}
         <div className={styles.rightPanel}>
           <DraftEconomy eco={eco} battleNumber={tournament.battleNumber} />
-
-          <div className={styles.buttonGroup}>
-            <button
-              className={styles.finalizeBtn}
-              onClick={handleFinalize}
-              disabled={loading}
-              title=""
-            >
-              ✓ 确认 {loading ? "..." : ""}
-            </button>
-          </div>
 
           {error && <div className={styles.error}>{error}</div>}
           

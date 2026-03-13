@@ -286,91 +286,88 @@ export default function RoomPage() {
 
   return (
     <div className={styles.page}>
-      <h1 className={styles.title}>房间等待中</h1>
+      <div className={styles.container}>
+        <h1 className={styles.title}>等待对手</h1>
+        <p className={styles.subtitle}>{playersJoined} / 2 玩家已准备</p>
 
-      <div className={styles.info}>
-        <div>房间号：#{gameId.slice(-3)}</div>
-        <div>当前人数：{playersJoined} / 2</div>
-      </div>
+        <div className={styles.playerList}>
+          {[0, 1].map((slot) => {
+            const uid = playerIds[slot];
+            const username = game?.playerNames?.[uid] || "Unknown";
+            const isMe = uid && uid === myId;
+            const isEmpty = !uid;
 
-      {/* 玩家列表 */}
-      <div className={styles.playerList}>
-        {[0, 1].map((slot) => {
-          const uid = playerIds[slot];
-          const username = game?.playerNames?.[uid] || "Unknown";
-          const isMe = uid && uid === myId;
-
-          return (
-            <div key={slot} className={styles.playerSlot}>
-              {uid ? (
-                <>
-                  <span>
-                    {slot === 0 ? "👑 房主" : "👤 玩家"}{" "}
-                    {isMe ? "（你）" : username}
-                  </span>
-                </>
-              ) : (
-                <span className={styles.emptySlot}>
-                  ⭕ 等待玩家加入
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* 状态提示 */}
-      {isHost && (
-        <p className={styles.host}>🟢 你是房主</p>
-      )}
-
-      {!isHost && isInGame && (
-        <p className={styles.joined}>🔵 你已加入房间</p>
-      )}
-
-      {/* 操作按钮 */}
-      {/* 房主自动开始切换 */}
-      {isHost && !ready && (
-        <div className={styles.toggleSection}>
-          <label className={styles.toggleLabel}>
-            <input
-              type="checkbox"
-              checked={game?.autoStart !== false}
-              onChange={toggleAutoStart}
-              className={styles.toggleCheckbox}
-            />
-            <span>
-              {game?.autoStart !== false
-                ? "✓ 人满自动开始"
-                : "✗ 手动开始"}
-            </span>
-          </label>
+            return (
+              <div
+                key={slot}
+                className={`${styles.playerSlot} ${
+                  isEmpty ? styles.empty : styles.filled
+                } ${isMe ? styles.you : ""}`}
+              >
+                {isEmpty ? (
+                  <div className={styles.emptyState}>
+                    <span className={styles.waitingDot}>⌛</span>
+                    <span>等待玩家</span>
+                  </div>
+                ) : (
+                  <div className={styles.playerInfo}>
+                    <span className={styles.badge}>
+                      {slot === 0 ? "房主" : "玩家"}
+                    </span>
+                    <span className={styles.username}>
+                      {isMe ? "你" : username}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      )}
 
-      {ready && isHost && !game?.autoStart && (
-        <button
-          className={styles.primaryBtn}
-          onClick={startGame}
-          disabled={starting}
-        >
-          {starting ? "启动中…" : "开始游戏"}
-        </button>
-      )}
+        {isHost && !ready && (
+          <div className={styles.optionSection}>
+            <label className={styles.optionLabel}>
+              <input
+                type="checkbox"
+                checked={game?.autoStart !== false}
+                onChange={toggleAutoStart}
+                className={styles.optionCheckbox}
+              />
+              <span>人满时自动开始</span>
+            </label>
+          </div>
+        )}
 
-      {ready && game?.autoStart && (
-        <p className={styles.waiting}>
-          👥 人满，游戏自动开始中…
-        </p>
-      )}
+        <div className={styles.actionArea}>
+          {!isInGame && canJoin && (
+            <button className={styles.primaryBtn} onClick={joinGame}>
+              加入房间
+            </button>
+          )}
 
-      {ready && !isHost && (
-        <p className={styles.waiting}>
-          {game?.autoStart !== false
-            ? "👥 人满，游戏即将开始…"
-            : "🔵 等待房主开始游戏…"}
-        </p>
-      )}
+          {ready && isHost && !game?.autoStart && (
+            <button
+              className={styles.primaryBtn}
+              onClick={startGame}
+              disabled={starting}
+            >
+              {starting ? "启动中…" : "开始游戏"}
+            </button>
+          )}
+
+          {ready && game?.autoStart && (
+            <p className={styles.statusMsg}>即将自动开始…</p>
+          )}
+
+          {ready && !isHost && (
+            <p className={styles.statusMsg}>
+              {game?.autoStart !== false
+                ? "等待游戏开始…"
+                : "等待房主开始…"}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
