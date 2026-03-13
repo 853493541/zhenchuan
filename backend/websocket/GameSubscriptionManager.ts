@@ -30,6 +30,11 @@ interface SubscribedClient {
 export class GameSubscriptionManager {
   private clients: Map<WebSocket, SubscribedClient> = new Map();
   private gameClients: Map<string, Set<WebSocket>> = new Map();
+  
+  // Track disbandment timeouts (gameId -> timeoutId)
+  // Only disband waiting rooms after 30 sec of no clients
+  private disbandTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private readonly DISBAND_GRACE_PERIOD = 30 * 1000; // 30 seconds
 
   /**
    * Subscribe a client to a game
@@ -42,6 +47,14 @@ export class GameSubscriptionManager {
       this.gameClients.set(gameId, new Set());
     }
     this.gameClients.get(gameId)!.add(ws);
+
+    // Cancel any pending disbandment if someone reconnects
+    const timeout = this.disbandTimeouts.get(gameId);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.disbandTimeouts.delete(gameId);
+      console.log(`[WS] Cancelled disbandment for game ${gameId} (client reconnected)`);
+    }
 
     console.log(
       `[WS] User ${userId} subscribed to game ${gameId}. Total: ${this.gameClients.get(gameId)!.size}`
@@ -60,8 +73,9 @@ export class GameSubscriptionManager {
       gameClients.delete(ws);
       if (gameClients.size === 0) {
         this.gameClients.delete(client.gameId);
-        // Disband waiting rooms when all players disconnect
-        this.disbandEmptyRoom(client.gameId);
+        // Schedule disbandment with grace period instead of immediate deletion
+        // This prevents instant disbandment when host temporarily disconnects
+        this.scheduleDisband(client.gameId);
       }
     }
 
@@ -72,8 +86,34 @@ export class GameSubscriptionManager {
   }
 
   /**
+   * Schedule a waiting room for disbandment after grace period
+   */
+  private scheduleDisband(gameId: string) {
+    // Cancel any existing timeout for this game
+    const existingTimeout = this.disbandTimeouts.get(gameId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    // Schedule new disbandment
+    const timeout = setTimeout(async () => {
+      console.log(
+        `[WS] Grace period expired for game ${gameId}, checking if empty...`
+      );
+      await this.disbandEmptyRoom(gameId);
+      this.disbandTimeouts.delete(gameId);
+    }, this.DISBAND_GRACE_PERIOD);
+
+    this.disbandTimeouts.set(gameId, timeout);
+    console.log(
+      `[WS] Scheduled disbandment for game ${gameId} in ${this.DISBAND_GRACE_PERIOD / 1000}s`
+    );
+  }
+
+  /**
    * Disband a waiting room if it has no connected clients
    * Only disbands rooms that haven't started yet
+   * Double-checks that room is actually empty before deletion
    */
   private async disbandEmptyRoom(gameId: string) {
     try {
@@ -86,11 +126,15 @@ export class GameSubscriptionManager {
         return;
       }
 
-      // Verify no clients are connected
+      // Verify no clients are connected (still empty after grace period)
       if (this.getGameClientCount(gameId) === 0) {
         await GameSession.findByIdAndDelete(gameId);
         console.log(
-          `[WS] ✨ Disbanded empty waiting room ${gameId}`
+          `[WS] ✨ Disbanded empty waiting room ${gameId} (after grace period)`
+        );
+      } else {
+        console.log(
+          `[WS] Game ${gameId} is no longer empty, cancelling disbandment`
         );
       }
     } catch (err) {
@@ -142,6 +186,16 @@ export class GameSubscriptionManager {
       }
     }
     return false;
+  }
+
+  /**
+   * Cleanup: clear all pending disbandment timeouts
+   * Call this when server is shutting down
+   */
+  cleanup() {
+    this.disbandTimeouts.forEach((timeout) => clearTimeout(timeout));
+    this.disbandTimeouts.clear();
+    console.log("[WS] Cleaned up pending disbandment timeouts");
   }
 }
 
