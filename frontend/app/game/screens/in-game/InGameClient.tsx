@@ -175,9 +175,10 @@ export default function InGameClient({
       tournament &&
       tournament.phase === "BATTLE" &&
       state &&
+      !battleInitiatedRef.current &&
       state.players.some((p: any) => p.hand.length === 0)
     ) {
-      // Both players have empty hands, need to initialize battle
+      battleInitiatedRef.current = true; // guard before async so it never fires twice
       (async () => {
         try {
           console.log("[InGameClient] Initializing battle state...");
@@ -190,17 +191,21 @@ export default function InGameClient({
 
           if (res.ok) {
             console.log("[InGameClient] Battle initialized, refetching state...");
-            await new Promise((r) => setTimeout(r, 300)); // Wait for state to update
+            await new Promise((r) => setTimeout(r, 300));
             refetch();
           } else {
             console.error("[InGameClient] Battle start failed:", res.status);
+            battleInitiatedRef.current = false; // allow retry on genuine failure
           }
         } catch (err) {
           console.error("[InGameClient] Battle initialization error:", err);
+          battleInitiatedRef.current = false; // allow retry after network error
         }
       })();
     }
-  }, [tournament?.phase, gameId, refetch, state]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournament?.phase, gameId]); // intentionally excludes `state` and `refetch` —
+  // state changes 30x/sec from position broadcasts and would re-trigger this every tick
 
   /* ================= BATTLE COMPLETION ================= */
 

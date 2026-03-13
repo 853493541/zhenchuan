@@ -78,16 +78,23 @@ export default function BattleArena({
   const abilitiesRef = useRef<AbilityInfo[]>([]);         // synced for stable render loop
   const distanceRef = useRef(0);
   const initializedRef = useRef(false);
-  // Send movement input to server — reads keysRef directly (no stale state closure)
+  const movementAbortRef = useRef<AbortController | null>(null);
+
+  // Send movement input — cancels any in-flight request first so the browser
+  // never queues more than 1 concurrent movement fetch (prevents ERR_INSUFFICIENT_RESOURCES).
   const sendMovement = useCallback(async () => {
     const keys = keysRef.current;
     const hasInput = keys.w || keys.a || keys.s || keys.d;
+
+    movementAbortRef.current?.abort();
+    movementAbortRef.current = new AbortController();
 
     try {
       await fetch('/api/game/movement', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal: movementAbortRef.current.signal,
         body: JSON.stringify({
           gameId,
           direction: hasInput
@@ -95,8 +102,8 @@ export default function BattleArena({
             : null,
         }),
       });
-    } catch (err) {
-      // Fire-and-forget: prediction handles display, drops are recoverable
+    } catch (err: any) {
+      // AbortError = cancelled by next tick, expected and harmless
     }
   }, [gameId]);
 
@@ -263,7 +270,10 @@ export default function BattleArena({
   // Send movement at 33ms — synced with physics so server gets fresh input every tick
   useEffect(() => {
     const interval = setInterval(sendMovement, 33);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      movementAbortRef.current?.abort(); // cancel any in-flight request on unmount
+    };
   }, [sendMovement]);
 
   // Keep distanceRef in sync for the stable render loop
