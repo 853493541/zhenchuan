@@ -36,6 +36,47 @@ export interface Card {
    * Used for dev reference and future card versioning
    */
   originalDescription?: string;
+
+  /* ================= REAL-TIME RANGE SYSTEM ================= */
+
+  /**
+   * Maximum distance (units) to cast this ability
+   * If players are further apart than this, ability cannot be cast
+   */
+  range?: number;
+
+  /**
+   * Minimum distance (units) to cast this ability
+   * For melee attacks, this is 0
+   * For gap closers, might be 0 (can cast from any distance)
+   * For abilities you must cast from distance, this is > 0
+   */
+  minRange?: number;
+
+  /**
+   * Casting time in milliseconds
+   * 0 or undefined = instant cast
+   * > 0 = channel time before ability triggers
+   */
+  castTime?: number;
+
+  /**
+   * How this ability targets in real-time
+   * - INSTANT: affects enemy at cast time (no aiming)
+   * - POINT_CLICK: player clicks a coordinate on arena
+   * - DIRECTION: ability goes in direction player is facing
+   */
+  targetingType?: "INSTANT" | "POINT_CLICK" | "DIRECTION";
+
+  /**
+   * Movement component of ability
+   * - distance: how many units to move
+   * - when: before (gap closer), after (kite), or during cast
+   */
+  canMove?: {
+    distance: number;
+    when: "BEFORE" | "AFTER" | "DURING";
+  };
 }
 
 export interface CardInstance {

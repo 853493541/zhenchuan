@@ -11,6 +11,10 @@ import { CardInstance } from "../../engine/state/types/cards";
 import { CARDS } from "../../cards/cards";
 import { randomUUID } from "crypto";
 
+// Arena dimensions (must match frontend arena size)
+const ARENA_WIDTH = 100;
+const ARENA_HEIGHT = 100;
+
 /**
  * Create a new battle game state from drafted abilities
  * Called when transitioning from draft to battle
@@ -47,6 +51,15 @@ export function initializeBattleState(
         hand: hand0,
         buffs: [],
         gcd: 1, // Active player gets 1 GCD to start
+
+        // ✅ Real-time 2D arena positioning
+        // Player 0 starts on left side
+        position: {
+          x: ARENA_WIDTH * 0.25,
+          y: ARENA_HEIGHT / 2,
+        },
+        velocity: { vx: 0, vy: 0 },
+        moveSpeed: 0.5, // units per tick at 60Hz = ~30 units/second
       },
       {
         userId: player1Id,
@@ -54,6 +67,14 @@ export function initializeBattleState(
         hand: hand1,
         buffs: [],
         gcd: 0, // Will be set to 1 when turn starts
+
+        // Player 1 starts on right side
+        position: {
+          x: ARENA_WIDTH * 0.75,
+          y: ARENA_HEIGHT / 2,
+        },
+        velocity: { vx: 0, vy: 0 },
+        moveSpeed: 0.5,
       },
     ],
 

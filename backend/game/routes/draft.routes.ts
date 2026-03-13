@@ -9,6 +9,8 @@ import { generateShop, REFRESH_COST } from "../services/economy/economyService";
 import { getIncomePerRound } from "../services/economy/economyService";
 import { initializeBattleState } from "../services/battle/battleService";
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
+import { GameLoop } from "../engine/loop/GameLoop";
+import { CARDS } from "../cards/cards";
 import type { CardInstance } from "../engine/state/types";
 
 const router = express.Router();
@@ -318,40 +320,65 @@ router.post("/draft/finalize", async (req, res) => {
         player1Id,
         player0SelectedLength: player0Selected?.length || 0,
         player1SelectedLength: player1Selected?.length || 0,
-        player0SelectedCards: player0Selected?.map((c: any) => c.name) || [],
-        player1SelectedCards: player1Selected?.map((c: any) => c.name) || [],
+        player0SelectedCards: player0Selected?.map((c: any) => c.cardId) || [],
+        player1SelectedCards: player1Selected?.map((c: any) => c.cardId) || [],
       });
 
-      // Update game state players' hands with selected abilities
-      game.state.players[0].hand = player0Selected;
-      game.state.players[1].hand = player1Selected;
+      // ✅ CRITICAL: Look up full Card definitions from CARDS database
+      // selectedAbilities has {cardId, instanceId, cooldown} - we need {cardId, instanceId, cooldown, ...cardDefinition}
+      const player0Hand = player0Selected?.map((cardInstance: any) => {
+        const cardDef = CARDS[cardInstance.cardId];
+        if (!cardDef) {
+          console.error(`[draft/finalize] ❌ Card definition not found: ${cardInstance.cardId}`);
+          return null;
+        }
+        // Merge card definition with instance metadata (preserving cooldown, instanceId)
+        return {
+          ...cardDef,
+          instanceId: cardInstance.instanceId,
+          cooldown: cardInstance.cooldown || 0,
+        };
+      }).filter((c: any) => c !== null) || [];
 
-      console.log("[draft/finalize] DEBUG - After assignment:", {
-        player0HandLength: game.state.players[0].hand?.length || 0,
-        player1HandLength: game.state.players[1].hand?.length || 0,
+      const player1Hand = player1Selected?.map((cardInstance: any) => {
+        const cardDef = CARDS[cardInstance.cardId];
+        if (!cardDef) {
+          console.error(`[draft/finalize] ❌ Card definition not found: ${cardInstance.cardId}`);
+          return null;
+        }
+        return {
+          ...cardDef,
+          instanceId: cardInstance.instanceId,
+          cooldown: cardInstance.cooldown || 0,
+        };
+      }).filter((c: any) => c !== null) || [];
+
+      console.log("[draft/finalize] After loading Card definitions:", {
+        player0HandLength: player0Hand?.length || 0,
+        player1HandLength: player1Hand?.length || 0,
+        player0HandCards: player0Hand?.map((c: any) => ({ id: c.id, name: c.name })) || [],
+        player1HandCards: player1Hand?.map((c: any) => ({ id: c.id, name: c.name })) || [],
       });
 
-      // Force Mongoose to recognize nested changes - create new player objects and reassign
+      // Update game state with serialized hand
+      game.state.players[0].hand = player0Hand;
+      game.state.players[1].hand = player1Hand;
+
+      // Force Mongoose to recognize nested changes
       game.state.players[0] = {
         ...game.state.players[0],
-        hand: player0Selected, // Explicitly include hand
+        hand: player0Hand,
       };
       game.state.players[1] = {
         ...game.state.players[1],
-        hand: player1Selected, // Explicitly include hand
+        hand: player1Hand,
       };
       game.markModified("state");
       game.markModified("state.players");
 
-      console.log("[draft/finalize] DEBUG - After Mongoose fix:", {
-        player0HandLength: game.state.players[0].hand?.length || 0,
-        player1HandLength: game.state.players[1].hand?.length || 0,
-      });
-
-      // Log transition
       console.log("[draft/finalize] Both players ready, transitioning to BATTLE phase");
-      console.log(`[draft/finalize] Player 0 hand saved: ${game.state.players[0].hand.length} cards`);
-      console.log(`[draft/finalize] Player 1 hand saved: ${game.state.players[1].hand.length} cards`);
+      console.log(`[draft/finalize] Player 0 hand: ${game.state.players[0].hand.length} cards`);
+      console.log(`[draft/finalize] Player 1 hand: ${game.state.players[1].hand.length} cards`);
     }
 
     game.markModified("tournament");
@@ -360,8 +387,8 @@ router.post("/draft/finalize", async (req, res) => {
     console.log("[draft/finalize] DEBUG - After save to DB:", {
       player0HandLength: game.state.players[0].hand?.length || 0,
       player1HandLength: game.state.players[1].hand?.length || 0,
-      player0HandCards: game.state.players[0].hand?.map((c: any) => c.name) || [],
-      player1HandCards: game.state.players[1].hand?.map((c: any) => c.name) || [],
+      player0HandCards: game.state.players[0].hand?.map((c: any) => ({ id: c.id, name: c.name })) || [],
+      player1HandCards: game.state.players[1].hand?.map((c: any) => ({ id: c.id, name: c.name })) || [],
     });
 
     res.json({ status: "ready", battleStarting: bothReady });
@@ -386,34 +413,54 @@ router.post("/battle/start", async (req, res) => {
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not ready for battle" });
 
-    // Initialize battle state
+    // ✅ CHECK IF GAME LOOP ALREADY STARTED (prevent duplicate from second player)
+    if (GameLoop.get(gameId)) {
+      console.log(`[battle/start] GameLoop already running for ${gameId}, skipping start`);
+      return res.json({ status: "battle_already_started" });
+    }
+
     const playerIds = game.players as [string, string];
-    const battleState = initializeBattleState(game.tournament, playerIds);
+    console.log(`[battle/start] Starting battle for ${gameId}, players: ${playerIds.join(", ")}`);
 
-    console.log("[battle/start] Initializing battle state:");
-    console.log("  Battle number:", game.tournament.battleNumber);
-    console.log("  Game HP:", game.tournament.gameHp);
-    console.log("  Player 0 game HP:", game.tournament.gameHp[playerIds[0]]);
-    console.log("  Player 1 game HP:", game.tournament.gameHp[playerIds[1]]);
-    console.log("  Battle state player 0 HP:", battleState.players[0].hp);
-    console.log("  Battle state player 1 HP:", battleState.players[1].hp);
+    // Use the hands from game.state.players (finalized in draft)
+    const player0Hand = (game.state.players[0]?.hand || []) as any[];
+    const player1Hand = (game.state.players[1]?.hand || []) as any[];
 
-    // Award gold income to both players
+    console.log(`[battle/start] Finalized hands: P0=${player0Hand.length} cards, P1=${player1Hand.length} cards`);
+
+    // Create battle state with positions + use finalized hands
+    const playerIds_arr = [playerIds[0], playerIds[1]] as [string, string];
+    const battleState = initializeBattleState(game.tournament, playerIds_arr);
+
+    // Override hands (preserve instanceId + cooldown from draft)
+    battleState.players[0].hand = player0Hand;
+    battleState.players[1].hand = player1Hand;
+
+    console.log(`[battle/start] Battle initialized for gameId ${gameId}`);
+
+    // Award gold income
     for (const playerId of playerIds) {
       const eco = game.tournament.economy[playerId];
       const income = getIncomePerRound(eco.gold);
       eco.gold += income;
     }
 
-    // Update game state with new battle
+    // Save to DB before starting loop
     game.state = battleState;
     game.markModified("state");
     game.markModified("tournament");
-
     await game.save();
+
+    console.log(`[battle/start] Saved to DB, now starting GameLoop`);
+
+    // ✅ START LOOP (only once)
+    GameLoop.start(gameId, battleState, { tickRate: 60 });
+    console.log(`[battle/start] ✅ GameLoop started for ${gameId}`);
 
     res.json({ status: "battle_started" });
   } catch (err: any) {
+    console.error("[battle/start] ❌ ERROR:", err.message);
+    console.error(err.stack);
     res.status(500).json({ error: err.message });
   }
 });
@@ -438,6 +485,10 @@ router.post("/battle/complete", async (req, res) => {
     const updatedTournament = completeTournamentBattle(game.state, game.tournament);
     game.tournament = updatedTournament;
 
+    // ✅ STOP GAME LOOP
+    GameLoop.stop(gameId);
+    console.log(`[battle/complete] Stopped GameLoop for ${gameId}`);
+
     // If tournament is over, update game over flag
     if (game.tournament.phase === "GAME_OVER") {
       game.state.gameOver = true;
@@ -457,6 +508,9 @@ router.post("/battle/complete", async (req, res) => {
             hand: [],
             buffs: [],
             gcd: 0,
+            position: { x: 0, y: 0 },
+            velocity: { vx: 0, vy: 0 },
+            moveSpeed: 0,
           },
           {
             userId: game.players[1],
@@ -464,6 +518,9 @@ router.post("/battle/complete", async (req, res) => {
             hand: [],
             buffs: [],
             gcd: 0,
+            position: { x: 0, y: 0 },
+            velocity: { vx: 0, vy: 0 },
+            moveSpeed: 0,
           },
         ],
         events: [],

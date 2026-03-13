@@ -5,6 +5,7 @@ import type { PlayerID } from "./common";
 import type { CardInstance } from "./cards";
 import type { ActiveBuff } from "./buffs";
 import type { GameEvent } from "./events";
+import type { Position, Velocity } from "./position";
 
 export interface PlayerState {
   userId: PlayerID;
@@ -27,6 +28,21 @@ export interface PlayerState {
    * - Each player gets exactly 1 GCD per turn
    */
   gcd: number;
+
+  /* ================= REAL-TIME POSITION & MOVEMENT ================= */
+
+  /** Current position on 2D arena (x, y) */
+  position: Position;
+
+  /** Current velocity (units per tick) */
+  velocity: Velocity;
+
+  /**
+   * Base movement speed (units per tick when moving)
+   * Default: 0.5 units/tick
+   * Can be modified by buffs
+   */
+  moveSpeed: number;
 }
 
 export interface GameState {

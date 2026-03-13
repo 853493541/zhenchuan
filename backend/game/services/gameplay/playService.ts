@@ -7,8 +7,9 @@ import GameSession from "../../models/GameSession";
 import { CARDS } from "../../cards/cards";
 import { applyEffects } from "../../engine/flow/play/executeCard";
 import { resolveTurnEnd } from "../../engine/flow/turn/advanceTurn";
-import { validatePlayCard } from "../../engine/rules/validateAction";
+import { validatePlayCard, validateCastAbility } from "../../engine/rules/validateAction";
 import { GameState } from "../../engine/state/types";
+import { GameLoop } from "../../engine/loop/GameLoop";
 
 import { pushEvent } from "../flow/events";
 import { diffState } from "../flow/stateDiff";
@@ -34,12 +35,88 @@ export async function playCard(
   const startTime = performance.now();
   globalTimer.start(`play_card_${gameId}`);
 
+  // Check if this is a real-time battle
+  const loop = GameLoop.get(gameId);
+
+  if (loop) {
+    // ✅ REAL-TIME BATTLE LOGIC
+    return await playCastAbility(loop, gameId, userId, cardInstanceId);
+  } else {
+    // ✅ TURN-BASED BATTLE LOGIC (legacy draft phase)
+    return await playCardTurnBased(gameId, userId, cardInstanceId);
+  }
+}
+
+/**
+ * Real-time battle: Cast ability with range validation
+ */
+async function playCastAbility(
+  loop: GameLoop,
+  gameId: string,
+  userId: string,
+  cardInstanceId: string
+) {
+  const state = loop.getState();
+  const playerIndex = state.players.findIndex((p) => p.userId === userId);
+
+  if (playerIndex === -1) {
+    throw new Error("Not in this game");
+  }
+
+  // Validate ability can be cast (cooldown, range, silence)
+  validateCastAbility(state, playerIndex, cardInstanceId);
+
+  const prevState: GameState = structuredClone(state);
+
+  const player = state.players[playerIndex];
+  const idx = player.hand.findIndex((c) => c.instanceId === cardInstanceId);
+  const played = player.hand[idx];
+  const card = CARDS[played.cardId];
+
+  const targetIndex = playerIndex === 0 ? 1 : 0;
+
+  // Apply ability effects
+  applyEffects(state, card, playerIndex, targetIndex);
+  applyOnPlayBuffEffects(state, playerIndex);
+
+  // Set cooldown (abilities are on shorter cooldowns during real-time)
+  // In real-time, cooldowns are in milliseconds tracked by game loop
+  // For now, use similar cooldown system: 3 ticks (~50ms at 60 Hz)
+  played.cooldown = 3;
+
+  state.version = (state.version ?? 0) + 1;
+
+  // Update game loop with new state
+  loop.updateState(state);
+
+  const diff = diffState(prevState, state);
+
+  console.log(
+    `[CastAbility] Player ${playerIndex} cast ${card.name} in game ${gameId}`
+  );
+
+  return {
+    version: state.version,
+    diff,
+    events: state.events,
+    serverTimestamp: Date.now(),
+  };
+}
+
+/**
+ * Turn-based battle: Original behavior
+ */
+async function playCardTurnBased(
+  gameId: string,
+  userId: string,
+  cardInstanceId: string
+) {
   const dbFetchStart = performance.now();
-  
+
   // Try cache first, then fall back to DB
   let state = gameStateCache.get(gameId);
   let cacheHit = true;
-  
+
   if (!state) {
     cacheHit = false;
     const game = await GameSession.findById(gameId);
@@ -58,7 +135,7 @@ export async function playCard(
 
   const player = state.players[playerIndex];
   const idx = player.hand.findIndex((c) => c.instanceId === cardInstanceId);
-  const played = player.hand[idx]; // Don't remove from hand - abilities are reusable
+  const played = player.hand[idx];
 
   const card = CARDS[played.cardId];
   const targetIndex =
@@ -89,19 +166,21 @@ export async function playCard(
     events: state.events,
     gameOver: state.gameOver,
     winnerUserId: state.winnerUserId,
-    timestamp: Date.now(), // Use Date.now for network round-trip (matches client)
+    timestamp: Date.now(),
   });
 
   // Save to DB in background (don't wait for it)
-  GameSession.findByIdAndUpdate(gameId, { state }, { new: true }).catch((err) => {
-    console.error(`[DB] Failed to save game ${gameId}:`, err.message);
-  });
+  GameSession.findByIdAndUpdate(gameId, { state }, { new: true }).catch(
+    (err) => {
+      console.error(`[DB] Failed to save game ${gameId}:`, err.message);
+    }
+  );
 
   const totalTime = globalTimer.log(`play_card_${gameId}`);
   const cacheStatus = cacheHit ? "HIT" : "MISS";
 
   console.log(
-    `[Timing] PlayCard ${gameId}: DBFetch=${dbFetchTime.toFixed(2)}ms (${cacheStatus}), Diff=${diffTime.toFixed(2)}ms, Total=${totalTime?.toFixed(2) || '?'}ms, Patches=${diff.length}`
+    `[Timing] PlayCard ${gameId}: DBFetch=${dbFetchTime.toFixed(2)}ms (${cacheStatus}), Diff=${diffTime.toFixed(2)}ms, Total=${totalTime?.toFixed(2) || "?"}ms, Patches=${diff.length}`
   );
 
   return {
@@ -119,11 +198,11 @@ export async function passTurn(gameId: string, userId: string) {
   globalTimer.start(`pass_turn_${gameId}`);
 
   const dbFetchStart = performance.now();
-  
+
   // Try cache first, then fall back to DB
   let state = gameStateCache.get(gameId);
   let cacheHit = true;
-  
+
   if (!state) {
     cacheHit = false;
     const game = await GameSession.findById(gameId);

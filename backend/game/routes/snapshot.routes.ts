@@ -4,6 +4,9 @@ import { gameStateCache } from "../services/gameStateCache";
 
 const router = express.Router();
 
+// Track last logged phase per game to reduce spam
+const lastLoggedPhase = new Map<string, string>();
+
 router.get("/:id", async (req, res) => {
   try {
     const game = await GameSession.findById(req.params.id);
@@ -24,12 +27,13 @@ router.get("/:id", async (req, res) => {
       gameObj.playerNames = {};
     }
     
-    console.log(`[snapshot] GET /${req.params.id}`, {
-      hasTournament: !!gameObj.tournament,
-      tournamentPhase: gameObj.tournament?.phase,
-      battleNumber: gameObj.tournament?.battleNumber,
-      playerNames: Object.keys(gameObj.playerNames),
-    });
+    // Only log when phase changes (reduce spam)
+    const currentPhase = gameObj.tournament?.phase || "NO_TOURNAMENT";
+    const lastPhase = lastLoggedPhase.get(req.params.id);
+    if (lastPhase !== currentPhase) {
+      lastLoggedPhase.set(req.params.id, currentPhase);
+      console.log(`[snapshot] GET /${req.params.id} - Phase changed to ${currentPhase}`);
+    }
 
     // Explicitly return all fields including tournament
     res.json({

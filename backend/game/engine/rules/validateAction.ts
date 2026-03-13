@@ -3,6 +3,7 @@
 import { GameState } from "../state/types";
 import { CARDS } from "../../cards/cards";
 import { blocksCardTargeting } from "./guards";
+import { calculateDistance } from "../state/types";
 
 /* =========================================================
    INTERNAL HELPERS
@@ -15,7 +16,75 @@ function hasEffect(player: { buffs: any[] }, type: string) {
 }
 
 /* =========================================================
-   VALIDATE PLAY CARD
+   VALIDATE PLAY CARD (REAL-TIME BATTLE)
+========================================================= */
+
+/**
+ * Validate ability cast in real-time battle
+ * Checks: cooldown, range, silence
+ */
+export function validateCastAbility(
+  state: GameState,
+  playerIndex: number,
+  cardInstanceId: string
+) {
+  if (state.gameOver) {
+    throw new Error("ERR_GAME_OVER");
+  }
+
+  const player = state.players[playerIndex];
+
+  const instance = player.hand.find((c) => c.instanceId === cardInstanceId);
+  if (!instance) {
+    throw new Error("ERR_CARD_NOT_IN_HAND");
+  }
+
+  const card = CARDS[instance.cardId];
+  if (!card) {
+    throw new Error("ERR_CARD_NOT_FOUND");
+  }
+
+  /* ================= COOLDOWN ================= */
+  if (instance.cooldown > 0) {
+    throw new Error("ERR_ON_COOLDOWN");
+  }
+
+  /* ================= SILENCE ================= */
+  if (hasEffect(player, "SILENCE")) {
+    throw new Error("ERR_SILENCED");
+  }
+
+  /* ================= RANGE CHECK ================= */
+  if (card.range !== undefined) {
+    const distance = calculateDistance(
+      state.players[playerIndex].position,
+      state.players[playerIndex === 0 ? 1 : 0].position
+    );
+
+    if (distance > card.range) {
+      throw new Error("ERR_OUT_OF_RANGE");
+    }
+
+    if (card.minRange !== undefined && distance < card.minRange) {
+      throw new Error("ERR_TOO_CLOSE");
+    }
+  }
+
+  /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
+  if (card.target === "OPPONENT") {
+    const enemyIndex = playerIndex === 0 ? 1 : 0;
+    const enemy = state.players[enemyIndex];
+
+    if (blocksCardTargeting(enemy)) {
+      throw new Error("ERR_TARGET_UNAVAILABLE");
+    }
+  }
+
+  // ✅ All validations passed
+}
+
+/* =========================================================
+   VALIDATE PLAY CARD (TURN-BASED - Legacy)
 ========================================================= */
 
 export function validatePlayCard(

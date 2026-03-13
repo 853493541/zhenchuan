@@ -64,3 +64,15 @@ export {
   LEVEL_UP_COSTS,
   RARITY_POOLS,
 } from "./types/tournament";
+
+/* ================= Position & Movement ================= */
+export type {
+  Position,
+  Velocity,
+  MovementInput,
+} from "./types/position";
+
+export {
+  calculateDistance,
+  calculateAngle,
+} from "./types/position";

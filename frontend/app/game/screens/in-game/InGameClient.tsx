@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import GameBoard from "./components/GameBoard";
+import BattleArena from "./components/BattleArena";
 import GameOverModal from "./components/GameBoard/components/GameOverModal";
 import DraftScreen from "./components/DraftScreen";
 import { toastError } from "@/app/components/toast/toast";
@@ -43,6 +44,15 @@ function showGameError(rawCode: string) {
       break;
     case "ERR_NOT_AUTHENTICATED":
       toastError("登录状态失效，请重新进入");
+      break;
+    case "ERR_OUT_OF_RANGE":
+      toastError("距离太远，无法释放该能力");
+      break;
+    case "ERR_TOO_CLOSE":
+      toastError("距离太近，无法释放该能力");
+      break;
+    case "ERR_TARGET_UNAVAILABLE":
+      toastError("目标不可选中");
       break;
     default:
       toastError("操作无法执行");
@@ -237,34 +247,37 @@ export default function InGameClient({
 
   /* ================= RENDER BATTLE ================= */
 
-  // Only render GameBoard if we have valid player data
+  // Only render if we have valid player data
   if (!me || !opponent) {
     return <div>Loading battle state...</div>;
   }
 
-  console.log("[InGameClient] Rendering BATTLE, player hand cards:", {
+  console.log("[InGameClient] Rendering BATTLE, player info:", {
     myHandSize: me?.hand?.length || 0,
     opponentHandSize: opponent?.hand?.length || 0,
-    myCards: me?.hand?.map((c) => ({ cardId: c.cardId, cooldown: c.cooldown })),
+    myPosition: me?.position,
+    opponentPosition: opponent?.position,
   });
+
+  // Calculate distance between players
+  const distance = me?.position && opponent?.position
+    ? Math.sqrt(
+        Math.pow(opponent.position.x - me.position.x, 2) +
+          Math.pow(opponent.position.y - me.position.y, 2)
+      )
+    : 0;
 
   return (
     <GamePreloadProvider value={preload}>
-      <GameBoard
+      <BattleArena
         me={me}
         opponent={opponent}
-        events={state.events}
-        isMyTurn={isMyTurn}
-        currentTurn={state.turn}
-        rtt={rtt}
-        onPlayCard={async (card) => {
-          const res = await playCard(card);
-          if (!res.ok && res.error) {
-            showGameError(res.error);
-          }
-        }}
-        onEndTurn={async () => {
-          const res = await endTurn();
+        gameId={gameId}
+        distance={distance}
+        maxHp={me.hp + (state.players[1]?.hp || 0) === me.hp ? me.hp : 30} // Fallback to 30
+        cards={preload.cardMap}
+        onCastAbility={async (cardInstanceId) => {
+          const res = await playCard(cardInstanceId);
           if (!res.ok && res.error) {
             showGameError(res.error);
           }
