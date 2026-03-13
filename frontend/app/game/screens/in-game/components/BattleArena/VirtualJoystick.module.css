@@ -1,0 +1,100 @@
+.joystickContainer {
+  display: none; /* Hidden by default (desktop) */
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Show only on mobile screens */
+@media (max-width: 768px) {
+  .joystickContainer {
+    display: flex;
+  }
+}
+
+.label {
+  margin: 0;
+  font-size: 12px;
+  color: #888;
+  user-select: none;
+}
+
+.joystick {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.05), rgba(100, 100, 100, 0.1));
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  touch-action: none;
+  cursor: pointer;
+}
+
+.outerCircle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  background: radial-gradient(circle, rgba(56, 153, 236, 0.8), rgba(30, 100, 200, 1));
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  box-shadow: 0 0 12px rgba(56, 153, 236, 0.6);
+  transform: translate(-50%, -50%);
+  transition: box-shadow 0.1s ease;
+  pointer-events: none;
+}
+
+.directions {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.directionLabel {
+  position: absolute;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.3);
+  font-weight: bold;
+  user-select: none;
+}
+
+.up {
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.down {
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.left {
+  top: 50%;
+  left: 6px;
+  transform: translateY(-50%);
+}
+
+.right {
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+}

@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import styles from './BattleArena.module.css';
+import WASDButtons from './WASDButtons';
 
 // Arena constants (must match backend)
 const ARENA_WIDTH = 100;
@@ -223,6 +224,15 @@ export default function BattleArena({
     };
   }, []);
 
+  // Joystick direction handler
+  const handleJoystickDirection = useCallback(
+    (keys: { w: boolean; a: boolean; s: boolean; d: boolean }) => {
+      keysRef.current = keys;
+      setWasdKeys(keys);
+    },
+    []
+  );
+
   // Physics at fixed 33ms — EXACTLY mirrors server applyMovement() with no dt scaling.
   // Decoupled from rAF so frame rate doesn't affect integration.
   useEffect(() => {
@@ -412,6 +422,8 @@ export default function BattleArena({
 
   return (
     <div className={styles.container}>
+      <WASDButtons onDirectionChange={handleJoystickDirection} />
+
       <div className={styles.arenaSection}>
         <canvas
           ref={canvasRef}
@@ -457,11 +469,15 @@ export default function BattleArena({
       </div>
 
       <div className={styles.controls}>
-        <p>Use WASD to move</p>
-        <p>Click abilities to cast</p>
-        <p>
-          {Object.values(wasdKeys).some((v) => v) ? '🟢 Moving...' : '⚪ Standby'}
-        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+          <div>
+            <p>Use WASD to move</p>
+            <p>Click abilities to cast</p>
+            <p>
+              {Object.values(wasdKeys).some((v) => v) ? '🟢 Moving...' : '⚪ Standby'}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

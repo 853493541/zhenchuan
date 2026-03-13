@@ -1,0 +1,77 @@
+.wasdContainer {
+  display: none; /* Hidden by default (desktop) */
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Show only on mobile screens */
+@media (max-width: 768px) {
+  .wasdContainer {
+    display: flex;
+  }
+}
+
+.wasdGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 50px);
+  grid-template-rows: repeat(2, 50px);
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.wasdButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a2a2a;
+  border: 2px solid #555;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: bold;
+  font-size: 16px;
+  font-family: monospace;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: all 0.1s ease;
+}
+
+.wasdButton:active,
+.wasdButton.active {
+  background: #3899ec;
+  border-color: #66bb6a;
+  box-shadow: 0 0 12px rgba(56, 153, 236, 0.6);
+}
+
+.wasdButton:hover:not(.active) {
+  border-color: #777;
+  background: #333;
+}
+
+/* W button - top center */
+.w {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/* A button - bottom left */
+.a {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+/* S button - bottom center */
+.s {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+/* D button - bottom right */
+.d {
+  grid-column: 3;
+  grid-row: 2;
+}
