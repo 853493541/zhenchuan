@@ -65,6 +65,7 @@ export default function BattleArena({
     d: false,
   });
   const [abilities, setAbilities] = useState<AbilityInfo[]>([]);
+  const [rtt, setRtt] = useState<number | null>(null);
   const localPositionRef = useRef<Position | null>(null); // client-predicted position
   const localVelocityRef = useRef({ x: 0, y: 0 });       // client-predicted velocity
   const keysRef = useRef({ w: false, a: false, s: false, d: false });
@@ -291,6 +292,26 @@ export default function BattleArena({
     distanceRef.current = distance;
   }, [distance]);
 
+  // Measure RTT via ping every 2 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const startTime = performance.now();
+      try {
+        await fetch('/api/game/ping', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ gameId }),
+        });
+        const rttMs = Math.round(performance.now() - startTime);
+        setRtt(rttMs);
+      } catch (err) {
+        // Silently ignore ping failures
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [gameId]);
+
   // Render-only rAF loop — reads refs, no physics.
   // Physics is done in the 33ms interval above.
   useEffect(() => {
@@ -422,6 +443,11 @@ export default function BattleArena({
 
   return (
     <div className={styles.container}>
+      {/* RTT Display */}
+      <div className={styles.rttDisplay}>
+        RTT: {rtt !== null ? `${rtt}ms` : '—'}
+      </div>
+
       <WASDButtons onDirectionChange={handleJoystickDirection} />
 
       <div className={styles.arenaSection}>

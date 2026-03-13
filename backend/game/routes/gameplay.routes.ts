@@ -107,4 +107,12 @@ router.post("/movement", async (req, res) => {
   }
 });
 
+/**
+ * POST /ping - Lightweight ping for RTT measurement
+ * Responds immediately for latency testing
+ */
+router.post("/ping", async (req, res) => {
+  res.json({ pong: true });
+});
+
 export default router;
