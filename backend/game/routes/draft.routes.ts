@@ -281,10 +281,14 @@ router.post("/draft/lock", async (req, res) => {
  */
 router.post("/draft/finalize", async (req, res) => {
   try {
+    console.log("[draft/finalize] 🔔 ENDPOINT CALLED");
     const userId = getUserIdFromCookie(req);
     const { gameId } = req.body;
 
     const game = await GameSession.findById(gameId);
+    const playerName = game?.playerNames?.[userId] || "unknown";
+    console.log(`[draft/finalize] ⏱️ ${playerName} (${userId}) clicked Ready for game: ${gameId}`);
+
     if (!game) return res.status(404).json({ error: "Game not found" });
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
@@ -301,6 +305,19 @@ router.post("/draft/finalize", async (req, res) => {
     const bothReady =
       Object.keys(game.draftReady as any).length === 2 &&
       Object.values(game.draftReady as any).every((v) => v === true);
+
+    console.log(`[draft/finalize] 📊 Draft ready status: ${Object.values(game.draftReady as any).length}/2 players ready`);
+    console.log(`[draft/finalize] 📊 Ready players: ${Object.keys(game.draftReady as any).map((id: string) => game.playerNames?.[id] || id).join(", ")}`);
+    
+    if (bothReady) {
+      console.log(`[draft/finalize] ✅ BOTH PLAYERS READY! Transitioning to BATTLE...`);
+    } else {
+      console.log(`[draft/finalize] ⏳ Waiting for other player...`);
+    }
+
+    // ✅ CRITICAL: Capture state BEFORE making any changes
+    const prevState = bothReady ? structuredClone(game.state) : null;
+    const prevTournament = bothReady ? structuredClone(game.tournament) : null;
 
     if (bothReady) {
       // Transition to battle
@@ -414,7 +431,6 @@ router.post("/draft/finalize", async (req, res) => {
     }
 
     game.markModified("tournament");
-    const prevState = bothReady ? structuredClone(game.state) : null;
     await game.save();
 
     console.log("[draft/finalize] DEBUG - After save to DB:", {
@@ -427,13 +443,16 @@ router.post("/draft/finalize", async (req, res) => {
     });
 
     // ✅ Broadcast BATTLE phase transition to both players immediately
-    if (bothReady && prevState) {
+    if (bothReady && prevState && prevTournament) {
       const diff = diffState(prevState, game.state);
-      console.log(`[draft/finalize] Broadcasting BATTLE phase with ${diff.length} patches and positions`);
+      // Also broadcast tournament phase change
+      const tournamentDiff = diffState(prevTournament, game.tournament);
+      const allDiffs = [...diff, ...tournamentDiff];
+      console.log(`[draft/finalize] Broadcasting BATTLE phase with ${allDiffs.length} patches (${diff.length} state + ${tournamentDiff.length} tournament)`);
       broadcastGameUpdate({
         gameId: gameId,
         version: game.state.version,
-        diff,
+        diff: allDiffs,
         timestamp: Date.now(),
       });
     }
@@ -451,10 +470,16 @@ router.post("/draft/finalize", async (req, res) => {
  */
 router.post("/battle/start", async (req, res) => {
   try {
+    // Disabled: spam during testing
+    // console.log(`[battle/start] ⏱️ RECEIVED`);
     const userId = getUserIdFromCookie(req);
     const { gameId } = req.body;
 
+    // Disabled: spam during testing
+    // console.log(`[battle/start] 📋 Fetching game ${gameId}...`);
     const game = await GameSession.findById(gameId);
+    // Disabled: spam during testing
+    
     if (!game) return res.status(404).json({ error: "Game not found" });
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
@@ -462,28 +487,37 @@ router.post("/battle/start", async (req, res) => {
 
     // ✅ CHECK IF GAME LOOP ALREADY STARTED (prevent duplicate from second player)
     if (GameLoop.get(gameId)) {
-      console.log(`[battle/start] GameLoop already running for ${gameId}, skipping start`);
+      // Disabled: spam during testing
+      // console.log(`[battle/start] ⏩ GameLoop already running for ${gameId}, skipping start`);
       return res.json({ status: "battle_already_started" });
     }
+    // Disabled: spam during testing
+    // console.log(`[battle/start] ✅ No existing GameLoop, proceeding to start new one`);
 
     const playerIds = game.players as [string, string];
-    console.log(`[battle/start] Starting battle for ${gameId}, players: ${playerIds.join(", ")}`);
+    // Disabled: spam during testing
+    // console.log(`[battle/start] Starting battle for ${gameId}, players: ${playerIds.join(", ")}`);
 
     // Use the hands from game.state.players (finalized in draft)
     const player0Hand = (game.state.players[0]?.hand || []) as any[];
     const player1Hand = (game.state.players[1]?.hand || []) as any[];
 
-    console.log(`[battle/start] Finalized hands: P0=${player0Hand.length} cards, P1=${player1Hand.length} cards`);
+    // Disabled: spam during testing
+    // console.log(`[battle/start] Finalized hands: P0=${player0Hand.length} cards, P1=${player1Hand.length} cards`);
 
     // Create battle state with positions + use finalized hands
     const playerIds_arr = [playerIds[0], playerIds[1]] as [string, string];
+    // Disabled: spam during testing
+    // console.log(`[battle/start] 🔧 Initializing battle state...`);
     const battleState = initializeBattleState(game.tournament, playerIds_arr);
+    // console.log(`[battle/start] ✅ Battle state initialized`);
 
     // Override hands (preserve instanceId + cooldown from draft)
     battleState.players[0].hand = player0Hand;
     battleState.players[1].hand = player1Hand;
 
-    console.log(`[battle/start] Battle initialized for gameId ${gameId}`);
+    // Disabled: spam during testing
+    // console.log(`[battle/start] Battle initialized for gameId ${gameId}`);
 
     // Award gold income
     for (const playerId of playerIds) {
@@ -498,16 +532,21 @@ router.post("/battle/start", async (req, res) => {
     game.markModified("tournament");
     await game.save();
 
-    console.log(`[battle/start] Saved to DB, now starting GameLoop`);
+    // Disabled: spam during testing
+    // console.log(`[battle/start] Saved to DB, now starting GameLoop`);
 
     // ✅ START LOOP (only once)
-    // 20Hz = 50ms intervals - stable on free VM without blocking player 2 logins
-    GameLoop.start(gameId, battleState, { tickRate: 20 });
-    console.log(`[battle/start] ✅ GameLoop started for ${gameId}`);
+    // Reduced to 2Hz to prevent event loop blocking on free VM
+    // At 10Hz (100ms/tick), event loop can't process other requests (player 2 gets 503s)
+    // At 2Hz (500ms/tick), gives event loop 400ms to handle other requests
+    GameLoop.start(gameId, battleState, { tickRate: 30 });
+    // Disabled: spam during testing
+    // console.log(`[battle/start] ✅ GameLoop started for ${gameId}`);
 
     res.json({ status: "battle_started" });
   } catch (err: any) {
-    console.error("[battle/start] ❌ ERROR:", err.message);
+    // Disabled: spam during testing
+    // console.error("[battle/start] ❌ ERROR:", err.message);
     console.error(err.stack);
     res.status(500).json({ error: err.message });
   }

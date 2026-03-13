@@ -218,9 +218,11 @@ export default function DraftScreen({
 
   const handleFinalize = async () => {
     try {
+      console.log(`[DraftScreen] 🔘 Player ${selfUserId} clicked READY button!`);
       setLoading(true);
       setError(null);
 
+      console.log(`[DraftScreen] 📤 ${selfUserId}: Sending /draft/finalize request...`);
       const res = await fetch("/api/game/draft/finalize", {
         method: "POST",
         credentials: "include",
@@ -228,14 +230,17 @@ export default function DraftScreen({
         body: JSON.stringify({ gameId }),
       });
 
+      console.log(`[DraftScreen] 📥 ${selfUserId}: Response status: ${res.status}`);
+      
       if (!res.ok) {
         const data = await res.json();
+        console.error(`[DraftScreen] ❌ ${selfUserId}: Error: ${data.error}`);
         setError(data.error || "确认失败");
         return;
       }
 
       const result = await res.json();
-      console.log("[DraftScreen] Finalize result:", result);
+      console.log(`[DraftScreen] ✅ ${selfUserId}: Finalize result:`, result);
 
       // Finalization successful - refetch parent state
       if (onStateChange) {
@@ -244,7 +249,7 @@ export default function DraftScreen({
 
       // If both players are ready and battle is starting, do an additional refetch
       if (result.battleStarting) {
-        console.log("[DraftScreen] Both players ready! Refetching for battle...");
+        console.log(`[DraftScreen] ${selfUserId}: Both players ready! Refetching for battle...`);
         // Wait a moment for backend to fully process
         await new Promise((r) => setTimeout(r, 500));
         if (onStateChange) {
@@ -255,6 +260,7 @@ export default function DraftScreen({
       // Then call parent handler
       await onFinalizeDraft();
     } catch (err: any) {
+      console.error("[DraftScreen] ❌ Exception:", err);
       setError(err.message);
     } finally {
       setLoading(false);

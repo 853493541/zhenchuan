@@ -18,6 +18,50 @@ const app = express();
 console.log("📦 Creating Express app...");
 
 /* =====================================================
+   � VERY EARLY REQUEST LOGGER (catch ALL requests)
+===================================================== */
+app.use((req, res, next) => {
+  // Log EVERY incoming request before anything else processes it
+  // Skip health checks and movement spam but log everything else
+  if (req.path !== '/' && !req.path.includes('movement')) {
+    console.log(`[HTTP-In] ${req.method} ${req.path} from ${req.ip}`);
+  }
+  
+  // Capture response to log status code
+  const originalSend = res.send;
+  res.send = function(data) {
+    const status = res.statusCode;
+    if (req.path !== '/' && !req.path.includes('movement')) {
+      const indicator = status >= 500 ? '❌' : status >= 400 ? '⚠️' : '✅';
+      console.log(`[HTTP-Out] ${indicator} ${status} ${req.method} ${req.path}`);
+    }
+    return originalSend.call(this, data);
+  };
+  next();
+});
+
+console.log("✅ Early request logger enabled with response codes");
+
+/* =====================================================
+   �📊 REQUEST LOGGER (disabled during movement spam)
+===================================================== */
+// Disabled to reduce log spam during movement commands
+// app.use((req, res, next) => {
+//   const start = Date.now();
+//   const originalSend = res.send;
+//   res.send = function(data) {
+//     const duration = Date.now() - start;
+//     const status = res.statusCode;
+//     const indicator = status >= 500 ? '❌' : status >= 400 ? '⚠️' : '✅';
+//     console.log(`${indicator} [${status}] ${req.method} ${req.path} (${duration}ms)`);
+//     return originalSend.call(this, data);
+//   };
+//   next();
+// });
+
+console.log("✅ Request logger disabled (movement spam)");
+
+/* =====================================================
    🌐 CORS (for development)
 ===================================================== */
 

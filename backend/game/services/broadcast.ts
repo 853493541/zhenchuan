@@ -29,7 +29,8 @@ export function broadcastGameUpdate(params: BroadcastParams) {
 
   subscriptionManager.broadcast(gameId, message);
 
-  console.log(
-    `[Broadcast] Game ${gameId} v${version}: ${diff.length} patches, ${events?.length || 0} events`
-  );
+  // Disabled: too much spam in logs
+  // console.log(
+  //   `[Broadcast] Game ${gameId} v${version}: ${diff.length} patches, ${events?.length || 0} events`
+  // );
 }

@@ -33,7 +33,8 @@ export class GameLoop {
   private tickInterval: any;
   private playerInputs: Map<number, MovementInput | null> = new Map();
   private lastBroadcast = 0;
-  private broadcastInterval = 33; // ms (30 Hz broadcasts, slightly slower than game loop)
+  private ticksSinceBroadcast = 0;
+  private broadcastTickInterval = 2; // Broadcast every 2 ticks (so at 2Hz, broadcasts ~1/second)
 
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
@@ -129,24 +130,31 @@ export class GameLoop {
    * Single tick of the game loop
    */
   private tick() {
+    const tickStart = performance.now();
+
     if (this.state.gameOver) {
       this.stop();
       return;
     }
 
-    const now = Date.now();
-
     // 1. Apply player movement
+    const moveStart = performance.now();
     this.state.players.forEach((player, idx) => {
       const input = this.playerInputs.get(idx) ?? null;
       applyMovement(player, input, this.tickRate);
     });
+    const moveTime = performance.now() - moveStart;
 
     // 2. Check win condition
+    const winStart = performance.now();
     checkGameOver(this.state);
+    const winTime = performance.now() - winStart;
 
-    // 3. Broadcast position updates (throttled to 30Hz, only when needed)
-    if (now - this.lastBroadcast >= this.broadcastInterval) {
+    // 3. Broadcast position updates (throttled to reduce bandwidth)
+    let broadcastTime = 0;
+    this.ticksSinceBroadcast++;
+    if (this.ticksSinceBroadcast >= this.broadcastTickInterval) {
+      const bcastStart = performance.now();
       // Increment version only on broadcasts
       this.state.version = (this.state.version ?? 0) + 1;
       
@@ -165,12 +173,27 @@ export class GameLoop {
         timestamp: Date.now(),
       });
       
-      this.lastBroadcast = now;
+      broadcastTime = performance.now() - bcastStart;
+      this.ticksSinceBroadcast = 0;
     }
 
     // 4. Auto-save to DB (every 50 ticks ≈ 0.8s intervals to reduce DB load on free VM)
+    let saveTime = 0;
     if (this.state.version % 50 === 0) {
+      const saveStart = performance.now();
       this.saveToDB();
+      saveTime = performance.now() - saveStart;
+    }
+
+    const tickTotal = performance.now() - tickStart;
+    
+    // Only log when operations take significant time (>50ms)
+    if (tickTotal > 50 || broadcastTime > 10 || saveTime > 5) {
+      console.log(
+        `[GameLoop] Tick ${this.state.version} | Total: ${tickTotal.toFixed(2)}ms | ` +
+        `Move: ${moveTime.toFixed(2)}ms | Win: ${winTime.toFixed(2)}ms | ` +
+        `Broadcast: ${broadcastTime.toFixed(2)}ms | Save: ${saveTime.toFixed(2)}ms`
+      );
     }
   }
 

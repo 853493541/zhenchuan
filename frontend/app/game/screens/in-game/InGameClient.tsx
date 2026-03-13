@@ -262,7 +262,7 @@ export default function InGameClient({
   });
 
   if (tournament && tournament.phase === "DRAFT") {
-    console.log("[InGameClient] Showing DRAFT screen");
+    console.log("[InGameClient] tournament.phase === DRAFT, showing DRAFT screen. Tournament:", tournament);
     return (
       <DraftScreen
         gameId={gameId}
@@ -276,6 +276,10 @@ export default function InGameClient({
         onStateChange={refetch}
       />
     );
+  }
+  
+  if (tournament) {
+    console.log("[InGameClient] tournament.phase !== DRAFT, showing BATTLE screen. Phase:", tournament.phase);
   }
 
   /* ================= RENDER BATTLE ================= */

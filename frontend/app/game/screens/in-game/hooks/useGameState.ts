@@ -234,22 +234,58 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             setRtt(rttValue);
             
             const emoji = rttValue < 20 ? "⚡" : rttValue < 50 ? "✅" : rttValue < 100 ? "⚠️" : "❌";
-            console.log(
-              `${emoji} [Sync] RTT: ${rttValue}ms (${message.diff.length} patches, v${message.version})`
-            );
+            // Disabled: spam during testing
+            // console.log(
+            //   `${emoji} [Sync] RTT: ${rttValue}ms (${message.diff.length} patches, v${message.version})`
+            // );
           }
 
           setGame((prev) => {
             if (!prev) return prev;
-            return {
-              ...prev,
-              state: applyDiff(prev.state, message.diff!),
-            };
+            
+            // Separate tournament and state patches based on path prefix
+            const tournamentKeys = ["phase", "economy", "selectedAbilities", "bench", "shop", "battleNumber"];
+            const tournamentPatches = message.diff!.filter(p => {
+              const firstKey = p.path.split("/")[1]; // Get first path segment after leading /
+              return tournamentKeys.includes(firstKey);
+            });
+            const statePatches = message.diff!.filter(p => !tournamentPatches.includes(p));
+            
+            console.log("[Patches] Distribution:", {
+              total: message.diff!.length,
+              state: statePatches.length,
+              tournament: tournamentPatches.length,
+              statePaths: statePatches.map(p => p.path),
+              tournamentPaths: tournamentPatches.map(p => p.path),
+            });
+            
+            let updated = prev;
+            
+            // Apply state patches to game.state
+            if (statePatches.length > 0) {
+              updated = {
+                ...updated,
+                state: applyDiff(updated.state, statePatches),
+              };
+            }
+            
+            // Apply tournament patches to game.tournament
+            if (tournamentPatches.length > 0) {
+              console.log("[Patches] Applying tournament patches to game.tournament");
+              updated = {
+                ...updated,
+                tournament: applyDiff(updated.tournament, tournamentPatches),
+              };
+              console.log("[Patches] After applying tournament patches, phase is now:", updated.tournament?.phase);
+            }
+            
+            return updated;
           });
 
-          console.log(
-            `[WS] Received ${message.diff.length} patches (v${message.version})`
-          );
+          // Disabled: spam during testing
+          // console.log(
+          //   `[WS] Received ${message.diff.length} patches (v${message.version})`
+          // );
         }
       } catch (err) {
         console.error("[WS] Failed to parse message:", err);
