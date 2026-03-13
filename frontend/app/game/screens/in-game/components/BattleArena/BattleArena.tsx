@@ -63,7 +63,6 @@ export default function BattleArena({
   const localPositionRef = useRef<Position | null>(null); // client-predicted position
   const localVelocityRef = useRef({ x: 0, y: 0 });       // client-predicted velocity
   const keysRef = useRef({ w: false, a: false, s: false, d: false });
-  const lastFrameRef = useRef(0);
   const opponentPrevRef = useRef<Position | null>(null);  // for opponent interpolation
   const opponentNextRef = useRef<Position | null>(null);
   const opponentLerpRef = useRef(0);
@@ -100,15 +99,15 @@ export default function BattleArena({
     }
   }, [me?.position?.x, me?.position?.y]);
 
-  // Server correction — smooth blend toward server position instead of hard snap.
-  // When moving: gentle nudge (10%) so prediction stays smooth.
-  // When stopped: stronger pull (30%) to anchor resting position.
+  // Server correction — applied on each broadcast.
+  // While moving: tiny 3% nudge (mostly invisible, handles timer jitter).
+  // While stopped: 25% pull to anchor final resting position.
   useEffect(() => {
     if (!me?.position || !initializedRef.current) return;
     const local = localPositionRef.current;
     if (!local) return;
     const isMoving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
-    const blend = isMoving ? 0.1 : 0.3;
+    const blend = isMoving ? 0.03 : 0.25;
     localPositionRef.current = {
       x: local.x + (me.position.x - local.x) * blend,
       y: local.y + (me.position.y - local.y) * blend,
@@ -203,7 +202,51 @@ export default function BattleArena({
     };
   }, []);
 
-  // Send movement at 33ms — matches server tick rate, minimises ticks with stale input
+  // Physics at fixed 33ms — EXACTLY mirrors server applyMovement() with no dt scaling.
+  // Decoupled from rAF so frame rate doesn't affect integration.
+  useEffect(() => {
+    // Physics constants — must match backend/game/engine/loop/movement.ts
+    const MAX_SPEED = 0.5; // player.moveSpeed on server
+    const ACCEL = 0.3;
+    const DECEL = 0.9;
+
+    const tick = () => {
+      const pos = localPositionRef.current;
+      if (!pos) return;
+      const vel = localVelocityRef.current;
+      const keys = keysRef.current;
+
+      let ix = 0, iy = 0;
+      if (keys.w) iy -= 1;
+      if (keys.s) iy += 1;
+      if (keys.a) ix -= 1;
+      if (keys.d) ix += 1;
+
+      if (ix !== 0 || iy !== 0) {
+        const len = Math.sqrt(ix * ix + iy * iy);
+        const targetVx = (ix / len) * MAX_SPEED;
+        const targetVy = (iy / len) * MAX_SPEED;
+        // Matches server: vel += (target - vel) * ACCEL
+        vel.x += (targetVx - vel.x) * ACCEL;
+        vel.y += (targetVy - vel.y) * ACCEL;
+      } else {
+        // Matches server: vel *= DECEL
+        vel.x *= DECEL;
+        vel.y *= DECEL;
+      }
+
+      // Matches server: position += velocity (no dt)
+      localPositionRef.current = {
+        x: Math.max(2, Math.min(98, pos.x + vel.x)),
+        y: Math.max(2, Math.min(98, pos.y + vel.y)),
+      };
+    };
+
+    const physicsId = setInterval(tick, 33);
+    return () => clearInterval(physicsId);
+  }, []);
+
+  // Send movement at 33ms — synced with physics so server gets fresh input every tick
   useEffect(() => {
     const interval = setInterval(sendMovement, 33);
     return () => clearInterval(interval);
@@ -214,55 +257,19 @@ export default function BattleArena({
     distanceRef.current = distance;
   }, [distance]);
 
-  // Single stable loop: client-side prediction + opponent interpolation + canvas render
-  // Uses only refs so it never restarts on prop/state changes
+  // Render-only rAF loop — reads refs, no physics.
+  // Physics is done in the 33ms interval above.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const TICK_MS = 33;    // server tick duration (30 Hz)
-    const MAX_SPEED = 0.5; // units/tick — matches server's player.moveSpeed
-    const ACCEL = 0.3;     // must match server
-    const DECEL = 0.9;     // must match server
-
     let animId: number;
 
-    const loop = (now: number) => {
-      const dt = lastFrameRef.current ? (now - lastFrameRef.current) / TICK_MS : 1;
-      lastFrameRef.current = now;
-
-      // --- Client-side prediction for your dot ---
-      const pos = localPositionRef.current;
-      if (pos) {
-        const vel = localVelocityRef.current;
-        const keys = keysRef.current;
-        let ix = 0, iy = 0;
-        if (keys.w) iy -= 1;
-        if (keys.s) iy += 1;
-        if (keys.a) ix -= 1;
-        if (keys.d) ix += 1;
-
-        if (ix !== 0 || iy !== 0) {
-          const len = Math.sqrt(ix * ix + iy * iy);
-          ix /= len; iy /= len;
-          vel.x += (ix * MAX_SPEED - vel.x) * ACCEL * dt;
-          vel.y += (iy * MAX_SPEED - vel.y) * ACCEL * dt;
-        } else {
-          const decel = Math.pow(DECEL, dt);
-          vel.x *= decel;
-          vel.y *= decel;
-        }
-
-        localPositionRef.current = {
-          x: Math.max(2, Math.min(98, pos.x + vel.x * dt)),
-          y: Math.max(2, Math.min(98, pos.y + vel.y * dt)),
-        };
-      }
-
+    const loop = () => {
       // --- Opponent interpolation ---
-      const opElapsed = now - opponentLerpRef.current;
+      const opElapsed = performance.now() - opponentLerpRef.current;
       const opT = Math.min(opElapsed / 50, 1);
       const opPrev = opponentPrevRef.current;
       const opNext = opponentNextRef.current;
@@ -338,7 +345,7 @@ export default function BattleArena({
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, []); // stable — all data accessed via refs
+  }, []); // stable — all data via refs
 
   return (
     <div className={styles.container}>
