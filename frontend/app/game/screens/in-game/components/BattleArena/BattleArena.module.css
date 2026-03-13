@@ -1,196 +1,297 @@
+/* ============================================================
+   CONTAINER — full area, everything stacked
+   ============================================================ */
 .container {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 20px;
-  height: 100%;
-  background: #0d0d0d;
-  color: #fff;
-  font-family: 'Courier New', monospace;
   position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #010409;
+  font-family: 'Courier New', monospace;
+  color: #fff;
+  user-select: none;
 }
 
-.rttDisplay {
+/* ============================================================
+   CANVAS WRAPPER  — fills entire container
+   ============================================================ */
+.canvasWrap {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  font-size: 11px;
-  color: #888;
-  font-family: monospace;
-  letter-spacing: 0.5px;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  pointer-events: none;
-}
-
-.arenaSection {
-  display: flex;
-  gap: 20px;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  perspective: 1200px;
+  inset: 0;
 }
 
 .canvas {
-  border: 2px solid #444;
-  background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-  flex-shrink: 0;
-  transform: rotateX(240deg) rotateZ(45deg) scaleY(0.6);
-  transform-style: preserve-3d;
-  box-shadow: 
-    -10px 20px 30px rgba(0, 0, 0, 0.8),
-    inset -2px -2px 4px rgba(0, 0, 0, 0.6);
-}
-
-.info {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 150px;
-}
-
-.hpBar {
+  display: block;
   width: 100%;
-  height: 20px;
-  background: #333;
-  border: 1px solid #555;
+  height: 100%;
+}
+
+/* ============================================================
+   TOP HUD  — player bars + distance badge
+   ============================================================ */
+.topHud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.72) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* One player's HP row */
+.playerBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+/* Reversed layout for the opponent side */
+.playerBar.flip {
+  flex-direction: row-reverse;
+}
+
+.barLabel {
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #888;
+  min-width: 36px;
+  text-transform: uppercase;
+}
+
+.hpTrack {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 4px;
   overflow: hidden;
 }
 
 .hpFill {
   height: 100%;
-  background: linear-gradient(90deg, #388c3c, #66bb6a);
-  transition: width 0.1s ease-out;
+  border-radius: 4px;
+  transition: width 0.15s ease-out;
 }
 
-.abilityPanel {
-  flex-shrink: 0;
-  padding: 15px;
-  background: #1a1a1a;
-  border: 1px solid #444;
-  border-radius: 8px;
+.hpNum {
+  font-size: 12px;
+  font-weight: bold;
+  color: #ddd;
+  min-width: 28px;
+  text-align: center;
 }
 
-.abilityPanel h3 {
-  margin: 0 0 10px 0;
-  font-size: 14px;
-  color: #aaa;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.abilityGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 8px;
-}
-
-.abilityButton {
-  position: relative;
-  padding: 8px;
-  background: #2a2a2a;
-  border: 2px solid #444;
+/* Distance badge in the center */
+.distBadge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
+  padding: 4px 12px;
+  min-width: 64px;
+  flex-shrink: 0;
+}
+
+.distVal {
+  font-size: 17px;
+  font-weight: bold;
   color: #fff;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-  font-size: 11px;
+  line-height: 1;
 }
 
-.abilityButton:hover:not(:disabled) {
-  border-color: #3899ec;
+.distLbl {
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: #666;
+  text-transform: uppercase;
+}
+
+/* ============================================================
+   RTT BADGE
+   ============================================================ */
+.rttBadge {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  font-size: 9px;
+  color: #555;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 4px;
+  padding: 3px 7px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* ============================================================
+   BOTTOM HUD  — controls + abilities
+   ============================================================ */
+.bottomHud {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, transparent 100%);
+  z-index: 10;
+}
+
+/* WASD wrapper (left side) */
+.wasdWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Moving status dot */
+.movingDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   background: #333;
+  border: 1px solid #555;
+  transition: background 0.1s, box-shadow 0.1s;
 }
 
-.abilityButton.ready {
-  background: #2d5a3d;
-  border-color: #66bb6a;
-  box-shadow: 0 0 8px rgba(102, 187, 106, 0.3);
+.movingDot.moving {
+  background: #44cc55;
+  box-shadow: 0 0 6px rgba(68, 204, 85, 0.8);
 }
 
-.abilityButton.ready:hover {
-  background: #3d6a4d;
-  box-shadow: 0 0 12px rgba(102, 187, 106, 0.5);
+/* ============================================================
+   ABILITY BUTTONS  (right side of bottom hud)
+   ============================================================ */
+.abilityRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex: 1;
 }
 
-.abilityButton.notReady {
-  opacity: 0.5;
+.abilityBtn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  padding: 6px 4px;
+  background: rgba(8, 16, 32, 0.85);
+  border: 2px solid rgba(60, 100, 180, 0.35);
+  border-radius: 10px;
+  color: #ccc;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.abilityBtn:hover:not(:disabled) {
+  border-color: rgba(68, 136, 255, 0.8);
+  background: rgba(20, 45, 100, 0.7);
+  box-shadow: 0 0 14px rgba(68, 136, 255, 0.22);
+}
+
+.abilityBtn.ready {
+  border-color: rgba(60, 190, 80, 0.7);
+  background: rgba(8, 36, 18, 0.88);
+  box-shadow: 0 0 10px rgba(60, 190, 80, 0.2);
+}
+
+.abilityBtn.ready:hover {
+  box-shadow: 0 0 20px rgba(60, 190, 80, 0.4);
+}
+
+.abilityBtn.notReady {
+  opacity: 0.4;
   cursor: not-allowed;
-  background: #1a1a1a;
-  border-color: #555;
 }
 
-.abilityButton:disabled {
-  opacity: 0.5;
+.abilityBtn:disabled {
   cursor: not-allowed;
+}
+
+.abilityKey {
+  font-size: 9px;
+  color: #555;
+  line-height: 1;
+  margin-bottom: 2px;
 }
 
 .abilityName {
+  font-size: 9px;
   font-weight: bold;
   text-transform: uppercase;
-  margin-bottom: 2px;
+  letter-spacing: 0.5px;
+  color: #ddd;
+  word-break: break-word;
+  line-height: 1.2;
 }
 
-.abilityRange {
-  font-size: 10px;
-  color: #aaa;
-  margin-bottom: 2px;
+.abilityMeta {
+  font-size: 9px;
+  color: #777;
+  margin-top: 3px;
 }
 
-.abilityCooldown {
+/* Cooldown badge */
+.cdOverlay {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  background: #ec3838;
-  color: white;
-  width: 18px;
-  height: 18px;
-  border-radius: 3px;
+  top: 4px;
+  right: 4px;
+  background: rgba(200, 48, 48, 0.92);
+  color: #fff;
+  font-size: 9px;
+  font-weight: bold;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
-  font-weight: bold;
+  padding: 0 3px;
 }
 
-.controls {
-  flex-shrink: 0;
-  padding: 15px;
-  background: #1a1a1a;
-  border: 1px solid #444;
-  border-radius: 8px;
-  text-align: center;
-  font-size: 12px;
-  color: #aaa;
-}
-
-.controls p {
-  margin: 5px 0;
-}
-
-@media (max-width: 800px) {
-  .container {
-    gap: 10px;
-    padding: 10px;
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 600px) {
+  .abilityBtn {
+    width: 60px;
+    height: 60px;
   }
 
-  .arenaSection {
-    flex-direction: column;
+  .topHud {
+    padding: 8px 10px;
   }
 
-  .canvas {
-    max-width: 100%;
-    height: auto;
+  .distBadge {
+    min-width: 50px;
+    padding: 3px 8px;
   }
 
-  .abilityGrid {
-    grid-template-columns: repeat(3, 1fr);
+  .distVal {
+    font-size: 14px;
   }
 }

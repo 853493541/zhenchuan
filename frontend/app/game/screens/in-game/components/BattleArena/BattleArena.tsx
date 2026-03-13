@@ -4,129 +4,334 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import styles from './BattleArena.module.css';
 import WASDButtons from './WASDButtons';
 
-// Arena constants (must match backend)
-const ARENA_WIDTH = 100;
+/* ============================================================
+   ARENA SETTINGS  (must match backend)
+   ============================================================ */
+const ARENA_WIDTH  = 100;
 const ARENA_HEIGHT = 100;
-const CANVAS_SCALE = 4; // 1 unit = 4 pixels for display
 
-/* ================= ISOMETRIC 3D RENDERING ================= */
+/* Character visual */
+const CHAR_HEIGHT = 5.0;   // world units tall
+const CHAR_RADIUS = 1.7;   // world units wide (radius)
 
-// Cylinder height in screen pixels (short squat cylinders)
-const CYLINDER_HEIGHT = 12; // Short cylinder
-const CYLINDER_RADIUS = 8;  // Base radius in screen pixels
+/* 3rd-person camera */
+const CAM_DIST_BACK  = 22;   // units behind player
+const CAM_HEIGHT     = 13;   // units above ground
+const CAM_LOOK_AHEAD = 5;    // look-at is this many units ahead of player
+const CAM_SMOOTH     = 0.06; // direction lerp per frame (~1s to fully rotate)
+const NEAR_CLIP      = 0.8;
 
-// Convert 2D arena coords to isometric 3D screen coords
-// Viewing from above-left at 45° angle, tilted forward
-function toIsometricScreen(
-  x: number,
-  y: number,
-  scale: number
-): { screenX: number; screenY: number } {
-  // Isometric projection creates a 3D effect:
-  // x-axis tilts right, y-axis tilts left and down
-  // screenY is pushed down to show height perspective
-  const screenX = (x - y) * scale * 0.866; // cos(30°) for realistic angle
-  const screenY = (x + y) * scale * 0.5 - CYLINDER_HEIGHT / 2;
-  return { screenX, screenY };
+const FOV_RAD = (65 * Math.PI) / 180;
+
+/* ============================================================
+   VEC3 MATH
+   ============================================================ */
+type V3 = { x: number; y: number; z: number };
+const v3       = (x: number, y: number, z: number): V3 => ({ x, y, z });
+const sub3     = (a: V3, b: V3): V3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+const scale3   = (a: V3, s: number): V3 => ({ x: a.x * s, y: a.y * s, z: a.z * s });
+const dot3     = (a: V3, b: V3): number => a.x * b.x + a.y * b.y + a.z * b.z;
+const cross3   = (a: V3, b: V3): V3 => ({
+  x: a.y * b.z - a.z * b.y,
+  y: a.z * b.x - a.x * b.z,
+  z: a.x * b.y - a.y * b.x,
+});
+const norm3 = (a: V3): V3 => {
+  const l = Math.sqrt(dot3(a, a));
+  return l < 1e-6 ? v3(0, 1, 0) : scale3(a, 1 / l);
+};
+
+/* ============================================================
+   CAMERA
+   ============================================================ */
+interface Cam {
+  pos: V3;
+  fwd: V3;
+  right: V3;
+  up: V3;
+  fl: number; // focal length (px)
 }
 
-// Draw a 3D isometric cylinder (building)
-function drawIsometricCylinder(
+function buildCam(
+  playerPos: V3,
+  dir: { x: number; y: number }, // unit 2-D forward direction
+  W: number,
+  H: number,
+): Cam {
+  const camPos = v3(
+    playerPos.x - dir.x * CAM_DIST_BACK,
+    playerPos.y - dir.y * CAM_DIST_BACK,
+    CAM_HEIGHT,
+  );
+  const lookAt = v3(
+    playerPos.x + dir.x * CAM_LOOK_AHEAD,
+    playerPos.y + dir.y * CAM_LOOK_AHEAD,
+    1.5, // aim at chest height
+  );
+  const worldUp = v3(0, 0, 1);
+  const fwd   = norm3(sub3(lookAt, camPos));
+  const right = norm3(cross3(fwd, worldUp));
+  const up    = norm3(cross3(right, fwd));
+  const fl    = (W / 2) / Math.tan(FOV_RAD / 2);
+  return { pos: camPos, fwd, right, up, fl };
+}
+
+interface ScreenPt { x: number; y: number; depth: number; }
+
+function projPt(world: V3, cam: Cam, W: number, H: number): ScreenPt | null {
+  const t = sub3(world, cam.pos);
+  const depth = dot3(t, cam.fwd);
+  if (depth < NEAR_CLIP) return null;
+  const cx = dot3(t, cam.right);
+  const cy = dot3(t, cam.up);
+  return {
+    x: (cx / depth) * cam.fl + W / 2,
+    y: -(cy / depth) * cam.fl + H / 2,
+    depth,
+  };
+}
+
+/* ============================================================
+   SCENE RENDERING HELPERS
+   ============================================================ */
+
+function renderBg(ctx: CanvasRenderingContext2D, cam: Cam, W: number, H: number) {
+  const far = projPt(
+    v3(cam.pos.x + cam.fwd.x * 5000, cam.pos.y + cam.fwd.y * 5000, 0),
+    cam, W, H,
+  );
+  const hY = far ? Math.max(0, Math.min(H * 0.7, far.y)) : H * 0.45;
+
+  const sky = ctx.createLinearGradient(0, 0, 0, hY + 30);
+  sky.addColorStop(0,   '#010409');
+  sky.addColorStop(0.6, '#03091a');
+  sky.addColorStop(1,   '#071628');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, hY + 30);
+
+  const gnd = ctx.createLinearGradient(0, hY, 0, H);
+  gnd.addColorStop(0, '#071628');
+  gnd.addColorStop(1, '#020810');
+  ctx.fillStyle = gnd;
+  ctx.fillRect(0, hY, W, H - hY);
+}
+
+function renderFloor(ctx: CanvasRenderingContext2D, cam: Cam, W: number, H: number) {
+  const corners = [
+    v3(0, 0, 0), v3(ARENA_WIDTH, 0, 0),
+    v3(ARENA_WIDTH, ARENA_HEIGHT, 0), v3(0, ARENA_HEIGHT, 0),
+  ];
+  const sc = corners
+    .map(c => projPt(c, cam, W, H))
+    .filter((p): p is ScreenPt => p !== null);
+
+  if (sc.length >= 3) {
+    ctx.fillStyle = '#0a1620';
+    ctx.beginPath();
+    ctx.moveTo(sc[0].x, sc[0].y);
+    for (let i = 1; i < sc.length; i++) ctx.lineTo(sc[i].x, sc[i].y);
+    ctx.lineTo(W + 20, H + 20);
+    ctx.lineTo(-20, H + 20);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.lineWidth = 0.5;
+  ctx.strokeStyle = 'rgba(18, 55, 100, 0.65)';
+  for (let x = 0; x <= ARENA_WIDTH; x += 10) {
+    const a = projPt(v3(x, 0, 0), cam, W, H);
+    const b = projPt(v3(x, ARENA_HEIGHT, 0), cam, W, H);
+    if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+  }
+  for (let y = 0; y <= ARENA_HEIGHT; y += 10) {
+    const a = projPt(v3(0, y, 0), cam, W, H);
+    const b = projPt(v3(ARENA_WIDTH, y, 0), cam, W, H);
+    if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+  }
+
+  const edges: [V3, V3][] = [
+    [v3(0, 0, 0),                      v3(ARENA_WIDTH, 0, 0)],
+    [v3(ARENA_WIDTH, 0, 0),            v3(ARENA_WIDTH, ARENA_HEIGHT, 0)],
+    [v3(ARENA_WIDTH, ARENA_HEIGHT, 0), v3(0, ARENA_HEIGHT, 0)],
+    [v3(0, ARENA_HEIGHT, 0),           v3(0, 0, 0)],
+  ];
+  ctx.strokeStyle = 'rgba(40, 140, 255, 0.9)';
+  ctx.lineWidth   = 1.8;
+  ctx.shadowColor = '#1a6fff';
+  ctx.shadowBlur  = 9;
+  for (const [a, b] of edges) {
+    const pa = projPt(a, cam, W, H);
+    const pb = projPt(b, cam, W, H);
+    if (pa && pb) { ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke(); }
+  }
+  ctx.shadowBlur = 0;
+}
+
+function renderRangeCircle(
   ctx: CanvasRenderingContext2D,
-  arenaX: number,
-  arenaY: number,
-  scale: number,
-  color: string
+  pos: V3,
+  radius: number,
+  cam: Cam,
+  W: number, H: number,
+  color: string,
 ) {
-  const screen = toIsometricScreen(arenaX, arenaY, scale);
-  const screenX = screen.screenX;
-  const screenY = screen.screenY;
-  
-  // Draw cylinder body (tall rectangle showing height)
-  ctx.fillStyle = color;
-  ctx.globalAlpha = 0.85;
-  ctx.fillRect(
-    screenX - CYLINDER_RADIUS * 0.6,
-    screenY,
-    CYLINDER_RADIUS * 1.2,
-    CYLINDER_HEIGHT
-  );
-  ctx.globalAlpha = 1.0;
-  
-  // Draw left side shading (darker)
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+  const segments = 48;
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1;
+  ctx.setLineDash([5, 6]);
   ctx.beginPath();
-  ctx.moveTo(screenX - CYLINDER_RADIUS * 0.6, screenY);
-  ctx.lineTo(screenX - CYLINDER_RADIUS * 0.6 - 2, screenY - 8);
-  ctx.lineTo(screenX - CYLINDER_RADIUS * 0.6 - 2, screenY - 8 + CYLINDER_HEIGHT);
-  ctx.lineTo(screenX - CYLINDER_RADIUS * 0.6, screenY + CYLINDER_HEIGHT);
-  ctx.fill();
-  
-  // Draw right side shading (lighter for 3D effect)
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-  ctx.beginPath();
-  ctx.moveTo(screenX + CYLINDER_RADIUS * 0.6, screenY);
-  ctx.lineTo(screenX + CYLINDER_RADIUS * 0.6 + 2, screenY - 8);
-  ctx.lineTo(screenX + CYLINDER_RADIUS * 0.6 + 2, screenY - 8 + CYLINDER_HEIGHT);
-  ctx.lineTo(screenX + CYLINDER_RADIUS * 0.6, screenY + CYLINDER_HEIGHT);
-  ctx.fill();
-  
-  // Draw top ellipse (you're looking down at it slightly)
+  let first = true;
+  for (let i = 0; i <= segments; i++) {
+    const ang = (i / segments) * Math.PI * 2;
+    const p = projPt(
+      v3(pos.x + Math.cos(ang) * radius, pos.y + Math.sin(ang) * radius, 0.05),
+      cam, W, H,
+    );
+    if (!p) { first = true; continue; }
+    if (first) { ctx.moveTo(p.x, p.y); first = false; } else ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function shadeHex(hex: string, amt: number): string {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const r = Math.max(0, Math.min(255, (n >> 16) + amt));
+  const g = Math.max(0, Math.min(255, ((n >> 8) & 0xff) + amt));
+  const b = Math.max(0, Math.min(255, (n & 0xff) + amt));
+  return `rgb(${r},${g},${b})`;
+}
+
+function pRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number,
+) {
+  const cr = Math.min(r, w / 2, Math.max(0, h / 2));
+  ctx.moveTo(x + cr, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, cr);
+  ctx.arcTo(x + w, y + h, x,     y + h, cr);
+  ctx.arcTo(x,     y + h, x,     y,     cr);
+  ctx.arcTo(x,     y,     x + w, y,     cr);
+  ctx.closePath();
+}
+
+function renderCharacter(
+  ctx: CanvasRenderingContext2D,
+  pos: V3,
+  cam: Cam,
+  W: number, H: number,
+  color: string,
+  glowColor: string,
+  hpFrac: number,
+  hpCurrent: number,
+  isMe: boolean,
+) {
+  const baseP = projPt(v3(pos.x, pos.y, 0),           cam, W, H);
+  const topP  = projPt(v3(pos.x, pos.y, CHAR_HEIGHT), cam, W, H);
+  if (!baseP || !topP) return;
+
+  const depth  = baseP.depth;
+  const rs     = (CHAR_RADIUS / depth) * cam.fl;
+  if (rs < 1.5) return;
+
+  const bodyH     = baseP.y - topP.y;
+  if (bodyH < 1) return;
+
+  const cx        = topP.x;
+  const ellipseRy = rs * 0.32;
+
+  // Ground shadow
   ctx.save();
-  ctx.translate(screenX, screenY - 8);
-  ctx.scale(1, 0.35); // Compress vertical for ellipse perspective
-  
-  // Top base color
-  ctx.fillStyle = color;
-  ctx.globalAlpha = 0.95;
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle   = '#000';
   ctx.beginPath();
-  ctx.ellipse(0, 0, CYLINDER_RADIUS * 0.6, CYLINDER_RADIUS * 0.6, 0, 0, Math.PI * 2);
+  ctx.ellipse(baseP.x, baseP.y, rs * 1.5, rs * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Cylinder body
+  const bodyGrad = ctx.createLinearGradient(cx - rs, 0, cx + rs, 0);
+  bodyGrad.addColorStop(0,    shadeHex(color, -45));
+  bodyGrad.addColorStop(0.28, color);
+  bodyGrad.addColorStop(0.55, color);
+  bodyGrad.addColorStop(1,    shadeHex(color, -40));
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.moveTo(cx - rs, topP.y);
+  ctx.lineTo(cx - rs, baseP.y);
+  ctx.ellipse(baseP.x, baseP.y, rs, ellipseRy, 0, Math.PI, 0, true);
+  ctx.lineTo(cx + rs, topP.y);
+  ctx.ellipse(topP.x,  topP.y,  rs, ellipseRy, 0, 0, Math.PI, true);
+  ctx.closePath();
+  ctx.fill();
+
+  // Top face
+  ctx.fillStyle  = color;
+  ctx.globalAlpha = 0.92;
+  ctx.beginPath();
+  ctx.ellipse(cx, topP.y, rs, ellipseRy, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1.0;
-  
-  // Highlight on top
-  const topGradient = ctx.createLinearGradient(
-    -CYLINDER_RADIUS * 0.6, -CYLINDER_RADIUS * 0.6 / 2,
-    CYLINDER_RADIUS * 0.6, CYLINDER_RADIUS * 0.6 / 2
-  );
-  topGradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
-  topGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
-  topGradient.addColorStop(1, 'rgba(0, 0, 0, 0.1)');
-  
-  ctx.fillStyle = topGradient;
+
+  // Top highlight
+  const topHL = ctx.createRadialGradient(cx - rs * 0.28, topP.y - ellipseRy * 0.35, 0, cx, topP.y, rs);
+  topHL.addColorStop(0,   'rgba(255,255,255,0.5)');
+  topHL.addColorStop(0.5, 'rgba(255,255,255,0.1)');
+  topHL.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = topHL;
   ctx.beginPath();
-  ctx.ellipse(0, 0, CYLINDER_RADIUS * 0.6, CYLINDER_RADIUS * 0.6, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, topP.y, rs, ellipseRy, 0, 0, Math.PI * 2);
   ctx.fill();
-  
-  ctx.restore();
-  
-  // Draw shadow on ground (elongated toward top-left)
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+
+  // Glow outline for the local player
+  if (isMe) {
+    ctx.save();
+    ctx.strokeStyle = glowColor;
+    ctx.lineWidth   = 1.8;
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur  = 14;
+    ctx.beginPath();
+    ctx.moveTo(cx - rs, topP.y);
+    ctx.lineTo(cx - rs, baseP.y);
+    ctx.ellipse(baseP.x, baseP.y, rs, ellipseRy, 0, Math.PI, 0, true);
+    ctx.lineTo(cx + rs, topP.y);
+    ctx.ellipse(topP.x, topP.y, rs, ellipseRy, 0, 0, Math.PI, true);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Floating HP bar
+  const barW = Math.max(rs * 2.6, 38);
+  const barH = 5;
+  const barX = cx - barW / 2;
+  const barY = topP.y - 18;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.beginPath();
-  ctx.ellipse(
-    screenX - 8,
-    screenY + CYLINDER_HEIGHT + 2,
-    CYLINDER_RADIUS * 0.8,
-    3,
-    -0.3,
-    0,
-    Math.PI * 2
-  );
+  pRoundRect(ctx, barX - 1, barY - 1, barW + 2, barH + 2, 3);
   ctx.fill();
+
+  const hpColor = hpFrac > 0.5 ? '#44dd55' : hpFrac > 0.25 ? '#ffcc22' : '#ee3333';
+  ctx.fillStyle = hpColor;
+  const fillW = Math.max(0, barW * hpFrac);
+  if (fillW > 0) {
+    ctx.beginPath();
+    pRoundRect(ctx, barX, barY, fillW, barH, 2);
+    ctx.fill();
+  }
+
+  const fontSize = Math.max(9, Math.min(12, rs * 1.3));
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.font      = `${fontSize}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText(`${hpCurrent}`, cx, barY - 3);
 }
 
-interface Position {
-  x: number;
-  y: number;
-}
-
-interface PlayerDisplay {
-  userId: string;
-  position: Position;
-  hp: number;
-  maxHp: number;
-  color: string;
-}
+/* ============================================================
+   TYPES
+   ============================================================ */
+interface Position { x: number; y: number; }
 
 interface AbilityInfo {
   id: string;
@@ -145,14 +350,12 @@ interface BattleArenaProps {
   distance: number;
   maxHp: number;
   cards: Record<string, any>;
-  /** Raw WS-timestamped opponent position buffer from useGameState.
-   *  Updated directly in the WS handler — no React render delay. */
   opponentPositionBufferRef?: React.MutableRefObject<Array<{ t: number; pos: Position }>>;
 }
 
-/**
- * 2D real-time battle arena with WASD movement
- */
+/* ============================================================
+   COMPONENT
+   ============================================================ */
 export default function BattleArena({
   me,
   opponent,
@@ -164,262 +367,205 @@ export default function BattleArena({
   opponentPositionBufferRef,
 }: BattleArenaProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [wasdKeys, setWasdKeys] = useState({
-    w: false,
-    a: false,
-    s: false,
-    d: false,
-  });
+  const wrapRef   = useRef<HTMLDivElement>(null);
+
+  /* --- React state (UI only) --- */
   const [abilities, setAbilities] = useState<AbilityInfo[]>([]);
-  const [rtt, setRtt] = useState<number | null>(null);
-  const localPositionRef = useRef<Position | null>(null); // client-predicted position
-  const localVelocityRef = useRef({ x: 0, y: 0 });       // client-predicted velocity
-  const keysRef = useRef({ w: false, a: false, s: false, d: false });
-  // Opponent interpolation: timestamped position buffer
-  // Prefer the external buffer (direct from WS handler, no React delay).
-  // Fall back to internal buffer if parent doesn't provide one.
-  const internalOpponentBufferRef = useRef<Array<{ t: number; pos: Position }>>([]);
-  const opponentRawRef = useRef<Position | null>(null); // latest raw position (startup fallback)
-  const RENDER_DELAY_MS = 100; // render opponent 100ms behind real-time
-  // Resolve which buffer to use
-  const activeOpponentBuffer = opponentPositionBufferRef ?? internalOpponentBufferRef;
-  const abilitiesRef = useRef<AbilityInfo[]>([]);         // synced for stable render loop
-  const distanceRef = useRef(0);
-  const initializedRef = useRef(false);
+  const [rtt,       setRtt]       = useState<number | null>(null);
+  const [wasdKeys,  setWasdKeys]  = useState({ w: false, a: false, s: false, d: false });
+
+  /* --- Game logic refs --- */
+  const keysRef          = useRef({ w: false, a: false, s: false, d: false });
+  const localPositionRef = useRef<Position | null>(null);
+  const localVelocityRef = useRef({ x: 0, y: 0 });
+  const initializedRef   = useRef(false);
   const movementAbortRef = useRef<AbortController | null>(null);
 
-  // Send movement input — cancels any in-flight request first so the browser
-  // never queues more than 1 concurrent movement fetch (prevents ERR_INSUFFICIENT_RESOURCES).
-  const sendMovement = useCallback(async () => {
-    const keys = keysRef.current;
-    const hasInput = keys.w || keys.a || keys.s || keys.d;
+  /* --- Opponent interpolation --- */
+  const internalOpponentBufferRef = useRef<Array<{ t: number; pos: Position }>>([]);
+  const opponentRawRef            = useRef<Position | null>(null);
+  const RENDER_DELAY_MS           = 100;
+  const activeOpponentBuffer      = opponentPositionBufferRef ?? internalOpponentBufferRef;
 
+  /* --- Camera --- */
+  const camDirRef = useRef({ x: 0, y: 1 });
+
+  /* --- Render-loop refs (avoid stale closures) --- */
+  const abilitiesRef  = useRef<AbilityInfo[]>([]);
+  const meHpRef       = useRef(me?.hp ?? 0);
+  const oppHpRef      = useRef(opponent?.hp ?? 0);
+  const maxHpRef      = useRef(maxHp);
+  const canvasSizeRef = useRef({ w: 800, h: 500 });
+
+  useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
+  useEffect(() => { oppHpRef.current = opponent?.hp ?? 0; }, [opponent?.hp]);
+  useEffect(() => { maxHpRef.current = maxHp;             }, [maxHp]);
+
+  /* ========================= MOVEMENT ========================= */
+
+  const sendMovement = useCallback(async () => {
+    const k = keysRef.current;
     movementAbortRef.current?.abort();
     movementAbortRef.current = new AbortController();
-
     try {
       await fetch('/api/game/movement', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method:      'POST',
+        headers:     { 'Content-Type': 'application/json' },
         credentials: 'include',
-        signal: movementAbortRef.current.signal,
+        signal:      movementAbortRef.current.signal,
         body: JSON.stringify({
           gameId,
-          direction: hasInput
-            ? { up: keys.w, down: keys.s, left: keys.a, right: keys.d }
+          direction: (k.w || k.a || k.s || k.d)
+            ? { up: k.w, down: k.s, left: k.a, right: k.d }
             : null,
         }),
       });
-    } catch (err: any) {
-      // AbortError = cancelled by next tick, expected and harmless
-    }
+    } catch { /* AbortError expected */ }
   }, [gameId]);
 
-  // Seed local prediction from first server position
   useEffect(() => {
     if (me?.position && !initializedRef.current) {
       localPositionRef.current = { ...me.position };
-      initializedRef.current = true;
+      initializedRef.current   = true;
     }
   }, [me?.position?.x, me?.position?.y]);
 
-  // Server correction — applied on each broadcast.
-  // While moving: tiny 3% nudge (mostly invisible, handles timer jitter).
-  // While stopped: 25% pull to anchor final resting position.
   useEffect(() => {
     if (!me?.position || !initializedRef.current) return;
-    const local = localPositionRef.current;
+    const local  = localPositionRef.current;
     if (!local) return;
-    const isMoving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
-    const blend = isMoving ? 0.03 : 0.25;
+    const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
+    const blend  = moving ? 0.03 : 0.25;
     localPositionRef.current = {
       x: local.x + (me.position.x - local.x) * blend,
       y: local.y + (me.position.y - local.y) * blend,
     };
   }, [me?.position?.x, me?.position?.y]);
 
-  // Keep opponentRawRef updated for startup fallback (and feed internal buffer if no external one).
   useEffect(() => {
     if (!opponent?.position) return;
     opponentRawRef.current = opponent.position;
-    // Only push to internal buffer when no external buffer is provided
     if (!opponentPositionBufferRef) {
-      const now = performance.now();
+      const now    = performance.now();
       internalOpponentBufferRef.current.push({ t: now, pos: { ...opponent.position } });
       const cutoff = now - 1000;
       internalOpponentBufferRef.current = internalOpponentBufferRef.current.filter(e => e.t >= cutoff);
     }
   }, [opponent?.position?.x, opponent?.position?.y, opponentPositionBufferRef]);
 
-  // Update abilities list based on hand
   useEffect(() => {
-    const updatedAbilities = me.hand
+    const updated = me.hand
       .map((instance: any) => {
-        // Handle both old format (cardId reference) and new format (full card object)
         const card = instance.cardId ? cards[instance.cardId] : instance;
-        
-        // Skip if card definition not found
-        if (!card || !card.name) {
-          console.warn('[BattleArena] Card not found:', instance);
-          return null;
-        }
-
-        const canCast = instance.cooldown === 0;
-        const inRange = !card.range || distance <= card.range;
-
+        if (!card || !card.name) return null;
         return {
-          id: instance.instanceId || instance.id,
-          name: card.name,
-          range: card.range,
+          id:       instance.instanceId || instance.id,
+          name:     card.name,
+          range:    card.range,
           minRange: card.minRange,
           cooldown: instance.cooldown || 0,
-          isReady: canCast && inRange,
+          isReady:  instance.cooldown === 0 && (!card.range || distance <= card.range),
         };
       })
-      .filter((ability) => ability !== null) as AbilityInfo[];
-
-    setAbilities(updatedAbilities);
-    abilitiesRef.current = updatedAbilities;
+      .filter(Boolean) as AbilityInfo[];
+    setAbilities(updated);
+    abilitiesRef.current = updated;
   }, [me.hand, distance, cards]);
 
-  // WASD key listeners
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      if (key === 'w') {
+    const onDown = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (['w', 'a', 's', 'd'].includes(k)) {
         e.preventDefault();
-        keysRef.current.w = true;
-        setWasdKeys((prev) => ({ ...prev, w: true }));
-      } else if (key === 'a') {
-        e.preventDefault();
-        keysRef.current.a = true;
-        setWasdKeys((prev) => ({ ...prev, a: true }));
-      } else if (key === 's') {
-        e.preventDefault();
-        keysRef.current.s = true;
-        setWasdKeys((prev) => ({ ...prev, s: true }));
-      } else if (key === 'd') {
-        e.preventDefault();
-        keysRef.current.d = true;
-        setWasdKeys((prev) => ({ ...prev, d: true }));
+        keysRef.current[k as 'w' | 'a' | 's' | 'd'] = true;
+        setWasdKeys(prev => ({ ...prev, [k]: true }));
       }
     };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      if (key === 'w') {
-        keysRef.current.w = false;
-        setWasdKeys((prev) => ({ ...prev, w: false }));
-      } else if (key === 'a') {
-        keysRef.current.a = false;
-        setWasdKeys((prev) => ({ ...prev, a: false }));
-      } else if (key === 's') {
-        keysRef.current.s = false;
-        setWasdKeys((prev) => ({ ...prev, s: false }));
-      } else if (key === 'd') {
-        keysRef.current.d = false;
-        setWasdKeys((prev) => ({ ...prev, d: false }));
+    const onUp = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (['w', 'a', 's', 'd'].includes(k)) {
+        keysRef.current[k as 'w' | 'a' | 's' | 'd'] = false;
+        setWasdKeys(prev => ({ ...prev, [k]: false }));
       }
     };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup',   onUp);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup',   onUp);
     };
   }, []);
 
-  // Joystick direction handler
   const handleJoystickDirection = useCallback(
     (keys: { w: boolean; a: boolean; s: boolean; d: boolean }) => {
       keysRef.current = keys;
       setWasdKeys(keys);
     },
-    []
+    [],
   );
 
-  // Physics at fixed 33ms — EXACTLY mirrors server applyMovement() with no dt scaling.
-  // Decoupled from rAF so frame rate doesn't affect integration.
+  /* Physics — mirrors server exactly */
   useEffect(() => {
-    // Physics constants — must match backend/game/engine/loop/movement.ts
-    const MAX_SPEED = 1.0; // player.moveSpeed on server
-    const ACCEL = 0.3;
-    const DECEL = 0.9;
-
+    const MAX_SPEED = 1.0, ACCEL = 0.3, DECEL = 0.9;
     const tick = () => {
       const pos = localPositionRef.current;
       if (!pos) return;
       const vel = localVelocityRef.current;
-      const keys = keysRef.current;
-
+      const k   = keysRef.current;
       let ix = 0, iy = 0;
-      if (keys.w) iy -= 1;
-      if (keys.s) iy += 1;
-      if (keys.a) ix -= 1;
-      if (keys.d) ix += 1;
-
+      if (k.w) iy -= 1;
+      if (k.s) iy += 1;
+      if (k.a) ix -= 1;
+      if (k.d) ix += 1;
       if (ix !== 0 || iy !== 0) {
         const len = Math.sqrt(ix * ix + iy * iy);
-        const targetVx = (ix / len) * MAX_SPEED;
-        const targetVy = (iy / len) * MAX_SPEED;
-        // Matches server: vel += (target - vel) * ACCEL
-        vel.x += (targetVx - vel.x) * ACCEL;
-        vel.y += (targetVy - vel.y) * ACCEL;
-      } else {
-        // Matches server: vel *= DECEL
-        vel.x *= DECEL;
-        vel.y *= DECEL;
-      }
-
-      // Matches server: position += velocity (no dt)
+        vel.x += ((ix / len) * MAX_SPEED - vel.x) * ACCEL;
+        vel.y += ((iy / len) * MAX_SPEED - vel.y) * ACCEL;
+      } else { vel.x *= DECEL; vel.y *= DECEL; }
       localPositionRef.current = {
         x: Math.max(2, Math.min(98, pos.x + vel.x)),
         y: Math.max(2, Math.min(98, pos.y + vel.y)),
       };
     };
-
-    const physicsId = setInterval(tick, 33);
-    return () => clearInterval(physicsId);
+    const id = setInterval(tick, 33);
+    return () => clearInterval(id);
   }, []);
 
-  // Send movement at 33ms — synced with physics so server gets fresh input every tick
   useEffect(() => {
-    const interval = setInterval(sendMovement, 33);
-    return () => {
-      clearInterval(interval);
-      movementAbortRef.current?.abort(); // cancel any in-flight request on unmount
-    };
+    const id = setInterval(sendMovement, 33);
+    return () => { clearInterval(id); movementAbortRef.current?.abort(); };
   }, [sendMovement]);
 
-  // Keep distanceRef in sync for the stable render loop
   useEffect(() => {
-    distanceRef.current = distance;
-  }, [distance]);
-
-  // Measure RTT via ping every 2 seconds
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const startTime = performance.now();
+    const id = setInterval(async () => {
+      const t0 = performance.now();
       try {
         await fetch('/api/game/ping', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ gameId }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'include', body: JSON.stringify({ gameId }),
         });
-        const rttMs = Math.round(performance.now() - startTime);
-        setRtt(rttMs);
-      } catch (err) {
-        // Silently ignore ping failures
-      }
+        setRtt(Math.round(performance.now() - t0));
+      } catch { /* ignore */ }
     }, 2000);
-    return () => clearInterval(interval);
+    return () => clearInterval(id);
   }, [gameId]);
 
-  // Render-only rAF loop — reads refs, no physics.
-  // Physics is done in the 33ms interval above.
+  /* ResizeObserver: keep canvas pixel size in sync */
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      const w = Math.round(width), h = Math.round(height);
+      canvasSizeRef.current = { w, h };
+      const canvas = canvasRef.current;
+      if (canvas) { canvas.width = w; canvas.height = h; }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /* ========================= RENDER LOOP ========================= */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -429,38 +575,26 @@ export default function BattleArena({
     let animId: number;
 
     const loop = () => {
-      // --- Opponent position: entity interpolation with dead reckoning ---
-      //
-      // Three cases handled without snapping:
-      //   1. renderTime between two buffer entries  → interpolate (normal case)
-      //   2. renderTime before first entry (buffer cold) → show first entry
-      //   3. renderTime past last entry (delayed packet) → dead-reckon forward
-      //      using velocity from last two entries (max 1 extra tick to prevent runaway)
+      /* Resolove opponent position with interpolation */
       const renderTime = performance.now() - RENDER_DELAY_MS;
-      const buf = activeOpponentBuffer.current;
-      let opPos: Position | null = opponentRawRef.current; // startup fallback
+      const buf  = activeOpponentBuffer.current;
+      let opPos: Position | null = opponentRawRef.current;
 
       if (buf.length >= 2) {
         const last = buf[buf.length - 1];
         const prev = buf[buf.length - 2];
-
         if (renderTime <= buf[0].t) {
-          // Too early — clamp to oldest entry
           opPos = buf[0].pos;
         } else if (renderTime >= last.t) {
-          // Past the buffer — dead-reckon forward using last velocity
           const span = last.t - prev.t;
           if (span > 0) {
-            const overshoot = Math.min((renderTime - last.t) / span, 1); // cap at 1 tick ahead
+            const over = Math.min((renderTime - last.t) / span, 1);
             opPos = {
-              x: Math.max(2, Math.min(98, last.pos.x + (last.pos.x - prev.pos.x) * overshoot)),
-              y: Math.max(2, Math.min(98, last.pos.y + (last.pos.y - prev.pos.y) * overshoot)),
+              x: Math.max(2, Math.min(98, last.pos.x + (last.pos.x - prev.pos.x) * over)),
+              y: Math.max(2, Math.min(98, last.pos.y + (last.pos.y - prev.pos.y) * over)),
             };
-          } else {
-            opPos = last.pos;
-          }
+          } else opPos = last.pos;
         } else {
-          // Normal case: find bracketing pair and interpolate
           for (let i = 0; i < buf.length - 1; i++) {
             if (buf[i].t <= renderTime && buf[i + 1].t >= renderTime) {
               const lo = buf[i], hi = buf[i + 1];
@@ -478,126 +612,155 @@ export default function BattleArena({
         opPos = buf[0].pos;
       }
 
-      // --- Canvas render ---
-      ctx.fillStyle = '#1a1a1a';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const myPos = localPositionRef.current;
+      const { w, h } = canvasSizeRef.current;
 
-      ctx.strokeStyle = '#444';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(0, 0, ARENA_WIDTH * CANVAS_SCALE, ARENA_HEIGHT * CANVAS_SCALE);
-
-      const p1Pos = localPositionRef.current;
-      if (!p1Pos || !opPos) {
-        // Still waiting for initial data
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#fff';
-        ctx.font = '16px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('Waiting for arena data...', canvas.width / 2, canvas.height / 2);
+      if (!myPos || !opPos || w < 10 || h < 10) {
+        if (w >= 10 && h >= 10) {
+          ctx.fillStyle = '#020509';
+          ctx.fillRect(0, 0, w, h);
+          ctx.fillStyle = '#444';
+          ctx.font = '14px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('Connecting…', w / 2, h / 2);
+        }
         animId = requestAnimationFrame(loop);
         return;
       }
 
-      const p1X = p1Pos.x * CANVAS_SCALE;
-      const p1Y = p1Pos.y * CANVAS_SCALE;
-      const p2X = opPos.x * CANVAS_SCALE;
-      const p2Y = opPos.y * CANVAS_SCALE;
+      /* Smooth camera direction toward opponent */
+      const dx   = opPos.x - myPos.x;
+      const dy   = opPos.y - myPos.y;
+      const dLen = Math.sqrt(dx * dx + dy * dy);
+      if (dLen > 0.5) {
+        const cur = camDirRef.current;
+        const tx  = dx / dLen, ty = dy / dLen;
+        const nx  = cur.x + (tx - cur.x) * CAM_SMOOTH;
+        const ny  = cur.y + (ty - cur.y) * CAM_SMOOTH;
+        const nl  = Math.sqrt(nx * nx + ny * ny);
+        if (nl > 1e-5) camDirRef.current = { x: nx / nl, y: ny / nl };
+      }
 
-      // Get isometric screen positions
-      const p1Screen = toIsometricScreen(p1Pos.x, p1Pos.y, CANVAS_SCALE);
-      const p2Screen = toIsometricScreen(opPos.x, opPos.y, CANVAS_SCALE);
+      const cam = buildCam(v3(myPos.x, myPos.y, 0), camDirRef.current, w, h);
 
-      // Distance line (from cylinder centers)
-      ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(p1Screen.screenX, p1Screen.screenY + 20);
-      ctx.lineTo(p2Screen.screenX, p2Screen.screenY + 20);
-      ctx.stroke();
+      /* Draw scene */
+      renderBg(ctx, cam, w, h);
+      renderFloor(ctx, cam, w, h);
 
-      // Distance label
-      ctx.fillStyle = '#fff';
-      ctx.font = '12px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(distanceRef.current.toFixed(1), (p1Screen.screenX + p2Screen.screenX) / 2, (p1Screen.screenY + p2Screen.screenY) / 2 - 20);
+      /* Range indicator circle */
+      const abilityList    = abilitiesRef.current;
+      const readyAbility   = abilityList.find(a => a.isReady && a.range);
+      const minRangeAbil   = abilityList.find(a => a.minRange);
+      if (readyAbility?.range)
+        renderRangeCircle(ctx, v3(myPos.x, myPos.y, 0), readyAbility.range, cam, w, h, 'rgba(80, 210, 100, 0.55)');
+      if (minRangeAbil?.minRange)
+        renderRangeCircle(ctx, v3(myPos.x, myPos.y, 0), minRangeAbil.minRange, cam, w, h, 'rgba(255, 80, 80, 0.45)');
 
-      // Player 1 (me) — blue
-      drawIsometricCylinder(ctx, p1Pos.x, p1Pos.y, CANVAS_SCALE, '#3899ec');
-
-      // Player 2 (opponent) — red
-      drawIsometricCylinder(ctx, opPos.x, opPos.y, CANVAS_SCALE, '#ec3838');
+      /* Sort back-to-front */
+      const mxHp = maxHpRef.current;
+      const entities = [
+        { pos: v3(opPos.x, opPos.y, 0), color: '#cc3333', glow: '#ff5555', hp: oppHpRef.current, isMe: false },
+        { pos: v3(myPos.x, myPos.y, 0), color: '#1a66cc', glow: '#44aaff', hp: meHpRef.current,  isMe: true  },
+      ];
+      entities.sort((a, b) => {
+        const dA = dot3(sub3(a.pos, cam.pos), cam.fwd);
+        const dB = dot3(sub3(b.pos, cam.pos), cam.fwd);
+        return dB - dA;
+      });
+      for (const e of entities) {
+        renderCharacter(ctx, e.pos, cam, w, h, e.color, e.glow, Math.max(0, e.hp / mxHp), e.hp, e.isMe);
+      }
 
       animId = requestAnimationFrame(loop);
     };
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, []); // stable — all data via refs
+  }, []); // stable — all live data accessed via refs
+
+  /* ========================= HUD DATA ========================= */
+  const myHpPct  = Math.max(0, Math.min(100, ((me?.hp  ?? 0) / maxHp) * 100));
+  const oppHpPct = Math.max(0, Math.min(100, ((opponent?.hp ?? 0) / maxHp) * 100));
+  const isMoving = Object.values(wasdKeys).some(v => v);
 
   return (
     <div className={styles.container}>
-      {/* RTT Display */}
-      <div className={styles.rttDisplay}>
-        RTT: {rtt !== null ? `${rtt}ms` : '—'}
+
+      {/* ===== FULL-SCREEN 3D CANVAS ===== */}
+      <div ref={wrapRef} className={styles.canvasWrap}>
+        <canvas ref={canvasRef} className={styles.canvas} />
       </div>
 
-      <WASDButtons onDirectionChange={handleJoystickDirection} />
+      {/* ===== TOP HUD ===== */}
+      <div className={styles.topHud}>
 
-      <div className={styles.arenaSection}>
-        <canvas
-          ref={canvasRef}
-          width={ARENA_WIDTH * CANVAS_SCALE}
-          height={ARENA_HEIGHT * CANVAS_SCALE}
-          className={styles.canvas}
-        />
-        <div className={styles.info}>
-          <div>Distance: {distance.toFixed(1)}</div>
-          <div>HP: {me.hp} / {maxHp}</div>
-          <div className={styles.hpBar}>
+        <div className={styles.playerBar}>
+          <span className={styles.barLabel}>YOU</span>
+          <div className={styles.hpTrack}>
             <div
               className={styles.hpFill}
-              style={{ width: `${(me.hp / maxHp) * 100}%` }}
+              style={{
+                width:      `${myHpPct}%`,
+                background: myHpPct > 50 ? '#44cc55' : myHpPct > 25 ? '#ffcc22' : '#ee3333',
+              }}
             />
           </div>
+          <span className={styles.hpNum}>{me?.hp ?? 0}</span>
         </div>
+
+        <div className={styles.distBadge}>
+          <span className={styles.distVal}>{distance.toFixed(1)}</span>
+          <span className={styles.distLbl}>DIST</span>
+        </div>
+
+        <div className={`${styles.playerBar} ${styles.flip}`}>
+          <span className={styles.hpNum}>{opponent?.hp ?? 0}</span>
+          <div className={styles.hpTrack}>
+            <div
+              className={styles.hpFill}
+              style={{
+                width:      `${oppHpPct}%`,
+                background: oppHpPct > 50 ? '#cc3333' : oppHpPct > 25 ? '#ffcc22' : '#ee3333',
+              }}
+            />
+          </div>
+          <span className={styles.barLabel}>ENEMY</span>
+        </div>
+
       </div>
 
-      <div className={styles.abilityPanel}>
-        <h3>Abilities</h3>
-        <div className={styles.abilityGrid}>
-          {abilities.map((ability) => (
+      {/* ===== RTT BADGE ===== */}
+      <div className={styles.rttBadge}>{rtt !== null ? `${rtt}ms` : '—'}</div>
+
+      {/* ===== BOTTOM HUD ===== */}
+      <div className={styles.bottomHud}>
+
+        <div className={styles.wasdWrap}>
+          <WASDButtons onDirectionChange={handleJoystickDirection} />
+          <div className={`${styles.movingDot} ${isMoving ? styles.moving : ''}`} />
+        </div>
+
+        <div className={styles.abilityRow}>
+          {abilities.map((ability, idx) => (
             <button
               key={ability.id}
-              className={`${styles.abilityButton} ${
-                ability.isReady ? styles.ready : styles.notReady
-              }`}
+              className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
               disabled={!ability.isReady}
               onClick={() => onCastAbility(ability.id)}
               title={`${ability.name} | Range: ${ability.range || '∞'} | CD: ${ability.cooldown}`}
             >
-              <div className={styles.abilityName}>{ability.name}</div>
-              <div className={styles.abilityRange}>
-                {ability.range ? `${ability.range.toFixed(0)}` : '∞'}
-              </div>
               {ability.cooldown > 0 && (
-                <div className={styles.abilityCooldown}>{ability.cooldown}</div>
+                <span className={styles.cdOverlay}>{ability.cooldown}</span>
               )}
+              <span className={styles.abilityKey}>{idx + 1}</span>
+              <span className={styles.abilityName}>{ability.name}</span>
+              <span className={styles.abilityMeta}>
+                {ability.range ? `⬤ ${ability.range.toFixed(0)}` : '∞'}
+              </span>
             </button>
           ))}
         </div>
-      </div>
 
-      <div className={styles.controls}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-          <div>
-            <p>Use WASD to move</p>
-            <p>Click abilities to cast</p>
-            <p>
-              {Object.values(wasdKeys).some((v) => v) ? '🟢 Moving...' : '⚪ Standby'}
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   );

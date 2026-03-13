@@ -12,6 +12,7 @@ export default function LayoutShell({
 }) {
   const pathname = usePathname();
   const isLoginPage = pathname === "/login";
+  const isInGame = pathname?.startsWith('/game/in-game');
 
   // ✅ username comes from AuthGate via window (set once)
   const [username] = useState<string | null>(() => {
@@ -37,7 +38,7 @@ export default function LayoutShell({
       </div>
 
       {/* Main content */}
-      <main className={styles.main}>{children}</main>
+      <main className={isInGame ? styles.mainFullscreen : styles.main}>{children}</main>
     </div>
   );
 }

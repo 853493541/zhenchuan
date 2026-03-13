@@ -45,6 +45,16 @@
   min-width: 0;
 }
 
+.mainFullscreen {
+  width: 100%;
+  max-width: 100%;
+  height: calc(100dvh - var(--topbar-height));
+  padding: 0;
+  overflow: hidden;
+  min-width: 0;
+  background: #010409;
+}
+
 @media (max-width: 768px) {
   .main {
     padding-left: max(16px, env(safe-area-inset-left));
