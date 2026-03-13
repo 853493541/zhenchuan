@@ -9,6 +9,112 @@ const ARENA_WIDTH = 100;
 const ARENA_HEIGHT = 100;
 const CANVAS_SCALE = 4; // 1 unit = 4 pixels for display
 
+/* ================= ISOMETRIC 3D RENDERING ================= */
+
+// Cylinder height in screen pixels (short squat cylinders)
+const CYLINDER_HEIGHT = 12; // Short cylinder
+const CYLINDER_RADIUS = 8;  // Base radius in screen pixels
+
+// Convert 2D arena coords to isometric 3D screen coords
+// Viewing from above-left at 45° angle, tilted forward
+function toIsometricScreen(
+  x: number,
+  y: number,
+  scale: number
+): { screenX: number; screenY: number } {
+  // Isometric projection creates a 3D effect:
+  // x-axis tilts right, y-axis tilts left and down
+  // screenY is pushed down to show height perspective
+  const screenX = (x - y) * scale * 0.866; // cos(30°) for realistic angle
+  const screenY = (x + y) * scale * 0.5 - CYLINDER_HEIGHT / 2;
+  return { screenX, screenY };
+}
+
+// Draw a 3D isometric cylinder (building)
+function drawIsometricCylinder(
+  ctx: CanvasRenderingContext2D,
+  arenaX: number,
+  arenaY: number,
+  scale: number,
+  color: string
+) {
+  const screen = toIsometricScreen(arenaX, arenaY, scale);
+  const screenX = screen.screenX;
+  const screenY = screen.screenY;
+  
+  // Draw cylinder body (tall rectangle showing height)
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.85;
+  ctx.fillRect(
+    screenX - CYLINDER_RADIUS * 0.6,
+    screenY,
+    CYLINDER_RADIUS * 1.2,
+    CYLINDER_HEIGHT
+  );
+  ctx.globalAlpha = 1.0;
+  
+  // Draw left side shading (darker)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+  ctx.beginPath();
+  ctx.moveTo(screenX - CYLINDER_RADIUS * 0.6, screenY);
+  ctx.lineTo(screenX - CYLINDER_RADIUS * 0.6 - 2, screenY - 8);
+  ctx.lineTo(screenX - CYLINDER_RADIUS * 0.6 - 2, screenY - 8 + CYLINDER_HEIGHT);
+  ctx.lineTo(screenX - CYLINDER_RADIUS * 0.6, screenY + CYLINDER_HEIGHT);
+  ctx.fill();
+  
+  // Draw right side shading (lighter for 3D effect)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.beginPath();
+  ctx.moveTo(screenX + CYLINDER_RADIUS * 0.6, screenY);
+  ctx.lineTo(screenX + CYLINDER_RADIUS * 0.6 + 2, screenY - 8);
+  ctx.lineTo(screenX + CYLINDER_RADIUS * 0.6 + 2, screenY - 8 + CYLINDER_HEIGHT);
+  ctx.lineTo(screenX + CYLINDER_RADIUS * 0.6, screenY + CYLINDER_HEIGHT);
+  ctx.fill();
+  
+  // Draw top ellipse (you're looking down at it slightly)
+  ctx.save();
+  ctx.translate(screenX, screenY - 8);
+  ctx.scale(1, 0.35); // Compress vertical for ellipse perspective
+  
+  // Top base color
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.95;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, CYLINDER_RADIUS * 0.6, CYLINDER_RADIUS * 0.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1.0;
+  
+  // Highlight on top
+  const topGradient = ctx.createLinearGradient(
+    -CYLINDER_RADIUS * 0.6, -CYLINDER_RADIUS * 0.6 / 2,
+    CYLINDER_RADIUS * 0.6, CYLINDER_RADIUS * 0.6 / 2
+  );
+  topGradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+  topGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+  topGradient.addColorStop(1, 'rgba(0, 0, 0, 0.1)');
+  
+  ctx.fillStyle = topGradient;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, CYLINDER_RADIUS * 0.6, CYLINDER_RADIUS * 0.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.restore();
+  
+  // Draw shadow on ground (elongated toward top-left)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+  ctx.beginPath();
+  ctx.ellipse(
+    screenX - 8,
+    screenY + CYLINDER_HEIGHT + 2,
+    CYLINDER_RADIUS * 0.8,
+    3,
+    -0.3,
+    0,
+    Math.PI * 2
+  );
+  ctx.fill();
+}
+
 interface Position {
   x: number;
   y: number;
@@ -398,41 +504,29 @@ export default function BattleArena({
       const p2X = opPos.x * CANVAS_SCALE;
       const p2Y = opPos.y * CANVAS_SCALE;
 
-      // Range circle
-      const firstAbilityWithRange = abilitiesRef.current.find((a) => a.range);
-      if (firstAbilityWithRange) {
-        ctx.strokeStyle = 'rgba(100, 200, 100, 0.5)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(p1X, p1Y, (firstAbilityWithRange.range || 0) * CANVAS_SCALE, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+      // Get isometric screen positions
+      const p1Screen = toIsometricScreen(p1Pos.x, p1Pos.y, CANVAS_SCALE);
+      const p2Screen = toIsometricScreen(opPos.x, opPos.y, CANVAS_SCALE);
 
-      // Distance line
+      // Distance line (from cylinder centers)
       ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(p1X, p1Y);
-      ctx.lineTo(p2X, p2Y);
+      ctx.moveTo(p1Screen.screenX, p1Screen.screenY + 20);
+      ctx.lineTo(p2Screen.screenX, p2Screen.screenY + 20);
       ctx.stroke();
 
       // Distance label
       ctx.fillStyle = '#fff';
       ctx.font = '12px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(distanceRef.current.toFixed(1), (p1X + p2X) / 2, (p1Y + p2Y) / 2 - 10);
+      ctx.fillText(distanceRef.current.toFixed(1), (p1Screen.screenX + p2Screen.screenX) / 2, (p1Screen.screenY + p2Screen.screenY) / 2 - 20);
 
       // Player 1 (me) — blue
-      ctx.fillStyle = '#3899ec';
-      ctx.beginPath();
-      ctx.arc(p1X, p1Y, 8, 0, Math.PI * 2);
-      ctx.fill();
+      drawIsometricCylinder(ctx, p1Pos.x, p1Pos.y, CANVAS_SCALE, '#3899ec');
 
       // Player 2 (opponent) — red
-      ctx.fillStyle = '#ec3838';
-      ctx.beginPath();
-      ctx.arc(p2X, p2Y, 8, 0, Math.PI * 2);
-      ctx.fill();
+      drawIsometricCylinder(ctx, opPos.x, opPos.y, CANVAS_SCALE, '#ec3838');
 
       animId = requestAnimationFrame(loop);
     };

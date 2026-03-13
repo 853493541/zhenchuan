@@ -31,14 +31,20 @@
   flex: 1;
   align-items: center;
   justify-content: center;
+  perspective: 1200px;
 }
 
 .canvas {
   border: 2px solid #444;
-  background: #1a1a1a;
+  background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   flex-shrink: 0;
+  transform: rotateX(240deg) rotateZ(45deg) scaleY(0.6);
+  transform-style: preserve-3d;
+  box-shadow: 
+    -10px 20px 30px rgba(0, 0, 0, 0.8),
+    inset -2px -2px 4px rgba(0, 0, 0, 0.6);
 }
 
 .info {
