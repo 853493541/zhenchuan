@@ -274,13 +274,29 @@
   align-items: flex-end;
   gap: 6px;
   pointer-events: all;
-  /* no flex:1 — sits naturally in the middle */
+  /* visible tray behind the buttons */
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(60, 90, 160, 0.3);
+  border-radius: 10px;
+  padding: 6px 8px;
+  min-height: 88px; /* always reserve space even when abilities array is empty */
 }
 
 /* ---- Mirror spacer so hotbar stays centered ---- */
 .wasdSpacer {
   width: 170px;
   flex-shrink: 0;
+}
+
+/* ---- Empty-state text when no abilities loaded yet ---- */
+.noAbilities {
+  font-size: 10px;
+  color: rgba(150, 170, 200, 0.6);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  align-self: center;
+  padding: 0 12px;
+  white-space: nowrap;
 }
 
 /* ============================================================
@@ -324,7 +340,7 @@
 }
 
 .abilityBtn.notReady {
-  opacity: 0.38;
+  opacity: 0.65;   /* was 0.38 — dark buttons on dark canvas were invisible */
   cursor: not-allowed;
 }
 .abilityBtn:disabled { cursor: not-allowed; }
@@ -372,12 +388,12 @@
   padding: 0 3px;
 }
 
-/* Grey cooldown sweep overlay — full button dimmed */
+/* Grey cooldown sweep overlay — full button dimmed when on cooldown */
 .abilityBtn.notReady::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.30);  /* reduced from 0.45 so buttons stay legible */
   border-radius: 6px;
   pointer-events: none;
 }

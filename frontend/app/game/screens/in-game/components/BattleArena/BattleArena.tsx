@@ -789,6 +789,9 @@ export default function BattleArena({
         </div>
 
         <div className={styles.hotbar}>
+          {abilities.length === 0 && (
+            <span className={styles.noAbilities}>loading abilities…</span>
+          )}
           {abilities.map((ability, idx) => (
             <button
               key={ability.id}

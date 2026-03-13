@@ -108,6 +108,16 @@ async function playCastAbility(
 
   const diff = diffState(prevState, state);
 
+  // Broadcast HP/state changes to ALL players immediately.
+  // The GameLoop only broadcasts positions every tick, so without this the
+  // opponent would never see HP changes from ability casts.
+  broadcastGameUpdate({
+    gameId,
+    version: state.version,
+    diff,
+    timestamp: Date.now(),
+  });
+
   console.log(
     `[CastAbility] Player ${playerIndex} cast ${card.name} in game ${gameId}`
   );
