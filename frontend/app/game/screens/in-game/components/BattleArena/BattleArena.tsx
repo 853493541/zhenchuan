@@ -14,14 +14,20 @@ const ARENA_HEIGHT = 100;
 const CHAR_HEIGHT = 5.0;   // world units tall
 const CHAR_RADIUS = 1.7;   // world units wide (radius)
 
-/* 3rd-person camera */
-const CAM_DIST_BACK  = 22;   // units behind player
-const CAM_HEIGHT     = 13;   // units above ground
-const CAM_LOOK_AHEAD = 5;    // look-at is this many units ahead of player
-const CAM_SMOOTH     = 0.06; // direction lerp per frame (~1s to fully rotate)
-const NEAR_CLIP      = 0.8;
+/* 3rd-person camera — high & pulled back, ~26° below horizontal
+   atan((20-1.5)/(38)) ≈ 26°  →  lots of ground visible, char at lower-center.
 
-const FOV_RAD = (65 * Math.PI) / 180;
+   Camera direction is FIXED at (0,1) — always faces +Y.
+   This guarantees A = screen-left and D = screen-right regardless of where
+   the opponent is, eliminating the A/D flip when the camera rotates. */
+const CAM_DIST_BACK   = 30;  // units behind player
+const CAM_HEIGHT      = 20;  // units above ground
+const CAM_LOOK_AHEAD  = 8;   // look-ahead toward opponent side
+const NEAR_CLIP       = 0.8;
+
+// Vertical FOV — used with H-based focal length so scale is consistent
+// across all screen widths (phone / tablet / wide monitor all look the same depth)
+const VFOV_RAD = (60 * Math.PI) / 180;
 
 /* ============================================================
    VEC3 MATH
@@ -52,27 +58,33 @@ interface Cam {
   fl: number; // focal length (px)
 }
 
+// Fixed camera direction — always facing +Y in world space.
+// This keeps A = screen-left and D = screen-right at all times.
+const CAM_DIR = { x: 0, y: 1 };
+
 function buildCam(
   playerPos: V3,
-  dir: { x: number; y: number }, // unit 2-D forward direction
+  _dir: { x: number; y: number }, // kept for API compat but ignored
   W: number,
   H: number,
 ): Cam {
   const camPos = v3(
-    playerPos.x - dir.x * CAM_DIST_BACK,
-    playerPos.y - dir.y * CAM_DIST_BACK,
+    playerPos.x - CAM_DIR.x * CAM_DIST_BACK,
+    playerPos.y - CAM_DIR.y * CAM_DIST_BACK,
     CAM_HEIGHT,
   );
   const lookAt = v3(
-    playerPos.x + dir.x * CAM_LOOK_AHEAD,
-    playerPos.y + dir.y * CAM_LOOK_AHEAD,
-    1.5, // aim at chest height
+    playerPos.x + CAM_DIR.x * CAM_LOOK_AHEAD,
+    playerPos.y + CAM_DIR.y * CAM_LOOK_AHEAD,
+    1.5,
   );
   const worldUp = v3(0, 0, 1);
   const fwd   = norm3(sub3(lookAt, camPos));
   const right = norm3(cross3(fwd, worldUp));
   const up    = norm3(cross3(right, fwd));
-  const fl    = (W / 2) / Math.tan(FOV_RAD / 2);
+  // Height-based focal length: scale is tied to viewport HEIGHT so
+  // phone / tablet / wide-monitor all see the same perceived distance.
+  const fl = (H / 2) / Math.tan(VFOV_RAD / 2);
   return { pos: camPos, fwd, right, up, fl };
 }
 
@@ -387,8 +399,9 @@ export default function BattleArena({
   const RENDER_DELAY_MS           = 100;
   const activeOpponentBuffer      = opponentPositionBufferRef ?? internalOpponentBufferRef;
 
-  /* --- Camera --- */
-  const camDirRef = useRef({ x: 0, y: 1 });
+  // Camera direction is now pinned to CAM_DIR constant — no ref needed.
+  // Keep a dummy ref so nothing else needs changing.
+  const camDirRef = useRef(CAM_DIR);
 
   /* --- Render-loop refs (avoid stale closures) --- */
   const abilitiesRef  = useRef<AbilityInfo[]>([]);
@@ -464,7 +477,7 @@ export default function BattleArena({
           range:    card.range,
           minRange: card.minRange,
           cooldown: instance.cooldown || 0,
-          isReady:  instance.cooldown === 0 && (!card.range || distance <= card.range),
+          isReady:  (instance.cooldown ?? 0) === 0 && (!card.range || distance <= card.range),
         };
       })
       .filter(Boolean) as AbilityInfo[];
@@ -628,18 +641,7 @@ export default function BattleArena({
         return;
       }
 
-      /* Smooth camera direction toward opponent */
-      const dx   = opPos.x - myPos.x;
-      const dy   = opPos.y - myPos.y;
-      const dLen = Math.sqrt(dx * dx + dy * dy);
-      if (dLen > 0.5) {
-        const cur = camDirRef.current;
-        const tx  = dx / dLen, ty = dy / dLen;
-        const nx  = cur.x + (tx - cur.x) * CAM_SMOOTH;
-        const ny  = cur.y + (ty - cur.y) * CAM_SMOOTH;
-        const nl  = Math.sqrt(nx * nx + ny * ny);
-        if (nl > 1e-5) camDirRef.current = { x: nx / nl, y: ny / nl };
-      }
+      // Camera direction is fixed — no dynamic tracking, no flip
 
       const cam = buildCam(v3(myPos.x, myPos.y, 0), camDirRef.current, w, h);
 
@@ -691,48 +693,57 @@ export default function BattleArena({
         <canvas ref={canvasRef} className={styles.canvas} />
       </div>
 
-      {/* ===== TOP HUD ===== */}
-      <div className={styles.topHud}>
-
-        <div className={styles.playerBar}>
-          <span className={styles.barLabel}>YOU</span>
-          <div className={styles.hpTrack}>
+      {/* ===== TOP-LEFT: My HP panel ===== */}
+      <div className={styles.playerPanel}>
+        <span className={styles.playerLabel}>YOU</span>
+        <div className={styles.myHpRow}>
+          <div className={styles.myHpTrack}>
             <div
-              className={styles.hpFill}
+              className={styles.myHpFill}
               style={{
                 width:      `${myHpPct}%`,
                 background: myHpPct > 50 ? '#44cc55' : myHpPct > 25 ? '#ffcc22' : '#ee3333',
               }}
             />
           </div>
-          <span className={styles.hpNum}>{me?.hp ?? 0}</span>
+          <span className={styles.myHpNum}>{me?.hp ?? 0}</span>
         </div>
-
-        <div className={styles.distBadge}>
-          <span className={styles.distVal}>{distance.toFixed(1)}</span>
-          <span className={styles.distLbl}>DIST</span>
-        </div>
-
-        <div className={`${styles.playerBar} ${styles.flip}`}>
-          <span className={styles.hpNum}>{opponent?.hp ?? 0}</span>
-          <div className={styles.hpTrack}>
-            <div
-              className={styles.hpFill}
-              style={{
-                width:      `${oppHpPct}%`,
-                background: oppHpPct > 50 ? '#cc3333' : oppHpPct > 25 ? '#ffcc22' : '#ee3333',
-              }}
-            />
-          </div>
-          <span className={styles.barLabel}>ENEMY</span>
-        </div>
-
       </div>
 
-      {/* ===== RTT BADGE ===== */}
+      {/* ===== TOP-CENTER: Enemy boss bar ===== */}
+      <div className={styles.enemyBossBar}>
+        <div className={styles.enemyName}>ENEMY</div>
+        <div className={styles.enemyHpRow}>
+          <div className={styles.enemyHpTrack}>
+            <div
+              className={styles.enemyHpFill}
+              style={{
+                width:      `${oppHpPct}%`,
+                background: oppHpPct > 50
+                  ? 'linear-gradient(90deg, #991111, #cc2222)'
+                  : oppHpPct > 25
+                  ? 'linear-gradient(90deg, #aa7700, #ddaa00)'
+                  : 'linear-gradient(90deg, #771111, #aa1111)',
+              }}
+            />
+            {[25, 50, 75].map(t => (
+              <div key={t} className={styles.enemyHpTick} style={{ left: `${t}%` }} />
+            ))}
+          </div>
+          <span className={styles.enemyHpNum}>{opponent?.hp ?? 0}</span>
+        </div>
+      </div>
+
+      {/* ===== TOP-RIGHT: RTT badge ===== */}
       <div className={styles.rttBadge}>{rtt !== null ? `${rtt}ms` : '—'}</div>
 
-      {/* ===== BOTTOM HUD ===== */}
+      {/* ===== CENTER: Distance floating label ===== */}
+      <div className={styles.distIndicator}>
+        <span className={styles.distVal}>{distance.toFixed(1)}</span>
+        <span className={styles.distUnit}>units</span>
+      </div>
+
+      {/* ===== BOTTOM: WASD (mobile left) + centered hotbar ===== */}
       <div className={styles.bottomHud}>
 
         <div className={styles.wasdWrap}>
@@ -740,7 +751,7 @@ export default function BattleArena({
           <div className={`${styles.movingDot} ${isMoving ? styles.moving : ''}`} />
         </div>
 
-        <div className={styles.abilityRow}>
+        <div className={styles.hotbar}>
           {abilities.map((ability, idx) => (
             <button
               key={ability.id}
@@ -754,12 +765,14 @@ export default function BattleArena({
               )}
               <span className={styles.abilityKey}>{idx + 1}</span>
               <span className={styles.abilityName}>{ability.name}</span>
-              <span className={styles.abilityMeta}>
-                {ability.range ? `⬤ ${ability.range.toFixed(0)}` : '∞'}
-              </span>
+              {ability.range && (
+                <span className={styles.abilityRange}>{ability.range.toFixed(0)}</span>
+              )}
             </button>
           ))}
         </div>
+
+        <div className={styles.wasdSpacer} />
 
       </div>
     </div>

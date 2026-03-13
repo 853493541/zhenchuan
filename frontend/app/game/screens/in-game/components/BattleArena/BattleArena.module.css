@@ -1,5 +1,5 @@
 /* ============================================================
-   CONTAINER — full area, everything stacked
+   ROOT CONTAINER
    ============================================================ */
 .container {
   position: relative;
@@ -13,11 +13,12 @@
 }
 
 /* ============================================================
-   CANVAS WRAPPER  — fills entire container
+   CANVAS — fills everything
    ============================================================ */
 .canvasWrap {
   position: absolute;
   inset: 0;
+  z-index: 0;
 }
 
 .canvas {
@@ -27,106 +28,145 @@
 }
 
 /* ============================================================
-   TOP HUD  — player bars + distance badge
+   TOP-LEFT: My HP panel
    ============================================================ */
-.topHud {
+.playerPanel {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  top: 14px;
+  left: 14px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.72) 0%, transparent 100%);
+  flex-direction: column;
+  gap: 5px;
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 160px;
   pointer-events: none;
-  z-index: 10;
+  z-index: 20;
 }
 
-/* One player's HP row */
-.playerBar {
+.playerLabel {
+  font-size: 8px;
+  letter-spacing: 2.5px;
+  color: #66aaff;
+  text-transform: uppercase;
+}
+
+.myHpRow {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.myHpTrack {
   flex: 1;
-}
-
-/* Reversed layout for the opponent side */
-.playerBar.flip {
-  flex-direction: row-reverse;
-}
-
-.barLabel {
-  font-size: 9px;
-  letter-spacing: 2px;
-  color: #888;
-  min-width: 36px;
-  text-transform: uppercase;
-}
-
-.hpTrack {
-  flex: 1;
-  height: 8px;
-  background: rgba(255, 255, 255, 0.1);
+  height: 10px;
+  background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
+  border-radius: 5px;
   overflow: hidden;
 }
 
-.hpFill {
+.myHpFill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 5px;
   transition: width 0.15s ease-out;
+  box-shadow: 0 0 6px currentColor;
 }
 
-.hpNum {
-  font-size: 12px;
+.myHpNum {
+  font-size: 13px;
   font-weight: bold;
-  color: #ddd;
-  min-width: 28px;
-  text-align: center;
-}
-
-/* Distance badge in the center */
-.distBadge {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  padding: 4px 12px;
-  min-width: 64px;
-  flex-shrink: 0;
-}
-
-.distVal {
-  font-size: 17px;
-  font-weight: bold;
-  color: #fff;
-  line-height: 1;
-}
-
-.distLbl {
-  font-size: 8px;
-  letter-spacing: 2px;
-  color: #666;
-  text-transform: uppercase;
+  color: #eee;
+  min-width: 26px;
+  text-align: right;
 }
 
 /* ============================================================
-   RTT BADGE
+   TOP-CENTER: Enemy boss bar  (dominant, like a raid boss HP)
+   ============================================================ */
+.enemyBossBar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 320px;
+  max-width: 480px;
+  width: clamp(280px, 38vw, 480px);
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid rgba(200, 40, 40, 0.5);
+  border-radius: 8px;
+  padding: 8px 14px 10px;
+  pointer-events: none;
+  z-index: 20;
+  box-shadow: 0 0 20px rgba(180, 30, 30, 0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.enemyName {
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: #ff7777;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(255, 80, 80, 0.5);
+}
+
+.enemyHpRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.enemyHpTrack {
+  position: relative;
+  flex: 1;
+  height: 14px;
+  background: rgba(60, 0, 0, 0.6);
+  border: 1px solid rgba(180, 40, 40, 0.4);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.enemyHpFill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s ease-out;
+}
+
+/* Tick marks at 25 / 50 / 75% */
+.enemyHpTick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.5);
+  transform: translateX(-50%);
+}
+
+.enemyHpNum {
+  font-size: 13px;
+  font-weight: bold;
+  color: #ffaaaa;
+  min-width: 28px;
+  text-align: right;
+}
+
+/* ============================================================
+   TOP-RIGHT: RTT badge
    ============================================================ */
 .rttBadge {
   position: absolute;
-  top: 10px;
+  top: 14px;
   right: 14px;
   font-size: 9px;
-  color: #555;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: #444;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 4px;
   padding: 3px 7px;
   pointer-events: none;
@@ -134,7 +174,40 @@
 }
 
 /* ============================================================
-   BOTTOM HUD  — controls + abilities
+   CENTER-SCREEN: Distance floating label
+   ============================================================ */
+.distIndicator {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.distVal {
+  font-size: 20px;
+  font-weight: bold;
+  color: rgba(255, 230, 100, 0.9);
+  text-shadow:
+    0 0 12px rgba(255, 200, 50, 0.6),
+    0 2px 4px rgba(0, 0, 0, 0.8);
+  line-height: 1;
+}
+
+.distUnit {
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: rgba(200, 170, 80, 0.6);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* ============================================================
+   BOTTOM HUD: WASD (left) + centered hotbar + spacer (right)
    ============================================================ */
 .bottomHud {
   position: absolute;
@@ -144,154 +217,182 @@
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, transparent 100%);
-  z-index: 10;
+  padding: 0 14px 16px;
+  /* gradient fade upward */
+  background: linear-gradient(to top,
+    rgba(0, 0, 0, 0.7) 0%,
+    rgba(0, 0, 0, 0.3) 50%,
+    transparent 100%);
+  pointer-events: none;
+  z-index: 20;
 }
 
-/* WASD wrapper (left side) */
+/* ---- WASD (mobile left) ---- */
 .wasdWrap {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
+  pointer-events: all;
   flex-shrink: 0;
+  width: 170px; /* mirror the spacer width so hotbar stays centered */
 }
 
-/* Moving status dot */
+/* Moving indicator dot */
 .movingDot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #333;
-  border: 1px solid #555;
-  transition: background 0.1s, box-shadow 0.1s;
+  background: #222;
+  border: 1px solid #444;
+  transition: background 0.12s, box-shadow 0.12s;
 }
-
 .movingDot.moving {
   background: #44cc55;
-  box-shadow: 0 0 6px rgba(68, 204, 85, 0.8);
+  box-shadow: 0 0 8px rgba(68, 204, 85, 0.9);
+}
+
+/* ---- Centered ability hotbar ---- */
+.hotbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: all;
+  /* no flex:1 — sits naturally in the middle */
+}
+
+/* ---- Mirror spacer so hotbar stays centered ---- */
+.wasdSpacer {
+  width: 170px;
+  flex-shrink: 0;
 }
 
 /* ============================================================
-   ABILITY BUTTONS  (right side of bottom hud)
+   ABILITY BUTTONS
    ============================================================ */
-.abilityRow {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  flex: 1;
-}
-
 .abilityBtn {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 76px;
-  height: 76px;
-  padding: 6px 4px;
-  background: rgba(8, 16, 32, 0.85);
-  border: 2px solid rgba(60, 100, 180, 0.35);
-  border-radius: 10px;
-  color: #ccc;
+  width: 72px;
+  height: 72px;
+  padding: 5px 3px 3px;
+  background: rgba(5, 12, 28, 0.92);
+  border: 2px solid rgba(50, 80, 150, 0.5);
+  border-radius: 8px;
+  color: #bbb;
   cursor: pointer;
   font-family: inherit;
-  font-size: 10px;
   text-align: center;
-  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+  /* Top inner highlight line */
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
 }
 
 .abilityBtn:hover:not(:disabled) {
-  border-color: rgba(68, 136, 255, 0.8);
-  background: rgba(20, 45, 100, 0.7);
-  box-shadow: 0 0 14px rgba(68, 136, 255, 0.22);
+  border-color: rgba(80, 150, 255, 0.85);
+  background: rgba(15, 35, 90, 0.75);
+  box-shadow: 0 0 16px rgba(80, 150, 255, 0.25), inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
 .abilityBtn.ready {
-  border-color: rgba(60, 190, 80, 0.7);
-  background: rgba(8, 36, 18, 0.88);
-  box-shadow: 0 0 10px rgba(60, 190, 80, 0.2);
+  border-color: rgba(50, 200, 80, 0.75);
+  background: rgba(5, 28, 14, 0.9);
+  box-shadow: 0 0 12px rgba(50, 200, 80, 0.2), inset 0 1px 0 rgba(255,255,255,0.06);
 }
 
 .abilityBtn.ready:hover {
-  box-shadow: 0 0 20px rgba(60, 190, 80, 0.4);
+  box-shadow: 0 0 24px rgba(50, 200, 80, 0.45), inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
 .abilityBtn.notReady {
-  opacity: 0.4;
+  opacity: 0.38;
   cursor: not-allowed;
 }
-
-.abilityBtn:disabled {
-  cursor: not-allowed;
-}
+.abilityBtn:disabled { cursor: not-allowed; }
 
 .abilityKey {
   font-size: 9px;
   color: #555;
   line-height: 1;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  letter-spacing: 0.5px;
 }
 
 .abilityName {
   font-size: 9px;
   font-weight: bold;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
   color: #ddd;
   word-break: break-word;
   line-height: 1.2;
+  max-width: 64px;
 }
 
-.abilityMeta {
-  font-size: 9px;
-  color: #777;
+.abilityRange {
+  font-size: 8px;
+  color: #666;
   margin-top: 3px;
 }
 
 /* Cooldown badge */
 .cdOverlay {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  background: rgba(200, 48, 48, 0.92);
+  top: 3px;
+  right: 3px;
+  background: rgba(200, 40, 40, 0.92);
   color: #fff;
   font-size: 9px;
   font-weight: bold;
   min-width: 16px;
   height: 16px;
-  border-radius: 4px;
+  border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 3px;
 }
 
+/* Grey cooldown sweep overlay — full button dimmed */
+.abilityBtn.notReady::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */
 @media (max-width: 600px) {
+  .enemyBossBar {
+    min-width: 200px;
+    width: 55vw;
+  }
+
   .abilityBtn {
-    width: 60px;
-    height: 60px;
+    width: 56px;
+    height: 56px;
   }
 
-  .topHud {
-    padding: 8px 10px;
-  }
-
-  .distBadge {
-    min-width: 50px;
-    padding: 3px 8px;
+  .wasdWrap,
+  .wasdSpacer {
+    width: 130px;
   }
 
   .distVal {
-    font-size: 14px;
+    font-size: 16px;
   }
+}
+
+/* Hide spacer on very small screens — hotbar goes to center anyway */
+@media (max-width: 480px) {
+  .wasdSpacer { display: none; }
+  .wasdWrap   { width: auto; }
+  .bottomHud  { justify-content: space-around; }
 }
