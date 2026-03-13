@@ -505,8 +505,8 @@ router.post("/battle/start", async (req, res) => {
     console.log(`[battle/start] Saved to DB, now starting GameLoop`);
 
     // ✅ START LOOP (only once)
-    // Test with very low tick rate to diagnose event loop starvation
-    GameLoop.start(gameId, battleState, { tickRate: 10 });
+    // 20Hz = 50ms intervals - stable on free VM without blocking player 2 logins
+    GameLoop.start(gameId, battleState, { tickRate: 20 });
     console.log(`[battle/start] ✅ GameLoop started for ${gameId}`);
 
     res.json({ status: "battle_started" });
