@@ -292,11 +292,7 @@ router.post("/draft/finalize", async (req, res) => {
 
     const selected = game.tournament.selectedAbilities[userId];
 
-    // Check if player has selected exactly 6 abilities
-    if (selected.length !== 6) {
-      return res.status(400).json({ error: `Must select exactly 6 abilities (currently ${selected.length})` });
-    }
-
+    // Players can go to battle with any number of cards (including 0)
     // Mark this player as ready
     if (!game.draftReady) game.draftReady = {};
     (game.draftReady as any)[userId] = true;

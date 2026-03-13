@@ -217,11 +217,6 @@ export default function DraftScreen({
   };
 
   const handleFinalize = async () => {
-    if (selected.length !== 6) {
-      setError(`必须选择6个能力 (当前${selected.length}个)`);
-      return;
-    }
-
     try {
       setLoading(true);
       setError(null);
@@ -326,8 +321,8 @@ export default function DraftScreen({
             <button
               className={styles.finalizeBtn}
               onClick={handleFinalize}
-              disabled={loading || selected.length !== 6}
-              title={selected.length !== 6 ? `必须选择6个能力 (当前${selected.length}个)` : ""}
+              disabled={loading}
+              title=""
             >
               ✓ 确认 {loading ? "..." : ""}
             </button>
