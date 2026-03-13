@@ -59,6 +59,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
   // track last known version
   const versionRef = useRef<number>(0);
+  // Updated directly in WS handler with accurate receive timestamps — bypasses React render cycle
+  const opponentPositionBufferRef = useRef<Array<{ t: number; pos: { x: number; y: number } }>>([]);
+  const meIndexRef = useRef<number>(-1); // set once when game loads, never changes
   
   // WebSocket connection
   const wsRef = useRef<WebSocket | null>(null);
@@ -86,6 +89,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     });
     
     versionRef.current = full.state.version;
+    // Compute and cache meIndex so WS handler can identify opponent patches
+    meIndexRef.current = full.state.players.findIndex((p: any) => p.userId === selfUserId);
     setGame(full);
     setLoading(false);
   }, [gameId]);
@@ -216,6 +221,21 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
         if (message.type === "STATE_DIFF" || message.type === "GAME_OVER") {
           if (!message.diff || message.diff.length === 0) return;
+
+          // Push opponent position patches IMMEDIATELY with accurate timestamp.
+          // This bypasses React setState + re-render + useEffect delay (~16-32ms variable).
+          const opponentIdx = meIndexRef.current === 0 ? 1 : meIndexRef.current === 1 ? 0 : -1;
+          if (opponentIdx !== -1) {
+            for (const patch of message.diff) {
+              const match = patch.path.match(/^\/players\/(\d+)\/position$/);
+              if (match && parseInt(match[1]) === opponentIdx && patch.value?.x !== undefined) {
+                opponentPositionBufferRef.current.push({ t: receiveTime, pos: patch.value });
+                // Keep only last 1 second
+                const cutoff = receiveTime - 1000;
+                opponentPositionBufferRef.current = opponentPositionBufferRef.current.filter(e => e.t >= cutoff);
+              }
+            }
+          }
 
           versionRef.current = message.version ?? 0;
 
@@ -513,6 +533,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     playCard,
     endTurn,
     rtt,
-    refetch: fetchInitialGame, // Expose refetch for draft screen
+    refetch: fetchInitialGame,
+    opponentPositionBufferRef, // Raw WS-timestamped buffer, bypasses React render delay
   };
 }

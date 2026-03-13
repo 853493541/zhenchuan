@@ -38,6 +38,9 @@ interface BattleArenaProps {
   distance: number;
   maxHp: number;
   cards: Record<string, any>;
+  /** Raw WS-timestamped opponent position buffer from useGameState.
+   *  Updated directly in the WS handler — no React render delay. */
+  opponentPositionBufferRef?: React.MutableRefObject<Array<{ t: number; pos: Position }>>;
 }
 
 /**
@@ -51,6 +54,7 @@ export default function BattleArena({
   distance,
   maxHp,
   cards,
+  opponentPositionBufferRef,
 }: BattleArenaProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [wasdKeys, setWasdKeys] = useState({
@@ -63,9 +67,14 @@ export default function BattleArena({
   const localPositionRef = useRef<Position | null>(null); // client-predicted position
   const localVelocityRef = useRef({ x: 0, y: 0 });       // client-predicted velocity
   const keysRef = useRef({ w: false, a: false, s: false, d: false });
-  const opponentPrevRef = useRef<Position | null>(null);  // for opponent interpolation
-  const opponentNextRef = useRef<Position | null>(null);
-  const opponentLerpRef = useRef(0);
+  // Opponent interpolation: timestamped position buffer
+  // Prefer the external buffer (direct from WS handler, no React delay).
+  // Fall back to internal buffer if parent doesn't provide one.
+  const internalOpponentBufferRef = useRef<Array<{ t: number; pos: Position }>>([]);
+  const opponentRawRef = useRef<Position | null>(null); // latest raw position (startup fallback)
+  const RENDER_DELAY_MS = 100; // render opponent 100ms behind real-time
+  // Resolve which buffer to use
+  const activeOpponentBuffer = opponentPositionBufferRef ?? internalOpponentBufferRef;
   const abilitiesRef = useRef<AbilityInfo[]>([]);         // synced for stable render loop
   const distanceRef = useRef(0);
   const initializedRef = useRef(false);
@@ -114,13 +123,18 @@ export default function BattleArena({
     };
   }, [me?.position?.x, me?.position?.y]);
 
-  // Record new opponent target on each broadcast for interpolation
+  // Keep opponentRawRef updated for startup fallback (and feed internal buffer if no external one).
   useEffect(() => {
     if (!opponent?.position) return;
-    opponentPrevRef.current = opponentNextRef.current ?? { ...opponent.position };
-    opponentNextRef.current = { ...opponent.position };
-    opponentLerpRef.current = performance.now();
-  }, [opponent?.position?.x, opponent?.position?.y]);
+    opponentRawRef.current = opponent.position;
+    // Only push to internal buffer when no external buffer is provided
+    if (!opponentPositionBufferRef) {
+      const now = performance.now();
+      internalOpponentBufferRef.current.push({ t: now, pos: { ...opponent.position } });
+      const cutoff = now - 1000;
+      internalOpponentBufferRef.current = internalOpponentBufferRef.current.filter(e => e.t >= cutoff);
+    }
+  }, [opponent?.position?.x, opponent?.position?.y, opponentPositionBufferRef]);
 
   // Update abilities list based on hand
   useEffect(() => {
@@ -268,17 +282,53 @@ export default function BattleArena({
     let animId: number;
 
     const loop = () => {
-      // --- Opponent interpolation ---
-      const opElapsed = performance.now() - opponentLerpRef.current;
-      const opT = Math.min(opElapsed / 50, 1);
-      const opPrev = opponentPrevRef.current;
-      const opNext = opponentNextRef.current;
-      let opPos: Position | null = opNext;
-      if (opPrev && opNext) {
-        opPos = {
-          x: opPrev.x + (opNext.x - opPrev.x) * opT,
-          y: opPrev.y + (opNext.y - opPrev.y) * opT,
-        };
+      // --- Opponent position: entity interpolation with dead reckoning ---
+      //
+      // Three cases handled without snapping:
+      //   1. renderTime between two buffer entries  → interpolate (normal case)
+      //   2. renderTime before first entry (buffer cold) → show first entry
+      //   3. renderTime past last entry (delayed packet) → dead-reckon forward
+      //      using velocity from last two entries (max 1 extra tick to prevent runaway)
+      const renderTime = performance.now() - RENDER_DELAY_MS;
+      const buf = activeOpponentBuffer.current;
+      let opPos: Position | null = opponentRawRef.current; // startup fallback
+
+      if (buf.length >= 2) {
+        const last = buf[buf.length - 1];
+        const prev = buf[buf.length - 2];
+
+        if (renderTime <= buf[0].t) {
+          // Too early — clamp to oldest entry
+          opPos = buf[0].pos;
+        } else if (renderTime >= last.t) {
+          // Past the buffer — dead-reckon forward using last velocity
+          const span = last.t - prev.t;
+          if (span > 0) {
+            const overshoot = Math.min((renderTime - last.t) / span, 1); // cap at 1 tick ahead
+            opPos = {
+              x: Math.max(2, Math.min(98, last.pos.x + (last.pos.x - prev.pos.x) * overshoot)),
+              y: Math.max(2, Math.min(98, last.pos.y + (last.pos.y - prev.pos.y) * overshoot)),
+            };
+          } else {
+            opPos = last.pos;
+          }
+        } else {
+          // Normal case: find bracketing pair and interpolate
+          for (let i = 0; i < buf.length - 1; i++) {
+            if (buf[i].t <= renderTime && buf[i + 1].t >= renderTime) {
+              const lo = buf[i], hi = buf[i + 1];
+              const span = hi.t - lo.t;
+              const t = span > 0 ? (renderTime - lo.t) / span : 1;
+              opPos = {
+                x: lo.pos.x + (hi.pos.x - lo.pos.x) * t,
+                y: lo.pos.y + (hi.pos.y - lo.pos.y) * t,
+              };
+              break;
+            }
+          }
+        }
+      } else if (buf.length === 1) {
+        opPos = buf[0].pos;
       }
 
       // --- Canvas render ---
@@ -291,6 +341,9 @@ export default function BattleArena({
 
       const p1Pos = localPositionRef.current;
       if (!p1Pos || !opPos) {
+        // Still waiting for initial data
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#fff';
         ctx.font = '16px sans-serif';
         ctx.textAlign = 'center';

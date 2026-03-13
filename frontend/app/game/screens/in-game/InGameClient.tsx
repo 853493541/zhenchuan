@@ -96,6 +96,7 @@ export default function InGameClient({
     endTurn,
     rtt,
     refetch,
+    opponentPositionBufferRef,
   } = useGameState(gameId, selfUserId, authToken);
 
   // Track if we've already initiated battle to prevent duplicate calls
@@ -313,6 +314,7 @@ export default function InGameClient({
         distance={distance}
         maxHp={me.hp + (state.players[1]?.hp || 0) === me.hp ? me.hp : 30} // Fallback to 30
         cards={preload.cardMap}
+        opponentPositionBufferRef={opponentPositionBufferRef}
         onCastAbility={async (cardInstanceId) => {
           const res = await playCard(cardInstanceId);
           if (!res.ok && res.error) {
