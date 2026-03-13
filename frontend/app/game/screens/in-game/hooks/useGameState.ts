@@ -271,14 +271,6 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             });
             const statePatches = message.diff!.filter(p => !tournamentPatches.includes(p));
             
-            console.log("[Patches] Distribution:", {
-              total: message.diff!.length,
-              state: statePatches.length,
-              tournament: tournamentPatches.length,
-              statePaths: statePatches.map(p => p.path),
-              tournamentPaths: tournamentPatches.map(p => p.path),
-            });
-            
             let updated = prev;
             
             // Apply state patches to game.state
@@ -291,12 +283,10 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             
             // Apply tournament patches to game.tournament
             if (tournamentPatches.length > 0) {
-              console.log("[Patches] Applying tournament patches to game.tournament");
               updated = {
                 ...updated,
                 tournament: applyDiff(updated.tournament, tournamentPatches),
               };
-              console.log("[Patches] After applying tournament patches, phase is now:", updated.tournament?.phase);
             }
             
             return updated;
@@ -448,7 +438,12 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   /* ================= PLAY CARD ================= */
 
   const playCard = async (card: CardInstance) => {
-    if (!isMyTurn || playing || state.gameOver) {
+    // Real-time battles: no turn restrictions (both players act simultaneously)
+    // Turn-based (draft): must be your turn
+    const isRealTimeBattle = game?.tournament?.phase === "BATTLE";
+    const turnCheckPassed = isRealTimeBattle || isMyTurn;
+
+    if (!turnCheckPassed || playing || state.gameOver) {
       return { ok: false };
     }
 

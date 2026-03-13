@@ -407,10 +407,10 @@ router.post("/draft/finalize", async (req, res) => {
 
       // Initialize moveSpeed if not present
       if (!game.state.players[0].moveSpeed) {
-        game.state.players[0].moveSpeed = 0.5;
+        game.state.players[0].moveSpeed = 1.0;
       }
       if (!game.state.players[1].moveSpeed) {
-        game.state.players[1].moveSpeed = 0.5;
+        game.state.players[1].moveSpeed = 1.0;
       }
 
       // Force Mongoose to recognize nested changes

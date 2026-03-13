@@ -258,17 +258,7 @@ export default function InGameClient({
 
   /* ================= DRAFT PHASE ================= */
 
-  console.log("[InGameClient] Tournament state:", {
-    tournament: tournament ? { phase: tournament.phase, battleNumber: tournament.battleNumber } : null,
-    loading,
-    hasState: !!state,
-    hasMe: !!me,
-    hasOpponent: !!opponent,
-    hasPreload: !!preload,
-  });
-
   if (tournament && tournament.phase === "DRAFT") {
-    console.log("[InGameClient] tournament.phase === DRAFT, showing DRAFT screen. Tournament:", tournament);
     return (
       <DraftScreen
         gameId={gameId}
@@ -284,23 +274,12 @@ export default function InGameClient({
     );
   }
   
-  if (tournament) {
-    console.log("[InGameClient] tournament.phase !== DRAFT, showing BATTLE screen. Phase:", tournament.phase);
-  }
-
   /* ================= RENDER BATTLE ================= */
 
   // Only render if we have valid player data
   if (!me || !opponent) {
     return <div>Loading battle state...</div>;
   }
-
-  console.log("[InGameClient] Rendering BATTLE, player info:", {
-    myHandSize: me?.hand?.length || 0,
-    opponentHandSize: opponent?.hand?.length || 0,
-    myPosition: me?.position,
-    opponentPosition: opponent?.position,
-  });
 
   // Calculate distance between players
   const distance = me?.position && opponent?.position
@@ -321,8 +300,14 @@ export default function InGameClient({
         cards={preload.cardMap}
         opponentPositionBufferRef={opponentPositionBufferRef}
         onCastAbility={async (cardInstanceId) => {
-          const res = await playCard(cardInstanceId);
+          const cardInstance = me.hand.find((c) => c.instanceId === cardInstanceId);
+          if (!cardInstance) {
+            showGameError("ERR_CARD_NOT_IN_HAND");
+            return;
+          }
+          const res = await playCard(cardInstance);
           if (!res.ok && res.error) {
+            console.error("[CastAbility] Error response:", res.error);
             showGameError(res.error);
           }
         }}

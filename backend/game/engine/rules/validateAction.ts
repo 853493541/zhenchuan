@@ -39,7 +39,16 @@ export function validateCastAbility(
     throw new Error("ERR_CARD_NOT_IN_HAND");
   }
 
-  const card = CARDS[instance.cardId];
+  console.log("[validateCastAbility] DEBUG - card instance:", {
+    instanceId: instance.instanceId,
+    cardId: instance.cardId,
+    id: (instance as any).id,
+    keys: Object.keys(instance).slice(0, 10),
+  });
+
+  // Card can be referenced by either .cardId or .id (depending on how it was populated)
+  const cardId = instance.cardId || (instance as any).id;
+  const card = CARDS[cardId];
   if (!card) {
     throw new Error("ERR_CARD_NOT_FOUND");
   }
@@ -107,7 +116,9 @@ export function validatePlayCard(
     throw new Error("ERR_CARD_NOT_IN_HAND");
   }
 
-  const card = CARDS[instance.cardId];
+  // Card can be referenced by either .cardId or .id (depending on how it was populated)
+  const cardId = instance.cardId || (instance as any).id;
+  const card = CARDS[cardId];
   if (!card) {
     throw new Error("ERR_CARD_NOT_FOUND");
   }

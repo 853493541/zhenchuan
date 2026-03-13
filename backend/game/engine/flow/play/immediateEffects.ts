@@ -8,6 +8,7 @@ import {
   handleDraw,
   handleCleanse,
   handleChannelEffect,
+  handleDash,
 } from "../../effects/handlers";
 
 export function applyImmediateEffects(params: {
@@ -70,6 +71,10 @@ export function applyImmediateEffects(params: {
 
       case "CLEANSE":
         handleCleanse(source);
+        break;
+
+      case "DASH":
+        handleDash(state, source, effTarget, enemyApplied, card, effect);
         break;
 
       case "WUJIAN_CHANNEL":

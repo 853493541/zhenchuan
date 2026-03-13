@@ -70,8 +70,25 @@ async function playCastAbility(
 
   const player = state.players[playerIndex];
   const idx = player.hand.findIndex((c) => c.instanceId === cardInstanceId);
+  
+  if (idx === -1) {
+    throw new Error("ERR_CARD_NOT_IN_HAND");
+  }
+  
   const played = player.hand[idx];
-  const card = CARDS[played.cardId];
+  console.log("[playCastAbility] DEBUG - played card:", {
+    instanceId: played.instanceId,
+    cardId: played.cardId,
+    id: (played as any).id,
+    keys: Object.keys(played),
+  });
+  // Card can be referenced by either .cardId or .id (depending on how it was populated)
+  const cardId = played.cardId || (played as any).id;
+  const card = CARDS[cardId];
+  
+  if (!card) {
+    throw new Error("ERR_CARD_NOT_FOUND");
+  }
 
   const targetIndex = playerIndex === 0 ? 1 : 0;
 
@@ -137,7 +154,9 @@ async function playCardTurnBased(
   const idx = player.hand.findIndex((c) => c.instanceId === cardInstanceId);
   const played = player.hand[idx];
 
-  const card = CARDS[played.cardId];
+  // Card can be referenced by either .cardId or .id (depending on how it was populated)
+  const cardId = played.cardId || (played as any).id;
+  const card = CARDS[cardId];
   const targetIndex =
     card.target === "SELF" ? playerIndex : playerIndex === 0 ? 1 : 0;
 

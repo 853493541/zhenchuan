@@ -27,7 +27,8 @@ export type EffectType =
   | "ON_PLAY_DAMAGE"
   | "XINZHENG_CHANNEL"
   | "BONUS_DAMAGE_IF_TARGET_HP_GT"
-  | "SCHEDULED_DAMAGE";
+  | "SCHEDULED_DAMAGE"
+  | "DASH";
 
 /**
  * Immediate card effects

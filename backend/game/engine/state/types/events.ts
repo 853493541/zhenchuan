@@ -10,7 +10,8 @@ export type GameEventType =
   | "DAMAGE"
   | "HEAL"
   | "BUFF_APPLIED"
-  | "BUFF_EXPIRED";
+  | "BUFF_EXPIRED"
+  | "DASH";
 
 export interface GameEvent {
   id: string;

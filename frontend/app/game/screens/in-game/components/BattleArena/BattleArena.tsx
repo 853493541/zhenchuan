@@ -238,7 +238,7 @@ export default function BattleArena({
   // Decoupled from rAF so frame rate doesn't affect integration.
   useEffect(() => {
     // Physics constants — must match backend/game/engine/loop/movement.ts
-    const MAX_SPEED = 0.5; // player.moveSpeed on server
+    const MAX_SPEED = 1.0; // player.moveSpeed on server
     const ACCEL = 0.3;
     const DECEL = 0.9;
 

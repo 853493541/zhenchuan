@@ -641,4 +641,19 @@ export const CARDS: Record<string, Card & { description: string }> = {
       { type: "HEAL", value: 4, applyTo: "SELF" },
     ],
   },
+
+  /* ================= 位移 ================= */
+
+  zhenshen_xingsi: {
+    id: "zhenshen_xingsi",
+    name: "真身行思",
+    description: "冲向敌人（最远20码）\n距离内冲向敌方位置",
+    type: "CONTROL",
+    target: "OPPONENT",
+    gcdCost: 1,
+    range: 20,
+    effects: [
+      { type: "DASH", value: 8 },
+    ],
+  },
 };

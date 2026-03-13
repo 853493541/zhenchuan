@@ -7,6 +7,7 @@ import { handleHeal } from "./definitions/Heal";
 import { handleDraw } from "./definitions/Draw";
 import { handleCleanse } from "./definitions/Cleanse";
 import { handleChannelEffect } from "./definitions/Channel";
+import { handleDash } from "./definitions/Dash";
 import { handleApplyBuffs } from "./applyBuffs";
 
 /**
@@ -23,5 +24,6 @@ export {
   handleDraw,
   handleCleanse,
   handleChannelEffect,
+  handleDash,
   handleApplyBuffs,
 };
