@@ -238,8 +238,8 @@ function renderCharacter(
   hpCurrent: number,
   isMe: boolean,
 ) {
-  const baseP = projPt(v3(pos.x, pos.y, 0),           cam, W, H);
-  const topP  = projPt(v3(pos.x, pos.y, CHAR_HEIGHT), cam, W, H);
+  const baseP = projPt(v3(pos.x, pos.y, pos.z),             cam, W, H);
+  const topP  = projPt(v3(pos.x, pos.y, pos.z + CHAR_HEIGHT), cam, W, H);
   if (!baseP || !topP) return;
 
   const depth  = baseP.depth;
@@ -252,14 +252,18 @@ function renderCharacter(
   const cx        = topP.x;
   const ellipseRy = rs * 0.32;
 
-  // Ground shadow
-  ctx.save();
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle   = '#000';
-  ctx.beginPath();
-  ctx.ellipse(baseP.x, baseP.y, rs * 1.5, rs * 0.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  // Ground shadow — always projected at floor level (fades as player goes higher)
+  const shadowP = projPt(v3(pos.x, pos.y, 0), cam, W, H);
+  if (shadowP) {
+    const sRs = (CHAR_RADIUS / shadowP.depth) * cam.fl;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0.08, 0.35 - pos.z * 0.05);
+    ctx.fillStyle   = '#000';
+    ctx.beginPath();
+    ctx.ellipse(shadowP.x, shadowP.y, sRs * 1.5, sRs * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 
   // Cylinder body
   const bodyGrad = ctx.createLinearGradient(cx - rs, 0, cx + rs, 0);
@@ -343,7 +347,7 @@ function renderCharacter(
 /* ============================================================
    TYPES
    ============================================================ */
-interface Position { x: number; y: number; }
+interface Position { x: number; y: number; z?: number; }
 
 interface AbilityInfo {
   id: string;
@@ -393,6 +397,13 @@ export default function BattleArena({
   const initializedRef   = useRef(false);
   const movementAbortRef = useRef<AbortController | null>(null);
 
+  /* --- Jump / Z refs --- */
+  const jumpLocalRef      = useRef(false); // drives local Z prediction
+  const jumpSendRef       = useRef(false); // queued for next movement POST
+  const localZRef         = useRef(0);     // current Z height (world units)
+  const localVzRef        = useRef(0);     // current Z velocity
+  const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
+
   /* --- Opponent interpolation --- */
   const internalOpponentBufferRef = useRef<Array<{ t: number; pos: Position }>>([]);
   const opponentRawRef            = useRef<Position | null>(null);
@@ -418,6 +429,9 @@ export default function BattleArena({
 
   const sendMovement = useCallback(async () => {
     const k = keysRef.current;
+    // Capture & clear jump flag atomically before the async POST
+    const shouldJump = jumpSendRef.current;
+    if (shouldJump) jumpSendRef.current = false;
     movementAbortRef.current?.abort();
     movementAbortRef.current = new AbortController();
     try {
@@ -430,8 +444,8 @@ export default function BattleArena({
           gameId,
           // W = forward on screen = camera+Y = server "down" (+vy)
           // S = backward on screen = camera-Y = server "up"  (-vy)
-          direction: (k.w || k.a || k.s || k.d)
-            ? { up: k.s, down: k.w, left: k.a, right: k.d }
+          direction: (k.w || k.a || k.s || k.d || shouldJump)
+            ? { up: k.s, down: k.w, left: k.a, right: k.d, jump: shouldJump }
             : null,
         }),
       });
@@ -517,6 +531,12 @@ export default function BattleArena({
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = true;
         setWasdKeys(prev => ({ ...prev, [k]: true }));
       }
+      // Space = jump (both local prediction and server)
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        jumpLocalRef.current = true;
+        jumpSendRef.current  = true;
+      }
     };
     const onUp = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
@@ -544,6 +564,7 @@ export default function BattleArena({
   /* Physics — mirrors server exactly */
   useEffect(() => {
     const MAX_SPEED = 1.0, ACCEL = 0.3, DECEL = 0.9;
+    const JUMP_VZ_CLIENT = 0.6, GRAVITY_CLIENT = 0.04;
     const tick = () => {
       const pos = localPositionRef.current;
       if (!pos) return;
@@ -563,6 +584,20 @@ export default function BattleArena({
         x: Math.max(2, Math.min(98, pos.x + vel.x)),
         y: Math.max(2, Math.min(98, pos.y + vel.y)),
       };
+
+      // ── Z axis: jump + gravity ──
+      if (jumpLocalRef.current && localJumpCountRef.current < 2) {
+        localVzRef.current        = JUMP_VZ_CLIENT;
+        localJumpCountRef.current += 1;
+        jumpLocalRef.current       = false; // consume local jump
+      }
+      localVzRef.current -= GRAVITY_CLIENT;
+      localZRef.current   = Math.max(0, localZRef.current + localVzRef.current);
+      if (localZRef.current <= 0 && localVzRef.current < 0) {
+        localZRef.current         = 0;
+        localVzRef.current        = 0;
+        localJumpCountRef.current = 0; // restore jumps on landing
+      }
     };
     const id = setInterval(tick, 33);
     return () => clearInterval(id);
@@ -629,6 +664,7 @@ export default function BattleArena({
             opPos = {
               x: Math.max(2, Math.min(98, last.pos.x + (last.pos.x - prev.pos.x) * over)),
               y: Math.max(2, Math.min(98, last.pos.y + (last.pos.y - prev.pos.y) * over)),
+              z: Math.max(0, (last.pos.z ?? 0) + ((last.pos.z ?? 0) - (prev.pos.z ?? 0)) * over),
             };
           } else opPos = last.pos;
         } else {
@@ -640,6 +676,7 @@ export default function BattleArena({
               opPos = {
                 x: lo.pos.x + (hi.pos.x - lo.pos.x) * t,
                 y: lo.pos.y + (hi.pos.y - lo.pos.y) * t,
+                z: (lo.pos.z ?? 0) + ((hi.pos.z ?? 0) - (lo.pos.z ?? 0)) * t,
               };
               break;
             }
@@ -685,8 +722,8 @@ export default function BattleArena({
       /* Sort back-to-front */
       const mxHp = maxHpRef.current;
       const entities = [
-        { pos: v3(opPos.x, opPos.y, 0), color: '#cc3333', glow: '#ff5555', hp: oppHpRef.current, isMe: false },
-        { pos: v3(myPos.x, myPos.y, 0), color: '#1a66cc', glow: '#44aaff', hp: meHpRef.current,  isMe: true  },
+        { pos: v3(opPos.x, opPos.y, opPos.z ?? 0), color: '#cc3333', glow: '#ff5555', hp: oppHpRef.current, isMe: false },
+        { pos: v3(myPos.x, myPos.y, localZRef.current),  color: '#1a66cc', glow: '#44aaff', hp: meHpRef.current,  isMe: true  },
       ];
       entities.sort((a, b) => {
         const dA = dot3(sub3(a.pos, cam.pos), cam.fwd);

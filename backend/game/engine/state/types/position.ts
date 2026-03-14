@@ -4,11 +4,15 @@
 export interface Position {
   x: number;
   y: number;
+  /** Vertical height above the arena floor (0 = ground). Added for jump support. */
+  z?: number;
 }
 
 export interface Velocity {
   vx: number;
   vy: number;
+  /** Vertical velocity — positive = rising, negative = falling. */
+  vz?: number;
 }
 
 /**
@@ -20,6 +24,8 @@ export interface MovementInput {
   down: boolean;  // S key
   left: boolean;  // A key
   right: boolean; // D key
+  /** One-shot jump request — processed once per press, then cleared by GameLoop. */
+  jump?: boolean;
 }
 
 /**

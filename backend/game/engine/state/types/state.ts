@@ -43,6 +43,12 @@ export interface PlayerState {
    * Can be modified by buffs
    */
   moveSpeed: number;
+
+  /**
+   * Number of jumps consumed in the current airtime (0 = grounded).
+   * Resets to 0 on landing. Max 2 (double-jump).
+   */
+  jumpCount?: number;
 }
 
 export interface GameState {

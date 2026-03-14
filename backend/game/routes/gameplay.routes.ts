@@ -81,6 +81,7 @@ router.post("/movement", async (req, res) => {
             down: direction.down === true,
             left: direction.left === true,
             right: direction.right === true,
+            jump: direction.jump === true,
           }
         : null;
 

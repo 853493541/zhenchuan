@@ -142,6 +142,10 @@ export class GameLoop {
     this.state.players.forEach((player, idx) => {
       const input = this.playerInputs.get(idx) ?? null;
       applyMovement(player, input, this.tickRate);
+      // Clear the one-shot jump flag so it fires only once per press
+      if (input?.jump) {
+        this.playerInputs.set(idx, { ...input, jump: false });
+      }
     });
     const moveTime = performance.now() - moveStart;
 

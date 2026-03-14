@@ -13,6 +13,11 @@ const ARENA_WIDTH = 100;
 const ARENA_HEIGHT = 100;
 const PLAYER_RADIUS = 2; // Collision size of player
 
+/** Vertical physics constants (at ~30 Hz tick rate) */
+const GRAVITY  = 0.04;  // units/tick² downward acceleration
+const JUMP_VZ  = 0.6;   // initial upward velocity on jump (~4.5 unit peak height, ~1 s airtime)
+const MAX_JUMPS = 2;     // allow double-jump
+
 /**
  * Apply movement input to player state
  *
@@ -28,6 +33,11 @@ export function applyMovement(
   input: MovementInput | null,
   tickRate: number
 ) {
+  // ── initialise Z fields on older state objects that predate jumping ──
+  if (player.position.z   === undefined) player.position.z   = 0;
+  if (player.velocity.vz  === undefined) player.velocity.vz  = 0;
+  if (player.jumpCount    === undefined) player.jumpCount     = 0;
+
   if (!input) {
     // No input - decelerate (stop sliding)
     player.velocity.vx *= 0.9;
@@ -47,9 +57,15 @@ export function applyMovement(
     const acceleration = 0.3;
     player.velocity.vx += (targetVx - player.velocity.vx) * acceleration;
     player.velocity.vy += (targetVy - player.velocity.vy) * acceleration;
+
+    // ── Jump (one-shot: GameLoop clears input.jump after each tick) ──
+    if (input.jump && player.jumpCount < MAX_JUMPS) {
+      player.velocity.vz = JUMP_VZ;
+      player.jumpCount += 1;
+    }
   }
 
-  // Apply velocity to position
+  // Apply XY velocity to position
   player.position.x += player.velocity.vx;
   player.position.y += player.velocity.vy;
 
@@ -74,6 +90,15 @@ export function applyMovement(
   if (player.position.y > maxY) {
     player.position.y = maxY;
     player.velocity.vy = 0;
+  }
+
+  // ── Z axis: gravity + landing ──
+  player.velocity.vz! -= GRAVITY;
+  player.position.z! += player.velocity.vz!;
+  if (player.position.z! <= 0) {
+    player.position.z  = 0;
+    player.velocity.vz = 0;
+    player.jumpCount   = 0; // restore jumps on landing
   }
 }
 
