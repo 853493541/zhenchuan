@@ -149,6 +149,13 @@ export class GameLoop {
     });
     const moveTime = performance.now() - moveStart;
 
+    // 1b. Decrement ability cooldowns each tick
+    this.state.players.forEach((player) => {
+      player.hand.forEach((card) => {
+        if (card.cooldown > 0) card.cooldown--;
+      });
+    });
+
     // 2. Check win condition
     const winStart = performance.now();
     checkGameOver(this.state);
@@ -162,11 +169,20 @@ export class GameLoop {
       // Increment version only on broadcasts
       this.state.version = (this.state.version ?? 0) + 1;
       
-      // Send only position changes (lightweight diff, no structuredClone)
-      const diff = this.state.players.map((p) => ({
+      // Send position + cooldown changes (lightweight diff)
+      const diff: Array<{ path: string; value: any }> = this.state.players.map((p) => ({
         path: `/players/${this.state.players.indexOf(p)}/position`,
         value: p.position,
       }));
+      // Append per-card cooldown patches so clients stay in sync
+      this.state.players.forEach((p, pidx) => {
+        p.hand.forEach((card, cidx) => {
+          diff.push({
+            path: `/players/${pidx}/hand/${cidx}/cooldown`,
+            value: card.cooldown,
+          });
+        });
+      });
       
       // During gameplay, send compact movement-only broadcasts
       if (!this.state.gameOver) {

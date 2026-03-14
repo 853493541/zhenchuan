@@ -26,6 +26,9 @@ export function buildCardPreload() {
       // Range data for client-side ability readiness check
       range:    (card as any).range,
       minRange: (card as any).minRange,
+
+      // Common movement abilities are always shown regardless of draft
+      isCommon: !!(card as any).isCommon,
     };
 
     cards.push(cardPayload);

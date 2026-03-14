@@ -28,7 +28,9 @@ export type EffectType =
   | "XINZHENG_CHANNEL"
   | "BONUS_DAMAGE_IF_TARGET_HP_GT"
   | "SCHEDULED_DAMAGE"
-  | "DASH";
+  | "DASH"
+  | "DIRECTIONAL_DASH"
+  | "JUMP_BOOST";
 
 /**
  * Immediate card effects
@@ -43,6 +45,9 @@ export interface CardEffect {
   applyTo?: TargetType;
 
   threshold?: number;
+
+  /** Direction mode for DIRECTIONAL_DASH effects */
+  dirMode?: "TOWARD" | "AWAY" | "PERP_LEFT" | "PERP_RIGHT";
 }
 
 /**

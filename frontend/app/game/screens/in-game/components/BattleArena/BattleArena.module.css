@@ -269,6 +269,26 @@
 }
 
 /* ---- Centered ability hotbar ---- */
+.hotbarStack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  pointer-events: all;
+}
+
+/* Common abilities (top row) — slightly smaller, tinted gold */
+.commonBar {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(180, 140, 30, 0.35);
+  border-radius: 8px;
+  padding: 5px 7px;
+}
+
+/* Draft abilities (bottom row, existing) */
 .hotbar {
   display: flex;
   align-items: flex-end;
@@ -280,6 +300,26 @@
   border-radius: 10px;
   padding: 6px 8px;
   min-height: 88px; /* always reserve space even when abilities array is empty */
+}
+
+/* Common ability buttons — same size as draft, gold tinted */
+.commonBtn {
+  border-color: rgba(160, 120, 20, 0.5) !important;
+}
+
+/* Empty draft slot placeholder */
+.emptySlot {
+  background: rgba(5, 12, 28, 0.3);
+  border-color: rgba(50, 80, 150, 0.15) !important;
+  cursor: default;
+  pointer-events: none;
+}
+.commonBtn.ready {
+  border-color: rgba(220, 180, 40, 0.8) !important;
+  box-shadow: 0 0 10px rgba(200, 160, 30, 0.25) !important;
+}
+.commonBtn.ready:hover {
+  box-shadow: 0 0 20px rgba(220, 180, 40, 0.5) !important;
 }
 
 /* ---- Mirror spacer so hotbar stays centered ---- */

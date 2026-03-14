@@ -58,7 +58,7 @@ function getRandomRarities(level: number): number[] {
  */
 function getCardsByRarity(rarity: number): string[] {
   return Object.values(CARDS)
-    .filter((card: any) => (card.rarity ?? 1) === rarity)
+    .filter((card: any) => (card.rarity ?? 1) === rarity && !card.isCommon)
     .map((card: any) => card.id);
 }
 

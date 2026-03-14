@@ -3,6 +3,92 @@
 import { Card } from "../engine/state/types";
 
 export const CARDS: Record<string, Card & { description: string }> = {
+  /* ================= 通用技能 (common abilities — always in every player's hand) ================= */
+
+  nieyun_zhuyue: {
+    id: "nieyun_zhuyue",
+    name: "蹑云逐月",
+    description: "向对手方向冲刺20格",
+    type: "SUPPORT",
+    target: "SELF",
+    gcdCost: 0,
+    cooldownTicks: 1800, // 30 seconds at 60 Hz
+    effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD" }],
+    isCommon: true,
+  },
+
+  yingfeng_huilang: {
+    id: "yingfeng_huilang",
+    name: "迎风回浪",
+    description: "向远离对手的方向冲刺10格",
+    type: "SUPPORT",
+    target: "SELF",
+    gcdCost: 0,
+    cooldownTicks: 1800, // 30 seconds at 60 Hz
+    effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY" }],
+    isCommon: true,
+  },
+
+  lingxiao_lansheng: {
+    id: "lingxiao_lansheng",
+    name: "凌霄揽胜",
+    description: "向左侧冲刺7格",
+    type: "SUPPORT",
+    target: "SELF",
+    gcdCost: 0,
+    cooldownTicks: 1800, // 30 seconds at 60 Hz
+    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT" }],
+    isCommon: true,
+  },
+
+  yaotai_zhenhe: {
+    id: "yaotai_zhenhe",
+    name: "瑶台枕鹤",
+    description: "向右侧冲刺7格",
+    type: "SUPPORT",
+    target: "SELF",
+    gcdCost: 0,
+    cooldownTicks: 1800, // 30 seconds at 60 Hz
+    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT" }],
+    isCommon: true,
+  },
+
+  fuyao_zhishang: {
+    id: "fuyao_zhishang",
+    name: "扶摇直上",
+    description: "获得【弹跳】：下次跳跃高度提升至12单位",
+    type: "SUPPORT",
+    target: "SELF",
+    gcdCost: 0,
+    cooldownTicks: 1800, // 30 seconds at 60 Hz
+    effects: [],
+    buffs: [
+      {
+        buffId: 9001,
+        name: "弹跳",
+        category: "BUFF",
+        duration: 999, // consumed by movement.ts on next jump, not by turn-tick
+        tickOn: "TURN_START",
+        description: "下次跳跃高度提升至12单位",
+        effects: [{ type: "JUMP_BOOST" }],
+        applyTo: "SELF",
+      },
+    ],
+    isCommon: true,
+  },
+
+  houyao: {
+    id: "houyao",
+    name: "后撤",
+    description: "向后撤步1格（快速位移脱身）",
+    type: "SUPPORT",
+    target: "SELF",
+    gcdCost: 0,
+    cooldownTicks: 60, // 1 second at 60 Hz
+    effects: [{ type: "DIRECTIONAL_DASH", value: 1, dirMode: "AWAY" }],
+    isCommon: true,
+  },
+
   /* ================= 基础攻击 ================= */
 
   jianpo_xukong: {

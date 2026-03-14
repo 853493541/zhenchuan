@@ -69,6 +69,12 @@ export interface Card {
   targetingType?: "INSTANT" | "POINT_CLICK" | "DIRECTION";
 
   /**
+   * Number of game-loop ticks before this ability can be used again.
+   * At 60 Hz: 60 ticks = 1 second. Default 3 ticks if unset.
+   */
+  cooldownTicks?: number;
+
+  /**
    * Movement component of ability
    * - distance: how many units to move
    * - when: before (gap closer), after (kite), or during cast
@@ -77,6 +83,12 @@ export interface Card {
     distance: number;
     when: "BEFORE" | "AFTER" | "DURING";
   };
+
+  /**
+   * If true this card is a common movement ability given to every player
+   * automatically. It will NOT appear in the draft shop.
+   */
+  isCommon?: boolean;
 }
 
 export interface CardInstance {

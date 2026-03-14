@@ -34,7 +34,21 @@ export function validateCastAbility(
 
   const player = state.players[playerIndex];
 
-  const instance = player.hand.find((c) => c.instanceId === cardInstanceId);
+  // Accept lookup by instanceId OR by cardId (common abilities may be cast by cardId)
+  let instance = player.hand.find(
+    (c) => c.instanceId === cardInstanceId || (c.cardId ?? (c as any).id) === cardInstanceId
+  );
+
+  // Auto-inject common abilities missing from hand (legacy/in-progress games)
+  if (!instance) {
+    const maybeCommon = CARDS[cardInstanceId];
+    if (maybeCommon && (maybeCommon as any).isCommon) {
+      const newInst = { instanceId: cardInstanceId, cardId: cardInstanceId, cooldown: 0 };
+      player.hand.push(newInst as any);
+      instance = newInst as any;
+    }
+  }
+
   if (!instance) {
     throw new Error("ERR_CARD_NOT_IN_HAND");
   }

@@ -8,6 +8,7 @@ import { handleDraw } from "./definitions/Draw";
 import { handleCleanse } from "./definitions/Cleanse";
 import { handleChannelEffect } from "./definitions/Channel";
 import { handleDash } from "./definitions/Dash";
+import { handleDirectionalDash } from "./definitions/DirectionalDash";
 import { handleApplyBuffs } from "./applyBuffs";
 
 /**
@@ -25,5 +26,6 @@ export {
   handleCleanse,
   handleChannelEffect,
   handleDash,
+  handleDirectionalDash,
   handleApplyBuffs,
 };

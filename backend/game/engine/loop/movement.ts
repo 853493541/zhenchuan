@@ -14,8 +14,9 @@ const ARENA_HEIGHT = 100;
 const PLAYER_RADIUS = 2; // Collision size of player
 
 /** Vertical physics constants (at ~30 Hz tick rate) */
-const GRAVITY  = 0.04;  // units/tick² downward acceleration
-const JUMP_VZ  = 0.6;   // initial upward velocity on jump (~4.5 unit peak height, ~1 s airtime)
+const GRAVITY       = 0.04;  // units/tick² downward acceleration
+const JUMP_VZ       = 0.346; // initial upward velocity on jump (peak ≈ 1.5 units per jump)
+const POWER_JUMP_VZ = 0.98;  // boosted jump velocity for 弹跳 buff (~12 unit peak height)
 const MAX_JUMPS = 2;     // allow double-jump
 
 /**
@@ -60,8 +61,15 @@ export function applyMovement(
 
     // ── Jump (one-shot: GameLoop clears input.jump after each tick) ──
     if (input.jump && player.jumpCount < MAX_JUMPS) {
-      player.velocity.vz = JUMP_VZ;
+      // Check for 弹跳 buff (JUMP_BOOST) — consume it for a power jump
+      const boostIdx = player.buffs.findIndex(
+        (b) => b.effects.some((e) => e.type === "JUMP_BOOST")
+      );
+      player.velocity.vz = boostIdx >= 0 ? POWER_JUMP_VZ : JUMP_VZ;
       player.jumpCount += 1;
+      if (boostIdx >= 0) {
+        player.buffs.splice(boostIdx, 1); // consume the boost
+      }
     }
   }
 

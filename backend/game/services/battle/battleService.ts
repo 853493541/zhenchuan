@@ -15,6 +15,24 @@ import { randomUUID } from "crypto";
 const ARENA_WIDTH = 100;
 const ARENA_HEIGHT = 100;
 
+/** IDs of common abilities that every player always has, regardless of draft. */
+const COMMON_ABILITY_IDS = [
+  "nieyun_zhuyue",
+  "yingfeng_huilang",
+  "lingxiao_lansheng",
+  "yaotai_zhenhe",
+  "fuyao_zhishang",
+  "houyao",
+];
+
+function makeCommonAbilities(): CardInstance[] {
+  return COMMON_ABILITY_IDS.map((id) => ({
+    instanceId: randomUUID(),
+    cardId: id,
+    cooldown: 0,
+  }));
+}
+
 /**
  * Create a new battle game state from drafted abilities
  * Called when transitioning from draft to battle
@@ -30,11 +48,15 @@ export function initializeBattleState(
   const abilities1 = tournament.selectedAbilities[player1Id];
 
   // Create fresh instances of abilities for this battle with cooldown reset
-  const hand0: CardInstance[] = abilities0
-    .map((a) => ({ ...a, instanceId: randomUUID(), cooldown: 0 }));
+  const hand0: CardInstance[] = [
+    ...abilities0.map((a) => ({ ...a, instanceId: randomUUID(), cooldown: 0 })),
+    ...makeCommonAbilities(),
+  ];
 
-  const hand1: CardInstance[] = abilities1
-    .map((a) => ({ ...a, instanceId: randomUUID(), cooldown: 0 }));
+  const hand1: CardInstance[] = [
+    ...abilities1.map((a) => ({ ...a, instanceId: randomUUID(), cooldown: 0 })),
+    ...makeCommonAbilities(),
+  ];
 
   // All abilities in hand - no deck, no drawing, reusable with cooldowns
   const state: GameState = {

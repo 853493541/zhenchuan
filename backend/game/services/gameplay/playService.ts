@@ -69,8 +69,21 @@ async function playCastAbility(
   const prevState: GameState = structuredClone(state);
 
   const player = state.players[playerIndex];
-  const idx = player.hand.findIndex((c) => c.instanceId === cardInstanceId);
-  
+  // Accept instanceId or cardId (common abilities may arrive as cardId)
+  let idx = player.hand.findIndex(
+    (c) => c.instanceId === cardInstanceId || (c.cardId ?? (c as any).id) === cardInstanceId
+  );
+
+  // Auto-inject common abilities missing from hand (legacy games)
+  if (idx === -1) {
+    const commonCard = CARDS[cardInstanceId];
+    if (commonCard && (commonCard as any).isCommon) {
+      const { randomUUID } = require('crypto');
+      player.hand.push({ instanceId: cardInstanceId, cardId: cardInstanceId, cooldown: 0 });
+      idx = player.hand.length - 1;
+    }
+  }
+
   if (idx === -1) {
     throw new Error("ERR_CARD_NOT_IN_HAND");
   }
@@ -96,10 +109,8 @@ async function playCastAbility(
   applyEffects(state, card, playerIndex, targetIndex);
   applyOnPlayBuffEffects(state, playerIndex);
 
-  // Set cooldown (abilities are on shorter cooldowns during real-time)
-  // In real-time, cooldowns are in milliseconds tracked by game loop
-  // For now, use similar cooldown system: 3 ticks (~50ms at 60 Hz)
-  played.cooldown = 3;
+  // Set per-card cooldown (ticks at 60 Hz; e.g. 180 = 3 seconds)
+  played.cooldown = card.cooldownTicks ?? 3;
 
   state.version = (state.version ?? 0) + 1;
 

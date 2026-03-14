@@ -9,6 +9,7 @@ import {
   handleCleanse,
   handleChannelEffect,
   handleDash,
+  handleDirectionalDash,
 } from "../../effects/handlers";
 
 export function applyImmediateEffects(params: {
@@ -76,6 +77,14 @@ export function applyImmediateEffects(params: {
       case "DASH":
         handleDash(state, source, effTarget, enemyApplied, card, effect);
         break;
+
+      case "DIRECTIONAL_DASH": {
+        // Always targets self — the opponent position is used only for orientation
+        const oppIdx = playerIndex === 0 ? 1 : 0;
+        const oppPos = state.players[oppIdx].position;
+        handleDirectionalDash(state, source, oppPos, card, effect);
+        break;
+      }
 
       case "WUJIAN_CHANNEL":
       case "XINZHENG_CHANNEL":

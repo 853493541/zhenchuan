@@ -11,8 +11,8 @@ const ARENA_WIDTH  = 100;
 const ARENA_HEIGHT = 100;
 
 /* Character visual */
-const CHAR_HEIGHT = 5.0;   // world units tall
-const CHAR_RADIUS = 1.7;   // world units wide (radius)
+const CHAR_HEIGHT = 2.0;   // world units tall  (player capsule)
+const CHAR_RADIUS = 1.0;   // world units radius
 
 /* 3rd-person camera — high & pulled back, ~26° below horizontal
    atan((20-1.5)/(38)) ≈ 26°  →  lots of ground visible, char at lower-center.
@@ -20,14 +20,14 @@ const CHAR_RADIUS = 1.7;   // world units wide (radius)
    Camera direction is FIXED at (0,1) — always faces +Y.
    This guarantees A = screen-left and D = screen-right regardless of where
    the opponent is, eliminating the A/D flip when the camera rotates. */
-const CAM_DIST_BACK   = 30;  // units behind player
-const CAM_HEIGHT      = 20;  // units above ground
-const CAM_LOOK_AHEAD  = 8;   // look-ahead toward opponent side
+const CAM_DIST_BACK   = 20;  // units behind player
+const CAM_HEIGHT      = 10;  // units above player (follows player Z)
+const CAM_LOOK_AHEAD  = 6;   // look-ahead toward opponent side
 const NEAR_CLIP       = 0.8;
 
 // Vertical FOV — used with H-based focal length so scale is consistent
 // across all screen widths (phone / tablet / wide monitor all look the same depth)
-const VFOV_RAD = (60 * Math.PI) / 180;
+const VFOV_RAD = (72 * Math.PI) / 180;
 
 /* ============================================================
    VEC3 MATH
@@ -71,12 +71,12 @@ function buildCam(
   const camPos = v3(
     playerPos.x - CAM_DIR.x * CAM_DIST_BACK,
     playerPos.y - CAM_DIR.y * CAM_DIST_BACK,
-    CAM_HEIGHT,
+    playerPos.z + CAM_HEIGHT,  // camera rises with player (follows jumps)
   );
   const lookAt = v3(
     playerPos.x + CAM_DIR.x * CAM_LOOK_AHEAD,
     playerPos.y + CAM_DIR.y * CAM_LOOK_AHEAD,
-    1.5,
+    playerPos.z + 1.0,  // mid-body of 2-unit character
   );
   const worldUp = v3(0, 0, 1);
   const fwd   = norm3(sub3(lookAt, camPos));
@@ -204,6 +204,38 @@ function renderRangeCircle(
   }
   ctx.stroke();
   ctx.setLineDash([]);
+}
+
+/* Ghost outline drawn behind dashing characters */
+function renderDashGhost(
+  ctx: CanvasRenderingContext2D,
+  pos: V3,
+  cam: Cam,
+  W: number, H: number,
+  color: string,
+  alpha: number,
+) {
+  const baseP = projPt(v3(pos.x, pos.y, pos.z),              cam, W, H);
+  const topP  = projPt(v3(pos.x, pos.y, pos.z + CHAR_HEIGHT), cam, W, H);
+  if (!baseP || !topP) return;
+  const rs = (CHAR_RADIUS / baseP.depth) * cam.fl;
+  if (rs < 1) return;
+  const ellipseRy = rs * 0.32;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1.5;
+  ctx.shadowColor = color;
+  ctx.shadowBlur  = 10;
+  ctx.beginPath();
+  ctx.moveTo(topP.x - rs, topP.y);
+  ctx.lineTo(baseP.x - rs, baseP.y);
+  ctx.ellipse(baseP.x, baseP.y, rs, ellipseRy, 0, Math.PI, 0, true);
+  ctx.lineTo(topP.x + rs, topP.y);
+  ctx.ellipse(topP.x, topP.y, rs, ellipseRy, 0, 0, Math.PI, true);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
 }
 
 function shadeHex(hex: string, amt: number): string {
@@ -356,6 +388,7 @@ interface AbilityInfo {
   minRange?: number;
   cooldown: number;
   isReady: boolean;
+  isCommon: boolean;
 }
 
 interface BattleArenaProps {
@@ -390,6 +423,10 @@ export default function BattleArena({
   const [rtt,       setRtt]       = useState<number | null>(null);
   const [wasdKeys,  setWasdKeys]  = useState({ w: false, a: false, s: false, d: false });
 
+  // Split abilities into two rows for rendering
+  const commonAbilities = abilities.filter(a => a.isCommon);
+  const draftAbilities  = abilities.filter(a => !a.isCommon);
+
   /* --- Game logic refs --- */
   const keysRef          = useRef({ w: false, a: false, s: false, d: false });
   const localPositionRef = useRef<Position | null>(null);
@@ -420,6 +457,13 @@ export default function BattleArena({
   const oppHpRef      = useRef(opponent?.hp ?? 0);
   const maxHpRef      = useRef(maxHp);
   const canvasSizeRef = useRef({ w: 800, h: 500 });
+
+  /* --- Render position + dash-trail refs --- */
+  const localRenderPosRef = useRef<V3>({ x: me?.position?.x ?? 50, y: me?.position?.y ?? 50, z: 0 });
+  const oppRenderPosRef   = useRef<V3>({ x: opponent?.position?.x ?? 50, y: opponent?.position?.y ?? 50, z: 0 });
+  const localTrailRef     = useRef<Array<{ pos: V3; alpha: number }>>([]);
+  const oppTrailRef       = useRef<Array<{ pos: V3; alpha: number }>>([]);
+  const lastFrameTimeRef  = useRef<number>(0);
 
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
   useEffect(() => { oppHpRef.current = opponent?.hp ?? 0; }, [opponent?.hp]);
@@ -483,21 +527,20 @@ export default function BattleArena({
   }, [opponent?.position?.x, opponent?.position?.y, opponentPositionBufferRef]);
 
   useEffect(() => {
-    const updated = me.hand
+    // ── Draft abilities: sourced from me.hand (only non-common cards) ──
+    const draftUpdated: AbilityInfo[] = me.hand
       .map((instance: any) => {
-        // Try every possible card lookup strategy:
-        // 1. CardInstance format from GameLoop: instance.cardId -> cardMap key
-        // 2. Merged draft format: instance.id -> cardMap key
-        // 3. Merged draft format: instance itself is the card (has .name)
         const card =
           (instance.cardId && cards[instance.cardId]) ||
           (instance.id    && cards[instance.id])     ||
           (instance.name  ? instance : null);
 
+        // Skip common abilities — they are shown in the top row independently
+        if (card?.isCommon) return null;
+
         const instanceId = instance.instanceId || instance.id || String(Math.random());
         if (!card) {
           console.warn('[BattleArena] card lookup failed for hand item:', instance);
-          // Still show a placeholder so the slot is visible
           return {
             id:       instanceId,
             name:     instance.name || instance.cardId || instance.id || '?',
@@ -505,6 +548,7 @@ export default function BattleArena({
             minRange: undefined as number | undefined,
             cooldown: instance.cooldown || 0,
             isReady:  (instance.cooldown ?? 0) === 0,
+            isCommon: false,
           };
         }
         return {
@@ -514,10 +558,37 @@ export default function BattleArena({
           minRange: card.minRange,
           cooldown: instance.cooldown || 0,
           isReady:  (instance.cooldown ?? 0) === 0 && (!card.range || distance <= card.range),
+          isCommon: false,
         };
-      }) as AbilityInfo[];
+      })
+      .filter(Boolean) as AbilityInfo[];
+
+    // ── Common abilities: always built from preload cards map ──
+    // Cooldown + instanceId are overlaid from me.hand when the server has
+    // injected them (new battles). For old/in-progress games they still show
+    // but cooldown will be 0 until the server also sends them.
+    const commonDefs = Object.values(cards).filter((c: any) => c.isCommon);
+    const commonUpdated: AbilityInfo[] = commonDefs.map((card: any) => {
+      // Find matching instance in hand (may be absent for old games)
+      const instance = me.hand.find(
+        (h: any) => (h.cardId ?? h.id) === card.id
+      );
+      const instanceId = instance?.instanceId ?? card.id; // fall back to cardId itself
+      const cooldown   = instance?.cooldown ?? 0;
+      return {
+        id:       instanceId,
+        name:     card.name,
+        range:    card.range,
+        minRange: card.minRange,
+        cooldown,
+        isReady:  cooldown === 0,
+        isCommon: true,
+      };
+    });
+
+    const updated = [...commonUpdated, ...draftUpdated];
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[BattleArena] hand: ${me.hand.length} items → ${updated.length} abilities`);
+      console.log(`[BattleArena] hand: ${me.hand.length} items → ${draftUpdated.length} draft + ${commonUpdated.length} common`);
     }
     setAbilities(updated);
     abilitiesRef.current = updated;
@@ -536,6 +607,18 @@ export default function BattleArena({
         e.preventDefault();
         jumpLocalRef.current = true;
         jumpSendRef.current  = true;
+      }
+      // 1–6 = draft abilities (bottom row)
+      const draftIdx = ['1','2','3','4','5','6'].indexOf(e.key);
+      if (draftIdx !== -1) {
+        const ab = abilitiesRef.current.filter(a => !a.isCommon)[draftIdx];
+        if (ab?.isReady) onCastAbility(ab.id);
+      }
+      // Z/X/C/V/B/N = common abilities (top row)
+      const commonIdx = ['z','x','c','v','b','n'].indexOf(k);
+      if (commonIdx !== -1) {
+        const ab = abilitiesRef.current.filter(a => a.isCommon)[commonIdx];
+        if (ab?.isReady) onCastAbility(ab.id);
       }
     };
     const onUp = (e: KeyboardEvent) => {
@@ -564,7 +647,7 @@ export default function BattleArena({
   /* Physics — mirrors server exactly */
   useEffect(() => {
     const MAX_SPEED = 1.0, ACCEL = 0.3, DECEL = 0.9;
-    const JUMP_VZ_CLIENT = 0.6, GRAVITY_CLIENT = 0.04;
+    const JUMP_VZ_CLIENT = 0.346, GRAVITY_CLIENT = 0.04; // 0.346 = sqrt(2*0.04*1.5) → 1.5u peak
     const tick = () => {
       const pos = localPositionRef.current;
       if (!pos) return;
@@ -702,9 +785,59 @@ export default function BattleArena({
         return;
       }
 
-      // Camera direction is fixed — no dynamic tracking, no flip
+      // ── Dash-trail: smooth render positions; large jumps become visible dashes ──
+      const frameNow = performance.now();
+      const frameDt  = lastFrameTimeRef.current === 0 ? 16 : Math.min(frameNow - lastFrameTimeRef.current, 50);
+      lastFrameTimeRef.current = frameNow;
+      const dtF = frameDt / 16.67; // normalised to 60 fps
+      const DASH_THRESH = 3.5;     // world units; smaller moves = smooth walk, larger = dash
 
-      const cam = buildCam(v3(myPos.x, myPos.y, 0), camDirRef.current, w, h);
+      // --- local player render pos ---
+      {
+        const tx = myPos.x, ty = myPos.y, tz = localZRef.current;
+        const r  = localRenderPosRef.current;
+        const dx = tx - r.x, dy = ty - r.y, dz = tz - r.z;
+        if (Math.sqrt(dx * dx + dy * dy) > DASH_THRESH) {
+          // dash: emit 3 ghost frames spread along the path, then snap
+          for (let i = 0; i < 3; i++) {
+            const f = i / 3;
+            localTrailRef.current.push({ pos: { x: r.x + dx * f, y: r.y + dy * f, z: r.z + dz * f }, alpha: 0.5 - i * 0.12 });
+          }
+          localRenderPosRef.current = { x: tx, y: ty, z: tz };
+        } else {
+          const k = Math.min(1, 0.3 * dtF);
+          localRenderPosRef.current = { x: r.x + dx * k, y: r.y + dy * k, z: r.z + dz * k };
+        }
+        localTrailRef.current = localTrailRef.current
+          .map(g => ({ ...g, alpha: g.alpha - 0.05 * dtF }))
+          .filter(g => g.alpha > 0.04);
+      }
+
+      // --- opponent render pos ---
+      {
+        const tx = opPos.x, ty = opPos.y, tz = opPos.z ?? 0;
+        const r  = oppRenderPosRef.current;
+        const dx = tx - r.x, dy = ty - r.y, dz = tz - r.z;
+        if (Math.sqrt(dx * dx + dy * dy) > DASH_THRESH) {
+          for (let i = 0; i < 3; i++) {
+            const f = i / 3;
+            oppTrailRef.current.push({ pos: { x: r.x + dx * f, y: r.y + dy * f, z: r.z + dz * f }, alpha: 0.5 - i * 0.12 });
+          }
+          oppRenderPosRef.current = { x: tx, y: ty, z: tz };
+        } else {
+          const k = Math.min(1, 0.3 * dtF);
+          oppRenderPosRef.current = { x: r.x + dx * k, y: r.y + dy * k, z: r.z + dz * k };
+        }
+        oppTrailRef.current = oppTrailRef.current
+          .map(g => ({ ...g, alpha: g.alpha - 0.05 * dtF }))
+          .filter(g => g.alpha > 0.04);
+      }
+
+      const myRP = localRenderPosRef.current;
+      const opRP = oppRenderPosRef.current;
+
+      // Camera follows smooth render pos (including jump Z)
+      const cam = buildCam(v3(myRP.x, myRP.y, myRP.z), camDirRef.current, w, h);
 
       /* Draw scene */
       renderBg(ctx, cam, w, h);
@@ -715,15 +848,23 @@ export default function BattleArena({
       const readyAbility   = abilityList.find(a => a.isReady && a.range);
       const minRangeAbil   = abilityList.find(a => a.minRange);
       if (readyAbility?.range)
-        renderRangeCircle(ctx, v3(myPos.x, myPos.y, 0), readyAbility.range, cam, w, h, 'rgba(80, 210, 100, 0.55)');
+        renderRangeCircle(ctx, v3(myRP.x, myRP.y, 0), readyAbility.range, cam, w, h, 'rgba(80, 210, 100, 0.55)');
       if (minRangeAbil?.minRange)
-        renderRangeCircle(ctx, v3(myPos.x, myPos.y, 0), minRangeAbil.minRange, cam, w, h, 'rgba(255, 80, 80, 0.45)');
+        renderRangeCircle(ctx, v3(myRP.x, myRP.y, 0), minRangeAbil.minRange, cam, w, h, 'rgba(255, 80, 80, 0.45)');
+
+      /* Dash trail ghosts — rendered before characters so they appear behind */
+      for (const g of localTrailRef.current) {
+        renderDashGhost(ctx, v3(g.pos.x, g.pos.y, g.pos.z), cam, w, h, '#44aaff', g.alpha);
+      }
+      for (const g of oppTrailRef.current) {
+        renderDashGhost(ctx, v3(g.pos.x, g.pos.y, g.pos.z), cam, w, h, '#ff5555', g.alpha);
+      }
 
       /* Sort back-to-front */
       const mxHp = maxHpRef.current;
       const entities = [
-        { pos: v3(opPos.x, opPos.y, opPos.z ?? 0), color: '#cc3333', glow: '#ff5555', hp: oppHpRef.current, isMe: false },
-        { pos: v3(myPos.x, myPos.y, localZRef.current),  color: '#1a66cc', glow: '#44aaff', hp: meHpRef.current,  isMe: true  },
+        { pos: v3(opRP.x, opRP.y, opRP.z), color: '#cc3333', glow: '#ff5555', hp: oppHpRef.current, isMe: false },
+        { pos: v3(myRP.x, myRP.y, myRP.z), color: '#1a66cc', glow: '#44aaff', hp: meHpRef.current,  isMe: true  },
       ];
       entities.sort((a, b) => {
         const dA = dot3(sub3(a.pos, cam.pos), cam.fwd);
@@ -825,31 +966,69 @@ export default function BattleArena({
           <div className={`${styles.movingDot} ${isMoving ? styles.moving : ''}`} />
         </div>
 
-        <div className={styles.hotbar}>
-          {abilities.length === 0 && (
-            <span className={styles.noAbilities}>loading abilities…</span>
-          )}
-          {abilities.map((ability, idx) => (
-            <button
-              key={ability.id}
-              className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
-              disabled={!ability.isReady}
-              onClick={() => onCastAbility(ability.id)}
-              title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${ability.cooldown > 0 ? ` | CD: ${ability.cooldown}` : ''}`}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`/game/icons/Skills/${ability.name}.png`}
-                alt={ability.name}
-                className={styles.abilityIcon}
-                draggable={false}
-              />
-              {ability.cooldown > 0 && (
-                <span className={styles.cdOverlay}>{ability.cooldown}</span>
-              )}
-              <span className={styles.abilityKey}>{idx + 1}</span>
-            </button>
-          ))}
+        <div className={styles.hotbarStack}>
+          {/* ── Top row: 6 common movement abilities ── */}
+          <div className={styles.commonBar}>
+            {commonAbilities.map((ability, idx) => {
+              const keyHint = ['Z','X','C','V','B','N'][idx] ?? '';
+              return (
+                <button
+                  key={ability.id}
+                  className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
+                  disabled={!ability.isReady}
+                  onClick={() => onCastAbility(ability.id)}
+                  title={`${ability.name}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}s` : ''}`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/game/icons/Skills/${ability.name}.png`}
+                    alt={ability.name}
+                    className={styles.abilityIcon}
+                    draggable={false}
+                  />
+                  {ability.cooldown > 0 && (
+                    <span className={styles.cdOverlay}>{Math.ceil(ability.cooldown / 60)}s</span>
+                  )}
+                  <span className={styles.abilityKey}>{keyHint}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── Bottom row: up to 6 drafted abilities ── */}
+          <div className={styles.hotbar}>
+            {Array.from({ length: 6 }, (_, idx) => {
+              const ability = draftAbilities[idx];
+              if (!ability) {
+                return (
+                  <div key={`empty-${idx}`} className={`${styles.abilityBtn} ${styles.emptySlot}`}>
+                    <span className={styles.abilityKey}>{idx + 1}</span>
+                  </div>
+                );
+              }
+              return (
+                <button
+                  key={ability.id}
+                  className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
+                  disabled={!ability.isReady}
+                  onClick={() => onCastAbility(ability.id)}
+                  title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}s` : ''}`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/game/icons/Skills/${ability.name}.png`}
+                    alt={ability.name}
+                    className={styles.abilityIcon}
+                    draggable={false}
+                  />
+                  {ability.cooldown > 0 && (
+                    <span className={styles.cdOverlay}>{Math.ceil(ability.cooldown / 60)}s</span>
+                  )}
+                  <span className={styles.abilityKey}>{idx + 1}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className={styles.wasdSpacer} />

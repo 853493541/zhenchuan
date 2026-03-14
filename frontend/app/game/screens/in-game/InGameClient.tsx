@@ -281,11 +281,12 @@ export default function InGameClient({
     return <div>Loading battle state...</div>;
   }
 
-  // Calculate distance between players
+  // Calculate 3D distance between players (includes Z so jumping increases effective range)
   const distance = me?.position && opponent?.position
     ? Math.sqrt(
         Math.pow(opponent.position.x - me.position.x, 2) +
-          Math.pow(opponent.position.y - me.position.y, 2)
+        Math.pow(opponent.position.y - me.position.y, 2) +
+        Math.pow((opponent.position.z ?? 0) - (me.position.z ?? 0), 2)
       )
     : 0;
 
@@ -300,11 +301,11 @@ export default function InGameClient({
         cards={preload.cardMap}
         opponentPositionBufferRef={opponentPositionBufferRef}
         onCastAbility={async (cardInstanceId) => {
-          const cardInstance = me.hand.find((c) => c.instanceId === cardInstanceId);
-          if (!cardInstance) {
-            showGameError("ERR_CARD_NOT_IN_HAND");
-            return;
-          }
+          // Find by instanceId (normal drafted cards) or by cardId (common abilities)
+          const cardInstance =
+            me.hand.find((c) => c.instanceId === cardInstanceId) ??
+            me.hand.find((c) => ((c as any).cardId ?? (c as any).id) === cardInstanceId) ??
+            ({ instanceId: cardInstanceId } as any); // synthetic stub — backend validates
           const res = await playCard(cardInstance);
           if (!res.ok && res.error) {
             console.error("[CastAbility] Error response:", res.error);

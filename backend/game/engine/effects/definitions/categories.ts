@@ -36,6 +36,11 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
 
   /* ================= PATCH 0.5 ================= */
   SCHEDULED_DAMAGE: "DEBUFF",
+
+  /* ================= REAL-TIME MOVEMENT ================= */
+  DASH: "BUFF",
+  DIRECTIONAL_DASH: "BUFF",
+  JUMP_BOOST: "BUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

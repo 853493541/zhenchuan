@@ -34,7 +34,8 @@ export interface MovementInput {
 export function calculateDistance(p1: Position, p2: Position): number {
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;
-  return Math.sqrt(dx * dx + dy * dy);
+  const dz = (p2.z ?? 0) - (p1.z ?? 0);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 /**
