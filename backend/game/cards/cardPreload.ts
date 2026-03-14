@@ -27,6 +27,9 @@ export function buildCardPreload() {
       range:    (card as any).range,
       minRange: (card as any).minRange,
 
+      // Cooldown length for arc display
+      cooldownTicks: (card as any).cooldownTicks ?? 0,
+
       // Common movement abilities are always shown regardless of draft
       isCommon: !!(card as any).isCommon,
     };

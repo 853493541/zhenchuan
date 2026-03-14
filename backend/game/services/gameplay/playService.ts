@@ -112,6 +112,18 @@ async function playCastAbility(
   // Set per-card cooldown (ticks at 60 Hz; e.g. 180 = 3 seconds)
   played.cooldown = card.cooldownTicks ?? 3;
 
+  // 轻功 GCD: casting any 轻功 ability imposes a 3-second minimum cooldown on the other 3
+  const QINGGONG_IDS = new Set(['nieyun_zhuyue', 'lingxiao_lansheng', 'yaotai_zhenhe', 'yingfeng_huilang']);
+  const QINGGONG_GCD_TICKS = 180; // 3 s × 60 Hz
+  if (QINGGONG_IDS.has(cardId)) {
+    for (const inst of player.hand) {
+      const instCardId = (inst as any).cardId || (inst as any).id;
+      if (instCardId !== cardId && QINGGONG_IDS.has(instCardId)) {
+        inst.cooldown = Math.max(inst.cooldown, QINGGONG_GCD_TICKS);
+      }
+    }
+  }
+
   state.version = (state.version ?? 0) + 1;
 
   // Update game loop with new state

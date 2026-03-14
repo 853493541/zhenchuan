@@ -17,12 +17,14 @@ const ARENA_HEIGHT = 100;
 
 /** IDs of common abilities that every player always has, regardless of draft. */
 const COMMON_ABILITY_IDS = [
+  "menghu_xiasha",
+  "fuyao_zhishang",
   "nieyun_zhuyue",
-  "yingfeng_huilang",
   "lingxiao_lansheng",
   "yaotai_zhenhe",
-  "fuyao_zhishang",
+  "yingfeng_huilang",
   "houyao",
+  "yuqi",
 ];
 
 function makeCommonAbilities(): CardInstance[] {

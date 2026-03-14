@@ -59,6 +59,12 @@ export function applyMovement(
     player.velocity.vx += (targetVx - player.velocity.vx) * acceleration;
     player.velocity.vy += (targetVy - player.velocity.vy) * acceleration;
 
+    // Update facing direction from input (immediate, not velocity-lagged)
+    if (targetVx !== 0 || targetVy !== 0) {
+      const flen = Math.sqrt(targetVx * targetVx + targetVy * targetVy);
+      player.facing = { x: targetVx / flen, y: targetVy / flen };
+    }
+
     // ── Jump (one-shot: GameLoop clears input.jump after each tick) ──
     if (input.jump && player.jumpCount < MAX_JUMPS) {
       // Check for 弹跳 buff (JUMP_BOOST) — consume it for a power jump

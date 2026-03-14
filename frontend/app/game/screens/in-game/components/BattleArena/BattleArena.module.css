@@ -345,8 +345,8 @@
 .abilityBtn {
   position: relative;
   display: block;
-  width: 72px;
-  height: 72px;
+  width: 50px;
+  height: 50px;
   padding: 0;
   background: rgba(5, 12, 28, 0.92);
   border: 2px solid rgba(50, 80, 150, 0.5);
@@ -397,44 +397,47 @@
   position: absolute;
   bottom: 3px;
   left: 4px;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: bold;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.85);
   line-height: 1;
   text-shadow: 0 1px 3px rgba(0,0,0,0.9);
   pointer-events: none;
   z-index: 2;
 }
 
-/* Cooldown badge — top-right corner */
-.cdOverlay {
+/* Cooldown arc overlay — conic-gradient clock-wipe, number in centre */
+.cdArc {
   position: absolute;
-  top: 3px;
-  right: 3px;
-  background: rgba(200, 40, 40, 0.95);
-  color: #fff;
-  font-size: 11px;
-  font-weight: bold;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 4px;
+  inset: 0;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 3px;
   pointer-events: none;
-  z-index: 2;
+  z-index: 3;
+  /* background is set inline: conic-gradient(from -90deg, rgba(0,0,0,0.72) X%, transparent X%) */
 }
 
-/* Grey dimming overlay when on cooldown */
-.abilityBtn.notReady::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.30);
-  border-radius: 6px;
+.cdNum {
+  font-size: 13px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 8px rgba(0,0,0,1), 0 1px 3px rgba(0,0,0,0.9);
   pointer-events: none;
-  z-index: 1;
+  z-index: 4;
+  letter-spacing: -0.5px;
+}
+
+/* Visual gap between ability groups in common bar */
+.commonGap {
+  width: 2px;
+  height: 35px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 1px;
+  flex-shrink: 0;
+  align-self: center;
+  margin: 0 3px;
 }
 
 /* ============================================================
@@ -447,8 +450,8 @@
   }
 
   .abilityBtn {
-    width: 56px;
-    height: 56px;
+    width: 40px;
+    height: 40px;
   }
 
   .wasdWrap,

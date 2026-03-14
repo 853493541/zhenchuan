@@ -5,6 +5,19 @@ import { Card } from "../engine/state/types";
 export const CARDS: Record<string, Card & { description: string }> = {
   /* ================= 通用技能 (common abilities — always in every player's hand) ================= */
 
+  menghu_xiasha: {
+    id: "menghu_xiasha",
+    name: "回风扫叶",
+    description: "造成1点伤害",
+    type: "ATTACK",
+    target: "OPPONENT",
+    gcdCost: 0,
+    range: 4,
+    cooldownTicks: 0,
+    effects: [{ type: "DAMAGE", value: 1 }],
+    isCommon: true,
+  },
+
   nieyun_zhuyue: {
     id: "nieyun_zhuyue",
     name: "蹑云逐月",
@@ -86,6 +99,18 @@ export const CARDS: Record<string, Card & { description: string }> = {
     gcdCost: 0,
     cooldownTicks: 60, // 1 second at 60 Hz
     effects: [{ type: "DIRECTIONAL_DASH", value: 1, dirMode: "AWAY" }],
+    isCommon: true,
+  },
+
+  yuqi: {
+    id: "yuqi",
+    name: "御骑",
+    description: "【占位技能】",
+    type: "SUPPORT",
+    target: "SELF",
+    gcdCost: 0,
+    cooldownTicks: 1800,
+    effects: [],
     isCommon: true,
   },
 

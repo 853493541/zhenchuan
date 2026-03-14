@@ -49,6 +49,13 @@ export interface PlayerState {
    * Resets to 0 on landing. Max 2 (double-jump).
    */
   jumpCount?: number;
+
+  /**
+   * Last movement facing direction (unit vector).
+   * Updated whenever the player has a non-trivial movement input.
+   * Used by directional dashes so TOWARD means "where I'm facing".
+   */
+  facing?: { x: number; y: number };
 }
 
 export interface GameState {

@@ -238,6 +238,49 @@ function renderDashGhost(
   ctx.restore();
 }
 
+/* Facing direction arrow drawn above a character */
+/* Half-circle arc showing facing direction, drawn above character head */
+function renderFacingArrow(
+  ctx: CanvasRenderingContext2D,
+  charPos: V3,
+  facing: { x: number; y: number },
+  cam: Cam,
+  W: number, H: number,
+  color: string,
+) {
+  const f = Math.sqrt(facing.x * facing.x + facing.y * facing.y);
+  if (f < 0.1) return;
+  const nx = facing.x / f, ny = facing.y / f;
+  const arcZ = charPos.z + CHAR_HEIGHT + 0.5;
+  const R = 1.4; // world-unit radius of the half-circle
+  const STEPS = 14;
+  const fAngle = Math.atan2(ny, nx);
+
+  const pts: Array<{ x: number; y: number } | null> = [];
+  for (let i = 0; i <= STEPS; i++) {
+    const a = fAngle - Math.PI / 2 + (Math.PI * i / STEPS);
+    pts.push(projPt(v3(charPos.x + R * Math.cos(a), charPos.y + R * Math.sin(a), arcZ), cam, W, H));
+  }
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 2.5;
+  ctx.lineCap     = 'round';
+  ctx.lineJoin    = 'round';
+  ctx.shadowColor = color;
+  ctx.shadowBlur  = 10;
+  ctx.globalAlpha = 0.88;
+  ctx.beginPath();
+  let started = false;
+  for (const p of pts) {
+    if (!p) { started = false; continue; }
+    if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+    else ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
 function shadeHex(hex: string, amt: number): string {
   const n = parseInt(hex.replace('#', ''), 16);
   const r = Math.max(0, Math.min(255, (n >> 16) + amt));
@@ -382,14 +425,28 @@ function renderCharacter(
 interface Position { x: number; y: number; z?: number; }
 
 interface AbilityInfo {
-  id: string;
+  id: string;        // instanceId (or cardId fallback for common)
+  cardId: string;    // always the plain card id (e.g. 'fuyao_zhishang')
   name: string;
   range?: number;
   minRange?: number;
   cooldown: number;
+  maxCooldown: number;
   isReady: boolean;
   isCommon: boolean;
 }
+
+/** Fixed display order for the common-ability bar. */
+const COMMON_ABILITY_ORDER = [
+  'menghu_xiasha',
+  'fuyao_zhishang',
+  'nieyun_zhuyue',
+  'lingxiao_lansheng',
+  'yaotai_zhenhe',
+  'yingfeng_huilang',
+  'houyao',
+  'yuqi',
+] as const;
 
 interface BattleArenaProps {
   me: { userId: string; position: Position; hp: number; hand: any[] };
@@ -440,6 +497,7 @@ export default function BattleArena({
   const localZRef         = useRef(0);     // current Z height (world units)
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
+  const localFacingRef    = useRef({ x: 0, y: 1 }); // current facing direction (default +Y)
 
   /* --- Opponent interpolation --- */
   const internalOpponentBufferRef = useRef<Array<{ t: number; pos: Position }>>([]);
@@ -457,6 +515,18 @@ export default function BattleArena({
   const oppHpRef      = useRef(opponent?.hp ?? 0);
   const maxHpRef      = useRef(maxHp);
   const canvasSizeRef = useRef({ w: 800, h: 500 });
+
+  /* --- Fuyao (扶摇直上) local buff prediction --- */
+  const hasFuyaoBuffRef = useRef(false);
+
+  // Ref-based cast wrapper — updated every render, so it always captures the
+  // latest onCastAbility without causing keyboard/mouse useEffect re-runs.
+  const castAbilityRef = useRef<(id: string) => void>(() => {});
+  castAbilityRef.current = (id: string) => {
+    const ability = abilitiesRef.current.find(a => a.id === id);
+    if (ability?.cardId === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
+    onCastAbility(id);
+  };
 
   /* --- Render position + dash-trail refs --- */
   const localRenderPosRef = useRef<V3>({ x: me?.position?.x ?? 50, y: me?.position?.y ?? 50, z: 0 });
@@ -542,49 +612,55 @@ export default function BattleArena({
         if (!card) {
           console.warn('[BattleArena] card lookup failed for hand item:', instance);
           return {
-            id:       instanceId,
-            name:     instance.name || instance.cardId || instance.id || '?',
-            range:    undefined as number | undefined,
-            minRange: undefined as number | undefined,
-            cooldown: instance.cooldown || 0,
-            isReady:  (instance.cooldown ?? 0) === 0,
-            isCommon: false,
+            id:          instanceId,
+            cardId:      instance.cardId || instance.id || instanceId,
+            name:        instance.name || instance.cardId || instance.id || '?',
+            range:       undefined as number | undefined,
+            minRange:    undefined as number | undefined,
+            cooldown:    instance.cooldown || 0,
+            maxCooldown: 0,
+            isReady:     (instance.cooldown ?? 0) === 0,
+            isCommon:    false,
           };
         }
         return {
-          id:       instanceId,
-          name:     card.name,
-          range:    card.range,
-          minRange: card.minRange,
-          cooldown: instance.cooldown || 0,
-          isReady:  (instance.cooldown ?? 0) === 0 && (!card.range || distance <= card.range),
-          isCommon: false,
+          id:          instanceId,
+          cardId:      card.id,
+          name:        card.name,
+          range:       card.range,
+          minRange:    card.minRange,
+          cooldown:    instance.cooldown || 0,
+          maxCooldown: card.cooldownTicks ?? 0,
+          isReady:     (instance.cooldown ?? 0) === 0 && (!card.range || distance <= card.range),
+          isCommon:    false,
         };
       })
       .filter(Boolean) as AbilityInfo[];
 
-    // ── Common abilities: always built from preload cards map ──
-    // Cooldown + instanceId are overlaid from me.hand when the server has
-    // injected them (new battles). For old/in-progress games they still show
-    // but cooldown will be 0 until the server also sends them.
-    const commonDefs = Object.values(cards).filter((c: any) => c.isCommon);
-    const commonUpdated: AbilityInfo[] = commonDefs.map((card: any) => {
-      // Find matching instance in hand (may be absent for old games)
-      const instance = me.hand.find(
-        (h: any) => (h.cardId ?? h.id) === card.id
-      );
-      const instanceId = instance?.instanceId ?? card.id; // fall back to cardId itself
-      const cooldown   = instance?.cooldown ?? 0;
-      return {
-        id:       instanceId,
-        name:     card.name,
-        range:    card.range,
-        minRange: card.minRange,
-        cooldown,
-        isReady:  cooldown === 0,
-        isCommon: true,
-      };
-    });
+    // ── Common abilities: always built from preload cards in fixed display order ──
+    const cardValues: any[] = Object.values(cards);
+    const commonUpdated: AbilityInfo[] = COMMON_ABILITY_ORDER
+      .map((orderedCardId) => {
+        const card = cardValues.find((c: any) => c.id === orderedCardId);
+        if (!card) return null;
+        const instance = me.hand.find(
+          (h: any) => (h.cardId ?? h.id) === card.id
+        );
+        const instanceId = instance?.instanceId ?? card.id;
+        const cooldown   = instance?.cooldown ?? 0;
+        return {
+          id:          instanceId,
+          cardId:      card.id,
+          name:        card.name,
+          range:       card.range,
+          minRange:    card.minRange,
+          cooldown,
+          maxCooldown: card.cooldownTicks ?? 0,
+          isReady:     cooldown === 0 && (!card.range || distance <= card.range),
+          isCommon:    true,
+        } as AbilityInfo;
+      })
+      .filter(Boolean) as AbilityInfo[];
 
     const updated = [...commonUpdated, ...draftUpdated];
     if (process.env.NODE_ENV !== 'production') {
@@ -597,28 +673,46 @@ export default function BattleArena({
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd'].includes(k)) {
+      // WASD — skip when Alt held (Alt+A/D/S are ability hotkeys)
+      if (['w', 'a', 's', 'd'].includes(k) && !e.altKey) {
         e.preventDefault();
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = true;
         setWasdKeys(prev => ({ ...prev, [k]: true }));
       }
-      // Space = jump (both local prediction and server)
+      // Space = jump
       if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
         jumpLocalRef.current = true;
         jumpSendRef.current  = true;
       }
-      // 1–6 = draft abilities (bottom row)
-      const draftIdx = ['1','2','3','4','5','6'].indexOf(e.key);
-      if (draftIdx !== -1) {
-        const ab = abilitiesRef.current.filter(a => !a.isCommon)[draftIdx];
-        if (ab?.isReady) onCastAbility(ab.id);
+      // ── Draft slots: 1  2  3  Q ──
+      const drafts = abilitiesRef.current.filter(a => !a.isCommon);
+      if (e.key === '1' && drafts[0]?.isReady) { castAbilityRef.current(drafts[0].id); return; }
+      if (e.key === '2' && drafts[1]?.isReady) { castAbilityRef.current(drafts[1].id); return; }
+      if (e.key === '3' && drafts[2]?.isReady) { castAbilityRef.current(drafts[2].id); return; }
+      if (k === 'q' && !e.altKey && drafts[3]?.isReady) { castAbilityRef.current(drafts[3].id); return; }
+      // ── Common abilities: X  Alt+A  Alt+D  Alt+S  `  T ──
+      const commons = abilitiesRef.current.filter(a => a.isCommon);
+      if (k === 'x' && !e.altKey) {
+        // index 0 = 猛虎下山
+        if (commons[0]?.isReady) castAbilityRef.current(commons[0].id);
+        return;
       }
-      // Z/X/C/V/B/N = common abilities (top row)
-      const commonIdx = ['z','x','c','v','b','n'].indexOf(k);
-      if (commonIdx !== -1) {
-        const ab = abilitiesRef.current.filter(a => a.isCommon)[commonIdx];
-        if (ab?.isReady) onCastAbility(ab.id);
+      if (k === 't' && !e.altKey) {
+        // index 7 = 御骑
+        if (commons[7]?.isReady) castAbilityRef.current(commons[7].id);
+        return;
+      }
+      if (e.key === '`') {
+        // index 6 = 后撤
+        if (commons[6]?.isReady) castAbilityRef.current(commons[6].id);
+        return;
+      }
+      if (e.altKey) {
+        e.preventDefault(); // suppress browser Alt shortcuts
+        if (k === 'a' && commons[3]?.isReady) castAbilityRef.current(commons[3].id); // 凌霄揽胜
+        if (k === 'd' && commons[4]?.isReady) castAbilityRef.current(commons[4].id); // 瑶台枕鹤
+        if (k === 's' && commons[5]?.isReady) castAbilityRef.current(commons[5].id); // 迎风回浪
       }
     };
     const onUp = (e: KeyboardEvent) => {
@@ -636,6 +730,56 @@ export default function BattleArena({
     };
   }, []);
 
+  // Mouse hotkeys:
+  //   Middle-down (MD)       → common[1] 扶摇直上
+  //   Middle-up  (MU)        → common[2] 蹑云逐月
+  //   Button-3 / XB2 (down)  → draft[4]
+  //   Button-4 / XB1 (down)  → draft[5]
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        const ab = abilitiesRef.current.filter(a => a.isCommon)[1]; // 扶摇直上
+        if (ab?.isReady) castAbilityRef.current(ab.id);
+        return;
+      }
+      if (e.button === 3) {
+        e.preventDefault();
+        const ab = abilitiesRef.current.filter(a => !a.isCommon)[4]; // draft slot 5
+        if (ab?.isReady) castAbilityRef.current(ab.id);
+        return;
+      }
+      if (e.button === 4) {
+        e.preventDefault();
+        const ab = abilitiesRef.current.filter(a => !a.isCommon)[5]; // draft slot 6
+        if (ab?.isReady) castAbilityRef.current(ab.id);
+        return;
+      }
+    };
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        const ab = abilitiesRef.current.filter(a => a.isCommon)[2]; // 蹑云逐月
+        if (ab?.isReady) castAbilityRef.current(ab.id);
+      }
+      // Prevent browser back/forward navigation on XB1/XB2
+      if (e.button === 3 || e.button === 4) {
+        e.preventDefault();
+      }
+    };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup',   onMouseUp);
+    window.addEventListener('wheel',     onWheel, { passive: false });
+    return () => {
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mouseup',   onMouseUp);
+      window.removeEventListener('wheel',     onWheel);
+    };
+  }, []);
+
   const handleJoystickDirection = useCallback(
     (keys: { w: boolean; a: boolean; s: boolean; d: boolean }) => {
       keysRef.current = keys;
@@ -647,7 +791,7 @@ export default function BattleArena({
   /* Physics — mirrors server exactly */
   useEffect(() => {
     const MAX_SPEED = 1.0, ACCEL = 0.3, DECEL = 0.9;
-    const JUMP_VZ_CLIENT = 0.346, GRAVITY_CLIENT = 0.04; // 0.346 = sqrt(2*0.04*1.5) → 1.5u peak
+    const JUMP_VZ_CLIENT = 0.346, POWER_JUMP_VZ_CLIENT = 0.98, GRAVITY_CLIENT = 0.04;
     const tick = () => {
       const pos = localPositionRef.current;
       if (!pos) return;
@@ -662,6 +806,7 @@ export default function BattleArena({
         const len = Math.sqrt(ix * ix + iy * iy);
         vel.x += ((ix / len) * MAX_SPEED - vel.x) * ACCEL;
         vel.y += ((iy / len) * MAX_SPEED - vel.y) * ACCEL;
+        localFacingRef.current = { x: ix / len, y: iy / len }; // update facing immediately from input
       } else { vel.x *= DECEL; vel.y *= DECEL; }
       localPositionRef.current = {
         x: Math.max(2, Math.min(98, pos.x + vel.x)),
@@ -670,7 +815,9 @@ export default function BattleArena({
 
       // ── Z axis: jump + gravity ──
       if (jumpLocalRef.current && localJumpCountRef.current < 2) {
-        localVzRef.current        = JUMP_VZ_CLIENT;
+        const jumpVz = hasFuyaoBuffRef.current ? POWER_JUMP_VZ_CLIENT : JUMP_VZ_CLIENT;
+        hasFuyaoBuffRef.current = false; // consume buff
+        localVzRef.current        = jumpVz;
         localJumpCountRef.current += 1;
         jumpLocalRef.current       = false; // consume local jump
       }
@@ -873,6 +1020,9 @@ export default function BattleArena({
       });
       for (const e of entities) {
         renderCharacter(ctx, e.pos, cam, w, h, e.color, e.glow, Math.max(0, e.hp / mxHp), e.hp, e.isMe);
+        if (e.isMe) {
+          renderFacingArrow(ctx, e.pos, localFacingRef.current, cam, w, h, '#44aaff');
+        }
       }
 
       animId = requestAnimationFrame(loop);
@@ -967,27 +1117,33 @@ export default function BattleArena({
         </div>
 
         <div className={styles.hotbarStack}>
-          {/* ── Top row: 6 common movement abilities ── */}
-          <div className={styles.commonBar}>
-            {commonAbilities.map((ability, idx) => {
-              const keyHint = ['Z','X','C','V','B','N'][idx] ?? '';
+          {/* ── Top row: draft abilities (6 fixed slots) ── */}
+          <div className={styles.hotbar}>
+            {Array.from({ length: 6 }, (_, idx) => {
+              const ability = draftAbilities[idx];
+              const keyHint = ['1','2','3','Q','XB2','XB1'][idx];
+              if (!ability) {
+                return (
+                  <div key={`empty-${idx}`} className={`${styles.abilityBtn} ${styles.emptySlot}`}>
+                    <span className={styles.abilityKey}>{keyHint}</span>
+                  </div>
+                );
+              }
+              const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
               return (
                 <button
                   key={ability.id}
-                  className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
+                  className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
                   disabled={!ability.isReady}
-                  onClick={() => onCastAbility(ability.id)}
-                  title={`${ability.name}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}s` : ''}`}
+                  onClick={() => castAbilityRef.current(ability.id)}
+                  title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}s` : ''}`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`/game/icons/Skills/${ability.name}.png`}
-                    alt={ability.name}
-                    className={styles.abilityIcon}
-                    draggable={false}
-                  />
-                  {ability.cooldown > 0 && (
-                    <span className={styles.cdOverlay}>{Math.ceil(ability.cooldown / 60)}s</span>
+                  <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                  {ability.cooldown > 0 && ability.maxCooldown > 0 && (
+                    <div className={styles.cdArc} style={{ background: `conic-gradient(from -90deg, rgba(0,0,0,0.72) ${cdPct.toFixed(1)}%, transparent ${cdPct.toFixed(1)}%)` }}>
+                      <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}s</span>
+                    </div>
                   )}
                   <span className={styles.abilityKey}>{keyHint}</span>
                 </button>
@@ -995,37 +1151,34 @@ export default function BattleArena({
             })}
           </div>
 
-          {/* ── Bottom row: up to 6 drafted abilities ── */}
-          <div className={styles.hotbar}>
-            {Array.from({ length: 6 }, (_, idx) => {
-              const ability = draftAbilities[idx];
-              if (!ability) {
-                return (
-                  <div key={`empty-${idx}`} className={`${styles.abilityBtn} ${styles.emptySlot}`}>
-                    <span className={styles.abilityKey}>{idx + 1}</span>
-                  </div>
-                );
-              }
+          {/* ── Bottom row: 8 common abilities (with visual gaps) ── */}
+          <div className={styles.commonBar}>
+            {commonAbilities.map((ability, idx) => {
+              const COMMON_KEY_HINTS = ['X','MD','MU','⌥A','⌥D','⌥S','`','T'] as const;
+              const keyHint = COMMON_KEY_HINTS[idx] ?? '';
+              const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
               return (
-                <button
-                  key={ability.id}
-                  className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
-                  disabled={!ability.isReady}
-                  onClick={() => onCastAbility(ability.id)}
-                  title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}s` : ''}`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`/game/icons/Skills/${ability.name}.png`}
-                    alt={ability.name}
-                    className={styles.abilityIcon}
-                    draggable={false}
-                  />
-                  {ability.cooldown > 0 && (
-                    <span className={styles.cdOverlay}>{Math.ceil(ability.cooldown / 60)}s</span>
-                  )}
-                  <span className={styles.abilityKey}>{idx + 1}</span>
-                </button>
+                <React.Fragment key={ability.id}>
+                  {/* gap between 猛虎下山 and 扶摇 */}
+                  {idx === 1 && <div className={styles.commonGap} />}
+                  {/* gap between 后撤 and 御骑 */}
+                  {idx === 7 && <div className={styles.commonGap} />}
+                  <button
+                    className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
+                    disabled={!ability.isReady}
+                    onClick={() => castAbilityRef.current(ability.id)}
+                    title={`${ability.name}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}s` : ''}`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                    {ability.cooldown > 0 && ability.maxCooldown > 0 && (
+                      <div className={styles.cdArc} style={{ background: `conic-gradient(from -90deg, rgba(0,0,0,0.72) ${cdPct.toFixed(1)}%, transparent ${cdPct.toFixed(1)}%)` }}>
+                        <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}s</span>
+                      </div>
+                    )}
+                    <span className={styles.abilityKey}>{keyHint}</span>
+                  </button>
+                </React.Fragment>
               );
             })}
           </div>

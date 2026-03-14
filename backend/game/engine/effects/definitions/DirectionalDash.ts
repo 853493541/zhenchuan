@@ -49,7 +49,15 @@ export function handleDirectionalDash(
 
     switch (effect.dirMode) {
       case "TOWARD":
-        dirX = fx;  dirY = fy;  break;
+        // Use the caster's stored facing direction (set by movement input).
+        // Fall back to toward-opponent if facing is unknown (first tick, idle).
+        if (source.facing && (Math.abs(source.facing.x) + Math.abs(source.facing.y)) > 0.01) {
+          dirX = source.facing.x;
+          dirY = source.facing.y;
+        } else {
+          dirX = fx; dirY = fy;
+        }
+        break;
       case "AWAY":
         dirX = -fx; dirY = -fy; break;
       case "PERP_LEFT":
