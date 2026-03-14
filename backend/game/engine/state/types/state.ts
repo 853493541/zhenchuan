@@ -18,17 +18,6 @@ export interface PlayerState {
   /** active buffs on player */
   buffs: ActiveBuff[];
 
-  /**
-   * GCD (Global Cooldown / action resource)
-   * - Resets at start of this player's turn
-   * - Playing cards consumes GCD
-   * - If gcd < card.gcdCost → cannot play
-   *
-   * Current rule (v0):
-   * - Each player gets exactly 1 GCD per turn
-   */
-  gcd: number;
-
   /* ================= REAL-TIME POSITION & MOVEMENT ================= */
 
   /** Current position on 2D arena (x, y) */

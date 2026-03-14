@@ -27,8 +27,6 @@ export function applyCard(
    * Validation already happened in validatePlayCard
    * This is the single authoritative place where GCD is consumed
    */
-  source.gcd -= card.gcdCost;
-
   pushEvent(state, {
     turn: state.turn,
     type: "PLAY_CARD",

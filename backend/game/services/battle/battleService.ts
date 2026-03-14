@@ -74,7 +74,6 @@ export function initializeBattleState(
         hp: STARTING_BATTLE_HP,
         hand: hand0,
         buffs: [],
-        gcd: 1, // Active player gets 1 GCD to start
 
         // ✅ Real-time 2D arena positioning
         // Player 0 starts on left side
@@ -90,7 +89,6 @@ export function initializeBattleState(
         hp: STARTING_BATTLE_HP,
         hand: hand1,
         buffs: [],
-        gcd: 0, // Will be set to 1 when turn starts
 
         // Player 1 starts on right side
         position: {

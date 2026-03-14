@@ -124,6 +124,20 @@ async function playCastAbility(
     }
   }
 
+  // Draft GCD: casting a gcd:true draft ability imposes a 1.5-second minimum CD on other gcd:true draft abilities
+  const DRAFT_GCD_TICKS = 90; // 1.5s × 60 Hz
+  if ((card as any).gcd === true && !(card as any).isCommon) {
+    for (const inst of player.hand) {
+      const instCardId = (inst as any).cardId || (inst as any).id;
+      if (instCardId !== cardId) {
+        const instCard = CARDS[instCardId];
+        if (instCard && (instCard as any).gcd === true && !(instCard as any).isCommon) {
+          inst.cooldown = Math.max(inst.cooldown, DRAFT_GCD_TICKS);
+        }
+      }
+    }
+  }
+
   state.version = (state.version ?? 0) + 1;
 
   // Update game loop with new state

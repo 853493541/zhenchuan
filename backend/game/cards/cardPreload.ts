@@ -20,9 +20,6 @@ export function buildCardPreload() {
       target: card.target,
       effects: card.effects ?? [],
 
-      // ✅ FIX: include static GCD COST in preload
-      gcdCost: card.gcdCost ?? 0,
-
       // Range data for client-side ability readiness check
       range:    (card as any).range,
       minRange: (card as any).minRange,

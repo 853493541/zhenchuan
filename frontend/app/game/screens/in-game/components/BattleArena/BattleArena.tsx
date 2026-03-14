@@ -739,18 +739,21 @@ export default function BattleArena({
     const onMouseDown = (e: MouseEvent) => {
       if (e.button === 1) {
         e.preventDefault();
+        e.stopPropagation();
         const ab = abilitiesRef.current.filter(a => a.isCommon)[1]; // 扶摇直上
         if (ab?.isReady) castAbilityRef.current(ab.id);
         return;
       }
       if (e.button === 3) {
         e.preventDefault();
+        e.stopPropagation();
         const ab = abilitiesRef.current.filter(a => !a.isCommon)[4]; // draft slot 5
         if (ab?.isReady) castAbilityRef.current(ab.id);
         return;
       }
       if (e.button === 4) {
         e.preventDefault();
+        e.stopPropagation();
         const ab = abilitiesRef.current.filter(a => !a.isCommon)[5]; // draft slot 6
         if (ab?.isReady) castAbilityRef.current(ab.id);
         return;
@@ -759,23 +762,35 @@ export default function BattleArena({
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 1) {
         e.preventDefault();
+        e.stopPropagation();
         const ab = abilitiesRef.current.filter(a => a.isCommon)[2]; // 蹑云逐月
         if (ab?.isReady) castAbilityRef.current(ab.id);
+        return;
       }
-      // Prevent browser back/forward navigation on XB1/XB2
       if (e.button === 3 || e.button === 4) {
         e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    // auxclick fires for middle-click and side-buttons — prevent browser tab-open / navigation
+    const onAuxClick = (e: MouseEvent) => {
+      if (e.button === 1 || e.button === 3 || e.button === 4) {
+        e.preventDefault();
+        e.stopPropagation();
       }
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
     };
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mouseup',   onMouseUp);
-    window.addEventListener('wheel',     onWheel, { passive: false });
+    // Use capture phase so we intercept BEFORE the browser's own navigation handlers
+    window.addEventListener('mousedown', onMouseDown, { capture: true });
+    window.addEventListener('mouseup',   onMouseUp,   { capture: true });
+    window.addEventListener('auxclick',  onAuxClick,  { capture: true });
+    window.addEventListener('wheel',     onWheel,     { passive: false });
     return () => {
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('mouseup',   onMouseUp);
+      window.removeEventListener('mousedown', onMouseDown, { capture: true });
+      window.removeEventListener('mouseup',   onMouseUp,   { capture: true });
+      window.removeEventListener('auxclick',  onAuxClick,  { capture: true });
       window.removeEventListener('wheel',     onWheel);
     };
   }, []);
@@ -1141,7 +1156,7 @@ export default function BattleArena({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                   {ability.cooldown > 0 && ability.maxCooldown > 0 && (
-                    <div className={styles.cdArc} style={{ background: `conic-gradient(from -90deg, rgba(0,0,0,0.72) ${cdPct.toFixed(1)}%, transparent ${cdPct.toFixed(1)}%)` }}>
+                    <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
                       <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}s</span>
                     </div>
                   )}
@@ -1154,7 +1169,7 @@ export default function BattleArena({
           {/* ── Bottom row: 8 common abilities (with visual gaps) ── */}
           <div className={styles.commonBar}>
             {commonAbilities.map((ability, idx) => {
-              const COMMON_KEY_HINTS = ['X','MD','MU','⌥A','⌥D','⌥S','`','T'] as const;
+              const COMMON_KEY_HINTS = ['X','MD','MU','A+A','A+D','A+S','`','T'] as const;
               const keyHint = COMMON_KEY_HINTS[idx] ?? '';
               const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
               return (
@@ -1172,7 +1187,7 @@ export default function BattleArena({
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                     {ability.cooldown > 0 && ability.maxCooldown > 0 && (
-                      <div className={styles.cdArc} style={{ background: `conic-gradient(from -90deg, rgba(0,0,0,0.72) ${cdPct.toFixed(1)}%, transparent ${cdPct.toFixed(1)}%)` }}>
+                      <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
                         <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}s</span>
                       </div>
                     )}

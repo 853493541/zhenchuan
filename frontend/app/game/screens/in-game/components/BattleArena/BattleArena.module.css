@@ -299,7 +299,6 @@
   border: 1px solid rgba(60, 90, 160, 0.3);
   border-radius: 10px;
   padding: 6px 8px;
-  min-height: 88px; /* always reserve space even when abilities array is empty */
 }
 
 /* Common ability buttons — same size as draft, gold tinted */

@@ -37,13 +37,6 @@ export async function createGame(userId: string) {
         hand: [],
         buffs: [],
 
-        /**
-         * GCD
-         * - Game not started yet
-         * - No active turn, so no GCD available
-         */
-        gcd: 0,
-
         // Draft phase doesn't use position, but we need these fields
         position: { x: 0, y: 0 },
         velocity: { vx: 0, vy: 0 },
@@ -139,7 +132,6 @@ export async function startGame(gameId: string, userId: string) {
         hp: 100,
         hand: [], // No cards during draft phase
         buffs: [],
-        gcd: 0,
         position: { x: 0, y: 0 },
         velocity: { vx: 0, vy: 0 },
         moveSpeed: 0,
@@ -149,7 +141,6 @@ export async function startGame(gameId: string, userId: string) {
         hp: 100,
         hand: [], // No cards during draft phase
         buffs: [],
-        gcd: 0,
         position: { x: 0, y: 0 },
         velocity: { vx: 0, vy: 0 },
         moveSpeed: 0,

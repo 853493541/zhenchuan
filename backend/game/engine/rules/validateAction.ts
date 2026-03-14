@@ -143,12 +143,6 @@ export function validatePlayCard(
     throw new Error("ERR_ON_COOLDOWN");
   }
 
-  /* ================= GCD ================= */
-
-  if (player.gcd < card.gcdCost) {
-    throw new Error("ERR_NO_GCD");
-  }
-
   /* ================= SILENCE ================= */
 
   if (hasEffect(player, "SILENCE")) {

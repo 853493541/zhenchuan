@@ -19,14 +19,10 @@ export interface Card {
   target: TargetType;
 
   /**
-   * GCD cost to play this card
-   *
-   * Rules (v0):
-   * - Player must have gcd >= gcdCost to play
-   * - Playing the card consumes gcdCost
-   * - Each player currently gets 1 GCD per turn
+   * If true, casting this ability triggers a 1.5-second draft GCD on other
+   * draft abilities that also have gcd:true.
    */
-  gcdCost: number;
+  gcd?: boolean;
 
   effects: CardEffect[];
   buffs?: BuffDefinition[];

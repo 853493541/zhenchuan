@@ -16,7 +16,7 @@ import {
 
 export function applyStartTurnEffects(params: {
   state: GameState;
-  me: { userId: string; hp: number; buffs: ActiveBuff[]; gcd: number; hand: any[] };
+  me: { userId: string; hp: number; buffs: ActiveBuff[]; hand: any[] };
   enemy: { userId: string; hp: number; buffs: ActiveBuff[] };
 }) {
   const { state, me, enemy } = params;
@@ -37,8 +37,6 @@ export function applyStartTurnEffects(params: {
    * Current rule (v0):
    * - Always reset to exactly 1
    */
-  me.gcd = 1;
-
   for (const buff of me.buffs) {
     for (const e of buff.effects) {
       if (e.type === "START_TURN_DAMAGE") {
