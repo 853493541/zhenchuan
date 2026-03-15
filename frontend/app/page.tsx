@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 
@@ -10,6 +10,8 @@ export default function HomePage() {
   const [waitingGames, setWaitingGames] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const previousGameIds = useRef<Set<string>>(new Set());
+  const hasAutoJoined = useRef(false);
 
   /* =========================================================
      Utils：时间显示（仅显示"多少分钟前 / 刚刚"）
@@ -48,7 +50,29 @@ export default function HomePage() {
     });
 
     if (res.ok) {
-      setWaitingGames(await res.json());
+      const games = await res.json();
+      setWaitingGames(games);
+      
+      // Auto-join logic: detect new room created by another player
+      if (me && !hasAutoJoined.current) {
+        const currentGameIds = new Set(games.map((g: any) => g._id));
+        
+        // Find a new room that is not created by me
+        for (const gameId of currentGameIds) {
+          if (!previousGameIds.current.has(gameId)) {
+            const game = games.find((g: any) => g._id === gameId);
+            // Only auto-join if the room creator is not me
+            if (game && game.players?.[0] !== me.uid) {
+              hasAutoJoined.current = true;
+              router.push(`/game/room?gameId=${gameId}`);
+              return;
+            }
+          }
+        }
+        
+        // Update previous game IDs for next poll
+        previousGameIds.current = currentGameIds;
+      }
     }
   };
 
@@ -58,7 +82,7 @@ export default function HomePage() {
 
     const t = setInterval(fetchWaitingGames, 3000);
     return () => clearInterval(t);
-  }, []);
+  }, [me, router]);
 
   /* =========================================================
      创建房间
