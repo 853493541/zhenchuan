@@ -26,6 +26,11 @@ export interface MovementInput {
   right: boolean; // D key
   /** One-shot jump request — processed once per press, then cleared by GameLoop. */
   jump?: boolean;
+  /** Precise normalized direction vector (传统模式). Overrides up/down/left/right when present. */
+  dx?: number;
+  dy?: number;
+  /** Client-reported character facing direction (for server-side ability targeting). */
+  facing?: { x: number; y: number };
 }
 
 /**

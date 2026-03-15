@@ -23,7 +23,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "向对手方向冲刺20格",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 1800, // 30 seconds at 60 Hz
+    cooldownTicks: 300, // 30 seconds at 60 Hz
     effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD" }],
     isCommon: true,
   },
@@ -34,7 +34,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "向远离对手的方向冲刺10格",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 1800, // 30 seconds at 60 Hz
+    cooldownTicks: 300, // 30 seconds at 60 Hz
     effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY" }],
     isCommon: true,
   },
@@ -45,7 +45,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "向左侧冲刺7格",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 1800, // 30 seconds at 60 Hz
+    cooldownTicks: 300, // 30 seconds at 60 Hz
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT" }],
     isCommon: true,
   },
@@ -56,7 +56,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "向右侧冲刺7格",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 1800, // 30 seconds at 60 Hz
+    cooldownTicks: 300, // 30 seconds at 60 Hz
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT" }],
     isCommon: true,
   },
@@ -67,7 +67,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "获得【弹跳】：下次跳跃高度提升至12单位",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 1800, // 30 seconds at 60 Hz
+    cooldownTicks: 300, // 30 seconds at 60 Hz
     effects: [],
     buffs: [
       {
@@ -101,7 +101,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "【占位技能】",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 1800,
+    cooldownTicks: 300,
     effects: [],
     isCommon: true,
   },
@@ -114,7 +114,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "造成10点伤害\n使目标每回合受到2点伤害，持续3回合",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 480,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 10 }],
     buffs: [
@@ -150,7 +150,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "造成3点伤害\n对手每个回合开始时受到8点伤害，持续3个回合",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 480,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 3 }],
     buffs: [
@@ -174,7 +174,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "造成10点伤害\n击倒1个回合",
     type: "CONTROL",
     target: "OPPONENT",
-    cooldownTicks: 600,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 10 }],
     buffs: [
@@ -196,7 +196,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "造成2点伤害\n【控制】目标1个回合\n【减疗】3个回合",
     type: "CONTROL",
     target: "OPPONENT",
-    cooldownTicks: 600,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 2 }],
     buffs: [
@@ -227,7 +227,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "造成10点伤害\n目标1回合无法使用卡牌\n每回合开始时受到2点伤害，持续3回合。",
     type: "CONTROL",
     target: "OPPONENT",
-    cooldownTicks: 720,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 10 }],
     buffs: [
@@ -258,7 +258,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "眩晕目标1回合\n使其下个回合抽卡数量减一",
     type: "CONTROL",
     target: "OPPONENT",
-    cooldownTicks: 480,
+    cooldownTicks: 300,
     gcd: true,
     effects: [],
     buffs: [
@@ -283,7 +283,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "使目标每次使用卡牌时受到3点伤害，持续3个回合",
     type: "CONTROL",
     target: "OPPONENT",
-    cooldownTicks: 480,
+    cooldownTicks: 300,
     gcd: true,
     effects: [],
     buffs: [
@@ -307,7 +307,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "解控\n免疫控制1回合\n抽一张牌",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 360,
+    cooldownTicks: 300,
     gcd: false,
     effects: [
       { type: "CLEANSE", allowWhileControlled: true },
@@ -332,7 +332,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "解控\n抽2张牌\n恢复10点生命值\n【不可选中】一回合",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 600,
+    cooldownTicks: 300,
     gcd: false,
     effects: [
       { type: "CLEANSE", allowWhileControlled: true },
@@ -359,7 +359,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "解控\n被命中概率降低70%和免控1回合",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 360,
+    cooldownTicks: 300,
     gcd: false,
     effects: [{ type: "CLEANSE", allowWhileControlled: true }],
     buffs: [
@@ -392,7 +392,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "恢复60点生命值\n减伤40%，持续2回合",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 480,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "HEAL", value: 60 }],
     buffs: [
@@ -414,7 +414,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "抽1张牌\n恢复10点生命值\n免控1回合",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 360,
+    cooldownTicks: 300,
     gcd: true,
     effects: [
       { type: "DRAW", value: 1 },
@@ -441,7 +441,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "抽2张牌\n隐身1回合",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 900,
+    cooldownTicks: 300,
     gcd: false,
     effects: [{ type: "DRAW", value: 2, allowWhileControlled: true }],
     buffs: [
@@ -464,7 +464,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "隐身2回合\n期间无法抽卡",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 1200,
+    cooldownTicks: 300,
     gcd: false,
     effects: [],
     buffs: [
@@ -490,7 +490,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "造成5点伤害\n隐身1回合",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 720,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 5 }],
     buffs: [
@@ -518,7 +518,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
       "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计8次伤害。在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
     type: "CHANNEL",
     target: "SELF",
-    cooldownTicks: 720,
+    cooldownTicks: 300,
     gcd: true,
     effects: [],
     buffs: [
@@ -571,7 +571,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "修罗附体\n延迟1回合造成4/6/15/15伤害\n30%吸血",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 900,
+    cooldownTicks: 300,
     gcd: true,
     effects: [],
     buffs: [
@@ -640,7 +640,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "舞棍1回合\n期间免疫控制\n造成4/6/10点伤害",
     type: "CHANNEL",
     target: "SELF",
-    cooldownTicks: 600,
+    cooldownTicks: 300,
     gcd: true,
     effects: [],
     buffs: [
@@ -688,7 +688,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "造成伤害提升100%\n受到伤害降低50%\n下回合开始时抽卡减一，持续4回合",
     type: "STANCE",
     target: "SELF",
-    cooldownTicks: 900,
+    cooldownTicks: 300,
     gcd: false,
     effects: [],
     buffs: [
@@ -714,7 +714,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "抽2张牌\n被命中几率降低65%且免疫控制，期间无法使用卡牌，持续1回合",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 720,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DRAW", value: 2 }],
     buffs: [
@@ -742,7 +742,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "造成20点伤害\n目标生命值高于60时额外造成10点伤害",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 600,
+    cooldownTicks: 300,
     gcd: true,
     effects: [
       { type: "DAMAGE", value: 20 },
@@ -776,7 +776,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "冲向敌人（最远20码）\n距离内冲向敌方位置",
     type: "CONTROL",
     target: "OPPONENT",
-    cooldownTicks: 480,
+    cooldownTicks: 300,
     gcd: true,
     range: 20,
     effects: [

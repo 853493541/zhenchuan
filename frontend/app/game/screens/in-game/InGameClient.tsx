@@ -102,6 +102,13 @@ export default function InGameClient({
   // Track if we've already initiated battle to prevent duplicate calls
   const battleInitiatedRef = useRef(false);
 
+  // Reset battleInitiatedRef when phase leaves BATTLE (so next battle can start)
+  useEffect(() => {
+    if (tournament?.phase !== "BATTLE") {
+      battleInitiatedRef.current = false;
+    }
+  }, [tournament?.phase]);
+
   // Auto-call /battle/start when phase transitions to BATTLE (only once)
   useEffect(() => {
     if (tournament?.phase === "BATTLE" && state && !loading && !battleInitiatedRef.current) {
@@ -131,6 +138,21 @@ export default function InGameClient({
       initiateBattle();
     }
   }, [tournament?.phase, gameId]); // Only depend on phase and gameId, not state
+
+  // ✉ Poll for phase changes while in DRAFT phase — catches missed WS updates
+  // (Robust fallback: even if WS misses the transition broadcast, polling will detect it)
+  useEffect(() => {
+    if (tournament?.phase !== "DRAFT") return;
+    const id = setInterval(() => { refetch(); }, 2000);
+    return () => clearInterval(id);
+  }, [tournament?.phase, refetch]);
+
+  // ✉ Poll during BATTLE phase to detect when battle ends and phase transitions to DRAFT/GAME_OVER
+  useEffect(() => {
+    if (tournament?.phase !== "BATTLE") return;
+    const id = setInterval(() => { refetch(); }, 3000);
+    return () => clearInterval(id);
+  }, [tournament?.phase, refetch]);
 
   /* ================= PRELOAD ================= */
 
@@ -232,6 +254,11 @@ export default function InGameClient({
             const result = await res.json();
             console.log("[InGameClient] Battle completed:", result);
             await new Promise((r) => setTimeout(r, 300));
+            refetch();
+          } else if (res.status === 400) {
+            // Already completed by the other player — refetch to get the new DRAFT state
+            console.log("[InGameClient] Battle already completed by other player, refetching...");
+            await new Promise((r) => setTimeout(r, 500));
             refetch();
           } else {
             console.error("[InGameClient] Battle complete failed:", res.status);

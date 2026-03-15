@@ -405,13 +405,8 @@ router.post("/draft/finalize", async (req, res) => {
         game.state.players[1].velocity = { vx: 0, vy: 0 };
       }
 
-      // Initialize moveSpeed if not present
-      if (!game.state.players[0].moveSpeed) {
-        game.state.players[0].moveSpeed = 1.0;
-      }
-      if (!game.state.players[1].moveSpeed) {
-        game.state.players[1].moveSpeed = 1.0;
-      }
+      game.state.players[0].moveSpeed = 0.25;
+      game.state.players[1].moveSpeed = 0.25;
 
       // Force Mongoose to recognize nested changes
       game.state.players[0] = {
@@ -512,9 +507,9 @@ router.post("/battle/start", async (req, res) => {
     const battleState = initializeBattleState(game.tournament, playerIds_arr);
     // console.log(`[battle/start] ✅ Battle state initialized`);
 
-    // Override hands (preserve instanceId + cooldown from draft)
-    battleState.players[0].hand = player0Hand;
-    battleState.players[1].hand = player1Hand;
+    // Override hands — preserve instanceId but reset cooldowns for a fresh battle
+    battleState.players[0].hand = player0Hand.map((c: any) => ({ ...c, cooldown: 0 }));
+    battleState.players[1].hand = player1Hand.map((c: any) => ({ ...c, cooldown: 0 }));
 
     // Disabled: spam during testing
     // console.log(`[battle/start] Battle initialized for gameId ${gameId}`);
@@ -566,7 +561,22 @@ router.post("/battle/complete", async (req, res) => {
     if (!game) return res.status(404).json({ error: "Game not found" });
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+
+    // Idempotent: if already transitioned away from BATTLE, return success without re-processing
+    if (!game.state.gameOver && game.tournament.phase !== "BATTLE") {
+      return res.json({
+        status: game.tournament.phase === "GAME_OVER" ? "tournament_complete" : "next_draft_ready",
+        tournamentWinner: game.tournament.winnerId,
+        battleNumber:     game.tournament.battleNumber,
+        gameHp:           game.tournament.gameHp,
+      });
+    }
+
     if (!game.state.gameOver) return res.status(400).json({ error: "Battle not over yet" });
+
+    // Capture previous state for diff broadcast
+    const prevState      = structuredClone(game.state);
+    const prevTournament = structuredClone(game.tournament);
 
     // Handle tournament battle completion (apply damage, advance to next battle/draft)
     const updatedTournament = completeTournamentBattle(game.state, game.tournament);
@@ -616,6 +626,20 @@ router.post("/battle/complete", async (req, res) => {
 
     game.markModified("tournament");
     await game.save();
+
+    // ✅ Broadcast phase change to BOTH players so neither needs to manually refresh
+    const stateDiff      = diffState(prevState, game.state);
+    const tournamentDiff = diffState(prevTournament, game.tournament);
+    const allDiffs       = [...stateDiff, ...tournamentDiff];
+    if (allDiffs.length > 0) {
+      broadcastGameUpdate({
+        gameId,
+        version: game.state.version,
+        diff:    allDiffs,
+        timestamp: Date.now(),
+      });
+      console.log(`[battle/complete] Broadcast ${allDiffs.length} patches (phase → ${game.tournament.phase})`);
+    }
 
     res.json({
       status: game.tournament.phase === "GAME_OVER" ? "tournament_complete" : "next_draft_ready",

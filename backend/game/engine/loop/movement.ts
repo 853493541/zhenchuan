@@ -16,7 +16,7 @@ const PLAYER_RADIUS = 2; // Collision size of player
 /** Vertical physics constants (at ~30 Hz tick rate) */
 const GRAVITY       = 0.04;  // units/tick² downward acceleration
 const JUMP_VZ       = 0.346; // initial upward velocity on jump (peak ≈ 1.5 units per jump)
-const POWER_JUMP_VZ = 0.98;  // boosted jump velocity for 弹跳 buff (~12 unit peak height)
+const POWER_JUMP_VZ = 1.47;  // boosted jump velocity for 弹跳 buff (1.5× longer air time than JUMP_VZ)
 const MAX_JUMPS = 2;     // allow double-jump
 
 /**
@@ -48,11 +48,17 @@ export function applyMovement(
     let targetVx = 0;
     let targetVy = 0;
 
-    // Note: Y is inverted in typical canvas coordinates (up is -y)
-    if (input.up) targetVy -= player.moveSpeed;
-    if (input.down) targetVy += player.moveSpeed;
-    if (input.left) targetVx -= player.moveSpeed;
-    if (input.right) targetVx += player.moveSpeed;
+    if (input.dx !== undefined || input.dy !== undefined) {
+      // 传统模式: precise direction vector from client
+      targetVx = (input.dx ?? 0) * player.moveSpeed;
+      targetVy = (input.dy ?? 0) * player.moveSpeed;
+    } else {
+      // 摇杆模式: WASD boolean flags
+      if (input.up)    targetVy -= player.moveSpeed;
+      if (input.down)  targetVy += player.moveSpeed;
+      if (input.left)  targetVx -= player.moveSpeed;
+      if (input.right) targetVx += player.moveSpeed;
+    }
 
     // Smooth acceleration to target velocity
     const acceleration = 0.3;
@@ -63,6 +69,13 @@ export function applyMovement(
     if (targetVx !== 0 || targetVy !== 0) {
       const flen = Math.sqrt(targetVx * targetVx + targetVy * targetVy);
       player.facing = { x: targetVx / flen, y: targetVy / flen };
+    } else if (input.facing) {
+      // Even when standing still, apply the client-reported facing direction
+      // so ability targeting (dash direction) uses the correct orientation.
+      const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
+      if (flen > 0.01) {
+        player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
+      }
     }
 
     // ── Jump (one-shot: GameLoop clears input.jump after each tick) ──

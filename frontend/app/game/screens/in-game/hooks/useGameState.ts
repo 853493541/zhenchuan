@@ -359,15 +359,17 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     };
   }, [gameId, initialAuthToken]);
 
-  // Connect WebSocket when game is loaded
+  // Connect WebSocket when game is loaded — connect once, keep alive, only close on unmount
   useEffect(() => {
     if (!game || loading) return; // Wait until game data is loaded
-    if (wsRef.current) return; // Already connected
-
+    if (wsRef.current) return;   // Already connected
     connectWebSocket();
+    // NO cleanup here — cleanup is handled by the separate unmount effect below
+  }, [gameId, loading]);
 
+  // Cleanup only on unmount or gameId change (NOT on loading/refetch changes)
+  useEffect(() => {
     return () => {
-      // Cleanup on unmount
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
@@ -379,7 +381,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         clearInterval(heartbeatIntervalRef.current);
       }
     };
-  }, [gameId, loading]);
+  }, [gameId]);
 
   /* ================= GUARDS ================= */
 

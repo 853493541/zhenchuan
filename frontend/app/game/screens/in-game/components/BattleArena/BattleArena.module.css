@@ -469,3 +469,85 @@
   .wasdWrap   { width: auto; }
   .bottomHud  { justify-content: space-around; }
 }
+
+/* ============================================================
+   CONTROL SETTINGS PANEL
+   ============================================================ */
+.controlBtn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 25;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 17px;
+  cursor: pointer;
+  pointer-events: all;
+  transition: border-color 0.12s, color 0.12s;
+}
+.controlBtn:hover {
+  border-color: rgba(80, 150, 255, 0.6);
+  color: #fff;
+}
+.controlPanel {
+  position: absolute;
+  top: 52px;
+  right: 14px;
+  z-index: 25;
+  background: rgba(4, 10, 25, 0.96);
+  border: 1px solid rgba(50, 90, 180, 0.45);
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-width: 200px;
+  pointer-events: all;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.controlPanelTitle {
+  font-size: 9px;
+  letter-spacing: 2.5px;
+  color: rgba(100, 160, 255, 0.7);
+  text-transform: uppercase;
+}
+.controlModeRow {
+  display: flex;
+  gap: 6px;
+}
+.controlModeBtn {
+  flex: 1;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.controlModeBtn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.75);
+}
+.controlModeActive {
+  background: rgba(40, 100, 240, 0.28) !important;
+  border-color: rgba(80, 150, 255, 0.55) !important;
+  color: #fff !important;
+}
+.controlHints {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  line-height: 1.85;
+}
+.controlHints span {
+  color: rgba(180, 210, 255, 0.7);
+  font-weight: bold;
+}

@@ -22,8 +22,11 @@ const CHAR_RADIUS = 1.0;   // world units radius
    the opponent is, eliminating the A/D flip when the camera rotates. */
 const CAM_DIST_BACK   = 20;  // units behind player
 const CAM_HEIGHT      = 10;  // units above player (follows player Z)
+const CAM_ARM         = Math.sqrt(CAM_DIST_BACK * CAM_DIST_BACK + CAM_HEIGHT * CAM_HEIGHT); // orbit arm length
+const DEFAULT_PITCH   = Math.atan2(CAM_HEIGHT, CAM_DIST_BACK); // ≈ 0.464 rad (~26.6°)
 const CAM_LOOK_AHEAD  = 6;   // look-ahead toward opponent side
 const NEAR_CLIP       = 0.8;
+const DASH_ANIM_MS    = 1500; // ms — cosmetic dash travel animation
 
 // Vertical FOV — used with H-based focal length so scale is consistent
 // across all screen widths (phone / tablet / wide monitor all look the same depth)
@@ -64,23 +67,31 @@ const CAM_DIR = { x: 0, y: 1 };
 
 function buildCam(
   playerPos: V3,
-  _dir: { x: number; y: number }, // kept for API compat but ignored
+  dir: { x: number; y: number },
   W: number,
   H: number,
+  zoom = 1.0,
+  pitch = DEFAULT_PITCH,
 ): Cam {
+  const distBack = CAM_ARM * Math.cos(pitch) * zoom;
+  const height   = CAM_ARM * Math.sin(pitch);
   const camPos = v3(
-    playerPos.x - CAM_DIR.x * CAM_DIST_BACK,
-    playerPos.y - CAM_DIR.y * CAM_DIST_BACK,
-    playerPos.z + CAM_HEIGHT,  // camera rises with player (follows jumps)
+    playerPos.x - dir.x * distBack,
+    playerPos.y - dir.y * distBack,
+    playerPos.z + height,
   );
+  // Scale look-ahead by cos(pitch): at overhead view (pitch→π/2) look directly at player, not ahead
+  const lookAheadScale = Math.cos(pitch);
   const lookAt = v3(
-    playerPos.x + CAM_DIR.x * CAM_LOOK_AHEAD,
-    playerPos.y + CAM_DIR.y * CAM_LOOK_AHEAD,
-    playerPos.z + 1.0,  // mid-body of 2-unit character
+    playerPos.x + dir.x * CAM_LOOK_AHEAD * lookAheadScale,
+    playerPos.y + dir.y * CAM_LOOK_AHEAD * lookAheadScale,
+    playerPos.z + 1.0,
   );
   const worldUp = v3(0, 0, 1);
   const fwd   = norm3(sub3(lookAt, camPos));
-  const right = norm3(cross3(fwd, worldUp));
+  // Use yaw-derived right vector — always well-defined even when looking straight down.
+  // This avoids the degenerate cross(fwd, worldUp)=0 case at high pitch angles.
+  const right = v3(dir.y, -dir.x, 0); // perpendicular to facing in horizontal plane
   const up    = norm3(cross3(right, fwd));
   // Height-based focal length: scale is tied to viewport HEIGHT so
   // phone / tablet / wide-monitor all see the same perceived distance.
@@ -476,9 +487,11 @@ export default function BattleArena({
   const wrapRef   = useRef<HTMLDivElement>(null);
 
   /* --- React state (UI only) --- */
-  const [abilities, setAbilities] = useState<AbilityInfo[]>([]);
-  const [rtt,       setRtt]       = useState<number | null>(null);
-  const [wasdKeys,  setWasdKeys]  = useState({ w: false, a: false, s: false, d: false });
+  const [abilities,        setAbilities]        = useState<AbilityInfo[]>([]);
+  const [rtt,              setRtt]              = useState<number | null>(null);
+  const [wasdKeys,         setWasdKeys]         = useState({ w: false, a: false, s: false, d: false });
+  const [controlMode,      setControlMode]      = useState<'joystick' | 'traditional'>('traditional');
+  const [showControlPanel, setShowControlPanel] = useState(false);
 
   // Split abilities into two rows for rendering
   const commonAbilities = abilities.filter(a => a.isCommon);
@@ -508,6 +521,18 @@ export default function BattleArena({
   // Camera direction is now pinned to CAM_DIR constant — no ref needed.
   // Keep a dummy ref so nothing else needs changing.
   const camDirRef = useRef(CAM_DIR);
+
+  // 传统模式 camera/character state
+  const controlModeRef = useRef<'joystick' | 'traditional'>('traditional');
+  const charYawRef     = useRef(0);             // character facing yaw (radians, 0 = facing +Y)
+  const camYawRef      = useRef(0);             // camera yaw
+  const camPitchRef    = useRef(DEFAULT_PITCH); // camera pitch angle (radians)
+  const camZoomRef     = useRef(1.0);           // zoom multiplier (scroll wheel)
+  const mouseStateRef  = useRef({ isLeft: false, isRight: false, lastX: 0, lastY: 0 });
+
+  /* --- Dash animation refs --- */
+  const localDashAnimRef = useRef<{ start: V3; startTime: number } | null>(null);
+  const oppDashAnimRef   = useRef<{ start: V3; startTime: number } | null>(null);
 
   /* --- Render-loop refs (avoid stale closures) --- */
   const abilitiesRef  = useRef<AbilityInfo[]>([]);
@@ -539,6 +564,14 @@ export default function BattleArena({
   useEffect(() => { oppHpRef.current = opponent?.hp ?? 0; }, [opponent?.hp]);
   useEffect(() => { maxHpRef.current = maxHp;             }, [maxHp]);
 
+  // Restore control mode from localStorage on mount
+  useEffect(() => {
+    const saved = (localStorage.getItem('controlMode')) as 'joystick' | 'traditional' | null;
+    const mode  = (saved === 'joystick' || saved === 'traditional') ? saved : 'traditional';
+    setControlMode(mode);
+    controlModeRef.current = mode;
+  }, []);
+
   /* ========================= MOVEMENT ========================= */
 
   const sendMovement = useCallback(async () => {
@@ -556,11 +589,31 @@ export default function BattleArena({
         signal:      movementAbortRef.current.signal,
         body: JSON.stringify({
           gameId,
-          // W = forward on screen = camera+Y = server "down" (+vy)
-          // S = backward on screen = camera-Y = server "up"  (-vy)
-          direction: (k.w || k.a || k.s || k.d || shouldJump)
-            ? { up: k.s, down: k.w, left: k.a, right: k.d, jump: shouldJump }
-            : null,
+          // Always send the character's current facing direction so server-side
+          // abilities (dashes, etc.) use the correct orientation
+          facing: {
+            x: Math.sin(charYawRef.current),
+            y: Math.cos(charYawRef.current),
+          },
+          direction: (() => {
+            if (controlModeRef.current === 'traditional') {
+              // W/S move in character’s facing direction; A/D only turn (no movement)
+              const fwd = { x: Math.sin(charYawRef.current), y: Math.cos(charYawRef.current) };
+              let dx = 0, dy = 0;
+              const bothMouse = mouseStateRef.current.isLeft && mouseStateRef.current.isRight;
+              if (bothMouse) charYawRef.current = camYawRef.current;
+              if (k.w || bothMouse) { dx += fwd.x; dy += fwd.y; }
+              if (k.s && !bothMouse) { dx -= fwd.x; dy -= fwd.y; }
+              if (dx === 0 && dy === 0 && !shouldJump) return null;
+              const len = Math.sqrt(dx * dx + dy * dy) || 1;
+              const speedMult = (k.s && !k.w && !bothMouse) ? 0.5 : 1.0;
+              return { dx: (dx / len) * speedMult, dy: (dy / len) * speedMult, jump: shouldJump };
+            }
+            // 摇杆模式: absolute WASD
+            return (k.w || k.a || k.s || k.d || shouldJump)
+              ? { up: k.s, down: k.w, left: k.a, right: k.d, jump: shouldJump }
+              : null;
+          })(),
         }),
       });
     } catch { /* AbortError expected */ }
@@ -577,11 +630,18 @@ export default function BattleArena({
     if (!me?.position || !initializedRef.current) return;
     const local  = localPositionRef.current;
     if (!local) return;
+    const dx = me.position.x - local.x;
+    const dy = me.position.y - local.y;
+    // Hard-snap if server position is far away (e.g. new battle start)
+    if (dx * dx + dy * dy > 25) {
+      localPositionRef.current = { ...me.position };
+      return;
+    }
     const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
     const blend  = moving ? 0.03 : 0.25;
     localPositionRef.current = {
-      x: local.x + (me.position.x - local.x) * blend,
-      y: local.y + (me.position.y - local.y) * blend,
+      x: local.x + dx * blend,
+      y: local.y + dy * blend,
     };
   }, [me?.position?.x, me?.position?.y]);
 
@@ -730,13 +790,32 @@ export default function BattleArena({
     };
   }, []);
 
-  // Mouse hotkeys:
+  // Mouse hotkeys + camera drag + zoom:
+  //   Left-drag              → rotate camera (traditional mode)
+  //   Right-drag             → rotate camera + snap character facing (traditional mode)
   //   Middle-down (MD)       → common[1] 扶摇直上
   //   Middle-up  (MU)        → common[2] 蹑云逐月
-  //   Button-3 / XB2 (down)  → draft[4]
-  //   Button-4 / XB1 (down)  → draft[5]
+  //   Button-3 / XB1 (down)  → draft[4]
+  //   Button-4 / XB2 (down)  → draft[5]
+  //   Wheel up/down          → zoom in/out
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
+      // Left button — start camera drag
+      if (e.button === 0) {
+        // Only start drag if not clicking a UI button
+        if ((e.target as HTMLElement).closest('button')) return;
+        mouseStateRef.current.isLeft = true;
+        mouseStateRef.current.lastX  = e.clientX;
+        mouseStateRef.current.lastY  = e.clientY;
+        return;
+      }
+      // Right button — start character rotate drag (context menu already suppressed by onContextMenu)
+      if (e.button === 2) {
+        mouseStateRef.current.isRight = true;
+        mouseStateRef.current.lastX   = e.clientX;
+        mouseStateRef.current.lastY   = e.clientY;
+        return;
+      }
       if (e.button === 1) {
         e.preventDefault();
         e.stopPropagation();
@@ -747,19 +826,27 @@ export default function BattleArena({
       if (e.button === 3) {
         e.preventDefault();
         e.stopPropagation();
-        const ab = abilitiesRef.current.filter(a => !a.isCommon)[4]; // draft slot 5
+        const ab = abilitiesRef.current.filter(a => !a.isCommon)[4]; // draft slot 5 (XB1)
         if (ab?.isReady) castAbilityRef.current(ab.id);
         return;
       }
       if (e.button === 4) {
         e.preventDefault();
         e.stopPropagation();
-        const ab = abilitiesRef.current.filter(a => !a.isCommon)[5]; // draft slot 6
+        const ab = abilitiesRef.current.filter(a => !a.isCommon)[5]; // draft slot 6 (XB2)
         if (ab?.isReady) castAbilityRef.current(ab.id);
         return;
       }
     };
     const onMouseUp = (e: MouseEvent) => {
+      if (e.button === 0) {
+        mouseStateRef.current.isLeft = false;
+        return;
+      }
+      if (e.button === 2) {
+        mouseStateRef.current.isRight = false;
+        return;
+      }
       if (e.button === 1) {
         e.preventDefault();
         e.stopPropagation();
@@ -772,6 +859,29 @@ export default function BattleArena({
         e.stopPropagation();
       }
     };
+    const onMouseMove = (e: MouseEvent) => {
+      if (controlModeRef.current !== 'traditional') return;
+      const ms = mouseStateRef.current;
+      if (!ms.isLeft && !ms.isRight) return;
+      const dx = e.clientX - ms.lastX;
+      const dy = e.clientY - ms.lastY;
+      ms.lastX = e.clientX;
+      ms.lastY = e.clientY;
+
+      if (ms.isRight && !ms.isLeft) {
+        // RMB only: rotate CHARACTER face direction only; camera stays fixed
+        charYawRef.current += dx * 0.005;
+      } else if (ms.isLeft && !ms.isRight) {
+        // LMB only: rotate camera yaw + pitch
+        camYawRef.current  += dx * 0.005;
+        // dy > 0 = drag down = look more from above (increase pitch)
+        const newPitch = camPitchRef.current + dy * 0.003;
+        camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
+      }
+      // LMB + RMB together → move forward (no rotation drag)
+    };
+    // Prevent native right-click context menu
+    const onContextMenu = (e: MouseEvent) => { e.preventDefault(); };
     // auxclick fires for middle-click and side-buttons — prevent browser tab-open / navigation
     const onAuxClick = (e: MouseEvent) => {
       if (e.button === 1 || e.button === 3 || e.button === 4) {
@@ -781,17 +891,24 @@ export default function BattleArena({
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      // deltaY > 0 = scroll down = zoom out; < 0 = scroll up = zoom in
+      const delta = e.deltaY > 0 ? 0.12 : -0.12;
+      camZoomRef.current = Math.max(0.4, Math.min(2.5, camZoomRef.current + delta));
     };
     // Use capture phase so we intercept BEFORE the browser's own navigation handlers
-    window.addEventListener('mousedown', onMouseDown, { capture: true });
-    window.addEventListener('mouseup',   onMouseUp,   { capture: true });
-    window.addEventListener('auxclick',  onAuxClick,  { capture: true });
-    window.addEventListener('wheel',     onWheel,     { passive: false });
+    window.addEventListener('mousedown',   onMouseDown,   { capture: true });
+    window.addEventListener('mouseup',     onMouseUp,     { capture: true });
+    window.addEventListener('mousemove',   onMouseMove,   { capture: true });
+    window.addEventListener('contextmenu', onContextMenu, { capture: true });
+    window.addEventListener('auxclick',    onAuxClick,    { capture: true });
+    window.addEventListener('wheel',       onWheel,       { passive: false, capture: true });
     return () => {
-      window.removeEventListener('mousedown', onMouseDown, { capture: true });
-      window.removeEventListener('mouseup',   onMouseUp,   { capture: true });
-      window.removeEventListener('auxclick',  onAuxClick,  { capture: true });
-      window.removeEventListener('wheel',     onWheel);
+      window.removeEventListener('mousedown',   onMouseDown,   { capture: true });
+      window.removeEventListener('mouseup',     onMouseUp,     { capture: true });
+      window.removeEventListener('mousemove',   onMouseMove,   { capture: true });
+      window.removeEventListener('contextmenu', onContextMenu, { capture: true });
+      window.removeEventListener('auxclick',    onAuxClick,    { capture: true });
+      window.removeEventListener('wheel',       onWheel,       { capture: true } as EventListenerOptions);
     };
   }, []);
 
@@ -805,24 +922,70 @@ export default function BattleArena({
 
   /* Physics — mirrors server exactly */
   useEffect(() => {
-    const MAX_SPEED = 1.0, ACCEL = 0.3, DECEL = 0.9;
-    const JUMP_VZ_CLIENT = 0.346, POWER_JUMP_VZ_CLIENT = 0.98, GRAVITY_CLIENT = 0.04;
+    // 7.5 u/s at 30 Hz = 0.25 u/tick
+    const MAX_SPEED = 0.25, ACCEL = 0.3, DECEL = 0.9;
+    const JUMP_VZ_CLIENT = 0.346, POWER_JUMP_VZ_CLIENT = 1.47, GRAVITY_CLIENT = 0.04;
+    const TURN_RATE = 0.055; // radians / tick at 30 Hz ≈ 95°/sec
     const tick = () => {
       const pos = localPositionRef.current;
       if (!pos) return;
       const vel = localVelocityRef.current;
       const k   = keysRef.current;
-      let ix = 0, iy = 0;
-      if (k.w) iy += 1;  // W = +Y = forward into scene (matches server "down" = +vy)
-      if (k.s) iy -= 1;  // S = -Y = backward toward camera
-      if (k.a) ix -= 1;
-      if (k.d) ix += 1;
-      if (ix !== 0 || iy !== 0) {
-        const len = Math.sqrt(ix * ix + iy * iy);
-        vel.x += ((ix / len) * MAX_SPEED - vel.x) * ACCEL;
-        vel.y += ((iy / len) * MAX_SPEED - vel.y) * ACCEL;
-        localFacingRef.current = { x: ix / len, y: iy / len }; // update facing immediately from input
-      } else { vel.x *= DECEL; vel.y *= DECEL; }
+      const ms  = mouseStateRef.current;
+
+      if (controlModeRef.current === 'traditional') {
+        const bothMouse = ms.isLeft && ms.isRight;
+
+        // A/D turn character (only if not in bothMouse mode)
+        if (!bothMouse) {
+          const turning = (k.a ? -1 : 0) + (k.d ? 1 : 0);
+          if (turning !== 0) {
+            charYawRef.current += turning * TURN_RATE;
+            if (!ms.isLeft && !ms.isRight) {
+              camYawRef.current = charYawRef.current;
+            }
+          }
+        }
+
+        // LMB+RMB: align character to camera and move forward
+        if (bothMouse) {
+          charYawRef.current = camYawRef.current;
+        }
+
+        const fwd = { x: Math.sin(charYawRef.current), y: Math.cos(charYawRef.current) };
+        let fx = 0, fy = 0;
+        if (k.w || bothMouse) { fx += fwd.x; fy += fwd.y; }
+        if (k.s && !bothMouse) { fx -= fwd.x; fy -= fwd.y; }
+
+        if (fx !== 0 || fy !== 0) {
+          const len = Math.sqrt(fx * fx + fy * fy);
+          // Backpedaling is slower (S only, no W or bothMouse)
+          const speedMult = (k.s && !k.w && !bothMouse) ? 0.5 : 1.0;
+          vel.x += ((fx / len) * MAX_SPEED * speedMult - vel.x) * ACCEL;
+          vel.y += ((fy / len) * MAX_SPEED * speedMult - vel.y) * ACCEL;
+          localFacingRef.current = { x: fwd.x, y: fwd.y };
+        } else {
+          vel.x *= DECEL;
+          vel.y *= DECEL;
+        }
+      } else {
+        // 摇杆模式: WASD = absolute world directions
+        let ix = 0, iy = 0;
+        if (k.w) iy += 1;
+        if (k.s) iy -= 1;
+        if (k.a) ix -= 1;
+        if (k.d) ix += 1;
+        if (ix !== 0 || iy !== 0) {
+          const len = Math.sqrt(ix * ix + iy * iy);
+          vel.x += ((ix / len) * MAX_SPEED - vel.x) * ACCEL;
+          vel.y += ((iy / len) * MAX_SPEED - vel.y) * ACCEL;
+          localFacingRef.current = { x: ix / len, y: iy / len };
+        } else {
+          vel.x *= DECEL;
+          vel.y *= DECEL;
+        }
+      }
+
       localPositionRef.current = {
         x: Math.max(2, Math.min(98, pos.x + vel.x)),
         y: Math.max(2, Math.min(98, pos.y + vel.y)),
@@ -831,17 +994,17 @@ export default function BattleArena({
       // ── Z axis: jump + gravity ──
       if (jumpLocalRef.current && localJumpCountRef.current < 2) {
         const jumpVz = hasFuyaoBuffRef.current ? POWER_JUMP_VZ_CLIENT : JUMP_VZ_CLIENT;
-        hasFuyaoBuffRef.current = false; // consume buff
+        hasFuyaoBuffRef.current   = false;
         localVzRef.current        = jumpVz;
         localJumpCountRef.current += 1;
-        jumpLocalRef.current       = false; // consume local jump
+        jumpLocalRef.current       = false;
       }
       localVzRef.current -= GRAVITY_CLIENT;
       localZRef.current   = Math.max(0, localZRef.current + localVzRef.current);
       if (localZRef.current <= 0 && localVzRef.current < 0) {
         localZRef.current         = 0;
         localVzRef.current        = 0;
-        localJumpCountRef.current = 0; // restore jumps on landing
+        localJumpCountRef.current = 0;
       }
     };
     const id = setInterval(tick, 33);
@@ -947,59 +1110,72 @@ export default function BattleArena({
         return;
       }
 
-      // ── Dash-trail: smooth render positions; large jumps become visible dashes ──
+      // ── Smooth render positions; large jumps trigger 1.5 s cosmetic dash animation ──
       const frameNow = performance.now();
       const frameDt  = lastFrameTimeRef.current === 0 ? 16 : Math.min(frameNow - lastFrameTimeRef.current, 50);
       lastFrameTimeRef.current = frameNow;
       const dtF = frameDt / 16.67; // normalised to 60 fps
-      const DASH_THRESH = 3.5;     // world units; smaller moves = smooth walk, larger = dash
+      const DASH_THRESH = 3.5;     // world units — smaller = walk blend, larger = dash anim
 
       // --- local player render pos ---
       {
         const tx = myPos.x, ty = myPos.y, tz = localZRef.current;
         const r  = localRenderPosRef.current;
-        const dx = tx - r.x, dy = ty - r.y, dz = tz - r.z;
-        if (Math.sqrt(dx * dx + dy * dy) > DASH_THRESH) {
-          // dash: emit 3 ghost frames spread along the path, then snap
-          for (let i = 0; i < 3; i++) {
-            const f = i / 3;
-            localTrailRef.current.push({ pos: { x: r.x + dx * f, y: r.y + dy * f, z: r.z + dz * f }, alpha: 0.5 - i * 0.12 });
-          }
-          localRenderPosRef.current = { x: tx, y: ty, z: tz };
+        const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
+        if (!localDashAnimRef.current && Math.sqrt(ddx * ddx + ddy * ddy) > DASH_THRESH) {
+          // Detected large jump — start travel animation (no visible trail)
+          localDashAnimRef.current = { start: { ...r }, startTime: frameNow };
+        }
+        if (localDashAnimRef.current) {
+          const elapsed = frameNow - localDashAnimRef.current.startTime;
+          const t = Math.min(1, elapsed / DASH_ANIM_MS);
+          const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+          localRenderPosRef.current = {
+            x: localDashAnimRef.current.start.x + (tx - localDashAnimRef.current.start.x) * eased,
+            y: localDashAnimRef.current.start.y + (ty - localDashAnimRef.current.start.y) * eased,
+            z: localDashAnimRef.current.start.z + (tz - localDashAnimRef.current.start.z) * eased,
+          };
+          if (t >= 1) localDashAnimRef.current = null;
         } else {
           const k = Math.min(1, 0.3 * dtF);
-          localRenderPosRef.current = { x: r.x + dx * k, y: r.y + dy * k, z: r.z + dz * k };
+          localRenderPosRef.current = { x: r.x + ddx * k, y: r.y + ddy * k, z: r.z + ddz * k };
         }
-        localTrailRef.current = localTrailRef.current
-          .map(g => ({ ...g, alpha: g.alpha - 0.05 * dtF }))
-          .filter(g => g.alpha > 0.04);
+        // Trails removed
       }
 
       // --- opponent render pos ---
       {
         const tx = opPos.x, ty = opPos.y, tz = opPos.z ?? 0;
         const r  = oppRenderPosRef.current;
-        const dx = tx - r.x, dy = ty - r.y, dz = tz - r.z;
-        if (Math.sqrt(dx * dx + dy * dy) > DASH_THRESH) {
-          for (let i = 0; i < 3; i++) {
-            const f = i / 3;
-            oppTrailRef.current.push({ pos: { x: r.x + dx * f, y: r.y + dy * f, z: r.z + dz * f }, alpha: 0.5 - i * 0.12 });
-          }
-          oppRenderPosRef.current = { x: tx, y: ty, z: tz };
+        const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
+        if (!oppDashAnimRef.current && Math.sqrt(ddx * ddx + ddy * ddy) > DASH_THRESH) {
+          oppDashAnimRef.current = { start: { ...r }, startTime: frameNow };
+        }
+        if (oppDashAnimRef.current) {
+          const elapsed = frameNow - oppDashAnimRef.current.startTime;
+          const t = Math.min(1, elapsed / DASH_ANIM_MS);
+          const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+          oppRenderPosRef.current = {
+            x: oppDashAnimRef.current.start.x + (tx - oppDashAnimRef.current.start.x) * eased,
+            y: oppDashAnimRef.current.start.y + (ty - oppDashAnimRef.current.start.y) * eased,
+            z: oppDashAnimRef.current.start.z + (tz - oppDashAnimRef.current.start.z) * eased,
+          };
+          if (t >= 1) oppDashAnimRef.current = null;
         } else {
           const k = Math.min(1, 0.3 * dtF);
-          oppRenderPosRef.current = { x: r.x + dx * k, y: r.y + dy * k, z: r.z + dz * k };
+          oppRenderPosRef.current = { x: r.x + ddx * k, y: r.y + ddy * k, z: r.z + ddz * k };
         }
-        oppTrailRef.current = oppTrailRef.current
-          .map(g => ({ ...g, alpha: g.alpha - 0.05 * dtF }))
-          .filter(g => g.alpha > 0.04);
+        // Trails removed
       }
 
       const myRP = localRenderPosRef.current;
       const opRP = oppRenderPosRef.current;
 
       // Camera follows smooth render pos (including jump Z)
-      const cam = buildCam(v3(myRP.x, myRP.y, myRP.z), camDirRef.current, w, h);
+      const camDir = controlModeRef.current === 'traditional'
+        ? { x: Math.sin(camYawRef.current), y: Math.cos(camYawRef.current) }
+        : CAM_DIR;
+      const cam = buildCam(v3(myRP.x, myRP.y, myRP.z), camDir, w, h, camZoomRef.current, camPitchRef.current);
 
       /* Draw scene */
       renderBg(ctx, cam, w, h);
@@ -1013,14 +1189,6 @@ export default function BattleArena({
         renderRangeCircle(ctx, v3(myRP.x, myRP.y, 0), readyAbility.range, cam, w, h, 'rgba(80, 210, 100, 0.55)');
       if (minRangeAbil?.minRange)
         renderRangeCircle(ctx, v3(myRP.x, myRP.y, 0), minRangeAbil.minRange, cam, w, h, 'rgba(255, 80, 80, 0.45)');
-
-      /* Dash trail ghosts — rendered before characters so they appear behind */
-      for (const g of localTrailRef.current) {
-        renderDashGhost(ctx, v3(g.pos.x, g.pos.y, g.pos.z), cam, w, h, '#44aaff', g.alpha);
-      }
-      for (const g of oppTrailRef.current) {
-        renderDashGhost(ctx, v3(g.pos.x, g.pos.y, g.pos.z), cam, w, h, '#ff5555', g.alpha);
-      }
 
       /* Sort back-to-front */
       const mxHp = maxHpRef.current;
@@ -1090,6 +1258,48 @@ export default function BattleArena({
         </div>
       </div>
 
+      {/* ===== TOP-RIGHT: Control mode settings ===== */}
+      <button
+        className={styles.controlBtn}
+        onClick={() => setShowControlPanel(v => !v)}
+        title="控制设置"
+      >&#9881;</button>
+      {showControlPanel && (
+        <div className={styles.controlPanel}>
+          <div className={styles.controlPanelTitle}>控制模式</div>
+          <div className={styles.controlModeRow}>
+            <button
+              className={`${styles.controlModeBtn} ${controlMode === 'traditional' ? styles.controlModeActive : ''}`}
+              onClick={() => {
+                setControlMode('traditional');
+                controlModeRef.current = 'traditional';
+                localStorage.setItem('controlMode', 'traditional');
+                // Sync yaw to current facing so camera doesn’t jump
+                const f = localFacingRef.current;
+                const yaw = Math.atan2(f.x, f.y);
+                charYawRef.current = yaw;
+                camYawRef.current  = yaw;
+              }}
+            >传统模式</button>
+            <button
+              className={`${styles.controlModeBtn} ${controlMode === 'joystick' ? styles.controlModeActive : ''}`}
+              onClick={() => {
+                setControlMode('joystick');
+                controlModeRef.current = 'joystick';
+                localStorage.setItem('controlMode', 'joystick');
+              }}
+            >摇杆模式</button>
+          </div>
+          <div className={styles.controlHints}>
+            {controlMode === 'traditional' ? (
+              <><span>W/S</span> 前进/后退 <span>A/D</span> 转向<br/><span>右键拖拽</span> 转向+转镜头 <span>左键拖拽</span> 转镜头<br/><span>滚轮</span> 镜头缩放</>
+            ) : (
+              <><span>WASD</span> 绝对方向移动<br/><span>镜头固定</span> 不随角色旋转</>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ===== TOP-CENTER: Enemy boss bar ===== */}
       <div className={styles.enemyBossBar}>
         <div className={styles.enemyName}>ENEMY</div>
@@ -1136,7 +1346,7 @@ export default function BattleArena({
           <div className={styles.hotbar}>
             {Array.from({ length: 6 }, (_, idx) => {
               const ability = draftAbilities[idx];
-              const keyHint = ['1','2','3','Q','XB2','XB1'][idx];
+              const keyHint = ['1','2','3','Q','XB1','XB2'][idx];
               if (!ability) {
                 return (
                   <div key={`empty-${idx}`} className={`${styles.abilityBtn} ${styles.emptySlot}`}>

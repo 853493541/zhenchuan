@@ -193,6 +193,11 @@ export class GameLoop {
           isMovementOnly: true, // Compact format - skip events/timestamp for speed
         });
       } else {
+        // Add gameOver + winnerUserId into the diff so frontend state.gameOver updates immediately via WS
+        diff.push({ path: "/gameOver", value: true });
+        if (this.state.winnerUserId) {
+          diff.push({ path: "/winnerUserId", value: this.state.winnerUserId });
+        }
         // When game ends, send full broadcast with winner info
         broadcastGameUpdate({
           gameId: this.gameId,
@@ -202,6 +207,8 @@ export class GameLoop {
           winnerUserId: this.state.winnerUserId,
           timestamp: Date.now(),
         });
+        // Force DB save immediately so battle/complete can read gameOver=true from DB
+        this.saveToDB();
       }
       
       broadcastTime = performance.now() - bcastStart;

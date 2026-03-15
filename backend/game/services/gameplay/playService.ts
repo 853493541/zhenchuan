@@ -114,7 +114,7 @@ async function playCastAbility(
 
   // 轻功 GCD: casting any 轻功 ability imposes a 3-second minimum cooldown on the other 3
   const QINGGONG_IDS = new Set(['nieyun_zhuyue', 'lingxiao_lansheng', 'yaotai_zhenhe', 'yingfeng_huilang']);
-  const QINGGONG_GCD_TICKS = 180; // 3 s × 60 Hz
+  const QINGGONG_GCD_TICKS = 60; // 1 s × 60 Hz
   if (QINGGONG_IDS.has(cardId)) {
     for (const inst of player.hand) {
       const instCardId = (inst as any).cardId || (inst as any).id;
@@ -125,7 +125,7 @@ async function playCastAbility(
   }
 
   // Draft GCD: casting a gcd:true draft ability imposes a 1.5-second minimum CD on other gcd:true draft abilities
-  const DRAFT_GCD_TICKS = 90; // 1.5s × 60 Hz
+  const DRAFT_GCD_TICKS = 30; // 0.5s × 60 Hz
   if ((card as any).gcd === true && !(card as any).isCommon) {
     for (const inst of player.hand) {
       const instCardId = (inst as any).cardId || (inst as any).id;

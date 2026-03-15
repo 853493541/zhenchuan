@@ -77,13 +77,28 @@ router.post("/movement", async (req, res) => {
       // Update movement input
       const input: MovementInput | null = direction
         ? {
-            up: direction.up === true,
+            up:   direction.up   === true,
             down: direction.down === true,
             left: direction.left === true,
             right: direction.right === true,
             jump: direction.jump === true,
+            dx: typeof direction.dx === 'number' ? direction.dx : undefined,
+            dy: typeof direction.dy === 'number' ? direction.dy : undefined,
           }
         : null;
+
+      // Always apply the client-reported facing even when no movement keys are pressed
+      // (needed so A/D turning in traditional mode updates server-side facing for abilities)
+      const facingField = req.body.facing;
+      if (facingField && typeof facingField.x === 'number' && typeof facingField.y === 'number') {
+        if (input) {
+          (input as any).facing = { x: facingField.x, y: facingField.y };
+        } else {
+          // No movement but we still want to update facing — send a facing-only input
+          const facingInput = { up: false, down: false, left: false, right: false, facing: { x: facingField.x, y: facingField.y } } as MovementInput;
+          loop.setPlayerInput(playerIndex, facingInput);
+        }
+      }
 
       loop.setPlayerInput(playerIndex, input);
       

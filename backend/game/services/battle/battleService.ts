@@ -82,7 +82,7 @@ export function initializeBattleState(
           y: ARENA_HEIGHT / 2,
         },
         velocity: { vx: 0, vy: 0 },
-        moveSpeed: 1.0, // units per tick at 60Hz = ~60 units/second
+        moveSpeed: 0.25, // 7.5 units/sec at 30 Hz (0.25 u/tick)
       },
       {
         userId: player1Id,
@@ -96,7 +96,7 @@ export function initializeBattleState(
           y: ARENA_HEIGHT / 2,
         },
         velocity: { vx: 0, vy: 0 },
-        moveSpeed: 1.0,
+        moveSpeed: 0.25, // 7.5 units/sec at 30 Hz
       },
     ],
 
