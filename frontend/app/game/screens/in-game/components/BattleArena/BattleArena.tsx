@@ -869,8 +869,17 @@ export default function BattleArena({
       ms.lastY = e.clientY;
 
       if (ms.isRight && !ms.isLeft) {
-        // RMB only: rotate CHARACTER face direction only; camera stays fixed
+        // RMB only: rotate camera + character facing together
         charYawRef.current += dx * 0.005;
+        camYawRef.current   = charYawRef.current;
+        // Update pitch too (drag up/down tilts view)
+        const newPitch = camPitchRef.current + dy * 0.003;
+        camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
+        // Immediately sync facing arrow so it updates without requiring movement
+        localFacingRef.current = {
+          x: Math.sin(charYawRef.current),
+          y: Math.cos(charYawRef.current),
+        };
       } else if (ms.isLeft && !ms.isRight) {
         // LMB only: rotate camera yaw + pitch
         camYawRef.current  += dx * 0.005;
