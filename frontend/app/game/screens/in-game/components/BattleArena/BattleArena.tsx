@@ -3,6 +3,8 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import styles from './BattleArena.module.css';
 import WASDButtons from './WASDButtons';
+import StatusBar from '../GameBoard/components/StatusBar';
+import type { ActiveBuff } from '../../types';
 
 /* ============================================================
    ARENA SETTINGS  (must match backend)
@@ -460,8 +462,8 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; position: Position; hp: number; hand: any[] };
-  opponent: { userId: string; position: Position; hp: number };
+  me: { userId: string; position: Position; hp: number; hand: any[]; buffs?: ActiveBuff[] };
+  opponent: { userId: string; position: Position; hp: number; buffs?: ActiveBuff[] };
   gameId: string;
   onCastAbility: (cardInstanceId: string) => Promise<void>;
   distance: number;
@@ -1339,28 +1341,35 @@ export default function BattleArena({
         </div>
       )}
 
-      {/* ===== TOP-CENTER: Enemy boss bar ===== */}
-      <div className={styles.enemyBossBar}>
-        <div className={styles.enemyName}>ENEMY</div>
-        <div className={styles.enemyHpRow}>
-          <div className={styles.enemyHpTrack}>
-            <div
-              className={styles.enemyHpFill}
-              style={{
-                width:      `${oppHpPct}%`,
-                background: oppHpPct > 50
-                  ? 'linear-gradient(90deg, #991111, #cc2222)'
-                  : oppHpPct > 25
-                  ? 'linear-gradient(90deg, #aa7700, #ddaa00)'
-                  : 'linear-gradient(90deg, #771111, #aa1111)',
-              }}
-            />
-            {[25, 50, 75].map(t => (
-              <div key={t} className={styles.enemyHpTick} style={{ left: `${t}%` }} />
-            ))}
+      {/* ===== TOP-CENTER: Enemy boss bar + buffs below ===== */}
+      <div className={styles.enemyBossGroup}>
+        <div className={styles.enemyBossBar}>
+          <div className={styles.enemyName}>ENEMY</div>
+          <div className={styles.enemyHpRow}>
+            <div className={styles.enemyHpTrack}>
+              <div
+                className={styles.enemyHpFill}
+                style={{
+                  width:      `${oppHpPct}%`,
+                  background: oppHpPct > 50
+                    ? 'linear-gradient(90deg, #991111, #cc2222)'
+                    : oppHpPct > 25
+                    ? 'linear-gradient(90deg, #aa7700, #ddaa00)'
+                    : 'linear-gradient(90deg, #771111, #aa1111)',
+                }}
+              />
+              {[25, 50, 75].map(t => (
+                <div key={t} className={styles.enemyHpTick} style={{ left: `${t}%` }} />
+              ))}
+            </div>
+            <span className={styles.enemyHpNum}>{opponent?.hp ?? 0}</span>
           </div>
-          <span className={styles.enemyHpNum}>{opponent?.hp ?? 0}</span>
         </div>
+        {opponent?.buffs && opponent.buffs.length > 0 && (
+          <div className={styles.enemyBuffRow}>
+            <StatusBar buffs={opponent.buffs} />
+          </div>
+        )}
       </div>
 
       {/* ===== TOP-RIGHT: RTT badge ===== */}
@@ -1381,6 +1390,13 @@ export default function BattleArena({
         </div>
 
         <div className={styles.hotbarStack}>
+          {/* ── Player buffs above drafted slots ── */}
+          {me?.buffs && me.buffs.length > 0 && (
+            <div className={styles.playerBuffRow}>
+              <StatusBar buffs={me.buffs} />
+            </div>
+          )}
+
           {/* ── Top row: draft abilities (6 fixed slots) ── */}
           <div className={styles.hotbar}>
             {Array.from({ length: 6 }, (_, idx) => {
@@ -1400,13 +1416,13 @@ export default function BattleArena({
                   className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
                   disabled={!ability.isReady}
                   onClick={() => castAbilityRef.current(ability.id)}
-                  title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}s` : ''}`}
+                  title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}` : ''}`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                   {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                     <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
-                      <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}s</span>
+                      <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}</span>
                     </div>
                   )}
                   <span className={styles.abilityKey}>{keyHint}</span>
@@ -1431,13 +1447,13 @@ export default function BattleArena({
                     className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
                     disabled={!ability.isReady}
                     onClick={() => castAbilityRef.current(ability.id)}
-                    title={`${ability.name}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}s` : ''}`}
+                    title={`${ability.name}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}` : ''}`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                     {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                       <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
-                        <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}s</span>
+                        <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}</span>
                       </div>
                     )}
                     <span className={styles.abilityKey}>{keyHint}</span>

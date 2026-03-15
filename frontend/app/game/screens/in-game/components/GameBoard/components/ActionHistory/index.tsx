@@ -180,7 +180,7 @@ export default function ActionHistory({ events, myUserId }: Props) {
             }`}
             onClick={() => setTab("play")}
           >
-            出牌
+            技能
           </button>
         </div>
 
@@ -209,7 +209,7 @@ export default function ActionHistory({ events, myUserId }: Props) {
 
           {tab === "play" &&
             (playEvents.length === 0 ? (
-              <div className={styles.emptyText}>暂无出牌记录</div>
+              <div className={styles.emptyText}>暂无技能记录</div>
             ) : (
               playEvents.map((e) => (
                 <div key={e.id} className={styles.logLine}>

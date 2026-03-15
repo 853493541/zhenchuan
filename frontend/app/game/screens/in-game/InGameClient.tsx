@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-import GameBoard from "./components/GameBoard";
 import BattleArena from "./components/BattleArena";
 import GameOverModal from "./components/GameBoard/components/GameOverModal";
 import DraftScreen from "./components/DraftScreen";
@@ -22,16 +21,16 @@ function showGameError(rawCode: string) {
       toastError("还没轮到你");
       break;
     case "ERR_SILENCED":
-      toastError("你被沉默，无法出牌");
+      toastError("你被沉默，无法释放技能");
       break;
     case "ERR_CONTROLLED":
-      toastError("你被控制，无法出牌");
+      toastError("你被控制，无法行动");
       break;
     case "ERR_TARGET_UNTARGETABLE":
       toastError("目标无法选中");
       break;
     case "ERR_CARD_NOT_IN_HAND":
-      toastError("这张牌不在你的手牌中");
+      toastError("技能不可用");
       break;
     case "ERR_ON_COOLDOWN":
       toastError("这个能力正在冷却");

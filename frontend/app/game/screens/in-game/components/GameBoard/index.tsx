@@ -10,7 +10,6 @@ import EndTurn from "./components/EndTurn";
 import NetworkIndicator from "../NetworkIndicator";
 
 import type {
-  CardInstance,
   PlayerState,
   GameEvent,
 } from "@/app/game/screens/in-game/types";
@@ -20,7 +19,6 @@ type Props = {
   opponent: PlayerState;
   events: GameEvent[];
   isMyTurn: boolean;
-  onPlayCard: (card: CardInstance) => void;
   onEndTurn: () => void;
   currentTurn: number;
   rtt?: number | null;
@@ -31,9 +29,8 @@ export default function GameBoard({
   opponent,
   events,
   isMyTurn,
-  onPlayCard,
   onEndTurn,
-  currentTurn,
+  currentTurn: _currentTurn,
   rtt,
 }: Props) {
   return (
@@ -42,7 +39,7 @@ export default function GameBoard({
       <div className={styles.board}>
         {/* 🟥 OPPONENT AREA */}
         <div className={styles.region}>
-          <OpponentArea opponent={opponent} currentTurn={currentTurn} />
+          <OpponentArea opponent={opponent} currentTurn={0} />
         </div>
 
         {/* 🟨 ARENA */}
@@ -54,9 +51,7 @@ export default function GameBoard({
         <div className={styles.region}>
           <PlayerArea
             me={me}
-            currentTurn={currentTurn}
             isMyTurn={isMyTurn}
-            onPlayCard={onPlayCard}
           />
         </div>
 

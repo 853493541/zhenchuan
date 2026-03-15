@@ -43,7 +43,8 @@ export default function StatusBar({
       const meta = preload?.buffMap?.[b.buffId];
       if (!meta) return null;
 
-      const remaining = Math.max(0, b.remaining);
+      const remainingTurns = Math.max(0, b.remaining);
+      const remainingSec = remainingTurns * 5;
       const shortName =
         meta.name.length > 2 ? meta.name.slice(0, 2) : meta.name;
 
@@ -53,8 +54,8 @@ export default function StatusBar({
         shortName,
         category: meta.category,
         description: meta.description ?? "无",
-        remaining,
-        isLastTurn: remaining === 1,
+        remaining: remainingSec,
+        isLastTurn: remainingTurns === 1,
       };
     })
     .filter(Boolean) as ResolvedBuff[];
@@ -102,13 +103,13 @@ export default function StatusBar({
           onMouseLeave={closeHint}
         />
 
-        {/* REMAINING */}
+        {/* REMAINING (seconds) */}
         <div
           className={`${styles.buffTurns} ${colorClass} ${
             b.isLastTurn ? styles.lastTurn : ""
           }`}
         >
-          {Math.max(1, b.remaining)}
+          {Math.max(5, b.remaining)}
         </div>
       </div>
     );

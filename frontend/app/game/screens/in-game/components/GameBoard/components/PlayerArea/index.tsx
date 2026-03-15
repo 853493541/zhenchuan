@@ -2,28 +2,22 @@
 
 import HealthBar from "../HealthBar";
 import StatusBar from "../StatusBar";
-import Hand from "./Hand";
 import styles from "./styles.module.css";
 
 import type {
   PlayerState,
-  CardInstance,
 } from "@/app/game/screens/in-game/types";
 
 const MAX_HP = 100;
 
 type Props = {
   me: PlayerState;
-  currentTurn: number;
   isMyTurn: boolean;
-  onPlayCard: (card: CardInstance) => void;
 };
 
 export default function PlayerArea({
   me,
-  currentTurn,
-  isMyTurn,
-  onPlayCard,
+  isMyTurn: _isMyTurn,
 }: Props) {
   return (
     <div className={styles.playerHalf}>
@@ -36,7 +30,7 @@ export default function PlayerArea({
       <div className={styles.bottomStack}>
         {/* RESERVED STATUS SLOT (keeps space even when empty) */}
         <div className={styles.statusSlot}>
-          <StatusBar buffs={me.buffs} currentTurn={currentTurn} />
+          <StatusBar buffs={me.buffs} />
         </div>
 
         {/* HP + GCD */}
@@ -46,16 +40,6 @@ export default function PlayerArea({
           side="player"
           gcd={me.gcd}
         />
-
-        {/* HAND */}
-        <div className={styles.handZone}>
-          <Hand
-            cards={me.hand}
-            remainingGcd={me.gcd}
-            onPlayCard={onPlayCard}
-            isMyTurn={isMyTurn}
-          />
-        </div>
       </div>
     </div>
   );
