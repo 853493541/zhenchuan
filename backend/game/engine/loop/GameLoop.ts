@@ -87,8 +87,9 @@ export class GameLoop {
    */
   static get(gameId: string): GameLoop | undefined {
     const loop = activeLoops.get(gameId);
-    if (loop && !loop.isRunning) {
-      activeLoops.delete(gameId);
+    // Do NOT delete from activeLoops here — getInMemoryGameOver needs to read
+    // the terminal state after the loop stops. Only static stop() cleans up.
+    if (!loop || !loop.isRunning) {
       return undefined;
     }
     return loop;
@@ -198,17 +199,21 @@ export class GameLoop {
         if (this.state.winnerUserId) {
           diff.push({ path: "/winnerUserId", value: this.state.winnerUserId });
         }
-        // When game ends, send full broadcast with winner info
-        broadcastGameUpdate({
-          gameId: this.gameId,
-          version: this.state.version,
+        // Capture broadcast payload before the async save so we close over the
+        // correct values even if the loop is stopped/cleared before .then() fires.
+        const broadcastPayload = {
+          gameId:       this.gameId,
+          version:      this.state.version,
           diff,
-          gameOver: this.state.gameOver,
+          gameOver:     this.state.gameOver,
           winnerUserId: this.state.winnerUserId,
-          timestamp: Date.now(),
-        });
-        // Force DB save immediately so battle/complete can read gameOver=true from DB
-        this.saveToDB();
+          timestamp:    Date.now(),
+        };
+        // Save to DB FIRST, then broadcast. This guarantees battle/complete can
+        // read gameOver=true from DB before the frontend even receives the WS message.
+        this.saveToDB()
+          .then(()  => broadcastGameUpdate(broadcastPayload))
+          .catch(() => broadcastGameUpdate(broadcastPayload)); // broadcast even if save fails
       }
       
       broadcastTime = performance.now() - bcastStart;
@@ -285,6 +290,16 @@ export class GameLoop {
    */
   getState(): GameState {
     return structuredClone(this.state);
+  }
+
+  /**
+   * Check in-memory gameOver flag — used by battle/complete to bypass the
+   * DB-flush race condition (saveToDB is fire-and-forget so DB may lag behind).
+   */
+  static getInMemoryGameOver(gameId: string): { gameOver: boolean; winnerUserId?: string } | null {
+    const loop = activeLoops.get(gameId);
+    if (!loop) return null;
+    return { gameOver: loop.state.gameOver, winnerUserId: loop.state.winnerUserId };
   }
 
   /**

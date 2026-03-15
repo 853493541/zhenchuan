@@ -266,7 +266,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             // Separate tournament and state patches based on path prefix
             const tournamentKeys = ["phase", "economy", "selectedAbilities", "bench", "shop", "battleNumber"];
             const tournamentPatches = message.diff!.filter(p => {
-              const firstKey = p.path.split("/")[1]; // Get first path segment after leading /
+              const firstKey = p.path.split("/").filter(Boolean)[0] ?? ""; // handles /key and //key paths
               return tournamentKeys.includes(firstKey);
             });
             const statePatches = message.diff!.filter(p => !tournamentPatches.includes(p));

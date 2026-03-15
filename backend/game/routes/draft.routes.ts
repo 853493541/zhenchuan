@@ -572,7 +572,18 @@ router.post("/battle/complete", async (req, res) => {
       });
     }
 
-    if (!game.state.gameOver) return res.status(400).json({ error: "Battle not over yet" });
+    if (!game.state.gameOver) {
+      // DB might not have flushed yet — fall back to the loop's in-memory state
+      const memState = GameLoop.getInMemoryGameOver(gameId);
+      if (memState?.gameOver) {
+        // Sync it into the document so the rest of this handler works normally
+        game.state.gameOver = true;
+        game.state.winnerUserId = memState.winnerUserId;
+        game.markModified("state");
+      } else {
+        return res.status(400).json({ error: "Battle not over yet" });
+      }
+    }
 
     // Capture previous state for diff broadcast
     const prevState      = structuredClone(game.state);
@@ -624,6 +635,7 @@ router.post("/battle/complete", async (req, res) => {
       };
     }
 
+    game.markModified("state");
     game.markModified("tournament");
     await game.save();
 

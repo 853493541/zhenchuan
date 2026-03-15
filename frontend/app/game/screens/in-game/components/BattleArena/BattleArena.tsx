@@ -597,13 +597,16 @@ export default function BattleArena({
           },
           direction: (() => {
             if (controlModeRef.current === 'traditional') {
-              // W/S move in character’s facing direction; A/D only turn (no movement)
-              const fwd = { x: Math.sin(charYawRef.current), y: Math.cos(charYawRef.current) };
-              let dx = 0, dy = 0;
               const bothMouse = mouseStateRef.current.isLeft && mouseStateRef.current.isRight;
-              if (bothMouse) charYawRef.current = camYawRef.current;
-              if (k.w || bothMouse) { dx += fwd.x; dy += fwd.y; }
-              if (k.s && !bothMouse) { dx -= fwd.x; dy -= fwd.y; }
+              // Recompute charYaw inline — don't rely on the physics-tick interval having
+              // already run this frame (the two setIntervals are unsynchronized).
+              const effectiveYaw = bothMouse
+                ? camYawRef.current + (k.a ? -Math.PI / 4 : 0) + (k.d ? Math.PI / 4 : 0)
+                : charYawRef.current;
+              const moveFwd = { x: Math.sin(effectiveYaw), y: Math.cos(effectiveYaw) };
+              let dx = 0, dy = 0;
+              if (k.w || bothMouse) { dx += moveFwd.x; dy += moveFwd.y; }
+              if (k.s && !bothMouse) { dx -= moveFwd.x; dy -= moveFwd.y; }
               if (dx === 0 && dy === 0 && !shouldJump) return null;
               const len = Math.sqrt(dx * dx + dy * dy) || 1;
               const speedMult = (k.s && !k.w && !bothMouse) ? 0.5 : 1.0;
@@ -770,6 +773,7 @@ export default function BattleArena({
       }
       if (e.altKey) {
         e.preventDefault(); // suppress browser Alt shortcuts
+        if (k === 'w' && commons[2]?.isReady) castAbilityRef.current(commons[2].id); // 蹑云逐月
         if (k === 'a' && commons[3]?.isReady) castAbilityRef.current(commons[3].id); // 凌霄揽胜
         if (k === 'd' && commons[4]?.isReady) castAbilityRef.current(commons[4].id); // 瑶台枕鹤
         if (k === 's' && commons[5]?.isReady) castAbilityRef.current(commons[5].id); // 迎风回浪
@@ -794,7 +798,7 @@ export default function BattleArena({
   //   Left-drag              → rotate camera (traditional mode)
   //   Right-drag             → rotate camera + snap character facing (traditional mode)
   //   Middle-down (MD)       → common[1] 扶摇直上
-  //   Middle-up  (MU)        → common[2] 蹑云逐月
+  //   Alt+W                  → common[2] 蹑云逐月
   //   Button-3 / XB1 (down)  → draft[4]
   //   Button-4 / XB2 (down)  → draft[5]
   //   Wheel up/down          → zoom in/out
@@ -850,8 +854,6 @@ export default function BattleArena({
       if (e.button === 1) {
         e.preventDefault();
         e.stopPropagation();
-        const ab = abilitiesRef.current.filter(a => a.isCommon)[2]; // 蹑云逐月
-        if (ab?.isReady) castAbilityRef.current(ab.id);
         return;
       }
       if (e.button === 3 || e.button === 4) {
@@ -886,8 +888,17 @@ export default function BattleArena({
         // dy > 0 = drag down = look more from above (increase pitch)
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
+      } else {
+        // LMB + RMB together: rotate camera + character facing; physics tick moves forward
+        camYawRef.current  += dx * 0.005;
+        charYawRef.current  = camYawRef.current;
+        const newPitch = camPitchRef.current + dy * 0.003;
+        camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
+        localFacingRef.current = {
+          x: Math.sin(charYawRef.current),
+          y: Math.cos(charYawRef.current),
+        };
       }
-      // LMB + RMB together → move forward (no rotation drag)
     };
     // Prevent native right-click context menu
     const onContextMenu = (e: MouseEvent) => { e.preventDefault(); };
@@ -945,26 +956,35 @@ export default function BattleArena({
       if (controlModeRef.current === 'traditional') {
         const bothMouse = ms.isLeft && ms.isRight;
 
-        // A/D turn character (only if not in bothMouse mode)
+        // A/D turn character + camera (only if not in bothMouse mode)
         if (!bothMouse) {
           const turning = (k.a ? -1 : 0) + (k.d ? 1 : 0);
           if (turning !== 0) {
             charYawRef.current += turning * TURN_RATE;
-            if (!ms.isLeft && !ms.isRight) {
-              camYawRef.current = charYawRef.current;
-            }
+            camYawRef.current   = charYawRef.current; // always sync camera
+            localFacingRef.current = {
+              x: Math.sin(charYawRef.current),
+              y: Math.cos(charYawRef.current),
+            };
           }
         }
 
-        // LMB+RMB: align character to camera and move forward
+        // LMB+RMB: character faces camera direction, A/D add ±45° offset for strafing look
         if (bothMouse) {
-          charYawRef.current = camYawRef.current;
+          const sideAngle = (k.a ? -Math.PI / 4 : 0) + (k.d ? Math.PI / 4 : 0);
+          charYawRef.current = camYawRef.current + sideAngle;
+          localFacingRef.current = {
+            x: Math.sin(charYawRef.current),
+            y: Math.cos(charYawRef.current),
+          };
         }
 
-        const fwd = { x: Math.sin(charYawRef.current), y: Math.cos(charYawRef.current) };
+        // Movement direction always follows charYaw — when bothMouse + A/D it already
+        // carries the ±45° strafe offset; without A/D it equals camYaw (straight forward).
+        const moveFwd = { x: Math.sin(charYawRef.current), y: Math.cos(charYawRef.current) };
         let fx = 0, fy = 0;
-        if (k.w || bothMouse) { fx += fwd.x; fy += fwd.y; }
-        if (k.s && !bothMouse) { fx -= fwd.x; fy -= fwd.y; }
+        if (k.w || bothMouse) { fx += moveFwd.x; fy += moveFwd.y; }
+        if (k.s && !bothMouse) { fx -= moveFwd.x; fy -= moveFwd.y; }
 
         if (fx !== 0 || fy !== 0) {
           const len = Math.sqrt(fx * fx + fy * fy);
@@ -972,7 +992,7 @@ export default function BattleArena({
           const speedMult = (k.s && !k.w && !bothMouse) ? 0.5 : 1.0;
           vel.x += ((fx / len) * MAX_SPEED * speedMult - vel.x) * ACCEL;
           vel.y += ((fy / len) * MAX_SPEED * speedMult - vel.y) * ACCEL;
-          localFacingRef.current = { x: fwd.x, y: fwd.y };
+          if (!bothMouse) localFacingRef.current = { x: moveFwd.x, y: moveFwd.y };
         } else {
           vel.x *= DECEL;
           vel.y *= DECEL;
@@ -1125,14 +1145,20 @@ export default function BattleArena({
       lastFrameTimeRef.current = frameNow;
       const dtF = frameDt / 16.67; // normalised to 60 fps
       const DASH_THRESH = 3.5;     // world units — smaller = walk blend, larger = dash anim
+      const SNAP_THRESH = 20;       // world units — instant-snap for initial position or server teleport
 
       // --- local player render pos ---
       {
         const tx = myPos.x, ty = myPos.y, tz = localZRef.current;
         const r  = localRenderPosRef.current;
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
-        if (!localDashAnimRef.current && Math.sqrt(ddx * ddx + ddy * ddy) > DASH_THRESH) {
-          // Detected large jump — start travel animation (no visible trail)
+        const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (dist2d > SNAP_THRESH) {
+          // Very large jump — snap instantly (initial position, server correction)
+          localRenderPosRef.current = { x: tx, y: ty, z: tz };
+          localDashAnimRef.current  = null;
+        } else if (!localDashAnimRef.current && dist2d > DASH_THRESH) {
+          // Moderate jump — start travel animation (no visible trail)
           localDashAnimRef.current = { start: { ...r }, startTime: frameNow };
         }
         if (localDashAnimRef.current) {
@@ -1157,7 +1183,11 @@ export default function BattleArena({
         const tx = opPos.x, ty = opPos.y, tz = opPos.z ?? 0;
         const r  = oppRenderPosRef.current;
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
-        if (!oppDashAnimRef.current && Math.sqrt(ddx * ddx + ddy * ddy) > DASH_THRESH) {
+        const oppDist2d = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (oppDist2d > SNAP_THRESH) {
+          oppRenderPosRef.current = { x: tx, y: ty, z: tz };
+          oppDashAnimRef.current  = null;
+        } else if (!oppDashAnimRef.current && oppDist2d > DASH_THRESH) {
           oppDashAnimRef.current = { start: { ...r }, startTime: frameNow };
         }
         if (oppDashAnimRef.current) {
