@@ -3,6 +3,7 @@
  */
 
 import express from "express";
+import { randomUUID } from "crypto";
 import GameSession from "../models/GameSession";
 import { getUserIdFromCookie } from "./auth";
 import { generateShop, REFRESH_COST } from "../services/economy/economyService";
@@ -603,36 +604,14 @@ router.post("/battle/complete", async (req, res) => {
       game.state.winnerUserId = game.tournament.winnerId;
       // Keep players array for GameOverModal to access
     } else if (game.tournament.phase === "DRAFT") {
-      // Reset state for next draft phase - create fresh state without old battle data
-      game.state = {
-        version: 1,
-        turn: 0,
-        activePlayerIndex: 0,
-        gameOver: false,
-        players: [
-          {
-            userId: game.players[0],
-            hp: 30,
-            hand: [],
-            buffs: [],
-            gcd: 0,
-            position: { x: 0, y: 0 },
-            velocity: { vx: 0, vy: 0 },
-            moveSpeed: 0,
-          },
-          {
-            userId: game.players[1],
-            hp: 30,
-            hand: [],
-            buffs: [],
-            gcd: 0,
-            position: { x: 0, y: 0 },
-            velocity: { vx: 0, vy: 0 },
-            moveSpeed: 0,
-          },
-        ],
-        events: [],
-      };
+      // DRAFT DISABLED: skip draft phase and go directly to next battle
+      game.tournament.phase = "BATTLE";
+      // Clear selectedAbilities so the cheat window starts fresh each battle
+      const [p0, p1] = game.players as [string, string];
+      game.tournament.selectedAbilities[p0] = [];
+      game.tournament.selectedAbilities[p1] = [];
+      // Initialize fresh battle state with only common abilities
+      game.state = initializeBattleState(game.tournament, [p0, p1]);
     }
 
     game.markModified("state");
@@ -659,6 +638,72 @@ router.post("/battle/complete", async (req, res) => {
       battleNumber: game.tournament.battleNumber,
       gameHp: game.tournament.gameHp,
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/add-ability - CHEAT: Add any ability directly to player's hand during battle
+ * Used for testing when draft phase is disabled
+ * Body: { gameId, cardId }
+ */
+router.post("/cheat/add-ability", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, cardId } = req.body;
+
+    if (!cardId) return res.status(400).json({ error: "cardId required" });
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const cardDef = CARDS[cardId];
+    if (!cardDef) return res.status(400).json({ error: `Card '${cardId}' not found` });
+    if (cardDef.isCommon) return res.status(400).json({ error: "Common abilities are already in every hand" });
+
+    const playerIndex = game.players.indexOf(userId);
+
+    // Create new card instance
+    const newInstance: CardInstance = {
+      instanceId: randomUUID(),
+      cardId,
+      cooldown: 0,
+    };
+
+    // Track in tournament.selectedAbilities for persistence across battles
+    game.tournament.selectedAbilities[userId].push(newInstance);
+
+    // Add full merged card to live game state hand
+    const fullCard = { ...cardDef, instanceId: newInstance.instanceId, cardId, cooldown: 0 };
+    game.state.players[playerIndex] = {
+      ...game.state.players[playerIndex],
+      hand: [...(game.state.players[playerIndex].hand || []), fullCard],
+    };
+
+    game.markModified("tournament");
+    game.markModified("state");
+    game.markModified("state.players");
+    await game.save();
+
+    // Update live GameLoop in-memory state
+    const gameLoop = GameLoop.get(gameId);
+    if (gameLoop) {
+      gameLoop.updateState(game.state);
+    }
+
+    // Broadcast hand update to all connected clients
+    broadcastGameUpdate({
+      gameId,
+      version: game.state.version,
+      diff: [{ path: `/players/${playerIndex}/hand`, value: game.state.players[playerIndex].hand }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true, hand: game.state.players[playerIndex].hand });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

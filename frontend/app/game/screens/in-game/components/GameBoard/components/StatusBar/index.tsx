@@ -201,7 +201,7 @@ export default function StatusBar({
         <div style={{
           position: 'fixed',
           right: 4,
-          ...(debugLabel === 'opp' ? { top: 4 } : { bottom: 4 }),
+          ...(debugLabel === 'opp' ? { top: 120 } : { bottom: 4 }),
           background: 'rgba(0,0,0,0.88)',
           color: '#00ff88',
           fontSize: 11,

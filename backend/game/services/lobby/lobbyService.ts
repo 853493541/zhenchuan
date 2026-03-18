@@ -7,6 +7,7 @@ import GameSession from "../../models/GameSession";
 import { User } from "../../../models/User";
 import { GameState } from "../../engine/state/types";
 import { initializeTournament } from "../economy/tournamentService";
+import { initializeBattleState } from "../battle/battleService";
 
 /**
  * Helper: fetch username by user ID
@@ -117,45 +118,12 @@ export async function startGame(gameId: string, userId: string) {
   if (game.players[0] !== userId) throw new Error("Only host can start");
   if (game.players.length !== 2) throw new Error("Game not ready");
 
-  const state: GameState = {
-    /** authoritative state version */
-    version: 1,
-
-    turn: 0,
-    activePlayerIndex: 0,
-
-    gameOver: false,
-
-    players: [
-      {
-        userId: game.players[0],
-        hp: 100,
-        hand: [], // No cards during draft phase
-        buffs: [],
-        position: { x: 0, y: 0 },
-        velocity: { vx: 0, vy: 0 },
-        moveSpeed: 0,
-      },
-      {
-        userId: game.players[1],
-        hp: 100,
-        hand: [], // No cards during draft phase
-        buffs: [],
-        position: { x: 0, y: 0 },
-        velocity: { vx: 0, vy: 0 },
-        moveSpeed: 0,
-      },
-    ],
-
-    events: [],
-  };
-
-  // Don't draw cards yet - wait until battle phase after draft
-  // draw(state, 0, 6);
-  // draw(state, 1, 6);
-
-  // Initialize tournament state for draft/economy/progression
+  // DRAFT DISABLED: Initialize tournament and immediately set phase to BATTLE
   const tournament = initializeTournament([game.players[0], game.players[1]]);
+  tournament.phase = "BATTLE";
+
+  // Initialize battle state with common abilities only (no drafted abilities since draft is skipped)
+  const state = initializeBattleState(tournament, [game.players[0], game.players[1]]);
 
   game.state = state;
   game.tournament = tournament;

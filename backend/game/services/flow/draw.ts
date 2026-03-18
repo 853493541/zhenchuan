@@ -16,7 +16,7 @@ import { GameState, ActiveBuff, BuffEffect } from "../../engine/state/types";
  */
 export function draw(state: GameState, playerIndex: number, n: number) {
   if (n <= 0) return;
-  if (state.deck.length === 0) return;
+  if (!state.deck || state.deck.length === 0) return;
 
   // ✅ take cards in one slice
   const drawn = state.deck.slice(0, n);
@@ -38,7 +38,7 @@ export function autoDrawAtTurnStart(state: GameState) {
 
   const p = state.players[state.activePlayerIndex];
   if (p.hand.length >= 10) return;
-  if (state.deck.length === 0) return;
+  if (!state.deck || state.deck.length === 0) return;
 
   // Collect all DRAW_REDUCTION effects from active buffs
   const reductions: BuffEffect[] = p.buffs.flatMap((b: ActiveBuff) =>

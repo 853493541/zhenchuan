@@ -494,6 +494,8 @@ export default function BattleArena({
   const [wasdKeys,         setWasdKeys]         = useState({ w: false, a: false, s: false, d: false });
   const [controlMode,      setControlMode]      = useState<'joystick' | 'traditional'>('traditional');
   const [showControlPanel, setShowControlPanel] = useState(false);
+  const [showCheatWindow,  setShowCheatWindow]  = useState(false);
+  const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
 
   // Split abilities into two rows for rendering
   const commonAbilities = abilities.filter(a => a.isCommon);
@@ -1414,6 +1416,90 @@ export default function BattleArena({
         <span className={styles.distVal}>{distance.toFixed(1)}</span>
         <span className={styles.distUnit}>units</span>
       </div>
+
+      {/* ===== CHEAT: Ability picker (bottom-right, toggleable) ===== */}
+      <button
+        style={{
+          position: 'absolute', bottom: 170, right: 8, zIndex: 200,
+          background: showCheatWindow ? '#ff6b00' : 'rgba(20,20,30,0.92)',
+          color: showCheatWindow ? '#fff' : '#ff6b00',
+          border: '1px solid #ff6b00', borderRadius: 4,
+          padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+          fontWeight: 600, letterSpacing: '0.5px',
+          boxShadow: showCheatWindow ? '0 0 10px rgba(255,107,0,0.5)' : 'none',
+        }}
+        onClick={() => setShowCheatWindow(v => !v)}
+        title="测试用：直接添加技能"
+      >
+        {showCheatWindow ? '✕ 关闭技能面板' : '⚡ 添加技能'}
+      </button>
+      {showCheatWindow && (
+        <div style={{
+          position: 'absolute', bottom: 200, right: 8, zIndex: 200,
+          background: 'rgba(10,18,28,0.97)', border: '1px solid #ff6b00',
+          borderRadius: 6, padding: 10, width: 260, maxHeight: '70vh',
+          overflowY: 'auto', fontSize: 12, color: '#ccc',
+        }}>
+          <div style={{ color: '#ff6b00', fontWeight: 'bold', marginBottom: 6, fontSize: 13 }}>
+            ⚡ 技能添加 (作弊)
+          </div>
+          <div style={{ color: '#888', marginBottom: 8, fontSize: 11 }}>
+            点击技能可将其添加至你的当前战斗手牌
+          </div>
+          {Object.values(cards)
+            .filter((c: any) => c && !c.isCommon && c.id && c.name)
+            .sort((a: any, b: any) => a.name.localeCompare(b.name))
+            .map((card: any) => (
+              <div
+                key={card.id}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8,
+                  padding: '6px 4px', borderBottom: '1px solid #1e2d3a',
+                  cursor: addingAbility === card.id ? 'wait' : 'pointer',
+                  opacity: addingAbility === card.id ? 0.5 : 1,
+                  background: addingAbility === card.id ? 'rgba(255,107,0,0.08)' : 'transparent',
+                }}
+                onClick={async () => {
+                  if (addingAbility) return;
+                  setAddingAbility(card.id);
+                  try {
+                    const res = await fetch('/api/game/cheat/add-ability', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({ gameId, cardId: card.id }),
+                    });
+                    if (!res.ok) {
+                      const err = await res.json();
+                      console.error('[CheatWindow] add-ability failed:', err);
+                    }
+                  } catch (e) {
+                    console.error('[CheatWindow] error:', e);
+                  } finally {
+                    setAddingAbility(null);
+                  }
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/game/icons/Skills/${card.name}.png`}
+                  alt={card.name}
+                  style={{ width: 28, height: 28, flexShrink: 0, objectFit: 'contain' }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+                <div>
+                  <div style={{ color: '#eee', fontWeight: 600 }}>{card.name}</div>
+                  {card.description && (
+                    <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>
+                      {card.description}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      )}
 
       {/* ===== BOTTOM: WASD (mobile left) + centered hotbar ===== */}
       <div className={styles.bottomHud}>

@@ -65,4 +65,7 @@ export interface GameState {
 
   /** append-only event log */
   events: GameEvent[];
+
+  /** legacy deck support (unused in arena mode) */
+  deck?: CardInstance[];
 }

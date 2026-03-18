@@ -272,8 +272,10 @@ export default function InGameClient({
     return <div>Loading game…</div>;
   }
 
-  /* ================= DRAFT PHASE ================= */
-
+  /* ================= DRAFT PHASE (DISABLED) ================= */
+  // Draft phase is currently disabled — game starts directly in BATTLE.
+  // Uncomment to re-enable the draft flow.
+  /*
   if (tournament && tournament.phase === "DRAFT") {
     return (
       <DraftScreen
@@ -289,6 +291,7 @@ export default function InGameClient({
       />
     );
   }
+  */
   
   /* ================= RENDER BATTLE ================= */
 
