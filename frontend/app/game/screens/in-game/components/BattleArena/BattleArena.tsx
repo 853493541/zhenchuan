@@ -53,6 +53,13 @@ const norm3 = (a: V3): V3 => {
   return l < 1e-6 ? v3(0, 1, 0) : scale3(a, 1 / l);
 };
 
+function normalizeAngle(rad: number): number {
+  let a = rad;
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
 /* ============================================================
    CAMERA
    ============================================================ */
@@ -267,13 +274,17 @@ function renderFacingArc(
   const R = 2.1;
   const STEPS = 20;
   const fAngle = Math.atan2(ny, nx);
-  const center = projPt(v3(charPos.x, charPos.y, arcZ), cam, W, H);
+  // Offset arc center to character's front (身前)
+  const offsetDist = 0.8;
+  const arcCenterX = charPos.x + nx * offsetDist;
+  const arcCenterY = charPos.y + ny * offsetDist;
+  const center = projPt(v3(arcCenterX, arcCenterY, arcZ), cam, W, H);
   if (!center) return;
 
   const pts: Array<{ x: number; y: number } | null> = [];
   for (let i = 0; i <= STEPS; i++) {
     const a = fAngle - Math.PI / 2 + (Math.PI * i / STEPS);
-    pts.push(projPt(v3(charPos.x + R * Math.cos(a), charPos.y + R * Math.sin(a), arcZ), cam, W, H));
+    pts.push(projPt(v3(arcCenterX + R * Math.cos(a), arcCenterY + R * Math.sin(a), arcZ), cam, W, H));
   }
 
   ctx.save();
@@ -649,6 +660,7 @@ export default function BattleArena({
           direction: (() => {
             if (controlModeRef.current === 'traditional') {
               const mouseLook = mouseStateRef.current.isRight;
+              const bothMouse = mouseStateRef.current.isRight && mouseStateRef.current.isLeft;
 
               if (mouseLook) {
                 // MMO mouselook: move relative to camera, camera yaw unchanged unless mouse moves.
@@ -656,7 +668,7 @@ export default function BattleArena({
                 const fwd = { x: Math.sin(yaw), y: Math.cos(yaw) };
                 const right = { x: Math.cos(yaw), y: -Math.sin(yaw) };
 
-                let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0);
+                let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
                 let strafeInput = (k.d ? 1 : 0) + (k.a ? -1 : 0);
 
                 // Requested behavior: RMB + A + D => forward-right diagonal.
@@ -670,7 +682,7 @@ export default function BattleArena({
                 if (dx === 0 && dy === 0 && !shouldJump) return null;
 
                 const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                const backpedalOnly = k.s && !k.w && !k.a && !k.d;
+                const backpedalOnly = k.s && !k.w && !k.a && !k.d && !bothMouse;
                 const speedMult = backpedalOnly ? 0.5 : 1.0;
                 dx = (dx / len) * speedMult;
                 dy = (dy / len) * speedMult;
@@ -1068,20 +1080,25 @@ export default function BattleArena({
 
       if (controlModeRef.current === 'traditional') {
         const mouseLook = ms.isRight;
+        const bothMouse = ms.isRight && ms.isLeft;
 
         if (mouseLook) {
-          // MMO mouselook: facing follows camera, A/D are strafes (not turns).
-          charYawRef.current = camYawRef.current;
-          localFacingRef.current = {
-            x: Math.sin(charYawRef.current),
-            y: Math.cos(charYawRef.current),
-          };
+          // MMO mouselook: camera turns from mouse; movement is camera-relative.
+          // Facing follows movement intent except pure backpedal.
         } else {
-          // No mouse buttons: A/D turn character + camera together
+          // JX3-like keyboard turning: A/D turn camera first; character follows
+          // only when camera drifts far from current facing.
           const turning = (k.a ? -1 : 0) + (k.d ? 1 : 0);
           if (turning !== 0) {
-            charYawRef.current += turning * TURN_RATE;
-            camYawRef.current   = charYawRef.current;
+            camYawRef.current += turning * TURN_RATE;
+          }
+
+          const rawDelta = camYawRef.current - charYawRef.current;
+          const FOLLOW_THRESHOLD = Math.PI; // 180 degrees
+          if (Math.abs(rawDelta) >= FOLLOW_THRESHOLD) {
+            const delta = normalizeAngle(rawDelta);
+            const step = Math.max(-TURN_RATE, Math.min(TURN_RATE, delta));
+            charYawRef.current += step;
             localFacingRef.current = {
               x: Math.sin(charYawRef.current),
               y: Math.cos(charYawRef.current),
@@ -1096,7 +1113,7 @@ export default function BattleArena({
           const moveFwd = { x: Math.sin(yaw), y: Math.cos(yaw) };
           const moveRight = { x: Math.cos(yaw), y: -Math.sin(yaw) };
 
-          let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0);
+          let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
           let strafeInput = (k.d ? 1 : 0) + (k.a ? -1 : 0);
 
           // Requested behavior: RMB + A + D => forward-right diagonal.
@@ -1116,10 +1133,17 @@ export default function BattleArena({
         if (fx !== 0 || fy !== 0) {
           const len = Math.sqrt(fx * fx + fy * fy);
           // Backpedal is slower while keeping facing unchanged.
-          const backpedalOnly = k.s && !k.w && !k.a && !k.d;
+          const backpedalOnly = k.s && !k.w && !k.a && !k.d && !bothMouse;
           const speedMult = backpedalOnly ? 0.5 : 1.0;
           vel.x += ((fx / len) * MAX_SPEED * speedMult - vel.x) * ACCEL;
           vel.y += ((fy / len) * MAX_SPEED * speedMult - vel.y) * ACCEL;
+          if (mouseLook && !backpedalOnly) {
+            charYawRef.current = Math.atan2(fx / len, fy / len);
+            localFacingRef.current = {
+              x: Math.sin(charYawRef.current),
+              y: Math.cos(charYawRef.current),
+            };
+          }
         } else {
           vel.x *= DECEL;
           vel.y *= DECEL;
@@ -1372,33 +1396,34 @@ export default function BattleArena({
         if (e.isMe) {
           renderFacingArc(ctx, e.pos, meFacingRef.current, cam, w, h);
         } else {
-          renderFacingArc(ctx, e.pos, oppFacingRef.current, cam, w, h);
+          // Show opponent facing arc only when selected
+          if (selectedTargetRef.current) {
+            renderFacingArc(ctx, e.pos, oppFacingRef.current, cam, w, h);
+          }
           // Save opponent screen bounds for click hit-testing
           const baseP = projPt(e.pos, cam, w, h);
           const topP  = projPt(v3(e.pos.x, e.pos.y, e.pos.z + CHAR_HEIGHT), cam, w, h);
           if (baseP && topP) {
             const rs = (CHAR_RADIUS / baseP.depth) * cam.fl;
             oppScreenBoundsRef.current = { cx: baseP.x, topY: topP.y, baseY: baseP.y, rs };
-            // Draw selection ring when opponent is targeted
-            if (selectedTargetRef.current) {
-              ctx.save();
-              const ellipseRy = rs * 0.32;
-              ctx.strokeStyle = '#ffcc00';
-              ctx.lineWidth   = 2.5;
-              ctx.shadowColor = '#ffcc00';
-              ctx.shadowBlur  = 16;
-              ctx.beginPath();
-              ctx.ellipse(baseP.x, baseP.y, rs * 1.55, ellipseRy * 1.55, 0, 0, Math.PI * 2);
-              ctx.stroke();
-              // Bright cap ring on top
-              ctx.lineWidth   = 1.5;
-              ctx.globalAlpha = 0.6;
-              ctx.beginPath();
-              ctx.ellipse(topP.x, topP.y, rs * 1.1, (rs * 1.1) * 0.32, 0, 0, Math.PI * 2);
-              ctx.stroke();
-              ctx.restore();
-            }
           }
+        }
+      }
+
+      // Draw targeting line when opponent is selected
+      if (selectedTargetRef.current) {
+        const myScreenPos = projPt(v3(myRP.x, myRP.y, localZRef.current + CHAR_HEIGHT / 2), cam, w, h);
+        const oppScreenPos = projPt(v3(opRP.x, opRP.y, (opRP.z ?? 0) + CHAR_HEIGHT / 2), cam, w, h);
+        if (myScreenPos && oppScreenPos) {
+          ctx.save();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 4;
+          ctx.globalAlpha = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(myScreenPos.x, myScreenPos.y);
+          ctx.lineTo(oppScreenPos.x, oppScreenPos.y);
+          ctx.stroke();
+          ctx.restore();
         }
       }
 
@@ -1414,7 +1439,6 @@ export default function BattleArena({
   const oppHpPct = Math.max(0, Math.min(100, ((opponent?.hp ?? 0) / maxHp) * 100));
   const isMoving = Object.values(wasdKeys).some(v => v);
   const myFacingArrow = toFacingArrow(me.facing ?? meFacingRef.current);
-  const opponentFacingArrow = toFacingArrow(opponent.facing ?? oppFacingRef.current);
 
   return (
     <div className={styles.container}>
@@ -1489,13 +1513,6 @@ export default function BattleArena({
         </div>
       )}
 
-      {/* ===== TARGET INDICATOR — shown when an enemy is locked ===== */}
-      {selectedTargetId && (
-        <div className={styles.targetIndicator}>
-          🎯 目标已锁定
-        </div>
-      )}
-
       {/* ===== TOP-RIGHT: Opponent buff / debuff panel near ⚙ button ===== */}
       <div className={styles.opponentBuffPanel}>
         <StatusBar buffs={opponent?.buffs ?? []} showDebug debugLabel="opp" />
@@ -1554,10 +1571,6 @@ export default function BattleArena({
             </div>
           );
         })()}
-        <div className={styles.enemyFacingFooter}>
-          <span className={styles.panelFooterLabel}>ENEMY FACE</span>
-          <span className={styles.facingDir}>{opponentFacingArrow}</span>
-        </div>
       </div>
 
       {/* ===== TOP-RIGHT: RTT badge ===== */}
