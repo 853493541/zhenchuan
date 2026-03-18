@@ -40,7 +40,7 @@ export function buildCardPreload() {
           name: buff.name,
           category: buff.category,
 
-          duration: buff.duration,
+          durationMs: buff.durationMs,
           breakOnPlay: buff.breakOnPlay ?? false,
 
           description: buff.description ?? "无",

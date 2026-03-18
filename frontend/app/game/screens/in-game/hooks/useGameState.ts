@@ -87,13 +87,13 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       tournamentPhase: full.tournament?.phase,
       gameId: full._id,
     });
-    
-    versionRef.current = full.state.version;
+
+    versionRef.current = full.state.version ?? 0;
     // Compute and cache meIndex so WS handler can identify opponent patches
     meIndexRef.current = full.state.players.findIndex((p: any) => p.userId === selfUserId);
     setGame(full);
     setLoading(false);
-  }, [gameId]);
+  }, [gameId, selfUserId]);
 
   useEffect(() => {
     fetchInitialGame();
@@ -349,10 +349,12 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         heartbeatIntervalRef.current = null;
       }
 
-      // Try to reconnect after 2 seconds
+      // Try to reconnect after 2 seconds; fetch a fresh snapshot so any
+      // state changes that happened while WS was down are recovered.
       if (!reconnectTimeoutRef.current) {
         reconnectTimeoutRef.current = setTimeout(() => {
           reconnectTimeoutRef.current = null;
+          fetchInitialGame();
           connectWebSocket();
         }, 2000);
       }

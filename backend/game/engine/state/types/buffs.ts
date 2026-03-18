@@ -1,13 +1,14 @@
 // backend/game/engine/state/types/buffs.ts
 
 import { BuffEffect } from "./effects";
-import { TurnPhase } from "./scheduling";
 
 /* ================= Buff Core ================= */
 
 export type BuffCategory = "BUFF" | "DEBUFF";
 export type BuffApplyTo = "SELF" | "OPPONENT";
-export type BuffTickOn = TurnPhase;
+
+/** @deprecated use durationMs instead — kept for backwards-compat with any serialised data */
+export type BuffTickOn = "TURN_START" | "TURN_END";
 
 /* ================= Buff Definition ================= */
 
@@ -15,8 +16,17 @@ export interface BuffDefinition {
   buffId: number;
   name: string;
   category: BuffCategory;
-  duration: number;
-  tickOn: BuffTickOn;
+  /**
+   * How long the buff lasts in milliseconds.
+   * e.g. 5 seconds = 5000, 10 seconds = 10000
+   */
+  durationMs: number;
+  /**
+   * For periodic effects (DoT / HoT): how often the effect fires, in ms.
+   * e.g. 3000 = fires every 3 seconds.
+   * Omit for passive buffs that have no periodic component.
+   */
+  periodicMs?: number;
   breakOnPlay?: boolean;
   description: string;
   effects: BuffEffect[];
@@ -36,9 +46,23 @@ export interface ActiveBuff {
   sourceCardId?: string;
   sourceCardName?: string;
 
-  /** remaining turns */
-  remaining: number;
-  tickOn: BuffTickOn;
+  /**
+   * Absolute Date.now() ms when this buff expires.
+   * GameLoop removes the buff once Date.now() >= expiresAt.
+   */
+  expiresAt: number;
+
+  /**
+   * For periodic effects: absolute Date.now() ms of the last periodic tick.
+   * Initialised to appliedAt so the first tick fires periodicMs after application.
+   */
+  lastTickAt?: number;
+
+  /**
+   * Mirror of BuffDefinition.periodicMs — stored on ActiveBuff so the GameLoop
+   * doesn't need to look up the definition each tick.
+   */
+  periodicMs?: number;
 
   stageIndex?: number;
   appliedAtTurn?: number;

@@ -26,12 +26,12 @@ function pushEvent(
 
 /**
  * Apply a buff to a target player.
- * Buff lifetime is now driven by:
- *   - remaining (number of ticks)
- *   - tickOn ("TURN_START" | "TURN_END")
  *
- * ❌ NO expiresAtTurn
- * ❌ NO durationTurns math
+ * Buff lifetime is wall-clock based:
+ *   expiresAt = Date.now() + buff.durationMs
+ *
+ * For periodic effects (DoT / HoT):
+ *   lastTickAt = Date.now()  — first tick fires periodicMs after application
  */
 export function addBuff(params: {
   state: GameState;
@@ -50,10 +50,12 @@ export function addBuff(params: {
     buff,
   } = params;
 
-  // 🔁 Refresh same buffId (stable replacement)
+  // Refresh same buffId (stable replacement — resets the timer)
   buffTarget.buffs = buffTarget.buffs.filter(
     (b) => b.buffId !== buff.buffId
   );
+
+  const now = Date.now();
 
   const active: ActiveBuff = {
     buffId: buff.buffId,
@@ -62,8 +64,13 @@ export function addBuff(params: {
 
     effects: buff.effects.map((e) => ({ ...e })), // clone for runtime mutation
 
-    remaining: buff.duration,
-    tickOn: buff.tickOn,
+    expiresAt: now + buff.durationMs,
+
+    // Periodic effects (DoT / HoT)
+    ...(buff.periodicMs !== undefined && {
+      periodicMs: buff.periodicMs,
+      lastTickAt: now,
+    }),
 
     appliedAtTurn: state.turn, // informational only
     breakOnPlay: buff.breakOnPlay,
@@ -91,8 +98,6 @@ export function addBuff(params: {
 
 /**
  * Emit a buff-expired event.
- * Actual removal from player.buffs is handled
- * by the turn flow (after ticking).
  */
 export function pushBuffExpired(
   state: GameState,

@@ -138,20 +138,10 @@ export default function InGameClient({
     }
   }, [tournament?.phase, gameId]); // Only depend on phase and gameId, not state
 
-  // ✉ Poll for phase changes while in DRAFT phase — catches missed WS updates
-  // (Robust fallback: even if WS misses the transition broadcast, polling will detect it)
-  useEffect(() => {
-    if (tournament?.phase !== "DRAFT") return;
-    const id = setInterval(() => { refetch(); }, 2000);
-    return () => clearInterval(id);
-  }, [tournament?.phase, refetch]);
-
-  // ✉ Poll during BATTLE phase to detect when battle ends and phase transitions to DRAFT/GAME_OVER
-  useEffect(() => {
-    if (tournament?.phase !== "BATTLE") return;
-    const id = setInterval(() => { refetch(); }, 3000);
-    return () => clearInterval(id);
-  }, [tournament?.phase, refetch]);
+  // No polling — all phase transitions (DRAFT↔BATTLE↔GAME_OVER) are broadcast
+  // over WebSocket by the backend (draft/finalize and battle/complete routes).
+  // Continuous REST polling was the root cause of stale snapshots corrupting
+  // live buff/cooldown state during battle.
 
   /* ================= PRELOAD ================= */
 

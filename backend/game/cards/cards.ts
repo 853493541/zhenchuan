@@ -74,8 +74,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 9001,
         name: "弹跳",
         category: "BUFF",
-        duration: 999, // consumed by movement.ts on next jump, not by turn-tick
-        tickOn: "TURN_START",
+        durationMs: 300_000, // consumed by movement.ts on next jump; 5-minute fallback expiry
         description: "下次跳跃高度提升至12单位",
         effects: [{ type: "JUMP_BOOST" }],
         applyTo: "SELF",
@@ -122,10 +121,10 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1022,
         name: "急曲",
         category: "DEBUFF",
-        duration: 3,
-        tickOn: "TURN_START",
-        description: "回合开始时受到3点伤害",
-        effects: [{ type: "START_TURN_DAMAGE", value: 3 }],
+        durationMs: 15_000, // 15 seconds
+        periodicMs: 3_000,  // fires every 3 seconds
+        description: "每3秒受到3点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 3 }],
       },
     ],
   },
@@ -158,10 +157,10 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1001,
         name: "百足",
         category: "DEBUFF",
-        duration: 3,
-        tickOn: "TURN_START",
-        description: "回合开始时受到8点伤害",
-        effects: [{ type: "START_TURN_DAMAGE", value: 8 }],
+        durationMs: 15_000, // 15 seconds
+        periodicMs: 3_000,  // fires every 3 seconds
+        description: "每3秒受到8点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 8 }],
       },
     ],
   },
@@ -182,8 +181,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1002,
         name: "摩诃无量",
         category: "DEBUFF",
-        duration: 1,
-        tickOn: "TURN_END",
+        durationMs: 5_000, // 5 seconds
         description: "击倒",
         effects: [{ type: "CONTROL" }],
       },
@@ -204,8 +202,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1021,
         name: "月劫",
         category: "DEBUFF",
-        duration: 3,
-        tickOn: "TURN_END",
+        durationMs: 15_000, // 15 seconds
         description: "受到治疗效果降低50%",
         effects: [{ type: "HEAL_REDUCTION", value: 0.5 }],
       },
@@ -213,8 +210,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1003,
         name: "日劫",
         category: "DEBUFF",
-        duration: 1,
-        tickOn: "TURN_END",
+        durationMs: 5_000, // 5 seconds
         description: "眩晕",
         effects: [{ type: "CONTROL" }],
       },
@@ -235,17 +231,16 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1025,
         name: "蟾啸",
         category: "DEBUFF",
-        duration: 3,
-        tickOn: "TURN_START",
-        description: "回合开始时受到2点伤害",
-        effects: [{ type: "START_TURN_DAMAGE", value: 2 }],
+        durationMs: 15_000, // 15 seconds
+        periodicMs: 3_000,  // fires every 3 seconds
+        description: "每3秒受到2点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 2 }],
       },
       {
         buffId: 1004,
         name: "蟾啸迷心",
         category: "DEBUFF",
-        duration: 1,
-        tickOn: "TURN_END",
+        durationMs: 5_000, // 5 seconds
         description: "无法使用卡牌",
         effects: [{ type: "SILENCE" }],
       },
@@ -266,8 +261,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1005,
         name: "大狮子吼",
         category: "DEBUFF",
-        duration: 1,
-        tickOn: "TURN_END",
+        durationMs: 5_000, // 5 seconds
         description: "眩晕，下回合抽卡数量减一",
         effects: [
           { type: "CONTROL" },
@@ -291,8 +285,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1006,
         name: "绛唇珠袖",
         category: "DEBUFF",
-        duration: 3,
-        tickOn: "TURN_END",
+        durationMs: 15_000, // 15 seconds
         description: "使用卡牌则受到3点伤害",
         effects: [{ type: "ON_PLAY_DAMAGE", value: 3 }],
       },
@@ -318,8 +311,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1033,
         name: "疾如风",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         description: "免疫控制",
         effects: [{ type: "CONTROL_IMMUNE" }],
       },
@@ -344,8 +336,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1007,
         name: "散流霞",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         breakOnPlay: true,
         description: "无法被卡牌选中",
         effects: [{ type: "UNTARGETABLE" }],
@@ -367,8 +358,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1030,
         name: "鹊踏枝",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         description: "被命中几率降低70%",
         effects: [{ type: "DODGE_NEXT", chance: 0.7 }],
       },
@@ -376,8 +366,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1031,
         name: "素衿",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         description: "免控",
         effects: [{ type: "CONTROL_IMMUNE" }],
       },
@@ -400,8 +389,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1009,
         name: "风袖低昂",
         category: "BUFF",
-        duration: 2,
-        tickOn: "TURN_START",
+        durationMs: 10_000, // 10 seconds
         description: "受到伤害降低40%",
         effects: [{ type: "DAMAGE_REDUCTION", value: 0.4 }],
       },
@@ -425,8 +413,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1010,
         name: "生太极",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         description: "免疫控制",
         effects: [{ type: "CONTROL_IMMUNE" }],
       },
@@ -449,8 +436,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1011,
         name: "暗尘弥散",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         breakOnPlay: true,
         description: "隐身",
         effects: [{ type: "STEALTH" }],
@@ -472,8 +458,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1012,
         name: "浮光掠影",
         category: "BUFF",
-        duration: 2,
-        tickOn: "TURN_START",
+        durationMs: 10_000, // 10 seconds
         breakOnPlay: true,
         description: "隐身2回合，期间无法抽卡",
         effects: [
@@ -498,8 +483,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1013,
         name: "天地无极",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         breakOnPlay: true,
         description: "隐身",
         effects: [{ type: "STEALTH" }],
@@ -527,8 +511,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         name: "不工",
         category: "BUFF",
         description: "不受卡牌控制",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         breakOnPlay: true,
         effects: [
           { type: "CONTROL_IMMUNE" },
@@ -580,8 +563,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         name: "无间狱",
         category: "BUFF",
         description: "修罗附体",
-        duration: 2,
-        tickOn: "TURN_START",
+        durationMs: 10_000, // 10 seconds
         effects: [
           {
             type: "SCHEDULED_DAMAGE",
@@ -648,8 +630,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1017,
         name: "心诤",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         breakOnPlay: true,
         description: "免疫控制",
         effects: [
@@ -696,8 +677,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1019,
         name: "女娲补天",
         category: "BUFF",
-        duration: 4,
-        tickOn: "TURN_START",
+        durationMs: 20_000, // 20 seconds
         description: "造成伤害提升100%，受到伤害降低50%，期间抽卡减一",
         effects: [
           { type: "DAMAGE_MULTIPLIER", value: 2 },
@@ -722,8 +702,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1020,
         name: "踏星行",
         category: "DEBUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         description: "被命中几率降低65%，免疫控制，沉默",
         effects: [
           { type: "DODGE_NEXT", chance: 0.65 },

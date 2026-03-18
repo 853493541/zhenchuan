@@ -39,7 +39,7 @@ export function applyStartTurnEffects(params: {
    */
   for (const buff of me.buffs) {
     for (const e of buff.effects) {
-      if (e.type === "START_TURN_DAMAGE") {
+      if (e.type === "PERIODIC_DAMAGE") {
         const dmg = resolveScheduledDamage({
           source: enemy,
           target: me,
@@ -59,7 +59,7 @@ export function applyStartTurnEffects(params: {
         });
       }
 
-      if (e.type === "START_TURN_HEAL") {
+      if (e.type === "PERIODIC_HEAL") {
         const heal = resolveHealAmount({
           target: me,
           base: e.value ?? 0,

@@ -22,7 +22,6 @@ export type {
 export type {
   BuffCategory,
   BuffApplyTo,
-  BuffTickOn,
   BuffDefinition,
   ActiveBuff,
 } from "./types/buffs";

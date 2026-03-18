@@ -733,7 +733,7 @@ export default function BattleArena({
     }
     setAbilities(updated);
     abilitiesRef.current = updated;
-  }, [me.hand, distance, cards]);
+  }, [me.hand, me.buffs, opponent?.buffs, distance, cards]);
 
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
@@ -1375,7 +1375,7 @@ export default function BattleArena({
         </div>
         {/* Buff row — always present; StatusBar renders empty when no buffs */}
         <div className={styles.enemyBuffRow}>
-          <StatusBar buffs={opponent?.buffs ?? []} />
+          <StatusBar buffs={opponent?.buffs ?? []} showDebug debugLabel="opp" />
         </div>
         {/* Enemy drafted abilities — always rendered below buff row, no outer box */}
         {(() => {
@@ -1427,7 +1427,7 @@ export default function BattleArena({
           {/* ── Player buffs above drafted slots ── */}
           {me?.buffs && me.buffs.length > 0 && (
             <div className={styles.playerBuffRow}>
-              <StatusBar buffs={me.buffs} />
+              <StatusBar buffs={me.buffs} showDebug debugLabel="me" />
             </div>
           )}
 

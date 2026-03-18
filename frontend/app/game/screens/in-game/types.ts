@@ -34,9 +34,12 @@ export interface ActiveBuff {
 
   effects: BuffEffect[];
 
-  /** Remaining ticks (each tick ≈ 5 seconds in battle mode). Decremented server-side. */
-  remaining: number;
-  tickOn?: string;
+  /** Absolute Date.now() ms when this buff expires. */
+  expiresAt: number;
+  /** Optional: interval in ms for periodic DoT/HoT effects. */
+  periodicMs?: number;
+  /** Optional: last time the periodic effect fired (ms). */
+  lastTickAt?: number;
 
   appliedAtTurn?: number;
 

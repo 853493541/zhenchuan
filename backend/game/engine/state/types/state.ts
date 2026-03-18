@@ -11,6 +11,7 @@ export interface PlayerState {
   userId: PlayerID;
 
   hp: number;
+  maxHp?: number;
 
   /** cards in hand */
   hand: CardInstance[];

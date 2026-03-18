@@ -18,8 +18,6 @@ export type EffectType =
   | "CONTROL_IMMUNE"
   | "DODGE_NEXT"
   | "DELAYED_DAMAGE"
-  | "START_TURN_DAMAGE"
-  | "START_TURN_HEAL"
   | "CLEANSE"
   | "FENGLAI_CHANNEL"
   | "WUJIAN_CHANNEL"
@@ -30,7 +28,9 @@ export type EffectType =
   | "SCHEDULED_DAMAGE"
   | "DASH"
   | "DIRECTIONAL_DASH"
-  | "JUMP_BOOST";
+  | "JUMP_BOOST"
+  | "PERIODIC_DAMAGE"
+  | "PERIODIC_HEAL";
 
 /**
  * Immediate card effects
