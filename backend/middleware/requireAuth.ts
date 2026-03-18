@@ -26,7 +26,10 @@ export async function requireAuth(
 ) {
   try {
     const token = req.cookies?.auth_token;
+    console.log(`[requireAuth] ${req.method} ${req.path} - token present: ${!!token}`);
+    
     if (!token) {
+      console.log(`[requireAuth] ❌ No token in cookies`);
       return res.status(401).json({ error: "Not authenticated" });
     }
 
@@ -36,18 +39,25 @@ export async function requireAuth(
       username: string;
       tokenVersion: number;
     };
+    console.log(`[requireAuth] ✅ JWT verified for userId: ${payload.uid}`);
 
     // 2️⃣ Load user from DB
     const user = await User.findById(payload.uid).select("tokenVersion username");
+    console.log(`[requireAuth] 🔍 User lookup for ${payload.uid}: ${user ? "found" : "NOT FOUND"}`);
+    
     if (!user) {
+      console.log(`[requireAuth] ❌ User not found in DB`);
       return res.status(401).json({ error: "Invalid or expired token" });
     }
 
     // 3️⃣ Compare token versions (GLOBAL LOGOUT CHECK)
     if (user.tokenVersion !== payload.tokenVersion) {
+      console.log(`[requireAuth] ❌ Token version mismatch. User version: ${user.tokenVersion}, Token version: ${payload.tokenVersion}`);
       return res.status(401).json({ error: "Session revoked" });
     }
 
+    console.log(`[requireAuth] ✅ Auth passed for ${payload.username} (${payload.uid})`);
+    
     // 4️⃣ Attach auth info
     req.auth = {
       uid: payload.uid,
@@ -57,6 +67,7 @@ export async function requireAuth(
 
     next();
   } catch (err) {
+    console.log(`[requireAuth] ❌ Auth error:`, err instanceof Error ? err.message : String(err));
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 }

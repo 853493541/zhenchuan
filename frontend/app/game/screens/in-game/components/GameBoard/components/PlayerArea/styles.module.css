@@ -1,0 +1,107 @@
+.playerHalf {
+  display: flex;
+  flex-direction: column;
+
+  height: 100%;
+  min-height: 0;
+
+  /* 🔑 the only thing you asked for */
+  justify-content: flex-end;
+
+  /* keep centered horizontally */
+  align-items: center;
+
+  padding-bottom: 16px;
+}
+
+/* ================= PLAYER NAME ================= */
+.playerName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5e7eb;
+  text-transform: capitalize;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+/* Bottom stack holds Status+HP+Hand together */
+.bottomStack {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+
+  min-height: 0;
+}
+
+/* Reserve space even when StatusBar renders nothing */
+.statusSlot {
+  min-height: 42px;
+  width: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-shrink: 0;
+}
+
+/* ================= HAND ZONE ================= */
+.handZone {
+  display: flex;
+  gap: 5px;
+  max-width: 1000px;
+  width: 89%;
+  margin: 0 auto;
+
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  padding-top: 6px;
+  padding-bottom: 6px;
+
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+}
+
+.handZone > * {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.handZone::-webkit-scrollbar {
+  height: 0;
+}
+
+/* ================= MOBILE ================= */
+@media (max-width: 768px) {
+  .playerHalf {
+    padding-bottom: 12px;
+  }
+
+  .bottomStack {
+    gap: 4px;
+  }
+
+  .statusSlot {
+    min-height: 36px;
+  }
+
+  .handZone {
+    max-height: 140px;
+    padding: 2px;
+    gap: 6px;
+    max-width: 100vw;
+  }
+
+  .handZone button,
+  .handZone .card {
+    min-width: 72px;
+    min-height: 96px;
+  }
+}

@@ -1,0 +1,572 @@
+/* ============================================================
+   ROOT CONTAINER
+   ============================================================ */
+.container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #010409;
+  font-family: 'Courier New', monospace;
+  color: #fff;
+  user-select: none;
+}
+
+/* ============================================================
+   CANVAS — fills everything
+   ============================================================ */
+.canvasWrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ============================================================
+   TOP-LEFT: My HP panel
+   ============================================================ */
+.playerPanel {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 160px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.playerLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.playerLabel {
+  font-size: 8px;
+  letter-spacing: 2.5px;
+  color: #66aaff;
+  text-transform: uppercase;
+}
+
+.facingDir {
+  font-size: 16px;
+  line-height: 1;
+  color: #aaccff;
+  text-shadow: 0 0 8px rgba(100, 180, 255, 0.7);
+  min-width: 18px;
+  text-align: center;
+}
+
+.myHpRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.myHpTrack {
+  flex: 1;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.myHpFill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.15s ease-out;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.myHpNum {
+  font-size: 13px;
+  font-weight: bold;
+  color: #eee;
+  min-width: 26px;
+  text-align: right;
+}
+
+/* ============================================================
+   TOP-CENTER: Enemy boss bar  (dominant, like a raid boss HP)
+   ============================================================ */
+.enemyBossGroup {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 320px;
+  max-width: 480px;
+  width: clamp(280px, 38vw, 480px);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.enemyBossBar {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid rgba(200, 40, 40, 0.5);
+  border-radius: 8px;
+  padding: 8px 14px 10px;
+  box-shadow: 0 0 20px rgba(180, 30, 30, 0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.enemyName {
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: #ff7777;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(255, 80, 80, 0.5);
+}
+
+.enemyHpRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.enemyHpTrack {
+  position: relative;
+  flex: 1;
+  height: 14px;
+  background: rgba(60, 0, 0, 0.6);
+  border: 1px solid rgba(180, 40, 40, 0.4);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.enemyHpFill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s ease-out;
+}
+
+/* Tick marks at 25 / 50 / 75% */
+.enemyHpTick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.5);
+  transform: translateX(-50%);
+}
+
+.enemyHpNum {
+  font-size: 13px;
+  font-weight: bold;
+  color: #ffaaaa;
+  min-width: 28px;
+  text-align: right;
+}
+
+/* ============================================================
+   TOP-RIGHT: RTT badge
+   ============================================================ */
+.rttBadge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-size: 9px;
+  color: #444;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 3px 7px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* ============================================================
+   CENTER-SCREEN: Distance floating label
+   ============================================================ */
+.distIndicator {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.distVal {
+  font-size: 20px;
+  font-weight: bold;
+  color: rgba(255, 230, 100, 0.9);
+  text-shadow:
+    0 0 12px rgba(255, 200, 50, 0.6),
+    0 2px 4px rgba(0, 0, 0, 0.8);
+  line-height: 1;
+}
+
+.distUnit {
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: rgba(200, 170, 80, 0.6);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* ============================================================
+   BOTTOM HUD: WASD (left) + centered hotbar + spacer (right)
+   ============================================================ */
+.bottomHud {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 14px 16px;
+  /* gradient fade upward */
+  background: linear-gradient(to top,
+    rgba(0, 0, 0, 0.7) 0%,
+    rgba(0, 0, 0, 0.3) 50%,
+    transparent 100%);
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* ---- WASD (mobile left) ---- */
+.wasdWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: all;
+  flex-shrink: 0;
+  width: 170px; /* mirror the spacer width so hotbar stays centered */
+}
+
+/* Moving indicator dot */
+.movingDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #222;
+  border: 1px solid #444;
+  transition: background 0.12s, box-shadow 0.12s;
+}
+.movingDot.moving {
+  background: #44cc55;
+  box-shadow: 0 0 8px rgba(68, 204, 85, 0.9);
+}
+
+/* ---- Centered ability hotbar ---- */
+.hotbarStack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  pointer-events: all;
+}
+
+/* Player buff row above drafted slots */
+.playerBuffRow {
+  pointer-events: all;
+  margin-bottom: 4px;
+}
+
+/* Enemy buff row below enemy HP bar (outside the bar container) */
+.enemyBuffRow {
+  width: 100%;
+}
+
+/* Common abilities (top row) — slightly smaller, tinted gold */
+.commonBar {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(180, 140, 30, 0.35);
+  border-radius: 8px;
+  padding: 5px 7px;
+}
+
+/* Draft abilities (bottom row, existing) */
+.hotbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: all;
+  /* visible tray behind the buttons */
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(60, 90, 160, 0.3);
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
+/* Common ability buttons — same size as draft, gold tinted */
+.commonBtn {
+  border-color: rgba(160, 120, 20, 0.5) !important;
+}
+
+/* Empty draft slot placeholder */
+.emptySlot {
+  background: rgba(5, 12, 28, 0.3);
+  border-color: rgba(50, 80, 150, 0.15) !important;
+  cursor: default;
+  pointer-events: none;
+}
+.commonBtn.ready {
+  border-color: rgba(220, 180, 40, 0.8) !important;
+  box-shadow: 0 0 10px rgba(200, 160, 30, 0.25) !important;
+}
+.commonBtn.ready:hover {
+  box-shadow: 0 0 20px rgba(220, 180, 40, 0.5) !important;
+}
+
+/* ---- Mirror spacer so hotbar stays centered ---- */
+.wasdSpacer {
+  width: 170px;
+  flex-shrink: 0;
+}
+
+/* ---- Empty-state text when no abilities loaded yet ---- */
+.noAbilities {
+  font-size: 10px;
+  color: rgba(150, 170, 200, 0.6);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  align-self: center;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   ABILITY BUTTONS — icon only
+   ============================================================ */
+.abilityBtn {
+  position: relative;
+  display: block;
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  background: rgba(5, 12, 28, 0.92);
+  border: 2px solid rgba(50, 80, 150, 0.5);
+  border-radius: 8px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.12s, box-shadow 0.12s;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.abilityIcon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 6px;
+  /* slight desaturate when not ready — brightened by .ready override */
+  filter: brightness(0.75) saturate(0.7);
+  transition: filter 0.12s;
+}
+
+.abilityBtn.ready .abilityIcon {
+  filter: brightness(1) saturate(1);
+}
+
+.abilityBtn:hover:not(:disabled) {
+  border-color: rgba(80, 150, 255, 0.85);
+  box-shadow: 0 0 16px rgba(80, 150, 255, 0.25);
+}
+
+.abilityBtn.ready {
+  border-color: rgba(50, 200, 80, 0.75);
+  box-shadow: 0 0 12px rgba(50, 200, 80, 0.2);
+}
+
+.abilityBtn.ready:hover {
+  box-shadow: 0 0 24px rgba(50, 200, 80, 0.45);
+}
+
+.abilityBtn.notReady {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.abilityBtn:disabled { cursor: not-allowed; }
+
+/* Key number badge — bottom-left corner */
+.abilityKey {
+  position: absolute;
+  bottom: 3px;
+  left: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Cooldown arc overlay — conic-gradient clock-wipe, number in centre */
+.cdArc {
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 3;
+  /* background is set inline: conic-gradient(from -90deg, rgba(0,0,0,0.72) X%, transparent X%) */
+}
+
+.cdNum {
+  font-size: 13px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 8px rgba(0,0,0,1), 0 1px 3px rgba(0,0,0,0.9);
+  pointer-events: none;
+  z-index: 4;
+  letter-spacing: -0.5px;
+}
+
+/* Visual gap between ability groups in common bar */
+.commonGap {
+  width: 2px;
+  height: 35px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 1px;
+  flex-shrink: 0;
+  align-self: center;
+  margin: 0 3px;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 600px) {
+  .enemyBossBar {
+    min-width: 200px;
+    width: 55vw;
+  }
+
+  .abilityBtn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .wasdWrap,
+  .wasdSpacer {
+    width: 130px;
+  }
+
+  .distVal {
+    font-size: 16px;
+  }
+}
+
+/* Hide spacer on very small screens — hotbar goes to center anyway */
+@media (max-width: 480px) {
+  .wasdSpacer { display: none; }
+  .wasdWrap   { width: auto; }
+  .bottomHud  { justify-content: space-around; }
+}
+
+/* ============================================================
+   CONTROL SETTINGS PANEL
+   ============================================================ */
+.controlBtn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 25;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 17px;
+  cursor: pointer;
+  pointer-events: all;
+  transition: border-color 0.12s, color 0.12s;
+}
+.controlBtn:hover {
+  border-color: rgba(80, 150, 255, 0.6);
+  color: #fff;
+}
+.controlPanel {
+  position: absolute;
+  top: 52px;
+  right: 14px;
+  z-index: 25;
+  background: rgba(4, 10, 25, 0.96);
+  border: 1px solid rgba(50, 90, 180, 0.45);
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-width: 200px;
+  pointer-events: all;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.controlPanelTitle {
+  font-size: 9px;
+  letter-spacing: 2.5px;
+  color: rgba(100, 160, 255, 0.7);
+  text-transform: uppercase;
+}
+.controlModeRow {
+  display: flex;
+  gap: 6px;
+}
+.controlModeBtn {
+  flex: 1;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.controlModeBtn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.75);
+}
+.controlModeActive {
+  background: rgba(40, 100, 240, 0.28) !important;
+  border-color: rgba(80, 150, 255, 0.55) !important;
+  color: #fff !important;
+}
+.controlHints {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  line-height: 1.85;
+}
+.controlHints span {
+  color: rgba(180, 210, 255, 0.7);
+  font-weight: bold;
+}

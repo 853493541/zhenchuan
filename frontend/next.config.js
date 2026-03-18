@@ -38,6 +38,22 @@ const nextConfig = {
     }
     return config;
   },
+
+  /**
+   * ✅ Rewrites for API proxying
+   * In development: /api/* → http://127.0.0.1:5000/api/*
+   * This avoids CORS issues by proxying through Next.js
+   */
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: '/api/:path*',
+          destination: 'http://127.0.0.1:5000/api/:path*',
+        },
+      ],
+    };
+  },
 };
 
 module.exports = withBundleAnalyzer(nextConfig);

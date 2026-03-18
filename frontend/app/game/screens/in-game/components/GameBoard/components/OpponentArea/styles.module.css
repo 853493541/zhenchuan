@@ -1,0 +1,70 @@
+/* ================= ROOT ================= */
+.enemyHalf {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+/* ================= PLAYER NAME ================= */
+.playerName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5e7eb;
+  text-transform: capitalize;
+  margin-bottom: 4px;
+}
+
+/* ================= TOP ROW ================= */
+.topRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ================= SECTION ================= */
+.section {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ================= OPPONENT HAND (SMALL) ================= */
+.opponentHandSmall {
+  display: flex;
+  align-items: center;
+}
+
+.cardBackSmall {
+  width: 42px;
+  height: 58px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #334155, #0f172a);
+  border: 1px solid rgba(255,255,255,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cardCountSmall {
+  font-size: 20px;
+  font-weight: 800;
+  color: #e5e7eb;
+}
+
+/* ================= MOBILE ================= */
+@media (max-width: 768px) {
+  .topRow {
+    gap: 6px;
+  }
+
+  .cardBackSmall {
+    width: 36px;
+    height: 50px;
+  }
+
+  .cardCountSmall {
+    font-size: 18px;
+  }
+}

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import ChangePasswordModal from "./ChangePasswordModal";
 import styles from "./UserMenu.module.css";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+
 
 interface Props {
   username: string;
@@ -99,7 +99,7 @@ export default function UserMenu({ username }: Props) {
      ===================================================== */
   async function logout() {
     try {
-      await fetch(`${API_BASE}/api/auth/logout`, {
+      await fetch(`/api/auth/logout`, {
         method: "POST",
         credentials: "include",
       });

@@ -1,0 +1,196 @@
+/* ================= WRAPPER ================= */
+
+.wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* ================= CHATLOG CONTAINER ================= */
+
+.chatlog {
+  width: 280px;
+  height: 12vh;
+
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 4px;
+
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ================= TABS ================= */
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tab {
+  width: 50px;            /* 👈 fixed tab width */
+  padding: 4px 0;
+  font-size: 12px;
+
+  border: none;
+  background: none;
+  color: #94a3b8;
+  cursor: pointer;
+
+  text-align: center;     /* label centered inside tab */
+}
+
+.activeTab {
+  color: #fff;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.12);
+}
+/* ================= LOG BODY ================= */
+
+.logBody {
+  flex: 1;
+  padding: 12px 12px; /* left / right only */
+
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  overflow-y: auto;
+
+  /* hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.logBody::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.logLine {
+  font-size: 12px;
+  line-height: 1;
+  color: #e5e7eb;
+}
+
+.emptyText {
+  opacity: 0.5;
+  font-size: 12px;
+}
+
+/* ================= TOKENS ================= */
+
+.skill {
+  color: #facc15;
+  font-weight: 600;
+}
+
+.buff {
+  color: #fde047;
+  font-weight: 600;
+}
+
+.target {
+  color: #22d3ee;
+}
+
+.number {
+  color: #fb923c;
+  font-weight: 700;
+}
+
+/* ================= ABILITY BAR ================= */
+
+.abilityBar {
+  display: flex;
+  gap: 3px;
+  padding: 6px 12px;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.25),
+    rgba(0, 0, 0, 0.5)
+  );
+}
+
+/* ================= ABILITY ICON ================= */
+
+.abilityIcon {
+  width: 32px;
+  height: 32px;
+  padding: 1px;
+
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.abilityIcon img {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+/* played by me */
+.me {
+  border: 2px solid #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+/* played by enemy */
+.enemy {
+  border: 2px solid #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+}
+
+/* ================= PREVIEW ================= */
+
+.preview {
+  position: absolute;
+  left: 300px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* ================= ANIMATIONS =================
+   Goal:
+   - NEWEST (rightmost) slides in from RIGHT
+   - OTHERS feel like they "shift left" into their new slots
+============================================== */
+
+.newestIcon {
+  animation: newestInFromRight 180ms ease-out;
+}
+
+.shiftIcon {
+  /* small "from-right" nudge so it visually reads as shifting left */
+  animation: shiftLeftFeel 180ms ease-out;
+}
+
+@keyframes newestInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(18px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes shiftLeftFeel {
+  from {
+    transform: translateX(8px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}

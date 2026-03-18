@@ -1,0 +1,124 @@
+/* ================= ROOT ================= */
+
+.statusBar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ================= ROW ================= */
+
+.statusRow {
+  display: grid;
+
+  /* 🔑 KEY FIX: content-sized columns */
+  grid-auto-flow: column;
+  grid-auto-columns: min-content;
+
+  justify-content: start;
+  gap: 4px;
+}
+
+/* ================= BUFF ITEM ================= */
+
+.buffItem {
+  width: fit-content; /* 🔑 shrink cell to content */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+
+  user-select: none;
+}
+
+/* ================= NAME ================= */
+
+.buffName {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+/* ================= ICON ================= */
+
+.buffIcon {
+  width: 32px;
+  height: 32px;
+
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+/* ================= ICON BORDER ================= */
+
+.buffBorder {
+  border: 2px solid rgba(34, 197, 94, 0.9);
+}
+
+.debuffBorder {
+  border: 2px solid rgba(185, 28, 28, 0.95);
+}
+
+/* ================= TURNS ================= */
+
+.buffTurns {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ================= TEXT COLORS ================= */
+
+.buffText {
+  color: #22c55e;
+}
+
+.debuffText {
+  color: #dc2626;
+}
+
+/* ================= LAST TURN ================= */
+
+.lastTurn {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+/* ================= 📱 MOBILE ================= */
+
+@media (max-width: 768px) {
+  .buffIcon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .buffName,
+  .buffTurns {
+    font-size: 10px;
+  }
+
+  .statusRow {
+    gap: 5px;
+  }
+}
+
+@media (max-width: 420px) {
+  .buffIcon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .statusRow {
+    gap: 4px;
+  }
+}

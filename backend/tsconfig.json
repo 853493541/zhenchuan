@@ -15,26 +15,11 @@
 
     "incremental": false
   },
-  "files": [
-    "app.ts",
-    "index.ts",
-    "db.ts",
-    "seedAbilities.ts",
-
-    "routes/targetedPlanRoutes.ts",
-    "routes/characterRoutes.ts",
-    "routes/mapRoutes.ts",
-    "routes/standardScheduleRoutes.ts",
-
-    "utils/weekUtils.ts",
-    "utils/normalizeDefenseAbilities.ts",
-
-    "models/StandardSchedule.ts",
-    "models/Ability.ts",
-    "models/WeeklyMap.ts",
-    "models/AbilityHistory.ts",
-    "models/Character.ts",
-    "models/SystemJob.ts",
-    "models/TargetedPlan.ts"
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
   ]
 }

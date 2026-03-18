@@ -1,0 +1,241 @@
+/* =========================================================
+   Page Layout
+========================================================= */
+
+.page {
+  padding: 32px 16px;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #f5f7fa 0%, #f9fafb 100%);
+}
+
+.container {
+  width: 100%;
+  max-width: 500px;
+  background: white;
+  border-radius: 20px;
+  padding: 40px 28px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.title {
+  font-size: 36px;
+  font-weight: 800;
+  text-align: center;
+  color: #1f2937;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.subtitle {
+  text-align: center;
+  color: #6b7280;
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0;
+  margin-top: -16px;
+}
+
+/* =========================================================
+   Player List
+========================================================= */
+
+.playerList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.playerSlot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 18px;
+  border-radius: 14px;
+  border: 2px solid #e5e7eb;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #fafbfc;
+}
+
+.playerSlot.empty {
+  border-style: dashed;
+  color: #9ca3af;
+}
+
+.playerSlot.filled {
+  background: linear-gradient(135deg, #f0f9ff 0%, #eff6ff 100%);
+  border-color: #bfdbfe;
+}
+
+.playerSlot.you {
+  background: linear-gradient(135deg, #fef3c7 0%, #fef08a 100%);
+  border-color: #fde047;
+}
+
+.emptyState {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.waitingDot {
+  font-size: 20px;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.playerInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.badge {
+  display: inline-block;
+  background: #2563eb;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+}
+
+.username {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  flex: 1;
+  truncate: ellipsis;
+}
+
+/* =========================================================
+   Options
+========================================================= */
+
+.optionSection {
+  padding: 14px 16px;
+  background: #f0f9ff;
+  border: 1.5px solid #bfdbfe;
+  border-radius: 12px;
+}
+
+.optionLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  color: #1e40af;
+}
+
+.optionCheckbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #2563eb;
+  border-radius: 4px;
+}
+
+/* =========================================================
+   Actions
+========================================================= */
+
+.actionArea {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.primaryBtn {
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.3px;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
+  transform: translateY(-2px);
+}
+
+.primaryBtn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+.primaryBtn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+}
+
+.statusMsg {
+  padding: 12px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0;
+  animation: fadeIn 0.4s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* =========================================================
+   Responsive
+========================================================= */
+
+@media (max-width: 480px) {
+  .page {
+    padding: 16px 12px;
+    min-height: auto;
+  }
+
+  .container {
+    padding: 32px 20px;
+    gap: 24px;
+  }
+
+  .title {
+    font-size: 28px;
+  }
+
+  .playerSlot {
+    padding: 18px 16px;
+  }
+}

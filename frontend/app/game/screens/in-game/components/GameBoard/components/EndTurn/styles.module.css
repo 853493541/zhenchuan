@@ -1,0 +1,133 @@
+/* ================= WRAPPER ================= */
+.wrap {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+
+  z-index: 30;
+}
+
+/* ================= BASE ================= */
+.endTurnBtn {
+  min-width: 110px;
+  padding: 14px 22px;
+
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.25);
+
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+
+  cursor: default;
+  user-select: none;
+
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    background 0.25s ease,
+    opacity 0.25s ease;
+}
+
+/* ================= MY TURN ================= */
+.myTurn {
+  background: linear-gradient(
+    180deg,
+    #22c55e,
+    #15803d
+  );
+
+  color: #ecfdf5;
+  border-color: rgba(34, 197, 94, 0.6);
+
+  cursor: pointer;
+
+  box-shadow:
+    0 0 0 rgba(34, 197, 94, 0),
+    0 6px 18px rgba(0, 0, 0, 0.45);
+
+  /* subtle presence */
+  animation: myTurnBreath 2.8s ease-in-out infinite;
+}
+
+.myTurn:hover {
+  transform: scale(1.06);
+}
+
+/* ================= ENEMY TURN ================= */
+.enemyTurn {
+  background: linear-gradient(
+    180deg,
+    #475569,
+    #1e293b
+  );
+
+  color: #e5e7eb;
+  border-color: rgba(148, 163, 184, 0.35);
+
+  opacity: 0.85;
+  cursor: not-allowed;
+
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
+}
+
+/* ================= ANIMATION ================= */
+@keyframes myTurnBreath {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ================= MOBILE ================= */
+@media (max-width: 768px) {
+  .wrap {
+    right: 10px;
+    top: auto;
+    bottom: env(safe-area-inset-bottom);
+    transform: none;
+  }
+
+  .endTurnBtn {
+    padding: 16px 24px;
+    font-size: 15px;
+  }
+}
+/* ================= 📱 PHONE — END TURN SIZE FIX ================= */
+@media (max-width: 768px) {
+
+  .wrap {
+    right: 8px;
+    bottom: calc(env(safe-area-inset-bottom) + 6px);
+  }
+
+  .endTurnBtn {
+    min-width: 70px;        /* ⬇ smaller footprint */
+    padding: 6px 6px;     /* ⬇ less vertical bulk */
+    font-size: 11px;        /* ⬇ text scale */
+    letter-spacing: 0.3px;
+  }
+
+  /* calmer breathing + smaller amplitude */
+  .myTurn {
+    animation-duration: 4.2s;
+  }
+
+  @keyframes myTurnBreath {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.015); /* very subtle */
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+}

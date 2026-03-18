@@ -1,0 +1,38 @@
+.board {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.player {
+  margin-bottom: 24px;
+}
+
+.hand {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.card {
+  padding: 10px 14px;
+  border: 1px solid #333;
+  background: #fff;
+  cursor: pointer;
+}
+
+.card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cardBack {
+  width: 60px;
+  height: 80px;
+  background: #333;
+  border-radius: 4px;
+}
+
+.pass {
+  margin-top: 12px;
+}

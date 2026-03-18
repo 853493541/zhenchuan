@@ -1,0 +1,59 @@
+/* ================= HAND CONTAINER ================= */
+
+.hand {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+
+  padding: 8px 6px;
+
+ overflow-x: auto;
+  flex-wrap: nowrap;
+}
+
+/* ================= SLOT (OWNS SIZE) ================= */
+
+.slot {
+  flex: 0 0 auto;
+  width: 110px;        /* desktop card width */
+  min-height: 150px;   /* desktop card height */
+max-height:95%;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+
+  will-change: transform;
+  /* border:red 2px solid; */
+
+}
+
+/* ================= DRAW ANIMATION ================= */
+
+.drawIn {
+  animation: draw-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes draw-in {
+  from {
+    transform: translateX(var(--enter-x)) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* ================= MOBILE ================= */
+
+@media (max-width: 768px) {
+  .slot {
+    width: 80px;
+    min-height: 120px;
+  }
+
+  .hand {
+    gap: 6px;
+    padding: 6px 4px;
+  }
+}

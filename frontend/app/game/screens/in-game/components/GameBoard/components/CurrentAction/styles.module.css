@@ -1,0 +1,139 @@
+/* ================= ARENA ================= */
+
+.arena {
+  /* 🔑 module-safe variable */
+  --card-shift: 155px;
+
+  position: relative;
+  width: 100%;
+  height: 250px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  overflow: hidden;
+}
+
+/* ================= CARD WRAPPER ================= */
+
+.cardWrap {
+  position: absolute;
+
+  transition:
+    transform 220ms ease-out,
+    opacity 220ms ease-out,
+    filter 220ms ease-out;
+
+  will-change: transform, opacity;
+}
+
+/* ================= OWNER GLOW ================= */
+
+.me {
+  filter: drop-shadow(0 0 10px rgba(34, 197, 94, 0.45));
+}
+
+.enemy {
+  filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.45));
+}
+
+/* ================= ENTRY ANIMATIONS ================= */
+
+.enterFromBottom {
+  animation: slideUp 220ms ease-out;
+}
+
+.enterFromTop {
+  animation: slideDown 220ms ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(48px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-48px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ================= FADE OUT (4th CARD — DESKTOP ONLY) ================= */
+
+.fadeOut {
+  opacity: 0.35;
+  transform: scale(0.92);
+}
+
+/* ================= 📱 PHONE — SINGLE CARD MODE ================= */
+
+@media (max-width: 768px) {
+
+  .arena {
+    height: 260px;
+    --card-shift: 105px;
+  }
+
+  .cardWrap {
+    transition:
+      transform 200ms ease-out,
+      opacity 200ms ease-out,
+      filter 200ms ease-out;
+  }
+
+  /* center vertically for phone */
+  .arena{
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  /* soften glow on small screens */
+  .me {
+    filter: drop-shadow(0 0 6px rgba(34, 197, 94, 0.35));
+  }
+
+  .enemy {
+    filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.35));
+  }
+
+  /* shorter vertical travel */
+  @keyframes slideUp {
+    from {
+      transform: translateY(32px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideDown {
+    from {
+      transform: translateY(-32px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  /* phone has no preview fade */
+  .fadeOut {
+    opacity: 0;
+    transform: scale(1);
+  }
+}

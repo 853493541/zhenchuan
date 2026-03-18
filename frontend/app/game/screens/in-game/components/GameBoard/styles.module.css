@@ -1,0 +1,98 @@
+/* ================= ROOT ================= */
+.boardRoot {
+  position: relative;
+  width: 100%;
+  height: 85dvh;
+
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+max-width: 1280px;
+  overflow: hidden;
+margin: 0 auto;
+  background: radial-gradient(circle at center, #1e293b, #020617);
+  color: white;
+}
+
+/* ================= BOARD ================= */
+.board {
+  position: relative;
+
+  width: 100%;
+  max-width: 1200px;
+  height: 100%;
+
+  display: grid;
+
+grid-template-rows:
+  clamp(160px, 22vh, 240px)
+  minmax(260px, 1fr)
+  clamp(200px, 35vh, 330px);
+
+  padding: 12px;
+  box-sizing: border-box;
+
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Prevent children from breaking layout */
+.board > * {
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ================= ZONES ================= */
+.region {
+  position: relative;
+}
+
+/* ================= SIDE OVERLAYS ================= */
+
+/* History – left middle */
+.historyOverlay {
+  position: absolute;
+  left: 8px;
+  top: 65%;
+  transform: translateY(-50%);
+
+  width: 300px;
+  /* max-height: 80%; */
+
+  z-index: 20;
+}
+
+/* End Turn – right middle */
+.endturnOverlay {
+  position: absolute;
+  right: 12px;
+  top: 45%;
+  transform: translateY(-50%);
+
+  z-index: 30;
+}
+
+/* ================= MOBILE ================= */
+@media (max-width: 768px) {
+  .boardRoot {
+    height: 100dvh;
+  }
+
+  .board {
+    padding: 8px;
+
+    grid-template-rows:
+      140px
+      1fr
+      220px;
+  }
+
+  .historyOverlay {
+    width: 160px;
+  }
+
+  .endturnOverlay {
+    right: 3px;
+    top: 45%;
+  }
+}

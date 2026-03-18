@@ -1,0 +1,67 @@
+.hint {
+  position: fixed;
+  z-index: 9999;
+
+  width: 250px;
+  padding: 6px 10px;
+
+  /* darker + slightly transparent (not too transparent) */
+  background: rgba(10, 12, 18, 0.92);
+
+  color: #e5e7eb;
+
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.65);
+
+  font-size: 13px;
+  line-height: 1.1;
+
+  pointer-events: none;
+
+  /* no weird RTL/centering */
+  direction: ltr;
+  text-align: left;
+}
+
+/* name: lighter like the real one */
+.title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #f3f4f6; /* lighter, not yellow */
+  margin-bottom: 2px;
+  line-height: 1.05;
+}
+
+.desc {
+  font-size: 13px;
+  opacity: 0.92;
+  margin-bottom: 2px;
+  white-space: pre-line;
+  line-height: 1.12; /* tighter line gap */
+}
+
+/* full line red */
+.time {
+  font-size: 13px;
+  font-weight: 900;
+  color: #ef4444;
+  white-space: nowrap;
+  line-height: 1.05;
+}
+
+@media (max-width: 768px) {
+  .hint {
+    width: 200px;
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .title {
+    font-size: 12px;
+  }
+
+  .desc,
+  .time {
+    font-size: 11px;
+  }
+}

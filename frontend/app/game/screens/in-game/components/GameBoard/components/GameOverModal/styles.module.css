@@ -1,0 +1,77 @@
+/* ================= BACKDROP ================= */
+.backdrop {
+  position: fixed;
+  inset: 0;
+
+  background: rgba(2, 6, 23, 0.55); /* close to board bg */
+  backdrop-filter: blur(6px);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  z-index: 1000;
+}
+
+/* ================= MODAL ================= */
+.modal {
+  background: radial-gradient(
+    circle at top,
+    #1e293b,
+    #020617
+  );
+
+  border-radius: 14px;
+  padding: 32px 44px;
+
+  min-width: 260px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+/* ================= TITLE ================= */
+.title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* win = soft green */
+.win {
+  color: #86efac;
+  text-shadow: 0 0 12px rgba(34, 197, 94, 0.35);
+}
+
+/* lose = muted red (NOT harsh) */
+.lose {
+  color: #fca5a5;
+  text-shadow: 0 0 12px rgba(239, 68, 68, 0.25);
+}
+
+/* ================= BUTTON ================= */
+.exitBtn {
+  padding: 10px 22px;
+  border-radius: 8px;
+
+  background: #2563eb;
+  color: white;
+
+  font-size: 14px;
+  font-weight: 600;
+
+  border: none;
+  cursor: pointer;
+
+  transition: background 0.2s ease;
+}
+
+.exitBtn:hover {
+  background: #1d4ed8;
+}

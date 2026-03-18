@@ -36,51 +36,26 @@
 }
 
 /* =========================================
-   GRID BELOW TOPBAR
+   MAIN CONTENT
 ========================================= */
-.appGrid {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  grid-template-areas: "sidebar main";
-
+.main {
   width: 100%;
   max-width: 100%;
-  min-width: 0;
-}
-
-.sidebar {
-  grid-area: sidebar;
-}
-
-.main {
-  grid-area: main;
   padding: 16px 20px 24px;
-
   min-width: 0;
 }
 
-/* =========================================
-   TABLET
-========================================= */
-@media (max-width: 920px) {
-  .appGrid {
-    grid-template-columns: 72px 1fr;
-  }
+.mainFullscreen {
+  width: 100%;
+  max-width: 100%;
+  height: calc(100dvh - var(--topbar-height));
+  padding: 0;
+  overflow: hidden;
+  min-width: 0;
+  background: #010409;
 }
 
-/* =========================================
-   MOBILE
-========================================= */
 @media (max-width: 768px) {
-  .appGrid {
-    grid-template-columns: 1fr;
-    grid-template-areas: "main";
-  }
-
-  .sidebar {
-    display: none;
-  }
-
   .main {
     padding-left: max(16px, env(safe-area-inset-left));
     padding-right: max(16px, env(safe-area-inset-right));

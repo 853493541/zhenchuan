@@ -1,0 +1,268 @@
+/* ================= BASE CARD ================= */
+
+.card {
+  position: relative;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+
+  padding: 8px;
+  border-radius: 10px;
+
+  background: linear-gradient(180deg, #0f172a, #020617);
+  border: 1px solid #334155;
+  color: white;
+
+  user-select: none;
+
+  /* REQUIRED: allow badge to render outside */
+  overflow: visible;
+}
+
+/* ================= GCD CRYSTAL ================= */
+
+.gcdCrystal {
+  position: absolute;
+
+  /* TOP-LEFT, half outside */
+  top: -8px;
+  left: -8px;
+
+  width: 22px;
+  height: 22px;
+
+  border-radius: 7px;
+
+  background: linear-gradient(180deg, #38bdf8, #0ea5e9);
+  border: 1px solid #7dd3fc;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 12px;
+  font-weight: 800;
+  color: #020617;
+
+  box-shadow:
+    0 4px 10px rgba(0,0,0,0.6),
+    inset 0 1px 0 rgba(255,255,255,0.35);
+
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ================= COOLDOWN OVERLAY ================= */
+
+.cooldownOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 10px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  pointer-events: none;
+  z-index: 10;
+}
+
+.cooldownText {
+  font-size: 32px;
+  font-weight: bold;
+  color: #ff6b6b;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* ================= VARIANTS ================= */
+
+.hand {
+  width: 110px;
+  min-height: 150px;
+}
+
+.arena {
+  width: 150px;
+  min-height: 200px;
+}
+
+.preview {
+  width: 170px;
+  min-height: 220px;
+}
+
+.disabled {
+  width: 110px;
+  min-height: 150px;
+
+  opacity: 0.45;
+  filter: grayscale(0.6);
+}
+
+/* ================= INTERACTION ================= */
+
+.clickable {
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.45);
+  border-color: #475569;
+}
+
+/* ================= ICON ================= */
+
+.icon {
+  width: 28px;
+  height: 28px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 5px;
+}
+
+.preview .icon {
+  width: 40px;
+  height: 40px;
+}
+
+.icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 5px;
+}
+
+/* ================= NAME ================= */
+
+.name {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.preview .name {
+  font-size: 15px;
+}
+
+/* ================= DESC ================= */
+
+.desc {
+  font-size: 12px;
+  line-height: 1.2;
+  opacity: 0.9;
+
+  text-align: center;
+  white-space: pre-line;
+
+  max-height: 80px;
+  /* min-height: 80px; */
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  pointer-events: none;
+}
+
+.descInner {
+  max-height: 80px;
+  /* min-height: 80px; */
+
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  padding: 2px 2px;
+
+  pointer-events: auto;
+}
+
+.descInner::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* ================= PLAYABLE ================= */
+
+.playable {
+  border-color: #22c55e;
+  box-shadow:
+    0 0 0 1px rgba(34, 197, 94, 0.7),
+    0 0 14px rgba(34, 197, 94, 0.4);
+
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/* ================= PLAYABLE HOVER (OVERRIDE) ================= */
+
+.playable.clickable:hover {
+  border-color: #4ade80;
+  box-shadow:
+    0 0 0 2px rgba(74, 222, 128, 0.9),
+    0 0 18px rgba(34, 197, 94, 0.6),
+    0 10px 18px rgba(0,0,0,0.45);
+
+  transform: translateY(-2px);
+}
+
+/* ================= MOBILE ================= */
+
+@media (max-width: 768px) {
+  .card {
+  gap: 2px;
+  }
+
+  .hand,
+  .disabled {
+    width: 80px;
+    min-height:120px;
+    max-height: 120px;
+    padding: 4px;
+  }
+.icon {
+  width: 20px;
+  height: 20px;
+}
+.name {
+  font-size: 11px;
+}
+  .arena {
+    width: 120px;
+    min-height: 160px;
+  }
+
+  .preview {
+    width: 140px;
+    min-height: 190px;
+  }
+
+  .gcdCrystal {
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+    top: -6px;
+    left: -6px;
+  }
+}
+@media (max-width: 768px) {
+  .descInner {
+    max-height: 42px;   /* tuned for 80x120 card */
+  }
+}

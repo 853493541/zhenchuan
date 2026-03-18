@@ -186,4 +186,30 @@ router.post("/change-password", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/auth/token
+ * Returns JWT token for WebSocket connection
+ * NO AUTH REQUIRED - just echoes the cookie back if it exists
+ * (User is already authenticated to be on the game page)
+ */
+router.get("/token", async (req, res) => {
+  try {
+    console.log("[auth/token] Request received. Cookies:", Object.keys(req.cookies || {}));
+    
+    const token = req.cookies?.auth_token;
+    
+    if (!token) {
+      console.log("[auth/token] ❌ No auth_token cookie found");
+      console.log("[auth/token] All cookies:", req.cookies);
+      return res.status(401).json({ error: "No auth token in cookies" });
+    }
+
+    console.log("[auth/token] ✅ Returning token from cookies");
+    return res.json({ ok: true, token });
+  } catch (err) {
+    console.error("[auth/token] error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
 export default router;
