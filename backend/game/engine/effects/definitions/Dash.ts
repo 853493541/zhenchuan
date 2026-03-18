@@ -1,6 +1,6 @@
 // backend/game/engine/effects/definitions/Dash.ts
 
-import { GameState, Card, CardEffect, ActiveBuff } from "../../state/types";
+import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
 import { Position } from "../../state/types/position";
 import { pushEvent } from "../events";
 
@@ -13,8 +13,8 @@ export function handleDash(
   source: { userId: string; position: Position; buffs: ActiveBuff[] },
   target: { userId: string; position: Position; buffs: ActiveBuff[] },
   isEnemyEffect: boolean,
-  card: Card,
-  effect: CardEffect
+  ability: Ability,
+  effect: AbilityEffect
 ) {
   // Calculate vector from source to target
   const dx = target.position.x - source.position.x;
@@ -28,8 +28,8 @@ export function handleDash(
       type: "DASH",
       actorUserId: source.userId,
       targetUserId: target.userId,
-      cardId: card.id,
-      cardName: card.name,
+      abilityId: ability.id,
+      abilityName: ability.name,
       effectType: "DASH",
       value: 0,
     });
@@ -53,8 +53,8 @@ export function handleDash(
     type: "DASH",
     actorUserId: source.userId,
     targetUserId: target.userId,
-    cardId: card.id,
-    cardName: card.name,
+    abilityId: ability.id,
+    abilityName: ability.name,
     effectType: "DASH",
     value: Math.round(distance - desiredDistance),
   });

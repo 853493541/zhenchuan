@@ -1,4 +1,4 @@
-import { CARDS } from "./cards";
+import { ABILITIES } from "./abilities";
 
 /**
  * Frontend-facing preload payload.
@@ -7,34 +7,34 @@ import { CARDS } from "./cards";
  * - O(1) lookup friendly
  * - Backend is the single source of truth for ALL text
  */
-export function buildCardPreload() {
-  const cards: any[] = [];
+export function buildAbilityPreload() {
+  const abilities: any[] = [];
   const buffs: any[] = [];
 
-  for (const card of Object.values(CARDS)) {
+  for (const ability of Object.values(ABILITIES)) {
     const cardPayload = {
-      id: card.id,
-      name: card.name,
-      description: card.description,
-      type: card.type,
-      target: card.target,
-      effects: card.effects ?? [],
+      id: ability.id,
+      name: ability.name,
+      description: ability.description,
+      type: ability.type,
+      target: ability.target,
+      effects: ability.effects ?? [],
 
       // Range data for client-side ability readiness check
-      range:    (card as any).range,
-      minRange: (card as any).minRange,
+      range:    (ability as any).range,
+      minRange: (ability as any).minRange,
 
       // Cooldown length for arc display
-      cooldownTicks: (card as any).cooldownTicks ?? 0,
+      cooldownTicks: (ability as any).cooldownTicks ?? 0,
 
       // Common movement abilities are always shown regardless of draft
-      isCommon: !!(card as any).isCommon,
+      isCommon: !!(ability as any).isCommon,
     };
 
-    cards.push(cardPayload);
+    abilities.push(cardPayload);
 
-    if (Array.isArray(card.buffs)) {
-      for (const buff of card.buffs) {
+    if (Array.isArray(ability.buffs)) {
+      for (const buff of ability.buffs) {
         buffs.push({
           buffId: buff.buffId,
           name: buff.name,
@@ -47,15 +47,15 @@ export function buildCardPreload() {
           effects: buff.effects ?? [],
 
           // UI helpers
-          sourceCardId: card.id,
-          sourceCardName: card.name,
+          sourceAbilityId: ability.id,
+          sourceAbilityName: ability.name,
         });
       }
     }
   }
 
-  const cardMap = Object.fromEntries(
-    cards.map((c) => [c.id, c])
+  const abilityMap = Object.fromEntries(
+    abilities.map((c) => [c.id, c])
   );
 
   const buffMap = Object.fromEntries(
@@ -63,8 +63,8 @@ export function buildCardPreload() {
   );
 
   return {
-    cards,
-    cardMap,
+    abilities,
+    abilityMap,
     buffs,
     buffMap,
   };

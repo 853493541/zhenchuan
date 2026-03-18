@@ -1,6 +1,6 @@
 // backend/game/engine/effects/handlers.ts
 
-import { GameState, Card } from "../state/types";
+import { GameState, Ability } from "../state/types";
 import { handleDamage } from "./definitions/Damage";
 import { handleBonusDamageIfHpGt } from "./definitions/BonusDamageIfHpGt";
 import { handleHeal } from "./definitions/Heal";

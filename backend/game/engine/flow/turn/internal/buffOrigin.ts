@@ -2,16 +2,16 @@
 
 import { ActiveBuff } from "../../../state/types";
 
-export function getBuffSourceCardId(buff: ActiveBuff) {
-  return buff.sourceCardId;
+export function getBuffSourceAbilityId(buff: ActiveBuff) {
+  return buff.sourceAbilityId;
 }
 
-export function getBuffSourceCardName(buff: ActiveBuff) {
+export function getBuffSourceAbilityName(buff: ActiveBuff) {
   // fallback guarantees frontend can always render text
-  return buff.sourceCardName ?? buff.name;
+  return buff.sourceAbilityName ?? buff.name;
 }
 
-export function getBuffSourceCardNameWithDebug(buff: ActiveBuff, debug?: string) {
-  const base = getBuffSourceCardName(buff);
+export function getBuffSourceAbilityNameWithDebug(buff: ActiveBuff, debug?: string) {
+  const base = getBuffSourceAbilityName(buff);
   return debug ? `${base} · ${debug}` : base;
 }

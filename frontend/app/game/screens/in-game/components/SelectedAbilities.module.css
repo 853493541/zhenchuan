@@ -94,7 +94,7 @@
   background: rgba(0, 0, 0, 0.3);
 }
 
-.cardInfo {
+.abilityInfo {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -103,21 +103,21 @@
   font-size: 10px;
 }
 
-.cardName {
+.abilityName {
   font-weight: bold;
   color: #fff;
   font-size: 11px;
   line-height: 1.2;
 }
 
-.cardType {
+.abilityType {
   color: #4ecdc4;
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
-.cardDescription {
+.abilityDescription {
   color: #b0b0b0;
   font-size: 8px;
   line-height: 1.1;
@@ -185,7 +185,7 @@
     height: 60px;
   }
 
-  .cardName {
+  .abilityName {
     font-size: 9px;
   }
 }

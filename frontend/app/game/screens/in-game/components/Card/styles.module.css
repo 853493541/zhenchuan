@@ -1,6 +1,6 @@
 /* ================= BASE CARD ================= */
 
-.card {
+.ability {
   position: relative;
 
   display: flex;
@@ -225,7 +225,7 @@
 /* ================= MOBILE ================= */
 
 @media (max-width: 768px) {
-  .card {
+  .ability {
   gap: 2px;
   }
 

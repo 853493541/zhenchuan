@@ -23,7 +23,7 @@
   gap: 10px;
 }
 
-.card {
+.ability {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -39,7 +39,7 @@
   min-height: 100px;
 }
 
-.card::before {
+.ability::before {
   content: '';
   position: absolute;
   top: 0;
@@ -52,18 +52,18 @@
   pointer-events: none;
 }
 
-.card:hover::before {
+.ability:hover::before {
   opacity: 1;
 }
 
-.card:hover {
+.ability:hover {
   background: linear-gradient(135deg, rgba(78, 205, 196, 0.15), rgba(100, 150, 220, 0.15));
   border-color: rgba(78, 205, 196, 0.6);
   box-shadow: 0 0 12px rgba(78, 205, 196, 0.3);
   transform: translateY(-2px);
 }
 
-.card.empty {
+.ability.empty {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.1);
   border-style: dashed;
@@ -81,7 +81,7 @@
   background: rgba(0, 0, 0, 0.3);
 }
 
-.cardInfo {
+.abilityInfo {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -90,7 +90,7 @@
   font-size: 9px;
 }
 
-.cardName {
+.abilityName {
   font-weight: bold;
   color: #fff;
   font-size: 10px;
@@ -100,7 +100,7 @@
   white-space: nowrap;
 }
 
-.cardType {
+.abilityType {
   color: #4ecdc4;
   font-size: 8px;
   text-transform: uppercase;
@@ -121,7 +121,7 @@
   margin-top: 4px;
 }
 
-.card:hover .removeBtn {
+.ability:hover .removeBtn {
   opacity: 1;
 }
 
@@ -150,7 +150,7 @@
     gap: 8px;
   }
 
-  .card {
+  .ability {
     min-height: 75px;
     padding: 8px;
   }
@@ -160,7 +160,7 @@
     height: 50px;
   }
 
-  .cardName {
+  .abilityName {
     font-size: 9px;
   }
 }

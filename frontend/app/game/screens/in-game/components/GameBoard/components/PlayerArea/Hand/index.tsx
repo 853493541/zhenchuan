@@ -1,34 +1,34 @@
 "use client";
 
 import AnimatedHandSlot from "./AnimatedHandSlot";
-import Card from "../../../../Card";
+import Ability from "../../../../Ability";
 import styles from "./styles.module.css";
 
-import type { CardInstance } from "@/app/game/screens/in-game/types";
+import type { AbilityInstance } from "@/app/game/screens/in-game/types";
 
 type Props = {
-  cards: CardInstance[];
+  abilities: AbilityInstance[];
   remainingGcd?: number;                 // ✅ SAFE
-  onPlayCard: (card: CardInstance) => void;
+  onPlayCard: (ability: AbilityInstance) => void;
   isMyTurn: boolean;
 };
 
 export default function Hand({
-  cards,
+  abilities,
   remainingGcd,
   onPlayCard,
   isMyTurn,
 }: Props) {
   return (
     <div className={styles.hand}>
-      {cards.map((card) => (
-        <AnimatedHandSlot key={card.instanceId}>
-          <Card
-            cardId={card.cardId}
+      {abilities.map((ability) => (
+        <AnimatedHandSlot key={ability.instanceId}>
+          <Ability
+            abilityId={ability.abilityId}
             remainingGcd={remainingGcd}   // 🔑 MAY BE UNDEFINED — SAFE
-            cooldown={card.cooldown}      // NEW: show cooldown
+            cooldown={ability.cooldown}      // NEW: show cooldown
             variant={isMyTurn ? "hand" : "disabled"}
-            onClick={isMyTurn ? () => onPlayCard(card) : undefined}
+            onClick={isMyTurn ? () => onPlayCard(ability) : undefined}
           />
         </AnimatedHandSlot>
       ))}

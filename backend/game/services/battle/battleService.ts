@@ -7,8 +7,8 @@ import { GameState, PlayerState } from "../../engine/state/types";
 import { TournamentState } from "../../engine/state/types";
 import { STARTING_BATTLE_HP } from "../../engine/state/types";
 import { PlayerID } from "../../engine/state/types/common";
-import { CardInstance } from "../../engine/state/types/cards";
-import { CARDS } from "../../cards/cards";
+import { AbilityInstance } from "../../engine/state/types/abilities";
+import { ABILITIES } from "../../abilities/abilities";
 import { randomUUID } from "crypto";
 
 // Arena dimensions (must match frontend arena size)
@@ -27,10 +27,10 @@ const COMMON_ABILITY_IDS = [
   "yuqi",
 ];
 
-function makeCommonAbilities(): CardInstance[] {
+function makeCommonAbilities(): AbilityInstance[] {
   return COMMON_ABILITY_IDS.map((id) => ({
     instanceId: randomUUID(),
-    cardId: id,
+    abilityId: id,
     cooldown: 0,
   }));
 }
@@ -50,12 +50,12 @@ export function initializeBattleState(
   const abilities1 = tournament.selectedAbilities[player1Id];
 
   // Create fresh instances of abilities for this battle with cooldown reset
-  const hand0: CardInstance[] = [
+  const hand0: AbilityInstance[] = [
     ...abilities0.map((a) => ({ ...a, instanceId: randomUUID(), cooldown: 0 })),
     ...makeCommonAbilities(),
   ];
 
-  const hand1: CardInstance[] = [
+  const hand1: AbilityInstance[] = [
     ...abilities1.map((a) => ({ ...a, instanceId: randomUUID(), cooldown: 0 })),
     ...makeCommonAbilities(),
   ];

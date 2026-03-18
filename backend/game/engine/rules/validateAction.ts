@@ -1,7 +1,7 @@
 // backend/game/engine/rules/validateAction.ts
 
 import { GameState } from "../state/types";
-import { CARDS } from "../../cards/cards";
+import { ABILITIES } from "../../abilities/abilities";
 import { blocksCardTargeting } from "./guards";
 import { calculateDistance } from "../state/types";
 
@@ -16,7 +16,7 @@ function hasEffect(player: { buffs: any[] }, type: string) {
 }
 
 /* =========================================================
-   VALIDATE PLAY CARD (REAL-TIME BATTLE)
+   VALIDATE PLAY ABILITY (REAL-TIME BATTLE)
 ========================================================= */
 
 /**
@@ -26,7 +26,7 @@ function hasEffect(player: { buffs: any[] }, type: string) {
 export function validateCastAbility(
   state: GameState,
   playerIndex: number,
-  cardInstanceId: string
+  abilityInstanceId: string
 ) {
   if (state.gameOver) {
     throw new Error("ERR_GAME_OVER");
@@ -34,37 +34,37 @@ export function validateCastAbility(
 
   const player = state.players[playerIndex];
 
-  // Accept lookup by instanceId OR by cardId (common abilities may be cast by cardId)
+  // Accept lookup by instanceId OR by abilityId (common abilities may be cast by abilityId)
   let instance = player.hand.find(
-    (c) => c.instanceId === cardInstanceId || (c.cardId ?? (c as any).id) === cardInstanceId
+    (c) => c.instanceId === abilityInstanceId || (c.abilityId ?? (c as any).id) === abilityInstanceId
   );
 
   // Auto-inject common abilities missing from hand (legacy/in-progress games)
   if (!instance) {
-    const maybeCommon = CARDS[cardInstanceId];
+    const maybeCommon = ABILITIES[abilityInstanceId];
     if (maybeCommon && (maybeCommon as any).isCommon) {
-      const newInst = { instanceId: cardInstanceId, cardId: cardInstanceId, cooldown: 0 };
+      const newInst = { instanceId: abilityInstanceId, abilityId: abilityInstanceId, cooldown: 0 };
       player.hand.push(newInst as any);
       instance = newInst as any;
     }
   }
 
   if (!instance) {
-    throw new Error("ERR_CARD_NOT_IN_HAND");
+    throw new Error("ERR_ABILITY_NOT_IN_HAND");
   }
 
-  console.log("[validateCastAbility] DEBUG - card instance:", {
+  console.log("[validateCastAbility] DEBUG - ability instance:", {
     instanceId: instance.instanceId,
-    cardId: instance.cardId,
+    abilityId: instance.abilityId,
     id: (instance as any).id,
     keys: Object.keys(instance).slice(0, 10),
   });
 
-  // Card can be referenced by either .cardId or .id (depending on how it was populated)
-  const cardId = instance.cardId || (instance as any).id;
-  const card = CARDS[cardId];
-  if (!card) {
-    throw new Error("ERR_CARD_NOT_FOUND");
+  // Ability can be referenced by either .abilityId or .id (depending on how it was populated)
+  const abilityId = instance.abilityId || (instance as any).id;
+  const ability = ABILITIES[abilityId];
+  if (!ability) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
   }
 
   /* ================= COOLDOWN ================= */
@@ -78,23 +78,23 @@ export function validateCastAbility(
   }
 
   /* ================= RANGE CHECK ================= */
-  if (card.range !== undefined) {
+  if (ability.range !== undefined) {
     const distance = calculateDistance(
       state.players[playerIndex].position,
       state.players[playerIndex === 0 ? 1 : 0].position
     );
 
-    if (distance > card.range) {
+    if (distance > ability.range) {
       throw new Error("ERR_OUT_OF_RANGE");
     }
 
-    if (card.minRange !== undefined && distance < card.minRange) {
+    if (ability.minRange !== undefined && distance < ability.minRange) {
       throw new Error("ERR_TOO_CLOSE");
     }
   }
 
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
-  if (card.target === "OPPONENT") {
+  if (ability.target === "OPPONENT") {
     const enemyIndex = playerIndex === 0 ? 1 : 0;
     const enemy = state.players[enemyIndex];
 
@@ -107,13 +107,13 @@ export function validateCastAbility(
 }
 
 /* =========================================================
-   VALIDATE PLAY CARD (TURN-BASED - Legacy)
+   VALIDATE PLAY ABILITY (TURN-BASED - Legacy)
 ========================================================= */
 
-export function validatePlayCard(
+export function validatePlayAbility(
   state: GameState,
   playerIndex: number,
-  cardInstanceId: string
+  abilityInstanceId: string
 ) {
   if (state.gameOver) {
     throw new Error("ERR_GAME_OVER");
@@ -125,16 +125,16 @@ export function validatePlayCard(
 
   const player = state.players[playerIndex];
 
-  const instance = player.hand.find((c) => c.instanceId === cardInstanceId);
+  const instance = player.hand.find((c) => c.instanceId === abilityInstanceId);
   if (!instance) {
-    throw new Error("ERR_CARD_NOT_IN_HAND");
+    throw new Error("ERR_ABILITY_NOT_IN_HAND");
   }
 
-  // Card can be referenced by either .cardId or .id (depending on how it was populated)
-  const cardId = instance.cardId || (instance as any).id;
-  const card = CARDS[cardId];
-  if (!card) {
-    throw new Error("ERR_CARD_NOT_FOUND");
+  // Ability can be referenced by either .abilityId or .id (depending on how it was populated)
+  const abilityId = instance.abilityId || (instance as any).id;
+  const ability = ABILITIES[abilityId];
+  if (!ability) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
   }
 
   /* ================= COOLDOWN ================= */
@@ -155,8 +155,8 @@ export function validatePlayCard(
     hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
 
   const allowsOverride =
-    Array.isArray(card.effects) &&
-    card.effects.some((e) => e.allowWhileControlled === true);
+    Array.isArray(ability.effects) &&
+    ability.effects.some((e) => e.allowWhileControlled === true);
 
   if (isControlled && !allowsOverride) {
     throw new Error("ERR_CONTROLLED");
@@ -164,8 +164,8 @@ export function validatePlayCard(
 
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
 
-  // Only applies to opponent-targeted cards
-  if (card.target === "OPPONENT") {
+  // Only applies to opponent-targeted abilities
+  if (ability.target === "OPPONENT") {
     const enemyIndex = playerIndex === 0 ? 1 : 0;
     const enemy = state.players[enemyIndex];
 

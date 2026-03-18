@@ -14,7 +14,7 @@ export type {
 /* ================= Effects ================= */
 export type {
   EffectType,
-  CardEffect,
+  AbilityEffect,
   BuffEffect,
 } from "./types/effects";
 
@@ -28,11 +28,11 @@ export type {
 
 /* ================= Cards ================= */
 export type {
-  CardType,
+  AbilityType,
   TargetType,
-  Card,
-  CardInstance,
-} from "./types/cards";
+  Ability,
+  AbilityInstance,
+} from "./types/abilities";
 
 /* ================= Events ================= */
 export type {

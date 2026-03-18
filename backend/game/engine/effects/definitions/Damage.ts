@@ -1,6 +1,6 @@
 // backend/game/engine/effects/handlers/handleDamage.ts
 
-import { GameState, Card, CardEffect, ActiveBuff } from "../../state/types";
+import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
 import { blocksEnemyTargeting } from "../../rules/guards";
 import { resolveScheduledDamage } from "../../utils/combatMath";
 import { pushEvent } from "../events";
@@ -18,8 +18,8 @@ export function handleDamage(
   source: { userId: string; hp: number; buffs: ActiveBuff[] },
   target: { userId: string; hp: number; buffs: ActiveBuff[] },
   isEnemyEffect: boolean,
-  card: Card,
-  effect: CardEffect
+  ability: Ability,
+  effect: AbilityEffect
 ) {
   // Enemy targeting can be blocked (e.g. untargetable / dodge-style buffs)
   if (isEnemyEffect && blocksEnemyTargeting(target)) {
@@ -28,8 +28,8 @@ export function handleDamage(
       type: "DAMAGE",
       actorUserId: source.userId,
       targetUserId: target.userId,
-      cardId: card.id,
-      cardName: card.name,
+      abilityId: ability.id,
+      abilityName: ability.name,
       effectType: "DAMAGE",
       value: 0,
     });
@@ -53,8 +53,8 @@ export function handleDamage(
     type: "DAMAGE",
     actorUserId: source.userId,
     targetUserId: target.userId,
-    cardId: card.id,
-    cardName: card.name,
+    abilityId: ability.id,
+    abilityName: ability.name,
     effectType: "DAMAGE",
     value: final,
   });

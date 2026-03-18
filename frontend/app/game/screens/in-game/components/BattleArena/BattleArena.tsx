@@ -468,8 +468,8 @@ interface Position { x: number; y: number; z?: number; }
 interface Facing { x: number; y: number; }
 
 interface AbilityInfo {
-  id: string;        // instanceId (or cardId fallback for common)
-  cardId: string;    // always the plain card id (e.g. 'fuyao_zhishang')
+  id: string;        // instanceId (or abilityId fallback for common)
+  abilityId: string;    // always the plain ability id (e.g. 'fuyao_zhishang')
   name: string;
   range?: number;
   minRange?: number;
@@ -496,10 +496,10 @@ interface BattleArenaProps {
   me: { userId: string; position: Position; hp: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing };
   opponent: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing };
   gameId: string;
-  onCastAbility: (cardInstanceId: string, targetUserId?: string) => Promise<void>;
+  onCastAbility: (abilityInstanceId: string, targetUserId?: string) => Promise<void>;
   distance: number;
   maxHp: number;
-  cards: Record<string, any>;
+  abilities: Record<string, any>;
   opponentPositionBufferRef?: React.MutableRefObject<Array<{ t: number; pos: Position }>>;
 }
 
@@ -513,14 +513,14 @@ export default function BattleArena({
   onCastAbility,
   distance,
   maxHp,
-  cards,
+  abilities,
   opponentPositionBufferRef,
 }: BattleArenaProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
 
   /* --- React state (UI only) --- */
-  const [abilities,        setAbilities]        = useState<AbilityInfo[]>([]);
+  const [handAbilities,    setHandAbilities]    = useState<AbilityInfo[]>([]);
   const [rtt,              setRtt]              = useState<number | null>(null);
   const [wasdKeys,         setWasdKeys]         = useState({ w: false, a: false, s: false, d: false });
   const [controlMode,      setControlMode]      = useState<'joystick' | 'traditional'>('traditional');
@@ -530,8 +530,8 @@ export default function BattleArena({
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
 
   // Split abilities into two rows for rendering
-  const commonAbilities = abilities.filter(a => a.isCommon);
-  const draftAbilities  = abilities.filter(a => !a.isCommon);
+  const commonAbilities = handAbilities.filter(a => a.isCommon);
+  const draftAbilities  = handAbilities.filter(a => !a.isCommon);
 
   /* --- Game logic refs --- */
   const keysRef          = useRef({ w: false, a: false, s: false, d: false });
@@ -594,7 +594,7 @@ export default function BattleArena({
   const castAbilityRef = useRef<(id: string) => void>(() => {});
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
-    if (ability?.cardId === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
+    if (ability?.abilityId === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
     // Abilities targeting the opponent require a target to be selected first
     if (ability?.target === 'OPPONENT' && !selectedTargetRef.current) {
       toastError('请先选择目标');
@@ -748,24 +748,24 @@ export default function BattleArena({
   }, [opponent?.position?.x, opponent?.position?.y, opponentPositionBufferRef]);
 
   useEffect(() => {
-    // ── Draft abilities: sourced from me.hand (only non-common cards) ──
+    // ── Draft abilities: sourced from me.hand (only non-common abilities) ──
     const draftUpdated: AbilityInfo[] = me.hand
       .map((instance: any) => {
-        const card =
-          (instance.cardId && cards[instance.cardId]) ||
-          (instance.id    && cards[instance.id])     ||
+        const ability =
+          (instance.abilityId && abilities[instance.abilityId]) ||
+          (instance.id    && abilities[instance.id])     ||
           (instance.name  ? instance : null);
 
         // Skip common abilities — they are shown in the top row independently
-        if (card?.isCommon) return null;
+        if (ability?.isCommon) return null;
 
         const instanceId = instance.instanceId || instance.id || String(Math.random());
-        if (!card) {
-          console.warn('[BattleArena] card lookup failed for hand item:', instance);
+        if (!ability) {
+          console.warn('[BattleArena] ability lookup failed for hand item:', instance);
           return {
             id:          instanceId,
-            cardId:      instance.cardId || instance.id || instanceId,
-            name:        instance.name || instance.cardId || instance.id || '?',
+            abilityId:      instance.abilityId || instance.id || instanceId,
+            name:        instance.name || instance.abilityId || instance.id || '?',
             range:       undefined as number | undefined,
             minRange:    undefined as number | undefined,
             cooldown:    instance.cooldown || 0,
@@ -777,41 +777,41 @@ export default function BattleArena({
         }
         return {
           id:          instanceId,
-          cardId:      card.id,
-          name:        card.name,
-          range:       card.range,
-          minRange:    card.minRange,
+          abilityId:      ability.id,
+          name:        ability.name,
+          range:       ability.range,
+          minRange:    ability.minRange,
           cooldown:    instance.cooldown || 0,
-          maxCooldown: card.cooldownTicks ?? 0,
-          isReady:     (instance.cooldown ?? 0) === 0 && (!card.range || distance <= card.range),
+          maxCooldown: ability.cooldownTicks ?? 0,
+          isReady:     (instance.cooldown ?? 0) === 0 && (!ability.range || distance <= ability.range),
           isCommon:    false,
-          target:      (card.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
+          target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
         };
       })
       .filter(Boolean) as AbilityInfo[];
 
-    // ── Common abilities: always built from preload cards in fixed display order ──
-    const cardValues: any[] = Object.values(cards);
+    // ── Common abilities: always built from preload abilities in fixed display order ──
+    const cardValues: any[] = Object.values(abilities);
     const commonUpdated: AbilityInfo[] = COMMON_ABILITY_ORDER
       .map((orderedCardId) => {
-        const card = cardValues.find((c: any) => c.id === orderedCardId);
-        if (!card) return null;
+        const ability = cardValues.find((c: any) => c.id === orderedCardId);
+        if (!ability) return null;
         const instance = me.hand.find(
-          (h: any) => (h.cardId ?? h.id) === card.id
+          (h: any) => (h.abilityId ?? h.id) === ability.id
         );
-        const instanceId = instance?.instanceId ?? card.id;
+        const instanceId = instance?.instanceId ?? ability.id;
         const cooldown   = instance?.cooldown ?? 0;
         return {
           id:          instanceId,
-          cardId:      card.id,
-          name:        card.name,
-          range:       card.range,
-          minRange:    card.minRange,
+          abilityId:      ability.id,
+          name:        ability.name,
+          range:       ability.range,
+          minRange:    ability.minRange,
           cooldown,
-          maxCooldown: card.cooldownTicks ?? 0,
-          isReady:     cooldown === 0 && (!card.range || distance <= card.range),
+          maxCooldown: ability.cooldownTicks ?? 0,
+          isReady:     cooldown === 0 && (!ability.range || distance <= ability.range),
           isCommon:    true,
-          target:      (card.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
+          target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
@@ -820,9 +820,9 @@ export default function BattleArena({
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[BattleArena] hand: ${me.hand.length} items → ${draftUpdated.length} draft + ${commonUpdated.length} common`);
     }
-    setAbilities(updated);
+    setHandAbilities(updated);
     abilitiesRef.current = updated;
-  }, [me.hand, me.buffs, opponent?.buffs, distance, cards]);
+  }, [me.hand, me.buffs, opponent?.buffs, distance, abilities]);
 
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
@@ -1546,18 +1546,18 @@ export default function BattleArena({
         )}
         {/* Enemy drafted abilities — always visible */}
         {(() => {
-          const draftedAbilities = (opponent?.hand ?? []).filter((card: any) => {
-            const cardId = card.cardId || card.id;
-            return cardId && !COMMON_ABILITY_ORDER.includes(cardId as any);
+          const draftedAbilities = (opponent?.hand ?? []).filter((ability: any) => {
+            const abilityId = ability.abilityId || ability.id;
+            return abilityId && !COMMON_ABILITY_ORDER.includes(abilityId as any);
           });
           return (
             <div className={styles.enemyAbilityRow}>
-              {draftedAbilities.map((card: any) => {
-                const cardId = card.cardId || card.id;
-                const cardData = cards[cardId];
-                const name = cardData?.name || cardId || '?';
+              {draftedAbilities.map((ability: any) => {
+                const abilityId = ability.abilityId || ability.id;
+                const cardData = abilities[abilityId];
+                const name = cardData?.name || abilityId || '?';
                 return (
-                  <div key={card.instanceId || cardId} className={styles.enemyAbilitySlot} title={name}>
+                  <div key={ability.instanceId || abilityId} className={styles.enemyAbilitySlot} title={name}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`/game/icons/Skills/${name}.png`}
@@ -1611,28 +1611,28 @@ export default function BattleArena({
           <div style={{ color: '#888', marginBottom: 8, fontSize: 11 }}>
             点击技能可将其添加至你的当前战斗手牌
           </div>
-          {Object.values(cards)
+          {Object.values(abilities)
             .filter((c: any) => c && !c.isCommon && c.id && c.name)
             .sort((a: any, b: any) => a.name.localeCompare(b.name))
-            .map((card: any) => (
+            .map((ability: any) => (
               <div
-                key={card.id}
+                key={ability.id}
                 style={{
                   display: 'flex', alignItems: 'flex-start', gap: 8,
                   padding: '6px 4px', borderBottom: '1px solid #1e2d3a',
-                  cursor: addingAbility === card.id ? 'wait' : 'pointer',
-                  opacity: addingAbility === card.id ? 0.5 : 1,
-                  background: addingAbility === card.id ? 'rgba(255,107,0,0.08)' : 'transparent',
+                  cursor: addingAbility === ability.id ? 'wait' : 'pointer',
+                  opacity: addingAbility === ability.id ? 0.5 : 1,
+                  background: addingAbility === ability.id ? 'rgba(255,107,0,0.08)' : 'transparent',
                 }}
                 onClick={async () => {
                   if (addingAbility) return;
-                  setAddingAbility(card.id);
+                  setAddingAbility(ability.id);
                   try {
                     const res = await fetch('/api/game/cheat/add-ability', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       credentials: 'include',
-                      body: JSON.stringify({ gameId, cardId: card.id }),
+                      body: JSON.stringify({ gameId, abilityId: ability.id }),
                     });
                     if (!res.ok) {
                       const err = await res.json();
@@ -1647,16 +1647,16 @@ export default function BattleArena({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={`/game/icons/Skills/${card.name}.png`}
-                  alt={card.name}
+                  src={`/game/icons/Skills/${ability.name}.png`}
+                  alt={ability.name}
                   style={{ width: 28, height: 28, flexShrink: 0, objectFit: 'contain' }}
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 />
                 <div>
-                  <div style={{ color: '#eee', fontWeight: 600 }}>{card.name}</div>
-                  {card.description && (
+                  <div style={{ color: '#eee', fontWeight: 600 }}>{ability.name}</div>
+                  {ability.description && (
                     <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>
-                      {card.description}
+                      {ability.description}
                     </div>
                   )}
                 </div>

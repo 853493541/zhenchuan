@@ -46,7 +46,7 @@ export function hasUntargetable(target: { buffs: ActiveBuff[] }) {
 
 /**
  * Stealth (targeting-only)
- * - blocks card targeting
+ * - blocks ability targeting
  * - DOES NOT block damage ticks, channel ticks, or buffs
  */
 export function hasStealth(target: { buffs: ActiveBuff[] }) {
@@ -63,8 +63,8 @@ export function blocksEnemyTargeting(target: { buffs: ActiveBuff[] }) {
 }
 
 /**
- * Targeting block (card play validation)
- * - used BEFORE card is played
+ * Targeting block (ability play validation)
+ * - used BEFORE ability is played
  * - stealth + untargetable both apply
  */
 export function blocksCardTargeting(target: { buffs: ActiveBuff[] }) {
@@ -77,7 +77,7 @@ export function blocksCardTargeting(target: { buffs: ActiveBuff[] }) {
 
 /**
  * Effects that are ALWAYS self-side,
- * regardless of card.target
+ * regardless of ability.target
  */
 export function isAlwaysSelfEffect(effectType: EffectType) {
   return (
@@ -110,10 +110,10 @@ export function isEnemyEffect(
  * - dodge only cancels enemy-applied effects
  */
 export function shouldSkipDueToDodge(
-  cardDodged: boolean,
+  abilityDodged: boolean,
   isEnemyEffect: boolean
 ) {
-  return cardDodged && isEnemyEffect;
+  return abilityDodged && isEnemyEffect;
 }
 
 /**

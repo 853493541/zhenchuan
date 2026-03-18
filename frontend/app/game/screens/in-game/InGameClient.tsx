@@ -29,7 +29,7 @@ function showGameError(rawCode: string) {
     case "ERR_TARGET_UNTARGETABLE":
       toastError("目标无法选中");
       break;
-    case "ERR_CARD_NOT_IN_HAND":
+    case "ERR_ABILITY_NOT_IN_HAND":
       toastError("技能不可用");
       break;
     case "ERR_ON_COOLDOWN":
@@ -61,8 +61,8 @@ function showGameError(rawCode: string) {
 /* ================= TYPES ================= */
 
 type GamePreload = {
-  cards: any[];
-  cardMap: Record<string, any>;
+  abilities: any[];
+  abilityMap: Record<string, any>;
   buffs: any[];
   buffMap: Record<number, any>;
 };
@@ -91,7 +91,7 @@ export default function InGameClient({
     opponent,
     isMyTurn,
     isWinner,
-    playCard,
+    playAbility,
     endTurn,
     rtt,
     refetch,
@@ -290,7 +290,7 @@ export default function InGameClient({
         gameId={gameId}
         selfUserId={selfUserId}
         tournament={tournament}
-        cardMap={preload.cardMap}
+        abilityMap={preload.abilityMap}
         onFinalizeDraft={async () => {
           // Finalization API call is handled within DraftScreen
           // Just need to wait for state update via WebSocket
@@ -325,15 +325,15 @@ export default function InGameClient({
         gameId={gameId}
         distance={distance}
         maxHp={me.hp + (state.players[1]?.hp || 0) === me.hp ? me.hp : 30} // Fallback to 30
-        cards={preload.cardMap}
+        abilities={preload.abilityMap}
         opponentPositionBufferRef={opponentPositionBufferRef}
-        onCastAbility={async (cardInstanceId, targetUserId) => {
-          // Find by instanceId (normal drafted cards) or by cardId (common abilities)
+        onCastAbility={async (abilityInstanceId, targetUserId) => {
+          // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
           const cardInstance =
-            me.hand.find((c) => c.instanceId === cardInstanceId) ??
-            me.hand.find((c) => ((c as any).cardId ?? (c as any).id) === cardInstanceId) ??
-            ({ instanceId: cardInstanceId } as any); // synthetic stub — backend validates
-          const res = await playCard(cardInstance, targetUserId);
+            me.hand.find((c) => c.instanceId === abilityInstanceId) ??
+            me.hand.find((c) => ((c as any).abilityId ?? (c as any).id) === abilityInstanceId) ??
+            ({ instanceId: abilityInstanceId } as any); // synthetic stub — backend validates
+          const res = await playAbility(cardInstance, targetUserId);
           if (!res.ok && res.error) {
             console.error("[CastAbility] Error response:", res.error);
             showGameError(res.error);

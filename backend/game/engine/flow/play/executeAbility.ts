@@ -1,7 +1,7 @@
 // backend/game/engine/flow/applyEffects.ts
 
 /**
- * Public engine entry point for card execution.
+ * Public engine entry point for ability execution.
  *
  * DO NOT put logic here.
  * This file exists to:
@@ -10,14 +10,14 @@
  * - define the engine’s execution boundary
  */
 
-import { GameState, Card } from "../../state/types";
-import { applyCard } from "./PlayCard";
+import { GameState, Ability } from "../../state/types";
+import { applyAbility } from "./PlayAbility";
 
 export function applyEffects(
   state: GameState,
-  card: Card,
+  ability: Ability,
   playerIndex: number,
   targetIndex: number
 ) {
-  applyCard(state, card, playerIndex, targetIndex);
+  applyAbility(state, ability, playerIndex, targetIndex);
 }

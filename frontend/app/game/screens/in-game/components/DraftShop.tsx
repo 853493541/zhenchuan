@@ -1,65 +1,65 @@
 /**
- * DraftShop - Displays 5 available ability cards in shop
- * Click card directly to buy and add to bench
+ * DraftShop - Displays 5 available ability abilities in shop
+ * Click ability directly to buy and add to bench
  */
 
 "use client";
 
-import type { Shop, CardInstance } from "../types";
+import type { Shop, AbilityInstance } from "../types";
 import { useState } from "react";
 import styles from "./DraftShop.module.css";
 
 type Props = {
   shop: Shop;
-  cardMap: Record<string, any>;
-  onSelectCard: (card: CardInstance, destination: "selected" | "bench") => Promise<void>;
+  abilityMap: Record<string, any>;
+  onSelectCard: (ability: AbilityInstance, destination: "selected" | "bench") => Promise<void>;
   onLockCard: (index: number) => Promise<void>;
   loading: boolean;
 };
 
 export default function DraftShop({
   shop,
-  cardMap,
+  abilityMap,
   onSelectCard,
   onLockCard,
   loading,
 }: Props) {
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
-  const handleImageError = (cardId: string) => {
-    setFailedImages(prev => new Set([...prev, cardId]));
+  const handleImageError = (abilityId: string) => {
+    setFailedImages(prev => new Set([...prev, abilityId]));
   };
 
   return (
     <div className={styles.shop}>
       <h2 className={styles.title}>🛒 商店</h2>
       <div className={styles.grid}>
-        {shop.cards.map((card, idx) => {
-          const cardDef = cardMap[card.cardId];
-          if (!cardDef) return null;
+        {shop.abilities.map((ability, idx) => {
+          const abilityDef = abilityMap[ability.abilityId];
+          if (!abilityDef) return null;
 
           return (
             <div
-              key={card.instanceId}
-              className={styles.card}
-              onClick={() => !loading && onSelectCard(card, "bench")}
+              key={ability.instanceId}
+              className={styles.ability}
+              onClick={() => !loading && onSelectCard(ability, "bench")}
             >
-              {!failedImages.has(card.cardId) ? (
+              {!failedImages.has(ability.abilityId) ? (
                 <img 
-                  src={`/game/icons/Skills/${cardDef.name}.png`} 
-                  alt={cardDef.name} 
+                  src={`/game/icons/Skills/${abilityDef.name}.png`} 
+                  alt={abilityDef.name} 
                   className={styles.portrait}
-                  onError={() => handleImageError(card.cardId)}
+                  onError={() => handleImageError(ability.abilityId)}
                 />
               ) : (
                 <div className={styles.portrait}>
-                  <div className={styles.portraitInner}>{cardDef.name.charAt(0)}</div>
+                  <div className={styles.portraitInner}>{abilityDef.name.charAt(0)}</div>
                 </div>
               )}
               <div className={styles.cardInfo}>
-                <h3 className={styles.cardName}>{cardDef.name}</h3>
+                <h3 className={styles.abilityName}>{abilityDef.name}</h3>
                 <p className={styles.description}>
-                  {cardDef.description}
+                  {abilityDef.description}
                 </p>
               </div>
             </div>

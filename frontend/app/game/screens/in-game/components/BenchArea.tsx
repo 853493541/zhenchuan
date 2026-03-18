@@ -5,22 +5,22 @@
 
 "use client";
 
-import type { CardInstance } from "../types";
+import type { AbilityInstance } from "../types";
 import { useState } from "react";
 import styles from "./BenchArea.module.css";
 
 type Props = {
-  bench: CardInstance[];
-  cardMap: Record<string, any>;
-  onMoveToSelected: (cardInstanceId: string) => Promise<void>;
-  onSell: (cardInstanceId: string) => Promise<void>;
+  bench: AbilityInstance[];
+  abilityMap: Record<string, any>;
+  onMoveToSelected: (abilityInstanceId: string) => Promise<void>;
+  onSell: (abilityInstanceId: string) => Promise<void>;
   loading: boolean;
   fullSlots?: number; // How many slots currently used (for UI feedback)
 };
 
 export default function BenchArea({
   bench,
-  cardMap,
+  abilityMap,
   onMoveToSelected,
   onSell,
   loading,
@@ -28,55 +28,55 @@ export default function BenchArea({
 }: Props) {
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
-  const handleImageError = (cardId: string) => {
-    setFailedImages(prev => new Set([...prev, cardId]));
+  const handleImageError = (abilityId: string) => {
+    setFailedImages(prev => new Set([...prev, abilityId]));
   };
   const benchSlots = Array.from({ length: 8 }, (_, i) => {
-    const card = bench[i];
-    return { index: i, card };
+    const ability = bench[i];
+    return { index: i, ability };
   });
 
   return (
     <div className={styles.container}>
       <h3 className={styles.title}>备战区 {fullSlots}/8</h3>
       <div className={styles.grid}>
-        {benchSlots.map(({ index, card }) => {
-          if (!card) {
+        {benchSlots.map(({ index, ability }) => {
+          if (!ability) {
             return (
-              <div key={index} className={`${styles.card} ${styles.empty}`}>
+              <div key={index} className={`${styles.ability} ${styles.empty}`}>
                 <div className={styles.emptySlot}>{index + 1}</div>
               </div>
             );
           }
 
-          const cardDef = cardMap[card.cardId];
+          const abilityDef = abilityMap[ability.abilityId];
 
           return (
             <div
-              key={card.instanceId}
-              className={styles.card}
-              onClick={() => onMoveToSelected(card.instanceId)}
+              key={ability.instanceId}
+              className={styles.ability}
+              onClick={() => onMoveToSelected(ability.instanceId)}
               onContextMenu={(e) => {
                 e.preventDefault();
-                onSell(card.instanceId);
+                onSell(ability.instanceId);
               }}
               style={{ cursor: "pointer" }}
               title="左键移到选择栏 或右键出售"
             >
-              {!failedImages.has(card.cardId) ? (
+              {!failedImages.has(ability.abilityId) ? (
                 <img 
-                  src={`/game/icons/Skills/${cardDef?.name}.png`} 
-                  alt={cardDef?.name} 
+                  src={`/game/icons/Skills/${abilityDef?.name}.png`} 
+                  alt={abilityDef?.name} 
                   className={styles.portrait}
-                  onError={() => handleImageError(card.cardId)}
+                  onError={() => handleImageError(ability.abilityId)}
                 />
               ) : (
                 <div className={styles.portrait}>
-                  <div className={styles.portraitInner}>{cardDef?.name?.charAt(0) || "?"}</div>
+                  <div className={styles.portraitInner}>{abilityDef?.name?.charAt(0) || "?"}</div>
                 </div>
               )}
               <div className={styles.cardInfo}>
-                <h3 className={styles.cardName}>{cardDef?.name || "Unknown"}</h3>
+                <h3 className={styles.abilityName}>{abilityDef?.name || "Unknown"}</h3>
               </div>
             </div>
           );

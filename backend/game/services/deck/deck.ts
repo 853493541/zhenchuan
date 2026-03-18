@@ -4,19 +4,19 @@
  * Pure utilities — no DB, no game flow.
  */
 
-import { CardInstance } from "../../engine/state/types";
-import { CARDS } from "../../cards/cards";
+import { AbilityInstance } from "../../engine/state/types";
+import { ABILITIES } from "../../abilities/abilities";
 import { randomUUID } from "crypto";
 
-export function buildDeck(): CardInstance[] {
-  const deck: CardInstance[] = [];
+export function buildDeck(): AbilityInstance[] {
+  const deck: AbilityInstance[] = [];
 
-  const pushN = (cardId: string, n: number) => {
-    if (!CARDS[cardId]) {
-      throw new Error(`Unknown card id in deck: ${cardId}`);
+  const pushN = (abilityId: string, n: number) => {
+    if (!ABILITIES[abilityId]) {
+      throw new Error(`Unknown ability id in deck: ${abilityId}`);
     }
     for (let i = 0; i < n; i++) {
-      deck.push({ instanceId: randomUUID(), cardId, cooldown: 0 });
+      deck.push({ instanceId: randomUUID(), abilityId, cooldown: 0 });
     }
   };
 

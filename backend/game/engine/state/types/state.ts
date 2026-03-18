@@ -2,7 +2,7 @@
 // ==================== GAME STATE ====================
 
 import type { PlayerID } from "./common";
-import type { CardInstance } from "./cards";
+import type { AbilityInstance } from "./abilities";
 import type { ActiveBuff } from "./buffs";
 import type { GameEvent } from "./events";
 import type { Position, Velocity } from "./position";
@@ -13,8 +13,8 @@ export interface PlayerState {
   hp: number;
   maxHp?: number;
 
-  /** cards in hand */
-  hand: CardInstance[];
+  /** abilities in hand */
+  hand: AbilityInstance[];
 
   /** active buffs on player */
   buffs: ActiveBuff[];
@@ -67,5 +67,5 @@ export interface GameState {
   events: GameEvent[];
 
   /** legacy deck support (unused in arena mode) */
-  deck?: CardInstance[];
+  deck?: AbilityInstance[];
 }

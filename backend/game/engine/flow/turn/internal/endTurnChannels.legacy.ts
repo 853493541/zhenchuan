@@ -4,7 +4,7 @@ import { GameState, ActiveBuff } from "../../../state/types";
 import { shouldDodge } from "../../../rules/guards";
 import { resolveScheduledDamage } from "../../../utils/combatMath";
 import { pushDamageEvent } from "./combatEvents";
-import { getBuffSourceCardId, getBuffSourceCardName } from "./buffOrigin";
+import { getBuffSourceAbilityId, getBuffSourceAbilityName } from "./buffOrigin";
 import { applyLegacyHeal } from "./resolveScheduled";
 
 export function applyLegacyEndTurnChannels(params: {
@@ -29,8 +29,8 @@ export function applyLegacyEndTurnChannels(params: {
             state,
             actorUserId: current.userId,
             targetUserId: other.userId,
-            cardId: getBuffSourceCardId(buff),
-            cardName: getBuffSourceCardName(buff),
+            abilityId: getBuffSourceAbilityId(buff),
+            abilityName: getBuffSourceAbilityName(buff),
             value: dmg,
           });
         }
@@ -49,8 +49,8 @@ export function applyLegacyEndTurnChannels(params: {
             state,
             actorUserId: current.userId,
             targetUserId: other.userId,
-            cardId: getBuffSourceCardId(buff),
-            cardName: getBuffSourceCardName(buff),
+            abilityId: getBuffSourceAbilityId(buff),
+            abilityName: getBuffSourceAbilityName(buff),
             value: dmg,
           });
         }
@@ -77,8 +77,8 @@ export function applyLegacyEndTurnChannels(params: {
             state,
             actorUserId: current.userId,
             targetUserId: other.userId,
-            cardId: getBuffSourceCardId(buff),
-            cardName: getBuffSourceCardName(buff),
+            abilityId: getBuffSourceAbilityId(buff),
+            abilityName: getBuffSourceAbilityName(buff),
             value: dmg,
           });
         }

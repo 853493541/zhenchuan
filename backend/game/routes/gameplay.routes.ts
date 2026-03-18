@@ -1,5 +1,5 @@
 import express from "express";
-import { playCard, passTurn } from "../services";
+import { playAbility, passTurn } from "../services";
 import { getUserIdFromCookie } from "./auth";
 import { GameLoop } from "../engine/loop/GameLoop";
 import type { MovementInput } from "../engine/state/types";
@@ -9,10 +9,10 @@ const router = express.Router();
 router.post("/play", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, cardInstanceId, targetUserId } = req.body;
+    const { gameId, abilityInstanceId, targetUserId } = req.body;
     console.log(`[PLAY] Starting - userId: ${userId}, gameId: ${gameId}`);
 
-    const patch = await playCard(gameId, userId, cardInstanceId, targetUserId);
+    const patch = await playAbility(gameId, userId, abilityInstanceId, targetUserId);
     console.log(`[PLAY] ✅ Complete - version: ${patch.version}`);
     res.json(patch);
   } catch (err: any) {

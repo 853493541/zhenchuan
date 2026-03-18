@@ -1,9 +1,9 @@
-// backend/game/engine/state/types/cards.ts
+// backend/game/engine/state/types/abilities.ts
 
-import { CardEffect } from "./effects";
+import { AbilityEffect } from "./effects";
 import { BuffDefinition } from "./buffs";
 
-export type CardType =
+export type AbilityType =
   | "ATTACK"
   | "SUPPORT"
   | "CONTROL"
@@ -12,10 +12,10 @@ export type CardType =
 
 export type TargetType = "SELF" | "OPPONENT";
 
-export interface Card {
+export interface Ability {
   id: string;
   name: string;
-  type: CardType;
+  type: AbilityType;
   target: TargetType;
 
   /**
@@ -24,12 +24,12 @@ export interface Card {
    */
   gcd?: boolean;
 
-  effects: CardEffect[];
+  effects: AbilityEffect[];
   buffs?: BuffDefinition[];
 
   /**
    * Original design / source description (not shown to players)
-   * Used for dev reference and future card versioning
+   * Used for dev reference and future ability versioning
    */
   originalDescription?: string;
 
@@ -81,18 +81,18 @@ export interface Card {
   };
 
   /**
-   * If true this card is a common movement ability given to every player
+   * If true this ability is a common movement ability given to every player
    * automatically. It will NOT appear in the draft shop.
    */
   isCommon?: boolean;
 }
 
-export interface CardInstance {
+export interface AbilityInstance {
   instanceId: string;
-  cardId: string;
+  abilityId: string;
   
   /**
-   * Cooldown for this card instance
+   * Cooldown for this ability instance
    * - Starts at 0 (ready to play)
    * - Increments to 1 when played
    * - Decrements each turn

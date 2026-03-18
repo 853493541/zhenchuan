@@ -43,8 +43,8 @@ export interface ActiveBuff {
 
   effects: BuffEffect[];
 
-  sourceCardId?: string;
-  sourceCardName?: string;
+  sourceAbilityId?: string;
+  sourceAbilityName?: string;
 
   /**
    * Absolute Date.now() ms when this buff expires.

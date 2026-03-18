@@ -10,8 +10,8 @@ import {
   pushHealEvent,
 } from "./internal/combatEvents";
 import {
-  getBuffSourceCardId,
-  getBuffSourceCardName,
+  getBuffSourceAbilityId,
+  getBuffSourceAbilityName,
 } from "./internal/buffOrigin";
 
 export function applyStartTurnEffects(params: {
@@ -23,11 +23,11 @@ export function applyStartTurnEffects(params: {
 
   /**
    * ================= COOLDOWN DECREMENT =================
-   * Decrement cooldowns on all cards in hand at start of turn
+   * Decrement cooldowns on all abilities in hand at start of turn
    */
-  for (const card of me.hand) {
-    if (card.cooldown > 0) {
-      card.cooldown -= 1;
+  for (const ability of me.hand) {
+    if (ability.cooldown > 0) {
+      ability.cooldown -= 1;
     }
   }
 
@@ -52,8 +52,8 @@ export function applyStartTurnEffects(params: {
           state,
           actorUserId: enemy.userId,
           targetUserId: me.userId,
-          cardId: getBuffSourceCardId(buff),
-          cardName: getBuffSourceCardName(buff),
+          abilityId: getBuffSourceAbilityId(buff),
+          abilityName: getBuffSourceAbilityName(buff),
           value: dmg,
           effectType: "SCHEDULED_DAMAGE",
         });
@@ -74,8 +74,8 @@ export function applyStartTurnEffects(params: {
             state,
             actorUserId: me.userId,
             targetUserId: me.userId,
-            cardId: getBuffSourceCardId(buff),
-            cardName: getBuffSourceCardName(buff),
+            abilityId: getBuffSourceAbilityId(buff),
+            abilityName: getBuffSourceAbilityName(buff),
             value: applied,
           });
         }

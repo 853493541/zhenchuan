@@ -14,19 +14,19 @@
   margin-top: 10px;
 }
 
-.card {
+.ability {
   padding: 10px 14px;
   border: 1px solid #333;
   background: #fff;
   cursor: pointer;
 }
 
-.card:disabled {
+.ability:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.cardBack {
+.abilityBack {
   width: 60px;
   height: 80px;
   background: #333;

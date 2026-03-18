@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CardInstance, GameResponse } from "../types";
+import type { AbilityInstance, GameResponse } from "../types";
 
 /* ================= DIFF APPLY ================= */
 
@@ -395,7 +395,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       opponent: null,
       isMyTurn: false,
       isWinner: false,
-      playCard: async () => ({ ok: false }),
+      playAbility: async () => ({ ok: false }),
       endTurn: async () => ({ ok: false }),
       rtt,
     };
@@ -418,7 +418,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       opponent: null,
       isMyTurn: false,
       isWinner: false,
-      playCard: async () => ({ ok: false }),
+      playAbility: async () => ({ ok: false }),
       endTurn: async () => ({ ok: false }),
       rtt,
       refetch: fetchInitialGame,
@@ -441,7 +441,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
   /* ================= PLAY CARD ================= */
 
-  const playCard = async (card: CardInstance, targetUserId?: string) => {
+  const playAbility = async (ability: AbilityInstance, targetUserId?: string) => {
     // Real-time battles: no turn restrictions (both players act simultaneously)
     // Turn-based (draft): must be your turn
     const isRealTimeBattle = game?.tournament?.phase === "BATTLE";
@@ -459,7 +459,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         credentials: "include",
         body: JSON.stringify({
           gameId,
-          cardInstanceId: card.instanceId,
+          abilityInstanceId: ability.instanceId,
           targetUserId,
         }),
       });
@@ -530,7 +530,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     opponent,
     isMyTurn,
     isWinner,
-    playCard,
+    playAbility,
     endTurn,
     rtt,
     refetch: fetchInitialGame,

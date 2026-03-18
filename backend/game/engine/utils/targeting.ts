@@ -24,7 +24,7 @@ export function getEnemy(state: GameState, playerIndex: number) {
  * Resolve the actual target index for an effect.
  *
  * Rules:
- * - If applyTo is undefined → use card target (already resolved by caller)
+ * - If applyTo is undefined → use ability target (already resolved by caller)
  * - SELF → playerIndex
  * - OPPONENT → the other player
  */

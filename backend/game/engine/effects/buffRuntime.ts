@@ -3,7 +3,7 @@
 import { randomUUID } from "crypto";
 import {
   GameState,
-  Card,
+  Ability,
   GameEvent,
   ActiveBuff,
   BuffDefinition,
@@ -37,7 +37,7 @@ export function addBuff(params: {
   state: GameState;
   sourceUserId: string;
   targetUserId: string;
-  card: Card;
+  ability: Ability;
   buffTarget: { userId: string; buffs: ActiveBuff[] };
   buff: BuffDefinition;
 }) {
@@ -45,7 +45,7 @@ export function addBuff(params: {
     state,
     sourceUserId,
     targetUserId,
-    card,
+    ability,
     buffTarget,
     buff,
   } = params;
@@ -75,8 +75,8 @@ export function addBuff(params: {
     appliedAtTurn: state.turn, // informational only
     breakOnPlay: buff.breakOnPlay,
 
-    sourceCardId: card.id,
-    sourceCardName: card.name,
+    sourceAbilityId: ability.id,
+    sourceAbilityName: ability.name,
   };
 
   buffTarget.buffs.push(active);
@@ -86,8 +86,8 @@ export function addBuff(params: {
     type: "BUFF_APPLIED",
     actorUserId: sourceUserId,
     targetUserId,
-    cardId: card.id,
-    cardName: card.name,
+    abilityId: ability.id,
+    abilityName: ability.name,
 
     buffId: active.buffId,
     buffName: active.name,
@@ -106,8 +106,8 @@ export function pushBuffExpired(
     buffId: number;
     buffName: string;
     buffCategory: "BUFF" | "DEBUFF";
-    sourceCardId?: string;
-    sourceCardName?: string;
+    sourceAbilityId?: string;
+    sourceAbilityName?: string;
   }
 ) {
   const {
@@ -115,8 +115,8 @@ export function pushBuffExpired(
     buffId,
     buffName,
     buffCategory,
-    sourceCardId,
-    sourceCardName,
+    sourceAbilityId,
+    sourceAbilityName,
   } = params;
 
   pushEvent(state, {
@@ -124,8 +124,8 @@ export function pushBuffExpired(
     type: "BUFF_EXPIRED",
     actorUserId: targetUserId,
     targetUserId,
-    cardId: sourceCardId,
-    cardName: sourceCardName,
+    abilityId: sourceAbilityId,
+    abilityName: sourceAbilityName,
     buffId,
     buffName,
     buffCategory,

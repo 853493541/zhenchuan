@@ -14,28 +14,28 @@ import {
 
 export function applyImmediateEffects(params: {
   state: any;
-  card: any;
+  ability: any;
   source: any;
   target: any;
   enemy: any;
   playerIndex: number;
   targetIndex: number;
   opponentHpAtStart: number;
-  cardDodged: boolean;
+  abilityDodged: boolean;
 }) {
   const {
     state,
-    card,
+    ability,
     source,
     target,
     enemy,
     playerIndex,
     targetIndex,
     opponentHpAtStart,
-    cardDodged,
+    abilityDodged,
   } = params;
 
-  for (const effect of card.effects) {
+  for (const effect of ability.effects) {
     const effTargetIndex = resolveEffectTargetIndex(
       targetIndex,
       playerIndex,
@@ -44,11 +44,11 @@ export function applyImmediateEffects(params: {
     const effTarget = state.players[effTargetIndex];
     const enemyApplied = isEnemyEffect(source, effTarget, effect);
 
-    if (shouldSkipDueToDodge(cardDodged, enemyApplied)) continue;
+    if (shouldSkipDueToDodge(abilityDodged, enemyApplied)) continue;
 
     switch (effect.type) {
       case "DAMAGE":
-        handleDamage(state, source, effTarget, enemyApplied, card, effect);
+        handleDamage(state, source, effTarget, enemyApplied, ability, effect);
         break;
 
       case "BONUS_DAMAGE_IF_TARGET_HP_GT":
@@ -57,13 +57,13 @@ export function applyImmediateEffects(params: {
           source,
           target,
           opponentHpAtStart,
-          card,
+          ability,
           effect
         );
         break;
 
       case "HEAL":
-        handleHeal(state, source, effTarget, card, effect);
+        handleHeal(state, source, effTarget, ability, effect);
         break;
 
       case "DRAW":
@@ -75,20 +75,20 @@ export function applyImmediateEffects(params: {
         break;
 
       case "DASH":
-        handleDash(state, source, effTarget, enemyApplied, card, effect);
+        handleDash(state, source, effTarget, enemyApplied, ability, effect);
         break;
 
       case "DIRECTIONAL_DASH": {
         // Always targets self — the opponent position is used only for orientation
         const oppIdx = playerIndex === 0 ? 1 : 0;
         const oppPos = state.players[oppIdx].position;
-        handleDirectionalDash(state, source, oppPos, card, effect);
+        handleDirectionalDash(state, source, oppPos, ability, effect);
         break;
       }
 
       case "WUJIAN_CHANNEL":
       case "XINZHENG_CHANNEL":
-        handleChannelEffect(state, source, enemy, card, effect);
+        handleChannelEffect(state, source, enemy, ability, effect);
         break;
 
       default:

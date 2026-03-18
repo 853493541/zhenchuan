@@ -1,7 +1,7 @@
 // backend/game/engine/state/types/effects.ts
 
 import { TurnPhase, ScheduledTarget, ScheduledTurnOf } from "./scheduling";
-import { TargetType } from "./cards";
+import { TargetType } from "./abilities";
 
 export type EffectType =
   | "DAMAGE"
@@ -33,9 +33,9 @@ export type EffectType =
   | "PERIODIC_HEAL";
 
 /**
- * Immediate card effects
+ * Immediate ability effects
  */
-export interface CardEffect {
+export interface AbilityEffect {
   type: EffectType;
   value?: number;
   chance?: number;
@@ -53,7 +53,7 @@ export interface CardEffect {
 /**
  * Buff-contained effects
  */
-export type BuffEffect = Omit<CardEffect, "allowWhileControlled"> & {
+export type BuffEffect = Omit<AbilityEffect, "allowWhileControlled"> & {
   when?: TurnPhase;
   target?: ScheduledTarget;
   turnOf?: ScheduledTurnOf;

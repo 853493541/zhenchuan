@@ -1,6 +1,6 @@
-// engine/flow/applyCardBuffs.ts
+// engine/flow/applyAbilityBuffs.ts
 
-import { GameState, Card, ActiveBuff } from "../../state/types";
+import { GameState, Ability, ActiveBuff } from "../../state/types";
 import {
   shouldSkipDueToDodge,
   blocksNewBuffByUntargetable,
@@ -9,10 +9,10 @@ import {
 import { handleApplyBuffs } from "../../effects/handlers";
 
 /**
- * Apply persistent buffs defined on a card (card.buffs).
+ * Apply persistent buffs defined on a ability (ability.buffs).
  *
  * IMPORTANT:
- * - card.buffs contains BuffDefinition[] (static definitions)
+ * - ability.buffs contains BuffDefinition[] (static definitions)
  * - ActiveBuffs exist on players (runtime) and are created ONLY by handlers
  *
  * Rules preserved:
@@ -21,27 +21,27 @@ import { handleApplyBuffs } from "../../effects/handlers";
  * - Control immunity blocks CONTROL buffs only
  * - Buffs are applied one-by-one (legacy behavior)
  */
-export function applyCardBuffs(params: {
+export function applyAbilityBuffs(params: {
   state: GameState;
-  card: Card;
+  ability: Ability;
   source: { userId: string; buffs: ActiveBuff[] };
   target: { userId: string; buffs: ActiveBuff[] };
-  cardDodged: boolean;
+  abilityDodged: boolean;
 }) {
-  const { state, card, source, target, cardDodged } = params;
+  const { state, ability, source, target, abilityDodged } = params;
 
-  if (!Array.isArray(card.buffs) || card.buffs.length === 0) return;
+  if (!Array.isArray(ability.buffs) || ability.buffs.length === 0) return;
 
-  const buffTarget = card.target === "SELF" ? source : target;
+  const buffTarget = ability.target === "SELF" ? source : target;
   const enemyApplied = buffTarget.userId !== source.userId;
 
   // Dodge cancels enemy-applied buffs only
-  if (shouldSkipDueToDodge(cardDodged, enemyApplied)) return;
+  if (shouldSkipDueToDodge(abilityDodged, enemyApplied)) return;
 
   // Untargetable blocks enemy-applied NEW buffs (guard needs target.buffs)
   if (blocksNewBuffByUntargetable(source, buffTarget)) return;
 
-  for (const buff of card.buffs) {
+  for (const buff of ability.buffs) {
     const isControl =
       Array.isArray(buff.effects) &&
       buff.effects.some((e) => e.type === "CONTROL");
@@ -52,17 +52,17 @@ export function applyCardBuffs(params: {
     }
 
     // Legacy behavior: apply buffs one-by-one
-    const originalBuffs: Card["buffs"] = card.buffs;
-    card.buffs = [buff];
+    const originalBuffs: Ability["buffs"] = ability.buffs;
+    ability.buffs = [buff];
 
     handleApplyBuffs({
       state,
-      card,
+      ability,
       source,
       target: buffTarget,
       isEnemyEffect: enemyApplied,
     });
 
-    card.buffs = originalBuffs;
+    ability.buffs = originalBuffs;
   }
 }

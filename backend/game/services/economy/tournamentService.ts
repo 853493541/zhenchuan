@@ -40,11 +40,11 @@ export function initializeTournament(playerIds: [PlayerID, PlayerID]): Tournamen
     battleHistory: [],
     shop: {
       [playerIds[0]]: {
-        cards: generateShop(1),
+        abilities: generateShop(1),
         locked: [false, false, false, false, false],
       },
       [playerIds[1]]: {
-        cards: generateShop(1),
+        abilities: generateShop(1),
         locked: [false, false, false, false, false],
       },
     },
@@ -126,7 +126,7 @@ export function completeBattle(
     console.log(`  Player ${playerId}: Selected=${selectedCount}, Bench=${benchCount}, Gold=${eco.gold}`);
     
     tournament.shop[playerId] = {
-      cards: generateShop(eco.level),
+      abilities: generateShop(eco.level),
       locked: [false, false, false, false, false, false],
     };
   }

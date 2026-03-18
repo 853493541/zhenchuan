@@ -154,8 +154,8 @@ export class GameLoop {
 
     // 1b. Decrement ability cooldowns each tick
     this.state.players.forEach((player) => {
-      player.hand.forEach((card) => {
-        if (card.cooldown > 0) card.cooldown--;
+      player.hand.forEach((ability) => {
+        if (ability.cooldown > 0) ability.cooldown--;
       });
     });
 
@@ -224,12 +224,12 @@ export class GameLoop {
           value: p.facing ?? { x: 0, y: 1 },
         });
       });
-      // Append per-card cooldown patches so clients stay in sync
+      // Append per-ability cooldown patches so clients stay in sync
       this.state.players.forEach((p, pidx) => {
-        p.hand.forEach((card, cidx) => {
+        p.hand.forEach((ability, cidx) => {
           diff.push({
             path: `/players/${pidx}/hand/${cidx}/cooldown`,
-            value: card.cooldown,
+            value: ability.cooldown,
           });
         });
       });

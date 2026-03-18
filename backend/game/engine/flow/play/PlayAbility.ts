@@ -1,18 +1,18 @@
-// engine/flow/applyCard.ts
+// engine/flow/applyAbility.ts
 
-import { GameState, Card } from "../../state/types";
+import { GameState, Ability } from "../../state/types";
 import { getEnemy } from "../../utils/targeting";
 import { pushEvent } from "../../../services/flow/events";
 
 import { breakOnPlay } from "./breakOnPlay";
-import { computeCardDodge } from "../../rules/dodge";
+import { computeAbilityDodge } from "../../rules/dodge";
 import { applyImmediateEffects } from "./immediateEffects";
-import { applyCardBuffs } from "./buffs";
+import { applyAbilityBuffs } from "./buffs";
 import { checkGameOver } from "../turn/checkGameOver";
 
-export function applyCard(
+export function applyAbility(
   state: GameState,
-  card: Card,
+  ability: Ability,
   playerIndex: number,
   targetIndex: number
 ) {
@@ -24,41 +24,41 @@ export function applyCard(
 
   /**
    * ================= GCD SPEND =================
-   * Validation already happened in validatePlayCard
+   * Validation already happened in validatePlayAbility
    * This is the single authoritative place where GCD is consumed
    */
   pushEvent(state, {
     turn: state.turn,
-    type: "PLAY_CARD",
+    type: "PLAY_ABILITY",
     actorUserId: source.userId,
     targetUserId: target.userId,
-    cardId: card.id,
-    cardName: card.name,
+    abilityId: ability.id,
+    abilityName: ability.name,
   });
 
   breakOnPlay(source);
 
   const opponentHpAtStart = target.hp;
-  const cardDodged = computeCardDodge(card, target);
+  const abilityDodged = computeAbilityDodge(ability, target);
 
   applyImmediateEffects({
     state,
-    card,
+    ability,
     source,
     target,
     enemy,
     playerIndex,
     targetIndex,
     opponentHpAtStart,
-    cardDodged,
+    abilityDodged,
   });
 
-  applyCardBuffs({
+  applyAbilityBuffs({
     state,
-    card,
+    ability,
     source,
     target,
-    cardDodged,
+    abilityDodged,
   });
 
   checkGameOver(state);

@@ -2,8 +2,8 @@
 
 import {
   GameState,
-  Card,
-  CardEffect,
+  Ability,
+  AbilityEffect,
   ActiveBuff,
 } from "../../state/types";
 import { blocksEnemyTargeting } from "../../rules/guards";
@@ -23,8 +23,8 @@ export function handleChannelEffect(
   state: GameState,
   source: { userId: string; hp: number; buffs: ActiveBuff[] },
   enemy: { userId: string; hp: number; buffs: ActiveBuff[] },
-  card: Card,
-  effect: CardEffect
+  ability: Ability,
+  effect: AbilityEffect
 ) {
   // 心证：no immediate tick
   if (effect.type === "XINZHENG_CHANNEL") return;
@@ -38,8 +38,8 @@ export function handleChannelEffect(
       type: "DAMAGE",
       actorUserId: source.userId,
       targetUserId: enemy.userId,
-      cardId: card.id,
-      cardName: card.name,
+      abilityId: ability.id,
+      abilityName: ability.name,
       effectType: "DAMAGE",
       value: 0,
     });
@@ -57,8 +57,8 @@ export function handleChannelEffect(
       type: "DAMAGE",
       actorUserId: source.userId,
       targetUserId: enemy.userId,
-      cardId: card.id,
-      cardName: card.name,
+      abilityId: ability.id,
+      abilityName: ability.name,
       effectType: "DAMAGE",
       value: dmg,
     });
@@ -76,8 +76,8 @@ export function handleChannelEffect(
       type: "HEAL",
       actorUserId: source.userId,
       targetUserId: source.userId,
-      cardId: card.id,
-      cardName: card.name,
+      abilityId: ability.id,
+      abilityName: ability.name,
       effectType: "HEAL",
       value: applied,
     });

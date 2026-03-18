@@ -1,10 +1,10 @@
 /* =========================================================
-   Card / Core Types
+   Ability / Core Types
 ========================================================= */
 
-export interface CardInstance {
+export interface AbilityInstance {
   instanceId: string;
-  cardId: string;
+  abilityId: string;
   cooldown?: number;
 }
 
@@ -24,7 +24,7 @@ export type BuffEffect = {
 };
 
 /**
- * Runtime buff applied by cards
+ * Runtime buff applied by abilities
  * (direct mirror of backend ActiveBuff)
  */
 export interface ActiveBuff {
@@ -45,8 +45,8 @@ export interface ActiveBuff {
 
   breakOnPlay?: boolean;
 
-  sourceCardId?: string;
-  sourceCardName?: string;
+  sourceAbilityId?: string;
+  sourceAbilityName?: string;
 }
 
 /* =========================================================
@@ -57,7 +57,7 @@ export interface PlayerState {
   userId: string;
   username?: string;
   hp: number;
-  hand: CardInstance[];
+  hand: AbilityInstance[];
   buffs: ActiveBuff[];
   position?: { x: number; y: number; z?: number };
   velocity?: { vx: number; vy: number; vz?: number };
@@ -71,7 +71,7 @@ export interface PlayerState {
 ========================================================= */
 
 export type GameEventType =
-  | "PLAY_CARD"
+  | "PLAY_ABILITY"
   | "DAMAGE"
   | "HEAL"
   | "BUFF_APPLIED"
@@ -85,8 +85,8 @@ export interface GameEvent {
   actorUserId: string;
   targetUserId?: string;
 
-  cardId?: string;
-  cardName?: string;
+  abilityId?: string;
+  abilityName?: string;
 
   value?: number;
 
@@ -135,7 +135,7 @@ export interface PlayerEconomy {
 }
 
 export interface Shop {
-  cards: CardInstance[];
+  abilities: AbilityInstance[];
   locked: boolean[];
 }
 
@@ -143,8 +143,8 @@ export interface TournamentState {
   battleNumber: number;
   gameHp: Record<string, number>;
   economy: Record<string, PlayerEconomy>;
-  selectedAbilities: Record<string, CardInstance[]>;
-  bench: Record<string, CardInstance[]>; // New: 12-slot bench area
+  selectedAbilities: Record<string, AbilityInstance[]>;
+  bench: Record<string, AbilityInstance[]>; // New: 12-slot bench area
   battleHistory: any[];
   shop: Record<string, Shop>;
   phase: "DRAFT" | "BATTLE" | "GAME_OVER";

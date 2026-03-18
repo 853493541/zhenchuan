@@ -1,13 +1,13 @@
 // backend/game/services/playService.ts
 /**
- * Gameplay actions: play card / pass turn
+ * Gameplay actions: play ability / pass turn
  */
 
 import GameSession from "../../models/GameSession";
-import { CARDS } from "../../cards/cards";
-import { applyEffects } from "../../engine/flow/play/executeCard";
+import { ABILITIES } from "../../abilities/abilities";
+import { applyEffects } from "../../engine/flow/play/executeAbility";
 import { resolveTurnEnd } from "../../engine/flow/turn/advanceTurn";
-import { validatePlayCard, validateCastAbility } from "../../engine/rules/validateAction";
+import { validatePlayAbility, validateCastAbility } from "../../engine/rules/validateAction";
 import { GameState } from "../../engine/state/types";
 import { GameLoop } from "../../engine/loop/GameLoop";
 
@@ -27,10 +27,10 @@ function pruneOldEvents(state: GameState, keepTurns = 10) {
 
 /* ================= PLAY CARD ================= */
 
-export async function playCard(
+export async function playAbility(
   gameId: string,
   userId: string,
-  cardInstanceId: string,
+  abilityInstanceId: string,
   targetUserId?: string
 ) {
   const startTime = performance.now();
@@ -41,10 +41,10 @@ export async function playCard(
 
   if (loop) {
     // ✅ REAL-TIME BATTLE LOGIC
-    return await playCastAbility(loop, gameId, userId, cardInstanceId, targetUserId);
+    return await playCastAbility(loop, gameId, userId, abilityInstanceId, targetUserId);
   } else {
     // ✅ TURN-BASED BATTLE LOGIC (legacy draft phase)
-    return await playCardTurnBased(gameId, userId, cardInstanceId);
+    return await playAbilityTurnBased(gameId, userId, abilityInstanceId);
   }
 }
 
@@ -55,7 +55,7 @@ async function playCastAbility(
   loop: GameLoop,
   gameId: string,
   userId: string,
-  cardInstanceId: string,
+  abilityInstanceId: string,
   targetUserId?: string
 ) {
   const state = loop.getState();
@@ -66,61 +66,61 @@ async function playCastAbility(
   }
 
   // Validate ability can be cast (cooldown, range, silence)
-  validateCastAbility(state, playerIndex, cardInstanceId);
+  validateCastAbility(state, playerIndex, abilityInstanceId);
 
   const prevState: GameState = structuredClone(state);
 
   const player = state.players[playerIndex];
-  // Accept instanceId or cardId (common abilities may arrive as cardId)
+  // Accept instanceId or abilityId (common abilities may arrive as abilityId)
   let idx = player.hand.findIndex(
-    (c) => c.instanceId === cardInstanceId || (c.cardId ?? (c as any).id) === cardInstanceId
+    (c) => c.instanceId === abilityInstanceId || (c.abilityId ?? (c as any).id) === abilityInstanceId
   );
 
   // Auto-inject common abilities missing from hand (legacy games)
   if (idx === -1) {
-    const commonCard = CARDS[cardInstanceId];
-    if (commonCard && (commonCard as any).isCommon) {
+    const commonAbility = ABILITIES[abilityInstanceId];
+    if (commonAbility && (commonAbility as any).isCommon) {
       const { randomUUID } = require('crypto');
-      player.hand.push({ instanceId: cardInstanceId, cardId: cardInstanceId, cooldown: 0 });
+      player.hand.push({ instanceId: abilityInstanceId, abilityId: abilityInstanceId, cooldown: 0 });
       idx = player.hand.length - 1;
     }
   }
 
   if (idx === -1) {
-    throw new Error("ERR_CARD_NOT_IN_HAND");
+    throw new Error("ERR_ABILITY_NOT_IN_HAND");
   }
   
   const played = player.hand[idx];
-  console.log("[playCastAbility] DEBUG - played card:", {
+  console.log("[playCastAbility] DEBUG - played ability:", {
     instanceId: played.instanceId,
-    cardId: played.cardId,
+    abilityId: played.abilityId,
     id: (played as any).id,
     keys: Object.keys(played),
   });
-  // Card can be referenced by either .cardId or .id (depending on how it was populated)
-  const cardId = played.cardId || (played as any).id;
-  const card = CARDS[cardId];
+  // Ability can be referenced by either .abilityId or .id (depending on how it was populated)
+  const abilityId = played.abilityId || (played as any).id;
+  const ability = ABILITIES[abilityId];
   
-  if (!card) {
-    throw new Error("ERR_CARD_NOT_FOUND");
+  if (!ability) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
   }
 
-  const targetIndex = card.target === 'SELF' ? playerIndex : (playerIndex === 0 ? 1 : 0);
+  const targetIndex = ability.target === 'SELF' ? playerIndex : (playerIndex === 0 ? 1 : 0);
 
   // Apply ability effects
-  applyEffects(state, card, playerIndex, targetIndex);
+  applyEffects(state, ability, playerIndex, targetIndex);
   applyOnPlayBuffEffects(state, playerIndex);
 
-  // Set per-card cooldown (ticks at 60 Hz; e.g. 180 = 3 seconds)
-  played.cooldown = card.cooldownTicks ?? 3;
+  // Set per-ability cooldown (ticks at 60 Hz; e.g. 180 = 3 seconds)
+  played.cooldown = ability.cooldownTicks ?? 3;
 
   // 轻功 GCD: casting any 轻功 ability imposes a 3-second minimum cooldown on the other 3
   const QINGGONG_IDS = new Set(['nieyun_zhuyue', 'lingxiao_lansheng', 'yaotai_zhenhe', 'yingfeng_huilang']);
   const QINGGONG_GCD_TICKS = 60; // 1 s × 60 Hz
-  if (QINGGONG_IDS.has(cardId)) {
+  if (QINGGONG_IDS.has(abilityId)) {
     for (const inst of player.hand) {
-      const instCardId = (inst as any).cardId || (inst as any).id;
-      if (instCardId !== cardId && QINGGONG_IDS.has(instCardId)) {
+      const instCardId = (inst as any).abilityId || (inst as any).id;
+      if (instCardId !== abilityId && QINGGONG_IDS.has(instCardId)) {
         inst.cooldown = Math.max(inst.cooldown, QINGGONG_GCD_TICKS);
       }
     }
@@ -128,11 +128,11 @@ async function playCastAbility(
 
   // Draft GCD: casting a gcd:true draft ability imposes a 1.5-second minimum CD on other gcd:true draft abilities
   const DRAFT_GCD_TICKS = 30; // 0.5s × 60 Hz
-  if ((card as any).gcd === true && !(card as any).isCommon) {
+  if ((ability as any).gcd === true && !(ability as any).isCommon) {
     for (const inst of player.hand) {
-      const instCardId = (inst as any).cardId || (inst as any).id;
-      if (instCardId !== cardId) {
-        const instCard = CARDS[instCardId];
+      const instCardId = (inst as any).abilityId || (inst as any).id;
+      if (instCardId !== abilityId) {
+        const instCard = ABILITIES[instCardId];
         if (instCard && (instCard as any).gcd === true && !(instCard as any).isCommon) {
           inst.cooldown = Math.max(inst.cooldown, DRAFT_GCD_TICKS);
         }
@@ -158,7 +158,7 @@ async function playCastAbility(
   });
 
   console.log(
-    `[CastAbility] Player ${playerIndex} cast ${card.name} in game ${gameId}`
+    `[CastAbility] Player ${playerIndex} cast ${ability.name} in game ${gameId}`
   );
 
   return {
@@ -172,10 +172,10 @@ async function playCastAbility(
 /**
  * Turn-based battle: Original behavior
  */
-async function playCardTurnBased(
+async function playAbilityTurnBased(
   gameId: string,
   userId: string,
-  cardInstanceId: string
+  abilityInstanceId: string
 ) {
   const dbFetchStart = performance.now();
 
@@ -197,19 +197,19 @@ async function playCardTurnBased(
   const prevState: GameState = structuredClone(state);
 
   const playerIndex = state.players.findIndex((p) => p.userId === userId);
-  validatePlayCard(state, playerIndex, cardInstanceId);
+  validatePlayAbility(state, playerIndex, abilityInstanceId);
 
   const player = state.players[playerIndex];
-  const idx = player.hand.findIndex((c) => c.instanceId === cardInstanceId);
+  const idx = player.hand.findIndex((c) => c.instanceId === abilityInstanceId);
   const played = player.hand[idx];
 
-  // Card can be referenced by either .cardId or .id (depending on how it was populated)
-  const cardId = played.cardId || (played as any).id;
-  const card = CARDS[cardId];
+  // Ability can be referenced by either .abilityId or .id (depending on how it was populated)
+  const abilityId = played.abilityId || (played as any).id;
+  const ability = ABILITIES[abilityId];
   const targetIndex =
-    card.target === "SELF" ? playerIndex : playerIndex === 0 ? 1 : 0;
+    ability.target === "SELF" ? playerIndex : playerIndex === 0 ? 1 : 0;
 
-  applyEffects(state, card, playerIndex, targetIndex);
+  applyEffects(state, ability, playerIndex, targetIndex);
   applyOnPlayBuffEffects(state, playerIndex);
 
   // Set cooldown after ability is used (2 turn cooldown)
@@ -248,7 +248,7 @@ async function playCardTurnBased(
   const cacheStatus = cacheHit ? "HIT" : "MISS";
 
   console.log(
-    `[Timing] PlayCard ${gameId}: DBFetch=${dbFetchTime.toFixed(2)}ms (${cacheStatus}), Diff=${diffTime.toFixed(2)}ms, Total=${totalTime?.toFixed(2) || "?"}ms, Patches=${diff.length}`
+    `[Timing] PlayAbility ${gameId}: DBFetch=${dbFetchTime.toFixed(2)}ms (${cacheStatus}), Diff=${diffTime.toFixed(2)}ms, Total=${totalTime?.toFixed(2) || "?"}ms, Patches=${diff.length}`
   );
 
   return {

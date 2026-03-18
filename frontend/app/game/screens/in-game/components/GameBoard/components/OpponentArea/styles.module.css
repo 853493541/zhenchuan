@@ -36,7 +36,7 @@
   align-items: center;
 }
 
-.cardBackSmall {
+.abilityBackSmall {
   width: 42px;
   height: 58px;
   border-radius: 7px;
@@ -47,7 +47,7 @@
   justify-content: center;
 }
 
-.cardCountSmall {
+.abilityCountSmall {
   font-size: 20px;
   font-weight: 800;
   color: #e5e7eb;
@@ -59,12 +59,12 @@
     gap: 6px;
   }
 
-  .cardBackSmall {
+  .abilityBackSmall {
     width: 36px;
     height: 50px;
   }
 
-  .cardCountSmall {
+  .abilityCountSmall {
     font-size: 18px;
   }
 }

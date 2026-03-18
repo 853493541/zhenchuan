@@ -4,66 +4,66 @@
 
 "use client";
 
-import type { CardInstance } from "../types";
+import type { AbilityInstance } from "../types";
 import { useState } from "react";
 import styles from "./SelectedAbilities.module.css";
 
 type Props = {
-  selected: CardInstance[];
-  cardMap: Record<string, any>;
-  onMoveToBench?: (cardInstanceId: string) => Promise<void>;
+  selected: AbilityInstance[];
+  abilityMap: Record<string, any>;
+  onMoveToBench?: (abilityInstanceId: string) => Promise<void>;
   loading?: boolean;
 };
 
 export default function SelectedAbilities({ 
   selected, 
-  cardMap,
+  abilityMap,
   onMoveToBench,
   loading = false,
 }: Props) {
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
-  const handleImageError = (cardId: string) => {
-    setFailedImages(prev => new Set([...prev, cardId]));
+  const handleImageError = (abilityId: string) => {
+    setFailedImages(prev => new Set([...prev, abilityId]));
   };
   return (
     <div className={styles.container}>
       <h2 className={styles.title}>⚔️ 出战阵容</h2>
       <div className={styles.slotGrid}>
         {Array.from({ length: 6 }).map((_, idx) => {
-          const card = selected[idx];
-          const cardDef = card ? cardMap[card.cardId] : null;
+          const ability = selected[idx];
+          const abilityDef = ability ? abilityMap[ability.abilityId] : null;
 
           return (
             <div 
               key={idx} 
-              className={`${styles.slot} ${card ? styles.selected : styles.empty}`}
-              onClick={() => card && onMoveToBench && onMoveToBench(card.instanceId)}
+              className={`${styles.slot} ${ability ? styles.selected : styles.empty}`}
+              onClick={() => ability && onMoveToBench && onMoveToBench(ability.instanceId)}
               onContextMenu={(e) => {
                 e.preventDefault();
-                if (card && onMoveToBench) {
-                  onMoveToBench(card.instanceId);
+                if (ability && onMoveToBench) {
+                  onMoveToBench(ability.instanceId);
                 }
               }}
-              style={card && onMoveToBench ? { cursor: "pointer" } : {}}
-              title={card ? "左键点击或右键移到备战区" : ""}
+              style={ability && onMoveToBench ? { cursor: "pointer" } : {}}
+              title={ability ? "左键点击或右键移到备战区" : ""}
             >
-              {cardDef ? (
+              {abilityDef ? (
                 <>
-                  {!failedImages.has(card.cardId) ? (
+                  {!failedImages.has(ability.abilityId) ? (
                     <img 
-                      src={`/game/icons/Skills/${cardDef.name}.png`} 
-                      alt={cardDef.name} 
+                      src={`/game/icons/Skills/${abilityDef.name}.png`} 
+                      alt={abilityDef.name} 
                       className={styles.portrait}
-                      onError={() => handleImageError(card.cardId)}
+                      onError={() => handleImageError(ability.abilityId)}
                     />
                   ) : (
                     <div className={styles.portrait}>
-                      <div className={styles.portraitInner}>{cardDef.name.charAt(0)}</div>
+                      <div className={styles.portraitInner}>{abilityDef.name.charAt(0)}</div>
                     </div>
                   )}
                   <div className={styles.cardInfo}>
-                    <h3 className={styles.cardName}>{cardDef.name}</h3>
+                    <h3 className={styles.abilityName}>{abilityDef.name}</h3>
                   </div>
                 </>
               ) : (

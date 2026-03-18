@@ -11,10 +11,10 @@ import { getIncomePerRound } from "../services/economy/economyService";
 import { initializeBattleState } from "../services/battle/battleService";
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
 import { GameLoop } from "../engine/loop/GameLoop";
-import { CARDS } from "../cards/cards";
+import { ABILITIES } from "../abilities/abilities";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { diffState } from "../services/flow/stateDiff";
-import type { CardInstance } from "../engine/state/types";
+import type { AbilityInstance } from "../engine/state/types";
 
 const router = express.Router();
 
@@ -37,7 +37,7 @@ router.get("/draft/shop/:gameId", async (req, res) => {
     const eco = game.tournament.economy[userId];
 
     res.json({
-      shop: shop.cards,
+      shop: shop.abilities,
       locked: shop.locked,
       gold: eco.gold,
       level: eco.level,
@@ -49,12 +49,12 @@ router.get("/draft/shop/:gameId", async (req, res) => {
 
 /**
  * POST /draft/select - Select an ability from shop to add to selection
- * Body: { gameId, cardInstanceId, destination: "selected" | "bench" }
+ * Body: { gameId, abilityInstanceId, destination: "selected" | "bench" }
  */
 router.post("/draft/select", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, cardInstanceId, destination = "selected" } = req.body;
+    const { gameId, abilityInstanceId, destination = "selected" } = req.body;
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -74,22 +74,22 @@ router.post("/draft/select", async (req, res) => {
       return res.status(400).json({ error: "备战区已满 (最多8个)" });
     }
 
-    // Find card in shop
-    const cardIndex = shop.cards.findIndex((c: any) => c.instanceId === cardInstanceId);
-    if (cardIndex === -1) {
-      return res.status(400).json({ error: "卡牌不在商店中" });
+    // Find ability in shop
+    const abilityIndex = shop.abilities.findIndex((c: any) => c.instanceId === abilityInstanceId);
+    if (abilityIndex === -1) {
+      return res.status(400).json({ error: "技能不在商店中" });
     }
 
-    // Move card from shop to destination
-    const [card] = shop.cards.splice(cardIndex, 1);
+    // Move ability from shop to destination
+    const [ability] = shop.abilities.splice(abilityIndex, 1);
     if (destination === "selected") {
-      selected.push(card);
+      selected.push(ability);
     } else {
-      bench.push(card);
+      bench.push(ability);
     }
 
     // Remove locked status for this position
-    shop.locked.splice(cardIndex, 1);
+    shop.locked.splice(abilityIndex, 1);
 
     game.markModified("tournament");
     await game.save();
@@ -97,7 +97,7 @@ router.post("/draft/select", async (req, res) => {
     res.json({
       selectedAbilities: selected,
       bench: bench,
-      shop: shop.cards,
+      shop: shop.abilities,
       locked: shop.locked,
     });
   } catch (err: any) {
@@ -106,13 +106,13 @@ router.post("/draft/select", async (req, res) => {
 });
 
 /**
- * POST /draft/move - Move card between selected and bench
- * Body: { gameId, cardInstanceId, from: "selected" | "bench", to: "selected" | "bench" }
+ * POST /draft/move - Move ability between selected and bench
+ * Body: { gameId, abilityInstanceId, from: "selected" | "bench", to: "selected" | "bench" }
  */
 router.post("/draft/move", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, cardInstanceId, from, to } = req.body;
+    const { gameId, abilityInstanceId, from, to } = req.body;
 
     if (!from || !to || from === to) {
       return res.status(400).json({ error: "Invalid move" });
@@ -134,18 +134,18 @@ router.post("/draft/move", async (req, res) => {
       return res.status(400).json({ error: "备战区已满 (最多8个)" });
     }
 
-    // Find and move card
+    // Find and move ability
     const fromArray = from === "selected" ? selected : bench;
-    const cardIdx = fromArray.findIndex((c: CardInstance) => c.instanceId === cardInstanceId);
-    if (cardIdx === -1) {
-      return res.status(400).json({ error: "卡牌不存在" });
+    const abilityIdx = fromArray.findIndex((c: AbilityInstance) => c.instanceId === abilityInstanceId);
+    if (abilityIdx === -1) {
+      return res.status(400).json({ error: "技能不存在" });
     }
 
-    const [card] = fromArray.splice(cardIdx, 1);
+    const [ability] = fromArray.splice(abilityIdx, 1);
     if (to === "selected") {
-      selected.push(card);
+      selected.push(ability);
     } else {
-      bench.push(card);
+      bench.push(ability);
     }
 
     game.markModified("tournament");
@@ -161,13 +161,13 @@ router.post("/draft/move", async (req, res) => {
 });
 
 /**
- * POST /draft/sell - Sell a benched card for gold
- * Body: { gameId, cardInstanceId }
+ * POST /draft/sell - Sell a benched ability for gold
+ * Body: { gameId, abilityInstanceId }
  */
 router.post("/draft/sell", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, cardInstanceId } = req.body;
+    const { gameId, abilityInstanceId } = req.body;
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -177,16 +177,16 @@ router.post("/draft/sell", async (req, res) => {
     const bench = game.tournament.bench[userId];
     const eco = game.tournament.economy[userId];
 
-    // Find and remove card from bench
-    const cardIdx = bench.findIndex((c: CardInstance) => c.instanceId === cardInstanceId);
-    if (cardIdx === -1) {
-      return res.status(400).json({ error: "卡牌不在备战区" });
+    // Find and remove ability from bench
+    const abilityIdx = bench.findIndex((c: AbilityInstance) => c.instanceId === abilityInstanceId);
+    if (abilityIdx === -1) {
+      return res.status(400).json({ error: "技能不在备战区" });
     }
 
-    const [card] = bench.splice(cardIdx, 1);
+    const [ability] = bench.splice(abilityIdx, 1);
     
-    // Get card cost from preload data (default 3 if not found)
-    const cardCost = 3; // You could look this up from card definitions
+    // Get ability cost from preload data (default 3 if not found)
+    const cardCost = 3; // You could look this up from ability definitions
     eco.gold += cardCost;
 
     game.markModified("tournament");
@@ -228,7 +228,7 @@ router.post("/draft/refresh", async (req, res) => {
     const newCards = generateShop(eco.level);
 
     game.tournament.shop[userId] = {
-      cards: newCards,
+      abilities: newCards,
       locked: [false, false, false, false, false],
     };
 
@@ -245,13 +245,13 @@ router.post("/draft/refresh", async (req, res) => {
 });
 
 /**
- * POST /draft/lock - Toggle lock on a shop card (prevents refresh removal)
- * Body: { gameId, cardIndex }
+ * POST /draft/lock - Toggle lock on a shop ability (prevents refresh removal)
+ * Body: { gameId, abilityIndex }
  */
 router.post("/draft/lock", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, cardIndex } = req.body;
+    const { gameId, abilityIndex } = req.body;
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -260,11 +260,11 @@ router.post("/draft/lock", async (req, res) => {
 
     const shop = game.tournament.shop[userId];
 
-    if (cardIndex < 0 || cardIndex >= shop.locked.length) {
-      return res.status(400).json({ error: "Invalid card index" });
+    if (abilityIndex < 0 || abilityIndex >= shop.locked.length) {
+      return res.status(400).json({ error: "Invalid ability index" });
     }
 
-    shop.locked[cardIndex] = !shop.locked[cardIndex];
+    shop.locked[abilityIndex] = !shop.locked[abilityIndex];
 
     game.markModified("tournament");
     await game.save();
@@ -297,7 +297,7 @@ router.post("/draft/finalize", async (req, res) => {
 
     const selected = game.tournament.selectedAbilities[userId];
 
-    // Players can go to battle with any number of cards (including 0)
+    // Players can go to battle with any number of abilities (including 0)
     // Mark this player as ready
     if (!game.draftReady) game.draftReady = {};
     (game.draftReady as any)[userId] = true;
@@ -336,40 +336,40 @@ router.post("/draft/finalize", async (req, res) => {
         player1Id,
         player0SelectedLength: player0Selected?.length || 0,
         player1SelectedLength: player1Selected?.length || 0,
-        player0SelectedCards: player0Selected?.map((c: any) => c.cardId) || [],
-        player1SelectedCards: player1Selected?.map((c: any) => c.cardId) || [],
+        player0SelectedCards: player0Selected?.map((c: any) => c.abilityId) || [],
+        player1SelectedCards: player1Selected?.map((c: any) => c.abilityId) || [],
       });
 
-      // ✅ CRITICAL: Look up full Card definitions from CARDS database
-      // selectedAbilities has {cardId, instanceId, cooldown} - we need {cardId, instanceId, cooldown, ...cardDefinition}
+      // ✅ CRITICAL: Look up full Ability definitions from ABILITIES database
+      // selectedAbilities has {abilityId, instanceId, cooldown} - we need {abilityId, instanceId, cooldown, ...cardDefinition}
       const player0Hand = player0Selected?.map((cardInstance: any) => {
-        const cardDef = CARDS[cardInstance.cardId];
-        if (!cardDef) {
-          console.error(`[draft/finalize] ❌ Card definition not found: ${cardInstance.cardId}`);
+        const abilityDef = ABILITIES[cardInstance.abilityId];
+        if (!abilityDef) {
+          console.error(`[draft/finalize] ❌ Ability definition not found: ${cardInstance.abilityId}`);
           return null;
         }
-        // Merge card definition with instance metadata (preserving cooldown, instanceId)
+        // Merge ability definition with instance metadata (preserving cooldown, instanceId)
         return {
-          ...cardDef,
+          ...abilityDef,
           instanceId: cardInstance.instanceId,
           cooldown: cardInstance.cooldown || 0,
         };
       }).filter((c: any) => c !== null) || [];
 
       const player1Hand = player1Selected?.map((cardInstance: any) => {
-        const cardDef = CARDS[cardInstance.cardId];
-        if (!cardDef) {
-          console.error(`[draft/finalize] ❌ Card definition not found: ${cardInstance.cardId}`);
+        const abilityDef = ABILITIES[cardInstance.abilityId];
+        if (!abilityDef) {
+          console.error(`[draft/finalize] ❌ Ability definition not found: ${cardInstance.abilityId}`);
           return null;
         }
         return {
-          ...cardDef,
+          ...abilityDef,
           instanceId: cardInstance.instanceId,
           cooldown: cardInstance.cooldown || 0,
         };
       }).filter((c: any) => c !== null) || [];
 
-      console.log("[draft/finalize] After loading Card definitions:", {
+      console.log("[draft/finalize] After loading Ability definitions:", {
         player0HandLength: player0Hand?.length || 0,
         player1HandLength: player1Hand?.length || 0,
         player0HandCards: player0Hand?.map((c: any) => ({ id: c.id, name: c.name })) || [],
@@ -430,8 +430,8 @@ router.post("/draft/finalize", async (req, res) => {
       game.markModified("state.players");
 
       console.log("[draft/finalize] Both players ready, transitioning to BATTLE phase");
-      console.log(`[draft/finalize] Player 0 hand: ${game.state.players[0].hand.length} cards`);
-      console.log(`[draft/finalize] Player 1 hand: ${game.state.players[1].hand.length} cards`);
+      console.log(`[draft/finalize] Player 0 hand: ${game.state.players[0].hand.length} abilities`);
+      console.log(`[draft/finalize] Player 1 hand: ${game.state.players[1].hand.length} abilities`);
     }
 
     game.markModified("tournament");
@@ -507,7 +507,7 @@ router.post("/battle/start", async (req, res) => {
     const player1Hand = (game.state.players[1]?.hand || []) as any[];
 
     // Disabled: spam during testing
-    // console.log(`[battle/start] Finalized hands: P0=${player0Hand.length} cards, P1=${player1Hand.length} cards`);
+    // console.log(`[battle/start] Finalized hands: P0=${player0Hand.length} abilities, P1=${player1Hand.length} abilities`);
 
     // Create battle state with positions + use finalized hands
     const playerIds_arr = [playerIds[0], playerIds[1]] as [string, string];
@@ -654,14 +654,14 @@ router.post("/battle/complete", async (req, res) => {
 /**
  * POST /cheat/add-ability - CHEAT: Add any ability directly to player's hand during battle
  * Used for testing when draft phase is disabled
- * Body: { gameId, cardId }
+ * Body: { gameId, abilityId }
  */
 router.post("/cheat/add-ability", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, cardId } = req.body;
+    const { gameId, abilityId } = req.body;
 
-    if (!cardId) return res.status(400).json({ error: "cardId required" });
+    if (!abilityId) return res.status(400).json({ error: "abilityId required" });
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -669,24 +669,24 @@ router.post("/cheat/add-ability", async (req, res) => {
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
 
-    const cardDef = CARDS[cardId];
-    if (!cardDef) return res.status(400).json({ error: `Card '${cardId}' not found` });
-    if (cardDef.isCommon) return res.status(400).json({ error: "Common abilities are already in every hand" });
+    const abilityDef = ABILITIES[abilityId];
+    if (!abilityDef) return res.status(400).json({ error: `Ability '${abilityId}' not found` });
+    if (abilityDef.isCommon) return res.status(400).json({ error: "Common abilities are already in every hand" });
 
     const playerIndex = game.players.indexOf(userId);
 
-    // Create new card instance
-    const newInstance: CardInstance = {
+    // Create new ability instance
+    const newInstance: AbilityInstance = {
       instanceId: randomUUID(),
-      cardId,
+      abilityId,
       cooldown: 0,
     };
 
     // Track in tournament.selectedAbilities for persistence across battles
     game.tournament.selectedAbilities[userId].push(newInstance);
 
-    // Add full merged card to live game state hand
-    const fullCard = { ...cardDef, instanceId: newInstance.instanceId, cardId, cooldown: 0 };
+    // Add full merged ability to live game state hand
+    const fullCard = { ...abilityDef, instanceId: newInstance.instanceId, abilityId, cooldown: 0 };
     game.state.players[playerIndex] = {
       ...game.state.players[playerIndex],
       hand: [...(game.state.players[playerIndex].hand || []), fullCard],

@@ -5,7 +5,7 @@ import { EffectType } from "./effects";
 import { BuffCategory } from "./buffs";
 
 export type GameEventType =
-  | "PLAY_CARD"
+  | "PLAY_ABILITY"
   | "END_TURN"
   | "DAMAGE"
   | "HEAL"
@@ -23,9 +23,9 @@ export interface GameEvent {
   actorUserId: PlayerID;
   targetUserId?: PlayerID;
 
-  cardId?: string;
-  cardName?: string;
-  cardInstanceId?: string;
+  abilityId?: string;
+  abilityName?: string;
+  abilityInstanceId?: string;
 
   effectType?: EffectType;
   value?: number;

@@ -1,20 +1,20 @@
 /**
- * Determines whether a card is playable in current UI state.
+ * Determines whether a ability is playable in current UI state.
  * UI-agnostic on purpose.
  */
-export function isCardPlayable(params: {
-  card: { gcdCost?: number; name?: string; id?: string } | undefined;
+export function isAbilityPlayable(params: {
+  ability: { gcdCost?: number; name?: string; id?: string } | undefined;
   remainingGcd: number | undefined;
 }): boolean {
-  const { card, remainingGcd } = params;
+  const { ability, remainingGcd } = params;
 
-  console.groupCollapsed("[isCardPlayable]");
+  console.groupCollapsed("[isAbilityPlayable]");
 
-  console.log("card =", card);
+  console.log("ability =", ability);
   console.log("remainingGcd =", remainingGcd);
 
-  if (!card) {
-    console.warn("❌ card is undefined → NOT playable");
+  if (!ability) {
+    console.warn("❌ ability is undefined → NOT playable");
     console.groupEnd();
     return false;
   }
@@ -25,12 +25,12 @@ export function isCardPlayable(params: {
     return false;
   }
 
-  const cost = card.gcdCost;
+  const cost = ability.gcdCost;
 
-  console.log("card.gcdCost =", cost);
+  console.log("ability.gcdCost =", cost);
 
   if (cost === undefined) {
-    console.warn("❌ card.gcdCost is undefined → NOT playable");
+    console.warn("❌ ability.gcdCost is undefined → NOT playable");
     console.groupEnd();
     return false;
   }

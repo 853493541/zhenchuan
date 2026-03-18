@@ -11,7 +11,7 @@
  *   PERP_RIGHT — dash right (perpendicular to facing, rotate -90°)
  */
 
-import { GameState, Card, CardEffect } from "../../state/types";
+import { GameState, Ability, AbilityEffect } from "../../state/types";
 import { PlayerState } from "../../state/types";
 import { Position } from "../../state/types/position";
 import { pushEvent } from "../events";
@@ -28,8 +28,8 @@ export function handleDirectionalDash(
   state: GameState,
   source: PlayerState,
   opponentPos: Position,
-  card: Card,
-  effect: CardEffect
+  ability: Ability,
+  effect: AbilityEffect
 ) {
   const dx = opponentPos.x - source.position.x;
   const dy = opponentPos.y - source.position.y;
@@ -91,8 +91,8 @@ export function handleDirectionalDash(
     type: "DASH",
     actorUserId: source.userId,
     targetUserId: source.userId,
-    cardId: card.id,
-    cardName: card.name,
+    abilityId: ability.id,
+    abilityName: ability.name,
     effectType: "DIRECTIONAL_DASH",
     value: Math.round(distance),
   });

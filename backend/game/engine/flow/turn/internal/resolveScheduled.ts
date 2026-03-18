@@ -5,8 +5,8 @@ import { shouldDodge, hasUntargetable } from "../../../rules/guards";
 import { resolveScheduledDamage, resolveHealAmount } from "../../../utils/combatMath";
 import { pushDamageEvent, pushHealEvent } from "./combatEvents";
 import {
-  getBuffSourceCardId,
-  getBuffSourceCardNameWithDebug,
+  getBuffSourceAbilityId,
+  getBuffSourceAbilityNameWithDebug,
 } from "./buffOrigin";
 
 export function applyScheduledDamage(
@@ -38,8 +38,8 @@ export function applyScheduledDamage(
           state,
           actorUserId: owner.userId,
           targetUserId: target.userId,
-          cardId: getBuffSourceCardId(buff),
-          cardName: getBuffSourceCardNameWithDebug(buff, stage.debug),
+          abilityId: getBuffSourceAbilityId(buff),
+          abilityName: getBuffSourceAbilityNameWithDebug(buff, stage.debug),
           value: 0,
           effectType: "SCHEDULED_DAMAGE",
         });
@@ -60,8 +60,8 @@ export function applyScheduledDamage(
       state,
       actorUserId: owner.userId,
       targetUserId: target.userId,
-      cardId: getBuffSourceCardId(buff),
-      cardName: getBuffSourceCardNameWithDebug(buff, stage.debug),
+      abilityId: getBuffSourceAbilityId(buff),
+      abilityName: getBuffSourceAbilityNameWithDebug(buff, stage.debug),
       value: dmg,
       effectType: "SCHEDULED_DAMAGE",
     });
@@ -79,8 +79,8 @@ export function applyScheduledDamage(
           state,
           actorUserId: owner.userId,
           targetUserId: owner.userId,
-          cardId: getBuffSourceCardId(buff),
-          cardName: getBuffSourceCardNameWithDebug(buff, "吸血"),
+          abilityId: getBuffSourceAbilityId(buff),
+          abilityName: getBuffSourceAbilityNameWithDebug(buff, "吸血"),
           value: applied,
         });
       }
@@ -112,8 +112,8 @@ export function applyLegacyHeal(params: {
       state,
       actorUserId: owner.userId,
       targetUserId: owner.userId,
-      cardId: getBuffSourceCardId(buff),
-      cardName: getBuffSourceCardNameWithDebug(buff, "吸血"),
+      abilityId: getBuffSourceAbilityId(buff),
+      abilityName: getBuffSourceAbilityNameWithDebug(buff, "吸血"),
       value: applied,
     });
   }

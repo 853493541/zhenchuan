@@ -1,6 +1,6 @@
 // backend/game/services/draw.ts
 /**
- * Card draw logic.
+ * Ability draw logic.
  * Includes DRAW_REDUCTION handling (buff-based).
  *
  * IMPORTANT CHANGE:
@@ -12,13 +12,13 @@
 import { GameState, ActiveBuff, BuffEffect } from "../../engine/state/types";
 
 /**
- * Draw N cards for a player (batched)
+ * Draw N abilities for a player (batched)
  */
 export function draw(state: GameState, playerIndex: number, n: number) {
   if (n <= 0) return;
   if (!state.deck || state.deck.length === 0) return;
 
-  // ✅ take cards in one slice
+  // ✅ take abilities in one slice
   const drawn = state.deck.slice(0, n);
 
   // ✅ mutate deck ONCE
