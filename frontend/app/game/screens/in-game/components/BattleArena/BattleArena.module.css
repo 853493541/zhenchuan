@@ -82,12 +82,29 @@
 }
 
 .facingDir {
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
-  color: #aaccff;
-  text-shadow: 0 0 8px rgba(100, 180, 255, 0.7);
-  min-width: 18px;
+  color: #ffd26a;
+  text-shadow: 0 0 10px rgba(255, 200, 80, 0.8);
+  min-width: 20px;
   text-align: center;
+}
+
+.panelFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 196, 86, 0.2);
+}
+
+.panelFooterLabel {
+  font-size: 8px;
+  letter-spacing: 1.8px;
+  color: rgba(255, 214, 126, 0.7);
+  text-transform: uppercase;
 }
 
 .myHpRow {
@@ -199,6 +216,19 @@
   color: #ffaaaa;
   min-width: 28px;
   text-align: right;
+}
+
+.enemyFacingFooter {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(230, 175, 55, 0.5);
+  border-radius: 8px;
+  padding: 6px 12px;
+  box-shadow: 0 0 16px rgba(190, 130, 35, 0.18), inset 0 1px 0 rgba(255, 220, 150, 0.08);
 }
 
 /* ============================================================

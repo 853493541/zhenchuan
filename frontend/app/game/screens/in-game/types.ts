@@ -59,6 +59,11 @@ export interface PlayerState {
   hp: number;
   hand: CardInstance[];
   buffs: ActiveBuff[];
+  position?: { x: number; y: number; z?: number };
+  velocity?: { vx: number; vy: number; vz?: number };
+  moveSpeed?: number;
+  jumpCount?: number;
+  facing?: { x: number; y: number };
 }
 
 /* =========================================================

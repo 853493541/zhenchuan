@@ -406,6 +406,14 @@ router.post("/draft/finalize", async (req, res) => {
         game.state.players[1].velocity = { vx: 0, vy: 0 };
       }
 
+      // Initialize facing if not present
+      if (!game.state.players[0].facing) {
+        game.state.players[0].facing = { x: 1, y: 0 };
+      }
+      if (!game.state.players[1].facing) {
+        game.state.players[1].facing = { x: -1, y: 0 };
+      }
+
       game.state.players[0].moveSpeed = 0.25;
       game.state.players[1].moveSpeed = 0.25;
 

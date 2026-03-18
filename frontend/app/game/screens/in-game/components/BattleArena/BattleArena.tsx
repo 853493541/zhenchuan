@@ -252,23 +252,23 @@ function renderDashGhost(
   ctx.restore();
 }
 
-/* Facing direction arrow drawn above a character */
-/* Half-circle arc showing facing direction, drawn above character head */
-function renderFacingArrow(
+/* Filled half-disc showing facing direction at character feet */
+function renderFacingArc(
   ctx: CanvasRenderingContext2D,
   charPos: V3,
   facing: { x: number; y: number },
   cam: Cam,
   W: number, H: number,
-  color: string,
 ) {
   const f = Math.sqrt(facing.x * facing.x + facing.y * facing.y);
   if (f < 0.1) return;
   const nx = facing.x / f, ny = facing.y / f;
-  const arcZ = charPos.z + CHAR_HEIGHT + 0.5;
-  const R = 1.4; // world-unit radius of the half-circle
-  const STEPS = 14;
+  const arcZ = Math.max(0.02, charPos.z + 0.08);
+  const R = 2.1;
+  const STEPS = 20;
   const fAngle = Math.atan2(ny, nx);
+  const center = projPt(v3(charPos.x, charPos.y, arcZ), cam, W, H);
+  if (!center) return;
 
   const pts: Array<{ x: number; y: number } | null> = [];
   for (let i = 0; i <= STEPS; i++) {
@@ -277,22 +277,38 @@ function renderFacingArrow(
   }
 
   ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth   = 2.5;
+  ctx.fillStyle   = 'rgba(232, 180, 46, 0.3)';
+  ctx.strokeStyle = 'rgba(255, 210, 90, 0.95)';
+  ctx.lineWidth   = 2.2;
   ctx.lineCap     = 'round';
   ctx.lineJoin    = 'round';
-  ctx.shadowColor = color;
-  ctx.shadowBlur  = 10;
-  ctx.globalAlpha = 0.88;
+  ctx.shadowColor = 'rgba(255, 210, 100, 0.9)';
+  ctx.shadowBlur  = 12;
+  ctx.globalAlpha = 1;
   ctx.beginPath();
+  ctx.moveTo(center.x, center.y);
   let started = false;
   for (const p of pts) {
     if (!p) { started = false; continue; }
     if (!started) { ctx.moveTo(p.x, p.y); started = true; }
     else ctx.lineTo(p.x, p.y);
   }
+  ctx.closePath();
+  ctx.fill();
   ctx.stroke();
   ctx.restore();
+}
+
+function toFacingArrow(facing?: { x: number; y: number } | null): string {
+  if (!facing) return '·';
+  const len = Math.sqrt(facing.x * facing.x + facing.y * facing.y);
+  if (len < 0.05) return '·';
+  const nx = facing.x / len;
+  const ny = facing.y / len;
+  const angle = Math.atan2(ny, nx);
+  const idx = Math.round(angle / (Math.PI / 4));
+  const dirs = ['→', '↗', '↑', '↖', '←', '↙', '↓', '↘'];
+  return dirs[((idx % 8) + 8) % 8];
 }
 
 function shadeHex(hex: string, amt: number): string {
@@ -438,6 +454,7 @@ function renderCharacter(
    TYPES
    ============================================================ */
 interface Position { x: number; y: number; z?: number; }
+interface Facing { x: number; y: number; }
 
 interface AbilityInfo {
   id: string;        // instanceId (or cardId fallback for common)
@@ -465,8 +482,8 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; position: Position; hp: number; hand: any[]; buffs?: ActiveBuff[] };
-  opponent: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[] };
+  me: { userId: string; position: Position; hp: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing };
+  opponent: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing };
   gameId: string;
   onCastAbility: (cardInstanceId: string, targetUserId?: string) => Promise<void>;
   distance: number;
@@ -519,6 +536,8 @@ export default function BattleArena({
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
   const localFacingRef    = useRef({ x: 0, y: 1 }); // current facing direction (default +Y)
+  const meFacingRef       = useRef<Facing>({ x: 0, y: 1 });
+  const oppFacingRef      = useRef<Facing>({ x: 0, y: 1 });
 
   /* --- Opponent interpolation --- */
   const internalOpponentBufferRef = useRef<Array<{ t: number; pos: Position }>>([]);
@@ -583,6 +602,18 @@ export default function BattleArena({
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
   useEffect(() => { oppHpRef.current = opponent?.hp ?? 0; }, [opponent?.hp]);
   useEffect(() => { maxHpRef.current = maxHp;             }, [maxHp]);
+  useEffect(() => {
+    const f = me?.facing;
+    if (f && Number.isFinite(f.x) && Number.isFinite(f.y)) {
+      meFacingRef.current = { x: f.x, y: f.y };
+    }
+  }, [me?.facing?.x, me?.facing?.y]);
+  useEffect(() => {
+    const f = opponent?.facing;
+    if (f && Number.isFinite(f.x) && Number.isFinite(f.y)) {
+      oppFacingRef.current = { x: f.x, y: f.y };
+    }
+  }, [opponent?.facing?.x, opponent?.facing?.y]);
 
   // Restore control mode from localStorage on mount
   useEffect(() => {
@@ -1308,8 +1339,9 @@ export default function BattleArena({
       for (const e of entities) {
         renderCharacter(ctx, e.pos, cam, w, h, e.color, e.glow, Math.max(0, e.hp / mxHp), e.hp, e.isMe);
         if (e.isMe) {
-          renderFacingArrow(ctx, e.pos, localFacingRef.current, cam, w, h, '#44aaff');
+          renderFacingArc(ctx, e.pos, meFacingRef.current, cam, w, h);
         } else {
+          renderFacingArc(ctx, e.pos, oppFacingRef.current, cam, w, h);
           // Save opponent screen bounds for click hit-testing
           const baseP = projPt(e.pos, cam, w, h);
           const topP  = projPt(v3(e.pos.x, e.pos.y, e.pos.z + CHAR_HEIGHT), cam, w, h);
@@ -1350,16 +1382,8 @@ export default function BattleArena({
   const myHpPct  = Math.max(0, Math.min(100, ((me?.hp  ?? 0) / maxHp) * 100));
   const oppHpPct = Math.max(0, Math.min(100, ((opponent?.hp ?? 0) / maxHp) * 100));
   const isMoving = Object.values(wasdKeys).some(v => v);
-
-  // Facing direction arrow derived from current movement keys
-  const facingArrow = (() => {
-    const { w, a, s, d } = wasdKeys;
-    if (w && d) return '↗'; if (w && a) return '↖';
-    if (s && d) return '↘'; if (s && a) return '↙';
-    if (w) return '↑'; if (s) return '↓';
-    if (a) return '←'; if (d) return '→';
-    return '·';
-  })();
+  const myFacingArrow = toFacingArrow(me.facing ?? meFacingRef.current);
+  const opponentFacingArrow = toFacingArrow(opponent.facing ?? oppFacingRef.current);
 
   return (
     <div className={styles.container}>
@@ -1373,7 +1397,6 @@ export default function BattleArena({
       <div className={styles.playerPanel}>
         <div className={styles.playerLabelRow}>
           <span className={styles.playerLabel}>YOU</span>
-          <span className={styles.facingDir}>{facingArrow}</span>
         </div>
         <div className={styles.myHpRow}>
           <div className={styles.myHpTrack}>
@@ -1386,6 +1409,10 @@ export default function BattleArena({
             />
           </div>
           <span className={styles.myHpNum}>{me?.hp ?? 0}</span>
+        </div>
+        <div className={styles.panelFooter}>
+          <span className={styles.panelFooterLabel}>FACE</span>
+          <span className={styles.facingDir}>{myFacingArrow}</span>
         </div>
       </div>
 
@@ -1496,6 +1523,10 @@ export default function BattleArena({
             </div>
           );
         })()}
+        <div className={styles.enemyFacingFooter}>
+          <span className={styles.panelFooterLabel}>ENEMY FACE</span>
+          <span className={styles.facingDir}>{opponentFacingArrow}</span>
+        </div>
       </div>
 
       {/* ===== TOP-RIGHT: RTT badge ===== */}

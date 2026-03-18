@@ -210,11 +210,20 @@ export class GameLoop {
       // Increment version only on broadcasts
       this.state.version = (this.state.version ?? 0) + 1;
       
-      // Send position + cooldown changes (lightweight diff)
-      const diff: Array<{ path: string; value: any }> = this.state.players.map((p) => ({
-        path: `/players/${this.state.players.indexOf(p)}/position`,
-        value: p.position,
-      }));
+      // Send position + facing + cooldown changes (lightweight diff)
+      const diff: Array<{ path: string; value: any }> = [];
+      this.state.players.forEach((p, pidx) => {
+        diff.push({
+          path: `/players/${pidx}/position`,
+          value: p.position,
+        });
+        // Include facing in compact movement updates so clients can render
+        // authoritative direction indicators for both players in real time.
+        diff.push({
+          path: `/players/${pidx}/facing`,
+          value: p.facing ?? { x: 0, y: 1 },
+        });
+      });
       // Append per-card cooldown patches so clients stay in sync
       this.state.players.forEach((p, pidx) => {
         p.hand.forEach((card, cidx) => {

@@ -82,6 +82,7 @@ export function initializeBattleState(
           y: ARENA_HEIGHT / 2,
         },
         velocity: { vx: 0, vy: 0 },
+        facing: { x: 1, y: 0 },
         moveSpeed: 0.25, // 7.5 units/sec at 30 Hz (0.25 u/tick)
       },
       {
@@ -96,6 +97,7 @@ export function initializeBattleState(
           y: ARENA_HEIGHT / 2,
         },
         velocity: { vx: 0, vy: 0 },
+        facing: { x: -1, y: 0 },
         moveSpeed: 0.25, // 7.5 units/sec at 30 Hz
       },
     ],

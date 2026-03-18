@@ -75,7 +75,7 @@ router.post("/movement", async (req, res) => {
       }
 
       // Update movement input
-      const input: MovementInput | null = direction
+      let input: MovementInput | null = direction
         ? {
             up:   direction.up   === true,
             down: direction.down === true,
@@ -92,11 +92,17 @@ router.post("/movement", async (req, res) => {
       const facingField = req.body.facing;
       if (facingField && typeof facingField.x === 'number' && typeof facingField.y === 'number') {
         if (input) {
-          (input as any).facing = { x: facingField.x, y: facingField.y };
+          input.facing = { x: facingField.x, y: facingField.y };
         } else {
           // No movement but we still want to update facing — send a facing-only input
-          const facingInput = { up: false, down: false, left: false, right: false, facing: { x: facingField.x, y: facingField.y } } as MovementInput;
-          loop.setPlayerInput(playerIndex, facingInput);
+          input = {
+            up: false,
+            down: false,
+            left: false,
+            right: false,
+            jump: false,
+            facing: { x: facingField.x, y: facingField.y },
+          };
         }
       }
 
