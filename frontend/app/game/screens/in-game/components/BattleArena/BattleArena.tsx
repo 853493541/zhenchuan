@@ -648,19 +648,44 @@ export default function BattleArena({
           },
           direction: (() => {
             if (controlModeRef.current === 'traditional') {
-              const bothMouse = mouseStateRef.current.isLeft && mouseStateRef.current.isRight;
-              // Recompute charYaw inline — don't rely on the physics-tick interval having
-              // already run this frame (the two setIntervals are unsynchronized).
-              const effectiveYaw = bothMouse
-                ? camYawRef.current + (k.a ? -Math.PI / 4 : 0) + (k.d ? Math.PI / 4 : 0)
-                : charYawRef.current;
-              const moveFwd = { x: Math.sin(effectiveYaw), y: Math.cos(effectiveYaw) };
+              const mouseLook = mouseStateRef.current.isRight;
+
+              if (mouseLook) {
+                // MMO mouselook: move relative to camera, camera yaw unchanged unless mouse moves.
+                const yaw = camYawRef.current;
+                const fwd = { x: Math.sin(yaw), y: Math.cos(yaw) };
+                const right = { x: Math.cos(yaw), y: -Math.sin(yaw) };
+
+                let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0);
+                let strafeInput = (k.d ? 1 : 0) + (k.a ? -1 : 0);
+
+                // Requested behavior: RMB + A + D => forward-right diagonal.
+                if (k.a && k.d) {
+                  strafeInput = 1;
+                  forwardInput += 1;
+                }
+
+                let dx = fwd.x * forwardInput + right.x * strafeInput;
+                let dy = fwd.y * forwardInput + right.y * strafeInput;
+                if (dx === 0 && dy === 0 && !shouldJump) return null;
+
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                const backpedalOnly = k.s && !k.w && !k.a && !k.d;
+                const speedMult = backpedalOnly ? 0.5 : 1.0;
+                dx = (dx / len) * speedMult;
+                dy = (dy / len) * speedMult;
+                return { dx, dy, jump: shouldJump };
+              }
+
+              // Keyboard-only traditional mode: movement follows facing.
+              const moveFwd = { x: Math.sin(charYawRef.current), y: Math.cos(charYawRef.current) };
               let dx = 0, dy = 0;
-              if (k.w || bothMouse) { dx += moveFwd.x; dy += moveFwd.y; }
-              if (k.s && !bothMouse) { dx -= moveFwd.x; dy -= moveFwd.y; }
+              if (k.w) { dx += moveFwd.x; dy += moveFwd.y; }
+              if (k.s) { dx -= moveFwd.x; dy -= moveFwd.y; }
               if (dx === 0 && dy === 0 && !shouldJump) return null;
               const len = Math.sqrt(dx * dx + dy * dy) || 1;
-              const speedMult = (k.s && !k.w && !bothMouse) ? 0.5 : 1.0;
+              const backpedalOnly = k.s && !k.w && !k.a && !k.d;
+              const speedMult = backpedalOnly ? 0.5 : 1.0;
               return { dx: (dx / len) * speedMult, dy: (dy / len) * speedMult, jump: shouldJump };
             }
             // 摇杆模式: absolute WASD
@@ -1042,21 +1067,10 @@ export default function BattleArena({
       const ms  = mouseStateRef.current;
 
       if (controlModeRef.current === 'traditional') {
-        const bothMouse = ms.isLeft && ms.isRight;
+        const mouseLook = ms.isRight;
 
-        const rightOnly = ms.isRight && !ms.isLeft;
-
-        // LMB+RMB: character faces camera direction, A/D add ±45° offset for strafing look
-        if (bothMouse) {
-          const sideAngle = (k.a ? -Math.PI / 4 : 0) + (k.d ? Math.PI / 4 : 0);
-          charYawRef.current = camYawRef.current + sideAngle;
-          localFacingRef.current = {
-            x: Math.sin(charYawRef.current),
-            y: Math.cos(charYawRef.current),
-          };
-        } else if (rightOnly) {
-          // RMB-only (camera-drag mode): character always faces where camera points.
-          // A/D do NOT turn — rotating the camera via drag IS the rotation control.
+        if (mouseLook) {
+          // MMO mouselook: facing follows camera, A/D are strafes (not turns).
           charYawRef.current = camYawRef.current;
           localFacingRef.current = {
             x: Math.sin(charYawRef.current),
@@ -1075,20 +1089,37 @@ export default function BattleArena({
           }
         }
 
-        // Movement direction always follows charYaw — when bothMouse + A/D it already
-        // carries the ±45° strafe offset; without A/D it equals camYaw (straight forward).
-        const moveFwd = { x: Math.sin(charYawRef.current), y: Math.cos(charYawRef.current) };
         let fx = 0, fy = 0;
-        if (k.w || bothMouse) { fx += moveFwd.x; fy += moveFwd.y; }
-        if (k.s && !bothMouse) { fx -= moveFwd.x; fy -= moveFwd.y; }
+
+        if (mouseLook) {
+          const yaw = camYawRef.current;
+          const moveFwd = { x: Math.sin(yaw), y: Math.cos(yaw) };
+          const moveRight = { x: Math.cos(yaw), y: -Math.sin(yaw) };
+
+          let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0);
+          let strafeInput = (k.d ? 1 : 0) + (k.a ? -1 : 0);
+
+          // Requested behavior: RMB + A + D => forward-right diagonal.
+          if (k.a && k.d) {
+            strafeInput = 1;
+            forwardInput += 1;
+          }
+
+          fx = moveFwd.x * forwardInput + moveRight.x * strafeInput;
+          fy = moveFwd.y * forwardInput + moveRight.y * strafeInput;
+        } else {
+          const moveFwd = { x: Math.sin(charYawRef.current), y: Math.cos(charYawRef.current) };
+          if (k.w) { fx += moveFwd.x; fy += moveFwd.y; }
+          if (k.s) { fx -= moveFwd.x; fy -= moveFwd.y; }
+        }
 
         if (fx !== 0 || fy !== 0) {
           const len = Math.sqrt(fx * fx + fy * fy);
-          // Backpedaling is slower (S only, no W or bothMouse)
-          const speedMult = (k.s && !k.w && !bothMouse) ? 0.5 : 1.0;
+          // Backpedal is slower while keeping facing unchanged.
+          const backpedalOnly = k.s && !k.w && !k.a && !k.d;
+          const speedMult = backpedalOnly ? 0.5 : 1.0;
           vel.x += ((fx / len) * MAX_SPEED * speedMult - vel.x) * ACCEL;
           vel.y += ((fy / len) * MAX_SPEED * speedMult - vel.y) * ACCEL;
-          if (!bothMouse) localFacingRef.current = { x: moveFwd.x, y: moveFwd.y };
         } else {
           vel.x *= DECEL;
           vel.y *= DECEL;

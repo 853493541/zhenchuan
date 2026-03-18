@@ -65,17 +65,17 @@ export function applyMovement(
     player.velocity.vx += (targetVx - player.velocity.vx) * acceleration;
     player.velocity.vy += (targetVy - player.velocity.vy) * acceleration;
 
-    // Update facing direction from input (immediate, not velocity-lagged)
-    if (targetVx !== 0 || targetVy !== 0) {
-      const flen = Math.sqrt(targetVx * targetVx + targetVy * targetVy);
-      player.facing = { x: targetVx / flen, y: targetVy / flen };
-    } else if (input.facing) {
-      // Even when standing still, apply the client-reported facing direction
-      // so ability targeting (dash direction) uses the correct orientation.
+    // Update facing direction from input (immediate, not velocity-lagged).
+    // In traditional/MMO control, facing can intentionally differ from movement
+    // (backpedal or strafe), so explicit input.facing takes precedence.
+    if (input.facing) {
       const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
       if (flen > 0.01) {
         player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
       }
+    } else if (targetVx !== 0 || targetVy !== 0) {
+      const flen = Math.sqrt(targetVx * targetVx + targetVy * targetVy);
+      player.facing = { x: targetVx / flen, y: targetVy / flen };
     }
 
     // ── Jump (one-shot: GameLoop clears input.jump after each tick) ──
