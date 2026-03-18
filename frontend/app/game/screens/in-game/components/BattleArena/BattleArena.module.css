@@ -542,6 +542,18 @@
 }
 
 /* ============================================================
+   TOP-RIGHT: Opponent buff / debuff panel (near ⚙ button)
+   ============================================================ */
+.opponentBuffPanel {
+  position: absolute;
+  top: 54px;
+  right: 14px;
+  z-index: 20;
+  pointer-events: auto;
+  max-width: 220px;
+}
+
+/* ============================================================
    CONTROL SETTINGS PANEL
    ============================================================ */
 .controlBtn {

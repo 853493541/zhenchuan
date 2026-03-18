@@ -15,7 +15,7 @@ const ARENA_HEIGHT = 100;
 
 /* Character visual */
 const CHAR_HEIGHT = 2.0;   // world units tall  (player capsule)
-const CHAR_RADIUS = 1.0;   // world units radius
+const CHAR_RADIUS = 0.7;   // world units radius (−30%)
 
 /* 3rd-person camera — high & pulled back, ~26° below horizontal
    atan((20-1.5)/(38)) ≈ 26°  →  lots of ground visible, char at lower-center.
@@ -408,9 +408,9 @@ function renderCharacter(
 
   // Floating HP bar
   const barW = Math.max(rs * 2.6, 38);
-  const barH = 5;
+  const barH = 8;           // +60% taller
   const barX = cx - barW / 2;
-  const barY = topP.y - 18;
+  const barY = topP.y - 20;
 
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.beginPath();
@@ -426,11 +426,12 @@ function renderCharacter(
     ctx.fill();
   }
 
+  // HP number to the right of the bar
   const fontSize = Math.max(9, Math.min(12, rs * 1.3));
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.font      = `${fontSize}px monospace`;
-  ctx.textAlign = 'center';
-  ctx.fillText(`${hpCurrent}`, cx, barY - 3);
+  ctx.textAlign = 'left';
+  ctx.fillText(`${hpCurrent}`, barX + barW + 4, barY + barH - 1);
 }
 
 /* ============================================================
@@ -770,8 +771,8 @@ export default function BattleArena({
         jumpLocalRef.current = true;
         jumpSendRef.current  = true;
       }
-      // F1 — select opponent as target
-      if (e.key === 'F1') {
+      // Tab / F1 — select opponent as target
+      if (e.key === 'Tab' || e.key === 'F1') {
         e.preventDefault();
         setSelectedTargetId(opponentUserIdRef.current);
         selectedTargetRef.current = opponentUserIdRef.current;
@@ -1437,8 +1438,14 @@ export default function BattleArena({
         </div>
       )}
 
-      {/* ===== TOP-CENTER: Enemy boss bar + buffs below ===== */}
+      {/* ===== TOP-RIGHT: Opponent buff / debuff panel near ⚙ button ===== */}
+      <div className={styles.opponentBuffPanel}>
+        <StatusBar buffs={opponent?.buffs ?? []} showDebug debugLabel="opp" />
+      </div>
+
+      {/* ===== TOP-CENTER: Enemy boss bar (only when targeted) + drafted abilities ===== */}
       <div className={styles.enemyBossGroup}>
+        {selectedTargetId && (
         <div className={styles.enemyBossBar}>
           <div className={styles.enemyName}>ENEMY</div>
           <div className={styles.enemyHpRow}>
@@ -1461,11 +1468,8 @@ export default function BattleArena({
             <span className={styles.enemyHpNum}>{opponent?.hp ?? 0}</span>
           </div>
         </div>
-        {/* Buff row — always present; StatusBar renders empty when no buffs */}
-        <div className={styles.enemyBuffRow}>
-          <StatusBar buffs={opponent?.buffs ?? []} showDebug debugLabel="opp" />
-        </div>
-        {/* Enemy drafted abilities — always rendered below buff row, no outer box */}
+        )}
+        {/* Enemy drafted abilities — always visible */}
         {(() => {
           const draftedAbilities = (opponent?.hand ?? []).filter((card: any) => {
             const cardId = card.cardId || card.id;

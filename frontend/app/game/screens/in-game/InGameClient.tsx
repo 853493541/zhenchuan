@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import BattleArena from "./components/BattleArena";
 import GameOverModal from "./components/GameBoard/components/GameOverModal";
 import DraftScreen from "./components/DraftScreen";
-import { toastError } from "@/app/components/toast/toast";
+import { toastError, toastSuccess } from "@/app/components/toast/toast";
 import { useGameState } from "./hooks/useGameState";
 import {
   GamePreloadProvider,
@@ -228,9 +228,17 @@ export default function InGameClient({
       state.gameOver &&
       state.winnerUserId
     ) {
-      // Battle is over, call battle/complete to advance tournament
+      // Show win/lose toast immediately
+      if (state.winnerUserId === selfUserId) {
+        toastSuccess("🏆 你赢了！");
+      } else {
+        toastError("💀 你输了，将重新开始…");
+      }
+      // Battle is over, call battle/complete to advance tournament after delay
       (async () => {
         try {
+          // Give player 2.5 s to read the result
+          await new Promise((r) => setTimeout(r, 2500));
           console.log("[InGameClient] Battle ended, completing tournament battle...");
           const res = await fetch("/api/game/battle/complete", {
             method: "POST",
@@ -257,7 +265,7 @@ export default function InGameClient({
         }
       })();
     }
-  }, [tournament?.phase, state?.gameOver, state?.winnerUserId, gameId, refetch]);
+  }, [tournament?.phase, state?.gameOver, state?.winnerUserId, gameId, refetch, selfUserId]);
 
   /* ================= LOADING ================= */
 
