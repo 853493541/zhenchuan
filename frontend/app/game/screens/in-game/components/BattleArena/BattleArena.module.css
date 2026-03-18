@@ -13,6 +13,27 @@
 }
 
 /* ============================================================
+   TARGET INDICATOR
+   ============================================================ */
+.targetIndicator {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 70px; /* below enemy boss bar area */
+  background: rgba(255, 170, 0, 0.18);
+  border: 1px solid rgba(255, 204, 0, 0.6);
+  border-radius: 6px;
+  padding: 4px 14px;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: #ffcc00;
+  text-shadow: 0 0 8px rgba(255, 204, 0, 0.8);
+  pointer-events: none;
+  z-index: 30;
+}
+
+/* ============================================================
    CANVAS — fills everything
    ============================================================ */
 .canvasWrap {

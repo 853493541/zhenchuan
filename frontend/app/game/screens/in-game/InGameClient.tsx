@@ -319,13 +319,13 @@ export default function InGameClient({
         maxHp={me.hp + (state.players[1]?.hp || 0) === me.hp ? me.hp : 30} // Fallback to 30
         cards={preload.cardMap}
         opponentPositionBufferRef={opponentPositionBufferRef}
-        onCastAbility={async (cardInstanceId) => {
+        onCastAbility={async (cardInstanceId, targetUserId) => {
           // Find by instanceId (normal drafted cards) or by cardId (common abilities)
           const cardInstance =
             me.hand.find((c) => c.instanceId === cardInstanceId) ??
             me.hand.find((c) => ((c as any).cardId ?? (c as any).id) === cardInstanceId) ??
             ({ instanceId: cardInstanceId } as any); // synthetic stub — backend validates
-          const res = await playCard(cardInstance);
+          const res = await playCard(cardInstance, targetUserId);
           if (!res.ok && res.error) {
             console.error("[CastAbility] Error response:", res.error);
             showGameError(res.error);

@@ -30,7 +30,8 @@ function pruneOldEvents(state: GameState, keepTurns = 10) {
 export async function playCard(
   gameId: string,
   userId: string,
-  cardInstanceId: string
+  cardInstanceId: string,
+  targetUserId?: string
 ) {
   const startTime = performance.now();
   globalTimer.start(`play_card_${gameId}`);
@@ -40,7 +41,7 @@ export async function playCard(
 
   if (loop) {
     // ✅ REAL-TIME BATTLE LOGIC
-    return await playCastAbility(loop, gameId, userId, cardInstanceId);
+    return await playCastAbility(loop, gameId, userId, cardInstanceId, targetUserId);
   } else {
     // ✅ TURN-BASED BATTLE LOGIC (legacy draft phase)
     return await playCardTurnBased(gameId, userId, cardInstanceId);
@@ -54,7 +55,8 @@ async function playCastAbility(
   loop: GameLoop,
   gameId: string,
   userId: string,
-  cardInstanceId: string
+  cardInstanceId: string,
+  targetUserId?: string
 ) {
   const state = loop.getState();
   const playerIndex = state.players.findIndex((p) => p.userId === userId);

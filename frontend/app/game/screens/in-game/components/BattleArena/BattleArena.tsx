@@ -4,6 +4,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import styles from './BattleArena.module.css';
 import WASDButtons from './WASDButtons';
 import StatusBar from '../GameBoard/components/StatusBar';
+import { toastError } from '@/app/components/toast/toast';
 import type { ActiveBuff } from '../../types';
 
 /* ============================================================
@@ -447,6 +448,7 @@ interface AbilityInfo {
   maxCooldown: number;
   isReady: boolean;
   isCommon: boolean;
+  target: 'SELF' | 'OPPONENT';
 }
 
 /** Fixed display order for the common-ability bar. */
@@ -465,7 +467,7 @@ interface BattleArenaProps {
   me: { userId: string; position: Position; hp: number; hand: any[]; buffs?: ActiveBuff[] };
   opponent: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[] };
   gameId: string;
-  onCastAbility: (cardInstanceId: string) => Promise<void>;
+  onCastAbility: (cardInstanceId: string, targetUserId?: string) => Promise<void>;
   distance: number;
   maxHp: number;
   cards: Record<string, any>;
@@ -496,6 +498,7 @@ export default function BattleArena({
   const [showControlPanel, setShowControlPanel] = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
+  const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
 
   // Split abilities into two rows for rendering
   const commonAbilities = abilities.filter(a => a.isCommon);
@@ -532,7 +535,14 @@ export default function BattleArena({
   const camYawRef      = useRef(0);             // camera yaw
   const camPitchRef    = useRef(DEFAULT_PITCH); // camera pitch angle (radians)
   const camZoomRef     = useRef(1.0);           // zoom multiplier (scroll wheel)
-  const mouseStateRef  = useRef({ isLeft: false, isRight: false, lastX: 0, lastY: 0 });
+  const mouseStateRef  = useRef({ isLeft: false, isRight: false, lastX: 0, lastY: 0, downX: NaN, downY: NaN });
+
+  /* --- Target selection refs --- */
+  const selectedTargetRef   = useRef<string | null>(null);
+  const oppScreenBoundsRef  = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
+  // Always reflects current opponent userId (stable in 1v1 but kept as ref for closure safety)
+  const opponentUserIdRef   = useRef<string>(opponent.userId);
+  opponentUserIdRef.current = opponent.userId;
 
   /* --- Dash animation refs --- */
   const localDashAnimRef = useRef<{ start: V3; startTime: number } | null>(null);
@@ -554,7 +564,12 @@ export default function BattleArena({
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
     if (ability?.cardId === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
-    onCastAbility(id);
+    // Abilities targeting the opponent require a target to be selected first
+    if (ability?.target === 'OPPONENT' && !selectedTargetRef.current) {
+      toastError('请先选择目标');
+      return;
+    }
+    onCastAbility(id, selectedTargetRef.current ?? undefined);
   };
 
   /* --- Render position + dash-trail refs --- */
@@ -688,6 +703,7 @@ export default function BattleArena({
             maxCooldown: 0,
             isReady:     (instance.cooldown ?? 0) === 0,
             isCommon:    false,
+            target:      'OPPONENT' as 'SELF' | 'OPPONENT',
           };
         }
         return {
@@ -700,6 +716,7 @@ export default function BattleArena({
           maxCooldown: card.cooldownTicks ?? 0,
           isReady:     (instance.cooldown ?? 0) === 0 && (!card.range || distance <= card.range),
           isCommon:    false,
+          target:      (card.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
         };
       })
       .filter(Boolean) as AbilityInfo[];
@@ -725,6 +742,7 @@ export default function BattleArena({
           maxCooldown: card.cooldownTicks ?? 0,
           isReady:     cooldown === 0 && (!card.range || distance <= card.range),
           isCommon:    true,
+          target:      (card.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
@@ -751,6 +769,13 @@ export default function BattleArena({
         e.preventDefault();
         jumpLocalRef.current = true;
         jumpSendRef.current  = true;
+      }
+      // F1 — select opponent as target
+      if (e.key === 'F1') {
+        e.preventDefault();
+        setSelectedTargetId(opponentUserIdRef.current);
+        selectedTargetRef.current = opponentUserIdRef.current;
+        return;
       }
       // ── Draft slots: 1  2  3  Q ──
       const drafts = abilitiesRef.current.filter(a => !a.isCommon);
@@ -815,6 +840,8 @@ export default function BattleArena({
         mouseStateRef.current.isLeft = true;
         mouseStateRef.current.lastX  = e.clientX;
         mouseStateRef.current.lastY  = e.clientY;
+        mouseStateRef.current.downX  = e.clientX;
+        mouseStateRef.current.downY  = e.clientY;
         return;
       }
       // Right button — start character rotate drag (context menu already suppressed by onContextMenu)
@@ -849,6 +876,31 @@ export default function BattleArena({
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) {
         mouseStateRef.current.isLeft = false;
+        // Detect click (no significant drag) for target selection
+        const dx = Math.abs(e.clientX - mouseStateRef.current.downX);
+        const dy = Math.abs(e.clientY - mouseStateRef.current.downY);
+        mouseStateRef.current.downX = NaN;
+        mouseStateRef.current.downY = NaN;
+        if (!isNaN(dx) && dx < 5 && dy < 5 && !(e.target as HTMLElement).closest('button')) {
+          const canvas = canvasRef.current;
+          const bounds = oppScreenBoundsRef.current;
+          if (canvas && bounds) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvasSizeRef.current.w / (rect.width  || 1);
+            const scaleY = canvasSizeRef.current.h / (rect.height || 1);
+            const canvasX = (e.clientX - rect.left) * scaleX;
+            const canvasY = (e.clientY - rect.top)  * scaleY;
+            const hitX = Math.abs(canvasX - bounds.cx) <= bounds.rs + 8;
+            const hitY = canvasY >= bounds.topY - 10 && canvasY <= bounds.baseY + 10;
+            if (hitX && hitY) {
+              setSelectedTargetId(opponentUserIdRef.current);
+              selectedTargetRef.current = opponentUserIdRef.current;
+            } else {
+              setSelectedTargetId(null);
+              selectedTargetRef.current = null;
+            }
+          }
+        }
         return;
       }
       if (e.button === 2) {
@@ -1256,6 +1308,33 @@ export default function BattleArena({
         renderCharacter(ctx, e.pos, cam, w, h, e.color, e.glow, Math.max(0, e.hp / mxHp), e.hp, e.isMe);
         if (e.isMe) {
           renderFacingArrow(ctx, e.pos, localFacingRef.current, cam, w, h, '#44aaff');
+        } else {
+          // Save opponent screen bounds for click hit-testing
+          const baseP = projPt(e.pos, cam, w, h);
+          const topP  = projPt(v3(e.pos.x, e.pos.y, e.pos.z + CHAR_HEIGHT), cam, w, h);
+          if (baseP && topP) {
+            const rs = (CHAR_RADIUS / baseP.depth) * cam.fl;
+            oppScreenBoundsRef.current = { cx: baseP.x, topY: topP.y, baseY: baseP.y, rs };
+            // Draw selection ring when opponent is targeted
+            if (selectedTargetRef.current) {
+              ctx.save();
+              const ellipseRy = rs * 0.32;
+              ctx.strokeStyle = '#ffcc00';
+              ctx.lineWidth   = 2.5;
+              ctx.shadowColor = '#ffcc00';
+              ctx.shadowBlur  = 16;
+              ctx.beginPath();
+              ctx.ellipse(baseP.x, baseP.y, rs * 1.55, ellipseRy * 1.55, 0, 0, Math.PI * 2);
+              ctx.stroke();
+              // Bright cap ring on top
+              ctx.lineWidth   = 1.5;
+              ctx.globalAlpha = 0.6;
+              ctx.beginPath();
+              ctx.ellipse(topP.x, topP.y, rs * 1.1, (rs * 1.1) * 0.32, 0, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.restore();
+            }
+          }
         }
       }
 
@@ -1348,6 +1427,13 @@ export default function BattleArena({
               <><span>WASD</span> 绝对方向移动<br/><span>镜头固定</span> 不随角色旋转</>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ===== TARGET INDICATOR — shown when an enemy is locked ===== */}
+      {selectedTargetId && (
+        <div className={styles.targetIndicator}>
+          🎯 目标已锁定
         </div>
       )}
 

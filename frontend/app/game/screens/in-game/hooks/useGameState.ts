@@ -441,7 +441,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
   /* ================= PLAY CARD ================= */
 
-  const playCard = async (card: CardInstance) => {
+  const playCard = async (card: CardInstance, targetUserId?: string) => {
     // Real-time battles: no turn restrictions (both players act simultaneously)
     // Turn-based (draft): must be your turn
     const isRealTimeBattle = game?.tournament?.phase === "BATTLE";
@@ -460,6 +460,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         body: JSON.stringify({
           gameId,
           cardInstanceId: card.instanceId,
+          targetUserId,
         }),
       });
 
