@@ -16,6 +16,9 @@ import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
 import { applyMovement } from "./movement";
 
+/** Number of game-loop ticks between buff time-ticks (≈ 5 s at 60 Hz). */
+const BUFF_TICK_INTERVAL = 300;
+
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
 }
@@ -35,6 +38,7 @@ export class GameLoop {
   private lastBroadcast = 0;
   private ticksSinceBroadcast = 0;
   private broadcastTickInterval = 1; // Broadcast every tick for consistent client-side prediction
+  private ticksSinceBuffTick = 0;
 
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
@@ -157,6 +161,20 @@ export class GameLoop {
       });
     });
 
+    // 1c. Tick buffs every BUFF_TICK_INTERVAL ticks (~5 seconds in real time)
+    this.ticksSinceBuffTick++;
+    let buffsChanged = false;
+    if (this.ticksSinceBuffTick >= BUFF_TICK_INTERVAL) {
+      this.ticksSinceBuffTick = 0;
+      this.state.players.forEach((player) => {
+        // Decrement all buffs (battle mode has no TURN_START/TURN_END phases)
+        player.buffs.forEach((buff) => { buff.remaining--; });
+        // Remove expired buffs
+        player.buffs = player.buffs.filter((b) => b.remaining > 0);
+      });
+      buffsChanged = true;
+    }
+
     // 2. Check win condition
     const winStart = performance.now();
     checkGameOver(this.state);
@@ -184,6 +202,16 @@ export class GameLoop {
           });
         });
       });
+
+      // Append buff arrays whenever they changed (expiry or decrement)
+      if (buffsChanged) {
+        this.state.players.forEach((p, pidx) => {
+          diff.push({
+            path: `/players/${pidx}/buffs`,
+            value: p.buffs,
+          });
+        });
+      }
       
       // During gameplay, send compact movement-only broadcasts
       if (!this.state.gameOver) {

@@ -34,8 +34,11 @@ export interface ActiveBuff {
 
   effects: BuffEffect[];
 
-  appliedAtTurn: number;
-  expiresAtTurn: number;
+  /** Remaining ticks (each tick ≈ 5 seconds in battle mode). Decremented server-side. */
+  remaining: number;
+  tickOn?: string;
+
+  appliedAtTurn?: number;
 
   breakOnPlay?: boolean;
 

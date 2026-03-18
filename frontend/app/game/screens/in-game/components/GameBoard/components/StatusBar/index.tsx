@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import styles from "./styles.module.css";
 import StatusHint from "./Hint";
 
@@ -20,8 +20,8 @@ type ResolvedBuff = {
   shortName: string;
   category: "BUFF" | "DEBUFF";
   description: string;
-  remaining: number;
-  isLastTurn: boolean;
+  remaining: number; // seconds (remaining ticks * 5)
+  isLastTick: boolean;
 };
 
 type ActiveHint = {
@@ -38,36 +38,68 @@ export default function StatusBar({
   const preload = useGamePreload();
   const [activeHint, setActiveHint] = useState<ActiveHint | null>(null);
 
+  // Per-buff local countdown in seconds. Only ever decreases — stale server data
+  // (e.g. from the 3-second REST poll) can never make the timer jump back up.
+  const [localSecs, setLocalSecs] = useState<Record<number, number>>({});
+
   const resolved: ResolvedBuff[] = buffs
     .map((b) => {
       const meta = preload?.buffMap?.[b.buffId];
       if (!meta) return null;
 
-      const remainingTurns = Math.max(0, b.remaining);
-      const remainingSec = remainingTurns * 5;
-      const shortName =
-        meta.name.length > 2 ? meta.name.slice(0, 2) : meta.name;
+      const remainingTicks = Math.max(0, b.remaining);
+      const remainingSec   = remainingTicks * 5;
+      const shortName      = meta.name.length > 2 ? meta.name.slice(0, 2) : meta.name;
 
       return {
-        buffId: b.buffId,
-        name: meta.name,
+        buffId:      b.buffId,
+        name:        meta.name,
         shortName,
-        category: meta.category,
-        description: meta.description ?? "无",
-        remaining: remainingSec,
-        isLastTurn: remainingTurns === 1,
+        category:    meta.category,
+        description: meta.description ?? "\u65e0",
+        remaining:   remainingSec,
+        isLastTick:  remainingTicks === 1,
       };
     })
     .filter(Boolean) as ResolvedBuff[];
+
+  // Sync from server: only move the timer DOWN — never up. This keeps the display
+  // monotonically decreasing even when a stale REST snapshot arrives out-of-order.
+  useEffect(() => {
+    setLocalSecs((prev) => {
+      const next: Record<number, number> = {};
+      for (const b of resolved) {
+        const current = prev[b.buffId];
+        next[b.buffId] =
+          current !== undefined ? Math.min(current, b.remaining) : b.remaining;
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buffs]); // raw buffs dep: only fires when actual server data changes
+
+  // Local 1-second countdown between server ticks
+  useEffect(() => {
+    const id = setInterval(() => {
+      setLocalSecs((prev) => {
+        const next: Record<number, number> = {};
+        for (const key in prev) {
+          next[+key] = Math.max(0, prev[+key] - 1);
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const buffsPos = resolved.filter((b) => b.category === "BUFF");
   const buffsNeg = resolved.filter((b) => b.category === "DEBUFF");
 
   function openHint(anchorRect: DOMRect, b: ResolvedBuff) {
     setActiveHint({
-      name: b.name,
+      name:        b.name,
       description: b.description,
-      remaining: b.remaining,
+      remaining:   localSecs[b.buffId] ?? b.remaining,
       anchorRect,
     });
   }
@@ -77,8 +109,8 @@ export default function StatusBar({
   }
 
   function renderBuff(b: ResolvedBuff) {
-    const colorClass =
-      b.category === "BUFF" ? styles.buffText : styles.debuffText;
+    const colorClass  = b.category === "BUFF" ? styles.buffText : styles.debuffText;
+    const displaySecs = localSecs[b.buffId] ?? b.remaining;
 
     return (
       <div key={b.buffId} className={styles.buffItem}>
@@ -87,12 +119,10 @@ export default function StatusBar({
           {b.shortName}
         </div>
 
-        {/* ICON — ONLY ANCHOR */}
+        {/* ICON — hover anchor */}
         <div
           className={`${styles.buffIcon} ${
-            b.category === "BUFF"
-              ? styles.buffBorder
-              : styles.debuffBorder
+            b.category === "BUFF" ? styles.buffBorder : styles.debuffBorder
           }`}
           style={{
             backgroundImage: `url(/game/icons/buffs/${b.name}.png)`,
@@ -103,13 +133,13 @@ export default function StatusBar({
           onMouseLeave={closeHint}
         />
 
-        {/* REMAINING (seconds) */}
+        {/* REMAINING — locally counting down every second */}
         <div
           className={`${styles.buffTurns} ${colorClass} ${
-            b.isLastTurn ? styles.lastTurn : ""
+            b.isLastTick ? styles.lastTurn : ""
           }`}
         >
-          {Math.max(5, b.remaining)}
+          {displaySecs}
         </div>
       </div>
     );

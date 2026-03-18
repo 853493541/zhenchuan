@@ -463,7 +463,7 @@ const COMMON_ABILITY_ORDER = [
 
 interface BattleArenaProps {
   me: { userId: string; position: Position; hp: number; hand: any[]; buffs?: ActiveBuff[] };
-  opponent: { userId: string; position: Position; hp: number; buffs?: ActiveBuff[] };
+  opponent: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[] };
   gameId: string;
   onCastAbility: (cardInstanceId: string) => Promise<void>;
   distance: number;
@@ -873,9 +873,9 @@ export default function BattleArena({
       ms.lastY = e.clientY;
 
       if (ms.isRight && !ms.isLeft) {
-        // RMB only: rotate camera + character facing together
-        charYawRef.current += dx * 0.005;
-        camYawRef.current   = charYawRef.current;
+        // RMB only: rotate camera; character snaps to camera direction
+        camYawRef.current  += dx * 0.005;
+        charYawRef.current  = camYawRef.current;
         // Update pitch too (drag up/down tilts view)
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
@@ -958,18 +958,7 @@ export default function BattleArena({
       if (controlModeRef.current === 'traditional') {
         const bothMouse = ms.isLeft && ms.isRight;
 
-        // A/D turn character + camera (only if not in bothMouse mode)
-        if (!bothMouse) {
-          const turning = (k.a ? -1 : 0) + (k.d ? 1 : 0);
-          if (turning !== 0) {
-            charYawRef.current += turning * TURN_RATE;
-            camYawRef.current   = charYawRef.current; // always sync camera
-            localFacingRef.current = {
-              x: Math.sin(charYawRef.current),
-              y: Math.cos(charYawRef.current),
-            };
-          }
-        }
+        const rightOnly = ms.isRight && !ms.isLeft;
 
         // LMB+RMB: character faces camera direction, A/D add ±45° offset for strafing look
         if (bothMouse) {
@@ -979,6 +968,25 @@ export default function BattleArena({
             x: Math.sin(charYawRef.current),
             y: Math.cos(charYawRef.current),
           };
+        } else if (rightOnly) {
+          // RMB-only (camera-drag mode): character always faces where camera points.
+          // A/D do NOT turn — rotating the camera via drag IS the rotation control.
+          charYawRef.current = camYawRef.current;
+          localFacingRef.current = {
+            x: Math.sin(charYawRef.current),
+            y: Math.cos(charYawRef.current),
+          };
+        } else {
+          // No mouse buttons: A/D turn character + camera together
+          const turning = (k.a ? -1 : 0) + (k.d ? 1 : 0);
+          if (turning !== 0) {
+            charYawRef.current += turning * TURN_RATE;
+            camYawRef.current   = charYawRef.current;
+            localFacingRef.current = {
+              x: Math.sin(charYawRef.current),
+              y: Math.cos(charYawRef.current),
+            };
+          }
         }
 
         // Movement direction always follows charYaw — when bothMouse + A/D it already
@@ -1365,11 +1373,37 @@ export default function BattleArena({
             <span className={styles.enemyHpNum}>{opponent?.hp ?? 0}</span>
           </div>
         </div>
-        {opponent?.buffs && opponent.buffs.length > 0 && (
-          <div className={styles.enemyBuffRow}>
-            <StatusBar buffs={opponent.buffs} />
-          </div>
-        )}
+        {/* Buff row — always present; StatusBar renders empty when no buffs */}
+        <div className={styles.enemyBuffRow}>
+          <StatusBar buffs={opponent?.buffs ?? []} />
+        </div>
+        {/* Enemy drafted abilities — always rendered below buff row, no outer box */}
+        {(() => {
+          const draftedAbilities = (opponent?.hand ?? []).filter((card: any) => {
+            const cardId = card.cardId || card.id;
+            return cardId && !COMMON_ABILITY_ORDER.includes(cardId as any);
+          });
+          return (
+            <div className={styles.enemyAbilityRow}>
+              {draftedAbilities.map((card: any) => {
+                const cardId = card.cardId || card.id;
+                const cardData = cards[cardId];
+                const name = cardData?.name || cardId || '?';
+                return (
+                  <div key={card.instanceId || cardId} className={styles.enemyAbilitySlot} title={name}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/game/icons/Skills/${name}.png`}
+                      alt={name}
+                      className={styles.enemyAbilityIcon}
+                      draggable={false}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ===== TOP-RIGHT: RTT badge ===== */}

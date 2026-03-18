@@ -12,6 +12,10 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const previousGameIds = useRef<Set<string>>(new Set());
   const hasAutoJoined = useRef(false);
+  // Keep me in a ref so the polling closure always sees the latest value
+  // without adding `me` to the effect dependency (which caused re-mount loops)
+  const meRef = useRef<any>(null);
+  useEffect(() => { meRef.current = me; }, [me]);
 
   /* =========================================================
      Utils：时间显示（仅显示"多少分钟前 / 刚刚"）
@@ -54,7 +58,7 @@ export default function HomePage() {
       setWaitingGames(games);
       
       // Auto-join logic: detect new room created by another player
-      if (me && !hasAutoJoined.current) {
+      if (meRef.current && !hasAutoJoined.current) {
         const currentGameIds = new Set(games.map((g: any) => g._id));
         
         // Find a new room that is not created by me
@@ -62,7 +66,7 @@ export default function HomePage() {
           if (!previousGameIds.current.has(gameId)) {
             const game = games.find((g: any) => g._id === gameId);
             // Only auto-join if the room creator is not me
-            if (game && game.players?.[0] !== me.uid) {
+            if (game && game.players?.[0] !== meRef.current.uid) {
               hasAutoJoined.current = true;
               router.push(`/game/room?gameId=${gameId}`);
               return;
@@ -77,12 +81,15 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    fetchMe();
+    fetchMe(); // called once on mount
+  }, []);
+
+  useEffect(() => {
     fetchWaitingGames();
 
     const t = setInterval(fetchWaitingGames, 3000);
     return () => clearInterval(t);
-  }, [me, router]);
+  }, [router]); // `me` intentionally NOT in deps — use meRef.current inside fetchWaitingGames
 
   /* =========================================================
      创建房间
