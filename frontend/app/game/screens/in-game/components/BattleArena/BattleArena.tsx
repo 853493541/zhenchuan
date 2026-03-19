@@ -565,6 +565,21 @@ export default function BattleArena({
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [, setChannelTick] = useState(0); // forces re-renders for channel bar countdown
 
+  /* --- Floating damage/heal numbers --- */
+  type FloatType = 'dmg_dealt' | 'dmg_taken' | 'heal';
+  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number } };
+  const [floats, setFloats] = useState<FloatEntry[]>([]);
+  const floatIdRef = useRef(0);
+  const lastCastNameRef = useRef<string | null>(null);
+  const prevMeHpRef  = useRef<number | null>(null);
+  const prevOppHpRef = useRef<number | null>(null);
+  const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number } }) => {
+    if (value <= 0) return;
+    const id = ++floatIdRef.current;
+    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: opts?.screenPct }]);
+    setTimeout(() => setFloats(f => f.filter(e => e.id !== id)), 2100);
+  };
+
   // Split abilities into two rows for rendering
   const commonAbilities = handAbilities.filter(a => a.isCommon);
   const draftAbilities  = handAbilities.filter(a => !a.isCommon);
@@ -607,6 +622,7 @@ export default function BattleArena({
   /* --- Target selection refs --- */
   const selectedTargetRef   = useRef<string | null>(null);
   const oppScreenBoundsRef  = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
+  const meScreenBoundsRef   = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
   // Always reflects current opponent userId (stable in 1v1 but kept as ref for closure safety)
   const opponentUserIdRef   = useRef<string>(opponent.userId);
   opponentUserIdRef.current = opponent.userId;
@@ -640,6 +656,8 @@ export default function BattleArena({
       toastError('请先选择目标');
       return;
     }
+    // Stamp the ability name so the damage / heal float can label itself
+    lastCastNameRef.current = ability?.name ?? null;
     onCastAbility(id, selectedTargetRef.current ?? undefined);
   };
 
@@ -689,6 +707,65 @@ export default function BattleArena({
   useEffect(() => {
     oppChannelingRef.current = !!(opponent?.buffs?.some((b: any) => b.buffId === 1014));
   }, [opponent?.buffs]);
+
+  /* --- Track opponent hand cooldown resets to label incoming damage --- */
+  const prevOppHandRef      = useRef<any[]>([]);
+  const lastOppCastNameRef  = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevOppHandRef.current;
+    const curr = opponent?.hand ?? [];
+    for (const ca of curr) {
+      const abilityId = ca.abilityId || ca.id;
+      const pa = prev.find((p: any) => (p.abilityId || p.id) === abilityId);
+      if (pa) {
+        const prevCd = pa.cooldown ?? 0;
+        const currCd = ca.cooldown ?? 0;
+        const maxCd  = ca.maxCooldown ?? ca.cooldownTicks ?? 300;
+        if (maxCd > 0 && prevCd < maxCd && currCd === maxCd) {
+          // cooldown just reset to max → opponent cast this ability
+          const meta = abilities[abilityId];
+          if (meta?.name) lastOppCastNameRef.current = meta.name;
+        }
+      }
+    }
+    prevOppHandRef.current = curr;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opponent?.hand]);
+
+  // Track HP changes → spawn floating numbers
+  useEffect(() => {
+    if (prevMeHpRef.current !== null && me?.hp != null) {
+      const diff = me.hp - prevMeHpRef.current;
+      const bounds = meScreenBoundsRef.current;
+      const { w, h } = canvasSizeRef.current;
+      // HP bar is drawn 20px above topY in the canvas; convert to pct
+      const screenPct = bounds ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 22) / h) } : undefined;
+      if (diff < 0) {
+        const label = lastOppCastNameRef.current ?? undefined;
+        addFloat(-diff, 'dmg_taken', { label, screenPct });
+        lastOppCastNameRef.current = null;
+      } else if (diff > 0) {
+        addFloat(diff, 'heal', { screenPct });
+      }
+    }
+    prevMeHpRef.current = me?.hp ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.hp]);
+  useEffect(() => {
+    if (prevOppHpRef.current !== null && opponent?.hp != null) {
+      const diff = opponent.hp - prevOppHpRef.current;
+      if (diff < 0) {
+        const bounds = oppScreenBoundsRef.current;
+        const { w, h } = canvasSizeRef.current;
+        const screenPct = bounds ? { x: bounds.cx / w, y: bounds.topY / h } : undefined;
+        const label = lastCastNameRef.current ?? undefined;
+        addFloat(-diff, 'dmg_dealt', { label, screenPct });
+        lastCastNameRef.current = null;
+      }
+    }
+    prevOppHpRef.current = opponent?.hp ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opponent?.hp]);
 
   /* ========================= MOVEMENT ========================= */
 
@@ -1457,6 +1534,13 @@ export default function BattleArena({
         renderCharacter(ctx, e.pos, cam, w, h, e.color, e.glow, Math.max(0, e.hp / mxHp), e.hp, e.isMe);
         if (e.isMe) {
           renderFacingArc(ctx, e.pos, meFacingRef.current, cam, w, h);
+          // Save local player screen bounds for float positioning
+          const meBaseP = projPt(e.pos, cam, w, h);
+          const meTopP  = projPt(v3(e.pos.x, e.pos.y, e.pos.z + CHAR_HEIGHT), cam, w, h);
+          if (meBaseP && meTopP) {
+            const mrs = (CHAR_RADIUS / meBaseP.depth) * cam.fl;
+            meScreenBoundsRef.current = { cx: meBaseP.x, topY: meTopP.y, baseY: meBaseP.y, rs: mrs };
+          }
         } else {
           // Show opponent facing arc only when selected
           if (selectedTargetRef.current) {
@@ -1575,64 +1659,63 @@ export default function BattleArena({
         </div>
       )}
 
-      {/* ===== TOP-RIGHT: Opponent buff / debuff panel near ⚙ button ===== */}
-      <div className={styles.opponentBuffPanel}>
-        <StatusBar buffs={opponent?.buffs ?? []} showDebug debugLabel="opp" />
-      </div>
-
-      {/* ===== TOP-CENTER: Enemy boss bar (only when targeted) + drafted abilities ===== */}
+      {/* ===== TOP-CENTER: Enemy info panel — health → buffs → debuffs → abilities (only when selected) ===== */}
       <div className={styles.enemyBossGroup}>
         {selectedTargetId && (
-        <div className={styles.enemyBossBar}>
-          <div className={styles.enemyName}>ENEMY</div>
-          <div className={styles.enemyHpRow}>
-            <div className={styles.enemyHpTrack}>
-              <div
-                className={styles.enemyHpFill}
-                style={{
-                  width:      `${oppHpPct}%`,
-                  background: oppHpPct > 50
-                    ? 'linear-gradient(90deg, #991111, #cc2222)'
-                    : oppHpPct > 25
-                    ? 'linear-gradient(90deg, #aa7700, #ddaa00)'
-                    : 'linear-gradient(90deg, #771111, #aa1111)',
-                }}
-              />
-              {[25, 50, 75].map(t => (
-                <div key={t} className={styles.enemyHpTick} style={{ left: `${t}%` }} />
-              ))}
+          <>
+            <div className={styles.enemyBossBar}>
+              <div className={styles.enemyName}>ENEMY</div>
+              <div className={styles.enemyHpRow}>
+                <div className={styles.enemyHpTrack}>
+                  <div
+                    className={styles.enemyHpFill}
+                    style={{
+                      width:      `${oppHpPct}%`,
+                      background: oppHpPct > 50
+                        ? 'linear-gradient(90deg, #991111, #cc2222)'
+                        : oppHpPct > 25
+                        ? 'linear-gradient(90deg, #aa7700, #ddaa00)'
+                        : 'linear-gradient(90deg, #771111, #aa1111)',
+                    }}
+                  />
+                  {[25, 50, 75].map(t => (
+                    <div key={t} className={styles.enemyHpTick} style={{ left: `${t}%` }} />
+                  ))}
+                </div>
+                <span className={styles.enemyHpNum}>{opponent?.hp ?? 0}</span>
+              </div>
             </div>
-            <span className={styles.enemyHpNum}>{opponent?.hp ?? 0}</span>
-          </div>
-        </div>
-        )}
-        {/* Enemy drafted abilities — always visible */}
-        {(() => {
-          const draftedAbilities = (opponent?.hand ?? []).filter((ability: any) => {
-            const abilityId = ability.abilityId || ability.id;
-            return abilityId && !COMMON_ABILITY_ORDER.includes(abilityId as any);
-          });
-          return (
-            <div className={styles.enemyAbilityRow}>
-              {draftedAbilities.map((ability: any) => {
+            {/* Buffs row then debuffs row */}
+            <StatusBar buffs={opponent?.buffs ?? []} debugLabel="opp" />
+            {/* Enemy drafted abilities */}
+            {(() => {
+              const draftedAbilities = (opponent?.hand ?? []).filter((ability: any) => {
                 const abilityId = ability.abilityId || ability.id;
-                const cardData = abilities[abilityId];
-                const name = cardData?.name || abilityId || '?';
-                return (
-                  <div key={ability.instanceId || abilityId} className={styles.enemyAbilitySlot} title={name}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`/game/icons/Skills/${name}.png`}
-                      alt={name}
-                      className={styles.enemyAbilityIcon}
-                      draggable={false}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })()}
+                return abilityId && !COMMON_ABILITY_ORDER.includes(abilityId as any);
+              });
+              return (
+                <div className={styles.enemyAbilityRow}>
+                  {draftedAbilities.map((ability: any) => {
+                    const abilityId = ability.abilityId || ability.id;
+                    const cardData = abilities[abilityId];
+                    const name = cardData?.name || abilityId || '?';
+                    return (
+                      <div key={ability.instanceId || abilityId} className={styles.enemyAbilitySlot} title={name}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/game/icons/Skills/${name}.png`}
+                          alt={name}
+                          className={styles.enemyAbilityIcon}
+                          draggable={false}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </>
+        )}
       </div>
 
       {/* ===== TOP-RIGHT: RTT badge ===== */}
@@ -1758,6 +1841,9 @@ export default function BattleArena({
             const totalSec   = (CHANNEL_MS / 1000).toFixed(1);
             return (
               <div className={styles.channelBarWrap}>
+                <span className={styles.channelBarLabel}>
+                  风来吴山 ({elapsedSec}/{totalSec})
+                </span>
                 <div className={styles.channelBarTrack}>
                   <div className={styles.channelBarFill} style={{ width: `${progress * 100}%` }} />
                   {Array.from({ length: TICKS - 1 }, (_, i) => (
@@ -1768,9 +1854,6 @@ export default function BattleArena({
                     />
                   ))}
                 </div>
-                <span className={styles.channelBarLabel}>
-                  风来吴山 ({elapsedSec}/{totalSec})
-                </span>
               </div>
             );
           })()}
@@ -1845,6 +1928,49 @@ export default function BattleArena({
         <div className={styles.wasdSpacer} />
 
       </div>
+
+      {/* ===== FLOATING DAMAGE / HEAL NUMBERS ===== */}
+      {floats.map(entry => {
+        const age     = (Date.now() - entry.startTime) / 2000; // 0→1 over 2s
+        const opacity = Math.max(0, 1 - age * 1.2);
+        const travelUp   = -70 * age; // floats upward
+        const travelDown =  50 * age; // (unused – all float up now)
+        const color = entry.type === 'dmg_dealt'
+          ? '#ffffff'
+          : entry.type === 'heal'
+          ? '#55ffaa'
+          : '#ff5555';
+        let posStyle: React.CSSProperties;
+        if (entry.type === 'dmg_dealt') {
+          // Float above enemy model head, using projected screen position
+          const pctX = entry.screenPct ? entry.screenPct.x * 100 : 50;
+          const pctY = entry.screenPct ? entry.screenPct.y * 100 : 12;
+          posStyle = { top: `calc(${pctY}% + ${travelUp}px)`, left: `${pctX}%`, transform: 'translateX(-50%)' };
+        } else if (entry.type === 'dmg_taken') {
+          // Anchor to player HP bar position; spread left
+          const pctX = entry.screenPct ? entry.screenPct.x * 100 : 50;
+          const pctY = entry.screenPct ? entry.screenPct.y * 100 : 55;
+          posStyle = { top: `calc(${pctY}% + ${travelUp}px)`, left: `calc(${pctX}% - 80px)`, transform: 'translateX(-50%)' };
+        } else {
+          // Heal: same anchor but spread right
+          const pctX = entry.screenPct ? entry.screenPct.x * 100 : 50;
+          const pctY = entry.screenPct ? entry.screenPct.y * 100 : 55;
+          posStyle = { top: `calc(${pctY}% + ${travelUp}px)`, left: `calc(${pctX}% + 80px)`, transform: 'translateX(-50%)' };
+        }
+        const sign = entry.type === 'heal' ? '+' : '-';
+        const displayText = entry.label
+          ? `${entry.label}: ${sign}${entry.value}`
+          : `${sign}${entry.value}`;
+        return (
+          <div
+            key={entry.id}
+            className={`${styles.floatNumber} ${entry.type === 'dmg_dealt' ? styles.floatDealt : entry.type === 'heal' ? styles.floatHeal : styles.floatTaken}`}
+            style={{ ...posStyle, opacity, color }}
+          >
+            {displayText}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -489,7 +489,37 @@
   letter-spacing: 0.5px;
   pointer-events: none;
   line-height: 1.2;
+  margin-bottom: 1px;
 }
+
+/* ---- Floating damage / heal numbers ---- */
+@keyframes floatFade {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.floatNumber {
+  position: absolute;
+  font-size: 22px;
+  font-weight: 700;
+  pointer-events: none;
+  z-index: 200;
+  letter-spacing: 0px;
+  /* simple dark outline for legibility — no glow */
+  text-shadow:
+    1px 1px 0 rgba(0, 0, 0, 0.95),
+    -1px -1px 0 rgba(0, 0, 0, 0.95),
+    1px -1px 0 rgba(0, 0, 0, 0.95),
+    -1px 1px 0 rgba(0, 0, 0, 0.95);
+  white-space: nowrap;
+  user-select: none;
+  animation: floatFade 2s ease-out forwards;
+}
+
+/* per-type colour hints (colour is also set inline; these act as fallback) */
+.floatDealt { color: #ffffff; }
+.floatTaken { color: #ff3333; }
+.floatHeal  { color: #55ffaa; }
 
 /* ============================================================
    ABILITY BUTTONS — icon only
