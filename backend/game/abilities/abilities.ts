@@ -194,6 +194,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成2点伤害\n【控制】目标5秒\n【减疗】15秒",
     type: "CONTROL",
     target: "OPPONENT",
+    range: 20,
     cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 2 }],
@@ -497,9 +498,9 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   fenglai_wushan: {
     id: "fenglai_wushan",
     name: "风来吴山",
-    description: "持续5秒运功，每次轮换时对敌人造成8点伤害",
+    description: "在5秒内，对10尺内目标造成10次伤害",
     originalDescription:
-      "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计8次伤害。在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
+      "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计10次伤害。在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 300,
@@ -510,39 +511,13 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         buffId: 1014,
         name: "不工",
         category: "BUFF",
-        description: "不受技能控制",
-        durationMs: 5_000, // 5 seconds
-        breakOnPlay: true,
+        description: "运功中：不受技能控制",
+        durationMs: 5_000,   // 5 seconds total channel
+        periodicMs: 625,     // 5000 / 8 = 625ms per hit → 8 total hits
+        breakOnPlay: true,   // interrupted when player casts another ability
         effects: [
           { type: "CONTROL_IMMUNE" },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 8,
-            when: "TURN_END",
-            turnOf: "OWNER",
-            target: "ENEMY",
-          },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 8,
-            when: "TURN_START",
-            turnOf: "ENEMY",
-            target: "ENEMY",
-          },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 8,
-            when: "TURN_END",
-            turnOf: "ENEMY",
-            target: "ENEMY",
-          },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 8,
-            when: "TURN_START",
-            turnOf: "OWNER",
-            target: "ENEMY",
-          },
+          { type: "CHANNEL_AOE_TICK", value: 8, range: 10 },
         ],
       },
     ],

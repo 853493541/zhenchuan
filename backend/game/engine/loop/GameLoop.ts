@@ -185,6 +185,19 @@ export class GameLoop {
                 const heal = resolveHealAmount({ target: player, base: e.value ?? 0 });
                 player.hp = Math.min(player.maxHp ?? 100, player.hp + heal);
                 buffsChanged = true;
+              } else if (e.type === "CHANNEL_AOE_TICK") {
+                // Channel AOE: deal damage to opponent if within range
+                const range = e.range ?? 10;
+                const dist = calculateDistance(player.position, opp.position);
+                if (dist <= range && opp.hp > 0) {
+                  const dmg = resolveScheduledDamage({
+                    source: player,
+                    target: opp,
+                    base: e.value ?? 0,
+                  });
+                  opp.hp = Math.max(0, opp.hp - dmg);
+                  buffsChanged = true;
+                }
               }
             }
           }

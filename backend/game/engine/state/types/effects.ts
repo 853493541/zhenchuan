@@ -30,7 +30,8 @@ export type EffectType =
   | "DIRECTIONAL_DASH"
   | "JUMP_BOOST"
   | "PERIODIC_DAMAGE"
-  | "PERIODIC_HEAL";
+  | "PERIODIC_HEAL"
+  | "CHANNEL_AOE_TICK";
 
 /**
  * Immediate ability effects
@@ -48,6 +49,9 @@ export interface AbilityEffect {
 
   /** Direction mode for DIRECTIONAL_DASH effects */
   dirMode?: "TOWARD" | "AWAY" | "PERP_LEFT" | "PERP_RIGHT";
+
+  /** Range (units) for CHANNEL_AOE_TICK — target must be within this distance */
+  range?: number;
 }
 
 /**

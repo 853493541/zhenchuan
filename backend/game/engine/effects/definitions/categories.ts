@@ -22,6 +22,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   SILENCE: "DEBUFF",
   DELAYED_DAMAGE: "DEBUFF",
   PERIODIC_DAMAGE: "DEBUFF",
+  CHANNEL_AOE_TICK: "BUFF",
   CONTROL: "DEBUFF",
 
   // ✅ Channel buffs are BUFFs (self-cast)

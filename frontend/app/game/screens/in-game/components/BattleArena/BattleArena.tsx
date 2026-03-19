@@ -200,6 +200,41 @@ function renderFloor(ctx: CanvasRenderingContext2D, cam: Cam, W: number, H: numb
   ctx.shadowBlur = 0;
 }
 
+/* Filled + outlined AOE zone with animated pulse — for channel abilities */
+function renderAoeZone(
+  ctx: CanvasRenderingContext2D,
+  pos: V3,
+  radius: number,
+  cam: Cam,
+  W: number, H: number,
+  fillColor: string,
+  borderColor: string,
+) {
+  const segments = 64;
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
+  ctx.save();
+  ctx.beginPath();
+  let first = true;
+  for (let i = 0; i <= segments; i++) {
+    const ang = (i / segments) * Math.PI * 2;
+    const p = projPt(
+      v3(pos.x + Math.cos(ang) * radius, pos.y + Math.sin(ang) * radius, 0.03),
+      cam, W, H,
+    );
+    if (!p) { first = true; continue; }
+    if (first) { ctx.moveTo(p.x, p.y); first = false; } else ctx.lineTo(p.x, p.y);
+  }
+  ctx.closePath();
+  ctx.globalAlpha = 0.10 + 0.06 * pulse;
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+  ctx.globalAlpha = 0.55 + 0.35 * pulse;
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
 function renderRangeCircle(
   ctx: CanvasRenderingContext2D,
   pos: V3,
@@ -528,6 +563,7 @@ export default function BattleArena({
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  const [, setChannelTick] = useState(0); // forces re-renders for channel bar countdown
 
   // Split abilities into two rows for rendering
   const commonAbilities = handAbilities.filter(a => a.isCommon);
@@ -589,6 +625,10 @@ export default function BattleArena({
   /* --- Fuyao (扶摇直上) local buff prediction --- */
   const hasFuyaoBuffRef = useRef(false);
 
+  /* --- Channel AOE refs (used in render loop, updated via useEffect) --- */
+  const meChannelingRef  = useRef(false);
+  const oppChannelingRef = useRef(false);
+
   // Ref-based cast wrapper — updated every render, so it always captures the
   // latest onCastAbility without causing keyboard/mouse useEffect re-runs.
   const castAbilityRef = useRef<(id: string) => void>(() => {});
@@ -633,6 +673,22 @@ export default function BattleArena({
     setControlMode(mode);
     controlModeRef.current = mode;
   }, []);
+
+  // Channel bar countdown: tick every 50ms while 不工 buff (buffId 1014) is active
+  const channelBuff = me?.buffs?.find((b: any) => b.buffId === 1014);
+  useEffect(() => {
+    if (!channelBuff) return;
+    const id = setInterval(() => setChannelTick(t => t + 1), 50);
+    return () => clearInterval(id);
+  }, [(channelBuff as any)?.expiresAt]);
+
+  // Keep render-loop refs up to date for channel AOE circles
+  useEffect(() => {
+    meChannelingRef.current = !!(me?.buffs?.some((b: any) => b.buffId === 1014));
+  }, [me?.buffs]);
+  useEffect(() => {
+    oppChannelingRef.current = !!(opponent?.buffs?.some((b: any) => b.buffId === 1014));
+  }, [opponent?.buffs]);
 
   /* ========================= MOVEMENT ========================= */
 
@@ -1380,6 +1436,12 @@ export default function BattleArena({
       if (minRangeAbil?.minRange)
         renderRangeCircle(ctx, v3(myRP.x, myRP.y, 0), minRangeAbil.minRange, cam, w, h, 'rgba(255, 80, 80, 0.45)');
 
+      /* Channel AOE zone (风来吴山 不工 buff — range 10) */
+      if (meChannelingRef.current)
+        renderAoeZone(ctx, v3(myRP.x, myRP.y, 0), 10, cam, w, h, '#ffdd00', '#ffd700');
+      if (oppChannelingRef.current)
+        renderAoeZone(ctx, v3(opRP.x, opRP.y, 0), 10, cam, w, h, '#ff3300', '#ff5500');
+
       /* Sort back-to-front */
       const mxHp = maxHpRef.current;
       const entities = [
@@ -1681,6 +1743,37 @@ export default function BattleArena({
               <StatusBar buffs={me.buffs} showDebug debugLabel="me" />
             </div>
           )}
+
+          {/* ── 倒读条: countdown bar for 风来吴山 (不工 buff buffId 1014) ── */}
+          {(() => {
+            if (!channelBuff) return null;
+            const CHANNEL_MS = 5000;
+            const TICKS = 8;
+            const remaining = Math.max(0, (channelBuff as any).expiresAt - Date.now());
+            if (remaining <= 0) return null;
+            const elapsed = CHANNEL_MS - remaining;
+            // 倒读条: fill shrinks from 100% → 0% as time elapses
+            const progress = Math.max(0, remaining / CHANNEL_MS);
+            const elapsedSec = (elapsed / 1000).toFixed(2);
+            const totalSec   = (CHANNEL_MS / 1000).toFixed(1);
+            return (
+              <div className={styles.channelBarWrap}>
+                <div className={styles.channelBarTrack}>
+                  <div className={styles.channelBarFill} style={{ width: `${progress * 100}%` }} />
+                  {Array.from({ length: TICKS - 1 }, (_, i) => (
+                    <div
+                      key={i}
+                      className={styles.channelBarTick}
+                      style={{ left: `${((i + 1) / TICKS) * 100}%` }}
+                    />
+                  ))}
+                </div>
+                <span className={styles.channelBarLabel}>
+                  风来吴山 ({elapsedSec}/{totalSec})
+                </span>
+              </div>
+            );
+          })()}
 
           {/* ── Top row: draft abilities (6 fixed slots) ── */}
           <div className={styles.hotbar}>

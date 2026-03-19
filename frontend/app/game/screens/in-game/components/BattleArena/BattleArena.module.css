@@ -439,6 +439,58 @@
   white-space: nowrap;
 }
 
+/* ---- Channel bar (倒读条 / countdown bar while channeling) ---- */
+.channelBarWrap {
+  width: 50%;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+}
+
+.channelBarTrack {
+  position: relative;
+  width: 100%;
+  height: 14px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(220, 170, 30, 0.6);
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: 0 0 6px rgba(220, 170, 30, 0.25);
+}
+
+.channelBarFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #c8960c, #f0c030, #f5e080);
+  transition: width 0.05s linear;
+  border-radius: 2px 0 0 2px;
+}
+
+.channelBarTick {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.45);
+  z-index: 2;
+  transform: translateX(-50%);
+}
+
+.channelBarLabel {
+  text-align: center;
+  font-size: 9px;
+  font-weight: bold;
+  color: #f5d060;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  line-height: 1.2;
+}
+
 /* ============================================================
    ABILITY BUTTONS — icon only
    ============================================================ */

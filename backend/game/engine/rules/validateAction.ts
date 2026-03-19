@@ -77,6 +77,16 @@ export function validateCastAbility(
     throw new Error("ERR_SILENCED");
   }
 
+  /* ================= CONTROL / ATTACK_LOCK ================= */
+  const isControlled =
+    hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
+  const allowsOverride =
+    Array.isArray(ability.effects) &&
+    ability.effects.some((e: any) => e.allowWhileControlled === true);
+  if (isControlled && !allowsOverride) {
+    throw new Error("ERR_CONTROLLED");
+  }
+
   /* ================= RANGE CHECK ================= */
   if (ability.range !== undefined) {
     const distance = calculateDistance(
