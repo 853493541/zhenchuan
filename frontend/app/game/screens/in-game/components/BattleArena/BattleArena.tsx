@@ -386,8 +386,8 @@ function renderCharacter(
   color: string,
   glowColor: string,
   hpFrac: number,
-  hpCurrent: number,
   isMe: boolean,
+  isSelected: boolean = false,
 ) {
   const baseP = projPt(v3(pos.x, pos.y, pos.z),             cam, W, H);
   const topP  = projPt(v3(pos.x, pos.y, pos.z + CHAR_HEIGHT), cam, W, H);
@@ -469,17 +469,21 @@ function renderCharacter(
   }
 
   // Floating HP bar
-  const barW = Math.max(rs * 2.6, 38);
-  const barH = 8;           // +60% taller
+  const barW = Math.max(rs * 3.9, 57);
+  const barH = 6;
   const barX = cx - barW / 2;
-  const barY = topP.y - 20;
+  const barY = topP.y - 22;
 
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
   ctx.beginPath();
   pRoundRect(ctx, barX - 1, barY - 1, barW + 2, barH + 2, 3);
   ctx.fill();
 
-  const hpColor = hpFrac > 0.5 ? '#44dd55' : hpFrac > 0.25 ? '#ffcc22' : '#ee3333';
+  const hpColor = isMe
+    ? (hpFrac > 0.5 ? '#44dd55' : hpFrac > 0.25 ? '#ffcc22' : '#ee3333')
+    : isSelected
+    ? '#ff8888'
+    : (hpFrac > 0.5 ? '#dd2222' : hpFrac > 0.25 ? '#cc1111' : '#991111');
   ctx.fillStyle = hpColor;
   const fillW = Math.max(0, barW * hpFrac);
   if (fillW > 0) {
@@ -488,12 +492,6 @@ function renderCharacter(
     ctx.fill();
   }
 
-  // HP number to the right of the bar
-  const fontSize = Math.max(9, Math.min(12, rs * 1.3));
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.font      = `${fontSize}px monospace`;
-  ctx.textAlign = 'left';
-  ctx.fillText(`${hpCurrent}`, barX + barW + 4, barY + barH - 1);
 }
 
 /* ============================================================
@@ -563,7 +561,17 @@ export default function BattleArena({
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  const [selectedSelf,     setSelectedSelf]     = useState(false);
   const [, setChannelTick] = useState(0); // forces re-renders for channel bar countdown
+
+  /* --- Debug position overlay --- */
+  const [showDebugGrid, setShowDebugGrid] = useState(false);
+  const [debugCursor,   setDebugCursor]   = useState<{ x: number; y: number } | null>(null);
+  const [debugBounds,   setDebugBounds]   = useState<{
+    me:  { cx: number; topY: number; hpBarY: number } | null;
+    opp: { cx: number; topY: number } | null;
+    cw: number; ch: number;
+  }>({ me: null, opp: null, cw: 800, ch: 500 });
 
   /* --- Floating damage/heal numbers --- */
   type FloatType = 'dmg_dealt' | 'dmg_taken' | 'heal';
@@ -577,7 +585,7 @@ export default function BattleArena({
     if (value <= 0) return;
     const id = ++floatIdRef.current;
     setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: opts?.screenPct }]);
-    setTimeout(() => setFloats(f => f.filter(e => e.id !== id)), 2100);
+    setTimeout(() => setFloats(f => f.filter(e => e.id !== id)), 1400);
   };
 
   // Split abilities into two rows for rendering
@@ -621,6 +629,7 @@ export default function BattleArena({
 
   /* --- Target selection refs --- */
   const selectedTargetRef   = useRef<string | null>(null);
+  const selectedSelfRef     = useRef(false);
   const oppScreenBoundsRef  = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
   const meScreenBoundsRef   = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
   // Always reflects current opponent userId (stable in 1v1 but kept as ref for closure safety)
@@ -636,6 +645,8 @@ export default function BattleArena({
   const meHpRef       = useRef(me?.hp ?? 0);
   const oppHpRef      = useRef(opponent?.hp ?? 0);
   const maxHpRef      = useRef(maxHp);
+  const distanceRef   = useRef(distance);
+  distanceRef.current = distance;
   const canvasSizeRef = useRef({ w: 800, h: 500 });
 
   /* --- Fuyao (扶摇直上) local buff prediction --- */
@@ -708,6 +719,22 @@ export default function BattleArena({
     oppChannelingRef.current = !!(opponent?.buffs?.some((b: any) => b.buffId === 1014));
   }, [opponent?.buffs]);
 
+  // Poll canvas bounds for debug overlay
+  useEffect(() => {
+    if (!showDebugGrid) return;
+    const id = setInterval(() => {
+      const me  = meScreenBoundsRef.current;
+      const opp = oppScreenBoundsRef.current;
+      const { w: cw, h: ch } = canvasSizeRef.current;
+      setDebugBounds({
+        me:  me  ? { cx: me.cx,  topY: me.topY,  hpBarY: me.topY  - 20 } : null,
+        opp: opp ? { cx: opp.cx, topY: opp.topY } : null,
+        cw, ch,
+      });
+    }, 100);
+    return () => clearInterval(id);
+  }, [showDebugGrid]);
+
   /* --- Track opponent hand cooldown resets to label incoming damage --- */
   const prevOppHandRef      = useRef<any[]>([]);
   const lastOppCastNameRef  = useRef<string | null>(null);
@@ -745,7 +772,9 @@ export default function BattleArena({
         addFloat(-diff, 'dmg_taken', { label, screenPct });
         lastOppCastNameRef.current = null;
       } else if (diff > 0) {
-        addFloat(diff, 'heal', { screenPct });
+        const healLabel = lastCastNameRef.current ?? undefined;
+        addFloat(diff, 'heal', { label: healLabel, screenPct });
+        lastCastNameRef.current = null;
       }
     }
     prevMeHpRef.current = me?.hp ?? null;
@@ -757,7 +786,7 @@ export default function BattleArena({
       if (diff < 0) {
         const bounds = oppScreenBoundsRef.current;
         const { w, h } = canvasSizeRef.current;
-        const screenPct = bounds ? { x: bounds.cx / w, y: bounds.topY / h } : undefined;
+        const screenPct = bounds ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 55) / h) } : undefined;
         const label = lastCastNameRef.current ?? undefined;
         addFloat(-diff, 'dmg_dealt', { label, screenPct });
         lastCastNameRef.current = null;
@@ -1531,9 +1560,9 @@ export default function BattleArena({
         return dB - dA;
       });
       for (const e of entities) {
-        renderCharacter(ctx, e.pos, cam, w, h, e.color, e.glow, Math.max(0, e.hp / mxHp), e.hp, e.isMe);
+        renderCharacter(ctx, e.pos, cam, w, h, e.color, e.glow, Math.max(0, e.hp / mxHp), e.isMe, !e.isMe && selectedTargetRef.current !== null);
         if (e.isMe) {
-          renderFacingArc(ctx, e.pos, meFacingRef.current, cam, w, h);
+          if (selectedSelfRef.current) renderFacingArc(ctx, e.pos, meFacingRef.current, cam, w, h);
           // Save local player screen bounds for float positioning
           const meBaseP = projPt(e.pos, cam, w, h);
           const meTopP  = projPt(v3(e.pos.x, e.pos.y, e.pos.z + CHAR_HEIGHT), cam, w, h);
@@ -1552,6 +1581,26 @@ export default function BattleArena({
           if (baseP && topP) {
             const rs = (CHAR_RADIUS / baseP.depth) * cam.fl;
             oppScreenBoundsRef.current = { cx: baseP.x, topY: topP.y, baseY: baseP.y, rs };
+            // Draw enemy nameplate (name · distance) above HP bar
+            if (rs >= 1.5) {
+              const barW   = Math.max(rs * 2.6, 38);
+              const barY   = topP.y - 22;
+              const dist   = distanceRef.current;
+              const label  = `陌路侠士 · ${dist.toFixed(1)}尺`;
+              const nSize  = Math.max(9, Math.min(13, rs * 1.15));
+              ctx.save();
+              ctx.font         = `${nSize}px "Microsoft YaHei", sans-serif`;
+              ctx.textAlign    = 'center';
+              ctx.textBaseline = 'bottom';
+              ctx.fillStyle    = 'rgba(0,0,0,0.7)';
+              ctx.fillText(label, baseP.x + 0.5, barY - 2.5);
+              // red1 (#ffd0d5) when selected, red2 (#cc2222) when unselected
+              ctx.fillStyle = selectedTargetRef.current
+                ? 'rgba(255, 208, 213, 0.95)'
+                : 'rgba(200, 40, 40, 0.9)';
+              ctx.fillText(label, baseP.x, barY - 3);
+              ctx.restore();
+            }
           }
         }
       }
@@ -1586,8 +1635,22 @@ export default function BattleArena({
   const isMoving = Object.values(wasdKeys).some(v => v);
   const myFacingArrow = toFacingArrow(me.facing ?? meFacingRef.current);
 
+  // Mouse move handler for debug cursor tracking
+  const handleDebugMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!showDebugGrid) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setDebugCursor({
+      x: ((e.clientX - rect.left) / rect.width)  * 100,
+      y: ((e.clientY - rect.top)  / rect.height) * 100,
+    });
+  };
+
   return (
-    <div className={styles.container}>
+    <div
+      className={styles.container}
+      onMouseMove={handleDebugMouseMove}
+      onMouseLeave={() => showDebugGrid && setDebugCursor(null)}
+    >
 
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
       <div ref={wrapRef} className={styles.canvasWrap}>
@@ -1595,25 +1658,26 @@ export default function BattleArena({
       </div>
 
       {/* ===== TOP-LEFT: My HP panel ===== */}
-      <div className={styles.playerPanel}>
+      <div
+        className={styles.playerPanel}
+        style={{ pointerEvents: 'all', cursor: 'pointer' }}
+        onClick={() => { const next = !selectedSelfRef.current; selectedSelfRef.current = next; setSelectedSelf(next); }}
+      >
         <div className={styles.playerLabelRow}>
-          <span className={styles.playerLabel}>YOU</span>
+          <span className={styles.playerLabel}>玩家</span>
         </div>
-        <div className={styles.myHpRow}>
-          <div className={styles.myHpTrack}>
-            <div
-              className={styles.myHpFill}
-              style={{
-                width:      `${myHpPct}%`,
-                background: myHpPct > 50 ? '#44cc55' : myHpPct > 25 ? '#ffcc22' : '#ee3333',
-              }}
-            />
-          </div>
-          <span className={styles.myHpNum}>{me?.hp ?? 0}</span>
+        <div className={styles.myHpTrack}>
+          <div
+            className={styles.myHpFill}
+            style={{
+              width:      `${myHpPct}%`,
+              background: myHpPct > 50 ? '#44cc55' : myHpPct > 25 ? '#ffcc22' : '#ee3333',
+            }}
+          />
+          <span className={styles.hpNumInside}>{me?.hp ?? 0}</span>
         </div>
-        <div className={styles.panelFooter}>
-          <span className={styles.panelFooterLabel}>FACE</span>
-          <span className={styles.facingDir}>{myFacingArrow}</span>
+        <div className={styles.myManaTrack}>
+          <div className={styles.myManaFill} />
         </div>
       </div>
 
@@ -1664,29 +1728,25 @@ export default function BattleArena({
         {selectedTargetId && (
           <>
             <div className={styles.enemyBossBar}>
-              <div className={styles.enemyName}>ENEMY</div>
-              <div className={styles.enemyHpRow}>
-                <div className={styles.enemyHpTrack}>
-                  <div
-                    className={styles.enemyHpFill}
-                    style={{
-                      width:      `${oppHpPct}%`,
-                      background: oppHpPct > 50
-                        ? 'linear-gradient(90deg, #991111, #cc2222)'
-                        : oppHpPct > 25
-                        ? 'linear-gradient(90deg, #aa7700, #ddaa00)'
-                        : 'linear-gradient(90deg, #771111, #aa1111)',
-                    }}
-                  />
-                  {[25, 50, 75].map(t => (
-                    <div key={t} className={styles.enemyHpTick} style={{ left: `${t}%` }} />
-                  ))}
-                </div>
-                <span className={styles.enemyHpNum}>{opponent?.hp ?? 0}</span>
+              <div className={styles.enemyName}>陌路侠士</div>
+              <div className={styles.enemyHpTrack}>
+                <div
+                  className={styles.enemyHpFill}
+                  style={{
+                    width:      `${oppHpPct}%`,
+                    background: 'linear-gradient(90deg, #991111, #cc2222)',
+                  }}
+                />
+                <span className={styles.hpNumInside}>{opponent?.hp ?? 0}</span>
+              </div>
+              <div className={styles.enemyManaTrack}>
+                <div className={styles.enemyManaFill} />
               </div>
             </div>
-            {/* Buffs row then debuffs row */}
-            <StatusBar buffs={opponent?.buffs ?? []} debugLabel="opp" />
+            {/* Buffs row then debuffs row — fixed-height wrapper so ability row never shifts up */}
+            <div style={{ minHeight: 72, width: '100%' }}>
+              <StatusBar buffs={opponent?.buffs ?? []} debugLabel="opp" />
+            </div>
             {/* Enemy drafted abilities */}
             {(() => {
               const draftedAbilities = (opponent?.hand ?? []).filter((ability: any) => {
@@ -1700,14 +1760,17 @@ export default function BattleArena({
                     const cardData = abilities[abilityId];
                     const name = cardData?.name || abilityId || '?';
                     return (
-                      <div key={ability.instanceId || abilityId} className={styles.enemyAbilitySlot} title={name}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`/game/icons/Skills/${name}.png`}
-                          alt={name}
-                          className={styles.enemyAbilityIcon}
-                          draggable={false}
-                        />
+                      <div key={ability.instanceId || abilityId} className={styles.enemyAbilityItem}>
+                        <div className={styles.enemyAbilitySlot} title={name}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`/game/icons/Skills/${name}.png`}
+                            alt={name}
+                            className={styles.enemyAbilityIcon}
+                            draggable={false}
+                          />
+                        </div>
+                        <span className={styles.enemyAbilityName}>{name.slice(0, 2)}</span>
                       </div>
                     );
                   })}
@@ -1718,13 +1781,115 @@ export default function BattleArena({
         )}
       </div>
 
-      {/* ===== TOP-RIGHT: RTT badge ===== */}
+      {/* ===== TOP-RIGHT: RTT badge + debug grid toggle ===== */}
       <div className={styles.rttBadge}>{rtt !== null ? `${rtt}ms` : '—'}</div>
+      <button
+        onClick={() => setShowDebugGrid(v => !v)}
+        title="Toggle XY% grid"
+        style={{
+          position: 'absolute', top: 14, right: 60, zIndex: 500,
+          background: showDebugGrid ? 'rgba(255,220,0,0.18)' : 'rgba(0,0,0,0.55)',
+          border: `1px solid ${showDebugGrid ? '#ffdd00' : 'rgba(255,255,255,0.2)'}`,
+          color: showDebugGrid ? '#ffdd00' : 'rgba(255,255,255,0.55)',
+          borderRadius: 4, padding: '3px 8px', fontSize: 11,
+          cursor: 'pointer', fontFamily: 'monospace', letterSpacing: 1,
+        }}
+      >
+        XY%
+      </button>
+
+      {/* ===== DEBUG POSITION GRID ===== */}
+      {showDebugGrid && (
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 490 }}>
+          {/* Grid lines every 10% */}
+          {[10, 20, 30, 40, 50, 60, 70, 80, 90].map(p => (
+            <React.Fragment key={p}>
+              {/* horizontal */}
+              <div style={{ position: 'absolute', left: 0, right: 0, top: `${p}%`, height: 1,
+                background: p === 50 ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)' }} />
+              {/* vertical */}
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${p}%`, width: 1,
+                background: p === 50 ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)' }} />
+              {/* Y label on left edge */}
+              <div style={{
+                position: 'absolute', left: 3, top: `${p}%`,
+                transform: 'translateY(-50%)',
+                background: 'rgba(0,0,0,0.75)', color: '#ffdd00',
+                fontSize: 10, fontFamily: 'monospace', padding: '1px 4px', borderRadius: 2,
+              }}>Y{p}</div>
+              {/* X label on top edge */}
+              <div style={{
+                position: 'absolute', top: 3, left: `${p}%`,
+                transform: 'translateX(-50%)',
+                background: 'rgba(0,0,0,0.75)', color: '#ffdd00',
+                fontSize: 10, fontFamily: 'monospace', padding: '1px 4px', borderRadius: 2,
+              }}>X{p}</div>
+            </React.Fragment>
+          ))}
+
+          {/* Cursor coordinates readout */}
+          {debugCursor && (
+            <div style={{
+              position: 'absolute',
+              left: `${Math.min(debugCursor.x, 80)}%`,
+              top:  `${Math.min(debugCursor.y, 90)}%`,
+              transform: 'translate(8px, -50%)',
+              background: 'rgba(0,0,0,0.88)', color: '#ffdd00',
+              fontFamily: 'monospace', fontSize: 12, fontWeight: 700,
+              padding: '3px 8px', borderRadius: 4,
+              border: '1px solid rgba(255,221,0,0.6)',
+              pointerEvents: 'none',
+              zIndex: 495,
+            }}>
+              X:{debugCursor.x.toFixed(1)}% Y:{debugCursor.y.toFixed(1)}%
+            </div>
+          )}
+
+          {/* Live canvas bounds markers */}
+          {(() => {
+            const { me, opp, cw, ch } = debugBounds;
+            if (!cw || !ch) return null;
+            const markers: Array<{ x: number; y: number; color: string; label: string }> = [];
+            if (me) {
+              const x = (me.cx / cw) * 100;
+              const y = (me.hpBarY / ch) * 100;
+              markers.push({ x, y, color: '#44aaff', label: `ME hp-bar\nX:${x.toFixed(1)}% Y:${y.toFixed(1)}%` });
+            }
+            if (opp) {
+              const x = (opp.cx / cw) * 100;
+              const y = (opp.topY / ch) * 100;
+              markers.push({ x, y, color: '#ff5555', label: `OPP head\nX:${x.toFixed(1)}% Y:${y.toFixed(1)}%` });
+            }
+            return markers.map((m, i) => (
+              <div key={i} style={{ position: 'absolute', left: `${m.x}%`, top: `${m.y}%`,
+                transform: 'translate(-50%,-50%)', zIndex: 496 }}>
+                {/* crosshair dot */}
+                <div style={{ width: 10, height: 10, borderRadius: '50%',
+                  background: m.color, border: '2px solid #fff',
+                  boxShadow: '0 0 8px rgba(0,0,0,0.9)' }} />
+                {/* horizontal tick */}
+                <div style={{ position: 'absolute', top: 4, left: -18, width: 14, height: 2, background: m.color }} />
+                <div style={{ position: 'absolute', top: 4, left: 12, width: 14, height: 2, background: m.color }} />
+                {/* label */}
+                <div style={{
+                  position: 'absolute', top: 14, left: '50%',
+                  transform: 'translateX(-50%)',
+                  background: 'rgba(0,0,0,0.88)', color: m.color,
+                  fontSize: 10, fontFamily: 'monospace', padding: '2px 6px',
+                  borderRadius: 3, border: `1px solid ${m.color}`,
+                  whiteSpace: 'pre', textAlign: 'center',
+                }}>
+                  {m.label}
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
 
       {/* ===== CENTER: Distance floating label ===== */}
       <div className={styles.distIndicator}>
-        <span className={styles.distVal}>{distance.toFixed(1)}</span>
-        <span className={styles.distUnit}>units</span>
+        <span className={styles.distVal}>{distance.toFixed(1)}尺</span>
       </div>
 
       {/* ===== CHEAT: Ability picker (bottom-right, toggleable) ===== */}
@@ -1747,28 +1912,28 @@ export default function BattleArena({
         <div style={{
           position: 'absolute', bottom: 200, right: 8, zIndex: 200,
           background: 'rgba(10,18,28,0.97)', border: '1px solid #ff6b00',
-          borderRadius: 6, padding: 10, width: 260, maxHeight: '70vh',
-          overflowY: 'auto', fontSize: 12, color: '#ccc',
+          borderRadius: 6, padding: 8, maxHeight: '70vh',
+          overflowY: 'auto',
+          display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4,
         }}>
-          <div style={{ color: '#ff6b00', fontWeight: 'bold', marginBottom: 6, fontSize: 13 }}>
-            ⚡ 技能添加 (作弊)
-          </div>
-          <div style={{ color: '#888', marginBottom: 8, fontSize: 11 }}>
-            点击技能可将其添加至你的当前战斗手牌
-          </div>
           {Object.values(abilities)
             .filter((c: any) => c && !c.isCommon && c.id && c.name)
             .sort((a: any, b: any) => a.name.localeCompare(b.name))
             .map((ability: any) => (
-              <div
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
                 key={ability.id}
+                src={`/game/icons/Skills/${ability.name}.png`}
+                alt={ability.name}
+                title={`${ability.name}${ability.description ? '\n' + ability.description : ''}`}
                 style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 8,
-                  padding: '6px 4px', borderBottom: '1px solid #1e2d3a',
+                  width: 32, height: 32, objectFit: 'contain',
+                  borderRadius: 4, border: '1px solid #ff6b00',
                   cursor: addingAbility === ability.id ? 'wait' : 'pointer',
-                  opacity: addingAbility === ability.id ? 0.5 : 1,
-                  background: addingAbility === ability.id ? 'rgba(255,107,0,0.08)' : 'transparent',
+                  opacity: addingAbility === ability.id ? 0.4 : 1,
+                  background: 'rgba(20,5,5,0.8)',
                 }}
+                onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
                 onClick={async () => {
                   if (addingAbility) return;
                   setAddingAbility(ability.id);
@@ -1789,23 +1954,7 @@ export default function BattleArena({
                     setAddingAbility(null);
                   }
                 }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`/game/icons/Skills/${ability.name}.png`}
-                  alt={ability.name}
-                  style={{ width: 28, height: 28, flexShrink: 0, objectFit: 'contain' }}
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                />
-                <div>
-                  <div style={{ color: '#eee', fontWeight: 600 }}>{ability.name}</div>
-                  {ability.description && (
-                    <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>
-                      {ability.description}
-                    </div>
-                  )}
-                </div>
-              </div>
+              />
             ))
           }
         </div>
@@ -1816,7 +1965,6 @@ export default function BattleArena({
 
         <div className={styles.wasdWrap}>
           <WASDButtons onDirectionChange={handleJoystickDirection} />
-          <div className={`${styles.movingDot} ${isMoving ? styles.moving : ''}`} />
         </div>
 
         <div className={styles.hotbarStack}>
@@ -1931,31 +2079,25 @@ export default function BattleArena({
 
       {/* ===== FLOATING DAMAGE / HEAL NUMBERS ===== */}
       {floats.map(entry => {
-        const age     = (Date.now() - entry.startTime) / 2000; // 0→1 over 2s
-        const opacity = Math.max(0, 1 - age * 1.2);
-        const travelUp   = -70 * age; // floats upward
-        const travelDown =  50 * age; // (unused – all float up now)
+        const age      = (Date.now() - entry.startTime) / 1300; // 0→1 over 1.3s
+        // quick fade-in (0→8%), hold (8→75%), fade-out (75→100%)
+        const opacity  = age < 0.08 ? age / 0.08 : Math.max(0, 1 - Math.max(0, age - 0.75) / 0.25);
+        const travelUp = -80 * age; // floats upward
         const color = entry.type === 'dmg_dealt'
           ? '#ffffff'
           : entry.type === 'heal'
-          ? '#55ffaa'
-          : '#ff5555';
+          ? '#44ff66'
+          : '#ff2222';
         let posStyle: React.CSSProperties;
         if (entry.type === 'dmg_dealt') {
-          // Float above enemy model head, using projected screen position
+          // Float above enemy — uses projected canvas position captured at cast time
           const pctX = entry.screenPct ? entry.screenPct.x * 100 : 50;
           const pctY = entry.screenPct ? entry.screenPct.y * 100 : 12;
           posStyle = { top: `calc(${pctY}% + ${travelUp}px)`, left: `${pctX}%`, transform: 'translateX(-50%)' };
         } else if (entry.type === 'dmg_taken') {
-          // Anchor to player HP bar position; spread left
-          const pctX = entry.screenPct ? entry.screenPct.x * 100 : 50;
-          const pctY = entry.screenPct ? entry.screenPct.y * 100 : 55;
-          posStyle = { top: `calc(${pctY}% + ${travelUp}px)`, left: `calc(${pctX}% - 80px)`, transform: 'translateX(-50%)' };
+          posStyle = { top: `calc(60% + ${travelUp}px)`, left: '40%', transform: 'translateX(-50%)' };
         } else {
-          // Heal: same anchor but spread right
-          const pctX = entry.screenPct ? entry.screenPct.x * 100 : 50;
-          const pctY = entry.screenPct ? entry.screenPct.y * 100 : 55;
-          posStyle = { top: `calc(${pctY}% + ${travelUp}px)`, left: `calc(${pctX}% + 80px)`, transform: 'translateX(-50%)' };
+          posStyle = { top: `calc(60% + ${travelUp}px)`, left: '60%', transform: 'translateX(-50%)' };
         }
         const sign = entry.type === 'heal' ? '+' : '-';
         const displayText = entry.label

@@ -11,7 +11,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成1点伤害",
     type: "ATTACK",
     target: "OPPONENT",
-    range: 4,
+    range: 100,
     cooldownTicks: 0,
     effects: [{ type: "DAMAGE", value: 1 }],
     isCommon: true,

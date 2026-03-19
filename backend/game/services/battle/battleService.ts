@@ -75,10 +75,9 @@ export function initializeBattleState(
         hand: hand0,
         buffs: [],
 
-        // ✅ Real-time 2D arena positioning
-        // Player 0 starts on left side
+        // Player 0 starts on left side, 20 units from center
         position: {
-          x: ARENA_WIDTH * 0.25,
+          x: ARENA_WIDTH / 2 - 10,
           y: ARENA_HEIGHT / 2,
         },
         velocity: { vx: 0, vy: 0 },
@@ -91,9 +90,9 @@ export function initializeBattleState(
         hand: hand1,
         buffs: [],
 
-        // Player 1 starts on right side
+        // Player 1 starts on right side, 20 units from center
         position: {
-          x: ARENA_WIDTH * 0.75,
+          x: ARENA_WIDTH / 2 + 10,
           y: ARENA_HEIGHT / 2,
         },
         velocity: { vx: 0, vy: 0 },
