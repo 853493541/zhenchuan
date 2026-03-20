@@ -16,8 +16,8 @@ import { PlayerState } from "../../state/types";
 import { Position } from "../../state/types/position";
 import { pushEvent } from "../events";
 
-const ARENA_WIDTH  = 100;
-const ARENA_HEIGHT = 100;
+const ARENA_WIDTH  = 2000;
+const ARENA_HEIGHT = 2000;
 const PLAYER_RADIUS = 2;
 
 function clamp(v: number, lo: number, hi: number) {

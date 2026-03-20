@@ -382,18 +382,18 @@ router.post("/draft/finalize", async (req, res) => {
 
       // ✅ Initialize arena positions when phase transitions to BATTLE
       // This ensures both players have position data immediately, even before /battle/start is called
-      const ARENA_WIDTH = 100;
-      const ARENA_HEIGHT = 100;
+      const ARENA_WIDTH = 2000;
+      const ARENA_HEIGHT = 2000;
       
       if (!game.state.players[0].position) {
         game.state.players[0].position = {
-          x: ARENA_WIDTH * 0.25,
+          x: ARENA_WIDTH / 2 - 15,
           y: ARENA_HEIGHT / 2,
         };
       }
       if (!game.state.players[1].position) {
         game.state.players[1].position = {
-          x: ARENA_WIDTH * 0.75,
+          x: ARENA_WIDTH / 2 + 15,
           y: ARENA_HEIGHT / 2,
         };
       }

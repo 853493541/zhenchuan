@@ -6,12 +6,13 @@ import WASDButtons from './WASDButtons';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { toastError } from '@/app/components/toast/toast';
 import type { ActiveBuff } from '../../types';
+import { worldMapObjects, type MapObject } from './worldMap';
 
 /* ============================================================
    ARENA SETTINGS  (must match backend)
    ============================================================ */
-const ARENA_WIDTH  = 100;
-const ARENA_HEIGHT = 100;
+const ARENA_WIDTH  = 2000;
+const ARENA_HEIGHT = 2000;
 
 /* Character visual */
 const CHAR_HEIGHT = 2.0;   // world units tall  (player capsule)
@@ -149,12 +150,26 @@ function renderBg(ctx: CanvasRenderingContext2D, cam: Cam, W: number, H: number)
   ctx.fillRect(0, hY, W, H - hY);
 }
 
+// Ground patch half-size — draw a 1200×1200 patch of ground around the camera.
+const FLOOR_HALF = 600;
+// Grid step within the local floor patch
+const FLOOR_GRID  = 100;
+
 function renderFloor(ctx: CanvasRenderingContext2D, cam: Cam, W: number, H: number) {
-  const corners = [
-    v3(0, 0, 0), v3(ARENA_WIDTH, 0, 0),
-    v3(ARENA_WIDTH, ARENA_HEIGHT, 0), v3(0, ARENA_HEIGHT, 0),
+  // ── Ground fill: project a large quad centred on the camera footprint ──
+  // We snap the patch centre to the grid so the lines don't swim as you move.
+  const cx = Math.round(cam.pos.x / FLOOR_GRID) * FLOOR_GRID;
+  const cy = Math.round(cam.pos.y / FLOOR_GRID) * FLOOR_GRID;
+  const x0 = Math.max(0, cx - FLOOR_HALF);
+  const x1 = Math.min(ARENA_WIDTH,  cx + FLOOR_HALF);
+  const y0 = Math.max(0, cy - FLOOR_HALF);
+  const y1 = Math.min(ARENA_HEIGHT, cy + FLOOR_HALF);
+
+  const gndCorners = [
+    v3(x0, y0, 0), v3(x1, y0, 0),
+    v3(x1, y1, 0), v3(x0, y1, 0),
   ];
-  const sc = corners
+  const sc = gndCorners
     .map(c => projPt(c, cam, W, H))
     .filter((p): p is ScreenPt => p !== null);
 
@@ -163,36 +178,55 @@ function renderFloor(ctx: CanvasRenderingContext2D, cam: Cam, W: number, H: numb
     ctx.beginPath();
     ctx.moveTo(sc[0].x, sc[0].y);
     for (let i = 1; i < sc.length; i++) ctx.lineTo(sc[i].x, sc[i].y);
+    // Extend the fill down off-screen to cover the bottom gap
     ctx.lineTo(W + 20, H + 20);
     ctx.lineTo(-20, H + 20);
     ctx.closePath();
     ctx.fill();
   }
 
+  // ── Grid lines: only within the visible patch ──
   ctx.lineWidth = 0.5;
   ctx.strokeStyle = 'rgba(18, 55, 100, 0.65)';
-  for (let x = 0; x <= ARENA_WIDTH; x += 10) {
-    const a = projPt(v3(x, 0, 0), cam, W, H);
-    const b = projPt(v3(x, ARENA_HEIGHT, 0), cam, W, H);
+  const gx0 = Math.floor(x0 / FLOOR_GRID) * FLOOR_GRID;
+  const gx1 = Math.ceil(x1  / FLOOR_GRID) * FLOOR_GRID;
+  const gy0 = Math.floor(y0 / FLOOR_GRID) * FLOOR_GRID;
+  const gy1 = Math.ceil(y1  / FLOOR_GRID) * FLOOR_GRID;
+
+  for (let gx = gx0; gx <= gx1; gx += FLOOR_GRID) {
+    const a = projPt(v3(gx, y0, 0), cam, W, H);
+    const b = projPt(v3(gx, y1, 0), cam, W, H);
     if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
   }
-  for (let y = 0; y <= ARENA_HEIGHT; y += 10) {
-    const a = projPt(v3(0, y, 0), cam, W, H);
-    const b = projPt(v3(ARENA_WIDTH, y, 0), cam, W, H);
+  for (let gy = gy0; gy <= gy1; gy += FLOOR_GRID) {
+    const a = projPt(v3(x0, gy, 0), cam, W, H);
+    const b = projPt(v3(x1, gy, 0), cam, W, H);
     if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
   }
 
-  const edges: [V3, V3][] = [
+  // ── Arena boundary edges (only near edges, skip edges > 800 units away) ──
+  const allEdges: [V3, V3][] = [
     [v3(0, 0, 0),                      v3(ARENA_WIDTH, 0, 0)],
     [v3(ARENA_WIDTH, 0, 0),            v3(ARENA_WIDTH, ARENA_HEIGHT, 0)],
     [v3(ARENA_WIDTH, ARENA_HEIGHT, 0), v3(0, ARENA_HEIGHT, 0)],
     [v3(0, ARENA_HEIGHT, 0),           v3(0, 0, 0)],
   ];
+  // Edge midpoints for distance test
+  const edgeMids = [
+    v3(ARENA_WIDTH / 2, 0, 0),
+    v3(ARENA_WIDTH, ARENA_HEIGHT / 2, 0),
+    v3(ARENA_WIDTH / 2, ARENA_HEIGHT, 0),
+    v3(0, ARENA_HEIGHT / 2, 0),
+  ];
   ctx.strokeStyle = 'rgba(40, 140, 255, 0.9)';
   ctx.lineWidth   = 1.8;
   ctx.shadowColor = '#1a6fff';
   ctx.shadowBlur  = 9;
-  for (const [a, b] of edges) {
+  for (let i = 0; i < allEdges.length; i++) {
+    const mid = edgeMids[i];
+    const ex = mid.x - cam.pos.x, ey = mid.y - cam.pos.y;
+    if (ex * ex + ey * ey > 800 * 800) continue; // skip far edges
+    const [a, b] = allEdges[i];
     const pa = projPt(a, cam, W, H);
     const pb = projPt(b, cam, W, H);
     if (pa && pb) { ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke(); }
@@ -292,6 +326,79 @@ function renderDashGhost(
   ctx.closePath();
   ctx.stroke();
   ctx.restore();
+}
+
+/* ============================================================
+   MAP OBJECT RENDERING
+   Draw axis-aligned boxes for all world geometry.
+   Culled at 200 world-unit camera distance (handled in render loop).
+   ============================================================ */
+
+function tintColor(hex: string, factor: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.round(((n >> 16) & 0xff) * factor);
+  const g = Math.round(((n >> 8)  & 0xff) * factor);
+  const b = Math.round((n & 0xff) * factor);
+  return `rgb(${r},${g},${b})`;
+}
+
+const OBJ_BASE: Record<string, { base: string; outline: string }> = {
+  building:  { base: '#4a5465', outline: '#607088' },
+  rock:      { base: '#363640', outline: '#484858' },
+  mountain:  { base: '#3a2e22', outline: '#5a4a38' },
+  hill_high: { base: '#253a1e', outline: '#3a5a2e' },
+  hill_low:  { base: '#2a4228', outline: '#406040' },
+};
+
+// Face brightness factors for simple top-down directional lighting
+// top=1.0, south face (-Y, faces camera default)=0.85, north=0.65, east=0.78, west=0.72
+const FACES: Array<{ vi: [number,number,number,number]; nx: number; ny: number; nz: number; bright: number }> = [
+  { vi: [4,5,6,7], nx: 0,  ny: 0,  nz: 1,  bright: 1.00 }, // top
+  { vi: [0,1,5,4], nx: 0,  ny: -1, nz: 0,  bright: 0.85 }, // south (−Y, faces toward default cam)
+  { vi: [3,2,6,7], nx: 0,  ny: 1,  nz: 0,  bright: 0.65 }, // north (+Y, away from cam)
+  { vi: [0,3,7,4], nx: -1, ny: 0,  nz: 0,  bright: 0.72 }, // west
+  { vi: [1,2,6,5], nx: 1,  ny: 0,  nz: 0,  bright: 0.78 }, // east
+];
+
+function renderMapObject(
+  ctx: CanvasRenderingContext2D,
+  obj: MapObject,
+  cam: Cam,
+  W: number, H: number,
+): void {
+  const x0 = obj.x, y0 = obj.y, x1 = obj.x + obj.w, y1 = obj.y + obj.d, h = obj.h;
+
+  // 8 box corners: [0-3] bottom ring, [4-7] top ring
+  const cs: V3[] = [
+    v3(x0, y0, 0), v3(x1, y0, 0), v3(x1, y1, 0), v3(x0, y1, 0),
+    v3(x0, y0, h), v3(x1, y0, h), v3(x1, y1, h), v3(x0, y1, h),
+  ];
+  const ps = cs.map(c => projPt(c, cam, W, H));
+
+  const col = OBJ_BASE[obj.type] ?? OBJ_BASE.building;
+
+  for (const face of FACES) {
+    // Back-face culling: face is visible when camera is on the outward side
+    const fi = face.vi;
+    const fx = (cs[fi[0]].x + cs[fi[1]].x + cs[fi[2]].x + cs[fi[3]].x) * 0.25;
+    const fy = (cs[fi[0]].y + cs[fi[1]].y + cs[fi[2]].y + cs[fi[3]].y) * 0.25;
+    const fz = (cs[fi[0]].z + cs[fi[1]].z + cs[fi[2]].z + cs[fi[3]].z) * 0.25;
+    const vis = face.nx * (cam.pos.x - fx) + face.ny * (cam.pos.y - fy) + face.nz * (cam.pos.z - fz);
+    if (vis <= 0) continue;
+
+    const pts = fi.map(i => ps[i]).filter((p): p is ScreenPt => p !== null);
+    if (pts.length < 3) continue;
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    ctx.fillStyle   = tintColor(col.base, face.bright);
+    ctx.fill();
+    ctx.strokeStyle = col.outline;
+    ctx.lineWidth   = 0.5;
+    ctx.stroke();
+  }
 }
 
 /* Filled half-disc showing facing direction at character feet */
@@ -1379,8 +1486,8 @@ export default function BattleArena({
       }
 
       localPositionRef.current = {
-        x: Math.max(2, Math.min(98, pos.x + vel.x)),
-        y: Math.max(2, Math.min(98, pos.y + vel.y)),
+        x: Math.max(2, Math.min(ARENA_WIDTH - 2, pos.x + vel.x)),
+        y: Math.max(2, Math.min(ARENA_HEIGHT - 2, pos.y + vel.y)),
       };
 
       // ── Z axis: jump + gravity ──
@@ -1641,58 +1748,84 @@ export default function BattleArena({
       if (oppChannelingRef.current)
         renderAoeZone(ctx, v3(opRP.x, opRP.y, 0), 10, cam, w, h, '#ff3300', '#ff5500');
 
-      /* Sort back-to-front */
+      /* ── Depth-sorted render: map objects + characters ── */
       const mxHp = maxHpRef.current;
-      const entities = [
+
+      type RenderItem =
+        | { kind: 'obj';  obj: MapObject; depth: number }
+        | { kind: 'char'; pos: V3; color: string; glow: string; hp: number; isMe: boolean; depth: number };
+
+      const renderItems: RenderItem[] = [];
+
+      // Collect visible map objects (within 200 world units of camera position)
+      for (const obj of worldMapObjects) {
+        const cx = obj.x + obj.w * 0.5;
+        const cy = obj.y + obj.d * 0.5;
+        const cz = obj.h * 0.5;
+        const ddx = cx - cam.pos.x, ddy = cy - cam.pos.y, ddz = cz - cam.pos.z;
+        if (ddx * ddx + ddy * ddy + ddz * ddz > 600 * 600) continue;
+        const depth = ddx * cam.fwd.x + ddy * cam.fwd.y + ddz * cam.fwd.z;
+        renderItems.push({ kind: 'obj', obj, depth });
+      }
+
+      // Collect characters
+      const charEntries = [
         { pos: v3(opRP.x, opRP.y, opRP.z), color: '#cc3333', glow: '#ff5555', hp: oppHpRef.current, isMe: false },
         { pos: v3(myRP.x, myRP.y, myRP.z), color: '#1a66cc', glow: '#44aaff', hp: meHpRef.current,  isMe: true  },
       ];
-      entities.sort((a, b) => {
-        const dA = dot3(sub3(a.pos, cam.pos), cam.fwd);
-        const dB = dot3(sub3(b.pos, cam.pos), cam.fwd);
-        return dB - dA;
-      });
-      for (const e of entities) {
-        renderCharacter(ctx, e.pos, cam, w, h, e.color, e.glow, Math.max(0, e.hp / mxHp), e.isMe, !e.isMe && selectedTargetRef.current !== null);
-        if (e.isMe) {
-          if (selectedSelfRef.current) renderFacingArc(ctx, e.pos, meFacingRef.current, cam, w, h);
-          // Save local player screen bounds for float positioning
-          const meBaseP = projPt(e.pos, cam, w, h);
-          const meTopP  = projPt(v3(e.pos.x, e.pos.y, e.pos.z + CHAR_HEIGHT), cam, w, h);
-          if (meBaseP && meTopP) {
-            const mrs = (CHAR_RADIUS / meBaseP.depth) * cam.fl;
-            meScreenBoundsRef.current = { cx: meBaseP.x, topY: meTopP.y, baseY: meBaseP.y, rs: mrs };
-          }
+      for (const c of charEntries) {
+        const ddx = c.pos.x - cam.pos.x, ddy = c.pos.y - cam.pos.y, ddz = c.pos.z - cam.pos.z;
+        const depth = ddx * cam.fwd.x + ddy * cam.fwd.y + ddz * cam.fwd.z;
+        renderItems.push({ kind: 'char', ...c, depth });
+      }
+
+      // Painter's algorithm: farthest first
+      renderItems.sort((a, b) => b.depth - a.depth);
+
+      for (const item of renderItems) {
+        if (item.kind === 'obj') {
+          renderMapObject(ctx, item.obj, cam, w, h);
         } else {
-          // Show opponent facing arc only when selected
-          if (selectedTargetRef.current) {
-            renderFacingArc(ctx, e.pos, oppFacingRef.current, cam, w, h);
-          }
-          // Save opponent screen bounds for click hit-testing
-          const baseP = projPt(e.pos, cam, w, h);
-          const topP  = projPt(v3(e.pos.x, e.pos.y, e.pos.z + CHAR_HEIGHT), cam, w, h);
-          if (baseP && topP) {
-            const rs = (CHAR_RADIUS / baseP.depth) * cam.fl;
-            oppScreenBoundsRef.current = { cx: baseP.x, topY: topP.y, baseY: baseP.y, rs };
-            // Draw enemy nameplate (name · distance) above HP bar
-            if (rs >= 1.5) {
-              const barW   = Math.max(rs * 2.6, 38);
-              const barY   = topP.y - 22;
-              const dist   = distanceRef.current;
-              const label  = `陌路侠士 · ${dist.toFixed(1)}尺`;
-              const nSize  = Math.max(9, Math.min(13, rs * 1.15));
-              ctx.save();
-              ctx.font         = `${nSize}px "Microsoft YaHei", sans-serif`;
-              ctx.textAlign    = 'center';
-              ctx.textBaseline = 'bottom';
-              ctx.fillStyle    = 'rgba(0,0,0,0.7)';
-              ctx.fillText(label, baseP.x + 0.5, barY - 2.5);
-              // red1 (#ffd0d5) when selected, red2 (#cc2222) when unselected
-              ctx.fillStyle = selectedTargetRef.current
-                ? 'rgba(255, 208, 213, 0.95)'
-                : 'rgba(200, 40, 40, 0.9)';
-              ctx.fillText(label, baseP.x, barY - 3);
-              ctx.restore();
+          const e = item;
+          renderCharacter(ctx, e.pos, cam, w, h, e.color, e.glow, Math.max(0, e.hp / mxHp), e.isMe, !e.isMe && selectedTargetRef.current !== null);
+          if (e.isMe) {
+            if (selectedSelfRef.current) renderFacingArc(ctx, e.pos, meFacingRef.current, cam, w, h);
+            // Save local player screen bounds for float positioning
+            const meBaseP = projPt(e.pos, cam, w, h);
+            const meTopP  = projPt(v3(e.pos.x, e.pos.y, e.pos.z + CHAR_HEIGHT), cam, w, h);
+            if (meBaseP && meTopP) {
+              const mrs = (CHAR_RADIUS / meBaseP.depth) * cam.fl;
+              meScreenBoundsRef.current = { cx: meBaseP.x, topY: meTopP.y, baseY: meBaseP.y, rs: mrs };
+            }
+          } else {
+            // Show opponent facing arc only when selected
+            if (selectedTargetRef.current) {
+              renderFacingArc(ctx, e.pos, oppFacingRef.current, cam, w, h);
+            }
+            // Save opponent screen bounds for click hit-testing
+            const baseP = projPt(e.pos, cam, w, h);
+            const topP  = projPt(v3(e.pos.x, e.pos.y, e.pos.z + CHAR_HEIGHT), cam, w, h);
+            if (baseP && topP) {
+              const rs = (CHAR_RADIUS / baseP.depth) * cam.fl;
+              oppScreenBoundsRef.current = { cx: baseP.x, topY: topP.y, baseY: baseP.y, rs };
+              // Draw enemy nameplate (name · distance) above HP bar
+              if (rs >= 1.5) {
+                const barY   = topP.y - 22;
+                const dist   = distanceRef.current;
+                const label  = `陌路侠士 · ${dist.toFixed(1)}尺`;
+                const nSize  = Math.max(9, Math.min(13, rs * 1.15));
+                ctx.save();
+                ctx.font         = `${nSize}px "Microsoft YaHei", sans-serif`;
+                ctx.textAlign    = 'center';
+                ctx.textBaseline = 'bottom';
+                ctx.fillStyle    = 'rgba(0,0,0,0.7)';
+                ctx.fillText(label, baseP.x + 0.5, barY - 2.5);
+                ctx.fillStyle = selectedTargetRef.current
+                  ? 'rgba(255, 208, 213, 0.95)'
+                  : 'rgba(200, 40, 40, 0.9)';
+                ctx.fillText(label, baseP.x, barY - 3);
+                ctx.restore();
+              }
             }
           }
         }

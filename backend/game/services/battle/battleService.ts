@@ -11,9 +11,9 @@ import { AbilityInstance } from "../../engine/state/types/abilities";
 import { ABILITIES } from "../../abilities/abilities";
 import { randomUUID } from "crypto";
 
-// Arena dimensions (must match frontend arena size)
-const ARENA_WIDTH = 100;
-const ARENA_HEIGHT = 100;
+// Arena dimensions (must match backend arena size)
+const ARENA_WIDTH = 2000;
+const ARENA_HEIGHT = 2000;
 
 /** IDs of common abilities that every player always has, regardless of draft. */
 const COMMON_ABILITY_IDS = [
@@ -75,9 +75,9 @@ export function initializeBattleState(
         hand: hand0,
         buffs: [],
 
-        // Player 0 starts on left side, 20 units from center
+        // Player 0 starts slightly west of center
         position: {
-          x: ARENA_WIDTH / 2 - 10,
+          x: ARENA_WIDTH / 2 - 15,
           y: ARENA_HEIGHT / 2,
         },
         velocity: { vx: 0, vy: 0 },
@@ -90,9 +90,9 @@ export function initializeBattleState(
         hand: hand1,
         buffs: [],
 
-        // Player 1 starts on right side, 20 units from center
+        // Player 1 starts slightly east of center
         position: {
-          x: ARENA_WIDTH / 2 + 10,
+          x: ARENA_WIDTH / 2 + 15,
           y: ARENA_HEIGHT / 2,
         },
         velocity: { vx: 0, vy: 0 },

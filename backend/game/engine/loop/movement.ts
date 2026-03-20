@@ -5,13 +5,64 @@
  */
 
 import { PlayerState, MovementInput } from "../state/types";
+import type { MapObject } from "../state/types/map";
+import { worldMap } from "../../map/worldMap";
 
 /**
  * Arena boundaries (in units)
  */
-const ARENA_WIDTH = 100;
-const ARENA_HEIGHT = 100;
+const ARENA_WIDTH = 2000;
+const ARENA_HEIGHT = 2000;
 const PLAYER_RADIUS = 2; // Collision size of player
+
+/**
+ * Resolve a circle-vs-AABB collision between a player and a map object.
+ * Pushes the player out of the obstacle and cancels velocity into it.
+ */
+function resolveObjectCollision(player: PlayerState, obj: MapObject): void {
+  const pr = PLAYER_RADIUS;
+  const px = player.position.x;
+  const py = player.position.y;
+
+  // Closest point on the AABB to the player center
+  const cx = Math.max(obj.x, Math.min(px, obj.x + obj.w));
+  const cy = Math.max(obj.y, Math.min(py, obj.y + obj.d));
+  const dx = px - cx;
+  const dy = py - cy;
+  const distSq = dx * dx + dy * dy;
+
+  if (distSq >= pr * pr) return; // no overlap
+
+  if (distSq < 1e-6) {
+    // Player center is fully inside AABB — push out through nearest edge
+    const dL = px - obj.x;
+    const dR = obj.x + obj.w - px;
+    const dT = py - obj.y;
+    const dB = obj.y + obj.d - py;
+    const min = Math.min(dL, dR, dT, dB);
+    if (min === dL) { player.position.x = obj.x - pr;           player.velocity.vx = Math.min(0, player.velocity.vx); }
+    else if (min === dR) { player.position.x = obj.x + obj.w + pr; player.velocity.vx = Math.max(0, player.velocity.vx); }
+    else if (min === dT) { player.position.y = obj.y - pr;           player.velocity.vy = Math.min(0, player.velocity.vy); }
+    else                 { player.position.y = obj.y + obj.d + pr; player.velocity.vy = Math.max(0, player.velocity.vy); }
+    return;
+  }
+
+  const dist = Math.sqrt(distSq);
+  const nx = dx / dist; // outward normal from obstacle surface toward player
+  const ny = dy / dist;
+  const penetration = pr - dist;
+
+  // Push player out of obstacle
+  player.position.x += nx * penetration;
+  player.position.y += ny * penetration;
+
+  // Cancel velocity component going into the obstacle (preserve sliding)
+  const velDot = player.velocity.vx * nx + player.velocity.vy * ny;
+  if (velDot < 0) {
+    player.velocity.vx -= velDot * nx;
+    player.velocity.vy -= velDot * ny;
+  }
+}
 
 /**
  * Vertical physics (60 Hz tick rate) — symmetric gravity
@@ -198,6 +249,11 @@ export function applyMovement(
     player.velocity.vy = 0;
   }
 
+  // ── Map object collision (AABB vs circle) ──
+  for (const obj of worldMap.objects) {
+    resolveObjectCollision(player, obj);
+  }
+
   // ── Z axis: asymmetric gravity (power jump uses steeper separate constants) ──
   const gravUp   = player.isPowerJump ? POWER_GRAVITY_UP   : GRAVITY_UP;
   const gravDown = player.isPowerJump ? POWER_GRAVITY_DOWN  : GRAVITY_DOWN;
@@ -240,7 +296,6 @@ export function movePlayerTowards(
   player.position.y += moveY;
 
   // Clamp to arena boundaries
-  const PLAYER_RADIUS = 2;
   player.position.x = Math.max(
     PLAYER_RADIUS,
     Math.min(ARENA_WIDTH - PLAYER_RADIUS, player.position.x)
@@ -249,6 +304,11 @@ export function movePlayerTowards(
     PLAYER_RADIUS,
     Math.min(ARENA_HEIGHT - PLAYER_RADIUS, player.position.y)
   );
+
+  // Map object collision after forced move
+  for (const obj of worldMap.objects) {
+    resolveObjectCollision(player, obj);
+  }
 
   // Stop velocity when forced to move
   player.velocity.vx = 0;

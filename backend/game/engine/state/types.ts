@@ -71,6 +71,13 @@ export type {
   MovementInput,
 } from "./types/position";
 
+/* ================= World Map ================= */
+export type {
+  MapObjectType,
+  MapObject,
+  WorldMap,
+} from "./types/map";
+
 export {
   calculateDistance,
   calculateAngle,
