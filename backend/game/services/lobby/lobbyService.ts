@@ -46,6 +46,7 @@ export async function createGame(userId: string) {
     ],
 
     events: [],
+    pickups: [],
   };
 
   const created = await GameSession.create({

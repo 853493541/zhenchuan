@@ -9,6 +9,16 @@ export interface AbilityInstance {
 }
 
 /* =========================================================
+   Pickup (ability book on the ground)
+========================================================= */
+
+export interface PickupItem {
+  id: string;
+  abilityId: string;
+  position: { x: number; y: number };
+}
+
+/* =========================================================
    Buff System (ALIGNED WITH BACKEND)
 ========================================================= */
 
@@ -110,6 +120,7 @@ export interface GameState {
 
   players: PlayerState[];
   events: GameEvent[];
+  pickups?: PickupItem[];
 }
 
 /* =========================================================

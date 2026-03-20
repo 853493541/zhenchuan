@@ -3,6 +3,10 @@ import { playAbility, passTurn } from "../services";
 import { getUserIdFromCookie } from "./auth";
 import { GameLoop } from "../engine/loop/GameLoop";
 import type { MovementInput } from "../engine/state/types";
+import { ABILITIES } from "../abilities/abilities";
+import GameSession from "../models/GameSession";
+import { broadcastGameUpdate } from "../services/broadcast";
+import { randomUUID } from "crypto";
 
 const router = express.Router();
 
@@ -135,6 +139,179 @@ router.post("/movement", async (req, res) => {
  */
 router.post("/ping", async (req, res) => {
   res.json({ pong: true });
+});
+
+/* ======================== PICKUP SYSTEM ======================== */
+
+const PICKUP_INTERACT_RANGE = 8; // world units — must be within this distance to interact
+const MAX_DRAFT_HAND = 6;        // draft-ability cap (common abilities excluded)
+
+/**
+ * POST /gameplay/pickup/inspect
+ * Player inspects a pickup book. Backend validates range and returns ability details.
+ * The 0.5s channel animation is handled on the frontend before calling this.
+ * Body: { gameId, pickupId }
+ */
+router.post("/pickup/inspect", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, pickupId } = req.body;
+
+    if (!gameId || !pickupId) {
+      return res.status(400).json({ error: "gameId and pickupId required" });
+    }
+
+    const loop = GameLoop.get(gameId);
+    if (!loop) {
+      return res.status(400).json({ error: "Battle not in progress" });
+    }
+
+    const state = loop.getState();
+    const playerIndex = state.players.findIndex((p) => p.userId === userId);
+    if (playerIndex === -1) {
+      return res.status(403).json({ error: "Not in this game" });
+    }
+
+    const pickup = (state.pickups ?? []).find((p) => p.id === pickupId);
+    if (!pickup) {
+      return res.status(404).json({ error: "Pickup not found or already claimed" });
+    }
+
+    // Check distance
+    const player = state.players[playerIndex];
+    const dx = player.position.x - pickup.position.x;
+    const dy = player.position.y - pickup.position.y;
+    if (dx * dx + dy * dy > PICKUP_INTERACT_RANGE * PICKUP_INTERACT_RANGE) {
+      return res.status(400).json({ error: "Too far away to interact" });
+    }
+
+    const abilityDef = ABILITIES[pickup.abilityId];
+    if (!abilityDef) {
+      return res.status(400).json({ error: "Ability definition not found" });
+    }
+
+    res.json({
+      pickupId: pickup.id,
+      abilityId: pickup.abilityId,
+      name: abilityDef.name,
+      description: (abilityDef as any).description ?? "",
+      type: abilityDef.type,
+    });
+  } catch (err: any) {
+    console.error("[pickup/inspect] error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /gameplay/pickup/claim
+ * Player picks up the ability book. Validates range + hand capacity, then adds to hand.
+ * Body: { gameId, pickupId }
+ */
+router.post("/pickup/claim", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, pickupId } = req.body;
+
+    if (!gameId || !pickupId) {
+      return res.status(400).json({ error: "gameId and pickupId required" });
+    }
+
+    const loop = GameLoop.get(gameId);
+    if (!loop) {
+      return res.status(400).json({ error: "Battle not in progress" });
+    }
+
+    const loopState = loop.getState();
+    const playerIndex = loopState.players.findIndex((p) => p.userId === userId);
+    if (playerIndex === -1) {
+      return res.status(403).json({ error: "Not in this game" });
+    }
+
+    const pickupIdx = (loopState.pickups ?? []).findIndex((p) => p.id === pickupId);
+    if (pickupIdx === -1) {
+      return res.status(404).json({ error: "Pickup not found or already claimed" });
+    }
+
+    const pickup = loopState.pickups[pickupIdx];
+
+    // Check distance
+    const player = loopState.players[playerIndex];
+    const dx = player.position.x - pickup.position.x;
+    const dy = player.position.y - pickup.position.y;
+    if (dx * dx + dy * dy > PICKUP_INTERACT_RANGE * PICKUP_INTERACT_RANGE) {
+      return res.status(400).json({ error: "Too far away to pick up" });
+    }
+
+    // Check hand capacity (count only non-common draft abilities)
+    const draftCount = player.hand.filter((h: any) => {
+      const aid = h.abilityId ?? (h as any).id ?? h.instanceId;
+      const def = ABILITIES[aid];
+      return def && !(def as any).isCommon;
+    }).length;
+    if (draftCount >= MAX_DRAFT_HAND) {
+      return res.status(400).json({ error: "你已经有6个技能，无法再拾取" });
+    }
+
+    const abilityDef = ABILITIES[pickup.abilityId];
+    if (!abilityDef) {
+      return res.status(400).json({ error: "Ability definition not found" });
+    }
+
+    const newInstance = {
+      instanceId: randomUUID(),
+      abilityId:  pickup.abilityId,
+      cooldown:   0,
+    };
+    const fullCard = { ...abilityDef, ...newInstance };
+
+    // Remove pickup and add ability to hand in live state
+    loopState.pickups.splice(pickupIdx, 1);
+    loopState.players[playerIndex] = {
+      ...loopState.players[playerIndex],
+      hand: [...loopState.players[playerIndex].hand, fullCard],
+    };
+    loop.updateState(loopState);
+
+    // Persist to DB
+    const game = await GameSession.findById(gameId);
+    if (game) {
+      game.state.players[playerIndex] = {
+        ...game.state.players[playerIndex],
+        hand: loopState.players[playerIndex].hand,
+      };
+      game.state.pickups = loopState.pickups;
+      if (game.tournament?.selectedAbilities?.[userId]) {
+        game.tournament.selectedAbilities[userId].push(newInstance);
+        game.markModified("tournament");
+      }
+      game.markModified("state");
+      game.markModified("state.players");
+      game.markModified("state.pickups");
+      await game.save();
+    }
+
+    // Broadcast updated hand + pickups to all clients
+    broadcastGameUpdate({
+      gameId,
+      version: loopState.version,
+      diff: [
+        { path: `/players/${playerIndex}/hand`, value: loopState.players[playerIndex].hand },
+        { path: "/pickups", value: loopState.pickups },
+      ],
+      timestamp: Date.now(),
+    });
+
+    res.json({
+      ok: true,
+      abilityId: pickup.abilityId,
+      name: abilityDef.name,
+      hand: loopState.players[playerIndex].hand,
+    });
+  } catch (err: any) {
+    console.error("[pickup/claim] error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;

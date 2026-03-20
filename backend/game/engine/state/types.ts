@@ -44,6 +44,7 @@ export type {
 export type {
   PlayerState,
   GameState,
+  PickupItem,
 } from "./types/state";
 
 /* ================= Tournament / Draft / Economy ================= */

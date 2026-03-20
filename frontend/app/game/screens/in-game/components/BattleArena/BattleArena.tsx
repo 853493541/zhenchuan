@@ -4,8 +4,9 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import styles from './BattleArena.module.css';
 import WASDButtons from './WASDButtons';
 import StatusBar from '../GameBoard/components/StatusBar';
-import { toastError } from '@/app/components/toast/toast';
+import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff } from '../../types';
+import type { PickupItem } from '../../types';
 import { worldMapObjects, type MapObject } from './worldMap';
 
 /* ============================================================
@@ -452,7 +453,55 @@ function renderFacingArc(
   ctx.restore();
 }
 
-function toFacingArrow(facing?: { x: number; y: number } | null): string {
+/** Render a glowing green ability book at a world position. */
+function renderPickupBook(
+  ctx: CanvasRenderingContext2D,
+  pos: V3,
+  cam: Cam,
+  W: number, H: number,
+  highlighted: boolean,
+  angleDeg: number = 0,
+) {
+  const base = projPt(pos, cam, W, H);
+  if (!base) return;
+  if (base.depth < 0.5) return;
+
+  const scale = Math.max(0.8, Math.min(18, (2.5 / base.depth) * cam.fl));
+
+  // Book lies flat on the ground: wider than tall (foreshortened rectangle)
+  const bw = scale * 2.2;  // width
+  const bh = scale * 1.3;  // height (compressed, lying flat)
+
+  ctx.save();
+  ctx.translate(base.x, base.y);
+  ctx.rotate((angleDeg * Math.PI) / 180);
+
+  // Weak border glow only — no filled halo
+  ctx.shadowBlur  = highlighted ? 8 : 3;
+  ctx.shadowColor = highlighted ? 'rgba(0,255,100,0.85)' : 'rgba(0,180,60,0.45)';
+
+  // Very translucent fill (almost transparent, just enough to read the shape)
+  ctx.fillStyle   = highlighted ? 'rgba(0,70,30,0.25)' : 'rgba(0,45,15,0.15)';
+  ctx.strokeStyle = highlighted ? '#00ff77' : '#00993a';
+  ctx.lineWidth   = highlighted ? 1.2 : 0.8;
+  ctx.beginPath();
+  ctx.rect(-bw / 2, -bh / 2, bw, bh);
+  ctx.fill();
+  ctx.stroke();
+
+  // Spine line (inner, no extra glow)
+  ctx.shadowBlur  = 0;
+  ctx.strokeStyle = highlighted ? '#00cc55' : '#006622';
+  ctx.lineWidth   = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(-bw / 2 + bw * 0.18, -bh / 2 + 0.5);
+  ctx.lineTo(-bw / 2 + bw * 0.18,  bh / 2 - 0.5);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function facingArrow(facing: { x: number; y: number } | undefined): string {
   if (!facing) return '·';
   const len = Math.sqrt(facing.x * facing.x + facing.y * facing.y);
   if (len < 0.05) return '·';
@@ -643,6 +692,8 @@ interface BattleArenaProps {
   opponentPositionBufferRef?: React.MutableRefObject<Array<{ t: number; pos: Position }>>;
   /** Full game events array from state — used to spawn per-event floating numbers */
   events?: any[];
+  /** Pickup items (ability books) currently on the ground */
+  pickups?: PickupItem[];
 }
 
 /* ============================================================
@@ -658,6 +709,7 @@ export default function BattleArena({
   abilities,
   opponentPositionBufferRef,
   events = [],
+  pickups = [],
 }: BattleArenaProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
@@ -673,6 +725,17 @@ export default function BattleArena({
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [selectedSelf,     setSelectedSelf]     = useState(false);
   const [, setChannelTick] = useState(0); // forces re-renders for channel bar countdown
+
+  /* --- Pickup interaction state --- */
+  const [nearbyPickupId,    setNearbyPickupId]    = useState<string | null>(null);
+  const [channelPickupId,   setChannelPickupId]   = useState<string | null>(null); // book being channeled
+  const [channelProgress,   setChannelProgress]   = useState(0);                  // 0-1
+  const [pickupModal,       setPickupModal]       = useState<{ pickupId: string; abilityId: string; name: string; description: string } | null>(null);
+  const channelTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const channelStartRef     = useRef<number>(0);
+  const channelAnimRef      = useRef<number>(0);
+  const pickupsRef          = useRef<PickupItem[]>([]);
+  const nearbyPickupIdRef   = useRef<string | null>(null);
 
   /* --- Debug position overlay --- */
   const [showDebugGrid, setShowDebugGrid] = useState(false);
@@ -874,6 +937,39 @@ export default function BattleArena({
   useEffect(() => {
     oppChannelingRef.current = !!(opponent?.buffs?.some((b: any) => b.buffId === 1014));
   }, [opponent?.buffs]);
+
+  // Keep pickups ref up-to-date for render loop
+  useEffect(() => {
+    pickupsRef.current = pickups;
+  }, [pickups]);
+
+  // Keep nearbyPickupIdRef in sync so render loop can read it
+  useEffect(() => {
+    nearbyPickupIdRef.current = nearbyPickupId;
+  }, [nearbyPickupId]);
+
+  // Proximity check: detect nearest book (runs every 100ms based on local position)
+  useEffect(() => {
+    const PICKUP_RANGE = 8;
+    const id = setInterval(() => {
+      const pos = localPositionRef.current;
+      if (!pos) return;
+      const items = pickupsRef.current;
+      let nearest: string | null = null;
+      let nearestDist = Infinity;
+      for (const p of items) {
+        const dx = pos.x - p.position.x;
+        const dy = pos.y - p.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < PICKUP_RANGE && dist < nearestDist) {
+          nearestDist = dist;
+          nearest     = p.id;
+        }
+      }
+      setNearbyPickupId(prev => prev !== nearest ? nearest : prev);
+    }, 100);
+    return () => clearInterval(id);
+  }, []);
 
   // Poll canvas bounds for debug overlay
   useEffect(() => {
@@ -1133,11 +1229,115 @@ export default function BattleArena({
     abilitiesRef.current = updated;
   }, [me.hand, me.buffs, opponent?.buffs, distance, abilities]);
 
+  /* ========================= PICKUP INTERACTION ========================= */
+
+  const handlePickupInteract = useCallback(() => {
+    // If a modal is open, F = claim
+    if (pickupModal) {
+      claimPickup(pickupModal.pickupId);
+      return;
+    }
+
+    const target = nearbyPickupId;
+    if (!target) return;
+
+    // If already channeling this same book, ignore (debounce)
+    if (channelPickupId === target) return;
+
+    // Start 0.5s channel
+    setChannelPickupId(target);
+    setChannelProgress(0);
+    channelStartRef.current = performance.now();
+
+    // Animate progress bar
+    const animate = () => {
+      const elapsed  = performance.now() - channelStartRef.current;
+      const progress = Math.min(1, elapsed / 500);
+      setChannelProgress(progress);
+      if (progress < 1) {
+        channelAnimRef.current = requestAnimationFrame(animate);
+      } else {
+        // Channel complete — inspect pickup
+        inspectPickup(target);
+      }
+    };
+    channelAnimRef.current = requestAnimationFrame(animate);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nearbyPickupId, channelPickupId, pickupModal]);
+
+  const handlePickupInteractRef = useRef(handlePickupInteract);
+  handlePickupInteractRef.current = handlePickupInteract;
+
+  const inspectPickup = useCallback(async (pickupId: string) => {
+    setChannelPickupId(null);
+    setChannelProgress(0);
+    try {
+      const res = await fetch('/api/game/pickup/inspect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameId, pickupId }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toastError(err.error ?? '无法读取');
+        return;
+      }
+      const data = await res.json();
+      setPickupModal({
+        pickupId: data.pickupId,
+        abilityId: data.abilityId,
+        name: data.name,
+        description: data.description,
+      });
+    } catch {
+      toastError('网络错误');
+    }
+  }, [gameId]);
+
+  const claimPickup = useCallback(async (pickupId: string) => {
+    setPickupModal(null);
+    try {
+      const res = await fetch('/api/game/pickup/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameId, pickupId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toastError(data.error ?? '无法拾取');
+        return;
+      }
+      toastSuccess(`拾取了 ${data.name}`);
+    } catch {
+      toastError('网络错误');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId]);
+
+  // Clean up channel animation on unmount or when nearby pickup changes
+  useEffect(() => {
+    return () => {
+      cancelAnimationFrame(channelAnimRef.current);
+      if (channelTimerRef.current) clearTimeout(channelTimerRef.current);
+    };
+  }, []);
+
+  // Cancel channel if player walks away from the book
+  useEffect(() => {
+    if (channelPickupId && nearbyPickupId !== channelPickupId) {
+      cancelAnimationFrame(channelAnimRef.current);
+      setChannelPickupId(null);
+      setChannelProgress(0);
+    }
+  }, [nearbyPickupId, channelPickupId]);
+
+  // ── Keyboard input ──
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
-      // WASD — skip when Alt held (Alt+A/D/S are ability hotkeys)
-      if (['w', 'a', 's', 'd'].includes(k) && !e.altKey) {
+      if (['w', 'a', 's', 'd'].includes(k)) {
         e.preventDefault();
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = true;
         setWasdKeys(prev => ({ ...prev, [k]: true }));
@@ -1147,6 +1347,12 @@ export default function BattleArena({
         e.preventDefault();
         jumpLocalRef.current = true;
         jumpSendRef.current  = true;
+      }
+      // F = interact with nearby pickup
+      if (k === 'f') {
+        e.preventDefault();
+        handlePickupInteractRef.current();
+        return;
       }
       // Tab / F1 — select opponent as target
       if (e.key === 'Tab' || e.key === 'F1') {
@@ -1772,8 +1978,7 @@ export default function BattleArena({
       const charEntries = [
         { pos: v3(opRP.x, opRP.y, opRP.z), color: '#cc3333', glow: '#ff5555', hp: oppHpRef.current, isMe: false },
         { pos: v3(myRP.x, myRP.y, myRP.z), color: '#1a66cc', glow: '#44aaff', hp: meHpRef.current,  isMe: true  },
-      ];
-      for (const c of charEntries) {
+      ];      for (const c of charEntries) {
         const ddx = c.pos.x - cam.pos.x, ddy = c.pos.y - cam.pos.y, ddz = c.pos.z - cam.pos.z;
         const depth = ddx * cam.fwd.x + ddy * cam.fwd.y + ddz * cam.fwd.z;
         renderItems.push({ kind: 'char', ...c, depth });
@@ -1848,6 +2053,20 @@ export default function BattleArena({
         }
       }
 
+      // ── Pickup books ──
+      const currentPickups = pickupsRef.current;
+      for (const pickup of currentPickups) {
+        // Derive a stable pseudo-random angle from the pickup's UUID
+        const pickupAngle = parseInt(pickup.id.replace(/-/g, '').slice(0, 6), 16) % 360;
+        renderPickupBook(
+          ctx,
+          v3(pickup.position.x, pickup.position.y, 0),
+          cam, w, h,
+          /* highlighted */ pickup.id === nearbyPickupIdRef.current,
+          pickupAngle,
+        );
+      }
+
       animId = requestAnimationFrame(loop);
     };
 
@@ -1859,7 +2078,7 @@ export default function BattleArena({
   const myHpPct  = Math.max(0, Math.min(100, ((me?.hp  ?? 0) / maxHp) * 100));
   const oppHpPct = Math.max(0, Math.min(100, ((opponent?.hp ?? 0) / maxHp) * 100));
   const isMoving = Object.values(wasdKeys).some(v => v);
-  const myFacingArrow = toFacingArrow(me.facing ?? meFacingRef.current);
+  const myFacingArrow = facingArrow(me.facing ?? meFacingRef.current);
 
   // Mouse move handler for debug cursor tracking
   const handleDebugMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -2161,6 +2380,122 @@ export default function BattleArena({
       <div className={styles.distIndicator}>
         <span className={styles.distVal}>{distance.toFixed(1)}尺</span>
       </div>
+
+      {/* ===== PICKUP: "Press F" prompt when near a book ===== */}
+      {nearbyPickupId && !pickupModal && !channelPickupId && (
+        <div style={{
+          position: 'absolute', bottom: '38%', left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0,20,10,0.88)',
+          border: '1px solid #00ff80',
+          borderRadius: 8,
+          padding: '8px 20px',
+          color: '#aaffcc',
+          fontSize: 15,
+          fontFamily: '"Microsoft YaHei", sans-serif',
+          pointerEvents: 'none',
+          zIndex: 600,
+          letterSpacing: '0.05em',
+          boxShadow: '0 0 16px rgba(0,255,80,0.35)',
+          textShadow: '0 0 8px rgba(0,255,100,0.6)',
+        }}>
+          按 <span style={{ color: '#00ff90', fontWeight: 700 }}>F</span> 查阅秘籍
+        </div>
+      )}
+
+      {/* ===== PICKUP: Channel progress bar ===== */}
+      {channelPickupId && (
+        <div style={{
+          position: 'absolute', bottom: '38%', left: '50%',
+          transform: 'translateX(-50%)',
+          width: 220,
+          background: 'rgba(0,20,10,0.9)',
+          border: '1px solid #00ff80',
+          borderRadius: 8,
+          padding: '10px 16px',
+          zIndex: 600,
+          textAlign: 'center',
+        }}>
+          <div style={{ color: '#aaffcc', fontSize: 13, marginBottom: 6, fontFamily: '"Microsoft YaHei", sans-serif' }}>正在研读秘籍…</div>
+          <div style={{ background: 'rgba(0,80,40,0.5)', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', borderRadius: 4,
+              background: 'linear-gradient(90deg, #00cc55, #00ff88)',
+              width: `${channelProgress * 100}%`,
+              transition: 'width 0.05s linear',
+              boxShadow: '0 0 8px rgba(0,255,100,0.7)',
+            }} />
+          </div>
+        </div>
+      )}
+
+      {/* ===== PICKUP: Ability modal ===== */}
+      {pickupModal && (
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'rgba(5,20,12,0.97)',
+          border: '2px solid #00cc66',
+          borderRadius: 12,
+          padding: '24px 32px',
+          minWidth: 260,
+          zIndex: 700,
+          boxShadow: '0 0 40px rgba(0,255,100,0.25)',
+          textAlign: 'center',
+          fontFamily: '"Microsoft YaHei", sans-serif',
+        }}>
+          {/* Book icon */}
+          <div style={{ fontSize: 36, marginBottom: 8 }}>📗</div>
+          <div style={{ color: '#aaffcc', fontSize: 11, marginBottom: 4, letterSpacing: '0.1em' }}>秘籍</div>
+          {/* Icon */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`/game/icons/Skills/${pickupModal.name}.png`}
+            alt={pickupModal.name}
+            style={{ width: 56, height: 56, borderRadius: 8, border: '1px solid #00cc66', marginBottom: 10, background: 'rgba(0,50,20,0.6)' }}
+            onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
+          />
+          <div style={{ color: '#00ff88', fontSize: 20, fontWeight: 700, marginBottom: 6 }}>
+            {pickupModal.name}
+          </div>
+          <div style={{ color: '#88ccaa', fontSize: 13, marginBottom: 20, lineHeight: 1.5, maxWidth: 220 }}>
+            {pickupModal.description}
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button
+              style={{
+                background: 'linear-gradient(135deg,#00aa44,#008833)',
+                border: '1px solid #00ff66',
+                color: '#fff',
+                borderRadius: 6,
+                padding: '8px 22px',
+                cursor: 'pointer',
+                fontSize: 14,
+                fontFamily: '"Microsoft YaHei", sans-serif',
+                fontWeight: 600,
+              }}
+              onClick={() => claimPickup(pickupModal.pickupId)}
+            >
+              F 拾取
+            </button>
+            <button
+              style={{
+                background: 'rgba(30,30,30,0.8)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: '#aaa',
+                borderRadius: 6,
+                padding: '8px 16px',
+                cursor: 'pointer',
+                fontSize: 14,
+                fontFamily: '"Microsoft YaHei", sans-serif',
+              }}
+              onClick={() => setPickupModal(null)}
+            >
+              离开
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ===== CHEAT: Ability picker (bottom-right, toggleable) ===== */}
       <button

@@ -7,6 +7,14 @@ import type { ActiveBuff } from "./buffs";
 import type { GameEvent } from "./events";
 import type { Position, Velocity } from "./position";
 
+// ==================== PICKUP ====================
+
+export interface PickupItem {
+  id: string;
+  abilityId: string;
+  position: { x: number; y: number };
+}
+
 export interface PlayerState {
   userId: PlayerID;
 
@@ -72,6 +80,9 @@ export interface GameState {
 
   /** append-only event log */
   events: GameEvent[];
+
+  /** ability books scattered across the map, removed when claimed */
+  pickups: PickupItem[];
 
   /** legacy deck support (unused in arena mode) */
   deck?: AbilityInstance[];

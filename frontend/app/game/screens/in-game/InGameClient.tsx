@@ -131,6 +131,10 @@ export default function InGameClient({
             console.error("[InGameClient] /battle/start failed:", res.status, errText);
           } else {
             console.log("[InGameClient] ✅ /battle/start succeeded, GameLoop should now be running");
+            // Refetch state from DB so the frontend gets the freshly-generated pickups
+            // (the regular 30Hz loop broadcasts do NOT include /pickups)
+            await new Promise((r) => setTimeout(r, 350));
+            refetch();
           }
         } catch (err) {
           console.error("[InGameClient] Error calling /battle/start:", err);
@@ -330,6 +334,7 @@ export default function InGameClient({
         maxHp={me.hp + (state.players[1]?.hp || 0) === me.hp ? me.hp : 30} // Fallback to 30
         abilities={preload.abilityMap}
         events={state?.events ?? []}
+        pickups={state?.pickups ?? []}
         opponentPositionBufferRef={opponentPositionBufferRef}
         onCastAbility={async (abilityInstanceId, targetUserId) => {
           // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)

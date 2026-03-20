@@ -697,10 +697,19 @@ router.post("/cheat/add-ability", async (req, res) => {
     game.markModified("state.players");
     await game.save();
 
-    // Update live GameLoop in-memory state
+    // Update live GameLoop in-memory state — use the CURRENT live loop state (not
+    // the stale DB state) so we don't overwrite real-time positions / buffs / cooldowns.
     const gameLoop = GameLoop.get(gameId);
     if (gameLoop) {
-      gameLoop.updateState(game.state);
+      const loopState = gameLoop.getState(); // plain structuredClone of live state
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        loopState.players[loopPlayerIdx] = {
+          ...loopState.players[loopPlayerIdx],
+          hand: [...(loopState.players[loopPlayerIdx].hand || []), fullCard],
+        };
+        gameLoop.updateState(loopState);
+      }
     }
 
     // Broadcast hand update to all connected clients
