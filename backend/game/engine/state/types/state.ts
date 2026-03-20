@@ -41,6 +41,13 @@ export interface PlayerState {
   jumpCount?: number;
 
   /**
+   * True when the current airtime was initiated by a power jump (扶摇直上).
+   * Uses separate steeper gravity so the power jump arc is distinct.
+   * Cleared on landing.
+   */
+  isPowerJump?: boolean;
+
+  /**
    * Last movement facing direction (unit vector).
    * Updated whenever the player has a non-trivial movement input.
    * Used by directional dashes so TOWARD means "where I'm facing".

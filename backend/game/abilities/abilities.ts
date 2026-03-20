@@ -74,7 +74,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         buffId: 9001,
         name: "弹跳",
         category: "BUFF",
-        durationMs: 300_000, // consumed by movement.ts on next jump; 5-minute fallback expiry
+        durationMs: 30_000,  // consumed by movement.ts on next jump; 30-second fallback expiry
         description: "下次跳跃高度提升至12单位",
         effects: [{ type: "JUMP_BOOST" }],
         applyTo: "SELF",
@@ -298,7 +298,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   jiru_feng: {
     id: "jiru_feng",
     name: "疾如风",
-    description: "解控\n免疫控制5秒",
+    description: "解控\n免疫控制（不含击退/拉拽）5秒\n移动速度提升100%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -313,8 +313,11 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         name: "疾如风",
         category: "BUFF",
         durationMs: 5_000, // 5 seconds
-        description: "免疫控制",
-        effects: [{ type: "CONTROL_IMMUNE" }],
+        description: "免疫控制；移动速度+100%",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "SPEED_BOOST", value: 1.0 },
+        ],
       },
     ],
   },
@@ -526,7 +529,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   wu_jianyu: {
     id: "wu_jianyu",
     name: "无间狱",
-    description: "修罗附体\n延迟5秒后造成4/6/15/15伤害\n30%吸血",
+    description: "修罗附体\n3秒后正面180°/10码造成5伤害\n4秒后正面180°/10码造成8伤害\n5秒后正面180°/10码造成10伤害\n同时360°/10码造成10伤害并击退3码，击退期间沉默0.8秒\n所有伤害30%吸血",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -540,51 +543,43 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         description: "修罗附体",
         durationMs: 10_000, // 10 seconds
         effects: [
+          // t+3s: front 180° cone, range 10, 5 damage, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 0,
-            when: "TURN_END",
-            turnOf: "OWNER",
-            target: "ENEMY",
-          },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 0,
-            when: "TURN_START",
-            turnOf: "ENEMY",
-            target: "ENEMY",
-          },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 4,
-            when: "TURN_END",
-            turnOf: "ENEMY",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 3_000,
+            value: 1,
+            aoeAngle: 180,
+            range: 10,
             lifestealPct: 0.3,
           },
+          // t+4s: front 180° cone, range 10, 8 damage, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 6,
-            when: "TURN_START",
-            turnOf: "OWNER",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 4_000,
+            value: 1,
+            aoeAngle: 180,
+            range: 10,
             lifestealPct: 0.3,
           },
+          // t+5s: front 180° cone, range 10, 10 damage, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 15,
-            when: "TURN_START",
-            turnOf: "ENEMY",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 5_000,
+            value: 1,
+            aoeAngle: 180,
+            range: 10,
             lifestealPct: 0.3,
           },
+          // t+5s: full 360° circle, range 10, 10 damage, knockback 3 + 0.8s silence, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 15,
-            when: "TURN_END",
-            turnOf: "ENEMY",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 5_000,
+            value: 2,
+            aoeAngle: 360,
+            range: 10,
             lifestealPct: 0.3,
+            knockbackUnits: 3,
+            knockbackSilenceMs: 800,
           },
         ],
       },
@@ -735,6 +730,27 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     range: 20,
     effects: [
       { type: "DASH", value: 8 },
+    ],
+  },
+
+  niao_xiang_bi_kong: {
+    id: "niao_xiang_bi_kong",
+    name: "鸟翔碧空",
+    description: "获得【鸟翔碧空】15秒：跳跃次数上限提升至5次",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300, // 30 seconds
+    gcd: false,
+    effects: [],
+    buffs: [
+      {
+        buffId: 9002,
+        name: "鸟翔碧空",
+        category: "BUFF",
+        durationMs: 15_000, // 15 seconds
+        description: "跳跃次数上限提升至5次",
+        effects: [{ type: "MULTI_JUMP", value: 5 }],
+      },
     ],
   },
 };

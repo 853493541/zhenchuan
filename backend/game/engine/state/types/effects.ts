@@ -31,7 +31,15 @@ export type EffectType =
   | "JUMP_BOOST"
   | "PERIODIC_DAMAGE"
   | "PERIODIC_HEAL"
-  | "CHANNEL_AOE_TICK";
+  | "CHANNEL_AOE_TICK"
+  | "TIMED_AOE_DAMAGE"
+  | "KNOCKED_BACK"
+  | "SPEED_BOOST"
+  // Level 0 control (removable by cleanse)
+  | "ROOT"
+  | "SLOW"
+  // Jump enhancements
+  | "MULTI_JUMP";
 
 /**
  * Immediate ability effects
@@ -43,6 +51,7 @@ export interface AbilityEffect {
   repeatTurns?: number;
 
   allowWhileControlled?: boolean;
+  allowWhileKnockedBack?: boolean;
   applyTo?: TargetType;
 
   threshold?: number;
@@ -54,6 +63,8 @@ export interface AbilityEffect {
   range?: number;
 }
 
+// Fields only used on BuffEffect (not AbilityEffect) are declared below.
+
 /**
  * Buff-contained effects
  */
@@ -64,4 +75,27 @@ export type BuffEffect = Omit<AbilityEffect, "allowWhileControlled"> & {
 
   lifestealPct?: number;
   debug?: string;
+
+  /**
+   * For TIMED_AOE_DAMAGE: fires once this many ms after the buff was applied.
+   * e.g. 3000 = fires 3 seconds after the buff starts.
+   */
+  delayMs?: number;
+
+  /**
+   * For TIMED_AOE_DAMAGE: cone angle in degrees.
+   * 180 = front hemisphere (facing direction), 360 = full circle.
+   * Defaults to 360 if omitted.
+   */
+  aoeAngle?: number;
+
+  /**
+   * For TIMED_AOE_DAMAGE: push target this many units away from the caster on hit.
+   */
+  knockbackUnits?: number;
+
+  /**
+   * For TIMED_AOE_DAMAGE: silence the knocked-back target for this many ms.
+   */
+  knockbackSilenceMs?: number;
 };

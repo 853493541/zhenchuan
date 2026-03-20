@@ -28,6 +28,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   // ✅ Channel buffs are BUFFs (self-cast)
   FENGLAI_CHANNEL: "BUFF",
   WUJIAN_CHANNEL: "BUFF",
+  TIMED_AOE_DAMAGE: "BUFF",
 
   /* ================= PATCH 0.3 ================= */
   DRAW_REDUCTION: "DEBUFF",
@@ -42,6 +43,15 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DASH: "BUFF",
   DIRECTIONAL_DASH: "BUFF",
   JUMP_BOOST: "BUFF",
+
+  /* ================= CONTROL LEVELS ================= */
+  KNOCKED_BACK: "DEBUFF",  // Level 2 — NOT removable by cleanse
+  SPEED_BOOST: "BUFF",
+  // Level 0 — removable by cleanse
+  ROOT: "DEBUFF",
+  SLOW: "DEBUFF",
+  // Jump enhancements
+  MULTI_JUMP: "BUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

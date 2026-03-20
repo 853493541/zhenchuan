@@ -67,4 +67,16 @@ export interface ActiveBuff {
   stageIndex?: number;
   appliedAtTurn?: number;
   breakOnPlay?: boolean;
+
+  /**
+   * Wall-clock ms (Date.now()) when this buff was applied.
+   * Used by TIMED_AOE_DAMAGE effects to fire once after a fixed delay.
+   */
+  appliedAt?: number;
+
+  /**
+   * Indices into `effects[]` for TIMED_AOE_DAMAGE entries that have already fired.
+   * Prevents re-firing when the same trigger delay is reached on subsequent ticks.
+   */
+  firedDelayIndices?: number[];
 }

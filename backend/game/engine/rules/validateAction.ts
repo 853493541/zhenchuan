@@ -72,12 +72,22 @@ export function validateCastAbility(
     throw new Error("ERR_ON_COOLDOWN");
   }
 
-  /* ================= SILENCE ================= */
+  /* ================= SILENCE (Level 3 — not removable) ================= */
   if (hasEffect(player, "SILENCE")) {
     throw new Error("ERR_SILENCED");
   }
 
-  /* ================= CONTROL / ATTACK_LOCK ================= */
+  /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
+  if (hasEffect(player, "KNOCKED_BACK")) {
+    const allowsKnockback =
+      Array.isArray(ability.effects) &&
+      ability.effects.some((e: any) => e.allowWhileKnockedBack === true);
+    if (!allowsKnockback) {
+      throw new Error("ERR_KNOCKED_BACK");
+    }
+  }
+
+  /* ================= CONTROL / ATTACK_LOCK (Level 1 — removable) ================= */
   const isControlled =
     hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
   const allowsOverride =
@@ -86,6 +96,8 @@ export function validateCastAbility(
   if (isControlled && !allowsOverride) {
     throw new Error("ERR_CONTROLLED");
   }
+
+  /* (Level 0 — ROOT / SLOW only restrict movement, spells are not blocked) */
 
   /* ================= RANGE CHECK ================= */
   if (ability.range !== undefined) {
@@ -153,13 +165,24 @@ export function validatePlayAbility(
     throw new Error("ERR_ON_COOLDOWN");
   }
 
-  /* ================= SILENCE ================= */
+  /* ================= SILENCE (Level 3 — not removable) ================= */
 
   if (hasEffect(player, "SILENCE")) {
     throw new Error("ERR_SILENCED");
   }
 
-  /* ================= CONTROL / ATTACK_LOCK ================= */
+  /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
+
+  if (hasEffect(player, "KNOCKED_BACK")) {
+    const allowsKnockback =
+      Array.isArray(ability.effects) &&
+      ability.effects.some((e) => (e as any).allowWhileKnockedBack === true);
+    if (!allowsKnockback) {
+      throw new Error("ERR_KNOCKED_BACK");
+    }
+  }
+
+  /* ================= CONTROL / ATTACK_LOCK (Level 1 — removable) ================= */
 
   const isControlled =
     hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
@@ -171,6 +194,8 @@ export function validatePlayAbility(
   if (isControlled && !allowsOverride) {
     throw new Error("ERR_CONTROLLED");
   }
+
+  /* (Level 0 — ROOT / SLOW only restrict movement, spells are not blocked) */
 
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
 

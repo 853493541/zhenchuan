@@ -1,4 +1,4 @@
-// backend/game/abilities/abilities.ts
+// Legacy file for storing card definitions. Will be refactored into a more data-driven format in the future.
 
 import { Ability } from "../engine/state/types";
 
@@ -551,7 +551,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   wu_jianyu: {
     id: "wu_jianyu",
     name: "无间狱",
-    description: "修罗附体\n延迟5秒后造成4/6/15/15伤害\n30%吸血",
+    description: "修罗附体\n3秒后正面180°/10码造成5伤害\n4秒后正面180°/10码造成8伤害\n5秒后正面180°/10码造成10伤害\n同时360°/10码造成10伤害并击退3码，击退期间沉默0.8秒\n所有伤害30%吸血",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -565,51 +565,43 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         description: "修罗附体",
         durationMs: 10_000, // 10 seconds
         effects: [
+          // t+3s: front 180° cone, range 10, 5 damage, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 0,
-            when: "TURN_END",
-            turnOf: "OWNER",
-            target: "ENEMY",
-          },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 0,
-            when: "TURN_START",
-            turnOf: "ENEMY",
-            target: "ENEMY",
-          },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 4,
-            when: "TURN_END",
-            turnOf: "ENEMY",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 3_000,
+            value: 5,
+            aoeAngle: 180,
+            range: 10,
             lifestealPct: 0.3,
           },
+          // t+4s: front 180° cone, range 10, 8 damage, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 6,
-            when: "TURN_START",
-            turnOf: "OWNER",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 4_000,
+            value: 8,
+            aoeAngle: 180,
+            range: 10,
             lifestealPct: 0.3,
           },
+          // t+5s: front 180° cone, range 10, 10 damage, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 15,
-            when: "TURN_START",
-            turnOf: "ENEMY",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 5_000,
+            value: 10,
+            aoeAngle: 180,
+            range: 10,
             lifestealPct: 0.3,
           },
+          // t+5s: full 360° circle, range 10, 10 damage, knockback 3 + 0.8s silence, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 15,
-            when: "TURN_END",
-            turnOf: "ENEMY",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 5_000,
+            value: 10,
+            aoeAngle: 360,
+            range: 10,
             lifestealPct: 0.3,
+            knockbackUnits: 3,
+            knockbackSilenceMs: 800,
           },
         ],
       },

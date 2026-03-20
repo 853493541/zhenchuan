@@ -17,6 +17,7 @@ import GameSession from "../../models/GameSession";
 import { applyMovement } from "./movement";
 import { pushBuffExpired } from "../effects/buffRuntime";
 import { resolveScheduledDamage, resolveHealAmount } from "../utils/combatMath";
+import { randomUUID } from "crypto";
 
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
@@ -142,6 +143,8 @@ export class GameLoop {
 
     // 1. Apply player movement
     const moveStart = performance.now();
+    // Track buff count per player before movement — applyMovement may splice JUMP_BOOST
+    const buffCountsBefore = this.state.players.map((p) => p.buffs?.length ?? 0);
     this.state.players.forEach((player, idx) => {
       const input = this.playerInputs.get(idx) ?? null;
       applyMovement(player, input, this.tickRate);
@@ -161,7 +164,13 @@ export class GameLoop {
 
     // 1c. Wall-clock buff expiry + periodic effects (DoT / HoT)
     const now = Date.now();
-    let buffsChanged = false;
+    // Pre-seed buffsChanged: true if movement consumed any buff (e.g. JUMP_BOOST splice)
+    let buffsChanged = this.state.players.some(
+      (p, idx) => (p.buffs?.length ?? 0) !== buffCountsBefore[idx]
+    );
+
+    // Track event count before damage processing so we can diff-patch new events
+    const eventsBefore = this.state.events.length;
 
     this.state.players.forEach((player, pidx) => {
       const oppIdx = pidx === 0 ? 1 : 0;
@@ -180,10 +189,34 @@ export class GameLoop {
                   base: e.value ?? 0,
                 });
                 player.hp = Math.max(0, player.hp - dmg);
+                if (dmg > 0) {
+                  this.state.events.push({
+                    id: randomUUID(), timestamp: now, turn: this.state.turn,
+                    type: "DAMAGE",
+                    actorUserId: opp.userId,
+                    targetUserId: player.userId,
+                    abilityId: buff.sourceAbilityId,
+                    abilityName: buff.sourceAbilityName ?? buff.name,
+                    effectType: "PERIODIC_DAMAGE",
+                    value: dmg,
+                  });
+                }
                 buffsChanged = true;
               } else if (e.type === "PERIODIC_HEAL") {
                 const heal = resolveHealAmount({ target: player, base: e.value ?? 0 });
                 player.hp = Math.min(player.maxHp ?? 100, player.hp + heal);
+                if (heal > 0) {
+                  this.state.events.push({
+                    id: randomUUID(), timestamp: now, turn: this.state.turn,
+                    type: "HEAL",
+                    actorUserId: player.userId,
+                    targetUserId: player.userId,
+                    abilityId: buff.sourceAbilityId,
+                    abilityName: buff.sourceAbilityName ?? buff.name,
+                    effectType: "PERIODIC_HEAL",
+                    value: heal,
+                  });
+                }
                 buffsChanged = true;
               } else if (e.type === "CHANNEL_AOE_TICK") {
                 // Channel AOE: deal damage to opponent if within range
@@ -196,10 +229,117 @@ export class GameLoop {
                     base: e.value ?? 0,
                   });
                   opp.hp = Math.max(0, opp.hp - dmg);
+                  if (dmg > 0) {
+                    this.state.events.push({
+                      id: randomUUID(), timestamp: now, turn: this.state.turn,
+                      type: "DAMAGE",
+                      actorUserId: player.userId,
+                      targetUserId: opp.userId,
+                      abilityId: buff.sourceAbilityId,
+                      abilityName: buff.sourceAbilityName ?? buff.name,
+                      effectType: "CHANNEL_AOE_TICK",
+                      value: dmg,
+                    });
+                  }
                   buffsChanged = true;
                 }
               }
             }
+          }
+        }
+
+        // Fire TIMED_AOE_DAMAGE effects (each fires exactly once at its delayMs offset)
+        if (buff.appliedAt !== undefined) {
+          for (let effIdx = 0; effIdx < buff.effects.length; effIdx++) {
+            const e = buff.effects[effIdx];
+            if (e.type !== "TIMED_AOE_DAMAGE") continue;
+            if (e.delayMs === undefined) continue;
+            if (buff.firedDelayIndices?.includes(effIdx)) continue;
+            if (now < buff.appliedAt + e.delayMs) continue;
+
+            // Mark this effect as fired
+            if (!buff.firedDelayIndices) buff.firedDelayIndices = [];
+            buff.firedDelayIndices.push(effIdx);
+
+            if (opp.hp <= 0) continue;
+
+            // Range check
+            const range = e.range ?? 10;
+            const dx = opp.position.x - player.position.x;
+            const dy = opp.position.y - player.position.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > range) continue;
+
+            // Cone angle check (skip for full-circle 360°)
+            const angle = e.aoeAngle ?? 360;
+            if (angle < 360 && dist > 0) {
+              const facing = player.facing ?? { x: 0, y: 1 };
+              const dot = (facing.x * dx + facing.y * dy) / dist;
+              const halfAngleRad = (angle / 2) * (Math.PI / 180);
+              if (dot < Math.cos(halfAngleRad)) continue;
+            }
+
+            // Apply damage
+            const dmg = resolveScheduledDamage({
+              source: player,
+              target: opp,
+              base: e.value ?? 0,
+            });
+            opp.hp = Math.max(0, opp.hp - dmg);
+
+            if (dmg > 0) {
+              this.state.events.push({
+                id: randomUUID(), timestamp: now, turn: this.state.turn,
+                type: "DAMAGE",
+                actorUserId: player.userId,
+                targetUserId: opp.userId,
+                abilityId: buff.sourceAbilityId,
+                abilityName: buff.sourceAbilityName ?? buff.name,
+                effectType: "TIMED_AOE_DAMAGE",
+                value: dmg,
+              });
+            }
+
+            // Lifesteal
+            if (e.lifestealPct && e.lifestealPct > 0 && dmg > 0) {
+              const healAmt = Math.floor(dmg * e.lifestealPct);
+              player.hp = Math.min(player.maxHp ?? 100, player.hp + healAmt);
+              if (healAmt > 0) {
+                this.state.events.push({
+                  id: randomUUID(), timestamp: now, turn: this.state.turn,
+                  type: "HEAL",
+                  actorUserId: player.userId,
+                  targetUserId: player.userId,
+                  abilityId: buff.sourceAbilityId,
+                  abilityName: buff.sourceAbilityName ?? buff.name,
+                  effectType: "TIMED_AOE_DAMAGE",
+                  value: healAmt,
+                });
+              }
+            }
+
+            // Knockback + silence
+            if (e.knockbackUnits && e.knockbackUnits > 0 && dist > 0) {
+              opp.position = {
+                ...opp.position,
+                x: opp.position.x + (dx / dist) * e.knockbackUnits,
+                y: opp.position.y + (dy / dist) * e.knockbackUnits,
+              };
+              if (e.knockbackSilenceMs && e.knockbackSilenceMs > 0) {
+                opp.buffs.push({
+                  buffId: 9101,
+                  name: "击退",
+                  category: "DEBUFF",
+                  effects: [{ type: "KNOCKED_BACK" }],
+                  expiresAt: now + e.knockbackSilenceMs,
+                  breakOnPlay: false,
+                  sourceAbilityId: buff.sourceAbilityId,
+                  sourceAbilityName: buff.sourceAbilityName,
+                });
+              }
+            }
+
+            buffsChanged = true;
           }
         }
       }
@@ -259,6 +399,12 @@ export class GameLoop {
         this.state.players.forEach((p, pidx) => {
           diff.push({ path: `/players/${pidx}/hp`, value: p.hp });
         });
+
+        // Include each new game event as an individual diff patch so the frontend
+        // can spawn per-event floating numbers with proper labels + no combining.
+        for (let i = eventsBefore; i < this.state.events.length; i++) {
+          diff.push({ path: `/events/${i}`, value: this.state.events[i] });
+        }
       }
       
       // During gameplay, send compact movement-only broadcasts

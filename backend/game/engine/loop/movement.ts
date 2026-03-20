@@ -13,11 +13,38 @@ const ARENA_WIDTH = 100;
 const ARENA_HEIGHT = 100;
 const PLAYER_RADIUS = 2; // Collision size of player
 
-/** Vertical physics constants (at ~30 Hz tick rate) */
-const GRAVITY       = 0.04;  // units/tick² downward acceleration
-const JUMP_VZ       = 0.346; // initial upward velocity on jump (peak ≈ 1.5 units per jump)
-const POWER_JUMP_VZ = 1.47;  // boosted jump velocity for 弹跳 buff (1.5× longer air time than JUMP_VZ)
-const MAX_JUMPS = 2;     // allow double-jump
+/**
+ * Vertical physics (60 Hz tick rate) — symmetric gravity
+ *
+ * A single GRAVITY constant is used for both ascent and descent so that
+ * rise time = fall time for every jump (natural parabolic arc).
+ *
+ * Tuned to the following targets:
+ *   Single jump : rises to 1.7 units in exactly 1 second (60 ticks)
+ *                 falls back to ground in exactly 1 second  → 2 s total
+ *   Double jump : from wherever it fires, adds 1.3 units of height
+ *                 (max peak = 3.0 if pressed at single-jump apex)
+ *                 rise / fall ≈ 0.875 s each                → ~1.75 s extra
+ *   Power jump  : 扶摇直上 – peaks at 12.8 units
+ *                 rise / fall ≈ 2.74 s each                 → ~5.5 s total
+ *
+ * Asymmetric gravity, 60 Hz:
+ *   Single jump : 1.7 u peak, 1.0 s rise (60 ticks), 0.7 s fall (42 ticks) → 1.7 s total
+ *   Double jump : +0.67 u extra (peak 2.37 u), 1.45 s from 2nd press   → 2.45 s total from takeoff
+ *   Power jump  : 12.8 u peak, 1.77 s rise (106.2 ticks), 1.93 s fall   → 3.7 s total
+ *
+ * Power jump uses separate gravity constants so its arc is steeper/faster.
+ */
+// ── Regular jump gravity (60 Hz) ──
+const GRAVITY_UP     = 2 * 1.7 / (60 * 60);       // ≈ 0.000944  (60 ticks = 1.0 s rise)
+const GRAVITY_DOWN   = 2 * 1.7 / (42 * 42);       // ≈ 0.001927  (42 ticks = 0.7 s fall)
+const JUMP_VZ        = GRAVITY_UP * 60;            // ≈ 0.05667   – single jump (1.0 s → 1.7 u)
+const DOUBLE_JUMP_VZ = GRAVITY_UP * 40;            // ≈ 0.03778   – double jump (+0.755 u → ~2.51 s total)
+// ── Power jump gravity (扶摇直上, 60 Hz) ──
+const POWER_GRAVITY_UP   = 2 * 12.8 / (106.2 * 106.2); // ≈ 0.002270  (106.2 ticks = 1.77 s rise)
+const POWER_GRAVITY_DOWN = 2 * 12.8 / (115.8 * 115.8); // ≈ 0.001909  (115.8 ticks = 1.93 s fall)
+const POWER_JUMP_VZ      = POWER_GRAVITY_UP * 106.2;    // ≈ 0.2411    – 12.8 u peak
+const MAX_JUMPS = 2;           // default double-jump cap
 
 /**
  * Apply movement input to player state
@@ -39,6 +66,47 @@ export function applyMovement(
   if (player.velocity.vz  === undefined) player.velocity.vz  = 0;
   if (player.jumpCount    === undefined) player.jumpCount     = 0;
 
+  const allEffects = player.buffs.flatMap((b) => b.effects);
+
+  // ── Level 2 (KNOCKED_BACK) and Level 1 (CONTROL/stun/knockdown): ──
+  // Both fully lock the player — no movement, no facing, no jump.
+  const isFullyLocked =
+    allEffects.some((e) => e.type === "KNOCKED_BACK") ||
+    allEffects.some((e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK");
+  if (isFullyLocked) {
+    input = null;
+  }
+
+  // ── Level 0 ROOT: blocks WASD + facing direction + jump. ──
+  // Camera movement is purely client-side and is unaffected.
+  const isRooted = !isFullyLocked && allEffects.some((e) => e.type === "ROOT");
+  if (isRooted && input) {
+    input = {
+      ...input,
+      dx: 0,
+      dy: 0,
+      up: false,
+      down: false,
+      left: false,
+      right: false,
+      facing: undefined,
+      jump: false,
+    };
+  }
+
+  // ── Speed modifiers ──
+  // SPEED_BOOST value = additive bonus fraction (e.g. 1.0 = +100% speed)
+  // SLOW value        = additive reduction fraction (e.g. 0.5 = −50% speed)
+  // Clamped to 0 so negative speed is impossible.
+  const speedBoostSum = allEffects
+    .filter((e) => e.type === "SPEED_BOOST")
+    .reduce((sum, e) => sum + (e.value ?? 0), 0);
+  const slowSum = allEffects
+    .filter((e) => e.type === "SLOW")
+    .reduce((sum, e) => sum + (e.value ?? 0), 0);
+  const effectiveMoveSpeed =
+    player.moveSpeed * Math.max(0, 1 + speedBoostSum - slowSum);
+
   if (!input) {
     // No input - decelerate (stop sliding)
     player.velocity.vx *= 0.9;
@@ -50,14 +118,14 @@ export function applyMovement(
 
     if (input.dx !== undefined || input.dy !== undefined) {
       // 传统模式: precise direction vector from client
-      targetVx = (input.dx ?? 0) * player.moveSpeed;
-      targetVy = (input.dy ?? 0) * player.moveSpeed;
+      targetVx = (input.dx ?? 0) * effectiveMoveSpeed;
+      targetVy = (input.dy ?? 0) * effectiveMoveSpeed;
     } else {
       // 摇杆模式: WASD boolean flags
-      if (input.up)    targetVy -= player.moveSpeed;
-      if (input.down)  targetVy += player.moveSpeed;
-      if (input.left)  targetVx -= player.moveSpeed;
-      if (input.right) targetVx += player.moveSpeed;
+      if (input.up)    targetVy -= effectiveMoveSpeed;
+      if (input.down)  targetVy += effectiveMoveSpeed;
+      if (input.left)  targetVx -= effectiveMoveSpeed;
+      if (input.right) targetVx += effectiveMoveSpeed;
     }
 
     // Smooth acceleration to target velocity
@@ -79,16 +147,27 @@ export function applyMovement(
     }
 
     // ── Jump (one-shot: GameLoop clears input.jump after each tick) ──
-    if (input.jump && player.jumpCount < MAX_JUMPS) {
-      // Check for 弹跳 buff (JUMP_BOOST) — consume it for a power jump
+    // MULTI_JUMP buff overrides the default 2-jump cap.
+    const multiJumpEffect = allEffects.find((e) => e.type === "MULTI_JUMP");
+    const maxJumps = multiJumpEffect ? (multiJumpEffect.value ?? MAX_JUMPS) : MAX_JUMPS;
+    if (input.jump && player.jumpCount < maxJumps) {
+      // 弹跳 JUMP_BOOST: consumed immediately for a power jump, any jump number.
       const boostIdx = player.buffs.findIndex(
         (b) => b.effects.some((e) => e.type === "JUMP_BOOST")
       );
-      player.velocity.vz = boostIdx >= 0 ? POWER_JUMP_VZ : JUMP_VZ;
-      player.jumpCount += 1;
       if (boostIdx >= 0) {
-        player.buffs.splice(boostIdx, 1); // consume the boost
+        player.velocity.vz = POWER_JUMP_VZ;
+        player.isPowerJump = true;
+        player.buffs.splice(boostIdx, 1); // consume the buff instantly
+      } else if (player.jumpCount === 0) {
+        // First jump
+        player.velocity.vz = JUMP_VZ;
+        player.isPowerJump = false;
+      } else {
+        // Double / multi-jump: always 1.5× the first-jump height
+        player.velocity.vz = DOUBLE_JUMP_VZ;
       }
+      player.jumpCount += 1;
     }
   }
 
@@ -119,13 +198,16 @@ export function applyMovement(
     player.velocity.vy = 0;
   }
 
-  // ── Z axis: gravity + landing ──
-  player.velocity.vz! -= GRAVITY;
+  // ── Z axis: asymmetric gravity (power jump uses steeper separate constants) ──
+  const gravUp   = player.isPowerJump ? POWER_GRAVITY_UP   : GRAVITY_UP;
+  const gravDown = player.isPowerJump ? POWER_GRAVITY_DOWN  : GRAVITY_DOWN;
+  player.velocity.vz! -= (player.velocity.vz! >= 0 ? gravUp : gravDown);
   player.position.z! += player.velocity.vz!;
   if (player.position.z! <= 0) {
     player.position.z  = 0;
     player.velocity.vz = 0;
     player.jumpCount   = 0; // restore jumps on landing
+    player.isPowerJump = false;
   }
 }
 

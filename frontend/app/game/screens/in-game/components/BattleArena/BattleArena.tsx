@@ -534,6 +534,8 @@ interface BattleArenaProps {
   maxHp: number;
   abilities: Record<string, any>;
   opponentPositionBufferRef?: React.MutableRefObject<Array<{ t: number; pos: Position }>>;
+  /** Full game events array from state — used to spawn per-event floating numbers */
+  events?: any[];
 }
 
 /* ============================================================
@@ -548,6 +550,7 @@ export default function BattleArena({
   maxHp,
   abilities,
   opponentPositionBufferRef,
+  events = [],
 }: BattleArenaProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
@@ -573,19 +576,42 @@ export default function BattleArena({
     cw: number; ch: number;
   }>({ me: null, opp: null, cw: 800, ch: 500 });
 
+  /* --- Height-above-ground display + jump timing --- */
+  const [myZ, setMyZ] = useState(0);
+  const myZRef = useRef(0);
+  // Jump timing records (seconds, null = not yet measured)
+  type JumpRecord = { riseMs: number | null; fallMs: number | null; totalMs: number | null; peakZ: number | null };
+  const [jumpRecord, setJumpRecord] = useState<JumpRecord>({ riseMs: null, fallMs: null, totalMs: null, peakZ: null });
+  // Internal tracking refs (updated every rAF frame)
+  const jumpPhaseRef  = useRef<'ground' | 'rising' | 'falling'>('ground');
+  const takeoffTimeRef = useRef<number>(0);   // when feet left the ground
+  const peakTimeRef    = useRef<number>(0);   // when apex was detected
+  const prevZRef       = useRef<number>(0);   // previous frame Z for transition detection
+  const peakZRef       = useRef<number>(0);   // max Z reached during current jump
+
   /* --- Floating damage/heal numbers --- */
   type FloatType = 'dmg_dealt' | 'dmg_taken' | 'heal';
-  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number } };
+  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number }; yOffset: number };
   const [floats, setFloats] = useState<FloatEntry[]>([]);
   const floatIdRef = useRef(0);
   const lastCastNameRef = useRef<string | null>(null);
-  const prevMeHpRef  = useRef<number | null>(null);
-  const prevOppHpRef = useRef<number | null>(null);
+  // Per-type stagger counter — increments each time a float of a given type
+  // is spawned, so simultaneous hits don’t visually overlap.
+  const floatTypeCountRef = useRef<Record<string, number>>({});
+  // Track how many events we've already processed to avoid re-processing on re-render
+  const prevEventsLenRef = useRef<number>(-1);
   const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number } }) => {
     if (value <= 0) return;
     const id = ++floatIdRef.current;
-    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: opts?.screenPct }]);
-    setTimeout(() => setFloats(f => f.filter(e => e.id !== id)), 1400);
+    // Stagger: count how many same-type floats are currently alive to offset them
+    const stagger = floatTypeCountRef.current[type] ?? 0;
+    floatTypeCountRef.current[type] = stagger + 1;
+    const yOffset = stagger * 28; // 28px per simultaneous float of the same type
+    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: opts?.screenPct, yOffset }]);
+    setTimeout(() => {
+      setFloats(f => f.filter(e => e.id !== id));
+      floatTypeCountRef.current[type] = Math.max(0, (floatTypeCountRef.current[type] ?? 1) - 1);
+    }, 1400);
   };
 
   // Split abilities into two rows for rendering
@@ -650,7 +676,9 @@ export default function BattleArena({
   const canvasSizeRef = useRef({ w: 800, h: 500 });
 
   /* --- Fuyao (扶摇直上) local buff prediction --- */
-  const hasFuyaoBuffRef = useRef(false);
+  const hasFuyaoBuffRef  = useRef(false);
+  const isPowerJumpRef   = useRef(false); // true while airborne from a power jump (different gravity)
+  const maxJumpsRef      = useRef(2);     // updated from me.buffs MULTI_JUMP effect
 
   /* --- Channel AOE refs (used in render loop, updated via useEffect) --- */
   const meChannelingRef  = useRef(false);
@@ -680,6 +708,11 @@ export default function BattleArena({
   const lastFrameTimeRef  = useRef<number>(0);
 
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
+  // Keep max-jumps ref in sync with MULTI_JUMP buff from server state
+  useEffect(() => {
+    const multiJump = me?.buffs?.flatMap((b: any) => b.effects ?? []).find((e: any) => e.type === 'MULTI_JUMP');
+    maxJumpsRef.current = multiJump ? (multiJump.value ?? 2) : 2;
+  }, [me?.buffs]);
   useEffect(() => { oppHpRef.current = opponent?.hp ?? 0; }, [opponent?.hp]);
   useEffect(() => { maxHpRef.current = maxHp;             }, [maxHp]);
   useEffect(() => {
@@ -711,6 +744,22 @@ export default function BattleArena({
     return () => clearInterval(id);
   }, [(channelBuff as any)?.expiresAt]);
 
+  // Ref that the rAF writes a new jump record into (avoids stale closure in rAF)
+  const jumpRecordNextRef = useRef<{ riseMs: number; fallMs: number; totalMs: number; peakZ: number } | null>(null);
+
+  // Poll height + consume any finished jump record every 50 ms
+  useEffect(() => {
+    const id = setInterval(() => {
+      setMyZ(Math.round(myZRef.current * 10) / 10);
+      const rec = jumpRecordNextRef.current;
+      if (rec) {
+        jumpRecordNextRef.current = null;
+        setJumpRecord({ riseMs: rec.riseMs, fallMs: rec.fallMs, totalMs: rec.totalMs, peakZ: rec.peakZ });
+      }
+    }, 50);
+    return () => clearInterval(id);
+  }, []);
+
   // Keep render-loop refs up to date for channel AOE circles
   useEffect(() => {
     meChannelingRef.current = !!(me?.buffs?.some((b: any) => b.buffId === 1014));
@@ -735,66 +784,57 @@ export default function BattleArena({
     return () => clearInterval(id);
   }, [showDebugGrid]);
 
-  /* --- Track opponent hand cooldown resets to label incoming damage --- */
-  const prevOppHandRef      = useRef<any[]>([]);
-  const lastOppCastNameRef  = useRef<string | null>(null);
+  /* --- Event-based floating numbers (replaces HP-delta system) --- */
+  // Initialize on first render so we don't replay old events from before mount
   useEffect(() => {
-    const prev = prevOppHandRef.current;
-    const curr = opponent?.hand ?? [];
-    for (const ca of curr) {
-      const abilityId = ca.abilityId || ca.id;
-      const pa = prev.find((p: any) => (p.abilityId || p.id) === abilityId);
-      if (pa) {
-        const prevCd = pa.cooldown ?? 0;
-        const currCd = ca.cooldown ?? 0;
-        const maxCd  = ca.maxCooldown ?? ca.cooldownTicks ?? 300;
-        if (maxCd > 0 && prevCd < maxCd && currCd === maxCd) {
-          // cooldown just reset to max → opponent cast this ability
-          const meta = abilities[abilityId];
-          if (meta?.name) lastOppCastNameRef.current = meta.name;
-        }
-      }
+    if (prevEventsLenRef.current === -1) {
+      prevEventsLenRef.current = events.length;
     }
-    prevOppHandRef.current = curr;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opponent?.hand]);
+  }, []);
 
-  // Track HP changes → spawn floating numbers
   useEffect(() => {
-    if (prevMeHpRef.current !== null && me?.hp != null) {
-      const diff = me.hp - prevMeHpRef.current;
-      const bounds = meScreenBoundsRef.current;
-      const { w, h } = canvasSizeRef.current;
-      // HP bar is drawn 20px above topY in the canvas; convert to pct
-      const screenPct = bounds ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 22) / h) } : undefined;
-      if (diff < 0) {
-        const label = lastOppCastNameRef.current ?? undefined;
-        addFloat(-diff, 'dmg_taken', { label, screenPct });
-        lastOppCastNameRef.current = null;
-      } else if (diff > 0) {
-        const healLabel = lastCastNameRef.current ?? undefined;
-        addFloat(diff, 'heal', { label: healLabel, screenPct });
-        lastCastNameRef.current = null;
-      }
-    }
-    prevMeHpRef.current = me?.hp ?? null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me?.hp]);
-  useEffect(() => {
-    if (prevOppHpRef.current !== null && opponent?.hp != null) {
-      const diff = opponent.hp - prevOppHpRef.current;
-      if (diff < 0) {
-        const bounds = oppScreenBoundsRef.current;
+    // Skip on very first render before initialization
+    if (prevEventsLenRef.current === -1) return;
+    const lastSeen = prevEventsLenRef.current;
+    if (events.length <= lastSeen) return;
+    const newEvents = events.slice(lastSeen);
+    prevEventsLenRef.current = events.length;
+
+    const myId = me?.userId;
+    for (const evt of newEvents) {
+      if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0) {
+        if (evt.targetUserId === myId) {
+          // I took damage
+          const bounds = meScreenBoundsRef.current;
+          const { w, h } = canvasSizeRef.current;
+          const screenPct = bounds
+            ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 22) / h) }
+            : undefined;
+          addFloat(evt.value, 'dmg_taken', { label: evt.abilityName, screenPct });
+        } else if (evt.actorUserId === myId) {
+          // I dealt damage to opponent
+          const bounds = oppScreenBoundsRef.current;
+          const { w, h } = canvasSizeRef.current;
+          const screenPct = bounds
+            ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 55) / h) }
+            : undefined;
+          addFloat(evt.value, 'dmg_dealt', { label: evt.abilityName, screenPct });
+        }
+      } else if (evt.type === 'HEAL' && (evt.value ?? 0) > 0 && evt.targetUserId === myId) {
+        const bounds = meScreenBoundsRef.current;
         const { w, h } = canvasSizeRef.current;
-        const screenPct = bounds ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 55) / h) } : undefined;
-        const label = lastCastNameRef.current ?? undefined;
-        addFloat(-diff, 'dmg_dealt', { label, screenPct });
-        lastCastNameRef.current = null;
+        const screenPct = bounds
+          ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 22) / h) }
+          : undefined;
+        addFloat(evt.value, 'heal', { label: evt.abilityName, screenPct });
       }
     }
-    prevOppHpRef.current = opponent?.hp ?? null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opponent?.hp]);
+  }, [events.length]);
+
+  /* --- Track opponent hand cooldown resets (kept for other UI purposes) --- */
+  const prevOppHandRef      = useRef<any[]>([]);
 
   /* ========================= MOVEMENT ========================= */
 
@@ -1231,7 +1271,17 @@ export default function BattleArena({
   useEffect(() => {
     // 7.5 u/s at 30 Hz = 0.25 u/tick
     const MAX_SPEED = 0.25, ACCEL = 0.3, DECEL = 0.9;
-    const JUMP_VZ_CLIENT = 0.346, POWER_JUMP_VZ_CLIENT = 1.47, GRAVITY_CLIENT = 0.04;
+    // 30 Hz client physics — asymmetric gravity, tuned per jump type:
+    //   Single jump : 1.7 u peak, 1.0 s rise, 0.7 s fall  → 1.7 s total
+    //   Double jump : +0.755 u extra (peak 2.455 u)         → ~2.51 s total from takeoff
+    //   Power jump  : 12.8 u peak, 1.77 s rise, 1.93 s fall → 3.7 s total
+    const GRAVITY_UP_CLIENT         = 2 * 1.7  / (30 * 30);            // ≈ 0.003778 (regular rise)
+    const GRAVITY_DOWN_CLIENT       = 2 * 1.7  / (21 * 21);            // ≈ 0.007710 (regular fall, 0.7 s)
+    const JUMP_VZ_CLIENT            = GRAVITY_UP_CLIENT * 30;           // ≈ 0.11333 (1.0 s → 1.7 u)
+    const DOUBLE_JUMP_VZ_CLIENT     = GRAVITY_UP_CLIENT * 20;           // ≈ 0.07556 (+0.755 u → 2.51 s total)
+    const POWER_GRAVITY_UP_CLIENT   = 2 * 12.8 / (53.1 * 53.1);        // ≈ 0.009079 (1.77 s rise)
+    const POWER_GRAVITY_DOWN_CLIENT = 2 * 12.8 / (57.9 * 57.9);        // ≈ 0.007636 (1.93 s fall)
+    const POWER_JUMP_VZ_CLIENT      = POWER_GRAVITY_UP_CLIENT * 53.1;   // ≈ 0.4823  (12.8 u peak)
     const TURN_RATE = 0.055; // radians / tick at 30 Hz ≈ 95°/sec
     const tick = () => {
       const pos = localPositionRef.current;
@@ -1334,19 +1384,26 @@ export default function BattleArena({
       };
 
       // ── Z axis: jump + gravity ──
-      if (jumpLocalRef.current && localJumpCountRef.current < 2) {
-        const jumpVz = hasFuyaoBuffRef.current ? POWER_JUMP_VZ_CLIENT : JUMP_VZ_CLIENT;
+      if (jumpLocalRef.current && localJumpCountRef.current < maxJumpsRef.current) {
+        const jumpVz = hasFuyaoBuffRef.current ? POWER_JUMP_VZ_CLIENT
+          : localJumpCountRef.current === 0 ? JUMP_VZ_CLIENT
+          : DOUBLE_JUMP_VZ_CLIENT;
+        if (hasFuyaoBuffRef.current) isPowerJumpRef.current = true;
+        else if (localJumpCountRef.current === 0) isPowerJumpRef.current = false;
         hasFuyaoBuffRef.current   = false;
         localVzRef.current        = jumpVz;
         localJumpCountRef.current += 1;
         jumpLocalRef.current       = false;
       }
-      localVzRef.current -= GRAVITY_CLIENT;
+      const gravUp   = isPowerJumpRef.current ? POWER_GRAVITY_UP_CLIENT   : GRAVITY_UP_CLIENT;
+      const gravDown = isPowerJumpRef.current ? POWER_GRAVITY_DOWN_CLIENT  : GRAVITY_DOWN_CLIENT;
+      localVzRef.current -= (localVzRef.current >= 0 ? gravUp : gravDown);
       localZRef.current   = Math.max(0, localZRef.current + localVzRef.current);
       if (localZRef.current <= 0 && localVzRef.current < 0) {
         localZRef.current         = 0;
         localVzRef.current        = 0;
         localJumpCountRef.current = 0;
+        isPowerJumpRef.current    = false;
       }
     };
     const id = setInterval(tick, 33);
@@ -1523,6 +1580,42 @@ export default function BattleArena({
       const myRP = localRenderPosRef.current;
       const opRP = oppRenderPosRef.current;
 
+      // Keep the height display ref up to date (read by the 50ms polling interval)
+      const curZ   = myRP.z ?? 0;
+      const prevZ  = prevZRef.current;
+      const nowMs  = performance.now();
+      const phase  = jumpPhaseRef.current;
+
+      if (phase === 'ground') {
+        if (curZ > 0.01) {
+          // Lifted off
+          jumpPhaseRef.current   = 'rising';
+          takeoffTimeRef.current  = nowMs;
+          peakTimeRef.current     = nowMs;
+          peakZRef.current        = curZ;
+        }
+      } else if (phase === 'rising') {
+        if (curZ > prevZ) {
+          peakTimeRef.current = nowMs;                              // keep pushing apex time while still rising
+          peakZRef.current  = Math.max(peakZRef.current, curZ);     // track highest point
+        } else {
+          // Transitioned from rising → falling
+          jumpPhaseRef.current = 'falling';
+        }
+      } else /* falling */ {
+        if (curZ <= 0.01 && prevZ > 0.01) {
+          // Landed
+          const total  = nowMs - takeoffTimeRef.current;
+          const rise   = peakTimeRef.current - takeoffTimeRef.current;
+          const fall   = nowMs - peakTimeRef.current;
+          jumpRecordNextRef.current = { riseMs: rise, fallMs: fall, totalMs: total, peakZ: peakZRef.current };
+          jumpPhaseRef.current = 'ground';
+        }
+      }
+
+      prevZRef.current = curZ;
+      myZRef.current   = curZ;
+
       // Camera follows smooth render pos (including jump Z)
       const camDir = controlModeRef.current === 'traditional'
         ? { x: Math.sin(camYawRef.current), y: Math.cos(camYawRef.current) }
@@ -1655,6 +1748,50 @@ export default function BattleArena({
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
       <div ref={wrapRef} className={styles.canvasWrap}>
         <canvas ref={canvasRef} className={styles.canvas} />
+      </div>
+
+      {/* ===== JUMP STATS + HEIGHT DISPLAY ===== */}
+      <div style={{
+        position: 'absolute',
+        left: '30%',
+        top: '67%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 3,
+        pointerEvents: 'none',
+        zIndex: 490,
+      }}>
+        {/* Jump timing record */}
+        <div style={{
+          background: 'rgba(0,0,0,0.65)',
+          color: 'rgba(255,220,100,0.85)',
+          fontFamily: 'monospace',
+          fontSize: 11,
+          padding: '3px 10px',
+          borderRadius: 5,
+          border: '1px solid rgba(255,255,255,0.12)',
+          whiteSpace: 'nowrap',
+        }}>
+          {jumpRecord.riseMs !== null
+            ? `↑ ${(jumpRecord.riseMs / 1000).toFixed(2)}s  ↓ ${(jumpRecord.fallMs! / 1000).toFixed(2)}s  ⟳ ${(jumpRecord.totalMs! / 1000).toFixed(2)}s  ⬆ ${jumpRecord.peakZ!.toFixed(1)}u`
+            : '— — —'}
+        </div>
+        {/* Current height */}
+        <div style={{
+          background: 'rgba(0,0,0,0.65)',
+          color: myZ > 0.01 ? '#44ffaa' : 'rgba(255,255,255,0.5)',
+          fontFamily: 'monospace',
+          fontSize: 13,
+          fontWeight: 700,
+          padding: '3px 10px',
+          borderRadius: 5,
+          border: '1px solid rgba(255,255,255,0.15)',
+          letterSpacing: '0.05em',
+        }}>
+          {myZ.toFixed(1)}
+        </div>
       </div>
 
       {/* ===== TOP-LEFT: My HP panel ===== */}
@@ -2093,11 +2230,11 @@ export default function BattleArena({
           // Float above enemy — uses projected canvas position captured at cast time
           const pctX = entry.screenPct ? entry.screenPct.x * 100 : 50;
           const pctY = entry.screenPct ? entry.screenPct.y * 100 : 12;
-          posStyle = { top: `calc(${pctY}% + ${travelUp}px)`, left: `${pctX}%`, transform: 'translateX(-50%)' };
+          posStyle = { top: `calc(${pctY}% + ${travelUp - entry.yOffset}px)`, left: `${pctX}%`, transform: 'translateX(-50%)' };
         } else if (entry.type === 'dmg_taken') {
-          posStyle = { top: `calc(60% + ${travelUp}px)`, left: '40%', transform: 'translateX(-50%)' };
+          posStyle = { top: `calc(60% + ${travelUp - entry.yOffset}px)`, left: '40%', transform: 'translateX(-50%)' };
         } else {
-          posStyle = { top: `calc(60% + ${travelUp}px)`, left: '60%', transform: 'translateX(-50%)' };
+          posStyle = { top: `calc(60% + ${travelUp - entry.yOffset}px)`, left: '60%', transform: 'translateX(-50%)' };
         }
         const sign = entry.type === 'heal' ? '+' : '-';
         const displayText = entry.label

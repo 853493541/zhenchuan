@@ -23,6 +23,9 @@ function showGameError(rawCode: string) {
     case "ERR_SILENCED":
       toastError("你被沉默，无法释放技能");
       break;
+    case "ERR_KNOCKED_BACK":
+      toastError("你被击退，无法行动");
+      break;
     case "ERR_CONTROLLED":
       toastError("你被控制，无法行动");
       break;
@@ -326,6 +329,7 @@ export default function InGameClient({
         distance={distance}
         maxHp={me.hp + (state.players[1]?.hp || 0) === me.hp ? me.hp : 30} // Fallback to 30
         abilities={preload.abilityMap}
+        events={state?.events ?? []}
         opponentPositionBufferRef={opponentPositionBufferRef}
         onCastAbility={async (abilityInstanceId, targetUserId) => {
           // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)

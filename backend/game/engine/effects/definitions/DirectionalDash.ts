@@ -86,6 +86,9 @@ export function handleDirectionalDash(
   source.velocity.vx = 0;
   source.velocity.vy = 0;
 
+  // Dashing resets the jump counter — player can jump again after dashing mid-air.
+  source.jumpCount = 0;
+
   pushEvent(state, {
     turn: state.turn,
     type: "DASH",

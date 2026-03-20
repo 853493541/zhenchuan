@@ -73,6 +73,7 @@ export function addBuff(params: {
     }),
 
     appliedAtTurn: state.turn, // informational only
+    appliedAt: now,             // wall-clock ms — used by TIMED_AOE_DAMAGE
     breakOnPlay: buff.breakOnPlay,
 
     sourceAbilityId: ability.id,
