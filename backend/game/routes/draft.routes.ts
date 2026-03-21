@@ -8,7 +8,7 @@ import GameSession from "../models/GameSession";
 import { getUserIdFromCookie } from "./auth";
 import { generateShop, REFRESH_COST } from "../services/economy/economyService";
 import { getIncomePerRound } from "../services/economy/economyService";
-import { initializeBattleState } from "../services/battle/battleService";
+import { initializeBattleState, generatePickups } from "../services/battle/battleService";
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
 import { GameLoop } from "../engine/loop/GameLoop";
 import { ABILITIES } from "../abilities/abilities";
@@ -490,9 +490,16 @@ router.post("/battle/start", async (req, res) => {
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not ready for battle" });
 
     // ✅ CHECK IF GAME LOOP ALREADY STARTED (prevent duplicate from second player)
-    if (GameLoop.get(gameId)) {
-      // Disabled: spam during testing
-      // console.log(`[battle/start] ⏩ GameLoop already running for ${gameId}, skipping start`);
+    const existingLoop = GameLoop.get(gameId);
+    if (existingLoop) {
+      // The loop may have been started before the pickup system was added.
+      // Retroactively inject pickups if the loop state is empty so claim/inspect work.
+      const ls = existingLoop.getState();
+      if (!ls.pickups || ls.pickups.length === 0) {
+        ls.pickups = generatePickups();
+        existingLoop.updateState(ls);
+        await GameSession.findByIdAndUpdate(gameId, { "state.pickups": ls.pickups });
+      }
       return res.json({ status: "battle_already_started" });
     }
     // Disabled: spam during testing

@@ -15,15 +15,15 @@ import { randomUUID } from "crypto";
 const ARENA_WIDTH = 2000;
 const ARENA_HEIGHT = 2000;
 
-// Pickup spawn positions — spread across the 2000×2000 map with several clusters
-// near each player's spawn (P0 ≈ 985,1000 | P1 ≈ 1015,1000).
+// Pickup spawn positions — clusters near each player spawn (P0≈985,1000 | P1≈1015,1000)
+// so books appear within arm's reach without needing to walk far.
 const PICKUP_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
-  // ── Near P0 spawn ──
-  { x:  920, y: 1000 }, { x:  900, y:  940 }, { x:  900, y: 1060 },
-  { x:  870, y: 1000 }, { x:  950, y:  920 }, { x:  950, y: 1080 },
-  // ── Near P1 spawn ──
-  { x: 1080, y: 1000 }, { x: 1100, y:  940 }, { x: 1100, y: 1060 },
-  { x: 1130, y: 1000 }, { x: 1050, y:  920 }, { x: 1050, y: 1080 },
+  // ── Very close to P0 spawn (985,1000) ──
+  { x:  985, y:  987 }, { x:  973, y:  993 }, { x:  973, y: 1007 },
+  { x:  985, y: 1013 }, { x:  997, y:  993 }, { x:  997, y: 1007 },
+  // ── Very close to P1 spawn (1015,1000) ──
+  { x: 1015, y:  987 }, { x: 1003, y:  993 }, { x: 1003, y: 1007 },
+  { x: 1015, y: 1013 }, { x: 1027, y:  993 }, { x: 1027, y: 1007 },
   // ── NW quadrant ──
   { x:  250, y:  250 }, { x:  500, y:  200 }, { x:  200, y:  500 },
   { x:  450, y:  450 }, { x:  700, y:  250 }, { x:  250, y:  700 },
@@ -59,11 +59,15 @@ const PICKUP_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
 ];
 
 /**
- * Generate random ability pickups scattered around the map.
- * Abilities are drawn with repetition from the non-common pool (multiple books can
- * share the same ability). Positions are shuffled so no two books overlap.
+ * Generate ability pickup clusters spread around the map.
+ * Each spawn position becomes a cluster of BOOKS_PER_CLUSTER books placed within
+ * a small radius around the center — creating "resource pack" groups.
+ * Near-spawn clusters (first 12 positions) get 5 books; the rest get 4.
+ * Total: 12×5 + 60×4 = 300 books per battle.
  */
-const PICKUP_COUNT = 60;
+const BOOKS_PER_CLUSTER      = 4;
+const NEAR_SPAWN_CLUSTER_SIZE = 5;
+const NEAR_SPAWN_COUNT        = 12; // number of near-spawn positions at the top of the list
 
 function generatePickups(): PickupItem[] {
   const nonCommonIds = Object.values(ABILITIES)
@@ -72,28 +76,32 @@ function generatePickups(): PickupItem[] {
 
   if (nonCommonIds.length === 0) return [];
 
-  // Shuffle spawn positions
-  const positions = [...PICKUP_SPAWN_POSITIONS];
-  for (let i = positions.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [positions[i], positions[j]] = [positions[j], positions[i]];
-  }
-
-  const count = Math.min(PICKUP_COUNT, positions.length);
   const pickups: PickupItem[] = [];
-  for (let i = 0; i < count; i++) {
-    // Pick a random ability with repetition allowed
-    const abilityId = nonCommonIds[Math.floor(Math.random() * nonCommonIds.length)];
-    pickups.push({
-      id: randomUUID(),
-      abilityId,
-      position: positions[i],
-    });
-  }
+
+  PICKUP_SPAWN_POSITIONS.forEach((center, idx) => {
+    const clusterSize = idx < NEAR_SPAWN_COUNT ? NEAR_SPAWN_CLUSTER_SIZE : BOOKS_PER_CLUSTER;
+    for (let i = 0; i < clusterSize; i++) {
+      const angle  = (Math.PI * 2 * i / clusterSize) + (Math.random() - 0.5) * (Math.PI / clusterSize);
+      // Near-spawn clusters: tighter radius so books overlap player start area
+      const radius = idx < NEAR_SPAWN_COUNT
+        ? 2 + Math.random() * 6   // 2–8 world units from center
+        : 3 + Math.random() * 9;  // 3–12 world units from center
+      pickups.push({
+        id: randomUUID(),
+        abilityId: nonCommonIds[Math.floor(Math.random() * nonCommonIds.length)],
+        position: {
+          x: Math.round(center.x + Math.cos(angle) * radius),
+          y: Math.round(center.y + Math.sin(angle) * radius),
+        },
+      });
+    }
+  });
+
   return pickups;
 }
 
-/** IDs of common abilities that every player always has, regardless of draft. */
+/** Export so draft.routes can inject pickups into existing loops that predate the pickup system. */
+export { generatePickups };
 const COMMON_ABILITY_IDS = [
   "menghu_xiasha",
   "fuyao_zhishang",

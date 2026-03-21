@@ -462,42 +462,101 @@ function renderPickupBook(
   highlighted: boolean,
   angleDeg: number = 0,
 ) {
+  // Book world dimensions — lying FLAT on the ground (z = constant, x/y span the floor)
+  const hw = 0.42; // half-width  (like holding a book open)
+  const hd = 0.26; // half-depth  (thin paperback)
+
+  const rad  = (angleDeg * Math.PI) / 180;
+  const cosA = Math.cos(rad), sinA = Math.sin(rad);
+  // Rotate offsets around world Z then translate to book center
+  const wc = (dx: number, dy: number): V3 => v3(
+    pos.x + dx * cosA - dy * sinA,
+    pos.y + dx * sinA + dy * cosA,
+    pos.z, // z stays 0 — flat on ground
+  );
+
+  // 4 book corners (world space, all at z=0)
+  const corners = [
+    wc(-hw, -hd),
+    wc( hw, -hd),
+    wc( hw,  hd),
+    wc(-hw,  hd),
+  ];
+  // Spine 18% from left edge, full depth
+  const spTop = wc(-hw + hw * 2 * 0.18, -hd);
+  const spBot = wc(-hw + hw * 2 * 0.18,  hd);
+
+  // Project all world corners to screen
+  const sc = corners.map(c => projPt(c, cam, W, H));
+  if (sc.some(p => !p || p.depth < NEAR_CLIP)) return;
+  const sps = projPt(spTop, cam, W, H);
+  const spb = projPt(spBot, cam, W, H);
+
+  // Book center screen pos (for beam origin)
   const base = projPt(pos, cam, W, H);
   if (!base) return;
-  if (base.depth < 0.5) return;
 
-  const scale = Math.max(0.8, Math.min(18, (2.5 / base.depth) * cam.fl));
+  // === BEAM: rises 0.5 × CHAR_HEIGHT = 1.0 world unit above book ===
+  const beamTip = projPt(v3(pos.x, pos.y, pos.z + CHAR_HEIGHT * 0.5), cam, W, H);
+  if (beamTip) {
+    const bx = base.x, by = base.y;
+    const tx = beamTip.x, ty = beamTip.y;
+    // Beam base half-width ≈ screen-space hw of book
+    const bHW = Math.max(2, (hw / base.depth) * cam.fl * 0.55);
+    const grad = ctx.createLinearGradient(bx, by, tx, ty);
+    if (highlighted) {
+      grad.addColorStop(0,   'rgba(80,255,160,0.90)');
+      grad.addColorStop(0.4, 'rgba(0,230,110,0.45)');
+      grad.addColorStop(1,   'rgba(0,255,120,0.00)');
+    } else {
+      grad.addColorStop(0,   'rgba(0,200,90,0.65)');
+      grad.addColorStop(0.4, 'rgba(0,160,70,0.25)');
+      grad.addColorStop(1,   'rgba(0,200,90,0.00)');
+    }
+    ctx.save();
+    ctx.shadowColor = highlighted ? 'rgba(0,255,120,0.90)' : 'rgba(0,180,80,0.50)';
+    ctx.shadowBlur  = highlighted ? 20 : 9;
+    ctx.beginPath();
+    ctx.moveTo(bx - bHW, by);
+    ctx.lineTo(bx + bHW, by);
+    ctx.lineTo(tx + 0.4,  ty);
+    ctx.lineTo(tx - 0.4,  ty);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+  }
 
-  // Book lies flat on the ground: wider than tall (foreshortened rectangle)
-  const bw = scale * 2.2;  // width
-  const bh = scale * 1.3;  // height (compressed, lying flat)
-
+  // === BOOK BODY (flat quadrilateral projected from world space) ===
   ctx.save();
-  ctx.translate(base.x, base.y);
-  ctx.rotate((angleDeg * Math.PI) / 180);
-
-  // Weak border glow only — no filled halo
-  ctx.shadowBlur  = highlighted ? 8 : 3;
-  ctx.shadowColor = highlighted ? 'rgba(0,255,100,0.85)' : 'rgba(0,180,60,0.45)';
-
-  // Very translucent fill (almost transparent, just enough to read the shape)
-  ctx.fillStyle   = highlighted ? 'rgba(0,70,30,0.25)' : 'rgba(0,45,15,0.15)';
-  ctx.strokeStyle = highlighted ? '#00ff77' : '#00993a';
-  ctx.lineWidth   = highlighted ? 1.2 : 0.8;
+  ctx.fillStyle   = '#12090d';
+  ctx.strokeStyle = highlighted ? '#00dd55' : '#3a2010';
+  ctx.lineWidth   = highlighted ? 1.3 : 0.85;
+  if (highlighted) {
+    ctx.shadowColor = 'rgba(0,220,90,0.65)';
+    ctx.shadowBlur  = 7;
+  } else {
+    ctx.shadowBlur = 0;
+  }
   ctx.beginPath();
-  ctx.rect(-bw / 2, -bh / 2, bw, bh);
+  ctx.moveTo(sc[0]!.x, sc[0]!.y);
+  ctx.lineTo(sc[1]!.x, sc[1]!.y);
+  ctx.lineTo(sc[2]!.x, sc[2]!.y);
+  ctx.lineTo(sc[3]!.x, sc[3]!.y);
+  ctx.closePath();
   ctx.fill();
   ctx.stroke();
 
-  // Spine line (inner, no extra glow)
-  ctx.shadowBlur  = 0;
-  ctx.strokeStyle = highlighted ? '#00cc55' : '#006622';
-  ctx.lineWidth   = 0.5;
-  ctx.beginPath();
-  ctx.moveTo(-bw / 2 + bw * 0.18, -bh / 2 + 0.5);
-  ctx.lineTo(-bw / 2 + bw * 0.18,  bh / 2 - 0.5);
-  ctx.stroke();
-
+  // Spine
+  if (sps && spb) {
+    ctx.shadowBlur  = 0;
+    ctx.strokeStyle = '#604020';
+    ctx.lineWidth   = 0.45;
+    ctx.beginPath();
+    ctx.moveTo(sps.x, sps.y);
+    ctx.lineTo(spb.x, spb.y);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -2429,70 +2488,61 @@ export default function BattleArena({
         </div>
       )}
 
-      {/* ===== PICKUP: Ability modal ===== */}
+      {/* ===== PICKUP: Horizontal panel (picture-1 style) ===== */}
       {pickupModal && (
         <div style={{
-          position: 'absolute', top: '50%', left: '50%',
-          transform: 'translate(-50%, -50%)',
-          background: 'rgba(5,20,12,0.97)',
-          border: '2px solid #00cc66',
-          borderRadius: 12,
-          padding: '24px 32px',
-          minWidth: 260,
+          position: 'absolute', top: '18%', left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(12,22,18,0.93)',
+          border: '1px solid rgba(0,160,70,0.55)',
+          borderRadius: 5,
           zIndex: 700,
-          boxShadow: '0 0 40px rgba(0,255,100,0.25)',
-          textAlign: 'center',
+          minWidth: 180,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.75)',
           fontFamily: '"Microsoft YaHei", sans-serif',
         }}>
-          {/* Book icon */}
-          <div style={{ fontSize: 36, marginBottom: 8 }}>📗</div>
-          <div style={{ color: '#aaffcc', fontSize: 11, marginBottom: 4, letterSpacing: '0.1em' }}>秘籍</div>
-          {/* Icon */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`/game/icons/Skills/${pickupModal.name}.png`}
-            alt={pickupModal.name}
-            style={{ width: 56, height: 56, borderRadius: 8, border: '1px solid #00cc66', marginBottom: 10, background: 'rgba(0,50,20,0.6)' }}
-            onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
-          />
-          <div style={{ color: '#00ff88', fontSize: 20, fontWeight: 700, marginBottom: 6 }}>
-            {pickupModal.name}
+          {/* Title bar */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '5px 10px',
+            background: 'rgba(0,50,25,0.75)',
+            borderBottom: '1px solid rgba(0,130,60,0.35)',
+            borderRadius: '4px 4px 0 0',
+          }}>
+            <span style={{ color: '#88ccaa', fontSize: 13, display: 'flex', alignItems: 'center', gap: 5 }}>
+              📗 技能
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ color: '#55aa77', fontSize: 11 }}>按 F 拾取</span>
+              <button
+                onClick={() => setPickupModal(null)}
+                style={{ background: 'none', border: 'none', color: '#88ccaa', cursor: 'pointer', fontSize: 17, lineHeight: 1, padding: 0 }}
+              >×</button>
+            </div>
           </div>
-          <div style={{ color: '#88ccaa', fontSize: 13, marginBottom: 20, lineHeight: 1.5, maxWidth: 220 }}>
-            {pickupModal.description}
-          </div>
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-            <button
+          {/* Horizontal item list */}
+          <div style={{ display: 'flex', padding: '8px 10px', gap: 8 }}>
+            <div
               style={{
-                background: 'linear-gradient(135deg,#00aa44,#008833)',
-                border: '1px solid #00ff66',
-                color: '#fff',
-                borderRadius: 6,
-                padding: '8px 22px',
-                cursor: 'pointer',
-                fontSize: 14,
-                fontFamily: '"Microsoft YaHei", sans-serif',
-                fontWeight: 600,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                cursor: 'pointer', padding: '5px 8px', borderRadius: 4,
+                background: 'rgba(0,60,30,0.55)',
+                border: '1px solid rgba(0,200,80,0.4)',
               }}
               onClick={() => claimPickup(pickupModal.pickupId)}
+              title={pickupModal.name}
             >
-              F 拾取
-            </button>
-            <button
-              style={{
-                background: 'rgba(30,30,30,0.8)',
-                border: '1px solid rgba(255,255,255,0.2)',
-                color: '#aaa',
-                borderRadius: 6,
-                padding: '8px 16px',
-                cursor: 'pointer',
-                fontSize: 14,
-                fontFamily: '"Microsoft YaHei", sans-serif',
-              }}
-              onClick={() => setPickupModal(null)}
-            >
-              离开
-            </button>
+              <span style={{ color: '#aaffcc', fontSize: 11, whiteSpace: 'nowrap', maxWidth: 64, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {pickupModal.name}
+              </span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/game/icons/Skills/${pickupModal.name}.png`}
+                alt={pickupModal.name}
+                style={{ width: 52, height: 52, borderRadius: 4, background: 'rgba(0,30,15,0.8)', display: 'block' }}
+                onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.25'; }}
+              />
+            </div>
           </div>
         </div>
       )}
