@@ -459,7 +459,6 @@ function renderPickupBook(
   pos: V3,
   cam: Cam,
   W: number, H: number,
-  highlighted: boolean,
   angleDeg: number = 0,
 ) {
   // Book world dimensions — lying FLAT on the ground (z = constant, x/y span the floor)
@@ -504,18 +503,12 @@ function renderPickupBook(
     // Beam base half-width ≈ screen-space hw of book
     const bHW = Math.max(2, (hw / base.depth) * cam.fl * 0.55);
     const grad = ctx.createLinearGradient(bx, by, tx, ty);
-    if (highlighted) {
-      grad.addColorStop(0,   'rgba(80,255,160,0.90)');
-      grad.addColorStop(0.4, 'rgba(0,230,110,0.45)');
-      grad.addColorStop(1,   'rgba(0,255,120,0.00)');
-    } else {
-      grad.addColorStop(0,   'rgba(0,200,90,0.65)');
-      grad.addColorStop(0.4, 'rgba(0,160,70,0.25)');
-      grad.addColorStop(1,   'rgba(0,200,90,0.00)');
-    }
+    grad.addColorStop(0,   'rgba(80,255,160,0.90)');
+    grad.addColorStop(0.4, 'rgba(0,230,110,0.45)');
+    grad.addColorStop(1,   'rgba(0,255,120,0.00)');
     ctx.save();
-    ctx.shadowColor = highlighted ? 'rgba(0,255,120,0.90)' : 'rgba(0,180,80,0.50)';
-    ctx.shadowBlur  = highlighted ? 20 : 9;
+    ctx.shadowColor = 'rgba(0,255,120,0.90)';
+    ctx.shadowBlur  = 20;
     ctx.beginPath();
     ctx.moveTo(bx - bHW, by);
     ctx.lineTo(bx + bHW, by);
@@ -530,14 +523,9 @@ function renderPickupBook(
   // === BOOK BODY (flat quadrilateral projected from world space) ===
   ctx.save();
   ctx.fillStyle   = '#12090d';
-  ctx.strokeStyle = highlighted ? '#00dd55' : '#3a2010';
-  ctx.lineWidth   = highlighted ? 1.3 : 0.85;
-  if (highlighted) {
-    ctx.shadowColor = 'rgba(0,220,90,0.65)';
-    ctx.shadowBlur  = 7;
-  } else {
-    ctx.shadowBlur = 0;
-  }
+  ctx.strokeStyle = '#3a2010';
+  ctx.lineWidth   = 0.85;
+  ctx.shadowBlur  = 0;
   ctx.beginPath();
   ctx.moveTo(sc[0]!.x, sc[0]!.y);
   ctx.lineTo(sc[1]!.x, sc[1]!.y);
@@ -786,15 +774,16 @@ export default function BattleArena({
   const [, setChannelTick] = useState(0); // forces re-renders for channel bar countdown
 
   /* --- Pickup interaction state --- */
-  const [nearbyPickupId,    setNearbyPickupId]    = useState<string | null>(null);
+  const [nearbyPickupIds,   setNearbyPickupIds]   = useState<string[]>([]);         // sorted closest-first
   const [channelPickupId,   setChannelPickupId]   = useState<string | null>(null); // book being channeled
   const [channelProgress,   setChannelProgress]   = useState(0);                  // 0-1
-  const [pickupModal,       setPickupModal]       = useState<{ pickupId: string; abilityId: string; name: string; description: string } | null>(null);
+  const [pickupModals,      setPickupModals]      = useState<Array<{ pickupId: string; abilityId: string; name: string; description: string }>>([]);
   const channelTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelStartRef     = useRef<number>(0);
   const channelAnimRef      = useRef<number>(0);
   const pickupsRef          = useRef<PickupItem[]>([]);
-  const nearbyPickupIdRef   = useRef<string | null>(null);
+  const nearbyPickupIdsRef  = useRef<string[]>([]);  // synced from state; used in callbacks
+  const pickupModalsRef     = useRef<Array<{ pickupId: string; abilityId: string; name: string; description: string }>>([]);
 
   /* --- Debug position overlay --- */
   const [showDebugGrid, setShowDebugGrid] = useState(false);
@@ -1002,30 +991,35 @@ export default function BattleArena({
     pickupsRef.current = pickups;
   }, [pickups]);
 
-  // Keep nearbyPickupIdRef in sync so render loop can read it
+  // Keep nearbyPickupIdsRef + pickupModalsRef in sync so callbacks always see the latest values
   useEffect(() => {
-    nearbyPickupIdRef.current = nearbyPickupId;
-  }, [nearbyPickupId]);
+    nearbyPickupIdsRef.current = nearbyPickupIds;
+  }, [nearbyPickupIds]);
+  useEffect(() => {
+    pickupModalsRef.current = pickupModals;
+  }, [pickupModals]);
 
-  // Proximity check: detect nearest book (runs every 100ms based on local position)
+  // Proximity check: collect ALL books within range, sorted closest-first (runs every 100ms)
   useEffect(() => {
     const PICKUP_RANGE = 8;
     const id = setInterval(() => {
       const pos = localPositionRef.current;
       if (!pos) return;
       const items = pickupsRef.current;
-      let nearest: string | null = null;
-      let nearestDist = Infinity;
+      const nearby: Array<{ id: string; dist: number }> = [];
       for (const p of items) {
         const dx = pos.x - p.position.x;
         const dy = pos.y - p.position.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < PICKUP_RANGE && dist < nearestDist) {
-          nearestDist = dist;
-          nearest     = p.id;
-        }
+        if (dist < PICKUP_RANGE) nearby.push({ id: p.id, dist });
       }
-      setNearbyPickupId(prev => prev !== nearest ? nearest : prev);
+      nearby.sort((a, b) => a.dist - b.dist);
+      const ids = nearby.map(n => n.id);
+      // Update ref immediately so callbacks don't get stale data
+      nearbyPickupIdsRef.current = ids;
+      setNearbyPickupIds(prev =>
+        prev.length === ids.length && prev.every((v, i) => v === ids[i]) ? prev : ids
+      );
     }, 100);
     return () => clearInterval(id);
   }, []);
@@ -1291,14 +1285,14 @@ export default function BattleArena({
   /* ========================= PICKUP INTERACTION ========================= */
 
   const handlePickupInteract = useCallback(() => {
-    // If a modal is open, F = claim
-    if (pickupModal) {
-      claimPickup(pickupModal.pickupId);
+    const target = nearbyPickupIdsRef.current[0] ?? null;
+    if (!target) return;
+
+    // If the closest book's panel is already open → claim it (F toggles open→claim)
+    if (pickupModalsRef.current.some(m => m.pickupId === target)) {
+      claimPickup(target);
       return;
     }
-
-    const target = nearbyPickupId;
-    if (!target) return;
 
     // If already channeling this same book, ignore (debounce)
     if (channelPickupId === target) return;
@@ -1322,7 +1316,7 @@ export default function BattleArena({
     };
     channelAnimRef.current = requestAnimationFrame(animate);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nearbyPickupId, channelPickupId, pickupModal]);
+  }, [channelPickupId]);
 
   const handlePickupInteractRef = useRef(handlePickupInteract);
   handlePickupInteractRef.current = handlePickupInteract;
@@ -1343,19 +1337,19 @@ export default function BattleArena({
         return;
       }
       const data = await res.json();
-      setPickupModal({
-        pickupId: data.pickupId,
-        abilityId: data.abilityId,
-        name: data.name,
-        description: data.description,
-      });
+      // Add panel if not already open for this pickup
+      setPickupModals(prev =>
+        prev.some(m => m.pickupId === data.pickupId)
+          ? prev
+          : [...prev, { pickupId: data.pickupId, abilityId: data.abilityId, name: data.name, description: data.description }]
+      );
     } catch {
       toastError('网络错误');
     }
   }, [gameId]);
 
   const claimPickup = useCallback(async (pickupId: string) => {
-    setPickupModal(null);
+    setPickupModals(prev => prev.filter(m => m.pickupId !== pickupId));
     try {
       const res = await fetch('/api/game/pickup/claim', {
         method: 'POST',
@@ -1383,14 +1377,14 @@ export default function BattleArena({
     };
   }, []);
 
-  // Cancel channel if player walks away from the book
+  // Cancel channel if the book being channeled leaves the nearby range
   useEffect(() => {
-    if (channelPickupId && nearbyPickupId !== channelPickupId) {
+    if (channelPickupId && !nearbyPickupIds.includes(channelPickupId)) {
       cancelAnimationFrame(channelAnimRef.current);
       setChannelPickupId(null);
       setChannelProgress(0);
     }
-  }, [nearbyPickupId, channelPickupId]);
+  }, [nearbyPickupIds, channelPickupId]);
 
   // ── Keyboard input ──
   useEffect(() => {
@@ -1407,7 +1401,13 @@ export default function BattleArena({
         jumpLocalRef.current = true;
         jumpSendRef.current  = true;
       }
-      // F = interact with nearby pickup
+      // Escape = close any open overlay (pickup panel; extend here for future modals)
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setPickupModals([]);
+        return;
+      }
+      // F = interact with nearby pickup (channel to open panel; claim if panel already open)
       if (k === 'f') {
         e.preventDefault();
         handlePickupInteractRef.current();
@@ -2121,7 +2121,6 @@ export default function BattleArena({
           ctx,
           v3(pickup.position.x, pickup.position.y, 0),
           cam, w, h,
-          /* highlighted */ pickup.id === nearbyPickupIdRef.current,
           pickupAngle,
         );
       }
@@ -2440,25 +2439,30 @@ export default function BattleArena({
         <span className={styles.distVal}>{distance.toFixed(1)}尺</span>
       </div>
 
-      {/* ===== PICKUP: "Press F" prompt when near a book ===== */}
-      {nearbyPickupId && !pickupModal && !channelPickupId && (
+      {/* ===== PICKUP: "拾取 [F]" prompts — always visible when near books, fixed top-left ===== */}
+      {nearbyPickupIds.length > 0 && (
         <div style={{
-          position: 'absolute', bottom: '38%', left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'rgba(0,20,10,0.88)',
-          border: '1px solid #00ff80',
-          borderRadius: 8,
-          padding: '8px 20px',
-          color: '#aaffcc',
-          fontSize: 15,
-          fontFamily: '"Microsoft YaHei", sans-serif',
+          position: 'absolute', top: 60, left: 64,
+          display: 'flex', flexDirection: 'column', gap: 5,
           pointerEvents: 'none',
-          zIndex: 600,
-          letterSpacing: '0.05em',
-          boxShadow: '0 0 16px rgba(0,255,80,0.35)',
-          textShadow: '0 0 8px rgba(0,255,100,0.6)',
+          zIndex: 650,
         }}>
-          按 <span style={{ color: '#00ff90', fontWeight: 700 }}>F</span> 查阅秘籍
+          {nearbyPickupIds.map((id) => (
+            <div key={id} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              background: 'rgba(26,24,20,0.84)',
+              border: '1px solid rgba(190,170,110,0.50)',
+              borderRadius: 22,
+              padding: '5px 16px 5px 12px',
+              color: '#e5d9af',
+              fontSize: 13,
+              fontFamily: '"Microsoft YaHei", sans-serif',
+              letterSpacing: '0.05em',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.60)',
+            }}>
+              拾取【<span style={{ color: '#ffe060', fontWeight: 700, fontFamily: 'monospace', fontSize: 14 }}>F</span>】
+            </div>
+          ))}
         </div>
       )}
 
@@ -2488,64 +2492,124 @@ export default function BattleArena({
         </div>
       )}
 
-      {/* ===== PICKUP: Horizontal panel (picture-1 style) ===== */}
-      {pickupModal && (
-        <div style={{
-          position: 'absolute', top: '18%', left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'rgba(12,22,18,0.93)',
-          border: '1px solid rgba(0,160,70,0.55)',
-          borderRadius: 5,
-          zIndex: 700,
-          minWidth: 180,
-          boxShadow: '0 4px 24px rgba(0,0,0,0.75)',
-          fontFamily: '"Microsoft YaHei", sans-serif',
-        }}>
-          {/* Title bar */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '5px 10px',
-            background: 'rgba(0,50,25,0.75)',
-            borderBottom: '1px solid rgba(0,130,60,0.35)',
-            borderRadius: '4px 4px 0 0',
+      {/* ===== PICKUP: Ability panels — one per inspected book, stacked ===== */}
+      {pickupModals.map((modal, idx) => {
+        // Navigator arrow: direction from player to book on the ground
+        const pu = pickupsRef.current.find(p => p.id === modal.pickupId);
+        const playerPos = localPositionRef.current;
+        let arrowChar = '·';
+        let distLabel  = '';
+        if (pu && playerPos) {
+          const dx = pu.position.x - playerPos.x;
+          const dy = pu.position.y - playerPos.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          distLabel = dist < 1 ? '<1m' : `${Math.round(dist)}m`;
+          const deg = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
+          const ARROWS = ['→','↗','↑','↖','←','↙','↓','↘'];
+          arrowChar = ARROWS[Math.round(deg / 45) % 8];
+        }
+
+        // Layout constants — slot size matches ability hotbar ~40 px
+        const SLOT = 40, GAP = 5, COLS = 6;
+        const bodyW = COLS * SLOT + (COLS - 1) * GAP + 18; // 18 = 9px padding each side
+
+        return (
+          <div key={modal.pickupId} style={{
+            position: 'absolute',
+            top: `calc(18% + ${idx * 130}px)`,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(34,44,42,0.97)',
+            border: '1px solid rgba(90,130,110,0.60)',
+            borderRadius: 4,
+            zIndex: 700 + idx,
+            width: bodyW,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.80)',
+            fontFamily: '"Microsoft YaHei", sans-serif',
+            userSelect: 'none',
           }}>
-            <span style={{ color: '#88ccaa', fontSize: 13, display: 'flex', alignItems: 'center', gap: 5 }}>
-              📗 技能
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ color: '#55aa77', fontSize: 11 }}>按 F 拾取</span>
-              <button
-                onClick={() => setPickupModal(null)}
-                style={{ background: 'none', border: 'none', color: '#88ccaa', cursor: 'pointer', fontSize: 17, lineHeight: 1, padding: 0 }}
-              >×</button>
-            </div>
-          </div>
-          {/* Horizontal item list */}
-          <div style={{ display: 'flex', padding: '8px 10px', gap: 8 }}>
-            <div
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                cursor: 'pointer', padding: '5px 8px', borderRadius: 4,
-                background: 'rgba(0,60,30,0.55)',
-                border: '1px solid rgba(0,200,80,0.4)',
-              }}
-              onClick={() => claimPickup(pickupModal.pickupId)}
-              title={pickupModal.name}
-            >
-              <span style={{ color: '#aaffcc', fontSize: 11, whiteSpace: 'nowrap', maxWidth: 64, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {pickupModal.name}
+            {/* ── Title bar ── */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '4px 8px',
+              background: 'rgba(55,75,68,0.90)',
+              borderBottom: '1px solid rgba(90,130,110,0.40)',
+              borderRadius: '3px 3px 0 0',
+              height: 28,
+            }}>
+              {/* Left: icon + title */}
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#cde5d8', fontSize: 13, fontWeight: 600 }}>
+                <span style={{ fontSize: 14, lineHeight: 1 }}>目</span>
+                技能 (1)
               </span>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`/game/icons/Skills/${pickupModal.name}.png`}
-                alt={pickupModal.name}
-                style={{ width: 52, height: 52, borderRadius: 4, background: 'rgba(0,30,15,0.8)', display: 'block' }}
-                onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.25'; }}
-              />
+              {/* Right: navigator arrow + X */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  fontSize: 13, color: '#a8dfbf', fontFamily: 'monospace',
+                  display: 'flex', alignItems: 'center', gap: 3,
+                }}>
+                  <span style={{ fontSize: 16 }}>{arrowChar}</span>
+                  {distLabel && <span style={{ fontSize: 10, color: '#7ab898' }}>{distLabel}</span>}
+                </span>
+                <button
+                  onClick={() => setPickupModals(prev => prev.filter(m => m.pickupId !== modal.pickupId))}
+                  style={{ background: 'none', border: 'none', color: '#aaccbb', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px' }}
+                >×</button>
+              </div>
+            </div>
+
+            {/* ── Item grid: 6-slot wide, name overlaid inside icon ── */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${COLS}, ${SLOT}px)`,
+              gap: GAP,
+              padding: '9px',
+              background: 'rgba(26,36,34,0.95)',
+              borderRadius: '0 0 3px 3px',
+            }}>
+              {/* The one real item */}
+              <div
+                style={{
+                  position: 'relative', width: SLOT, height: SLOT,
+                  borderRadius: 4, overflow: 'hidden', cursor: 'pointer',
+                  border: '1px solid rgba(80,200,120,0.55)',
+                  boxShadow: '0 0 6px rgba(0,200,80,0.25)',
+                }}
+                onClick={() => claimPickup(modal.pickupId)}
+                title={modal.name}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/game/icons/Skills/${modal.name}.png`}
+                  alt={modal.name}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.20'; }}
+                />
+                {/* Name label overlaid at bottom of icon */}
+                <div style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0,
+                  background: 'rgba(0,0,0,0.68)',
+                  color: '#dff5e8',
+                  fontSize: 9,
+                  textAlign: 'center',
+                  lineHeight: '14px',
+                  padding: '0 2px',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{modal.name}</div>
+              </div>
+
+              {/* 5 empty slots to fill out the 6-wide row */}
+              {Array.from({ length: COLS - 1 }).map((_, si) => (
+                <div key={si} style={{
+                  width: SLOT, height: SLOT, borderRadius: 4,
+                  background: 'rgba(20,30,28,0.60)',
+                  border: '1px solid rgba(60,90,75,0.35)',
+                }} />
+              ))}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })}
 
       {/* ===== CHEAT: Ability picker (bottom-right, toggleable) ===== */}
       <button
