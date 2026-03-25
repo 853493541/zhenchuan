@@ -96,33 +96,40 @@ export default function ArenaScene({
       )}
 
       {/* Opponents — render all of them */}
-      {opponents.map((opp, i) => (
-        <group key={opp.userId}>
-          {/* Opponent AOE zone */}
-          {channelingOpponentId === opp.userId && (
-            <AoeZone
+      {opponents.map((opp, i) => {
+        const dx = opp.position.x - me.position.x;
+        const dy = opp.position.y - me.position.y;
+        const dz = (opp.position.z ?? 0) - (me.position.z ?? 0);
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        return (
+          <group key={opp.userId}>
+            {/* Opponent AOE zone */}
+            {channelingOpponentId === opp.userId && (
+              <AoeZone
+                worldX={opp.position.x}
+                worldY={opp.position.y}
+                radius={10}
+                color="#ff5500"
+              />
+            )}
+            <Character
               worldX={opp.position.x}
               worldY={opp.position.y}
-              radius={10}
-              color="#ff5500"
+              worldZ={opp.position.z ?? 0}
+              color={OPP_COLORS[i % OPP_COLORS.length]}
+              emissive={OPP_EMISSIVES[i % OPP_EMISSIVES.length]}
+              hp={opp.hp}
+              maxHp={maxHp}
+              isMe={false}
+              isSelected={selectedTargetId === opp.userId}
+              facing={opp.facing}
+              username="陌路侠士"
+              distance={dist}
+              onSelect={() => onSelectTarget?.(opp.userId)}
             />
-          )}
-          <Character
-            worldX={opp.position.x}
-            worldY={opp.position.y}
-            worldZ={opp.position.z ?? 0}
-            color={OPP_COLORS[i % OPP_COLORS.length]}
-            emissive={OPP_EMISSIVES[i % OPP_EMISSIVES.length]}
-            hp={opp.hp}
-            maxHp={maxHp}
-            isMe={false}
-            isSelected={selectedTargetId === opp.userId}
-            facing={opp.facing}
-            username="陌路侠士"
-            onSelect={() => onSelectTarget?.(opp.userId)}
-          />
-        </group>
-      ))}
+          </group>
+        );
+      })}
 
       {/* Local player — rendered last (on top) */}
       <Character

@@ -8,6 +8,9 @@ import * as THREE from 'three';
 const CHAR_RADIUS = 0.7;
 const CHAR_HEIGHT = 2.0;
 const HALF = 1000;
+/** Camera distance at which the HP bar has scale=1 (matches default camera offset) */
+const HP_REF_DIST = 20;
+const _hpWorldPos = new THREE.Vector3();
 
 interface CharacterProps {
   worldX: number;
@@ -23,6 +26,8 @@ interface CharacterProps {
   /** Live facing ref — read every frame for the local player */
   facingRef?: MutableRefObject<{ x: number; y: number }>;
   username?: string;
+  /** Distance to this character in game units (displayed in the name label) */
+  distance?: number;
   onSelect?: () => void;
   /** Live position ref — read every frame for the local player */
   posRef?: MutableRefObject<{ x: number; y: number; z: number }>;
@@ -41,6 +46,7 @@ export default function Character({
   facing,
   facingRef,
   username,
+  distance,
   onSelect,
   posRef,
 }: CharacterProps) {
@@ -51,6 +57,9 @@ export default function Character({
   const arcGlowRef = useRef<THREE.Mesh>(null);
   const hpGroupRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
+
+  // Show HP bar: always for self, within 60 units for others
+  const showHpBar = isMe || (distance !== undefined && distance <= 60);
 
   const handleSelect = (e: any) => {
     if (!onSelect) return;
@@ -114,9 +123,14 @@ export default function Character({
       }
     }
 
-    // --- Billboard HP bar: always face camera ---
+    // --- Billboard HP bar: always face camera, fixed screen size ---
     if (hpGroupRef.current) {
       hpGroupRef.current.quaternion.copy(camera.quaternion);
+      // Scale inversely with distance so on-screen size stays constant
+      hpGroupRef.current.getWorldPosition(_hpWorldPos);
+      const camDist = camera.position.distanceTo(_hpWorldPos);
+      const s = camDist / HP_REF_DIST;
+      hpGroupRef.current.scale.setScalar(s);
     }
   });
 
@@ -165,31 +179,38 @@ export default function Character({
         </mesh>
       )}
 
-      {/* HP bar — sprites for color accuracy (immune to tone mapping) */}
-      <group ref={hpGroupRef} position={[0, CHAR_HEIGHT + 0.55, 0]}>
-        {/* Enemy name — rendered as 3D text inside billboard group */}
-        {username && !isMe && (
-          <Text
-            position={[0, 0.38, 0]}
-            fontSize={0.26}
-            color={isSelected ? '#ffcccc' : '#ff6666'}
-            anchorX="center"
-            anchorY="middle"
-            outlineWidth={0.02}
-            outlineColor="#000000"
-          >
-            {username}
-          </Text>
-        )}
-        {/* Background — sprite (toneMapped works on spriteMaterial) */}
-        <sprite scale={[3.2, 0.32, 1]} renderOrder={1}>
-          <spriteMaterial color="#222222" transparent opacity={0.85} depthTest={false} depthWrite={false} toneMapped={false} />
-        </sprite>
-        {/* Colored fill — sprite */}
-        <sprite position={[(hpPct - 1) * 1.6, 0, 0]} scale={[3.2 * hpPct, 0.26, 1]} renderOrder={2}>
-          <spriteMaterial color={hpColor} depthTest={false} depthWrite={false} toneMapped={false} />
-        </sprite>
-      </group>
+      {/* HP bar + name — all in one billboard group (same 3D system = same scale rules) */}
+      {showHpBar && (
+        <group ref={hpGroupRef} position={[0, CHAR_HEIGHT + 0.7, 0]}>
+          {/* Enemy name — Text from drei, above bar */}
+          {username && !isMe && (
+            <Text
+              position={[0, 0.32, 0]}
+              fontSize={0.28}
+              color={isSelected ? '#ff99bb' : '#ff3333'}
+              anchorX="center"
+              anchorY="middle"
+              outlineWidth={0.025}
+              outlineColor="#000000"
+              material-toneMapped={false}
+            >
+              {isSelected && distance !== undefined ? `${username} · ${distance.toFixed(1)}尺` : username}
+            </Text>
+          )}
+          {/* Thin black border */}
+          <sprite scale={[2.86, 0.274, 1]} renderOrder={0}>
+            <spriteMaterial color="#000000" depthTest={false} depthWrite={false} toneMapped={false} />
+          </sprite>
+          {/* Background */}
+          <sprite scale={[2.8, 0.224, 1]} renderOrder={1}>
+            <spriteMaterial color="#222222" transparent opacity={0.9} depthTest={false} depthWrite={false} toneMapped={false} />
+          </sprite>
+          {/* Colored fill */}
+          <sprite position={[(hpPct - 1) * 1.4, 0, 0]} scale={[2.8 * hpPct, 0.182, 1]} renderOrder={2}>
+            <spriteMaterial color={hpColor} depthTest={false} depthWrite={false} toneMapped={false} />
+          </sprite>
+        </group>
+      )}
 
       {/* Facing arc — updated by useFrame */}
       {(facing || facingRef) && (
