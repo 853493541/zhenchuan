@@ -1229,6 +1229,14 @@ export default function BattleArena({
         } else {
           vel.x *= DECEL;
           vel.y *= DECEL;
+          // In mouselook mode with no movement, restore facing to camera direction
+          if (mouseLook) {
+            charYawRef.current = camYawRef.current;
+            localFacingRef.current = {
+              x: Math.sin(camYawRef.current),
+              y: Math.cos(camYawRef.current),
+            };
+          }
         }
       } else {
         // 摇杆模式: WASD = absolute world directions

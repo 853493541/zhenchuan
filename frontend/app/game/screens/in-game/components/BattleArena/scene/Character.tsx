@@ -56,6 +56,8 @@ export default function Character({
   const arcBorderRef = useRef<THREE.Mesh>(null);
   const arcGlowRef = useRef<THREE.Mesh>(null);
   const hpGroupRef = useRef<THREE.Group>(null);
+  /** Smoothed display yaw for the arc — lags behind actual facing for visual animation */
+  const arcDisplayYawRef = useRef(0);
   const { camera } = useThree();
 
   // Show HP bar: always for self, within 60 units for others
@@ -81,7 +83,7 @@ export default function Character({
   // For opponent (no posRef): smooth lerp toward prop position
   const currentPos = useRef(new THREE.Vector3(threeX, threeY, threeZ));
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!groupRef.current) return;
 
     // --- Position ---
@@ -104,22 +106,32 @@ export default function Character({
     if (f && bodyRef.current) {
       const yaw = Math.atan2(f.x, f.y);
       bodyRef.current.rotation.set(0, yaw, 0);
+
+      // Smooth arc display yaw — rotates at max 720°/s so a full 180° takes ~0.25s
+      const MAX_ARC_SPEED = Math.PI * 4; // rad/s
+      let arcDiff = yaw - arcDisplayYawRef.current;
+      // Shortest-path wrap to [-π, π]
+      arcDiff = ((arcDiff + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      const maxStep = MAX_ARC_SPEED * Math.min(delta, 0.1);
+      arcDisplayYawRef.current += Math.abs(arcDiff) < maxStep ? arcDiff : maxStep * Math.sign(arcDiff);
+      const arcYaw = arcDisplayYawRef.current;
+
       // Update facing arc: YXZ Euler order so Ry(yaw) spins in world XZ first,
       // then Rx(-π/2) lays the circle flat on the ground.
       if (arcRef.current) {
-        arcRef.current.position.set(Math.sin(yaw) * 0.8, 0.04, Math.cos(yaw) * 0.8);
+        arcRef.current.position.set(Math.sin(arcYaw) * 0.8, 0.04, Math.cos(arcYaw) * 0.8);
         arcRef.current.rotation.order = 'YXZ';
-        arcRef.current.rotation.set(-Math.PI / 2, yaw, 0);
+        arcRef.current.rotation.set(-Math.PI / 2, arcYaw, 0);
       }
       if (arcBorderRef.current) {
-        arcBorderRef.current.position.set(Math.sin(yaw) * 0.8, 0.04, Math.cos(yaw) * 0.8);
+        arcBorderRef.current.position.set(Math.sin(arcYaw) * 0.8, 0.04, Math.cos(arcYaw) * 0.8);
         arcBorderRef.current.rotation.order = 'YXZ';
-        arcBorderRef.current.rotation.set(-Math.PI / 2, yaw, 0);
+        arcBorderRef.current.rotation.set(-Math.PI / 2, arcYaw, 0);
       }
       if (arcGlowRef.current) {
-        arcGlowRef.current.position.set(Math.sin(yaw) * 0.8, 0.035, Math.cos(yaw) * 0.8);
+        arcGlowRef.current.position.set(Math.sin(arcYaw) * 0.8, 0.035, Math.cos(arcYaw) * 0.8);
         arcGlowRef.current.rotation.order = 'YXZ';
-        arcGlowRef.current.rotation.set(-Math.PI / 2, yaw, 0);
+        arcGlowRef.current.rotation.set(-Math.PI / 2, arcYaw, 0);
       }
     }
 
