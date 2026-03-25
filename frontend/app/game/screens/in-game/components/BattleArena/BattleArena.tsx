@@ -914,6 +914,8 @@ export default function BattleArena({
         setPickupModals([]);
         setSelectedTargetId(null);
         selectedTargetRef.current = null;
+        setSelectedSelf(false);
+        selectedSelfRef.current = false;
         return;
       }
       // F = interact with nearby pickup (channel to open panel; claim if panel already open)
@@ -929,6 +931,8 @@ export default function BattleArena({
         if (!primary) return;
         setSelectedTargetId(primary);
         selectedTargetRef.current = primary;
+        setSelectedSelf(false);
+        selectedSelfRef.current = false;
         return;
       }
       // ── Draft slots: 1  2  3  Q ──
@@ -1323,7 +1327,7 @@ export default function BattleArena({
       <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
         <Canvas
           camera={{ fov: 72, near: 0.5, far: 2000 }}
-          style={{ background: '#d4b896' }}
+          style={{ background: '#62a054' }}
           gl={{ antialias: true }}
         >
           <ArenaScene
@@ -1333,10 +1337,13 @@ export default function BattleArena({
             onSelectTarget={(userId) => {
               setSelectedTargetId(userId);
               selectedTargetRef.current = userId;
+              setSelectedSelf(false);
+              selectedSelfRef.current = false;
             }}
             pickups={pickups}
             meChanneling={meChannelingRef.current}
             channelingOpponentId={opponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014))?.userId ?? null}
+            selectedSelf={selectedSelf}
             localRenderPosRef={localRenderPosRef}
             camYawRef={camYawRef}
             camPitchRef={camPitchRef}
@@ -1395,7 +1402,15 @@ export default function BattleArena({
       <div
         className={styles.playerPanel}
         style={{ pointerEvents: 'all', cursor: 'pointer' }}
-        onClick={() => { const next = !selectedSelfRef.current; selectedSelfRef.current = next; setSelectedSelf(next); }}
+        onClick={() => {
+          const next = !selectedSelfRef.current;
+          selectedSelfRef.current = next;
+          setSelectedSelf(next);
+          if (next) {
+            setSelectedTargetId(null);
+            selectedTargetRef.current = null;
+          }
+        }}
       >
         <div className={styles.playerLabelRow}>
           <span className={styles.playerLabel}>玩家</span>
@@ -1457,62 +1472,67 @@ export default function BattleArena({
         </div>
       )}
 
-      {/* ===== TOP-CENTER: Enemy info panel — health → buffs → debuffs → abilities (only when selected) ===== */}
+      {/* ===== TOP-CENTER: Target info panel — health → buffs → abilities (self or enemy) ===== */}
       <div className={styles.enemyBossGroup}>
-        {selectedTargetId && (
-          <>
-            <div className={styles.enemyBossBar}>
-              <div className={styles.enemyName}>陌路侠士</div>
-              <div className={styles.enemyHpTrack}>
-                <div
-                  className={styles.enemyHpFill}
-                  style={{
-                    width:      `${oppHpPct}%`,
-                    background: 'linear-gradient(90deg, #991111, #cc2222)',
-                  }}
-                />
-                <span className={styles.hpNumInside}>{opponent?.hp ?? 0}</span>
-              </div>
-              <div className={styles.enemyManaTrack}>
-                <div className={styles.enemyManaFill} />
-              </div>
-            </div>
-            {/* Buffs row then debuffs row — fixed-height wrapper so ability row never shifts up */}
-            <div style={{ minHeight: 72, width: '100%' }}>
-              <StatusBar buffs={opponent?.buffs ?? []} debugLabel="opp" />
-            </div>
-            {/* Enemy drafted abilities */}
-            {(() => {
-              const draftedAbilities = (opponent?.hand ?? []).filter((ability: any) => {
-                const abilityId = ability.abilityId || ability.id;
-                return abilityId && !COMMON_ABILITY_ORDER.includes(abilityId as any);
-              });
-              return (
-                <div className={styles.enemyAbilityRow}>
-                  {draftedAbilities.map((ability: any) => {
-                    const abilityId = ability.abilityId || ability.id;
-                    const cardData = abilities[abilityId];
-                    const name = cardData?.name || abilityId || '?';
-                    return (
-                      <div key={ability.instanceId || abilityId} className={styles.enemyAbilityItem}>
-                        <div className={styles.enemyAbilitySlot} title={name}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`/game/icons/Skills/${name}.png`}
-                            alt={name}
-                            className={styles.enemyAbilityIcon}
-                            draggable={false}
-                          />
-                        </div>
-                        <span className={styles.enemyAbilityName}>{name.slice(0, 2)}</span>
-                      </div>
-                    );
-                  })}
+        {(selectedTargetId || selectedSelf) && (() => {
+          const isSelf       = selectedSelf && !selectedTargetId;
+          const targetHpPct  = isSelf ? myHpPct  : oppHpPct;
+          const targetHp     = isSelf ? (me?.hp ?? 0) : (opponent?.hp ?? 0);
+          const targetName   = isSelf ? '玩家' : '陌路侠士';
+          const targetBuffs  = isSelf ? (me?.buffs ?? []) : (opponent?.buffs ?? []);
+          const targetHand   = isSelf ? me.hand : (opponent?.hand ?? []);
+          const hpGradient   = 'linear-gradient(90deg, #991111, #cc2222)';
+          const barBg        = isSelf
+            ? { background: 'rgba(210, 215, 220, 0.18)', border: '1px solid rgba(200, 210, 220, 0.35)' }
+            : {};
+          const draftedAbilities = targetHand.filter((ability: any) => {
+            const abilityId = ability.abilityId || ability.id;
+            return abilityId && !COMMON_ABILITY_ORDER.includes(abilityId as any);
+          });
+          return (
+            <>
+              <div className={styles.enemyBossBar} style={barBg}>
+                <div className={styles.enemyName}>{targetName}</div>
+                <div className={styles.enemyHpTrack}>
+                  <div
+                    className={styles.enemyHpFill}
+                    style={{ width: `${targetHpPct}%`, background: hpGradient }}
+                  />
+                  <span className={styles.hpNumInside}>{targetHp}</span>
                 </div>
-              );
-            })()}
-          </>
-        )}
+                <div className={styles.enemyManaTrack}>
+                  <div className={styles.enemyManaFill} />
+                </div>
+              </div>
+              {/* Buffs row — fixed-height wrapper so ability row never shifts up */}
+              <div style={{ minHeight: 72, width: '100%' }}>
+                <StatusBar buffs={targetBuffs} debugLabel={isSelf ? 'me-target' : 'opp'} />
+              </div>
+              {/* Drafted abilities */}
+              <div className={styles.enemyAbilityRow}>
+                {draftedAbilities.map((ability: any) => {
+                  const abilityId = ability.abilityId || ability.id;
+                  const cardData = abilities[abilityId];
+                  const name = cardData?.name || abilityId || '?';
+                  return (
+                    <div key={ability.instanceId || abilityId} className={styles.enemyAbilityItem}>
+                      <div className={styles.enemyAbilitySlot} title={name}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/game/icons/Skills/${name}.png`}
+                          alt={name}
+                          className={styles.enemyAbilityIcon}
+                          draggable={false}
+                        />
+                      </div>
+                      <span className={styles.enemyAbilityName}>{name.slice(0, 2)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* ===== TOP-RIGHT: RTT badge + debug grid toggle ===== */}
@@ -1623,7 +1643,9 @@ export default function BattleArena({
 
       {/* ===== CENTER: Distance floating label ===== */}
       <div className={styles.distIndicator}>
-        <span className={styles.distVal}>{distance.toFixed(1)}尺</span>
+        <span className={styles.distVal}>
+          {selectedSelf ? '0.0尺' : selectedTargetId ? `${distance.toFixed(1)}尺` : '没有目标'}
+        </span>
       </div>
 
       {/* ===== PICKUP: "拾取 [F]" prompts — draggable, always visible when near books ===== */}

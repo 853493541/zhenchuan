@@ -28,19 +28,8 @@ function PickupBook({ pickup }: { pickup: PickupItem }) {
         <meshLambertMaterial color="#1a2a6e" />
       </mesh>
 
-      {/* Spine */}
-      <mesh rotation={[0, angle, 0]} position={[-0.3, 0.05, 0]}>
-        <boxGeometry args={[0.06, 0.12, 0.52]} />
-        <meshLambertMaterial color="#1a2a6e" />
-      </mesh>
-
-      {/* Green point light — real glow on surrounding surfaces */}
-      <pointLight position={[0, 0.5, 0]} color="#00ff44" intensity={4} distance={6} decay={2} />
-      {/* Solid bright green rod */}
-      <mesh position={[0, 0.5, 0]}>
-        <cylinderGeometry args={[0.05, 0.05, 1.0, 8]} />
-        <meshBasicMaterial color="#00ff44" />
-      </mesh>
+      {/* Blue point light — real glow on surrounding surfaces */}
+      <pointLight position={[0, 0.5, 0]} color="#2266ff" intensity={4} distance={6} decay={2} />
     </group>
   );
 }

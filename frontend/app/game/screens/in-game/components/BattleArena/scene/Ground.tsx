@@ -40,7 +40,7 @@ export default function Ground() {
       {/* Ground plane */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
         <planeGeometry args={[ARENA_SIZE, ARENA_SIZE]} />
-        <meshLambertMaterial color="#d4b070" />
+        <meshLambertMaterial color="#4e8c5a" />
       </mesh>
 
       {/* Grid lines */}
@@ -51,7 +51,7 @@ export default function Ground() {
             args={[gridPositions, 3]}
           />
         </bufferGeometry>
-        <lineBasicMaterial color="#a07840" transparent opacity={0.4} />
+        <lineBasicMaterial color="#2a5e35" transparent opacity={0.4} />
       </lineSegments>
 
       {/* Arena boundary */}
@@ -62,7 +62,7 @@ export default function Ground() {
             args={[boundaryPositions, 3]}
           />
         </bufferGeometry>
-        <lineBasicMaterial color="#c08030" />
+        <lineBasicMaterial color="#1a3e22" />
       </lineSegments>
     </group>
   );

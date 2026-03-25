@@ -212,8 +212,8 @@ export default function Character({
         </group>
       )}
 
-      {/* Facing arc — updated by useFrame */}
-      {(facing || facingRef) && (
+      {/* Facing arc — only shown when selected, updated by useFrame */}
+      {(facing || facingRef) && isSelected && (
         <>
           {/* Fill */}
           <mesh
@@ -222,7 +222,7 @@ export default function Character({
             rotation={new THREE.Euler(-Math.PI / 2, facingYaw, 0, 'YXZ')}
           >
             <circleGeometry args={[2.4, 32, -Math.PI, Math.PI]} />
-            <meshBasicMaterial color="#ffb830" transparent opacity={0.38} side={THREE.DoubleSide} depthWrite={false} />
+            <meshBasicMaterial color="#ff6600" transparent opacity={0.38} side={THREE.DoubleSide} depthWrite={false} />
           </mesh>
           {/* Lighter border ring with glow */}
           <mesh
@@ -231,7 +231,7 @@ export default function Character({
             rotation={new THREE.Euler(-Math.PI / 2, facingYaw, 0, 'YXZ')}
           >
             <ringGeometry args={[2.28, 2.42, 48, 1, -Math.PI, Math.PI]} />
-            <meshBasicMaterial color="#ff8844" transparent opacity={0.85} side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
+            <meshBasicMaterial color="#ffee00" transparent opacity={0.85} side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
           </mesh>
           {/* Outer glow ring */}
           <mesh
@@ -240,7 +240,7 @@ export default function Character({
             rotation={new THREE.Euler(-Math.PI / 2, facingYaw, 0, 'YXZ')}
           >
             <ringGeometry args={[2.18, 2.52, 48, 1, -Math.PI, Math.PI]} />
-            <meshBasicMaterial color="#ffaa44" transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
+            <meshBasicMaterial color="#ffdd44" transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
           </mesh>
         </>
       )}

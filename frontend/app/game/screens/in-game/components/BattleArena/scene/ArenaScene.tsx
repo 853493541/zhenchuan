@@ -33,6 +33,8 @@ interface ArenaSceneProps {
   meChanneling: boolean;
   /** Which opponent userId is channeling (if any) */
   channelingOpponentId?: string | null;
+  /** Whether the local player has selected themselves (shows facing arc) */
+  selectedSelf?: boolean;
   // Refs for live updates without re-renders
   localRenderPosRef: MutableRefObject<{ x: number; y: number; z: number }>;
   camYawRef: MutableRefObject<number>;
@@ -50,6 +52,7 @@ export default function ArenaScene({
   pickups,
   meChanneling,
   channelingOpponentId,
+  selectedSelf = false,
   localRenderPosRef,
   camYawRef,
   camPitchRef,
@@ -67,18 +70,18 @@ export default function ArenaScene({
         camZoomRef={camZoomRef}
       />
 
-      {/* Lighting — warm desert sun */}
-      <ambientLight intensity={1.0} color="#f0d8a0" />
+      {/* Lighting — soft forest light */}
+      <ambientLight intensity={1.0} color="#c0ddb8" />
       <directionalLight
         position={[300, 500, 100]}
         intensity={2.8}
-        color="#ffe4a0"
+        color="#e8eedc"
       />
-      {/* Warm ground bounce */}
-      <directionalLight position={[-100, 50, -200]} intensity={0.4} color="#d4a060" />
+      {/* Green ground bounce */}
+      <directionalLight position={[-100, 50, -200]} intensity={0.4} color="#3d7045" />
 
-      {/* Desert haze fog */}
-      <fog attach="fog" args={['#d4b896', 300, 1000]} />
+      {/* Forest haze fog */}
+      <fog attach="fog" args={['#7ab86a', 300, 1000]} />
 
       {/* World */}
       <Ground />
@@ -141,6 +144,7 @@ export default function ArenaScene({
         hp={me.hp}
         maxHp={maxHp}
         isMe={true}
+        isSelected={selectedSelf}
         facingRef={meFacingRef}
         posRef={localRenderPosRef}
       />
