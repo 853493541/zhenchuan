@@ -103,8 +103,8 @@ export async function joinGame(gameId: string, userId: string) {
   
   console.log(`[joinGame] playerNames in response:`, result.playerNames);
   
-  // Auto-start if enabled and room is full
-  if (result.autoStart && saved.players.length === 2) {
+  // Auto-start if enabled and room is full (2 for dev, up to 5 for PUBG)
+  if (result.autoStart && saved.players.length >= 2) {
     console.log(`[joinGame] Auto-starting game (autoStart=${result.autoStart})`);
     const startedGame = await startGame(gameId, saved.players[0]);
     return startedGame;
@@ -117,14 +117,14 @@ export async function startGame(gameId: string, userId: string) {
   const game = await GameSession.findById(gameId);
   if (!game) throw new Error("Game not found");
   if (game.players[0] !== userId) throw new Error("Only host can start");
-  if (game.players.length !== 2) throw new Error("Game not ready");
+  if (game.players.length < 2) throw new Error("Need at least 2 players to start");
+  if (game.players.length > 5) throw new Error("Maximum 5 players allowed");
 
-  // DRAFT DISABLED: Initialize tournament and immediately set phase to BATTLE
-  const tournament = initializeTournament([game.players[0], game.players[1]]);
+  const tournament = initializeTournament(game.players as string[]);
   tournament.phase = "BATTLE";
 
-  // Initialize battle state with common abilities only (no drafted abilities since draft is skipped)
-  const state = initializeBattleState(tournament, [game.players[0], game.players[1]]);
+  // Initialize battle state for all players (common abilities only, draft skipped)
+  const state = initializeBattleState(tournament, game.players as string[]);
 
   game.state = state;
   game.tournament = tournament;

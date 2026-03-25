@@ -59,9 +59,12 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
   // track last known version
   const versionRef = useRef<number>(0);
-  // Updated directly in WS handler with accurate receive timestamps — bypasses React render cycle
-  const opponentPositionBufferRef = useRef<Array<{ t: number; pos: { x: number; y: number } }>>([]);
+  // Per-opponent position buffers, keyed by userId. Updated directly in WS handler
+  // to bypass React setState + re-render delay (~16-32ms).
+  const opponentPositionBufferRef = useRef<Map<string, Array<{ t: number; pos: { x: number; y: number } }>>>(new Map());
   const meIndexRef = useRef<number>(-1); // set once when game loads, never changes
+  // Stable index→userId mapping so WS handler can resolve opponents without stale closure
+  const playerIdsRef = useRef<string[]>([]);
   
   // WebSocket connection
   const wsRef = useRef<WebSocket | null>(null);
@@ -89,8 +92,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     });
 
     versionRef.current = full.state.version ?? 0;
-    // Compute and cache meIndex so WS handler can identify opponent patches
+    // Compute and cache meIndex + playerIds so WS handler can identify opponent patches
     meIndexRef.current = full.state.players.findIndex((p: any) => p.userId === selfUserId);
+    playerIdsRef.current = full.state.players.map((p: any) => p.userId as string);
     setGame(full);
     setLoading(false);
   }, [gameId, selfUserId]);
@@ -224,15 +228,19 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
           // Push opponent position patches IMMEDIATELY with accurate timestamp.
           // This bypasses React setState + re-render + useEffect delay (~16-32ms variable).
-          const opponentIdx = meIndexRef.current === 0 ? 1 : meIndexRef.current === 1 ? 0 : -1;
-          if (opponentIdx !== -1) {
-            for (const patch of message.diff) {
-              const match = patch.path.match(/^\/players\/(\d+)\/position$/);
-              if (match && parseInt(match[1]) === opponentIdx && patch.value?.x !== undefined) {
-                opponentPositionBufferRef.current.push({ t: receiveTime, pos: patch.value });
-                // Keep only last 1 second
-                const cutoff = receiveTime - 1000;
-                opponentPositionBufferRef.current = opponentPositionBufferRef.current.filter(e => e.t >= cutoff);
+          // We track all players by userId so it works with N players.
+          for (const patch of message.diff) {
+            const match = patch.path.match(/^\/players\/(\d+)\/position$/);
+            if (match && patch.value?.x !== undefined) {
+              const pIdx = parseInt(match[1]);
+              if (pIdx !== meIndexRef.current) {
+                const userId = playerIdsRef.current[pIdx];
+                if (userId) {
+                  const buf = opponentPositionBufferRef.current.get(userId) ?? [];
+                  buf.push({ t: receiveTime, pos: patch.value });
+                  const cutoff = receiveTime - 1000;
+                  opponentPositionBufferRef.current.set(userId, buf.filter(e => e.t >= cutoff));
+                }
               }
             }
           }
@@ -282,12 +290,16 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             }
             
             // Apply tournament patches to game.tournament
-            if (tournamentPatches.length > 0) {
+            if (tournamentPatches.length > 0 && updated.tournament) {
               updated = {
                 ...updated,
                 tournament: applyDiff(updated.tournament, tournamentPatches),
               };
             }
+
+            // Keep index->userId and me index synced after every diff apply
+            playerIdsRef.current = updated.state.players.map((p: any) => p.userId as string);
+            meIndexRef.current = updated.state.players.findIndex((p: any) => p.userId === selfUserId);
             
             return updated;
           });
@@ -393,6 +405,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       state: null,
       me: null,
       opponent: null,
+      opponents: [],
       isMyTurn: false,
       isWinner: false,
       playAbility: async () => ({ ok: false }),
@@ -408,14 +421,15 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     (p) => p.userId === selfUserId
   );
 
-  // Guard: if player not found or invalid state, return safe defaults
-  if (meIndex === -1 || !players[meIndex] || !players[meIndex === 0 ? 1 : 0]) {
+  // Guard: if player not found in state, return safe defaults
+  if (meIndex === -1 || !players[meIndex]) {
     return {
       loading: false,
       state,
       tournament: game?.tournament,
       me: null,
       opponent: null,
+      opponents: [],
       isMyTurn: false,
       isWinner: false,
       playAbility: async () => ({ ok: false }),
@@ -425,16 +439,18 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     };
   }
 
-  const opponentIndex = meIndex === 0 ? 1 : 0;
-
   const me = {
     ...players[meIndex],
     username: game.playerNames?.[players[meIndex].userId],
   };
-  const opponent = {
-    ...players[opponentIndex],
-    username: game.playerNames?.[players[opponentIndex].userId],
-  };
+
+  // All other players (opponents) — supports 1v1 and N-player modes
+  const opponents = players
+    .filter((_, i) => i !== meIndex)
+    .map(p => ({ ...p, username: game.playerNames?.[p.userId] }));
+
+  // Keep 'opponent' as backward-compat alias for the first opponent
+  const opponent = opponents[0] ?? null;
 
   const isMyTurn = state.activePlayerIndex === meIndex;
   const isWinner = state.winnerUserId === selfUserId;
@@ -528,12 +544,13 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     tournament: game?.tournament,
     me,
     opponent,
+    opponents,
     isMyTurn,
     isWinner,
     playAbility,
     endTurn,
     rtt,
     refetch: fetchInitialGame,
-    opponentPositionBufferRef, // Raw WS-timestamped buffer, bypasses React render delay
+    opponentPositionBufferRef, // Map<userId, buffer[]> — bypasses React render delay
   };
 }

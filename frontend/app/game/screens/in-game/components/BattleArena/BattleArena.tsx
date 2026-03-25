@@ -1,59 +1,23 @@
 'use client';
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { Canvas } from '@react-three/fiber';
 import styles from './BattleArena.module.css';
 import WASDButtons from './WASDButtons';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff } from '../../types';
 import type { PickupItem } from '../../types';
-import { worldMapObjects, type MapObject } from './worldMap';
+import ArenaScene from './scene/ArenaScene';
+
+type V3 = { x: number; y: number; z: number };
 
 /* ============================================================
    ARENA SETTINGS  (must match backend)
    ============================================================ */
 const ARENA_WIDTH  = 2000;
 const ARENA_HEIGHT = 2000;
-
-/* Character visual */
-const CHAR_HEIGHT = 2.0;   // world units tall  (player capsule)
-const CHAR_RADIUS = 0.7;   // world units radius (−30%)
-
-/* 3rd-person camera — high & pulled back, ~26° below horizontal
-   atan((20-1.5)/(38)) ≈ 26°  →  lots of ground visible, char at lower-center.
-
-   Camera direction is FIXED at (0,1) — always faces +Y.
-   This guarantees A = screen-left and D = screen-right regardless of where
-   the opponent is, eliminating the A/D flip when the camera rotates. */
-const CAM_DIST_BACK   = 20;  // units behind player
-const CAM_HEIGHT      = 10;  // units above player (follows player Z)
-const CAM_ARM         = Math.sqrt(CAM_DIST_BACK * CAM_DIST_BACK + CAM_HEIGHT * CAM_HEIGHT); // orbit arm length
-const DEFAULT_PITCH   = Math.atan2(CAM_HEIGHT, CAM_DIST_BACK); // ≈ 0.464 rad (~26.6°)
-const CAM_LOOK_AHEAD  = 6;   // look-ahead toward opponent side
-const NEAR_CLIP       = 0.8;
-const DASH_ANIM_MS    = 1500; // ms — cosmetic dash travel animation
-
-// Vertical FOV — used with H-based focal length so scale is consistent
-// across all screen widths (phone / tablet / wide monitor all look the same depth)
-const VFOV_RAD = (72 * Math.PI) / 180;
-
-/* ============================================================
-   VEC3 MATH
-   ============================================================ */
-type V3 = { x: number; y: number; z: number };
-const v3       = (x: number, y: number, z: number): V3 => ({ x, y, z });
-const sub3     = (a: V3, b: V3): V3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
-const scale3   = (a: V3, s: number): V3 => ({ x: a.x * s, y: a.y * s, z: a.z * s });
-const dot3     = (a: V3, b: V3): number => a.x * b.x + a.y * b.y + a.z * b.z;
-const cross3   = (a: V3, b: V3): V3 => ({
-  x: a.y * b.z - a.z * b.y,
-  y: a.z * b.x - a.x * b.z,
-  z: a.x * b.y - a.y * b.x,
-});
-const norm3 = (a: V3): V3 => {
-  const l = Math.sqrt(dot3(a, a));
-  return l < 1e-6 ? v3(0, 1, 0) : scale3(a, 1 / l);
-};
+const DASH_ANIM_MS = 1500; // ms — cosmetic dash travel animation
 
 function normalizeAngle(rad: number): number {
   let a = rad;
@@ -62,640 +26,19 @@ function normalizeAngle(rad: number): number {
   return a;
 }
 
-/* ============================================================
-   CAMERA
-   ============================================================ */
-interface Cam {
-  pos: V3;
-  fwd: V3;
-  right: V3;
-  up: V3;
-  fl: number; // focal length (px)
-}
-
-// Fixed camera direction — always facing +Y in world space.
-// This keeps A = screen-left and D = screen-right at all times.
-const CAM_DIR = { x: 0, y: 1 };
-
-function buildCam(
-  playerPos: V3,
-  dir: { x: number; y: number },
-  W: number,
-  H: number,
-  zoom = 1.0,
-  pitch = DEFAULT_PITCH,
-): Cam {
-  const distBack = CAM_ARM * Math.cos(pitch) * zoom;
-  const height   = CAM_ARM * Math.sin(pitch);
-  const camPos = v3(
-    playerPos.x - dir.x * distBack,
-    playerPos.y - dir.y * distBack,
-    playerPos.z + height,
-  );
-  // Scale look-ahead by cos(pitch): at overhead view (pitch→π/2) look directly at player, not ahead
-  const lookAheadScale = Math.cos(pitch);
-  const lookAt = v3(
-    playerPos.x + dir.x * CAM_LOOK_AHEAD * lookAheadScale,
-    playerPos.y + dir.y * CAM_LOOK_AHEAD * lookAheadScale,
-    playerPos.z + 1.0,
-  );
-  const worldUp = v3(0, 0, 1);
-  const fwd   = norm3(sub3(lookAt, camPos));
-  // Use yaw-derived right vector — always well-defined even when looking straight down.
-  // This avoids the degenerate cross(fwd, worldUp)=0 case at high pitch angles.
-  const right = v3(dir.y, -dir.x, 0); // perpendicular to facing in horizontal plane
-  const up    = norm3(cross3(right, fwd));
-  // Height-based focal length: scale is tied to viewport HEIGHT so
-  // phone / tablet / wide-monitor all see the same perceived distance.
-  const fl = (H / 2) / Math.tan(VFOV_RAD / 2);
-  return { pos: camPos, fwd, right, up, fl };
-}
-
-interface ScreenPt { x: number; y: number; depth: number; }
-
-function projPt(world: V3, cam: Cam, W: number, H: number): ScreenPt | null {
-  const t = sub3(world, cam.pos);
-  const depth = dot3(t, cam.fwd);
-  if (depth < NEAR_CLIP) return null;
-  const cx = dot3(t, cam.right);
-  const cy = dot3(t, cam.up);
-  return {
-    x: (cx / depth) * cam.fl + W / 2,
-    y: -(cy / depth) * cam.fl + H / 2,
-    depth,
-  };
-}
-
-/* ============================================================
-   SCENE RENDERING HELPERS
-   ============================================================ */
-
-function renderBg(ctx: CanvasRenderingContext2D, cam: Cam, W: number, H: number) {
-  const far = projPt(
-    v3(cam.pos.x + cam.fwd.x * 5000, cam.pos.y + cam.fwd.y * 5000, 0),
-    cam, W, H,
-  );
-  const hY = far ? Math.max(0, Math.min(H * 0.7, far.y)) : H * 0.45;
-
-  const sky = ctx.createLinearGradient(0, 0, 0, hY + 30);
-  sky.addColorStop(0,   '#010409');
-  sky.addColorStop(0.6, '#03091a');
-  sky.addColorStop(1,   '#071628');
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, W, hY + 30);
-
-  const gnd = ctx.createLinearGradient(0, hY, 0, H);
-  gnd.addColorStop(0, '#071628');
-  gnd.addColorStop(1, '#020810');
-  ctx.fillStyle = gnd;
-  ctx.fillRect(0, hY, W, H - hY);
-}
-
-// Ground patch half-size — draw a 1200×1200 patch of ground around the camera.
-const FLOOR_HALF = 600;
-// Grid step within the local floor patch
-const FLOOR_GRID  = 100;
-
-function renderFloor(ctx: CanvasRenderingContext2D, cam: Cam, W: number, H: number) {
-  // ── Ground fill: project a large quad centred on the camera footprint ──
-  // We snap the patch centre to the grid so the lines don't swim as you move.
-  const cx = Math.round(cam.pos.x / FLOOR_GRID) * FLOOR_GRID;
-  const cy = Math.round(cam.pos.y / FLOOR_GRID) * FLOOR_GRID;
-  const x0 = Math.max(0, cx - FLOOR_HALF);
-  const x1 = Math.min(ARENA_WIDTH,  cx + FLOOR_HALF);
-  const y0 = Math.max(0, cy - FLOOR_HALF);
-  const y1 = Math.min(ARENA_HEIGHT, cy + FLOOR_HALF);
-
-  const gndCorners = [
-    v3(x0, y0, 0), v3(x1, y0, 0),
-    v3(x1, y1, 0), v3(x0, y1, 0),
-  ];
-  const sc = gndCorners
-    .map(c => projPt(c, cam, W, H))
-    .filter((p): p is ScreenPt => p !== null);
-
-  if (sc.length >= 3) {
-    ctx.fillStyle = '#0a1620';
-    ctx.beginPath();
-    ctx.moveTo(sc[0].x, sc[0].y);
-    for (let i = 1; i < sc.length; i++) ctx.lineTo(sc[i].x, sc[i].y);
-    // Extend the fill down off-screen to cover the bottom gap
-    ctx.lineTo(W + 20, H + 20);
-    ctx.lineTo(-20, H + 20);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  // ── Grid lines: only within the visible patch ──
-  ctx.lineWidth = 0.5;
-  ctx.strokeStyle = 'rgba(18, 55, 100, 0.65)';
-  const gx0 = Math.floor(x0 / FLOOR_GRID) * FLOOR_GRID;
-  const gx1 = Math.ceil(x1  / FLOOR_GRID) * FLOOR_GRID;
-  const gy0 = Math.floor(y0 / FLOOR_GRID) * FLOOR_GRID;
-  const gy1 = Math.ceil(y1  / FLOOR_GRID) * FLOOR_GRID;
-
-  for (let gx = gx0; gx <= gx1; gx += FLOOR_GRID) {
-    const a = projPt(v3(gx, y0, 0), cam, W, H);
-    const b = projPt(v3(gx, y1, 0), cam, W, H);
-    if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
-  }
-  for (let gy = gy0; gy <= gy1; gy += FLOOR_GRID) {
-    const a = projPt(v3(x0, gy, 0), cam, W, H);
-    const b = projPt(v3(x1, gy, 0), cam, W, H);
-    if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
-  }
-
-  // ── Arena boundary edges (only near edges, skip edges > 800 units away) ──
-  const allEdges: [V3, V3][] = [
-    [v3(0, 0, 0),                      v3(ARENA_WIDTH, 0, 0)],
-    [v3(ARENA_WIDTH, 0, 0),            v3(ARENA_WIDTH, ARENA_HEIGHT, 0)],
-    [v3(ARENA_WIDTH, ARENA_HEIGHT, 0), v3(0, ARENA_HEIGHT, 0)],
-    [v3(0, ARENA_HEIGHT, 0),           v3(0, 0, 0)],
-  ];
-  // Edge midpoints for distance test
-  const edgeMids = [
-    v3(ARENA_WIDTH / 2, 0, 0),
-    v3(ARENA_WIDTH, ARENA_HEIGHT / 2, 0),
-    v3(ARENA_WIDTH / 2, ARENA_HEIGHT, 0),
-    v3(0, ARENA_HEIGHT / 2, 0),
-  ];
-  ctx.strokeStyle = 'rgba(40, 140, 255, 0.9)';
-  ctx.lineWidth   = 1.8;
-  ctx.shadowColor = '#1a6fff';
-  ctx.shadowBlur  = 9;
-  for (let i = 0; i < allEdges.length; i++) {
-    const mid = edgeMids[i];
-    const ex = mid.x - cam.pos.x, ey = mid.y - cam.pos.y;
-    if (ex * ex + ey * ey > 800 * 800) continue; // skip far edges
-    const [a, b] = allEdges[i];
-    const pa = projPt(a, cam, W, H);
-    const pb = projPt(b, cam, W, H);
-    if (pa && pb) { ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke(); }
-  }
-  ctx.shadowBlur = 0;
-}
-
-/* Filled + outlined AOE zone with animated pulse — for channel abilities */
-function renderAoeZone(
-  ctx: CanvasRenderingContext2D,
-  pos: V3,
-  radius: number,
-  cam: Cam,
-  W: number, H: number,
-  fillColor: string,
-  borderColor: string,
-) {
-  const segments = 64;
-  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
-  ctx.save();
-  ctx.beginPath();
-  let first = true;
-  for (let i = 0; i <= segments; i++) {
-    const ang = (i / segments) * Math.PI * 2;
-    const p = projPt(
-      v3(pos.x + Math.cos(ang) * radius, pos.y + Math.sin(ang) * radius, 0.03),
-      cam, W, H,
-    );
-    if (!p) { first = true; continue; }
-    if (first) { ctx.moveTo(p.x, p.y); first = false; } else ctx.lineTo(p.x, p.y);
-  }
-  ctx.closePath();
-  ctx.globalAlpha = 0.10 + 0.06 * pulse;
-  ctx.fillStyle = fillColor;
-  ctx.fill();
-  ctx.globalAlpha = 0.55 + 0.35 * pulse;
-  ctx.strokeStyle = borderColor;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
-}
-
-function renderRangeCircle(
-  ctx: CanvasRenderingContext2D,
-  pos: V3,
-  radius: number,
-  cam: Cam,
-  W: number, H: number,
-  color: string,
-) {
-  const segments = 48;
-  ctx.strokeStyle = color;
-  ctx.lineWidth   = 1;
-  ctx.setLineDash([5, 6]);
-  ctx.beginPath();
-  let first = true;
-  for (let i = 0; i <= segments; i++) {
-    const ang = (i / segments) * Math.PI * 2;
-    const p = projPt(
-      v3(pos.x + Math.cos(ang) * radius, pos.y + Math.sin(ang) * radius, 0.05),
-      cam, W, H,
-    );
-    if (!p) { first = true; continue; }
-    if (first) { ctx.moveTo(p.x, p.y); first = false; } else ctx.lineTo(p.x, p.y);
-  }
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
-/* Ghost outline drawn behind dashing characters */
-function renderDashGhost(
-  ctx: CanvasRenderingContext2D,
-  pos: V3,
-  cam: Cam,
-  W: number, H: number,
-  color: string,
-  alpha: number,
-) {
-  const baseP = projPt(v3(pos.x, pos.y, pos.z),              cam, W, H);
-  const topP  = projPt(v3(pos.x, pos.y, pos.z + CHAR_HEIGHT), cam, W, H);
-  if (!baseP || !topP) return;
-  const rs = (CHAR_RADIUS / baseP.depth) * cam.fl;
-  if (rs < 1) return;
-  const ellipseRy = rs * 0.32;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.strokeStyle = color;
-  ctx.lineWidth   = 1.5;
-  ctx.shadowColor = color;
-  ctx.shadowBlur  = 10;
-  ctx.beginPath();
-  ctx.moveTo(topP.x - rs, topP.y);
-  ctx.lineTo(baseP.x - rs, baseP.y);
-  ctx.ellipse(baseP.x, baseP.y, rs, ellipseRy, 0, Math.PI, 0, true);
-  ctx.lineTo(topP.x + rs, topP.y);
-  ctx.ellipse(topP.x, topP.y, rs, ellipseRy, 0, 0, Math.PI, true);
-  ctx.closePath();
-  ctx.stroke();
-  ctx.restore();
-}
-
-/* ============================================================
-   MAP OBJECT RENDERING
-   Draw axis-aligned boxes for all world geometry.
-   Culled at 200 world-unit camera distance (handled in render loop).
-   ============================================================ */
-
-function tintColor(hex: string, factor: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.round(((n >> 16) & 0xff) * factor);
-  const g = Math.round(((n >> 8)  & 0xff) * factor);
-  const b = Math.round((n & 0xff) * factor);
-  return `rgb(${r},${g},${b})`;
-}
-
-const OBJ_BASE: Record<string, { base: string; outline: string }> = {
-  building:  { base: '#4a5465', outline: '#607088' },
-  rock:      { base: '#363640', outline: '#484858' },
-  mountain:  { base: '#3a2e22', outline: '#5a4a38' },
-  hill_high: { base: '#253a1e', outline: '#3a5a2e' },
-  hill_low:  { base: '#2a4228', outline: '#406040' },
-};
-
-// Face brightness factors for simple top-down directional lighting
-// top=1.0, south face (-Y, faces camera default)=0.85, north=0.65, east=0.78, west=0.72
-const FACES: Array<{ vi: [number,number,number,number]; nx: number; ny: number; nz: number; bright: number }> = [
-  { vi: [4,5,6,7], nx: 0,  ny: 0,  nz: 1,  bright: 1.00 }, // top
-  { vi: [0,1,5,4], nx: 0,  ny: -1, nz: 0,  bright: 0.85 }, // south (−Y, faces toward default cam)
-  { vi: [3,2,6,7], nx: 0,  ny: 1,  nz: 0,  bright: 0.65 }, // north (+Y, away from cam)
-  { vi: [0,3,7,4], nx: -1, ny: 0,  nz: 0,  bright: 0.72 }, // west
-  { vi: [1,2,6,5], nx: 1,  ny: 0,  nz: 0,  bright: 0.78 }, // east
-];
-
-function renderMapObject(
-  ctx: CanvasRenderingContext2D,
-  obj: MapObject,
-  cam: Cam,
-  W: number, H: number,
-): void {
-  const x0 = obj.x, y0 = obj.y, x1 = obj.x + obj.w, y1 = obj.y + obj.d, h = obj.h;
-
-  // 8 box corners: [0-3] bottom ring, [4-7] top ring
-  const cs: V3[] = [
-    v3(x0, y0, 0), v3(x1, y0, 0), v3(x1, y1, 0), v3(x0, y1, 0),
-    v3(x0, y0, h), v3(x1, y0, h), v3(x1, y1, h), v3(x0, y1, h),
-  ];
-  const ps = cs.map(c => projPt(c, cam, W, H));
-
-  const col = OBJ_BASE[obj.type] ?? OBJ_BASE.building;
-
-  for (const face of FACES) {
-    // Back-face culling: face is visible when camera is on the outward side
-    const fi = face.vi;
-    const fx = (cs[fi[0]].x + cs[fi[1]].x + cs[fi[2]].x + cs[fi[3]].x) * 0.25;
-    const fy = (cs[fi[0]].y + cs[fi[1]].y + cs[fi[2]].y + cs[fi[3]].y) * 0.25;
-    const fz = (cs[fi[0]].z + cs[fi[1]].z + cs[fi[2]].z + cs[fi[3]].z) * 0.25;
-    const vis = face.nx * (cam.pos.x - fx) + face.ny * (cam.pos.y - fy) + face.nz * (cam.pos.z - fz);
-    if (vis <= 0) continue;
-
-    const pts = fi.map(i => ps[i]).filter((p): p is ScreenPt => p !== null);
-    if (pts.length < 3) continue;
-
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-    ctx.closePath();
-    ctx.fillStyle   = tintColor(col.base, face.bright);
-    ctx.fill();
-    ctx.strokeStyle = col.outline;
-    ctx.lineWidth   = 0.5;
-    ctx.stroke();
-  }
-}
-
-/* Filled half-disc showing facing direction at character feet */
-function renderFacingArc(
-  ctx: CanvasRenderingContext2D,
-  charPos: V3,
-  facing: { x: number; y: number },
-  cam: Cam,
-  W: number, H: number,
-) {
-  const f = Math.sqrt(facing.x * facing.x + facing.y * facing.y);
-  if (f < 0.1) return;
-  const nx = facing.x / f, ny = facing.y / f;
-  const arcZ = Math.max(0.02, charPos.z + 0.08);
-  const R = 2.1;
-  const STEPS = 20;
-  const fAngle = Math.atan2(ny, nx);
-  // Offset arc center to character's front (身前)
-  const offsetDist = 0.8;
-  const arcCenterX = charPos.x + nx * offsetDist;
-  const arcCenterY = charPos.y + ny * offsetDist;
-  const center = projPt(v3(arcCenterX, arcCenterY, arcZ), cam, W, H);
-  if (!center) return;
-
-  const pts: Array<{ x: number; y: number } | null> = [];
-  for (let i = 0; i <= STEPS; i++) {
-    const a = fAngle - Math.PI / 2 + (Math.PI * i / STEPS);
-    pts.push(projPt(v3(arcCenterX + R * Math.cos(a), arcCenterY + R * Math.sin(a), arcZ), cam, W, H));
-  }
-
-  ctx.save();
-  ctx.fillStyle   = 'rgba(232, 180, 46, 0.3)';
-  ctx.strokeStyle = 'rgba(255, 210, 90, 0.95)';
-  ctx.lineWidth   = 2.2;
-  ctx.lineCap     = 'round';
-  ctx.lineJoin    = 'round';
-  ctx.shadowColor = 'rgba(255, 210, 100, 0.9)';
-  ctx.shadowBlur  = 12;
-  ctx.globalAlpha = 1;
-  ctx.beginPath();
-  ctx.moveTo(center.x, center.y);
-  let started = false;
-  for (const p of pts) {
-    if (!p) { started = false; continue; }
-    if (!started) { ctx.moveTo(p.x, p.y); started = true; }
-    else ctx.lineTo(p.x, p.y);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-}
-
-/** Render a glowing green ability book at a world position. */
-function renderPickupBook(
-  ctx: CanvasRenderingContext2D,
-  pos: V3,
-  cam: Cam,
-  W: number, H: number,
-  angleDeg: number = 0,
-) {
-  // Book world dimensions — lying FLAT on the ground (z = constant, x/y span the floor)
-  const hw = 0.42; // half-width  (like holding a book open)
-  const hd = 0.26; // half-depth  (thin paperback)
-
-  const rad  = (angleDeg * Math.PI) / 180;
-  const cosA = Math.cos(rad), sinA = Math.sin(rad);
-  // Rotate offsets around world Z then translate to book center
-  const wc = (dx: number, dy: number): V3 => v3(
-    pos.x + dx * cosA - dy * sinA,
-    pos.y + dx * sinA + dy * cosA,
-    pos.z, // z stays 0 — flat on ground
-  );
-
-  // 4 book corners (world space, all at z=0)
-  const corners = [
-    wc(-hw, -hd),
-    wc( hw, -hd),
-    wc( hw,  hd),
-    wc(-hw,  hd),
-  ];
-  // Spine 18% from left edge, full depth
-  const spTop = wc(-hw + hw * 2 * 0.18, -hd);
-  const spBot = wc(-hw + hw * 2 * 0.18,  hd);
-
-  // Project all world corners to screen
-  const sc = corners.map(c => projPt(c, cam, W, H));
-  if (sc.some(p => !p || p.depth < NEAR_CLIP)) return;
-  const sps = projPt(spTop, cam, W, H);
-  const spb = projPt(spBot, cam, W, H);
-
-  // Book center screen pos (for beam origin)
-  const base = projPt(pos, cam, W, H);
-  if (!base) return;
-
-  // === BEAM: rises 0.5 × CHAR_HEIGHT = 1.0 world unit above book ===
-  const beamTip = projPt(v3(pos.x, pos.y, pos.z + CHAR_HEIGHT * 0.5), cam, W, H);
-  if (beamTip) {
-    const bx = base.x, by = base.y;
-    const tx = beamTip.x, ty = beamTip.y;
-    // Beam base half-width ≈ screen-space hw of book
-    const bHW = Math.max(2, (hw / base.depth) * cam.fl * 0.55);
-    const grad = ctx.createLinearGradient(bx, by, tx, ty);
-    grad.addColorStop(0,   'rgba(80,255,160,0.90)');
-    grad.addColorStop(0.4, 'rgba(0,230,110,0.45)');
-    grad.addColorStop(1,   'rgba(0,255,120,0.00)');
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,255,120,0.90)';
-    ctx.shadowBlur  = 20;
-    ctx.beginPath();
-    ctx.moveTo(bx - bHW, by);
-    ctx.lineTo(bx + bHW, by);
-    ctx.lineTo(tx + 0.4,  ty);
-    ctx.lineTo(tx - 0.4,  ty);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // === BOOK BODY (flat quadrilateral projected from world space) ===
-  ctx.save();
-  ctx.fillStyle   = '#12090d';
-  ctx.strokeStyle = '#3a2010';
-  ctx.lineWidth   = 0.85;
-  ctx.shadowBlur  = 0;
-  ctx.beginPath();
-  ctx.moveTo(sc[0]!.x, sc[0]!.y);
-  ctx.lineTo(sc[1]!.x, sc[1]!.y);
-  ctx.lineTo(sc[2]!.x, sc[2]!.y);
-  ctx.lineTo(sc[3]!.x, sc[3]!.y);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  // Spine
-  if (sps && spb) {
-    ctx.shadowBlur  = 0;
-    ctx.strokeStyle = '#604020';
-    ctx.lineWidth   = 0.45;
-    ctx.beginPath();
-    ctx.moveTo(sps.x, sps.y);
-    ctx.lineTo(spb.x, spb.y);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
 function facingArrow(facing: { x: number; y: number } | undefined): string {
   if (!facing) return '·';
   const len = Math.sqrt(facing.x * facing.x + facing.y * facing.y);
   if (len < 0.05) return '·';
-  const nx = facing.x / len;
-  const ny = facing.y / len;
-  const angle = Math.atan2(ny, nx);
+  const angle = Math.atan2(facing.y / len, facing.x / len);
   const idx = Math.round(angle / (Math.PI / 4));
   const dirs = ['→', '↗', '↑', '↖', '←', '↙', '↓', '↘'];
   return dirs[((idx % 8) + 8) % 8];
 }
 
-function shadeHex(hex: string, amt: number): string {
-  const n = parseInt(hex.replace('#', ''), 16);
-  const r = Math.max(0, Math.min(255, (n >> 16) + amt));
-  const g = Math.max(0, Math.min(255, ((n >> 8) & 0xff) + amt));
-  const b = Math.max(0, Math.min(255, (n & 0xff) + amt));
-  return `rgb(${r},${g},${b})`;
-}
-
-function pRoundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number, r: number,
-) {
-  const cr = Math.min(r, w / 2, Math.max(0, h / 2));
-  ctx.moveTo(x + cr, y);
-  ctx.arcTo(x + w, y,     x + w, y + h, cr);
-  ctx.arcTo(x + w, y + h, x,     y + h, cr);
-  ctx.arcTo(x,     y + h, x,     y,     cr);
-  ctx.arcTo(x,     y,     x + w, y,     cr);
-  ctx.closePath();
-}
-
-function renderCharacter(
-  ctx: CanvasRenderingContext2D,
-  pos: V3,
-  cam: Cam,
-  W: number, H: number,
-  color: string,
-  glowColor: string,
-  hpFrac: number,
-  isMe: boolean,
-  isSelected: boolean = false,
-) {
-  const baseP = projPt(v3(pos.x, pos.y, pos.z),             cam, W, H);
-  const topP  = projPt(v3(pos.x, pos.y, pos.z + CHAR_HEIGHT), cam, W, H);
-  if (!baseP || !topP) return;
-
-  const depth  = baseP.depth;
-  const rs     = (CHAR_RADIUS / depth) * cam.fl;
-  if (rs < 1.5) return;
-
-  const bodyH     = baseP.y - topP.y;
-  if (bodyH < 1) return;
-
-  const cx        = topP.x;
-  const ellipseRy = rs * 0.32;
-
-  // Ground shadow — always projected at floor level (fades as player goes higher)
-  const shadowP = projPt(v3(pos.x, pos.y, 0), cam, W, H);
-  if (shadowP) {
-    const sRs = (CHAR_RADIUS / shadowP.depth) * cam.fl;
-    ctx.save();
-    ctx.globalAlpha = Math.max(0.08, 0.35 - pos.z * 0.05);
-    ctx.fillStyle   = '#000';
-    ctx.beginPath();
-    ctx.ellipse(shadowP.x, shadowP.y, sRs * 1.5, sRs * 0.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // Cylinder body
-  const bodyGrad = ctx.createLinearGradient(cx - rs, 0, cx + rs, 0);
-  bodyGrad.addColorStop(0,    shadeHex(color, -45));
-  bodyGrad.addColorStop(0.28, color);
-  bodyGrad.addColorStop(0.55, color);
-  bodyGrad.addColorStop(1,    shadeHex(color, -40));
-  ctx.fillStyle = bodyGrad;
-  ctx.beginPath();
-  ctx.moveTo(cx - rs, topP.y);
-  ctx.lineTo(cx - rs, baseP.y);
-  ctx.ellipse(baseP.x, baseP.y, rs, ellipseRy, 0, Math.PI, 0, true);
-  ctx.lineTo(cx + rs, topP.y);
-  ctx.ellipse(topP.x,  topP.y,  rs, ellipseRy, 0, 0, Math.PI, true);
-  ctx.closePath();
-  ctx.fill();
-
-  // Top face
-  ctx.fillStyle  = color;
-  ctx.globalAlpha = 0.92;
-  ctx.beginPath();
-  ctx.ellipse(cx, topP.y, rs, ellipseRy, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1.0;
-
-  // Top highlight
-  const topHL = ctx.createRadialGradient(cx - rs * 0.28, topP.y - ellipseRy * 0.35, 0, cx, topP.y, rs);
-  topHL.addColorStop(0,   'rgba(255,255,255,0.5)');
-  topHL.addColorStop(0.5, 'rgba(255,255,255,0.1)');
-  topHL.addColorStop(1,   'rgba(0,0,0,0)');
-  ctx.fillStyle = topHL;
-  ctx.beginPath();
-  ctx.ellipse(cx, topP.y, rs, ellipseRy, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Glow outline for the local player
-  if (isMe) {
-    ctx.save();
-    ctx.strokeStyle = glowColor;
-    ctx.lineWidth   = 1.8;
-    ctx.shadowColor = glowColor;
-    ctx.shadowBlur  = 14;
-    ctx.beginPath();
-    ctx.moveTo(cx - rs, topP.y);
-    ctx.lineTo(cx - rs, baseP.y);
-    ctx.ellipse(baseP.x, baseP.y, rs, ellipseRy, 0, Math.PI, 0, true);
-    ctx.lineTo(cx + rs, topP.y);
-    ctx.ellipse(topP.x, topP.y, rs, ellipseRy, 0, 0, Math.PI, true);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  // Floating HP bar
-  const barW = Math.max(rs * 3.9, 57);
-  const barH = 6;
-  const barX = cx - barW / 2;
-  const barY = topP.y - 22;
-
-  ctx.fillStyle = 'rgba(0,0,0,0.65)';
-  ctx.beginPath();
-  pRoundRect(ctx, barX - 1, barY - 1, barW + 2, barH + 2, 3);
-  ctx.fill();
-
-  const hpColor = isMe
-    ? (hpFrac > 0.5 ? '#44dd55' : hpFrac > 0.25 ? '#ffcc22' : '#ee3333')
-    : isSelected
-    ? '#ff8888'
-    : (hpFrac > 0.5 ? '#dd2222' : hpFrac > 0.25 ? '#cc1111' : '#991111');
-  ctx.fillStyle = hpColor;
-  const fillW = Math.max(0, barW * hpFrac);
-  if (fillW > 0) {
-    ctx.beginPath();
-    pRoundRect(ctx, barX, barY, fillW, barH, 2);
-    ctx.fill();
-  }
-
-}
+// Fixed camera direction constant — referenced in physics tick
+const CAM_DIR = { x: 0, y: 1 };
+const DEFAULT_PITCH = Math.atan2(10, 20);
 
 /* ============================================================
    TYPES
@@ -731,12 +74,14 @@ const COMMON_ABILITY_ORDER = [
 interface BattleArenaProps {
   me: { userId: string; position: Position; hp: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing };
   opponent: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing };
+  /** All other players (opponents) — supports 1v1 and N-player modes */
+  opponents?: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing }[];
   gameId: string;
   onCastAbility: (abilityInstanceId: string, targetUserId?: string) => Promise<void>;
   distance: number;
   maxHp: number;
   abilities: Record<string, any>;
-  opponentPositionBufferRef?: React.MutableRefObject<Array<{ t: number; pos: Position }>>;
+  opponentPositionBufferRef?: React.MutableRefObject<Map<string, Array<{ t: number; pos: Position }>>>;
   /** Full game events array from state — used to spawn per-event floating numbers */
   events?: any[];
   /** Pickup items (ability books) currently on the ground */
@@ -749,6 +94,7 @@ interface BattleArenaProps {
 export default function BattleArena({
   me,
   opponent,
+  opponents,
   gameId,
   onCastAbility,
   distance,
@@ -758,8 +104,12 @@ export default function BattleArena({
   events = [],
   pickups = [],
 }: BattleArenaProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const wrapRef   = useRef<HTMLDivElement>(null);
+  const wrapRef        = useRef<HTMLDivElement>(null);
+  const canvasSizeRef  = useRef({ w: 800, h: 500 });
+  const opponentsList = useMemo(
+    () => ((opponents && opponents.length > 0 ? opponents : [opponent]).filter(Boolean)),
+    [opponents, opponent],
+  );
 
   /* --- React state (UI only) --- */
   const [handAbilities,    setHandAbilities]    = useState<AbilityInfo[]>([]);
@@ -857,6 +207,7 @@ export default function BattleArena({
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
   const localFacingRef    = useRef({ x: 0, y: 1 }); // current facing direction (default +Y)
+  const facingInitRef     = useRef(false);
   const meFacingRef       = useRef<Facing>({ x: 0, y: 1 });
   const oppFacingRef      = useRef<Facing>({ x: 0, y: 1 });
 
@@ -883,9 +234,10 @@ export default function BattleArena({
   const selectedSelfRef     = useRef(false);
   const oppScreenBoundsRef  = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
   const meScreenBoundsRef   = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
-  // Always reflects current opponent userId (stable in 1v1 but kept as ref for closure safety)
-  const opponentUserIdRef   = useRef<string>(opponent.userId);
-  opponentUserIdRef.current = opponent.userId;
+  const opponentIdsRef      = useRef<string[]>([]);
+  // Always reflects current primary opponent userId
+  const opponentUserIdRef   = useRef<string>(opponentsList[0]?.userId ?? opponent.userId);
+  opponentUserIdRef.current = opponentsList[0]?.userId ?? opponent.userId;
 
   /* --- Dash animation refs --- */
   const localDashAnimRef = useRef<{ start: V3; startTime: number } | null>(null);
@@ -898,7 +250,6 @@ export default function BattleArena({
   const maxHpRef      = useRef(maxHp);
   const distanceRef   = useRef(distance);
   distanceRef.current = distance;
-  const canvasSizeRef = useRef({ w: 800, h: 500 });
 
   /* --- Fuyao (扶摇直上) local buff prediction --- */
   const hasFuyaoBuffRef  = useRef(false);
@@ -932,6 +283,88 @@ export default function BattleArena({
   const oppTrailRef       = useRef<Array<{ pos: V3; alpha: number }>>([]);
   const lastFrameTimeRef  = useRef<number>(0);
 
+  // Restore the old rAF render-position loop exactly.
+  // Handles: smooth position lerp, dash snap animation, jump phase tracking, Z display.
+  useEffect(() => {
+    let rafId = 0;
+    const DASH_THRESH = 3.5;
+    const SNAP_THRESH = 20;
+
+    const tick = () => {
+      const frameNow = performance.now();
+      const frameDt = lastFrameTimeRef.current === 0 ? 16 : Math.min(frameNow - lastFrameTimeRef.current, 50);
+      lastFrameTimeRef.current = frameNow;
+      const dtF = frameDt / 16.67;
+
+      // --- local player render pos ---
+      const myPos = localPositionRef.current ?? me?.position;
+      if (myPos) {
+        const tx = myPos.x, ty = myPos.y, tz = localZRef.current;
+        const r  = localRenderPosRef.current;
+        const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
+        const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (dist2d > SNAP_THRESH) {
+          localRenderPosRef.current = { x: tx, y: ty, z: tz };
+          localDashAnimRef.current  = null;
+        } else if (!localDashAnimRef.current && dist2d > DASH_THRESH) {
+          localDashAnimRef.current = { start: { ...r }, startTime: frameNow };
+        }
+        if (localDashAnimRef.current) {
+          const elapsed = frameNow - localDashAnimRef.current.startTime;
+          const t = Math.min(1, elapsed / DASH_ANIM_MS);
+          const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+          localRenderPosRef.current = {
+            x: localDashAnimRef.current.start.x + (tx - localDashAnimRef.current.start.x) * eased,
+            y: localDashAnimRef.current.start.y + (ty - localDashAnimRef.current.start.y) * eased,
+            z: localDashAnimRef.current.start.z + (tz - localDashAnimRef.current.start.z) * eased,
+          };
+          if (t >= 1) localDashAnimRef.current = null;
+        } else {
+          const k = Math.min(1, 0.3 * dtF);
+          localRenderPosRef.current = { x: r.x + ddx * k, y: r.y + ddy * k, z: r.z + ddz * k };
+        }
+      }
+
+      // --- Jump phase tracking (height display + timing) ---
+      const curZ   = localRenderPosRef.current.z ?? 0;
+      const prevZ  = prevZRef.current;
+      const nowMs  = performance.now();
+      const phase  = jumpPhaseRef.current;
+
+      if (phase === 'ground') {
+        if (curZ > 0.01) {
+          jumpPhaseRef.current   = 'rising';
+          takeoffTimeRef.current  = nowMs;
+          peakTimeRef.current     = nowMs;
+          peakZRef.current        = curZ;
+        }
+      } else if (phase === 'rising') {
+        if (curZ > prevZ) {
+          peakTimeRef.current = nowMs;
+          peakZRef.current    = Math.max(peakZRef.current, curZ);
+        } else {
+          jumpPhaseRef.current = 'falling';
+        }
+      } else {
+        if (curZ <= 0.01 && prevZ > 0.01) {
+          const total = nowMs - takeoffTimeRef.current;
+          const rise  = peakTimeRef.current - takeoffTimeRef.current;
+          const fall  = nowMs - peakTimeRef.current;
+          jumpRecordNextRef.current = { riseMs: rise, fallMs: fall, totalMs: total, peakZ: peakZRef.current };
+          jumpPhaseRef.current = 'ground';
+        }
+      }
+
+      prevZRef.current = curZ;
+      myZRef.current   = curZ;
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [me?.position?.x, me?.position?.y]);
+
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
   // Keep max-jumps ref in sync with MULTI_JUMP buff from server state
   useEffect(() => {
@@ -944,6 +377,13 @@ export default function BattleArena({
     const f = me?.facing;
     if (f && Number.isFinite(f.x) && Number.isFinite(f.y)) {
       meFacingRef.current = { x: f.x, y: f.y };
+      if (!facingInitRef.current) {
+        localFacingRef.current = { x: f.x, y: f.y };
+        const yaw = Math.atan2(f.x, f.y);
+        charYawRef.current = yaw;
+        camYawRef.current = yaw;
+        facingInitRef.current = true;
+      }
     }
   }, [me?.facing?.x, me?.facing?.y]);
   useEffect(() => {
@@ -992,6 +432,26 @@ export default function BattleArena({
   useEffect(() => {
     oppChannelingRef.current = !!(opponent?.buffs?.some((b: any) => b.buffId === 1014));
   }, [opponent?.buffs]);
+
+  // Keep selected target valid as opponent list changes (N-player support)
+  useEffect(() => {
+    const ids = opponentsList.map((o) => o.userId);
+    opponentIdsRef.current = ids;
+    const current = selectedTargetRef.current;
+    if (ids.length === 0) {
+      setSelectedTargetId(null);
+      selectedTargetRef.current = null;
+      return;
+    }
+    if (current && !ids.includes(current)) {
+      setSelectedTargetId(null);
+      selectedTargetRef.current = null;
+    }
+  }, [opponentsList]);
+
+  useEffect(() => {
+    selectedTargetRef.current = selectedTargetId;
+  }, [selectedTargetId]);
 
   // Keep pickups ref up-to-date for render loop
   useEffect(() => {
@@ -1131,8 +591,8 @@ export default function BattleArena({
           // Always send the character's current facing direction so server-side
           // abilities (dashes, etc.) use the correct orientation
           facing: {
-            x: Math.sin(charYawRef.current),
-            y: Math.cos(charYawRef.current),
+            x: localFacingRef.current.x,
+            y: localFacingRef.current.y,
           },
           direction: (() => {
             if (controlModeRef.current === 'traditional') {
@@ -1146,11 +606,12 @@ export default function BattleArena({
                 const right = { x: Math.cos(yaw), y: -Math.sin(yaw) };
 
                 let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
-                let strafeInput = (k.d ? 1 : 0) + (k.a ? -1 : 0);
+                // Negate strafe to match R3F camera convention.
+                let strafeInput = (k.a ? 1 : 0) + (k.d ? -1 : 0);
 
                 // Requested behavior: RMB + A + D => forward-right diagonal.
                 if (k.a && k.d) {
-                  strafeInput = 1;
+                  strafeInput = -1;
                   forwardInput += 1;
                 }
 
@@ -1451,6 +912,8 @@ export default function BattleArena({
       if (e.key === 'Escape') {
         e.preventDefault();
         setPickupModals([]);
+        setSelectedTargetId(null);
+        selectedTargetRef.current = null;
         return;
       }
       // F = interact with nearby pickup (channel to open panel; claim if panel already open)
@@ -1459,11 +922,13 @@ export default function BattleArena({
         handlePickupInteractRef.current();
         return;
       }
-      // Tab / F1 — select opponent as target
+      // Tab / F1 — select primary opponent target (old 1v1 behavior)
       if (e.key === 'Tab' || e.key === 'F1') {
         e.preventDefault();
-        setSelectedTargetId(opponentUserIdRef.current);
-        selectedTargetRef.current = opponentUserIdRef.current;
+        const primary = opponentIdsRef.current[0] ?? opponentUserIdRef.current;
+        if (!primary) return;
+        setSelectedTargetId(primary);
+        selectedTargetRef.current = primary;
         return;
       }
       // ── Draft slots: 1  2  3  Q ──
@@ -1521,6 +986,11 @@ export default function BattleArena({
   //   Button-4 / XB2 (down)  → draft[5]
   //   Wheel up/down          → zoom in/out
   useEffect(() => {
+    const resetMouseButtons = () => {
+      mouseStateRef.current.isLeft = false;
+      mouseStateRef.current.isRight = false;
+    };
+
     const onMouseDown = (e: MouseEvent) => {
       // Left button — start camera drag
       if (e.button === 0) {
@@ -1535,6 +1005,8 @@ export default function BattleArena({
       }
       // Right button — start character rotate drag (context menu already suppressed by onContextMenu)
       if (e.button === 2) {
+        e.preventDefault();
+        e.stopPropagation();
         mouseStateRef.current.isRight = true;
         mouseStateRef.current.lastX   = e.clientX;
         mouseStateRef.current.lastY   = e.clientY;
@@ -1565,34 +1037,14 @@ export default function BattleArena({
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) {
         mouseStateRef.current.isLeft = false;
-        // Detect click (no significant drag) for target selection
-        const dx = Math.abs(e.clientX - mouseStateRef.current.downX);
-        const dy = Math.abs(e.clientY - mouseStateRef.current.downY);
+        // Keep old behavior compatibility: do not force clear or cycle targets on plain mouse up.
         mouseStateRef.current.downX = NaN;
         mouseStateRef.current.downY = NaN;
-        if (!isNaN(dx) && dx < 5 && dy < 5 && !(e.target as HTMLElement).closest('button')) {
-          const canvas = canvasRef.current;
-          const bounds = oppScreenBoundsRef.current;
-          if (canvas && bounds) {
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvasSizeRef.current.w / (rect.width  || 1);
-            const scaleY = canvasSizeRef.current.h / (rect.height || 1);
-            const canvasX = (e.clientX - rect.left) * scaleX;
-            const canvasY = (e.clientY - rect.top)  * scaleY;
-            const hitX = Math.abs(canvasX - bounds.cx) <= bounds.rs + 8;
-            const hitY = canvasY >= bounds.topY - 10 && canvasY <= bounds.baseY + 10;
-            if (hitX && hitY) {
-              setSelectedTargetId(opponentUserIdRef.current);
-              selectedTargetRef.current = opponentUserIdRef.current;
-            } else {
-              setSelectedTargetId(null);
-              selectedTargetRef.current = null;
-            }
-          }
-        }
         return;
       }
       if (e.button === 2) {
+        e.preventDefault();
+        e.stopPropagation();
         mouseStateRef.current.isRight = false;
         return;
       }
@@ -1607,9 +1059,9 @@ export default function BattleArena({
       }
     };
     const onMouseMove = (e: MouseEvent) => {
-      if (controlModeRef.current !== 'traditional') return;
       const ms = mouseStateRef.current;
       if (!ms.isLeft && !ms.isRight) return;
+      e.preventDefault();
       const dx = e.clientX - ms.lastX;
       const dy = e.clientY - ms.lastY;
       ms.lastX = e.clientX;
@@ -1617,7 +1069,7 @@ export default function BattleArena({
 
       if (ms.isRight && !ms.isLeft) {
         // RMB only: rotate camera; character snaps to camera direction
-        camYawRef.current  += dx * 0.005;
+        camYawRef.current  -= dx * 0.005;
         charYawRef.current  = camYawRef.current;
         // Update pitch too (drag up/down tilts view)
         const newPitch = camPitchRef.current + dy * 0.003;
@@ -1629,13 +1081,13 @@ export default function BattleArena({
         };
       } else if (ms.isLeft && !ms.isRight) {
         // LMB only: rotate camera yaw + pitch
-        camYawRef.current  += dx * 0.005;
+        camYawRef.current  -= dx * 0.005;
         // dy > 0 = drag down = look more from above (increase pitch)
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
       } else {
         // LMB + RMB together: rotate camera + character facing; physics tick moves forward
-        camYawRef.current  += dx * 0.005;
+        camYawRef.current  -= dx * 0.005;
         charYawRef.current  = camYawRef.current;
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
@@ -1667,6 +1119,7 @@ export default function BattleArena({
     window.addEventListener('contextmenu', onContextMenu, { capture: true });
     window.addEventListener('auxclick',    onAuxClick,    { capture: true });
     window.addEventListener('wheel',       onWheel,       { passive: false, capture: true });
+    window.addEventListener('blur',        resetMouseButtons);
     return () => {
       window.removeEventListener('mousedown',   onMouseDown,   { capture: true });
       window.removeEventListener('mouseup',     onMouseUp,     { capture: true });
@@ -1674,6 +1127,7 @@ export default function BattleArena({
       window.removeEventListener('contextmenu', onContextMenu, { capture: true });
       window.removeEventListener('auxclick',    onAuxClick,    { capture: true });
       window.removeEventListener('wheel',       onWheel,       { capture: true } as EventListenerOptions);
+      window.removeEventListener('blur',        resetMouseButtons);
     };
   }, []);
 
@@ -1716,19 +1170,11 @@ export default function BattleArena({
           // MMO mouselook: camera turns from mouse; movement is camera-relative.
           // Facing follows movement intent except pure backpedal.
         } else {
-          // JX3-like keyboard turning: A/D turn camera first; character follows
-          // only when camera drifts far from current facing.
-          const turning = (k.a ? -1 : 0) + (k.d ? 1 : 0);
+          // WoW-style keyboard turning: A/D turn camera AND character together immediately.
+          const turning = (k.a ? 1 : 0) + (k.d ? -1 : 0);
           if (turning !== 0) {
-            camYawRef.current += turning * TURN_RATE;
-          }
-
-          const rawDelta = camYawRef.current - charYawRef.current;
-          const FOLLOW_THRESHOLD = Math.PI; // 180 degrees
-          if (Math.abs(rawDelta) >= FOLLOW_THRESHOLD) {
-            const delta = normalizeAngle(rawDelta);
-            const step = Math.max(-TURN_RATE, Math.min(TURN_RATE, delta));
-            charYawRef.current += step;
+            camYawRef.current  += turning * TURN_RATE;
+            charYawRef.current  = camYawRef.current;
             localFacingRef.current = {
               x: Math.sin(charYawRef.current),
               y: Math.cos(charYawRef.current),
@@ -1744,11 +1190,13 @@ export default function BattleArena({
           const moveRight = { x: Math.cos(yaw), y: -Math.sin(yaw) };
 
           let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
-          let strafeInput = (k.d ? 1 : 0) + (k.a ? -1 : 0);
+          // Negate strafe: game moveRight=(cos,−sin) maps to screen-left in R3F camera,
+          // so we flip sign so D=screen-right, A=screen-left.
+          let strafeInput = (k.a ? 1 : 0) + (k.d ? -1 : 0);
 
           // Requested behavior: RMB + A + D => forward-right diagonal.
           if (k.a && k.d) {
-            strafeInput = 1;
+            strafeInput = -1;
             forwardInput += 1;
           }
 
@@ -1847,337 +1295,6 @@ export default function BattleArena({
     return () => clearInterval(id);
   }, [gameId]);
 
-  /* ResizeObserver: keep canvas pixel size in sync */
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(entries => {
-      const { width, height } = entries[0].contentRect;
-      const w = Math.round(width), h = Math.round(height);
-      canvasSizeRef.current = { w, h };
-      const canvas = canvasRef.current;
-      if (canvas) { canvas.width = w; canvas.height = h; }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  /* ========================= RENDER LOOP ========================= */
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animId: number;
-
-    const loop = () => {
-      /* Resolove opponent position with interpolation */
-      const renderTime = performance.now() - RENDER_DELAY_MS;
-      const buf  = activeOpponentBuffer.current;
-      let opPos: Position | null = opponentRawRef.current;
-
-      if (buf.length >= 2) {
-        const last = buf[buf.length - 1];
-        const prev = buf[buf.length - 2];
-        if (renderTime <= buf[0].t) {
-          opPos = buf[0].pos;
-        } else if (renderTime >= last.t) {
-          const span = last.t - prev.t;
-          if (span > 0) {
-            const over = Math.min((renderTime - last.t) / span, 1);
-            opPos = {
-              x: Math.max(2, Math.min(98, last.pos.x + (last.pos.x - prev.pos.x) * over)),
-              y: Math.max(2, Math.min(98, last.pos.y + (last.pos.y - prev.pos.y) * over)),
-              z: Math.max(0, (last.pos.z ?? 0) + ((last.pos.z ?? 0) - (prev.pos.z ?? 0)) * over),
-            };
-          } else opPos = last.pos;
-        } else {
-          for (let i = 0; i < buf.length - 1; i++) {
-            if (buf[i].t <= renderTime && buf[i + 1].t >= renderTime) {
-              const lo = buf[i], hi = buf[i + 1];
-              const span = hi.t - lo.t;
-              const t = span > 0 ? (renderTime - lo.t) / span : 1;
-              opPos = {
-                x: lo.pos.x + (hi.pos.x - lo.pos.x) * t,
-                y: lo.pos.y + (hi.pos.y - lo.pos.y) * t,
-                z: (lo.pos.z ?? 0) + ((hi.pos.z ?? 0) - (lo.pos.z ?? 0)) * t,
-              };
-              break;
-            }
-          }
-        }
-      } else if (buf.length === 1) {
-        opPos = buf[0].pos;
-      }
-
-      const myPos = localPositionRef.current;
-      const { w, h } = canvasSizeRef.current;
-
-      if (!myPos || !opPos || w < 10 || h < 10) {
-        if (w >= 10 && h >= 10) {
-          ctx.fillStyle = '#020509';
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = '#444';
-          ctx.font = '14px monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText('Connecting…', w / 2, h / 2);
-        }
-        animId = requestAnimationFrame(loop);
-        return;
-      }
-
-      // ── Smooth render positions; large jumps trigger 1.5 s cosmetic dash animation ──
-      const frameNow = performance.now();
-      const frameDt  = lastFrameTimeRef.current === 0 ? 16 : Math.min(frameNow - lastFrameTimeRef.current, 50);
-      lastFrameTimeRef.current = frameNow;
-      const dtF = frameDt / 16.67; // normalised to 60 fps
-      const DASH_THRESH = 3.5;     // world units — smaller = walk blend, larger = dash anim
-      const SNAP_THRESH = 20;       // world units — instant-snap for initial position or server teleport
-
-      // --- local player render pos ---
-      {
-        const tx = myPos.x, ty = myPos.y, tz = localZRef.current;
-        const r  = localRenderPosRef.current;
-        const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
-        const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
-        if (dist2d > SNAP_THRESH) {
-          // Very large jump — snap instantly (initial position, server correction)
-          localRenderPosRef.current = { x: tx, y: ty, z: tz };
-          localDashAnimRef.current  = null;
-        } else if (!localDashAnimRef.current && dist2d > DASH_THRESH) {
-          // Moderate jump — start travel animation (no visible trail)
-          localDashAnimRef.current = { start: { ...r }, startTime: frameNow };
-        }
-        if (localDashAnimRef.current) {
-          const elapsed = frameNow - localDashAnimRef.current.startTime;
-          const t = Math.min(1, elapsed / DASH_ANIM_MS);
-          const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-          localRenderPosRef.current = {
-            x: localDashAnimRef.current.start.x + (tx - localDashAnimRef.current.start.x) * eased,
-            y: localDashAnimRef.current.start.y + (ty - localDashAnimRef.current.start.y) * eased,
-            z: localDashAnimRef.current.start.z + (tz - localDashAnimRef.current.start.z) * eased,
-          };
-          if (t >= 1) localDashAnimRef.current = null;
-        } else {
-          const k = Math.min(1, 0.3 * dtF);
-          localRenderPosRef.current = { x: r.x + ddx * k, y: r.y + ddy * k, z: r.z + ddz * k };
-        }
-        // Trails removed
-      }
-
-      // --- opponent render pos ---
-      {
-        const tx = opPos.x, ty = opPos.y, tz = opPos.z ?? 0;
-        const r  = oppRenderPosRef.current;
-        const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
-        const oppDist2d = Math.sqrt(ddx * ddx + ddy * ddy);
-        if (oppDist2d > SNAP_THRESH) {
-          oppRenderPosRef.current = { x: tx, y: ty, z: tz };
-          oppDashAnimRef.current  = null;
-        } else if (!oppDashAnimRef.current && oppDist2d > DASH_THRESH) {
-          oppDashAnimRef.current = { start: { ...r }, startTime: frameNow };
-        }
-        if (oppDashAnimRef.current) {
-          const elapsed = frameNow - oppDashAnimRef.current.startTime;
-          const t = Math.min(1, elapsed / DASH_ANIM_MS);
-          const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-          oppRenderPosRef.current = {
-            x: oppDashAnimRef.current.start.x + (tx - oppDashAnimRef.current.start.x) * eased,
-            y: oppDashAnimRef.current.start.y + (ty - oppDashAnimRef.current.start.y) * eased,
-            z: oppDashAnimRef.current.start.z + (tz - oppDashAnimRef.current.start.z) * eased,
-          };
-          if (t >= 1) oppDashAnimRef.current = null;
-        } else {
-          const k = Math.min(1, 0.3 * dtF);
-          oppRenderPosRef.current = { x: r.x + ddx * k, y: r.y + ddy * k, z: r.z + ddz * k };
-        }
-        // Trails removed
-      }
-
-      const myRP = localRenderPosRef.current;
-      const opRP = oppRenderPosRef.current;
-
-      // Keep the height display ref up to date (read by the 50ms polling interval)
-      const curZ   = myRP.z ?? 0;
-      const prevZ  = prevZRef.current;
-      const nowMs  = performance.now();
-      const phase  = jumpPhaseRef.current;
-
-      if (phase === 'ground') {
-        if (curZ > 0.01) {
-          // Lifted off
-          jumpPhaseRef.current   = 'rising';
-          takeoffTimeRef.current  = nowMs;
-          peakTimeRef.current     = nowMs;
-          peakZRef.current        = curZ;
-        }
-      } else if (phase === 'rising') {
-        if (curZ > prevZ) {
-          peakTimeRef.current = nowMs;                              // keep pushing apex time while still rising
-          peakZRef.current  = Math.max(peakZRef.current, curZ);     // track highest point
-        } else {
-          // Transitioned from rising → falling
-          jumpPhaseRef.current = 'falling';
-        }
-      } else /* falling */ {
-        if (curZ <= 0.01 && prevZ > 0.01) {
-          // Landed
-          const total  = nowMs - takeoffTimeRef.current;
-          const rise   = peakTimeRef.current - takeoffTimeRef.current;
-          const fall   = nowMs - peakTimeRef.current;
-          jumpRecordNextRef.current = { riseMs: rise, fallMs: fall, totalMs: total, peakZ: peakZRef.current };
-          jumpPhaseRef.current = 'ground';
-        }
-      }
-
-      prevZRef.current = curZ;
-      myZRef.current   = curZ;
-
-      // Camera follows smooth render pos (including jump Z)
-      const camDir = controlModeRef.current === 'traditional'
-        ? { x: Math.sin(camYawRef.current), y: Math.cos(camYawRef.current) }
-        : CAM_DIR;
-      const cam = buildCam(v3(myRP.x, myRP.y, myRP.z), camDir, w, h, camZoomRef.current, camPitchRef.current);
-
-      /* Draw scene */
-      renderBg(ctx, cam, w, h);
-      renderFloor(ctx, cam, w, h);
-
-      /* Range indicator circle */
-      const abilityList    = abilitiesRef.current;
-      const readyAbility   = abilityList.find(a => a.isReady && a.range);
-      const minRangeAbil   = abilityList.find(a => a.minRange);
-      if (readyAbility?.range)
-        renderRangeCircle(ctx, v3(myRP.x, myRP.y, 0), readyAbility.range, cam, w, h, 'rgba(80, 210, 100, 0.55)');
-      if (minRangeAbil?.minRange)
-        renderRangeCircle(ctx, v3(myRP.x, myRP.y, 0), minRangeAbil.minRange, cam, w, h, 'rgba(255, 80, 80, 0.45)');
-
-      /* Channel AOE zone (风来吴山 不工 buff — range 10) */
-      if (meChannelingRef.current)
-        renderAoeZone(ctx, v3(myRP.x, myRP.y, 0), 10, cam, w, h, '#ffdd00', '#ffd700');
-      if (oppChannelingRef.current)
-        renderAoeZone(ctx, v3(opRP.x, opRP.y, 0), 10, cam, w, h, '#ff3300', '#ff5500');
-
-      /* ── Depth-sorted render: map objects + characters ── */
-      const mxHp = maxHpRef.current;
-
-      type RenderItem =
-        | { kind: 'obj';  obj: MapObject; depth: number }
-        | { kind: 'char'; pos: V3; color: string; glow: string; hp: number; isMe: boolean; depth: number };
-
-      const renderItems: RenderItem[] = [];
-
-      // Collect visible map objects (within 200 world units of camera position)
-      for (const obj of worldMapObjects) {
-        const cx = obj.x + obj.w * 0.5;
-        const cy = obj.y + obj.d * 0.5;
-        const cz = obj.h * 0.5;
-        const ddx = cx - cam.pos.x, ddy = cy - cam.pos.y, ddz = cz - cam.pos.z;
-        if (ddx * ddx + ddy * ddy + ddz * ddz > 600 * 600) continue;
-        const depth = ddx * cam.fwd.x + ddy * cam.fwd.y + ddz * cam.fwd.z;
-        renderItems.push({ kind: 'obj', obj, depth });
-      }
-
-      // Collect characters
-      const charEntries = [
-        { pos: v3(opRP.x, opRP.y, opRP.z), color: '#cc3333', glow: '#ff5555', hp: oppHpRef.current, isMe: false },
-        { pos: v3(myRP.x, myRP.y, myRP.z), color: '#1a66cc', glow: '#44aaff', hp: meHpRef.current,  isMe: true  },
-      ];      for (const c of charEntries) {
-        const ddx = c.pos.x - cam.pos.x, ddy = c.pos.y - cam.pos.y, ddz = c.pos.z - cam.pos.z;
-        const depth = ddx * cam.fwd.x + ddy * cam.fwd.y + ddz * cam.fwd.z;
-        renderItems.push({ kind: 'char', ...c, depth });
-      }
-
-      // Painter's algorithm: farthest first
-      renderItems.sort((a, b) => b.depth - a.depth);
-
-      for (const item of renderItems) {
-        if (item.kind === 'obj') {
-          renderMapObject(ctx, item.obj, cam, w, h);
-        } else {
-          const e = item;
-          renderCharacter(ctx, e.pos, cam, w, h, e.color, e.glow, Math.max(0, e.hp / mxHp), e.isMe, !e.isMe && selectedTargetRef.current !== null);
-          if (e.isMe) {
-            if (selectedSelfRef.current) renderFacingArc(ctx, e.pos, meFacingRef.current, cam, w, h);
-            // Save local player screen bounds for float positioning
-            const meBaseP = projPt(e.pos, cam, w, h);
-            const meTopP  = projPt(v3(e.pos.x, e.pos.y, e.pos.z + CHAR_HEIGHT), cam, w, h);
-            if (meBaseP && meTopP) {
-              const mrs = (CHAR_RADIUS / meBaseP.depth) * cam.fl;
-              meScreenBoundsRef.current = { cx: meBaseP.x, topY: meTopP.y, baseY: meBaseP.y, rs: mrs };
-            }
-          } else {
-            // Show opponent facing arc only when selected
-            if (selectedTargetRef.current) {
-              renderFacingArc(ctx, e.pos, oppFacingRef.current, cam, w, h);
-            }
-            // Save opponent screen bounds for click hit-testing
-            const baseP = projPt(e.pos, cam, w, h);
-            const topP  = projPt(v3(e.pos.x, e.pos.y, e.pos.z + CHAR_HEIGHT), cam, w, h);
-            if (baseP && topP) {
-              const rs = (CHAR_RADIUS / baseP.depth) * cam.fl;
-              oppScreenBoundsRef.current = { cx: baseP.x, topY: topP.y, baseY: baseP.y, rs };
-              // Draw enemy nameplate (name · distance) above HP bar
-              if (rs >= 1.5) {
-                const barY   = topP.y - 22;
-                const dist   = distanceRef.current;
-                const label  = `陌路侠士 · ${dist.toFixed(1)}尺`;
-                const nSize  = Math.max(9, Math.min(13, rs * 1.15));
-                ctx.save();
-                ctx.font         = `${nSize}px "Microsoft YaHei", sans-serif`;
-                ctx.textAlign    = 'center';
-                ctx.textBaseline = 'bottom';
-                ctx.fillStyle    = 'rgba(0,0,0,0.7)';
-                ctx.fillText(label, baseP.x + 0.5, barY - 2.5);
-                ctx.fillStyle = selectedTargetRef.current
-                  ? 'rgba(255, 208, 213, 0.95)'
-                  : 'rgba(200, 40, 40, 0.9)';
-                ctx.fillText(label, baseP.x, barY - 3);
-                ctx.restore();
-              }
-            }
-          }
-        }
-      }
-
-      // Draw targeting line when opponent is selected
-      if (selectedTargetRef.current) {
-        const myScreenPos = projPt(v3(myRP.x, myRP.y, localZRef.current + CHAR_HEIGHT / 2), cam, w, h);
-        const oppScreenPos = projPt(v3(opRP.x, opRP.y, (opRP.z ?? 0) + CHAR_HEIGHT / 2), cam, w, h);
-        if (myScreenPos && oppScreenPos) {
-          ctx.save();
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 4;
-          ctx.globalAlpha = 0.8;
-          ctx.beginPath();
-          ctx.moveTo(myScreenPos.x, myScreenPos.y);
-          ctx.lineTo(oppScreenPos.x, oppScreenPos.y);
-          ctx.stroke();
-          ctx.restore();
-        }
-      }
-
-      // ── Pickup books ──
-      const currentPickups = pickupsRef.current;
-      for (const pickup of currentPickups) {
-        // Derive a stable pseudo-random angle from the pickup's UUID
-        const pickupAngle = parseInt(pickup.id.replace(/-/g, '').slice(0, 6), 16) % 360;
-        renderPickupBook(
-          ctx,
-          v3(pickup.position.x, pickup.position.y, 0),
-          cam, w, h,
-          pickupAngle,
-        );
-      }
-
-      animId = requestAnimationFrame(loop);
-    };
-
-    animId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animId);
-  }, []); // stable — all live data accessed via refs
-
   /* ========================= HUD DATA ========================= */
   const myHpPct  = Math.max(0, Math.min(100, ((me?.hp  ?? 0) / maxHp) * 100));
   const oppHpPct = Math.max(0, Math.min(100, ((opponent?.hp ?? 0) / maxHp) * 100));
@@ -2202,8 +1319,32 @@ export default function BattleArena({
     >
 
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
-      <div ref={wrapRef} className={styles.canvasWrap}>
-        <canvas ref={canvasRef} className={styles.canvas} />
+      {/* ===== R3F 3D CANVAS ===== */}
+      <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+        <Canvas
+          camera={{ fov: 72, near: 0.5, far: 2000 }}
+          style={{ background: '#d4b896' }}
+          gl={{ antialias: true }}
+        >
+          <ArenaScene
+            me={me}
+            opponents={opponents ?? [opponent]}
+            selectedTargetId={selectedTargetId}
+            onSelectTarget={(userId) => {
+              setSelectedTargetId(userId);
+              selectedTargetRef.current = userId;
+            }}
+            pickups={pickups}
+            meChanneling={meChannelingRef.current}
+            channelingOpponentId={opponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014))?.userId ?? null}
+            localRenderPosRef={localRenderPosRef}
+            camYawRef={camYawRef}
+            camPitchRef={camPitchRef}
+            camZoomRef={camZoomRef}
+            meFacingRef={localFacingRef as React.MutableRefObject<{ x: number; y: number }>}
+            maxHp={maxHp}
+          />
+        </Canvas>
       </div>
 
       {/* ===== JUMP STATS + HEIGHT DISPLAY ===== */}

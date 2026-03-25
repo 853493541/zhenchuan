@@ -10,54 +10,24 @@ import { generateShop } from "./economyService";
  * Initialize tournament state for a new match
  * Called when game starts
  */
-export function initializeTournament(playerIds: [PlayerID, PlayerID]): TournamentState {
+export function initializeTournament(playerIds: PlayerID[]): TournamentState {
   const tournament: TournamentState = {
     battleNumber: 1,
-    gameHp: {
-      [playerIds[0]]: STARTING_GAME_HP,
-      [playerIds[1]]: STARTING_GAME_HP,
-    },
-    economy: {
-      [playerIds[0]]: {
-        gold: STARTING_GOLD,
-        level: 1,
-        experience: 0,
-      },
-      [playerIds[1]]: {
-        gold: STARTING_GOLD,
-        level: 1,
-        experience: 0,
-      },
-    },
-    selectedAbilities: {
-      [playerIds[0]]: [],
-      [playerIds[1]]: [],
-    },
-    bench: {
-      [playerIds[0]]: [],
-      [playerIds[1]]: [],
-    },
+    gameHp: Object.fromEntries(playerIds.map(id => [id, STARTING_GAME_HP])) as Record<PlayerID, number>,
+    economy: Object.fromEntries(playerIds.map(id => [id, { gold: STARTING_GOLD, level: 1, experience: 0 }])) as TournamentState['economy'],
+    selectedAbilities: Object.fromEntries(playerIds.map(id => [id, []])) as TournamentState['selectedAbilities'],
+    bench: Object.fromEntries(playerIds.map(id => [id, []])) as TournamentState['bench'],
     battleHistory: [],
-    shop: {
-      [playerIds[0]]: {
-        abilities: generateShop(1),
-        locked: [false, false, false, false, false],
-      },
-      [playerIds[1]]: {
-        abilities: generateShop(1),
-        locked: [false, false, false, false, false],
-      },
-    },
+    shop: Object.fromEntries(playerIds.map(id => [id, { abilities: generateShop(1), locked: [false, false, false, false, false] }])) as TournamentState['shop'],
     phase: "DRAFT",
   };
-  
+
   console.log("[initializeTournament] Created tournament:", {
     phase: tournament.phase,
     battleNumber: tournament.battleNumber,
-    player0Hp: tournament.gameHp[playerIds[0]],
-    player1Hp: tournament.gameHp[playerIds[1]],
+    playerCount: playerIds.length,
   });
-  
+
   return tournament;
 }
 

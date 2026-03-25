@@ -505,27 +505,23 @@ router.post("/battle/start", async (req, res) => {
     // Disabled: spam during testing
     // console.log(`[battle/start] ✅ No existing GameLoop, proceeding to start new one`);
 
-    const playerIds = game.players as [string, string];
-    // Disabled: spam during testing
-    // console.log(`[battle/start] Starting battle for ${gameId}, players: ${playerIds.join(", ")}`);
+    const playerIds = game.players as string[];
 
     // Use the hands from game.state.players (finalized in draft)
-    const player0Hand = (game.state.players[0]?.hand || []) as any[];
-    const player1Hand = (game.state.players[1]?.hand || []) as any[];
-
-    // Disabled: spam during testing
-    // console.log(`[battle/start] Finalized hands: P0=${player0Hand.length} abilities, P1=${player1Hand.length} abilities`);
+    // Map from userId to finalized hand so we handle N players correctly
+    const handByUserId: Record<string, any[]> = {};
+    for (const ps of (game.state.players || [])) {
+      handByUserId[(ps as any).userId] = (ps as any).hand || [];
+    }
 
     // Create battle state with positions + use finalized hands
-    const playerIds_arr = [playerIds[0], playerIds[1]] as [string, string];
-    // Disabled: spam during testing
-    // console.log(`[battle/start] 🔧 Initializing battle state...`);
-    const battleState = initializeBattleState(game.tournament, playerIds_arr);
-    // console.log(`[battle/start] ✅ Battle state initialized`);
+    const battleState = initializeBattleState(game.tournament, playerIds);
 
     // Override hands — preserve instanceId but reset cooldowns for a fresh battle
-    battleState.players[0].hand = player0Hand.map((c: any) => ({ ...c, cooldown: 0 }));
-    battleState.players[1].hand = player1Hand.map((c: any) => ({ ...c, cooldown: 0 }));
+    for (const ps of battleState.players) {
+      const saved = handByUserId[ps.userId];
+      if (saved) ps.hand = saved.map((c: any) => ({ ...c, cooldown: 0 }));
+    }
 
     // Disabled: spam during testing
     // console.log(`[battle/start] Battle initialized for gameId ${gameId}`);
@@ -622,11 +618,12 @@ router.post("/battle/complete", async (req, res) => {
       // DRAFT DISABLED: skip draft phase and go directly to next battle
       game.tournament.phase = "BATTLE";
       // Clear selectedAbilities so the cheat window starts fresh each battle
-      const [p0, p1] = game.players as [string, string];
-      game.tournament.selectedAbilities[p0] = [];
-      game.tournament.selectedAbilities[p1] = [];
+      const allPlayers = game.players as string[];
+      for (const pid of allPlayers) {
+        game.tournament.selectedAbilities[pid] = [];
+      }
       // Initialize fresh battle state with only common abilities
-      game.state = initializeBattleState(game.tournament, [p0, p1]);
+      game.state = initializeBattleState(game.tournament, allPlayers);
     }
 
     game.markModified("state");

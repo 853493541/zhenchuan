@@ -1,0 +1,142 @@
+'use client';
+
+import { MutableRefObject } from 'react';
+import Ground from './Ground';
+import MapObjects from './MapObjects';
+import Character from './Character';
+import PickupBooks from './PickupBooks';
+import AoeZone from './AoeZone';
+import CameraRig from './CameraRig';
+import type { PickupItem } from '../../../types';
+
+// Colors for up to 5 opponents (index 0 = primary, etc.)
+const OPP_COLORS = ['#cc3333', '#cc8800', '#9933cc', '#cc3388'];
+const OPP_EMISSIVES = ['#440000', '#332200', '#220044', '#330022'];
+
+interface PlayerInfo {
+  userId: string;
+  position: { x: number; y: number; z?: number };
+  hp: number;
+  maxHp?: number;
+  facing?: { x: number; y: number };
+  buffs?: any[];
+  hand?: any[];
+}
+
+interface ArenaSceneProps {
+  me: PlayerInfo;
+  /** All non-me players */
+  opponents: PlayerInfo[];
+  selectedTargetId: string | null;
+  onSelectTarget?: (userId: string) => void;
+  pickups: PickupItem[];
+  meChanneling: boolean;
+  /** Which opponent userId is channeling (if any) */
+  channelingOpponentId?: string | null;
+  // Refs for live updates without re-renders
+  localRenderPosRef: MutableRefObject<{ x: number; y: number; z: number }>;
+  camYawRef: MutableRefObject<number>;
+  camPitchRef: MutableRefObject<number>;
+  camZoomRef: MutableRefObject<number>;
+  meFacingRef: MutableRefObject<{ x: number; y: number }>;
+  maxHp: number;
+}
+
+export default function ArenaScene({
+  me,
+  opponents,
+  selectedTargetId,
+  onSelectTarget,
+  pickups,
+  meChanneling,
+  channelingOpponentId,
+  localRenderPosRef,
+  camYawRef,
+  camPitchRef,
+  camZoomRef,
+  meFacingRef,
+  maxHp,
+}: ArenaSceneProps) {
+  return (
+    <>
+      {/* Camera */}
+      <CameraRig
+        localRenderPosRef={localRenderPosRef}
+        camYawRef={camYawRef}
+        camPitchRef={camPitchRef}
+        camZoomRef={camZoomRef}
+      />
+
+      {/* Lighting — warm desert sun */}
+      <ambientLight intensity={1.0} color="#f0d8a0" />
+      <directionalLight
+        position={[300, 500, 100]}
+        intensity={2.8}
+        color="#ffe4a0"
+      />
+      {/* Warm ground bounce */}
+      <directionalLight position={[-100, 50, -200]} intensity={0.4} color="#d4a060" />
+
+      {/* Desert haze fog */}
+      <fog attach="fog" args={['#d4b896', 300, 1000]} />
+
+      {/* World */}
+      <Ground />
+      <MapObjects localRenderPosRef={localRenderPosRef} />
+      <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} />
+
+      {/* Local player AOE zone */}
+      {meChanneling && (
+        <AoeZone
+          worldX={me.position.x}
+          worldY={me.position.y}
+          radius={10}
+          color="#ffd700"
+        />
+      )}
+
+      {/* Opponents — render all of them */}
+      {opponents.map((opp, i) => (
+        <group key={opp.userId}>
+          {/* Opponent AOE zone */}
+          {channelingOpponentId === opp.userId && (
+            <AoeZone
+              worldX={opp.position.x}
+              worldY={opp.position.y}
+              radius={10}
+              color="#ff5500"
+            />
+          )}
+          <Character
+            worldX={opp.position.x}
+            worldY={opp.position.y}
+            worldZ={opp.position.z ?? 0}
+            color={OPP_COLORS[i % OPP_COLORS.length]}
+            emissive={OPP_EMISSIVES[i % OPP_EMISSIVES.length]}
+            hp={opp.hp}
+            maxHp={maxHp}
+            isMe={false}
+            isSelected={selectedTargetId === opp.userId}
+            facing={opp.facing}
+            username="陌路侠士"
+            onSelect={() => onSelectTarget?.(opp.userId)}
+          />
+        </group>
+      ))}
+
+      {/* Local player — rendered last (on top) */}
+      <Character
+        worldX={me.position.x}
+        worldY={me.position.y}
+        worldZ={me.position.z ?? 0}
+        color="#1a66cc"
+        emissive="#0a2255"
+        hp={me.hp}
+        maxHp={maxHp}
+        isMe={true}
+        facingRef={meFacingRef}
+        posRef={localRenderPosRef}
+      />
+    </>
+  );
+}

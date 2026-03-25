@@ -8,18 +8,11 @@ import { GameState } from "../../state/types";
  * For non-tournament games: set gameOver to end the game
  */
 export function checkGameOver(state: GameState) {
-  for (const p of state.players) {
-    if (p.hp <= 0) {
-      // Find winner (the other player)
-      const winner = state.players.find((x) => x.userId !== p.userId);
-      if (winner) {
-        state.winnerUserId = winner.userId;
-      }
-
-      // Mark battle as over so frontend knows to call battle/complete
-      state.gameOver = true;
-      return true;
-    }
+  const alive = state.players.filter((p) => p.hp > 0);
+  if (alive.length <= 1) {
+    state.winnerUserId = alive[0]?.userId;
+    state.gameOver = true;
+    return true;
   }
   return false;
 }

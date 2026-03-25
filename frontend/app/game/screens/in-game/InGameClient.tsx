@@ -92,6 +92,7 @@ export default function InGameClient({
     tournament,
     me,
     opponent,
+    opponents,
     isMyTurn,
     isWinner,
     playAbility,
@@ -280,7 +281,7 @@ export default function InGameClient({
     loading ||
     !state ||
     !me ||
-    !opponent ||
+    opponents.length === 0 ||
     !preload ||
     preloadError
   ) {
@@ -310,28 +311,45 @@ export default function InGameClient({
   
   /* ================= RENDER BATTLE ================= */
 
-  // Only render if we have valid player data
-  if (!me || !opponent) {
-    return <div>Loading battle state...</div>;
-  }
+  // Calculate 3D distance to nearest opponent
+  const distance = (() => {
+    let minDist = 0;
+    for (const opp of opponents) {
+      if (!me?.position || !opp?.position) continue;
+      const d = Math.sqrt(
+        Math.pow(opp.position.x - me.position.x, 2) +
+        Math.pow(opp.position.y - me.position.y, 2) +
+        Math.pow((opp.position.z ?? 0) - (me.position.z ?? 0), 2)
+      );
+      if (minDist === 0 || d < minDist) minDist = d;
+    }
+    return minDist;
+  })();
 
-  // Calculate 3D distance between players (includes Z so jumping increases effective range)
-  const distance = me?.position && opponent?.position
-    ? Math.sqrt(
-        Math.pow(opponent.position.x - me.position.x, 2) +
-        Math.pow(opponent.position.y - me.position.y, 2) +
-        Math.pow((opponent.position.z ?? 0) - (me.position.z ?? 0), 2)
-      )
-    : 0;
+  const mePlayer = {
+    ...me,
+    position: me.position ?? { x: 1000, y: 1000, z: 0 },
+  };
+  const normalizedOpponents = opponents.map((opp) => ({
+    ...opp,
+    position: opp.position ?? { x: 1000, y: 1000, z: 0 },
+  }));
+  const primaryOpponent = (opponent ?? normalizedOpponents[0])
+    ? {
+        ...(opponent ?? normalizedOpponents[0]),
+        position: (opponent ?? normalizedOpponents[0]).position ?? { x: 1000, y: 1000, z: 0 },
+      }
+    : normalizedOpponents[0];
 
   return (
     <GamePreloadProvider value={preload}>
       <BattleArena
-        me={me}
-        opponent={opponent}
+        me={mePlayer}
+        opponent={primaryOpponent}
+        opponents={normalizedOpponents}
         gameId={gameId}
         distance={distance}
-        maxHp={me.hp + (state.players[1]?.hp || 0) === me.hp ? me.hp : 30} // Fallback to 30
+        maxHp={30}
         abilities={preload.abilityMap}
         events={state?.events ?? []}
         pickups={state?.pickups ?? []}
