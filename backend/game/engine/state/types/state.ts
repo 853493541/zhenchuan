@@ -61,6 +61,22 @@ export interface PlayerState {
    * Used by directional dashes so TOWARD means "where I'm facing".
    */
   facing?: { x: number; y: number };
+
+  /**
+   * Active animated dash (蹑云逐月 / 惯性 system).
+   * When set, movement.ts drives the player along this trajectory each tick
+   * instead of processing normal input. Gravity is suspended and the vertical
+   * velocity is captured on the FIRST game-loop tick (not at cast time) so
+   * that any pending jump input is processed first.
+   */
+  activeDash?: {
+    vxPerTick: number;    // horizontal X step per tick (units/tick)
+    vyPerTick: number;    // horizontal Y step per tick (units/tick)
+    vzPerTick?: number;   // undefined = not yet captured; set on first tick of dash
+    maxUpVz:   number;    // per-tick upward vz cap (positive)
+    maxDownVz: number;    // per-tick downward vz cap (negative)
+    ticksRemaining: number;
+  };
 }
 
 export interface GameState {

@@ -24,7 +24,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
-    effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD" }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD", durationTicks: 30 }],
     isCommon: true,
   },
 
@@ -35,7 +35,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
-    effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY" }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY", durationTicks: 21 }],
     isCommon: true,
   },
 
@@ -46,7 +46,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
-    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT" }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT", durationTicks: 30 }],
     isCommon: true,
   },
 
@@ -57,7 +57,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
-    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT" }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT", durationTicks: 30 }],
     isCommon: true,
   },
 
@@ -90,7 +90,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 60, // 1 second at 60 Hz
-    effects: [{ type: "DIRECTIONAL_DASH", value: 1, dirMode: "AWAY" }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 1, dirMode: "AWAY", durationTicks: 3 }],
     isCommon: true,
   },
 

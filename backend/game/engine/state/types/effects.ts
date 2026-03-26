@@ -59,6 +59,13 @@ export interface AbilityEffect {
   /** Direction mode for DIRECTIONAL_DASH effects */
   dirMode?: "TOWARD" | "AWAY" | "PERP_LEFT" | "PERP_RIGHT";
 
+  /**
+   * For DIRECTIONAL_DASH: how many game-loop ticks the dash lasts.
+    * Defaults to Math.round(distance * 1.5) (≈ 30 ticks for 20 units at 30 Hz).
+   * Set explicitly on abilities where exact timing matters.
+   */
+  durationTicks?: number;
+
   /** Range (units) for CHANNEL_AOE_TICK — target must be within this distance */
   range?: number;
 }

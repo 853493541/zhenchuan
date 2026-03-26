@@ -111,12 +111,12 @@ async function playCastAbility(
   applyEffects(state, ability, playerIndex, targetIndex);
   applyOnPlayBuffEffects(state, playerIndex);
 
-  // Set per-ability cooldown (ticks at 60 Hz; e.g. 180 = 3 seconds)
+  // Set per-ability cooldown (ticks at 30 Hz; e.g. 90 = 3 seconds)
   played.cooldown = ability.cooldownTicks ?? 3;
 
   // 轻功 GCD: casting any 轻功 ability imposes a 3-second minimum cooldown on the other 3
   const QINGGONG_IDS = new Set(['nieyun_zhuyue', 'lingxiao_lansheng', 'yaotai_zhenhe', 'yingfeng_huilang']);
-  const QINGGONG_GCD_TICKS = 180; // 3 s × 60 Hz
+  const QINGGONG_GCD_TICKS = 90; // 3 s × 30 Hz
   if (QINGGONG_IDS.has(abilityId)) {
     for (const inst of player.hand) {
       const instCardId = (inst as any).abilityId || (inst as any).id;
@@ -127,7 +127,7 @@ async function playCastAbility(
   }
 
   // Draft GCD: casting a gcd:true draft ability imposes a 1.5-second minimum CD on other gcd:true draft abilities
-  const DRAFT_GCD_TICKS = 30; // 0.5s × 60 Hz
+  const DRAFT_GCD_TICKS = 45; // 1.5 s × 30 Hz
   if ((ability as any).gcd === true && !(ability as any).isCommon) {
     for (const inst of player.hand) {
       const instCardId = (inst as any).abilityId || (inst as any).id;

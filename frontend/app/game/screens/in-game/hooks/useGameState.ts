@@ -218,13 +218,14 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             const now = Date.now();
             const rttValue = now - message.timestamp;
             setRtt(rttValue);
-            console.log(`📡 [Ping] RTT: ${rttValue}ms`);
           }
           return;
         }
 
         if (message.type === "STATE_DIFF" || message.type === "GAME_OVER") {
           if (!message.diff || message.diff.length === 0) return;
+
+
 
           // Push opponent position patches IMMEDIATELY with accurate timestamp.
           // This bypasses React setState + re-render + useEffect delay (~16-32ms variable).

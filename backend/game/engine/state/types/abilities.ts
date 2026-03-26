@@ -66,7 +66,7 @@ export interface Ability {
 
   /**
    * Number of game-loop ticks before this ability can be used again.
-   * At 60 Hz: 60 ticks = 1 second. Default 3 ticks if unset.
+    * At 30 Hz: 30 ticks = 1 second. Default 3 ticks if unset.
    */
   cooldownTicks?: number;
 

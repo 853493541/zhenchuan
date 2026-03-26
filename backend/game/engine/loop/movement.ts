@@ -7,6 +7,7 @@
 import { PlayerState, MovementInput } from "../state/types";
 import type { MapObject } from "../state/types/map";
 import { worldMap } from "../../map/worldMap";
+import { DASH_CC_IMMUNE_BUFF_ID } from "../effects/definitions/DirectionalDash";
 
 /**
  * Arena boundaries (in units)
@@ -65,36 +66,20 @@ function resolveObjectCollision(player: PlayerState, obj: MapObject): void {
 }
 
 /**
- * Vertical physics (60 Hz tick rate) — symmetric gravity
+ * Vertical physics (30 Hz tick rate)
  *
- * A single GRAVITY constant is used for both ascent and descent so that
- * rise time = fall time for every jump (natural parabolic arc).
- *
- * Tuned to the following targets:
- *   Single jump : rises to 1.7 units in exactly 1 second (60 ticks)
- *                 falls back to ground in exactly 1 second  → 2 s total
- *   Double jump : from wherever it fires, adds 1.3 units of height
- *                 (max peak = 3.0 if pressed at single-jump apex)
- *                 rise / fall ≈ 0.875 s each                → ~1.75 s extra
- *   Power jump  : 扶摇直上 – peaks at 12.8 units
- *                 rise / fall ≈ 2.74 s each                 → ~5.5 s total
- *
- * Asymmetric gravity, 60 Hz:
- *   Single jump : 1.7 u peak, 1.0 s rise (60 ticks), 0.7 s fall (42 ticks) → 1.7 s total
- *   Double jump : +0.67 u extra (peak 2.37 u), 1.45 s from 2nd press   → 2.45 s total from takeoff
- *   Power jump  : 12.8 u peak, 1.77 s rise (106.2 ticks), 1.93 s fall   → 3.7 s total
- *
- * Power jump uses separate gravity constants so its arc is steeper/faster.
+ * Asymmetric gravity, 30 Hz:
+ *   Single jump : 1.7 u peak, 1.0 s rise (30 ticks), 0.7 s fall (21 ticks) → 1.7 s total
+ *   Double jump : +0.755 u extra (peak 2.455 u) → ~2.51 s total from takeoff
+ *   Power jump  : 12.8 u peak, 1.77 s rise (53.1 ticks), 1.93 s fall (57.9 ticks) → 3.7 s total
  */
-// ── Regular jump gravity (60 Hz) ──
-const GRAVITY_UP     = 2 * 1.7 / (60 * 60);       // ≈ 0.000944  (60 ticks = 1.0 s rise)
-const GRAVITY_DOWN   = 2 * 1.7 / (42 * 42);       // ≈ 0.001927  (42 ticks = 0.7 s fall)
-const JUMP_VZ        = GRAVITY_UP * 60;            // ≈ 0.05667   – single jump (1.0 s → 1.7 u)
-const DOUBLE_JUMP_VZ = GRAVITY_UP * 40;            // ≈ 0.03778   – double jump (+0.755 u → ~2.51 s total)
-// ── Power jump gravity (扶摇直上, 60 Hz) ──
-const POWER_GRAVITY_UP   = 2 * 12.8 / (106.2 * 106.2); // ≈ 0.002270  (106.2 ticks = 1.77 s rise)
-const POWER_GRAVITY_DOWN = 2 * 12.8 / (115.8 * 115.8); // ≈ 0.001909  (115.8 ticks = 1.93 s fall)
-const POWER_JUMP_VZ      = POWER_GRAVITY_UP * 106.2;    // ≈ 0.2411    – 12.8 u peak
+const GRAVITY_UP     = 2 * 1.7 / (30 * 30);        // ≈ 0.003778
+const GRAVITY_DOWN   = 2 * 1.7 / (21 * 21);        // ≈ 0.007710
+const JUMP_VZ        = GRAVITY_UP * 30;            // ≈ 0.11333
+const DOUBLE_JUMP_VZ = GRAVITY_UP * 20;            // ≈ 0.07556
+const POWER_GRAVITY_UP   = 2 * 12.8 / (53.1 * 53.1); // ≈ 0.009079
+const POWER_GRAVITY_DOWN = 2 * 12.8 / (57.9 * 57.9); // ≈ 0.007636
+const POWER_JUMP_VZ      = POWER_GRAVITY_UP * 53.1;    // ≈ 0.4823
 const MAX_JUMPS = 2;           // default double-jump cap
 
 /**
@@ -143,6 +128,111 @@ export function applyMovement(
       facing: undefined,
       jump: false,
     };
+  }
+
+  // ── 惯性 animated dash (蹑云逐月 / DIRECTIONAL_DASH momentum system) ────────
+  // While activeDash is in progress the dash owns all movement. Normal input,
+  // gravity, and XY velocity are suspended. Vertical velocity is captured on
+  // the FIRST tick (not at HTTP-cast time) so any pending jump is processed
+  // first — this eliminates the race where jump + dash are pressed together
+  // and the jump gets swallowed.
+  if (player.activeDash) {
+    const dash = player.activeDash;
+
+    // ── First tick: process pending jump, then capture vz ──────────────────
+    if (dash.vzPerTick === undefined) {
+      // Process a pending jump so "double-jump then instantly nieyun" works.
+      const multiJumpEffect = allEffects.find((e) => e.type === "MULTI_JUMP");
+      const maxJumps = multiJumpEffect ? (multiJumpEffect.value ?? MAX_JUMPS) : MAX_JUMPS;
+      if (input?.jump && (player.jumpCount ?? 0) < maxJumps) {
+        const boostIdx = player.buffs.findIndex(
+          (b) => b.effects.some((e) => e.type === "JUMP_BOOST")
+        );
+        if (boostIdx >= 0) {
+          player.velocity.vz = POWER_JUMP_VZ;
+          player.isPowerJump = true;
+          player.buffs.splice(boostIdx, 1);
+        } else if ((player.jumpCount ?? 0) === 0) {
+          player.velocity.vz = JUMP_VZ;
+        } else {
+          player.velocity.vz = DOUBLE_JUMP_VZ;
+        }
+      }
+      const rawVz = player.velocity.vz ?? 0;
+
+      // Dead zone: near the apex of a jump (|vz| very small) → horizontal dash.
+      // Asymmetric: tiny upward vz (> 0.003) still counts as "rising" to preserve
+      // the upward-dash feel. But negative vz must exceed -0.02 (~10 ticks of
+      // falling) before the dash tilts downward — this gives a generous 0.17 s
+      // window after the apex where the dash stays horizontal.
+      const DEAD_ZONE_UP   = 0.006;  // almost any upward motion → upward dash
+      const DEAD_ZONE_DOWN = 0.04;   // must fall for ~0.17s before dash tilts down
+
+      if (rawVz > DEAD_ZONE_UP) {
+        // Rising: dash upward, capped at max angle
+      const DEAD_ZONE_UP   = 0.006;  // almost any upward motion → upward dash
+      const DEAD_ZONE_DOWN = 0.04;   // must fall for ~0.17s before dash tilts down
+        // Falling significantly: dash downward, capped at max angle
+        dash.vzPerTick = Math.max(rawVz, dash.maxDownVz);
+      } else {
+        // Near apex / slight fall: horizontal dash
+        dash.vzPerTick = 0;
+      }
+
+      // Clear vz — the dash now owns vertical movement
+      player.velocity.vz = 0;
+      // Reset jump counter so player can jump again after the dash
+      player.jumpCount = 0;
+
+      (dash as any)._startMs = Date.now();
+      console.log(`[DASH] >>> START  time=${new Date().toISOString()}  ticks=${dash.ticksRemaining}`);
+    }
+
+    // ── Apply dash movement ────────────────────────────────────────────────
+    player.position.x += dash.vxPerTick;
+    player.position.y += dash.vyPerTick;
+
+    // Apply frozen vertical velocity (gravity suspended)
+    player.position.z = Math.max(0, player.position.z! + dash.vzPerTick);
+    if (player.position.z === 0 && dash.vzPerTick < 0) {
+      // Hit the ground mid-dash — stop downward drift, keep going horizontally
+      dash.vzPerTick = 0;
+    }
+
+    dash.ticksRemaining--;
+    if (dash.ticksRemaining <= 0) {
+      const elapsed = Date.now() - ((dash as any)._startMs ?? 0);
+      console.log(`[DASH] <<< END    time=${new Date().toISOString()}  elapsed=${elapsed}ms  (expected ~1000ms for 30 ticks @ 30Hz)`);
+      // Dash complete — gravity resets
+      if (player.position.z! <= 0.01) {
+        // On the ground: fully land
+        player.position.z  = 0;
+        player.velocity.vz = 0;
+        player.jumpCount   = 0;
+      } else {
+        // Airborne: start falling from rest (gravity reset)
+        player.velocity.vz = 0;
+      }
+      player.isPowerJump = false;
+      delete player.activeDash;
+      // Remove dash CC immunity buff
+      player.buffs = player.buffs.filter(b => b.buffId !== DASH_CC_IMMUNE_BUFF_ID);
+    }
+
+    // Clamp XY to arena and resolve obstacles — same as normal movement
+    const minX = PLAYER_RADIUS;
+    const maxX = ARENA_WIDTH - PLAYER_RADIUS;
+    const minY = PLAYER_RADIUS;
+    const maxY = ARENA_HEIGHT - PLAYER_RADIUS;
+    if (player.position.x < minX) { player.position.x = minX; }
+    if (player.position.x > maxX) { player.position.x = maxX; }
+    if (player.position.y < minY) { player.position.y = minY; }
+    if (player.position.y > maxY) { player.position.y = maxY; }
+    for (const obj of worldMap.objects) {
+      resolveObjectCollision(player, obj);
+    }
+
+    return; // Skip normal movement + normal gravity entirely
   }
 
   // ── Speed modifiers ──

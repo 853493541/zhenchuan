@@ -1,7 +1,7 @@
 // backend/game/engine/loop/GameLoop.ts
 /**
  * Real-time game loop for 2D arena battles
- * Runs at fixed tick rate (~60 Hz or 16ms per tick)
+ * Runs at fixed tick rate (configured per game, 30 Hz on current VM)
  * Handles:
  * - Player movement
  * - Ability casting
@@ -37,12 +37,14 @@ export class GameLoop {
   private playerInputs: Map<number, MovementInput | null> = new Map();
   private lastBroadcast = 0;
   private ticksSinceBroadcast = 0;
-  private broadcastTickInterval = 1; // Broadcast every tick for consistent client-side prediction
+  // Broadcast cadence in ticks. Derived from tickRate to keep roughly 30Hz net updates.
+  private broadcastTickInterval = 1;
 
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
     this.state = structuredClone(state);
-    this.tickRate = config?.tickRate ?? 60;
+    this.tickRate = config?.tickRate ?? 30;
+    this.broadcastTickInterval = Math.max(1, Math.round(this.tickRate / 30));
 
     // Initialize player input buffers
     this.state.players.forEach((_, idx) => {
@@ -117,17 +119,57 @@ export class GameLoop {
 
     this.isRunning = true;
     const tickDuration = 1000 / this.tickRate;
+    console.log(`[GameLoop] Using setImmediate batching loop — tickDuration=${tickDuration.toFixed(2)}ms`);
 
-    this.tickInterval = setInterval(() => {
-      try {
-        this.tick();
-        // Yield to event loop to prevent blocking other requests
-        setImmediate(() => {});
-      } catch (err) {
-        console.error(`[GameLoop] Error in tick for ${this.gameId}:`, err);
-        this.stop();
-      }
-    }, tickDuration);
+    // Node.js setTimeout minimum delay is ~1-4ms, but under event-loop pressure
+    // (WebSocket broadcasts, I/O) it can be delayed much further.
+    // setImmediate fires once per event loop iteration with NO minimum delay,
+    // giving us reliable sub-millisecond scheduling even under load.
+    let lastTickTime = performance.now();
+    const MAX_TICKS_PER_CALLBACK = 6;
+    let _tickCount = 0;
+    let _firstTickTime = 0;
+
+    const loop = () => {
+      if (!this.isRunning) return;
+      this.tickInterval = setImmediate(() => {
+        if (!this.isRunning) return;
+        let ticksProcessed = 0;
+
+        // Re-measure time AFTER each tick() call. tick() does real work
+        // (diff, broadcast, DB save) that costs wall-clock time. If we
+        // captured `now` once before the loop, the stale value would
+        // prevent processing the 2nd tick even though real time has passed.
+        while (ticksProcessed < MAX_TICKS_PER_CALLBACK) {
+          const now = performance.now();
+          if (lastTickTime + tickDuration > now) break;
+          lastTickTime += tickDuration;
+          ticksProcessed++;
+          _tickCount++;
+          if (_tickCount === 1) _firstTickTime = now;
+          try {
+            this.tick();
+          } catch (err) {
+            console.error(`[GameLoop] Error in tick for ${this.gameId}:`, err);
+            this.stop();
+            return;
+          }
+          if (!this.isRunning) return;
+        }
+
+        // (Hz logging removed \u2014 was spamming)
+
+        {
+          const now = performance.now();
+          if (now - lastTickTime > tickDuration * MAX_TICKS_PER_CALLBACK) {
+            lastTickTime = now;
+          }
+        }
+
+        loop();
+      });
+    };
+    loop();
   }
 
   /**
@@ -376,6 +418,21 @@ export class GameLoop {
           path: `/players/${pidx}/facing`,
           value: p.facing ?? { x: 0, y: 1 },
         });
+        // Include activeDash only when active OR transitioning to null
+        if (p.activeDash) {
+          diff.push({
+            path: `/players/${pidx}/activeDash`,
+            value: p.activeDash,
+          });
+          (this as any)._hadActiveDash = (this as any)._hadActiveDash ?? {};
+          (this as any)._hadActiveDash[pidx] = true;
+        } else if ((this as any)._hadActiveDash?.[pidx]) {
+          diff.push({
+            path: `/players/${pidx}/activeDash`,
+            value: null,
+          });
+          (this as any)._hadActiveDash[pidx] = false;
+        }
       });
       // Append per-ability cooldown patches so clients stay in sync
       this.state.players.forEach((p, pidx) => {
@@ -450,8 +507,16 @@ export class GameLoop {
       saveTime = performance.now() - saveStart;
     }
 
-    // Timing logs disabled to reduce backend load
-    // const tickTotal = performance.now() - tickStart;
+    // One-shot: log tick execution time on dash start/end
+    const anyDashing = this.state.players.some(p => !!p.activeDash);
+    if (anyDashing) {
+      const tickTotal = performance.now() - tickStart;
+      const tr = this.state.players.find(p => p.activeDash)?.activeDash?.ticksRemaining;
+      if (tr === 59) {
+        console.log(`[TICK-PERF] tick()=${tickTotal.toFixed(1)}ms  move=${moveTime.toFixed(1)}ms  broadcast=${broadcastTime.toFixed(1)}ms  save=${saveTime.toFixed(1)}ms  broadcastInterval=${this.broadcastTickInterval}`);
+      }
+    }
+
   }
 
   /**
@@ -501,7 +566,7 @@ export class GameLoop {
     if (!this.isRunning) return;
 
     this.isRunning = false;
-    clearInterval(this.tickInterval);
+    clearImmediate(this.tickInterval);
 
     // Final save to DB
     this.saveToDB();

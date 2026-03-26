@@ -104,6 +104,8 @@ export default function BattleArena({
   events = [],
   pickups = [],
 }: BattleArenaProps) {
+  // CODE FRESHNESS MARKER — if you see this in console, the new code IS running
+  useEffect(() => { console.log('[BA-FRESH] BattleArena v2 loaded — activeDash support active'); }, []);
   const wrapRef        = useRef<HTMLDivElement>(null);
   const canvasSizeRef  = useRef({ w: 800, h: 500 });
   const opponentsList = useMemo(
@@ -243,6 +245,29 @@ export default function BattleArena({
   const localDashAnimRef = useRef<{ start: V3; startTime: number } | null>(null);
   const oppDashAnimRef   = useRef<{ start: V3; startTime: number } | null>(null);
 
+  /* --- Server-authoritative dash tracking --- */
+  const meActiveDashRef  = useRef<any>(null);  // mirrors me.activeDash from server
+  // *** SYNCHRONOUS ref update during render — NOT in useEffect ***
+  // useEffect fires AFTER requestAnimationFrame, so if we set the ref there,
+  // the render loop reads the STALE value and falls back to cosmetic easing.
+  // Setting it here ensures RAF always sees the latest activeDash.
+  const _prevDashRef = useRef<boolean>(false);
+  {
+    const ad = (me as any)?.activeDash;
+    const isDashing = !!ad && ad.ticksRemaining > 0;
+    meActiveDashRef.current = isDashing ? ad : null;
+    // Transition logging (synchronous, fine for refs)
+    if (isDashing && !_prevDashRef.current) {
+      (window as any).__dashStartMs = performance.now();
+      console.log(`[DASH] >>> FRONTEND START  time=${new Date().toISOString()}`);
+    }
+    if (!isDashing && _prevDashRef.current) {
+      const elapsed = performance.now() - ((window as any).__dashStartMs ?? 0);
+      console.log(`[DASH] <<< FRONTEND END    elapsed=${elapsed.toFixed(0)}ms  (expected ~1000ms)`);
+    }
+    _prevDashRef.current = isDashing;
+  }
+
   /* --- Render-loop refs (avoid stale closures) --- */
   const abilitiesRef  = useRef<AbilityInfo[]>([]);
   const meHpRef       = useRef(me?.hp ?? 0);
@@ -303,25 +328,34 @@ export default function BattleArena({
         const r  = localRenderPosRef.current;
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
         const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
-        if (dist2d > SNAP_THRESH) {
+
+        // During server-authoritative dash: HARD SNAP to server position.
+        // Do NOT lerp — any lerp causes the visual to lag behind the server,
+        // extending the perceived dash duration beyond the actual 1-second window.
+        if (meActiveDashRef.current) {
+          localDashAnimRef.current = null;
+          localRenderPosRef.current = { x: tx, y: ty, z: tz };
+        } else if (dist2d > SNAP_THRESH) {
           localRenderPosRef.current = { x: tx, y: ty, z: tz };
           localDashAnimRef.current  = null;
         } else if (!localDashAnimRef.current && dist2d > DASH_THRESH) {
           localDashAnimRef.current = { start: { ...r }, startTime: frameNow };
         }
-        if (localDashAnimRef.current) {
-          const elapsed = frameNow - localDashAnimRef.current.startTime;
-          const t = Math.min(1, elapsed / DASH_ANIM_MS);
-          const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-          localRenderPosRef.current = {
-            x: localDashAnimRef.current.start.x + (tx - localDashAnimRef.current.start.x) * eased,
-            y: localDashAnimRef.current.start.y + (ty - localDashAnimRef.current.start.y) * eased,
-            z: localDashAnimRef.current.start.z + (tz - localDashAnimRef.current.start.z) * eased,
-          };
-          if (t >= 1) localDashAnimRef.current = null;
-        } else {
-          const k = Math.min(1, 0.3 * dtF);
-          localRenderPosRef.current = { x: r.x + ddx * k, y: r.y + ddy * k, z: r.z + ddz * k };
+        if (!meActiveDashRef.current) {
+          if (localDashAnimRef.current) {
+            const elapsed = frameNow - localDashAnimRef.current.startTime;
+            const t = Math.min(1, elapsed / DASH_ANIM_MS);
+            const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+            localRenderPosRef.current = {
+              x: localDashAnimRef.current.start.x + (tx - localDashAnimRef.current.start.x) * eased,
+              y: localDashAnimRef.current.start.y + (ty - localDashAnimRef.current.start.y) * eased,
+              z: localDashAnimRef.current.start.z + (tz - localDashAnimRef.current.start.z) * eased,
+            };
+            if (t >= 1) localDashAnimRef.current = null;
+          } else {
+            const k = Math.min(1, 0.3 * dtF);
+            localRenderPosRef.current = { x: r.x + ddx * k, y: r.y + ddy * k, z: r.z + ddz * k };
+          }
         }
       }
 
@@ -371,6 +405,19 @@ export default function BattleArena({
     const multiJump = me?.buffs?.flatMap((b: any) => b.effects ?? []).find((e: any) => e.type === 'MULTI_JUMP');
     maxJumpsRef.current = multiJump ? (multiJump.value ?? 2) : 2;
   }, [me?.buffs]);
+
+  // activeDash side-effects: reset local prediction state when dash ends
+  const activeDashJson = JSON.stringify((me as any)?.activeDash ?? null);
+  useEffect(() => {
+    const ad = (me as any)?.activeDash;
+    const isDashing = !!ad && ad.ticksRemaining > 0;
+    if (!isDashing) {
+      // Reset local prediction state so jump works immediately after dash
+      localJumpCountRef.current = 0;
+      localVzRef.current = 0;
+      isPowerJumpRef.current = false;
+    }
+  }, [activeDashJson]);
   useEffect(() => { oppHpRef.current = opponent?.hp ?? 0; }, [opponent?.hp]);
   useEffect(() => { maxHpRef.current = maxHp;             }, [maxHp]);
   useEffect(() => {
@@ -666,6 +713,17 @@ export default function BattleArena({
       localPositionRef.current = { ...me.position };
       return;
     }
+    // During active dash: server owns position — hard-snap XY + Z
+    // Check me.activeDash directly (not ref) so this works even before React
+    // fires the activeDash tracking useEffect on this render cycle.
+    const activeDash = (me as any)?.activeDash;
+    if (activeDash && activeDash.ticksRemaining > 0) {
+      meActiveDashRef.current = activeDash;
+      localPositionRef.current = { ...me.position };
+      localZRef.current  = (me.position as any).z ?? 0;
+      localVzRef.current = 0;
+      return;
+    }
     const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
     const blend  = moving ? 0.03 : 0.25;
     localPositionRef.current = {
@@ -755,9 +813,6 @@ export default function BattleArena({
       .filter(Boolean) as AbilityInfo[];
 
     const updated = [...commonUpdated, ...draftUpdated];
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[BattleArena] hand: ${me.hand.length} items → ${draftUpdated.length} draft + ${commonUpdated.length} common`);
-    }
     setHandAbilities(updated);
     abilitiesRef.current = updated;
   }, [me.hand, me.buffs, opponent?.buffs, distance, abilities]);
@@ -1145,7 +1200,9 @@ export default function BattleArena({
 
   /* Physics — mirrors server exactly */
   useEffect(() => {
-    // 7.5 u/s at 30 Hz = 0.25 u/tick
+    const CLIENT_TICK_HZ = 30;
+    const CLIENT_TICK_MS = 1000 / CLIENT_TICK_HZ;
+    // Match backend movement constants at 30Hz.
     const MAX_SPEED = 0.25, ACCEL = 0.3, DECEL = 0.9;
     // 30 Hz client physics — asymmetric gravity, tuned per jump type:
     //   Single jump : 1.7 u peak, 1.0 s rise, 0.7 s fall  → 1.7 s total
@@ -1162,6 +1219,30 @@ export default function BattleArena({
     const tick = () => {
       const pos = localPositionRef.current;
       if (!pos) return;
+
+      // During server-authoritative dash: skip movement + gravity, but KEEP camera/turning
+      if (meActiveDashRef.current) {
+        localVelocityRef.current.x = 0;
+        localVelocityRef.current.y = 0;
+        jumpLocalRef.current = false;
+        localJumpCountRef.current = 0; // keep reset so jump works immediately after dash
+        // Still allow A/D camera turning while dashing
+        const k = keysRef.current;
+        const ms = mouseStateRef.current;
+        if (controlModeRef.current === 'traditional' && !ms.isRight) {
+          const turning = (k.a ? 1 : 0) + (k.d ? -1 : 0);
+          if (turning !== 0) {
+            camYawRef.current  += turning * TURN_RATE;
+            charYawRef.current  = camYawRef.current;
+            localFacingRef.current = {
+              x: Math.sin(charYawRef.current),
+              y: Math.cos(charYawRef.current),
+            };
+          }
+        }
+        return;
+      }
+
       const vel = localVelocityRef.current;
       const k   = keysRef.current;
       const ms  = mouseStateRef.current;
@@ -1284,12 +1365,12 @@ export default function BattleArena({
         isPowerJumpRef.current    = false;
       }
     };
-    const id = setInterval(tick, 33);
+    const id = setInterval(tick, CLIENT_TICK_MS);
     return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
-    const id = setInterval(sendMovement, 33);
+    const id = setInterval(sendMovement, 1000 / 30);
     return () => { clearInterval(id); movementAbortRef.current?.abort(); };
   }, [sendMovement]);
 
@@ -1997,13 +2078,13 @@ export default function BattleArena({
                   className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
                   disabled={!ability.isReady}
                   onClick={() => castAbilityRef.current(ability.id)}
-                  title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}` : ''}`}
+                  title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 30)}` : ''}`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                   {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                     <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
-                      <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}</span>
+                      <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 30)}</span>
                     </div>
                   )}
                   <span className={styles.abilityKey}>{keyHint}</span>
@@ -2028,13 +2109,13 @@ export default function BattleArena({
                     className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
                     disabled={!ability.isReady}
                     onClick={() => castAbilityRef.current(ability.id)}
-                    title={`${ability.name}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}` : ''}`}
+                    title={`${ability.name}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 30)}` : ''}`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                     {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                       <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
-                        <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}</span>
+                        <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 30)}</span>
                       </div>
                     )}
                     <span className={styles.abilityKey}>{keyHint}</span>
