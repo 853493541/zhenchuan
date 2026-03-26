@@ -31,6 +31,8 @@ interface CharacterProps {
   onSelect?: () => void;
   /** Live position ref — read every frame for the local player */
   posRef?: MutableRefObject<{ x: number; y: number; z: number }>;
+  /** Per-frame projected screen anchor for HUD overlays */
+  onScreenBounds?: (bounds: { cx: number; topY: number; baseY: number; rs: number }) => void;
 }
 
 export default function Character({
@@ -49,6 +51,7 @@ export default function Character({
   distance,
   onSelect,
   posRef,
+  onScreenBounds,
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -58,7 +61,7 @@ export default function Character({
   const hpGroupRef = useRef<THREE.Group>(null);
   /** Smoothed display yaw for the arc — lags behind actual facing for visual animation */
   const arcDisplayYawRef = useRef(0);
-  const { camera } = useThree();
+  const { camera, size } = useThree();
 
   // Show HP bar: always for self, within 60 units for others
   const showHpBar = isMe || (distance !== undefined && distance <= 60);
@@ -143,6 +146,34 @@ export default function Character({
       const camDist = camera.position.distanceTo(_hpWorldPos);
       const s = camDist / HP_REF_DIST;
       hpGroupRef.current.scale.setScalar(s);
+    }
+
+    // --- World->screen anchor for floating numbers / HUD overlays ---
+    if (onScreenBounds) {
+      const headWorld = new THREE.Vector3(
+        groupRef.current.position.x,
+        groupRef.current.position.y + CHAR_HEIGHT + 1.05,
+        groupRef.current.position.z,
+      );
+      const hpWorld = new THREE.Vector3(
+        groupRef.current.position.x,
+        groupRef.current.position.y + CHAR_HEIGHT + 0.7,
+        groupRef.current.position.z,
+      );
+
+      headWorld.project(camera);
+      hpWorld.project(camera);
+
+      const rawCx = (headWorld.x * 0.5 + 0.5) * size.width;
+      const rawTopY = (-headWorld.y * 0.5 + 0.5) * size.height;
+      const rawBaseY = (-hpWorld.y * 0.5 + 0.5) * size.height;
+
+      const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+      const cx = Number.isFinite(rawCx) ? clamp(rawCx, 0, size.width) : size.width * 0.5;
+      const topY = Number.isFinite(rawTopY) ? clamp(rawTopY, 0, size.height) : size.height * 0.15;
+      const baseY = Number.isFinite(rawBaseY) ? clamp(rawBaseY, 0, size.height) : size.height * 0.2;
+
+      onScreenBounds({ cx, topY, baseY, rs: 1 });
     }
   });
 

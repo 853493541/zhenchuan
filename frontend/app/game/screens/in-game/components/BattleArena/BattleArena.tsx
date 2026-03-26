@@ -108,6 +108,27 @@ export default function BattleArena({
   useEffect(() => { console.log('[BA-FRESH] BattleArena v2 loaded — activeDash support active'); }, []);
   const wrapRef        = useRef<HTMLDivElement>(null);
   const canvasSizeRef  = useRef({ w: 800, h: 500 });
+
+  useEffect(() => {
+    const updateCanvasSize = () => {
+      const el = wrapRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        canvasSizeRef.current = { w: rect.width, h: rect.height };
+      }
+    };
+
+    updateCanvasSize();
+    const ro = new ResizeObserver(updateCanvasSize);
+    if (wrapRef.current) ro.observe(wrapRef.current);
+    window.addEventListener('resize', updateCanvasSize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateCanvasSize);
+    };
+  }, []);
+
   const opponentsList = useMemo(
     () => ((opponents && opponents.length > 0 ? opponents : [opponent]).filter(Boolean)),
     [opponents, opponent],
@@ -180,11 +201,18 @@ export default function BattleArena({
   const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number } }) => {
     if (value <= 0) return;
     const id = ++floatIdRef.current;
+    const safeScreenPct =
+      opts?.screenPct && Number.isFinite(opts.screenPct.x) && Number.isFinite(opts.screenPct.y)
+        ? {
+            x: Math.max(0, Math.min(1, opts.screenPct.x)),
+            y: Math.max(0, Math.min(1, opts.screenPct.y)),
+          }
+        : undefined;
     // Stagger: count how many same-type floats are currently alive to offset them
     const stagger = floatTypeCountRef.current[type] ?? 0;
     floatTypeCountRef.current[type] = stagger + 1;
     const yOffset = stagger * 28; // 28px per simultaneous float of the same type
-    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: opts?.screenPct, yOffset }]);
+    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: safeScreenPct, yOffset }]);
     setTimeout(() => {
       setFloats(f => f.filter(e => e.id !== id));
       floatTypeCountRef.current[type] = Math.max(0, (floatTypeCountRef.current[type] ?? 1) - 1);
@@ -1439,6 +1467,8 @@ export default function BattleArena({
             camZoomRef={camZoomRef}
             meFacingRef={localFacingRef as React.MutableRefObject<{ x: number; y: number }>}
             maxHp={maxHp}
+            meScreenBoundsRef={meScreenBoundsRef}
+            oppScreenBoundsRef={oppScreenBoundsRef}
           />
         </Canvas>
       </div>
@@ -2141,16 +2171,28 @@ export default function BattleArena({
           : entry.type === 'heal'
           ? '#44ff66'
           : '#ff2222';
+        const pctX = entry.screenPct && Number.isFinite(entry.screenPct.x) ? entry.screenPct.x * 100 : undefined;
+        const pctY = entry.screenPct && Number.isFinite(entry.screenPct.y) ? entry.screenPct.y * 100 : undefined;
         let posStyle: React.CSSProperties;
         if (entry.type === 'dmg_dealt') {
-          // Float above enemy — uses projected canvas position captured at cast time
-          const pctX = entry.screenPct ? entry.screenPct.x * 100 : 50;
-          const pctY = entry.screenPct ? entry.screenPct.y * 100 : 12;
-          posStyle = { top: `calc(${pctY}% + ${travelUp - entry.yOffset}px)`, left: `${pctX}%`, transform: 'translateX(-50%)' };
+          // Float above enemy — fixed-size text in screen space (not distance-scaled)
+          posStyle = {
+            top: `calc(${pctY ?? 12}% + ${travelUp - entry.yOffset}px)`,
+            left: `${pctX ?? 50}%`,
+            transform: 'translateX(-50%)',
+          };
         } else if (entry.type === 'dmg_taken') {
-          posStyle = { top: `calc(60% + ${travelUp - entry.yOffset}px)`, left: '40%', transform: 'translateX(-50%)' };
+            posStyle = {
+              top: `calc(${pctY ?? 60}% + ${travelUp - entry.yOffset}px)`,
+              left: `${pctX ?? 40}%`,
+              transform: 'translateX(-50%)',
+            };
         } else {
-          posStyle = { top: `calc(60% + ${travelUp - entry.yOffset}px)`, left: '60%', transform: 'translateX(-50%)' };
+            posStyle = {
+              top: `calc(${pctY ?? 60}% + ${travelUp - entry.yOffset}px)`,
+              left: `${pctX ?? 60}%`,
+              transform: 'translateX(-50%)',
+            };
         }
         const sign = entry.type === 'heal' ? '+' : '-';
         const displayText = entry.label

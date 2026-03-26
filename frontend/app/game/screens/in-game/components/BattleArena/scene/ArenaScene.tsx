@@ -42,6 +42,8 @@ interface ArenaSceneProps {
   camZoomRef: MutableRefObject<number>;
   meFacingRef: MutableRefObject<{ x: number; y: number }>;
   maxHp: number;
+  meScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
+  oppScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
 }
 
 export default function ArenaScene({
@@ -59,6 +61,8 @@ export default function ArenaScene({
   camZoomRef,
   meFacingRef,
   maxHp,
+  meScreenBoundsRef,
+  oppScreenBoundsRef,
 }: ArenaSceneProps) {
   return (
     <>
@@ -129,6 +133,7 @@ export default function ArenaScene({
               username="陌路侠士"
               distance={dist}
               onSelect={() => onSelectTarget?.(opp.userId)}
+              onScreenBounds={i === 0 && oppScreenBoundsRef ? (b) => { oppScreenBoundsRef.current = b; } : undefined}
             />
           </group>
         );
@@ -147,6 +152,7 @@ export default function ArenaScene({
         isSelected={selectedSelf}
         facingRef={meFacingRef}
         posRef={localRenderPosRef}
+        onScreenBounds={meScreenBoundsRef ? (b) => { meScreenBoundsRef.current = b; } : undefined}
       />
     </>
   );

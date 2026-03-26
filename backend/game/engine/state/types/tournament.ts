@@ -85,7 +85,7 @@ export const LOSER_DAMAGE_BY_BATTLE: Record<number, number> = {
 };
 
 export const STARTING_GAME_HP = 100;
-export const STARTING_BATTLE_HP = 30;
+export const STARTING_BATTLE_HP = 100;
 export const STARTING_GOLD = 5;
 export const GOLD_PER_ROUND = 5; // Income earned per battle
 
