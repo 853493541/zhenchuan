@@ -81,6 +81,9 @@ const POWER_GRAVITY_UP   = 2 * 12.8 / (53.1 * 53.1); // ≈ 0.009079
 const POWER_GRAVITY_DOWN = 2 * 12.8 / (57.9 * 57.9); // ≈ 0.007636
 const POWER_JUMP_VZ      = POWER_GRAVITY_UP * 53.1;    // ≈ 0.4823
 const MAX_JUMPS = 2;           // default double-jump cap
+const AIR_NUDGE_TOTAL_DISTANCE = 1;
+const AIR_NUDGE_DURATION_TICKS = 30; // 1.0s at 30Hz
+const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
 
 /**
  * Apply movement input to player state
@@ -101,6 +104,11 @@ export function applyMovement(
   if (player.position.z   === undefined) player.position.z   = 0;
   if (player.velocity.vz  === undefined) player.velocity.vz  = 0;
   if (player.jumpCount    === undefined) player.jumpCount     = 0;
+  if (player.airNudgeRemaining === undefined) player.airNudgeRemaining = 0;
+  if (player.airNudgeTicksRemaining === undefined) player.airNudgeTicksRemaining = 0;
+  if (player.airDirectionLocked === undefined) player.airDirectionLocked = false;
+
+  const wasAirborne = (player.position.z ?? 0) > 0.01;
 
   const allEffects = player.buffs.flatMap((b) => b.effects);
 
@@ -145,6 +153,7 @@ export function applyMovement(
       const multiJumpEffect = allEffects.find((e) => e.type === "MULTI_JUMP");
       const maxJumps = multiJumpEffect ? (multiJumpEffect.value ?? MAX_JUMPS) : MAX_JUMPS;
       if (input?.jump && (player.jumpCount ?? 0) < maxJumps) {
+        const isMultiJumpDashPending = !!multiJumpEffect;
         const boostIdx = player.buffs.findIndex(
           (b) => b.effects.some((e) => e.type === "JUMP_BOOST")
         );
@@ -152,10 +161,11 @@ export function applyMovement(
           player.velocity.vz = POWER_JUMP_VZ;
           player.isPowerJump = true;
           player.buffs.splice(boostIdx, 1);
-        } else if ((player.jumpCount ?? 0) === 0) {
-          player.velocity.vz = JUMP_VZ;
         } else {
-          player.velocity.vz = DOUBLE_JUMP_VZ;
+          // 鸟翔碧空: all jumps are full 3× strength
+          player.velocity.vz = isMultiJumpDashPending
+            ? JUMP_VZ * MULTI_JUMP_HEIGHT_MULT
+            : (player.jumpCount ?? 0) === 0 ? JUMP_VZ : DOUBLE_JUMP_VZ;
         }
       }
       const rawVz = player.velocity.vz ?? 0;
@@ -170,8 +180,8 @@ export function applyMovement(
 
       if (rawVz > DEAD_ZONE_UP) {
         // Rising: dash upward, capped at max angle
-      const DEAD_ZONE_UP   = 0.006;  // almost any upward motion → upward dash
-      const DEAD_ZONE_DOWN = 0.04;   // must fall for ~0.17s before dash tilts down
+        dash.vzPerTick = Math.min(rawVz, dash.maxUpVz);
+      } else if (rawVz < -DEAD_ZONE_DOWN) {
         // Falling significantly: dash downward, capped at max angle
         dash.vzPerTick = Math.max(rawVz, dash.maxDownVz);
       } else {
@@ -181,8 +191,13 @@ export function applyMovement(
 
       // Clear vz — the dash now owns vertical movement
       player.velocity.vz = 0;
-      // Reset jump counter so player can jump again after the dash
-      player.jumpCount = 0;
+      // Post-dash jump allowance: MULTI_JUMP → full reset (5 jumps), normal → 1 jump only
+      const hasMultiJumpDash = allEffects.some((e) => e.type === "MULTI_JUMP");
+      player.jumpCount = hasMultiJumpDash ? 0 : 1;
+      player.airNudgeRemaining = 0;
+      player.airNudgeTicksRemaining = 0;
+      delete player.airNudgeDir;
+      player.airDirectionLocked = false;
 
       (dash as any)._startMs = Date.now();
       console.log(`[DASH] >>> START  time=${new Date().toISOString()}  ticks=${dash.ticksRemaining}`);
@@ -209,10 +224,17 @@ export function applyMovement(
         player.position.z  = 0;
         player.velocity.vz = 0;
         player.jumpCount   = 0;
+        player.airNudgeRemaining = 0;
+        player.airNudgeTicksRemaining = 0;
+        delete player.airNudgeDir;
       } else {
         // Airborne: start falling from rest (gravity reset)
         player.velocity.vz = 0;
+        // Post-dash jump allowance: MULTI_JUMP → full reset, normal → 1 jump only
+        const hasMultiJumpEnd = allEffects.some((e) => e.type === "MULTI_JUMP");
+        player.jumpCount = hasMultiJumpEnd ? 0 : 1;
       }
+      player.airDirectionLocked = false;
       player.isPowerJump = false;
       delete player.activeDash;
       // Remove dash CC immunity buff
@@ -248,14 +270,19 @@ export function applyMovement(
   const effectiveMoveSpeed =
     player.moveSpeed * Math.max(0, 1 + speedBoostSum - slowSum);
 
+  let airInputDx = 0;
+  let airInputDy = 0;
+  let targetVx = 0;
+  let targetVy = 0;
+
   if (!input) {
-    // No input - decelerate (stop sliding)
-    player.velocity.vx *= 0.9;
-    player.velocity.vy *= 0.9;
+    // On ground: decelerate. In air: preserve existing horizontal momentum.
+    if (!wasAirborne) {
+      player.velocity.vx *= 0.9;
+      player.velocity.vy *= 0.9;
+    }
   } else {
     // Calculate target velocity based on input
-    let targetVx = 0;
-    let targetVy = 0;
 
     if (input.dx !== undefined || input.dy !== undefined) {
       // 传统模式: precise direction vector from client
@@ -269,22 +296,43 @@ export function applyMovement(
       if (input.right) targetVx += effectiveMoveSpeed;
     }
 
-    // Smooth acceleration to target velocity
-    const acceleration = 0.3;
-    player.velocity.vx += (targetVx - player.velocity.vx) * acceleration;
-    player.velocity.vy += (targetVy - player.velocity.vy) * acceleration;
+    const inLimitedAirControl =
+      wasAirborne &&
+      !input.jump &&
+      ((player.airNudgeRemaining ?? 0) > 0 ||
+        (player.airNudgeTicksRemaining ?? 0) > 0 ||
+        !!player.airNudgeDir);
 
-    // Update facing direction from input (immediate, not velocity-lagged).
-    // In traditional/MMO control, facing can intentionally differ from movement
-    // (backpedal or strafe), so explicit input.facing takes precedence.
-    if (input.facing) {
-      const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
-      if (flen > 0.01) {
-        player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
+    const hasDirectionalIntent =
+      Math.abs(targetVx) > 0.01 || Math.abs(targetVy) > 0.01;
+
+    if (player.airDirectionLocked && wasAirborne) {
+      // After directional double jump: velocity locked, no steering allowed.
+    } else if (!inLimitedAirControl) {
+      // Ground: normal accel/decel behavior.
+      // Airborne: preserve momentum unless there is active directional intent.
+      const acceleration = 0.3;
+      if (!wasAirborne || hasDirectionalIntent) {
+        player.velocity.vx += (targetVx - player.velocity.vx) * acceleration;
+        player.velocity.vy += (targetVy - player.velocity.vy) * acceleration;
       }
-    } else if (targetVx !== 0 || targetVy !== 0) {
-      const flen = Math.sqrt(targetVx * targetVx + targetVy * targetVy);
-      player.facing = { x: targetVx / flen, y: targetVy / flen };
+
+      // Update facing direction from input (immediate, not velocity-lagged).
+      // In traditional/MMO control, facing can intentionally differ from movement
+      // (backpedal or strafe), so explicit input.facing takes precedence.
+      if (input.facing) {
+        const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
+        if (flen > 0.01) {
+          player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
+        }
+      } else if (targetVx !== 0 || targetVy !== 0) {
+        const flen = Math.sqrt(targetVx * targetVx + targetVy * targetVy);
+        player.facing = { x: targetVx / flen, y: targetVy / flen };
+      }
+    } else {
+      // Post-upward-jump airborne phase: lock momentum and use limited correction.
+      airInputDx = targetVx;
+      airInputDy = targetVy;
     }
 
     // ── Jump (one-shot: GameLoop clears input.jump after each tick) ──
@@ -292,6 +340,7 @@ export function applyMovement(
     const multiJumpEffect = allEffects.find((e) => e.type === "MULTI_JUMP");
     const maxJumps = multiJumpEffect ? (multiJumpEffect.value ?? MAX_JUMPS) : MAX_JUMPS;
     if (input.jump && player.jumpCount < maxJumps) {
+      const isMultiJump = !!multiJumpEffect;
       // 弹跳 JUMP_BOOST: consumed immediately for a power jump, any jump number.
       const boostIdx = player.buffs.findIndex(
         (b) => b.effects.some((e) => e.type === "JUMP_BOOST")
@@ -301,14 +350,70 @@ export function applyMovement(
         player.isPowerJump = true;
         player.buffs.splice(boostIdx, 1); // consume the buff instantly
       } else if (player.jumpCount === 0) {
-        // First jump
-        player.velocity.vz = JUMP_VZ;
+        // First jump (鸟翔碧空: 3× height)
+        player.velocity.vz = isMultiJump ? JUMP_VZ * MULTI_JUMP_HEIGHT_MULT : JUMP_VZ;
         player.isPowerJump = false;
       } else {
-        // Double / multi-jump: always 1.5× the first-jump height
-        player.velocity.vz = DOUBLE_JUMP_VZ;
+        // Double / multi-jump (鸟翔碧空: every jump is full 3× strength)
+        player.velocity.vz = isMultiJump ? JUMP_VZ * MULTI_JUMP_HEIGHT_MULT : DOUBLE_JUMP_VZ;
       }
       player.jumpCount += 1;
+
+      const hadDirectionalInput = hasDirectionalIntent;
+
+      // Direction lock: directional 2nd+ jump locks air steering (not for MULTI_JUMP)
+      if (hadDirectionalInput && player.jumpCount >= 2 && !isMultiJump) {
+        player.airDirectionLocked = true;
+      } else {
+        player.airDirectionLocked = false;
+      }
+
+      if (!hadDirectionalInput) {
+        // Upward jump (single or double): arm limited mid-air correction.
+        player.airNudgeRemaining = AIR_NUDGE_TOTAL_DISTANCE;
+        player.airNudgeTicksRemaining = 0;
+        delete player.airNudgeDir;
+      } else {
+        // Directional jump: no limiter.
+        player.airNudgeRemaining = 0;
+        player.airNudgeTicksRemaining = 0;
+        delete player.airNudgeDir;
+      }
+    }
+  }
+
+  // Start limited correction only while airborne and only when directional input appears.
+  if (
+    wasAirborne &&
+    (player.airNudgeRemaining ?? 0) > 0 &&
+    (player.airNudgeTicksRemaining ?? 0) <= 0 &&
+    !input?.jump
+  ) {
+    const len = Math.sqrt(airInputDx * airInputDx + airInputDy * airInputDy);
+    if (len > 0.01) {
+      player.airNudgeDir = { x: airInputDx / len, y: airInputDy / len };
+      player.airNudgeTicksRemaining = AIR_NUDGE_DURATION_TICKS;
+    }
+  }
+
+  // Animate correction over 1.0s instead of applying instantly.
+  if (
+    wasAirborne &&
+    !input?.jump &&
+    (player.airNudgeTicksRemaining ?? 0) > 0 &&
+    (player.airNudgeRemaining ?? 0) > 0 &&
+    player.airNudgeDir
+  ) {
+    const ticksLeft = Math.max(1, player.airNudgeTicksRemaining!);
+    const step = Math.min(player.airNudgeRemaining!, player.airNudgeRemaining! / ticksLeft);
+    player.position.x += player.airNudgeDir.x * step;
+    player.position.y += player.airNudgeDir.y * step;
+    player.airNudgeRemaining = Math.max(0, player.airNudgeRemaining! - step);
+    player.airNudgeTicksRemaining = Math.max(0, player.airNudgeTicksRemaining! - 1);
+    if (player.airNudgeRemaining <= 0 || player.airNudgeTicksRemaining <= 0) {
+      player.airNudgeRemaining = 0;
+      player.airNudgeTicksRemaining = 0;
+      delete player.airNudgeDir;
     }
   }
 
@@ -349,11 +454,24 @@ export function applyMovement(
   const gravDown = player.isPowerJump ? POWER_GRAVITY_DOWN  : GRAVITY_DOWN;
   player.velocity.vz! -= (player.velocity.vz! >= 0 ? gravUp : gravDown);
   player.position.z! += player.velocity.vz!;
+
+  const isAirborneNow = player.position.z! > 0.01;
+  if (!wasAirborne && isAirborneNow && player.jumpCount === 0) {
+    // Preserve limiter state for jump takeoff; only clear for non-jump airborne transitions.
+    player.airNudgeRemaining = 0;
+    player.airNudgeTicksRemaining = 0;
+    delete player.airNudgeDir;
+  }
+
   if (player.position.z! <= 0) {
     player.position.z  = 0;
     player.velocity.vz = 0;
     player.jumpCount   = 0; // restore jumps on landing
     player.isPowerJump = false;
+    player.airDirectionLocked = false;
+    player.airNudgeRemaining = 0;
+    player.airNudgeTicksRemaining = 0;
+    delete player.airNudgeDir;
   }
 }
 

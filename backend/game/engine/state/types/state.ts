@@ -56,6 +56,29 @@ export interface PlayerState {
   isPowerJump?: boolean;
 
   /**
+   * Remaining limited-air-control allowance (units).
+    * Armed by upward jump phases (single or double) and consumed over time while airborne.
+   */
+  airNudgeRemaining?: number;
+
+  /**
+   * Remaining ticks for animated limited-air-control correction.
+   * At 30Hz, 30 ticks = 1.0s.
+   */
+  airNudgeTicksRemaining?: number;
+
+  /**
+   * Locked direction for the animated limited-air-control correction.
+   */
+  airNudgeDir?: { x: number; y: number };
+
+  /**
+   * True after a directional 2nd+ jump (non-MULTI_JUMP). Freezes horizontal
+   * steering until landing — player rides existing momentum only.
+   */
+  airDirectionLocked?: boolean;
+
+  /**
    * Last movement facing direction (unit vector).
    * Updated whenever the player has a non-trivial movement input.
    * Used by directional dashes so TOWARD means "where I'm facing".

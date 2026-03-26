@@ -236,6 +236,10 @@ export default function BattleArena({
   const localZRef         = useRef(0);     // current Z height (world units)
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
+  const airNudgeRemainingRef = useRef(0);  // post-double-jump correction budget (units)
+  const airNudgeTicksRemainingRef = useRef(0); // correction animation ticks remaining
+  const airNudgeDirRef = useRef<{ x: number; y: number } | null>(null);
+  const airDirectionLockedRef = useRef(false); // locked after directional 2nd+ jump
   const localFacingRef    = useRef({ x: 0, y: 1 }); // current facing direction (default +Y)
   const facingInitRef     = useRef(false);
   const meFacingRef       = useRef<Facing>({ x: 0, y: 1 });
@@ -752,13 +756,22 @@ export default function BattleArena({
       localVzRef.current = 0;
       return;
     }
+    // Reconcile Z: if server Z diverges significantly from local prediction,
+    // snap localZ to server. This corrects drift from enhanced (鸟翔碧空) jumps
+    // where the higher velocity causes the local arc to diverge from server over time.
+    const serverZ = (me.position as any).z ?? 0;
+    const localZ  = localZRef.current;
+    if (Math.abs(serverZ - localZ) > 0.5) {
+      localZRef.current = serverZ;
+      // Don't reset vz — let the existing trajectory continue from corrected height.
+    }
     const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
     const blend  = moving ? 0.03 : 0.25;
     localPositionRef.current = {
       x: local.x + dx * blend,
       y: local.y + dy * blend,
     };
-  }, [me?.position?.x, me?.position?.y]);
+  }, [me?.position?.x, me?.position?.y, (me?.position as any)?.z]);
 
   useEffect(() => {
     if (!opponent?.position) return;
@@ -1243,6 +1256,9 @@ export default function BattleArena({
     const POWER_GRAVITY_UP_CLIENT   = 2 * 12.8 / (53.1 * 53.1);        // ≈ 0.009079 (1.77 s rise)
     const POWER_GRAVITY_DOWN_CLIENT = 2 * 12.8 / (57.9 * 57.9);        // ≈ 0.007636 (1.93 s fall)
     const POWER_JUMP_VZ_CLIENT      = POWER_GRAVITY_UP_CLIENT * 53.1;   // ≈ 0.4823  (12.8 u peak)
+    const AIR_NUDGE_TOTAL_DISTANCE = 1;
+    const AIR_NUDGE_DURATION_TICKS = 30; // 1.0s at 30Hz
+    const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
     const TURN_RATE = 0.055; // radians / tick at 30 Hz ≈ 95°/sec
     const tick = () => {
       const pos = localPositionRef.current;
@@ -1253,7 +1269,12 @@ export default function BattleArena({
         localVelocityRef.current.x = 0;
         localVelocityRef.current.y = 0;
         jumpLocalRef.current = false;
-        localJumpCountRef.current = 0; // keep reset so jump works immediately after dash
+        // Post-dash jump allowance: MULTI_JUMP → full reset, normal → 1 jump only
+        localJumpCountRef.current = maxJumpsRef.current > 2 ? 0 : 1;
+        airNudgeRemainingRef.current = 0;
+        airNudgeTicksRemainingRef.current = 0;
+        airNudgeDirRef.current = null;
+        airDirectionLockedRef.current = false;
         // Still allow A/D camera turning while dashing
         const k = keysRef.current;
         const ms = mouseStateRef.current;
@@ -1274,6 +1295,11 @@ export default function BattleArena({
       const vel = localVelocityRef.current;
       const k   = keysRef.current;
       const ms  = mouseStateRef.current;
+      const airborne = localZRef.current > 0.01;
+      let airNudgeDx = 0;
+      let airNudgeDy = 0;
+      let moveIntentDx = 0;
+      let moveIntentDy = 0;
 
       if (controlModeRef.current === 'traditional') {
         const mouseLook = ms.isRight;
@@ -1320,32 +1346,50 @@ export default function BattleArena({
           if (k.w) { fx += moveFwd.x; fy += moveFwd.y; }
           if (k.s) { fx -= moveFwd.x; fy -= moveFwd.y; }
         }
+        moveIntentDx = fx;
+        moveIntentDy = fy;
 
-        if (fx !== 0 || fy !== 0) {
-          const len = Math.sqrt(fx * fx + fy * fy);
-          // Backpedal is slower while keeping facing unchanged.
-          const backpedalOnly = k.s && !k.w && !k.a && !k.d && !bothMouse;
-          const speedMult = backpedalOnly ? 0.5 : 1.0;
-          vel.x += ((fx / len) * MAX_SPEED * speedMult - vel.x) * ACCEL;
-          vel.y += ((fy / len) * MAX_SPEED * speedMult - vel.y) * ACCEL;
-          if (mouseLook && !backpedalOnly) {
-            charYawRef.current = Math.atan2(fx / len, fy / len);
-            localFacingRef.current = {
-              x: Math.sin(charYawRef.current),
-              y: Math.cos(charYawRef.current),
-            };
+        const inLimitedAirControl =
+          airborne &&
+          !jumpLocalRef.current &&
+          (airNudgeRemainingRef.current > 0 ||
+            airNudgeTicksRemainingRef.current > 0 ||
+            !!airNudgeDirRef.current);
+        if (airDirectionLockedRef.current && airborne) {
+          // After directional double jump: velocity locked, no steering.
+        } else if (!inLimitedAirControl) {
+          if (fx !== 0 || fy !== 0) {
+            const len = Math.sqrt(fx * fx + fy * fy);
+            // Backpedal is slower while keeping facing unchanged.
+            const backpedalOnly = k.s && !k.w && !k.a && !k.d && !bothMouse;
+            const speedMult = backpedalOnly ? 0.5 : 1.0;
+            vel.x += ((fx / len) * MAX_SPEED * speedMult - vel.x) * ACCEL;
+            vel.y += ((fy / len) * MAX_SPEED * speedMult - vel.y) * ACCEL;
+            if (mouseLook && !backpedalOnly) {
+              charYawRef.current = Math.atan2(fx / len, fy / len);
+              localFacingRef.current = {
+                x: Math.sin(charYawRef.current),
+                y: Math.cos(charYawRef.current),
+              };
+            }
+          } else {
+            if (!airborne) {
+              vel.x *= DECEL;
+              vel.y *= DECEL;
+            }
+            // In mouselook mode with no movement, restore facing to camera direction
+            if (mouseLook) {
+              charYawRef.current = camYawRef.current;
+              localFacingRef.current = {
+                x: Math.sin(camYawRef.current),
+                y: Math.cos(camYawRef.current),
+              };
+            }
           }
         } else {
-          vel.x *= DECEL;
-          vel.y *= DECEL;
-          // In mouselook mode with no movement, restore facing to camera direction
-          if (mouseLook) {
-            charYawRef.current = camYawRef.current;
-            localFacingRef.current = {
-              x: Math.sin(camYawRef.current),
-              y: Math.cos(camYawRef.current),
-            };
-          }
+          // Post-upward-jump airborne phase: keep momentum, use limited correction.
+          airNudgeDx = fx;
+          airNudgeDy = fy;
         }
       } else {
         // 摇杆模式: WASD = absolute world directions
@@ -1354,33 +1398,113 @@ export default function BattleArena({
         if (k.s) iy -= 1;
         if (k.a) ix -= 1;
         if (k.d) ix += 1;
-        if (ix !== 0 || iy !== 0) {
-          const len = Math.sqrt(ix * ix + iy * iy);
-          vel.x += ((ix / len) * MAX_SPEED - vel.x) * ACCEL;
-          vel.y += ((iy / len) * MAX_SPEED - vel.y) * ACCEL;
-          localFacingRef.current = { x: ix / len, y: iy / len };
+        moveIntentDx = ix;
+        moveIntentDy = iy;
+        const inLimitedAirControl =
+          airborne &&
+          !jumpLocalRef.current &&
+          (airNudgeRemainingRef.current > 0 ||
+            airNudgeTicksRemainingRef.current > 0 ||
+            !!airNudgeDirRef.current);
+        if (airDirectionLockedRef.current && airborne) {
+          // After directional double jump: velocity locked, no steering.
+        } else if (!inLimitedAirControl) {
+          if (ix !== 0 || iy !== 0) {
+            const len = Math.sqrt(ix * ix + iy * iy);
+            vel.x += ((ix / len) * MAX_SPEED - vel.x) * ACCEL;
+            vel.y += ((iy / len) * MAX_SPEED - vel.y) * ACCEL;
+            localFacingRef.current = { x: ix / len, y: iy / len };
+          } else {
+            if (!airborne) {
+              vel.x *= DECEL;
+              vel.y *= DECEL;
+            }
+          }
         } else {
-          vel.x *= DECEL;
-          vel.y *= DECEL;
+          airNudgeDx = ix;
+          airNudgeDy = iy;
+        }
+      }
+
+      // Start limited correction only after double jump and only when input appears.
+      if (
+        airborne &&
+        !jumpLocalRef.current &&
+        airNudgeRemainingRef.current > 0 &&
+        airNudgeTicksRemainingRef.current <= 0
+      ) {
+        const nlen = Math.sqrt(airNudgeDx * airNudgeDx + airNudgeDy * airNudgeDy);
+        if (nlen > 0.01) {
+          airNudgeDirRef.current = { x: airNudgeDx / nlen, y: airNudgeDy / nlen };
+          airNudgeTicksRemainingRef.current = AIR_NUDGE_DURATION_TICKS;
+        }
+      }
+
+      let nudgeX = 0;
+      let nudgeY = 0;
+      if (
+        airborne &&
+        !jumpLocalRef.current &&
+        airNudgeTicksRemainingRef.current > 0 &&
+        airNudgeRemainingRef.current > 0 &&
+        airNudgeDirRef.current
+      ) {
+        const ticksLeft = Math.max(1, airNudgeTicksRemainingRef.current);
+        const step = Math.min(airNudgeRemainingRef.current, airNudgeRemainingRef.current / ticksLeft);
+        nudgeX = airNudgeDirRef.current.x * step;
+        nudgeY = airNudgeDirRef.current.y * step;
+        airNudgeRemainingRef.current = Math.max(0, airNudgeRemainingRef.current - step);
+        airNudgeTicksRemainingRef.current = Math.max(0, airNudgeTicksRemainingRef.current - 1);
+        if (airNudgeRemainingRef.current <= 0 || airNudgeTicksRemainingRef.current <= 0) {
+          airNudgeRemainingRef.current = 0;
+          airNudgeTicksRemainingRef.current = 0;
+          airNudgeDirRef.current = null;
         }
       }
 
       localPositionRef.current = {
-        x: Math.max(2, Math.min(ARENA_WIDTH - 2, pos.x + vel.x)),
-        y: Math.max(2, Math.min(ARENA_HEIGHT - 2, pos.y + vel.y)),
+        x: Math.max(2, Math.min(ARENA_WIDTH - 2, pos.x + vel.x + nudgeX)),
+        y: Math.max(2, Math.min(ARENA_HEIGHT - 2, pos.y + vel.y + nudgeY)),
       };
 
       // ── Z axis: jump + gravity ──
       if (jumpLocalRef.current && localJumpCountRef.current < maxJumpsRef.current) {
-        const jumpVz = hasFuyaoBuffRef.current ? POWER_JUMP_VZ_CLIENT
-          : localJumpCountRef.current === 0 ? JUMP_VZ_CLIENT
-          : DOUBLE_JUMP_VZ_CLIENT;
+        const hadDirectionalInput =
+          Math.abs(moveIntentDx) > 0.01 || Math.abs(moveIntentDy) > 0.01;
+        const isMultiJump = maxJumpsRef.current > 2;
+        let jumpVz: number;
+        if (hasFuyaoBuffRef.current) {
+          jumpVz = POWER_JUMP_VZ_CLIENT;
+        } else if (localJumpCountRef.current === 0) {
+          jumpVz = isMultiJump ? JUMP_VZ_CLIENT * MULTI_JUMP_HEIGHT_MULT : JUMP_VZ_CLIENT;
+        } else {
+          // 鸟翔碧空: every jump is full 3× strength
+          jumpVz = isMultiJump ? JUMP_VZ_CLIENT * MULTI_JUMP_HEIGHT_MULT : DOUBLE_JUMP_VZ_CLIENT;
+        }
         if (hasFuyaoBuffRef.current) isPowerJumpRef.current = true;
         else if (localJumpCountRef.current === 0) isPowerJumpRef.current = false;
         hasFuyaoBuffRef.current   = false;
         localVzRef.current        = jumpVz;
         localJumpCountRef.current += 1;
         jumpLocalRef.current       = false;
+
+        // Direction lock: directional 2nd+ jump locks air steering (not for MULTI_JUMP)
+        if (hadDirectionalInput && localJumpCountRef.current >= 2 && !isMultiJump) {
+          airDirectionLockedRef.current = true;
+        } else {
+          airDirectionLockedRef.current = false;
+        }
+
+        if (!hadDirectionalInput) {
+          airNudgeRemainingRef.current = AIR_NUDGE_TOTAL_DISTANCE;
+          airNudgeTicksRemainingRef.current = 0;
+          airNudgeDirRef.current = null;
+        } else {
+          // Directional jump: no limiter.
+          airNudgeRemainingRef.current = 0;
+          airNudgeTicksRemainingRef.current = 0;
+          airNudgeDirRef.current = null;
+        }
       }
       const gravUp   = isPowerJumpRef.current ? POWER_GRAVITY_UP_CLIENT   : GRAVITY_UP_CLIENT;
       const gravDown = isPowerJumpRef.current ? POWER_GRAVITY_DOWN_CLIENT  : GRAVITY_DOWN_CLIENT;
@@ -1391,6 +1515,10 @@ export default function BattleArena({
         localVzRef.current        = 0;
         localJumpCountRef.current = 0;
         isPowerJumpRef.current    = false;
+        airDirectionLockedRef.current = false;
+        airNudgeRemainingRef.current = 0;
+        airNudgeTicksRemainingRef.current = 0;
+        airNudgeDirRef.current = null;
       }
     };
     const id = setInterval(tick, CLIENT_TICK_MS);
