@@ -15,6 +15,11 @@ export interface AuthenticatedWebSocket extends WebSocket {
   isAlive?: boolean;
 }
 
+const WS_DEBUG_LOGS = process.env.WS_DEBUG_LOGS === "1";
+const wsLog = (...args: any[]) => {
+  if (WS_DEBUG_LOGS) console.log(...args);
+};
+
 function extractUserIdFromUrl(url: string): {
   gameId: string;
   token: string;
@@ -48,34 +53,34 @@ export function setupWebSocket(server: HTTPServer) {
 
   // Log when clients try to connect but before they authenticate
   wss.on("connection", (ws: AuthenticatedWebSocket, req: IncomingMessage) => {
-    console.log("[WS] Backend: 1️⃣ New connection attempt received!");
-    console.log("[WS] Backend: Connection details:");
-    console.log("[WS]   - URL:", req.url);
-    console.log("[WS]   - Method:", req.method);
-    console.log("[WS]   - Headers:", {
+    wsLog("[WS] Backend: 1️⃣ New connection attempt received!");
+    wsLog("[WS] Backend: Connection details:");
+    wsLog("[WS]   - URL:", req.url);
+    wsLog("[WS]   - Method:", req.method);
+    wsLog("[WS]   - Headers:", {
       host: req.headers.host,
       origin: req.headers.origin,
       "user-agent": req.headers["user-agent"],
       upgrade: req.headers.upgrade,
       connection: req.headers.connection,
     });
-    console.log("[WS]   - Remote address:", req.socket.remoteAddress);
+    wsLog("[WS]   - Remote address:", req.socket.remoteAddress);
     
     // Extract and verify credentials
     const credentials = extractUserIdFromUrl(req.url || "");
     if (!credentials) {
-      console.log(`[WS] Backend: 2️⃣❌ Missing gameId or token in URL: ${req.url}`);
+      wsLog(`[WS] Backend: 2️⃣❌ Missing gameId or token in URL: ${req.url}`);
       ws.close(4000, "Missing gameId or token");
       return;
     }
 
-    console.log(`[WS] Backend: 3️⃣ Extracted - gameId: ${credentials.gameId}`);
-    console.log(`[WS] Backend: Token: ${credentials.token.substring(0, 30)}...`);
-    console.log(`[WS] Backend: 4️⃣ Verifying token...`);
+    wsLog(`[WS] Backend: 3️⃣ Extracted - gameId: ${credentials.gameId}`);
+    wsLog(`[WS] Backend: Token: ${credentials.token.substring(0, 30)}...`);
+    wsLog(`[WS] Backend: 4️⃣ Verifying token...`);
 
     const verified = verifyToken(credentials.token);
     if (!verified) {
-      console.log("[WS] Backend: 5️⃣❌ Token verification failed!");
+      wsLog("[WS] Backend: 5️⃣❌ Token verification failed!");
       ws.close(4001, "Invalid token");
       return;
     }
@@ -84,14 +89,14 @@ export function setupWebSocket(server: HTTPServer) {
     ws.gameId = credentials.gameId;
     ws.isAlive = true;
 
-    console.log(
+    wsLog(
       `[WS] Backend: 6️⃣✅ User ${ws.userId} connected to game ${ws.gameId}`
     );
 
     // Subscribe to game updates
-    console.log("[WS] Backend: 7️⃣ Adding to subscription manager...");
+    wsLog("[WS] Backend: 7️⃣ Adding to subscription manager...");
     subscriptionManager.subscribe(ws, credentials.gameId, verified.userId);
-    console.log("[WS] Backend: 8️⃣ Subscription complete!");
+    wsLog("[WS] Backend: 8️⃣ Subscription complete!");
 
     // Handle incoming messages
     ws.on("message", (data: Buffer) => {
@@ -106,7 +111,7 @@ export function setupWebSocket(server: HTTPServer) {
             break;
 
           default:
-            console.log(`[WS] Unknown message type: ${message.type}`);
+            wsLog(`[WS] Unknown message type: ${message.type}`);
         }
       } catch (err) {
         console.error("[WS] Failed to parse message:", err);
@@ -120,7 +125,7 @@ export function setupWebSocket(server: HTTPServer) {
 
     // Handle disconnect
     ws.on("close", () => {
-      console.log(
+      wsLog(
         `[WS] User ${ws.userId} disconnected from game ${ws.gameId}`
       );
       subscriptionManager.unsubscribe(ws);
@@ -138,7 +143,7 @@ export function setupWebSocket(server: HTTPServer) {
 
   // Log when server is closed
   wss.on("close", () => {
-    console.log("[WS] WebSocket Server closed");
+    wsLog("[WS] WebSocket Server closed");
   });
 
   // Heartbeat interval to detect dead connections

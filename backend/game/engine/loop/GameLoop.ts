@@ -119,57 +119,39 @@ export class GameLoop {
 
     this.isRunning = true;
     const tickDuration = 1000 / this.tickRate;
-    console.log(`[GameLoop] Using setImmediate batching loop — tickDuration=${tickDuration.toFixed(2)}ms`);
+    console.log(`[GameLoop] Using adaptive timer loop — tickDuration=${tickDuration.toFixed(2)}ms`);
 
-    // Node.js setTimeout minimum delay is ~1-4ms, but under event-loop pressure
-    // (WebSocket broadcasts, I/O) it can be delayed much further.
-    // setImmediate fires once per event loop iteration with NO minimum delay,
-    // giving us reliable sub-millisecond scheduling even under load.
     let lastTickTime = performance.now();
     const MAX_TICKS_PER_CALLBACK = 6;
-    let _tickCount = 0;
-    let _firstTickTime = 0;
-
-    const loop = () => {
+    const runTicks = () => {
       if (!this.isRunning) return;
-      this.tickInterval = setImmediate(() => {
+
+      let ticksProcessed = 0;
+      while (ticksProcessed < MAX_TICKS_PER_CALLBACK) {
+        const now = performance.now();
+        if (lastTickTime + tickDuration > now) break;
+        lastTickTime += tickDuration;
+        ticksProcessed++;
+        try {
+          this.tick();
+        } catch (err) {
+          console.error(`[GameLoop] Error in tick for ${this.gameId}:`, err);
+          this.stop();
+          return;
+        }
         if (!this.isRunning) return;
-        let ticksProcessed = 0;
+      }
 
-        // Re-measure time AFTER each tick() call. tick() does real work
-        // (diff, broadcast, DB save) that costs wall-clock time. If we
-        // captured `now` once before the loop, the stale value would
-        // prevent processing the 2nd tick even though real time has passed.
-        while (ticksProcessed < MAX_TICKS_PER_CALLBACK) {
-          const now = performance.now();
-          if (lastTickTime + tickDuration > now) break;
-          lastTickTime += tickDuration;
-          ticksProcessed++;
-          _tickCount++;
-          if (_tickCount === 1) _firstTickTime = now;
-          try {
-            this.tick();
-          } catch (err) {
-            console.error(`[GameLoop] Error in tick for ${this.gameId}:`, err);
-            this.stop();
-            return;
-          }
-          if (!this.isRunning) return;
-        }
+      const now = performance.now();
+      if (now - lastTickTime > tickDuration * MAX_TICKS_PER_CALLBACK) {
+        lastTickTime = now;
+      }
 
-        // (Hz logging removed \u2014 was spamming)
-
-        {
-          const now = performance.now();
-          if (now - lastTickTime > tickDuration * MAX_TICKS_PER_CALLBACK) {
-            lastTickTime = now;
-          }
-        }
-
-        loop();
-      });
+      const delayMs = Math.max(1, Math.ceil(lastTickTime + tickDuration - now));
+      this.tickInterval = setTimeout(runTicks, delayMs);
     };
-    loop();
+
+    this.tickInterval = setTimeout(runTicks, Math.max(1, Math.ceil(tickDuration)));
   }
 
   /**
@@ -566,7 +548,7 @@ export class GameLoop {
     if (!this.isRunning) return;
 
     this.isRunning = false;
-    clearImmediate(this.tickInterval);
+    clearTimeout(this.tickInterval);
 
     // Final save to DB
     this.saveToDB();
