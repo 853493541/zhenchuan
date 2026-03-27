@@ -15,6 +15,13 @@ export interface PickupItem {
   position: { x: number; y: number };
 }
 
+export interface SafeZone {
+  centerX: number;
+  centerY: number;
+  currentHalf: number;
+  dps: number;
+}
+
 export interface PlayerState {
   userId: PlayerID;
 
@@ -129,6 +136,9 @@ export interface GameState {
 
   /** ability books scattered across the map, removed when claimed */
   pickups: PickupItem[];
+
+  /** poison zone (毒圈) — shrinking safe area */
+  safeZone?: SafeZone;
 
   /** legacy deck support (unused in arena mode) */
   deck?: AbilityInstance[];

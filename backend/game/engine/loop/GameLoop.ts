@@ -44,14 +44,34 @@ export class GameLoop {
   private broadcastTickInterval = 1;
   private mapCtx: MapContext;
 
+  // ── 毒圈 (Poison zone) ──
+  private zoneStartedAt = 0; // wall-clock ms when game loop began
+  private lastZoneDamageAt = 0; // wall-clock ms when last zone damage was applied
+  private isArenaMode = false;
+
+  // Phase table: each phase defines a time window, zone size transition, and DPS.
+  // All times are in ms relative to zoneStartedAt.
+  //   startTime/endTime  → when this segment is active
+  //   fromHalf/toHalf    → half-size of zone at start/end (100 = 200x200, 0 = collapsed)
+  //   dps                → damage per second while outside zone during this segment
+  private static readonly ZONE_PHASES = [
+    { startTime:     0, endTime: 10000, fromHalf: 100, toHalf: 100, dps:  0 }, // grace 10s
+    { startTime: 10000, endTime: 30000, fromHalf: 100, toHalf:  50, dps:  1 }, // shrink 200→100 over 20s
+    { startTime: 30000, endTime: 40000, fromHalf:  50, toHalf:  50, dps:  1 }, // pause 10s at 100x100
+    { startTime: 40000, endTime: 50000, fromHalf:  50, toHalf:  25, dps:  5 }, // shrink 100→50 over 10s
+    { startTime: 50000, endTime: 60000, fromHalf:  25, toHalf:  25, dps:  5 }, // pause 10s at 50x50
+    { startTime: 60000, endTime: 65000, fromHalf:  25, toHalf:   0, dps: 10 }, // shrink 50→0 over 5s
+  ];
+
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
     this.state = structuredClone(state);
     this.tickRate = config?.tickRate ?? 30;
     this.broadcastTickInterval = Math.max(1, Math.round(this.tickRate / 30));
+    this.isArenaMode = config?.mode === 'arena';
 
     // Select map based on game mode
-    const map = config?.mode === 'arena' ? arenaMap : worldMap;
+    const map = this.isArenaMode ? arenaMap : worldMap;
     this.mapCtx = {
       objects:  map.objects,
       width:    map.width,
@@ -59,10 +79,42 @@ export class GameLoop {
       circular: false,
     };
 
+    // Initialize safe zone for arena mode
+    if (this.isArenaMode) {
+      this.zoneStartedAt = Date.now();
+      this.lastZoneDamageAt = Date.now();
+      const mapCenter = map.width / 2;
+      this.state.safeZone = {
+        centerX: mapCenter,
+        centerY: mapCenter,
+        currentHalf: mapCenter, // starts at full arena size
+        dps: 0,
+      };
+    }
+
     // Initialize player input buffers
     this.state.players.forEach((_, idx) => {
       this.playerInputs.set(idx, null);
     });
+  }
+
+  /** Compute safe zone size and damage from elapsed time */
+  private computeSafeZone(elapsedMs: number): { currentHalf: number; dps: number } {
+    for (const phase of GameLoop.ZONE_PHASES) {
+      if (elapsedMs < phase.endTime) {
+        const duration = phase.endTime - phase.startTime;
+        const t = Math.min(1, Math.max(0, (elapsedMs - phase.startTime) / duration));
+        const currentHalf = phase.fromHalf + (phase.toHalf - phase.fromHalf) * t;
+        return { currentHalf, dps: phase.dps };
+      }
+    }
+    // Past all phases → zone fully collapsed, max damage
+    return { currentHalf: 0, dps: 10 };
+  }
+
+  /** Return true if player position is outside the safe zone */
+  private isOutsideZone(px: number, py: number, cx: number, cy: number, half: number): boolean {
+    return px < cx - half || px > cx + half || py < cy - half || py > cy + half;
   }
 
   /**
@@ -387,6 +439,37 @@ export class GameLoop {
       if (player.buffs.length !== before) buffsChanged = true;
     });
 
+    // 1d. 毒圈 — poison zone damage (arena mode only, 1x per second)
+    if (this.isArenaMode && this.state.safeZone) {
+      const elapsedMs = now - this.zoneStartedAt;
+      const { currentHalf, dps } = this.computeSafeZone(elapsedMs);
+      this.state.safeZone.currentHalf = currentHalf;
+      this.state.safeZone.dps = dps;
+
+      // Apply damage once per second
+      if (dps > 0 && now - this.lastZoneDamageAt >= 1000) {
+        this.lastZoneDamageAt = now;
+        const cx = this.state.safeZone.centerX;
+        const cy = this.state.safeZone.centerY;
+        for (const player of this.state.players) {
+          if (player.hp <= 0) continue;
+          if (this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf)) {
+            player.hp = Math.max(0, player.hp - dps);
+            this.state.events.push({
+              id: randomUUID(), timestamp: now, turn: this.state.turn,
+              type: "DAMAGE",
+              actorUserId: player.userId,
+              targetUserId: player.userId,
+              abilityName: "毒圈",
+              effectType: "PERIODIC_DAMAGE",
+              value: dps,
+            });
+            buffsChanged = true; // triggers HP + event broadcast
+          }
+        }
+      }
+    }
+
     // 2. Check win condition
     const winStart = performance.now();
     checkGameOver(this.state);
@@ -438,6 +521,11 @@ export class GameLoop {
           });
         });
       });
+
+      // Append safe zone state so frontend can render the shrinking boundary
+      if (this.state.safeZone) {
+        diff.push({ path: '/safeZone', value: this.state.safeZone });
+      }
 
       // Append buff arrays whenever they changed (expiry or periodic effects)
       if (buffsChanged) {

@@ -5,9 +5,10 @@ import { useMemo } from 'react';
 interface GroundProps {
   arenaSize?: number;
   isArena?: boolean;
+  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number };
 }
 
-export default function Ground({ arenaSize = 2000, isArena = false }: GroundProps) {
+export default function Ground({ arenaSize = 2000, isArena = false, safeZone }: GroundProps) {
   const half = arenaSize / 2;
 
   /* ── Arena grid lines ── */
@@ -76,6 +77,69 @@ export default function Ground({ arenaSize = 2000, isArena = false }: GroundProp
     ]);
   }, [isArena, arenaSize]);
 
+  /* ── Safe zone (毒圈) red boundary lines ── */
+  const safeZoneBorderPositions = useMemo(() => {
+    if (!safeZone || safeZone.currentHalf >= half) return new Float32Array(0);
+    const cx = safeZone.centerX - half;
+    const cz = safeZone.centerY - half;
+    const h = safeZone.currentHalf;
+    const y = 0.10;
+    return new Float32Array([
+      cx - h, y, cz - h,   cx + h, y, cz - h,
+      cx + h, y, cz - h,   cx + h, y, cz + h,
+      cx + h, y, cz + h,   cx - h, y, cz + h,
+      cx - h, y, cz + h,   cx - h, y, cz - h,
+    ]);
+  }, [safeZone, half]);
+
+  // Inner glow layer
+  const safeZoneBorderInnerPositions = useMemo(() => {
+    if (!safeZone || safeZone.currentHalf >= half) return new Float32Array(0);
+    const cx = safeZone.centerX - half;
+    const cz = safeZone.centerY - half;
+    const h = safeZone.currentHalf;
+    const o = 0.6;
+    const y = 0.09;
+    return new Float32Array([
+      cx - h + o, y, cz - h + o,   cx + h - o, y, cz - h + o,
+      cx + h - o, y, cz - h + o,   cx + h - o, y, cz + h - o,
+      cx + h - o, y, cz + h - o,   cx - h + o, y, cz + h - o,
+      cx - h + o, y, cz + h - o,   cx - h + o, y, cz - h + o,
+    ]);
+  }, [safeZone, half]);
+
+  // Outer glow layer 1
+  const safeZoneBorderOuterPositions = useMemo(() => {
+    if (!safeZone || safeZone.currentHalf >= half) return new Float32Array(0);
+    const cx = safeZone.centerX - half;
+    const cz = safeZone.centerY - half;
+    const h = safeZone.currentHalf;
+    const o = 0.8;
+    const y = 0.08;
+    return new Float32Array([
+      cx - h - o, y, cz - h - o,   cx + h + o, y, cz - h - o,
+      cx + h + o, y, cz - h - o,   cx + h + o, y, cz + h + o,
+      cx + h + o, y, cz + h + o,   cx - h - o, y, cz + h + o,
+      cx - h - o, y, cz + h + o,   cx - h - o, y, cz - h - o,
+    ]);
+  }, [safeZone, half]);
+
+  // Outer glow layer 2 (widest)
+  const safeZoneBorderOuter2Positions = useMemo(() => {
+    if (!safeZone || safeZone.currentHalf >= half) return new Float32Array(0);
+    const cx = safeZone.centerX - half;
+    const cz = safeZone.centerY - half;
+    const h = safeZone.currentHalf;
+    const o = 1.6;
+    const y = 0.07;
+    return new Float32Array([
+      cx - h - o, y, cz - h - o,   cx + h + o, y, cz - h - o,
+      cx + h + o, y, cz - h - o,   cx + h + o, y, cz + h + o,
+      cx + h + o, y, cz + h + o,   cx - h - o, y, cz + h + o,
+      cx - h - o, y, cz + h + o,   cx - h - o, y, cz - h - o,
+    ]);
+  }, [safeZone, half]);
+
   // ═══════════════════════════════════════════════════
   //  ARENA MODE — Green grass + white glowing border
   // ═══════════════════════════════════════════════════
@@ -111,6 +175,46 @@ export default function Ground({ arenaSize = 2000, isArena = false }: GroundProp
           </bufferGeometry>
           <lineBasicMaterial color="#ffffff" transparent opacity={0.9} />
         </lineSegments>
+
+        {/* Safe zone (毒圈) red border — outermost glow */}
+        {safeZoneBorderOuter2Positions.length > 0 && (
+          <lineSegments>
+            <bufferGeometry>
+              <bufferAttribute attach="attributes-position" args={[safeZoneBorderOuter2Positions, 3]} />
+            </bufferGeometry>
+            <lineBasicMaterial color="#ff0000" transparent opacity={0.3} />
+          </lineSegments>
+        )}
+
+        {/* Safe zone (毒圈) red border — outer glow */}
+        {safeZoneBorderOuterPositions.length > 0 && (
+          <lineSegments>
+            <bufferGeometry>
+              <bufferAttribute attach="attributes-position" args={[safeZoneBorderOuterPositions, 3]} />
+            </bufferGeometry>
+            <lineBasicMaterial color="#ff1111" transparent opacity={0.55} />
+          </lineSegments>
+        )}
+
+        {/* Safe zone (毒圈) red border — bright core */}
+        {safeZoneBorderPositions.length > 0 && (
+          <lineSegments>
+            <bufferGeometry>
+              <bufferAttribute attach="attributes-position" args={[safeZoneBorderPositions, 3]} />
+            </bufferGeometry>
+            <lineBasicMaterial color="#ff2222" transparent opacity={1} />
+          </lineSegments>
+        )}
+
+        {/* Safe zone (毒圈) red border — inner glow */}
+        {safeZoneBorderInnerPositions.length > 0 && (
+          <lineSegments>
+            <bufferGeometry>
+              <bufferAttribute attach="attributes-position" args={[safeZoneBorderInnerPositions, 3]} />
+            </bufferGeometry>
+            <lineBasicMaterial color="#ff0000" transparent opacity={0.45} />
+          </lineSegments>
+        )}
       </group>
     );
   }

@@ -46,6 +46,7 @@ interface ArenaSceneProps {
   meScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
   oppScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
   mode?: string;
+  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number };
 }
 
 export default function ArenaScene({
@@ -66,6 +67,7 @@ export default function ArenaScene({
   meScreenBoundsRef,
   oppScreenBoundsRef,
   mode,
+  safeZone,
 }: ArenaSceneProps) {
   const { objects: mapObjects, width: mapWidth } = getMapForMode(mode);
   const worldHalf = mapWidth / 2;
@@ -88,7 +90,7 @@ export default function ArenaScene({
       {!isArena && <fog attach="fog" args={['#7ab86a', 300, 1000]} />}
 
       {/* World */}
-      <Ground arenaSize={mapWidth} isArena={isArena} />
+      <Ground arenaSize={mapWidth} isArena={isArena} safeZone={safeZone} />
       <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalf={worldHalf} />
       <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalf={worldHalf} />
 

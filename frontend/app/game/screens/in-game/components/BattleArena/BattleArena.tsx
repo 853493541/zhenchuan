@@ -88,6 +88,8 @@ interface BattleArenaProps {
   events?: any[];
   /** Pickup items (ability books) currently on the ground */
   pickups?: PickupItem[];
+  /** Safe zone state for poison zone rendering */
+  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number };
   /** Game mode: 'arena' (100×100) or 'pubg' (2000×2000) */
   mode?: string;
 }
@@ -107,6 +109,7 @@ export default function BattleArena({
   opponentPositionBufferRef,
   events = [],
   pickups = [],
+  safeZone,
   mode,
 }: BattleArenaProps) {
   const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : PUBG_WIDTH;
@@ -631,13 +634,8 @@ export default function BattleArena({
     for (const evt of newEvents) {
       if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0) {
         if (evt.targetUserId === myId) {
-          // I took damage
-          const bounds = meScreenBoundsRef.current;
-          const { w, h } = canvasSizeRef.current;
-          const screenPct = bounds
-            ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 22) / h) }
-            : undefined;
-          addFloat(evt.value, 'dmg_taken', { label: evt.abilityName, screenPct });
+          // I took damage — fixed position (x=40%, y=60%)
+          addFloat(evt.value, 'dmg_taken', { label: evt.abilityName });
         } else if (evt.actorUserId === myId) {
           // I dealt damage to opponent
           const bounds = oppScreenBoundsRef.current;
@@ -648,12 +646,8 @@ export default function BattleArena({
           addFloat(evt.value, 'dmg_dealt', { label: evt.abilityName, screenPct });
         }
       } else if (evt.type === 'HEAL' && (evt.value ?? 0) > 0 && evt.targetUserId === myId) {
-        const bounds = meScreenBoundsRef.current;
-        const { w, h } = canvasSizeRef.current;
-        const screenPct = bounds
-          ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 22) / h) }
-          : undefined;
-        addFloat(evt.value, 'heal', { label: evt.abilityName, screenPct });
+        // Heal — fixed position (x=60%, y=60%)
+        addFloat(evt.value, 'heal', { label: evt.abilityName });
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1670,6 +1664,7 @@ export default function BattleArena({
             meScreenBoundsRef={meScreenBoundsRef}
             oppScreenBoundsRef={oppScreenBoundsRef}
             mode={mode}
+            safeZone={safeZone}
           />
         </Canvas>
       </div>

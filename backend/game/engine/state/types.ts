@@ -45,6 +45,7 @@ export type {
   PlayerState,
   GameState,
   PickupItem,
+  SafeZone,
 } from "./types/state";
 
 /* ================= Tournament / Draft / Economy ================= */

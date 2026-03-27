@@ -350,10 +350,11 @@ export default function InGameClient({
         opponents={normalizedOpponents}
         gameId={gameId}
         distance={distance}
-        maxHp={30}
+        maxHp={100}
         abilities={preload.abilityMap}
         events={state?.events ?? []}
         pickups={state?.pickups ?? []}
+        safeZone={state?.safeZone}
         opponentPositionBufferRef={opponentPositionBufferRef}
         mode={gameMode ?? 'arena'}
         onCastAbility={async (abilityInstanceId, targetUserId) => {

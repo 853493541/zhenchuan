@@ -111,6 +111,17 @@ export interface GameEvent {
    Game State
 ========================================================= */
 
+/* =========================================================
+   Safe Zone (poison zone / shrinking circle)
+========================================================= */
+
+export interface SafeZone {
+  centerX: number;
+  centerY: number;
+  currentHalf: number;
+  dps: number;
+}
+
 export interface GameState {
   turn: number;
   activePlayerIndex: number;
@@ -121,6 +132,7 @@ export interface GameState {
   players: PlayerState[];
   events: GameEvent[];
   pickups?: PickupItem[];
+  safeZone?: SafeZone;
 }
 
 /* =========================================================
