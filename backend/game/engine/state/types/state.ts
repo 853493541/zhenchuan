@@ -122,6 +122,21 @@ export interface PlayerState {
   };
 }
 
+export interface GroundZone {
+  id: string;
+  ownerUserId: string;
+  x: number;
+  y: number;
+  radius: number;
+  expiresAt: number;
+  damagePerInterval: number;
+  intervalMs: number;
+  lastTickAt: number;
+  abilityId?: string;
+  abilityName?: string;
+  maxTargets?: number;
+}
+
 export interface GameState {
   /** increments on every authoritative state mutation */
   version: number;
@@ -145,6 +160,9 @@ export interface GameState {
 
   /** poison zone (毒圈) — shrinking safe area */
   safeZone?: SafeZone;
+
+  /** persistent ground damage zones (e.g. 狂龙乱舞) */
+  groundZones?: GroundZone[];
 
   /** legacy deck support (unused in arena mode) */
   deck?: AbilityInstance[];

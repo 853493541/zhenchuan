@@ -65,18 +65,16 @@ export function applyStartTurnEffects(params: {
           base: e.value ?? 0,
         });
 
-        const before = me.hp;
         me.hp = Math.min(100, me.hp + heal);
-        const applied = Math.max(0, me.hp - before);
 
-        if (applied > 0) {
+        if (heal > 0) {
           pushHealEvent({
             state,
             actorUserId: me.userId,
             targetUserId: me.userId,
             abilityId: getBuffSourceAbilityId(buff),
             abilityName: getBuffSourceAbilityName(buff),
-            value: applied,
+            value: heal,
           });
         }
       }

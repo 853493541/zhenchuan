@@ -355,6 +355,7 @@ export default function InGameClient({
         events={state?.events ?? []}
         pickups={state?.pickups ?? []}
         safeZone={state?.safeZone}
+        groundZones={state?.groundZones}
         opponentPositionBufferRef={opponentPositionBufferRef}
         mode={gameMode ?? 'arena'}
         onCastAbility={async (abilityInstanceId, targetUserId) => {

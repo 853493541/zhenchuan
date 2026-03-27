@@ -39,7 +39,14 @@ export type EffectType =
   | "ROOT"
   | "SLOW"
   // Jump enhancements
-  | "MULTI_JUMP";
+  | "MULTI_JUMP"
+  // 贯体 healing (bypasses HEAL_REDUCTION)
+  | "PERIODIC_GUAN_TI_HEAL"
+  | "TIMED_GUAN_TI_HEAL"
+  // Ground zone placement
+  | "PLACE_GROUND_ZONE"
+  // Stack-based on-hit debuff (e.g. 孔雀翎)
+  | "STACK_ON_HIT_DAMAGE";
 
 /**
  * Immediate ability effects

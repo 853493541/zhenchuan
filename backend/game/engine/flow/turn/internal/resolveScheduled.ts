@@ -103,18 +103,16 @@ export function applyLegacyHeal(params: {
   const { state, owner, buff, base } = params;
 
   const heal = resolveHealAmount({ target: owner, base });
-  const before = owner.hp;
   owner.hp = Math.min(100, owner.hp + heal);
-  const applied = Math.max(0, owner.hp - before);
 
-  if (applied > 0) {
+  if (heal > 0) {
     pushHealEvent({
       state,
       actorUserId: owner.userId,
       targetUserId: owner.userId,
       abilityId: getBuffSourceAbilityId(buff),
       abilityName: getBuffSourceAbilityNameWithDebug(buff, "吸血"),
-      value: applied,
+      value: heal,
     });
   }
 }

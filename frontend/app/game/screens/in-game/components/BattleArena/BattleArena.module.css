@@ -572,8 +572,35 @@
   left: 0;
   bottom: 0;
   background: linear-gradient(90deg, #c8960c, #f0c030, #f5e080);
-  transition: width 0.05s linear;
   border-radius: 2px 0 0 2px;
+  animation-name: channelFillShrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  /* animation-duration is set via inline style */
+}
+
+@keyframes channelFillShrink {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
+/* 正读条: forward-fill channel bar (0% → 100%) */
+.channelBarFillForward {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #c8960c, #f0c030, #f5e080);
+  border-radius: 2px 0 0 2px;
+  animation-name: channelFillGrow;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  /* animation-duration is set via inline style */
+}
+
+@keyframes channelFillGrow {
+  from { width: 0%; }
+  to   { width: 100%; }
 }
 
 .channelBarTick {

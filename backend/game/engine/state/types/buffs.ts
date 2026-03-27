@@ -28,6 +28,16 @@ export interface BuffDefinition {
    */
   periodicMs?: number;
   breakOnPlay?: boolean;
+  /** Cancel this buff (channel) when the player sends movement input */
+  cancelOnMove?: boolean;
+  /** Cancel this buff (channel) when the player jumps */
+  cancelOnJump?: boolean;
+  /** Cancel this buff (channel) if the nearest opponent exceeds this distance (units) */
+  cancelOnOutOfRange?: number;
+  /** When true, the channel bar fills forward (0→100%) rather than draining (100→0%) */
+  forwardChannel?: boolean;
+  /** Initial stack count for stackable debuffs (e.g. 孔雀翎) */
+  initialStacks?: number;
   description: string;
   effects: BuffEffect[];
   applyTo?: BuffApplyTo;
@@ -67,6 +77,18 @@ export interface ActiveBuff {
   stageIndex?: number;
   appliedAtTurn?: number;
   breakOnPlay?: boolean;
+  /** Cancel this buff (channel) when the player sends movement input */
+  cancelOnMove?: boolean;
+  /** Cancel this buff (channel) when the player jumps */
+  cancelOnJump?: boolean;
+  /** Cancel this buff (channel) if the nearest opponent exceeds this distance (units) */
+  cancelOnOutOfRange?: number;
+  /** When true, the channel bar fills forward (0→100%) rather than draining (100→0%) */
+  forwardChannel?: boolean;
+  /** Who originally applied this buff (used for on-hit proc attribution) */
+  sourceUserId?: string;
+  /** Current stack count for stackable debuffs (decrements on each proc) */
+  stacks?: number;
 
   /**
    * Wall-clock ms (Date.now()) when this buff was applied.

@@ -75,6 +75,12 @@ export function addBuff(params: {
     appliedAtTurn: state.turn, // informational only
     appliedAt: now,             // wall-clock ms — used by TIMED_AOE_DAMAGE
     breakOnPlay: buff.breakOnPlay,
+    cancelOnMove: buff.cancelOnMove,
+    cancelOnJump: buff.cancelOnJump,
+    cancelOnOutOfRange: buff.cancelOnOutOfRange,
+    forwardChannel: buff.forwardChannel,
+    sourceUserId: sourceUserId,
+    stacks: buff.initialStacks,
 
     sourceAbilityId: ability.id,
     sourceAbilityName: ability.name,

@@ -99,6 +99,14 @@ export function validateCastAbility(
 
   /* (Level 0 — ROOT / SLOW only restrict movement, spells are not blocked) */
 
+  /* ================= REQUIRES GROUNDED ================= */
+  if ((ability as any).requiresGrounded) {
+    const playerZ = (player.position as any).z ?? 0;
+    if (playerZ > 0.5) {
+      throw new Error("ERR_REQUIRES_GROUNDED");
+    }
+  }
+
   /* ================= RANGE CHECK ================= */
   if (ability.range !== undefined) {
     const distance = calculateDistance(

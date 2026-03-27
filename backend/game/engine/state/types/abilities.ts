@@ -75,6 +75,11 @@ export interface Ability {
    * - distance: how many units to move
    * - when: before (gap closer), after (kite), or during cast
    */
+  /**
+   * If true, this ability cannot be cast while the player is airborne (z > 0.5).
+   */
+  requiresGrounded?: boolean;
+
   canMove?: {
     distance: number;
     when: "BEFORE" | "AFTER" | "DURING";

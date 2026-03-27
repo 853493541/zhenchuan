@@ -7,7 +7,7 @@ import WASDButtons from './WASDButtons';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff } from '../../types';
-import type { PickupItem } from '../../types';
+import type { PickupItem, GroundZone } from '../../types';
 import ArenaScene from './scene/ArenaScene';
 
 type V3 = { x: number; y: number; z: number };
@@ -90,6 +90,8 @@ interface BattleArenaProps {
   pickups?: PickupItem[];
   /** Safe zone state for poison zone rendering */
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
+  /** Persistent ground damage zones */
+  groundZones?: GroundZone[];
   /** Game mode: 'arena' (100×100) or 'pubg' (2000×2000) */
   mode?: string;
 }
@@ -110,6 +112,7 @@ export default function BattleArena({
   events = [],
   pickups = [],
   safeZone,
+  groundZones,
   mode,
 }: BattleArenaProps) {
   const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : PUBG_WIDTH;
@@ -154,7 +157,11 @@ export default function BattleArena({
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [selectedSelf,     setSelectedSelf]     = useState(false);
-  const [, setChannelTick] = useState(0); // forces re-renders for channel bar countdown
+  const [, ] = useState(0); // placeholder (was setChannelTick)
+
+  /** Tracks the first time we see a given channel buff (keyed by expiresAt).
+   *  Used to start the CSS animation from 0 regardless of server-client clock skew. */
+  const channelBarTrackRef = useRef<{ expiresAt: number; duration: number } | null>(null);
 
   /* --- Pickup interaction state --- */
   const [nearbyPickupIds,   setNearbyPickupIds]   = useState<string[]>([]);         // sorted closest-first
@@ -492,13 +499,9 @@ export default function BattleArena({
     controlModeRef.current = mode;
   }, []);
 
-  // Channel bar countdown: tick every 50ms while 不工 buff (buffId 1014) is active
-  const channelBuff = me?.buffs?.find((b: any) => b.buffId === 1014);
-  useEffect(() => {
-    if (!channelBuff) return;
-    const id = setInterval(() => setChannelTick(t => t + 1), 50);
-    return () => clearInterval(id);
-  }, [(channelBuff as any)?.expiresAt]);
+  // Channel bar: now uses CSS animation — no JS polling needed.
+  // Keep channelBuff computed so the bar mounts/unmounts correctly.
+  const channelBuff = me?.buffs?.find((b: any) => b.buffId === 1014 || b.buffId === 2001 || b.buffId === 2002 || b.buffId === 2003);
 
   // Ref that the rAF writes a new jump record into (avoids stale closure in rAF)
   const jumpRecordNextRef = useRef<{ riseMs: number; fallMs: number; totalMs: number; peakZ: number } | null>(null);
@@ -1665,6 +1668,7 @@ export default function BattleArena({
             oppScreenBoundsRef={oppScreenBoundsRef}
             mode={mode}
             safeZone={safeZone}
+            groundZones={groundZones}
           />
         </Canvas>
       </div>
@@ -2254,25 +2258,37 @@ export default function BattleArena({
             </div>
           )}
 
-          {/* ── 倒读条: countdown bar for 风来吴山 (不工 buff buffId 1014) ── */}
+          {/* ── 倒读条: countdown bar for channel abilities ── */}
           {(() => {
-            if (!channelBuff) return null;
-            const CHANNEL_MS = 5000;
-            const TICKS = 8;
-            const remaining = Math.max(0, (channelBuff as any).expiresAt - Date.now());
-            if (remaining <= 0) return null;
-            const elapsed = CHANNEL_MS - remaining;
-            // 倒读条: fill shrinks from 100% → 0% as time elapses
-            const progress = Math.max(0, remaining / CHANNEL_MS);
-            const elapsedSec = (elapsed / 1000).toFixed(2);
-            const totalSec   = (CHANNEL_MS / 1000).toFixed(1);
+            if (!channelBuff) {
+              channelBarTrackRef.current = null;
+              return null;
+            }
+            const cb = channelBuff as any;
+            // Record local start time the first time we see this buff's expiresAt.
+            // Always start the animation from 100% to avoid server-client clock skew
+            // causing the bar to start mid-way or disappear early.
+            if (!channelBarTrackRef.current || channelBarTrackRef.current.expiresAt !== cb.expiresAt) {
+              const CHANNEL_MS = cb.appliedAt ? cb.expiresAt - cb.appliedAt : 5000;
+              channelBarTrackRef.current = { expiresAt: cb.expiresAt, duration: CHANNEL_MS };
+            }
+            const track = channelBarTrackRef.current;
+            const CHANNEL_MS = track.duration;
+            const TICKS = Math.max(2, Math.round(CHANNEL_MS / 1000));
+            // forwardChannel=true → 正读条 (fills 0→100%), otherwise 倒读条 (drains 100→0%)
+            const fillClass = cb.forwardChannel ? styles.channelBarFillForward : styles.channelBarFill;
             return (
               <div className={styles.channelBarWrap}>
                 <span className={styles.channelBarLabel}>
-                  风来吴山 ({elapsedSec}/{totalSec})
+                  {cb.name ?? '风来吴山'}
                 </span>
                 <div className={styles.channelBarTrack}>
-                  <div className={styles.channelBarFill} style={{ width: `${progress * 100}%` }} />
+                  {/* CSS animation: key is stable for the lifetime of this channel (same expiresAt) */}
+                  <div
+                    key={track.expiresAt}
+                    className={fillClass}
+                    style={{ animationDuration: `${CHANNEL_MS}ms` }}
+                  />
                   {Array.from({ length: TICKS - 1 }, (_, i) => (
                     <div
                       key={i}

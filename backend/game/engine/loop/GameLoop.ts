@@ -9,7 +9,7 @@
  * - Win condition checks
  */
 
-import { GameState, MovementInput, calculateDistance } from "../state/types";
+import { GameState, MovementInput, GroundZone, calculateDistance } from "../state/types";
 import { checkGameOver } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
 import { diffState } from "../../services/flow/stateDiff";
@@ -244,11 +244,22 @@ export class GameLoop {
     this.state.players.forEach((player, idx) => {
       const input = this.playerInputs.get(idx) ?? null;
       applyMovement(player, input, this.tickRate, this.mapCtx);
+      // Cancel channel buffs based on input — read BEFORE clearing the one-shot jump flag
+      if (input) {
+        const isMoving =
+          input.up || input.down || input.left || input.right ||
+          (input.dx !== undefined && input.dx !== 0) ||
+          (input.dy !== undefined && input.dy !== 0);
+        const isJumping = !!input.jump;
+        if (isMoving) player.buffs = player.buffs.filter((b: any) => !b.cancelOnMove);
+        if (isJumping) player.buffs = player.buffs.filter((b: any) => !b.cancelOnJump);
+      }
       // Clear the one-shot jump flag so it fires only once per press
       if (input?.jump) {
         this.playerInputs.set(idx, { ...input, jump: false });
       }
     });
+
     const moveTime = performance.now() - moveStart;
 
     // 1b. Decrement ability cooldowns each tick
@@ -264,6 +275,21 @@ export class GameLoop {
     let buffsChanged = this.state.players.some(
       (p, idx) => (p.buffs?.length ?? 0) !== buffCountsBefore[idx]
     );
+
+    // Cancel channel buffs whose out-of-range condition is exceeded (e.g. 云飞玉皇)
+    if (this.state.players.length === 2) {
+      for (let idx = 0; idx < 2; idx++) {
+        const player = this.state.players[idx];
+        const opp = this.state.players[idx === 0 ? 1 : 0];
+        const before = player.buffs.length;
+        player.buffs = player.buffs.filter((b: any) => {
+          if (b.cancelOnOutOfRange === undefined) return true;
+          const dist = calculateDistance(player.position, opp.position);
+          return dist <= b.cancelOnOutOfRange;
+        });
+        if (player.buffs.length !== before) buffsChanged = true;
+      }
+    }
 
     // Track event count before damage processing so we can diff-patch new events
     const eventsBefore = this.state.events.length;
@@ -314,6 +340,24 @@ export class GameLoop {
                   });
                 }
                 buffsChanged = true;
+              } else if (e.type === "PERIODIC_GUAN_TI_HEAL") {
+                // 贯体 heal: bypasses HEAL_REDUCTION; value is % of maxHp per tick
+                const pct = (e.value ?? 0) / 100;
+                const healAmt = Math.floor((player.maxHp ?? 100) * pct);
+                player.hp = Math.min(player.maxHp ?? 100, player.hp + healAmt);
+                if (healAmt > 0) {
+                  this.state.events.push({
+                    id: randomUUID(), timestamp: now, turn: this.state.turn,
+                    type: "HEAL",
+                    actorUserId: player.userId,
+                    targetUserId: player.userId,
+                    abilityId: buff.sourceAbilityId,
+                    abilityName: "笑醉狂（贯体）",
+                    effectType: "PERIODIC_GUAN_TI_HEAL",
+                    value: healAmt,
+                  });
+                }
+                buffsChanged = true;
               } else if (e.type === "CHANNEL_AOE_TICK") {
                 // Channel AOE: deal damage to opponent if within range
                 const range = e.range ?? 10;
@@ -344,11 +388,15 @@ export class GameLoop {
           }
         }
 
-        // Fire TIMED_AOE_DAMAGE effects (each fires exactly once at its delayMs offset)
+        // Fire timed effects (each fires exactly once at its delayMs offset)
         if (buff.appliedAt !== undefined) {
           for (let effIdx = 0; effIdx < buff.effects.length; effIdx++) {
             const e = buff.effects[effIdx];
-            if (e.type !== "TIMED_AOE_DAMAGE") continue;
+            if (
+              e.type !== "TIMED_AOE_DAMAGE" &&
+              e.type !== "TIMED_GUAN_TI_HEAL" &&
+              e.type !== "PLACE_GROUND_ZONE"
+            ) continue;
             if (e.delayMs === undefined) continue;
             if (buff.firedDelayIndices?.includes(effIdx)) continue;
             if (now < buff.appliedAt + e.delayMs) continue;
@@ -356,6 +404,51 @@ export class GameLoop {
             // Mark this effect as fired
             if (!buff.firedDelayIndices) buff.firedDelayIndices = [];
             buff.firedDelayIndices.push(effIdx);
+
+            // TIMED_GUAN_TI_HEAL: completion heal bypassing HEAL_REDUCTION
+            if (e.type === "TIMED_GUAN_TI_HEAL") {
+              const pct = (e.value ?? 0) / 100;
+              const healAmt = Math.floor((player.maxHp ?? 100) * pct);
+              player.hp = Math.min(player.maxHp ?? 100, player.hp + healAmt);
+              if (healAmt > 0) {
+                this.state.events.push({
+                  id: randomUUID(), timestamp: now, turn: this.state.turn,
+                  type: "HEAL",
+                  actorUserId: player.userId,
+                  targetUserId: player.userId,
+                  abilityId: buff.sourceAbilityId,
+                  abilityName: "笑醉狂（贯体）",
+                  effectType: "TIMED_GUAN_TI_HEAL",
+                  value: healAmt,
+                });
+              }
+              buffsChanged = true;
+              continue;
+            }
+
+            // PLACE_GROUND_ZONE: place a persistent damage zone in front of caster
+            if (e.type === "PLACE_GROUND_ZONE") {
+              const facing = player.facing ?? { x: 0, y: 1 };
+              const zoneX = player.position.x + facing.x * 6;
+              const zoneY = player.position.y + facing.y * 6;
+              if (!this.state.groundZones) this.state.groundZones = [];
+              this.state.groundZones.push({
+                id: randomUUID(),
+                ownerUserId: player.userId,
+                x: zoneX,
+                y: zoneY,
+                radius: e.range ?? 8,
+                expiresAt: now + 6_000,
+                damagePerInterval: e.value ?? 4,
+                intervalMs: 500,
+                lastTickAt: now,
+                abilityId: buff.sourceAbilityId,
+                abilityName: buff.sourceAbilityName ?? buff.name,
+                maxTargets: 5,
+              } as GroundZone);
+              buffsChanged = true;
+              continue;
+            }
 
             if (opp.hp <= 0) continue;
 
@@ -481,6 +574,103 @@ export class GameLoop {
       }
     }
 
+    // 1e. Ground zone damage ticks (e.g. 狂龙乱舞)
+    if (this.state.groundZones && this.state.groundZones.length > 0) {
+      const activeZones: GroundZone[] = [];
+      for (const zone of this.state.groundZones) {
+        if (now >= zone.expiresAt) continue; // expired — drop it
+        activeZones.push(zone);
+        if (now - zone.lastTickAt >= zone.intervalMs) {
+          zone.lastTickAt = now;
+          const owner = this.state.players.find(p => p.userId === zone.ownerUserId);
+          let targetsHit = 0;
+          for (const target of this.state.players) {
+            if (target.userId === zone.ownerUserId) continue;
+            if (target.hp <= 0) continue;
+            if (zone.maxTargets !== undefined && targetsHit >= zone.maxTargets) break;
+            const dx = target.position.x - zone.x;
+            const dy = target.position.y - zone.y;
+            if (Math.sqrt(dx * dx + dy * dy) > zone.radius) continue;
+            const dmg = resolveScheduledDamage({
+              source: owner ?? target,
+              target,
+              base: zone.damagePerInterval,
+            });
+            target.hp = Math.max(0, target.hp - dmg);
+            if (dmg > 0) {
+              this.state.events.push({
+                id: randomUUID(), timestamp: now, turn: this.state.turn,
+                type: "DAMAGE",
+                actorUserId: zone.ownerUserId,
+                targetUserId: target.userId,
+                abilityId: zone.abilityId,
+                abilityName: zone.abilityName,
+                effectType: "PERIODIC_DAMAGE",
+                value: dmg,
+              });
+            }
+            targetsHit++;
+            buffsChanged = true;
+          }
+        }
+      }
+      const hadZones = this.state.groundZones.length;
+      this.state.groundZones = activeZones;
+      if (activeZones.length !== hadZones) buffsChanged = true;
+    }
+
+    // 1f. Process STACK_ON_HIT_DAMAGE procs for all damage events this tick
+    // Collect unique targets that were hit (excluding stack-proc damage itself)
+    {
+      const thisTickEvents = this.state.events.slice(eventsBefore);
+      const hitTargetIds = new Set<string>();
+      for (const evt of thisTickEvents) {
+        if (evt.type === "DAMAGE" && evt.effectType !== "STACK_ON_HIT_DAMAGE" && evt.targetUserId) {
+          hitTargetIds.add(evt.targetUserId);
+        }
+      }
+      for (const targetId of hitTargetIds) {
+        const targetPlayer = this.state.players.find((p) => p.userId === targetId);
+        if (!targetPlayer || targetPlayer.hp <= 0) continue;
+        const actor = this.state.players.find((p) => p.userId !== targetId);
+        // Iterate backwards so splice doesn't shift indices
+        for (let bi = targetPlayer.buffs.length - 1; bi >= 0; bi--) {
+          const stackBuff = targetPlayer.buffs[bi];
+          if ((stackBuff.stacks ?? 0) <= 0) continue;
+          for (const e of stackBuff.effects) {
+            if (e.type === "STACK_ON_HIT_DAMAGE") {
+              const dmg = e.value ?? 0;
+              targetPlayer.hp = Math.max(0, targetPlayer.hp - dmg);
+              stackBuff.stacks = (stackBuff.stacks ?? 1) - 1;
+              this.state.events.push({
+                id: randomUUID(), timestamp: now, turn: this.state.turn,
+                type: "DAMAGE",
+                actorUserId: stackBuff.sourceUserId ?? actor?.userId ?? targetId,
+                targetUserId: targetId,
+                abilityId: stackBuff.sourceAbilityId,
+                abilityName: stackBuff.sourceAbilityName ?? stackBuff.name,
+                effectType: "STACK_ON_HIT_DAMAGE",
+                value: dmg,
+              });
+              if (stackBuff.stacks <= 0) {
+                targetPlayer.buffs.splice(bi, 1);
+                pushBuffExpired(this.state, {
+                  targetUserId: targetId,
+                  buffId: stackBuff.buffId,
+                  buffName: stackBuff.name,
+                  buffCategory: stackBuff.category,
+                  sourceAbilityId: stackBuff.sourceAbilityId,
+                  sourceAbilityName: stackBuff.sourceAbilityName,
+                });
+              }
+              buffsChanged = true;
+              break; // one stack proc per hit per buff
+            }
+          }
+        }
+      }
+    }
+
     // 2. Check win condition
     const winStart = performance.now();
     checkGameOver(this.state);
@@ -536,6 +726,11 @@ export class GameLoop {
       // Append safe zone state so frontend can render the shrinking boundary
       if (this.state.safeZone) {
         diff.push({ path: '/safeZone', value: this.state.safeZone });
+      }
+
+      // Append ground zones so frontend can render persistent damage areas
+      if (this.state.groundZones !== undefined) {
+        diff.push({ path: '/groundZones', value: this.state.groundZones });
       }
 
       // Append buff arrays whenever they changed (expiry or periodic effects)

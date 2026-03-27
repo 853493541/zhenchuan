@@ -25,6 +25,7 @@ type ResolvedBuff = {
   shortName: string;
   category: "BUFF" | "DEBUFF";
   description: string;
+  stacks?: number; // live stack count for stackable debuffs
 };
 
 type ActiveHint = {
@@ -43,14 +44,38 @@ export default function StatusBar({
   const preload = useGamePreload();
   const [activeHint, setActiveHint] = useState<ActiveHint | null>(null);
 
-  // localSecs[buffId] = seconds remaining, counting down via setInterval.
-  // Source of truth for display.
+  // localSecs[buffId] = seconds remaining as a decimal (e.g. 9.5, 0.3).
+  // Recomputed from expiresAtRef every 100ms — no integer rounding until display.
   const [localSecs, setLocalSecs] = useState<Record<number, number>>({});
 
-  // Tracks the last expiresAt we synced per buffId to avoid resetting the
-  // countdown on every 60Hz position diff (applyDiff gives buffs a new array
-  // reference each frame even when nothing changed).
-  const lastSyncRef = useRef<Record<number, number>>({}); // buffId → last expiresAt
+  // Source of truth: expiresAt (ms) per buffId, updated whenever the server sends
+  // a new expiresAt.  Lives in a ref so the interval closure always reads the latest
+  // value without needing to be recreated.
+  const expiresAtRef = useRef<Record<number, number>>({});
+
+  // Sync server expiresAt → expiresAtRef (and seed localSecs for new buffs).
+  useEffect(() => {
+    const currentIds = new Set(buffs.map((b) => b.buffId));
+    for (const b of buffs) {
+      expiresAtRef.current[b.buffId] = b.expiresAt;
+    }
+    for (const idStr of Object.keys(expiresAtRef.current)) {
+      if (!currentIds.has(+idStr)) delete expiresAtRef.current[+idStr];
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buffs]);
+
+  // Recompute display values from wall-clock every 100ms for smooth decimals.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const next: Record<number, number> = {};
+      for (const [idStr, exp] of Object.entries(expiresAtRef.current)) {
+        next[+idStr] = Math.max(0, (exp - Date.now()) / 1000);
+      }
+      setLocalSecs(next);
+    }, 100);
+    return () => clearInterval(id);
+  }, []);
 
   // Resolve metadata for currently-live buffs.
   const resolved: ResolvedBuff[] = buffs
@@ -64,58 +89,10 @@ export default function StatusBar({
         shortName,
         category:    meta.category,
         description: meta.description ?? "无",
+        stacks:      b.stacks,
       };
     })
     .filter(Boolean) as ResolvedBuff[];
-
-  // Sync server state → localSecs.
-  //
-  // Gate: only reset the countdown when expiresAt changes for a given buff
-  // (i.e., a new buff was applied or refreshed). Stable expiresAt = no reset.
-  useEffect(() => {
-    const currentIds = new Set(buffs.map((b) => b.buffId));
-
-    const updates: Record<number, number> = {}; // buffId → new localSecs value
-    for (const b of buffs) {
-      const prev = lastSyncRef.current[b.buffId];
-      if (prev !== b.expiresAt) {
-        lastSyncRef.current[b.buffId] = b.expiresAt;
-        updates[b.buffId] = Math.max(0, Math.ceil((b.expiresAt - Date.now()) / 1000));
-      }
-    }
-
-    // Clean up tracking for removed buffs
-    for (const idStr of Object.keys(lastSyncRef.current)) {
-      if (!currentIds.has(+idStr)) {
-        delete lastSyncRef.current[+idStr];
-      }
-    }
-
-    if (Object.keys(updates).length === 0) return;
-
-    setLocalSecs((prev) => {
-      const next: Record<number, number> = {};
-      for (const b of buffs) {
-        next[b.buffId] = b.buffId in updates ? updates[b.buffId] : (prev[b.buffId] ?? 0);
-      }
-      return next;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buffs]);
-
-  // Count down every second between server ticks.
-  useEffect(() => {
-    const id = setInterval(() => {
-      setLocalSecs((prev) => {
-        const next: Record<number, number> = {};
-        for (const key in prev) {
-          next[+key] = Math.max(0, prev[+key] - 1);
-        }
-        return next;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
 
   // Only show buffs whose local countdown hasn't reached 0 yet.
   // This hides the buff immediately when the timer drains, without waiting
@@ -143,8 +120,10 @@ export default function StatusBar({
 
   function renderBuff(b: ResolvedBuff) {
     const colorClass  = b.category === "BUFF" ? styles.buffText : styles.debuffText;
-    const displaySecs = localSecs[b.buffId] ?? 0;
-    const isLastTick  = displaySecs <= 5;
+    const secsLeft    = localSecs[b.buffId] ?? 0;
+    const isLastTick  = secsLeft < 5;
+    // Timer always shows countdown; stacks shown as icon overlay badge
+    const timerStr    = secsLeft >= 5 ? String(Math.floor(secsLeft)) : secsLeft.toFixed(1);
 
     return (
       <div key={b.buffId} className={styles.buffItem}>
@@ -152,21 +131,26 @@ export default function StatusBar({
           {b.shortName}
         </div>
 
-        <div
-          className={`${styles.buffIcon} ${
-            b.category === "BUFF" ? styles.buffBorder : styles.debuffBorder
-          }`}
-          style={{ backgroundImage: `url(/game/icons/buffs/${b.name}.png)` }}
-          onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b)}
-          onMouseLeave={closeHint}
-        />
+        <div className={styles.iconWrapper}>
+          <div
+            className={`${styles.buffIcon} ${
+              b.category === "BUFF" ? styles.buffBorder : styles.debuffBorder
+            }`}
+            style={{ backgroundImage: `url(/game/icons/buffs/${b.name}.png)` }}
+            onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b)}
+            onMouseLeave={closeHint}
+          />
+          {b.stacks !== undefined && (
+            <span className={styles.stackBadge}>{b.stacks}</span>
+          )}
+        </div>
 
         <div
           className={`${styles.buffTurns} ${colorClass} ${
             isLastTick ? styles.lastTurn : ""
           }`}
         >
-          {displaySecs}
+          {timerStr}
         </div>
       </div>
     );

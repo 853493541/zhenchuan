@@ -7,7 +7,7 @@ import Character from './Character';
 import PickupBooks from './PickupBooks';
 import AoeZone from './AoeZone';
 import CameraRig from './CameraRig';
-import type { PickupItem } from '../../../types';
+import type { PickupItem, GroundZone } from '../../../types';
 import { getMapForMode } from '../worldMap';
 
 // Colors for up to 5 opponents (index 0 = primary, etc.)
@@ -47,6 +47,7 @@ interface ArenaSceneProps {
   oppScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
   mode?: string;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
+  groundZones?: GroundZone[];
 }
 
 export default function ArenaScene({
@@ -68,6 +69,7 @@ export default function ArenaScene({
   oppScreenBoundsRef,
   mode,
   safeZone,
+  groundZones,
 }: ArenaSceneProps) {
   const { objects: mapObjects, width: mapWidth } = getMapForMode(mode);
   const worldHalf = mapWidth / 2;
@@ -93,6 +95,24 @@ export default function ArenaScene({
       <Ground arenaSize={mapWidth} isArena={isArena} safeZone={safeZone} />
       <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalf={worldHalf} />
       <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalf={worldHalf} />
+
+      {/* Ground damage zones (e.g. 狂龙乱舞 雷云) */}
+      {(groundZones ?? []).map(zone => {
+        const isOwn = zone.ownerUserId === me.userId;
+        return (
+          <AoeZone
+            key={zone.id}
+            worldX={zone.x}
+            worldY={zone.y}
+            worldZ={0}
+            radius={zone.radius}
+            color={isOwn ? "#4488ff" : "#ff3333"}
+            labelColor={isOwn ? "#4488ff" : "#ff3333"}
+            label="雷云"
+            worldHalf={worldHalf}
+          />
+        );
+      })}
 
       {/* Local player AOE zone */}
       {meChanneling && (

@@ -42,6 +42,7 @@ export function buildAbilityPreload() {
 
           durationMs: buff.durationMs,
           breakOnPlay: buff.breakOnPlay ?? false,
+          initialStacks: buff.initialStacks,
 
           description: buff.description ?? "无",
           effects: buff.effects ?? [],

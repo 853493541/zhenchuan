@@ -42,6 +42,12 @@
 
 /* ================= ICON ================= */
 
+.iconWrapper {
+  position: relative;
+  width: 32px;
+  height: 32px;
+}
+
 .buffIcon {
   width: 32px;
   height: 32px;
@@ -62,6 +68,21 @@
 
 .debuffBorder {
   border: 2px solid rgba(185, 28, 28, 0.95);
+}
+
+/* ================= STACK BADGE ================= */
+
+.stackBadge {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  color: #ffffff;
+  text-shadow: 0 0 3px #000, 0 0 2px #000;
+  pointer-events: none;
+  z-index: 2;
 }
 
 /* ================= TURNS ================= */

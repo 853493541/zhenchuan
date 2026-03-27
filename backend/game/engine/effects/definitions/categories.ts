@@ -52,6 +52,13 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   SLOW: "DEBUFF",
   // Jump enhancements
   MULTI_JUMP: "BUFF",
+  // 贯体 healing
+  PERIODIC_GUAN_TI_HEAL: "BUFF",
+  TIMED_GUAN_TI_HEAL: "BUFF",
+  // Ground zone placement
+  PLACE_GROUND_ZONE: "BUFF",
+  // Stack-based on-hit debuff
+  STACK_ON_HIT_DAMAGE: "DEBUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

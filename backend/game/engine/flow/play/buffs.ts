@@ -32,22 +32,31 @@ export function applyAbilityBuffs(params: {
 
   if (!Array.isArray(ability.buffs) || ability.buffs.length === 0) return;
 
-  const buffTarget = ability.target === "SELF" ? source : target;
-  const enemyApplied = buffTarget.userId !== source.userId;
+  // Ability-level target (used as fallback when buff has no applyTo override)
+  const abilityBuffTarget = ability.target === "SELF" ? source : target;
+  const abilityEnemyApplied = abilityBuffTarget.userId !== source.userId;
 
-  // Dodge cancels enemy-applied buffs only
-  if (shouldSkipDueToDodge(abilityDodged, enemyApplied)) return;
+  // Dodge cancels enemy-applied buffs only (ability-level check)
+  if (shouldSkipDueToDodge(abilityDodged, abilityEnemyApplied)) return;
 
-  // Untargetable blocks enemy-applied NEW buffs (guard needs target.buffs)
-  if (blocksNewBuffByUntargetable(source, buffTarget)) return;
+  // Untargetable blocks enemy-applied NEW buffs (ability-level check)
+  if (blocksNewBuffByUntargetable(source, abilityBuffTarget)) return;
 
   for (const buff of ability.buffs) {
+    // Per-buff applyTo override: a buff can specify "SELF" or "OPPONENT" regardless
+    // of the ability's target field (e.g. 云飞玉皇 channels a self-buff while targeting an enemy)
+    const localBuffTarget =
+      buff.applyTo === "SELF" ? source
+      : buff.applyTo === "OPPONENT" ? target
+      : abilityBuffTarget;
+    const localEnemyApplied = localBuffTarget.userId !== source.userId;
+
     const isControl =
       Array.isArray(buff.effects) &&
       buff.effects.some((e) => e.type === "CONTROL");
 
     // Control immunity blocks CONTROL buffs (guard needs target.buffs)
-    if (isControl && blocksControlByImmunity("CONTROL", buffTarget)) {
+    if (isControl && blocksControlByImmunity("CONTROL", localBuffTarget)) {
       continue;
     }
 
@@ -59,8 +68,8 @@ export function applyAbilityBuffs(params: {
       state,
       ability,
       source,
-      target: buffTarget,
-      isEnemyEffect: enemyApplied,
+      target: localBuffTarget,
+      isEnemyEffect: localEnemyApplied,
     });
 
     ability.buffs = originalBuffs;

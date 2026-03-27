@@ -46,6 +46,8 @@ export interface ActiveBuff {
 
   /** Absolute Date.now() ms when this buff expires. */
   expiresAt: number;
+  /** Wall-clock ms when the buff was applied (from server). */
+  appliedAt?: number;
   /** Optional: interval in ms for periodic DoT/HoT effects. */
   periodicMs?: number;
   /** Optional: last time the periodic effect fired (ms). */
@@ -54,9 +56,17 @@ export interface ActiveBuff {
   appliedAtTurn?: number;
 
   breakOnPlay?: boolean;
+  cancelOnMove?: boolean;
+  cancelOnJump?: boolean;
+  cancelOnOutOfRange?: number;
+  forwardChannel?: boolean;
 
   sourceAbilityId?: string;
   sourceAbilityName?: string;
+  sourceUserId?: string;
+
+  /** Current stack count for stackable debuffs (e.g. \u5b54\u96c0\u7fce) */
+  stacks?: number;
 }
 
 /* =========================================================
@@ -125,6 +135,21 @@ export interface SafeZone {
   nextChangeIn: number;
 }
 
+export interface GroundZone {
+  id: string;
+  ownerUserId: string;
+  x: number;
+  y: number;
+  radius: number;
+  expiresAt: number;
+  damagePerInterval: number;
+  intervalMs: number;
+  lastTickAt: number;
+  abilityId?: string;
+  abilityName?: string;
+  maxTargets?: number;
+}
+
 export interface GameState {
   turn: number;
   activePlayerIndex: number;
@@ -136,6 +161,7 @@ export interface GameState {
   events: GameEvent[];
   pickups?: PickupItem[];
   safeZone?: SafeZone;
+  groundZones?: GroundZone[];
 }
 
 /* =========================================================
