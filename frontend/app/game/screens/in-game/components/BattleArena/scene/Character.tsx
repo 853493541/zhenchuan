@@ -7,7 +7,6 @@ import * as THREE from 'three';
 
 const CHAR_RADIUS = 0.7;
 const CHAR_HEIGHT = 2.0;
-const HALF = 1000;
 /** Camera distance at which the HP bar has scale=1 (matches default camera offset) */
 const HP_REF_DIST = 20;
 const _hpWorldPos = new THREE.Vector3();
@@ -33,6 +32,7 @@ interface CharacterProps {
   posRef?: MutableRefObject<{ x: number; y: number; z: number }>;
   /** Per-frame projected screen anchor for HUD overlays */
   onScreenBounds?: (bounds: { cx: number; topY: number; baseY: number; rs: number }) => void;
+  worldHalf: number;
 }
 
 export default function Character({
@@ -52,6 +52,7 @@ export default function Character({
   onSelect,
   posRef,
   onScreenBounds,
+  worldHalf,
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -79,9 +80,9 @@ export default function Character({
     ? '#ff8888'
     : (hpPct > 0.5 ? '#dd2222' : hpPct > 0.25 ? '#cc1111' : '#991111');
 
-  const threeX = worldX - HALF;
+  const threeX = worldX - worldHalf;
   const threeY = worldZ;
-  const threeZ = worldY - HALF;
+  const threeZ = worldY - worldHalf;
 
   // For opponent (no posRef): smooth lerp toward prop position
   const currentPos = useRef(new THREE.Vector3(threeX, threeY, threeZ));
@@ -94,12 +95,12 @@ export default function Character({
       // Local player: posRef is already smoothed by the rAF loop in BattleArena.
       // Copy directly — NO additional lerp (avoids sluggish double-smoothing).
       const p = posRef.current;
-      groupRef.current.position.set(p.x - HALF, p.z, p.y - HALF);
+      groupRef.current.position.set(p.x - worldHalf, p.z, p.y - worldHalf);
     } else {
       // Opponent: smooth lerp toward prop-driven position
-      const tx = worldX - HALF;
+      const tx = worldX - worldHalf;
       const ty = worldZ;
-      const tz = worldY - HALF;
+      const tz = worldY - worldHalf;
       currentPos.current.lerp(new THREE.Vector3(tx, ty, tz), 0.18);
       groupRef.current.position.copy(currentPos.current);
     }

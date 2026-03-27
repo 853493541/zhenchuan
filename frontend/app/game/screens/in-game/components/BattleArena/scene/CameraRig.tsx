@@ -9,26 +9,27 @@ interface CameraRigProps {
   camYawRef: MutableRefObject<number>;
   camPitchRef: MutableRefObject<number>;
   camZoomRef: MutableRefObject<number>;
+  worldHalf: number;
 }
 
 const CAM_DIST_BACK = 20;
 const CAM_HEIGHT = 10;
-const HALF = 1000;
 
 export default function CameraRig({
   localRenderPosRef,
   camYawRef,
   camPitchRef,
   camZoomRef,
+  worldHalf,
 }: CameraRigProps) {
   const { camera } = useThree();
 
   useFrame(() => {
     const p = localRenderPosRef.current;
     // world: x=right, y=forward, z=up → three: x=right, y=up, z=back
-    const px = p.x - HALF;
+    const px = p.x - worldHalf;
     const py = p.z; // player height in Three.js y
-    const pz = p.y - HALF; // player forward in Three.js z
+    const pz = p.y - worldHalf; // player forward in Three.js z
 
     const pitch = camPitchRef.current;
     const yaw = camYawRef.current;

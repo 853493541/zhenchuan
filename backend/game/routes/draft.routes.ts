@@ -8,7 +8,7 @@ import GameSession from "../models/GameSession";
 import { getUserIdFromCookie } from "./auth";
 import { generateShop, REFRESH_COST } from "../services/economy/economyService";
 import { getIncomePerRound } from "../services/economy/economyService";
-import { initializeBattleState, generatePickups } from "../services/battle/battleService";
+import { initializeBattleState, generatePickups, generateArenaPickups } from "../services/battle/battleService";
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
 import { GameLoop } from "../engine/loop/GameLoop";
 import { ABILITIES } from "../abilities/abilities";
@@ -382,19 +382,21 @@ router.post("/draft/finalize", async (req, res) => {
 
       // ✅ Initialize arena positions when phase transitions to BATTLE
       // This ensures both players have position data immediately, even before /battle/start is called
-      const ARENA_WIDTH = 2000;
-      const ARENA_HEIGHT = 2000;
+      const isArenaMode = (game as any).mode === 'arena';
+      const mapCX = isArenaMode ? 100 : 1000;
+      const mapCY = isArenaMode ? 100 : 1000;
+      const spawnOffset = isArenaMode ? 10 : 15;
       
       if (!game.state.players[0].position) {
         game.state.players[0].position = {
-          x: ARENA_WIDTH / 2 - 15,
-          y: ARENA_HEIGHT / 2,
+          x: mapCX - spawnOffset,
+          y: mapCY,
         };
       }
       if (!game.state.players[1].position) {
         game.state.players[1].position = {
-          x: ARENA_WIDTH / 2 + 15,
-          y: ARENA_HEIGHT / 2,
+          x: mapCX + spawnOffset,
+          y: mapCY,
         };
       }
 
@@ -496,7 +498,8 @@ router.post("/battle/start", async (req, res) => {
       // Retroactively inject pickups if the loop state is empty so claim/inspect work.
       const ls = existingLoop.getState();
       if (!ls.pickups || ls.pickups.length === 0) {
-        ls.pickups = generatePickups();
+        const isArena = ((game as any).mode ?? 'arena') === 'arena';
+        ls.pickups = isArena ? generateArenaPickups() : generatePickups();
         existingLoop.updateState(ls);
         await GameSession.findByIdAndUpdate(gameId, { "state.pickups": ls.pickups });
       }
@@ -515,7 +518,8 @@ router.post("/battle/start", async (req, res) => {
     }
 
     // Create battle state with positions + use finalized hands
-    const battleState = initializeBattleState(game.tournament, playerIds);
+    const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg';
+    const battleState = initializeBattleState(game.tournament, playerIds, gameMode);
 
     // Override hands — preserve instanceId but reset cooldowns for a fresh battle
     for (const ps of battleState.players) {
@@ -544,7 +548,7 @@ router.post("/battle/start", async (req, res) => {
 
     // ✅ START LOOP (only once)
     // Keep simulation at 30Hz for lower CPU usage on the VM.
-    GameLoop.start(gameId, battleState, { tickRate: 30 });
+    GameLoop.start(gameId, battleState, { tickRate: 30, mode: gameMode });
     // Disabled: spam during testing
     // console.log(`[battle/start] ✅ GameLoop started for ${gameId}`);
 
@@ -621,7 +625,7 @@ router.post("/battle/complete", async (req, res) => {
         game.tournament.selectedAbilities[pid] = [];
       }
       // Initialize fresh battle state with only common abilities
-      game.state = initializeBattleState(game.tournament, allPlayers);
+      game.state = initializeBattleState(game.tournament, allPlayers, ((game as any).mode ?? 'arena') as 'arena' | 'pubg');
     }
 
     game.markModified("state");

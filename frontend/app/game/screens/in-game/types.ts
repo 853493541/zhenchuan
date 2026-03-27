@@ -133,6 +133,7 @@ export interface GameResponse {
   state: GameState;
   playerNames?: Record<string, string>;
   tournament?: TournamentState;
+  mode?: string;
 }
 
 /* =========================================================

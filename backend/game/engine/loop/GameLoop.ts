@@ -14,13 +14,16 @@ import { checkGameOver } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
-import { applyMovement } from "./movement";
+import { applyMovement, MapContext } from "./movement";
 import { pushBuffExpired } from "../effects/buffRuntime";
 import { resolveScheduledDamage, resolveHealAmount } from "../utils/combatMath";
 import { randomUUID } from "crypto";
+import { worldMap } from "../../map/worldMap";
+import { arenaMap } from "../../map/arenaMap";
 
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
+  mode?: 'arena' | 'pubg';
 }
 
 /**
@@ -39,12 +42,22 @@ export class GameLoop {
   private ticksSinceBroadcast = 0;
   // Broadcast cadence in ticks. Derived from tickRate to keep roughly 30Hz net updates.
   private broadcastTickInterval = 1;
+  private mapCtx: MapContext;
 
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
     this.state = structuredClone(state);
     this.tickRate = config?.tickRate ?? 30;
     this.broadcastTickInterval = Math.max(1, Math.round(this.tickRate / 30));
+
+    // Select map based on game mode
+    const map = config?.mode === 'arena' ? arenaMap : worldMap;
+    this.mapCtx = {
+      objects:  map.objects,
+      width:    map.width,
+      height:   map.height,
+      circular: false,
+    };
 
     // Initialize player input buffers
     this.state.players.forEach((_, idx) => {
@@ -171,7 +184,7 @@ export class GameLoop {
     const buffCountsBefore = this.state.players.map((p) => p.buffs?.length ?? 0);
     this.state.players.forEach((player, idx) => {
       const input = this.playerInputs.get(idx) ?? null;
-      applyMovement(player, input, this.tickRate);
+      applyMovement(player, input, this.tickRate, this.mapCtx);
       // Clear the one-shot jump flag so it fires only once per press
       if (input?.jump) {
         this.playerInputs.set(idx, { ...input, jump: false });

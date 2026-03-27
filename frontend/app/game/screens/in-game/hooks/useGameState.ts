@@ -543,6 +543,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     loading,
     state,
     tournament: game?.tournament,
+    gameMode: game?.mode,
     me,
     opponent,
     opponents,

@@ -143,7 +143,7 @@ router.post("/ping", async (req, res) => {
 
 /* ======================== PICKUP SYSTEM ======================== */
 
-const PICKUP_INTERACT_RANGE = 8;  // world units — must be within this distance to start channeling
+const PICKUP_INTERACT_RANGE = 5;  // world units — must be within this distance to start channeling
 const PICKUP_CLAIM_RANGE    = 20; // world units — can claim after channeling even if walked away
 const MAX_DRAFT_HAND = 6;        // draft-ability cap (common abilities excluded)
 
@@ -178,11 +178,12 @@ router.post("/pickup/inspect", async (req, res) => {
       return res.status(404).json({ error: "Pickup not found or already claimed" });
     }
 
-    // Check distance
+    // Check distance (3D — includes Z height)
     const player = state.players[playerIndex];
     const dx = player.position.x - pickup.position.x;
     const dy = player.position.y - pickup.position.y;
-    if (dx * dx + dy * dy > PICKUP_INTERACT_RANGE * PICKUP_INTERACT_RANGE) {
+    const dz = player.position.z ?? 0;
+    if (dx * dx + dy * dy + dz * dz > PICKUP_INTERACT_RANGE * PICKUP_INTERACT_RANGE) {
       return res.status(400).json({ error: "Too far away to interact" });
     }
 
@@ -240,7 +241,8 @@ router.post("/pickup/claim", async (req, res) => {
     const player = loopState.players[playerIndex];
     const dx = player.position.x - pickup.position.x;
     const dy = player.position.y - pickup.position.y;
-    if (dx * dx + dy * dy > PICKUP_CLAIM_RANGE * PICKUP_CLAIM_RANGE) {
+    const dz = player.position.z ?? 0;
+    if (dx * dx + dy * dy + dz * dz > PICKUP_CLAIM_RANGE * PICKUP_CLAIM_RANGE) {
       return res.status(400).json({ error: "Too far away to pick up" });
     }
 

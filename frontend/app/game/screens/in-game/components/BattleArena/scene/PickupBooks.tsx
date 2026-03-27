@@ -5,17 +5,17 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { PickupItem } from '../../../types';
 
-const HALF = 1000;
 const RENDER_RANGE = 200;
 
 interface PickupBooksProps {
   pickups: PickupItem[];
   localRenderPosRef: MutableRefObject<{ x: number; y: number; z: number }>;
+  worldHalf: number;
 }
 
-function PickupBook({ pickup }: { pickup: PickupItem }) {
-  const x = pickup.position.x - HALF;
-  const z = pickup.position.y - HALF;
+function PickupBook({ pickup, worldHalf }: { pickup: PickupItem; worldHalf: number }) {
+  const x = pickup.position.x - worldHalf;
+  const z = pickup.position.y - worldHalf;
 
   // Stable angle from id hash
   const angle = (parseInt(pickup.id.replace(/-/g, '').slice(0, 6), 16) % 360) * (Math.PI / 180);
@@ -27,14 +27,11 @@ function PickupBook({ pickup }: { pickup: PickupItem }) {
         <boxGeometry args={[0.84, 0.1, 0.52]} />
         <meshLambertMaterial color="#1a2a6e" />
       </mesh>
-
-      {/* Blue point light — real glow on surrounding surfaces */}
-      <pointLight position={[0, 0.5, 0]} color="#2266ff" intensity={4} distance={6} decay={2} />
     </group>
   );
 }
 
-export default function PickupBooks({ pickups, localRenderPosRef }: PickupBooksProps) {
+export default function PickupBooks({ pickups, localRenderPosRef, worldHalf }: PickupBooksProps) {
   const [center, setCenter] = useState<{ x: number; y: number }>({
     x: localRenderPosRef.current.x,
     y: localRenderPosRef.current.y,
@@ -64,7 +61,7 @@ export default function PickupBooks({ pickups, localRenderPosRef }: PickupBooksP
   return (
     <group>
       {visiblePickups.map(p => (
-        <PickupBook key={p.id} pickup={p} />
+        <PickupBook key={p.id} pickup={p} worldHalf={worldHalf} />
       ))}
     </group>
   );

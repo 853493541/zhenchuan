@@ -16,6 +16,28 @@ const ARENA_WIDTH = 2000;
 const ARENA_HEIGHT = 2000;
 const PLAYER_RADIUS = 2; // Collision size of player
 
+/** Passed by GameLoop to use the correct map for the current game mode. */
+export interface MapContext {
+  objects: import("../state/types/map").MapObject[];
+  width: number;
+  height: number;
+  /** If true, enforce a circular boundary (center = width/2, height/2; radius = width/2). */
+  circular?: boolean;
+}
+
+/** Clamp player position to a circular boundary without bounce. */
+function clampToCircle(player: PlayerState, cx: number, cy: number, maxR: number): void {
+  const dx = player.position.x - cx;
+  const dy = player.position.y - cy;
+  const distSq = dx * dx + dy * dy;
+  if (distSq <= maxR * maxR) return;
+  const dist = Math.sqrt(distSq);
+  const nx = dx / dist;
+  const ny = dy / dist;
+  player.position.x = cx + nx * maxR;
+  player.position.y = cy + ny * maxR;
+}
+
 /**
  * Resolve a circle-vs-AABB collision between a player and a map object.
  * Pushes the player out of the obstacle and cancels velocity into it.
@@ -80,6 +102,10 @@ const DOUBLE_JUMP_VZ = GRAVITY_UP * 20;            // ≈ 0.07556
 const POWER_GRAVITY_UP   = 2 * 12.8 / (53.1 * 53.1); // ≈ 0.009079
 const POWER_GRAVITY_DOWN = 2 * 12.8 / (57.9 * 57.9); // ≈ 0.007636
 const POWER_JUMP_VZ      = POWER_GRAVITY_UP * 53.1;    // ≈ 0.4823
+// 扶摇直上 + 鸟翔碧空 combined: 24u peak, same 53.1-tick rise / 57.9-tick fall as power jump
+const COMBINED_GRAVITY_UP   = 2 * 24 / (53.1 * 53.1); // = POWER_GRAVITY_UP * (24/12.8)
+const COMBINED_GRAVITY_DOWN = 2 * 24 / (57.9 * 57.9); // = POWER_GRAVITY_DOWN * (24/12.8)
+const COMBINED_JUMP_VZ      = COMBINED_GRAVITY_UP * 53.1; // ≈ 0.9046 (24u peak)
 const MAX_JUMPS = 2;           // default double-jump cap
 const AIR_NUDGE_TOTAL_DISTANCE = 1;
 const AIR_NUDGE_DURATION_TICKS = 30; // 1.0s at 30Hz
@@ -94,12 +120,17 @@ const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √
  * @param player Player to move
  * @param input Current WASD input state
  * @param tickRate Game loop tick rate (Hz) for frame-independent movement
+ * @param mapCtx   Optional map context (objects, width, height). Defaults to 2000×2000 worldMap.
  */
 export function applyMovement(
   player: PlayerState,
   input: MovementInput | null,
-  tickRate: number
+  tickRate: number,
+  mapCtx?: MapContext
 ) {
+  const mapObjects = mapCtx?.objects ?? worldMap.objects;
+  const arenaW     = mapCtx?.width  ?? ARENA_WIDTH;
+  const arenaH     = mapCtx?.height ?? ARENA_HEIGHT;
   // ── initialise Z fields on older state objects that predate jumping ──
   if (player.position.z   === undefined) player.position.z   = 0;
   if (player.velocity.vz  === undefined) player.velocity.vz  = 0;
@@ -158,8 +189,16 @@ export function applyMovement(
           (b) => b.effects.some((e) => e.type === "JUMP_BOOST")
         );
         if (boostIdx >= 0) {
-          player.velocity.vz = POWER_JUMP_VZ;
-          player.isPowerJump = true;
+          if (isMultiJumpDashPending) {
+            // Combined 扶摇 + 鸟翔碧空 pending dash-jump
+            player.velocity.vz = COMBINED_JUMP_VZ;
+            player.isPowerJumpCombined = true;
+            player.isPowerJump = false;
+          } else {
+            player.velocity.vz = POWER_JUMP_VZ;
+            player.isPowerJump = true;
+            player.isPowerJumpCombined = false;
+          }
           player.buffs.splice(boostIdx, 1);
         } else {
           // 鸟翔碧空: all jumps are full 3× strength
@@ -242,15 +281,19 @@ export function applyMovement(
     }
 
     // Clamp XY to arena and resolve obstacles — same as normal movement
-    const minX = PLAYER_RADIUS;
-    const maxX = ARENA_WIDTH - PLAYER_RADIUS;
-    const minY = PLAYER_RADIUS;
-    const maxY = ARENA_HEIGHT - PLAYER_RADIUS;
-    if (player.position.x < minX) { player.position.x = minX; }
-    if (player.position.x > maxX) { player.position.x = maxX; }
-    if (player.position.y < minY) { player.position.y = minY; }
-    if (player.position.y > maxY) { player.position.y = maxY; }
-    for (const obj of worldMap.objects) {
+    if (mapCtx?.circular) {
+      const cx = arenaW / 2;
+      const cy = arenaH / 2;
+      clampToCircle(player, cx, cy, arenaW / 2 - PLAYER_RADIUS);
+    } else {
+      const minX = PLAYER_RADIUS; const maxX = arenaW - PLAYER_RADIUS;
+      const minY = PLAYER_RADIUS; const maxY = arenaH - PLAYER_RADIUS;
+      if (player.position.x < minX) { player.position.x = minX; }
+      if (player.position.x > maxX) { player.position.x = maxX; }
+      if (player.position.y < minY) { player.position.y = minY; }
+      if (player.position.y > maxY) { player.position.y = maxY; }
+    }
+    for (const obj of mapObjects) {
       resolveObjectCollision(player, obj);
     }
 
@@ -346,16 +389,27 @@ export function applyMovement(
         (b) => b.effects.some((e) => e.type === "JUMP_BOOST")
       );
       if (boostIdx >= 0) {
-        player.velocity.vz = POWER_JUMP_VZ;
-        player.isPowerJump = true;
+        if (isMultiJump) {
+          // Combined 扶摇直上 + 鸟翔碧空: 24u peak, same timing as power jump
+          player.velocity.vz = COMBINED_JUMP_VZ;
+          player.isPowerJumpCombined = true;
+          player.isPowerJump = false;
+        } else {
+          player.velocity.vz = POWER_JUMP_VZ;
+          player.isPowerJump = true;
+          player.isPowerJumpCombined = false;
+        }
         player.buffs.splice(boostIdx, 1); // consume the buff instantly
       } else if (player.jumpCount === 0) {
         // First jump (鸟翔碧空: 3× height)
         player.velocity.vz = isMultiJump ? JUMP_VZ * MULTI_JUMP_HEIGHT_MULT : JUMP_VZ;
         player.isPowerJump = false;
+        player.isPowerJumpCombined = false;
       } else {
         // Double / multi-jump (鸟翔碧空: every jump is full 3× strength)
         player.velocity.vz = isMultiJump ? JUMP_VZ * MULTI_JUMP_HEIGHT_MULT : DOUBLE_JUMP_VZ;
+        player.isPowerJump = false;
+        player.isPowerJumpCombined = false;
       }
       player.jumpCount += 1;
 
@@ -422,36 +476,33 @@ export function applyMovement(
   player.position.y += player.velocity.vy;
 
   // Clamp position to arena boundaries
-  const minX = PLAYER_RADIUS;
-  const maxX = ARENA_WIDTH - PLAYER_RADIUS;
-  const minY = PLAYER_RADIUS;
-  const maxY = ARENA_HEIGHT - PLAYER_RADIUS;
-
-  if (player.position.x < minX) {
-    player.position.x = minX;
-    player.velocity.vx = 0;
-  }
-  if (player.position.x > maxX) {
-    player.position.x = maxX;
-    player.velocity.vx = 0;
-  }
-  if (player.position.y < minY) {
-    player.position.y = minY;
-    player.velocity.vy = 0;
-  }
-  if (player.position.y > maxY) {
-    player.position.y = maxY;
-    player.velocity.vy = 0;
+  if (mapCtx?.circular) {
+    const cx = arenaW / 2;
+    const cy = arenaH / 2;
+    clampToCircle(player, cx, cy, arenaW / 2 - PLAYER_RADIUS);
+  } else {
+    const minX = PLAYER_RADIUS;
+    const maxX = arenaW - PLAYER_RADIUS;
+    const minY = PLAYER_RADIUS;
+    const maxY = arenaH - PLAYER_RADIUS;
+    if (player.position.x < minX) { player.position.x = minX; player.velocity.vx = 0; }
+    if (player.position.x > maxX) { player.position.x = maxX; player.velocity.vx = 0; }
+    if (player.position.y < minY) { player.position.y = minY; player.velocity.vy = 0; }
+    if (player.position.y > maxY) { player.position.y = maxY; player.velocity.vy = 0; }
   }
 
   // ── Map object collision (AABB vs circle) ──
-  for (const obj of worldMap.objects) {
+  for (const obj of mapObjects) {
     resolveObjectCollision(player, obj);
   }
 
-  // ── Z axis: asymmetric gravity (power jump uses steeper separate constants) ──
-  const gravUp   = player.isPowerJump ? POWER_GRAVITY_UP   : GRAVITY_UP;
-  const gravDown = player.isPowerJump ? POWER_GRAVITY_DOWN  : GRAVITY_DOWN;
+  // ── Z axis: asymmetric gravity (combined buff > power jump > regular) ──
+  const gravUp   = player.isPowerJumpCombined ? COMBINED_GRAVITY_UP
+                 : player.isPowerJump         ? POWER_GRAVITY_UP
+                 : GRAVITY_UP;
+  const gravDown = player.isPowerJumpCombined ? COMBINED_GRAVITY_DOWN
+                 : player.isPowerJump         ? POWER_GRAVITY_DOWN
+                 : GRAVITY_DOWN;
   player.velocity.vz! -= (player.velocity.vz! >= 0 ? gravUp : gravDown);
   player.position.z! += player.velocity.vz!;
 
@@ -468,6 +519,7 @@ export function applyMovement(
     player.velocity.vz = 0;
     player.jumpCount   = 0; // restore jumps on landing
     player.isPowerJump = false;
+    player.isPowerJumpCombined = false;
     player.airDirectionLocked = false;
     player.airNudgeRemaining = 0;
     player.airNudgeTicksRemaining = 0;
@@ -488,8 +540,13 @@ export function movePlayerTowards(
   player: PlayerState,
   targetX: number,
   targetY: number,
-  distance: number
+  distance: number,
+  mapCtx?: MapContext
 ) {
+  const mapObjects = mapCtx?.objects ?? worldMap.objects;
+  const arenaW     = mapCtx?.width  ?? ARENA_WIDTH;
+  const arenaH     = mapCtx?.height ?? ARENA_HEIGHT;
+
   const dx = targetX - player.position.x;
   const dy = targetY - player.position.y;
   const currentDist = Math.sqrt(dx * dx + dy * dy);
@@ -504,17 +561,30 @@ export function movePlayerTowards(
   player.position.y += moveY;
 
   // Clamp to arena boundaries
-  player.position.x = Math.max(
-    PLAYER_RADIUS,
-    Math.min(ARENA_WIDTH - PLAYER_RADIUS, player.position.x)
-  );
-  player.position.y = Math.max(
-    PLAYER_RADIUS,
-    Math.min(ARENA_HEIGHT - PLAYER_RADIUS, player.position.y)
-  );
+  if (mapCtx?.circular) {
+    const cx = arenaW / 2;
+    const cy = arenaH / 2;
+    const dx2 = player.position.x - cx;
+    const dy2 = player.position.y - cy;
+    const d2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+    const maxR = arenaW / 2 - PLAYER_RADIUS;
+    if (d2 > maxR) {
+      player.position.x = cx + (dx2 / d2) * maxR;
+      player.position.y = cy + (dy2 / d2) * maxR;
+    }
+  } else {
+    player.position.x = Math.max(
+      PLAYER_RADIUS,
+      Math.min(arenaW - PLAYER_RADIUS, player.position.x)
+    );
+    player.position.y = Math.max(
+      PLAYER_RADIUS,
+      Math.min(arenaH - PLAYER_RADIUS, player.position.y)
+    );
+  }
 
   // Map object collision after forced move
-  for (const obj of worldMap.objects) {
+  for (const obj of mapObjects) {
     resolveObjectCollision(player, obj);
   }
 
@@ -535,7 +605,8 @@ export function knockbackPlayer(
   player: PlayerState,
   sourceX: number,
   sourceY: number,
-  distance: number
+  distance: number,
+  mapCtx?: MapContext
 ) {
   const dx = player.position.x - sourceX;
   const dy = player.position.y - sourceY;
@@ -548,13 +619,14 @@ export function knockbackPlayer(
       player,
       sourceX + Math.cos(angle) * distance * 2,
       sourceY + Math.sin(angle) * distance * 2,
-      distance
+      distance,
+      mapCtx
     );
   } else {
     // Push away from source
     const pushX = sourceX + (dx / currentDist) * distance * 2;
     const pushY = sourceY + (dy / currentDist) * distance * 2;
-    movePlayerTowards(player, pushX, pushY, distance);
+    movePlayerTowards(player, pushX, pushY, distance, mapCtx);
   }
 }
 

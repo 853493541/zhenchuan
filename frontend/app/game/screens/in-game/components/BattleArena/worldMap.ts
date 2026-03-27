@@ -1,6 +1,6 @@
 // frontend/app/game/screens/in-game/components/BattleArena/worldMap.ts
-// Static 2000×2000 world map — imported directly for rendering.
-// Must match backend/game/map/worldMap.ts exactly.
+// World map data for rendering.
+// Must match backend/game/map/worldMap.ts and arenaMap.ts exactly.
 
 export type MapObjectType = 'building' | 'rock' | 'mountain' | 'hill_high' | 'hill_low';
 
@@ -106,3 +106,21 @@ export const worldMapObjects: MapObject[] = [
   { id: 'lhn1', type: 'hill_low', x:  810, y:  950, w: 55, d: 45, h:  4 }, // W of spawn
   { id: 'lhn2', type: 'hill_low', x: 1120, y: 1040, w: 50, d: 42, h:  4 }, // E of spawn
 ];
+
+// ═══════════════════════════════════════════════════════════════
+// ARENA MAP — 200×200, players spawn at (90,100) and (110,100)
+// Circular boundary: radius 96 from center (100, 100)
+// ═══════════════════════════════════════════════════════════════
+
+export const ARENA_MAP_WIDTH  = 200;
+export const ARENA_MAP_HEIGHT = 200;
+
+export const arenaMapObjects: MapObject[] = [];
+
+/** Returns the map objects and world dimensions for the given game mode. */
+export function getMapForMode(mode?: string): { objects: MapObject[]; width: number; height: number } {
+  if (mode === 'arena') {
+    return { objects: arenaMapObjects, width: ARENA_MAP_WIDTH, height: ARENA_MAP_HEIGHT };
+  }
+  return { objects: worldMapObjects, width: WORLD_WIDTH, height: WORLD_HEIGHT };
+}

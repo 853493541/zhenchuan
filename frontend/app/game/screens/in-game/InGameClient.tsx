@@ -90,6 +90,7 @@ export default function InGameClient({
     loading,
     state,
     tournament,
+    gameMode,
     me,
     opponent,
     opponents,
@@ -354,6 +355,7 @@ export default function InGameClient({
         events={state?.events ?? []}
         pickups={state?.pickups ?? []}
         opponentPositionBufferRef={opponentPositionBufferRef}
+        mode={gameMode ?? 'arena'}
         onCastAbility={async (abilityInstanceId, targetUserId) => {
           // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
           const cardInstance =

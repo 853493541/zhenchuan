@@ -56,6 +56,13 @@ export interface PlayerState {
   isPowerJump?: boolean;
 
   /**
+   * True when the current airtime was initiated by a combined 扶摇直上 + 鸟翔碧空 jump.
+   * Peak height 24u, same duration as power jump. Takes precedence over isPowerJump.
+   * Cleared on landing.
+   */
+  isPowerJumpCombined?: boolean;
+
+  /**
    * Remaining limited-air-control allowance (units).
     * Armed by upward jump phases (single or double) and consumed over time while airborne.
    */

@@ -12,18 +12,30 @@ import { ABILITIES } from "../../abilities/abilities";
 import { randomUUID } from "crypto";
 
 // Arena dimensions (must match backend arena size)
-const ARENA_WIDTH = 2000;
-const ARENA_HEIGHT = 2000;
+const PUBG_WIDTH = 2000;
+const PUBG_HEIGHT = 2000;
+const ARENA_WIDTH = 200;
+const ARENA_HEIGHT = 200;
 
 // Five spawn positions for PUBG-style battle royale
 // First two are 20 units apart, facing each other near center
-const SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
+const PUBG_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
   { x: 990,  y: 1000 }, // P0 — left of center
   { x: 1010, y: 1000 }, // P1 — right of center (20u apart)
   { x: 1000, y: 1000 }, // Center
   { x: 250,  y: 1750 }, // SW
   { x: 1750, y: 1750 }, // SE
 ];
+
+// Spawn positions for Arena mode — 20 units apart, facing each other at center of 200×200 map
+const ARENA_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
+  { x:  90, y: 100 }, // P0 — left of center
+  { x: 110, y: 100 }, // P1 — right of center (20u apart)
+  { x: 100, y: 100 }, // Center (fallback)
+];
+
+// Keep SPAWN_POSITIONS as alias for pubg (backward compat)
+const SPAWN_POSITIONS = PUBG_SPAWN_POSITIONS;
 
 // Pickup spawn positions — clusters near each player spawn (P0≈985,1000 | P1≈1015,1000)
 // so books appear within arm's reach without needing to walk far.
@@ -112,6 +124,62 @@ function generatePickups(): PickupItem[] {
 
 /** Export so draft.routes can inject pickups into existing loops that predate the pickup system. */
 export { generatePickups };
+
+// ── Arena-mode pickup positions (200×200 map) ─────────────────────────────
+// Tight clusters near each spawn + scattered across the circular arena.
+const ARENA_PICKUP_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
+  // Near P0 spawn (90, 100)
+  { x:  90, y:  88 }, { x:  78, y:  94 }, { x:  78, y: 106 },
+  { x:  90, y: 112 }, { x: 102, y:  94 }, { x: 102, y: 106 },
+  // Near P1 spawn (110, 100)
+  { x: 110, y:  88 }, { x:  98, y:  94 }, { x:  98, y: 106 },
+  { x: 110, y: 112 }, { x: 122, y:  94 }, { x: 122, y: 106 },
+  // NW quadrant
+  { x:  30, y:  30 }, { x:  50, y:  20 }, { x:  20, y:  50 }, { x:  40, y:  40 },
+  // NE quadrant
+  { x: 170, y:  30 }, { x: 150, y:  20 }, { x: 180, y:  50 }, { x: 160, y:  40 },
+  // SW quadrant
+  { x:  30, y: 170 }, { x:  50, y: 180 }, { x:  20, y: 150 }, { x:  40, y: 160 },
+  // SE quadrant
+  { x: 170, y: 170 }, { x: 150, y: 180 }, { x: 180, y: 150 }, { x: 160, y: 160 },
+  // N/S mid-lane
+  { x:  96, y:  22 }, { x: 104, y:  22 }, { x:  96, y: 178 }, { x: 104, y: 178 },
+  // W/E mid-lane
+  { x:  22, y:  96 }, { x:  22, y: 104 }, { x: 178, y:  96 }, { x: 178, y: 104 },
+];
+const ARENA_NEAR_SPAWN_COUNT = 12; // first 12 positions are near-spawn
+
+function generateArenaPickups(): PickupItem[] {
+  const nonCommonIds = Object.values(ABILITIES)
+    .filter((a) => !(a as any).isCommon && a.id)
+    .map((a) => a.id);
+
+  if (nonCommonIds.length === 0) return [];
+
+  const pickups: PickupItem[] = [];
+
+  ARENA_PICKUP_SPAWN_POSITIONS.forEach((center, idx) => {
+    const clusterSize = idx < ARENA_NEAR_SPAWN_COUNT ? 5 : 3;
+    for (let i = 0; i < clusterSize; i++) {
+      const angle  = (Math.PI * 2 * i / clusterSize) + (Math.random() - 0.5) * (Math.PI / clusterSize);
+      const radius = idx < ARENA_NEAR_SPAWN_COUNT
+        ? 1 + Math.random() * 3   // tight near spawn
+        : 1 + Math.random() * 4;
+      pickups.push({
+        id: randomUUID(),
+        abilityId: nonCommonIds[Math.floor(Math.random() * nonCommonIds.length)],
+        position: {
+          x: Math.round(center.x + Math.cos(angle) * radius),
+          y: Math.round(center.y + Math.sin(angle) * radius),
+        },
+      });
+    }
+  });
+
+  return pickups;
+}
+
+export { generateArenaPickups };
 const COMMON_ABILITY_IDS = [
   "menghu_xiasha",
   "fuyao_zhishang",
@@ -137,14 +205,20 @@ function makeCommonAbilities(): AbilityInstance[] {
  */
 export function initializeBattleState(
   tournament: TournamentState,
-  playerIds: PlayerID[]
+  playerIds: PlayerID[],
+  mode: 'arena' | 'pubg' = 'pubg'
 ): GameState {
-  const players: PlayerState[] = playerIds.map((id, i) => {
-    const spawn = SPAWN_POSITIONS[i % SPAWN_POSITIONS.length];
+  const isArena = mode === 'arena';
+  const mapWidth  = isArena ? ARENA_WIDTH  : PUBG_WIDTH;
+  const mapHeight = isArena ? ARENA_HEIGHT : PUBG_HEIGHT;
+  const spawnList = isArena ? ARENA_SPAWN_POSITIONS : PUBG_SPAWN_POSITIONS;
 
-    // Face toward arena center
-    const dx = ARENA_WIDTH / 2 - spawn.x;
-    const dy = ARENA_HEIGHT / 2 - spawn.y;
+  const players: PlayerState[] = playerIds.map((id, i) => {
+    const spawn = spawnList[i % spawnList.length];
+
+    // Face toward map center
+    const dx = mapWidth  / 2 - spawn.x;
+    const dy = mapHeight / 2 - spawn.y;
     const mag = Math.sqrt(dx * dx + dy * dy) || 1;
 
     const abilities = tournament.selectedAbilities[id] ?? [];
@@ -172,7 +246,7 @@ export function initializeBattleState(
     gameOver: false,
     players,
     events: [],
-    pickups: generatePickups(),
+    pickups: isArena ? generateArenaPickups() : generatePickups(),
   };
 
   return state;

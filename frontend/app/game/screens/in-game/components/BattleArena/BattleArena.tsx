@@ -15,8 +15,10 @@ type V3 = { x: number; y: number; z: number };
 /* ============================================================
    ARENA SETTINGS  (must match backend)
    ============================================================ */
-const ARENA_WIDTH  = 2000;
-const ARENA_HEIGHT = 2000;
+const PUBG_WIDTH  = 2000;
+const PUBG_HEIGHT = 2000;
+const ARENA_WIDTH_SMALL  = 200;
+const ARENA_HEIGHT_SMALL = 200;
 const DASH_ANIM_MS = 1500; // ms — cosmetic dash travel animation
 
 function normalizeAngle(rad: number): number {
@@ -86,6 +88,8 @@ interface BattleArenaProps {
   events?: any[];
   /** Pickup items (ability books) currently on the ground */
   pickups?: PickupItem[];
+  /** Game mode: 'arena' (100×100) or 'pubg' (2000×2000) */
+  mode?: string;
 }
 
 /* ============================================================
@@ -103,7 +107,10 @@ export default function BattleArena({
   opponentPositionBufferRef,
   events = [],
   pickups = [],
+  mode,
 }: BattleArenaProps) {
+  const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : PUBG_WIDTH;
+  const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : PUBG_HEIGHT;
   // CODE FRESHNESS MARKER — if you see this in console, the new code IS running
   useEffect(() => { console.log('[BA-FRESH] BattleArena v2 loaded — activeDash support active'); }, []);
   const wrapRef        = useRef<HTMLDivElement>(null);
@@ -157,6 +164,7 @@ export default function BattleArena({
   const pickupsRef          = useRef<PickupItem[]>([]);
   const nearbyPickupIdsRef  = useRef<string[]>([]);  // synced from state; used in callbacks
   const pickupModalsRef     = useRef<Array<{ pickupId: string; abilityId: string; name: string; description: string }>>([]);
+  const channelPickupIdRef  = useRef<string | null>(null);
   const [minimizedModals,   setMinimizedModals]   = useState<Set<string>>(new Set());
 
   /* --- Draggable UI positions (persisted to localStorage) --- */
@@ -309,9 +317,10 @@ export default function BattleArena({
   distanceRef.current = distance;
 
   /* --- Fuyao (扶摇直上) local buff prediction --- */
-  const hasFuyaoBuffRef  = useRef(false);
-  const isPowerJumpRef   = useRef(false); // true while airborne from a power jump (different gravity)
-  const maxJumpsRef      = useRef(2);     // updated from me.buffs MULTI_JUMP effect
+  const hasFuyaoBuffRef          = useRef(false);
+  const isPowerJumpRef           = useRef(false); // true while airborne from a power jump (different gravity)
+  const isPowerJumpCombinedRef   = useRef(false); // true for 扶摇+鸟翔 combined 24u jump
+  const maxJumpsRef              = useRef(2);     // updated from me.buffs MULTI_JUMP effect
 
   /* --- Channel AOE refs (used in render loop, updated via useEffect) --- */
   const meChannelingRef  = useRef(false);
@@ -541,21 +550,24 @@ export default function BattleArena({
   useEffect(() => { nearbyPickupIdsRef.current = nearbyPickupIds; }, [nearbyPickupIds]);
   useEffect(() => { pickupModalsRef.current    = pickupModals;    }, [pickupModals]);
   useEffect(() => { uiPositionsRef.current     = uiPositions;     }, [uiPositions]);
+  useEffect(() => { channelPickupIdRef.current = channelPickupId; }, [channelPickupId]);
 
   // Proximity check: collect ALL books within range, sorted closest-first (runs every 100ms)
   // Also auto-close pickup panels whose book is now beyond claim range (20 units)
   useEffect(() => {
-    const PICKUP_RANGE = 8;
+    const PICKUP_RANGE = 5;
     const CLAIM_RANGE  = 20;
     const id = setInterval(() => {
       const pos = localPositionRef.current;
       if (!pos) return;
+      const pz = localZRef.current;
       const items = pickupsRef.current;
       const nearby: Array<{ id: string; dist: number }> = [];
       for (const p of items) {
         const dx = pos.x - p.position.x;
         const dy = pos.y - p.position.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const dz = pz - (p.position.z ?? 0);
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (dist < PICKUP_RANGE) nearby.push({ id: p.id, dist });
       }
       nearby.sort((a, b) => a.dist - b.dist);
@@ -891,6 +903,11 @@ export default function BattleArena({
     const target = nearbyPickupIdsRef.current[0] ?? null;
     if (!target) return;
 
+    // Block channeling if moving or airborne
+    const keys = keysRef.current;
+    if (keys.w || keys.a || keys.s || keys.d) return;
+    if (localZRef.current > 0.5) return;
+
     // If the closest book's panel is already open → claim it (F toggles open→claim)
     if (pickupModalsRef.current.some(m => m.pickupId === target)) {
       claimPickup(target);
@@ -997,6 +1014,17 @@ export default function BattleArena({
         e.preventDefault();
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = true;
         setWasdKeys(prev => ({ ...prev, [k]: true }));
+
+        // Movement breaks channeling
+        if (channelPickupIdRef.current) {
+          cancelAnimationFrame(channelAnimRef.current);
+          setChannelPickupId(null);
+          setChannelProgress(0);
+        }
+        // Movement closes all pickup modals
+        if (pickupModalsRef.current.length > 0) {
+          setPickupModals([]);
+        }
       }
       // Space = jump
       if (e.code === 'Space' || e.key === ' ') {
@@ -1256,6 +1284,10 @@ export default function BattleArena({
     const POWER_GRAVITY_UP_CLIENT   = 2 * 12.8 / (53.1 * 53.1);        // ≈ 0.009079 (1.77 s rise)
     const POWER_GRAVITY_DOWN_CLIENT = 2 * 12.8 / (57.9 * 57.9);        // ≈ 0.007636 (1.93 s fall)
     const POWER_JUMP_VZ_CLIENT      = POWER_GRAVITY_UP_CLIENT * 53.1;   // ≈ 0.4823  (12.8 u peak)
+    // 扶摇直上 + 鸟翔碧空 combined: 24u peak, same 53.1-tick rise / 57.9-tick fall
+    const COMBINED_GRAVITY_UP_CLIENT   = 2 * 24 / (53.1 * 53.1);
+    const COMBINED_GRAVITY_DOWN_CLIENT = 2 * 24 / (57.9 * 57.9);
+    const COMBINED_JUMP_VZ_CLIENT      = COMBINED_GRAVITY_UP_CLIENT * 53.1;
     const AIR_NUDGE_TOTAL_DISTANCE = 1;
     const AIR_NUDGE_DURATION_TICKS = 30; // 1.0s at 30Hz
     const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
@@ -1473,16 +1505,25 @@ export default function BattleArena({
           Math.abs(moveIntentDx) > 0.01 || Math.abs(moveIntentDy) > 0.01;
         const isMultiJump = maxJumpsRef.current > 2;
         let jumpVz: number;
-        if (hasFuyaoBuffRef.current) {
+        if (hasFuyaoBuffRef.current && isMultiJump) {
+          // Combined 扶摇直上 + 鸟翔碧空: 24u peak, same timing as power jump
+          jumpVz = COMBINED_JUMP_VZ_CLIENT;
+          isPowerJumpCombinedRef.current = true;
+          isPowerJumpRef.current = false;
+        } else if (hasFuyaoBuffRef.current) {
           jumpVz = POWER_JUMP_VZ_CLIENT;
+          isPowerJumpRef.current = true;
+          isPowerJumpCombinedRef.current = false;
         } else if (localJumpCountRef.current === 0) {
           jumpVz = isMultiJump ? JUMP_VZ_CLIENT * MULTI_JUMP_HEIGHT_MULT : JUMP_VZ_CLIENT;
+          isPowerJumpRef.current = false;
+          isPowerJumpCombinedRef.current = false;
         } else {
           // 鸟翔碧空: every jump is full 3× strength
           jumpVz = isMultiJump ? JUMP_VZ_CLIENT * MULTI_JUMP_HEIGHT_MULT : DOUBLE_JUMP_VZ_CLIENT;
+          isPowerJumpRef.current = false;
+          isPowerJumpCombinedRef.current = false;
         }
-        if (hasFuyaoBuffRef.current) isPowerJumpRef.current = true;
-        else if (localJumpCountRef.current === 0) isPowerJumpRef.current = false;
         hasFuyaoBuffRef.current   = false;
         localVzRef.current        = jumpVz;
         localJumpCountRef.current += 1;
@@ -1506,16 +1547,21 @@ export default function BattleArena({
           airNudgeDirRef.current = null;
         }
       }
-      const gravUp   = isPowerJumpRef.current ? POWER_GRAVITY_UP_CLIENT   : GRAVITY_UP_CLIENT;
-      const gravDown = isPowerJumpRef.current ? POWER_GRAVITY_DOWN_CLIENT  : GRAVITY_DOWN_CLIENT;
+      const gravUp   = isPowerJumpCombinedRef.current ? COMBINED_GRAVITY_UP_CLIENT
+                     : isPowerJumpRef.current         ? POWER_GRAVITY_UP_CLIENT
+                     : GRAVITY_UP_CLIENT;
+      const gravDown = isPowerJumpCombinedRef.current ? COMBINED_GRAVITY_DOWN_CLIENT
+                     : isPowerJumpRef.current         ? POWER_GRAVITY_DOWN_CLIENT
+                     : GRAVITY_DOWN_CLIENT;
       localVzRef.current -= (localVzRef.current >= 0 ? gravUp : gravDown);
       localZRef.current   = Math.max(0, localZRef.current + localVzRef.current);
       if (localZRef.current <= 0 && localVzRef.current < 0) {
-        localZRef.current         = 0;
-        localVzRef.current        = 0;
-        localJumpCountRef.current = 0;
-        isPowerJumpRef.current    = false;
-        airDirectionLockedRef.current = false;
+        localZRef.current              = 0;
+        localVzRef.current             = 0;
+        localJumpCountRef.current      = 0;
+        isPowerJumpRef.current         = false;
+        isPowerJumpCombinedRef.current = false;
+        airDirectionLockedRef.current  = false;
         airNudgeRemainingRef.current = 0;
         airNudgeTicksRemainingRef.current = 0;
         airNudgeDirRef.current = null;
@@ -1567,6 +1613,32 @@ export default function BattleArena({
       onMouseLeave={() => showDebugGrid && setDebugCursor(null)}
     >
 
+      {/* ===== MODE INDICATOR ===== */}
+      <div style={{
+        position: 'absolute', top: 10, left: 10, zIndex: 500,
+        display: 'flex', alignItems: 'center', gap: 6,
+        background: 'rgba(12,18,16,0.78)',
+        border: mode === 'arena' ? '1px solid rgba(255,60,60,0.70)' : '1px solid rgba(80,180,120,0.55)',
+        borderRadius: 6,
+        padding: '4px 10px',
+        pointerEvents: 'none',
+        backdropFilter: 'blur(2px)',
+      }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: '50%',
+          background: mode === 'arena' ? '#ff4444' : '#44cc88',
+          boxShadow: mode === 'arena' ? '0 0 6px #ff2222' : '0 0 6px #22aa66',
+          display: 'inline-block', flexShrink: 0,
+        }} />
+        <span style={{
+          fontSize: 12, fontWeight: 700, letterSpacing: '0.5px',
+          color: mode === 'arena' ? '#ffaaaa' : '#aaeec8',
+          fontFamily: '"Microsoft YaHei", sans-serif',
+        }}>
+          {mode === 'arena' ? '竞技场' : '吃鸡'}
+        </span>
+      </div>
+
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
       {/* ===== R3F 3D CANVAS ===== */}
       <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
@@ -1597,6 +1669,7 @@ export default function BattleArena({
             maxHp={maxHp}
             meScreenBoundsRef={meScreenBoundsRef}
             oppScreenBoundsRef={oppScreenBoundsRef}
+            mode={mode}
           />
         </Canvas>
       </div>
@@ -1970,7 +2043,7 @@ export default function BattleArena({
         const PANEL_H = TITLE_H + BODY_H + 2; // +2 borders
         const panelBase = uiPositions['pickup-panel'] ?? { left: 200, top: 150 };
 
-        return pickupModals.map((modal, idx) => {
+        return pickupModals.slice(0, 5).map((modal, idx) => {
           return (
             <div key={modal.pickupId} style={{
               position: 'absolute',

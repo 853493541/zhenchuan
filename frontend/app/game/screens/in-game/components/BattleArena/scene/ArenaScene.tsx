@@ -8,6 +8,7 @@ import PickupBooks from './PickupBooks';
 import AoeZone from './AoeZone';
 import CameraRig from './CameraRig';
 import type { PickupItem } from '../../../types';
+import { getMapForMode } from '../worldMap';
 
 // Colors for up to 5 opponents (index 0 = primary, etc.)
 const OPP_COLORS = ['#cc3333', '#cc8800', '#9933cc', '#cc3388'];
@@ -44,6 +45,7 @@ interface ArenaSceneProps {
   maxHp: number;
   meScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
   oppScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
+  mode?: string;
 }
 
 export default function ArenaScene({
@@ -63,7 +65,11 @@ export default function ArenaScene({
   maxHp,
   meScreenBoundsRef,
   oppScreenBoundsRef,
+  mode,
 }: ArenaSceneProps) {
+  const { objects: mapObjects, width: mapWidth } = getMapForMode(mode);
+  const worldHalf = mapWidth / 2;
+  const isArena = mode === 'arena';
   return (
     <>
       {/* Camera */}
@@ -72,25 +78,19 @@ export default function ArenaScene({
         camYawRef={camYawRef}
         camPitchRef={camPitchRef}
         camZoomRef={camZoomRef}
+        worldHalf={worldHalf}
       />
 
-      {/* Lighting — soft forest light */}
+      {/* Lighting — daylight for all modes */}
       <ambientLight intensity={1.0} color="#c0ddb8" />
-      <directionalLight
-        position={[300, 500, 100]}
-        intensity={2.8}
-        color="#e8eedc"
-      />
-      {/* Green ground bounce */}
+      <directionalLight position={[300, 500, 100]} intensity={2.8} color="#e8eedc" />
       <directionalLight position={[-100, 50, -200]} intensity={0.4} color="#3d7045" />
-
-      {/* Forest haze fog */}
-      <fog attach="fog" args={['#7ab86a', 300, 1000]} />
+      {!isArena && <fog attach="fog" args={['#7ab86a', 300, 1000]} />}
 
       {/* World */}
-      <Ground />
-      <MapObjects localRenderPosRef={localRenderPosRef} />
-      <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} />
+      <Ground arenaSize={mapWidth} isArena={isArena} />
+      <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalf={worldHalf} />
+      <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalf={worldHalf} />
 
       {/* Local player AOE zone */}
       {meChanneling && (
@@ -99,6 +99,7 @@ export default function ArenaScene({
           worldY={me.position.y}
           radius={10}
           color="#ffd700"
+          worldHalf={worldHalf}
         />
       )}
 
@@ -117,6 +118,7 @@ export default function ArenaScene({
                 worldY={opp.position.y}
                 radius={10}
                 color="#ff5500"
+                worldHalf={worldHalf}
               />
             )}
             <Character
@@ -134,6 +136,7 @@ export default function ArenaScene({
               distance={dist}
               onSelect={() => onSelectTarget?.(opp.userId)}
               onScreenBounds={i === 0 && oppScreenBoundsRef ? (b) => { oppScreenBoundsRef.current = b; } : undefined}
+              worldHalf={worldHalf}
             />
           </group>
         );
@@ -153,6 +156,7 @@ export default function ArenaScene({
         facingRef={meFacingRef}
         posRef={localRenderPosRef}
         onScreenBounds={meScreenBoundsRef ? (b) => { meScreenBoundsRef.current = b; } : undefined}
+        worldHalf={worldHalf}
       />
     </>
   );

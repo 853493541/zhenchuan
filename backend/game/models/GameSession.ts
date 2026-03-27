@@ -19,6 +19,9 @@ const GameSessionSchema = new mongoose.Schema(
     // 🔄 Auto-start when room is full
     autoStart: { type: Boolean, default: true },
 
+    // 🎮 Game mode: 'arena' (100×100 map, 1v1 focused) | 'pubg' (2000×2000 map)
+    mode: { type: String, enum: ['arena', 'pubg'], default: 'arena' },
+
     // 🎮 Tournament/Draft/Economy state (persists across battles)
     tournament: { type: mongoose.Schema.Types.Mixed, default: null },
 

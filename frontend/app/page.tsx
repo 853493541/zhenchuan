@@ -10,6 +10,7 @@ export default function HomePage() {
   const [waitingGames, setWaitingGames] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedMode, setSelectedMode] = useState<'arena' | 'pubg'>('arena');
   const previousGameIds = useRef<Set<string>>(new Set());
   const hasAutoJoined = useRef(false);
   // Keep me in a ref so the polling closure always sees the latest value
@@ -59,7 +60,7 @@ export default function HomePage() {
       
       // Auto-join logic: detect new room created by another player
       if (meRef.current && !hasAutoJoined.current) {
-        const currentGameIds = new Set(games.map((g: any) => g._id));
+        const currentGameIds = new Set<string>(games.map((g: any) => g._id as string));
         
         // Find a new room that is not created by me
         for (const gameId of currentGameIds) {
@@ -99,7 +100,9 @@ export default function HomePage() {
     try {
       const res = await fetch("/api/game/create", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({ mode: selectedMode }),
       });
 
       if (!res.ok) throw new Error(await res.text());
@@ -117,6 +120,22 @@ export default function HomePage() {
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>对战大厅</h1>
+
+      {/* Mode selector */}
+      <div className={styles.modeSelector}>
+        <button
+          className={`${styles.modeBtn} ${selectedMode === 'arena' ? styles.modeBtnActive : ''}`}
+          onClick={() => setSelectedMode('arena')}
+        >
+          竞技场
+        </button>
+        <button
+          className={`${styles.modeBtn} ${selectedMode === 'pubg' ? styles.modeBtnActive : ''}`}
+          onClick={() => setSelectedMode('pubg')}
+        >
+          吃鸡
+        </button>
+      </div>
 
       <button
         className={styles.createBtn}
@@ -147,6 +166,11 @@ export default function HomePage() {
               {/* 标题 */}
               <div className={styles.cardTitle}>
                 {isMine ? "我的房间" : "开放房间"} #{shortId(g._id)}
+              </div>
+
+              {/* 模式 */}
+              <div className={styles.modeBadge}>
+                {g.mode === 'arena' ? '竞技场' : '吃鸡'}
               </div>
 
               {/* 人数 */}

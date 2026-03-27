@@ -9,11 +9,10 @@ interface AoeZoneProps {
   worldY: number;
   radius: number;
   color: string;
+  worldHalf: number;
 }
 
-const HALF = 1000;
-
-export default function AoeZone({ worldX, worldY, radius, color }: AoeZoneProps) {
+export default function AoeZone({ worldX, worldY, radius, color, worldHalf }: AoeZoneProps) {
   const ringRef = useRef<THREE.Mesh>(null);
   const fillRef = useRef<THREE.Mesh>(null);
 
@@ -29,8 +28,8 @@ export default function AoeZone({ worldX, worldY, radius, color }: AoeZoneProps)
     }
   });
 
-  const x = worldX - HALF;
-  const z = worldY - HALF;
+  const x = worldX - worldHalf;
+  const z = worldY - worldHalf;
 
   return (
     <group position={[x, 0.04, z]}>

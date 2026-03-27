@@ -19,7 +19,7 @@ async function getUsernameById(userId: string): Promise<string> {
   return username;
 }
 
-export async function createGame(userId: string) {
+export async function createGame(userId: string, mode: 'arena' | 'pubg' = 'arena') {
   const username = await getUsernameById(userId);
 
   const state: GameState = {
@@ -53,6 +53,7 @@ export async function createGame(userId: string) {
     players: [userId],
     state,
     started: false,
+    mode,
     playerNames: {
       [userId]: username,
     },
