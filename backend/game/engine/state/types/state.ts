@@ -20,6 +20,12 @@ export interface SafeZone {
   centerY: number;
   currentHalf: number;
   dps: number;
+  /** Is the zone currently shrinking? */
+  shrinking: boolean;
+  /** If shrinking: progress 0→1. If paused: 0 */
+  shrinkProgress: number;
+  /** Seconds until next phase change (shrink start or shrink end) */
+  nextChangeIn: number;
 }
 
 export interface PlayerState {

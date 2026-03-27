@@ -46,7 +46,7 @@ interface ArenaSceneProps {
   meScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
   oppScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
   mode?: string;
-  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number };
+  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
 }
 
 export default function ArenaScene({
@@ -99,6 +99,7 @@ export default function ArenaScene({
         <AoeZone
           worldX={me.position.x}
           worldY={me.position.y}
+          worldZ={me.position.z ?? 0}
           radius={10}
           color="#ffd700"
           worldHalf={worldHalf}
@@ -118,6 +119,7 @@ export default function ArenaScene({
               <AoeZone
                 worldX={opp.position.x}
                 worldY={opp.position.y}
+                worldZ={opp.position.z ?? 0}
                 radius={10}
                 color="#ff5500"
                 worldHalf={worldHalf}

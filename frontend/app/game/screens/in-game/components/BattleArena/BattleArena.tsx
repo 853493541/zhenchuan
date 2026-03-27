@@ -89,7 +89,7 @@ interface BattleArenaProps {
   /** Pickup items (ability books) currently on the ground */
   pickups?: PickupItem[];
   /** Safe zone state for poison zone rendering */
-  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number };
+  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
   /** Game mode: 'arena' (100×100) or 'pubg' (2000×2000) */
   mode?: string;
 }
@@ -2356,6 +2356,55 @@ export default function BattleArena({
 
       </div>
 
+      {/* ===== SAFE ZONE TIMER / PROGRESS BAR ===== */}
+      {safeZone && safeZone.nextChangeIn > 0 && (
+        <div style={{
+          position: 'absolute',
+          left: '95%',
+          top: '30%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 4,
+          pointerEvents: 'none',
+          zIndex: 500,
+        }}>
+          {/* Progress bar container */}
+          <div style={{
+            width: 120,
+            height: 12,
+            background: 'rgba(0,0,0,0.5)',
+            borderRadius: 3,
+            border: '1px solid rgba(255,255,255,0.2)',
+            overflow: 'hidden',
+          }}>
+            {safeZone.shrinking && (
+              <div style={{
+                width: `${Math.min(100, safeZone.shrinkProgress * 100)}%`,
+                height: '100%',
+                background: 'linear-gradient(90deg, #ff4444, #ff8800)',
+                borderRadius: 3,
+                transition: 'width 0.3s linear',
+              }} />
+            )}
+          </div>
+          {/* Timer text */}
+          <div style={{
+            color: safeZone.shrinking ? '#ff8800' : '#ffffff',
+            fontSize: 13,
+            fontWeight: 700,
+            fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+            textShadow: '1px 1px 3px rgba(0,0,0,0.8)',
+            whiteSpace: 'nowrap',
+          }}>
+            {safeZone.shrinking
+              ? `缩圈中 ${Math.ceil(safeZone.nextChangeIn)}s`
+              : `风暴倒计时: ${Math.ceil(safeZone.nextChangeIn)}`}
+          </div>
+        </div>
+      )}
+
       {/* ===== FLOATING DAMAGE / HEAL NUMBERS ===== */}
       {floats.map(entry => {
         const age      = (Date.now() - entry.startTime) / 1300; // 0→1 over 1.3s
@@ -2379,13 +2428,13 @@ export default function BattleArena({
           };
         } else if (entry.type === 'dmg_taken') {
             posStyle = {
-              top: `calc(${pctY ?? 60}% + ${travelUp - entry.yOffset}px)`,
+              top: `calc(${pctY ?? 65}% + ${travelUp - entry.yOffset}px)`,
               left: `${pctX ?? 40}%`,
               transform: 'translateX(-50%)',
             };
         } else {
             posStyle = {
-              top: `calc(${pctY ?? 60}% + ${travelUp - entry.yOffset}px)`,
+              top: `calc(${pctY ?? 65}% + ${travelUp - entry.yOffset}px)`,
               left: `${pctX ?? 60}%`,
               transform: 'translateX(-50%)',
             };

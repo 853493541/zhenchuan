@@ -77,7 +77,7 @@ export default function Ground({ arenaSize = 2000, isArena = false, safeZone }: 
     ]);
   }, [isArena, arenaSize]);
 
-  /* ── Safe zone (毒圈) red boundary lines ── */
+  /* ── Safe zone (毒圈) white glowing boundary ── */
   const safeZoneBorderPositions = useMemo(() => {
     if (!safeZone || safeZone.currentHalf >= half) return new Float32Array(0);
     const cx = safeZone.centerX - half;
@@ -89,54 +89,6 @@ export default function Ground({ arenaSize = 2000, isArena = false, safeZone }: 
       cx + h, y, cz - h,   cx + h, y, cz + h,
       cx + h, y, cz + h,   cx - h, y, cz + h,
       cx - h, y, cz + h,   cx - h, y, cz - h,
-    ]);
-  }, [safeZone, half]);
-
-  // Inner glow layer
-  const safeZoneBorderInnerPositions = useMemo(() => {
-    if (!safeZone || safeZone.currentHalf >= half) return new Float32Array(0);
-    const cx = safeZone.centerX - half;
-    const cz = safeZone.centerY - half;
-    const h = safeZone.currentHalf;
-    const o = 0.6;
-    const y = 0.09;
-    return new Float32Array([
-      cx - h + o, y, cz - h + o,   cx + h - o, y, cz - h + o,
-      cx + h - o, y, cz - h + o,   cx + h - o, y, cz + h - o,
-      cx + h - o, y, cz + h - o,   cx - h + o, y, cz + h - o,
-      cx - h + o, y, cz + h - o,   cx - h + o, y, cz - h + o,
-    ]);
-  }, [safeZone, half]);
-
-  // Outer glow layer 1
-  const safeZoneBorderOuterPositions = useMemo(() => {
-    if (!safeZone || safeZone.currentHalf >= half) return new Float32Array(0);
-    const cx = safeZone.centerX - half;
-    const cz = safeZone.centerY - half;
-    const h = safeZone.currentHalf;
-    const o = 0.8;
-    const y = 0.08;
-    return new Float32Array([
-      cx - h - o, y, cz - h - o,   cx + h + o, y, cz - h - o,
-      cx + h + o, y, cz - h - o,   cx + h + o, y, cz + h + o,
-      cx + h + o, y, cz + h + o,   cx - h - o, y, cz + h + o,
-      cx - h - o, y, cz + h + o,   cx - h - o, y, cz - h - o,
-    ]);
-  }, [safeZone, half]);
-
-  // Outer glow layer 2 (widest)
-  const safeZoneBorderOuter2Positions = useMemo(() => {
-    if (!safeZone || safeZone.currentHalf >= half) return new Float32Array(0);
-    const cx = safeZone.centerX - half;
-    const cz = safeZone.centerY - half;
-    const h = safeZone.currentHalf;
-    const o = 1.6;
-    const y = 0.07;
-    return new Float32Array([
-      cx - h - o, y, cz - h - o,   cx + h + o, y, cz - h - o,
-      cx + h + o, y, cz - h - o,   cx + h + o, y, cz + h + o,
-      cx + h + o, y, cz + h + o,   cx - h - o, y, cz + h + o,
-      cx - h - o, y, cz + h + o,   cx - h - o, y, cz - h - o,
     ]);
   }, [safeZone, half]);
 
@@ -176,45 +128,53 @@ export default function Ground({ arenaSize = 2000, isArena = false, safeZone }: 
           <lineBasicMaterial color="#ffffff" transparent opacity={0.9} />
         </lineSegments>
 
-        {/* Safe zone (毒圈) red border — outermost glow */}
-        {safeZoneBorderOuter2Positions.length > 0 && (
-          <lineSegments>
-            <bufferGeometry>
-              <bufferAttribute attach="attributes-position" args={[safeZoneBorderOuter2Positions, 3]} />
-            </bufferGeometry>
-            <lineBasicMaterial color="#ff0000" transparent opacity={0.3} />
-          </lineSegments>
-        )}
-
-        {/* Safe zone (毒圈) red border — outer glow */}
-        {safeZoneBorderOuterPositions.length > 0 && (
-          <lineSegments>
-            <bufferGeometry>
-              <bufferAttribute attach="attributes-position" args={[safeZoneBorderOuterPositions, 3]} />
-            </bufferGeometry>
-            <lineBasicMaterial color="#ff1111" transparent opacity={0.55} />
-          </lineSegments>
-        )}
-
-        {/* Safe zone (毒圈) red border — bright core */}
+        {/* Safe zone (毒圈) border — bright white core (extra shiny) */}
         {safeZoneBorderPositions.length > 0 && (
           <lineSegments>
             <bufferGeometry>
               <bufferAttribute attach="attributes-position" args={[safeZoneBorderPositions, 3]} />
             </bufferGeometry>
-            <lineBasicMaterial color="#ff2222" transparent opacity={1} />
+            <lineBasicMaterial color="#ffffff" transparent opacity={1} />
           </lineSegments>
         )}
 
-        {/* Safe zone (毒圈) red border — inner glow */}
-        {safeZoneBorderInnerPositions.length > 0 && (
-          <lineSegments>
-            <bufferGeometry>
-              <bufferAttribute attach="attributes-position" args={[safeZoneBorderInnerPositions, 3]} />
-            </bufferGeometry>
-            <lineBasicMaterial color="#ff0000" transparent opacity={0.45} />
-          </lineSegments>
-        )}
+        {/* Safe zone gradient barrier wall — fades from strong at bottom to invisible at 15 units */}
+        {safeZone && safeZone.currentHalf < half && safeZone.currentHalf > 0 && (() => {
+          const cx = safeZone.centerX - half;
+          const cz = safeZone.centerY - half;
+          const h = safeZone.currentHalf;
+          const wallHeight = 15;
+          const layers = 6;
+          const walls: JSX.Element[] = [];
+          for (let i = 0; i < layers; i++) {
+            const t = i / layers; // 0 = bottom, 1 = top
+            const layerH = wallHeight / layers;
+            const yCenter = t * wallHeight + layerH / 2;
+            const opacity = 0.12 * (1 - t); // strong at bottom, fading to 0 at top
+            if (opacity < 0.005) continue;
+            walls.push(
+              <group key={i}>
+                <mesh position={[cx, yCenter, cz - h]}>
+                  <planeGeometry args={[h * 2, layerH]} />
+                  <meshBasicMaterial color="#66ffcc" transparent opacity={opacity} side={2} depthWrite={false} />
+                </mesh>
+                <mesh position={[cx, yCenter, cz + h]}>
+                  <planeGeometry args={[h * 2, layerH]} />
+                  <meshBasicMaterial color="#66ffcc" transparent opacity={opacity} side={2} depthWrite={false} />
+                </mesh>
+                <mesh position={[cx + h, yCenter, cz]} rotation={[0, Math.PI / 2, 0]}>
+                  <planeGeometry args={[h * 2, layerH]} />
+                  <meshBasicMaterial color="#66ffcc" transparent opacity={opacity} side={2} depthWrite={false} />
+                </mesh>
+                <mesh position={[cx - h, yCenter, cz]} rotation={[0, Math.PI / 2, 0]}>
+                  <planeGeometry args={[h * 2, layerH]} />
+                  <meshBasicMaterial color="#66ffcc" transparent opacity={opacity} side={2} depthWrite={false} />
+                </mesh>
+              </group>
+            );
+          }
+          return <group>{walls}</group>;
+        })()}
       </group>
     );
   }

@@ -120,6 +120,9 @@ export interface SafeZone {
   centerY: number;
   currentHalf: number;
   dps: number;
+  shrinking: boolean;
+  shrinkProgress: number;
+  nextChangeIn: number;
 }
 
 export interface GameState {

@@ -1,12 +1,21 @@
 // backend/game/engine/effects/definitions/Dash.ts
 
 import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
+import { PlayerState } from "../../state/types";
 import { Position } from "../../state/types/position";
 import { pushEvent } from "../events";
 
+/** Stable buffId for the CC-immunity granted while dashing */
+const DASH_CC_IMMUNE_BUFF_ID = 999901;
+
+/** Dash speed: 20 units per 0.5 seconds = 40 units/s */
+const DASH_SPEED_UNITS_PER_SEC = 40;
+const TICK_RATE = 30;
+
 /**
  * Handle DASH effects.
- * Moves the source player to be 1 unit away from target position.
+ * Sets up an activeDash that moves the source player to 1 unit away from target.
+ * Speed is constant (20u in 0.5s). Shorter distances complete faster.
  */
 export function handleDash(
   state: GameState,
@@ -36,17 +45,47 @@ export function handleDash(
     return;
   }
 
-  // Position player 1 unit away from target
+  // We want to end up 1 unit away from target
   const desiredDistance = 1;
+  const travelDistance = distance - desiredDistance;
   const dirX = dx / distance;
   const dirY = dy / distance;
 
-  const newX = target.position.x - dirX * desiredDistance;
-  const newY = target.position.y - dirY * desiredDistance;
+  // Speed-based duration: distance / speed, converted to ticks
+  const durationSec = travelDistance / DASH_SPEED_UNITS_PER_SEC;
+  const durationTicks = Math.max(1, Math.round(durationSec * TICK_RATE));
+  const sourcePlayer = source as PlayerState;
 
-  // Clamp to arena boundaries (0-100 in both axes)
-  source.position.x = Math.max(0, Math.min(100, newX));
-  source.position.y = Math.max(0, Math.min(100, newY));
+  // Maximum vertical angle caps
+  const MAX_UP_ANGLE_DEG = 45;
+  const MAX_DOWN_ANGLE_DEG = 35;
+  const maxUpVz = (travelDistance * Math.tan(MAX_UP_ANGLE_DEG * Math.PI / 180)) / durationTicks;
+  const maxDownVz = -(travelDistance * Math.tan(MAX_DOWN_ANGLE_DEG * Math.PI / 180)) / durationTicks;
+
+  sourcePlayer.activeDash = {
+    vxPerTick: dirX * travelDistance / durationTicks,
+    vyPerTick: dirY * travelDistance / durationTicks,
+    // vzPerTick: undefined — captured on first tick in movement.ts
+    maxUpVz,
+    maxDownVz,
+    ticksRemaining: durationTicks,
+  };
+
+  // Freeze XY velocity — activeDash owns horizontal movement
+  if (sourcePlayer.velocity) {
+    sourcePlayer.velocity.vx = 0;
+    sourcePlayer.velocity.vy = 0;
+  }
+
+  // Grant CC immunity for the duration of the dash
+  sourcePlayer.buffs = sourcePlayer.buffs.filter(b => b.buffId !== DASH_CC_IMMUNE_BUFF_ID);
+  sourcePlayer.buffs.push({
+    buffId: DASH_CC_IMMUNE_BUFF_ID,
+    name: "龙牙冲刺",
+    category: "BUFF",
+    effects: [{ type: "CONTROL_IMMUNE" }],
+    expiresAt: Date.now() + durationSec * 1000 + 100,
+  });
 
   pushEvent(state, {
     turn: state.turn,
@@ -56,6 +95,6 @@ export function handleDash(
     abilityId: ability.id,
     abilityName: ability.name,
     effectType: "DASH",
-    value: Math.round(distance - desiredDistance),
+    value: Math.round(travelDistance),
   });
 }

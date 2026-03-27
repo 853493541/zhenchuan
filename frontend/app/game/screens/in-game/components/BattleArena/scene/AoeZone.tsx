@@ -7,12 +7,13 @@ import * as THREE from 'three';
 interface AoeZoneProps {
   worldX: number;
   worldY: number;
+  worldZ?: number;
   radius: number;
   color: string;
   worldHalf: number;
 }
 
-export default function AoeZone({ worldX, worldY, radius, color, worldHalf }: AoeZoneProps) {
+export default function AoeZone({ worldX, worldY, worldZ = 0, radius, color, worldHalf }: AoeZoneProps) {
   const ringRef = useRef<THREE.Mesh>(null);
   const fillRef = useRef<THREE.Mesh>(null);
 
@@ -32,7 +33,7 @@ export default function AoeZone({ worldX, worldY, radius, color, worldHalf }: Ao
   const z = worldY - worldHalf;
 
   return (
-    <group position={[x, 0.04, z]}>
+    <group position={[x, worldZ + 0.04, z]}>
       {/* Fill disc */}
       <mesh ref={fillRef} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[radius, 48]} />

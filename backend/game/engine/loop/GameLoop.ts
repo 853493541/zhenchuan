@@ -89,6 +89,9 @@ export class GameLoop {
         centerY: mapCenter,
         currentHalf: mapCenter, // starts at full arena size
         dps: 0,
+        shrinking: false,
+        shrinkProgress: 0,
+        nextChangeIn: 10, // 10s grace period
       };
     }
 
@@ -99,17 +102,21 @@ export class GameLoop {
   }
 
   /** Compute safe zone size and damage from elapsed time */
-  private computeSafeZone(elapsedMs: number): { currentHalf: number; dps: number } {
-    for (const phase of GameLoop.ZONE_PHASES) {
+  private computeSafeZone(elapsedMs: number): { currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number } {
+    for (let i = 0; i < GameLoop.ZONE_PHASES.length; i++) {
+      const phase = GameLoop.ZONE_PHASES[i];
       if (elapsedMs < phase.endTime) {
         const duration = phase.endTime - phase.startTime;
         const t = Math.min(1, Math.max(0, (elapsedMs - phase.startTime) / duration));
         const currentHalf = phase.fromHalf + (phase.toHalf - phase.fromHalf) * t;
-        return { currentHalf, dps: phase.dps };
+        const shrinking = phase.fromHalf !== phase.toHalf;
+        const shrinkProgress = shrinking ? t : 0;
+        const nextChangeIn = (phase.endTime - elapsedMs) / 1000; // seconds
+        return { currentHalf, dps: phase.dps, shrinking, shrinkProgress, nextChangeIn };
       }
     }
     // Past all phases → zone fully collapsed, max damage
-    return { currentHalf: 0, dps: 10 };
+    return { currentHalf: 0, dps: 10, shrinking: false, shrinkProgress: 0, nextChangeIn: 0 };
   }
 
   /** Return true if player position is outside the safe zone */
@@ -352,11 +359,12 @@ export class GameLoop {
 
             if (opp.hp <= 0) continue;
 
-            // Range check
+            // Range check (3D — height matters)
             const range = e.range ?? 10;
             const dx = opp.position.x - player.position.x;
             const dy = opp.position.y - player.position.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
+            const dz = (opp.position.z ?? 0) - (player.position.z ?? 0);
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
             if (dist > range) continue;
 
             // Cone angle check (skip for full-circle 360°)
@@ -442,9 +450,12 @@ export class GameLoop {
     // 1d. 毒圈 — poison zone damage (arena mode only, 1x per second)
     if (this.isArenaMode && this.state.safeZone) {
       const elapsedMs = now - this.zoneStartedAt;
-      const { currentHalf, dps } = this.computeSafeZone(elapsedMs);
+      const { currentHalf, dps, shrinking, shrinkProgress, nextChangeIn } = this.computeSafeZone(elapsedMs);
       this.state.safeZone.currentHalf = currentHalf;
       this.state.safeZone.dps = dps;
+      this.state.safeZone.shrinking = shrinking;
+      this.state.safeZone.shrinkProgress = shrinkProgress;
+      this.state.safeZone.nextChangeIn = nextChangeIn;
 
       // Apply damage once per second
       if (dps > 0 && now - this.lastZoneDamageAt >= 1000) {

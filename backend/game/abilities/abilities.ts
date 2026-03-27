@@ -733,13 +733,14 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   zhenshen_xingsi: {
     id: "zhenshen_xingsi",
     name: "龙牙",
-    description: "冲向敌人（最远20码）\n距离内冲向敌方位置",
+    description: "冲向敌人（最远20码）\n距离内冲向敌方位置，造成10点伤害",
     type: "CONTROL",
     target: "OPPONENT",
     cooldownTicks: 300,
     gcd: true,
     range: 20,
     effects: [
+      { type: "DAMAGE", value: 10 },
       { type: "DASH", value: 8 },
     ],
   },
