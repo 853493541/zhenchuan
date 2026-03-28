@@ -6,7 +6,9 @@
 
 import type { WorldMap, MapObject } from "../engine/state/types/map";
 
-const objects: MapObject[] = [];
+const objects: MapObject[] = [
+  { id: 'arena_wall1', type: 'building', x: 95, y: 95, w: 10, d: 10, h: 10 },
+];
 
 export const arenaMap: WorldMap = {
   width:  200,

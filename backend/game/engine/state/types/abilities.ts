@@ -80,6 +80,12 @@ export interface Ability {
    */
   requiresGrounded?: boolean;
 
+  /**
+   * If true, this ability can only be cast if the target is within 180° of the
+   * player's facing direction. Set to false for 360° abilities.
+   */
+  faceDirection?: boolean;
+
   canMove?: {
     distance: number;
     when: "BEFORE" | "AFTER" | "DURING";

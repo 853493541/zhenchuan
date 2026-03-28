@@ -24,6 +24,11 @@ export const WORLD_HEIGHT = 2000;
 
 export const worldMapObjects: MapObject[] = [
   // ══════════════════════════════════════════════════════
+  // CENTER BLOCK — 10×10×10 building for testing structures
+  // ══════════════════════════════════════════════════════
+  { id: 'center_wall1', type: 'building', x: 995, y: 995, w: 10, d: 10, h: 10 },
+
+  // ══════════════════════════════════════════════════════
   // MOUNTAINS
   // ══════════════════════════════════════════════════════
   { id: 'm1', type: 'mountain', x:   20, y:   30, w: 140, d: 120, h: 45 },
@@ -115,7 +120,9 @@ export const worldMapObjects: MapObject[] = [
 export const ARENA_MAP_WIDTH  = 200;
 export const ARENA_MAP_HEIGHT = 200;
 
-export const arenaMapObjects: MapObject[] = [];
+export const arenaMapObjects: MapObject[] = [
+  { id: 'arena_wall1', type: 'building', x: 95, y: 95, w: 10, d: 10, h: 10 },
+];
 
 /** Returns the map objects and world dimensions for the given game mode. */
 export function getMapForMode(mode?: string): { objects: MapObject[]; width: number; height: number } {

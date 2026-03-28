@@ -31,23 +31,20 @@ export type EffectType =
   | "JUMP_BOOST"
   | "PERIODIC_DAMAGE"
   | "PERIODIC_HEAL"
+  | "PERIODIC_GUAN_TI_HEAL"
   | "CHANNEL_AOE_TICK"
   | "TIMED_AOE_DAMAGE"
   | "TIMED_AOE_DAMAGE_IF_SELF_HP_GT"
+  | "TIMED_GUAN_TI_HEAL"
+  | "PLACE_GROUND_ZONE"
+  | "STACK_ON_HIT_DAMAGE"
   | "KNOCKED_BACK"
   | "SPEED_BOOST"
   // Level 0 control (removable by cleanse)
   | "ROOT"
   | "SLOW"
   // Jump enhancements
-  | "MULTI_JUMP"
-  // 贯体 healing (bypasses HEAL_REDUCTION)
-  | "PERIODIC_GUAN_TI_HEAL"
-  | "TIMED_GUAN_TI_HEAL"
-  // Ground zone placement
-  | "PLACE_GROUND_ZONE"
-  // Stack-based on-hit debuff (e.g. 孔雀翎)
-  | "STACK_ON_HIT_DAMAGE";
+  | "MULTI_JUMP";
 
 /**
  * Immediate ability effects

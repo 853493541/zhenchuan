@@ -9,6 +9,7 @@ import { ChannelBar, type ChannelBarData } from './ChannelBar';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone } from '../../types';
 import ArenaScene from './scene/ArenaScene';
+import { getMapForMode, type MapObject } from './worldMap';
 
 type V3 = { x: number; y: number; z: number };
 
@@ -20,6 +21,95 @@ const PUBG_HEIGHT = 2000;
 const ARENA_WIDTH_SMALL  = 200;
 const ARENA_HEIGHT_SMALL = 200;
 const DASH_ANIM_MS = 1500; // ms — cosmetic dash travel animation
+const PLAYER_RADIUS = 2; // must match backend
+
+/** Resolve circle-vs-AABB collision (client-side prediction). Z-aware: skip if player is above obj. */
+function resolveObjCollisionClient(
+  px: number, py: number, pz: number,
+  vel: { x: number; y: number },
+  obj: MapObject,
+): { x: number; y: number } {
+  if (pz >= obj.h) return { x: px, y: py }; // above rooftop
+  const pr = PLAYER_RADIUS;
+  const cx = Math.max(obj.x, Math.min(px, obj.x + obj.w));
+  const cy = Math.max(obj.y, Math.min(py, obj.y + obj.d));
+  const dx = px - cx;
+  const dy = py - cy;
+  const distSq = dx * dx + dy * dy;
+  if (distSq >= pr * pr) return { x: px, y: py };
+  let outX = px, outY = py;
+  if (distSq < 1e-6) {
+    const dL = px - obj.x;
+    const dR = obj.x + obj.w - px;
+    const dT = py - obj.y;
+    const dB = obj.y + obj.d - py;
+    const min = Math.min(dL, dR, dT, dB);
+    if (min === dL)      { outX = obj.x - pr;           vel.x = Math.min(0, vel.x); }
+    else if (min === dR) { outX = obj.x + obj.w + pr;   vel.x = Math.max(0, vel.x); }
+    else if (min === dT) { outY = obj.y - pr;           vel.y = Math.min(0, vel.y); }
+    else                 { outY = obj.y + obj.d + pr;   vel.y = Math.max(0, vel.y); }
+  } else {
+    const dist = Math.sqrt(distSq);
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const pen = pr - dist;
+    outX += nx * pen;
+    outY += ny * pen;
+    const dot = vel.x * nx + vel.y * ny;
+    if (dot < 0) { vel.x -= dot * nx; vel.y -= dot * ny; }
+  }
+  return { x: outX, y: outY };
+}
+
+/** Get ground height at XY (tallest object the player overlaps and is above). */
+function getGroundHeightClient(px: number, py: number, pz: number, objects: MapObject[]): number {
+  let ground = 0;
+  for (const obj of objects) {
+    if (pz < obj.h - 0.1) continue; // player is below this object's top
+    const cx = Math.max(obj.x, Math.min(px, obj.x + obj.w));
+    const cy = Math.max(obj.y, Math.min(py, obj.y + obj.d));
+    const dx = px - cx;
+    const dy = py - cy;
+    if (dx * dx + dy * dy < PLAYER_RADIUS * PLAYER_RADIUS && obj.h > ground) {
+      ground = obj.h;
+    }
+  }
+  return ground;
+}
+
+/** 2D segment vs AABB intersection (for line-of-sight checks). */
+function segmentIntersectsAABB(
+  x1: number, y1: number, x2: number, y2: number,
+  minX: number, minY: number, maxX: number, maxY: number
+): boolean {
+  let tmin = 0, tmax = 1;
+  const dx = x2 - x1, dy = y2 - y1;
+  if (Math.abs(dx) < 1e-8) { if (x1 < minX || x1 > maxX) return false; }
+  else {
+    let t1 = (minX - x1) / dx, t2 = (maxX - x1) / dx;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return false;
+  }
+  if (Math.abs(dy) < 1e-8) { if (y1 < minY || y1 > maxY) return false; }
+  else {
+    let t1 = (minY - y1) / dy, t2 = (maxY - y1) / dy;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return false;
+  }
+  return true;
+}
+
+/** Check if LOS between two positions is blocked by any map object. */
+function isLOSBlockedClient(
+  ax: number, ay: number, bx: number, by: number, objects: MapObject[]
+): boolean {
+  for (const obj of objects) {
+    if (segmentIntersectsAABB(ax, ay, bx, by, obj.x, obj.y, obj.x + obj.w, obj.y + obj.d)) return true;
+  }
+  return false;
+}
 
 function normalizeAngle(rad: number): number {
   let a = rad;
@@ -59,6 +149,7 @@ interface AbilityInfo {
   isReady: boolean;
   isCommon: boolean;
   target: 'SELF' | 'OPPONENT';
+  faceDirection?: boolean;
 }
 
 /** Fixed display order for the common-ability bar. */
@@ -117,6 +208,8 @@ export default function BattleArena({
 }: BattleArenaProps) {
   const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : PUBG_WIDTH;
   const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : PUBG_HEIGHT;
+  const mapData = useMemo(() => getMapForMode(mode), [mode]);
+  const mapObjectsRef = useRef(mapData.objects);
   // CODE FRESHNESS MARKER — if you see this in console, the new code IS running
   useEffect(() => { console.log('[BA-FRESH] BattleArena v2 loaded — activeDash support active'); }, []);
   const wrapRef        = useRef<HTMLDivElement>(null);
@@ -342,6 +435,30 @@ export default function BattleArena({
     if (ability?.target === 'OPPONENT' && !selectedTargetRef.current) {
       toastError('请先选择目标');
       return;
+    }
+    // Face direction check (180° hemisphere)
+    if (ability?.target === 'OPPONENT' && ability?.faceDirection) {
+      const myPos = localPositionRef.current;
+      const myFacing = localFacingRef.current;
+      const oppPos = opponentRawRef.current;
+      if (myPos && myFacing && oppPos) {
+        const dx = oppPos.x - myPos.x;
+        const dy = oppPos.y - myPos.y;
+        const dot = myFacing.x * dx + myFacing.y * dy;
+        if (dot < 0) {
+          toastError('目标不在面朝方向内');
+          return;
+        }
+      }
+    }
+    // Line-of-sight check (structure blocking)
+    if (ability?.target === 'OPPONENT') {
+      const myPos = localPositionRef.current;
+      const oppPos = opponentRawRef.current;
+      if (myPos && oppPos && isLOSBlockedClient(myPos.x, myPos.y, oppPos.x, oppPos.y, mapObjectsRef.current)) {
+        toastError('视线被建筑遮挡');
+        return;
+      }
     }
     // Stamp the ability name so the damage / heal float can label itself
     lastCastNameRef.current = ability?.name ?? null;
@@ -610,7 +727,7 @@ export default function BattleArena({
       for (const p of items) {
         const dx = pos.x - p.position.x;
         const dy = pos.y - p.position.y;
-        const dz = pz - (p.position.z ?? 0);
+        const dz = 0;
         const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (dist < PICKUP_RANGE) nearby.push({ id: p.id, dist });
       }
@@ -880,6 +997,7 @@ export default function BattleArena({
           isReady:     (instance.cooldown ?? 0) === 0 && (!ability.range || distance <= ability.range),
           isCommon:    false,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
+          faceDirection: (ability as any).faceDirection ?? false,
         };
       })
       .filter(Boolean) as AbilityInfo[];
@@ -906,6 +1024,7 @@ export default function BattleArena({
           isReady:     cooldown === 0 && (!ability.range || distance <= ability.range),
           isCommon:    true,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
+          faceDirection: (ability as any).faceDirection ?? false,
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
@@ -1373,7 +1492,8 @@ export default function BattleArena({
       const vel = localVelocityRef.current;
       const k   = keysRef.current;
       const ms  = mouseStateRef.current;
-      const airborne = localZRef.current > 0.01;
+      const tickGroundH = getGroundHeightClient(pos.x, pos.y, localZRef.current, mapObjectsRef.current);
+      const airborne = localZRef.current > tickGroundH + 0.01;
       let airNudgeDx = 0;
       let airNudgeDy = 0;
       let moveIntentDx = 0;
@@ -1540,10 +1660,18 @@ export default function BattleArena({
         }
       }
 
-      localPositionRef.current = {
-        x: Math.max(2, Math.min(ARENA_WIDTH - 2, pos.x + vel.x + nudgeX)),
-        y: Math.max(2, Math.min(ARENA_HEIGHT - 2, pos.y + vel.y + nudgeY)),
-      };
+      let newPx = Math.max(2, Math.min(ARENA_WIDTH - 2, pos.x + vel.x + nudgeX));
+      let newPy = Math.max(2, Math.min(ARENA_HEIGHT - 2, pos.y + vel.y + nudgeY));
+
+      // Map object collision (must match backend resolveObjectCollision)
+      const objs = mapObjectsRef.current;
+      for (const obj of objs) {
+        const resolved = resolveObjCollisionClient(newPx, newPy, localZRef.current, vel, obj);
+        newPx = resolved.x;
+        newPy = resolved.y;
+      }
+
+      localPositionRef.current = { x: newPx, y: newPy };
 
       // ── Z axis: jump + gravity ──
       if (jumpLocalRef.current && localJumpCountRef.current < maxJumpsRef.current) {
@@ -1600,9 +1728,10 @@ export default function BattleArena({
                      : isPowerJumpRef.current         ? POWER_GRAVITY_DOWN_CLIENT
                      : GRAVITY_DOWN_CLIENT;
       localVzRef.current -= (localVzRef.current >= 0 ? gravUp : gravDown);
-      localZRef.current   = Math.max(0, localZRef.current + localVzRef.current);
-      if (localZRef.current <= 0 && localVzRef.current < 0) {
-        localZRef.current              = 0;
+      const clientGroundH = getGroundHeightClient(localPositionRef.current.x, localPositionRef.current.y, localZRef.current, objs);
+      localZRef.current   = Math.max(clientGroundH, localZRef.current + localVzRef.current);
+      if (localZRef.current <= clientGroundH && localVzRef.current < 0) {
+        localZRef.current              = clientGroundH;
         localVzRef.current             = 0;
         localJumpCountRef.current      = 0;
         isPowerJumpRef.current         = false;

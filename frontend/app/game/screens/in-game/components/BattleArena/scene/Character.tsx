@@ -237,21 +237,23 @@ export default function Character({
               outlineWidth={0.025}
               outlineColor="#000000"
               material-toneMapped={false}
+              material-depthTest={true}
+              material-depthWrite={false}
             >
               {isSelected && distance !== undefined ? `${username} · ${distance.toFixed(1)}尺` : username}
             </Text>
           )}
           {/* Thin black border */}
           <sprite scale={[2.86, 0.274, 1]} renderOrder={0}>
-            <spriteMaterial color="#000000" depthTest={false} depthWrite={false} toneMapped={false} />
+            <spriteMaterial color="#000000" depthTest={true} depthWrite={false} toneMapped={false} />
           </sprite>
           {/* Background */}
           <sprite scale={[2.8, 0.224, 1]} renderOrder={1}>
-            <spriteMaterial color="#222222" transparent opacity={0.9} depthTest={false} depthWrite={false} toneMapped={false} />
+            <spriteMaterial color="#222222" transparent opacity={0.9} depthTest={true} depthWrite={false} toneMapped={false} />
           </sprite>
           {/* Colored fill */}
           <sprite position={[(hpPct - 1) * 1.4, 0, 0]} scale={[2.8 * hpPct, 0.182, 1]} renderOrder={2}>
-            <spriteMaterial color={hpColor} depthTest={false} depthWrite={false} toneMapped={false} />
+            <spriteMaterial color={hpColor} depthTest={true} depthWrite={false} toneMapped={false} />
           </sprite>
         </group>
       )}
@@ -266,7 +268,7 @@ export default function Character({
             rotation={new THREE.Euler(-Math.PI / 2, facingYaw, 0, 'YXZ')}
           >
             <circleGeometry args={[2.4, 32, -Math.PI, Math.PI]} />
-            <meshBasicMaterial color="#ff6600" transparent opacity={0.38} side={THREE.DoubleSide} depthWrite={false} />
+            <meshBasicMaterial color="#ff6600" transparent opacity={0.38} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
           </mesh>
           {/* Lighter border ring with glow */}
           <mesh
@@ -275,7 +277,7 @@ export default function Character({
             rotation={new THREE.Euler(-Math.PI / 2, facingYaw, 0, 'YXZ')}
           >
             <ringGeometry args={[2.28, 2.42, 48, 1, -Math.PI, Math.PI]} />
-            <meshBasicMaterial color="#ffee00" transparent opacity={0.85} side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
+            <meshBasicMaterial color="#ffee00" transparent opacity={0.85} side={THREE.DoubleSide} depthWrite={false} depthTest={false} toneMapped={false} />
           </mesh>
           {/* Outer glow ring */}
           <mesh
@@ -284,7 +286,7 @@ export default function Character({
             rotation={new THREE.Euler(-Math.PI / 2, facingYaw, 0, 'YXZ')}
           >
             <ringGeometry args={[2.18, 2.52, 48, 1, -Math.PI, Math.PI]} />
-            <meshBasicMaterial color="#ffdd44" transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
+            <meshBasicMaterial color="#ffdd44" transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} depthTest={false} toneMapped={false} />
           </mesh>
         </>
       )}

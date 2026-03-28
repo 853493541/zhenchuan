@@ -13,6 +13,11 @@ import type { WorldMap, MapObject } from "../engine/state/types/map";
 
 const objects: MapObject[] = [
   // ══════════════════════════════════════════════════════
+  // CENTER BLOCK — 10×10×10 building for testing structures
+  // ══════════════════════════════════════════════════════
+  { id: 'center_wall1', type: 'building', x: 995, y: 995, w: 10, d: 10, h: 10 },
+
+  // ══════════════════════════════════════════════════════
   // MOUNTAINS — large, tall, dark earth tones
   // ══════════════════════════════════════════════════════
   { id: 'm1', type: 'mountain', x:   20, y:   30, w: 140, d: 120, h: 45 }, // NW corner

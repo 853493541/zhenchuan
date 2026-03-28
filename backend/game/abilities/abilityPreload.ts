@@ -30,6 +30,9 @@ export function buildAbilityPreload() {
 
       // Common movement abilities are always shown regardless of draft
       isCommon: !!(ability as any).isCommon,
+
+      // Face direction check — true means 180° hemisphere required
+      faceDirection: !!(ability as any).faceDirection,
     };
 
     abilities.push(cardPayload);

@@ -39,10 +39,28 @@ function clampToCircle(player: PlayerState, cx: number, cy: number, maxR: number
 }
 
 /**
+ * Check if player center is within the XY footprint of an AABB (with player radius).
+ */
+function isInsideXY(px: number, py: number, obj: MapObject): boolean {
+  const cx = Math.max(obj.x, Math.min(px, obj.x + obj.w));
+  const cy = Math.max(obj.y, Math.min(py, obj.y + obj.d));
+  const dx = px - cx;
+  const dy = py - cy;
+  return dx * dx + dy * dy < PLAYER_RADIUS * PLAYER_RADIUS;
+}
+
+/**
  * Resolve a circle-vs-AABB collision between a player and a map object.
  * Pushes the player out of the obstacle and cancels velocity into it.
+ *
+ * Z-aware: if the player's feet are at or above the object's top (obj.h),
+ * no XY collision occurs — the player can walk on the roof.
  */
 function resolveObjectCollision(player: PlayerState, obj: MapObject): void {
+  const pz = player.position.z ?? 0;
+
+  // Player is above this object — no XY collision (can walk on roof)
+  if (pz >= obj.h) return;
   const pr = PLAYER_RADIUS;
   const px = player.position.x;
   const py = player.position.y;
@@ -85,6 +103,26 @@ function resolveObjectCollision(player: PlayerState, obj: MapObject): void {
     player.velocity.vx -= velDot * nx;
     player.velocity.vy -= velDot * ny;
   }
+}
+
+/**
+ * Get the ground height at a player's XY position.
+ * Returns the height of the tallest object whose footprint the player overlaps
+ * AND whose top is at or below the player's current Z (i.e. the player is above it).
+ * Returns 0 if no such object exists (player is on the open arena floor).
+ *
+ * The pz check prevents a ground-level player from being "teleported" to a
+ * rooftop just because their XY footprint overlaps during a sideways collision.
+ */
+function getGroundHeight(px: number, py: number, pz: number, objects: MapObject[]): number {
+  let ground = 0;
+  for (const obj of objects) {
+    // Only count objects the player is above (or at the surface of)
+    if (pz >= obj.h - 0.1 && isInsideXY(px, py, obj) && obj.h > ground) {
+      ground = obj.h;
+    }
+  }
+  return ground;
 }
 
 /**
@@ -139,7 +177,8 @@ export function applyMovement(
   if (player.airNudgeTicksRemaining === undefined) player.airNudgeTicksRemaining = 0;
   if (player.airDirectionLocked === undefined) player.airDirectionLocked = false;
 
-  const wasAirborne = (player.position.z ?? 0) > 0.01;
+  const currentGroundH = getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects);
+  const wasAirborne = (player.position.z ?? 0) > currentGroundH + 0.01;
 
   const allEffects = player.buffs.flatMap((b) => b.effects);
 
@@ -257,9 +296,10 @@ export function applyMovement(
     player.position.y += dash.vyPerTick;
 
     // Apply frozen vertical velocity (gravity suspended)
-    player.position.z = Math.max(0, player.position.z! + dash.vzPerTick);
-    if (player.position.z === 0 && dash.vzPerTick < 0) {
-      // Hit the ground mid-dash — stop downward drift, keep going horizontally
+    const dashGroundH = getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects);
+    player.position.z = Math.max(dashGroundH, player.position.z! + dash.vzPerTick);
+    if (player.position.z === dashGroundH && dash.vzPerTick < 0) {
+      // Hit the ground (or rooftop) mid-dash — stop downward drift, keep going horizontally
       dash.vzPerTick = 0;
     }
 
@@ -268,9 +308,10 @@ export function applyMovement(
       const elapsed = Date.now() - ((dash as any)._startMs ?? 0);
       console.log(`[DASH] <<< END    time=${new Date().toISOString()}  elapsed=${elapsed}ms  (expected ~1000ms for 30 ticks @ 30Hz)`);
       // Dash complete — gravity resets
-      if (player.position.z! <= 0.01) {
-        // On the ground: fully land
-        player.position.z  = 0;
+      const dashEndGroundH = getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects);
+      if (player.position.z! <= dashEndGroundH + 0.01) {
+        // On the ground (or rooftop): fully land
+        player.position.z  = dashEndGroundH;
         player.velocity.vz = 0;
         player.jumpCount   = 0;
         player.airNudgeRemaining = 0;
@@ -516,7 +557,8 @@ export function applyMovement(
   player.velocity.vz! -= (player.velocity.vz! >= 0 ? gravUp : gravDown);
   player.position.z! += player.velocity.vz!;
 
-  const isAirborneNow = player.position.z! > 0.01;
+  const postMoveGroundH = getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects);
+  const isAirborneNow = player.position.z! > postMoveGroundH + 0.01;
   if (!wasAirborne && isAirborneNow && player.jumpCount === 0) {
     // Preserve limiter state for jump takeoff; only clear for non-jump airborne transitions.
     player.airNudgeRemaining = 0;
@@ -524,8 +566,8 @@ export function applyMovement(
     delete player.airNudgeDir;
   }
 
-  if (player.position.z! <= 0) {
-    player.position.z  = 0;
+  if (player.position.z! <= postMoveGroundH) {
+    player.position.z  = postMoveGroundH;
     player.velocity.vz = 0;
     player.jumpCount   = 0; // restore jumps on landing
     player.isPowerJump = false;
@@ -646,4 +688,16 @@ export function knockbackPlayer(
 export function stopPlayerMovement(player: PlayerState) {
   player.velocity.vx = 0;
   player.velocity.vy = 0;
+}
+
+/**
+ * Resolve map object collisions for a player (push out of obstacles).
+ * Call this after any forced position update (knockback, teleport, etc.)
+ * to prevent the player from ending up inside a wall.
+ */
+export function resolveMapCollisions(player: PlayerState, mapCtx?: MapContext): void {
+  const mapObjects = mapCtx?.objects ?? worldMap.objects;
+  for (const obj of mapObjects) {
+    resolveObjectCollision(player, obj);
+  }
 }

@@ -14,16 +14,62 @@ import { checkGameOver } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
-import { applyMovement, MapContext } from "./movement";
+import { applyMovement, resolveMapCollisions, MapContext } from "./movement";
 import { pushBuffExpired } from "../effects/buffRuntime";
 import { resolveScheduledDamage, resolveHealAmount } from "../utils/combatMath";
 import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
+import type { MapObject } from "../state/types/map";
+
+/** 2D segment vs AABB intersection test (for LOS checks). */
+function segmentIntersectsAABB(
+  x1: number, y1: number, x2: number, y2: number,
+  minX: number, minY: number, maxX: number, maxY: number
+): boolean {
+  let tmin = 0, tmax = 1;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  if (Math.abs(dx) < 1e-8) {
+    if (x1 < minX || x1 > maxX) return false;
+  } else {
+    let t1 = (minX - x1) / dx;
+    let t2 = (maxX - x1) / dx;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    tmin = Math.max(tmin, t1);
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return false;
+  }
+  if (Math.abs(dy) < 1e-8) {
+    if (y1 < minY || y1 > maxY) return false;
+  } else {
+    let t1 = (minY - y1) / dy;
+    let t2 = (maxY - y1) / dy;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    tmin = Math.max(tmin, t1);
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return false;
+  }
+  return true;
+}
+
+/** Check if line-of-sight between two 2D positions is blocked by any map object. */
+function isLOSBlocked(
+  ax: number, ay: number,
+  bx: number, by: number,
+  objects: MapObject[]
+): boolean {
+  for (const obj of objects) {
+    if (segmentIntersectsAABB(ax, ay, bx, by, obj.x, obj.y, obj.x + obj.w, obj.y + obj.d)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
-  mode?: 'arena' | 'pubg';
+  mode?: "arena" | "pubg";
 }
 
 /**
@@ -42,25 +88,20 @@ export class GameLoop {
   private ticksSinceBroadcast = 0;
   // Broadcast cadence in ticks. Derived from tickRate to keep roughly 30Hz net updates.
   private broadcastTickInterval = 1;
+  // ── 毒圈 (Poison zone) ──
+  private zoneStartedAt = 0;
+  private lastZoneDamageAt = 0;
+  private isArenaMode = false;
   private mapCtx: MapContext;
 
-  // ── 毒圈 (Poison zone) ──
-  private zoneStartedAt = 0; // wall-clock ms when game loop began
-  private lastZoneDamageAt = 0; // wall-clock ms when last zone damage was applied
-  private isArenaMode = false;
-
   // Phase table: each phase defines a time window, zone size transition, and DPS.
-  // All times are in ms relative to zoneStartedAt.
-  //   startTime/endTime  → when this segment is active
-  //   fromHalf/toHalf    → half-size of zone at start/end (100 = 200x200, 0 = collapsed)
-  //   dps                → damage per second while outside zone during this segment
-  private static readonly ZONE_PHASES = [
-    { startTime:     0, endTime: 10000, fromHalf: 100, toHalf: 100, dps:  0 }, // grace 10s
-    { startTime: 10000, endTime: 30000, fromHalf: 100, toHalf:  50, dps:  1 }, // shrink 200→100 over 20s
-    { startTime: 30000, endTime: 40000, fromHalf:  50, toHalf:  50, dps:  1 }, // pause 10s at 100x100
-    { startTime: 40000, endTime: 50000, fromHalf:  50, toHalf:  25, dps:  5 }, // shrink 100→50 over 10s
-    { startTime: 50000, endTime: 60000, fromHalf:  25, toHalf:  25, dps:  5 }, // pause 10s at 50x50
-    { startTime: 60000, endTime: 65000, fromHalf:  25, toHalf:   0, dps: 10 }, // shrink 50→0 over 5s
+  static ZONE_PHASES = [
+    { startTime: 0,     endTime: 10000, fromHalf: 100, toHalf: 100, dps: 0 },
+    { startTime: 10000, endTime: 30000, fromHalf: 100, toHalf: 50,  dps: 1 },
+    { startTime: 30000, endTime: 40000, fromHalf: 50,  toHalf: 50,  dps: 1 },
+    { startTime: 40000, endTime: 50000, fromHalf: 50,  toHalf: 25,  dps: 5 },
+    { startTime: 50000, endTime: 60000, fromHalf: 25,  toHalf: 25,  dps: 5 },
+    { startTime: 60000, endTime: 65000, fromHalf: 25,  toHalf: 0,   dps: 10 },
   ];
 
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
@@ -73,9 +114,9 @@ export class GameLoop {
     // Select map based on game mode
     const map = this.isArenaMode ? arenaMap : worldMap;
     this.mapCtx = {
-      objects:  map.objects,
-      width:    map.width,
-      height:   map.height,
+      objects: map.objects,
+      width: map.width,
+      height: map.height,
       circular: false,
     };
 
@@ -87,11 +128,11 @@ export class GameLoop {
       this.state.safeZone = {
         centerX: mapCenter,
         centerY: mapCenter,
-        currentHalf: mapCenter, // starts at full arena size
+        currentHalf: mapCenter,
         dps: 0,
         shrinking: false,
         shrinkProgress: 0,
-        nextChangeIn: 10, // 10s grace period
+        nextChangeIn: 10,
       };
     }
 
@@ -102,7 +143,7 @@ export class GameLoop {
   }
 
   /** Compute safe zone size and damage from elapsed time */
-  private computeSafeZone(elapsedMs: number): { currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number } {
+  private computeSafeZone(elapsedMs: number) {
     for (let i = 0; i < GameLoop.ZONE_PHASES.length; i++) {
       const phase = GameLoop.ZONE_PHASES[i];
       if (elapsedMs < phase.endTime) {
@@ -111,16 +152,15 @@ export class GameLoop {
         const currentHalf = phase.fromHalf + (phase.toHalf - phase.fromHalf) * t;
         const shrinking = phase.fromHalf !== phase.toHalf;
         const shrinkProgress = shrinking ? t : 0;
-        const nextChangeIn = (phase.endTime - elapsedMs) / 1000; // seconds
+        const nextChangeIn = (phase.endTime - elapsedMs) / 1000;
         return { currentHalf, dps: phase.dps, shrinking, shrinkProgress, nextChangeIn };
       }
     }
-    // Past all phases → zone fully collapsed, max damage
     return { currentHalf: 0, dps: 10, shrinking: false, shrinkProgress: 0, nextChangeIn: 0 };
   }
 
   /** Return true if player position is outside the safe zone */
-  private isOutsideZone(px: number, py: number, cx: number, cy: number, half: number): boolean {
+  private isOutsideZone(px: number, py: number, cx: number, cy: number, half: number) {
     return px < cx - half || px > cx + half || py < cy - half || py > cy + half;
   }
 
@@ -197,8 +237,8 @@ export class GameLoop {
     const MAX_TICKS_PER_CALLBACK = 6;
     const runTicks = () => {
       if (!this.isRunning) return;
-
       let ticksProcessed = 0;
+
       while (ticksProcessed < MAX_TICKS_PER_CALLBACK) {
         const now = performance.now();
         if (lastTickTime + tickDuration > now) break;
@@ -247,48 +287,72 @@ export class GameLoop {
     this.state.players.forEach((player, idx) => {
       const input = this.playerInputs.get(idx) ?? null;
       applyMovement(player, input, this.tickRate, this.mapCtx);
+
       // Cancel channel buffs based on input — read BEFORE clearing the one-shot jump flag
       if (input) {
         const isMoving =
-          input.up || input.down || input.left || input.right ||
+          !!input.up ||
+          !!input.down ||
+          !!input.left ||
+          !!input.right ||
           (input.dx !== undefined && input.dx !== 0) ||
           (input.dy !== undefined && input.dy !== 0);
+
         // 风来吴山 jump-lock: jump input is ignored while buff 1014 is active,
         // and must not count as a jump-cancel trigger.
-        const jumpLockedByChannel = player.buffs.some((b: any) => b.buffId === 1014);
+        const jumpLockedByChannel = player.buffs.some((b) => b.buffId === 1014);
         const isJumping = !!input.jump && !jumpLockedByChannel;
-        if (isMoving) player.buffs = player.buffs.filter((b: any) => !b.cancelOnMove);
-        if (isJumping) player.buffs = player.buffs.filter((b: any) => !b.cancelOnJump);
+
+        if (isMoving) player.buffs = player.buffs.filter((b) => !b.cancelOnMove);
+        if (isJumping) player.buffs = player.buffs.filter((b) => !b.cancelOnJump);
+
         // Cancel activeChannel on move/jump
         if (player.activeChannel) {
           if (player.activeChannel.cancelOnMove && isMoving) player.activeChannel = undefined;
           else if (player.activeChannel.cancelOnJump && isJumping) player.activeChannel = undefined;
         }
       }
+
       // Clear the one-shot jump flag so it fires only once per press
       if (input?.jump) {
         this.playerInputs.set(idx, { ...input, jump: false });
       }
     });
-
     const moveTime = performance.now() - moveStart;
 
-    // 1a-ch. Process active channels: out-of-range cancel + completion
+    // 1a-ch. Process active channels: out-of-range / LOS cancel + completion
     let channelStateChanged = false;
     if (this.state.players.length === 2) {
       for (let idx = 0; idx < 2; idx++) {
         const player = this.state.players[idx];
         if (!player.activeChannel) continue;
+
         const ch = player.activeChannel;
         const opp = this.state.players[idx === 0 ? 1 : 0];
+
         // cancelOnOutOfRange check
         if (ch.cancelOnOutOfRange !== undefined) {
           const dist = calculateDistance(player.position, opp.position);
           if (dist > ch.cancelOnOutOfRange) {
             player.activeChannel = undefined;
+            channelStateChanged = true;
             continue;
           }
         }
+
+        // Task 7: cancel channel if target is behind structures (LOS blocked)
+        if (isLOSBlocked(
+          player.position.x,
+          player.position.y,
+          opp.position.x,
+          opp.position.y,
+          this.mapCtx.objects,
+        )) {
+          player.activeChannel = undefined;
+          channelStateChanged = true;
+          continue;
+        }
+
         // Channel completion
         const chNow = Date.now();
         if (chNow >= ch.startedAt + ch.durationMs) {
@@ -301,7 +365,9 @@ export class GameLoop {
                 opp.hp = Math.max(0, opp.hp - dmg);
                 if (dmg > 0) {
                   this.state.events.push({
-                    id: randomUUID(), timestamp: chNow, turn: this.state.turn,
+                    id: randomUUID(),
+                    timestamp: chNow,
+                    turn: this.state.turn,
                     type: "DAMAGE",
                     actorUserId: player.userId,
                     targetUserId: opp.userId,
@@ -310,7 +376,6 @@ export class GameLoop {
                     effectType: "TIMED_AOE_DAMAGE",
                     value: dmg,
                   });
-                  channelStateChanged = true;
                 }
               }
             } else if (e.type === "TIMED_AOE_DAMAGE_IF_SELF_HP_GT") {
@@ -332,14 +397,18 @@ export class GameLoop {
                   effectType: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
                   value: dmg,
                 });
-                channelStateChanged = true;
               }
             }
           }
-          // Set cooldown on the matching ability instance in the player's hand
-          const inst = player.hand.find((a) => a.instanceId === ch.instanceId);
-          if (inst) inst.cooldown = ch.cooldownTicks;
+
+          // Set cooldown on the consumed ability instance (still in hand)
+          const ability = player.hand.find((a) => a.instanceId === ch.instanceId);
+          if (ability) {
+            ability.cooldown = Math.max(ability.cooldown ?? 0, ch.cooldownTicks ?? 0);
+          }
+
           player.activeChannel = undefined;
+          channelStateChanged = true;
         }
       }
     }
@@ -458,6 +527,18 @@ export class GameLoop {
                       continue;
                     }
                   }
+                  // Task 7: channel ticks stop applying through structures
+                  if (isLOSBlocked(
+                    player.position.x,
+                    player.position.y,
+                    opp.position.x,
+                    opp.position.y,
+                    this.mapCtx.objects,
+                  )) {
+                    player.activeChannel = undefined;
+                    channelStateChanged = true;
+                    continue;
+                  }
                   const dmg = resolveScheduledDamage({
                     source: player,
                     target: opp,
@@ -483,7 +564,7 @@ export class GameLoop {
           }
         }
 
-        // Fire timed effects (each fires exactly once at its delayMs offset)
+        // Fire TIMED_AOE_DAMAGE effects (each fires exactly once at its delayMs offset)
         if (buff.appliedAt !== undefined) {
           for (let effIdx = 0; effIdx < buff.effects.length; effIdx++) {
             const e = buff.effects[effIdx];
@@ -533,7 +614,7 @@ export class GameLoop {
                 x: zoneX,
                 y: zoneY,
                 radius: e.range ?? 8,
-                expiresAt: now + 6_000,
+                expiresAt: now + 6000,
                 damagePerInterval: e.value ?? 4,
                 intervalMs: 500,
                 lastTickAt: now,
@@ -610,6 +691,8 @@ export class GameLoop {
                 x: opp.position.x + (dx / dist) * e.knockbackUnits,
                 y: opp.position.y + (dy / dist) * e.knockbackUnits,
               };
+              // Resolve collisions so player doesn't end up inside a wall
+              resolveMapCollisions(opp, this.mapCtx);
               if (e.knockbackSilenceMs && e.knockbackSilenceMs > 0) {
                 opp.buffs.push({
                   buffId: 9101,
@@ -812,7 +895,6 @@ export class GameLoop {
           });
           (this as any)._hadActiveDash[pidx] = false;
         }
-
         // Keep channel UI in sync: include activeChannel when active OR when it just cleared.
         if (p.activeChannel) {
           diff.push({
@@ -841,18 +923,18 @@ export class GameLoop {
 
       // Append safe zone state so frontend can render the shrinking boundary
       if (this.state.safeZone) {
-        diff.push({ path: '/safeZone', value: this.state.safeZone });
+        diff.push({ path: "/safeZone", value: this.state.safeZone });
       }
 
       // Append ground zones so frontend can render persistent damage areas
       if (this.state.groundZones !== undefined) {
-        diff.push({ path: '/groundZones', value: this.state.groundZones });
+        diff.push({ path: "/groundZones", value: this.state.groundZones });
       }
 
       // Append buff arrays whenever they changed (expiry or periodic effects)
       // or when new events were emitted this tick (e.g. pure channel completion).
       const hasNewEvents = this.state.events.length > eventDiffStart;
-      if (buffsChanged || hasNewEvents) {
+      if (buffsChanged || hasNewEvents || channelStateChanged) {
         this.state.players.forEach((p, pidx) => {
           diff.push({
             path: `/players/${pidx}/buffs`,
