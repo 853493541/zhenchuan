@@ -113,6 +113,12 @@ export default function InGameClient({
     }
   }, [tournament?.phase]);
 
+  // DRAFT is disabled, so phase can remain BATTLE across rounds.
+  // Reset the guard on battle number changes so /battle/start runs for each new round.
+  useEffect(() => {
+    battleInitiatedRef.current = false;
+  }, [tournament?.battleNumber]);
+
   // Auto-call /battle/start when phase transitions to BATTLE (only once)
   useEffect(() => {
     if (tournament?.phase === "BATTLE" && state && !loading && !battleInitiatedRef.current) {
@@ -145,7 +151,7 @@ export default function InGameClient({
       
       initiateBattle();
     }
-  }, [tournament?.phase, gameId]); // Only depend on phase and gameId, not state
+  }, [tournament?.phase, tournament?.battleNumber, gameId, loading, state, refetch]);
 
   // No polling — all phase transitions (DRAFT↔BATTLE↔GAME_OVER) are broadcast
   // over WebSocket by the backend (draft/finalize and battle/complete routes).
@@ -187,45 +193,6 @@ export default function InGameClient({
       cancelled = true;
     };
   }, []);
-
-  /* ================= BATTLE INITIALIZATION ================= */
-
-  useEffect(() => {
-    if (
-      tournament &&
-      tournament.phase === "BATTLE" &&
-      state &&
-      !battleInitiatedRef.current &&
-      state.players.some((p: any) => p.hand.length === 0)
-    ) {
-      battleInitiatedRef.current = true; // guard before async so it never fires twice
-      (async () => {
-        try {
-          console.log("[InGameClient] Initializing battle state...");
-          const res = await fetch("/api/game/battle/start", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ gameId }),
-          });
-
-          if (res.ok) {
-            console.log("[InGameClient] Battle initialized, refetching state...");
-            await new Promise((r) => setTimeout(r, 300));
-            refetch();
-          } else {
-            console.error("[InGameClient] Battle start failed:", res.status);
-            battleInitiatedRef.current = false; // allow retry on genuine failure
-          }
-        } catch (err) {
-          console.error("[InGameClient] Battle initialization error:", err);
-          battleInitiatedRef.current = false; // allow retry after network error
-        }
-      })();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tournament?.phase, gameId]); // intentionally excludes `state` and `refetch` —
-  // state changes 30x/sec from position broadcasts and would re-trigger this every tick
 
   /* ================= BATTLE COMPLETION ================= */
 

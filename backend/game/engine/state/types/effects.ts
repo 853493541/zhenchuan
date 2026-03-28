@@ -33,6 +33,7 @@ export type EffectType =
   | "PERIODIC_HEAL"
   | "CHANNEL_AOE_TICK"
   | "TIMED_AOE_DAMAGE"
+  | "TIMED_AOE_DAMAGE_IF_SELF_HP_GT"
   | "KNOCKED_BACK"
   | "SPEED_BOOST"
   // Level 0 control (removable by cleanse)

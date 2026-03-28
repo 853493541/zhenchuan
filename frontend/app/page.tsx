@@ -10,7 +10,6 @@ export default function HomePage() {
   const [waitingGames, setWaitingGames] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<'arena' | 'pubg'>('arena');
   const previousGameIds = useRef<Set<string>>(new Set());
   const hasAutoJoined = useRef(false);
   // Keep me in a ref so the polling closure always sees the latest value
@@ -95,14 +94,14 @@ export default function HomePage() {
   /* =========================================================
      创建房间
   ========================================================= */
-  const createGame = async () => {
+  const createGame = async (mode: 'arena' | 'pubg') => {
     setLoading(true);
     try {
       const res = await fetch("/api/game/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ mode: selectedMode }),
+        body: JSON.stringify({ mode }),
       });
 
       if (!res.ok) throw new Error(await res.text());
@@ -121,29 +120,22 @@ export default function HomePage() {
     <div className={styles.page}>
       <h1 className={styles.title}>对战大厅</h1>
 
-      {/* Mode selector */}
-      <div className={styles.modeSelector}>
+      <div className={styles.createActions}>
         <button
-          className={`${styles.modeBtn} ${selectedMode === 'arena' ? styles.modeBtnActive : ''}`}
-          onClick={() => setSelectedMode('arena')}
+          className={styles.createBtn}
+          onClick={() => createGame('pubg')}
+          disabled={loading}
         >
-          竞技场
+          {loading ? "创建中…" : "创建吃鸡"}
         </button>
         <button
-          className={`${styles.modeBtn} ${selectedMode === 'pubg' ? styles.modeBtnActive : ''}`}
-          onClick={() => setSelectedMode('pubg')}
+          className={`${styles.createBtn} ${styles.createBtnArena}`}
+          onClick={() => createGame('arena')}
+          disabled={loading}
         >
-          吃鸡
+          {loading ? "创建中…" : "创建竞技场"}
         </button>
       </div>
-
-      <button
-        className={styles.createBtn}
-        onClick={createGame}
-        disabled={loading}
-      >
-        {loading ? "创建中…" : "创建房间"}
-      </button>
 
       <div className={styles.list}>
         {waitingGames.length === 0 && (

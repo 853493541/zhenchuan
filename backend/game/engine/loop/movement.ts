@@ -169,6 +169,16 @@ export function applyMovement(
     };
   }
 
+  // 风来吴山 (buffId=1014): lock jump input while channeling.
+  // This is a hard jump-disable, not a jump-cancel mechanic.
+  const jumpLockedByFenglai = player.buffs.some((b: any) => b.buffId === 1014);
+  if (jumpLockedByFenglai && input?.jump) {
+    input = {
+      ...input,
+      jump: false,
+    };
+  }
+
   // ── 惯性 animated dash (蹑云逐月 / DIRECTIONAL_DASH momentum system) ────────
   // While activeDash is in progress the dash owns all movement. Normal input,
   // gravity, and XY velocity are suspended. Vertical velocity is captured on

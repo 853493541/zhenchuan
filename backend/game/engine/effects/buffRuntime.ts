@@ -8,6 +8,7 @@ import {
   ActiveBuff,
   BuffDefinition,
 } from "../state/types";
+import { resolveScheduledDamage } from "../utils/combatMath";
 
 /* ================= Utilities ================= */
 
@@ -59,6 +60,44 @@ export function addBuff(params: {
       const now = Date.now();
       existing.stacks = Math.min((existing.stacks ?? 1) + 1, buff.maxStacks);
       existing.expiresAt = now + buff.durationMs;
+
+      // 三环套月: consume at 3 stacks and deal immediate bonus damage.
+      if (buff.buffId === 3001 && (existing.stacks ?? 0) >= (buff.maxStacks ?? 3)) {
+        const source = state.players.find((p: any) => p.userId === sourceUserId);
+        const target = state.players.find((p: any) => p.userId === targetUserId);
+        if (target && target.hp > 0) {
+          const bonus = source
+            ? resolveScheduledDamage({ source, target, base: 3 })
+            : 3;
+          target.hp = Math.max(0, target.hp - bonus);
+          if (bonus > 0) {
+            pushEvent(state, {
+              turn: state.turn,
+              type: "DAMAGE",
+              actorUserId: sourceUserId,
+              targetUserId,
+              abilityId: ability.id,
+              abilityName: `${ability.name}（引爆）`,
+              value: bonus,
+              effectType: "DAMAGE",
+            });
+          }
+        }
+        buffTarget.buffs = buffTarget.buffs.filter((b) => b.buffId !== buff.buffId);
+        pushEvent(state, {
+          turn: state.turn,
+          type: "BUFF_EXPIRED",
+          actorUserId: targetUserId,
+          targetUserId,
+          abilityId: ability.id,
+          abilityName: ability.name,
+          buffId: existing.buffId,
+          buffName: existing.name,
+          buffCategory: existing.category,
+        });
+        return;
+      }
+
       pushEvent(state, {
         turn: state.turn,
         type: "BUFF_APPLIED",

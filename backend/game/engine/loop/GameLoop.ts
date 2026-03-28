@@ -237,6 +237,9 @@ export class GameLoop {
       return;
     }
 
+    // Track new events for this entire tick (including activeChannel completion).
+    const eventDiffStart = this.state.events.length;
+
     // 1. Apply player movement
     const moveStart = performance.now();
     // Track buff count per player before movement — applyMovement may splice JUMP_BOOST
@@ -250,7 +253,10 @@ export class GameLoop {
           input.up || input.down || input.left || input.right ||
           (input.dx !== undefined && input.dx !== 0) ||
           (input.dy !== undefined && input.dy !== 0);
-        const isJumping = !!input.jump;
+        // 风来吴山 jump-lock: jump input is ignored while buff 1014 is active,
+        // and must not count as a jump-cancel trigger.
+        const jumpLockedByChannel = player.buffs.some((b: any) => b.buffId === 1014);
+        const isJumping = !!input.jump && !jumpLockedByChannel;
         if (isMoving) player.buffs = player.buffs.filter((b: any) => !b.cancelOnMove);
         if (isJumping) player.buffs = player.buffs.filter((b: any) => !b.cancelOnJump);
         // Cancel activeChannel on move/jump
@@ -268,6 +274,7 @@ export class GameLoop {
     const moveTime = performance.now() - moveStart;
 
     // 1a-ch. Process active channels: out-of-range cancel + completion
+    let channelStateChanged = false;
     if (this.state.players.length === 2) {
       for (let idx = 0; idx < 2; idx++) {
         const player = this.state.players[idx];
@@ -303,7 +310,29 @@ export class GameLoop {
                     effectType: "TIMED_AOE_DAMAGE",
                     value: dmg,
                   });
+                  channelStateChanged = true;
                 }
+              }
+            } else if (e.type === "TIMED_AOE_DAMAGE_IF_SELF_HP_GT") {
+              const threshold = (e as any).threshold ?? 0;
+              const range = e.range ?? 50;
+              if (player.hp <= threshold) continue;
+              const dist = calculateDistance(player.position, opp.position);
+              if (dist > range || opp.hp <= 0) continue;
+              const dmg = resolveScheduledDamage({ source: player, target: opp, base: e.value ?? 0 });
+              opp.hp = Math.max(0, opp.hp - dmg);
+              if (dmg > 0) {
+                this.state.events.push({
+                  id: randomUUID(), timestamp: chNow, turn: this.state.turn,
+                  type: "DAMAGE",
+                  actorUserId: player.userId,
+                  targetUserId: opp.userId,
+                  abilityId: ch.abilityId,
+                  abilityName: ch.abilityName,
+                  effectType: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
+                  value: dmg,
+                });
+                channelStateChanged = true;
               }
             }
           }
@@ -327,7 +356,7 @@ export class GameLoop {
     // Pre-seed buffsChanged: true if movement consumed any buff (e.g. JUMP_BOOST splice)
     let buffsChanged = this.state.players.some(
       (p, idx) => (p.buffs?.length ?? 0) !== buffCountsBefore[idx]
-    );
+    ) || channelStateChanged;
 
     // Cancel channel buffs whose out-of-range condition is exceeded (e.g. 云飞玉皇)
     if (this.state.players.length === 2) {
@@ -415,8 +444,20 @@ export class GameLoop {
               } else if (e.type === "CHANNEL_AOE_TICK") {
                 // Channel AOE: deal damage to opponent if within range
                 const range = e.range ?? 10;
-                const dist = calculateDistance(player.position, opp.position);
+                const dx = opp.position.x - player.position.x;
+                const dy = opp.position.y - player.position.y;
+                const dz = (opp.position.z ?? 0) - (player.position.z ?? 0);
+                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
                 if (dist <= range && opp.hp > 0) {
+                  const angle = (e as any).aoeAngle ?? 360;
+                  if (angle < 360 && dist > 0) {
+                    const facing = player.facing ?? { x: 0, y: 1 };
+                    const dot = (facing.x * dx + facing.y * dy) / dist;
+                    const halfAngleRad = (angle / 2) * (Math.PI / 180);
+                    if (dot < Math.cos(halfAngleRad)) {
+                      continue;
+                    }
+                  }
                   const dmg = resolveScheduledDamage({
                     source: player,
                     target: opp,
@@ -771,6 +812,22 @@ export class GameLoop {
           });
           (this as any)._hadActiveDash[pidx] = false;
         }
+
+        // Keep channel UI in sync: include activeChannel when active OR when it just cleared.
+        if (p.activeChannel) {
+          diff.push({
+            path: `/players/${pidx}/activeChannel`,
+            value: p.activeChannel,
+          });
+          (this as any)._hadActiveChannel = (this as any)._hadActiveChannel ?? {};
+          (this as any)._hadActiveChannel[pidx] = true;
+        } else if ((this as any)._hadActiveChannel?.[pidx]) {
+          diff.push({
+            path: `/players/${pidx}/activeChannel`,
+            value: null,
+          });
+          (this as any)._hadActiveChannel[pidx] = false;
+        }
       });
       // Append per-ability cooldown patches so clients stay in sync
       this.state.players.forEach((p, pidx) => {
@@ -793,7 +850,9 @@ export class GameLoop {
       }
 
       // Append buff arrays whenever they changed (expiry or periodic effects)
-      if (buffsChanged) {
+      // or when new events were emitted this tick (e.g. pure channel completion).
+      const hasNewEvents = this.state.events.length > eventDiffStart;
+      if (buffsChanged || hasNewEvents) {
         this.state.players.forEach((p, pidx) => {
           diff.push({
             path: `/players/${pidx}/buffs`,
@@ -807,7 +866,7 @@ export class GameLoop {
 
         // Include each new game event as an individual diff patch so the frontend
         // can spawn per-event floating numbers with proper labels + no combining.
-        for (let i = eventsBefore; i < this.state.events.length; i++) {
+        for (let i = eventDiffStart; i < this.state.events.length; i++) {
           diff.push({ path: `/events/${i}`, value: this.state.events[i] });
         }
       }

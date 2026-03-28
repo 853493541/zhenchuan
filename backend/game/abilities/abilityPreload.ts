@@ -17,6 +17,7 @@ export function buildAbilityPreload() {
       name: ability.name,
       description: ability.description,
       type: ability.type,
+      gcd: !!(ability as any).gcd,
       target: ability.target,
       effects: ability.effects ?? [],
 

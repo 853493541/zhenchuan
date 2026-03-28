@@ -29,6 +29,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   FENGLAI_CHANNEL: "BUFF",
   WUJIAN_CHANNEL: "BUFF",
   TIMED_AOE_DAMAGE: "BUFF",
+  TIMED_AOE_DAMAGE_IF_SELF_HP_GT: "BUFF",
 
   /* ================= PATCH 0.3 ================= */
   DRAW_REDUCTION: "DEBUFF",

@@ -14,39 +14,13 @@
 }
 
 /* =========================================================
-   Mode Selector
+   Create Actions
 ========================================================= */
 
-.modeSelector {
+.createActions {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
-}
-
-.modeBtn {
-  padding: 7px 20px;
-  border-radius: 20px;
-  border: 1.5px solid #cbd5e1;
-  background: #f8fafc;
-  color: #475569;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.modeBtn:hover {
-  background: #e2e8f0;
-}
-
-.modeBtnActive {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
-}
-
-.modeBtnActive:hover {
-  background: #1d4ed8;
 }
 
 /* Mode badge on room cards */
@@ -73,6 +47,10 @@
   color: white;
   font-weight: 600;
   cursor: pointer;
+}
+
+.createBtnArena {
+  background: #0f766e;
 }
 
 .createBtn:disabled {

@@ -84,7 +84,7 @@ export interface ActiveChannel {
   cancelOnJump?: boolean;
   cancelOnOutOfRange?: number;
   forwardChannel?: boolean;
-  effects: Array<{ type: string; value?: number; range?: number }>;
+  effects: Array<{ type: string; value?: number; range?: number; threshold?: number }>;
   cooldownTicks: number;
 }
 

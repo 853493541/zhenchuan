@@ -46,7 +46,7 @@ export interface ActiveChannel {
   /** true = forward-fill bar (0→100%), false = drain bar (100→0%) */
   forwardChannel?: boolean;
   /** Effects to fire on channel completion */
-  effects: Array<{ type: string; value?: number; range?: number }>;
+  effects: Array<{ type: string; value?: number; range?: number; threshold?: number }>;
   /** Cooldown ticks to set on the ability instance after completion */
   cooldownTicks: number;
 }
