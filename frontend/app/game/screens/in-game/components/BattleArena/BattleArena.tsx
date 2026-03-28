@@ -133,6 +133,12 @@ function hasStealthBuff(buffs?: ActiveBuff[]): boolean {
   return buffs.some((b) => Array.isArray(b.effects) && b.effects.some((e) => e.type === 'STEALTH'));
 }
 
+function requiresFacingByDefault(ability?: { target?: 'SELF' | 'OPPONENT'; faceDirection?: boolean } | null): boolean {
+  if (!ability) return false;
+  if (ability.target === 'OPPONENT') return ability.faceDirection !== false;
+  return ability.faceDirection === true;
+}
+
 // Fixed camera direction constant — referenced in physics tick
 const CAM_DIR = { x: 0, y: 1 };
 const DEFAULT_PITCH = Math.atan2(10, 20);
@@ -155,6 +161,7 @@ interface AbilityInfo {
   isCommon: boolean;
   target: 'SELF' | 'OPPONENT';
   faceDirection?: boolean;
+  requiresGrounded?: boolean;
 }
 
 /** Fixed display order for the common-ability bar. */
@@ -215,6 +222,9 @@ export default function BattleArena({
   const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : PUBG_HEIGHT;
   const mapData = useMemo(() => getMapForMode(mode), [mode]);
   const mapObjectsRef = useRef(mapData.objects);
+  useEffect(() => {
+    mapObjectsRef.current = mapData.objects;
+  }, [mapData]);
   // CODE FRESHNESS MARKER — if you see this in console, the new code IS running
   useEffect(() => { console.log('[BA-FRESH] BattleArena v2 loaded — activeDash support active'); }, []);
   const wrapRef        = useRef<HTMLDivElement>(null);
@@ -429,6 +439,7 @@ export default function BattleArena({
   const isPowerJumpRef           = useRef(false); // true while airborne from a power jump (different gravity)
   const isPowerJumpCombinedRef   = useRef(false); // true for 扶摇+鸟翔 combined 24u jump
   const maxJumpsRef              = useRef(2);     // updated from me.buffs MULTI_JUMP effect
+  const moveSpeedScaleRef        = useRef(1);     // SPEED_BOOST/SLOW local prediction multiplier
 
   /* --- Channel AOE refs (used in render loop, updated via useEffect) --- */
   const meChannelingRef  = useRef(false);
@@ -455,8 +466,14 @@ export default function BattleArena({
       toastError('目标不可见或已失去目标');
       return;
     }
+
+    if (ability?.requiresGrounded && localZRef.current > 0.5) {
+      toastError('该技能需要落地后施放');
+      return;
+    }
+
     // Face direction check (180° hemisphere)
-    if (ability?.target === 'OPPONENT' && ability?.faceDirection) {
+    if (ability?.target === 'OPPONENT' && requiresFacingByDefault(ability)) {
       const myPos = localPositionRef.current ?? me.position;
       const myFacing = localFacingRef.current;
       if (myPos && myFacing && targetPos) {
@@ -585,6 +602,18 @@ export default function BattleArena({
   useEffect(() => {
     const multiJump = me?.buffs?.flatMap((b: any) => (b.effects ?? []).filter(Boolean)).find((e: any) => e.type === 'MULTI_JUMP');
     maxJumpsRef.current = multiJump ? (multiJump.value ?? 2) : 2;
+  }, [me?.buffs]);
+
+  // Keep local movement-speed prediction aligned with backend movement.ts
+  useEffect(() => {
+    const effects = (me?.buffs ?? []).flatMap((b: any) => (b.effects ?? []).filter(Boolean));
+    const speedBoost = effects
+      .filter((e: any) => e.type === 'SPEED_BOOST')
+      .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
+    const slow = effects
+      .filter((e: any) => e.type === 'SLOW')
+      .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
+    moveSpeedScaleRef.current = Math.max(0, 1 + speedBoost - slow);
   }, [me?.buffs]);
 
   // activeDash side-effects: reset local prediction state when dash ends
@@ -940,14 +969,18 @@ export default function BattleArena({
       localVzRef.current = 0;
       return;
     }
-    // Reconcile Z: if server Z diverges significantly from local prediction,
-    // snap localZ to server. This corrects drift from enhanced (鸟翔碧空) jumps
-    // where the higher velocity causes the local arc to diverge from server over time.
+    // Reconcile Z with smoothing to reduce visible snap/jitter when stepping/jumping onto rooftops.
     const serverZ = (me.position as any).z ?? 0;
     const localZ  = localZRef.current;
-    if (Math.abs(serverZ - localZ) > 0.5) {
+    const zError = serverZ - localZ;
+    if (Math.abs(zError) > 1.2) {
       localZRef.current = serverZ;
-      // Don't reset vz — let the existing trajectory continue from corrected height.
+      localVzRef.current = 0;
+    } else {
+      localZRef.current = localZ + zError * 0.35;
+      if (Math.abs(serverZ - localZRef.current) < 0.02) {
+        localZRef.current = serverZ;
+      }
     }
     const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
     const blend  = moving ? 0.03 : 0.25;
@@ -986,6 +1019,7 @@ export default function BattleArena({
 
     const isAbilityReady = (ab: any, cooldown: number): boolean => {
       if (cooldown > 0) return false;
+      if (ab?.requiresGrounded && localZRef.current > 0.5) return false;
       if (ab?.target === 'OPPONENT' && !targetPos) return false;
 
       const distanceToTarget = (myPos && targetPos)
@@ -996,7 +1030,7 @@ export default function BattleArena({
       if (!inMaxRange || !inMinRange) return false;
 
       if (ab?.target === 'OPPONENT' && myPos && targetPos) {
-        if (ab?.faceDirection && myFacing) {
+        if (requiresFacingByDefault(ab) && myFacing) {
           const dx = targetPos.x - myPos.x;
           const dy = targetPos.y - myPos.y;
           if (myFacing.x * dx + myFacing.y * dy < 0) return false;
@@ -1033,6 +1067,7 @@ export default function BattleArena({
             isReady:     isAbilityReady(ability, instance.cooldown ?? 0),
             isCommon:    false,
             target:      'OPPONENT' as 'SELF' | 'OPPONENT',
+            requiresGrounded: false,
           };
         }
         return {
@@ -1046,7 +1081,8 @@ export default function BattleArena({
           isReady:     isAbilityReady(ability, instance.cooldown ?? 0),
           isCommon:    false,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
-          faceDirection: (ability as any).faceDirection ?? false,
+          faceDirection: requiresFacingByDefault(ability as any),
+          requiresGrounded: !!(ability as any).requiresGrounded,
         };
       })
       .filter(Boolean) as AbilityInfo[];
@@ -1073,7 +1109,8 @@ export default function BattleArena({
           isReady:     isAbilityReady(ability, cooldown),
           isCommon:    true,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
-          faceDirection: (ability as any).faceDirection ?? false,
+          faceDirection: requiresFacingByDefault(ability as any),
+          requiresGrounded: !!(ability as any).requiresGrounded,
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
@@ -1518,6 +1555,7 @@ export default function BattleArena({
     const tick = () => {
       const pos = localPositionRef.current;
       if (!pos) return;
+      const effectiveMaxSpeed = MAX_SPEED * moveSpeedScaleRef.current;
 
       // During server-authoritative dash: skip movement + gravity, but KEEP camera/turning
       if (meActiveDashRef.current) {
@@ -1619,8 +1657,8 @@ export default function BattleArena({
             // Backpedal is slower while keeping facing unchanged.
             const backpedalOnly = k.s && !k.w && !k.a && !k.d && !bothMouse;
             const speedMult = backpedalOnly ? 0.5 : 1.0;
-            vel.x += ((fx / len) * MAX_SPEED * speedMult - vel.x) * ACCEL;
-            vel.y += ((fy / len) * MAX_SPEED * speedMult - vel.y) * ACCEL;
+            vel.x += ((fx / len) * effectiveMaxSpeed * speedMult - vel.x) * ACCEL;
+            vel.y += ((fy / len) * effectiveMaxSpeed * speedMult - vel.y) * ACCEL;
             if (mouseLook && !backpedalOnly) {
               charYawRef.current = Math.atan2(fx / len, fy / len);
               localFacingRef.current = {
@@ -1667,8 +1705,8 @@ export default function BattleArena({
         } else if (!inLimitedAirControl) {
           if (ix !== 0 || iy !== 0) {
             const len = Math.sqrt(ix * ix + iy * iy);
-            vel.x += ((ix / len) * MAX_SPEED - vel.x) * ACCEL;
-            vel.y += ((iy / len) * MAX_SPEED - vel.y) * ACCEL;
+            vel.x += ((ix / len) * effectiveMaxSpeed - vel.x) * ACCEL;
+            vel.y += ((iy / len) * effectiveMaxSpeed - vel.y) * ACCEL;
             localFacingRef.current = { x: ix / len, y: iy / len };
           } else {
             if (!airborne) {

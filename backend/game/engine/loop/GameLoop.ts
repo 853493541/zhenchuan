@@ -82,6 +82,16 @@ function isInFacingHemisphere(
   return (f.x * dx + f.y * dy) >= 0;
 }
 
+/**
+ * Facing rule:
+ * - Opponent-targeted abilities require 180° facing by default.
+ * - Set faceDirection:false to explicitly opt out.
+ */
+function requiresFacing(ability: { target?: string; faceDirection?: boolean }): boolean {
+  if (ability.target === "OPPONENT") return ability.faceDirection !== false;
+  return ability.faceDirection === true;
+}
+
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
   mode?: "arena" | "pubg";
@@ -372,7 +382,7 @@ export class GameLoop {
         }
 
         // Task 8: cancel forward-facing channels if target leaves 180° front arc
-        if (channelAbility?.faceDirection && !isInFacingHemisphere(player as any, target as any)) {
+        if (channelAbility && requiresFacing(channelAbility) && !isInFacingHemisphere(player as any, target as any)) {
           player.activeChannel = undefined;
           channelStateChanged = true;
           continue;

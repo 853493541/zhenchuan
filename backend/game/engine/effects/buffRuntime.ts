@@ -120,7 +120,7 @@ export function addBuff(params: {
               actorUserId: sourceUserId,
               targetUserId,
               abilityId: ability.id,
-              abilityName: `${ability.name}（引爆）`,
+              abilityName: ability.name,
               value: bonus,
               effectType: "DAMAGE",
             });

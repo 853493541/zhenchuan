@@ -31,8 +31,14 @@ export function buildAbilityPreload() {
       // Common movement abilities are always shown regardless of draft
       isCommon: !!(ability as any).isCommon,
 
-      // Face direction check — true means 180° hemisphere required
-      faceDirection: !!(ability as any).faceDirection,
+      // Opponent-target abilities require facing by default unless explicitly disabled.
+      faceDirection:
+        ability.target === "OPPONENT"
+          ? (ability as any).faceDirection !== false
+          : !!(ability as any).faceDirection,
+
+      // Grounded-only cast check for client-side readiness/validation.
+      requiresGrounded: !!(ability as any).requiresGrounded,
     };
 
     abilities.push(cardPayload);

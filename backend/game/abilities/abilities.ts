@@ -762,7 +762,8 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds
-    gcd: false,
+    gcd: true,
+    requiresGrounded: true,
     effects: [],
     buffs: [
       {
@@ -884,6 +885,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     cooldownTicks: 150,
     gcd: true,
     range: 8,
+    requiresGrounded: true,
     effects: [],
     buffs: [],
     // Channel-specific fields (read by playService as `any`)

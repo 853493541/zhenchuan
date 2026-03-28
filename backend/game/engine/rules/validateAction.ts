@@ -18,6 +18,16 @@ function hasEffect(player: { buffs: any[] }, type: string) {
 }
 
 /**
+ * Facing rule:
+ * - Opponent-targeted abilities require 180° facing by default.
+ * - Set faceDirection:false to explicitly opt out.
+ */
+function requiresFacing(ability: { target?: string; faceDirection?: boolean }): boolean {
+  if (ability.target === "OPPONENT") return ability.faceDirection !== false;
+  return ability.faceDirection === true;
+}
+
+/**
  * Check if a target is within 180° of the player's facing direction.
  */
 function isInFacingHemisphere(
@@ -207,7 +217,7 @@ export function validateCastAbility(
     }
 
     /* ================= FACE DIRECTION (180°) ================= */
-    if (ability.faceDirection) {
+    if (requiresFacing(ability as any)) {
       if (!isInFacingHemisphere(player, enemy)) {
         throw new Error("ERR_NOT_FACING_TARGET");
       }
