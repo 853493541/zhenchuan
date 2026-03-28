@@ -160,11 +160,9 @@ async function playCastAbility(
   if ((ability as any).gcd === true && !(ability as any).isCommon) {
     for (const inst of player.hand) {
       const instCardId = (inst as any).abilityId || (inst as any).id;
-      if (instCardId !== abilityId) {
-        const instCard = ABILITIES[instCardId];
-        if (instCard && (instCard as any).gcd === true && !(instCard as any).isCommon) {
-          inst.cooldown = Math.max(inst.cooldown, DRAFT_GCD_TICKS);
-        }
+      const instCard = ABILITIES[instCardId];
+      if (instCard && (instCard as any).gcd === true && !(instCard as any).isCommon) {
+        inst.cooldown = Math.max(inst.cooldown, DRAFT_GCD_TICKS);
       }
     }
   }

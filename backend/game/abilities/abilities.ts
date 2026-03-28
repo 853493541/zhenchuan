@@ -143,14 +143,26 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   sanhuan_taoyue: {
     id: "sanhuan_taoyue",
     name: "三环套月",
-    description: "造成5点伤害",
+    description: "造成3点伤害，并叠加【三环套月】；叠满3层时引爆并额外造成3点伤害（持续10秒）",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 300,
+    cooldownTicks: 0,
     gcd: true,
+    range: 4,
     effects: [
-      { type: "DAMAGE", value: 5 },
-      { type: "DRAW", value: 1 },
+      { type: "DAMAGE", value: 3 },
+    ],
+    buffs: [
+      {
+        buffId: 3001,
+        name: "三环套月",
+        category: "DEBUFF",
+        durationMs: 10_000,
+        initialStacks: 1,
+        maxStacks: 3,
+        description: "叠满3层时引爆造成额外伤害",
+        effects: [],
+      },
     ],
   },
 
@@ -537,6 +549,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         durationMs: 5_000,   // 5 seconds total channel
         periodicMs: 625,     // 5000 / 8 = 625ms per hit → 8 total hits
         breakOnPlay: true,   // interrupted when player casts another ability
+        cancelOnJump: false,
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "CHANNEL_AOE_TICK", value: 8, range: 10 },
@@ -608,7 +621,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   xinzheng: {
     id: "xinzheng",
     name: "心诤",
-    description: "舞棍5秒\n期间免疫控制\n造成4/6/10点伤害",
+    description: "逆读条3秒，期间免控；每0.5秒对前方180°/6尺造成2点伤害；结束时额外对前方180°/12尺造成10点伤害",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 300,
@@ -619,32 +632,16 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         buffId: 1017,
         name: "心诤",
         category: "BUFF",
-        durationMs: 5_000, // 5 seconds
+        durationMs: 3_000,
+        periodicMs: 500,
         breakOnPlay: true,
         description: "免疫控制",
+        cancelOnMove: false,
+        cancelOnJump: false,
         effects: [
           { type: "CONTROL_IMMUNE" },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 4,
-            when: "TURN_END",
-            turnOf: "OWNER",
-            target: "ENEMY",
-          },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 6,
-            when: "TURN_START",
-            turnOf: "ENEMY",
-            target: "ENEMY",
-          },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 10,
-            when: "TURN_END",
-            turnOf: "ENEMY",
-            target: "ENEMY",
-          },
+          { type: "CHANNEL_AOE_TICK", value: 2, range: 6, aoeAngle: 180 },
+          { type: "TIMED_AOE_DAMAGE", delayMs: 3_000, value: 10, range: 12, aoeAngle: 180 },
         ],
       },
     ],
@@ -707,20 +704,25 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   zhuiming_jian: {
     id: "zhuiming_jian",
     name: "追命箭",
-    description: "造成20点伤害\n目标生命值高于60时额外造成10点伤害",
-    type: "ATTACK",
+    description: "需要目标，运功2秒（正读条），完成时造成15点伤害；若自身气血高于60，额外造成9点伤害",
+    type: "CHANNEL",
     target: "OPPONENT",
     cooldownTicks: 300,
     gcd: true,
-    effects: [
-      { type: "DAMAGE", value: 20 },
-      {
-        type: "BONUS_DAMAGE_IF_TARGET_HP_GT",
-        value: 10,
-        threshold: 60,
-      },
+    range: 25,
+    requiresGrounded: true,
+    effects: [],
+    buffs: [],
+    channelDurationMs: 2_000,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelCancelOnOutOfRange: 25,
+    channelForward: true,
+    channelEffects: [
+      { type: "TIMED_AOE_DAMAGE", value: 15, range: 50 },
+      { type: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT", value: 9, threshold: 60, range: 50 },
     ],
-  },
+  } as any,
 
   quye_duanchou: {
     id: "quye_duanchou",
@@ -741,13 +743,14 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   zhenshen_xingsi: {
     id: "zhenshen_xingsi",
     name: "龙牙",
-    description: "冲向敌人（最远20码）\n距离内冲向敌方位置",
+    description: "冲向敌人（最远20码）\n距离内冲向敌方位置，造成10点伤害",
     type: "CONTROL",
     target: "OPPONENT",
     cooldownTicks: 300,
     gcd: true,
     range: 20,
     effects: [
+      { type: "DAMAGE", value: 10 },
       { type: "DASH", value: 8 },
     ],
   },
@@ -768,9 +771,204 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         category: "BUFF",
         durationMs: 15_000, // 15 seconds
         description: "跳跃次数上限提升至5次",
+        effects: [{ type: "MULTI_JUMP", value: 5 }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 千蝶吐瑞 — 8s reverse channel, 0.5s periodic heal, control immune
+  // ──────────────────────────────────────────────────────────────────────────
+  qiandie_turui: {
+    id: "qiandie_turui",
+    name: "千蝶吐瑞",
+    description: "逆读条8秒，每0.5秒回复3点气血；运功期间免控，移动会打断并失去效果",
+    type: "CHANNEL",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2003,
+        name: "千蝶吐瑞",
+        category: "BUFF",
+        durationMs: 8_000,
+        periodicMs: 500,
+        breakOnPlay: true,
         cancelOnMove: true,
         cancelOnJump: true,
-        effects: [{ type: "MULTI_JUMP", value: 5 }],
+        description: "运功中：持续回复，免控",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "PERIODIC_HEAL", value: 3 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 笑醉狂 — 9s channel: cleanse + 50% dmg reduction + control immune + 贯体 HoT
+  // ──────────────────────────────────────────────────────────────────────────
+  xiao_zui_kuang: {
+    id: "xiao_zui_kuang",
+    name: "笑醉狂",
+    description: "解控，运功9秒，减伤50%，免控，贯体每秒回复5%气血，完整运功额外回复30%气血",
+    type: "CHANNEL",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    requiresGrounded: true,
+    effects: [
+      { type: "CLEANSE", allowWhileControlled: true },
+    ],
+    buffs: [
+      {
+        buffId: 2001,
+        name: "笑醉狂",
+        category: "BUFF",
+        durationMs: 9_000,
+        periodicMs: 1_000,
+        breakOnPlay: true,
+        cancelOnMove: true,
+        cancelOnJump: true,
+        description: "不受控制招式效果影响，受到伤害降低50%",
+        effects: [
+          { type: "DAMAGE_REDUCTION", value: 0.5 },
+          { type: "CONTROL_IMMUNE" },
+          { type: "PERIODIC_GUAN_TI_HEAL", value: 5 },
+          { type: "TIMED_GUAN_TI_HEAL", delayMs: 9_000, value: 30 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 狂龙乱舞 — 2s channel then place a ground damage zone
+  // ──────────────────────────────────────────────────────────────────────────
+  kuang_long_luan_wu: {
+    id: "kuang_long_luan_wu",
+    name: "狂龙乱舞",
+    description: "运功2秒，于前方2尺处唤起雷云，雷云半径8尺，每0.5秒造成4点伤害，持续6秒",
+    type: "CHANNEL",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2002,
+        name: "狂龙乱舞",
+        category: "BUFF",
+        durationMs: 2_000,
+        breakOnPlay: true,
+        cancelOnJump: true,
+        description: "运功中",
+        effects: [
+          { type: "PLACE_GROUND_ZONE", delayMs: 2_000, value: 4, range: 8 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 云飞玉皇 — 2s channel (pure: no buffs), 20dmg on completion + 10 bonus if in 4u
+  // ──────────────────────────────────────────────────────────────────────────
+  yun_fei_yu_huang: {
+    id: "yun_fei_yu_huang",
+    name: "云飞玉皇",
+    description: "需要目标，运功2秒（不可移动），对目标造成20点伤害；运功完成时目标在4码内额外造成10点伤害",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    cooldownTicks: 150,
+    gcd: true,
+    range: 8,
+    effects: [],
+    buffs: [],
+    // Channel-specific fields (read by playService as `any`)
+    channelDurationMs: 2_000,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelCancelOnOutOfRange: 8,
+    channelForward: true,
+    channelEffects: [
+      { type: "TIMED_AOE_DAMAGE", value: 20, range: 50 },
+      { type: "TIMED_AOE_DAMAGE", value: 10, range: 4 },
+    ],
+  } as any,
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 孔雀翎 — instant, applies 受击 debuff (8 stacks, 0.5s proc rate-limit, 6s) + slow (6s)
+  // ──────────────────────────────────────────────────────────────────────────
+  kong_que_ling: {
+    id: "kong_que_ling",
+    name: "孔雀翎",
+    description: "范围25，即刻对目标造成3点伤害，并附加【孔雀翎受击】（8层，每次受攻击触发额外3点伤害）和【孔雀翎】（减速50%），各持续6秒",
+    type: "ATTACK",
+    target: "OPPONENT",
+    cooldownTicks: 600,
+    gcd: true,
+    range: 25,
+    effects: [
+      { type: "DAMAGE", value: 3 },
+    ],
+    buffs: [
+      {
+        buffId: 2004,
+        name: "孔雀翎受击",
+        category: "DEBUFF",
+        durationMs: 6_000,
+        breakOnPlay: false,
+        initialStacks: 8,
+        maxStacks: 8,
+        procCooldownMs: 500,
+        description: "每次受攻击触发3点额外伤害（每0.5秒至多触发一次），剩余层数见图标",
+        effects: [
+          { type: "STACK_ON_HIT_DAMAGE", value: 3 },
+        ],
+      },
+      {
+        buffId: 2005,
+        name: "孔雀翎",
+        category: "DEBUFF",
+        durationMs: 6_000,
+        breakOnPlay: false,
+        description: "移动速度降低50%",
+        effects: [
+          { type: "SLOW", value: 0.5 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 化血镖 — no cooldown, stackable DoT (max 2 stacks, 24s, 1 dmg/3s per stack)
+  // ──────────────────────────────────────────────────────────────────────────
+  hua_xue_biao: {
+    id: "hua_xue_biao",
+    name: "化血镖",
+    description: "范围25，无冷却，附加【化血镖】毒效果，最多2层，每层每3秒造成1点伤害，持续24秒",
+    type: "ATTACK",
+    target: "OPPONENT",
+    cooldownTicks: 0,
+    gcd: true,
+    range: 25,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2006,
+        name: "化血镖",
+        category: "DEBUFF",
+        durationMs: 24_000,
+        periodicMs: 3_000,
+        breakOnPlay: false,
+        initialStacks: 1,
+        maxStacks: 2,
+        description: "每3秒造成1点伤害（叠层则倍增），最多叠加2层，持续24秒",
+        effects: [
+          { type: "PERIODIC_DAMAGE", value: 1 },
+        ],
       },
     ],
   },
