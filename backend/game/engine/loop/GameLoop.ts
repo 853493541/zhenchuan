@@ -253,6 +253,11 @@ export class GameLoop {
         const isJumping = !!input.jump;
         if (isMoving) player.buffs = player.buffs.filter((b: any) => !b.cancelOnMove);
         if (isJumping) player.buffs = player.buffs.filter((b: any) => !b.cancelOnJump);
+        // Cancel activeChannel on move/jump
+        if (player.activeChannel) {
+          if (player.activeChannel.cancelOnMove && isMoving) player.activeChannel = undefined;
+          else if (player.activeChannel.cancelOnJump && isJumping) player.activeChannel = undefined;
+        }
       }
       // Clear the one-shot jump flag so it fires only once per press
       if (input?.jump) {
@@ -261,6 +266,54 @@ export class GameLoop {
     });
 
     const moveTime = performance.now() - moveStart;
+
+    // 1a-ch. Process active channels: out-of-range cancel + completion
+    if (this.state.players.length === 2) {
+      for (let idx = 0; idx < 2; idx++) {
+        const player = this.state.players[idx];
+        if (!player.activeChannel) continue;
+        const ch = player.activeChannel;
+        const opp = this.state.players[idx === 0 ? 1 : 0];
+        // cancelOnOutOfRange check
+        if (ch.cancelOnOutOfRange !== undefined) {
+          const dist = calculateDistance(player.position, opp.position);
+          if (dist > ch.cancelOnOutOfRange) {
+            player.activeChannel = undefined;
+            continue;
+          }
+        }
+        // Channel completion
+        const chNow = Date.now();
+        if (chNow >= ch.startedAt + ch.durationMs) {
+          for (const e of ch.effects) {
+            if (e.type === "TIMED_AOE_DAMAGE") {
+              const range = e.range ?? 50;
+              const dist = calculateDistance(player.position, opp.position);
+              if (dist <= range && opp.hp > 0) {
+                const dmg = resolveScheduledDamage({ source: player, target: opp, base: e.value ?? 0 });
+                opp.hp = Math.max(0, opp.hp - dmg);
+                if (dmg > 0) {
+                  this.state.events.push({
+                    id: randomUUID(), timestamp: chNow, turn: this.state.turn,
+                    type: "DAMAGE",
+                    actorUserId: player.userId,
+                    targetUserId: opp.userId,
+                    abilityId: ch.abilityId,
+                    abilityName: ch.abilityName,
+                    effectType: "TIMED_AOE_DAMAGE",
+                    value: dmg,
+                  });
+                }
+              }
+            }
+          }
+          // Set cooldown on the matching ability instance in the player's hand
+          const inst = player.hand.find((a) => a.instanceId === ch.instanceId);
+          if (inst) inst.cooldown = ch.cooldownTicks;
+          player.activeChannel = undefined;
+        }
+      }
+    }
 
     // 1b. Decrement ability cooldowns each tick
     this.state.players.forEach((player) => {
@@ -305,10 +358,11 @@ export class GameLoop {
             buff.lastTickAt = now;
             for (const e of buff.effects) {
               if (e.type === "PERIODIC_DAMAGE") {
+                const stackMult = buff.stacks ?? 1;
                 const dmg = resolveScheduledDamage({
                   source: opp,
                   target: player,
-                  base: e.value ?? 0,
+                  base: (e.value ?? 0) * stackMult,
                 });
                 player.hp = Math.max(0, player.hp - dmg);
                 if (dmg > 0) {
@@ -639,9 +693,14 @@ export class GameLoop {
           if ((stackBuff.stacks ?? 0) <= 0) continue;
           for (const e of stackBuff.effects) {
             if (e.type === "STACK_ON_HIT_DAMAGE") {
+              // Rate-limit: skip if within procCooldownMs of last proc
+              if (stackBuff.procCooldownMs !== undefined && stackBuff.lastProcAt !== undefined) {
+                if (now - stackBuff.lastProcAt < stackBuff.procCooldownMs) break;
+              }
               const dmg = e.value ?? 0;
               targetPlayer.hp = Math.max(0, targetPlayer.hp - dmg);
               stackBuff.stacks = (stackBuff.stacks ?? 1) - 1;
+              stackBuff.lastProcAt = now;
               this.state.events.push({
                 id: randomUUID(), timestamp: now, turn: this.state.turn,
                 type: "DAMAGE",

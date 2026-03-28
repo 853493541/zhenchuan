@@ -50,6 +50,31 @@ export function addBuff(params: {
     buff,
   } = params;
 
+  // Stacking: if buff defines maxStacks > 1, increment stacks on the existing buff
+  // instead of replacing it. The lastTickAt is intentionally NOT reset — this prevents
+  // stack-refresh abuse (re-casting resets the tick timer allowing faster ticks).
+  if (buff.maxStacks !== undefined && buff.maxStacks > 1) {
+    const existing = buffTarget.buffs.find((b) => b.buffId === buff.buffId);
+    if (existing) {
+      const now = Date.now();
+      existing.stacks = Math.min((existing.stacks ?? 1) + 1, buff.maxStacks);
+      existing.expiresAt = now + buff.durationMs;
+      pushEvent(state, {
+        turn: state.turn,
+        type: "BUFF_APPLIED",
+        actorUserId: sourceUserId,
+        targetUserId,
+        abilityId: ability.id,
+        abilityName: ability.name,
+        buffId: existing.buffId,
+        buffName: existing.name,
+        buffCategory: existing.category,
+        appliedAtTurn: existing.appliedAtTurn,
+      });
+      return;
+    }
+  }
+
   // Refresh same buffId (stable replacement — resets the timer)
   buffTarget.buffs = buffTarget.buffs.filter(
     (b) => b.buffId !== buff.buffId
@@ -81,6 +106,8 @@ export function addBuff(params: {
     forwardChannel: buff.forwardChannel,
     sourceUserId: sourceUserId,
     stacks: buff.initialStacks,
+    maxStacks: buff.maxStacks,
+    procCooldownMs: buff.procCooldownMs,
 
     sourceAbilityId: ability.id,
     sourceAbilityName: ability.name,

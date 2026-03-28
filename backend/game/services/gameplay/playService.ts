@@ -106,13 +106,50 @@ async function playCastAbility(
   }
 
   const targetIndex = ability.target === 'SELF' ? playerIndex : (playerIndex === 0 ? 1 : 0);
+  const target = state.players[targetIndex];
 
-  // Apply ability effects
-  applyEffects(state, ability, playerIndex, targetIndex);
-  applyOnPlayBuffEffects(state, playerIndex);
+  // CHANNEL abilities:
+  //   Pure channels (buffs == null || buffs.length === 0): uses activeChannel system.
+  //   The GameLoop ticks the channel, fires channelEffects on completion, then sets cooldown.
+  //   Buff-based channels (buffs.length > 0): treated like normal abilities — applyEffects
+  //   applies the buff(s) immediately (e.g. 笑醉狂, 风来吴山, 狂龙乱舞).
+  const isPureChannel =
+    ability.type === 'CHANNEL' &&
+    (!ability.buffs || (ability.buffs as any[]).length === 0);
 
-  // Set per-ability cooldown (ticks at 30 Hz; e.g. 90 = 3 seconds)
-  played.cooldown = ability.cooldownTicks ?? 3;
+  if (isPureChannel) {
+    // Cancel any existing channel and start the new one
+    player.activeChannel = {
+      abilityId,
+      abilityName: ability.name,
+      instanceId: played.instanceId,
+      targetUserId: target.userId,
+      startedAt: Date.now(),
+      durationMs: (ability as any).channelDurationMs ?? 2000,
+      cancelOnMove: (ability as any).channelCancelOnMove ?? true,
+      cancelOnJump: (ability as any).channelCancelOnJump ?? true,
+      cancelOnOutOfRange: (ability as any).channelCancelOnOutOfRange,
+      forwardChannel: (ability as any).channelForward ?? true,
+      effects: (ability as any).channelEffects ?? [],
+      cooldownTicks: ability.cooldownTicks ?? 150,
+    };
+
+    pushEvent(state, {
+      turn: state.turn,
+      type: "PLAY_ABILITY",
+      actorUserId: player.userId,
+      targetUserId: target.userId,
+      abilityId,
+      abilityName: ability.name,
+    });
+  } else {
+    // Apply ability effects (normal + buff-based CHANNEL abilities like 笑醉狂, 风来吴山, 狂龙乱舞)
+    applyEffects(state, ability, playerIndex, targetIndex);
+    applyOnPlayBuffEffects(state, playerIndex);
+
+    // Set per-ability cooldown (ticks at 30 Hz; e.g. 90 = 3 seconds)
+    played.cooldown = ability.cooldownTicks ?? 3;
+  }
 
   // 轻功 GCD: casting any 轻功 ability imposes a 3-second minimum cooldown on the other 3
   const QINGGONG_IDS = new Set(['nieyun_zhuyue', 'lingxiao_lansheng', 'yaotai_zhenhe', 'yingfeng_huilang']);
@@ -131,11 +168,9 @@ async function playCastAbility(
   if ((ability as any).gcd === true && !(ability as any).isCommon) {
     for (const inst of player.hand) {
       const instCardId = (inst as any).abilityId || (inst as any).id;
-      if (instCardId !== abilityId) {
-        const instCard = ABILITIES[instCardId];
-        if (instCard && (instCard as any).gcd === true && !(instCard as any).isCommon) {
-          inst.cooldown = Math.max(inst.cooldown, DRAFT_GCD_TICKS);
-        }
+      const instCard = ABILITIES[instCardId];
+      if (instCard && (instCard as any).gcd === true && !(instCard as any).isCommon) {
+        inst.cooldown = Math.max(inst.cooldown, DRAFT_GCD_TICKS);
       }
     }
   }

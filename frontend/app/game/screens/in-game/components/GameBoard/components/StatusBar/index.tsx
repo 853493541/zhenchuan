@@ -140,7 +140,7 @@ export default function StatusBar({
             onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b)}
             onMouseLeave={closeHint}
           />
-          {b.stacks !== undefined && (
+          {b.stacks !== undefined && b.stacks >= 2 && (
             <span className={styles.stackBadge}>{b.stacks}</span>
           )}
         </div>

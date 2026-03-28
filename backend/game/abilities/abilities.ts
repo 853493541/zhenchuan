@@ -23,7 +23,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "向对手方向冲刺20格",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150, // 30 seconds at 60 Hz
+    cooldownTicks: 300, // 30 seconds at 60 Hz
     effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD", durationTicks: 30 }],
     isCommon: true,
   },
@@ -34,7 +34,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "向远离对手的方向冲刺10格",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150, // 30 seconds at 60 Hz
+    cooldownTicks: 300, // 30 seconds at 60 Hz
     effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY", durationTicks: 21 }],
     isCommon: true,
   },
@@ -45,7 +45,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "向左侧冲刺7格",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150, // 30 seconds at 60 Hz
+    cooldownTicks: 300, // 30 seconds at 60 Hz
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT", durationTicks: 30 }],
     isCommon: true,
   },
@@ -56,7 +56,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "向右侧冲刺7格",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150, // 30 seconds at 60 Hz
+    cooldownTicks: 300, // 30 seconds at 60 Hz
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT", durationTicks: 30 }],
     isCommon: true,
   },
@@ -67,7 +67,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "获得【弹跳】：下次跳跃高度提升至12单位",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150, // 30 seconds at 60 Hz
+    cooldownTicks: 300, // 30 seconds at 60 Hz
     effects: [],
     buffs: [
       {
@@ -89,7 +89,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "向后撤步1格（快速位移脱身）",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150, // 1 second at 60 Hz
+    cooldownTicks: 60, // 1 second at 60 Hz
     effects: [{ type: "DIRECTIONAL_DASH", value: 1, dirMode: "AWAY", durationTicks: 3 }],
     isCommon: true,
   },
@@ -100,7 +100,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "向前冲刺37格（1秒）",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     effects: [{ type: "DIRECTIONAL_DASH", value: 37, dirMode: "TOWARD", durationTicks: 30 }],
     isCommon: false,
   },
@@ -111,7 +111,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "【占位技能】",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     effects: [],
     isCommon: true,
   },
@@ -124,7 +124,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成10点伤害\n每3秒受到3点伤害，持续15秒",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 10 }],
     buffs: [
@@ -146,7 +146,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成5点伤害",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [
       { type: "DAMAGE", value: 5 },
@@ -160,7 +160,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成3点伤害\n每3秒受到8点伤害，持续15秒",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 3 }],
     buffs: [
@@ -184,7 +184,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成10点伤害\n击倒5秒",
     type: "CONTROL",
     target: "OPPONENT",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 10 }],
     buffs: [
@@ -206,7 +206,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "CONTROL",
     target: "OPPONENT",
     range: 20,
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 2 }],
     buffs: [
@@ -235,7 +235,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成10点伤害\n目标5秒无法使用技能\n每3秒受到2点伤害，持续15秒",
     type: "CONTROL",
     target: "OPPONENT",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 10 }],
     buffs: [
@@ -265,7 +265,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "眩晕目标5秒",
     type: "CONTROL",
     target: "OPPONENT",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [],
     buffs: [
@@ -289,7 +289,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "使目标每次使用技能时受到3点伤害，持续15秒",
     type: "CONTROL",
     target: "OPPONENT",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [],
     buffs: [
@@ -312,7 +312,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "解控\n免疫控制（不含击退/拉拽）5秒\n移动速度提升100%",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: false,
     effects: [
       { type: "CLEANSE", allowWhileControlled: true },
@@ -339,7 +339,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "解控\n恢复10点生命值\n【不可选中】5秒",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: false,
     effects: [
       { type: "CLEANSE", allowWhileControlled: true },
@@ -365,7 +365,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "解控\n被命中概率降低70%和免控1回合",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: false,
     effects: [{ type: "CLEANSE", allowWhileControlled: true }],
     buffs: [
@@ -396,7 +396,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "恢复60点生命值\n减伤40%，持续10秒",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "HEAL", value: 60 }],
     buffs: [
@@ -417,7 +417,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "恢复10点生命值\n免控5秒",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [
       { type: "DRAW", value: 1 },
@@ -443,7 +443,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "隐身5秒",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: false,
     effects: [{ type: "DRAW", value: 2, allowWhileControlled: true }],
     buffs: [
@@ -465,7 +465,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "隐身10秒",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: false,
     effects: [],
     buffs: [
@@ -490,7 +490,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成5点伤害\n隐身1回合",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 5 }],
     buffs: [
@@ -517,7 +517,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
       "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计10次伤害。在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
     type: "CHANNEL",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [],
     buffs: [
@@ -543,7 +543,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "修罗附体\n3秒后正面180°/10码造成5伤害\n4秒后正面180°/10码造成8伤害\n5秒后正面180°/10码造成10伤害\n同时360°/10码造成10伤害并击退3码，击退期间沉默0.8秒\n所有伤害30%吸血",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [],
     buffs: [
@@ -603,7 +603,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "舞棍5秒\n期间免疫控制\n造成4/6/10点伤害",
     type: "CHANNEL",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [],
     buffs: [
@@ -650,7 +650,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成伤害提升100%\n受到伤害降低50%，持续20秒",
     type: "STANCE",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: false,
     effects: [],
     buffs: [
@@ -675,7 +675,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "被命中几率降低65%且免疫控制，期间无法使用技能，持续5秒",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DRAW", value: 2 }],
     buffs: [
@@ -702,7 +702,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成20点伤害\n目标生命值高于60时额外造成10点伤害",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [
       { type: "DAMAGE", value: 20 },
@@ -720,7 +720,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成8点伤害\n回复4点生命值",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [
       { type: "DAMAGE", value: 8 },
@@ -736,7 +736,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "冲向敌人（最远20码）\n距离内冲向敌方位置，造成10点伤害",
     type: "CONTROL",
     target: "OPPONENT",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     range: 20,
     effects: [
@@ -751,7 +751,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "获得【鸟翔碧空】15秒：跳跃次数上限提升至5次",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 150, // 30 seconds
+    cooldownTicks: 300, // 30 seconds
     gcd: false,
     effects: [],
     buffs: [
@@ -775,7 +775,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "解控，运功9秒，减伤50%，免控，贯体每秒回复5%气血，完整运功额外回复30%气血",
     type: "CHANNEL",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     requiresGrounded: true,
     effects: [
@@ -811,7 +811,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "运功2秒，于前方2尺处唤起雷云，雷云半径8尺，每0.5秒造成4点伤害，持续6秒",
     type: "CHANNEL",
     target: "SELF",
-    cooldownTicks: 150,
+    cooldownTicks: 300,
     gcd: true,
     effects: [],
     buffs: [
@@ -831,7 +831,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 云飞玉皇 — 2s channel (can't move), 20dmg on completion + 10 bonus if in 4u
+  // 云飞玉皇 — 2s channel (pure: no buffs), 20dmg on completion + 10 bonus if in 4u
   // ──────────────────────────────────────────────────────────────────────────
   yun_fei_yu_huang: {
     id: "yun_fei_yu_huang",
@@ -839,43 +839,33 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "需要目标，运功2秒（不可移动），对目标造成20点伤害；运功完成时目标在4码内额外造成10点伤害",
     type: "CHANNEL",
     target: "OPPONENT",
-    cooldownTicks: 150,   // 15 seconds
+    cooldownTicks: 150,
     gcd: true,
     range: 8,
     effects: [],
-    buffs: [
-      {
-        buffId: 2003,
-        name: "云飞玉皇",
-        category: "BUFF",
-        applyTo: "SELF",         // channel buff lives on the CASTER, not the enemy
-        forwardChannel: true,    // 正读条: bar fills 0→100% as channel progresses
-        durationMs: 2_100,       // slightly longer than delayMs so effects fire before expiry
-        breakOnPlay: true,
-        cancelOnMove: true,
-        cancelOnJump: true,
-        cancelOnOutOfRange: 8,   // cancel if enemy moves beyond cast range
-        description: "运功中，不可移动",
-        effects: [
-          // Main hit — large range so it always lands when channel completes
-          { type: "TIMED_AOE_DAMAGE", value: 20, range: 50, delayMs: 2_000 },
-          // Bonus close-range hit
-          { type: "TIMED_AOE_DAMAGE", value: 10, range: 4,  delayMs: 2_000 },
-        ],
-      },
+    buffs: [],
+    // Channel-specific fields (read by playService as `any`)
+    channelDurationMs: 2_000,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelCancelOnOutOfRange: 8,
+    channelForward: true,
+    channelEffects: [
+      { type: "TIMED_AOE_DAMAGE", value: 20, range: 50 },
+      { type: "TIMED_AOE_DAMAGE", value: 10, range: 4 },
     ],
-  },
+  } as any,
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 孔雀翎 — instant, applies 8-stack on-hit debuff to enemy
+  // 孔雀翎 — instant, applies 受击 debuff (8 stacks, 0.5s proc rate-limit, 6s) + slow (6s)
   // ──────────────────────────────────────────────────────────────────────────
   kong_que_ling: {
     id: "kong_que_ling",
     name: "孔雀翎",
-    description: "范围25，即刻对目标造成3点伤害，并附加【孔雀翎】，共8层，每次受攻击触发额外3点伤害，持续10秒",
+    description: "范围25，即刻对目标造成3点伤害，并附加【孔雀翎受击】（8层，每次受攻击触发额外3点伤害）和【孔雀翎】（减速50%），各持续6秒",
     type: "ATTACK",
     target: "OPPONENT",
-    cooldownTicks: 150,   // 20 seconds
+    cooldownTicks: 600,
     gcd: true,
     range: 25,
     effects: [
@@ -884,14 +874,58 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     buffs: [
       {
         buffId: 2004,
-        name: "孔雀翎",
+        name: "孔雀翎受击",
         category: "DEBUFF",
-        durationMs: 10_000,
+        durationMs: 6_000,
         breakOnPlay: false,
         initialStacks: 8,
-        description: "每次受攻击触发3点额外伤害，剩余层数见图标",
+        maxStacks: 8,
+        procCooldownMs: 500,
+        description: "每次受攻击触发3点额外伤害（每0.5秒至多触发一次），剩余层数见图标",
         effects: [
           { type: "STACK_ON_HIT_DAMAGE", value: 3 },
+        ],
+      },
+      {
+        buffId: 2005,
+        name: "孔雀翎",
+        category: "DEBUFF",
+        durationMs: 6_000,
+        breakOnPlay: false,
+        description: "移动速度降低50%",
+        effects: [
+          { type: "SLOW", value: 0.5 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 化血镖 — no cooldown, stackable DoT (max 2 stacks, 24s, 1 dmg/3s per stack)
+  // ──────────────────────────────────────────────────────────────────────────
+  hua_xue_biao: {
+    id: "hua_xue_biao",
+    name: "化血镖",
+    description: "范围25，无冷却，附加【化血镖】毒效果，最多2层，每层每3秒造成1点伤害，持续24秒",
+    type: "ATTACK",
+    target: "OPPONENT",
+    cooldownTicks: 0,
+    gcd: true,
+    range: 25,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2006,
+        name: "化血镖",
+        category: "DEBUFF",
+        durationMs: 24_000,
+        periodicMs: 3_000,
+        breakOnPlay: false,
+        initialStacks: 1,
+        maxStacks: 2,
+        description: "每3秒造成1点伤害（叠层则倍增），最多叠加2层，持续24秒",
+        effects: [
+          { type: "PERIODIC_DAMAGE", value: 1 },
         ],
       },
     ],

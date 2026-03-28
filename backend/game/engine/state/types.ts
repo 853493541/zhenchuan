@@ -47,6 +47,7 @@ export type {
   PickupItem,
   SafeZone,
   GroundZone,
+  ActiveChannel,
 } from "./types/state";
 
 /* ================= Tournament / Draft / Economy ================= */

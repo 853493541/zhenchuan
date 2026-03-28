@@ -28,6 +28,29 @@ export interface SafeZone {
   nextChangeIn: number;
 }
 
+// ==================== ACTIVE CHANNEL ====================
+
+export interface ActiveChannel {
+  abilityId: string;
+  abilityName: string;
+  instanceId: string;
+  targetUserId: string;
+  /** Date.now() ms when channel started */
+  startedAt: number;
+  /** Total channel duration in ms */
+  durationMs: number;
+  cancelOnMove?: boolean;
+  cancelOnJump?: boolean;
+  /** Cancel if distance to opponent exceeds this (units) */
+  cancelOnOutOfRange?: number;
+  /** true = forward-fill bar (0→100%), false = drain bar (100→0%) */
+  forwardChannel?: boolean;
+  /** Effects to fire on channel completion */
+  effects: Array<{ type: string; value?: number; range?: number }>;
+  /** Cooldown ticks to set on the ability instance after completion */
+  cooldownTicks: number;
+}
+
 export interface PlayerState {
   userId: PlayerID;
 
@@ -120,6 +143,9 @@ export interface PlayerState {
     maxDownVz: number;    // per-tick downward vz cap (negative)
     ticksRemaining: number;
   };
+
+  /** Active channel (e.g. 云飞玉皇). Set at cast, cleared on completion or cancel. */
+  activeChannel?: ActiveChannel;
 }
 
 export interface GroundZone {

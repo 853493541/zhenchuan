@@ -72,6 +72,11 @@ export function validateCastAbility(
     throw new Error("ERR_ON_COOLDOWN");
   }
 
+  /* ================= CHANNELING ================= */
+  if ((player as any).activeChannel) {
+    throw new Error("ERR_CHANNELING");
+  }
+
   /* ================= SILENCE (Level 3 — not removable) ================= */
   if (hasEffect(player, "SILENCE")) {
     throw new Error("ERR_SILENCED");

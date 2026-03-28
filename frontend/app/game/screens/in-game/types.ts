@@ -70,6 +70,25 @@ export interface ActiveBuff {
 }
 
 /* =========================================================
+   Active Channel (mirror of backend ActiveChannel)
+========================================================= */
+
+export interface ActiveChannel {
+  abilityId: string;
+  abilityName: string;
+  instanceId: string;
+  targetUserId: string;
+  startedAt: number;
+  durationMs: number;
+  cancelOnMove?: boolean;
+  cancelOnJump?: boolean;
+  cancelOnOutOfRange?: number;
+  forwardChannel?: boolean;
+  effects: Array<{ type: string; value?: number; range?: number }>;
+  cooldownTicks: number;
+}
+
+/* =========================================================
    Player State
 ========================================================= */
 
@@ -84,6 +103,7 @@ export interface PlayerState {
   moveSpeed?: number;
   jumpCount?: number;
   facing?: { x: number; y: number };
+  activeChannel?: ActiveChannel;
 }
 
 /* =========================================================

@@ -38,6 +38,10 @@ export interface BuffDefinition {
   forwardChannel?: boolean;
   /** Initial stack count for stackable debuffs (e.g. 孔雀翎) */
   initialStacks?: number;
+  /** Maximum stack count; when re-applying an existing buff, stacks increment up to this value */
+  maxStacks?: number;
+  /** Minimum ms between STACK_ON_HIT_DAMAGE procs (rate-limit) */
+  procCooldownMs?: number;
   description: string;
   effects: BuffEffect[];
   applyTo?: BuffApplyTo;
@@ -89,6 +93,12 @@ export interface ActiveBuff {
   sourceUserId?: string;
   /** Current stack count for stackable debuffs (decrements on each proc) */
   stacks?: number;
+  /** Maximum stack count (mirror of BuffDefinition.maxStacks) */
+  maxStacks?: number;
+  /** Minimum ms between STACK_ON_HIT_DAMAGE procs (mirror of BuffDefinition.procCooldownMs) */
+  procCooldownMs?: number;
+  /** Wall-clock ms when this buff last fired a STACK_ON_HIT_DAMAGE proc */
+  lastProcAt?: number;
 
   /**
    * Wall-clock ms (Date.now()) when this buff was applied.

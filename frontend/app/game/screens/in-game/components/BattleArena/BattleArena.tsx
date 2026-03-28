@@ -5,9 +5,9 @@ import { Canvas } from '@react-three/fiber';
 import styles from './BattleArena.module.css';
 import WASDButtons from './WASDButtons';
 import StatusBar from '../GameBoard/components/StatusBar';
+import { ChannelBar, type ChannelBarData } from './ChannelBar';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
-import type { ActiveBuff } from '../../types';
-import type { PickupItem, GroundZone } from '../../types';
+import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone } from '../../types';
 import ArenaScene from './scene/ArenaScene';
 
 type V3 = { x: number; y: number; z: number };
@@ -74,7 +74,7 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; position: Position; hp: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing };
+  me: { userId: string; position: Position; hp: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
   opponent: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing };
   /** All other players (opponents) — supports 1v1 and N-player modes */
   opponents?: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing }[];
@@ -158,10 +158,6 @@ export default function BattleArena({
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [selectedSelf,     setSelectedSelf]     = useState(false);
   const [, ] = useState(0); // placeholder (was setChannelTick)
-
-  /** Tracks the first time we see a given channel buff (keyed by expiresAt).
-   *  Used to start the CSS animation from 0 regardless of server-client clock skew. */
-  const channelBarTrackRef = useRef<{ expiresAt: number; duration: number } | null>(null);
 
   /* --- Pickup interaction state --- */
   const [nearbyPickupIds,   setNearbyPickupIds]   = useState<string[]>([]);         // sorted closest-first
@@ -453,7 +449,7 @@ export default function BattleArena({
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
   // Keep max-jumps ref in sync with MULTI_JUMP buff from server state
   useEffect(() => {
-    const multiJump = me?.buffs?.flatMap((b: any) => b.effects ?? []).find((e: any) => e.type === 'MULTI_JUMP');
+    const multiJump = me?.buffs?.flatMap((b: any) => (b.effects ?? []).filter(Boolean)).find((e: any) => e.type === 'MULTI_JUMP');
     maxJumpsRef.current = multiJump ? (multiJump.value ?? 2) : 2;
   }, [me?.buffs]);
 
@@ -501,7 +497,38 @@ export default function BattleArena({
 
   // Channel bar: now uses CSS animation — no JS polling needed.
   // Keep channelBuff computed so the bar mounts/unmounts correctly.
-  const channelBuff = me?.buffs?.find((b: any) => b.buffId === 1014 || b.buffId === 2001 || b.buffId === 2002 || b.buffId === 2003);
+  // Prefer activeChannel (pure channel system) over legacy buff-based channels.
+  // -- Forward channel (正读条): from player.activeChannel (e.g. 云飞玉皇)
+  // -- Reverse channel (倒读条): from buff buffId 1014/2001/2002 (e.g. 风来吴山, 笑醉狂, 狂龙乱舞)
+  const channelBarData: ChannelBarData | null = (() => {
+    if (me?.activeChannel) {
+      const ch = me.activeChannel;
+      return {
+        kind: 'forward' as const,
+        name: ch.abilityName,
+        startedAt: ch.startedAt,
+        durationMs: ch.durationMs,
+        cancelOnMove: !!ch.cancelOnMove,
+        cancelOnJump: !!ch.cancelOnJump,
+      };
+    }
+    const buff = me?.buffs?.find((b: any) =>
+      b.buffId === 1014 || b.buffId === 2001 || b.buffId === 2002
+    );
+    if (buff) {
+      const appliedAt: number = (buff as any).appliedAt ?? 0;
+      const expiresAt: number = (buff as any).expiresAt ?? 0;
+      const durationMs = expiresAt - appliedAt > 0 ? expiresAt - appliedAt : 5_000;
+      return {
+        kind: 'reverse' as const,
+        name: (buff as any).name ?? '运功',
+        appliedAt: appliedAt > 0 ? appliedAt : expiresAt - durationMs,
+        durationMs,
+        tickIntervalMs: (buff as any).periodicMs,
+      };
+    }
+    return null;
+  })();
 
   // Ref that the rAF writes a new jump record into (avoids stale closure in rAF)
   const jumpRecordNextRef = useRef<{ riseMs: number; fallMs: number; totalMs: number; peakZ: number } | null>(null);
@@ -2258,48 +2285,8 @@ export default function BattleArena({
             </div>
           )}
 
-          {/* ── 倒读条: countdown bar for channel abilities ── */}
-          {(() => {
-            if (!channelBuff) {
-              channelBarTrackRef.current = null;
-              return null;
-            }
-            const cb = channelBuff as any;
-            // Record local start time the first time we see this buff's expiresAt.
-            // Always start the animation from 100% to avoid server-client clock skew
-            // causing the bar to start mid-way or disappear early.
-            if (!channelBarTrackRef.current || channelBarTrackRef.current.expiresAt !== cb.expiresAt) {
-              const CHANNEL_MS = cb.appliedAt ? cb.expiresAt - cb.appliedAt : 5000;
-              channelBarTrackRef.current = { expiresAt: cb.expiresAt, duration: CHANNEL_MS };
-            }
-            const track = channelBarTrackRef.current;
-            const CHANNEL_MS = track.duration;
-            const TICKS = Math.max(2, Math.round(CHANNEL_MS / 1000));
-            // forwardChannel=true → 正读条 (fills 0→100%), otherwise 倒读条 (drains 100→0%)
-            const fillClass = cb.forwardChannel ? styles.channelBarFillForward : styles.channelBarFill;
-            return (
-              <div className={styles.channelBarWrap}>
-                <span className={styles.channelBarLabel}>
-                  {cb.name ?? '风来吴山'}
-                </span>
-                <div className={styles.channelBarTrack}>
-                  {/* CSS animation: key is stable for the lifetime of this channel (same expiresAt) */}
-                  <div
-                    key={track.expiresAt}
-                    className={fillClass}
-                    style={{ animationDuration: `${CHANNEL_MS}ms` }}
-                  />
-                  {Array.from({ length: TICKS - 1 }, (_, i) => (
-                    <div
-                      key={i}
-                      className={styles.channelBarTick}
-                      style={{ left: `${((i + 1) / TICKS) * 100}%` }}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
+          {/* ── Channel bar (正读条 / 倒读条) ── */}
+          {channelBarData && <ChannelBar data={channelBarData} />}
 
           {/* ── Top row: draft abilities (6 fixed slots) ── */}
           <div className={styles.hotbar}>
