@@ -108,24 +108,16 @@ async function playCastAbility(
   const targetIndex = ability.target === 'SELF' ? playerIndex : (playerIndex === 0 ? 1 : 0);
   const target = state.players[targetIndex];
 
-  // CHANNEL abilities:
-  //   Pure channels (buffs == null || buffs.length === 0): uses activeChannel system.
-  //   The GameLoop ticks the channel, fires channelEffects on completion, then sets cooldown.
-  //   Buff-based channels (buffs.length > 0): treated like normal abilities — applyEffects
-  //   applies the buff(s) immediately (e.g. 笑醉狂, 风来吴山, 狂龙乱舞).
-  const isPureChannel =
-    ability.type === 'CHANNEL' &&
-    (!ability.buffs || (ability.buffs as any[]).length === 0);
-
+  // Pure channels are driven by activeChannel in GameLoop and apply cooldown on completion.
+  const isPureChannel = ability.type === "CHANNEL" && (!ability.buffs || ability.buffs.length === 0);
   if (isPureChannel) {
-    // Cancel any existing channel and start the new one
     player.activeChannel = {
       abilityId,
       abilityName: ability.name,
       instanceId: played.instanceId,
       targetUserId: target.userId,
       startedAt: Date.now(),
-      durationMs: (ability as any).channelDurationMs ?? 2000,
+      durationMs: (ability as any).channelDurationMs ?? 2_000,
       cancelOnMove: (ability as any).channelCancelOnMove ?? true,
       cancelOnJump: (ability as any).channelCancelOnJump ?? true,
       cancelOnOutOfRange: (ability as any).channelCancelOnOutOfRange,
@@ -143,7 +135,7 @@ async function playCastAbility(
       abilityName: ability.name,
     });
   } else {
-    // Apply ability effects (normal + buff-based CHANNEL abilities like 笑醉狂, 风来吴山, 狂龙乱舞)
+    // Apply ability effects
     applyEffects(state, ability, playerIndex, targetIndex);
     applyOnPlayBuffEffects(state, playerIndex);
 
@@ -168,9 +160,11 @@ async function playCastAbility(
   if ((ability as any).gcd === true && !(ability as any).isCommon) {
     for (const inst of player.hand) {
       const instCardId = (inst as any).abilityId || (inst as any).id;
-      const instCard = ABILITIES[instCardId];
-      if (instCard && (instCard as any).gcd === true && !(instCard as any).isCommon) {
-        inst.cooldown = Math.max(inst.cooldown, DRAFT_GCD_TICKS);
+      if (instCardId !== abilityId) {
+        const instCard = ABILITIES[instCardId];
+        if (instCard && (instCard as any).gcd === true && !(instCard as any).isCommon) {
+          inst.cooldown = Math.max(inst.cooldown, DRAFT_GCD_TICKS);
+        }
       }
     }
   }

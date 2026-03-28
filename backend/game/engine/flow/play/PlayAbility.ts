@@ -36,7 +36,7 @@ export function applyAbility(
     abilityName: ability.name,
   });
 
-  breakOnPlay(source);
+  breakOnPlay(source, ability);
 
   const opponentHpAtStart = target.hp;
   const abilityDodged = computeAbilityDodge(ability, target);

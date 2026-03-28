@@ -23,6 +23,49 @@ function pushEvent(
   });
 }
 
+function removeStealthOnIncomingControl(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+  controlTypes: string[];
+}) {
+  const { state, targetUserId, target, controlTypes } = params;
+  if (controlTypes.length === 0) return;
+
+  const tiandiBreakTypes = ["CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "SILENCE"];
+  const fuguangBreakTypes = ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "SILENCE"];
+
+  const removed: ActiveBuff[] = [];
+  target.buffs = target.buffs.filter((b) => {
+    if (b.buffId === 1011) return true; // 暗尘: incoming control never breaks stealth
+    if (b.buffId === 1012) {
+      const shouldBreak = controlTypes.some((t) => fuguangBreakTypes.includes(t));
+      if (shouldBreak) removed.push(b);
+      return !shouldBreak;
+    }
+    if (b.buffId === 1013) {
+      const shouldBreak = controlTypes.some((t) => tiandiBreakTypes.includes(t));
+      if (shouldBreak) removed.push(b);
+      return !shouldBreak;
+    }
+    return true;
+  });
+
+  for (const b of removed) {
+    pushEvent(state, {
+      turn: state.turn,
+      type: "BUFF_EXPIRED",
+      actorUserId: targetUserId,
+      targetUserId,
+      abilityId: b.sourceAbilityId,
+      abilityName: b.sourceAbilityName,
+      buffId: b.buffId,
+      buffName: b.name,
+      buffCategory: b.category,
+    });
+  }
+}
+
 /* ================= Buff System ================= */
 
 /**
@@ -153,6 +196,19 @@ export function addBuff(params: {
   };
 
   buffTarget.buffs.push(active);
+
+  // Incoming control can forcibly break specific stealth buffs.
+  if (sourceUserId !== targetUserId) {
+    const controlTypes = buff.effects
+      .map((e) => e.type)
+      .filter((t) => ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "SILENCE"].includes(t));
+    removeStealthOnIncomingControl({
+      state,
+      targetUserId,
+      target: buffTarget,
+      controlTypes,
+    });
+  }
 
   pushEvent(state, {
     turn: state.turn,

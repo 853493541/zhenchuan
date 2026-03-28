@@ -425,7 +425,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   anchen_misan: {
     id: "anchen_misan",
     name: "暗尘弥散",
-    description: "隐身5秒",
+    description: "隐身5秒，移动速度提升100%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -438,8 +438,8 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         category: "BUFF",
         durationMs: 5_000, // 5 seconds
         breakOnPlay: true,
-        description: "隐身",
-        effects: [{ type: "STEALTH" }],
+        description: "隐身，移动速度提升100%",
+        effects: [{ type: "STEALTH" }, { type: "SPEED_BOOST", value: 1 }],
       },
     ],
   },
@@ -447,7 +447,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   fuguang_lueying: {
     id: "fuguang_lueying",
     name: "浮光掠影",
-    description: "隐身10秒",
+    description: "隐身20秒；前5秒遁影减速50%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -458,13 +458,19 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         buffId: 1012,
         name: "浮光掠影",
         category: "BUFF",
-        durationMs: 10_000, // 10 seconds
+        durationMs: 20_000, // 20 seconds
         breakOnPlay: true,
-        description: "隐身10秒",
-        effects: [
-          { type: "STEALTH" },
-          { type: "DRAW_REDUCTION", value: 1 },
-        ],
+        description: "隐身20秒",
+        effects: [{ type: "STEALTH" }],
+      },
+      {
+        buffId: 1021,
+        name: "遁影",
+        category: "BUFF",
+        durationMs: 5_000, // 5 seconds
+        breakOnPlay: false,
+        description: "前5秒移动不破隐，移动速度降低50%",
+        effects: [{ type: "SLOW", value: 0.5 }],
       },
     ],
   },
@@ -472,18 +478,20 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   tiandi_wuji: {
     id: "tiandi_wuji",
     name: "天地无极",
-    description: "造成5点伤害\n隐身1回合",
+    description: "对前方20尺目标造成2点伤害\n隐身3秒",
     type: "ATTACK",
     target: "OPPONENT",
+    faceDirection: true,
+    range: 20,
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "DAMAGE", value: 5 }],
+    effects: [{ type: "DAMAGE", value: 2 }],
     buffs: [
       {
         buffId: 1013,
         name: "天地无极",
         category: "BUFF",
-        durationMs: 5_000, // 5 seconds
+        durationMs: 3_000, // 3 seconds
         breakOnPlay: true,
         description: "隐身",
         effects: [{ type: "STEALTH" }],

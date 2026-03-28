@@ -128,6 +128,11 @@ function facingArrow(facing: { x: number; y: number } | undefined): string {
   return dirs[((idx % 8) + 8) % 8];
 }
 
+function hasStealthBuff(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b) => Array.isArray(b.effects) && b.effects.some((e) => e.type === 'STEALTH'));
+}
+
 // Fixed camera direction constant — referenced in physics tick
 const CAM_DIR = { x: 0, y: 1 };
 const DEFAULT_PITCH = Math.atan2(10, 20);
@@ -238,6 +243,10 @@ export default function BattleArena({
   const opponentsList = useMemo(
     () => ((opponents && opponents.length > 0 ? opponents : [opponent]).filter(Boolean)),
     [opponents, opponent],
+  );
+  const visibleOpponentsList = useMemo(
+    () => opponentsList.filter((o) => !hasStealthBuff(o?.buffs)),
+    [opponentsList],
   );
 
   /* --- React state (UI only) --- */
@@ -377,8 +386,8 @@ export default function BattleArena({
   const meScreenBoundsRef   = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
   const opponentIdsRef      = useRef<string[]>([]);
   // Always reflects current primary opponent userId
-  const opponentUserIdRef   = useRef<string>(opponentsList[0]?.userId ?? opponent.userId);
-  opponentUserIdRef.current = opponentsList[0]?.userId ?? opponent.userId;
+  const opponentUserIdRef   = useRef<string>(visibleOpponentsList[0]?.userId ?? '');
+  opponentUserIdRef.current = visibleOpponentsList[0]?.userId ?? '';
 
   /* --- Dash animation refs --- */
   const localDashAnimRef = useRef<{ start: V3; startTime: number } | null>(null);
@@ -431,19 +440,28 @@ export default function BattleArena({
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
     if (ability?.abilityId === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
+    const selectedTargetIdNow = selectedTargetRef.current;
+    const selectedTarget = selectedTargetIdNow
+      ? opponentsList.find((o) => o.userId === selectedTargetIdNow)
+      : null;
+    const targetPos = selectedTarget?.position;
+
     // Abilities targeting the opponent require a target to be selected first
-    if (ability?.target === 'OPPONENT' && !selectedTargetRef.current) {
+    if (ability?.target === 'OPPONENT' && !selectedTargetIdNow) {
       toastError('请先选择目标');
+      return;
+    }
+    if (ability?.target === 'OPPONENT' && !targetPos) {
+      toastError('目标不可见或已失去目标');
       return;
     }
     // Face direction check (180° hemisphere)
     if (ability?.target === 'OPPONENT' && ability?.faceDirection) {
-      const myPos = localPositionRef.current;
+      const myPos = localPositionRef.current ?? me.position;
       const myFacing = localFacingRef.current;
-      const oppPos = opponentRawRef.current;
-      if (myPos && myFacing && oppPos) {
-        const dx = oppPos.x - myPos.x;
-        const dy = oppPos.y - myPos.y;
+      if (myPos && myFacing && targetPos) {
+        const dx = targetPos.x - myPos.x;
+        const dy = targetPos.y - myPos.y;
         const dot = myFacing.x * dx + myFacing.y * dy;
         if (dot < 0) {
           toastError('目标不在面朝方向内');
@@ -453,16 +471,15 @@ export default function BattleArena({
     }
     // Line-of-sight check (structure blocking)
     if (ability?.target === 'OPPONENT') {
-      const myPos = localPositionRef.current;
-      const oppPos = opponentRawRef.current;
-      if (myPos && oppPos && isLOSBlockedClient(myPos.x, myPos.y, oppPos.x, oppPos.y, mapObjectsRef.current)) {
+      const myPos = localPositionRef.current ?? me.position;
+      if (myPos && targetPos && isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current)) {
         toastError('视线被建筑遮挡');
         return;
       }
     }
     // Stamp the ability name so the damage / heal float can label itself
     lastCastNameRef.current = ability?.name ?? null;
-    onCastAbility(id, selectedTargetRef.current ?? undefined);
+    onCastAbility(id, selectedTargetIdNow ?? undefined);
   };
 
   /* --- Render position + dash-trail refs --- */
@@ -684,7 +701,7 @@ export default function BattleArena({
 
   // Keep selected target valid as opponent list changes (N-player support)
   useEffect(() => {
-    const ids = opponentsList.map((o) => o.userId);
+    const ids = visibleOpponentsList.map((o) => o.userId);
     opponentIdsRef.current = ids;
     const current = selectedTargetRef.current;
     if (ids.length === 0) {
@@ -696,7 +713,7 @@ export default function BattleArena({
       setSelectedTargetId(null);
       selectedTargetRef.current = null;
     }
-  }, [opponentsList]);
+  }, [visibleOpponentsList]);
 
   useEffect(() => {
     selectedTargetRef.current = selectedTargetId;
@@ -959,6 +976,38 @@ export default function BattleArena({
       const gcdWindow = ab?.gcd === true && !ab?.isCommon ? GCD_WINDOW_TICKS : 0;
       return Math.max(base, gcdWindow);
     };
+    const selectedTarget = selectedTargetId
+      ? visibleOpponentsList.find((o) => o.userId === selectedTargetId) ?? null
+      : null;
+    const targetForChecks = selectedTarget ?? visibleOpponentsList[0] ?? null;
+    const myPos = me.position ?? localPositionRef.current;
+    const myFacing = me.facing ?? localFacingRef.current;
+    const targetPos = targetForChecks?.position;
+
+    const isAbilityReady = (ab: any, cooldown: number): boolean => {
+      if (cooldown > 0) return false;
+      if (ab?.target === 'OPPONENT' && !targetPos) return false;
+
+      const distanceToTarget = (myPos && targetPos)
+        ? Math.hypot(targetPos.x - myPos.x, targetPos.y - myPos.y)
+        : distance;
+      const inMaxRange = !ab?.range || distanceToTarget <= ab.range;
+      const inMinRange = !ab?.minRange || distanceToTarget >= ab.minRange;
+      if (!inMaxRange || !inMinRange) return false;
+
+      if (ab?.target === 'OPPONENT' && myPos && targetPos) {
+        if (ab?.faceDirection && myFacing) {
+          const dx = targetPos.x - myPos.x;
+          const dy = targetPos.y - myPos.y;
+          if (myFacing.x * dx + myFacing.y * dy < 0) return false;
+        }
+        if (isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current)) {
+          return false;
+        }
+      }
+
+      return true;
+    };
 
     const draftUpdated: AbilityInfo[] = me.hand
       .map((instance: any) => {
@@ -981,7 +1030,7 @@ export default function BattleArena({
             minRange:    undefined as number | undefined,
             cooldown:    instance.cooldown || 0,
             maxCooldown: 0,
-            isReady:     (instance.cooldown ?? 0) === 0,
+            isReady:     isAbilityReady(ability, instance.cooldown ?? 0),
             isCommon:    false,
             target:      'OPPONENT' as 'SELF' | 'OPPONENT',
           };
@@ -994,7 +1043,7 @@ export default function BattleArena({
           minRange:    ability.minRange,
           cooldown:    instance.cooldown || 0,
           maxCooldown: getDisplayMaxCooldown(ability),
-          isReady:     (instance.cooldown ?? 0) === 0 && (!ability.range || distance <= ability.range),
+          isReady:     isAbilityReady(ability, instance.cooldown ?? 0),
           isCommon:    false,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
           faceDirection: (ability as any).faceDirection ?? false,
@@ -1021,7 +1070,7 @@ export default function BattleArena({
           minRange:    ability.minRange,
           cooldown,
           maxCooldown: getDisplayMaxCooldown(ability),
-          isReady:     cooldown === 0 && (!ability.range || distance <= ability.range),
+          isReady:     isAbilityReady(ability, cooldown),
           isCommon:    true,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
           faceDirection: (ability as any).faceDirection ?? false,
@@ -1032,7 +1081,16 @@ export default function BattleArena({
     const updated = [...commonUpdated, ...draftUpdated];
     setHandAbilities(updated);
     abilitiesRef.current = updated;
-  }, [me.hand, me.buffs, opponent?.buffs, distance, abilities]);
+  }, [
+    me.hand,
+    me.buffs,
+    me.position,
+    me.facing,
+    selectedTargetId,
+    visibleOpponentsList,
+    distance,
+    abilities,
+  ]);
 
   /* ========================= PICKUP INTERACTION ========================= */
 
@@ -1767,7 +1825,6 @@ export default function BattleArena({
 
   /* ========================= HUD DATA ========================= */
   const myHpPct  = Math.max(0, Math.min(100, ((me?.hp  ?? 0) / maxHp) * 100));
-  const oppHpPct = Math.max(0, Math.min(100, ((opponent?.hp ?? 0) / maxHp) * 100));
   const isMoving = Object.values(wasdKeys).some(v => v);
   const myFacingArrow = facingArrow(me.facing ?? meFacingRef.current);
 
@@ -1824,7 +1881,7 @@ export default function BattleArena({
         >
           <ArenaScene
             me={me}
-            opponents={opponents ?? [opponent]}
+            opponents={visibleOpponentsList}
             selectedTargetId={selectedTargetId}
             onSelectTarget={(userId) => {
               setSelectedTargetId(userId);
@@ -1834,7 +1891,7 @@ export default function BattleArena({
             }}
             pickups={pickups}
             meChanneling={meChannelingRef.current}
-            channelingOpponentId={opponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014))?.userId ?? null}
+            channelingOpponentId={visibleOpponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014))?.userId ?? null}
             selectedSelf={selectedSelf}
             localRenderPosRef={localRenderPosRef}
             camYawRef={camYawRef}
@@ -1972,12 +2029,17 @@ export default function BattleArena({
       {/* ===== TOP-CENTER: Target info panel — health → buffs → abilities (self or enemy) ===== */}
       <div className={styles.enemyBossGroup}>
         {(selectedTargetId || selectedSelf) && (() => {
+          const selectedTarget = selectedTargetId
+            ? opponentsList.find((o) => o.userId === selectedTargetId) ?? null
+            : null;
           const isSelf       = selectedSelf && !selectedTargetId;
-          const targetHpPct  = isSelf ? myHpPct  : oppHpPct;
-          const targetHp     = isSelf ? (me?.hp ?? 0) : (opponent?.hp ?? 0);
+          const targetHpPct  = isSelf
+            ? myHpPct
+            : Math.max(0, Math.min(100, (((selectedTarget?.hp ?? 0) / maxHp) * 100)));
+          const targetHp     = isSelf ? (me?.hp ?? 0) : (selectedTarget?.hp ?? 0);
           const targetName   = isSelf ? '玩家' : '陌路侠士';
-          const targetBuffs  = isSelf ? (me?.buffs ?? []) : (opponent?.buffs ?? []);
-          const targetHand   = isSelf ? me.hand : (opponent?.hand ?? []);
+          const targetBuffs  = isSelf ? (me?.buffs ?? []) : (selectedTarget?.buffs ?? []);
+          const targetHand   = isSelf ? me.hand : (selectedTarget?.hand ?? []);
           const hpGradient   = 'linear-gradient(90deg, #991111, #cc2222)';
           const barBg        = isSelf
             ? { background: 'rgba(210, 215, 220, 0.18)', border: '1px solid rgba(200, 210, 220, 0.35)' }

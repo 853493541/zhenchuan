@@ -20,6 +20,7 @@ import { resolveScheduledDamage, resolveHealAmount } from "../utils/combatMath";
 import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
+import { ABILITIES } from "../../abilities/abilities";
 import type { MapObject } from "../state/types/map";
 
 /** 2D segment vs AABB intersection test (for LOS checks). */
@@ -65,6 +66,20 @@ function isLOSBlocked(
     }
   }
   return false;
+}
+
+/** Check if target is within the caster's forward 180-degree hemisphere. */
+function isInFacingHemisphere(
+  player: { position: { x: number; y: number }; facing?: { x: number; y: number } },
+  target: { position: { x: number; y: number } }
+): boolean {
+  const f = player.facing;
+  if (!f) return true;
+  const dx = target.position.x - player.position.x;
+  const dy = target.position.y - player.position.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 0.01) return true;
+  return (f.x * dx + f.y * dy) >= 0;
 }
 
 export interface GameLoopConfig {
@@ -306,6 +321,20 @@ export class GameLoop {
         if (isMoving) player.buffs = player.buffs.filter((b) => !b.cancelOnMove);
         if (isJumping) player.buffs = player.buffs.filter((b) => !b.cancelOnJump);
 
+        // 浮光掠影(1012):
+        // - first 5s: moving does not break
+        // - jump always breaks
+        // - after 5s: moving breaks
+        const fuguangStealth = player.buffs.find((b) => b.buffId === 1012);
+        if (fuguangStealth) {
+          const stealthAgeMs = Date.now() - (fuguangStealth.appliedAt ?? Date.now());
+          const breakByMove = isMoving && stealthAgeMs >= 5_000;
+          const breakByJump = isJumping;
+          if (breakByMove || breakByJump) {
+            player.buffs = player.buffs.filter((b) => b.buffId !== 1012);
+          }
+        }
+
         // Cancel activeChannel on move/jump
         if (player.activeChannel) {
           if (player.activeChannel.cancelOnMove && isMoving) player.activeChannel = undefined;
@@ -329,10 +358,12 @@ export class GameLoop {
 
         const ch = player.activeChannel;
         const opp = this.state.players[idx === 0 ? 1 : 0];
+        const target = this.state.players.find((p) => p.userId === ch.targetUserId) ?? opp;
+        const channelAbility = (ABILITIES as any)[ch.abilityId] as any;
 
         // cancelOnOutOfRange check
         if (ch.cancelOnOutOfRange !== undefined) {
-          const dist = calculateDistance(player.position, opp.position);
+          const dist = calculateDistance(player.position, target.position);
           if (dist > ch.cancelOnOutOfRange) {
             player.activeChannel = undefined;
             channelStateChanged = true;
@@ -340,12 +371,19 @@ export class GameLoop {
           }
         }
 
+        // Task 8: cancel forward-facing channels if target leaves 180° front arc
+        if (channelAbility?.faceDirection && !isInFacingHemisphere(player as any, target as any)) {
+          player.activeChannel = undefined;
+          channelStateChanged = true;
+          continue;
+        }
+
         // Task 7: cancel channel if target is behind structures (LOS blocked)
         if (isLOSBlocked(
           player.position.x,
           player.position.y,
-          opp.position.x,
-          opp.position.y,
+          target.position.x,
+          target.position.y,
           this.mapCtx.objects,
         )) {
           player.activeChannel = undefined;
@@ -359,10 +397,10 @@ export class GameLoop {
           for (const e of ch.effects) {
             if (e.type === "TIMED_AOE_DAMAGE") {
               const range = e.range ?? 50;
-              const dist = calculateDistance(player.position, opp.position);
-              if (dist <= range && opp.hp > 0) {
-                const dmg = resolveScheduledDamage({ source: player, target: opp, base: e.value ?? 0 });
-                opp.hp = Math.max(0, opp.hp - dmg);
+              const dist = calculateDistance(player.position, target.position);
+              if (dist <= range && target.hp > 0) {
+                const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
+                target.hp = Math.max(0, target.hp - dmg);
                 if (dmg > 0) {
                   this.state.events.push({
                     id: randomUUID(),
@@ -370,7 +408,7 @@ export class GameLoop {
                     turn: this.state.turn,
                     type: "DAMAGE",
                     actorUserId: player.userId,
-                    targetUserId: opp.userId,
+                    targetUserId: target.userId,
                     abilityId: ch.abilityId,
                     abilityName: ch.abilityName,
                     effectType: "TIMED_AOE_DAMAGE",
@@ -382,16 +420,16 @@ export class GameLoop {
               const threshold = (e as any).threshold ?? 0;
               const range = e.range ?? 50;
               if (player.hp <= threshold) continue;
-              const dist = calculateDistance(player.position, opp.position);
-              if (dist > range || opp.hp <= 0) continue;
-              const dmg = resolveScheduledDamage({ source: player, target: opp, base: e.value ?? 0 });
-              opp.hp = Math.max(0, opp.hp - dmg);
+              const dist = calculateDistance(player.position, target.position);
+              if (dist > range || target.hp <= 0) continue;
+              const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
+              target.hp = Math.max(0, target.hp - dmg);
               if (dmg > 0) {
                 this.state.events.push({
                   id: randomUUID(), timestamp: chNow, turn: this.state.turn,
                   type: "DAMAGE",
                   actorUserId: player.userId,
-                  targetUserId: opp.userId,
+                  targetUserId: target.userId,
                   abilityId: ch.abilityId,
                   abilityName: ch.abilityName,
                   effectType: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
@@ -405,6 +443,11 @@ export class GameLoop {
           const ability = player.hand.find((a) => a.instanceId === ch.instanceId);
           if (ability) {
             ability.cooldown = Math.max(ability.cooldown ?? 0, ch.cooldownTicks ?? 0);
+          }
+
+          // Forward channel completion counts as the cast "taking effect" and breaks stealth.
+          if (ch.forwardChannel) {
+            player.buffs = player.buffs.filter((b) => ![1011, 1012, 1013].includes(b.buffId));
           }
 
           player.activeChannel = undefined;
@@ -704,6 +747,23 @@ export class GameLoop {
                   sourceAbilityId: buff.sourceAbilityId,
                   sourceAbilityName: buff.sourceAbilityName,
                 });
+              }
+
+              // Knockback breaks 浮光掠影(1012) and 天地无极(1013) stealth;
+              // 暗尘弥散(1011) is immune to control-based stealth break.
+              const brokenStealth = opp.buffs.filter((b) => b.buffId === 1012 || b.buffId === 1013);
+              if (brokenStealth.length > 0) {
+                opp.buffs = opp.buffs.filter((b) => b.buffId !== 1012 && b.buffId !== 1013);
+                for (const b of brokenStealth) {
+                  pushBuffExpired(this.state, {
+                    targetUserId: opp.userId,
+                    buffId: b.buffId,
+                    buffName: b.name,
+                    buffCategory: b.category,
+                    sourceAbilityId: b.sourceAbilityId,
+                    sourceAbilityName: b.sourceAbilityName,
+                  });
+                }
               }
             }
 
