@@ -458,7 +458,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
   /* ================= PLAY CARD ================= */
 
-  const playAbility = async (ability: AbilityInstance, targetUserId?: string) => {
+  const playAbility = async (
+    ability: AbilityInstance,
+    targetUserId?: string,
+    groundTarget?: { x: number; y: number },
+  ) => {
     // Real-time battles: no turn restrictions (both players act simultaneously)
     // Turn-based (draft): must be your turn
     const isRealTimeBattle = game?.tournament?.phase === "BATTLE";
@@ -478,6 +482,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
           gameId,
           abilityInstanceId: ability.instanceId,
           targetUserId,
+          groundTarget,
         }),
       });
 

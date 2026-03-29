@@ -19,6 +19,8 @@ import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types
 import { PlayerState } from "../../state/types";
 import { Position } from "../../state/types/position";
 import { pushEvent } from "../events";
+import { resolveScheduledDamage } from "../../utils/combatMath";
+import { blocksEnemyTargeting } from "../../rules/guards";
 
 /** Stable buffId for the CC-immunity granted while dashing */
 export const DASH_CC_IMMUNE_BUFF_ID = 999900;
@@ -29,6 +31,32 @@ const DASH_UNITS_PER_TICK = 20 / 30;
 // Maximum angle caps (degrees from horizontal)
 const MAX_DOWN_ANGLE_DEG = 35;
 const MAX_UP_ANGLE_DEG   = 45;
+
+function pointToSegmentDistance2D(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const apx = px - ax;
+  const apy = py - ay;
+  const abLenSq = abx * abx + aby * aby;
+  if (abLenSq <= 1e-8) {
+    const dx = px - ax;
+    const dy = py - ay;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
+  const cx = ax + abx * t;
+  const cy = ay + aby * t;
+  const dx = px - cx;
+  const dy = py - cy;
+  return Math.sqrt(dx * dx + dy * dy);
+}
 
 export function handleDirectionalDash(
   state: GameState,
@@ -79,14 +107,82 @@ export function handleDirectionalDash(
   const maxUpVz   =  (distance * Math.tan(MAX_UP_ANGLE_DEG   * Math.PI / 180)) / durationTicks;
   const maxDownVz = -(distance * Math.tan(MAX_DOWN_ANGLE_DEG * Math.PI / 180)) / durationTicks;
 
+  // Optional arc mode: enforce a jump-like parabola with the configured peak height.
+  let forceVzPerTick: number | undefined;
+  let useArcGravity = false;
+  let arcGravityUpPerTick: number | undefined;
+  let arcGravityDownPerTick: number | undefined;
+  const arcPeakHeight = effect.arcPeakHeight ?? 0;
+  if (arcPeakHeight > 0) {
+    const halfTicks = Math.max(1, durationTicks / 2);
+    const g = (2 * arcPeakHeight) / (halfTicks * halfTicks);
+    forceVzPerTick = g * halfTicks;
+    useArcGravity = true;
+    arcGravityUpPerTick = g;
+    arcGravityDownPerTick = g;
+  }
+
   source.activeDash = {
+    abilityId: ability.id,
     vxPerTick: dirX * distance / durationTicks,
     vyPerTick: dirY * distance / durationTicks,
+    speedPerTick: effect.speedPerTick,
+    steerByFacing: effect.steerByFacing,
+    wallDiveOnBlock: effect.wallDiveOnBlock,
+    snapUpUnits: effect.snapUpUnits,
+    diveVzPerTick: effect.diveVzPerTick,
     // vzPerTick: undefined — captured on first tick in movement.ts
+    forceVzPerTick,
+    useArcGravity,
+    arcGravityUpPerTick,
+    arcGravityDownPerTick,
     maxUpVz,
     maxDownVz,
     ticksRemaining: durationTicks,
   };
+
+  // 疾: apply route damage immediately on cast to all enemies intersecting dash path.
+  if ((effect.routeDamage ?? 0) > 0) {
+    const startX = source.position.x;
+    const startY = source.position.y;
+    const endX = startX + dirX * distance;
+    const endY = startY + dirY * distance;
+    const routeRadius = effect.routeRadius ?? 2;
+
+    for (const targetPlayer of state.players as any[]) {
+      if (targetPlayer.userId === source.userId) continue;
+      if ((targetPlayer.hp ?? 0) <= 0) continue;
+      if (blocksEnemyTargeting(targetPlayer)) continue;
+
+      const distToPath = pointToSegmentDistance2D(
+        targetPlayer.position.x,
+        targetPlayer.position.y,
+        startX,
+        startY,
+        endX,
+        endY,
+      );
+      if (distToPath > routeRadius) continue;
+
+      const dmg = resolveScheduledDamage({
+        source: source as any,
+        target: targetPlayer,
+        base: effect.routeDamage ?? 0,
+      });
+      targetPlayer.hp = Math.max(0, targetPlayer.hp - dmg);
+
+      pushEvent(state, {
+        turn: state.turn,
+        type: "DAMAGE",
+        actorUserId: source.userId,
+        targetUserId: targetPlayer.userId,
+        abilityId: ability.id,
+        abilityName: ability.name,
+        effectType: "DAMAGE",
+        value: dmg,
+      });
+    }
+  }
 
   // Freeze XY velocity — activeDash owns horizontal movement now.
   // Do NOT clear vz here — movement.ts needs the live vz (after processing

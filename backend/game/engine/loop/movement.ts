@@ -256,25 +256,29 @@ export function applyMovement(
             : (player.jumpCount ?? 0) === 0 ? JUMP_VZ : DOUBLE_JUMP_VZ;
         }
       }
-      const rawVz = player.velocity.vz ?? 0;
-
-      // Dead zone: near the apex of a jump (|vz| very small) → horizontal dash.
-      // Asymmetric: tiny upward vz (> 0.003) still counts as "rising" to preserve
-      // the upward-dash feel. But negative vz must exceed -0.02 (~10 ticks of
-      // falling) before the dash tilts downward — this gives a generous 0.17 s
-      // window after the apex where the dash stays horizontal.
-      const DEAD_ZONE_UP   = 0.006;  // almost any upward motion → upward dash
-      const DEAD_ZONE_DOWN = 0.04;   // must fall for ~0.17s before dash tilts down
-
-      if (rawVz > DEAD_ZONE_UP) {
-        // Rising: dash upward, capped at max angle
-        dash.vzPerTick = Math.min(rawVz, dash.maxUpVz);
-      } else if (rawVz < -DEAD_ZONE_DOWN) {
-        // Falling significantly: dash downward, capped at max angle
-        dash.vzPerTick = Math.max(rawVz, dash.maxDownVz);
+      if (dash.forceVzPerTick !== undefined) {
+        dash.vzPerTick = dash.forceVzPerTick;
       } else {
-        // Near apex / slight fall: horizontal dash
-        dash.vzPerTick = 0;
+        const rawVz = player.velocity.vz ?? 0;
+
+        // Dead zone: near the apex of a jump (|vz| very small) → horizontal dash.
+        // Asymmetric: tiny upward vz (> 0.003) still counts as "rising" to preserve
+        // the upward-dash feel. But negative vz must exceed -0.02 (~10 ticks of
+        // falling) before the dash tilts downward — this gives a generous 0.17 s
+        // window after the apex where the dash stays horizontal.
+        const DEAD_ZONE_UP   = 0.006;  // almost any upward motion → upward dash
+        const DEAD_ZONE_DOWN = 0.04;   // must fall for ~0.17s before dash tilts down
+
+        if (rawVz > DEAD_ZONE_UP) {
+          // Rising: dash upward, capped at max angle
+          dash.vzPerTick = Math.min(rawVz, dash.maxUpVz);
+        } else if (rawVz < -DEAD_ZONE_DOWN) {
+          // Falling significantly: dash downward, capped at max angle
+          dash.vzPerTick = Math.max(rawVz, dash.maxDownVz);
+        } else {
+          // Near apex / slight fall: horizontal dash
+          dash.vzPerTick = 0;
+        }
       }
 
       // Clear vz — the dash now owns vertical movement
@@ -291,13 +295,50 @@ export function applyMovement(
       console.log(`[DASH] >>> START  time=${new Date().toISOString()}  ticks=${dash.ticksRemaining}`);
     }
 
+    if (dash.snapUpUnits && !(dash as any)._snapApplied) {
+      player.position.z = (player.position.z ?? 0) + dash.snapUpUnits;
+      (dash as any)._snapApplied = true;
+    }
+
+    // Steering mode: keep moving forward, but heading follows live facing.
+    if (dash.steerByFacing) {
+      if (input?.facing) {
+        const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
+        if (flen > 0.01) {
+          player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
+        }
+      }
+
+      const facingNow = player.facing;
+      if (facingNow) {
+        const flen = Math.sqrt(facingNow.x * facingNow.x + facingNow.y * facingNow.y);
+        if (flen > 0.01) {
+          const nx = facingNow.x / flen;
+          const ny = facingNow.y / flen;
+          const speed = dash.speedPerTick ?? Math.sqrt(dash.vxPerTick * dash.vxPerTick + dash.vyPerTick * dash.vyPerTick);
+          dash.vxPerTick = nx * speed;
+          dash.vyPerTick = ny * speed;
+        }
+      }
+    }
+
     // ── Apply dash movement ────────────────────────────────────────────────
-    player.position.x += dash.vxPerTick;
-    player.position.y += dash.vyPerTick;
+    const prevX = player.position.x;
+    const prevY = player.position.y;
+    const intendedStepX = dash.vxPerTick;
+    const intendedStepY = dash.vyPerTick;
+    const intendedStep = Math.sqrt(intendedStepX * intendedStepX + intendedStepY * intendedStepY);
+    player.position.x += intendedStepX;
+    player.position.y += intendedStepY;
 
     // Apply frozen vertical velocity (gravity suspended)
     const dashGroundH = getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects);
     player.position.z = Math.max(dashGroundH, player.position.z! + dash.vzPerTick);
+    if (dash.useArcGravity) {
+      const gUp = dash.arcGravityUpPerTick ?? 0;
+      const gDown = dash.arcGravityDownPerTick ?? gUp;
+      dash.vzPerTick -= (dash.vzPerTick >= 0 ? gUp : gDown);
+    }
     if (player.position.z === dashGroundH && dash.vzPerTick < 0) {
       // Hit the ground (or rooftop) mid-dash — stop downward drift, keep going horizontally
       dash.vzPerTick = 0;
@@ -346,6 +387,19 @@ export function applyMovement(
     }
     for (const obj of mapObjects) {
       resolveObjectCollision(player, obj);
+    }
+
+    if (dash.wallDiveOnBlock && intendedStep > 0.001) {
+      const actualStepX = player.position.x - prevX;
+      const actualStepY = player.position.y - prevY;
+      const actualStep = Math.sqrt(actualStepX * actualStepX + actualStepY * actualStepY);
+      if (actualStep < intendedStep * 0.35) {
+        dash.vxPerTick = 0;
+        dash.vyPerTick = 0;
+        dash.steerByFacing = false;
+        const diveVz = dash.diveVzPerTick ?? -0.45;
+        dash.vzPerTick = Math.min(dash.vzPerTick ?? 0, diveVz);
+      }
     }
 
     return; // Skip normal movement + normal gravity entirely

@@ -17,6 +17,18 @@ function hasEffect(player: { buffs: any[] }, type: string) {
   );
 }
 
+function hasChargeSystem(ability: any): boolean {
+  return Number(ability?.maxCharges ?? 0) > 1;
+}
+
+function ensureChargeRuntime(instance: any, ability: any) {
+  const maxCharges = Math.max(0, Number(ability?.maxCharges ?? 0));
+  if (maxCharges <= 1) return;
+  if (typeof instance.chargeCount !== "number") instance.chargeCount = maxCharges;
+  if (typeof instance.chargeRegenTicksRemaining !== "number") instance.chargeRegenTicksRemaining = 0;
+  if (typeof instance.chargeLockTicks !== "number") instance.chargeLockTicks = 0;
+}
+
 /**
  * Facing rule:
  * - Opponent-targeted abilities require 180° facing by default.
@@ -105,7 +117,12 @@ function segmentIntersectsAABB(
 export function validateCastAbility(
   state: GameState,
   playerIndex: number,
-  abilityInstanceId: string
+  abilityInstanceId: string,
+  options?: {
+    pendingJump?: boolean;
+    targetUserId?: string;
+    groundTarget?: { x: number; y: number };
+  }
 ) {
   if (state.gameOver) {
     throw new Error("ERR_GAME_OVER");
@@ -122,7 +139,13 @@ export function validateCastAbility(
   if (!instance) {
     const maybeCommon = ABILITIES[abilityInstanceId];
     if (maybeCommon && (maybeCommon as any).isCommon) {
-      const newInst = { instanceId: abilityInstanceId, abilityId: abilityInstanceId, cooldown: 0 };
+      const newInst: any = { instanceId: abilityInstanceId, abilityId: abilityInstanceId, cooldown: 0 };
+      if (hasChargeSystem(maybeCommon)) {
+        const maxCharges = Number((maybeCommon as any).maxCharges ?? 0);
+        newInst.chargeCount = maxCharges;
+        newInst.chargeRegenTicksRemaining = 0;
+        newInst.chargeLockTicks = 0;
+      }
       player.hand.push(newInst as any);
       instance = newInst as any;
     }
@@ -146,9 +169,39 @@ export function validateCastAbility(
     throw new Error("ERR_ABILITY_NOT_FOUND");
   }
 
+  ensureChargeRuntime(instance, ability);
+
+  const hasGroundTarget =
+    options?.groundTarget !== undefined &&
+    Number.isFinite(options.groundTarget.x) &&
+    Number.isFinite(options.groundTarget.y);
+  const allowGroundCastWithoutTarget =
+    ability.target === "OPPONENT" &&
+    (ability as any).allowGroundCastWithoutTarget === true &&
+    hasGroundTarget;
+
+  let targetIndex = ability.target === "SELF" ? playerIndex : (playerIndex === 0 ? 1 : 0);
+  if (ability.target === "OPPONENT" && options?.targetUserId) {
+    const explicitTarget = state.players.findIndex((p) => p.userId === options.targetUserId);
+    if (explicitTarget >= 0) targetIndex = explicitTarget;
+  }
+  const targetPlayer = state.players[targetIndex];
+
   /* ================= COOLDOWN ================= */
-  if (instance.cooldown > 0) {
+  if (hasChargeSystem(ability)) {
+    if ((instance.chargeLockTicks ?? 0) > 0) {
+      throw new Error("ERR_ON_COOLDOWN");
+    }
+    if ((instance.chargeCount ?? 0) <= 0) {
+      throw new Error("ERR_ON_COOLDOWN");
+    }
+  } else if (instance.cooldown > 0) {
     throw new Error("ERR_ON_COOLDOWN");
+  }
+
+  /* ================= QINGGONG SEAL ================= */
+  if ((ability as any).qinggong && hasEffect(player, "QINGGONG_SEAL")) {
+    throw new Error("ERR_QINGGONG_SEALED");
   }
 
   /* ================= CHANNELING ================= */
@@ -186,17 +239,32 @@ export function validateCastAbility(
   /* ================= REQUIRES GROUNDED ================= */
   if ((ability as any).requiresGrounded) {
     const playerZ = (player.position as any).z ?? 0;
-    if (playerZ > 0.5) {
+    const jumpCount = (player as any).jumpCount ?? 0;
+    const vz = (player as any).velocity?.vz ?? 0;
+    const groundedCastLockUntil = (player as any).groundedCastLockUntil ?? 0;
+    const pendingJump = options?.pendingJump === true;
+    if (
+      playerZ > 0.5 ||
+      jumpCount > 0 ||
+      Math.abs(vz) > 0.01 ||
+      groundedCastLockUntil > Date.now() ||
+      pendingJump
+    ) {
       throw new Error("ERR_REQUIRES_GROUNDED");
     }
   }
 
   /* ================= RANGE CHECK ================= */
   if (ability.range !== undefined) {
-    const distance = calculateDistance(
-      state.players[playerIndex].position,
-      state.players[playerIndex === 0 ? 1 : 0].position
-    );
+    const distance = allowGroundCastWithoutTarget
+      ? Math.hypot(
+          (options?.groundTarget?.x ?? 0) - state.players[playerIndex].position.x,
+          (options?.groundTarget?.y ?? 0) - state.players[playerIndex].position.y,
+        )
+      : calculateDistance(
+          state.players[playerIndex].position,
+          targetPlayer.position
+        );
 
     if (distance > ability.range) {
       throw new Error("ERR_OUT_OF_RANGE");
@@ -208,9 +276,8 @@ export function validateCastAbility(
   }
 
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
-  if (ability.target === "OPPONENT") {
-    const enemyIndex = playerIndex === 0 ? 1 : 0;
-    const enemy = state.players[enemyIndex];
+  if (ability.target === "OPPONENT" && !allowGroundCastWithoutTarget) {
+    const enemy = targetPlayer;
 
     if (blocksCardTargeting(enemy)) {
       throw new Error("ERR_TARGET_UNAVAILABLE");
@@ -268,9 +335,20 @@ export function validatePlayAbility(
     throw new Error("ERR_ABILITY_NOT_FOUND");
   }
 
+  ensureChargeRuntime(instance, ability);
+
+  /* ================= QINGGONG SEAL ================= */
+  if ((ability as any).qinggong && hasEffect(player, "QINGGONG_SEAL")) {
+    throw new Error("ERR_QINGGONG_SEALED");
+  }
+
   /* ================= COOLDOWN ================= */
 
-  if (instance.cooldown > 0) {
+  if (hasChargeSystem(ability)) {
+    if ((instance.chargeLockTicks ?? 0) > 0 || (instance.chargeCount ?? 0) <= 0) {
+      throw new Error("ERR_ON_COOLDOWN");
+    }
+  } else if (instance.cooldown > 0) {
     throw new Error("ERR_ON_COOLDOWN");
   }
 

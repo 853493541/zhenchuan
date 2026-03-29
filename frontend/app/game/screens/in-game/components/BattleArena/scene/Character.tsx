@@ -33,6 +33,8 @@ interface CharacterProps {
   /** Per-frame projected screen anchor for HUD overlays */
   onScreenBounds?: (bounds: { cx: number; topY: number; baseY: number; rs: number }) => void;
   worldHalf: number;
+  /** Visual-only stealth state: model becomes semi-transparent (HP UI unchanged). */
+  isStealthed?: boolean;
 }
 
 export default function Character({
@@ -53,6 +55,7 @@ export default function Character({
   posRef,
   onScreenBounds,
   worldHalf,
+  isStealthed = false,
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -193,6 +196,9 @@ export default function Character({
           emissiveIntensity={isMe ? 0.4 : 0.15}
           roughness={0.6}
           metalness={0.1}
+          transparent
+          opacity={isStealthed ? 0.45 : 1}
+          depthWrite={!isStealthed}
         />
       </mesh>
 
@@ -204,6 +210,9 @@ export default function Character({
           emissive={isMe ? '#6699ff' : '#ff5555'}
           emissiveIntensity={0.7}
           roughness={0.3}
+          transparent
+          opacity={isStealthed ? 0.45 : 1}
+          depthWrite={!isStealthed}
         />
       </mesh>
 

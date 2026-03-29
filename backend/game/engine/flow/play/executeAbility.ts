@@ -17,7 +17,11 @@ export function applyEffects(
   state: GameState,
   ability: Ability,
   playerIndex: number,
-  targetIndex: number
+  targetIndex: number,
+  castContext?: {
+    targetUserId?: string;
+    groundTarget?: { x: number; y: number };
+  }
 ) {
-  applyAbility(state, ability, playerIndex, targetIndex);
+  applyAbility(state, ability, playerIndex, targetIndex, castContext);
 }

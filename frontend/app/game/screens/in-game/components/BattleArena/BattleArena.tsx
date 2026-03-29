@@ -128,9 +128,56 @@ function facingArrow(facing: { x: number; y: number } | undefined): string {
   return dirs[((idx % 8) + 8) % 8];
 }
 
-function hasStealthBuff(buffs?: ActiveBuff[]): boolean {
+const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
+const UNTARGETABLE_BUFF_IDS = new Set([1008]);
+const SANLIU_XIA_BUFF_IDS = new Set([1007]);
+
+function buffHasEffect(buff: ActiveBuff | any, type: string): boolean {
+  return Array.isArray(buff?.effects) && buff.effects.some((e: any) => e?.type === type);
+}
+
+function buffNameIncludes(buff: ActiveBuff | any, token: string): boolean {
+  return typeof buff?.name === 'string' && buff.name.includes(token);
+}
+
+function hasStealthClient(buffs?: ActiveBuff[]): boolean {
   if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b) => Array.isArray(b.effects) && b.effects.some((e) => e.type === 'STEALTH'));
+  return buffs.some((b: any) =>
+    buffHasEffect(b, 'STEALTH') ||
+    STEALTH_BUFF_IDS.has(b.buffId) ||
+    buffNameIncludes(b, '隐身') ||
+    buffNameIncludes(b, '遁影')
+  );
+}
+
+function hasSanliuXiaClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => SANLIU_XIA_BUFF_IDS.has(b.buffId) || buffNameIncludes(b, '散流霞'));
+}
+
+function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
+  return hasStealthClient(buffs) && !hasSanliuXiaClient(buffs);
+}
+
+function blocksTargetingClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) =>
+    buffHasEffect(b, 'STEALTH') ||
+    buffHasEffect(b, 'UNTARGETABLE') ||
+    STEALTH_BUFF_IDS.has(b.buffId) ||
+    UNTARGETABLE_BUFF_IDS.has(b.buffId) ||
+    buffNameIncludes(b, '隐身') ||
+    buffNameIncludes(b, '遁影') ||
+    buffNameIncludes(b, '不可选中')
+  );
+}
+
+function hasQinggongSealClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) =>
+    buffHasEffect(b, 'QINGGONG_SEAL') ||
+    buffNameIncludes(b, '封轻功')
+  );
 }
 
 function requiresFacingByDefault(ability?: { target?: 'SELF' | 'OPPONENT'; faceDirection?: boolean } | null): boolean {
@@ -157,11 +204,20 @@ interface AbilityInfo {
   minRange?: number;
   cooldown: number;
   maxCooldown: number;
+  chargeCount?: number;
+  maxCharges?: number;
+  chargeRegenTicksRemaining?: number;
+  chargeRegenProgress?: number;
+  chargeRecoveryTicks?: number;
+  chargeLockTicks?: number;
+  chargeCastLockTicks?: number;
   isReady: boolean;
   isCommon: boolean;
   target: 'SELF' | 'OPPONENT';
   faceDirection?: boolean;
   requiresGrounded?: boolean;
+  qinggong?: boolean;
+  allowGroundCastWithoutTarget?: boolean;
 }
 
 /** Fixed display order for the common-ability bar. */
@@ -182,7 +238,11 @@ interface BattleArenaProps {
   /** All other players (opponents) — supports 1v1 and N-player modes */
   opponents?: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing }[];
   gameId: string;
-  onCastAbility: (abilityInstanceId: string, targetUserId?: string) => Promise<void>;
+  onCastAbility: (
+    abilityInstanceId: string,
+    targetUserId?: string,
+    groundTarget?: { x: number; y: number },
+  ) => Promise<void>;
   distance: number;
   maxHp: number;
   abilities: Record<string, any>;
@@ -255,7 +315,11 @@ export default function BattleArena({
     [opponents, opponent],
   );
   const visibleOpponentsList = useMemo(
-    () => opponentsList.filter((o) => !hasStealthBuff(o?.buffs)),
+    () => opponentsList.filter((o) => !shouldHideOpponentByStealth(o?.buffs)),
+    [opponentsList],
+  );
+  const targetableOpponentsList = useMemo(
+    () => opponentsList.filter((o) => !blocksTargetingClient(o?.buffs)),
     [opponentsList],
   );
 
@@ -269,6 +333,8 @@ export default function BattleArena({
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [selectedSelf,     setSelectedSelf]     = useState(false);
+  const [pendingGroundCastAbilityId, setPendingGroundCastAbilityId] = useState<string | null>(null);
+  const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number } | null>(null);
   const [, ] = useState(0); // placeholder (was setChannelTick)
 
   /* --- Pickup interaction state --- */
@@ -370,6 +436,7 @@ export default function BattleArena({
   const facingInitRef     = useRef(false);
   const meFacingRef       = useRef<Facing>({ x: 0, y: 1 });
   const oppFacingRef      = useRef<Facing>({ x: 0, y: 1 });
+  const prevActiveChannelRef = useRef<ActiveChannel | null>(null);
 
   /* --- Opponent interpolation --- */
   const internalOpponentBufferRef = useRef<Array<{ t: number; pos: Position }>>([]);
@@ -392,12 +459,13 @@ export default function BattleArena({
   /* --- Target selection refs --- */
   const selectedTargetRef   = useRef<string | null>(null);
   const selectedSelfRef     = useRef(false);
+  const pendingGroundCastAbilityRef = useRef<string | null>(null);
   const oppScreenBoundsRef  = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
   const meScreenBoundsRef   = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
   const opponentIdsRef      = useRef<string[]>([]);
   // Always reflects current primary opponent userId
-  const opponentUserIdRef   = useRef<string>(visibleOpponentsList[0]?.userId ?? '');
-  opponentUserIdRef.current = visibleOpponentsList[0]?.userId ?? '';
+  const opponentUserIdRef   = useRef<string>(targetableOpponentsList[0]?.userId ?? '');
+  opponentUserIdRef.current = targetableOpponentsList[0]?.userId ?? '';
 
   /* --- Dash animation refs --- */
   const localDashAnimRef = useRef<{ start: V3; startTime: number } | null>(null);
@@ -459,7 +527,17 @@ export default function BattleArena({
 
     // Abilities targeting the opponent require a target to be selected first
     if (ability?.target === 'OPPONENT' && !selectedTargetIdNow) {
+      if (ability?.allowGroundCastWithoutTarget) {
+        setPendingGroundCastAbilityId(id);
+        setGroundCastPreview(null);
+        toastSuccess('请选择地面位置施放');
+        return;
+      }
       toastError('请先选择目标');
+      return;
+    }
+    if (ability?.target === 'OPPONENT' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
+      toastError('目标不可选中');
       return;
     }
     if (ability?.target === 'OPPONENT' && !targetPos) {
@@ -467,7 +545,13 @@ export default function BattleArena({
       return;
     }
 
-    if (ability?.requiresGrounded && localZRef.current > 0.5) {
+    const groundedLockedLocal =
+      localZRef.current > 0.5 ||
+      jumpLocalRef.current ||
+      jumpSendRef.current ||
+      localJumpCountRef.current > 0 ||
+      Math.abs(localVzRef.current) > 0.01;
+    if (ability?.requiresGrounded && groundedLockedLocal) {
       toastError('该技能需要落地后施放');
       return;
     }
@@ -496,7 +580,22 @@ export default function BattleArena({
     }
     // Stamp the ability name so the damage / heal float can label itself
     lastCastNameRef.current = ability?.name ?? null;
+    setPendingGroundCastAbilityId(null);
+    setGroundCastPreview(null);
     onCastAbility(id, selectedTargetIdNow ?? undefined);
+  };
+
+  const castGroundAbilityRef = useRef<(x: number, y: number) => void>(() => {});
+  castGroundAbilityRef.current = (x: number, y: number) => {
+    const abilityId = pendingGroundCastAbilityRef.current;
+    if (!abilityId) return;
+    const ability = abilitiesRef.current.find((a) => a.id === abilityId);
+    if (!ability) return;
+
+    lastCastNameRef.current = ability.name ?? null;
+    setPendingGroundCastAbilityId(null);
+    setGroundCastPreview(null);
+    onCastAbility(abilityId, undefined, { x, y });
   };
 
   /* --- Render position + dash-trail refs --- */
@@ -662,8 +761,8 @@ export default function BattleArena({
   // Keep channelBuff computed so the bar mounts/unmounts correctly.
   // Prefer activeChannel (pure channel system) over legacy buff-based channels.
   // -- Forward channel (正读条): from player.activeChannel (e.g. 云飞玉皇)
-  // -- Reverse channel (倒读条): from buff buffId 1014/1017/2001/2002/2003
-  //    (e.g. 风来吴山, 心诤, 笑醉狂, 狂龙乱舞, 千蝶吐瑞)
+  // -- Reverse channel (倒读条): from buff buffId 1014/1017/2001/2003
+  //    (e.g. 风来吴山, 心诤, 笑醉狂, 千蝶吐瑞)
   const channelBarData: ChannelBarData | null = (() => {
     if (me?.activeChannel) {
       const ch = me.activeChannel;
@@ -677,7 +776,7 @@ export default function BattleArena({
       };
     }
     const buff = me?.buffs?.find((b: any) =>
-      b.buffId === 1014 || b.buffId === 1017 || b.buffId === 2001 || b.buffId === 2002 || b.buffId === 2003
+      b.buffId === 1014 || b.buffId === 1017 || b.buffId === 2001 || b.buffId === 2003
     );
     if (buff) {
       const appliedAt: number = (buff as any).appliedAt ?? 0;
@@ -730,7 +829,7 @@ export default function BattleArena({
 
   // Keep selected target valid as opponent list changes (N-player support)
   useEffect(() => {
-    const ids = visibleOpponentsList.map((o) => o.userId);
+    const ids = targetableOpponentsList.map((o) => o.userId);
     opponentIdsRef.current = ids;
     const current = selectedTargetRef.current;
     if (ids.length === 0) {
@@ -742,11 +841,15 @@ export default function BattleArena({
       setSelectedTargetId(null);
       selectedTargetRef.current = null;
     }
-  }, [visibleOpponentsList]);
+  }, [targetableOpponentsList]);
 
   useEffect(() => {
     selectedTargetRef.current = selectedTargetId;
   }, [selectedTargetId]);
+
+  useEffect(() => {
+    pendingGroundCastAbilityRef.current = pendingGroundCastAbilityId;
+  }, [pendingGroundCastAbilityId]);
 
   // Keep pickups ref up-to-date for render loop
   useEffect(() => {
@@ -841,6 +944,15 @@ export default function BattleArena({
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
       if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0) {
         if (evt.targetUserId === myId) {
+          if (!selectedTargetRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
+            const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
+            if (attackerStillPresent) {
+              setSelectedTargetId(evt.actorUserId);
+              selectedTargetRef.current = evt.actorUserId;
+              setSelectedSelf(false);
+              selectedSelfRef.current = false;
+            }
+          }
           // I took damage — fixed position (x=40%, y=60%)
           addFloat(evt.value, 'dmg_taken', { label: evt.abilityName });
         } else if (evt.actorUserId === myId) {
@@ -855,10 +967,33 @@ export default function BattleArena({
       } else if (evt.type === 'HEAL' && (evt.value ?? 0) > 0 && evt.targetUserId === myId) {
         // Heal — fixed position (x=60%, y=60%)
         addFloat(evt.value, 'heal', { label: evt.abilityName });
+      } else if (evt.type === 'DODGE' && evt.targetUserId === myId) {
+        toastError(`警告：${evt.abilityName ?? '技能'}被闪避`);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events.length]);
+
+  // Warn when a targeted channel is interrupted because target became untargetable (e.g. entered stealth).
+  useEffect(() => {
+    const prev = prevActiveChannelRef.current;
+    const curr = me?.activeChannel ?? null;
+
+    if (prev && !curr) {
+      const targetIsOpponent = !!prev.targetUserId && prev.targetUserId !== me.userId;
+      const elapsedMs = Math.max(0, Date.now() - (prev.startedAt ?? 0));
+      const interruptedEarly = elapsedMs + 120 < (prev.durationMs ?? 0);
+      if (targetIsOpponent && interruptedEarly) {
+        const target = opponentsList.find((o) => o.userId === prev.targetUserId);
+        const targetLost = !target || blocksTargetingClient(target.buffs);
+        if (targetLost) {
+          toastError('警告：目标丢失，运功中断');
+        }
+      }
+    }
+
+    prevActiveChannelRef.current = curr ? { ...curr } : null;
+  }, [me?.activeChannel, me?.userId, opponentsList]);
 
   /* --- Track opponent hand cooldown resets (kept for other UI purposes) --- */
   const prevOppHandRef      = useRef<any[]>([]);
@@ -1009,18 +1144,104 @@ export default function BattleArena({
       const gcdWindow = ab?.gcd === true && !ab?.isCommon ? GCD_WINDOW_TICKS : 0;
       return Math.max(base, gcdWindow);
     };
+    const getChargeDisplay = (ab: any, instance: any) => {
+      const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
+      if (maxCharges <= 1) {
+        return {
+          maxCharges: undefined,
+          chargeCount: undefined,
+          chargeRecoveryTicks: undefined,
+          chargeRegenTicksRemaining: undefined,
+          chargeRegenProgress: undefined,
+          chargeCastLockTicks: undefined,
+          chargeLockTicks: undefined,
+          cooldown: instance?.cooldown ?? 0,
+          maxCooldown: getDisplayMaxCooldown(ab),
+        };
+      }
+
+      const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
+      const chargeRecoveryTicks = Math.max(1, Number(ab?.chargeRecoveryTicks ?? ab?.cooldownTicks ?? 1));
+      const chargeRegenTicksRemaining = Math.max(0, Number(instance?.chargeRegenTicksRemaining ?? 0));
+      const chargeRegenProgress = chargeCount < maxCharges
+        ? Math.max(0, Math.min(1, 1 - (chargeRegenTicksRemaining / chargeRecoveryTicks)))
+        : undefined;
+      const chargeCastLockTicks = Math.max(0, Number(ab?.chargeCastLockTicks ?? 0));
+      const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0));
+
+      if (chargeCount <= 0) {
+        return {
+          maxCharges,
+          chargeCount,
+          chargeRecoveryTicks,
+          chargeRegenTicksRemaining,
+          chargeRegenProgress,
+          chargeCastLockTicks,
+          chargeLockTicks,
+          cooldown: chargeRegenTicksRemaining,
+          maxCooldown: chargeRecoveryTicks,
+        };
+      }
+
+      if (chargeLockTicks > 0) {
+        return {
+          maxCharges,
+          chargeCount,
+          chargeRecoveryTicks,
+          chargeRegenTicksRemaining,
+          chargeRegenProgress,
+          chargeCastLockTicks,
+          chargeLockTicks,
+          cooldown: chargeLockTicks,
+          maxCooldown: Math.max(1, chargeCastLockTicks),
+        };
+      }
+
+      return {
+        maxCharges,
+        chargeCount,
+        chargeRecoveryTicks,
+        chargeRegenTicksRemaining,
+        chargeRegenProgress,
+        chargeCastLockTicks,
+        chargeLockTicks,
+        cooldown: 0,
+        maxCooldown: chargeRecoveryTicks,
+      };
+    };
     const selectedTarget = selectedTargetId
-      ? visibleOpponentsList.find((o) => o.userId === selectedTargetId) ?? null
+      ? targetableOpponentsList.find((o) => o.userId === selectedTargetId) ?? null
       : null;
-    const targetForChecks = selectedTarget ?? visibleOpponentsList[0] ?? null;
+    const targetForChecks = selectedTarget ?? targetableOpponentsList[0] ?? null;
     const myPos = me.position ?? localPositionRef.current;
     const myFacing = me.facing ?? localFacingRef.current;
     const targetPos = targetForChecks?.position;
+    const qinggongSealed = hasQinggongSealClient(me.buffs);
 
-    const isAbilityReady = (ab: any, cooldown: number): boolean => {
-      if (cooldown > 0) return false;
-      if (ab?.requiresGrounded && localZRef.current > 0.5) return false;
-      if (ab?.target === 'OPPONENT' && !targetPos) return false;
+    const isAbilityReady = (ab: any, instance: any): boolean => {
+      const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
+      if (maxCharges > 1) {
+        const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
+        const chargeLockTicks = Number(instance?.chargeLockTicks ?? 0);
+        if (chargeLockTicks > 0) return false;
+        if (chargeCount <= 0) return false;
+      } else if ((instance?.cooldown ?? 0) > 0) {
+        return false;
+      }
+      const groundedLockedLocal =
+        localZRef.current > 0.5 ||
+        jumpLocalRef.current ||
+        jumpSendRef.current ||
+        localJumpCountRef.current > 0 ||
+        Math.abs(localVzRef.current) > 0.01;
+      if (ab?.requiresGrounded && groundedLockedLocal) return false;
+      if (ab?.qinggong && qinggongSealed) return false;
+      const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
+      if (needsSelectedTarget && !targetPos) return false;
+
+      if (ab?.target === 'OPPONENT' && !targetPos && ab?.allowGroundCastWithoutTarget) {
+        return true;
+      }
 
       const distanceToTarget = (myPos && targetPos)
         ? Math.hypot(targetPos.x - myPos.x, targetPos.y - myPos.y)
@@ -1064,25 +1285,37 @@ export default function BattleArena({
             minRange:    undefined as number | undefined,
             cooldown:    instance.cooldown || 0,
             maxCooldown: 0,
-            isReady:     isAbilityReady(ability, instance.cooldown ?? 0),
+            isReady:     isAbilityReady(ability, instance),
             isCommon:    false,
             target:      'OPPONENT' as 'SELF' | 'OPPONENT',
             requiresGrounded: false,
+            qinggong: false,
+            allowGroundCastWithoutTarget: false,
           };
         }
+        const chargeDisplay = getChargeDisplay(ability, instance);
         return {
           id:          instanceId,
           abilityId:      ability.id,
           name:        ability.name,
           range:       ability.range,
           minRange:    ability.minRange,
-          cooldown:    instance.cooldown || 0,
-          maxCooldown: getDisplayMaxCooldown(ability),
-          isReady:     isAbilityReady(ability, instance.cooldown ?? 0),
+          cooldown:    chargeDisplay.cooldown,
+          maxCooldown: chargeDisplay.maxCooldown,
+          maxCharges: chargeDisplay.maxCharges,
+          chargeCount: chargeDisplay.chargeCount,
+          chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
+          chargeRegenTicksRemaining: chargeDisplay.chargeRegenTicksRemaining,
+          chargeRegenProgress: chargeDisplay.chargeRegenProgress,
+          chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
+          chargeLockTicks: chargeDisplay.chargeLockTicks,
+          isReady:     isAbilityReady(ability, instance),
           isCommon:    false,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
           faceDirection: requiresFacingByDefault(ability as any),
           requiresGrounded: !!(ability as any).requiresGrounded,
+          qinggong: !!(ability as any).qinggong,
+          allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
         };
       })
       .filter(Boolean) as AbilityInfo[];
@@ -1097,20 +1330,29 @@ export default function BattleArena({
           (h: any) => (h.abilityId ?? h.id) === ability.id
         );
         const instanceId = instance?.instanceId ?? ability.id;
-        const cooldown   = instance?.cooldown ?? 0;
+        const chargeDisplay = getChargeDisplay(ability, instance ?? {});
         return {
           id:          instanceId,
           abilityId:      ability.id,
           name:        ability.name,
           range:       ability.range,
           minRange:    ability.minRange,
-          cooldown,
-          maxCooldown: getDisplayMaxCooldown(ability),
-          isReady:     isAbilityReady(ability, cooldown),
+          cooldown:    chargeDisplay.cooldown,
+          maxCooldown: chargeDisplay.maxCooldown,
+          maxCharges: chargeDisplay.maxCharges,
+          chargeCount: chargeDisplay.chargeCount,
+          chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
+          chargeRegenTicksRemaining: chargeDisplay.chargeRegenTicksRemaining,
+          chargeRegenProgress: chargeDisplay.chargeRegenProgress,
+          chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
+          chargeLockTicks: chargeDisplay.chargeLockTicks,
+          isReady:     isAbilityReady(ability, instance),
           isCommon:    true,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
           faceDirection: requiresFacingByDefault(ability as any),
           requiresGrounded: !!(ability as any).requiresGrounded,
+          qinggong: !!(ability as any).qinggong,
+          allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
@@ -1124,7 +1366,7 @@ export default function BattleArena({
     me.position,
     me.facing,
     selectedTargetId,
-    visibleOpponentsList,
+    targetableOpponentsList,
     distance,
     abilities,
   ]);
@@ -1300,6 +1542,8 @@ export default function BattleArena({
         selectedTargetRef.current = null;
         setSelectedSelf(false);
         selectedSelfRef.current = false;
+        setPendingGroundCastAbilityId(null);
+        setGroundCastPreview(null);
         return;
       }
       // F = interact with nearby pickup (channel to open panel; claim if panel already open)
@@ -1312,7 +1556,10 @@ export default function BattleArena({
       if (e.key === 'Tab' || e.key === 'F1') {
         e.preventDefault();
         const primary = opponentIdsRef.current[0] ?? opponentUserIdRef.current;
-        if (!primary) return;
+        if (!primary) {
+          toastError('当前没有可选目标');
+          return;
+        }
         setSelectedTargetId(primary);
         selectedTargetRef.current = primary;
         setSelectedSelf(false);
@@ -1866,6 +2113,100 @@ export default function BattleArena({
   const isMoving = Object.values(wasdKeys).some(v => v);
   const myFacingArrow = facingArrow(me.facing ?? meFacingRef.current);
 
+  const cheatAbilities = useMemo(
+    () =>
+      Object.values(abilities)
+        .filter((c: any) => c && !c.isCommon && c.id && c.name)
+        .sort((a: any, b: any) => a.name.localeCompare(b.name)),
+    [abilities],
+  );
+
+  const testedAbilityIds = useMemo(
+    () =>
+      new Set([
+        'sanhuan_taoyue',
+        'yun_fei_yu_huang',
+        'hua_xue_biao',
+        'qiandie_turui',
+        'xinzheng',
+        'wu_jianyu',
+        'anchen_misan',
+        'xiao_zui_kuang',
+        'zhuiming_jian',
+        'fenglai_wushan',
+        'niao_xiang_bi_kong',
+        'nuwa_butian',
+        'kong_que_ling',
+        'fuguang_lueying',
+        'kuang_long_luan_wu',
+        'ji',
+        'jiru_feng',
+        'zhenshen_xingsi',
+        'sanliu_xia',
+        'baizu',
+        'fengxiu_diang',
+        'jianpo_xukong',
+        'mohe_wuliang',
+        'shengsi_jie',
+        'da_shizi_hou',
+        'chan_xiao',
+        'tiandi_wuji',
+      ]),
+    [],
+  );
+
+  const testingAbilityIds = useMemo(
+    () => new Set<string>([]),
+    [],
+  );
+
+  const testedCheatAbilities = cheatAbilities.filter((a: any) => testedAbilityIds.has(a.id));
+  const testingCheatAbilities = cheatAbilities.filter(
+    (a: any) => testingAbilityIds.has(a.id) || !testedAbilityIds.has(a.id),
+  );
+  const reworkCheatAbilities: any[] = [];
+
+  const renderCheatIcon = (ability: any) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      key={ability.id}
+      src={`/game/icons/Skills/${ability.name}.png`}
+      alt={ability.name}
+      title={`${ability.name}${ability.description ? '\n' + ability.description : ''}`}
+      style={{
+        width: 32,
+        height: 32,
+        objectFit: 'contain',
+        borderRadius: 4,
+        border: '1px solid #ff6b00',
+        cursor: addingAbility === ability.id ? 'wait' : 'pointer',
+        opacity: addingAbility === ability.id ? 0.4 : 1,
+        background: 'rgba(20,5,5,0.8)',
+      }}
+      onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
+      onClick={async () => {
+        if (addingAbility) return;
+        setAddingAbility(ability.id);
+        try {
+          const res = await fetch('/api/game/cheat/add-ability', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ gameId, abilityId: ability.id }),
+          });
+          if (!res.ok) {
+            const err = await res.json();
+            console.error('[CheatWindow] add-ability failed:', err);
+          }
+        } catch (e) {
+          console.error('[CheatWindow] error:', e);
+        } finally {
+          setAddingAbility(null);
+        }
+      }}
+    />
+  );
+
   // Mouse move handler for debug cursor tracking
   const handleDebugMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!showDebugGrid) return;
@@ -1922,6 +2263,13 @@ export default function BattleArena({
             opponents={visibleOpponentsList}
             selectedTargetId={selectedTargetId}
             onSelectTarget={(userId) => {
+              const clicked = opponentsList.find((o) => o.userId === userId);
+              if (clicked && blocksTargetingClient(clicked.buffs)) {
+                toastError('目标不可选中');
+                return;
+              }
+              setPendingGroundCastAbilityId(null);
+              setGroundCastPreview(null);
               setSelectedTargetId(userId);
               selectedTargetRef.current = userId;
               setSelectedSelf(false);
@@ -1942,6 +2290,19 @@ export default function BattleArena({
             mode={mode}
             safeZone={safeZone}
             groundZones={groundZones}
+            groundCastPreview={
+              pendingGroundCastAbilityId && groundCastPreview
+                ? { x: groundCastPreview.x, y: groundCastPreview.y, radius: 6, label: '百足' }
+                : null
+            }
+            onGroundPointerMove={(x, y) => {
+              if (!pendingGroundCastAbilityRef.current) return;
+              setGroundCastPreview({ x, y });
+            }}
+            onGroundPointerDown={(x, y) => {
+              if (!pendingGroundCastAbilityRef.current) return;
+              castGroundAbilityRef.current(x, y);
+            }}
           />
         </Canvas>
       </div>
@@ -2475,49 +2836,37 @@ export default function BattleArena({
           background: 'rgba(10,18,28,0.97)', border: '1px solid #ff6b00',
           borderRadius: 6, padding: 8, maxHeight: '70vh',
           overflowY: 'auto',
-          display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          minWidth: 164,
         }}>
-          {Object.values(abilities)
-            .filter((c: any) => c && !c.isCommon && c.id && c.name)
-            .sort((a: any, b: any) => a.name.localeCompare(b.name))
-            .map((ability: any) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={ability.id}
-                src={`/game/icons/Skills/${ability.name}.png`}
-                alt={ability.name}
-                title={`${ability.name}${ability.description ? '\n' + ability.description : ''}`}
-                style={{
-                  width: 32, height: 32, objectFit: 'contain',
-                  borderRadius: 4, border: '1px solid #ff6b00',
-                  cursor: addingAbility === ability.id ? 'wait' : 'pointer',
-                  opacity: addingAbility === ability.id ? 0.4 : 1,
-                  background: 'rgba(20,5,5,0.8)',
-                }}
-                onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
-                onClick={async () => {
-                  if (addingAbility) return;
-                  setAddingAbility(ability.id);
-                  try {
-                    const res = await fetch('/api/game/cheat/add-ability', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      credentials: 'include',
-                      body: JSON.stringify({ gameId, abilityId: ability.id }),
-                    });
-                    if (!res.ok) {
-                      const err = await res.json();
-                      console.error('[CheatWindow] add-ability failed:', err);
-                    }
-                  } catch (e) {
-                    console.error('[CheatWindow] error:', e);
-                  } finally {
-                    setAddingAbility(null);
-                  }
-                }}
-              />
-            ))
-          }
+          <div style={{
+            fontSize: 10,
+            lineHeight: 1.35,
+            color: '#e9edf5',
+            padding: '4px 6px',
+            border: '1px solid rgba(255,255,255,0.16)',
+            borderRadius: 4,
+            background: 'rgba(255,255,255,0.04)',
+          }}>
+            图标已按目录分区，便于快速定位技能。
+          </div>
+
+          <div style={{ fontSize: 11, color: '#69f0ae', fontWeight: 700 }}>已测试</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4 }}>
+            {testedCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
+          </div>
+
+          <div style={{ fontSize: 11, color: '#ffd166', fontWeight: 700 }}>测试中</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4 }}>
+            {testingCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
+          </div>
+
+          <div style={{ fontSize: 11, color: '#ff6b6b', fontWeight: 700 }}>待重做</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4 }}>
+            {reworkCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
+          </div>
         </div>
       )}
 
@@ -2553,19 +2902,49 @@ export default function BattleArena({
               }
               const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
               const cdSeconds = Math.floor(ability.cooldown / 30);
+              const hasCharges = (ability.maxCharges ?? 0) > 1;
+              const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
+              const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
+              const chargeRegenProgress = hasCharges
+                ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
+                : 0;
+              const recoveringCharge = hasCharges && chargeCount < maxCharges;
               return (
                 <button
                   key={ability.id}
                   className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
                   disabled={!ability.isReady}
                   onClick={() => castAbilityRef.current(ability.id)}
-                  title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
+                  title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                   {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                     <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
                       <span className={styles.cdNum}>{cdSeconds}</span>
+                    </div>
+                  )}
+                  {hasCharges && (
+                    <div className={styles.chargeBadge}>
+                      {Math.max(0, chargeCount)}
+                    </div>
+                  )}
+                  {hasCharges && (
+                    <div className={styles.chargePips}>
+                      {Array.from({ length: maxCharges }, (_, pipIdx) => (
+                        <span
+                          key={pipIdx}
+                          className={`${styles.chargePip} ${pipIdx < chargeCount ? styles.chargePipReady : styles.chargePipEmpty}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {recoveringCharge && (
+                    <div className={styles.chargeRegenTrack}>
+                      <div
+                        className={styles.chargeRegenFill}
+                        style={{ width: `${(chargeRegenProgress * 100).toFixed(1)}%` }}
+                      />
                     </div>
                   )}
                   <span className={styles.abilityKey}>{keyHint}</span>
@@ -2581,6 +2960,13 @@ export default function BattleArena({
               const keyHint = COMMON_KEY_HINTS[idx] ?? '';
               const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
               const cdSeconds = Math.floor(ability.cooldown / 30);
+              const hasCharges = (ability.maxCharges ?? 0) > 1;
+              const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
+              const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
+              const chargeRegenProgress = hasCharges
+                ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
+                : 0;
+              const recoveringCharge = hasCharges && chargeCount < maxCharges;
               return (
                 <React.Fragment key={ability.id}>
                   {/* gap between 猛虎下山 and 扶摇 */}
@@ -2591,13 +2977,36 @@ export default function BattleArena({
                     className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
                     disabled={!ability.isReady}
                     onClick={() => castAbilityRef.current(ability.id)}
-                    title={`${ability.name}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
+                    title={`${ability.name}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                     {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                       <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
                         <span className={styles.cdNum}>{cdSeconds}</span>
+                      </div>
+                    )}
+                    {hasCharges && (
+                      <div className={styles.chargeBadge}>
+                        {Math.max(0, chargeCount)}
+                      </div>
+                    )}
+                    {hasCharges && (
+                      <div className={styles.chargePips}>
+                        {Array.from({ length: maxCharges }, (_, pipIdx) => (
+                          <span
+                            key={pipIdx}
+                            className={`${styles.chargePip} ${pipIdx < chargeCount ? styles.chargePipReady : styles.chargePipEmpty}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {recoveringCharge && (
+                      <div className={styles.chargeRegenTrack}>
+                        <div
+                          className={styles.chargeRegenFill}
+                          style={{ width: `${(chargeRegenProgress * 100).toFixed(1)}%` }}
+                        />
                       </div>
                     )}
                     <span className={styles.abilityKey}>{keyHint}</span>

@@ -27,6 +27,10 @@ export interface BuffDefinition {
    * Omit for passive buffs that have no periodic component.
    */
   periodicMs?: number;
+  /**
+   * When true and periodicMs is set, first periodic tick fires immediately on apply.
+   */
+  periodicStartImmediate?: boolean;
   breakOnPlay?: boolean;
   /** Cancel this buff (channel) when the player sends movement input */
   cancelOnMove?: boolean;
@@ -77,6 +81,11 @@ export interface ActiveBuff {
    * doesn't need to look up the definition each tick.
    */
   periodicMs?: number;
+
+  /**
+   * Mirror of BuffDefinition.periodicStartImmediate.
+   */
+  periodicStartImmediate?: boolean;
 
   stageIndex?: number;
   appliedAtTurn?: number;

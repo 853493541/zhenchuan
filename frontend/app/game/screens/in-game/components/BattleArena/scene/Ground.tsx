@@ -6,9 +6,17 @@ interface GroundProps {
   arenaSize?: number;
   isArena?: boolean;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number };
+  onPointerMove?: (e: any) => void;
+  onPointerDown?: (e: any) => void;
 }
 
-export default function Ground({ arenaSize = 2000, isArena = false, safeZone }: GroundProps) {
+export default function Ground({
+  arenaSize = 2000,
+  isArena = false,
+  safeZone,
+  onPointerMove,
+  onPointerDown,
+}: GroundProps) {
   const half = arenaSize / 2;
 
   /* ── Arena grid lines ── */
@@ -99,7 +107,12 @@ export default function Ground({ arenaSize = 2000, isArena = false, safeZone }: 
     return (
       <group>
         {/* Green grass ground */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, -0.01, 0]}
+          onPointerMove={onPointerMove}
+          onPointerDown={onPointerDown}
+        >
           <planeGeometry args={[arenaSize, arenaSize]} />
           <meshLambertMaterial color="#4e8c5a" />
         </mesh>
@@ -184,7 +197,12 @@ export default function Ground({ arenaSize = 2000, isArena = false, safeZone }: 
   // ═══════════════════════════════════════════════
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, -0.01, 0]}
+        onPointerMove={onPointerMove}
+        onPointerDown={onPointerDown}
+      >
         <planeGeometry args={[arenaSize, arenaSize]} />
         <meshLambertMaterial color="#4e8c5a" />
       </mesh>

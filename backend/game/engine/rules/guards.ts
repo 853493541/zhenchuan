@@ -65,10 +65,13 @@ export function blocksEnemyTargeting(target: { buffs: ActiveBuff[] }) {
 /**
  * Targeting block (ability play validation)
  * - used BEFORE ability is played
- * - stealth + untargetable both apply
+ * - stealth only
+ *
+ * NOTE:
+ * - UNTARGETABLE blocks hits/effects, but selection/target lock is preserved.
  */
 export function blocksCardTargeting(target: { buffs: ActiveBuff[] }) {
-  return hasUntargetable(target) || hasStealth(target);
+  return hasStealth(target) || hasUntargetable(target);
 }
 
 /* =========================================================

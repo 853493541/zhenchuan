@@ -30,6 +30,14 @@ export function applyAbilityBuffs(params: {
 }) {
   const { state, ability, source, target, abilityDodged } = params;
 
+  // 百足/大狮子吼 buff application is handled via custom immediate AoE effect logic.
+  if (
+    ability.id === "baizu" ||
+    Array.isArray(ability.effects) && ability.effects.some((e: any) => e.type === "AOE_APPLY_BUFFS")
+  ) {
+    return;
+  }
+
   if (!Array.isArray(ability.buffs) || ability.buffs.length === 0) return;
 
   // Ability-level target (used as fallback when buff has no applyTo override)

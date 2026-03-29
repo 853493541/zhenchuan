@@ -63,6 +63,7 @@ export function handleDash(
   const maxDownVz = -(travelDistance * Math.tan(MAX_DOWN_ANGLE_DEG * Math.PI / 180)) / durationTicks;
 
   sourcePlayer.activeDash = {
+    abilityId: ability.id,
     vxPerTick: dirX * travelDistance / durationTicks,
     vyPerTick: dirY * travelDistance / durationTicks,
     // vzPerTick: undefined — captured on first tick in movement.ts

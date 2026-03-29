@@ -7,6 +7,7 @@ export type EffectType =
   | "DAMAGE"
   | "HEAL"
   | "DRAW"
+  | "COOLDOWN_SLOW"
   | "DAMAGE_REDUCTION"
   | "DAMAGE_MULTIPLIER"
   | "HEAL_REDUCTION"
@@ -15,7 +16,11 @@ export type EffectType =
   | "ATTACK_LOCK"
   | "CONTROL"
   | "SILENCE"
+  | "QINGGONG_SEAL"
+  | "KNOCKBACK_IMMUNE"
   | "CONTROL_IMMUNE"
+  | "INTERRUPT_IMMUNE"
+  | "ROOT_SLOW_IMMUNE"
   | "DODGE_NEXT"
   | "DELAYED_DAMAGE"
   | "CLEANSE"
@@ -28,15 +33,20 @@ export type EffectType =
   | "SCHEDULED_DAMAGE"
   | "DASH"
   | "DIRECTIONAL_DASH"
+  | "AOE_APPLY_BUFFS"
   | "JUMP_BOOST"
   | "PERIODIC_DAMAGE"
   | "PERIODIC_HEAL"
   | "PERIODIC_GUAN_TI_HEAL"
   | "CHANNEL_AOE_TICK"
   | "TIMED_AOE_DAMAGE"
+  | "TIMED_SELF_DAMAGE"
+  | "TIMED_SELF_HEAL"
   | "TIMED_AOE_DAMAGE_IF_SELF_HP_GT"
   | "TIMED_GUAN_TI_HEAL"
   | "PLACE_GROUND_ZONE"
+  | "PLACE_SHENGTAIJI_ZONE"
+  | "BAIZU_AOE"
   | "STACK_ON_HIT_DAMAGE"
   | "KNOCKED_BACK"
   | "SPEED_BOOST"
@@ -57,6 +67,7 @@ export interface AbilityEffect {
 
   allowWhileControlled?: boolean;
   allowWhileKnockedBack?: boolean;
+  cleanseRootSlow?: boolean;
   applyTo?: TargetType;
 
   threshold?: number;
@@ -73,6 +84,49 @@ export interface AbilityEffect {
 
   /** Range (units) for CHANNEL_AOE_TICK — target must be within this distance */
   range?: number;
+
+  /**
+   * For DIRECTIONAL_DASH: when true, dash heading is steered by live facing every tick.
+   */
+  steerByFacing?: boolean;
+
+  /**
+   * For DIRECTIONAL_DASH: explicit horizontal speed in units/tick.
+   * If omitted, speed is derived from value / durationTicks.
+   */
+  speedPerTick?: number;
+
+  /**
+   * For DIRECTIONAL_DASH: instant vertical snap up on dash start.
+   */
+  snapUpUnits?: number;
+
+  /**
+   * For DIRECTIONAL_DASH: if blocked by wall/obstacle, switch to downward dive.
+   */
+  wallDiveOnBlock?: boolean;
+
+  /**
+   * For wall-dive dashes: downward vz applied when wall collision is detected.
+   */
+  diveVzPerTick?: number;
+
+  /**
+   * For DIRECTIONAL_DASH: extra damage applied to enemies intersecting the dash route.
+   * Processed immediately on cast.
+   */
+  routeDamage?: number;
+
+  /**
+   * For DIRECTIONAL_DASH route damage: collision radius around dash path.
+   */
+  routeRadius?: number;
+
+  /**
+   * For DIRECTIONAL_DASH: optional arc peak height in world units.
+   * When set, dash vertical movement follows a jump-like arc instead of flat inertia.
+   */
+  arcPeakHeight?: number;
 }
 
 // Fields only used on BuffEffect (not AbilityEffect) are declared below.
@@ -110,4 +164,14 @@ export type BuffEffect = Omit<AbilityEffect, "allowWhileControlled"> & {
    * For TIMED_AOE_DAMAGE: silence the knocked-back target for this many ms.
    */
   knockbackSilenceMs?: number;
+
+  /**
+   * For zone placement effects: custom zone duration in ms.
+   */
+  zoneDurationMs?: number;
+
+  /**
+   * For zone placement effects: vertical effective height.
+   */
+  zoneHeight?: number;
 };

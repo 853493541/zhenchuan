@@ -6,6 +6,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DAMAGE: "DEBUFF",
   HEAL: "BUFF",
   DRAW: "BUFF",
+  COOLDOWN_SLOW: "DEBUFF",
   CLEANSE: "BUFF",
 
   DAMAGE_REDUCTION: "BUFF",
@@ -14,12 +15,16 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   UNTARGETABLE: "BUFF",
   STEALTH: "BUFF",
   CONTROL_IMMUNE: "BUFF",
+  KNOCKBACK_IMMUNE: "BUFF",
+  INTERRUPT_IMMUNE: "BUFF",
+  ROOT_SLOW_IMMUNE: "BUFF",
   DODGE_NEXT: "BUFF",
   PERIODIC_HEAL: "BUFF",
 
   HEAL_REDUCTION: "DEBUFF",
   ATTACK_LOCK: "DEBUFF",
   SILENCE: "DEBUFF",
+  QINGGONG_SEAL: "DEBUFF",
   DELAYED_DAMAGE: "DEBUFF",
   PERIODIC_DAMAGE: "DEBUFF",
   CHANNEL_AOE_TICK: "BUFF",
@@ -29,6 +34,8 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   FENGLAI_CHANNEL: "BUFF",
   WUJIAN_CHANNEL: "BUFF",
   TIMED_AOE_DAMAGE: "BUFF",
+  TIMED_SELF_DAMAGE: "DEBUFF",
+  TIMED_SELF_HEAL: "BUFF",
   TIMED_AOE_DAMAGE_IF_SELF_HP_GT: "BUFF",
 
   /* ================= PATCH 0.3 ================= */
@@ -43,6 +50,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   /* ================= REAL-TIME MOVEMENT ================= */
   DASH: "BUFF",
   DIRECTIONAL_DASH: "BUFF",
+  AOE_APPLY_BUFFS: "DEBUFF",
   JUMP_BOOST: "BUFF",
 
   /* ================= CONTROL LEVELS ================= */
@@ -58,6 +66,8 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   TIMED_GUAN_TI_HEAL: "BUFF",
   // Ground zone placement
   PLACE_GROUND_ZONE: "BUFF",
+  PLACE_SHENGTAIJI_ZONE: "BUFF",
+  BAIZU_AOE: "DEBUFF",
   // Stack-based on-hit debuff
   STACK_ON_HIT_DAMAGE: "DEBUFF",
 };

@@ -8,6 +8,7 @@ export type GameEventType =
   | "PLAY_ABILITY"
   | "END_TURN"
   | "DAMAGE"
+  | "DODGE"
   | "HEAL"
   | "BUFF_APPLIED"
   | "BUFF_EXPIRED"

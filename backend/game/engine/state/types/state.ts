@@ -136,9 +136,19 @@ export interface PlayerState {
    * that any pending jump input is processed first.
    */
   activeDash?: {
+    abilityId: string;
     vxPerTick: number;    // horizontal X step per tick (units/tick)
     vyPerTick: number;    // horizontal Y step per tick (units/tick)
+    speedPerTick?: number; // optional steering speed (units/tick)
+    steerByFacing?: boolean;
+    wallDiveOnBlock?: boolean;
+    snapUpUnits?: number;
+    diveVzPerTick?: number;
     vzPerTick?: number;   // undefined = not yet captured; set on first tick of dash
+    forceVzPerTick?: number; // optional fixed starting vertical velocity for arc dashes
+    useArcGravity?: boolean; // when true, apply dash-local gravity to vzPerTick each tick
+    arcGravityUpPerTick?: number;
+    arcGravityDownPerTick?: number;
     maxUpVz:   number;    // per-tick upward vz cap (positive)
     maxDownVz: number;    // per-tick downward vz cap (negative)
     ticksRemaining: number;
@@ -146,6 +156,12 @@ export interface PlayerState {
 
   /** Active channel (e.g. 云飞玉皇). Set at cast, cleared on completion or cancel. */
   activeChannel?: ActiveChannel;
+
+  /**
+   * Anti-race cast lock after jump input is queued.
+   * Prevents requiresGrounded abilities from being cast in the same instant as jump.
+   */
+  groundedCastLockUntil?: number;
 }
 
 export interface GroundZone {
@@ -153,6 +169,8 @@ export interface GroundZone {
   ownerUserId: string;
   x: number;
   y: number;
+  z?: number;
+  height?: number;
   radius: number;
   expiresAt: number;
   damagePerInterval: number;

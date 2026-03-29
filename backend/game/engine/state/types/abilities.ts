@@ -96,6 +96,33 @@ export interface Ability {
    * automatically. It will NOT appear in the draft shop.
    */
   isCommon?: boolean;
+
+  /**
+   * 轻功技能标记。
+   * 被【封轻功】时，带此标记的技能不可施放。
+   */
+  qinggong?: boolean;
+
+  /**
+   * Allows this opponent-targeted ability to be cast on a ground point
+   * even when no target is selected.
+   */
+  allowGroundCastWithoutTarget?: boolean;
+
+  /**
+   * Charge system for abilities like 鹊踏枝.
+   */
+  maxCharges?: number;
+
+  /**
+   * Ticks needed to recover one charge.
+   */
+  chargeRecoveryTicks?: number;
+
+  /**
+   * Minimal delay (ticks) between two consecutive casts when charges remain.
+   */
+  chargeCastLockTicks?: number;
 }
 
 export interface AbilityInstance {
@@ -110,4 +137,13 @@ export interface AbilityInstance {
    * - Can play when cooldown === 0
    */
   cooldown: number;
+
+  /** Current available charges for charge-based abilities. */
+  chargeCount?: number;
+
+  /** Remaining ticks until next charge is recovered. */
+  chargeRegenTicksRemaining?: number;
+
+  /** Remaining lock ticks between two casts while charges remain. */
+  chargeLockTicks?: number;
 }

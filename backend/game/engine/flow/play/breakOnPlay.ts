@@ -15,6 +15,10 @@ function stealthAgeMs(buff: ActiveBuff, now: number): number {
   return Math.max(0, now - buff.appliedAt);
 }
 
+function isDunyingCompanion(buff: ActiveBuff): boolean {
+  return buff.buffId === 1021 && (buff.name === "遁影" || buff.sourceAbilityId === "fuguang_lueying");
+}
+
 /**
  * Stealth buffs have per-skill break exceptions.
  * Keep this logic centralized so future tuning only needs one edit point.
@@ -57,9 +61,15 @@ function shouldKeepStealthOnPlay(buff: ActiveBuff, ability: Ability, now: number
 export function breakOnPlay(source: { buffs?: ActiveBuff[] }, playedAbility: Ability) {
   if (!Array.isArray(source.buffs)) return;
   const now = Date.now();
+  const hadFuguangBefore = source.buffs.some((b) => b.buffId === 1012);
   source.buffs = source.buffs.filter((b) => {
     if (!b.breakOnPlay) return true;
     if (shouldKeepStealthOnPlay(b, playedAbility, now)) return true;
     return false;
   });
+
+  const hasFuguangAfter = source.buffs.some((b) => b.buffId === 1012);
+  if (hadFuguangBefore && !hasFuguangAfter) {
+    source.buffs = source.buffs.filter((b) => !isDunyingCompanion(b));
+  }
 }

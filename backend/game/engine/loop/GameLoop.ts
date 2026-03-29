@@ -21,6 +21,7 @@ import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
 import { ABILITIES } from "../../abilities/abilities";
+import { blocksCardTargeting, hasUntargetable } from "../rules/guards";
 import type { MapObject } from "../state/types/map";
 
 /** 2D segment vs AABB intersection test (for LOS checks). */
@@ -92,6 +93,57 @@ function requiresFacing(ability: { target?: string; faceDirection?: boolean }): 
   return ability.faceDirection === true;
 }
 
+function isDunyingCompanion(buff: { buffId: number; name?: string; sourceAbilityId?: string }): boolean {
+  return buff.buffId === 1021 && (buff.name === "遁影" || buff.sourceAbilityId === "fuguang_lueying");
+}
+
+function hasBuffEffect(player: { buffs: Array<{ effects: Array<{ type: string }> }> }, type: string): boolean {
+  return player.buffs.some((b) => b.effects.some((e) => e.type === type));
+}
+
+const CHANNEL_BUFF_IDS = new Set([1014, 1017, 2001, 2003]);
+
+function isChannelBuffRuntime(buff: { buffId: number }): boolean {
+  return CHANNEL_BUFF_IDS.has(buff.buffId);
+}
+
+function isMoheKnockdown(buff: { buffId: number; sourceAbilityId?: string }): boolean {
+  return buff.buffId === 1002 && buff.sourceAbilityId === "mohe_wuliang";
+}
+
+function isStunDebuff(buff: {
+  buffId: number;
+  sourceAbilityId?: string;
+  category?: string;
+  effects?: Array<{ type: string }>;
+}): boolean {
+  if (isMoheKnockdown(buff)) return false;
+  if (buff.category !== "DEBUFF") return false;
+  return Array.isArray(buff.effects) && buff.effects.some((e) => e.type === "CONTROL");
+}
+
+function removeStunDebuffsFromPlayer(state: GameState, target: any): boolean {
+  const stunBuffs = (target.buffs ?? []).filter((b: any) => isStunDebuff(b));
+  if (stunBuffs.length === 0) return false;
+
+  target.buffs = target.buffs.filter((b: any) => !isStunDebuff(b));
+  for (const b of stunBuffs) {
+    pushBuffExpired(state, {
+      targetUserId: target.userId,
+      buffId: b.buffId,
+      buffName: b.name,
+      buffCategory: b.category,
+      sourceAbilityId: b.sourceAbilityId,
+      sourceAbilityName: b.sourceAbilityName,
+    });
+  }
+  return true;
+}
+
+const SHENGTAIJI_ZONE_ID = "qionglong_huasheng_zone";
+const SHENGTAIJI_PULSE_BUFF_ID = 1310;
+const SHENGTAIJI_ENEMY_SLOW_BUFF_ID = 1311;
+
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
   mode?: "arena" | "pubg";
@@ -118,6 +170,9 @@ export class GameLoop {
   private lastZoneDamageAt = 0;
   private isArenaMode = false;
   private mapCtx: MapContext;
+  // Index into state.events for STACK_ON_HIT_DAMAGE scanning.
+  // Prevents missing immediate cast damage that lands between loop ticks.
+  private stackProcScanIndex = 0;
 
   // Phase table: each phase defines a time window, zone size transition, and DPS.
   static ZONE_PHASES = [
@@ -132,6 +187,7 @@ export class GameLoop {
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
     this.state = structuredClone(state);
+    this.stackProcScanIndex = this.state.events?.length ?? 0;
     this.tickRate = config?.tickRate ?? 30;
     this.broadcastTickInterval = Math.max(1, Math.round(this.tickRate / 30));
     this.isArenaMode = config?.mode === 'arena';
@@ -242,7 +298,19 @@ export class GameLoop {
    * Called when client sends WASD input
    */
   setPlayerInput(playerIndex: number, input: MovementInput | null) {
+    if (input?.jump) {
+      const player = this.state.players[playerIndex];
+      if (player) {
+        // Short lock window for requiresGrounded casts to close jump/cast race.
+        player.groundedCastLockUntil = Date.now() + 250;
+      }
+    }
     this.playerInputs.set(playerIndex, input);
+  }
+
+  hasPendingJump(playerIndex: number): boolean {
+    const input = this.playerInputs.get(playerIndex);
+    return input?.jump === true;
   }
 
   /**
@@ -309,9 +377,52 @@ export class GameLoop {
     const moveStart = performance.now();
     // Track buff count per player before movement — applyMovement may splice JUMP_BOOST
     const buffCountsBefore = this.state.players.map((p) => p.buffs?.length ?? 0);
+    let movementStateChanged = false;
     this.state.players.forEach((player, idx) => {
       const input = this.playerInputs.get(idx) ?? null;
+      const dashAbilityIdBefore = player.activeDash?.abilityId;
       applyMovement(player, input, this.tickRate, this.mapCtx);
+
+      // 穹隆化生: apply end-of-charge heal + 生太极 zone when directional dash naturally ends.
+      if (dashAbilityIdBefore === "qionglong_huasheng" && !player.activeDash) {
+        const dashEndNow = Date.now();
+        const prevHp = player.hp;
+        player.hp = Math.min(player.maxHp ?? 100, player.hp + 10);
+        const healed = Math.max(0, player.hp - prevHp);
+        if (healed > 0) {
+          this.state.events.push({
+            id: randomUUID(),
+            timestamp: dashEndNow,
+            turn: this.state.turn,
+            type: "HEAL",
+            actorUserId: player.userId,
+            targetUserId: player.userId,
+            abilityId: "qionglong_huasheng",
+            abilityName: "穹隆化生（贯体）",
+            effectType: "TIMED_SELF_HEAL",
+            value: healed,
+          } as any);
+        }
+
+        if (!this.state.groundZones) this.state.groundZones = [];
+        this.state.groundZones.push({
+          id: randomUUID(),
+          ownerUserId: player.userId,
+          x: player.position.x,
+          y: player.position.y,
+          z: player.position.z ?? 0,
+          height: 10,
+          radius: 8,
+          expiresAt: dashEndNow + 24_000,
+          damagePerInterval: 0,
+          intervalMs: 3_000,
+          lastTickAt: dashEndNow - 3_000,
+          abilityId: SHENGTAIJI_ZONE_ID,
+          abilityName: "生太极",
+          maxTargets: 0,
+        } as GroundZone);
+        movementStateChanged = true;
+      }
 
       // Cancel channel buffs based on input — read BEFORE clearing the one-shot jump flag
       if (input) {
@@ -341,7 +452,7 @@ export class GameLoop {
           const breakByMove = isMoving && stealthAgeMs >= 5_000;
           const breakByJump = isJumping;
           if (breakByMove || breakByJump) {
-            player.buffs = player.buffs.filter((b) => b.buffId !== 1012);
+            player.buffs = player.buffs.filter((b) => b.buffId !== 1012 && !isDunyingCompanion(b));
           }
         }
 
@@ -371,6 +482,13 @@ export class GameLoop {
         const target = this.state.players.find((p) => p.userId === ch.targetUserId) ?? opp;
         const channelAbility = (ABILITIES as any)[ch.abilityId] as any;
 
+        // Silence interrupts pure active channels.
+        if (hasBuffEffect(player as any, "SILENCE")) {
+          player.activeChannel = undefined;
+          channelStateChanged = true;
+          continue;
+        }
+
         // cancelOnOutOfRange check
         if (ch.cancelOnOutOfRange !== undefined) {
           const dist = calculateDistance(player.position, target.position);
@@ -381,6 +499,13 @@ export class GameLoop {
           }
         }
 
+        // Target lost (stealth / untargetable) cancels opponent-targeted channels.
+        if (channelAbility?.target === "OPPONENT" && blocksCardTargeting(target as any)) {
+          player.activeChannel = undefined;
+          channelStateChanged = true;
+          continue;
+        }
+
         // Task 8: cancel forward-facing channels if target leaves 180° front arc
         if (channelAbility && requiresFacing(channelAbility) && !isInFacingHemisphere(player as any, target as any)) {
           player.activeChannel = undefined;
@@ -388,14 +513,17 @@ export class GameLoop {
           continue;
         }
 
-        // Task 7: cancel channel if target is behind structures (LOS blocked)
-        if (isLOSBlocked(
-          player.position.x,
-          player.position.y,
-          target.position.x,
-          target.position.y,
-          this.mapCtx.objects,
-        )) {
+        // Task 7: cancel opponent-targeted channels if LOS is blocked by structures.
+        if (
+          channelAbility?.target === "OPPONENT" &&
+          isLOSBlocked(
+            player.position.x,
+            player.position.y,
+            target.position.x,
+            target.position.y,
+            this.mapCtx.objects,
+          )
+        ) {
           player.activeChannel = undefined;
           channelStateChanged = true;
           continue;
@@ -409,6 +537,9 @@ export class GameLoop {
               const range = e.range ?? 50;
               const dist = calculateDistance(player.position, target.position);
               if (dist <= range && target.hp > 0) {
+                if (player.userId !== target.userId && hasUntargetable(target as any)) {
+                  continue;
+                }
                 const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
                 target.hp = Math.max(0, target.hp - dmg);
                 if (dmg > 0) {
@@ -432,6 +563,7 @@ export class GameLoop {
               if (player.hp <= threshold) continue;
               const dist = calculateDistance(player.position, target.position);
               if (dist > range || target.hp <= 0) continue;
+              if (player.userId !== target.userId && hasUntargetable(target as any)) continue;
               const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
               target.hp = Math.max(0, target.hp - dmg);
               if (dmg > 0) {
@@ -446,6 +578,25 @@ export class GameLoop {
                   value: dmg,
                 });
               }
+            } else if (e.type === "PLACE_GROUND_ZONE") {
+              const facing = player.facing ?? { x: 0, y: 1 };
+              const zoneX = player.position.x + facing.x * 6;
+              const zoneY = player.position.y + facing.y * 6;
+              if (!this.state.groundZones) this.state.groundZones = [];
+              this.state.groundZones.push({
+                id: randomUUID(),
+                ownerUserId: player.userId,
+                x: zoneX,
+                y: zoneY,
+                radius: e.range ?? 8,
+                expiresAt: chNow + 6000,
+                damagePerInterval: e.value ?? 4,
+                intervalMs: 500,
+                lastTickAt: chNow,
+                abilityId: ch.abilityId,
+                abilityName: ch.abilityName,
+                maxTargets: 5,
+              } as GroundZone);
             }
           }
 
@@ -457,7 +608,10 @@ export class GameLoop {
 
           // Forward channel completion counts as the cast "taking effect" and breaks stealth.
           if (ch.forwardChannel) {
-            player.buffs = player.buffs.filter((b) => ![1011, 1012, 1013].includes(b.buffId));
+            const hadFuguang = player.buffs.some((b) => b.buffId === 1012);
+            player.buffs = player.buffs.filter(
+              (b) => ![1007, 1011, 1012, 1013].includes(b.buffId) && !(hadFuguang && isDunyingCompanion(b))
+            );
           }
 
           player.activeChannel = undefined;
@@ -468,8 +622,78 @@ export class GameLoop {
 
     // 1b. Decrement ability cooldowns each tick
     this.state.players.forEach((player) => {
-      player.hand.forEach((ability) => {
-        if (ability.cooldown > 0) ability.cooldown--;
+      const cooldownSlowSum = player.buffs
+        .flatMap((b) => b.effects)
+        .filter((e: any) => e.type === "COOLDOWN_SLOW")
+        .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
+      const cooldownRate = Math.max(0, 1 - cooldownSlowSum);
+
+      player.hand.forEach((ability: any) => {
+        const abilityId = ability.abilityId || ability.id;
+        const abilityDef = (ABILITIES as any)[abilityId];
+        const maxCharges = Math.max(0, Number(abilityDef?.maxCharges ?? 0));
+
+        if (maxCharges > 1) {
+          if (typeof ability.chargeCount !== "number") ability.chargeCount = maxCharges;
+          if (typeof ability.chargeRegenTicksRemaining !== "number") ability.chargeRegenTicksRemaining = 0;
+          if (typeof ability.chargeLockTicks !== "number") ability.chargeLockTicks = 0;
+
+          if (ability.chargeLockTicks > 0) {
+            ability.chargeLockTicks--;
+          }
+
+          const recoveryTicks = Math.max(
+            1,
+            Number(abilityDef?.chargeRecoveryTicks ?? abilityDef?.cooldownTicks ?? 1)
+          );
+
+          if (ability.chargeCount < maxCharges) {
+            if (ability.chargeRegenTicksRemaining <= 0) {
+              ability.chargeRegenTicksRemaining = recoveryTicks;
+              ability._chargeRegenProgress = 0;
+            }
+
+            ability._chargeRegenProgress = (ability._chargeRegenProgress ?? 0) + cooldownRate;
+            while (ability._chargeRegenProgress >= 1 && ability.chargeRegenTicksRemaining > 0) {
+              ability.chargeRegenTicksRemaining--;
+              ability._chargeRegenProgress -= 1;
+            }
+
+            if (ability.chargeRegenTicksRemaining <= 0) {
+              ability.chargeCount = Math.min(maxCharges, ability.chargeCount + 1);
+              if (ability.chargeCount < maxCharges) {
+                ability.chargeRegenTicksRemaining = recoveryTicks;
+                ability._chargeRegenProgress = 0;
+              } else {
+                ability.chargeRegenTicksRemaining = 0;
+                ability._chargeRegenProgress = 0;
+              }
+            }
+          } else {
+            ability.chargeRegenTicksRemaining = 0;
+            ability._chargeRegenProgress = 0;
+          }
+
+          if (ability.chargeCount <= 0) {
+            ability.cooldown = Math.max(0, ability.chargeRegenTicksRemaining ?? 0);
+          } else if (ability.chargeLockTicks > 0) {
+            ability.cooldown = Math.max(0, ability.chargeLockTicks ?? 0);
+          } else {
+            ability.cooldown = 0;
+          }
+
+          return;
+        }
+
+        if (ability.cooldown > 0) {
+          ability._cooldownProgress = (ability._cooldownProgress ?? 0) + cooldownRate;
+          while (ability._cooldownProgress >= 1 && ability.cooldown > 0) {
+            ability.cooldown--;
+            ability._cooldownProgress -= 1;
+          }
+        } else {
+          ability._cooldownProgress = 0;
+        }
       });
     });
 
@@ -478,7 +702,7 @@ export class GameLoop {
     // Pre-seed buffsChanged: true if movement consumed any buff (e.g. JUMP_BOOST splice)
     let buffsChanged = this.state.players.some(
       (p, idx) => (p.buffs?.length ?? 0) !== buffCountsBefore[idx]
-    ) || channelStateChanged;
+    ) || channelStateChanged || movementStateChanged;
 
     // Cancel channel buffs whose out-of-range condition is exceeded (e.g. 云飞玉皇)
     if (this.state.players.length === 2) {
@@ -501,6 +725,27 @@ export class GameLoop {
     this.state.players.forEach((player, pidx) => {
       const oppIdx = pidx === 0 ? 1 : 0;
       const opp = this.state.players[oppIdx];
+
+      // Silence interrupts runtime channel buffs unless the buff itself is interrupt-immune.
+      if (hasBuffEffect(player as any, "SILENCE")) {
+        const removedBySilence = player.buffs.filter(
+          (b) => isChannelBuffRuntime(b as any) && !b.effects.some((e: any) => e.type === "INTERRUPT_IMMUNE")
+        );
+        if (removedBySilence.length > 0) {
+          player.buffs = player.buffs.filter((b) => !removedBySilence.includes(b));
+          for (const b of removedBySilence) {
+            pushBuffExpired(this.state, {
+              targetUserId: player.userId,
+              buffId: b.buffId,
+              buffName: b.name,
+              buffCategory: b.category,
+              sourceAbilityId: b.sourceAbilityId,
+              sourceAbilityName: b.sourceAbilityName,
+            });
+          }
+          buffsChanged = true;
+        }
+      }
 
       for (const buff of player.buffs) {
         // Fire periodic effects (DoT / HoT) if interval has elapsed
@@ -551,13 +796,15 @@ export class GameLoop {
                 const healAmt = Math.floor((player.maxHp ?? 100) * pct);
                 player.hp = Math.min(player.maxHp ?? 100, player.hp + healAmt);
                 if (healAmt > 0) {
+                  const baseName = buff.sourceAbilityName ?? buff.name ?? "贯体";
+                  const guanTiName = baseName.includes("（贯体）") ? baseName : `${baseName}（贯体）`;
                   this.state.events.push({
                     id: randomUUID(), timestamp: now, turn: this.state.turn,
                     type: "HEAL",
                     actorUserId: player.userId,
                     targetUserId: player.userId,
                     abilityId: buff.sourceAbilityId,
-                    abilityName: "笑醉狂（贯体）",
+                    abilityName: guanTiName,
                     effectType: "PERIODIC_GUAN_TI_HEAL",
                     value: healAmt,
                   });
@@ -571,6 +818,9 @@ export class GameLoop {
                 const dz = (opp.position.z ?? 0) - (player.position.z ?? 0);
                 const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
                 if (dist <= range && opp.hp > 0) {
+                  if (player.userId !== opp.userId && hasUntargetable(opp as any)) {
+                    continue;
+                  }
                   const angle = (e as any).aoeAngle ?? 360;
                   if (angle < 360 && dist > 0) {
                     const facing = player.facing ?? { x: 0, y: 1 };
@@ -623,6 +873,7 @@ export class GameLoop {
             const e = buff.effects[effIdx];
             if (
               e.type !== "TIMED_AOE_DAMAGE" &&
+              e.type !== "TIMED_SELF_DAMAGE" &&
               e.type !== "TIMED_GUAN_TI_HEAL" &&
               e.type !== "PLACE_GROUND_ZONE"
             ) continue;
@@ -640,13 +891,15 @@ export class GameLoop {
               const healAmt = Math.floor((player.maxHp ?? 100) * pct);
               player.hp = Math.min(player.maxHp ?? 100, player.hp + healAmt);
               if (healAmt > 0) {
+                const baseName = buff.sourceAbilityName ?? buff.name ?? "贯体";
+                const guanTiName = baseName.includes("（贯体）") ? baseName : `${baseName}（贯体）`;
                 this.state.events.push({
                   id: randomUUID(), timestamp: now, turn: this.state.turn,
                   type: "HEAL",
                   actorUserId: player.userId,
                   targetUserId: player.userId,
                   abilityId: buff.sourceAbilityId,
-                  abilityName: "笑醉狂（贯体）",
+                  abilityName: guanTiName,
                   effectType: "TIMED_GUAN_TI_HEAL",
                   value: healAmt,
                 });
@@ -679,6 +932,31 @@ export class GameLoop {
               continue;
             }
 
+            // TIMED_SELF_DAMAGE: delayed damage applied to the buff owner.
+            if (e.type === "TIMED_SELF_DAMAGE") {
+              const sourcePlayer = this.state.players.find((p) => p.userId === (buff as any).sourceUserId) ?? opp;
+              const dmg = resolveScheduledDamage({
+                source: sourcePlayer,
+                target: player,
+                base: e.value ?? 0,
+              });
+              player.hp = Math.max(0, player.hp - dmg);
+              if (dmg > 0) {
+                this.state.events.push({
+                  id: randomUUID(), timestamp: now, turn: this.state.turn,
+                  type: "DAMAGE",
+                  actorUserId: sourcePlayer.userId,
+                  targetUserId: player.userId,
+                  abilityId: buff.sourceAbilityId,
+                  abilityName: buff.sourceAbilityName ?? buff.name,
+                  effectType: "TIMED_SELF_DAMAGE",
+                  value: dmg,
+                });
+              }
+              buffsChanged = true;
+              continue;
+            }
+
             if (opp.hp <= 0) continue;
 
             // Range check (3D — height matters)
@@ -696,6 +974,10 @@ export class GameLoop {
               const dot = (facing.x * dx + facing.y * dy) / dist;
               const halfAngleRad = (angle / 2) * (Math.PI / 180);
               if (dot < Math.cos(halfAngleRad)) continue;
+            }
+
+            if (player.userId !== opp.userId && hasUntargetable(opp as any)) {
+              continue;
             }
 
             // Apply damage
@@ -738,7 +1020,9 @@ export class GameLoop {
             }
 
             // Knockback + silence
-            if (e.knockbackUnits && e.knockbackUnits > 0 && dist > 0) {
+            const targetIsKnockedDown = opp.buffs.some((b) => isMoheKnockdown(b as any));
+            if (e.knockbackUnits && e.knockbackUnits > 0 && dist > 0 && !targetIsKnockedDown) {
+              const removedStuns = removeStunDebuffsFromPlayer(this.state, opp as any);
               opp.position = {
                 ...opp.position,
                 x: opp.position.x + (dx / dist) * e.knockbackUnits,
@@ -761,9 +1045,12 @@ export class GameLoop {
 
               // Knockback breaks 浮光掠影(1012) and 天地无极(1013) stealth;
               // 暗尘弥散(1011) is immune to control-based stealth break.
-              const brokenStealth = opp.buffs.filter((b) => b.buffId === 1012 || b.buffId === 1013);
+              const hadFuguang = opp.buffs.some((b) => b.buffId === 1012);
+              const brokenStealth = opp.buffs.filter(
+                (b) => b.buffId === 1012 || b.buffId === 1013 || (hadFuguang && isDunyingCompanion(b))
+              );
               if (brokenStealth.length > 0) {
-                opp.buffs = opp.buffs.filter((b) => b.buffId !== 1012 && b.buffId !== 1013);
+                opp.buffs = opp.buffs.filter((b) => !brokenStealth.includes(b));
                 for (const b of brokenStealth) {
                   pushBuffExpired(this.state, {
                     targetUserId: opp.userId,
@@ -775,6 +1062,10 @@ export class GameLoop {
                   });
                 }
               }
+
+              if (removedStuns) {
+                buffsChanged = true;
+              }
             }
 
             buffsChanged = true;
@@ -782,8 +1073,46 @@ export class GameLoop {
         }
       }
 
-      // Remove expired buffs
+      // Remove expired buffs (with special natural-expiry handling).
       const before = player.buffs.length;
+      const naturallyExpired = player.buffs.filter((b) => now >= b.expiresAt);
+      const moheNaturallyExpired = naturallyExpired.filter((b) => isMoheKnockdown(b as any));
+      for (const b of moheNaturallyExpired) {
+        const maxHp = player.maxHp ?? 100;
+        const threshold = maxHp * 0.3;
+        if (player.hp < threshold) {
+          const stunBuff = {
+            buffId: 1202,
+            name: "摩诃无量·眩晕",
+            category: "DEBUFF",
+            effects: [{ type: "CONTROL" }],
+            expiresAt: now + 2_000,
+            breakOnPlay: false,
+            sourceUserId: (b as any).sourceUserId,
+            sourceAbilityId: "mohe_wuliang",
+            sourceAbilityName: "摩诃无量",
+            appliedAtTurn: this.state.turn,
+            appliedAt: now,
+          } as any;
+
+          player.buffs.push(stunBuff);
+          this.state.events.push({
+            id: randomUUID(),
+            timestamp: now,
+            turn: this.state.turn,
+            type: "BUFF_APPLIED",
+            actorUserId: (b as any).sourceUserId ?? player.userId,
+            targetUserId: player.userId,
+            abilityId: "mohe_wuliang",
+            abilityName: "摩诃无量",
+            buffId: stunBuff.buffId,
+            buffName: stunBuff.name,
+            buffCategory: stunBuff.category,
+            appliedAtTurn: this.state.turn,
+          } as any);
+          buffsChanged = true;
+        }
+      }
       player.buffs = player.buffs.filter((b) => now < b.expiresAt);
       if (player.buffs.length !== before) buffsChanged = true;
     });
@@ -830,15 +1159,111 @@ export class GameLoop {
         activeZones.push(zone);
         if (now - zone.lastTickAt >= zone.intervalMs) {
           zone.lastTickAt = now;
+
+          if (zone.abilityId === SHENGTAIJI_ZONE_ID) {
+            const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+            const zoneZ = zone.z ?? 0;
+            const zoneHeight = zone.height ?? 10;
+            const isInsideZone = (p: any) => {
+              const dx = p.position.x - zone.x;
+              const dy = p.position.y - zone.y;
+              const inRadius = Math.sqrt(dx * dx + dy * dy) <= zone.radius;
+              const pz = p.position.z ?? 0;
+              const inHeight = Math.abs(pz - zoneZ) <= zoneHeight;
+              return inRadius && inHeight;
+            };
+
+            if (owner && owner.hp > 0 && isInsideZone(owner)) {
+              owner.buffs = owner.buffs.filter(
+                (b: any) =>
+                  !b.effects?.some(
+                    (e: any) => e.type === "CONTROL" || e.type === "ATTACK_LOCK"
+                  )
+              );
+
+              const pulseExpiresAt = now + 3_000;
+              const pulse = owner.buffs.find(
+                (b: any) =>
+                  b.buffId === SHENGTAIJI_PULSE_BUFF_ID &&
+                  b.sourceAbilityId === "qionglong_huasheng"
+              );
+              if (pulse) {
+                pulse.expiresAt = pulseExpiresAt;
+                pulse.appliedAt = now;
+              } else {
+                owner.buffs.push({
+                  buffId: SHENGTAIJI_PULSE_BUFF_ID,
+                  name: "生太极·护体",
+                  category: "BUFF",
+                  effects: [{ type: "CONTROL_IMMUNE" }],
+                  expiresAt: pulseExpiresAt,
+                  appliedAt: now,
+                  breakOnPlay: false,
+                  sourceUserId: zone.ownerUserId,
+                  sourceAbilityId: "qionglong_huasheng",
+                  sourceAbilityName: "穹隆化生",
+                } as any);
+              }
+              buffsChanged = true;
+            }
+
+            for (const target of this.state.players) {
+              if (target.userId === zone.ownerUserId) continue;
+              if (target.hp <= 0) continue;
+              if (!isInsideZone(target)) continue;
+
+              const hasRootSlowImmune = target.buffs.some((b: any) =>
+                b.effects?.some((e: any) => e.type === "ROOT_SLOW_IMMUNE")
+              );
+              if (hasRootSlowImmune) continue;
+
+              const slowExpiresAt = now + 3_000;
+              const slow = target.buffs.find(
+                (b: any) =>
+                  b.buffId === SHENGTAIJI_ENEMY_SLOW_BUFF_ID &&
+                  b.sourceAbilityId === "qionglong_huasheng"
+              );
+              if (slow) {
+                slow.expiresAt = slowExpiresAt;
+                slow.appliedAt = now;
+              } else {
+                target.buffs.push({
+                  buffId: SHENGTAIJI_ENEMY_SLOW_BUFF_ID,
+                  name: "生太极·迟滞",
+                  category: "DEBUFF",
+                  effects: [{ type: "SLOW", value: 0.4 }],
+                  expiresAt: slowExpiresAt,
+                  appliedAt: now,
+                  breakOnPlay: false,
+                  sourceUserId: zone.ownerUserId,
+                  sourceAbilityId: "qionglong_huasheng",
+                  sourceAbilityName: "穹隆化生",
+                } as any);
+              }
+              buffsChanged = true;
+            }
+            continue;
+          }
+
+          if ((zone.damagePerInterval ?? 0) <= 0) {
+            continue;
+          }
+
           const owner = this.state.players.find(p => p.userId === zone.ownerUserId);
           let targetsHit = 0;
           for (const target of this.state.players) {
             if (target.userId === zone.ownerUserId) continue;
             if (target.hp <= 0) continue;
             if (zone.maxTargets !== undefined && targetsHit >= zone.maxTargets) break;
+            if (hasUntargetable(target as any)) continue;
             const dx = target.position.x - zone.x;
             const dy = target.position.y - zone.y;
             if (Math.sqrt(dx * dx + dy * dy) > zone.radius) continue;
+            if (zone.height !== undefined) {
+              const zoneZ = zone.z ?? 0;
+              const targetZ = target.position.z ?? 0;
+              if (Math.abs(targetZ - zoneZ) > zone.height) continue;
+            }
             const dmg = resolveScheduledDamage({
               source: owner ?? target,
               target,
@@ -870,7 +1295,10 @@ export class GameLoop {
     // 1f. Process STACK_ON_HIT_DAMAGE procs for all damage events this tick
     // Collect unique targets that were hit (excluding stack-proc damage itself)
     {
-      const thisTickEvents = this.state.events.slice(eventsBefore);
+      if (this.stackProcScanIndex > this.state.events.length) {
+        this.stackProcScanIndex = this.state.events.length;
+      }
+      const thisTickEvents = this.state.events.slice(this.stackProcScanIndex);
       const hitTargetIds = new Set<string>();
       for (const evt of thisTickEvents) {
         if (evt.type === "DAMAGE" && evt.effectType !== "STACK_ON_HIT_DAMAGE" && evt.targetUserId) {
@@ -922,6 +1350,7 @@ export class GameLoop {
           }
         }
       }
+      this.stackProcScanIndex = this.state.events.length;
     }
 
     // 2. Check win condition
@@ -988,6 +1417,24 @@ export class GameLoop {
             path: `/players/${pidx}/hand/${cidx}/cooldown`,
             value: ability.cooldown,
           });
+          if ((ability as any).chargeCount !== undefined) {
+            diff.push({
+              path: `/players/${pidx}/hand/${cidx}/chargeCount`,
+              value: (ability as any).chargeCount,
+            });
+          }
+          if ((ability as any).chargeRegenTicksRemaining !== undefined) {
+            diff.push({
+              path: `/players/${pidx}/hand/${cidx}/chargeRegenTicksRemaining`,
+              value: (ability as any).chargeRegenTicksRemaining,
+            });
+          }
+          if ((ability as any).chargeLockTicks !== undefined) {
+            diff.push({
+              path: `/players/${pidx}/hand/${cidx}/chargeLockTicks`,
+              value: (ability as any).chargeLockTicks,
+            });
+          }
         });
       });
 
@@ -1154,6 +1601,9 @@ export class GameLoop {
    */
   updateState(newState: GameState) {
     this.state = structuredClone(newState);
+    if (this.stackProcScanIndex > this.state.events.length) {
+      this.stackProcScanIndex = this.state.events.length;
+    }
   }
 
   /**

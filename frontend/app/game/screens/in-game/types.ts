@@ -6,6 +6,9 @@ export interface AbilityInstance {
   instanceId: string;
   abilityId: string;
   cooldown?: number;
+  chargeCount?: number;
+  chargeRegenTicksRemaining?: number;
+  chargeLockTicks?: number;
 }
 
 /* =========================================================
@@ -114,6 +117,7 @@ export type GameEventType =
   | "PLAY_ABILITY"
   | "DAMAGE"
   | "HEAL"
+  | "DODGE"
   | "BUFF_APPLIED"
   | "BUFF_EXPIRED"
   | "END_TURN";
@@ -160,6 +164,8 @@ export interface GroundZone {
   ownerUserId: string;
   x: number;
   y: number;
+  z?: number;
+  height?: number;
   radius: number;
   expiresAt: number;
   damagePerInterval: number;

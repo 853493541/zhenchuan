@@ -14,7 +14,11 @@ export function applyAbility(
   state: GameState,
   ability: Ability,
   playerIndex: number,
-  targetIndex: number
+  targetIndex: number,
+  castContext?: {
+    targetUserId?: string;
+    groundTarget?: { x: number; y: number };
+  }
 ) {
   if (state.gameOver) return;
 
@@ -41,6 +45,17 @@ export function applyAbility(
   const opponentHpAtStart = target.hp;
   const abilityDodged = computeAbilityDodge(ability, target);
 
+  if (abilityDodged) {
+    pushEvent(state, {
+      turn: state.turn,
+      type: "DODGE",
+      actorUserId: target.userId,
+      targetUserId: source.userId,
+      abilityId: ability.id,
+      abilityName: ability.name,
+    } as any);
+  }
+
   applyImmediateEffects({
     state,
     ability,
@@ -51,6 +66,7 @@ export function applyAbility(
     targetIndex,
     opponentHpAtStart,
     abilityDodged,
+    castContext,
   });
 
   applyAbilityBuffs({

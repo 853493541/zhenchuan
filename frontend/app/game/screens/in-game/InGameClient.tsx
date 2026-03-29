@@ -54,7 +54,13 @@ function showGameError(rawCode: string) {
       toastError("距离太近，无法释放该能力");
       break;
     case "ERR_TARGET_UNAVAILABLE":
-      toastError("目标不可选中");
+      toastError("警告：目标丢失或不可选中");
+      break;
+    case "ERR_REQUIRES_GROUNDED":
+      toastError("该技能需要落地后施放");
+      break;
+    case "ERR_QINGGONG_SEALED":
+      toastError("你被封轻功，无法施放轻功技能");
       break;
     default:
       toastError("操作无法执行");
@@ -325,13 +331,13 @@ export default function InGameClient({
         groundZones={state?.groundZones}
         opponentPositionBufferRef={opponentPositionBufferRef}
         mode={gameMode ?? 'arena'}
-        onCastAbility={async (abilityInstanceId, targetUserId) => {
+        onCastAbility={async (abilityInstanceId, targetUserId, groundTarget) => {
           // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
           const cardInstance =
             me.hand.find((c) => c.instanceId === abilityInstanceId) ??
             me.hand.find((c) => ((c as any).abilityId ?? (c as any).id) === abilityInstanceId) ??
             ({ instanceId: abilityInstanceId } as any); // synthetic stub — backend validates
-          const res = await playAbility(cardInstance, targetUserId);
+          const res = await playAbility(cardInstance, targetUserId, groundTarget);
           if (!res.ok && res.error) {
             console.error("[CastAbility] Error response:", res.error);
             showGameError(res.error);

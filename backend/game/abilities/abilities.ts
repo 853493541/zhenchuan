@@ -24,6 +24,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
+    qinggong: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD", durationTicks: 30 }],
     isCommon: true,
   },
@@ -35,6 +36,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
+    qinggong: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY", durationTicks: 21 }],
     isCommon: true,
   },
@@ -46,6 +48,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
+    qinggong: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT", durationTicks: 30 }],
     isCommon: true,
   },
@@ -57,6 +60,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
+    qinggong: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT", durationTicks: 30 }],
     isCommon: true,
   },
@@ -68,6 +72,8 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
+    qinggong: true,
+    requiresGrounded: true,
     effects: [],
     buffs: [
       {
@@ -90,6 +96,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 60, // 1 second at 60 Hz
+    qinggong: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 1, dirMode: "AWAY", durationTicks: 3 }],
     isCommon: true,
   },
@@ -97,11 +104,21 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   ji: {
     id: "ji",
     name: "疾",
-    description: "向前冲刺37格（1秒）",
+    description: "向前冲刺37格（1秒），对冲刺路径上的敌方单位造成10点伤害",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
-    effects: [{ type: "DIRECTIONAL_DASH", value: 37, dirMode: "TOWARD", durationTicks: 30 }],
+    qinggong: true,
+    effects: [
+      {
+        type: "DIRECTIONAL_DASH",
+        value: 37,
+        dirMode: "TOWARD",
+        durationTicks: 30,
+        routeDamage: 10,
+        routeRadius: 2,
+      },
+    ],
     isCommon: false,
   },
 
@@ -121,21 +138,36 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   jianpo_xukong: {
     id: "jianpo_xukong",
     name: "剑破虚空",
-    description: "造成10点伤害\n每3秒受到3点伤害，持续15秒",
+    description: "需要目标，正面180°\n造成10点伤害并附加【封轻功】2秒（减速20%，无法施展轻功）\n叠加【急曲】18秒：每3秒受到1点伤害，最多3层",
     type: "ATTACK",
     target: "OPPONENT",
+    range: 20,
     cooldownTicks: 300,
     gcd: true,
+    faceDirection: true,
     effects: [{ type: "DAMAGE", value: 10 }],
     buffs: [
       {
-        buffId: 1022,
+        buffId: 2201,
+        name: "封轻功",
+        category: "DEBUFF",
+        durationMs: 2_000,
+        description: "移动速度降低20%，无法施展轻功",
+        effects: [
+          { type: "SLOW", value: 0.2 },
+          { type: "QINGGONG_SEAL" },
+        ],
+      },
+      {
+        buffId: 2202,
         name: "急曲",
         category: "DEBUFF",
-        durationMs: 15_000, // 15 seconds
+        durationMs: 18_000,
         periodicMs: 3_000,  // fires every 3 seconds
-        description: "每3秒受到3点伤害",
-        effects: [{ type: "PERIODIC_DAMAGE", value: 3 }],
+        initialStacks: 1,
+        maxStacks: 3,
+        description: "每3秒受到1点伤害（最多3层）",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
       },
     ],
   },
@@ -169,21 +201,27 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   baizu: {
     id: "baizu",
     name: "百足",
-    description: "造成3点伤害\n每3秒受到8点伤害，持续15秒",
+    description: "可选目标或地面施放（范围6）\n命中后立刻造成5点伤害\n附加【百足】18秒：每3秒造成6点伤害，结束时额外造成5点伤害",
     type: "ATTACK",
     target: "OPPONENT",
+    range: 25,
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "DAMAGE", value: 3 }],
+    faceDirection: false,
+    allowGroundCastWithoutTarget: true,
+    effects: [{ type: "BAIZU_AOE", value: 5, range: 6 }],
     buffs: [
       {
         buffId: 1001,
         name: "百足",
         category: "DEBUFF",
-        durationMs: 15_000, // 15 seconds
+        durationMs: 18_000,
         periodicMs: 3_000,  // fires every 3 seconds
-        description: "每3秒受到8点伤害",
-        effects: [{ type: "PERIODIC_DAMAGE", value: 8 }],
+        description: "每3秒受到6点伤害，结束时额外受到5点伤害",
+        effects: [
+          { type: "PERIODIC_DAMAGE", value: 6 },
+          { type: "TIMED_SELF_DAMAGE", value: 5, delayMs: 18_000 },
+        ],
       },
     ],
   },
@@ -193,9 +231,10 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   mohe_wuliang: {
     id: "mohe_wuliang",
     name: "摩诃无量",
-    description: "造成10点伤害\n击倒5秒",
+    description: "造成10点伤害并击倒3秒；击倒自然结束时若目标气血低于30%，额外眩晕2秒",
     type: "CONTROL",
     target: "OPPONENT",
+    range: 20,
     cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 10 }],
@@ -204,8 +243,8 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         buffId: 1002,
         name: "摩诃无量",
         category: "DEBUFF",
-        durationMs: 5_000, // 5 seconds
-        description: "击倒",
+        durationMs: 3_000,
+        description: "倒地：无法移动、跳跃和施放技能",
         effects: [{ type: "CONTROL" }],
       },
     ],
@@ -214,16 +253,16 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   shengsi_jie: {
     id: "shengsi_jie",
     name: "生死劫",
-    description: "造成2点伤害\n【控制】目标5秒\n【减疗】15秒",
+    description: "造成1点伤害\n附加【日劫】眩晕4秒\n附加【月劫】治疗效果降低50%",
     type: "CONTROL",
     target: "OPPONENT",
     range: 20,
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "DAMAGE", value: 2 }],
+    effects: [{ type: "DAMAGE", value: 1 }],
     buffs: [
       {
-        buffId: 1021,
+        buffId: 1221,
         name: "月劫",
         category: "DEBUFF",
         durationMs: 15_000, // 15 seconds
@@ -234,7 +273,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         buffId: 1003,
         name: "日劫",
         category: "DEBUFF",
-        durationMs: 5_000, // 5 seconds
+        durationMs: 4_000,
         description: "眩晕",
         effects: [{ type: "CONTROL" }],
       },
@@ -244,9 +283,10 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   chan_xiao: {
     id: "chan_xiao",
     name: "蟾啸",
-    description: "造成10点伤害\n目标5秒无法使用技能\n每3秒受到2点伤害，持续15秒",
+    description: "造成10点伤害\n目标沉默2秒\n附加【蟾啸】16秒：每2秒受到1点伤害",
     type: "CONTROL",
     target: "OPPONENT",
+    range: 20,
     cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 10 }],
@@ -255,16 +295,16 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         buffId: 1025,
         name: "蟾啸",
         category: "DEBUFF",
-        durationMs: 15_000, // 15 seconds
-        periodicMs: 3_000,  // fires every 3 seconds
-        description: "每3秒受到2点伤害",
-        effects: [{ type: "PERIODIC_DAMAGE", value: 2 }],
+        durationMs: 16_000,
+        periodicMs: 2_000,
+        description: "每2秒受到1点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
       },
       {
         buffId: 1004,
         name: "蟾啸迷心",
         category: "DEBUFF",
-        durationMs: 5_000, // 5 seconds
+        durationMs: 2_000,
         description: "无法使用技能",
         effects: [{ type: "SILENCE" }],
       },
@@ -274,44 +314,24 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   da_shizi_hou: {
     id: "da_shizi_hou",
     name: "大狮子吼",
-    description: "眩晕目标5秒",
+    description: "怒吼震慑周围敌人，眩晕5秒并降低其技能冷却回复50%",
     type: "CONTROL",
-    target: "OPPONENT",
+    target: "SELF",
+    range: 8,
     cooldownTicks: 300,
     gcd: true,
-    effects: [],
+    effects: [{ type: "AOE_APPLY_BUFFS", range: 8 }],
     buffs: [
       {
         buffId: 1005,
         name: "大狮子吼",
         category: "DEBUFF",
         durationMs: 5_000, // 5 seconds
-        description: "眩晕5秒",
+        description: "眩晕5秒，冷却回复速度降低50%",
         effects: [
           { type: "CONTROL" },
-          { type: "DRAW_REDUCTION", value: 1 },
+          { type: "COOLDOWN_SLOW", value: 0.5 },
         ],
-      },
-    ],
-  },
-
-  jiangchun_zhuxiu: {
-    id: "jiangchun_zhuxiu",
-    name: "绛唇珠袖",
-    description: "使目标每次使用技能时受到3点伤害，持续15秒",
-    type: "CONTROL",
-    target: "OPPONENT",
-    cooldownTicks: 300,
-    gcd: true,
-    effects: [],
-    buffs: [
-      {
-        buffId: 1006,
-        name: "绛唇珠袖",
-        category: "DEBUFF",
-        durationMs: 15_000, // 15 seconds
-        description: "使用技能则受到3点伤害",
-        effects: [{ type: "ON_PLAY_DAMAGE", value: 3 }],
       },
     ],
   },
@@ -321,14 +341,14 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   jiru_feng: {
     id: "jiru_feng",
     name: "疾如风",
-    description: "解控\n免疫控制（不含击退/拉拽）5秒\n移动速度提升100%",
+    description: "解除控制（等级1）\n5秒内免疫控制（不含击退/拉拽），移动速度提升100%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
     gcd: false,
+    qinggong: true,
     effects: [
       { type: "CLEANSE", allowWhileControlled: true },
-      { type: "DRAW", value: 1, allowWhileControlled: true },
     ],
     buffs: [
       {
@@ -348,15 +368,21 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   sanliu_xia: {
     id: "sanliu_xia",
     name: "散流霞",
-    description: "解控\n恢复10点生命值\n【不可选中】5秒",
+    description: "解控并向前翻越10尺\n获得【散流霞】5秒：免疫敌方伤害与不利效果，移动速度提高20%，每秒回复2%最大气血；主动施展技能会提前结束",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
     gcd: false,
     effects: [
       { type: "CLEANSE", allowWhileControlled: true },
-      { type: "DRAW", value: 1, allowWhileControlled: true },
-      { type: "HEAL", value: 10, allowWhileControlled: true },
+      {
+        type: "DIRECTIONAL_DASH",
+        value: 10,
+        dirMode: "TOWARD",
+        durationTicks: 18,
+        arcPeakHeight: 2.5,
+        allowWhileControlled: true,
+      },
     ],
     buffs: [
       {
@@ -364,9 +390,15 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         name: "散流霞",
         category: "BUFF",
         durationMs: 5_000, // 5 seconds
+        periodicMs: 1_000,
+        periodicStartImmediate: true,
         breakOnPlay: true,
-        description: "无法被技能选中",
-        effects: [{ type: "UNTARGETABLE" }],
+        description: "免疫敌方伤害与不利效果，移动速度提高20%，每秒回复2%最大气血",
+        effects: [
+          { type: "UNTARGETABLE" },
+          { type: "SPEED_BOOST", value: 0.2 },
+          { type: "PERIODIC_GUAN_TI_HEAL", value: 2 },
+        ],
       },
     ],
   },
@@ -374,10 +406,13 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   que_ta_zhi: {
     id: "que_ta_zhi",
     name: "鹊踏枝",
-    description: "解控\n被命中概率降低70%和免控1回合",
+    description: "解除等级1控制\n获得【素衿】3.5秒：免疫等级1控制\n获得【鹊踏枝】5秒：70%闪避率\n2层充能，每层5秒恢复，施放间隔1秒",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 300,
+    cooldownTicks: 0,
+    maxCharges: 2,
+    chargeRecoveryTicks: 150,
+    chargeCastLockTicks: 30,
     gcd: false,
     effects: [{ type: "CLEANSE", allowWhileControlled: true }],
     buffs: [
@@ -393,7 +428,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         buffId: 1031,
         name: "素衿",
         category: "BUFF",
-        durationMs: 5_000, // 5 seconds
+        durationMs: 3_500,
         description: "免控",
         effects: [{ type: "CONTROL_IMMUNE" }],
       },
@@ -405,16 +440,16 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   fengxiu_diang: {
     id: "fengxiu_diang",
     name: "风袖低昂",
-    description: "恢复60点生命值\n减伤40%，持续10秒",
+    description: "恢复50点生命值\n获得【天地低昂】10秒：受到伤害降低40%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "HEAL", value: 60 }],
+    effects: [{ type: "HEAL", value: 50 }],
     buffs: [
       {
         buffId: 1009,
-        name: "风袖低昂",
+        name: "天地低昂",
         category: "BUFF",
         durationMs: 10_000, // 10 seconds
         description: "受到伤害降低40%",
@@ -426,23 +461,35 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   qionglong_huasheng: {
     id: "qionglong_huasheng",
     name: "穹隆化生",
-    description: "恢复10点生命值\n免控5秒",
+    description: "向前冲刺2秒（可转向）\n施放时解除锁足与减速\n冲刺期间沉默且免疫等级1/2控制\n结束时恢复10点气血并展开【生太极】24秒",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
-    gcd: true,
+    gcd: false,
     effects: [
-      { type: "DRAW", value: 1 },
-      { type: "HEAL", value: 10 },
+      {
+        type: "CLEANSE",
+        cleanseRootSlow: true,
+        allowWhileControlled: true,
+      },
+      {
+        type: "DIRECTIONAL_DASH",
+        value: 25,
+        dirMode: "TOWARD",
+        durationTicks: 60,
+        speedPerTick: 0.4166667,
+        steerByFacing: true,
+        allowWhileControlled: true,
+      },
     ],
     buffs: [
       {
         buffId: 1010,
-        name: "生太极",
+        name: "穹隆化生",
         category: "BUFF",
-        durationMs: 5_000, // 5 seconds
-        description: "免疫控制",
-        effects: [{ type: "CONTROL_IMMUNE" }],
+        durationMs: 2_000,
+        description: "冲刺期间沉默且免疫等级1/2控制",
+        effects: [{ type: "SILENCE" }, { type: "CONTROL_IMMUNE" }, { type: "KNOCKBACK_IMMUNE" }],
       },
     ],
   },
@@ -452,7 +499,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   anchen_misan: {
     id: "anchen_misan",
     name: "暗尘弥散",
-    description: "隐身5秒，移动速度提升100%",
+    description: "隐身5秒，移动速度提升100%，受到伤害降低20%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -465,8 +512,12 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         category: "BUFF",
         durationMs: 5_000, // 5 seconds
         breakOnPlay: true,
-        description: "隐身，移动速度提升100%",
-        effects: [{ type: "STEALTH" }, { type: "SPEED_BOOST", value: 1 }],
+        description: "隐身，移动速度提升100%，受到伤害降低20%",
+        effects: [
+          { type: "STEALTH" },
+          { type: "SPEED_BOOST", value: 1 },
+          { type: "DAMAGE_REDUCTION", value: 0.2 },
+        ],
       },
     ],
   },
@@ -479,6 +530,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: false,
+    requiresGrounded: true,
     effects: [],
     buffs: [
       {
@@ -552,6 +604,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         cancelOnJump: false,
         effects: [
           { type: "CONTROL_IMMUNE" },
+          { type: "INTERRUPT_IMMUNE" },
           { type: "CHANNEL_AOE_TICK", value: 8, range: 10 },
         ],
       },
@@ -640,6 +693,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         cancelOnJump: false,
         effects: [
           { type: "CONTROL_IMMUNE" },
+          { type: "INTERRUPT_IMMUNE" },
           { type: "CHANNEL_AOE_TICK", value: 2, range: 6, aoeAngle: 180 },
           { type: "TIMED_AOE_DAMAGE", delayMs: 3_000, value: 10, range: 12, aoeAngle: 180 },
         ],
@@ -652,7 +706,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   nuwa_butian: {
     id: "nuwa_butian",
     name: "女娲补天",
-    description: "造成伤害提升100%\n受到伤害降低50%，持续20秒",
+    description: "持续20秒：伤害提升100%，免疫锁足与减速，移动速度降低50%，受到伤害降低50%",
     type: "STANCE",
     target: "SELF",
     cooldownTicks: 300,
@@ -664,11 +718,12 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         name: "女娲补天",
         category: "BUFF",
         durationMs: 20_000, // 20 seconds
-        description: "造成伤害提升100%，受到伤害降低50%，持续20秒",
+        description: "伤害提升100%，免疫锁足与减速，移动速度降低50%，受到伤害降低50%",
         effects: [
           { type: "DAMAGE_MULTIPLIER", value: 2 },
           { type: "DAMAGE_REDUCTION", value: 0.5 },
-          { type: "DRAW_REDUCTION", value: 1 },
+          { type: "ROOT_SLOW_IMMUNE" },
+          { type: "SLOW", value: 0.5 },
         ],
       },
     ],
@@ -677,22 +732,42 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   taxingxing: {
     id: "taxingxing",
     name: "踏星行",
-    description: "被命中几率降低65%且免疫控制，期间无法使用技能，持续5秒",
+    description: "轻功化形5秒：以12.5尺/秒向前冲刺（可转向）\n施放时解除锁足与减速\n起跳抬升8尺，撞墙后立刻下坠\n期间沉默并免疫等级1/2控制",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
-    gcd: true,
-    effects: [{ type: "DRAW", value: 2 }],
+    gcd: false,
+    qinggong: true,
+    effects: [
+      {
+        type: "CLEANSE",
+        cleanseRootSlow: true,
+        allowWhileControlled: true,
+      },
+      {
+        type: "DIRECTIONAL_DASH",
+        value: 62.5,
+        dirMode: "TOWARD",
+        durationTicks: 150,
+        speedPerTick: 0.4166667,
+        steerByFacing: true,
+        snapUpUnits: 8,
+        wallDiveOnBlock: true,
+        diveVzPerTick: -0.45,
+        allowWhileControlled: true,
+      },
+    ],
     buffs: [
       {
         buffId: 1020,
-        name: "踏星行",
-        category: "DEBUFF",
+        name: "踏星行·化形",
+        category: "BUFF",
         durationMs: 5_000, // 5 seconds
-        description: "被命中几率降低65%，免疫控制，沉默",
+        description: "沉默；免疫等级1/2控制",
         effects: [
-          { type: "DODGE_NEXT", chance: 0.65 },
           { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
+          { type: "DODGE_NEXT", chance: 1.0 },
           { type: "SILENCE" },
         ],
       },
@@ -724,33 +799,19 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     ],
   } as any,
 
-  quye_duanchou: {
-    id: "quye_duanchou",
-    name: "驱夜断愁",
-    description: "造成8点伤害\n回复4点生命值",
-    type: "ATTACK",
-    target: "OPPONENT",
-    cooldownTicks: 300,
-    gcd: true,
-    effects: [
-      { type: "DAMAGE", value: 8 },
-      { type: "HEAL", value: 4, applyTo: "SELF" },
-    ],
-  },
-
   /* ================= 位移 ================= */
 
   zhenshen_xingsi: {
     id: "zhenshen_xingsi",
     name: "龙牙",
-    description: "冲向敌人（最远20码）\n距离内冲向敌方位置，造成10点伤害",
+    description: "需要目标，冲向敌人（最远20码）\n施放时造成20点伤害",
     type: "CONTROL",
     target: "OPPONENT",
     cooldownTicks: 300,
     gcd: true,
     range: 20,
     effects: [
-      { type: "DAMAGE", value: 10 },
+      { type: "DAMAGE", value: 20 },
       { type: "DASH", value: 8 },
     ],
   },
@@ -763,6 +824,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     target: "SELF",
     cooldownTicks: 300, // 30 seconds
     gcd: true,
+    qinggong: true,
     requiresGrounded: true,
     effects: [],
     buffs: [
@@ -803,6 +865,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         description: "运功中：持续回复，免控",
         effects: [
           { type: "CONTROL_IMMUNE" },
+          { type: "INTERRUPT_IMMUNE" },
           { type: "PERIODIC_HEAL", value: 3 },
         ],
       },
@@ -838,6 +901,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         effects: [
           { type: "DAMAGE_REDUCTION", value: 0.5 },
           { type: "CONTROL_IMMUNE" },
+          { type: "INTERRUPT_IMMUNE" },
           { type: "PERIODIC_GUAN_TI_HEAL", value: 5 },
           { type: "TIMED_GUAN_TI_HEAL", delayMs: 9_000, value: 30 },
         ],
@@ -856,22 +920,17 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
+    requiresGrounded: true,
     effects: [],
-    buffs: [
-      {
-        buffId: 2002,
-        name: "狂龙乱舞",
-        category: "BUFF",
-        durationMs: 2_000,
-        breakOnPlay: true,
-        cancelOnJump: true,
-        description: "运功中",
-        effects: [
-          { type: "PLACE_GROUND_ZONE", delayMs: 2_000, value: 4, range: 8 },
-        ],
-      },
+    buffs: [],
+    channelDurationMs: 2_000,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelForward: true,
+    channelEffects: [
+      { type: "PLACE_GROUND_ZONE", value: 4, range: 8 },
     ],
-  },
+  } as any,
 
   // ──────────────────────────────────────────────────────────────────────────
   // 云飞玉皇 — 2s channel (pure: no buffs), 20dmg on completion + 10 bonus if in 4u

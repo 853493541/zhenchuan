@@ -733,20 +733,6 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     ],
   },
 
-  quye_duanchou: {
-    id: "quye_duanchou",
-    name: "驱夜断愁",
-    description: "造成8点伤害\n回复4点生命值",
-    type: "ATTACK",
-    target: "OPPONENT",
-    cooldownTicks: 300,
-    gcd: true,
-    effects: [
-      { type: "DAMAGE", value: 8 },
-      { type: "HEAL", value: 4, applyTo: "SELF" },
-    ],
-  },
-
   /* ================= 位移 ================= */
 
   zhenshen_xingsi: {

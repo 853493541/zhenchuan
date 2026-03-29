@@ -50,14 +50,12 @@ export function buildDeck(): AbilityInstance[] {
 
   // PATCH 0.3
   pushN("fuguang_lueying", 3);
-  pushN("jiangchun_zhuxiu", 3);
   pushN("da_shizi_hou", 3);
   pushN("qionglong_huasheng", 3);
   pushN("taxingxing", 3);
   pushN("zhuiming_jian", 3);
   pushN("xinzheng", 2);
   pushN("tiandi_wuji", 3);
-  pushN("quye_duanchou", 3);
 
   return deck;
 }

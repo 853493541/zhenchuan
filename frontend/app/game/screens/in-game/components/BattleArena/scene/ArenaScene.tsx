@@ -1,6 +1,7 @@
 'use client';
 
-import { MutableRefObject } from 'react';
+import { MutableRefObject, useEffect, useState } from 'react';
+import { Line } from '@react-three/drei';
 import Ground from './Ground';
 import MapObjects from './MapObjects';
 import Character from './Character';
@@ -13,6 +14,30 @@ import { getMapForMode } from '../worldMap';
 // Colors for up to 5 opponents (index 0 = primary, etc.)
 const OPP_COLORS = ['#cc3333', '#cc8800', '#9933cc', '#cc3388'];
 const OPP_EMISSIVES = ['#440000', '#332200', '#220044', '#330022'];
+
+const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
+const SANLIU_XIA_BUFF_IDS = new Set([1007]);
+
+function hasStealthBuff(buffs?: any[]): boolean {
+  if (!Array.isArray(buffs)) return false;
+  return buffs.some((b: any) =>
+    (b.effects ?? []).some((e: any) => e.type === 'STEALTH') ||
+    STEALTH_BUFF_IDS.has(b?.buffId) ||
+    (typeof b?.name === 'string' && (b.name.includes('隐身') || b.name.includes('遁影')))
+  );
+}
+
+function hasSanliuXiaBuff(buffs?: any[]): boolean {
+  if (!Array.isArray(buffs)) return false;
+  return buffs.some((b: any) =>
+    SANLIU_XIA_BUFF_IDS.has(b?.buffId) ||
+    (typeof b?.name === 'string' && b.name.includes('散流霞'))
+  );
+}
+
+function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
+  return hasStealthBuff(buffs) && !hasSanliuXiaBuff(buffs);
+}
 
 interface PlayerInfo {
   userId: string;
@@ -48,6 +73,9 @@ interface ArenaSceneProps {
   mode?: string;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
   groundZones?: GroundZone[];
+  groundCastPreview?: { x: number; y: number; radius: number; label?: string } | null;
+  onGroundPointerMove?: (x: number, y: number) => void;
+  onGroundPointerDown?: (x: number, y: number) => void;
 }
 
 export default function ArenaScene({
@@ -70,10 +98,50 @@ export default function ArenaScene({
   mode,
   safeZone,
   groundZones,
+  groundCastPreview,
+  onGroundPointerMove,
+  onGroundPointerDown,
 }: ArenaSceneProps) {
   const { objects: mapObjects, width: mapWidth } = getMapForMode(mode);
   const worldHalf = mapWidth / 2;
   const isArena = mode === 'arena';
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const selectedTarget = selectedTargetId
+    ? opponents.find((o) => o.userId === selectedTargetId && !shouldHideByStealthFromEnemyView(o.buffs))
+    : null;
+  const meSemiTransparent = hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs);
+
+  const targetLinePoints = selectedTarget
+    ? [
+        [
+          localRenderPosRef.current.x - worldHalf,
+          (localRenderPosRef.current.z ?? 0) + 1,
+          localRenderPosRef.current.y - worldHalf,
+        ],
+        [
+          selectedTarget.position.x - worldHalf,
+          (selectedTarget.position.z ?? 0) + 1,
+          selectedTarget.position.y - worldHalf,
+        ],
+      ] as [number, number, number][]
+    : null;
+
+  const handleGroundPointerMove = (e: any) => {
+    if (!onGroundPointerMove) return;
+    onGroundPointerMove(e.point.x + worldHalf, e.point.z + worldHalf);
+  };
+
+  const handleGroundPointerDown = (e: any) => {
+    if (!onGroundPointerDown) return;
+    onGroundPointerDown(e.point.x + worldHalf, e.point.z + worldHalf);
+  };
+
   return (
     <>
       {/* Camera */}
@@ -92,27 +160,72 @@ export default function ArenaScene({
       {!isArena && <fog attach="fog" args={['#7ab86a', 300, 1000]} />}
 
       {/* World */}
-      <Ground arenaSize={mapWidth} isArena={isArena} safeZone={safeZone} />
+      <Ground
+        arenaSize={mapWidth}
+        isArena={isArena}
+        safeZone={safeZone}
+        onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
+        onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
+      />
       <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalf={worldHalf} />
       <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalf={worldHalf} />
 
+      {/* Always-visible target connection line (not blocked by structures). */}
+      {targetLinePoints && (
+        <Line
+          points={targetLinePoints}
+          color="#ffd24a"
+          lineWidth={2}
+          transparent
+          opacity={0.9}
+          depthTest={false}
+        />
+      )}
+
       {/* Ground damage zones (e.g. 狂龙乱舞 雷云) */}
       {(groundZones ?? []).map(zone => {
+        const isBaizuMarker = zone.abilityId === 'baizu_marker';
+        const isShengTaiji = zone.abilityId === 'qionglong_huasheng_zone';
+        const isKuanglong = zone.abilityId === 'kuang_long_luan_wu';
         const isOwn = zone.ownerUserId === me.userId;
+        const color = isBaizuMarker
+          ? (isOwn ? '#b06cff' : '#ff3333')
+          : isShengTaiji
+          ? (isOwn ? '#4488ff' : '#ff3333')
+          : (isOwn ? '#4488ff' : '#ff3333');
+        const baseLabel = isBaizuMarker
+          ? '百足'
+          : (zone.abilityName ?? '雷云');
+        const showOwnTimer = isOwn && (isShengTaiji || isKuanglong);
+        const secondsLeft = Math.max(1, Math.ceil((zone.expiresAt - nowMs) / 1000));
+        const label = showOwnTimer ? `${baseLabel} · ${secondsLeft}` : baseLabel;
         return (
           <AoeZone
             key={zone.id}
             worldX={zone.x}
             worldY={zone.y}
-            worldZ={0}
+            worldZ={zone.z ?? 0}
             radius={zone.radius}
-            color={isOwn ? "#4488ff" : "#ff3333"}
-            labelColor={isOwn ? "#4488ff" : "#ff3333"}
-            label="雷云"
+            color={color}
+            labelColor={color}
+            label={label}
             worldHalf={worldHalf}
           />
         );
       })}
+
+      {groundCastPreview && (
+        <AoeZone
+          worldX={groundCastPreview.x}
+          worldY={groundCastPreview.y}
+          worldZ={0}
+          radius={groundCastPreview.radius}
+          color={groundCastPreview.label === '百足' ? '#b06cff' : '#ffd24a'}
+          labelColor={groundCastPreview.label === '百足' ? '#d8b6ff' : '#ffe98a'}
+          label={groundCastPreview.label ?? "预览"}
+          worldHalf={worldHalf}
+        />
+      )}
 
       {/* Local player AOE zone */}
       {meChanneling && (
@@ -128,6 +241,9 @@ export default function ArenaScene({
 
       {/* Opponents — render all of them */}
       {opponents.map((opp, i) => {
+        const hiddenByStealth = shouldHideByStealthFromEnemyView(opp.buffs);
+        if (hiddenByStealth) return null;
+
         const dx = opp.position.x - me.position.x;
         const dy = opp.position.y - me.position.y;
         const dz = (opp.position.z ?? 0) - (me.position.z ?? 0);
@@ -161,6 +277,7 @@ export default function ArenaScene({
               onSelect={() => onSelectTarget?.(opp.userId)}
               onScreenBounds={i === 0 && oppScreenBoundsRef ? (b) => { oppScreenBoundsRef.current = b; } : undefined}
               worldHalf={worldHalf}
+              isStealthed={hasSanliuXiaBuff(opp.buffs)}
             />
           </group>
         );
@@ -181,6 +298,7 @@ export default function ArenaScene({
         posRef={localRenderPosRef}
         onScreenBounds={meScreenBoundsRef ? (b) => { meScreenBoundsRef.current = b; } : undefined}
         worldHalf={worldHalf}
+        isStealthed={meSemiTransparent}
       />
     </>
   );

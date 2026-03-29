@@ -1,6 +1,7 @@
 // engine/flow/applyImmediateEffects.ts
+import { randomUUID } from "crypto";
 import { resolveEffectTargetIndex } from "../../utils/targeting";
-import { isEnemyEffect, shouldSkipDueToDodge } from "../../rules/guards";
+import { blocksEnemyTargeting, isEnemyEffect, shouldSkipDueToDodge } from "../../rules/guards";
 import {
   handleDamage,
   handleBonusDamageIfHpGt,
@@ -11,6 +12,8 @@ import {
   handleDash,
   handleDirectionalDash,
 } from "../../effects/handlers";
+import { resolveScheduledDamage } from "../../utils/combatMath";
+import { addBuff } from "../../effects/buffRuntime";
 
 export function applyImmediateEffects(params: {
   state: any;
@@ -22,6 +25,10 @@ export function applyImmediateEffects(params: {
   targetIndex: number;
   opponentHpAtStart: number;
   abilityDodged: boolean;
+  castContext?: {
+    targetUserId?: string;
+    groundTarget?: { x: number; y: number };
+  };
 }) {
   const {
     state,
@@ -33,6 +40,7 @@ export function applyImmediateEffects(params: {
     targetIndex,
     opponentHpAtStart,
     abilityDodged,
+    castContext,
   } = params;
 
   for (const effect of ability.effects) {
@@ -71,7 +79,7 @@ export function applyImmediateEffects(params: {
         break;
 
       case "CLEANSE":
-        handleCleanse(source);
+        handleCleanse(source, effect);
         break;
 
       case "DASH":
@@ -90,6 +98,105 @@ export function applyImmediateEffects(params: {
       case "XINZHENG_CHANNEL":
         handleChannelEffect(state, source, enemy, ability, effect);
         break;
+
+      case "BAIZU_AOE": {
+        const now = Date.now();
+        const center = castContext?.groundTarget
+          ? { x: castContext.groundTarget.x, y: castContext.groundTarget.y }
+          : { x: target.position.x, y: target.position.y };
+        const radius = effect.range ?? 6;
+        const baizuBuff = Array.isArray(ability.buffs)
+          ? ability.buffs.find((b: any) => b.name === "百足")
+          : null;
+
+        if (!state.groundZones) state.groundZones = [];
+        state.groundZones.push({
+          id: randomUUID(),
+          ownerUserId: source.userId,
+          x: center.x,
+          y: center.y,
+          z: castContext?.groundTarget ? (source.position?.z ?? 0) : (target.position?.z ?? 0),
+          height: 10,
+          radius,
+          expiresAt: now + 1_000,
+          damagePerInterval: 0,
+          intervalMs: 1_000,
+          lastTickAt: now,
+          abilityId: "baizu_marker",
+          abilityName: "百足",
+          maxTargets: 0,
+        });
+
+        for (const victim of state.players) {
+          if (victim.userId === source.userId) continue;
+          if ((victim.hp ?? 0) <= 0) continue;
+
+          const dx = (victim.position?.x ?? 0) - center.x;
+          const dy = (victim.position?.y ?? 0) - center.y;
+          if (Math.hypot(dx, dy) > radius) continue;
+          if (blocksEnemyTargeting(victim)) continue;
+
+          const dmg = resolveScheduledDamage({
+            source,
+            target: victim,
+            base: effect.value ?? 0,
+          });
+          victim.hp = Math.max(0, victim.hp - dmg);
+
+          if (dmg > 0) {
+            state.events.push({
+              id: randomUUID(),
+              timestamp: now,
+              turn: state.turn,
+              type: "DAMAGE",
+              actorUserId: source.userId,
+              targetUserId: victim.userId,
+              abilityId: ability.id,
+              abilityName: ability.name,
+              effectType: "DAMAGE",
+              value: dmg,
+            });
+          }
+
+          if (baizuBuff) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: victim.userId,
+              ability,
+              buffTarget: victim,
+              buff: baizuBuff,
+            });
+          }
+        }
+        break;
+      }
+
+      case "AOE_APPLY_BUFFS": {
+        if (!Array.isArray(ability.buffs) || ability.buffs.length === 0) break;
+        const radius = effect.range ?? 10;
+        for (const victim of state.players) {
+          if (victim.userId === source.userId) continue;
+          if ((victim.hp ?? 0) <= 0) continue;
+          if (blocksEnemyTargeting(victim)) continue;
+
+          const dx = (victim.position?.x ?? 0) - (source.position?.x ?? 0);
+          const dy = (victim.position?.y ?? 0) - (source.position?.y ?? 0);
+          if (Math.hypot(dx, dy) > radius) continue;
+
+          for (const buffDef of ability.buffs) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: victim.userId,
+              ability,
+              buffTarget: victim,
+              buff: buffDef,
+            });
+          }
+        }
+        break;
+      }
 
       default:
         break;
