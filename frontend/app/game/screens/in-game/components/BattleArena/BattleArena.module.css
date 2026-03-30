@@ -171,6 +171,36 @@
   white-space: nowrap;
 }
 
+.hpSegmentNum,
+.shieldSegmentNum {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 13px;
+  font-weight: 900;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  pointer-events: none;
+  z-index: 3;
+  white-space: nowrap;
+}
+
+.hpSegmentNum {
+  color: #ffe033;
+  text-shadow:
+    1px 1px 0 #000, -1px -1px 0 #000,
+    1px -1px 0 #000, -1px 1px 0 #000,
+    0 1px 0 #000, 0 -1px 0 #000,
+    1px 0 0 #000, -1px 0 0 #000;
+}
+
+.shieldSegmentNum {
+  color: #0d2238;
+  text-shadow:
+    1px 1px 0 rgba(255, 255, 255, 0.85),
+    -1px -1px 0 rgba(255, 255, 255, 0.85),
+    0 0 2px rgba(255, 255, 255, 0.8);
+}
+
 .myManaTrack {
   position: relative;
   width: 75%;
@@ -532,6 +562,37 @@
   padding: 6px 8px;
 }
 
+.draftSlot {
+  position: relative;
+  border-radius: 8px;
+}
+
+.draftSlotHover .abilityBtn {
+  border-color: rgba(90, 170, 255, 0.95) !important;
+  box-shadow: 0 0 16px rgba(90, 170, 255, 0.42) !important;
+}
+
+.discardDropZone {
+  margin-top: 6px;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+  padding: 8px 10px;
+  border: 1px dashed rgba(120, 180, 255, 0.65);
+  border-radius: 8px;
+  background: rgba(30, 95, 180, 0.18);
+  color: #beddff;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+}
+
+.discardDropZoneActive {
+  background: rgba(45, 130, 245, 0.28);
+  border-color: rgba(140, 205, 255, 0.95);
+  color: #eaf6ff;
+  box-shadow: 0 0 14px rgba(80, 170, 255, 0.45);
+}
+
 /* Common ability buttons — same size as draft, gold tinted */
 .commonBtn {
   border-color: rgba(160, 120, 20, 0.5) !important;
@@ -688,8 +749,12 @@
 }
 
 .chargeFrameQueTaZhi .chargeFrameSvg {
-  transform: rotate(180deg);
+  transform: scaleX(-1);
   transform-origin: 50% 50%;
+}
+
+.chargeFrameQueTaZhi .chargeFrameProgress {
+  stroke-width: 6;
 }
 
 .chargeFrameTrack {
@@ -724,15 +789,15 @@
 }
 
 .chargeStackBoxQueTaZhi {
-  right: -1px;
-  bottom: -1px;
-  width: 20px;
-  height: 20px;
+  right: 1px;
+  bottom: 1px;
+  width: 10px;
+  height: 10px;
   border: none;
   background: rgba(0, 0, 0, 0.93);
   color: #fff5e0;
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 8px;
+  line-height: 10px;
   font-weight: 900;
 }
 

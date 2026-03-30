@@ -22,8 +22,9 @@ import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
 import { ABILITIES } from "../../abilities/abilities";
-import { blocksCardTargeting, hasUntargetable } from "../rules/guards";
+import { blocksCardTargeting, hasUntargetable, shouldDodge } from "../rules/guards";
 import type { MapObject } from "../state/types/map";
+import { breakOnPlay } from "../flow/play/breakOnPlay";
 
 /** 2D segment vs AABB intersection test (for LOS checks). */
 function segmentIntersectsAABB(
@@ -100,6 +101,32 @@ function isDunyingCompanion(buff: { buffId: number; name?: string; sourceAbility
 
 function hasBuffEffect(player: { buffs: Array<{ effects: Array<{ type: string }> }> }, type: string): boolean {
   return player.buffs.some((b) => b.effects.some((e) => e.type === type));
+}
+
+function tryApplyDodgeForHit(params: {
+  state: GameState;
+  source: { userId: string };
+  target: { userId: string; buffs: any[] };
+  abilityId?: string;
+  abilityName?: string;
+  enabled: boolean;
+}): boolean {
+  const { state, source, target, abilityId, abilityName, enabled } = params;
+  if (!enabled) return false;
+  if (source.userId === target.userId) return false;
+  if (!shouldDodge(target as any)) return false;
+
+  state.events.push({
+    id: randomUUID(),
+    timestamp: Date.now(),
+    turn: state.turn,
+    type: "DODGE",
+    actorUserId: target.userId,
+    targetUserId: source.userId,
+    abilityId,
+    abilityName,
+  } as any);
+  return true;
 }
 
 const CHANNEL_BUFF_IDS = new Set([1014, 1017, 2001, 2003]);
@@ -899,6 +926,19 @@ export class GameLoop {
                     channelStateChanged = true;
                     continue;
                   }
+                  if (
+                    tryApplyDodgeForHit({
+                      state: this.state,
+                      source: player,
+                      target: opp as any,
+                      abilityId: buff.sourceAbilityId,
+                      abilityName: buff.sourceAbilityName ?? buff.name,
+                      enabled: buff.sourceAbilityId === "fenglai_wushan",
+                    })
+                  ) {
+                    buffsChanged = true;
+                    continue;
+                  }
                   const dmg = resolveScheduledDamage({
                     source: player,
                     target: opp,
@@ -941,6 +981,18 @@ export class GameLoop {
             // Mark this effect as fired
             if (!buff.firedDelayIndices) buff.firedDelayIndices = [];
             buff.firedDelayIndices.push(effIdx);
+
+            // 无间狱: each timed strike is treated as a fresh cast for stealth break only.
+            if (e.type === "TIMED_AOE_DAMAGE" && buff.sourceAbilityId === "wu_jianyu") {
+              const beforeBuffCount = player.buffs.length;
+              const wuJianAbility = ABILITIES["wu_jianyu"];
+              if (wuJianAbility) {
+                breakOnPlay(player as any, wuJianAbility as any);
+                if (player.buffs.length !== beforeBuffCount) {
+                  buffsChanged = true;
+                }
+              }
+            }
 
             // TIMED_GUAN_TI_HEAL: completion heal bypassing HEAL_REDUCTION
             if (e.type === "TIMED_GUAN_TI_HEAL") {
@@ -1034,6 +1086,20 @@ export class GameLoop {
             }
 
             if (player.userId !== opp.userId && hasUntargetable(opp as any)) {
+              continue;
+            }
+
+            if (
+              tryApplyDodgeForHit({
+                state: this.state,
+                source: player,
+                target: opp as any,
+                abilityId: buff.sourceAbilityId,
+                abilityName: buff.sourceAbilityName ?? buff.name,
+                enabled: buff.sourceAbilityId === "wu_jianyu",
+              })
+            ) {
+              buffsChanged = true;
               continue;
             }
 
@@ -1323,6 +1389,20 @@ export class GameLoop {
               const zoneZ = zone.z ?? 0;
               const targetZ = target.position.z ?? 0;
               if (Math.abs(targetZ - zoneZ) > zone.height) continue;
+            }
+            if (
+              tryApplyDodgeForHit({
+                state: this.state,
+                source: owner ?? target,
+                target: target as any,
+                abilityId: zone.abilityId,
+                abilityName: zone.abilityName,
+                enabled: zone.abilityId === "kuang_long_luan_wu",
+              })
+            ) {
+              targetsHit++;
+              buffsChanged = true;
+              continue;
             }
             const dmg = resolveScheduledDamage({
               source: owner ?? target,

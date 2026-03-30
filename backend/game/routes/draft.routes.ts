@@ -18,6 +18,27 @@ import type { AbilityInstance } from "../engine/state/types";
 
 const router = express.Router();
 
+function isCommonAbilityCard(card: any): boolean {
+  const abilityId = card?.abilityId ?? card?.id;
+  const def = abilityId ? ABILITIES[abilityId] : undefined;
+  if (def) return !!def.isCommon;
+  return !!card?.isCommon;
+}
+
+function toSelectedInstancesFromHand(hand: any[]): AbilityInstance[] {
+  return (hand ?? [])
+    .filter((card: any) => !isCommonAbilityCard(card))
+    .map((card: any) => {
+      const abilityId = card?.abilityId ?? card?.id;
+      return {
+        instanceId: card?.instanceId ?? randomUUID(),
+        abilityId,
+        cooldown: 0,
+      } as AbilityInstance;
+    })
+    .filter((card: AbilityInstance) => !!card.abilityId);
+}
+
 /**
  * GET /draft/shop - Get current shop for this player
  */
@@ -735,6 +756,502 @@ router.post("/cheat/add-ability", async (req, res) => {
 
     void game.save().catch((err: any) => {
       console.error("[cheat/add-ability] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/reorder-ability - Reorder drafted ability slots during battle
+ * Body: { gameId, instanceId, toIndex }
+ */
+router.post("/cheat/reorder-ability", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, instanceId, toIndex } = req.body;
+
+    if (!instanceId) return res.status(400).json({ error: "instanceId required" });
+    if (!Number.isFinite(toIndex)) return res.status(400).json({ error: "toIndex must be a number" });
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const dbPlayerIndex = game.players.indexOf(userId);
+    let livePlayerIndex = dbPlayerIndex;
+    let liveVersion = game.state.version ?? 0;
+    let handSource = [...(game.state.players[dbPlayerIndex].hand ?? [])];
+
+    const gameLoop = GameLoop.get(gameId);
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        handSource = [...(loopState.players[loopPlayerIdx].hand ?? [])];
+      }
+    }
+
+    const draftCards = handSource.filter((card: any) => !isCommonAbilityCard(card));
+    const commonCards = handSource.filter((card: any) => isCommonAbilityCard(card));
+    const fromIndex = draftCards.findIndex((card: any) => (card.instanceId ?? card.id) === instanceId);
+    if (fromIndex === -1) {
+      return res.status(404).json({ error: "Draft ability not found in hand" });
+    }
+
+    const clampedToIndex = Math.max(0, Math.min(draftCards.length - 1, Number(toIndex)));
+    if (fromIndex !== clampedToIndex) {
+      const [moved] = draftCards.splice(fromIndex, 1);
+      draftCards.splice(clampedToIndex, 0, moved);
+    }
+    const reorderedHand = [...draftCards, ...commonCards];
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        loopState.players[loopPlayerIdx] = {
+          ...loopState.players[loopPlayerIdx],
+          hand: reorderedHand,
+        };
+        loopState.version = (loopState.version ?? 0) + 1;
+        liveVersion = loopState.version;
+        gameLoop.updateState(loopState);
+      }
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff: [{ path: `/players/${livePlayerIndex}/hand`, value: reorderedHand }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true, hand: reorderedHand });
+
+    game.state.players[dbPlayerIndex] = {
+      ...game.state.players[dbPlayerIndex],
+      hand: reorderedHand,
+    };
+    game.tournament.selectedAbilities[userId] = toSelectedInstancesFromHand(reorderedHand);
+
+    game.markModified("state");
+    game.markModified("state.players");
+    game.markModified("tournament");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/reorder-ability] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/discard-ability - Remove a drafted ability from hand during battle
+ * Body: { gameId, instanceId }
+ */
+router.post("/cheat/discard-ability", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, instanceId } = req.body;
+
+    if (!instanceId) return res.status(400).json({ error: "instanceId required" });
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const dbPlayerIndex = game.players.indexOf(userId);
+    let livePlayerIndex = dbPlayerIndex;
+    let liveVersion = game.state.version ?? 0;
+    let handSource = [...(game.state.players[dbPlayerIndex].hand ?? [])];
+
+    const gameLoop = GameLoop.get(gameId);
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        handSource = [...(loopState.players[loopPlayerIdx].hand ?? [])];
+      }
+    }
+
+    const draftCards = handSource.filter((card: any) => !isCommonAbilityCard(card));
+    const commonCards = handSource.filter((card: any) => isCommonAbilityCard(card));
+    const draftIndex = draftCards.findIndex((card: any) => (card.instanceId ?? card.id) === instanceId);
+    if (draftIndex === -1) {
+      return res.status(404).json({ error: "Draft ability not found in hand" });
+    }
+
+    draftCards.splice(draftIndex, 1);
+    const updatedHand = [...draftCards, ...commonCards];
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        loopState.players[loopPlayerIdx] = {
+          ...loopState.players[loopPlayerIdx],
+          hand: updatedHand,
+        };
+        loopState.version = (loopState.version ?? 0) + 1;
+        liveVersion = loopState.version;
+        gameLoop.updateState(loopState);
+      }
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff: [{ path: `/players/${livePlayerIndex}/hand`, value: updatedHand }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true, hand: updatedHand });
+
+    game.state.players[dbPlayerIndex] = {
+      ...game.state.players[dbPlayerIndex],
+      hand: updatedHand,
+    };
+    game.tournament.selectedAbilities[userId] = toSelectedInstancesFromHand(updatedHand);
+
+    game.markModified("state");
+    game.markModified("state.players");
+    game.markModified("tournament");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/discard-ability] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/discard-all - Remove all drafted abilities from hand during battle
+ * Body: { gameId }
+ */
+router.post("/cheat/discard-all", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const dbPlayerIndex = game.players.indexOf(userId);
+    let livePlayerIndex = dbPlayerIndex;
+    let liveVersion = game.state.version ?? 0;
+    let handSource = [...(game.state.players[dbPlayerIndex].hand ?? [])];
+
+    const gameLoop = GameLoop.get(gameId);
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        handSource = [...(loopState.players[loopPlayerIdx].hand ?? [])];
+      }
+    }
+
+    const commonCards = handSource.filter((card: any) => isCommonAbilityCard(card));
+    const updatedHand = [...commonCards];
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        loopState.players[loopPlayerIdx] = {
+          ...loopState.players[loopPlayerIdx],
+          hand: updatedHand,
+        };
+        loopState.version = (loopState.version ?? 0) + 1;
+        liveVersion = loopState.version;
+        gameLoop.updateState(loopState);
+      }
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff: [{ path: `/players/${livePlayerIndex}/hand`, value: updatedHand }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true, hand: updatedHand });
+
+    game.state.players[dbPlayerIndex] = {
+      ...game.state.players[dbPlayerIndex],
+      hand: updatedHand,
+    };
+    game.tournament.selectedAbilities[userId] = [];
+
+    game.markModified("state");
+    game.markModified("state.players");
+    game.markModified("tournament");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/discard-all] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/full-heal - Restore both players to full HP (and clear shields)
+ * Body: { gameId }
+ */
+router.post("/cheat/full-heal", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let liveVersion = game.state.version ?? 0;
+    let diff: Array<{ path: string; value: any }> = [];
+    const gameLoop = GameLoop.get(gameId);
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      loopState.players = loopState.players.map((p: any, idx: number) => {
+        const maxHp = Math.max(1, Number(p.maxHp ?? p.hp ?? 100));
+        diff.push({ path: `/players/${idx}/hp`, value: maxHp });
+        diff.push({ path: `/players/${idx}/shield`, value: 0 });
+        return {
+          ...p,
+          hp: maxHp,
+          shield: 0,
+        };
+      });
+      loopState.gameOver = false;
+      delete (loopState as any).winnerUserId;
+      diff.push({ path: "/gameOver", value: false });
+      diff.push({ path: "/winnerUserId", value: undefined });
+      loopState.version = (loopState.version ?? 0) + 1;
+      liveVersion = loopState.version;
+      gameLoop.updateState(loopState);
+    } else {
+      game.state.players = game.state.players.map((p: any, idx: number) => {
+        const maxHp = Math.max(1, Number(p.maxHp ?? p.hp ?? 100));
+        diff.push({ path: `/players/${idx}/hp`, value: maxHp });
+        diff.push({ path: `/players/${idx}/shield`, value: 0 });
+        return {
+          ...p,
+          hp: maxHp,
+          shield: 0,
+        };
+      });
+      game.state.gameOver = false;
+      delete (game.state as any).winnerUserId;
+      diff.push({ path: "/gameOver", value: false });
+      diff.push({ path: "/winnerUserId", value: undefined });
+      game.state.version = (game.state.version ?? 0) + 1;
+      liveVersion = game.state.version;
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true });
+
+    game.state.players = game.state.players.map((p: any) => {
+      const maxHp = Math.max(1, Number(p.maxHp ?? p.hp ?? 100));
+      return {
+        ...p,
+        hp: maxHp,
+        shield: 0,
+      };
+    });
+    game.state.gameOver = false;
+    delete (game.state as any).winnerUserId;
+
+    game.markModified("state");
+    game.markModified("state.players");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/full-heal] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/reset-cooldowns - Set both players' hand cooldowns/charges to ready
+ * Body: { gameId }
+ */
+router.post("/cheat/reset-cooldowns", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const resetHand = (hand: any[]) =>
+      (hand ?? []).map((card: any) => {
+        const abilityId = card?.abilityId ?? card?.id;
+        const def = abilityId ? ABILITIES[abilityId] : undefined;
+        const maxCharges = Math.max(0, Number((def as any)?.maxCharges ?? card?.maxCharges ?? 0));
+        const nextCard: any = {
+          ...card,
+          cooldown: 0,
+          chargeLockTicks: 0,
+          chargeRegenTicksRemaining: 0,
+        };
+        if (maxCharges > 1) {
+          nextCard.chargeCount = maxCharges;
+        }
+        return nextCard;
+      });
+
+    let liveVersion = game.state.version ?? 0;
+    let diff: Array<{ path: string; value: any }> = [];
+    const gameLoop = GameLoop.get(gameId);
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      loopState.players = loopState.players.map((p: any, idx: number) => {
+        const hand = resetHand(p.hand ?? []);
+        diff.push({ path: `/players/${idx}/hand`, value: hand });
+        return {
+          ...p,
+          hand,
+        };
+      });
+      loopState.version = (loopState.version ?? 0) + 1;
+      liveVersion = loopState.version;
+      gameLoop.updateState(loopState);
+    } else {
+      game.state.players = game.state.players.map((p: any, idx: number) => {
+        const hand = resetHand(p.hand ?? []);
+        diff.push({ path: `/players/${idx}/hand`, value: hand });
+        return {
+          ...p,
+          hand,
+        };
+      });
+      game.state.version = (game.state.version ?? 0) + 1;
+      liveVersion = game.state.version;
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true });
+
+    game.state.players = game.state.players.map((p: any) => ({
+      ...p,
+      hand: resetHand(p.hand ?? []),
+    }));
+
+    game.markModified("state");
+    game.markModified("state.players");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/reset-cooldowns] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/clear-buffs - Clear buffs/channels on both players
+ * Body: { gameId }
+ */
+router.post("/cheat/clear-buffs", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let liveVersion = game.state.version ?? 0;
+    let diff: Array<{ path: string; value: any }> = [];
+    const gameLoop = GameLoop.get(gameId);
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      loopState.players = loopState.players.map((p: any, idx: number) => {
+        diff.push({ path: `/players/${idx}/buffs`, value: [] });
+        diff.push({ path: `/players/${idx}/activeChannel`, value: undefined });
+        return {
+          ...p,
+          buffs: [],
+          activeChannel: undefined,
+        };
+      });
+      loopState.version = (loopState.version ?? 0) + 1;
+      liveVersion = loopState.version;
+      gameLoop.updateState(loopState);
+    } else {
+      game.state.players = game.state.players.map((p: any, idx: number) => {
+        diff.push({ path: `/players/${idx}/buffs`, value: [] });
+        diff.push({ path: `/players/${idx}/activeChannel`, value: undefined });
+        return {
+          ...p,
+          buffs: [],
+          activeChannel: undefined,
+        };
+      });
+      game.state.version = (game.state.version ?? 0) + 1;
+      liveVersion = game.state.version;
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true });
+
+    game.state.players = game.state.players.map((p: any) => ({
+      ...p,
+      buffs: [],
+      activeChannel: undefined,
+    }));
+
+    game.markModified("state");
+    game.markModified("state.players");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/clear-buffs] async save failed:", err?.message ?? err);
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

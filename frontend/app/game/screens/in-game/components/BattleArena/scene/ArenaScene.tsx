@@ -274,7 +274,7 @@ export default function ArenaScene({
               isMe={false}
               isSelected={selectedTargetId === opp.userId}
               facing={opp.facing}
-              username="陌路侠士"
+              username="恐怖花萝"
               distance={dist}
               onSelect={() => onSelectTarget?.(opp.userId)}
               onScreenBounds={i === 0 && oppScreenBoundsRef ? (b) => { oppScreenBoundsRef.current = b; } : undefined}

@@ -96,7 +96,8 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "向身后方向后撤2.7格（持续1秒）\n只能在地面施放",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 60, // 1 second at 60 Hz
+    cooldownTicks: 0,
+    gcd: false,
     qinggong: true,
     requiresGrounded: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 2.7, dirMode: "AWAY", durationTicks: 30 }],
@@ -110,6 +111,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
+    gcd: true,
     qinggong: true,
     effects: [
       {
@@ -610,7 +612,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   wu_jianyu: {
     id: "wu_jianyu",
     name: "无间狱",
-    description: "修罗附体\n3秒后正面180°/10码造成5伤害\n4秒后正面180°/10码造成8伤害\n5秒后正面180°/10码造成10伤害\n同时360°/10码造成10伤害并击退3码，击退期间沉默0.8秒\n所有伤害30%吸血",
+    description: "修罗附体\n3秒后正面180°/10码造成5伤害\n4秒后正面180°/10码造成5伤害\n5秒后正面180°/10码造成5伤害\n同时360°/10码造成10伤害并击退3码，击退期间沉默0.8秒\n所有伤害30%吸血",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -628,25 +630,25 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
           {
             type: "TIMED_AOE_DAMAGE",
             delayMs: 3_000,
-            value: 1,
+            value: 5,
             aoeAngle: 180,
             range: 10,
             lifestealPct: 0.3,
           },
-          // t+4s: front 180° cone, range 10, 8 damage, 30% lifesteal
+          // t+4s: front 180° cone, range 10, 5 damage, 30% lifesteal
           {
             type: "TIMED_AOE_DAMAGE",
             delayMs: 4_000,
-            value: 1,
+            value: 5,
             aoeAngle: 180,
             range: 10,
             lifestealPct: 0.3,
           },
-          // t+5s: front 180° cone, range 10, 10 damage, 30% lifesteal
+          // t+5s: front 180° cone, range 10, 5 damage, 30% lifesteal
           {
             type: "TIMED_AOE_DAMAGE",
             delayMs: 5_000,
-            value: 1,
+            value: 5,
             aoeAngle: 180,
             range: 10,
             lifestealPct: 0.3,
@@ -655,7 +657,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
           {
             type: "TIMED_AOE_DAMAGE",
             delayMs: 5_000,
-            value: 2,
+            value: 10,
             aoeAngle: 360,
             range: 10,
             lifestealPct: 0.3,
@@ -754,7 +756,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     buffs: [
       {
         buffId: 1020,
-        name: "踏星行·化形",
+        name: "踏星行",
         category: "BUFF",
         durationMs: 5_000, // 5 seconds
         description: "沉默；免疫等级1/2控制",
@@ -1279,7 +1281,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     id: "guchong_xianji",
     name: "蛊虫献祭",
     description:
-      "自我施放（当前气血需大于35，不计护盾）\n解除等级1控制\n立即对自身造成30点伤害\n获得【献祭护盾】10秒：提供50点护盾并每秒回复3点气血\n若献祭护盾被打破则该效果提前结束\n获得【献祭控制免疫】5秒：免疫等级1控制\n不触发GCD",
+      "自我施放（当前气血需大于35，不计护盾）\n解除等级1控制\n立即对自身造成30点伤害\n获得【献祭护盾】10秒：提供50点护盾并每秒回复3%气血（贯体）\n若献祭护盾被打破则该效果提前结束\n获得【献祭控制免疫】5秒：免疫等级1控制\n不触发GCD",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -1299,7 +1301,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         description: "提供50点护盾，并每秒回复3点气血",
         effects: [
           { type: "SHIELD", value: 50 },
-          { type: "PERIODIC_HEAL", value: 3 },
+          { type: "PERIODIC_GUAN_TI_HEAL", value: 3 },
         ],
       },
       {

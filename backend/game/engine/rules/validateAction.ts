@@ -245,13 +245,11 @@ export function validateCastAbility(
 
   /* ================= REQUIRES GROUNDED ================= */
   if ((ability as any).requiresGrounded) {
-    const playerZ = (player.position as any).z ?? 0;
     const jumpCount = (player as any).jumpCount ?? 0;
     const vz = (player as any).velocity?.vz ?? 0;
     const groundedCastLockUntil = (player as any).groundedCastLockUntil ?? 0;
     const pendingJump = options?.pendingJump === true;
     if (
-      playerZ > 0.5 ||
       jumpCount > 0 ||
       Math.abs(vz) > 0.01 ||
       groundedCastLockUntil > Date.now() ||
@@ -263,7 +261,6 @@ export function validateCastAbility(
 
   /* ================= REQUIRES STANDING ================= */
   if ((ability as any).requiresStanding) {
-    const playerZ = (player.position as any).z ?? 0;
     const jumpCount = (player as any).jumpCount ?? 0;
     const vz = (player as any).velocity?.vz ?? 0;
     const vx = (player as any).velocity?.vx ?? 0;
@@ -271,7 +268,7 @@ export function validateCastAbility(
     const pendingJump = options?.pendingJump === true;
     const moving = Math.abs(vx) > 0.01 || Math.abs(vy) > 0.01;
 
-    if (playerZ > 0.5 || jumpCount > 0 || Math.abs(vz) > 0.01 || pendingJump || moving) {
+    if (jumpCount > 0 || Math.abs(vz) > 0.01 || pendingJump || moving) {
       throw new Error("ERR_REQUIRES_STANDING");
     }
   }

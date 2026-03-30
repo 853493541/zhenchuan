@@ -360,10 +360,15 @@ export default function BattleArena({
   const [showControlPanel, setShowControlPanel] = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
+  const [runningCheatAction, setRunningCheatAction] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [selectedSelf,     setSelectedSelf]     = useState(false);
   const [pendingGroundCastAbilityId, setPendingGroundCastAbilityId] = useState<string | null>(null);
   const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number } | null>(null);
+  const [autoForward, setAutoForward] = useState(false);
+  const [draggingDraftInstanceId, setDraggingDraftInstanceId] = useState<string | null>(null);
+  const [dragHoverIndex, setDragHoverIndex] = useState<number | null>(null);
+  const [discardZoneHover, setDiscardZoneHover] = useState(false);
   const [, ] = useState(0); // placeholder (was setChannelTick)
 
   /* --- Pickup interaction state --- */
@@ -446,6 +451,8 @@ export default function BattleArena({
 
   /* --- Game logic refs --- */
   const keysRef          = useRef({ w: false, a: false, s: false, d: false });
+  const autoForwardRef   = useRef(false);
+  const dragJustEndedRef = useRef(false);
   const localPositionRef = useRef<Position | null>(null);
   const localVelocityRef = useRef({ x: 0, y: 0 });
   const initializedRef   = useRef(false);
@@ -574,13 +581,12 @@ export default function BattleArena({
       return;
     }
 
-    const groundedLockedLocal =
-      localZRef.current > 0.5 ||
+    const airborneLockedLocal =
       jumpLocalRef.current ||
       jumpSendRef.current ||
       localJumpCountRef.current > 0 ||
       Math.abs(localVzRef.current) > 0.01;
-    if (ability?.requiresGrounded && groundedLockedLocal) {
+    if (ability?.requiresGrounded && airborneLockedLocal) {
       toastError('该技能需要落地后施放');
       return;
     }
@@ -594,7 +600,7 @@ export default function BattleArena({
         movingByInput ||
         Math.abs(localVelocityRef.current.x) > 0.01 ||
         Math.abs(localVelocityRef.current.y) > 0.01;
-      if (groundedLockedLocal || movingLocal) {
+      if (airborneLockedLocal || movingLocal) {
         toastError('该技能需要站立后施放');
         return;
       }
@@ -1276,13 +1282,12 @@ export default function BattleArena({
       } else if ((instance?.cooldown ?? 0) > 0) {
         return false;
       }
-      const groundedLockedLocal =
-        localZRef.current > 0.5 ||
+      const airborneLockedLocal =
         jumpLocalRef.current ||
         jumpSendRef.current ||
         localJumpCountRef.current > 0 ||
         Math.abs(localVzRef.current) > 0.01;
-      if (ab?.requiresGrounded && groundedLockedLocal) return false;
+      if (ab?.requiresGrounded && airborneLockedLocal) return false;
       if (ab?.requiresStanding) {
         const movingByInput =
           wasdKeys.w ||
@@ -1293,7 +1298,7 @@ export default function BattleArena({
           movingByInput ||
           Math.abs(localVelocityRef.current.x) > 0.01 ||
           Math.abs(localVelocityRef.current.y) > 0.01;
-        if (groundedLockedLocal || movingLocal) return false;
+        if (airborneLockedLocal || movingLocal) return false;
       }
       if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
         return false;
@@ -1478,7 +1483,7 @@ export default function BattleArena({
     // Block channeling if moving or airborne
     const keys = keysRef.current;
     if (keys.w || keys.a || keys.s || keys.d) return;
-    if (localZRef.current > 0.5) return;
+    if (localJumpCountRef.current > 0 || Math.abs(localVzRef.current) > 0.01) return;
 
     // If the closest book's panel is already open → claim it (F toggles open→claim)
     if (pickupModalsRef.current.some(m => m.pickupId === target)) {
@@ -1584,6 +1589,13 @@ export default function BattleArena({
       const k = e.key.toLowerCase();
       if (['w', 'a', 's', 'd'].includes(k)) {
         e.preventDefault();
+
+        if (k === 's' && autoForwardRef.current) {
+          autoForwardRef.current = false;
+          setAutoForward(false);
+          keysRef.current.w = false;
+          setWasdKeys(prev => ({ ...prev, w: false }));
+        }
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = true;
         setWasdKeys(prev => ({ ...prev, [k]: true }));
 
@@ -1630,6 +1642,18 @@ export default function BattleArena({
       if (k === 'f') {
         e.preventDefault();
         handlePickupInteractRef.current();
+        return;
+      }
+      // G = auto-forward (persists until S is pressed)
+      if (k === 'g') {
+        e.preventDefault();
+        if (!e.repeat && !autoForwardRef.current) {
+          autoForwardRef.current = true;
+          setAutoForward(true);
+          keysRef.current.w = true;
+          setWasdKeys(prev => ({ ...prev, w: true }));
+          toastSuccess('自动前行已开启（按 S 停止）');
+        }
         return;
       }
       // Tab / F1 — select primary opponent target (old 1v1 behavior)
@@ -1680,6 +1704,9 @@ export default function BattleArena({
     const onUp = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
       if (['w', 'a', 's', 'd'].includes(k)) {
+        if (k === 'w' && autoForwardRef.current) {
+          return;
+        }
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = false;
         setWasdKeys(prev => ({ ...prev, [k]: false }));
       }
@@ -1848,8 +1875,16 @@ export default function BattleArena({
 
   const handleJoystickDirection = useCallback(
     (keys: { w: boolean; a: boolean; s: boolean; d: boolean }) => {
-      keysRef.current = keys;
-      setWasdKeys(keys);
+      const nextKeys = { ...keys };
+      if (nextKeys.s && autoForwardRef.current) {
+        autoForwardRef.current = false;
+        setAutoForward(false);
+      }
+      if (autoForwardRef.current && !nextKeys.s) {
+        nextKeys.w = true;
+      }
+      keysRef.current = nextKeys;
+      setWasdKeys(nextKeys);
     },
     [],
   );
@@ -2195,6 +2230,26 @@ export default function BattleArena({
   const myHpPct = myBarSegments.hpPct;
   const myShieldPct = myBarSegments.shieldPct;
   const myFacingArrow = facingArrow(me.facing ?? meFacingRef.current);
+  const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
+  const moveSpeedBoostSum = meEffects
+    .filter((e: any) => e?.type === 'SPEED_BOOST')
+    .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
+  const moveSpeedSlowSum = meEffects
+    .filter((e: any) => e?.type === 'SLOW')
+    .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
+  const baseMoveSpeed = Number(me?.moveSpeed ?? 0.1666667);
+  const finalMoveSpeed = Math.max(0, baseMoveSpeed * Math.max(0, 1 + moveSpeedBoostSum - moveSpeedSlowSum));
+  const damageReductionEffect = meEffects.find((e: any) => e?.type === 'DAMAGE_REDUCTION');
+  const damageReductionPct = Math.max(0, Number(damageReductionEffect?.value ?? 0) * 100);
+  const dodgeChancePct = Math.max(
+    0,
+    Math.min(
+      100,
+      meEffects
+        .filter((e: any) => e?.type === 'DODGE_NEXT')
+        .reduce((sum: number, e: any) => sum + Number(e?.chance ?? 0), 0) * 100,
+    ),
+  );
 
   const cheatAbilities = useMemo(
     () =>
@@ -2290,6 +2345,110 @@ export default function BattleArena({
     />
   );
 
+  const runCheatAction = useCallback(
+    async (actionId: string, url: string, successText: string, body?: Record<string, any>) => {
+      if (runningCheatAction) return false;
+      setRunningCheatAction(actionId);
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ gameId, ...(body ?? {}) }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          toastError(err.error ?? '操作失败');
+          return false;
+        }
+        toastSuccess(successText);
+        return true;
+      } catch {
+        toastError('网络错误');
+        return false;
+      } finally {
+        setRunningCheatAction(null);
+      }
+    },
+    [gameId, runningCheatAction],
+  );
+
+  const reorderDraftAbility = useCallback(
+    async (instanceId: string, toIndex: number) => {
+      const res = await fetch('/api/game/cheat/reorder-ability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameId, instanceId, toIndex }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toastError(err.error ?? '拖拽换位失败');
+        return false;
+      }
+      return true;
+    },
+    [gameId],
+  );
+
+  const discardDraftAbility = useCallback(
+    async (instanceId: string) => {
+      const res = await fetch('/api/game/cheat/discard-ability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameId, instanceId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toastError(err.error ?? '弃置失败');
+        return false;
+      }
+      toastSuccess('技能已弃置');
+      return true;
+    },
+    [gameId],
+  );
+
+  const handleDraftDragStart = (e: React.DragEvent, instanceId: string, slotIndex: number) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', instanceId);
+    dragJustEndedRef.current = false;
+    setDraggingDraftInstanceId(instanceId);
+    setDragHoverIndex(slotIndex);
+    setDiscardZoneHover(false);
+  };
+
+  const handleDraftDragEnd = () => {
+    setDraggingDraftInstanceId(null);
+    setDragHoverIndex(null);
+    setDiscardZoneHover(false);
+    dragJustEndedRef.current = true;
+    window.setTimeout(() => {
+      dragJustEndedRef.current = false;
+    }, 120);
+  };
+
+  const handleDraftSlotDrop = async (e: React.DragEvent, slotIndex: number) => {
+    e.preventDefault();
+    const instanceId = e.dataTransfer.getData('text/plain') || draggingDraftInstanceId;
+    if (!instanceId) return;
+    await reorderDraftAbility(instanceId, slotIndex);
+    setDraggingDraftInstanceId(null);
+    setDragHoverIndex(null);
+    setDiscardZoneHover(false);
+  };
+
+  const handleDiscardDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const instanceId = e.dataTransfer.getData('text/plain') || draggingDraftInstanceId;
+    if (!instanceId) return;
+    await discardDraftAbility(instanceId);
+    setDraggingDraftInstanceId(null);
+    setDragHoverIndex(null);
+    setDiscardZoneHover(false);
+  };
+
   // Mouse move handler for debug cursor tracking
   const handleDebugMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!showDebugGrid) return;
@@ -2331,6 +2490,24 @@ export default function BattleArena({
         }}>
           {mode === 'arena' ? '竞技场' : '吃鸡'}
         </span>
+      </div>
+      <div style={{
+        position: 'absolute',
+        top: 42,
+        left: 10,
+        zIndex: 500,
+        background: 'rgba(10, 16, 14, 0.72)',
+        border: '1px solid rgba(120, 160, 145, 0.35)',
+        borderRadius: 6,
+        padding: '4px 8px',
+        fontSize: 11,
+        color: '#c7e6da',
+        letterSpacing: '0.2px',
+        fontFamily: '"Microsoft YaHei", sans-serif',
+        pointerEvents: 'none',
+        backdropFilter: 'blur(2px)',
+      }}>
+        {`移速 ${finalMoveSpeed.toFixed(3)} | 减伤 ${damageReductionPct.toFixed(1)}% | 闪避 ${dodgeChancePct.toFixed(1)}%${autoForward ? ' | 自动前行' : ''}`}
       </div>
 
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
@@ -2468,9 +2645,22 @@ export default function BattleArena({
               background: myHpPct > 50 ? '#44cc55' : myHpPct > 25 ? '#ffcc22' : '#ee3333',
             }}
           />
-          <span className={styles.hpNumInside}>
-            {`${me?.hp ?? 0}${myShield > 0 ? ` +${Math.round(myShield)}` : ''}`}
-          </span>
+          {(me?.hp ?? 0) > 0 && (
+            <span
+              className={styles.hpSegmentNum}
+              style={{ left: `${Math.max(6, Math.min(94, myHpPct / 2))}%` }}
+            >
+              {Math.round(me?.hp ?? 0)}
+            </span>
+          )}
+          {myShield > 0 && (
+            <span
+              className={styles.shieldSegmentNum}
+              style={{ left: `${Math.max(6, Math.min(94, myHpPct + myShieldPct / 2))}%` }}
+            >
+              {Math.round(myShield)}
+            </span>
+          )}
         </div>
         <div className={styles.myManaTrack}>
           <div className={styles.myManaFill} />
@@ -2511,7 +2701,7 @@ export default function BattleArena({
           </div>
           <div className={styles.controlHints}>
             {controlMode === 'traditional' ? (
-              <><span>W/S</span> 前进/后退 <span>A/D</span> 转向<br/><span>右键拖拽</span> 转向+转镜头 <span>左键拖拽</span> 转镜头<br/><span>S+Space</span> 后撤 <span>滚轮</span> 镜头缩放</>
+              <><span>W/S</span> 前进/后退 <span>A/D</span> 转向 <span>G</span> 自动前行（按S停止）<br/><span>右键拖拽</span> 转向+转镜头 <span>左键拖拽</span> 转镜头<br/><span>S+Space</span> 后撤 <span>滚轮</span> 镜头缩放</>
             ) : (
               <><span>WASD</span> 绝对方向移动<br/><span>镜头固定</span> 不随角色旋转</>
             )}
@@ -2534,7 +2724,7 @@ export default function BattleArena({
           const targetBarSegments = computeHpShieldSegments(targetHp, targetShield, targetMaxHp);
           const targetHpPct = targetBarSegments.hpPct;
           const targetShieldPct = targetBarSegments.shieldPct;
-          const targetName   = isSelf ? '玩家' : '陌路侠士';
+          const targetName   = isSelf ? '玩家' : '恐怖花萝';
           const targetBuffs  = isSelf ? (me?.buffs ?? []) : (selectedTarget?.buffs ?? []);
           const targetHand   = isSelf ? me.hand : (selectedTarget?.hand ?? []);
           const hpGradient   = 'linear-gradient(90deg, #991111, #cc2222)';
@@ -2563,12 +2753,22 @@ export default function BattleArena({
                     className={styles.enemyHpFill}
                     style={{ width: `${targetHpPct}%`, background: hpGradient }}
                   />
-                  <span className={styles.hpNumInside}>
-                    {`${targetHp}${targetShield > 0 ? ` +${Math.round(targetShield)}` : ''}`}
-                  </span>
-                </div>
-                <div className={styles.enemyManaTrack}>
-                  <div className={styles.enemyManaFill} />
+                  {targetHp > 0 && (
+                    <span
+                      className={styles.hpSegmentNum}
+                      style={{ left: `${Math.max(6, Math.min(94, targetHpPct / 2))}%` }}
+                    >
+                      {Math.round(targetHp)}
+                    </span>
+                  )}
+                  {targetShield > 0 && (
+                    <span
+                      className={styles.shieldSegmentNum}
+                      style={{ left: `${Math.max(6, Math.min(94, targetHpPct + targetShieldPct / 2))}%` }}
+                    >
+                      {Math.round(targetShield)}
+                    </span>
+                  )}
                 </div>
               </div>
               {/* Buffs row — fixed-height wrapper so ability row never shifts up */}
@@ -2962,6 +3162,73 @@ export default function BattleArena({
             图标已按目录分区，便于快速定位技能。
           </div>
 
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: 6,
+          }}>
+            <button
+              type="button"
+              disabled={!!runningCheatAction}
+              onClick={() => void runCheatAction('full-heal', '/api/game/cheat/full-heal', '双方已恢复满血')}
+              style={{
+                background: 'rgba(40, 160, 80, 0.20)',
+                color: '#b6ffcd',
+                border: '1px solid rgba(80, 210, 120, 0.55)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '6px 8px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}
+            >双方满血</button>
+            <button
+              type="button"
+              disabled={!!runningCheatAction}
+              onClick={() => void runCheatAction('reset-cd', '/api/game/cheat/reset-cooldowns', '双方技能已重置冷却')}
+              style={{
+                background: 'rgba(40, 100, 190, 0.20)',
+                color: '#bcd9ff',
+                border: '1px solid rgba(90, 150, 255, 0.55)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '6px 8px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}
+            >重置CD</button>
+            <button
+              type="button"
+              disabled={!!runningCheatAction}
+              onClick={() => void runCheatAction('clear-buffs', '/api/game/cheat/clear-buffs', '双方增益减益已清空')}
+              style={{
+                background: 'rgba(170, 120, 30, 0.20)',
+                color: '#ffe0a8',
+                border: '1px solid rgba(255, 180, 80, 0.55)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '6px 8px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}
+            >清空Buff</button>
+            <button
+              type="button"
+              disabled={!!runningCheatAction}
+              onClick={() => void runCheatAction('discard-all', '/api/game/cheat/discard-all', '已清空当前技能栏')}
+              style={{
+                background: 'rgba(40, 110, 210, 0.24)',
+                color: '#c6e8ff',
+                border: '1px solid rgba(120, 190, 255, 0.70)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '6px 8px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}
+            >清空技能</button>
+          </div>
+
           <div style={{ fontSize: 11, color: '#69f0ae', fontWeight: 700 }}>已测试</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4 }}>
             {testedCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
@@ -3002,75 +3269,108 @@ export default function BattleArena({
             {Array.from({ length: 6 }, (_, idx) => {
               const ability = draftAbilities[idx];
               const keyHint = ['1','2','3','Q','XB2','XB1'][idx];
-              if (!ability) {
-                return (
-                  <div key={`empty-${idx}`} className={`${styles.abilityBtn} ${styles.emptySlot}`}>
-                    <span className={styles.abilityKey}>{keyHint}</span>
-                  </div>
-                );
-              }
-              const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
-              const cdSeconds = Math.floor(ability.cooldown / 30);
-              const hasCharges = (ability.maxCharges ?? 0) > 1;
-              const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
-              const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
-              const chargeRegenProgress = hasCharges
-                ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
-                : 0;
-              const recoveringCharge = hasCharges && chargeCount < maxCharges;
-              const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
-              const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
-              const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
               return (
-                <button
-                  key={ability.id}
-                  className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
-                  disabled={!ability.isReady}
-                  onClick={() => castAbilityRef.current(ability.id)}
-                  title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
+                <div
+                  key={ability ? `slot-${ability.id}` : `empty-${idx}`}
+                  className={`${styles.draftSlot} ${dragHoverIndex === idx ? styles.draftSlotHover : ''}`}
+                  onDragOver={(e) => {
+                    if (!draggingDraftInstanceId) return;
+                    e.preventDefault();
+                    setDragHoverIndex(idx);
+                  }}
+                  onDragLeave={() => {
+                    if (dragHoverIndex === idx) setDragHoverIndex(null);
+                  }}
+                  onDrop={(e) => void handleDraftSlotDrop(e, idx)}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
-                  {ability.cooldown > 0 && ability.maxCooldown > 0 && (
-                    <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
-                      <span className={styles.cdNum}>{cdSeconds}</span>
+                  {!ability ? (
+                    <div className={`${styles.abilityBtn} ${styles.emptySlot}`}>
+                      <span className={styles.abilityKey}>{keyHint}</span>
                     </div>
-                  )}
-                  {hasCharges && (
-                    <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
-                      <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-                        <rect
-                          className={styles.chargeFrameTrack}
-                          x="3"
-                          y="3"
-                          width="94"
-                          height="94"
-                          rx="8"
-                          ry="8"
-                          pathLength={100}
-                        />
-                        <rect
-                          className={styles.chargeFrameProgress}
-                          x="3"
-                          y="3"
-                          width="94"
-                          height="94"
-                          rx="8"
-                          ry="8"
-                          pathLength={100}
-                          strokeDasharray={`${chargePathLength} 100`}
-                        />
-                      </svg>
-                      <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
-                        {Math.max(0, chargeCount)}
-                      </span>
-                    </div>
-                  )}
-                  <span className={styles.abilityKey}>{keyHint}</span>
-                </button>
+                  ) : (() => {
+                    const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
+                    const cdSeconds = Math.floor(ability.cooldown / 30);
+                    const hasCharges = (ability.maxCharges ?? 0) > 1;
+                    const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
+                    const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
+                    const chargeRegenProgress = hasCharges
+                      ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
+                      : 0;
+                    const recoveringCharge = hasCharges && chargeCount < maxCharges;
+                    const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
+                    const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
+                    const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
+                    return (
+                      <button
+                        className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
+                        draggable
+                        onDragStart={(e) => handleDraftDragStart(e, ability.id, idx)}
+                        onDragEnd={handleDraftDragEnd}
+                        onClick={() => {
+                          if (dragJustEndedRef.current) return;
+                          if (!ability.isReady) return;
+                          castAbilityRef.current(ability.id);
+                        }}
+                        title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                        {ability.cooldown > 0 && ability.maxCooldown > 0 && (
+                          <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
+                            <span className={styles.cdNum}>{cdSeconds}</span>
+                          </div>
+                        )}
+                        {hasCharges && (
+                          <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
+                            <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
+                              <rect
+                                className={styles.chargeFrameTrack}
+                                x="3"
+                                y="3"
+                                width="94"
+                                height="94"
+                                rx="8"
+                                ry="8"
+                                pathLength={100}
+                              />
+                              <rect
+                                className={styles.chargeFrameProgress}
+                                x="3"
+                                y="3"
+                                width="94"
+                                height="94"
+                                rx="8"
+                                ry="8"
+                                pathLength={100}
+                                strokeDasharray={`${chargePathLength} 100`}
+                              />
+                            </svg>
+                            <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
+                              {Math.max(0, chargeCount)}
+                            </span>
+                          </div>
+                        )}
+                        <span className={styles.abilityKey}>{keyHint}</span>
+                      </button>
+                    );
+                  })()}
+                </div>
               );
             })}
           </div>
+          {draggingDraftInstanceId && (
+            <div
+              className={`${styles.discardDropZone} ${discardZoneHover ? styles.discardDropZoneActive : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDiscardZoneHover(true);
+              }}
+              onDragLeave={() => setDiscardZoneHover(false)}
+              onDrop={(e) => void handleDiscardDrop(e)}
+            >
+              拖到蓝色区域删除技能
+            </div>
+          )}
 
           {/* ── Bottom row: 8 common abilities (with visual gaps) ── */}
           <div className={styles.commonBar}>

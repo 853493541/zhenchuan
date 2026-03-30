@@ -29,9 +29,12 @@ export function handleDash(
   const dx = target.position.x - source.position.x;
   const dy = target.position.y - source.position.y;
   const distance = Math.sqrt(dx * dx + dy * dy);
+  const sourceZ = source.position.z ?? 0;
+  const targetZ = target.position.z ?? 0;
+  const dz = targetZ - sourceZ;
 
-  // If already close, don't move
-  if (distance <= 1) {
+  // If already close in XYZ, don't move
+  if (distance <= 1 && Math.abs(dz) <= 0.1) {
     pushEvent(state, {
       turn: state.turn,
       type: "DASH",
@@ -45,15 +48,18 @@ export function handleDash(
     return;
   }
 
-  // We want to end up 1 unit away from target
-  const desiredDistance = 1;
-  const travelDistance = distance - desiredDistance;
-  const dirX = dx / distance;
-  const dirY = dy / distance;
+  // We want to end up 1 unit away from target on XY, but snap vertical travel to target Z.
+  const desiredDistance = distance > 1 ? 1 : 0;
+  const travelDistance = Math.max(0, distance - desiredDistance);
+  const dirX = distance > 0.001 ? dx / distance : 0;
+  const dirY = distance > 0.001 ? dy / distance : 0;
 
   // Speed-based duration: distance / speed, converted to ticks
-  const durationSec = travelDistance / DASH_SPEED_UNITS_PER_SEC;
-  const durationTicks = Math.max(1, Math.round(durationSec * TICK_RATE));
+  const speedPerTick = DASH_SPEED_UNITS_PER_SEC / TICK_RATE;
+  const horizontalTicks = Math.round(travelDistance / speedPerTick);
+  const verticalTicks = Math.round(Math.abs(dz) / speedPerTick);
+  const durationTicks = Math.max(1, horizontalTicks, verticalTicks);
+  const durationSec = durationTicks / TICK_RATE;
   const sourcePlayer = source as PlayerState;
 
   // Maximum vertical angle caps
@@ -66,17 +72,21 @@ export function handleDash(
     abilityId: ability.id,
     vxPerTick: dirX * travelDistance / durationTicks,
     vyPerTick: dirY * travelDistance / durationTicks,
+    forceVzPerTick: dz / durationTicks,
     // vzPerTick: undefined — captured on first tick in movement.ts
     maxUpVz,
     maxDownVz,
     ticksRemaining: durationTicks,
   };
 
-  // Freeze XY velocity — activeDash owns horizontal movement
+  // Freeze movement momentum — dash owns trajectory completely.
   if (sourcePlayer.velocity) {
     sourcePlayer.velocity.vx = 0;
     sourcePlayer.velocity.vy = 0;
+    sourcePlayer.velocity.vz = 0;
   }
+  sourcePlayer.isPowerJump = false;
+  sourcePlayer.isPowerJumpCombined = false;
 
   // Grant CC immunity for the duration of the dash
   sourcePlayer.buffs = sourcePlayer.buffs.filter(b => b.buffId !== DASH_CC_IMMUNE_BUFF_ID);
