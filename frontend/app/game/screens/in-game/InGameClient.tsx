@@ -59,6 +59,9 @@ function showGameError(rawCode: string) {
     case "ERR_REQUIRES_GROUNDED":
       toastError("该技能需要落地后施放");
       break;
+    case "ERR_REQUIRES_STANDING":
+      toastError("该技能需要站立后施放");
+      break;
     case "ERR_QINGGONG_SEALED":
       toastError("你被封轻功，无法施放轻功技能");
       break;

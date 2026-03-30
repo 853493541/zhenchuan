@@ -130,7 +130,7 @@ function facingArrow(facing: { x: number; y: number } | undefined): string {
 
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
 const UNTARGETABLE_BUFF_IDS = new Set([1008]);
-const SANLIU_XIA_BUFF_IDS = new Set([1007]);
+const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 
 function buffHasEffect(buff: ActiveBuff | any, type: string): boolean {
   return Array.isArray(buff?.effects) && buff.effects.some((e: any) => e?.type === type);
@@ -216,6 +216,7 @@ interface AbilityInfo {
   target: 'SELF' | 'OPPONENT';
   faceDirection?: boolean;
   requiresGrounded?: boolean;
+  requiresStanding?: boolean;
   qinggong?: boolean;
   allowGroundCastWithoutTarget?: boolean;
 }
@@ -554,6 +555,15 @@ export default function BattleArena({
     if (ability?.requiresGrounded && groundedLockedLocal) {
       toastError('该技能需要落地后施放');
       return;
+    }
+    if (ability?.requiresStanding) {
+      const movingLocal =
+        Math.abs(localVelocityRef.current.x) > 0.01 ||
+        Math.abs(localVelocityRef.current.y) > 0.01;
+      if (groundedLockedLocal || movingLocal) {
+        toastError('该技能需要站立后施放');
+        return;
+      }
     }
 
     // Face direction check (180° hemisphere)
@@ -1235,6 +1245,12 @@ export default function BattleArena({
         localJumpCountRef.current > 0 ||
         Math.abs(localVzRef.current) > 0.01;
       if (ab?.requiresGrounded && groundedLockedLocal) return false;
+      if (ab?.requiresStanding) {
+        const movingLocal =
+          Math.abs(localVelocityRef.current.x) > 0.01 ||
+          Math.abs(localVelocityRef.current.y) > 0.01;
+        if (groundedLockedLocal || movingLocal) return false;
+      }
       if (ab?.qinggong && qinggongSealed) return false;
       const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
       if (needsSelectedTarget && !targetPos) return false;
@@ -1779,7 +1795,7 @@ export default function BattleArena({
     const CLIENT_TICK_HZ = 30;
     const CLIENT_TICK_MS = 1000 / CLIENT_TICK_HZ;
     // Match backend movement constants at 30Hz.
-    const MAX_SPEED = 0.25, ACCEL = 0.3, DECEL = 0.9;
+    const MAX_SPEED = 0.1666667, ACCEL = 0.3, DECEL = 0.9;
     // 30 Hz client physics — asymmetric gravity, tuned per jump type:
     //   Single jump : 1.7 u peak, 1.0 s rise, 0.7 s fall  → 1.7 s total
     //   Double jump : +0.755 u extra (peak 2.455 u)         → ~2.51 s total from takeoff
@@ -2909,6 +2925,8 @@ export default function BattleArena({
                 ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
                 : 0;
               const recoveringCharge = hasCharges && chargeCount < maxCharges;
+              const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
+              const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
               return (
                 <button
                   key={ability.id}
@@ -2925,26 +2943,31 @@ export default function BattleArena({
                     </div>
                   )}
                   {hasCharges && (
-                    <div className={styles.chargeBadge}>
-                      {Math.max(0, chargeCount)}
-                    </div>
-                  )}
-                  {hasCharges && (
-                    <div className={styles.chargePips}>
-                      {Array.from({ length: maxCharges }, (_, pipIdx) => (
-                        <span
-                          key={pipIdx}
-                          className={`${styles.chargePip} ${pipIdx < chargeCount ? styles.chargePipReady : styles.chargePipEmpty}`}
+                    <div className={styles.chargeFrame}>
+                      <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
+                        <rect
+                          className={styles.chargeFrameTrack}
+                          x="3"
+                          y="3"
+                          width="94"
+                          height="94"
+                          rx="8"
+                          ry="8"
+                          pathLength={100}
                         />
-                      ))}
-                    </div>
-                  )}
-                  {recoveringCharge && (
-                    <div className={styles.chargeRegenTrack}>
-                      <div
-                        className={styles.chargeRegenFill}
-                        style={{ width: `${(chargeRegenProgress * 100).toFixed(1)}%` }}
-                      />
+                        <rect
+                          className={styles.chargeFrameProgress}
+                          x="3"
+                          y="3"
+                          width="94"
+                          height="94"
+                          rx="8"
+                          ry="8"
+                          pathLength={100}
+                          strokeDasharray={`${chargePathLength} 100`}
+                        />
+                      </svg>
+                      <span className={styles.chargeStackBox}>{Math.max(0, chargeCount)}</span>
                     </div>
                   )}
                   <span className={styles.abilityKey}>{keyHint}</span>
@@ -2967,6 +2990,8 @@ export default function BattleArena({
                 ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
                 : 0;
               const recoveringCharge = hasCharges && chargeCount < maxCharges;
+              const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
+              const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
               return (
                 <React.Fragment key={ability.id}>
                   {/* gap between 猛虎下山 and 扶摇 */}
@@ -2987,26 +3012,31 @@ export default function BattleArena({
                       </div>
                     )}
                     {hasCharges && (
-                      <div className={styles.chargeBadge}>
-                        {Math.max(0, chargeCount)}
-                      </div>
-                    )}
-                    {hasCharges && (
-                      <div className={styles.chargePips}>
-                        {Array.from({ length: maxCharges }, (_, pipIdx) => (
-                          <span
-                            key={pipIdx}
-                            className={`${styles.chargePip} ${pipIdx < chargeCount ? styles.chargePipReady : styles.chargePipEmpty}`}
+                      <div className={styles.chargeFrame}>
+                        <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
+                          <rect
+                            className={styles.chargeFrameTrack}
+                            x="3"
+                            y="3"
+                            width="94"
+                            height="94"
+                            rx="8"
+                            ry="8"
+                            pathLength={100}
                           />
-                        ))}
-                      </div>
-                    )}
-                    {recoveringCharge && (
-                      <div className={styles.chargeRegenTrack}>
-                        <div
-                          className={styles.chargeRegenFill}
-                          style={{ width: `${(chargeRegenProgress * 100).toFixed(1)}%` }}
-                        />
+                          <rect
+                            className={styles.chargeFrameProgress}
+                            x="3"
+                            y="3"
+                            width="94"
+                            height="94"
+                            rx="8"
+                            ry="8"
+                            pathLength={100}
+                            strokeDasharray={`${chargePathLength} 100`}
+                          />
+                        </svg>
+                        <span className={styles.chargeStackBox}>{Math.max(0, chargeCount)}</span>
                       </div>
                     )}
                     <span className={styles.abilityKey}>{keyHint}</span>

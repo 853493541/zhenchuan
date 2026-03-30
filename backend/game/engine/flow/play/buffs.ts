@@ -61,7 +61,7 @@ export function applyAbilityBuffs(params: {
 
     const isControl =
       Array.isArray(buff.effects) &&
-      buff.effects.some((e) => e.type === "CONTROL");
+      buff.effects.some((e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK");
 
     // Control immunity blocks CONTROL buffs (guard needs target.buffs)
     if (isControl && blocksControlByImmunity("CONTROL", localBuffTarget)) {

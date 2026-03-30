@@ -254,6 +254,21 @@ export function validateCastAbility(
     }
   }
 
+  /* ================= REQUIRES STANDING ================= */
+  if ((ability as any).requiresStanding) {
+    const playerZ = (player.position as any).z ?? 0;
+    const jumpCount = (player as any).jumpCount ?? 0;
+    const vz = (player as any).velocity?.vz ?? 0;
+    const vx = (player as any).velocity?.vx ?? 0;
+    const vy = (player as any).velocity?.vy ?? 0;
+    const pendingJump = options?.pendingJump === true;
+    const moving = Math.abs(vx) > 0.01 || Math.abs(vy) > 0.01;
+
+    if (playerZ > 0.5 || jumpCount > 0 || Math.abs(vz) > 0.01 || pendingJump || moving) {
+      throw new Error("ERR_REQUIRES_STANDING");
+    }
+  }
+
   /* ================= RANGE CHECK ================= */
   if (ability.range !== undefined) {
     const distance = allowGroundCastWithoutTarget

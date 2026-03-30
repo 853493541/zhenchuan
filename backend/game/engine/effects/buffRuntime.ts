@@ -56,6 +56,14 @@ function hasKnockbackImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "KNOCKBACK_IMMUNE"));
 }
 
+function hasControlImmune(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "CONTROL_IMMUNE"));
+}
+
+function hasSilenceImmune(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "SILENCE_IMMUNE"));
+}
+
 function removeStealthOnIncomingControl(params: {
   state: GameState;
   targetUserId: string;
@@ -159,6 +167,34 @@ export function addBuff(params: {
     hasKnockbackImmune(buffTarget)
   ) {
     return;
+  }
+
+  if (sourceUserId !== targetUserId && hasControlImmune(buffTarget)) {
+    const filteredEffects = runtimeBuff.effects.filter(
+      (e) => e.type !== "CONTROL" && e.type !== "ATTACK_LOCK"
+    );
+    if (filteredEffects.length === 0) {
+      return;
+    }
+    if (filteredEffects.length !== runtimeBuff.effects.length) {
+      runtimeBuff = {
+        ...runtimeBuff,
+        effects: filteredEffects,
+      };
+    }
+  }
+
+  if (sourceUserId !== targetUserId && hasSilenceImmune(buffTarget)) {
+    const filteredEffects = runtimeBuff.effects.filter((e) => e.type !== "SILENCE");
+    if (filteredEffects.length === 0) {
+      return;
+    }
+    if (filteredEffects.length !== runtimeBuff.effects.length) {
+      runtimeBuff = {
+        ...runtimeBuff,
+        effects: filteredEffects,
+      };
+    }
   }
 
   // 摩诃无量交互：倒地期间免疫其他控制层级（可被沉默），并且新硬控会替换摩诃无量·眩晕。

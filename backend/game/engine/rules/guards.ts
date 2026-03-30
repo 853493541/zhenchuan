@@ -136,6 +136,6 @@ export function blocksControlByImmunity(
   effectType: EffectType,
   target: { buffs: ActiveBuff[] }
 ) {
-  if (effectType !== "CONTROL") return false;
+  if (effectType !== "CONTROL" && effectType !== "ATTACK_LOCK") return false;
   return allEffects(target).some((e) => e.type === "CONTROL_IMMUNE");
 }

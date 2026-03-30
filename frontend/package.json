@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "buildp": "bash ./build.sh",
-    "start": "node -r /home/ubuntu/baizhan-v2/frontend/disable-child-process.js node_modules/next/dist/bin/next start",
+    "start": "next start",
     "lint": "eslint",
     "analyze": "ANALYZE=true next build"
   },

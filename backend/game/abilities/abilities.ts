@@ -149,10 +149,10 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     buffs: [
       {
         buffId: 2201,
-        name: "封轻功",
+        name: "剑破虚空：减速20%，无法施展轻功招式",
         category: "DEBUFF",
         durationMs: 2_000,
-        description: "移动速度降低20%，无法施展轻功",
+        description: "减速20%，无法施展轻功招式",
         effects: [
           { type: "SLOW", value: 0.2 },
           { type: "QINGGONG_SEAL" },
@@ -368,7 +368,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   sanliu_xia: {
     id: "sanliu_xia",
     name: "散流霞",
-    description: "解控并向前翻越10尺\n获得【散流霞】5秒：免疫敌方伤害与不利效果，移动速度提高20%，每秒回复2%最大气血；主动施展技能会提前结束",
+    description: "解控并向前翻越10尺\n起跳获得【散流霞隐藏】1秒：不可选中且自我沉默\n落地后获得【散流霞】5秒：不可选中、移动速度提高20%，首秒无治疗，随后4秒内回复5次贯体（每次2%）",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -379,25 +379,21 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         type: "DIRECTIONAL_DASH",
         value: 10,
         dirMode: "TOWARD",
-        durationTicks: 18,
+        durationTicks: 30,
         arcPeakHeight: 2.5,
         allowWhileControlled: true,
       },
     ],
     buffs: [
       {
-        buffId: 1007,
-        name: "散流霞",
+        buffId: 1008,
+        name: "散流霞隐藏",
         category: "BUFF",
-        durationMs: 5_000, // 5 seconds
-        periodicMs: 1_000,
-        periodicStartImmediate: true,
-        breakOnPlay: true,
-        description: "免疫敌方伤害与不利效果，移动速度提高20%，每秒回复2%最大气血",
+        durationMs: 1_000,
+        description: "不可选中，无法施展技能",
         effects: [
           { type: "UNTARGETABLE" },
-          { type: "SPEED_BOOST", value: 0.2 },
-          { type: "PERIODIC_GUAN_TI_HEAL", value: 2 },
+          { type: "SILENCE" },
         ],
       },
     ],
@@ -470,7 +466,6 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
       {
         type: "CLEANSE",
         cleanseRootSlow: true,
-        allowWhileControlled: true,
       },
       {
         type: "DIRECTIONAL_DASH",
@@ -479,7 +474,6 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         durationTicks: 60,
         speedPerTick: 0.4166667,
         steerByFacing: true,
-        allowWhileControlled: true,
       },
     ],
     buffs: [
@@ -742,7 +736,6 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
       {
         type: "CLEANSE",
         cleanseRootSlow: true,
-        allowWhileControlled: true,
       },
       {
         type: "DIRECTIONAL_DASH",
@@ -754,7 +747,6 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         snapUpUnits: 8,
         wallDiveOnBlock: true,
         diveVzPerTick: -0.45,
-        allowWhileControlled: true,
       },
     ],
     buffs: [
@@ -998,6 +990,262 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         description: "移动速度降低50%",
         effects: [
           { type: "SLOW", value: 0.5 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 新增技能组（3-12）
+  // ──────────────────────────────────────────────────────────────────────────
+  weituo_xianchu: {
+    id: "weituo_xianchu",
+    name: "韦陀献杵",
+    description: "需要目标，正面180°\n瞬发造成5点伤害\n附加【韦陀献杵易伤】5秒：受到伤害提高10%\n自身获得【韦陀献杵防御】5秒：受到伤害降低10%\n可在移动与跳跃中施放",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    faceDirection: true,
+    effects: [{ type: "DAMAGE", value: 5 }],
+    buffs: [
+      {
+        buffId: 2301,
+        name: "韦陀献杵易伤",
+        category: "DEBUFF",
+        durationMs: 5_000,
+        description: "受到伤害提高10%",
+        effects: [{ type: "DAMAGE_TAKEN_INCREASE", value: 0.1 }],
+      },
+      {
+        buffId: 2302,
+        name: "韦陀献杵防御",
+        category: "BUFF",
+        durationMs: 5_000,
+        description: "受到伤害降低10%",
+        applyTo: "SELF",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.1 }],
+      },
+    ],
+  },
+
+  leizhenzi: {
+    id: "leizhenzi",
+    name: "雷震子",
+    description: "需要目标，正面180°\n附加【雷震子】4秒：眩晕",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    faceDirection: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2303,
+        name: "雷震子",
+        category: "DEBUFF",
+        durationMs: 4_000,
+        description: "眩晕",
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  zhuan_qiankun: {
+    id: "zhuan_qiankun",
+    name: "转乾坤",
+    description: "解除等级1控制\n获得【转乾坤减伤】8秒：减伤60%，抗沉默\n获得【转乾坤免控】4秒：免疫等级1控制\n不触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [{ type: "CLEANSE", allowWhileControlled: true }],
+    buffs: [
+      {
+        buffId: 2304,
+        name: "转乾坤减伤",
+        category: "BUFF",
+        durationMs: 8_000,
+        description: "受到伤害降低60%，免疫沉默",
+        effects: [
+          { type: "DAMAGE_REDUCTION", value: 0.6 },
+          { type: "SILENCE_IMMUNE" },
+        ],
+      },
+      {
+        buffId: 2305,
+        name: "转乾坤免控",
+        category: "BUFF",
+        durationMs: 4_000,
+        description: "免疫等级1控制",
+        effects: [{ type: "CONTROL_IMMUNE" }],
+      },
+    ],
+  },
+
+  duoming_gu: {
+    id: "duoming_gu",
+    name: "夺命蛊",
+    description: "瞬发自我施放\n获得【夺命蛊】12秒：受到伤害提高30%，造成伤害提高30%\n不触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2306,
+        name: "夺命蛊",
+        category: "DEBUFF",
+        durationMs: 12_000,
+        description: "受到伤害提高30%，造成伤害提高30%",
+        effects: [
+          { type: "DAMAGE_TAKEN_INCREASE", value: 0.3 },
+          { type: "DAMAGE_MULTIPLIER", value: 1.3 },
+        ],
+      },
+    ],
+  },
+
+  dican_longxiang: {
+    id: "dican_longxiang",
+    name: "帝骖龙翔",
+    description: "自我施放\n使8尺范围内敌方获得【帝骖龙翔】5秒：眩晕",
+    type: "CONTROL",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "AOE_APPLY_BUFFS", range: 8 }],
+    buffs: [
+      {
+        buffId: 2307,
+        name: "帝骖龙翔",
+        category: "DEBUFF",
+        durationMs: 5_000,
+        description: "眩晕",
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  huayu_suxin: {
+    id: "huayu_suxin",
+    name: "花语酥心",
+    description: "自我施放\n获得【花语酥心】5秒：每秒回复6点气血（贯体）",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2308,
+        name: "花语酥心",
+        category: "BUFF",
+        durationMs: 5_000,
+        periodicMs: 1_000,
+        description: "每秒回复6点气血（贯体）",
+        effects: [{ type: "PERIODIC_GUAN_TI_HEAL", value: 6 }],
+      },
+    ],
+  },
+
+  dienong_zu: {
+    id: "dienong_zu",
+    name: "蝶弄足",
+    description: "解除锁足、减速、等级1控制\n获得【迅影】15秒：移速提高55%\n获得【音韵】3秒：免疫等级1控制\n不触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "CLEANSE", allowWhileControlled: true, cleanseRootSlow: true },
+    ],
+    buffs: [
+      {
+        buffId: 2309,
+        name: "迅影",
+        category: "BUFF",
+        durationMs: 15_000,
+        description: "移动速度提高55%",
+        effects: [{ type: "SPEED_BOOST", value: 0.55 }],
+      },
+      {
+        buffId: 2310,
+        name: "音韵",
+        category: "BUFF",
+        durationMs: 3_000,
+        description: "免疫等级1控制",
+        effects: [{ type: "CONTROL_IMMUNE" }],
+      },
+    ],
+  },
+
+  changzhen: {
+    id: "changzhen",
+    name: "长针",
+    description: "自我施放，正读条3秒\n必须站立施放，移动或跳跃会中断\n运功完成时瞬间回复20点气血\n触发GCD但无冷却",
+    type: "CHANNEL",
+    target: "SELF",
+    cooldownTicks: 0,
+    gcd: true,
+    requiresGrounded: true,
+    requiresStanding: true,
+    effects: [],
+    buffs: [],
+    channelDurationMs: 3_000,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelForward: true,
+    channelEffects: [
+      { type: "TIMED_SELF_HEAL", value: 20 },
+    ],
+  } as any,
+
+  xinglou_yueying: {
+    id: "xinglou_yueying",
+    name: "星楼月影",
+    description: "解除等级1控制\n获得【星楼月影】8秒：免疫等级1控制",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "CLEANSE", allowWhileControlled: true }],
+    buffs: [
+      {
+        buffId: 2311,
+        name: "星楼月影",
+        category: "BUFF",
+        durationMs: 8_000,
+        description: "免疫等级1控制",
+        effects: [{ type: "CONTROL_IMMUNE" }],
+      },
+    ],
+  },
+
+  duangu_jue: {
+    id: "duangu_jue",
+    name: "锻骨诀",
+    description: "解除等级1控制\n获得【折骨】8秒：免疫根骨减速与等级1/2/3控制",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "CLEANSE", allowWhileControlled: true }],
+    buffs: [
+      {
+        buffId: 2312,
+        name: "折骨",
+        category: "BUFF",
+        durationMs: 8_000,
+        description: "免疫根骨减速与等级1/2/3控制",
+        effects: [
+          { type: "ROOT_SLOW_IMMUNE" },
+          { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
         ],
       },
     ],

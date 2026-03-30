@@ -16,7 +16,7 @@ const OPP_COLORS = ['#cc3333', '#cc8800', '#9933cc', '#cc3388'];
 const OPP_EMISSIVES = ['#440000', '#332200', '#220044', '#330022'];
 
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
-const SANLIU_XIA_BUFF_IDS = new Set([1007]);
+const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 
 function hasStealthBuff(buffs?: any[]): boolean {
   if (!Array.isArray(buffs)) return false;

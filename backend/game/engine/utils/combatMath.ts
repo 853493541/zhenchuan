@@ -21,6 +21,10 @@ export function resolveScheduledDamage(params: {
   const dr = allEffects(params.target).find((e) => e.type === "DAMAGE_REDUCTION");
   if (dr) dmg *= 1 - (dr.value ?? 0);
 
+  // DAMAGE TAKEN INCREASE (e.g. 易伤)
+  const takenInc = allEffects(params.target).find((e) => e.type === "DAMAGE_TAKEN_INCREASE");
+  if (takenInc) dmg *= 1 + (takenInc.value ?? 0);
+
   return Math.max(0, Math.floor(dmg));
 }
 

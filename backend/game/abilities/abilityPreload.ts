@@ -52,6 +52,9 @@ export function buildAbilityPreload() {
       // Grounded-only cast check for client-side readiness/validation.
       requiresGrounded: !!(ability as any).requiresGrounded,
 
+      // Standing-only cast check (no horizontal movement and not airborne).
+      requiresStanding: !!(ability as any).requiresStanding,
+
       // 轻功 tag: blocked by 封轻功.
       qinggong: !!(ability as any).qinggong,
 
@@ -84,6 +87,22 @@ export function buildAbilityPreload() {
   }
 
   // Runtime-generated buff metadata (not declared directly in ABILITIES).
+  buffs.push({
+    buffId: 1007,
+    name: "散流霞",
+    category: "BUFF",
+    durationMs: 5_000,
+    breakOnPlay: false,
+    description: "不可选中，移动速度提高20%，首秒无治疗，随后每秒回复2%最大气血",
+    effects: [
+      { type: "UNTARGETABLE" },
+      { type: "SPEED_BOOST", value: 0.2 },
+      { type: "PERIODIC_GUAN_TI_HEAL", value: 2 },
+    ],
+    sourceAbilityId: "sanliu_xia",
+    sourceAbilityName: "散流霞",
+  });
+
   buffs.push({
     buffId: 1202,
     name: "摩诃无量·眩晕",

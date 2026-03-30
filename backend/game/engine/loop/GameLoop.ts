@@ -15,7 +15,7 @@ import { broadcastGameUpdate } from "../../services/broadcast";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
 import { applyMovement, resolveMapCollisions, MapContext } from "./movement";
-import { pushBuffExpired } from "../effects/buffRuntime";
+import { addBuff, pushBuffExpired } from "../effects/buffRuntime";
 import { resolveScheduledDamage, resolveHealAmount } from "../utils/combatMath";
 import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
@@ -424,6 +424,35 @@ export class GameLoop {
         movementStateChanged = true;
       }
 
+      if (dashAbilityIdBefore === "sanliu_xia" && !player.activeDash) {
+        const sanliuAbility = ABILITIES["sanliu_xia"] as any;
+        if (sanliuAbility) {
+          addBuff({
+            state: this.state,
+            sourceUserId: player.userId,
+            targetUserId: player.userId,
+            ability: sanliuAbility,
+            buffTarget: player as any,
+            buff: {
+              buffId: 1007,
+              name: "散流霞",
+              category: "BUFF",
+              durationMs: 5_000,
+              periodicMs: 1_000,
+              periodicStartImmediate: false,
+              breakOnPlay: false,
+              description: "不可选中，移动速度提高20%，首秒无治疗，随后每秒回复2%最大气血",
+              effects: [
+                { type: "UNTARGETABLE" },
+                { type: "SPEED_BOOST", value: 0.2 },
+                { type: "PERIODIC_GUAN_TI_HEAL", value: 2 },
+              ],
+            } as any,
+          });
+          movementStateChanged = true;
+        }
+      }
+
       // Cancel channel buffs based on input — read BEFORE clearing the one-shot jump flag
       if (input) {
         const isMoving =
@@ -533,7 +562,24 @@ export class GameLoop {
         const chNow = Date.now();
         if (chNow >= ch.startedAt + ch.durationMs) {
           for (const e of ch.effects) {
-            if (e.type === "TIMED_AOE_DAMAGE") {
+            if (e.type === "TIMED_SELF_HEAL") {
+              const heal = resolveHealAmount({ target: player, base: e.value ?? 0 });
+              player.hp = Math.min(player.maxHp ?? 100, player.hp + heal);
+              if (heal > 0) {
+                this.state.events.push({
+                  id: randomUUID(),
+                  timestamp: chNow,
+                  turn: this.state.turn,
+                  type: "HEAL",
+                  actorUserId: player.userId,
+                  targetUserId: player.userId,
+                  abilityId: ch.abilityId,
+                  abilityName: ch.abilityName,
+                  effectType: "TIMED_SELF_HEAL",
+                  value: heal,
+                });
+              }
+            } else if (e.type === "TIMED_AOE_DAMAGE") {
               const range = e.range ?? 50;
               const dist = calculateDistance(player.position, target.position);
               if (dist <= range && target.hp > 0) {
@@ -610,7 +656,7 @@ export class GameLoop {
           if (ch.forwardChannel) {
             const hadFuguang = player.buffs.some((b) => b.buffId === 1012);
             player.buffs = player.buffs.filter(
-              (b) => ![1007, 1011, 1012, 1013].includes(b.buffId) && !(hadFuguang && isDunyingCompanion(b))
+              (b) => ![1011, 1012, 1013].includes(b.buffId) && !(hadFuguang && isDunyingCompanion(b))
             );
           }
 
