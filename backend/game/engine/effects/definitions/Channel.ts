@@ -8,6 +8,7 @@ import {
 } from "../../state/types";
 import { blocksEnemyTargeting } from "../../rules/guards";
 import { resolveScheduledDamage, resolveHealAmount } from "../../utils/combatMath";
+import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 
 /**
@@ -50,7 +51,7 @@ export function handleChannelEffect(
       base: 10,
     });
 
-    enemy.hp = Math.max(0, enemy.hp - dmg);
+    applyDamageToTarget(enemy as any, dmg);
 
     pushEvent(state, {
       turn: state.turn,
@@ -66,9 +67,7 @@ export function handleChannelEffect(
 
   // 无间狱 immediate self-heal
   const heal = resolveHealAmount({ target: source, base: 3 });
-  const before = source.hp;
-  source.hp = Math.min(100, source.hp + heal);
-  const applied = Math.max(0, source.hp - before);
+  const applied = applyHealToTarget(source as any, heal);
 
   if (applied > 0) {
     pushEvent(state, {

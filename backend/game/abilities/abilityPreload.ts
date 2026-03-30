@@ -55,6 +55,12 @@ export function buildAbilityPreload() {
       // Standing-only cast check (no horizontal movement and not airborne).
       requiresStanding: !!(ability as any).requiresStanding,
 
+      // Optional self HP gate (exclusive), shields are not counted.
+      minSelfHpExclusive:
+        typeof (ability as any).minSelfHpExclusive === "number"
+          ? (ability as any).minSelfHpExclusive
+          : undefined,
+
       // 轻功 tag: blocked by 封轻功.
       qinggong: !!(ability as any).qinggong,
 

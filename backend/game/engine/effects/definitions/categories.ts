@@ -5,6 +5,7 @@ import { EffectType } from "../../state/types/effects";
 export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DAMAGE: "DEBUFF",
   HEAL: "BUFF",
+  SHIELD: "BUFF",
   DRAW: "BUFF",
   COOLDOWN_SLOW: "DEBUFF",
   CLEANSE: "BUFF",

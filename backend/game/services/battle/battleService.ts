@@ -230,6 +230,8 @@ export function initializeBattleState(
     return {
       userId: id,
       hp: STARTING_BATTLE_HP,
+      maxHp: STARTING_BATTLE_HP,
+      shield: 0,
       hand,
       buffs: [],
       position: { x: spawn.x, y: spawn.y },

@@ -35,6 +35,8 @@ export async function createGame(userId: string, mode: 'arena' | 'pubg' = 'arena
       {
         userId,
         hp: 100,
+        maxHp: 100,
+        shield: 0,
         hand: [],
         buffs: [],
 

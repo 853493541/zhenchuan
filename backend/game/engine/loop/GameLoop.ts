@@ -17,6 +17,7 @@ import GameSession from "../../models/GameSession";
 import { applyMovement, resolveMapCollisions, MapContext } from "./movement";
 import { addBuff, pushBuffExpired } from "../effects/buffRuntime";
 import { resolveScheduledDamage, resolveHealAmount } from "../utils/combatMath";
+import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../utils/health";
 import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
@@ -386,9 +387,7 @@ export class GameLoop {
       // 穹隆化生: apply end-of-charge heal + 生太极 zone when directional dash naturally ends.
       if (dashAbilityIdBefore === "qionglong_huasheng" && !player.activeDash) {
         const dashEndNow = Date.now();
-        const prevHp = player.hp;
-        player.hp = Math.min(player.maxHp ?? 100, player.hp + 10);
-        const healed = Math.max(0, player.hp - prevHp);
+        const healed = applyHealToTarget(player as any, 10);
         if (healed > 0) {
           this.state.events.push({
             id: randomUUID(),
@@ -564,8 +563,8 @@ export class GameLoop {
           for (const e of ch.effects) {
             if (e.type === "TIMED_SELF_HEAL") {
               const heal = resolveHealAmount({ target: player, base: e.value ?? 0 });
-              player.hp = Math.min(player.maxHp ?? 100, player.hp + heal);
-              if (heal > 0) {
+              const applied = applyHealToTarget(player as any, heal);
+              if (applied > 0) {
                 this.state.events.push({
                   id: randomUUID(),
                   timestamp: chNow,
@@ -576,7 +575,7 @@ export class GameLoop {
                   abilityId: ch.abilityId,
                   abilityName: ch.abilityName,
                   effectType: "TIMED_SELF_HEAL",
-                  value: heal,
+                  value: applied,
                 });
               }
             } else if (e.type === "TIMED_AOE_DAMAGE") {
@@ -587,7 +586,7 @@ export class GameLoop {
                   continue;
                 }
                 const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
-                target.hp = Math.max(0, target.hp - dmg);
+                applyDamageToTarget(target as any, dmg);
                 if (dmg > 0) {
                   this.state.events.push({
                     id: randomUUID(),
@@ -611,7 +610,7 @@ export class GameLoop {
               if (dist > range || target.hp <= 0) continue;
               if (player.userId !== target.userId && hasUntargetable(target as any)) continue;
               const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
-              target.hp = Math.max(0, target.hp - dmg);
+              applyDamageToTarget(target as any, dmg);
               if (dmg > 0) {
                 this.state.events.push({
                   id: randomUUID(), timestamp: chNow, turn: this.state.turn,
@@ -756,6 +755,14 @@ export class GameLoop {
         const player = this.state.players[idx];
         const opp = this.state.players[idx === 0 ? 1 : 0];
         const before = player.buffs.length;
+        const removedByRange = player.buffs.filter((b: any) => {
+          if (b.cancelOnOutOfRange === undefined) return false;
+          const dist = calculateDistance(player.position, opp.position);
+          return dist > b.cancelOnOutOfRange;
+        });
+        for (const removed of removedByRange) {
+          removeLinkedShield(player as any, removed as any);
+        }
         player.buffs = player.buffs.filter((b: any) => {
           if (b.cancelOnOutOfRange === undefined) return true;
           const dist = calculateDistance(player.position, opp.position);
@@ -778,6 +785,9 @@ export class GameLoop {
           (b) => isChannelBuffRuntime(b as any) && !b.effects.some((e: any) => e.type === "INTERRUPT_IMMUNE")
         );
         if (removedBySilence.length > 0) {
+          for (const removed of removedBySilence) {
+            removeLinkedShield(player as any, removed as any);
+          }
           player.buffs = player.buffs.filter((b) => !removedBySilence.includes(b));
           for (const b of removedBySilence) {
             pushBuffExpired(this.state, {
@@ -794,6 +804,7 @@ export class GameLoop {
       }
 
       for (const buff of player.buffs) {
+        if (now >= buff.expiresAt) continue;
         // Fire periodic effects (DoT / HoT) if interval has elapsed
         if (buff.periodicMs !== undefined && buff.lastTickAt !== undefined) {
           if (now - buff.lastTickAt >= buff.periodicMs) {
@@ -806,7 +817,7 @@ export class GameLoop {
                   target: player,
                   base: (e.value ?? 0) * stackMult,
                 });
-                player.hp = Math.max(0, player.hp - dmg);
+                applyDamageToTarget(player as any, dmg);
                 if (dmg > 0) {
                   this.state.events.push({
                     id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -822,8 +833,8 @@ export class GameLoop {
                 buffsChanged = true;
               } else if (e.type === "PERIODIC_HEAL") {
                 const heal = resolveHealAmount({ target: player, base: e.value ?? 0 });
-                player.hp = Math.min(player.maxHp ?? 100, player.hp + heal);
-                if (heal > 0) {
+                const applied = applyHealToTarget(player as any, heal);
+                if (applied > 0) {
                   this.state.events.push({
                     id: randomUUID(), timestamp: now, turn: this.state.turn,
                     type: "HEAL",
@@ -832,7 +843,7 @@ export class GameLoop {
                     abilityId: buff.sourceAbilityId,
                     abilityName: buff.sourceAbilityName ?? buff.name,
                     effectType: "PERIODIC_HEAL",
-                    value: heal,
+                    value: applied,
                   });
                 }
                 buffsChanged = true;
@@ -840,8 +851,8 @@ export class GameLoop {
                 // 贯体 heal: bypasses HEAL_REDUCTION; value is % of maxHp per tick
                 const pct = (e.value ?? 0) / 100;
                 const healAmt = Math.floor((player.maxHp ?? 100) * pct);
-                player.hp = Math.min(player.maxHp ?? 100, player.hp + healAmt);
-                if (healAmt > 0) {
+                const applied = applyHealToTarget(player as any, healAmt);
+                if (applied > 0) {
                   const baseName = buff.sourceAbilityName ?? buff.name ?? "贯体";
                   const guanTiName = baseName.includes("（贯体）") ? baseName : `${baseName}（贯体）`;
                   this.state.events.push({
@@ -852,7 +863,7 @@ export class GameLoop {
                     abilityId: buff.sourceAbilityId,
                     abilityName: guanTiName,
                     effectType: "PERIODIC_GUAN_TI_HEAL",
-                    value: healAmt,
+                    value: applied,
                   });
                 }
                 buffsChanged = true;
@@ -893,7 +904,7 @@ export class GameLoop {
                     target: opp,
                     base: e.value ?? 0,
                   });
-                  opp.hp = Math.max(0, opp.hp - dmg);
+                  applyDamageToTarget(opp as any, dmg);
                   if (dmg > 0) {
                     this.state.events.push({
                       id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -935,8 +946,8 @@ export class GameLoop {
             if (e.type === "TIMED_GUAN_TI_HEAL") {
               const pct = (e.value ?? 0) / 100;
               const healAmt = Math.floor((player.maxHp ?? 100) * pct);
-              player.hp = Math.min(player.maxHp ?? 100, player.hp + healAmt);
-              if (healAmt > 0) {
+              const applied = applyHealToTarget(player as any, healAmt);
+              if (applied > 0) {
                 const baseName = buff.sourceAbilityName ?? buff.name ?? "贯体";
                 const guanTiName = baseName.includes("（贯体）") ? baseName : `${baseName}（贯体）`;
                 this.state.events.push({
@@ -947,7 +958,7 @@ export class GameLoop {
                   abilityId: buff.sourceAbilityId,
                   abilityName: guanTiName,
                   effectType: "TIMED_GUAN_TI_HEAL",
-                  value: healAmt,
+                  value: applied,
                 });
               }
               buffsChanged = true;
@@ -986,7 +997,7 @@ export class GameLoop {
                 target: player,
                 base: e.value ?? 0,
               });
-              player.hp = Math.max(0, player.hp - dmg);
+              applyDamageToTarget(player as any, dmg);
               if (dmg > 0) {
                 this.state.events.push({
                   id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -1032,7 +1043,7 @@ export class GameLoop {
               target: opp,
               base: e.value ?? 0,
             });
-            opp.hp = Math.max(0, opp.hp - dmg);
+            applyDamageToTarget(opp as any, dmg);
 
             if (dmg > 0) {
               this.state.events.push({
@@ -1050,8 +1061,8 @@ export class GameLoop {
             // Lifesteal
             if (e.lifestealPct && e.lifestealPct > 0 && dmg > 0) {
               const healAmt = Math.floor(dmg * e.lifestealPct);
-              player.hp = Math.min(player.maxHp ?? 100, player.hp + healAmt);
-              if (healAmt > 0) {
+              const applied = applyHealToTarget(player as any, healAmt);
+              if (applied > 0) {
                 this.state.events.push({
                   id: randomUUID(), timestamp: now, turn: this.state.turn,
                   type: "HEAL",
@@ -1060,7 +1071,7 @@ export class GameLoop {
                   abilityId: buff.sourceAbilityId,
                   abilityName: buff.sourceAbilityName ?? buff.name,
                   effectType: "TIMED_AOE_DAMAGE",
-                  value: healAmt,
+                  value: applied,
                 });
               }
             }
@@ -1122,6 +1133,9 @@ export class GameLoop {
       // Remove expired buffs (with special natural-expiry handling).
       const before = player.buffs.length;
       const naturallyExpired = player.buffs.filter((b) => now >= b.expiresAt);
+      for (const expired of naturallyExpired) {
+        removeLinkedShield(player as any, expired as any);
+      }
       const moheNaturallyExpired = naturallyExpired.filter((b) => isMoheKnockdown(b as any));
       for (const b of moheNaturallyExpired) {
         const maxHp = player.maxHp ?? 100;
@@ -1181,7 +1195,7 @@ export class GameLoop {
         for (const player of this.state.players) {
           if (player.hp <= 0) continue;
           if (this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf)) {
-            player.hp = Math.max(0, player.hp - dps);
+            applyDamageToTarget(player as any, dps);
             this.state.events.push({
               id: randomUUID(), timestamp: now, turn: this.state.turn,
               type: "DAMAGE",
@@ -1315,7 +1329,7 @@ export class GameLoop {
               target,
               base: zone.damagePerInterval,
             });
-            target.hp = Math.max(0, target.hp - dmg);
+            applyDamageToTarget(target as any, dmg);
             if (dmg > 0) {
               this.state.events.push({
                 id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -1366,7 +1380,7 @@ export class GameLoop {
                 if (now - stackBuff.lastProcAt < stackBuff.procCooldownMs) break;
               }
               const dmg = e.value ?? 0;
-              targetPlayer.hp = Math.max(0, targetPlayer.hp - dmg);
+              applyDamageToTarget(targetPlayer as any, dmg);
               stackBuff.stacks = (stackBuff.stacks ?? 1) - 1;
               stackBuff.lastProcAt = now;
               this.state.events.push({
@@ -1507,6 +1521,7 @@ export class GameLoop {
         // Also push hp patches if periodic effects changed them
         this.state.players.forEach((p, pidx) => {
           diff.push({ path: `/players/${pidx}/hp`, value: p.hp });
+          diff.push({ path: `/players/${pidx}/shield`, value: p.shield ?? 0 });
         });
 
         // Include each new game event as an individual diff patch so the frontend

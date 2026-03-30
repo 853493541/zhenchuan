@@ -81,6 +81,17 @@ export interface Ability {
   requiresGrounded?: boolean;
 
   /**
+   * If true, this ability can only be cast while grounded and not moving.
+   */
+  requiresStanding?: boolean;
+
+  /**
+   * Optional minimum current HP (exclusive) required to cast.
+   * Shields are not counted for this check.
+   */
+  minSelfHpExclusive?: number;
+
+  /**
    * If true, this ability can only be cast if the target is within 180° of the
    * player's facing direction. Set to false for 360° abilities.
    */

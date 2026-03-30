@@ -65,6 +65,9 @@ function showGameError(rawCode: string) {
     case "ERR_QINGGONG_SEALED":
       toastError("你被封轻功，无法施放轻功技能");
       break;
+    case "ERR_HP_TOO_LOW":
+      toastError("当前气血必须大于35才能施放");
+      break;
     default:
       toastError("操作无法执行");
   }
@@ -326,7 +329,7 @@ export default function InGameClient({
         opponents={normalizedOpponents}
         gameId={gameId}
         distance={distance}
-        maxHp={100}
+        maxHp={me.maxHp ?? 100}
         abilities={preload.abilityMap}
         events={state?.events ?? []}
         pickups={state?.pickups ?? []}

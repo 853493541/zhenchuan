@@ -236,6 +236,13 @@ export function validateCastAbility(
 
   /* (Level 0 — ROOT / SLOW only restrict movement, spells are not blocked) */
 
+  /* ================= MIN SELF HP (exclusive, shields not counted) ================= */
+  if (typeof (ability as any).minSelfHpExclusive === "number") {
+    if (player.hp <= (ability as any).minSelfHpExclusive) {
+      throw new Error("ERR_HP_TOO_LOW");
+    }
+  }
+
   /* ================= REQUIRES GROUNDED ================= */
   if ((ability as any).requiresGrounded) {
     const playerZ = (player.position as any).z ?? 0;

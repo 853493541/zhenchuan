@@ -43,6 +43,7 @@ interface PlayerInfo {
   userId: string;
   position: { x: number; y: number; z?: number };
   hp: number;
+  shield?: number;
   maxHp?: number;
   facing?: { x: number; y: number };
   buffs?: any[];
@@ -268,7 +269,8 @@ export default function ArenaScene({
               color={OPP_COLORS[i % OPP_COLORS.length]}
               emissive={OPP_EMISSIVES[i % OPP_EMISSIVES.length]}
               hp={opp.hp}
-              maxHp={maxHp}
+              shield={opp.shield ?? 0}
+              maxHp={opp.maxHp ?? maxHp}
               isMe={false}
               isSelected={selectedTargetId === opp.userId}
               facing={opp.facing}
@@ -291,7 +293,8 @@ export default function ArenaScene({
         color="#1a66cc"
         emissive="#0a2255"
         hp={me.hp}
-        maxHp={maxHp}
+        shield={me.shield ?? 0}
+        maxHp={me.maxHp ?? maxHp}
         isMe={true}
         isSelected={selectedSelf}
         facingRef={meFacingRef}

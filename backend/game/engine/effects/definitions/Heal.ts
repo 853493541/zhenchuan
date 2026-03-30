@@ -7,6 +7,7 @@ import {
   ActiveBuff,
 } from "../../state/types";
 import { resolveHealAmount } from "../../utils/combatMath";
+import { applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 
 /**
@@ -30,9 +31,7 @@ export function handleHeal(
     base,
   });
 
-  const before = target.hp;
-  target.hp = Math.min(100, target.hp + final);
-  const applied = Math.max(0, target.hp - before);
+  const applied = applyHealToTarget(target as any, final);
 
   if (applied > 0) {
     pushEvent(state, {

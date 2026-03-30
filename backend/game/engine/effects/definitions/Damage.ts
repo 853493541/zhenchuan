@@ -3,6 +3,7 @@
 import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
 import { blocksEnemyTargeting } from "../../rules/guards";
 import { resolveScheduledDamage } from "../../utils/combatMath";
+import { applyDamageToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 
 /**
@@ -45,7 +46,7 @@ export function handleDamage(
   });
 
   if (final > 0) {
-    target.hp = Math.max(0, target.hp - final);
+    applyDamageToTarget(target as any, final);
   }
 
   pushEvent(state, {

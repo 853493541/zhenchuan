@@ -11,6 +11,27 @@ const CHAR_HEIGHT = 2.0;
 const HP_REF_DIST = 20;
 const _hpWorldPos = new THREE.Vector3();
 
+function computeHpShieldSegments(hp: number, shield: number, maxHp: number): { hpPct: number; shieldPct: number } {
+  const safeMaxHp = Math.max(1, Number(maxHp || 100));
+  const safeHp = Math.max(0, Number(hp || 0));
+  const safeShield = Math.max(0, Number(shield || 0));
+  const total = safeHp + safeShield;
+
+  if (total <= 0) return { hpPct: 0, shieldPct: 0 };
+
+  if (total <= safeMaxHp) {
+    return {
+      hpPct: Math.max(0, Math.min(1, safeHp / safeMaxHp)),
+      shieldPct: Math.max(0, Math.min(1, safeShield / safeMaxHp)),
+    };
+  }
+
+  return {
+    hpPct: Math.max(0, Math.min(1, safeHp / total)),
+    shieldPct: Math.max(0, Math.min(1, safeShield / total)),
+  };
+}
+
 interface CharacterProps {
   worldX: number;
   worldY: number;
@@ -18,6 +39,7 @@ interface CharacterProps {
   color: string;
   emissive: string;
   hp: number;
+  shield?: number;
   maxHp: number;
   isMe: boolean;
   isSelected?: boolean;
@@ -44,6 +66,7 @@ export default function Character({
   color,
   emissive,
   hp,
+  shield = 0,
   maxHp,
   isMe,
   isSelected = false,
@@ -76,12 +99,15 @@ export default function Character({
     onSelect();
   };
 
-  const hpPct = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 1;
+  const healthPct = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 1;
+  const hpShieldSegments = computeHpShieldSegments(hp, shield, maxHp);
+  const hpPct = hpShieldSegments.hpPct;
+  const shieldPct = hpShieldSegments.shieldPct;
   const hpColor = isMe
     ? '#3399ff'
     : isSelected
     ? '#ff8888'
-    : (hpPct > 0.5 ? '#dd2222' : hpPct > 0.25 ? '#cc1111' : '#991111');
+    : (healthPct > 0.5 ? '#dd2222' : healthPct > 0.25 ? '#cc1111' : '#991111');
 
   const threeX = worldX - worldHalf;
   const threeY = worldZ;
@@ -264,6 +290,12 @@ export default function Character({
           <sprite position={[(hpPct - 1) * 1.4, 0, 0]} scale={[2.8 * hpPct, 0.182, 1]} renderOrder={2}>
             <spriteMaterial color={hpColor} depthTest={true} depthWrite={false} toneMapped={false} />
           </sprite>
+          {/* Shield fill segment */}
+          {shieldPct > 0 && (
+            <sprite position={[-1.4 + (2.8 * hpPct) + (2.8 * shieldPct * 0.5), 0, 0]} scale={[2.8 * shieldPct, 0.182, 1]} renderOrder={3}>
+              <spriteMaterial color="#f0f6ff" depthTest={true} depthWrite={false} toneMapped={false} />
+            </sprite>
+          )}
         </group>
       )}
 

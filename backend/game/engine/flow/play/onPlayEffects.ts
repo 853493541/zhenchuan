@@ -2,6 +2,7 @@
 
 import { GameState } from "../../state/types";
 import { resolveScheduledDamage } from "../../utils/combatMath";
+import { applyDamageToTarget } from "../../utils/health";
 import { pushEvent } from "../../../services/flow/events";
 
 /**
@@ -32,7 +33,7 @@ export function applyOnPlayBuffEffects(
 
       if (dmg <= 0) continue;
 
-      player.hp = Math.max(0, player.hp - dmg);
+      applyDamageToTarget(player as any, dmg);
 
       pushEvent(state, {
         turn: state.turn,

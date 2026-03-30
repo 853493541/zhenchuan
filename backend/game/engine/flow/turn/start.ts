@@ -5,6 +5,7 @@ import {
   resolveScheduledDamage,
   resolveHealAmount,
 } from "../../utils/combatMath";
+import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import {
   pushDamageEvent,
   pushHealEvent,
@@ -46,7 +47,7 @@ export function applyStartTurnEffects(params: {
           base: e.value ?? 0,
         });
 
-        me.hp = Math.max(0, me.hp - dmg);
+        applyDamageToTarget(me as any, dmg);
 
         pushDamageEvent({
           state,
@@ -65,16 +66,16 @@ export function applyStartTurnEffects(params: {
           base: e.value ?? 0,
         });
 
-        me.hp = Math.min(100, me.hp + heal);
+        const applied = applyHealToTarget(me as any, heal);
 
-        if (heal > 0) {
+        if (applied > 0) {
           pushHealEvent({
             state,
             actorUserId: me.userId,
             targetUserId: me.userId,
             abilityId: getBuffSourceAbilityId(buff),
             abilityName: getBuffSourceAbilityName(buff),
-            value: heal,
+            value: applied,
           });
         }
       }

@@ -137,6 +137,18 @@
   border-radius: 4px;
   transition: width 0.15s ease-out;
   box-shadow: 0 0 6px currentColor;
+  z-index: 2;
+}
+
+.myShieldFill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(244, 248, 255, 0.96), rgba(224, 236, 255, 0.92));
+  box-shadow: 0 0 10px rgba(235, 245, 255, 0.55);
+  transition: left 0.12s ease-out, width 0.12s ease-out;
+  z-index: 1;
 }
 
 .hpNumInside {
@@ -252,6 +264,18 @@
   top: 0; left: 0; bottom: 0;
   border-radius: 3px;
   transition: width 0.2s ease-out;
+  z-index: 2;
+}
+
+.enemyShieldFill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(245, 250, 255, 0.95), rgba(220, 233, 252, 0.9));
+  box-shadow: 0 0 10px rgba(236, 246, 255, 0.5);
+  transition: left 0.12s ease-out, width 0.12s ease-out;
+  z-index: 1;
 }
 
 /* Tick marks at 25 / 50 / 75% */
@@ -663,6 +687,11 @@
   display: block;
 }
 
+.chargeFrameQueTaZhi .chargeFrameSvg {
+  transform: rotate(180deg);
+  transform-origin: 50% 50%;
+}
+
 .chargeFrameTrack {
   fill: none;
   stroke: rgba(80, 14, 14, 0.95);
@@ -692,6 +721,19 @@
   text-align: center;
   box-sizing: border-box;
   text-shadow: 0 0 4px rgba(0, 0, 0, 0.95);
+}
+
+.chargeStackBoxQueTaZhi {
+  right: -1px;
+  bottom: -1px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: rgba(0, 0, 0, 0.93);
+  color: #fff5e0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 900;
 }
 
 /* Cooldown arc overlay — conic-gradient clock-wipe, number in centre */

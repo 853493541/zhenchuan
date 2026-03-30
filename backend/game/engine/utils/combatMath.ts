@@ -13,9 +13,15 @@ export function resolveScheduledDamage(params: {
 }) {
   let dmg = params.base;
 
-  // DAMAGE MULTIPLIER (e.g. 女娲补天)
-  const boost = allEffects(params.source).find((e) => e.type === "DAMAGE_MULTIPLIER");
-  if (boost) dmg *= boost.value ?? 1;
+  // DAMAGE MULTIPLIER (e.g. 女娲补天, 夺命蛊)
+  // Stack additively by bonus portion: 2.0 and 1.3 => 1 + (1.0 + 0.3) = 2.3
+  const multipliers = allEffects(params.source)
+    .filter((e) => e.type === "DAMAGE_MULTIPLIER")
+    .map((e) => e.value ?? 1);
+  if (multipliers.length > 0) {
+    const additiveMultiplier = 1 + multipliers.reduce((sum, value) => sum + (value - 1), 0);
+    dmg *= Math.max(0, additiveMultiplier);
+  }
 
   // DAMAGE REDUCTION (e.g. 风袖低昂)
   const dr = allEffects(params.target).find((e) => e.type === "DAMAGE_REDUCTION");

@@ -13,6 +13,7 @@ import {
   handleDirectionalDash,
 } from "../../effects/handlers";
 import { resolveScheduledDamage } from "../../utils/combatMath";
+import { applyDamageToTarget } from "../../utils/health";
 import { addBuff } from "../../effects/buffRuntime";
 
 export function applyImmediateEffects(params: {
@@ -141,7 +142,7 @@ export function applyImmediateEffects(params: {
             target: victim,
             base: effect.value ?? 0,
           });
-          victim.hp = Math.max(0, victim.hp - dmg);
+          applyDamageToTarget(victim as any, dmg);
 
           if (dmg > 0) {
             state.events.push({

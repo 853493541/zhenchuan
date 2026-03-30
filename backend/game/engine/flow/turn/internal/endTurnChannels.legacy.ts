@@ -3,6 +3,7 @@
 import { GameState, ActiveBuff } from "../../../state/types";
 import { shouldDodge } from "../../../rules/guards";
 import { resolveScheduledDamage } from "../../../utils/combatMath";
+import { applyDamageToTarget } from "../../../utils/health";
 import { pushDamageEvent } from "./combatEvents";
 import { getBuffSourceAbilityId, getBuffSourceAbilityName } from "./buffOrigin";
 import { applyLegacyHeal } from "./resolveScheduled";
@@ -23,7 +24,7 @@ export function applyLegacyEndTurnChannels(params: {
             target: other,
             base: 10,
           });
-          other.hp = Math.max(0, other.hp - dmg);
+          applyDamageToTarget(other as any, dmg);
 
           pushDamageEvent({
             state,
@@ -43,7 +44,7 @@ export function applyLegacyEndTurnChannels(params: {
             target: other,
             base: 10,
           });
-          other.hp = Math.max(0, other.hp - dmg);
+          applyDamageToTarget(other as any, dmg);
 
           pushDamageEvent({
             state,
@@ -71,7 +72,7 @@ export function applyLegacyEndTurnChannels(params: {
             target: other,
             base: 5,
           });
-          other.hp = Math.max(0, other.hp - dmg);
+          applyDamageToTarget(other as any, dmg);
 
           pushDamageEvent({
             state,

@@ -56,6 +56,7 @@ export interface PlayerState {
 
   hp: number;
   maxHp?: number;
+  shield?: number;
 
   /** abilities in hand */
   hand: AbilityInstance[];

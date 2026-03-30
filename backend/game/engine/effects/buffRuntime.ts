@@ -9,6 +9,7 @@ import {
   BuffDefinition,
 } from "../state/types";
 import { resolveScheduledDamage } from "../utils/combatMath";
+import { addShieldToTarget, applyDamageToTarget, removeLinkedShield } from "../utils/health";
 
 /* ================= Utilities ================= */
 
@@ -279,7 +280,7 @@ export function addBuff(params: {
           const bonus = source
             ? resolveScheduledDamage({ source, target, base: 3 })
             : 3;
-          target.hp = Math.max(0, target.hp - bonus);
+          applyDamageToTarget(target as any, bonus);
           if (bonus > 0) {
             pushEvent(state, {
               turn: state.turn,
@@ -325,11 +326,16 @@ export function addBuff(params: {
   }
 
   // Refresh same buffId (stable replacement — resets the timer)
-  buffTarget.buffs = buffTarget.buffs.filter(
-    (b) => b.buffId !== runtimeBuff.buffId
-  );
+  const replaced = buffTarget.buffs.filter((b) => b.buffId === runtimeBuff.buffId);
+  for (const oldBuff of replaced) {
+    removeLinkedShield(buffTarget as any, oldBuff);
+  }
+  buffTarget.buffs = buffTarget.buffs.filter((b) => b.buffId !== runtimeBuff.buffId);
 
   const now = Date.now();
+  const linkedShield = runtimeBuff.effects
+    .filter((e) => e.type === "SHIELD")
+    .reduce((sum, e) => sum + (e.value ?? 0), 0);
 
   const active: ActiveBuff = {
     buffId: runtimeBuff.buffId,
@@ -361,12 +367,17 @@ export function addBuff(params: {
     stacks: runtimeBuff.initialStacks,
     maxStacks: runtimeBuff.maxStacks,
     procCooldownMs: runtimeBuff.procCooldownMs,
+    shieldAmount: linkedShield > 0 ? linkedShield : undefined,
 
     sourceAbilityId: ability.id,
     sourceAbilityName: ability.name,
   };
 
   buffTarget.buffs.push(active);
+
+  if (linkedShield > 0) {
+    addShieldToTarget(buffTarget as any, linkedShield);
+  }
 
   // Incoming control can forcibly break specific stealth buffs.
   if (sourceUserId !== targetUserId) {

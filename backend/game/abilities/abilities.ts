@@ -12,6 +12,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "ATTACK",
     target: "OPPONENT",
     range: 4,
+    gcd: true,
     cooldownTicks: 0,
     effects: [{ type: "DAMAGE", value: 1 }],
     isCommon: true,
@@ -32,7 +33,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   yingfeng_huilang: {
     id: "yingfeng_huilang",
     name: "迎风回浪",
-    description: "向远离对手的方向冲刺10格",
+    description: "向身后方向冲刺10格",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
@@ -92,12 +93,13 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   houyao: {
     id: "houyao",
     name: "后撤",
-    description: "向后撤步1格（快速位移脱身）",
+    description: "向身后方向后撤2.7格（持续1秒）\n只能在地面施放",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 60, // 1 second at 60 Hz
     qinggong: true,
-    effects: [{ type: "DIRECTIONAL_DASH", value: 1, dirMode: "AWAY", durationTicks: 3 }],
+    requiresGrounded: true,
+    effects: [{ type: "DIRECTIONAL_DASH", value: 2.7, dirMode: "AWAY", durationTicks: 30 }],
     isCommon: true,
   },
 
@@ -138,7 +140,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   jianpo_xukong: {
     id: "jianpo_xukong",
     name: "剑破虚空",
-    description: "需要目标，正面180°\n造成10点伤害并附加【封轻功】2秒（减速20%，无法施展轻功）\n叠加【急曲】18秒：每3秒受到1点伤害，最多3层",
+    description: "需要目标，正面180°\n造成10点伤害并附加【剑破虚空】2秒（减速20%，无法施展轻功）\n叠加【急曲】18秒：每3秒受到1点伤害，最多3层",
     type: "ATTACK",
     target: "OPPONENT",
     range: 20,
@@ -149,7 +151,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     buffs: [
       {
         buffId: 2201,
-        name: "剑破虚空：减速20%，无法施展轻功招式",
+        name: "剑破虚空",
         category: "DEBUFF",
         durationMs: 2_000,
         description: "减速20%，无法施展轻功招式",
@@ -726,7 +728,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   taxingxing: {
     id: "taxingxing",
     name: "踏星行",
-    description: "轻功化形5秒：以12.5尺/秒向前冲刺（可转向）\n施放时解除锁足与减速\n起跳抬升8尺，撞墙后立刻下坠\n期间沉默并免疫等级1/2控制",
+    description: "轻功化形5秒：以12.5尺/秒向前冲刺（可转向）\n施放时解除锁足与减速\n起跳抬升8尺，撞墙后立刻下坠\n期间沉默并免疫等级1/2控制\n期间闪避率65%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -759,7 +761,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "KNOCKBACK_IMMUNE" },
-          { type: "DODGE_NEXT", chance: 1.0 },
+          { type: "DODGE_NEXT", chance: 0.65 },
           { type: "SILENCE" },
         ],
       },
@@ -771,13 +773,14 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   zhuiming_jian: {
     id: "zhuiming_jian",
     name: "追命箭",
-    description: "需要目标，运功2秒（正读条），完成时造成15点伤害；若自身气血高于60，额外造成9点伤害",
+    description: "需要目标，运功2秒（正读条）\n需要站立施放，移动或跳跃会中断\n完成时造成15点伤害；若自身气血高于60，额外造成9点伤害",
     type: "CHANNEL",
     target: "OPPONENT",
     cooldownTicks: 300,
     gcd: true,
     range: 25,
     requiresGrounded: true,
+    requiresStanding: true,
     effects: [],
     buffs: [],
     channelDurationMs: 2_000,
@@ -1207,11 +1210,11 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   xinglou_yueying: {
     id: "xinglou_yueying",
     name: "星楼月影",
-    description: "解除等级1控制\n获得【星楼月影】8秒：免疫等级1控制",
+    description: "解除等级1控制\n获得【星楼月影】8秒：免疫等级1控制\n不触发GCD",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
-    gcd: true,
+    gcd: false,
     effects: [{ type: "CLEANSE", allowWhileControlled: true }],
     buffs: [
       {
@@ -1228,11 +1231,11 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   duangu_jue: {
     id: "duangu_jue",
     name: "锻骨诀",
-    description: "解除等级1控制\n获得【折骨】8秒：免疫根骨减速与等级1/2/3控制",
+    description: "解除等级1控制\n获得【折骨】8秒：免疫根骨减速与等级1/2/3控制\n不触发GCD",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
-    gcd: true,
+    gcd: false,
     effects: [{ type: "CLEANSE", allowWhileControlled: true }],
     buffs: [
       {
@@ -1247,6 +1250,65 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
           { type: "KNOCKBACK_IMMUNE" },
           { type: "SILENCE_IMMUNE" },
         ],
+      },
+    ],
+  },
+
+  zuowang_wuwo: {
+    id: "zuowang_wuwo",
+    name: "坐忘无我",
+    description: "自我施放\n获得【坐忘无我】120秒：提供5点护盾",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2313,
+        name: "坐忘无我",
+        category: "BUFF",
+        durationMs: 120_000,
+        description: "提供5点护盾",
+        effects: [{ type: "SHIELD", value: 5 }],
+      },
+    ],
+  },
+
+  guchong_xianji: {
+    id: "guchong_xianji",
+    name: "蛊虫献祭",
+    description:
+      "自我施放（当前气血需大于35，不计护盾）\n解除等级1控制\n立即对自身造成30点伤害\n获得【献祭护盾】10秒：提供50点护盾并每秒回复3点气血\n若献祭护盾被打破则该效果提前结束\n获得【献祭控制免疫】5秒：免疫等级1控制\n不触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    minSelfHpExclusive: 35,
+    effects: [
+      { type: "CLEANSE", allowWhileControlled: true },
+      { type: "DAMAGE", value: 30 },
+    ],
+    buffs: [
+      {
+        buffId: 2314,
+        name: "献祭护盾",
+        category: "BUFF",
+        durationMs: 10_000,
+        periodicMs: 1_000,
+        description: "提供50点护盾，并每秒回复3点气血",
+        effects: [
+          { type: "SHIELD", value: 50 },
+          { type: "PERIODIC_HEAL", value: 3 },
+        ],
+      },
+      {
+        buffId: 2315,
+        name: "献祭控制免疫",
+        category: "BUFF",
+        durationMs: 5_000,
+        description: "免疫等级1控制",
+        effects: [{ type: "CONTROL_IMMUNE" }],
       },
     ],
   },

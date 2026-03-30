@@ -688,45 +688,54 @@ router.post("/cheat/add-ability", async (req, res) => {
       cooldown: 0,
     };
 
-    // Track in tournament.selectedAbilities for persistence across battles
-    game.tournament.selectedAbilities[userId].push(newInstance);
-
-    // Add full merged ability to live game state hand
     const fullCard = { ...abilityDef, instanceId: newInstance.instanceId, abilityId, cooldown: 0 };
+
+    // Apply to live loop first so the UI updates immediately (no DB-save wait).
+    let livePlayerIndex = playerIndex;
+    let liveHand = [...(game.state.players[playerIndex].hand || []), fullCard];
+    let liveVersion = game.state.version ?? 0;
+
+    const gameLoop = GameLoop.get(gameId);
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        liveHand = [...(loopState.players[loopPlayerIdx].hand || []), fullCard];
+        loopState.players[loopPlayerIdx] = {
+          ...loopState.players[loopPlayerIdx],
+          hand: liveHand,
+        };
+        loopState.version = (loopState.version ?? 0) + 1;
+        liveVersion = loopState.version;
+        gameLoop.updateState(loopState);
+      }
+    }
+
+    // Push diff now (fast path for cheat UX)
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff: [{ path: `/players/${livePlayerIndex}/hand`, value: liveHand }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true, hand: liveHand });
+
+    // Persist asynchronously; cheat panel responsiveness should not wait for Mongo round-trip.
+    game.tournament.selectedAbilities[userId].push(newInstance);
     game.state.players[playerIndex] = {
       ...game.state.players[playerIndex],
-      hand: [...(game.state.players[playerIndex].hand || []), fullCard],
+      hand: liveHand,
     };
 
     game.markModified("tournament");
     game.markModified("state");
     game.markModified("state.players");
-    await game.save();
 
-    // Update live GameLoop in-memory state — use the CURRENT live loop state (not
-    // the stale DB state) so we don't overwrite real-time positions / buffs / cooldowns.
-    const gameLoop = GameLoop.get(gameId);
-    if (gameLoop) {
-      const loopState = gameLoop.getState(); // plain structuredClone of live state
-      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
-      if (loopPlayerIdx !== -1) {
-        loopState.players[loopPlayerIdx] = {
-          ...loopState.players[loopPlayerIdx],
-          hand: [...(loopState.players[loopPlayerIdx].hand || []), fullCard],
-        };
-        gameLoop.updateState(loopState);
-      }
-    }
-
-    // Broadcast hand update to all connected clients
-    broadcastGameUpdate({
-      gameId,
-      version: game.state.version,
-      diff: [{ path: `/players/${playerIndex}/hand`, value: game.state.players[playerIndex].hand }],
-      timestamp: Date.now(),
+    void game.save().catch((err: any) => {
+      console.error("[cheat/add-ability] async save failed:", err?.message ?? err);
     });
-
-    res.json({ ok: true, hand: game.state.players[playerIndex].hand });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

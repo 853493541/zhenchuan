@@ -120,4 +120,10 @@ export interface ActiveBuff {
    * Prevents re-firing when the same trigger delay is reached on subsequent ticks.
    */
   firedDelayIndices?: number[];
+  
+  /**
+   * Remaining shield value linked to this buff.
+   * Damage consumption decrements this together with player.shield.
+   */
+  shieldAmount?: number;
 }

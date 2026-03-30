@@ -99,6 +99,8 @@ export interface PlayerState {
   userId: string;
   username?: string;
   hp: number;
+  maxHp?: number;
+  shield?: number;
   hand: AbilityInstance[];
   buffs: ActiveBuff[];
   position?: { x: number; y: number; z?: number };

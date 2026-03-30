@@ -10,7 +10,7 @@
  *
  * dirMode values:
  *   TOWARD     — dash in caster's facing direction
- *   AWAY       — dash away from opponent
+ *   AWAY       — dash backward from caster's facing direction
  *   PERP_LEFT  — dash left (perpendicular to facing, rotate +90°)
  *   PERP_RIGHT — dash right (perpendicular to facing, rotate -90°)
  */
@@ -20,6 +20,7 @@ import { PlayerState } from "../../state/types";
 import { Position } from "../../state/types/position";
 import { pushEvent } from "../events";
 import { resolveScheduledDamage } from "../../utils/combatMath";
+import { applyDamageToTarget } from "../../utils/health";
 import { blocksEnemyTargeting } from "../../rules/guards";
 
 /** Stable buffId for the CC-immunity granted while dashing */
@@ -31,6 +32,14 @@ const DASH_UNITS_PER_TICK = 20 / 30;
 // Maximum angle caps (degrees from horizontal)
 const MAX_DOWN_ANGLE_DEG = 35;
 const MAX_UP_ANGLE_DEG   = 45;
+
+const DASH_CAST_LOCK_IDS = new Set([
+  "nieyun_zhuyue",
+  "lingxiao_lansheng",
+  "yaotai_zhenhe",
+  "yingfeng_huilang",
+  "houyao",
+]);
 
 function pointToSegmentDistance2D(
   px: number,
@@ -61,43 +70,43 @@ function pointToSegmentDistance2D(
 export function handleDirectionalDash(
   state: GameState,
   source: PlayerState,
-  opponentPos: Position,
+  _opponentPos: Position,
   ability: Ability,
   effect: AbilityEffect
 ) {
-  const dx = opponentPos.x - source.position.x;
-  const dy = opponentPos.y - source.position.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
   const distance = effect.value ?? 10;
+
+  const rawFacing = source.facing;
+  const facingLen = rawFacing
+    ? Math.sqrt(rawFacing.x * rawFacing.x + rawFacing.y * rawFacing.y)
+    : 0;
+  const facingX = facingLen > 0.01 ? rawFacing!.x / facingLen : 0;
+  const facingY = facingLen > 0.01 ? rawFacing!.y / facingLen : 1;
 
   let dirX: number;
   let dirY: number;
 
-  if (dist < 0.01) {
-    dirX = 0;
-    dirY = 1;
-  } else {
-    const fx = dx / dist;
-    const fy = dy / dist;
-
-    switch (effect.dirMode) {
-      case "TOWARD":
-        if (source.facing && (Math.abs(source.facing.x) + Math.abs(source.facing.y)) > 0.01) {
-          dirX = source.facing.x;
-          dirY = source.facing.y;
-        } else {
-          dirX = fx; dirY = fy;
-        }
-        break;
-      case "AWAY":
-        dirX = -fx; dirY = -fy; break;
-      case "PERP_LEFT":
-        dirX = -fy; dirY = fx;  break;
-      case "PERP_RIGHT":
-        dirX = fy;  dirY = -fx; break;
-      default:
-        dirX = fx;  dirY = fy;  break;
-    }
+  switch (effect.dirMode) {
+    case "TOWARD":
+      dirX = facingX;
+      dirY = facingY;
+      break;
+    case "AWAY":
+      dirX = -facingX;
+      dirY = -facingY;
+      break;
+    case "PERP_LEFT":
+      dirX = -facingY;
+      dirY = facingX;
+      break;
+    case "PERP_RIGHT":
+      dirX = facingY;
+      dirY = -facingX;
+      break;
+    default:
+      dirX = facingX;
+      dirY = facingY;
+      break;
   }
 
   const durationTicks = effect.durationTicks ?? Math.round(distance / DASH_UNITS_PER_TICK);
@@ -169,7 +178,7 @@ export function handleDirectionalDash(
         target: targetPlayer,
         base: effect.routeDamage ?? 0,
       });
-      targetPlayer.hp = Math.max(0, targetPlayer.hp - dmg);
+      applyDamageToTarget(targetPlayer as any, dmg);
 
       pushEvent(state, {
         turn: state.turn,
@@ -191,12 +200,18 @@ export function handleDirectionalDash(
   source.velocity.vy = 0;
 
   // Grant CC immunity for the duration of the dash
+  const dashRuntimeEffects: Array<{ type: string }> = [{ type: "CONTROL_IMMUNE" }];
+  if (DASH_CAST_LOCK_IDS.has(ability.id)) {
+    dashRuntimeEffects.push({ type: "KNOCKBACK_IMMUNE" });
+    dashRuntimeEffects.push({ type: "SILENCE" });
+  }
+
   source.buffs = source.buffs.filter(b => b.buffId !== DASH_CC_IMMUNE_BUFF_ID);
   source.buffs.push({
     buffId: DASH_CC_IMMUNE_BUFF_ID,
-    name: "Dash CC Immunity",
+    name: "Dash Runtime",
     category: "BUFF",
-    effects: [{ type: "CONTROL_IMMUNE" }],
+    effects: dashRuntimeEffects as any,
     expiresAt: Date.now() + Math.ceil(durationTicks * (1000 / 30)) + 500,
     appliedAtTurn: state.turn,
     appliedAt: Date.now(),

@@ -186,6 +186,33 @@ function requiresFacingByDefault(ability?: { target?: 'SELF' | 'OPPONENT'; faceD
   return ability.faceDirection === true;
 }
 
+function computeHpShieldSegments(
+  hp: number | undefined,
+  shield: number | undefined,
+  maxHp: number | undefined,
+): { hpPct: number; shieldPct: number } {
+  const safeMaxHp = Math.max(1, Number(maxHp ?? 100));
+  const safeHp = Math.max(0, Number(hp ?? 0));
+  const safeShield = Math.max(0, Number(shield ?? 0));
+  const total = safeHp + safeShield;
+
+  if (total <= 0) {
+    return { hpPct: 0, shieldPct: 0 };
+  }
+
+  if (total <= safeMaxHp) {
+    return {
+      hpPct: Math.max(0, Math.min(100, (safeHp / safeMaxHp) * 100)),
+      shieldPct: Math.max(0, Math.min(100, (safeShield / safeMaxHp) * 100)),
+    };
+  }
+
+  return {
+    hpPct: Math.max(0, Math.min(100, (safeHp / total) * 100)),
+    shieldPct: Math.max(0, Math.min(100, (safeShield / total) * 100)),
+  };
+}
+
 // Fixed camera direction constant — referenced in physics tick
 const CAM_DIR = { x: 0, y: 1 };
 const DEFAULT_PITCH = Math.atan2(10, 20);
@@ -217,6 +244,7 @@ interface AbilityInfo {
   faceDirection?: boolean;
   requiresGrounded?: boolean;
   requiresStanding?: boolean;
+  minSelfHpExclusive?: number;
   qinggong?: boolean;
   allowGroundCastWithoutTarget?: boolean;
 }
@@ -234,10 +262,10 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; position: Position; hp: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
-  opponent: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing };
+  me: { userId: string; position: Position; hp: number; maxHp?: number; shield?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
+  opponent: { userId: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing };
   /** All other players (opponents) — supports 1v1 and N-player modes */
-  opponents?: { userId: string; position: Position; hp: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing }[];
+  opponents?: { userId: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing }[];
   gameId: string;
   onCastAbility: (
     abilityInstanceId: string,
@@ -557,13 +585,23 @@ export default function BattleArena({
       return;
     }
     if (ability?.requiresStanding) {
+      const movingByInput =
+        keysRef.current.w ||
+        keysRef.current.a ||
+        keysRef.current.s ||
+        keysRef.current.d;
       const movingLocal =
+        movingByInput ||
         Math.abs(localVelocityRef.current.x) > 0.01 ||
         Math.abs(localVelocityRef.current.y) > 0.01;
       if (groundedLockedLocal || movingLocal) {
         toastError('该技能需要站立后施放');
         return;
       }
+    }
+    if (typeof ability?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ability.minSelfHpExclusive) {
+      toastError(`当前气血必须大于${ability.minSelfHpExclusive}才能施放`);
+      return;
     }
 
     // Face direction check (180° hemisphere)
@@ -1151,7 +1189,7 @@ export default function BattleArena({
     const GCD_WINDOW_TICKS = 45;
     const getDisplayMaxCooldown = (ab: any): number => {
       const base = ab?.cooldownTicks ?? 0;
-      const gcdWindow = ab?.gcd === true && !ab?.isCommon ? GCD_WINDOW_TICKS : 0;
+      const gcdWindow = ab?.gcd === true ? GCD_WINDOW_TICKS : 0;
       return Math.max(base, gcdWindow);
     };
     const getChargeDisplay = (ab: any, instance: any) => {
@@ -1246,10 +1284,19 @@ export default function BattleArena({
         Math.abs(localVzRef.current) > 0.01;
       if (ab?.requiresGrounded && groundedLockedLocal) return false;
       if (ab?.requiresStanding) {
+        const movingByInput =
+          wasdKeys.w ||
+          wasdKeys.a ||
+          wasdKeys.s ||
+          wasdKeys.d;
         const movingLocal =
+          movingByInput ||
           Math.abs(localVelocityRef.current.x) > 0.01 ||
           Math.abs(localVelocityRef.current.y) > 0.01;
         if (groundedLockedLocal || movingLocal) return false;
+      }
+      if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
+        return false;
       }
       if (ab?.qinggong && qinggongSealed) return false;
       const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
@@ -1304,7 +1351,9 @@ export default function BattleArena({
             isReady:     isAbilityReady(ability, instance),
             isCommon:    false,
             target:      'OPPONENT' as 'SELF' | 'OPPONENT',
+            minSelfHpExclusive: undefined,
             requiresGrounded: false,
+            requiresStanding: false,
             qinggong: false,
             allowGroundCastWithoutTarget: false,
           };
@@ -1329,7 +1378,9 @@ export default function BattleArena({
           isCommon:    false,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
           faceDirection: requiresFacingByDefault(ability as any),
+          minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           requiresGrounded: !!(ability as any).requiresGrounded,
+          requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
         };
@@ -1366,7 +1417,9 @@ export default function BattleArena({
           isCommon:    true,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
           faceDirection: requiresFacingByDefault(ability as any),
+          minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           requiresGrounded: !!(ability as any).requiresGrounded,
+          requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
         } as AbilityInfo;
@@ -1379,12 +1432,14 @@ export default function BattleArena({
   }, [
     me.hand,
     me.buffs,
+    me.hp,
     me.position,
     me.facing,
     selectedTargetId,
     targetableOpponentsList,
     distance,
     abilities,
+    wasdKeys,
   ]);
 
   /* ========================= PICKUP INTERACTION ========================= */
@@ -1546,6 +1601,15 @@ export default function BattleArena({
       // Space = jump
       if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
+        if (e.repeat) return;
+        if (keysRef.current.s) {
+          const commons = abilitiesRef.current.filter(a => a.isCommon);
+          const backstep = commons.find(a => a.abilityId === 'houyao');
+          if (backstep?.isReady) {
+            castAbilityRef.current(backstep.id);
+            return;
+          }
+        }
         if (jumpLockedRef.current) return;
         jumpLocalRef.current = true;
         jumpSendRef.current  = true;
@@ -2125,8 +2189,11 @@ export default function BattleArena({
   }, [gameId]);
 
   /* ========================= HUD DATA ========================= */
-  const myHpPct  = Math.max(0, Math.min(100, ((me?.hp  ?? 0) / maxHp) * 100));
-  const isMoving = Object.values(wasdKeys).some(v => v);
+  const myMaxHp = me?.maxHp ?? maxHp;
+  const myShield = Math.max(0, me?.shield ?? 0);
+  const myBarSegments = computeHpShieldSegments(me?.hp ?? 0, myShield, myMaxHp);
+  const myHpPct = myBarSegments.hpPct;
+  const myShieldPct = myBarSegments.shieldPct;
   const myFacingArrow = facingArrow(me.facing ?? meFacingRef.current);
 
   const cheatAbilities = useMemo(
@@ -2385,6 +2452,15 @@ export default function BattleArena({
           <span className={styles.playerLabel}>玩家</span>
         </div>
         <div className={styles.myHpTrack}>
+          {myShieldPct > 0 && (
+            <div
+              className={styles.myShieldFill}
+              style={{
+                left: `${myHpPct}%`,
+                width: `${myShieldPct}%`,
+              }}
+            />
+          )}
           <div
             className={styles.myHpFill}
             style={{
@@ -2392,7 +2468,9 @@ export default function BattleArena({
               background: myHpPct > 50 ? '#44cc55' : myHpPct > 25 ? '#ffcc22' : '#ee3333',
             }}
           />
-          <span className={styles.hpNumInside}>{me?.hp ?? 0}</span>
+          <span className={styles.hpNumInside}>
+            {`${me?.hp ?? 0}${myShield > 0 ? ` +${Math.round(myShield)}` : ''}`}
+          </span>
         </div>
         <div className={styles.myManaTrack}>
           <div className={styles.myManaFill} />
@@ -2433,7 +2511,7 @@ export default function BattleArena({
           </div>
           <div className={styles.controlHints}>
             {controlMode === 'traditional' ? (
-              <><span>W/S</span> 前进/后退 <span>A/D</span> 转向<br/><span>右键拖拽</span> 转向+转镜头 <span>左键拖拽</span> 转镜头<br/><span>滚轮</span> 镜头缩放</>
+              <><span>W/S</span> 前进/后退 <span>A/D</span> 转向<br/><span>右键拖拽</span> 转向+转镜头 <span>左键拖拽</span> 转镜头<br/><span>S+Space</span> 后撤 <span>滚轮</span> 镜头缩放</>
             ) : (
               <><span>WASD</span> 绝对方向移动<br/><span>镜头固定</span> 不随角色旋转</>
             )}
@@ -2448,10 +2526,14 @@ export default function BattleArena({
             ? opponentsList.find((o) => o.userId === selectedTargetId) ?? null
             : null;
           const isSelf       = selectedSelf && !selectedTargetId;
-          const targetHpPct  = isSelf
-            ? myHpPct
-            : Math.max(0, Math.min(100, (((selectedTarget?.hp ?? 0) / maxHp) * 100)));
           const targetHp     = isSelf ? (me?.hp ?? 0) : (selectedTarget?.hp ?? 0);
+          const targetShield = Math.max(0, isSelf ? (me?.shield ?? 0) : (selectedTarget?.shield ?? 0));
+          const targetMaxHp  = isSelf
+            ? (me?.maxHp ?? maxHp)
+            : (selectedTarget?.maxHp ?? maxHp);
+          const targetBarSegments = computeHpShieldSegments(targetHp, targetShield, targetMaxHp);
+          const targetHpPct = targetBarSegments.hpPct;
+          const targetShieldPct = targetBarSegments.shieldPct;
           const targetName   = isSelf ? '玩家' : '陌路侠士';
           const targetBuffs  = isSelf ? (me?.buffs ?? []) : (selectedTarget?.buffs ?? []);
           const targetHand   = isSelf ? me.hand : (selectedTarget?.hand ?? []);
@@ -2468,11 +2550,22 @@ export default function BattleArena({
               <div className={styles.enemyBossBar} style={barBg}>
                 <div className={styles.enemyName}>{targetName}</div>
                 <div className={styles.enemyHpTrack}>
+                  {targetShieldPct > 0 && (
+                    <div
+                      className={styles.enemyShieldFill}
+                      style={{
+                        left: `${targetHpPct}%`,
+                        width: `${targetShieldPct}%`,
+                      }}
+                    />
+                  )}
                   <div
                     className={styles.enemyHpFill}
                     style={{ width: `${targetHpPct}%`, background: hpGradient }}
                   />
-                  <span className={styles.hpNumInside}>{targetHp}</span>
+                  <span className={styles.hpNumInside}>
+                    {`${targetHp}${targetShield > 0 ? ` +${Math.round(targetShield)}` : ''}`}
+                  </span>
                 </div>
                 <div className={styles.enemyManaTrack}>
                   <div className={styles.enemyManaFill} />
@@ -2927,6 +3020,7 @@ export default function BattleArena({
               const recoveringCharge = hasCharges && chargeCount < maxCharges;
               const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
               const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
+              const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
               return (
                 <button
                   key={ability.id}
@@ -2943,7 +3037,7 @@ export default function BattleArena({
                     </div>
                   )}
                   {hasCharges && (
-                    <div className={styles.chargeFrame}>
+                    <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
                       <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
                         <rect
                           className={styles.chargeFrameTrack}
@@ -2967,7 +3061,9 @@ export default function BattleArena({
                           strokeDasharray={`${chargePathLength} 100`}
                         />
                       </svg>
-                      <span className={styles.chargeStackBox}>{Math.max(0, chargeCount)}</span>
+                      <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
+                        {Math.max(0, chargeCount)}
+                      </span>
                     </div>
                   )}
                   <span className={styles.abilityKey}>{keyHint}</span>
@@ -2992,6 +3088,7 @@ export default function BattleArena({
               const recoveringCharge = hasCharges && chargeCount < maxCharges;
               const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
               const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
+              const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
               return (
                 <React.Fragment key={ability.id}>
                   {/* gap between 猛虎下山 and 扶摇 */}
@@ -3012,7 +3109,7 @@ export default function BattleArena({
                       </div>
                     )}
                     {hasCharges && (
-                      <div className={styles.chargeFrame}>
+                      <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
                         <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
                           <rect
                             className={styles.chargeFrameTrack}
@@ -3036,7 +3133,9 @@ export default function BattleArena({
                             strokeDasharray={`${chargePathLength} 100`}
                           />
                         </svg>
-                        <span className={styles.chargeStackBox}>{Math.max(0, chargeCount)}</span>
+                        <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
+                          {Math.max(0, chargeCount)}
+                        </span>
                       </div>
                     )}
                     <span className={styles.abilityKey}>{keyHint}</span>

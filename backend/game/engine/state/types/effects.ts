@@ -6,6 +6,7 @@ import { TargetType } from "./abilities";
 export type EffectType =
   | "DAMAGE"
   | "HEAL"
+  | "SHIELD"
   | "DRAW"
   | "COOLDOWN_SLOW"
   | "DAMAGE_REDUCTION"
