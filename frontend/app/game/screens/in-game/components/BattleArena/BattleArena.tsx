@@ -7,7 +7,7 @@ import WASDButtons from './WASDButtons';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, type ChannelBarData } from './ChannelBar';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
-import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone } from '../../types';
+import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, RuntimeMapResponse } from '../../types';
 import ArenaScene from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 
@@ -16,12 +16,68 @@ type V3 = { x: number; y: number; z: number };
 /* ============================================================
    ARENA SETTINGS  (must match backend)
    ============================================================ */
-const PUBG_WIDTH  = 2000;
-const PUBG_HEIGHT = 2000;
-const ARENA_WIDTH_SMALL  = 200;
-const ARENA_HEIGHT_SMALL = 200;
 const DASH_ANIM_MS = 1500; // ms — cosmetic dash travel animation
 const PLAYER_RADIUS = 2; // must match backend
+
+function normalizeMapObjectType(raw: unknown): MapObject['type'] {
+  const v = String(raw ?? '').toLowerCase();
+  if (v === 'rock') return 'rock';
+  if (v === 'mountain') return 'mountain';
+  if (v === 'hill_high') return 'hill_high';
+  if (v === 'hill_low') return 'hill_low';
+  return 'building';
+}
+
+function sanitizeRuntimeMapResponse(payload: RuntimeMapResponse | any): { width: number; height: number; objects: MapObject[] } | null {
+  const map = payload?.map;
+  const width = Number(map?.width);
+  const height = Number(map?.height);
+
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  const rawObjects = Array.isArray(map?.objects) ? map.objects : [];
+  const objects: MapObject[] = [];
+
+  for (const entry of rawObjects) {
+    if (!entry || typeof entry !== 'object') continue;
+    const rec = entry as Record<string, unknown>;
+    const x = Number(rec.x);
+    const y = Number(rec.y);
+    const w = Number(rec.w);
+    const d = Number(rec.d);
+    const h = Number(rec.h);
+    if (
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      !Number.isFinite(w) ||
+      !Number.isFinite(d) ||
+      !Number.isFinite(h) ||
+      w <= 0 ||
+      d <= 0 ||
+      h <= 0
+    ) {
+      continue;
+    }
+
+    objects.push({
+      id: String(rec.id ?? `map_obj_${objects.length}`),
+      type: normalizeMapObjectType(rec.type),
+      x,
+      y,
+      w,
+      d,
+      h,
+    });
+  }
+
+  return {
+    width,
+    height,
+    objects,
+  };
+}
 
 /** Resolve circle-vs-AABB collision (client-side prediction). Z-aware: skip if player is above obj. */
 function resolveObjCollisionClient(
@@ -286,6 +342,8 @@ interface BattleArenaProps {
   groundZones?: GroundZone[];
   /** Game mode: 'arena' (100×100) or 'pubg' (2000×2000) */
   mode?: string;
+  /** Selected imported export package for PUBG mode */
+  exportPackageName?: string | null;
 }
 
 /* ============================================================
@@ -306,14 +364,46 @@ export default function BattleArena({
   safeZone,
   groundZones,
   mode,
+  exportPackageName,
 }: BattleArenaProps) {
-  const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : PUBG_WIDTH;
-  const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : PUBG_HEIGHT;
-  const mapData = useMemo(() => getMapForMode(mode), [mode]);
+  const [runtimeMapData, setRuntimeMapData] = useState<{ width: number; height: number; objects: MapObject[] } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRuntimeMapData(null);
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/game/${gameId}/map`, {
+          credentials: 'include',
+        });
+        if (!res.ok) return;
+        const payload = await res.json();
+        const parsed = sanitizeRuntimeMapResponse(payload);
+        if (!cancelled && parsed) {
+          setRuntimeMapData(parsed);
+        }
+      } catch {
+        // Keep fallback static map.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [gameId, mode, exportPackageName]);
+
+  const mapData = useMemo(() => {
+    if (mode !== 'arena' && runtimeMapData) return runtimeMapData;
+    return getMapForMode(mode);
+  }, [mode, runtimeMapData]);
+
+  const ARENA_WIDTH = mapData.width;
+  const ARENA_HEIGHT = mapData.height;
   const mapObjectsRef = useRef(mapData.objects);
   useEffect(() => {
     mapObjectsRef.current = mapData.objects;
-  }, [mapData]);
+  }, [mapData.objects]);
   // CODE FRESHNESS MARKER — if you see this in console, the new code IS running
   useEffect(() => { console.log('[BA-FRESH] BattleArena v2 loaded — activeDash support active'); }, []);
   const wrapRef        = useRef<HTMLDivElement>(null);
@@ -2509,6 +2599,30 @@ export default function BattleArena({
       }}>
         {`移速 ${finalMoveSpeed.toFixed(3)} | 减伤 ${damageReductionPct.toFixed(1)}% | 闪避 ${dodgeChancePct.toFixed(1)}%${autoForward ? ' | 自动前行' : ''}`}
       </div>
+      {mode !== 'arena' && exportPackageName && (
+        <div style={{
+          position: 'absolute',
+          top: 68,
+          left: 10,
+          zIndex: 500,
+          background: 'rgba(10, 16, 14, 0.72)',
+          border: '1px solid rgba(120, 160, 145, 0.35)',
+          borderRadius: 6,
+          padding: '4px 8px',
+          fontSize: 11,
+          color: '#c7e6da',
+          letterSpacing: '0.2px',
+          fontFamily: '"Microsoft YaHei", sans-serif',
+          pointerEvents: 'none',
+          backdropFilter: 'blur(2px)',
+          maxWidth: 360,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}>
+          {`导入地图: ${exportPackageName}`}
+        </div>
+      )}
 
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
       {/* ===== R3F 3D CANVAS ===== */}
@@ -2548,6 +2662,7 @@ export default function BattleArena({
             meScreenBoundsRef={meScreenBoundsRef}
             oppScreenBoundsRef={oppScreenBoundsRef}
             mode={mode}
+            mapData={mapData}
             safeZone={safeZone}
             groundZones={groundZones}
             groundCastPreview={

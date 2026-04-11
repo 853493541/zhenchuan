@@ -15,6 +15,8 @@ type GameData = {
   playerNames?: Record<string, string>;
   started: boolean;
   autoStart?: boolean;
+  mode?: 'arena' | 'pubg';
+  exportPackageName?: string | null;
 };
 
 export default function RoomPage() {
@@ -289,6 +291,9 @@ export default function RoomPage() {
       <div className={styles.container}>
         <h1 className={styles.title}>等待对手</h1>
         <p className={styles.subtitle}>{playersJoined} / 2 玩家已准备</p>
+        {game?.mode === 'pubg' && game?.exportPackageName && (
+          <p className={styles.subtitle}>当前地图：{game.exportPackageName}</p>
+        )}
 
         <div className={styles.playerList}>
           {[0, 1].map((slot) => {

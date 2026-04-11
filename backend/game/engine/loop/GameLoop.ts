@@ -175,6 +175,11 @@ const SHENGTAIJI_ENEMY_SLOW_BUFF_ID = 1311;
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
   mode?: "arena" | "pubg";
+  map?: {
+    width: number;
+    height: number;
+    objects: MapObject[];
+  };
 }
 
 /**
@@ -220,8 +225,8 @@ export class GameLoop {
     this.broadcastTickInterval = Math.max(1, Math.round(this.tickRate / 30));
     this.isArenaMode = config?.mode === 'arena';
 
-    // Select map based on game mode
-    const map = this.isArenaMode ? arenaMap : worldMap;
+    // Select map based on game mode, with optional imported map override.
+    const map = config?.map ?? (this.isArenaMode ? arenaMap : worldMap);
     this.mapCtx = {
       objects: map.objects,
       width: map.width,
@@ -233,11 +238,13 @@ export class GameLoop {
     if (this.isArenaMode) {
       this.zoneStartedAt = Date.now();
       this.lastZoneDamageAt = Date.now();
-      const mapCenter = map.width / 2;
+      const mapCenterX = map.width / 2;
+      const mapCenterY = map.height / 2;
+      const mapHalf = Math.min(map.width, map.height) / 2;
       this.state.safeZone = {
-        centerX: mapCenter,
-        centerY: mapCenter,
-        currentHalf: mapCenter,
+        centerX: mapCenterX,
+        centerY: mapCenterY,
+        currentHalf: mapHalf,
         dps: 0,
         shrinking: false,
         shrinkProgress: 0,
@@ -1724,6 +1731,11 @@ export class GameLoop {
    */
   getState(): GameState {
     return structuredClone(this.state);
+  }
+
+  /** Read-only access to the active map collision objects for validation paths. */
+  getMapObjects(): MapObject[] {
+    return this.mapCtx.objects;
   }
 
   /**

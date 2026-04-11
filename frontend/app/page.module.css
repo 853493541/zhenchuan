@@ -19,8 +19,19 @@
 
 .createActions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+.exportSelect {
+  min-width: 260px;
+  max-width: 360px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #94a3b8;
+  background: #ffffff;
+  color: #0f172a;
 }
 
 /* Mode badge on room cards */

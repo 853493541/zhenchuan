@@ -12,9 +12,13 @@ const router = express.Router();
 router.post("/create", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { mode } = req.body;
+    const { mode, exportPackageName } = req.body;
     const validMode = mode === 'pubg' ? 'pubg' : 'arena';
-    const game = await createGame(userId, validMode);
+    const game = await createGame(
+      userId,
+      validMode,
+      typeof exportPackageName === 'string' ? exportPackageName : undefined,
+    );
     res.json(game);
   } catch (err: any) {
     res.status(400).json({ error: err.message });

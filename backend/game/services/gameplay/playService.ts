@@ -125,6 +125,7 @@ async function playCastAbility(
     pendingJump: loop.hasPendingJump(playerIndex),
     targetUserId,
     groundTarget,
+    mapObjects: loop.getMapObjects(),
   });
 
   const prevState: GameState = structuredClone(state);
