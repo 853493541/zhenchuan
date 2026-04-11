@@ -113,6 +113,10 @@ export default function HomePage() {
     }
   };
 
+  const openExportViewer = () => {
+    router.push("/export-reader.html");
+  };
+
   /* =========================================================
      UI
   ========================================================= */
@@ -134,6 +138,12 @@ export default function HomePage() {
           disabled={loading}
         >
           {loading ? "创建中…" : "创建竞技场"}
+        </button>
+        <button
+          className={`${styles.createBtn} ${styles.createBtnExportViewer}`}
+          onClick={openExportViewer}
+        >
+          Export Viewer
         </button>
       </div>
 

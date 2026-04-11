@@ -53,6 +53,10 @@
   background: #0f766e;
 }
 
+.createBtnExportViewer {
+  background: #b45309;
+}
+
 .createBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
