@@ -22,15 +22,15 @@ const PACKAGE_NAME = 'Ctest-2026-04-10T23-11-25-797Z';
 const DATA_PATH = `/full-exports/${encodeURIComponent(PACKAGE_NAME)}/map-data`;
 
 const SF = 0.005557531566779299;
-const MAP_SCALE = 2;  // User wants doubled map vs character
+const MAP_SCALE = 2.4;  // 2.4× scale so map is larger relative to character
 export const RENDER_SF = SF * MAP_SCALE;
 
 // Alignment: game coord (gx,gy) in Three.js = (gx - width/2, 0, height/2 - gy)  [z-flip removed]
 // Export entity at (ex, ey, ez_rh) in Three.js = (ex*RENDER_SF + GROUP_POS_X, ey*RENDER_SF + GROUP_POS_Y, ez_rh*RENDER_SF + GROUP_POS_Z)
-// GROUP_POS derived from median entity (18664.5, _, -122778.5) → game (214, 228) doubled
-export const GROUP_POS_X = -266.87;
-export const GROUP_POS_Y = -2.51;   // Terrain at city center (game 214,228) → y=0
-export const GROUP_POS_Z = 1410.26;  // No Z-flip: entities at native RH z, aligned with worldHalf-gy
+// GROUP_POS derived from median entity (18664.5, _, -122778.5) → game (214, 228); scaled from MAP_SCALE=2 reference
+export const GROUP_POS_X = -308.44;
+export const GROUP_POS_Y = -3.01;   // Terrain at city center (game 214,228) → y=0
+export const GROUP_POS_Z = 1682.71;  // No Z-flip: entities at native RH z, aligned with worldHalf-gy
 
 interface ExportedMapSceneProps {
   worldWidth: number;
@@ -131,7 +131,7 @@ export default function ExportedMapScene({ worldWidth, worldHeight, showCollisio
   // Match export-reader renderer settings
   useEffect(() => {
     gl.toneMapping = THREE.ACESFilmicToneMapping;
-    gl.toneMappingExposure = 1.25;
+    gl.toneMappingExposure = 1.5;  // Slightly brighter than export-reader's 1.25
     gl.outputColorSpace = THREE.SRGBColorSpace;
     gl.shadowMap.enabled = true;
     gl.shadowMap.type = THREE.PCFSoftShadowMap;

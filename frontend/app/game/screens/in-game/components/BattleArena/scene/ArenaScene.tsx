@@ -181,20 +181,19 @@ export default function ArenaScene({
       {/* Lighting — mode-specific */}
       {isCollisionTest ? (
         <>
-          {/* Lighting from environment.json + visual-settings.json (matches export-reader exactly) */}
-          {/* Sun: diffuse=[0.984,0.890,0.847], dir=[0.709,0.574,-0.410], intensity=3 */}
+          {/* Lighting from environment.json + visual-settings.json (matches export-reader, then boosted) */}
+          {/* Sun: diffuse=[0.984,0.890,0.847], dir=[0.709,0.574,-0.410], intensity boosted */}
           <directionalLight
             position={[709, 574, -410]}
-            intensity={3.0}
+            intensity={3.8}
             color="#fbe3d8"
             castShadow
           />
-          {/* Ambient: ambientColor=[0.498,0.498,0.498], intensity=0.8 */}
-          <ambientLight intensity={0.8} color="#7f7f7f" />
+          {/* Ambient: ambientColor=[0.498,0.498,0.498], boosted for brightness */}
+          <ambientLight intensity={1.2} color="#7f7f7f" />
           {/* Hemisphere: skyLightColor*[0.8,0.9,1.2]=[0.398,0.448,0.598], ground=#8b7355, intensity=1 */}
           <hemisphereLight args={['#667299', '#8b7355', 1.0]} />
-          {/* Fog: FogExp2 from visual-settings, density scaled for our scene (original 0.0000035 / SF) */}
-          <fogExp2 attach="fog" args={['#c8b888', 0.00063]} />
+          {/* No fog — removed per user request (fog was darkening the scene) */}
         </>
       ) : (
         <>

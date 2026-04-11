@@ -1239,16 +1239,15 @@ export default function BattleArena({
     const dy = me.position.y - local.y;
     const activeDash = (me as any)?.activeDash;
 
-    // Collision-test mode uses viewer-side BVH collision on the client while the
-    // backend still runs coarse AABB collision. If the generic hard-snap runs
-    // first, touching any wall can exceed the threshold and yank the player back.
+    // Collision-test mode: both client and backend now use BVH collision, so we can
+    // reconcile position normally. Only skip reconciliation on dash (server owns dash).
     if (mode === 'collision-test') {
       if (activeDash && activeDash.ticksRemaining > 0) {
         meActiveDashRef.current = activeDash;
         localPositionRef.current = { ...me.position };
         localZRef.current  = (me.position as any).z ?? 0;
         localVzRef.current = 0;
-        bvhCenterYInitRef.current = false; // resync sphere center after dash
+        bvhCenterYInitRef.current = false; // resync cylinder center after dash
         return;
       }
 
@@ -1261,8 +1260,10 @@ export default function BattleArena({
           y: me.position.y,
           z: serverZ,
         };
+        return;
       }
-      return;
+      // Fall through to standard smooth reconciliation (fixes jump-range mismatch between
+      // client prediction and server-authoritative BVH result).
     }
 
     // Hard-snap if server position is far away (e.g. new battle start)
