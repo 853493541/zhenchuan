@@ -25,7 +25,7 @@ const SF = 0.005557531566779299;
 const MAP_SCALE = 2;  // User wants doubled map vs character
 export const RENDER_SF = SF * MAP_SCALE;
 
-// Alignment: game coord (gx,gy) in Three.js = (gx - worldHalf, 0, worldHalf - gy)  [z-flip removed]
+// Alignment: game coord (gx,gy) in Three.js = (gx - width/2, 0, height/2 - gy)  [z-flip removed]
 // Export entity at (ex, ey, ez_rh) in Three.js = (ex*RENDER_SF + GROUP_POS_X, ey*RENDER_SF + GROUP_POS_Y, ez_rh*RENDER_SF + GROUP_POS_Z)
 // GROUP_POS derived from median entity (18664.5, _, -122778.5) → game (214, 228) doubled
 export const GROUP_POS_X = -266.87;
@@ -33,7 +33,8 @@ export const GROUP_POS_Y = -2.51;   // Terrain at city center (game 214,228) →
 export const GROUP_POS_Z = 1410.26;  // No Z-flip: entities at native RH z, aligned with worldHalf-gy
 
 interface ExportedMapSceneProps {
-  worldHalf: number;
+  worldWidth: number;
+  worldHeight: number;
   showCollisionShells?: boolean;
   showCollisionBoxes?: boolean;
   onCollisionSystemReady?: (sys: MapCollisionSystem) => void;
@@ -121,7 +122,7 @@ function encodePathSegments(pathLike: string): string {
 
 /* ────────────────────── Main Component ────────────────────── */
 
-export default function ExportedMapScene({ worldHalf, showCollisionShells = false, showCollisionBoxes = false, onCollisionSystemReady }: ExportedMapSceneProps) {
+export default function ExportedMapScene({ worldWidth, worldHeight, showCollisionShells = false, showCollisionBoxes = false, onCollisionSystemReady }: ExportedMapSceneProps) {
   const { scene, gl } = useThree();
   const groupRef = useRef<THREE.Group | null>(null);
   const shellLinesRef = useRef<THREE.LineSegments | null>(null);
@@ -229,7 +230,7 @@ export default function ExportedMapScene({ worldHalf, showCollisionShells = fals
     <>
       <SkyDome />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-        <planeGeometry args={[worldHalf * 2, worldHalf * 2]} />
+        <planeGeometry args={[worldWidth, worldHeight]} />
         <meshBasicMaterial visible={false} />
       </mesh>
     </>

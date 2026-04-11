@@ -18,10 +18,11 @@ const RENDER_RANGE = 200;
 interface MapObjectsProps {
   localRenderPosRef: MutableRefObject<{ x: number; y: number; z: number }>;
   mapObjects: MapObject[];
-  worldHalf: number; // half of world width/height for Three.js centering offset
+  worldHalfX: number;
+  worldHalfY: number;
 }
 
-export default function MapObjects({ localRenderPosRef, mapObjects, worldHalf }: MapObjectsProps) {
+export default function MapObjects({ localRenderPosRef, mapObjects, worldHalfX, worldHalfY }: MapObjectsProps) {
   const [center, setCenter] = useState<{ x: number; y: number }>({
     x: localRenderPosRef.current.x,
     y: localRenderPosRef.current.y,
@@ -48,21 +49,21 @@ export default function MapObjects({ localRenderPosRef, mapObjects, worldHalf }:
         const dx = cx - center.x;
         const dy = cy - center.y;
         // For small maps (arena 100×100) always show all objects
-        if (worldHalf <= 100) return true;
+        if (Math.max(worldHalfX, worldHalfY) <= 100) return true;
         return dx * dx + dy * dy <= (RENDER_RANGE + radius) * (RENDER_RANGE + radius);
       })
       .map(obj => ({
       id: obj.id,
       // Center the box: obj.x/y are min corners, convert to center
-      px: obj.x + obj.w * 0.5 - worldHalf,
+      px: obj.x + obj.w * 0.5 - worldHalfX,
       py: obj.h * 0.5,            // Three.js y = height, box sits on floor
-      pz: worldHalf - (obj.y + obj.d * 0.5),
+      pz: worldHalfY - (obj.y + obj.d * 0.5),
       sx: obj.w,
       sy: obj.h,
       sz: obj.d,
       color: OBJ_COLORS[obj.type] ?? '#4a5465',
     }));
-  }, [center.x, center.y, mapObjects, worldHalf]);
+  }, [center.x, center.y, mapObjects, worldHalfX, worldHalfY]);
 
   return (
     <group>

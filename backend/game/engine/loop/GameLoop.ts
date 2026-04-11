@@ -191,6 +191,7 @@ export class GameLoop {
   private tickRate: number; // Hz
   private tickInterval: any;
   private playerInputs: Map<number, MovementInput | null> = new Map();
+  private playerInputSeq: Map<number, number> = new Map();
   private lastBroadcast = 0;
   private ticksSinceBroadcast = 0;
   // Broadcast cadence in ticks. Derived from tickRate to keep roughly 30Hz net updates.
@@ -254,6 +255,7 @@ export class GameLoop {
     // Initialize player input buffers
     this.state.players.forEach((_, idx) => {
       this.playerInputs.set(idx, null);
+      this.playerInputSeq.set(idx, Number.NEGATIVE_INFINITY);
     });
   }
 
@@ -331,7 +333,15 @@ export class GameLoop {
    * Queue player movement input
    * Called when client sends WASD input
    */
-  setPlayerInput(playerIndex: number, input: MovementInput | null) {
+  setPlayerInput(playerIndex: number, input: MovementInput | null, seq?: number) {
+    if (typeof seq === "number" && Number.isFinite(seq)) {
+      const lastSeq = this.playerInputSeq.get(playerIndex) ?? Number.NEGATIVE_INFINITY;
+      if (seq <= lastSeq) {
+        return;
+      }
+      this.playerInputSeq.set(playerIndex, seq);
+    }
+
     if (input?.jump) {
       const player = this.state.players[playerIndex];
       if (player) {

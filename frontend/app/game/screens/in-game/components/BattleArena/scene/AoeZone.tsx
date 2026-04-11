@@ -11,7 +11,8 @@ interface AoeZoneProps {
   worldZ?: number;
   radius: number;
   color: string;
-  worldHalf: number;
+  worldHalfX: number;
+  worldHalfY: number;
   /** Optional text label displayed in the centre of the zone, always facing the camera */
   label?: string;
   /** Colour override for the label — defaults to `color` */
@@ -19,7 +20,7 @@ interface AoeZoneProps {
 }
 
 export default function AoeZone({
-  worldX, worldY, worldZ = 0, radius, color, worldHalf,
+  worldX, worldY, worldZ = 0, radius, color, worldHalfX, worldHalfY,
   label, labelColor,
 }: AoeZoneProps) {
   const ringRef   = useRef<THREE.Mesh>(null);
@@ -37,8 +38,8 @@ export default function AoeZone({
     }
   });
 
-  const x = worldX - worldHalf;
-  const z = worldHalf - worldY;
+  const x = worldX - worldHalfX;
+  const z = worldHalfY - worldY;
   const textColor = labelColor ?? color;
 
   return (

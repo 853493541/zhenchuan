@@ -10,12 +10,13 @@ const RENDER_RANGE = 200;
 interface PickupBooksProps {
   pickups: PickupItem[];
   localRenderPosRef: MutableRefObject<{ x: number; y: number; z: number }>;
-  worldHalf: number;
+  worldHalfX: number;
+  worldHalfY: number;
 }
 
-function PickupBook({ pickup, worldHalf }: { pickup: PickupItem; worldHalf: number }) {
-  const x = pickup.position.x - worldHalf;
-  const z = worldHalf - pickup.position.y;
+function PickupBook({ pickup, worldHalfX, worldHalfY }: { pickup: PickupItem; worldHalfX: number; worldHalfY: number }) {
+  const x = pickup.position.x - worldHalfX;
+  const z = worldHalfY - pickup.position.y;
 
   // Stable angle from id hash
   const angle = (parseInt(pickup.id.replace(/-/g, '').slice(0, 6), 16) % 360) * (Math.PI / 180);
@@ -31,7 +32,7 @@ function PickupBook({ pickup, worldHalf }: { pickup: PickupItem; worldHalf: numb
   );
 }
 
-export default function PickupBooks({ pickups, localRenderPosRef, worldHalf }: PickupBooksProps) {
+export default function PickupBooks({ pickups, localRenderPosRef, worldHalfX, worldHalfY }: PickupBooksProps) {
   const [center, setCenter] = useState<{ x: number; y: number }>({
     x: localRenderPosRef.current.x,
     y: localRenderPosRef.current.y,
@@ -61,7 +62,7 @@ export default function PickupBooks({ pickups, localRenderPosRef, worldHalf }: P
   return (
     <group>
       {visiblePickups.map(p => (
-        <PickupBook key={p.id} pickup={p} worldHalf={worldHalf} />
+        <PickupBook key={p.id} pickup={p} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />
       ))}
     </group>
   );

@@ -123,8 +123,9 @@ export default function ArenaScene({
   collisionDebugRef,
   onCollisionSystemReady,
 }: ArenaSceneProps) {
-  const { objects: mapObjects, width: mapWidth } = getMapForMode(mode);
-  const worldHalf = mapWidth / 2;
+  const { objects: mapObjects, width: mapWidth, height: mapHeight } = getMapForMode(mode);
+  const worldHalfX = mapWidth / 2;
+  const worldHalfY = mapHeight / 2;
   const isArena = mode === 'arena';
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -141,26 +142,26 @@ export default function ArenaScene({
   const targetLinePoints = selectedTarget
     ? [
         [
-          localRenderPosRef.current.x - worldHalf,
+          localRenderPosRef.current.x - worldHalfX,
           (localRenderPosRef.current.z ?? 0) + 1,
-          worldHalf - localRenderPosRef.current.y,
+          worldHalfY - localRenderPosRef.current.y,
         ],
         [
-          selectedTarget.position.x - worldHalf,
+          selectedTarget.position.x - worldHalfX,
           (selectedTarget.position.z ?? 0) + 1,
-          worldHalf - selectedTarget.position.y,
+          worldHalfY - selectedTarget.position.y,
         ],
       ] as [number, number, number][]
     : null;
 
   const handleGroundPointerMove = (e: any) => {
     if (!onGroundPointerMove) return;
-    onGroundPointerMove(e.point.x + worldHalf, worldHalf - e.point.z);
+    onGroundPointerMove(e.point.x + worldHalfX, worldHalfY - e.point.z);
   };
 
   const handleGroundPointerDown = (e: any) => {
     if (!onGroundPointerDown) return;
-    onGroundPointerDown(e.point.x + worldHalf, worldHalf - e.point.z);
+    onGroundPointerDown(e.point.x + worldHalfX, worldHalfY - e.point.z);
   };
 
   const isCollisionTest = mode === 'collision-test';
@@ -173,7 +174,8 @@ export default function ArenaScene({
         camYawRef={camYawRef}
         camPitchRef={camPitchRef}
         camZoomRef={camZoomRef}
-        worldHalf={worldHalf}
+        worldHalfX={worldHalfX}
+        worldHalfY={worldHalfY}
       />
 
       {/* Lighting — mode-specific */}
@@ -205,7 +207,7 @@ export default function ArenaScene({
 
       {/* World */}
       {isCollisionTest ? (
-        <ExportedMapScene worldHalf={worldHalf} showCollisionShells={showCollisionShells} showCollisionBoxes={showCollisionBoxes} onCollisionSystemReady={onCollisionSystemReady} />
+        <ExportedMapScene worldWidth={mapWidth} worldHeight={mapHeight} showCollisionShells={showCollisionShells} showCollisionBoxes={showCollisionBoxes} onCollisionSystemReady={onCollisionSystemReady} />
       ) : (
         <>
           <Ground
@@ -216,10 +218,10 @@ export default function ArenaScene({
             onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
             onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
           />
-          <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalf={worldHalf} />
+          <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />
         </>
       )}
-      <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalf={worldHalf} />
+      <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />
 
       {/* Always-visible target connection line (not blocked by structures). */}
       {targetLinePoints && (
@@ -260,7 +262,8 @@ export default function ArenaScene({
             color={color}
             labelColor={color}
             label={label}
-            worldHalf={worldHalf}
+            worldHalfX={worldHalfX}
+            worldHalfY={worldHalfY}
           />
         );
       })}
@@ -274,7 +277,8 @@ export default function ArenaScene({
           color={groundCastPreview.label === '百足' ? '#b06cff' : '#ffd24a'}
           labelColor={groundCastPreview.label === '百足' ? '#d8b6ff' : '#ffe98a'}
           label={groundCastPreview.label ?? "预览"}
-          worldHalf={worldHalf}
+          worldHalfX={worldHalfX}
+          worldHalfY={worldHalfY}
         />
       )}
 
@@ -286,7 +290,8 @@ export default function ArenaScene({
           worldZ={me.position.z ?? 0}
           radius={10}
           color="#ffd700"
-          worldHalf={worldHalf}
+          worldHalfX={worldHalfX}
+          worldHalfY={worldHalfY}
         />
       )}
 
@@ -309,7 +314,8 @@ export default function ArenaScene({
                 worldZ={opp.position.z ?? 0}
                 radius={10}
                 color="#ff5500"
-                worldHalf={worldHalf}
+                worldHalfX={worldHalfX}
+                worldHalfY={worldHalfY}
               />
             )}
             <Character
@@ -328,7 +334,8 @@ export default function ArenaScene({
               distance={dist}
               onSelect={() => onSelectTarget?.(opp.userId)}
               onScreenBounds={i === 0 && oppScreenBoundsRef ? (b) => { oppScreenBoundsRef.current = b; } : undefined}
-              worldHalf={worldHalf}
+              worldHalfX={worldHalfX}
+              worldHalfY={worldHalfY}
               isStealthed={hasSanliuXiaBuff(opp.buffs)}
             />
           </group>
@@ -351,7 +358,8 @@ export default function ArenaScene({
           facingRef={meFacingRef}
           posRef={localRenderPosRef}
           onScreenBounds={meScreenBoundsRef ? (b) => { meScreenBoundsRef.current = b; } : undefined}
-          worldHalf={worldHalf}
+          worldHalfX={worldHalfX}
+          worldHalfY={worldHalfY}
           isStealthed={meSemiTransparent}
         />
       )}
@@ -362,7 +370,7 @@ export default function ArenaScene({
 
       {/* Player's own collision sphere (visible when Shell or Box toggles are on) */}
       {isCollisionTest && collisionReady && (showCollisionShells || showCollisionBoxes) && (
-        <PlayerCollisionSphere posRef={localRenderPosRef} worldHalf={worldHalf} playerRadius={COLLISION_TEST_VIS_RADIUS} />
+        <PlayerCollisionSphere posRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} playerRadius={COLLISION_TEST_VIS_RADIUS} />
       )}
     </>
   );
@@ -422,11 +430,13 @@ function CollisionProbeOverlay({
 /* ─── Player collision sphere wireframe ─── */
 function PlayerCollisionSphere({
   posRef,
-  worldHalf,
+  worldHalfX,
+  worldHalfY,
   playerRadius,
 }: {
   posRef: MutableRefObject<{ x: number; y: number; z: number }>;
-  worldHalf: number;
+  worldHalfX: number;
+  worldHalfY: number;
   playerRadius: number;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
@@ -435,9 +445,9 @@ function PlayerCollisionSphere({
     if (!meshRef.current) return;
     const p = posRef.current;
     meshRef.current.position.set(
-      p.x - worldHalf,
+      p.x - worldHalfX,
       (p.z ?? 0) + playerRadius,
-      worldHalf - p.y,
+      worldHalfY - p.y,
     );
   });
 

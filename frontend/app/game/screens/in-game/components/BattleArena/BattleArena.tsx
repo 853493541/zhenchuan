@@ -90,7 +90,12 @@ function getGroundHeightClient(px: number, py: number, pz: number, objects: MapO
 /* ─── BVH collision scratch objects (reused to avoid GC pressure) ─── */
 const _bvhCenter   = new THREE.Vector3();
 const _bvhVelocity = new THREE.Vector3();
-const EXPORT_RADIUS = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF; // ~57.6 export units
+// Cylinder collision shape: horizontal radius + half-height tracked separately.
+// _bvhCenter.y is always the CYLINDER CENTRE (feet + half-height), never sphere-bottom.
+const EXPORT_CYL_RADIUS      = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF; // ~57.6 export units (horizontal)
+const CYL_HALF_HEIGHT_GAME   = 1.0;                                       // game units (total height = 2.0)
+const EXPORT_CYL_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / RENDER_SF;          // ~90 export units
+const BVH_STEP_UP_EXPORT     = 56;                                         // max step-up in export units
 
 /** Live position display — reads a ref every 200ms */
 function PositionDisplay({ posRef }: { posRef: React.MutableRefObject<{ x: number; y: number; z: number }> }) {
@@ -453,11 +458,12 @@ export default function BattleArena({
   const onCollisionSystemReady = useCallback((sys: MapCollisionSystem) => {
     collisionSysRef.current = sys;
     const pos = localPositionRef.current ?? { x: mapData.width / 2, y: mapData.height / 2 };
-    const wh = mapData.width / 2;
+    const halfW = mapData.width / 2;
+    const halfH = mapData.height / 2;
     const tmpCenter = new THREE.Vector3(
-      (pos.x - wh - GROUP_POS_X) / RENDER_SF,
+      (pos.x - halfW - GROUP_POS_X) / RENDER_SF,
       5000,
-      (wh - pos.y - GROUP_POS_Z) / RENDER_SF,
+      (halfH - pos.y - GROUP_POS_Z) / RENDER_SF,
     );
     const groundY = sys.getSupportGroundY(tmpCenter);
     collisionDebugRef.current = {
@@ -474,6 +480,7 @@ export default function BattleArena({
     } else {
       console.warn('[BVH] No ground found at spawn, using Z=0');
     }
+    bvhCenterYInitRef.current = false; // force sphere center resync on first tick
     collisionReadyRef.current = true;
     setCollisionReady(true);
     console.log('[BVH] Collision system ready');
@@ -549,6 +556,7 @@ export default function BattleArena({
   const localZRef         = useRef(0);     // current Z height (world units)
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
+  const bvhCenterYInitRef = useRef(false); // true after _bvhCenter.y first initialised
   const airNudgeRemainingRef = useRef(0);  // post-double-jump correction budget (units)
   const airNudgeTicksRemainingRef = useRef(0); // correction animation ticks remaining
   const airNudgeDirRef = useRef<{ x: number; y: number } | null>(null);
@@ -1240,6 +1248,7 @@ export default function BattleArena({
         localPositionRef.current = { ...me.position };
         localZRef.current  = (me.position as any).z ?? 0;
         localVzRef.current = 0;
+        bvhCenterYInitRef.current = false; // resync sphere center after dash
         return;
       }
 
@@ -1280,6 +1289,7 @@ export default function BattleArena({
     if (Math.abs(zError) > 1.2) {
       localZRef.current = serverZ;
       localVzRef.current = 0;
+      bvhCenterYInitRef.current = false; // large Z snap — resync sphere center next tick
     } else {
       localZRef.current = localZ + zError * 0.35;
       if (Math.abs(serverZ - localZRef.current) < 0.02) {
@@ -1700,6 +1710,12 @@ export default function BattleArena({
 
   // ── Keyboard input ──
   useEffect(() => {
+    const resetMovementKeys = () => {
+      autoForwardRef.current = false;
+      setAutoForward(false);
+      keysRef.current = { w: false, a: false, s: false, d: false };
+      setWasdKeys({ w: false, a: false, s: false, d: false });
+    };
     const onDown = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
       if (['w', 'a', 's', 'd'].includes(k)) {
@@ -1826,11 +1842,18 @@ export default function BattleArena({
         setWasdKeys(prev => ({ ...prev, [k]: false }));
       }
     };
+    const onVisibilityChange = () => {
+      if (document.hidden) resetMovementKeys();
+    };
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup',   onUp);
+    window.addEventListener('blur',    resetMovementKeys);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup',   onUp);
+      window.removeEventListener('blur',    resetMovementKeys);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
 
@@ -2070,7 +2093,27 @@ export default function BattleArena({
       const vel = localVelocityRef.current;
       const k   = keysRef.current;
       const ms  = mouseStateRef.current;
-      const tickGroundH = getGroundHeightClient(pos.x, pos.y, localZRef.current, mapObjectsRef.current, playerRadius);
+      const objs = mapObjectsRef.current;
+      const useBVH = mode === 'collision-test' && !!collisionSysRef.current;
+      const tickGroundH = (() => {
+        if (!useBVH) {
+          return getGroundHeightClient(pos.x, pos.y, localZRef.current, objs, playerRadius);
+        }
+
+        const sys = collisionSysRef.current!;
+        const halfW = ARENA_WIDTH / 2;
+        const halfH = ARENA_HEIGHT / 2;
+        _bvhCenter.set(
+          (pos.x - halfW - GROUP_POS_X) / RENDER_SF,
+          (localZRef.current - GROUP_POS_Y) / RENDER_SF + EXPORT_CYL_HALF_HEIGHT,
+          (halfH - pos.y - GROUP_POS_Z) / RENDER_SF,
+        );
+        const supportY = sys.getSupportGroundY(_bvhCenter);
+        if (supportY === null) {
+          return getGroundHeightClient(pos.x, pos.y, localZRef.current, objs, playerRadius);
+        }
+        return supportY * RENDER_SF + GROUP_POS_Y;
+      })();
       const airborne = localZRef.current > tickGroundH + 0.01;
       let airNudgeDx = 0;
       let airNudgeDy = 0;
@@ -2242,33 +2285,36 @@ export default function BattleArena({
       let newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius, pos.y + vel.y + nudgeY));
 
       // Map object collision
-      const objs = mapObjectsRef.current;
-      const useBVH = mode === 'collision-test' && !!collisionSysRef.current;
 
       if (useBVH) {
         // ── BVH sphere collision (matches export-reader exactly) ──
         const sys = collisionSysRef.current!;
-        const wh = ARENA_WIDTH / 2;
-        // Convert game pos → export-space body center
-        _bvhCenter.set(
-          (newPx - wh - GROUP_POS_X) / RENDER_SF,
-          (localZRef.current + playerRadius - GROUP_POS_Y) / RENDER_SF,
-          (wh - newPy - GROUP_POS_Z) / RENDER_SF,
-        );
+        const halfW = ARENA_WIDTH / 2;
+        const halfH = ARENA_HEIGHT / 2;
+        // ── Cylinder horizontal pass ──
+        // _bvhCenter.y = cylinder centre (feet + half-height); preserved between ticks.
+        // Only update X/Z for horizontal movement; Y is owned by the vertical pass.
+        _bvhCenter.x = (newPx - halfW - GROUP_POS_X) / RENDER_SF;
+        _bvhCenter.z = (halfH - newPy - GROUP_POS_Z) / RENDER_SF;
+        if (!bvhCenterYInitRef.current) {
+          // First tick after spawn/teleport: set centre from current feet position.
+          _bvhCenter.y = (localZRef.current - GROUP_POS_Y) / RENDER_SF + EXPORT_CYL_HALF_HEIGHT;
+          bvhCenterYInitRef.current = true;
+        }
+        // Sphere at cylinder centre provides correct horizontal wall push (push.y=0 for walls)
         _bvhVelocity.set(
           (vel.x + nudgeX) / RENDER_SF,
-          localVzRef.current / RENDER_SF,
+          0, // vertical handled separately; don't let wall contacts corrupt Vz
           -(vel.y + nudgeY) / RENDER_SF,
         );
-        sys.resolveSphereCollision(_bvhCenter, EXPORT_RADIUS, _bvhVelocity);
+        sys.resolveSphereCollision(_bvhCenter, EXPORT_CYL_RADIUS, _bvhVelocity);
 
         // Convert back → game horizontal (clamp to arena bounds)
         newPx = Math.max(playerRadius, Math.min(ARENA_WIDTH - playerRadius,
-          _bvhCenter.x * RENDER_SF + GROUP_POS_X + wh));
+          _bvhCenter.x * RENDER_SF + GROUP_POS_X + halfW));
         newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius,
-          wh - (_bvhCenter.z * RENDER_SF + GROUP_POS_Z)));
-        // Update Vz in case floor/ceiling contact modified vertical velocity
-        localVzRef.current = _bvhVelocity.y * RENDER_SF;
+          halfH - (_bvhCenter.z * RENDER_SF + GROUP_POS_Z)));
+        // Do NOT read _bvhVelocity.y here — vertical velocity is managed by the vertical pass.
       } else {
         for (const obj of objs) {
           const resolved = resolveObjCollisionClient(newPx, newPy, localZRef.current, vel, obj, playerRadius);
@@ -2335,34 +2381,37 @@ export default function BattleArena({
                      : GRAVITY_DOWN_CLIENT;
       localVzRef.current -= (localVzRef.current >= 0 ? gravUp : gravDown);
 
-      // Ground height: BVH raycast + terrain for collision-test, AABB for others
+      // Ground height: BVH cylinder (collision-test) or AABB (other modes)
       let clientGroundH: number;
       if (useBVH) {
         const sys = collisionSysRef.current!;
-        // _bvhCenter X/Z preserved from horizontal pass; apply vertical delta in export space
+        // ── Cylinder vertical pass ──
+        // Apply gravity to cylinder centre (feet + halfHeight).
         _bvhCenter.y += localVzRef.current / RENDER_SF;
-        _bvhVelocity.set(0, localVzRef.current / RENDER_SF, 0);
-        sys.resolveSphereCollision(_bvhCenter, EXPORT_RADIUS, _bvhVelocity);
-        localVzRef.current = _bvhVelocity.y * RENDER_SF;
 
-        // Ground support query
         const groundExportY = sys.getSupportGroundY(_bvhCenter);
+        const feetExportY   = _bvhCenter.y - EXPORT_CYL_HALF_HEIGHT;
+        let bvhOnGround = false;
+
         if (groundExportY !== null) {
-          const desiredCenterY = groundExportY + EXPORT_RADIUS + 2;
-          const stepUpLimit = 56;
-          if (desiredCenterY <= _bvhCenter.y + stepUpLimit
-              && _bvhCenter.y <= desiredCenterY + 10
-              && _bvhVelocity.y <= 0) {
-            _bvhCenter.y = desiredCenterY;
-            _bvhVelocity.y = 0;
+          const gap = feetExportY - groundExportY; // negative → below surface, positive → above
+          if (gap <= 0) {
+            // Feet at or below terrain surface → snap up, land
+            _bvhCenter.y    = groundExportY + EXPORT_CYL_HALF_HEIGHT;
             localVzRef.current = 0;
+            bvhOnGround     = true;
+          } else if (gap <= BVH_STEP_UP_EXPORT && localVzRef.current <= 0) {
+            // Small gap while falling/standing → step-up snap (stairs / lips)
+            _bvhCenter.y    = groundExportY + EXPORT_CYL_HALF_HEIGHT;
+            localVzRef.current = 0;
+            bvhOnGround     = true;
           }
         }
 
-        // Fall recovery
-        const floorY = groundExportY ?? _bvhCenter.y;
-        if (_bvhCenter.y < floorY - 3500) {
-          _bvhCenter.y = floorY + EXPORT_RADIUS + 120;
+        // Fall recovery: if somehow far below terrain, teleport up
+        const floorY = groundExportY ?? feetExportY;
+        if (_bvhCenter.y - EXPORT_CYL_HALF_HEIGHT < floorY - 3500) {
+          _bvhCenter.y    = floorY + EXPORT_CYL_HALF_HEIGHT + 120;
           localVzRef.current = 0;
         }
 
@@ -2372,16 +2421,17 @@ export default function BattleArena({
           supportY: groundExportY,
         };
 
-        // Convert body center Y back to game feet Z
-        clientGroundH = groundExportY !== null
-          ? (groundExportY * RENDER_SF + GROUP_POS_Y)
-          : localZRef.current;
-        localZRef.current = (_bvhCenter.y - EXPORT_RADIUS) * RENDER_SF + GROUP_POS_Y;
+        // Feet = cylinder bottom = exact terrain surface when grounded (no slope float)
+        const feetGameZ = (_bvhCenter.y - EXPORT_CYL_HALF_HEIGHT) * RENDER_SF + GROUP_POS_Y;
+        localZRef.current = feetGameZ;
+        clientGroundH = bvhOnGround
+          ? feetGameZ
+          : (groundExportY !== null ? groundExportY * RENDER_SF + GROUP_POS_Y : feetGameZ);
       } else {
         clientGroundH = getGroundHeightClient(localPositionRef.current.x, localPositionRef.current.y, localZRef.current, objs, playerRadius);
         localZRef.current = Math.max(clientGroundH, localZRef.current + localVzRef.current);
       }
-      if (localZRef.current <= clientGroundH && localVzRef.current < 0) {
+      if (localZRef.current <= clientGroundH) {
         localZRef.current              = clientGroundH;
         localVzRef.current             = 0;
         localJumpCountRef.current      = 0;

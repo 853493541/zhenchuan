@@ -54,7 +54,8 @@ interface CharacterProps {
   posRef?: MutableRefObject<{ x: number; y: number; z: number }>;
   /** Per-frame projected screen anchor for HUD overlays */
   onScreenBounds?: (bounds: { cx: number; topY: number; baseY: number; rs: number }) => void;
-  worldHalf: number;
+  worldHalfX: number;
+  worldHalfY: number;
   /** Visual-only stealth state: model becomes semi-transparent (HP UI unchanged). */
   isStealthed?: boolean;
 }
@@ -77,7 +78,8 @@ export default function Character({
   onSelect,
   posRef,
   onScreenBounds,
-  worldHalf,
+  worldHalfX,
+  worldHalfY,
   isStealthed = false,
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
@@ -109,9 +111,9 @@ export default function Character({
     ? '#ff8888'
     : (healthPct > 0.5 ? '#dd2222' : healthPct > 0.25 ? '#cc1111' : '#991111');
 
-  const threeX = worldX - worldHalf;
+  const threeX = worldX - worldHalfX;
   const threeY = worldZ;
-  const threeZ = worldHalf - worldY;
+  const threeZ = worldHalfY - worldY;
 
   // For opponent (no posRef): smooth lerp toward prop position
   const currentPos = useRef(new THREE.Vector3(threeX, threeY, threeZ));
@@ -124,12 +126,12 @@ export default function Character({
       // Local player: posRef is already smoothed by the rAF loop in BattleArena.
       // Copy directly — NO additional lerp (avoids sluggish double-smoothing).
       const p = posRef.current;
-      groupRef.current.position.set(p.x - worldHalf, p.z, worldHalf - p.y);
+      groupRef.current.position.set(p.x - worldHalfX, p.z, worldHalfY - p.y);
     } else {
       // Opponent: smooth lerp toward prop-driven position
-      const tx = worldX - worldHalf;
+      const tx = worldX - worldHalfX;
       const ty = worldZ;
-      const tz = worldHalf - worldY;
+      const tz = worldHalfY - worldY;
       currentPos.current.lerp(new THREE.Vector3(tx, ty, tz), 0.18);
       groupRef.current.position.copy(currentPos.current);
     }
