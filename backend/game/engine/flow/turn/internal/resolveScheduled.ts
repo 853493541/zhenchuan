@@ -3,10 +3,11 @@
 import { GameState, ActiveBuff } from "../../../state/types";
 import { shouldDodge, hasUntargetable } from "../../../rules/guards";
 import { resolveScheduledDamage, resolveHealAmount } from "../../../utils/combatMath";
+import { applyDamageToTarget, applyHealToTarget } from "../../../utils/health";
 import { pushDamageEvent, pushHealEvent } from "./combatEvents";
 import {
-  getBuffSourceCardId,
-  getBuffSourceCardNameWithDebug,
+  getBuffSourceAbilityId,
+  getBuffSourceAbilityNameWithDebug,
 } from "./buffOrigin";
 
 export function applyScheduledDamage(
@@ -38,8 +39,8 @@ export function applyScheduledDamage(
           state,
           actorUserId: owner.userId,
           targetUserId: target.userId,
-          cardId: getBuffSourceCardId(buff),
-          cardName: getBuffSourceCardNameWithDebug(buff, stage.debug),
+          abilityId: getBuffSourceAbilityId(buff),
+          abilityName: getBuffSourceAbilityNameWithDebug(buff, stage.debug),
           value: 0,
           effectType: "SCHEDULED_DAMAGE",
         });
@@ -54,14 +55,14 @@ export function applyScheduledDamage(
       base: stage.value ?? 0,
     });
 
-    target.hp = Math.max(0, target.hp - dmg);
+    applyDamageToTarget(target as any, dmg);
 
     pushDamageEvent({
       state,
       actorUserId: owner.userId,
       targetUserId: target.userId,
-      cardId: getBuffSourceCardId(buff),
-      cardName: getBuffSourceCardNameWithDebug(buff, stage.debug),
+      abilityId: getBuffSourceAbilityId(buff),
+      abilityName: getBuffSourceAbilityNameWithDebug(buff, stage.debug),
       value: dmg,
       effectType: "SCHEDULED_DAMAGE",
     });
@@ -69,18 +70,15 @@ export function applyScheduledDamage(
     // OPTIONAL LIFESTEAL
     if (stage.lifestealPct && dmg > 0) {
       const heal = Math.floor(dmg * stage.lifestealPct);
-      const before = owner.hp;
-
-      owner.hp = Math.min(100, owner.hp + heal);
-      const applied = owner.hp - before;
+      const applied = applyHealToTarget(owner as any, heal);
 
       if (applied > 0) {
         pushHealEvent({
           state,
           actorUserId: owner.userId,
           targetUserId: owner.userId,
-          cardId: getBuffSourceCardId(buff),
-          cardName: getBuffSourceCardNameWithDebug(buff, "吸血"),
+          abilityId: getBuffSourceAbilityId(buff),
+          abilityName: getBuffSourceAbilityNameWithDebug(buff, "吸血"),
           value: applied,
         });
       }
@@ -103,17 +101,15 @@ export function applyLegacyHeal(params: {
   const { state, owner, buff, base } = params;
 
   const heal = resolveHealAmount({ target: owner, base });
-  const before = owner.hp;
-  owner.hp = Math.min(100, owner.hp + heal);
-  const applied = Math.max(0, owner.hp - before);
+  const applied = applyHealToTarget(owner as any, heal);
 
   if (applied > 0) {
     pushHealEvent({
       state,
       actorUserId: owner.userId,
       targetUserId: owner.userId,
-      cardId: getBuffSourceCardId(buff),
-      cardName: getBuffSourceCardNameWithDebug(buff, "吸血"),
+      abilityId: getBuffSourceAbilityId(buff),
+      abilityName: getBuffSourceAbilityNameWithDebug(buff, "吸血"),
       value: applied,
     });
   }

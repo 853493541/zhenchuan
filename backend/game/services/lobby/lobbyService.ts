@@ -7,6 +7,7 @@ import GameSession from "../../models/GameSession";
 import { User } from "../../../models/User";
 import { GameState } from "../../engine/state/types";
 import { initializeTournament } from "../economy/tournamentService";
+import { initializeBattleState } from "../battle/battleService";
 
 /**
  * Helper: fetch username by user ID
@@ -18,7 +19,7 @@ async function getUsernameById(userId: string): Promise<string> {
   return username;
 }
 
-export async function createGame(userId: string) {
+export async function createGame(userId: string, mode: 'arena' | 'pubg' | 'collision-test' = 'arena') {
   const username = await getUsernameById(userId);
 
   const state: GameState = {
@@ -34,6 +35,8 @@ export async function createGame(userId: string) {
       {
         userId,
         hp: 100,
+        maxHp: 100,
+        shield: 0,
         hand: [],
         buffs: [],
 
@@ -45,12 +48,14 @@ export async function createGame(userId: string) {
     ],
 
     events: [],
+    pickups: [],
   };
 
   const created = await GameSession.create({
     players: [userId],
     state,
     started: false,
+    mode,
     playerNames: {
       [userId]: username,
     },
@@ -101,8 +106,8 @@ export async function joinGame(gameId: string, userId: string) {
   
   console.log(`[joinGame] playerNames in response:`, result.playerNames);
   
-  // Auto-start if enabled and room is full
-  if (result.autoStart && saved.players.length === 2) {
+  // Auto-start if enabled and room is full (2 for dev, up to 5 for PUBG)
+  if (result.autoStart && saved.players.length >= 2) {
     console.log(`[joinGame] Auto-starting game (autoStart=${result.autoStart})`);
     const startedGame = await startGame(gameId, saved.players[0]);
     return startedGame;
@@ -115,47 +120,15 @@ export async function startGame(gameId: string, userId: string) {
   const game = await GameSession.findById(gameId);
   if (!game) throw new Error("Game not found");
   if (game.players[0] !== userId) throw new Error("Only host can start");
-  if (game.players.length !== 2) throw new Error("Game not ready");
+  if (game.players.length < 2) throw new Error("Need at least 2 players to start");
+  if (game.players.length > 5) throw new Error("Maximum 5 players allowed");
 
-  const state: GameState = {
-    /** authoritative state version */
-    version: 1,
+  const tournament = initializeTournament(game.players as string[]);
+  tournament.phase = "BATTLE";
 
-    turn: 0,
-    activePlayerIndex: 0,
-
-    gameOver: false,
-
-    players: [
-      {
-        userId: game.players[0],
-        hp: 100,
-        hand: [], // No cards during draft phase
-        buffs: [],
-        position: { x: 0, y: 0 },
-        velocity: { vx: 0, vy: 0 },
-        moveSpeed: 0,
-      },
-      {
-        userId: game.players[1],
-        hp: 100,
-        hand: [], // No cards during draft phase
-        buffs: [],
-        position: { x: 0, y: 0 },
-        velocity: { vx: 0, vy: 0 },
-        moveSpeed: 0,
-      },
-    ],
-
-    events: [],
-  };
-
-  // Don't draw cards yet - wait until battle phase after draft
-  // draw(state, 0, 6);
-  // draw(state, 1, 6);
-
-  // Initialize tournament state for draft/economy/progression
-  const tournament = initializeTournament([game.players[0], game.players[1]]);
+  // Initialize battle state for all players (common abilities only, draft skipped)
+  const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test';
+  const state = initializeBattleState(tournament, game.players as string[], gameMode);
 
   game.state = state;
   game.tournament = tournament;

@@ -14,6 +14,28 @@
 }
 
 /* =========================================================
+   Create Actions
+========================================================= */
+
+.createActions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+/* Mode badge on room cards */
+.modeBadge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #e0f2fe;
+  color: #0369a1;
+  margin-bottom: 8px;
+}
+
+/* =========================================================
    Create Button
 ========================================================= */
 
@@ -25,6 +47,18 @@
   color: white;
   font-weight: 600;
   cursor: pointer;
+}
+
+.createBtnArena {
+  background: #0f766e;
+}
+
+.createBtnCollisionTest {
+  background: #9333ea;
+}
+
+.createBtnExportViewer {
+  background: #b45309;
 }
 
 .createBtn:disabled {

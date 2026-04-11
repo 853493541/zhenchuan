@@ -28,7 +28,7 @@
   padding: 4px 0;
 }
 
-.card {
+.ability {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -46,7 +46,7 @@
   min-height: 100px;
 }
 
-.card::before {
+.ability::before {
   content: '';
   position: absolute;
   top: 0;
@@ -59,11 +59,11 @@
   pointer-events: none;
 }
 
-.card:hover::before {
+.ability:hover::before {
   opacity: 1;
 }
 
-.card:hover {
+.ability:hover {
   background: linear-gradient(135deg, rgba(78, 205, 196, 0.15), rgba(100, 150, 220, 0.15));
   border-color: rgba(78, 205, 196, 0.6);
   box-shadow: 0 0 12px rgba(78, 205, 196, 0.3);
@@ -88,7 +88,7 @@
   color: #4ecdc4;
 }
 
-.cardInfo {
+.abilityInfo {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -97,7 +97,7 @@
   font-size: 9px;
 }
 
-.cardName {
+.abilityName {
   font-weight: bold;
   color: #fff;
   font-size: 11px;
@@ -107,14 +107,14 @@
   white-space: nowrap;
 }
 
-.cardType {
+.abilityType {
   color: #4ecdc4;
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
-.cardDescription {
+.abilityDescription {
   color: #b0b0b0;
   font-size: 8px;
   line-height: 1.1;
@@ -150,20 +150,20 @@
 }
 
 @media (max-width: 1024px) {
-  .card {
+  .ability {
     width: 85px;
     min-height: 90px;
   }
 
-  .cardName {
+  .abilityName {
     font-size: 10px;
   }
 
-  .cardType {
+  .abilityType {
     font-size: 8px;
   }
 
-  .cardDescription {
+  .abilityDescription {
     font-size: 7px;
   }
 }
@@ -181,7 +181,7 @@
     gap: 8px;
   }
 
-  .card {
+  .ability {
     width: 70px;
     min-height: 80px;
     padding: 8px;
@@ -191,11 +191,11 @@
     height: 55px;
   }
 
-  .cardName {
+  .abilityName {
     font-size: 9px;
   }
 
-  .cardDescription {
+  .abilityDescription {
     display: none;
   }
 }

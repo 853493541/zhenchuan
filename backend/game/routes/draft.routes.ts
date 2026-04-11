@@ -3,19 +3,41 @@
  */
 
 import express from "express";
+import { randomUUID } from "crypto";
 import GameSession from "../models/GameSession";
 import { getUserIdFromCookie } from "./auth";
 import { generateShop, REFRESH_COST } from "../services/economy/economyService";
 import { getIncomePerRound } from "../services/economy/economyService";
-import { initializeBattleState } from "../services/battle/battleService";
+import { initializeBattleState, generatePickups, generateArenaPickups } from "../services/battle/battleService";
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
 import { GameLoop } from "../engine/loop/GameLoop";
-import { CARDS } from "../cards/cards";
+import { ABILITIES } from "../abilities/abilities";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { diffState } from "../services/flow/stateDiff";
-import type { CardInstance } from "../engine/state/types";
+import type { AbilityInstance } from "../engine/state/types";
 
 const router = express.Router();
+
+function isCommonAbilityCard(card: any): boolean {
+  const abilityId = card?.abilityId ?? card?.id;
+  const def = abilityId ? ABILITIES[abilityId] : undefined;
+  if (def) return !!def.isCommon;
+  return !!card?.isCommon;
+}
+
+function toSelectedInstancesFromHand(hand: any[]): AbilityInstance[] {
+  return (hand ?? [])
+    .filter((card: any) => !isCommonAbilityCard(card))
+    .map((card: any) => {
+      const abilityId = card?.abilityId ?? card?.id;
+      return {
+        instanceId: card?.instanceId ?? randomUUID(),
+        abilityId,
+        cooldown: 0,
+      } as AbilityInstance;
+    })
+    .filter((card: AbilityInstance) => !!card.abilityId);
+}
 
 /**
  * GET /draft/shop - Get current shop for this player
@@ -36,7 +58,7 @@ router.get("/draft/shop/:gameId", async (req, res) => {
     const eco = game.tournament.economy[userId];
 
     res.json({
-      shop: shop.cards,
+      shop: shop.abilities,
       locked: shop.locked,
       gold: eco.gold,
       level: eco.level,
@@ -48,12 +70,12 @@ router.get("/draft/shop/:gameId", async (req, res) => {
 
 /**
  * POST /draft/select - Select an ability from shop to add to selection
- * Body: { gameId, cardInstanceId, destination: "selected" | "bench" }
+ * Body: { gameId, abilityInstanceId, destination: "selected" | "bench" }
  */
 router.post("/draft/select", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, cardInstanceId, destination = "selected" } = req.body;
+    const { gameId, abilityInstanceId, destination = "selected" } = req.body;
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -73,22 +95,22 @@ router.post("/draft/select", async (req, res) => {
       return res.status(400).json({ error: "备战区已满 (最多8个)" });
     }
 
-    // Find card in shop
-    const cardIndex = shop.cards.findIndex((c: any) => c.instanceId === cardInstanceId);
-    if (cardIndex === -1) {
-      return res.status(400).json({ error: "卡牌不在商店中" });
+    // Find ability in shop
+    const abilityIndex = shop.abilities.findIndex((c: any) => c.instanceId === abilityInstanceId);
+    if (abilityIndex === -1) {
+      return res.status(400).json({ error: "技能不在商店中" });
     }
 
-    // Move card from shop to destination
-    const [card] = shop.cards.splice(cardIndex, 1);
+    // Move ability from shop to destination
+    const [ability] = shop.abilities.splice(abilityIndex, 1);
     if (destination === "selected") {
-      selected.push(card);
+      selected.push(ability);
     } else {
-      bench.push(card);
+      bench.push(ability);
     }
 
     // Remove locked status for this position
-    shop.locked.splice(cardIndex, 1);
+    shop.locked.splice(abilityIndex, 1);
 
     game.markModified("tournament");
     await game.save();
@@ -96,7 +118,7 @@ router.post("/draft/select", async (req, res) => {
     res.json({
       selectedAbilities: selected,
       bench: bench,
-      shop: shop.cards,
+      shop: shop.abilities,
       locked: shop.locked,
     });
   } catch (err: any) {
@@ -105,13 +127,13 @@ router.post("/draft/select", async (req, res) => {
 });
 
 /**
- * POST /draft/move - Move card between selected and bench
- * Body: { gameId, cardInstanceId, from: "selected" | "bench", to: "selected" | "bench" }
+ * POST /draft/move - Move ability between selected and bench
+ * Body: { gameId, abilityInstanceId, from: "selected" | "bench", to: "selected" | "bench" }
  */
 router.post("/draft/move", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, cardInstanceId, from, to } = req.body;
+    const { gameId, abilityInstanceId, from, to } = req.body;
 
     if (!from || !to || from === to) {
       return res.status(400).json({ error: "Invalid move" });
@@ -133,18 +155,18 @@ router.post("/draft/move", async (req, res) => {
       return res.status(400).json({ error: "备战区已满 (最多8个)" });
     }
 
-    // Find and move card
+    // Find and move ability
     const fromArray = from === "selected" ? selected : bench;
-    const cardIdx = fromArray.findIndex((c: CardInstance) => c.instanceId === cardInstanceId);
-    if (cardIdx === -1) {
-      return res.status(400).json({ error: "卡牌不存在" });
+    const abilityIdx = fromArray.findIndex((c: AbilityInstance) => c.instanceId === abilityInstanceId);
+    if (abilityIdx === -1) {
+      return res.status(400).json({ error: "技能不存在" });
     }
 
-    const [card] = fromArray.splice(cardIdx, 1);
+    const [ability] = fromArray.splice(abilityIdx, 1);
     if (to === "selected") {
-      selected.push(card);
+      selected.push(ability);
     } else {
-      bench.push(card);
+      bench.push(ability);
     }
 
     game.markModified("tournament");
@@ -160,13 +182,13 @@ router.post("/draft/move", async (req, res) => {
 });
 
 /**
- * POST /draft/sell - Sell a benched card for gold
- * Body: { gameId, cardInstanceId }
+ * POST /draft/sell - Sell a benched ability for gold
+ * Body: { gameId, abilityInstanceId }
  */
 router.post("/draft/sell", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, cardInstanceId } = req.body;
+    const { gameId, abilityInstanceId } = req.body;
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -176,16 +198,16 @@ router.post("/draft/sell", async (req, res) => {
     const bench = game.tournament.bench[userId];
     const eco = game.tournament.economy[userId];
 
-    // Find and remove card from bench
-    const cardIdx = bench.findIndex((c: CardInstance) => c.instanceId === cardInstanceId);
-    if (cardIdx === -1) {
-      return res.status(400).json({ error: "卡牌不在备战区" });
+    // Find and remove ability from bench
+    const abilityIdx = bench.findIndex((c: AbilityInstance) => c.instanceId === abilityInstanceId);
+    if (abilityIdx === -1) {
+      return res.status(400).json({ error: "技能不在备战区" });
     }
 
-    const [card] = bench.splice(cardIdx, 1);
+    const [ability] = bench.splice(abilityIdx, 1);
     
-    // Get card cost from preload data (default 3 if not found)
-    const cardCost = 3; // You could look this up from card definitions
+    // Get ability cost from preload data (default 3 if not found)
+    const cardCost = 3; // You could look this up from ability definitions
     eco.gold += cardCost;
 
     game.markModified("tournament");
@@ -227,7 +249,7 @@ router.post("/draft/refresh", async (req, res) => {
     const newCards = generateShop(eco.level);
 
     game.tournament.shop[userId] = {
-      cards: newCards,
+      abilities: newCards,
       locked: [false, false, false, false, false],
     };
 
@@ -244,13 +266,13 @@ router.post("/draft/refresh", async (req, res) => {
 });
 
 /**
- * POST /draft/lock - Toggle lock on a shop card (prevents refresh removal)
- * Body: { gameId, cardIndex }
+ * POST /draft/lock - Toggle lock on a shop ability (prevents refresh removal)
+ * Body: { gameId, abilityIndex }
  */
 router.post("/draft/lock", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, cardIndex } = req.body;
+    const { gameId, abilityIndex } = req.body;
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -259,11 +281,11 @@ router.post("/draft/lock", async (req, res) => {
 
     const shop = game.tournament.shop[userId];
 
-    if (cardIndex < 0 || cardIndex >= shop.locked.length) {
-      return res.status(400).json({ error: "Invalid card index" });
+    if (abilityIndex < 0 || abilityIndex >= shop.locked.length) {
+      return res.status(400).json({ error: "Invalid ability index" });
     }
 
-    shop.locked[cardIndex] = !shop.locked[cardIndex];
+    shop.locked[abilityIndex] = !shop.locked[abilityIndex];
 
     game.markModified("tournament");
     await game.save();
@@ -296,7 +318,7 @@ router.post("/draft/finalize", async (req, res) => {
 
     const selected = game.tournament.selectedAbilities[userId];
 
-    // Players can go to battle with any number of cards (including 0)
+    // Players can go to battle with any number of abilities (including 0)
     // Mark this player as ready
     if (!game.draftReady) game.draftReady = {};
     (game.draftReady as any)[userId] = true;
@@ -335,40 +357,40 @@ router.post("/draft/finalize", async (req, res) => {
         player1Id,
         player0SelectedLength: player0Selected?.length || 0,
         player1SelectedLength: player1Selected?.length || 0,
-        player0SelectedCards: player0Selected?.map((c: any) => c.cardId) || [],
-        player1SelectedCards: player1Selected?.map((c: any) => c.cardId) || [],
+        player0SelectedCards: player0Selected?.map((c: any) => c.abilityId) || [],
+        player1SelectedCards: player1Selected?.map((c: any) => c.abilityId) || [],
       });
 
-      // ✅ CRITICAL: Look up full Card definitions from CARDS database
-      // selectedAbilities has {cardId, instanceId, cooldown} - we need {cardId, instanceId, cooldown, ...cardDefinition}
+      // ✅ CRITICAL: Look up full Ability definitions from ABILITIES database
+      // selectedAbilities has {abilityId, instanceId, cooldown} - we need {abilityId, instanceId, cooldown, ...cardDefinition}
       const player0Hand = player0Selected?.map((cardInstance: any) => {
-        const cardDef = CARDS[cardInstance.cardId];
-        if (!cardDef) {
-          console.error(`[draft/finalize] ❌ Card definition not found: ${cardInstance.cardId}`);
+        const abilityDef = ABILITIES[cardInstance.abilityId];
+        if (!abilityDef) {
+          console.error(`[draft/finalize] ❌ Ability definition not found: ${cardInstance.abilityId}`);
           return null;
         }
-        // Merge card definition with instance metadata (preserving cooldown, instanceId)
+        // Merge ability definition with instance metadata (preserving cooldown, instanceId)
         return {
-          ...cardDef,
+          ...abilityDef,
           instanceId: cardInstance.instanceId,
           cooldown: cardInstance.cooldown || 0,
         };
       }).filter((c: any) => c !== null) || [];
 
       const player1Hand = player1Selected?.map((cardInstance: any) => {
-        const cardDef = CARDS[cardInstance.cardId];
-        if (!cardDef) {
-          console.error(`[draft/finalize] ❌ Card definition not found: ${cardInstance.cardId}`);
+        const abilityDef = ABILITIES[cardInstance.abilityId];
+        if (!abilityDef) {
+          console.error(`[draft/finalize] ❌ Ability definition not found: ${cardInstance.abilityId}`);
           return null;
         }
         return {
-          ...cardDef,
+          ...abilityDef,
           instanceId: cardInstance.instanceId,
           cooldown: cardInstance.cooldown || 0,
         };
       }).filter((c: any) => c !== null) || [];
 
-      console.log("[draft/finalize] After loading Card definitions:", {
+      console.log("[draft/finalize] After loading Ability definitions:", {
         player0HandLength: player0Hand?.length || 0,
         player1HandLength: player1Hand?.length || 0,
         player0HandCards: player0Hand?.map((c: any) => ({ id: c.id, name: c.name })) || [],
@@ -381,19 +403,21 @@ router.post("/draft/finalize", async (req, res) => {
 
       // ✅ Initialize arena positions when phase transitions to BATTLE
       // This ensures both players have position data immediately, even before /battle/start is called
-      const ARENA_WIDTH = 100;
-      const ARENA_HEIGHT = 100;
+      const isArenaMode = (game as any).mode === 'arena';
+      const mapCX = isArenaMode ? 100 : 1000;
+      const mapCY = isArenaMode ? 100 : 1000;
+      const spawnOffset = isArenaMode ? 10 : 15;
       
       if (!game.state.players[0].position) {
         game.state.players[0].position = {
-          x: ARENA_WIDTH * 0.25,
-          y: ARENA_HEIGHT / 2,
+          x: mapCX - spawnOffset,
+          y: mapCY,
         };
       }
       if (!game.state.players[1].position) {
         game.state.players[1].position = {
-          x: ARENA_WIDTH * 0.75,
-          y: ARENA_HEIGHT / 2,
+          x: mapCX + spawnOffset,
+          y: mapCY,
         };
       }
 
@@ -405,8 +429,16 @@ router.post("/draft/finalize", async (req, res) => {
         game.state.players[1].velocity = { vx: 0, vy: 0 };
       }
 
-      game.state.players[0].moveSpeed = 0.25;
-      game.state.players[1].moveSpeed = 0.25;
+      // Initialize facing if not present
+      if (!game.state.players[0].facing) {
+        game.state.players[0].facing = { x: 1, y: 0 };
+      }
+      if (!game.state.players[1].facing) {
+        game.state.players[1].facing = { x: -1, y: 0 };
+      }
+
+      game.state.players[0].moveSpeed = 0.1666667;
+      game.state.players[1].moveSpeed = 0.1666667;
 
       // Force Mongoose to recognize nested changes
       game.state.players[0] = {
@@ -421,8 +453,8 @@ router.post("/draft/finalize", async (req, res) => {
       game.markModified("state.players");
 
       console.log("[draft/finalize] Both players ready, transitioning to BATTLE phase");
-      console.log(`[draft/finalize] Player 0 hand: ${game.state.players[0].hand.length} cards`);
-      console.log(`[draft/finalize] Player 1 hand: ${game.state.players[1].hand.length} cards`);
+      console.log(`[draft/finalize] Player 0 hand: ${game.state.players[0].hand.length} abilities`);
+      console.log(`[draft/finalize] Player 1 hand: ${game.state.players[1].hand.length} abilities`);
     }
 
     game.markModified("tournament");
@@ -481,35 +513,40 @@ router.post("/battle/start", async (req, res) => {
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not ready for battle" });
 
     // ✅ CHECK IF GAME LOOP ALREADY STARTED (prevent duplicate from second player)
-    if (GameLoop.get(gameId)) {
-      // Disabled: spam during testing
-      // console.log(`[battle/start] ⏩ GameLoop already running for ${gameId}, skipping start`);
+    const existingLoop = GameLoop.get(gameId);
+    if (existingLoop) {
+      // The loop may have been started before the pickup system was added.
+      // Retroactively inject pickups if the loop state is empty so claim/inspect work.
+      const ls = existingLoop.getState();
+      if (!ls.pickups || ls.pickups.length === 0) {
+        const isArena = ((game as any).mode ?? 'arena') === 'arena';
+        ls.pickups = isArena ? generateArenaPickups() : generatePickups();
+        existingLoop.updateState(ls);
+        await GameSession.findByIdAndUpdate(gameId, { "state.pickups": ls.pickups });
+      }
       return res.json({ status: "battle_already_started" });
     }
     // Disabled: spam during testing
     // console.log(`[battle/start] ✅ No existing GameLoop, proceeding to start new one`);
 
-    const playerIds = game.players as [string, string];
-    // Disabled: spam during testing
-    // console.log(`[battle/start] Starting battle for ${gameId}, players: ${playerIds.join(", ")}`);
+    const playerIds = game.players as string[];
 
     // Use the hands from game.state.players (finalized in draft)
-    const player0Hand = (game.state.players[0]?.hand || []) as any[];
-    const player1Hand = (game.state.players[1]?.hand || []) as any[];
-
-    // Disabled: spam during testing
-    // console.log(`[battle/start] Finalized hands: P0=${player0Hand.length} cards, P1=${player1Hand.length} cards`);
+    // Map from userId to finalized hand so we handle N players correctly
+    const handByUserId: Record<string, any[]> = {};
+    for (const ps of (game.state.players || [])) {
+      handByUserId[(ps as any).userId] = (ps as any).hand || [];
+    }
 
     // Create battle state with positions + use finalized hands
-    const playerIds_arr = [playerIds[0], playerIds[1]] as [string, string];
-    // Disabled: spam during testing
-    // console.log(`[battle/start] 🔧 Initializing battle state...`);
-    const battleState = initializeBattleState(game.tournament, playerIds_arr);
-    // console.log(`[battle/start] ✅ Battle state initialized`);
+    const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test';
+    const battleState = initializeBattleState(game.tournament, playerIds, gameMode);
 
     // Override hands — preserve instanceId but reset cooldowns for a fresh battle
-    battleState.players[0].hand = player0Hand.map((c: any) => ({ ...c, cooldown: 0 }));
-    battleState.players[1].hand = player1Hand.map((c: any) => ({ ...c, cooldown: 0 }));
+    for (const ps of battleState.players) {
+      const saved = handByUserId[ps.userId];
+      if (saved) ps.hand = saved.map((c: any) => ({ ...c, cooldown: 0 }));
+    }
 
     // Disabled: spam during testing
     // console.log(`[battle/start] Battle initialized for gameId ${gameId}`);
@@ -531,10 +568,8 @@ router.post("/battle/start", async (req, res) => {
     // console.log(`[battle/start] Saved to DB, now starting GameLoop`);
 
     // ✅ START LOOP (only once)
-    // Reduced to 2Hz to prevent event loop blocking on free VM
-    // At 10Hz (100ms/tick), event loop can't process other requests (player 2 gets 503s)
-    // At 2Hz (500ms/tick), gives event loop 400ms to handle other requests
-    GameLoop.start(gameId, battleState, { tickRate: 30 });
+    // Keep simulation at 30Hz for lower CPU usage on the VM.
+    GameLoop.start(gameId, battleState, { tickRate: 30, mode: gameMode });
     // Disabled: spam during testing
     // console.log(`[battle/start] ✅ GameLoop started for ${gameId}`);
 
@@ -603,36 +638,15 @@ router.post("/battle/complete", async (req, res) => {
       game.state.winnerUserId = game.tournament.winnerId;
       // Keep players array for GameOverModal to access
     } else if (game.tournament.phase === "DRAFT") {
-      // Reset state for next draft phase - create fresh state without old battle data
-      game.state = {
-        version: 1,
-        turn: 0,
-        activePlayerIndex: 0,
-        gameOver: false,
-        players: [
-          {
-            userId: game.players[0],
-            hp: 30,
-            hand: [],
-            buffs: [],
-            gcd: 0,
-            position: { x: 0, y: 0 },
-            velocity: { vx: 0, vy: 0 },
-            moveSpeed: 0,
-          },
-          {
-            userId: game.players[1],
-            hp: 30,
-            hand: [],
-            buffs: [],
-            gcd: 0,
-            position: { x: 0, y: 0 },
-            velocity: { vx: 0, vy: 0 },
-            moveSpeed: 0,
-          },
-        ],
-        events: [],
-      };
+      // DRAFT DISABLED: skip draft phase and go directly to next battle
+      game.tournament.phase = "BATTLE";
+      // Clear selectedAbilities so the cheat window starts fresh each battle
+      const allPlayers = game.players as string[];
+      for (const pid of allPlayers) {
+        game.tournament.selectedAbilities[pid] = [];
+      }
+      // Initialize fresh battle state with only common abilities
+      game.state = initializeBattleState(game.tournament, allPlayers, ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test');
     }
 
     game.markModified("state");
@@ -658,6 +672,586 @@ router.post("/battle/complete", async (req, res) => {
       tournamentWinner: game.tournament.winnerId,
       battleNumber: game.tournament.battleNumber,
       gameHp: game.tournament.gameHp,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/add-ability - CHEAT: Add any ability directly to player's hand during battle
+ * Used for testing when draft phase is disabled
+ * Body: { gameId, abilityId }
+ */
+router.post("/cheat/add-ability", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, abilityId } = req.body;
+
+    if (!abilityId) return res.status(400).json({ error: "abilityId required" });
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const abilityDef = ABILITIES[abilityId];
+    if (!abilityDef) return res.status(400).json({ error: `Ability '${abilityId}' not found` });
+    if (abilityDef.isCommon) return res.status(400).json({ error: "Common abilities are already in every hand" });
+
+    const playerIndex = game.players.indexOf(userId);
+
+    // Create new ability instance
+    const newInstance: AbilityInstance = {
+      instanceId: randomUUID(),
+      abilityId,
+      cooldown: 0,
+    };
+
+    const fullCard = { ...abilityDef, instanceId: newInstance.instanceId, abilityId, cooldown: 0 };
+
+    // Apply to live loop first so the UI updates immediately (no DB-save wait).
+    let livePlayerIndex = playerIndex;
+    let liveHand = [...(game.state.players[playerIndex].hand || []), fullCard];
+    let liveVersion = game.state.version ?? 0;
+
+    const gameLoop = GameLoop.get(gameId);
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        liveHand = [...(loopState.players[loopPlayerIdx].hand || []), fullCard];
+        loopState.players[loopPlayerIdx] = {
+          ...loopState.players[loopPlayerIdx],
+          hand: liveHand,
+        };
+        loopState.version = (loopState.version ?? 0) + 1;
+        liveVersion = loopState.version;
+        gameLoop.updateState(loopState);
+      }
+    }
+
+    // Push diff now (fast path for cheat UX)
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff: [{ path: `/players/${livePlayerIndex}/hand`, value: liveHand }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true, hand: liveHand });
+
+    // Persist asynchronously; cheat panel responsiveness should not wait for Mongo round-trip.
+    game.tournament.selectedAbilities[userId].push(newInstance);
+    game.state.players[playerIndex] = {
+      ...game.state.players[playerIndex],
+      hand: liveHand,
+    };
+
+    game.markModified("tournament");
+    game.markModified("state");
+    game.markModified("state.players");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/add-ability] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/reorder-ability - Reorder drafted ability slots during battle
+ * Body: { gameId, instanceId, toIndex }
+ */
+router.post("/cheat/reorder-ability", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, instanceId, toIndex } = req.body;
+
+    if (!instanceId) return res.status(400).json({ error: "instanceId required" });
+    if (!Number.isFinite(toIndex)) return res.status(400).json({ error: "toIndex must be a number" });
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const dbPlayerIndex = game.players.indexOf(userId);
+    let livePlayerIndex = dbPlayerIndex;
+    let liveVersion = game.state.version ?? 0;
+    let handSource = [...(game.state.players[dbPlayerIndex].hand ?? [])];
+
+    const gameLoop = GameLoop.get(gameId);
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        handSource = [...(loopState.players[loopPlayerIdx].hand ?? [])];
+      }
+    }
+
+    const draftCards = handSource.filter((card: any) => !isCommonAbilityCard(card));
+    const commonCards = handSource.filter((card: any) => isCommonAbilityCard(card));
+    const fromIndex = draftCards.findIndex((card: any) => (card.instanceId ?? card.id) === instanceId);
+    if (fromIndex === -1) {
+      return res.status(404).json({ error: "Draft ability not found in hand" });
+    }
+
+    const clampedToIndex = Math.max(0, Math.min(draftCards.length - 1, Number(toIndex)));
+    if (fromIndex !== clampedToIndex) {
+      const [moved] = draftCards.splice(fromIndex, 1);
+      draftCards.splice(clampedToIndex, 0, moved);
+    }
+    const reorderedHand = [...draftCards, ...commonCards];
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        loopState.players[loopPlayerIdx] = {
+          ...loopState.players[loopPlayerIdx],
+          hand: reorderedHand,
+        };
+        loopState.version = (loopState.version ?? 0) + 1;
+        liveVersion = loopState.version;
+        gameLoop.updateState(loopState);
+      }
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff: [{ path: `/players/${livePlayerIndex}/hand`, value: reorderedHand }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true, hand: reorderedHand });
+
+    game.state.players[dbPlayerIndex] = {
+      ...game.state.players[dbPlayerIndex],
+      hand: reorderedHand,
+    };
+    game.tournament.selectedAbilities[userId] = toSelectedInstancesFromHand(reorderedHand);
+
+    game.markModified("state");
+    game.markModified("state.players");
+    game.markModified("tournament");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/reorder-ability] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/discard-ability - Remove a drafted ability from hand during battle
+ * Body: { gameId, instanceId }
+ */
+router.post("/cheat/discard-ability", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, instanceId } = req.body;
+
+    if (!instanceId) return res.status(400).json({ error: "instanceId required" });
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const dbPlayerIndex = game.players.indexOf(userId);
+    let livePlayerIndex = dbPlayerIndex;
+    let liveVersion = game.state.version ?? 0;
+    let handSource = [...(game.state.players[dbPlayerIndex].hand ?? [])];
+
+    const gameLoop = GameLoop.get(gameId);
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        handSource = [...(loopState.players[loopPlayerIdx].hand ?? [])];
+      }
+    }
+
+    const draftCards = handSource.filter((card: any) => !isCommonAbilityCard(card));
+    const commonCards = handSource.filter((card: any) => isCommonAbilityCard(card));
+    const draftIndex = draftCards.findIndex((card: any) => (card.instanceId ?? card.id) === instanceId);
+    if (draftIndex === -1) {
+      return res.status(404).json({ error: "Draft ability not found in hand" });
+    }
+
+    draftCards.splice(draftIndex, 1);
+    const updatedHand = [...draftCards, ...commonCards];
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        loopState.players[loopPlayerIdx] = {
+          ...loopState.players[loopPlayerIdx],
+          hand: updatedHand,
+        };
+        loopState.version = (loopState.version ?? 0) + 1;
+        liveVersion = loopState.version;
+        gameLoop.updateState(loopState);
+      }
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff: [{ path: `/players/${livePlayerIndex}/hand`, value: updatedHand }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true, hand: updatedHand });
+
+    game.state.players[dbPlayerIndex] = {
+      ...game.state.players[dbPlayerIndex],
+      hand: updatedHand,
+    };
+    game.tournament.selectedAbilities[userId] = toSelectedInstancesFromHand(updatedHand);
+
+    game.markModified("state");
+    game.markModified("state.players");
+    game.markModified("tournament");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/discard-ability] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/discard-all - Remove all drafted abilities from hand during battle
+ * Body: { gameId }
+ */
+router.post("/cheat/discard-all", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const dbPlayerIndex = game.players.indexOf(userId);
+    let livePlayerIndex = dbPlayerIndex;
+    let liveVersion = game.state.version ?? 0;
+    let handSource = [...(game.state.players[dbPlayerIndex].hand ?? [])];
+
+    const gameLoop = GameLoop.get(gameId);
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        handSource = [...(loopState.players[loopPlayerIdx].hand ?? [])];
+      }
+    }
+
+    const commonCards = handSource.filter((card: any) => isCommonAbilityCard(card));
+    const updatedHand = [...commonCards];
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
+      if (loopPlayerIdx !== -1) {
+        livePlayerIndex = loopPlayerIdx;
+        loopState.players[loopPlayerIdx] = {
+          ...loopState.players[loopPlayerIdx],
+          hand: updatedHand,
+        };
+        loopState.version = (loopState.version ?? 0) + 1;
+        liveVersion = loopState.version;
+        gameLoop.updateState(loopState);
+      }
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff: [{ path: `/players/${livePlayerIndex}/hand`, value: updatedHand }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true, hand: updatedHand });
+
+    game.state.players[dbPlayerIndex] = {
+      ...game.state.players[dbPlayerIndex],
+      hand: updatedHand,
+    };
+    game.tournament.selectedAbilities[userId] = [];
+
+    game.markModified("state");
+    game.markModified("state.players");
+    game.markModified("tournament");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/discard-all] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/full-heal - Restore both players to full HP (and clear shields)
+ * Body: { gameId }
+ */
+router.post("/cheat/full-heal", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let liveVersion = game.state.version ?? 0;
+    let diff: Array<{ path: string; value: any }> = [];
+    const gameLoop = GameLoop.get(gameId);
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      loopState.players = loopState.players.map((p: any, idx: number) => {
+        const maxHp = Math.max(1, Number(p.maxHp ?? p.hp ?? 100));
+        diff.push({ path: `/players/${idx}/hp`, value: maxHp });
+        diff.push({ path: `/players/${idx}/shield`, value: 0 });
+        return {
+          ...p,
+          hp: maxHp,
+          shield: 0,
+        };
+      });
+      loopState.gameOver = false;
+      delete (loopState as any).winnerUserId;
+      diff.push({ path: "/gameOver", value: false });
+      diff.push({ path: "/winnerUserId", value: undefined });
+      loopState.version = (loopState.version ?? 0) + 1;
+      liveVersion = loopState.version;
+      gameLoop.updateState(loopState);
+    } else {
+      game.state.players = game.state.players.map((p: any, idx: number) => {
+        const maxHp = Math.max(1, Number(p.maxHp ?? p.hp ?? 100));
+        diff.push({ path: `/players/${idx}/hp`, value: maxHp });
+        diff.push({ path: `/players/${idx}/shield`, value: 0 });
+        return {
+          ...p,
+          hp: maxHp,
+          shield: 0,
+        };
+      });
+      game.state.gameOver = false;
+      delete (game.state as any).winnerUserId;
+      diff.push({ path: "/gameOver", value: false });
+      diff.push({ path: "/winnerUserId", value: undefined });
+      game.state.version = (game.state.version ?? 0) + 1;
+      liveVersion = game.state.version;
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true });
+
+    game.state.players = game.state.players.map((p: any) => {
+      const maxHp = Math.max(1, Number(p.maxHp ?? p.hp ?? 100));
+      return {
+        ...p,
+        hp: maxHp,
+        shield: 0,
+      };
+    });
+    game.state.gameOver = false;
+    delete (game.state as any).winnerUserId;
+
+    game.markModified("state");
+    game.markModified("state.players");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/full-heal] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/reset-cooldowns - Set both players' hand cooldowns/charges to ready
+ * Body: { gameId }
+ */
+router.post("/cheat/reset-cooldowns", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const resetHand = (hand: any[]) =>
+      (hand ?? []).map((card: any) => {
+        const abilityId = card?.abilityId ?? card?.id;
+        const def = abilityId ? ABILITIES[abilityId] : undefined;
+        const maxCharges = Math.max(0, Number((def as any)?.maxCharges ?? card?.maxCharges ?? 0));
+        const nextCard: any = {
+          ...card,
+          cooldown: 0,
+          chargeLockTicks: 0,
+          chargeRegenTicksRemaining: 0,
+        };
+        if (maxCharges > 1) {
+          nextCard.chargeCount = maxCharges;
+        }
+        return nextCard;
+      });
+
+    let liveVersion = game.state.version ?? 0;
+    let diff: Array<{ path: string; value: any }> = [];
+    const gameLoop = GameLoop.get(gameId);
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      loopState.players = loopState.players.map((p: any, idx: number) => {
+        const hand = resetHand(p.hand ?? []);
+        diff.push({ path: `/players/${idx}/hand`, value: hand });
+        return {
+          ...p,
+          hand,
+        };
+      });
+      loopState.version = (loopState.version ?? 0) + 1;
+      liveVersion = loopState.version;
+      gameLoop.updateState(loopState);
+    } else {
+      game.state.players = game.state.players.map((p: any, idx: number) => {
+        const hand = resetHand(p.hand ?? []);
+        diff.push({ path: `/players/${idx}/hand`, value: hand });
+        return {
+          ...p,
+          hand,
+        };
+      });
+      game.state.version = (game.state.version ?? 0) + 1;
+      liveVersion = game.state.version;
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true });
+
+    game.state.players = game.state.players.map((p: any) => ({
+      ...p,
+      hand: resetHand(p.hand ?? []),
+    }));
+
+    game.markModified("state");
+    game.markModified("state.players");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/reset-cooldowns] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/clear-buffs - Clear buffs/channels on both players
+ * Body: { gameId }
+ */
+router.post("/cheat/clear-buffs", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let liveVersion = game.state.version ?? 0;
+    let diff: Array<{ path: string; value: any }> = [];
+    const gameLoop = GameLoop.get(gameId);
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      loopState.players = loopState.players.map((p: any, idx: number) => {
+        diff.push({ path: `/players/${idx}/buffs`, value: [] });
+        diff.push({ path: `/players/${idx}/activeChannel`, value: undefined });
+        return {
+          ...p,
+          buffs: [],
+          activeChannel: undefined,
+        };
+      });
+      loopState.version = (loopState.version ?? 0) + 1;
+      liveVersion = loopState.version;
+      gameLoop.updateState(loopState);
+    } else {
+      game.state.players = game.state.players.map((p: any, idx: number) => {
+        diff.push({ path: `/players/${idx}/buffs`, value: [] });
+        diff.push({ path: `/players/${idx}/activeChannel`, value: undefined });
+        return {
+          ...p,
+          buffs: [],
+          activeChannel: undefined,
+        };
+      });
+      game.state.version = (game.state.version ?? 0) + 1;
+      liveVersion = game.state.version;
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true });
+
+    game.state.players = game.state.players.map((p: any) => ({
+      ...p,
+      buffs: [],
+      activeChannel: undefined,
+    }));
+
+    game.markModified("state");
+    game.markModified("state.players");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/clear-buffs] async save failed:", err?.message ?? err);
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

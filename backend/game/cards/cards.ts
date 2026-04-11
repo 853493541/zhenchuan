@@ -1,8 +1,8 @@
-// backend/game/cards/cards.ts
+// Legacy file for storing card definitions. Will be refactored into a more data-driven format in the future.
 
-import { Card } from "../engine/state/types";
+import { Ability } from "../engine/state/types";
 
-export const CARDS: Record<string, Card & { description: string }> = {
+export const ABILITIES: Record<string, Ability & { description: string }> = {
   /* ================= 通用技能 (common abilities — always in every player's hand) ================= */
 
   menghu_xiasha: {
@@ -11,7 +11,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     description: "造成1点伤害",
     type: "ATTACK",
     target: "OPPONENT",
-    range: 4,
+    range: 100,
     cooldownTicks: 0,
     effects: [{ type: "DAMAGE", value: 1 }],
     isCommon: true,
@@ -24,7 +24,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
-    effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD" }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD", durationTicks: 30 }],
     isCommon: true,
   },
 
@@ -35,7 +35,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
-    effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY" }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY", durationTicks: 21 }],
     isCommon: true,
   },
 
@@ -46,7 +46,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
-    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT" }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT", durationTicks: 30 }],
     isCommon: true,
   },
 
@@ -57,7 +57,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
-    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT" }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT", durationTicks: 30 }],
     isCommon: true,
   },
 
@@ -74,8 +74,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 9001,
         name: "弹跳",
         category: "BUFF",
-        duration: 999, // consumed by movement.ts on next jump, not by turn-tick
-        tickOn: "TURN_START",
+        durationMs: 300_000, // consumed by movement.ts on next jump; 5-minute fallback expiry
         description: "下次跳跃高度提升至12单位",
         effects: [{ type: "JUMP_BOOST" }],
         applyTo: "SELF",
@@ -91,7 +90,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 60, // 1 second at 60 Hz
-    effects: [{ type: "DIRECTIONAL_DASH", value: 1, dirMode: "AWAY" }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 1, dirMode: "AWAY", durationTicks: 3 }],
     isCommon: true,
   },
 
@@ -111,7 +110,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   jianpo_xukong: {
     id: "jianpo_xukong",
     name: "剑破虚空",
-    description: "造成10点伤害\n使目标每回合受到2点伤害，持续3回合",
+    description: "造成10点伤害\n每3秒受到3点伤害，持续15秒",
     type: "ATTACK",
     target: "OPPONENT",
     cooldownTicks: 300,
@@ -122,10 +121,10 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1022,
         name: "急曲",
         category: "DEBUFF",
-        duration: 3,
-        tickOn: "TURN_START",
-        description: "回合开始时受到3点伤害",
-        effects: [{ type: "START_TURN_DAMAGE", value: 3 }],
+        durationMs: 15_000, // 15 seconds
+        periodicMs: 3_000,  // fires every 3 seconds
+        description: "每3秒受到3点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 3 }],
       },
     ],
   },
@@ -133,7 +132,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   sanhuan_taoyue: {
     id: "sanhuan_taoyue",
     name: "三环套月",
-    description: "造成5点伤害\n抽一张牌",
+    description: "造成5点伤害",
     type: "ATTACK",
     target: "OPPONENT",
     cooldownTicks: 300,
@@ -147,7 +146,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   baizu: {
     id: "baizu",
     name: "百足",
-    description: "造成3点伤害\n对手每个回合开始时受到8点伤害，持续3个回合",
+    description: "造成3点伤害\n每3秒受到8点伤害，持续15秒",
     type: "ATTACK",
     target: "OPPONENT",
     cooldownTicks: 300,
@@ -158,10 +157,10 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1001,
         name: "百足",
         category: "DEBUFF",
-        duration: 3,
-        tickOn: "TURN_START",
-        description: "回合开始时受到8点伤害",
-        effects: [{ type: "START_TURN_DAMAGE", value: 8 }],
+        durationMs: 15_000, // 15 seconds
+        periodicMs: 3_000,  // fires every 3 seconds
+        description: "每3秒受到8点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 8 }],
       },
     ],
   },
@@ -171,7 +170,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   mohe_wuliang: {
     id: "mohe_wuliang",
     name: "摩诃无量",
-    description: "造成10点伤害\n击倒1个回合",
+    description: "造成10点伤害\n击倒5秒",
     type: "CONTROL",
     target: "OPPONENT",
     cooldownTicks: 300,
@@ -182,8 +181,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1002,
         name: "摩诃无量",
         category: "DEBUFF",
-        duration: 1,
-        tickOn: "TURN_END",
+        durationMs: 5_000, // 5 seconds
         description: "击倒",
         effects: [{ type: "CONTROL" }],
       },
@@ -193,7 +191,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   shengsi_jie: {
     id: "shengsi_jie",
     name: "生死劫",
-    description: "造成2点伤害\n【控制】目标1个回合\n【减疗】3个回合",
+    description: "造成2点伤害\n【控制】目标5秒\n【减疗】15秒",
     type: "CONTROL",
     target: "OPPONENT",
     cooldownTicks: 300,
@@ -204,8 +202,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1021,
         name: "月劫",
         category: "DEBUFF",
-        duration: 3,
-        tickOn: "TURN_END",
+        durationMs: 15_000, // 15 seconds
         description: "受到治疗效果降低50%",
         effects: [{ type: "HEAL_REDUCTION", value: 0.5 }],
       },
@@ -213,8 +210,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1003,
         name: "日劫",
         category: "DEBUFF",
-        duration: 1,
-        tickOn: "TURN_END",
+        durationMs: 5_000, // 5 seconds
         description: "眩晕",
         effects: [{ type: "CONTROL" }],
       },
@@ -224,7 +220,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   chan_xiao: {
     id: "chan_xiao",
     name: "蟾啸",
-    description: "造成10点伤害\n目标1回合无法使用卡牌\n每回合开始时受到2点伤害，持续3回合。",
+    description: "造成10点伤害\n目标5秒无法使用技能\n每3秒受到2点伤害，持续15秒",
     type: "CONTROL",
     target: "OPPONENT",
     cooldownTicks: 300,
@@ -235,18 +231,17 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1025,
         name: "蟾啸",
         category: "DEBUFF",
-        duration: 3,
-        tickOn: "TURN_START",
-        description: "回合开始时受到2点伤害",
-        effects: [{ type: "START_TURN_DAMAGE", value: 2 }],
+        durationMs: 15_000, // 15 seconds
+        periodicMs: 3_000,  // fires every 3 seconds
+        description: "每3秒受到2点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 2 }],
       },
       {
         buffId: 1004,
         name: "蟾啸迷心",
         category: "DEBUFF",
-        duration: 1,
-        tickOn: "TURN_END",
-        description: "无法使用卡牌",
+        durationMs: 5_000, // 5 seconds
+        description: "无法使用技能",
         effects: [{ type: "SILENCE" }],
       },
     ],
@@ -255,7 +250,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   da_shizi_hou: {
     id: "da_shizi_hou",
     name: "大狮子吼",
-    description: "眩晕目标1回合\n使其下个回合抽卡数量减一",
+    description: "眩晕目标5秒",
     type: "CONTROL",
     target: "OPPONENT",
     cooldownTicks: 300,
@@ -266,9 +261,8 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1005,
         name: "大狮子吼",
         category: "DEBUFF",
-        duration: 1,
-        tickOn: "TURN_END",
-        description: "眩晕，下回合抽卡数量减一",
+        durationMs: 5_000, // 5 seconds
+        description: "眩晕5秒",
         effects: [
           { type: "CONTROL" },
           { type: "DRAW_REDUCTION", value: 1 },
@@ -280,7 +274,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   jiangchun_zhuxiu: {
     id: "jiangchun_zhuxiu",
     name: "绛唇珠袖",
-    description: "使目标每次使用卡牌时受到3点伤害，持续3个回合",
+    description: "使目标每次使用技能时受到3点伤害，持续15秒",
     type: "CONTROL",
     target: "OPPONENT",
     cooldownTicks: 300,
@@ -291,9 +285,8 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1006,
         name: "绛唇珠袖",
         category: "DEBUFF",
-        duration: 3,
-        tickOn: "TURN_END",
-        description: "使用卡牌则受到3点伤害",
+        durationMs: 15_000, // 15 seconds
+        description: "使用技能则受到3点伤害",
         effects: [{ type: "ON_PLAY_DAMAGE", value: 3 }],
       },
     ],
@@ -304,7 +297,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   jiru_feng: {
     id: "jiru_feng",
     name: "疾如风",
-    description: "解控\n免疫控制1回合\n抽一张牌",
+    description: "解控\n免疫控制5秒",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -318,8 +311,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1033,
         name: "疾如风",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         description: "免疫控制",
         effects: [{ type: "CONTROL_IMMUNE" }],
       },
@@ -329,7 +321,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   sanliu_xia: {
     id: "sanliu_xia",
     name: "散流霞",
-    description: "解控\n抽2张牌\n恢复10点生命值\n【不可选中】一回合",
+    description: "解控\n恢复10点生命值\n【不可选中】5秒",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -344,10 +336,9 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1007,
         name: "散流霞",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         breakOnPlay: true,
-        description: "无法被卡牌选中",
+        description: "无法被技能选中",
         effects: [{ type: "UNTARGETABLE" }],
       },
     ],
@@ -367,8 +358,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1030,
         name: "鹊踏枝",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         description: "被命中几率降低70%",
         effects: [{ type: "DODGE_NEXT", chance: 0.7 }],
       },
@@ -376,8 +366,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1031,
         name: "素衿",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         description: "免控",
         effects: [{ type: "CONTROL_IMMUNE" }],
       },
@@ -389,7 +378,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   fengxiu_diang: {
     id: "fengxiu_diang",
     name: "风袖低昂",
-    description: "恢复60点生命值\n减伤40%，持续2回合",
+    description: "恢复60点生命值\n减伤40%，持续10秒",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -400,8 +389,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1009,
         name: "风袖低昂",
         category: "BUFF",
-        duration: 2,
-        tickOn: "TURN_START",
+        durationMs: 10_000, // 10 seconds
         description: "受到伤害降低40%",
         effects: [{ type: "DAMAGE_REDUCTION", value: 0.4 }],
       },
@@ -411,7 +399,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   qionglong_huasheng: {
     id: "qionglong_huasheng",
     name: "穹隆化生",
-    description: "抽1张牌\n恢复10点生命值\n免控1回合",
+    description: "恢复10点生命值\n免控5秒",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -425,8 +413,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1010,
         name: "生太极",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         description: "免疫控制",
         effects: [{ type: "CONTROL_IMMUNE" }],
       },
@@ -438,7 +425,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   anchen_misan: {
     id: "anchen_misan",
     name: "暗尘弥散",
-    description: "抽2张牌\n隐身1回合",
+    description: "隐身5秒，移动速度提升100%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -449,11 +436,10 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1011,
         name: "暗尘弥散",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         breakOnPlay: true,
-        description: "隐身",
-        effects: [{ type: "STEALTH" }],
+        description: "隐身，移动速度提升100%",
+        effects: [{ type: "STEALTH" }, { type: "SPEED_BOOST", value: 1 }],
       },
     ],
   },
@@ -461,7 +447,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   fuguang_lueying: {
     id: "fuguang_lueying",
     name: "浮光掠影",
-    description: "隐身2回合\n期间无法抽卡",
+    description: "隐身20秒；前5秒遁影减速50%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -472,14 +458,19 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1012,
         name: "浮光掠影",
         category: "BUFF",
-        duration: 2,
-        tickOn: "TURN_START",
+        durationMs: 20_000, // 20 seconds
         breakOnPlay: true,
-        description: "隐身2回合，期间无法抽卡",
-        effects: [
-          { type: "STEALTH" },
-          { type: "DRAW_REDUCTION", value: 1 },
-        ],
+        description: "隐身20秒",
+        effects: [{ type: "STEALTH" }],
+      },
+      {
+        buffId: 1021,
+        name: "遁影",
+        category: "BUFF",
+        durationMs: 5_000, // 5 seconds
+        breakOnPlay: false,
+        description: "前5秒移动不破隐，移动速度降低50%",
+        effects: [{ type: "SLOW", value: 0.5 }],
       },
     ],
   },
@@ -487,19 +478,20 @@ export const CARDS: Record<string, Card & { description: string }> = {
   tiandi_wuji: {
     id: "tiandi_wuji",
     name: "天地无极",
-    description: "造成5点伤害\n隐身1回合",
+    description: "对前方20尺目标造成2点伤害\n隐身3秒",
     type: "ATTACK",
     target: "OPPONENT",
+    faceDirection: true,
+    range: 20,
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "DAMAGE", value: 5 }],
+    effects: [{ type: "DAMAGE", value: 2 }],
     buffs: [
       {
         buffId: 1013,
         name: "天地无极",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 3_000, // 3 seconds
         breakOnPlay: true,
         description: "隐身",
         effects: [{ type: "STEALTH" }],
@@ -513,7 +505,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   fenglai_wushan: {
     id: "fenglai_wushan",
     name: "风来吴山",
-    description: "持续运功，玩家回合开始/结束时造成8点伤害",
+    description: "持续5秒运功，每次轮换时对敌人造成8点伤害",
     originalDescription:
       "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计8次伤害。在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
     type: "CHANNEL",
@@ -526,9 +518,8 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1014,
         name: "不工",
         category: "BUFF",
-        description: "不受卡牌控制",
-        duration: 1,
-        tickOn: "TURN_START",
+        description: "不受技能控制",
+        durationMs: 5_000, // 5 seconds
         breakOnPlay: true,
         effects: [
           { type: "CONTROL_IMMUNE" },
@@ -568,7 +559,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   wu_jianyu: {
     id: "wu_jianyu",
     name: "无间狱",
-    description: "修罗附体\n延迟1回合造成4/6/15/15伤害\n30%吸血",
+    description: "修罗附体\n3秒后正面180°/10码造成5伤害\n4秒后正面180°/10码造成8伤害\n5秒后正面180°/10码造成10伤害\n同时360°/10码造成10伤害并击退3码，击退期间沉默0.8秒\n所有伤害30%吸血",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -580,54 +571,45 @@ export const CARDS: Record<string, Card & { description: string }> = {
         name: "无间狱",
         category: "BUFF",
         description: "修罗附体",
-        duration: 2,
-        tickOn: "TURN_START",
+        durationMs: 10_000, // 10 seconds
         effects: [
+          // t+3s: front 180° cone, range 10, 5 damage, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 0,
-            when: "TURN_END",
-            turnOf: "OWNER",
-            target: "ENEMY",
-          },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 0,
-            when: "TURN_START",
-            turnOf: "ENEMY",
-            target: "ENEMY",
-          },
-          {
-            type: "SCHEDULED_DAMAGE",
-            value: 4,
-            when: "TURN_END",
-            turnOf: "ENEMY",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 3_000,
+            value: 5,
+            aoeAngle: 180,
+            range: 10,
             lifestealPct: 0.3,
           },
+          // t+4s: front 180° cone, range 10, 8 damage, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 6,
-            when: "TURN_START",
-            turnOf: "OWNER",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 4_000,
+            value: 8,
+            aoeAngle: 180,
+            range: 10,
             lifestealPct: 0.3,
           },
+          // t+5s: front 180° cone, range 10, 10 damage, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 15,
-            when: "TURN_START",
-            turnOf: "ENEMY",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 5_000,
+            value: 10,
+            aoeAngle: 180,
+            range: 10,
             lifestealPct: 0.3,
           },
+          // t+5s: full 360° circle, range 10, 10 damage, knockback 3 + 0.8s silence, 30% lifesteal
           {
-            type: "SCHEDULED_DAMAGE",
-            value: 15,
-            when: "TURN_END",
-            turnOf: "ENEMY",
-            target: "ENEMY",
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 5_000,
+            value: 10,
+            aoeAngle: 360,
+            range: 10,
             lifestealPct: 0.3,
+            knockbackUnits: 3,
+            knockbackSilenceMs: 800,
           },
         ],
       },
@@ -637,7 +619,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   xinzheng: {
     id: "xinzheng",
     name: "心诤",
-    description: "舞棍1回合\n期间免疫控制\n造成4/6/10点伤害",
+    description: "舞棍5秒\n期间免疫控制\n造成4/6/10点伤害",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 300,
@@ -648,8 +630,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1017,
         name: "心诤",
         category: "BUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         breakOnPlay: true,
         description: "免疫控制",
         effects: [
@@ -685,7 +666,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   nuwa_butian: {
     id: "nuwa_butian",
     name: "女娲补天",
-    description: "造成伤害提升100%\n受到伤害降低50%\n下回合开始时抽卡减一，持续4回合",
+    description: "造成伤害提升100%\n受到伤害降低50%，持续20秒",
     type: "STANCE",
     target: "SELF",
     cooldownTicks: 300,
@@ -696,9 +677,8 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1019,
         name: "女娲补天",
         category: "BUFF",
-        duration: 4,
-        tickOn: "TURN_START",
-        description: "造成伤害提升100%，受到伤害降低50%，期间抽卡减一",
+        durationMs: 20_000, // 20 seconds
+        description: "造成伤害提升100%，受到伤害降低50%，持续20秒",
         effects: [
           { type: "DAMAGE_MULTIPLIER", value: 2 },
           { type: "DAMAGE_REDUCTION", value: 0.5 },
@@ -711,7 +691,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
   taxingxing: {
     id: "taxingxing",
     name: "踏星行",
-    description: "抽2张牌\n被命中几率降低65%且免疫控制，期间无法使用卡牌，持续1回合",
+    description: "被命中几率降低65%且免疫控制，期间无法使用技能，持续5秒",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -722,8 +702,7 @@ export const CARDS: Record<string, Card & { description: string }> = {
         buffId: 1020,
         name: "踏星行",
         category: "DEBUFF",
-        duration: 1,
-        tickOn: "TURN_START",
+        durationMs: 5_000, // 5 seconds
         description: "被命中几率降低65%，免疫控制，沉默",
         effects: [
           { type: "DODGE_NEXT", chance: 0.65 },
@@ -751,20 +730,6 @@ export const CARDS: Record<string, Card & { description: string }> = {
         value: 10,
         threshold: 60,
       },
-    ],
-  },
-
-  quye_duanchou: {
-    id: "quye_duanchou",
-    name: "驱夜断愁",
-    description: "造成8点伤害\n回复4点生命值",
-    type: "ATTACK",
-    target: "OPPONENT",
-    cooldownTicks: 300,
-    gcd: true,
-    effects: [
-      { type: "DAMAGE", value: 8 },
-      { type: "HEAL", value: 4, applyTo: "SELF" },
     ],
   },
 

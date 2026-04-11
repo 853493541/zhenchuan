@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./styles.module.css";
 import type { GameEvent } from "@/app/game/screens/in-game/types";
-import Card from "../../../Card";
+import Ability from "../../../Ability";
 
 /* ================= PROPS ================= */
 
@@ -53,7 +53,7 @@ function renderDamageLine(e: GameEvent, myUserId: string) {
   if (isMe) {
     return (
       <>
-        你的<Skill name={e.cardName!} />对
+        你的<Skill name={e.abilityName!} />对
         <Target name={e.targetName ?? "对手"} />
         造成了<DamageNum value={dmg} />点伤害。
       </>
@@ -63,7 +63,7 @@ function renderDamageLine(e: GameEvent, myUserId: string) {
   return (
     <>
       <Target name={e.actorName ?? "对手"} />的
-      <Skill name={e.cardName!} />
+      <Skill name={e.abilityName!} />
       对你造成了<DamageNum value={dmg} />点伤害。
     </>
   );
@@ -104,7 +104,7 @@ function renderPlayLine(
     <>
       {isMe ? "你" : <Target name={e.actorName ?? "对手"} />}施放了
       <Skill
-        name={e.cardName ?? "未知技能"}
+        name={e.abilityName ?? "未知技能"}
         onHover={() => setHovered(e)}
         onLeave={() => setHovered(null)}
       />
@@ -125,7 +125,7 @@ export default function ActionHistory({ events, myUserId }: Props) {
 
   const damageEvents = useMemo(() => {
     if (!Array.isArray(events)) return [];
-    return events.filter((e) => e.type === "DAMAGE" && e.cardName).slice(-40);
+    return events.filter((e) => e.type === "DAMAGE" && e.abilityName).slice(-40);
   }, [events]);
 
   const buffEvents = useMemo(() => {
@@ -141,7 +141,7 @@ export default function ActionHistory({ events, myUserId }: Props) {
 
   const playEvents = useMemo(() => {
     if (!Array.isArray(events)) return [];
-    return events.filter((e) => e.type === "PLAY_CARD").slice(-40);
+    return events.filter((e) => e.type === "PLAY_ABILITY").slice(-40);
   }, [events]);
 
   /* ================= AUTO SCROLL ================= */
@@ -220,9 +220,9 @@ export default function ActionHistory({ events, myUserId }: Props) {
         </div>
       </div>
 
-      {hovered?.cardId && (
+      {hovered?.abilityId && (
         <div className={styles.preview}>
-          <Card cardId={hovered.cardId} variant="preview" />
+          <Ability abilityId={hovered.abilityId} variant="preview" />
         </div>
       )}
     </div>

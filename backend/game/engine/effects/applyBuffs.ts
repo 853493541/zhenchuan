@@ -1,6 +1,6 @@
 // backend/game/engine/effects/handlers/handleApplyBuffs.ts
 
-import { GameState, Card, ActiveBuff } from "../state/types";
+import { GameState, Ability, ActiveBuff } from "../state/types";
 import { blocksEnemyTargeting } from "../rules/guards";
 import { addBuff } from "./buffRuntime";
 
@@ -17,16 +17,16 @@ import { addBuff } from "./buffRuntime";
  */
 export function handleApplyBuffs(params: {
   state: GameState;
-  card: Card;
+  ability: Ability;
   source: { userId: string; buffs: ActiveBuff[] };
   target: { userId: string; buffs: ActiveBuff[] };
   isEnemyEffect: boolean;
 }) {
-  const { state, card, source, target, isEnemyEffect } = params;
+  const { state, ability, source, target, isEnemyEffect } = params;
 
-  if (!Array.isArray(card.buffs) || card.buffs.length === 0) return;
+  if (!Array.isArray(ability.buffs) || ability.buffs.length === 0) return;
 
-  for (const buff of card.buffs) {
+  for (const buff of ability.buffs) {
     let actualTarget: { userId: string; buffs: ActiveBuff[] };
 
     // Explicit buff-level targeting wins
@@ -36,7 +36,7 @@ export function handleApplyBuffs(params: {
       actualTarget = target;
     } else {
       // Backward-compatible default
-      actualTarget = card.target === "SELF" ? source : target;
+      actualTarget = ability.target === "SELF" ? source : target;
     }
 
     // Enemy buffs can be blocked by avoidance rules
@@ -52,7 +52,7 @@ export function handleApplyBuffs(params: {
       state,
       sourceUserId: source.userId,
       targetUserId: actualTarget.userId,
-      card,
+      ability,
       buffTarget: actualTarget,
       buff,
     });

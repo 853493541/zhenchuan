@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import styles from "./styles.module.css";
 import type { GameEvent } from "@/app/game/screens/in-game/types";
-import Card from "../../../Card";
+import Ability from "../../../Ability";
 
 /* ================= PROPS ================= */
 
@@ -20,7 +20,7 @@ export default function CurrentAction({
   myUserId,
   gameVersion,
 }: Props) {
-  const [cards, setCards] = useState<GameEvent[]>([]);
+  const [abilities, setCards] = useState<GameEvent[]>([]);
   const seenPlayEventIds = useRef<Set<string>>(new Set());
   const lastVersion = useRef<number | undefined>(undefined);
 
@@ -49,10 +49,10 @@ export default function CurrentAction({
   useEffect(() => {
     if (!Array.isArray(events)) return;
 
-    // collect ALL unseen PLAY_CARD events
+    // collect ALL unseen PLAY_ABILITY events
     const newPlays = events.filter(
       (e) =>
-        e.type === "PLAY_CARD" &&
+        e.type === "PLAY_ABILITY" &&
         !seenPlayEventIds.current.has(e.id)
     );
 
@@ -78,7 +78,7 @@ export default function CurrentAction({
 
   return (
     <div className={styles.arena}>
-      {cards.map((e, idx) => {
+      {abilities.map((e, idx) => {
         const isMe = e.actorUserId === myUserId;
 
         return (
@@ -98,10 +98,10 @@ export default function CurrentAction({
             style={{
               transform: isPhone
                 ? "translateY(0)"
-                : `translateX(calc(-1 * ${idx} * var(--card-shift)))`,
+                : `translateX(calc(-1 * ${idx} * var(--ability-shift)))`,
             }}
           >
-            <Card cardId={e.cardId} variant="arena" />
+            <Ability abilityId={e.abilityId} variant="arena" />
           </div>
         );
       })}

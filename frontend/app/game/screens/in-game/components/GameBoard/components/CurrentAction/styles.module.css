@@ -2,7 +2,7 @@
 
 .arena {
   /* 🔑 module-safe variable */
-  --card-shift: 155px;
+  --ability-shift: 155px;
 
   position: relative;
   width: 100%;
@@ -17,7 +17,7 @@
 
 /* ================= CARD WRAPPER ================= */
 
-.cardWrap {
+.abilityWrap {
   position: absolute;
 
   transition:
@@ -83,10 +83,10 @@
 
   .arena {
     height: 260px;
-    --card-shift: 105px;
+    --ability-shift: 105px;
   }
 
-  .cardWrap {
+  .abilityWrap {
     transition:
       transform 200ms ease-out,
       opacity 200ms ease-out,

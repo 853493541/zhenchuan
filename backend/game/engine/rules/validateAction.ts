@@ -1,9 +1,11 @@
 // backend/game/engine/rules/validateAction.ts
 
 import { GameState } from "../state/types";
-import { CARDS } from "../../cards/cards";
+import { ABILITIES } from "../../abilities/abilities";
 import { blocksCardTargeting } from "./guards";
 import { calculateDistance } from "../state/types";
+import { worldMap } from "../../map/worldMap";
+import type { MapObject } from "../state/types/map";
 
 /* =========================================================
    INTERNAL HELPERS
@@ -15,8 +17,97 @@ function hasEffect(player: { buffs: any[] }, type: string) {
   );
 }
 
+function hasChargeSystem(ability: any): boolean {
+  return Number(ability?.maxCharges ?? 0) > 1;
+}
+
+function ensureChargeRuntime(instance: any, ability: any) {
+  const maxCharges = Math.max(0, Number(ability?.maxCharges ?? 0));
+  if (maxCharges <= 1) return;
+  if (typeof instance.chargeCount !== "number") instance.chargeCount = maxCharges;
+  if (typeof instance.chargeRegenTicksRemaining !== "number") instance.chargeRegenTicksRemaining = 0;
+  if (typeof instance.chargeLockTicks !== "number") instance.chargeLockTicks = 0;
+}
+
+/**
+ * Facing rule:
+ * - Opponent-targeted abilities require 180° facing by default.
+ * - Set faceDirection:false to explicitly opt out.
+ */
+function requiresFacing(ability: { target?: string; faceDirection?: boolean }): boolean {
+  if (ability.target === "OPPONENT") return ability.faceDirection !== false;
+  return ability.faceDirection === true;
+}
+
+/**
+ * Check if a target is within 180° of the player's facing direction.
+ */
+function isInFacingHemisphere(
+  player: { position: { x: number; y: number }; facing?: { x: number; y: number } },
+  target: { position: { x: number; y: number } }
+): boolean {
+  const f = player.facing;
+  if (!f) return true; // no facing data → allow
+  const dx = target.position.x - player.position.x;
+  const dy = target.position.y - player.position.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 0.01) return true; // on top of each other → allow
+  // dot product ≥ 0 means within 180°
+  return (f.x * dx + f.y * dy) >= 0;
+}
+
+/**
+ * Check if line-of-sight between two positions is blocked by any map object.
+ * Uses 2D segment-vs-AABB test (ignores Z for now — structures are full-height blockers).
+ */
+function isLOSBlocked(
+  ax: number, ay: number,
+  bx: number, by: number,
+  objects: MapObject[]
+): boolean {
+  for (const obj of objects) {
+    if (segmentIntersectsAABB(ax, ay, bx, by, obj.x, obj.y, obj.x + obj.w, obj.y + obj.d)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 2D segment vs AABB intersection test. */
+function segmentIntersectsAABB(
+  x1: number, y1: number, x2: number, y2: number,
+  minX: number, minY: number, maxX: number, maxY: number
+): boolean {
+  let tmin = 0, tmax = 1;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  // X slab
+  if (Math.abs(dx) < 1e-8) {
+    if (x1 < minX || x1 > maxX) return false;
+  } else {
+    let t1 = (minX - x1) / dx;
+    let t2 = (maxX - x1) / dx;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    tmin = Math.max(tmin, t1);
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return false;
+  }
+  // Y slab
+  if (Math.abs(dy) < 1e-8) {
+    if (y1 < minY || y1 > maxY) return false;
+  } else {
+    let t1 = (minY - y1) / dy;
+    let t2 = (maxY - y1) / dy;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    tmin = Math.max(tmin, t1);
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return false;
+  }
+  return true;
+}
+
 /* =========================================================
-   VALIDATE PLAY CARD (REAL-TIME BATTLE)
+   VALIDATE PLAY ABILITY (REAL-TIME BATTLE)
 ========================================================= */
 
 /**
@@ -26,7 +117,12 @@ function hasEffect(player: { buffs: any[] }, type: string) {
 export function validateCastAbility(
   state: GameState,
   playerIndex: number,
-  cardInstanceId: string
+  abilityInstanceId: string,
+  options?: {
+    pendingJump?: boolean;
+    targetUserId?: string;
+    groundTarget?: { x: number; y: number };
+  }
 ) {
   if (state.gameOver) {
     throw new Error("ERR_GAME_OVER");
@@ -34,72 +130,193 @@ export function validateCastAbility(
 
   const player = state.players[playerIndex];
 
-  // Accept lookup by instanceId OR by cardId (common abilities may be cast by cardId)
+  // Accept lookup by instanceId OR by abilityId (common abilities may be cast by abilityId)
   let instance = player.hand.find(
-    (c) => c.instanceId === cardInstanceId || (c.cardId ?? (c as any).id) === cardInstanceId
+    (c) => c.instanceId === abilityInstanceId || (c.abilityId ?? (c as any).id) === abilityInstanceId
   );
 
   // Auto-inject common abilities missing from hand (legacy/in-progress games)
   if (!instance) {
-    const maybeCommon = CARDS[cardInstanceId];
+    const maybeCommon = ABILITIES[abilityInstanceId];
     if (maybeCommon && (maybeCommon as any).isCommon) {
-      const newInst = { instanceId: cardInstanceId, cardId: cardInstanceId, cooldown: 0 };
+      const newInst: any = { instanceId: abilityInstanceId, abilityId: abilityInstanceId, cooldown: 0 };
+      if (hasChargeSystem(maybeCommon)) {
+        const maxCharges = Number((maybeCommon as any).maxCharges ?? 0);
+        newInst.chargeCount = maxCharges;
+        newInst.chargeRegenTicksRemaining = 0;
+        newInst.chargeLockTicks = 0;
+      }
       player.hand.push(newInst as any);
       instance = newInst as any;
     }
   }
 
   if (!instance) {
-    throw new Error("ERR_CARD_NOT_IN_HAND");
+    throw new Error("ERR_ABILITY_NOT_IN_HAND");
   }
 
-  console.log("[validateCastAbility] DEBUG - card instance:", {
+  console.log("[validateCastAbility] DEBUG - ability instance:", {
     instanceId: instance.instanceId,
-    cardId: instance.cardId,
+    abilityId: instance.abilityId,
     id: (instance as any).id,
     keys: Object.keys(instance).slice(0, 10),
   });
 
-  // Card can be referenced by either .cardId or .id (depending on how it was populated)
-  const cardId = instance.cardId || (instance as any).id;
-  const card = CARDS[cardId];
-  if (!card) {
-    throw new Error("ERR_CARD_NOT_FOUND");
+  // Ability can be referenced by either .abilityId or .id (depending on how it was populated)
+  const abilityId = instance.abilityId || (instance as any).id;
+  const ability = ABILITIES[abilityId];
+  if (!ability) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
   }
 
+  ensureChargeRuntime(instance, ability);
+
+  const hasGroundTarget =
+    options?.groundTarget !== undefined &&
+    Number.isFinite(options.groundTarget.x) &&
+    Number.isFinite(options.groundTarget.y);
+  const allowGroundCastWithoutTarget =
+    ability.target === "OPPONENT" &&
+    (ability as any).allowGroundCastWithoutTarget === true &&
+    hasGroundTarget;
+
+  let targetIndex = ability.target === "SELF" ? playerIndex : (playerIndex === 0 ? 1 : 0);
+  if (ability.target === "OPPONENT" && options?.targetUserId) {
+    const explicitTarget = state.players.findIndex((p) => p.userId === options.targetUserId);
+    if (explicitTarget >= 0) targetIndex = explicitTarget;
+  }
+  const targetPlayer = state.players[targetIndex];
+
   /* ================= COOLDOWN ================= */
-  if (instance.cooldown > 0) {
+  if (hasChargeSystem(ability)) {
+    if ((instance.chargeLockTicks ?? 0) > 0) {
+      throw new Error("ERR_ON_COOLDOWN");
+    }
+    if ((instance.chargeCount ?? 0) <= 0) {
+      throw new Error("ERR_ON_COOLDOWN");
+    }
+  } else if (instance.cooldown > 0) {
     throw new Error("ERR_ON_COOLDOWN");
   }
 
-  /* ================= SILENCE ================= */
+  /* ================= QINGGONG SEAL ================= */
+  if ((ability as any).qinggong && hasEffect(player, "QINGGONG_SEAL")) {
+    throw new Error("ERR_QINGGONG_SEALED");
+  }
+
+  /* ================= CHANNELING ================= */
+  if ((player as any).activeChannel) {
+    throw new Error("ERR_CHANNELING");
+  }
+
+  /* ================= SILENCE (Level 3 — not removable) ================= */
   if (hasEffect(player, "SILENCE")) {
     throw new Error("ERR_SILENCED");
   }
 
-  /* ================= RANGE CHECK ================= */
-  if (card.range !== undefined) {
-    const distance = calculateDistance(
-      state.players[playerIndex].position,
-      state.players[playerIndex === 0 ? 1 : 0].position
-    );
+  /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
+  if (hasEffect(player, "KNOCKED_BACK")) {
+    const allowsKnockback =
+      Array.isArray(ability.effects) &&
+      ability.effects.some((e: any) => e.allowWhileKnockedBack === true);
+    if (!allowsKnockback) {
+      throw new Error("ERR_KNOCKED_BACK");
+    }
+  }
 
-    if (distance > card.range) {
+  /* ================= CONTROL / ATTACK_LOCK (Level 1 — removable) ================= */
+  const isControlled =
+    hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
+  const allowsOverride =
+    Array.isArray(ability.effects) &&
+    ability.effects.some((e: any) => e.allowWhileControlled === true);
+  if (isControlled && !allowsOverride) {
+    throw new Error("ERR_CONTROLLED");
+  }
+
+  /* (Level 0 — ROOT / SLOW only restrict movement, spells are not blocked) */
+
+  /* ================= MIN SELF HP (exclusive, shields not counted) ================= */
+  if (typeof (ability as any).minSelfHpExclusive === "number") {
+    if (player.hp <= (ability as any).minSelfHpExclusive) {
+      throw new Error("ERR_HP_TOO_LOW");
+    }
+  }
+
+  /* ================= REQUIRES GROUNDED ================= */
+  if ((ability as any).requiresGrounded) {
+    const jumpCount = (player as any).jumpCount ?? 0;
+    const vz = (player as any).velocity?.vz ?? 0;
+    const groundedCastLockUntil = (player as any).groundedCastLockUntil ?? 0;
+    const pendingJump = options?.pendingJump === true;
+    if (
+      jumpCount > 0 ||
+      Math.abs(vz) > 0.01 ||
+      groundedCastLockUntil > Date.now() ||
+      pendingJump
+    ) {
+      throw new Error("ERR_REQUIRES_GROUNDED");
+    }
+  }
+
+  /* ================= REQUIRES STANDING ================= */
+  if ((ability as any).requiresStanding) {
+    const jumpCount = (player as any).jumpCount ?? 0;
+    const vz = (player as any).velocity?.vz ?? 0;
+    const vx = (player as any).velocity?.vx ?? 0;
+    const vy = (player as any).velocity?.vy ?? 0;
+    const pendingJump = options?.pendingJump === true;
+    const moving = Math.abs(vx) > 0.01 || Math.abs(vy) > 0.01;
+
+    if (jumpCount > 0 || Math.abs(vz) > 0.01 || pendingJump || moving) {
+      throw new Error("ERR_REQUIRES_STANDING");
+    }
+  }
+
+  /* ================= RANGE CHECK ================= */
+  if (ability.range !== undefined) {
+    const distance = allowGroundCastWithoutTarget
+      ? Math.hypot(
+          (options?.groundTarget?.x ?? 0) - state.players[playerIndex].position.x,
+          (options?.groundTarget?.y ?? 0) - state.players[playerIndex].position.y,
+        )
+      : calculateDistance(
+          state.players[playerIndex].position,
+          targetPlayer.position
+        );
+
+    if (distance > ability.range) {
       throw new Error("ERR_OUT_OF_RANGE");
     }
 
-    if (card.minRange !== undefined && distance < card.minRange) {
+    if (ability.minRange !== undefined && distance < ability.minRange) {
       throw new Error("ERR_TOO_CLOSE");
     }
   }
 
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
-  if (card.target === "OPPONENT") {
-    const enemyIndex = playerIndex === 0 ? 1 : 0;
-    const enemy = state.players[enemyIndex];
+  if (ability.target === "OPPONENT" && !allowGroundCastWithoutTarget) {
+    const enemy = targetPlayer;
 
     if (blocksCardTargeting(enemy)) {
       throw new Error("ERR_TARGET_UNAVAILABLE");
+    }
+
+    /* ================= FACE DIRECTION (180°) ================= */
+    if (requiresFacing(ability as any)) {
+      if (!isInFacingHemisphere(player, enemy)) {
+        throw new Error("ERR_NOT_FACING_TARGET");
+      }
+    }
+
+    /* ================= LINE OF SIGHT (structure blocking) ================= */
+    const mapObjects = worldMap.objects; // TODO: pass map context for arena mode
+    if (isLOSBlocked(
+      player.position.x, player.position.y,
+      enemy.position.x, enemy.position.y,
+      mapObjects
+    )) {
+      throw new Error("ERR_NO_LINE_OF_SIGHT");
     }
   }
 
@@ -107,13 +324,13 @@ export function validateCastAbility(
 }
 
 /* =========================================================
-   VALIDATE PLAY CARD (TURN-BASED - Legacy)
+   VALIDATE PLAY ABILITY (TURN-BASED - Legacy)
 ========================================================= */
 
-export function validatePlayCard(
+export function validatePlayAbility(
   state: GameState,
   playerIndex: number,
-  cardInstanceId: string
+  abilityInstanceId: string
 ) {
   if (state.gameOver) {
     throw new Error("ERR_GAME_OVER");
@@ -125,47 +342,71 @@ export function validatePlayCard(
 
   const player = state.players[playerIndex];
 
-  const instance = player.hand.find((c) => c.instanceId === cardInstanceId);
+  const instance = player.hand.find((c) => c.instanceId === abilityInstanceId);
   if (!instance) {
-    throw new Error("ERR_CARD_NOT_IN_HAND");
+    throw new Error("ERR_ABILITY_NOT_IN_HAND");
   }
 
-  // Card can be referenced by either .cardId or .id (depending on how it was populated)
-  const cardId = instance.cardId || (instance as any).id;
-  const card = CARDS[cardId];
-  if (!card) {
-    throw new Error("ERR_CARD_NOT_FOUND");
+  // Ability can be referenced by either .abilityId or .id (depending on how it was populated)
+  const abilityId = instance.abilityId || (instance as any).id;
+  const ability = ABILITIES[abilityId];
+  if (!ability) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
+  }
+
+  ensureChargeRuntime(instance, ability);
+
+  /* ================= QINGGONG SEAL ================= */
+  if ((ability as any).qinggong && hasEffect(player, "QINGGONG_SEAL")) {
+    throw new Error("ERR_QINGGONG_SEALED");
   }
 
   /* ================= COOLDOWN ================= */
 
-  if (instance.cooldown > 0) {
+  if (hasChargeSystem(ability)) {
+    if ((instance.chargeLockTicks ?? 0) > 0 || (instance.chargeCount ?? 0) <= 0) {
+      throw new Error("ERR_ON_COOLDOWN");
+    }
+  } else if (instance.cooldown > 0) {
     throw new Error("ERR_ON_COOLDOWN");
   }
 
-  /* ================= SILENCE ================= */
+  /* ================= SILENCE (Level 3 — not removable) ================= */
 
   if (hasEffect(player, "SILENCE")) {
     throw new Error("ERR_SILENCED");
   }
 
-  /* ================= CONTROL / ATTACK_LOCK ================= */
+  /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
+
+  if (hasEffect(player, "KNOCKED_BACK")) {
+    const allowsKnockback =
+      Array.isArray(ability.effects) &&
+      ability.effects.some((e) => (e as any).allowWhileKnockedBack === true);
+    if (!allowsKnockback) {
+      throw new Error("ERR_KNOCKED_BACK");
+    }
+  }
+
+  /* ================= CONTROL / ATTACK_LOCK (Level 1 — removable) ================= */
 
   const isControlled =
     hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
 
   const allowsOverride =
-    Array.isArray(card.effects) &&
-    card.effects.some((e) => e.allowWhileControlled === true);
+    Array.isArray(ability.effects) &&
+    ability.effects.some((e) => e.allowWhileControlled === true);
 
   if (isControlled && !allowsOverride) {
     throw new Error("ERR_CONTROLLED");
   }
 
+  /* (Level 0 — ROOT / SLOW only restrict movement, spells are not blocked) */
+
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
 
-  // Only applies to opponent-targeted cards
-  if (card.target === "OPPONENT") {
+  // Only applies to opponent-targeted abilities
+  if (ability.target === "OPPONENT") {
     const enemyIndex = playerIndex === 0 ? 1 : 0;
     const enemy = state.players[enemyIndex];
 

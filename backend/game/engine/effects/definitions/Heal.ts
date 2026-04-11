@@ -2,11 +2,12 @@
 
 import {
   GameState,
-  Card,
-  CardEffect,
+  Ability,
+  AbilityEffect,
   ActiveBuff,
 } from "../../state/types";
 import { resolveHealAmount } from "../../utils/combatMath";
+import { applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 
 /**
@@ -20,8 +21,8 @@ export function handleHeal(
   state: GameState,
   source: { userId: string; hp: number; buffs: ActiveBuff[] },
   target: { userId: string; hp: number; buffs: ActiveBuff[] },
-  card: Card,
-  effect: CardEffect
+  ability: Ability,
+  effect: AbilityEffect
 ) {
   const base = effect.value ?? 0;
 
@@ -30,9 +31,7 @@ export function handleHeal(
     base,
   });
 
-  const before = target.hp;
-  target.hp = Math.min(100, target.hp + final);
-  const applied = Math.max(0, target.hp - before);
+  const applied = applyHealToTarget(target as any, final);
 
   if (applied > 0) {
     pushEvent(state, {
@@ -40,8 +39,8 @@ export function handleHeal(
       type: "HEAL",
       actorUserId: source.userId,
       targetUserId: target.userId,
-      cardId: card.id,
-      cardName: card.name,
+      abilityId: ability.id,
+      abilityName: ability.name,
       effectType: "HEAL",
       value: applied,
     });

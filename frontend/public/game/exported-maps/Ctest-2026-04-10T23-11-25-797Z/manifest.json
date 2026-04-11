@@ -1,0 +1,85 @@
+{
+  "kind": "jx3-full-map-export",
+  "version": 1,
+  "name": "Ctest",
+  "packageName": "Ctest-2026-04-10T23-11-25-797Z",
+  "createdAt": 1775862687074,
+  "sourceMapPath": "map-data",
+  "region": {
+    "minX": -1022,
+    "maxX": 43962,
+    "minZ": -146511,
+    "maxZ": -105993
+  },
+  "regionCorners": [
+    {
+      "x": -1022,
+      "z": -146511
+    },
+    {
+      "x": 43962,
+      "z": -146511
+    },
+    {
+      "x": 43962,
+      "z": -105993
+    },
+    {
+      "x": -1022,
+      "z": -105993
+    }
+  ],
+  "stats": {
+    "entitiesInput": 139,
+    "entities": 139,
+    "entitiesRh": 139,
+    "entityRhIndexWritten": true,
+    "transformConventionsWritten": true,
+    "visualSettingsWritten": true,
+    "entitiesFilteredOut": 0,
+    "meshesRequested": 68,
+    "meshesCopied": 68,
+    "texturesRequested": 192,
+    "texturesCopied": 192,
+    "heightmapsCopied": 12,
+    "terrainTexturesCopied": 24,
+    "tilesSelected": 12,
+    "collisionGenerated": true,
+    "collisionObjects": 11311,
+    "collisionShells": 139,
+    "collisionShellTriangles": 103041,
+    "meshCollisionExpected": 68,
+    "meshCollisionAttached": 68,
+    "meshCollisionAttachFailures": 0,
+    "meshCollisionMissing": 0,
+    "meshCollisionComplete": true,
+    "collisionMeshesLoaded": 68,
+    "collisionMeshesFailed": 0,
+    "collisionSkippedEntities": 0
+  },
+  "collision": {
+    "generated": true,
+    "file": "collision.json",
+    "objects": 11311,
+    "shells": 139,
+    "shellTriangles": 103041,
+    "meshSidecarsExpected": 68,
+    "meshSidecarsWritten": 68,
+    "meshSidecarsFailed": 0,
+    "meshSidecarsMissing": 0,
+    "meshSidecarIndexFile": "mesh-collision-index.json",
+    "meshesLoaded": 68,
+    "meshesFailed": 0,
+    "skippedEntities": 0,
+    "error": null
+  },
+  "coordinateContract": {
+    "world": "three-rh",
+    "entityMatrixStoredAs": "source-lh-row-major",
+    "entityRhMatrixFile": "map-data/entities/full.rh.json",
+    "entityRhIndexFile": "map-data/entity-index-rh.json",
+    "transformConventionsFile": "map-data/transform-conventions.json",
+    "visualSettingsFile": "map-data/visual-settings.json",
+    "terrain": "heightmap + map-config (same as source viewer)"
+  }
+}

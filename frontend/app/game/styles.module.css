@@ -56,7 +56,7 @@
    Room Card Base
 ========================================================= */
 
-.card {
+.ability {
   position: relative;               /* for bottom-right time */
   border-radius: 12px;
   padding: 18px 18px 44px;           /* space for time */
@@ -74,7 +74,7 @@
   }
 }
 
-.cardTitle {
+.abilityTitle {
   font-size: 16px;
   font-weight: 700;
   margin-bottom: 10px;

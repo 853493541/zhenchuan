@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { TournamentState, CardInstance } from "../types";
+import type { TournamentState, AbilityInstance } from "../types";
 import DraftShop from "./DraftShop";
 import SelectedAbilities from "./SelectedAbilities";
 import DraftEconomy from "./DraftEconomy";
@@ -17,7 +17,7 @@ type Props = {
   gameId: string;
   selfUserId: string;
   tournament: TournamentState;
-  cardMap: Record<string, any>;
+  abilityMap: Record<string, any>;
   onFinalizeDraft: () => Promise<void>;
   onStateChange?: () => Promise<void>; // Callback to refetch parent state
 };
@@ -26,7 +26,7 @@ export default function DraftScreen({
   gameId,
   selfUserId,
   tournament,
-  cardMap,
+  abilityMap,
   onFinalizeDraft,
   onStateChange,
 }: Props) {
@@ -42,7 +42,7 @@ export default function DraftScreen({
     return <div className={styles.error}>草稿状态缺失</div>;
   }
 
-  const handleSelectCard = async (cardInstance: CardInstance, destination: "selected" | "bench" = "selected") => {
+  const handleSelectCard = async (cardInstance: AbilityInstance, destination: "selected" | "bench" = "selected") => {
     if (destination === "selected" && selected.length >= 6) {
       setError("选择栏已满 (最多6个)");
       return;
@@ -62,7 +62,7 @@ export default function DraftScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gameId,
-          cardInstanceId: cardInstance.instanceId,
+          abilityInstanceId: cardInstance.instanceId,
           destination,
         }),
       });
@@ -84,7 +84,7 @@ export default function DraftScreen({
     }
   };
 
-  const handleMoveCard = async (cardInstanceId: string, from: "selected" | "bench", to: "selected" | "bench") => {
+  const handleMoveCard = async (abilityInstanceId: string, from: "selected" | "bench", to: "selected" | "bench") => {
     try {
       setLoading(true);
       setError(null);
@@ -95,7 +95,7 @@ export default function DraftScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gameId,
-          cardInstanceId,
+          abilityInstanceId,
           from,
           to,
         }),
@@ -118,7 +118,7 @@ export default function DraftScreen({
     }
   };
 
-  const handleSellCard = async (cardInstanceId: string) => {
+  const handleSellCard = async (abilityInstanceId: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -129,7 +129,7 @@ export default function DraftScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gameId,
-          cardInstanceId,
+          abilityInstanceId,
         }),
       });
 
@@ -184,7 +184,7 @@ export default function DraftScreen({
     }
   };
 
-  const handleLockCard = async (cardIndex: number) => {
+  const handleLockCard = async (abilityIndex: number) => {
     try {
       setLoading(true);
       setError(null);
@@ -195,7 +195,7 @@ export default function DraftScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gameId,
-          cardIndex,
+          abilityIndex,
         }),
       });
 
@@ -302,7 +302,7 @@ export default function DraftScreen({
           {/* Shop - Horizontal Row */}
           <DraftShop
             shop={shop}
-            cardMap={cardMap}
+            abilityMap={abilityMap}
             onSelectCard={handleSelectCard}
             onLockCard={handleLockCard}
             loading={loading}
@@ -311,16 +311,16 @@ export default function DraftScreen({
           {/* Selected Abilities - Large Row */}
           <SelectedAbilities 
             selected={selected} 
-            cardMap={cardMap}
-            onMoveToBench={(cardInstanceId) => handleMoveCard(cardInstanceId, "selected", "bench")}
+            abilityMap={abilityMap}
+            onMoveToBench={(abilityInstanceId) => handleMoveCard(abilityInstanceId, "selected", "bench")}
             loading={loading}
           />
 
           {/* Bench Area - Grid */}
           <BenchArea
             bench={bench}
-            cardMap={cardMap}
-            onMoveToSelected={(cardInstanceId) => handleMoveCard(cardInstanceId, "bench", "selected")}
+            abilityMap={abilityMap}
+            onMoveToSelected={(abilityInstanceId) => handleMoveCard(abilityInstanceId, "bench", "selected")}
             onSell={handleSellCard}
             loading={loading}
             fullSlots={bench.length}

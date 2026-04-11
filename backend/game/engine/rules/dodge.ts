@@ -1,8 +1,8 @@
 // engine/rules/dodge.ts
-import { Card } from "../state/types";
+import { Ability } from "../state/types";
 import { shouldDodge } from "./guards";
 
-export function computeCardDodge(card: Card, target: any): boolean {
-  if (card.target !== "OPPONENT") return false;
+export function computeAbilityDodge(ability: Ability, target: any): boolean {
+  if (ability.target !== "OPPONENT") return false;
   return shouldDodge(target);
 }

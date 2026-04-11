@@ -100,7 +100,7 @@
   }
 
   .handZone button,
-  .handZone .card {
+  .handZone .ability {
     min-width: 72px;
     min-height: 96px;
   }

@@ -14,7 +14,7 @@ export type {
 /* ================= Effects ================= */
 export type {
   EffectType,
-  CardEffect,
+  AbilityEffect,
   BuffEffect,
 } from "./types/effects";
 
@@ -22,18 +22,17 @@ export type {
 export type {
   BuffCategory,
   BuffApplyTo,
-  BuffTickOn,
   BuffDefinition,
   ActiveBuff,
 } from "./types/buffs";
 
 /* ================= Cards ================= */
 export type {
-  CardType,
+  AbilityType,
   TargetType,
-  Card,
-  CardInstance,
-} from "./types/cards";
+  Ability,
+  AbilityInstance,
+} from "./types/abilities";
 
 /* ================= Events ================= */
 export type {
@@ -45,6 +44,10 @@ export type {
 export type {
   PlayerState,
   GameState,
+  PickupItem,
+  SafeZone,
+  GroundZone,
+  ActiveChannel,
 } from "./types/state";
 
 /* ================= Tournament / Draft / Economy ================= */
@@ -71,6 +74,13 @@ export type {
   Velocity,
   MovementInput,
 } from "./types/position";
+
+/* ================= World Map ================= */
+export type {
+  MapObjectType,
+  MapObject,
+  WorldMap,
+} from "./types/map";
 
 export {
   calculateDistance,

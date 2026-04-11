@@ -43,6 +43,7 @@ router.get("/:id", async (req, res) => {
       playerNames: gameObj.playerNames,
       tournament: gameObj.tournament, // EXPLICITLY INCLUDE
       started: gameObj.started,
+      mode: (gameObj as any).mode ?? 'arena',
     });
   } catch (err: any) {
     console.error("[snapshot] Error:", err.message);

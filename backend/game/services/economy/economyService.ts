@@ -3,13 +3,13 @@
  * TFT-based economic system
  */
 
-import { CARDS } from "../../cards/cards";
+import { ABILITIES } from "../../abilities/abilities";
 import {
   LEVEL_UP_COSTS,
   RARITY_POOLS,
   GOLD_PER_ROUND,
 } from "../../engine/state/types";
-import { CardInstance } from "../../engine/state/types";
+import { AbilityInstance } from "../../engine/state/types";
 import { randomUUID } from "crypto";
 
 /**
@@ -23,7 +23,7 @@ export function calculateInterest(gold: number): number {
 
 /**
  * Get rarity distribution for a shop level
- * Returns an array of 6 random card rarities
+ * Returns an array of 6 random ability rarities
  */
 function getRandomRarities(level: number): number[] {
   const distribution = RARITY_POOLS[level] || RARITY_POOLS[10];
@@ -53,34 +53,34 @@ function getRandomRarities(level: number): number[] {
 }
 
 /**
- * Get all cards at a specific rarity level
+ * Get all abilities at a specific rarity level
  * Cards without a rarity field default to rarity 1
  */
-function getCardsByRarity(rarity: number): string[] {
-  return Object.values(CARDS)
-    .filter((card: any) => (card.rarity ?? 1) === rarity && !card.isCommon)
-    .map((card: any) => card.id);
+function getAbilitiesByRarity(rarity: number): string[] {
+  return Object.values(ABILITIES)
+    .filter((ability: any) => (ability.rarity ?? 1) === rarity && !ability.isCommon)
+    .map((ability: any) => ability.id);
 }
 
 /**
  * Generate a shop for a player at a given level
- * Creates 6 random ability cards
+ * Creates 6 random ability abilities
  */
-export function generateShop(level: number): CardInstance[] {
+export function generateShop(level: number): AbilityInstance[] {
   const rarities = getRandomRarities(level);
-  const shop: CardInstance[] = [];
+  const shop: AbilityInstance[] = [];
 
   for (const rarity of rarities) {
-    const cards = getCardsByRarity(rarity);
-    if (cards.length === 0) {
-      // Fallback to rarity 1 if no cards at this rarity
-      const fallbackCards = getCardsByRarity(1);
+    const abilities = getAbilitiesByRarity(rarity);
+    if (abilities.length === 0) {
+      // Fallback to rarity 1 if no abilities at this rarity
+      const fallbackCards = getAbilitiesByRarity(1);
       const randomCardId =
         fallbackCards[Math.floor(Math.random() * fallbackCards.length)];
-      shop.push({ instanceId: randomUUID(), cardId: randomCardId, cooldown: 0 });
+      shop.push({ instanceId: randomUUID(), abilityId: randomCardId, cooldown: 0 });
     } else {
-      const randomCardId = cards[Math.floor(Math.random() * cards.length)];
-      shop.push({ instanceId: randomUUID(), cardId: randomCardId, cooldown: 0 });
+      const randomCardId = abilities[Math.floor(Math.random() * abilities.length)];
+      shop.push({ instanceId: randomUUID(), abilityId: randomCardId, cooldown: 0 });
     }
   }
 

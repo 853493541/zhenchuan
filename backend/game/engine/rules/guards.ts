@@ -46,7 +46,7 @@ export function hasUntargetable(target: { buffs: ActiveBuff[] }) {
 
 /**
  * Stealth (targeting-only)
- * - blocks card targeting
+ * - blocks ability targeting
  * - DOES NOT block damage ticks, channel ticks, or buffs
  */
 export function hasStealth(target: { buffs: ActiveBuff[] }) {
@@ -63,12 +63,15 @@ export function blocksEnemyTargeting(target: { buffs: ActiveBuff[] }) {
 }
 
 /**
- * Targeting block (card play validation)
- * - used BEFORE card is played
- * - stealth + untargetable both apply
+ * Targeting block (ability play validation)
+ * - used BEFORE ability is played
+ * - stealth only
+ *
+ * NOTE:
+ * - UNTARGETABLE blocks hits/effects, but selection/target lock is preserved.
  */
 export function blocksCardTargeting(target: { buffs: ActiveBuff[] }) {
-  return hasUntargetable(target) || hasStealth(target);
+  return hasStealth(target) || hasUntargetable(target);
 }
 
 /* =========================================================
@@ -77,7 +80,7 @@ export function blocksCardTargeting(target: { buffs: ActiveBuff[] }) {
 
 /**
  * Effects that are ALWAYS self-side,
- * regardless of card.target
+ * regardless of ability.target
  */
 export function isAlwaysSelfEffect(effectType: EffectType) {
   return (
@@ -110,10 +113,10 @@ export function isEnemyEffect(
  * - dodge only cancels enemy-applied effects
  */
 export function shouldSkipDueToDodge(
-  cardDodged: boolean,
+  abilityDodged: boolean,
   isEnemyEffect: boolean
 ) {
-  return cardDodged && isEnemyEffect;
+  return abilityDodged && isEnemyEffect;
 }
 
 /**
@@ -133,6 +136,6 @@ export function blocksControlByImmunity(
   effectType: EffectType,
   target: { buffs: ActiveBuff[] }
 ) {
-  if (effectType !== "CONTROL") return false;
+  if (effectType !== "CONTROL" && effectType !== "ATTACK_LOCK") return false;
   return allEffects(target).some((e) => e.type === "CONTROL_IMMUNE");
 }

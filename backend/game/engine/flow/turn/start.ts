@@ -5,13 +5,14 @@ import {
   resolveScheduledDamage,
   resolveHealAmount,
 } from "../../utils/combatMath";
+import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import {
   pushDamageEvent,
   pushHealEvent,
 } from "./internal/combatEvents";
 import {
-  getBuffSourceCardId,
-  getBuffSourceCardName,
+  getBuffSourceAbilityId,
+  getBuffSourceAbilityName,
 } from "./internal/buffOrigin";
 
 export function applyStartTurnEffects(params: {
@@ -23,11 +24,11 @@ export function applyStartTurnEffects(params: {
 
   /**
    * ================= COOLDOWN DECREMENT =================
-   * Decrement cooldowns on all cards in hand at start of turn
+   * Decrement cooldowns on all abilities in hand at start of turn
    */
-  for (const card of me.hand) {
-    if (card.cooldown > 0) {
-      card.cooldown -= 1;
+  for (const ability of me.hand) {
+    if (ability.cooldown > 0) {
+      ability.cooldown -= 1;
     }
   }
 
@@ -39,43 +40,41 @@ export function applyStartTurnEffects(params: {
    */
   for (const buff of me.buffs) {
     for (const e of buff.effects) {
-      if (e.type === "START_TURN_DAMAGE") {
+      if (e.type === "PERIODIC_DAMAGE") {
         const dmg = resolveScheduledDamage({
           source: enemy,
           target: me,
           base: e.value ?? 0,
         });
 
-        me.hp = Math.max(0, me.hp - dmg);
+        applyDamageToTarget(me as any, dmg);
 
         pushDamageEvent({
           state,
           actorUserId: enemy.userId,
           targetUserId: me.userId,
-          cardId: getBuffSourceCardId(buff),
-          cardName: getBuffSourceCardName(buff),
+          abilityId: getBuffSourceAbilityId(buff),
+          abilityName: getBuffSourceAbilityName(buff),
           value: dmg,
           effectType: "SCHEDULED_DAMAGE",
         });
       }
 
-      if (e.type === "START_TURN_HEAL") {
+      if (e.type === "PERIODIC_HEAL") {
         const heal = resolveHealAmount({
           target: me,
           base: e.value ?? 0,
         });
 
-        const before = me.hp;
-        me.hp = Math.min(100, me.hp + heal);
-        const applied = Math.max(0, me.hp - before);
+        const applied = applyHealToTarget(me as any, heal);
 
         if (applied > 0) {
           pushHealEvent({
             state,
             actorUserId: me.userId,
             targetUserId: me.userId,
-            cardId: getBuffSourceCardId(buff),
-            cardName: getBuffSourceCardName(buff),
+            abilityId: getBuffSourceAbilityId(buff),
+            abilityName: getBuffSourceAbilityName(buff),
             value: applied,
           });
         }

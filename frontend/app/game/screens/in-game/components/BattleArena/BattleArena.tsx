@@ -1,452 +1,293 @@
 'use client';
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { Canvas } from '@react-three/fiber';
 import styles from './BattleArena.module.css';
 import WASDButtons from './WASDButtons';
 import StatusBar from '../GameBoard/components/StatusBar';
-import type { ActiveBuff } from '../../types';
+import { ChannelBar, type ChannelBarData } from './ChannelBar';
+import { toastError, toastSuccess } from '@/app/components/toast/toast';
+import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone } from '../../types';
+import ArenaScene from './scene/ArenaScene';
+import { getMapForMode, type MapObject } from './worldMap';
+import type { MapCollisionSystem } from './scene/MapCollisionSystem';
+import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z } from './scene/ExportedMapScene';
+import * as THREE from 'three';
+
+type V3 = { x: number; y: number; z: number };
+type CollisionDebugState = {
+  enabled: boolean;
+  center: V3;
+  supportY: number | null;
+};
 
 /* ============================================================
    ARENA SETTINGS  (must match backend)
    ============================================================ */
-const ARENA_WIDTH  = 100;
-const ARENA_HEIGHT = 100;
+const PUBG_WIDTH  = 2000;
+const PUBG_HEIGHT = 2000;
+const ARENA_WIDTH_SMALL  = 200;
+const ARENA_HEIGHT_SMALL = 200;
+const DASH_ANIM_MS = 1500; // ms — cosmetic dash travel animation
+const DEFAULT_PLAYER_RADIUS = 2; // must match backend
+const COLLISION_TEST_PLAYER_RADIUS = 0.64; // matches export-reader avatar (57 export units * SF)
 
-/* Character visual */
-const CHAR_HEIGHT = 2.0;   // world units tall  (player capsule)
-const CHAR_RADIUS = 1.0;   // world units radius
-
-/* 3rd-person camera — high & pulled back, ~26° below horizontal
-   atan((20-1.5)/(38)) ≈ 26°  →  lots of ground visible, char at lower-center.
-
-   Camera direction is FIXED at (0,1) — always faces +Y.
-   This guarantees A = screen-left and D = screen-right regardless of where
-   the opponent is, eliminating the A/D flip when the camera rotates. */
-const CAM_DIST_BACK   = 20;  // units behind player
-const CAM_HEIGHT      = 10;  // units above player (follows player Z)
-const CAM_ARM         = Math.sqrt(CAM_DIST_BACK * CAM_DIST_BACK + CAM_HEIGHT * CAM_HEIGHT); // orbit arm length
-const DEFAULT_PITCH   = Math.atan2(CAM_HEIGHT, CAM_DIST_BACK); // ≈ 0.464 rad (~26.6°)
-const CAM_LOOK_AHEAD  = 6;   // look-ahead toward opponent side
-const NEAR_CLIP       = 0.8;
-const DASH_ANIM_MS    = 1500; // ms — cosmetic dash travel animation
-
-// Vertical FOV — used with H-based focal length so scale is consistent
-// across all screen widths (phone / tablet / wide monitor all look the same depth)
-const VFOV_RAD = (72 * Math.PI) / 180;
-
-/* ============================================================
-   VEC3 MATH
-   ============================================================ */
-type V3 = { x: number; y: number; z: number };
-const v3       = (x: number, y: number, z: number): V3 => ({ x, y, z });
-const sub3     = (a: V3, b: V3): V3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
-const scale3   = (a: V3, s: number): V3 => ({ x: a.x * s, y: a.y * s, z: a.z * s });
-const dot3     = (a: V3, b: V3): number => a.x * b.x + a.y * b.y + a.z * b.z;
-const cross3   = (a: V3, b: V3): V3 => ({
-  x: a.y * b.z - a.z * b.y,
-  y: a.z * b.x - a.x * b.z,
-  z: a.x * b.y - a.y * b.x,
-});
-const norm3 = (a: V3): V3 => {
-  const l = Math.sqrt(dot3(a, a));
-  return l < 1e-6 ? v3(0, 1, 0) : scale3(a, 1 / l);
-};
-
-/* ============================================================
-   CAMERA
-   ============================================================ */
-interface Cam {
-  pos: V3;
-  fwd: V3;
-  right: V3;
-  up: V3;
-  fl: number; // focal length (px)
+/** Resolve circle-vs-AABB collision (client-side prediction). Z-aware: skip if player is above obj. */
+function resolveObjCollisionClient(
+  px: number, py: number, pz: number,
+  vel: { x: number; y: number },
+  obj: MapObject,
+  playerRadius = DEFAULT_PLAYER_RADIUS,
+): { x: number; y: number } {
+  if (pz >= obj.h) return { x: px, y: py }; // above rooftop
+  const pr = playerRadius;
+  const cx = Math.max(obj.x, Math.min(px, obj.x + obj.w));
+  const cy = Math.max(obj.y, Math.min(py, obj.y + obj.d));
+  const dx = px - cx;
+  const dy = py - cy;
+  const distSq = dx * dx + dy * dy;
+  if (distSq >= pr * pr) return { x: px, y: py };
+  let outX = px, outY = py;
+  if (distSq < 1e-6) {
+    const dL = px - obj.x;
+    const dR = obj.x + obj.w - px;
+    const dT = py - obj.y;
+    const dB = obj.y + obj.d - py;
+    const min = Math.min(dL, dR, dT, dB);
+    if (min === dL)      { outX = obj.x - pr;           vel.x = Math.min(0, vel.x); }
+    else if (min === dR) { outX = obj.x + obj.w + pr;   vel.x = Math.max(0, vel.x); }
+    else if (min === dT) { outY = obj.y - pr;           vel.y = Math.min(0, vel.y); }
+    else                 { outY = obj.y + obj.d + pr;   vel.y = Math.max(0, vel.y); }
+  } else {
+    const dist = Math.sqrt(distSq);
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const pen = pr - dist;
+    outX += nx * pen;
+    outY += ny * pen;
+    const dot = vel.x * nx + vel.y * ny;
+    if (dot < 0) { vel.x -= dot * nx; vel.y -= dot * ny; }
+  }
+  return { x: outX, y: outY };
 }
 
-// Fixed camera direction — always facing +Y in world space.
-// This keeps A = screen-left and D = screen-right at all times.
-const CAM_DIR = { x: 0, y: 1 };
-
-function buildCam(
-  playerPos: V3,
-  dir: { x: number; y: number },
-  W: number,
-  H: number,
-  zoom = 1.0,
-  pitch = DEFAULT_PITCH,
-): Cam {
-  const distBack = CAM_ARM * Math.cos(pitch) * zoom;
-  const height   = CAM_ARM * Math.sin(pitch);
-  const camPos = v3(
-    playerPos.x - dir.x * distBack,
-    playerPos.y - dir.y * distBack,
-    playerPos.z + height,
-  );
-  // Scale look-ahead by cos(pitch): at overhead view (pitch→π/2) look directly at player, not ahead
-  const lookAheadScale = Math.cos(pitch);
-  const lookAt = v3(
-    playerPos.x + dir.x * CAM_LOOK_AHEAD * lookAheadScale,
-    playerPos.y + dir.y * CAM_LOOK_AHEAD * lookAheadScale,
-    playerPos.z + 1.0,
-  );
-  const worldUp = v3(0, 0, 1);
-  const fwd   = norm3(sub3(lookAt, camPos));
-  // Use yaw-derived right vector — always well-defined even when looking straight down.
-  // This avoids the degenerate cross(fwd, worldUp)=0 case at high pitch angles.
-  const right = v3(dir.y, -dir.x, 0); // perpendicular to facing in horizontal plane
-  const up    = norm3(cross3(right, fwd));
-  // Height-based focal length: scale is tied to viewport HEIGHT so
-  // phone / tablet / wide-monitor all see the same perceived distance.
-  const fl = (H / 2) / Math.tan(VFOV_RAD / 2);
-  return { pos: camPos, fwd, right, up, fl };
+/** Get ground height at XY (tallest object the player overlaps and is above). */
+function getGroundHeightClient(px: number, py: number, pz: number, objects: MapObject[], playerRadius = DEFAULT_PLAYER_RADIUS): number {
+  let ground = 0;
+  for (const obj of objects) {
+    if (pz < obj.h - 0.1) continue; // player is below this object's top
+    const cx = Math.max(obj.x, Math.min(px, obj.x + obj.w));
+    const cy = Math.max(obj.y, Math.min(py, obj.y + obj.d));
+    const dx = px - cx;
+    const dy = py - cy;
+    if (dx * dx + dy * dy < playerRadius * playerRadius && obj.h > ground) {
+      ground = obj.h;
+    }
+  }
+  return ground;
 }
 
-interface ScreenPt { x: number; y: number; depth: number; }
+/* ─── BVH collision scratch objects (reused to avoid GC pressure) ─── */
+const _bvhCenter   = new THREE.Vector3();
+const _bvhVelocity = new THREE.Vector3();
+// Cylinder collision shape: horizontal radius + half-height tracked separately.
+// _bvhCenter.y is always the CYLINDER CENTRE (feet + half-height), never sphere-bottom.
+const EXPORT_CYL_RADIUS      = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF; // ~57.6 export units (horizontal)
+const CYL_HALF_HEIGHT_GAME   = 1.0;                                       // game units (total height = 2.0)
+const EXPORT_CYL_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / RENDER_SF;          // ~90 export units
+const BVH_STEP_UP_EXPORT     = 56;                                         // max step-up in export units
 
-function projPt(world: V3, cam: Cam, W: number, H: number): ScreenPt | null {
-  const t = sub3(world, cam.pos);
-  const depth = dot3(t, cam.fwd);
-  if (depth < NEAR_CLIP) return null;
-  const cx = dot3(t, cam.right);
-  const cy = dot3(t, cam.up);
+/** Live position display — reads a ref every 200ms */
+function PositionDisplay({ posRef }: { posRef: React.MutableRefObject<{ x: number; y: number; z: number }> }) {
+  const [pos, setPos] = React.useState({ x: 0, y: 0, z: 0 });
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      const p = posRef.current;
+      setPos({ x: p.x, y: p.y, z: p.z });
+    }, 200);
+    return () => clearInterval(id);
+  }, [posRef]);
+  return (
+    <div style={{
+      position: 'absolute', top: 14, left: 14, zIndex: 500,
+      background: 'rgba(0,0,0,0.7)', color: '#0f0', fontFamily: 'monospace',
+      fontSize: 12, padding: '4px 8px', borderRadius: 4, pointerEvents: 'none',
+    }}>
+      X:{pos.x.toFixed(1)} Y:{pos.y.toFixed(1)} Z:{pos.z.toFixed(1)}
+    </div>
+  );
+}
+
+/** 2D segment vs AABB intersection (for line-of-sight checks). */
+function segmentIntersectsAABB(
+  x1: number, y1: number, x2: number, y2: number,
+  minX: number, minY: number, maxX: number, maxY: number
+): boolean {
+  let tmin = 0, tmax = 1;
+  const dx = x2 - x1, dy = y2 - y1;
+  if (Math.abs(dx) < 1e-8) { if (x1 < minX || x1 > maxX) return false; }
+  else {
+    let t1 = (minX - x1) / dx, t2 = (maxX - x1) / dx;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return false;
+  }
+  if (Math.abs(dy) < 1e-8) { if (y1 < minY || y1 > maxY) return false; }
+  else {
+    let t1 = (minY - y1) / dy, t2 = (maxY - y1) / dy;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return false;
+  }
+  return true;
+}
+
+/** Check if LOS between two positions is blocked by any map object. */
+function isLOSBlockedClient(
+  ax: number, ay: number, bx: number, by: number, objects: MapObject[]
+): boolean {
+  for (const obj of objects) {
+    if (segmentIntersectsAABB(ax, ay, bx, by, obj.x, obj.y, obj.x + obj.w, obj.y + obj.d)) return true;
+  }
+  return false;
+}
+
+function normalizeAngle(rad: number): number {
+  let a = rad;
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+function facingArrow(facing: { x: number; y: number } | undefined): string {
+  if (!facing) return '·';
+  const len = Math.sqrt(facing.x * facing.x + facing.y * facing.y);
+  if (len < 0.05) return '·';
+  const angle = Math.atan2(facing.y / len, facing.x / len);
+  const idx = Math.round(angle / (Math.PI / 4));
+  const dirs = ['→', '↗', '↑', '↖', '←', '↙', '↓', '↘'];
+  return dirs[((idx % 8) + 8) % 8];
+}
+
+const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
+const UNTARGETABLE_BUFF_IDS = new Set([1008]);
+const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
+
+function buffHasEffect(buff: ActiveBuff | any, type: string): boolean {
+  return Array.isArray(buff?.effects) && buff.effects.some((e: any) => e?.type === type);
+}
+
+function buffNameIncludes(buff: ActiveBuff | any, token: string): boolean {
+  return typeof buff?.name === 'string' && buff.name.includes(token);
+}
+
+function hasStealthClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) =>
+    buffHasEffect(b, 'STEALTH') ||
+    STEALTH_BUFF_IDS.has(b.buffId) ||
+    buffNameIncludes(b, '隐身') ||
+    buffNameIncludes(b, '遁影')
+  );
+}
+
+function hasSanliuXiaClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => SANLIU_XIA_BUFF_IDS.has(b.buffId) || buffNameIncludes(b, '散流霞'));
+}
+
+function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
+  return hasStealthClient(buffs) && !hasSanliuXiaClient(buffs);
+}
+
+function blocksTargetingClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) =>
+    buffHasEffect(b, 'STEALTH') ||
+    buffHasEffect(b, 'UNTARGETABLE') ||
+    STEALTH_BUFF_IDS.has(b.buffId) ||
+    UNTARGETABLE_BUFF_IDS.has(b.buffId) ||
+    buffNameIncludes(b, '隐身') ||
+    buffNameIncludes(b, '遁影') ||
+    buffNameIncludes(b, '不可选中')
+  );
+}
+
+function hasQinggongSealClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) =>
+    buffHasEffect(b, 'QINGGONG_SEAL') ||
+    buffNameIncludes(b, '封轻功')
+  );
+}
+
+function requiresFacingByDefault(ability?: { target?: 'SELF' | 'OPPONENT'; faceDirection?: boolean } | null): boolean {
+  if (!ability) return false;
+  if (ability.target === 'OPPONENT') return ability.faceDirection !== false;
+  return ability.faceDirection === true;
+}
+
+function computeHpShieldSegments(
+  hp: number | undefined,
+  shield: number | undefined,
+  maxHp: number | undefined,
+): { hpPct: number; shieldPct: number } {
+  const safeMaxHp = Math.max(1, Number(maxHp ?? 100));
+  const safeHp = Math.max(0, Number(hp ?? 0));
+  const safeShield = Math.max(0, Number(shield ?? 0));
+  const total = safeHp + safeShield;
+
+  if (total <= 0) {
+    return { hpPct: 0, shieldPct: 0 };
+  }
+
+  if (total <= safeMaxHp) {
+    return {
+      hpPct: Math.max(0, Math.min(100, (safeHp / safeMaxHp) * 100)),
+      shieldPct: Math.max(0, Math.min(100, (safeShield / safeMaxHp) * 100)),
+    };
+  }
+
   return {
-    x: (cx / depth) * cam.fl + W / 2,
-    y: -(cy / depth) * cam.fl + H / 2,
-    depth,
+    hpPct: Math.max(0, Math.min(100, (safeHp / total) * 100)),
+    shieldPct: Math.max(0, Math.min(100, (safeShield / total) * 100)),
   };
 }
 
-/* ============================================================
-   SCENE RENDERING HELPERS
-   ============================================================ */
-
-function renderBg(ctx: CanvasRenderingContext2D, cam: Cam, W: number, H: number) {
-  const far = projPt(
-    v3(cam.pos.x + cam.fwd.x * 5000, cam.pos.y + cam.fwd.y * 5000, 0),
-    cam, W, H,
-  );
-  const hY = far ? Math.max(0, Math.min(H * 0.7, far.y)) : H * 0.45;
-
-  const sky = ctx.createLinearGradient(0, 0, 0, hY + 30);
-  sky.addColorStop(0,   '#010409');
-  sky.addColorStop(0.6, '#03091a');
-  sky.addColorStop(1,   '#071628');
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, W, hY + 30);
-
-  const gnd = ctx.createLinearGradient(0, hY, 0, H);
-  gnd.addColorStop(0, '#071628');
-  gnd.addColorStop(1, '#020810');
-  ctx.fillStyle = gnd;
-  ctx.fillRect(0, hY, W, H - hY);
-}
-
-function renderFloor(ctx: CanvasRenderingContext2D, cam: Cam, W: number, H: number) {
-  const corners = [
-    v3(0, 0, 0), v3(ARENA_WIDTH, 0, 0),
-    v3(ARENA_WIDTH, ARENA_HEIGHT, 0), v3(0, ARENA_HEIGHT, 0),
-  ];
-  const sc = corners
-    .map(c => projPt(c, cam, W, H))
-    .filter((p): p is ScreenPt => p !== null);
-
-  if (sc.length >= 3) {
-    ctx.fillStyle = '#0a1620';
-    ctx.beginPath();
-    ctx.moveTo(sc[0].x, sc[0].y);
-    for (let i = 1; i < sc.length; i++) ctx.lineTo(sc[i].x, sc[i].y);
-    ctx.lineTo(W + 20, H + 20);
-    ctx.lineTo(-20, H + 20);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  ctx.lineWidth = 0.5;
-  ctx.strokeStyle = 'rgba(18, 55, 100, 0.65)';
-  for (let x = 0; x <= ARENA_WIDTH; x += 10) {
-    const a = projPt(v3(x, 0, 0), cam, W, H);
-    const b = projPt(v3(x, ARENA_HEIGHT, 0), cam, W, H);
-    if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
-  }
-  for (let y = 0; y <= ARENA_HEIGHT; y += 10) {
-    const a = projPt(v3(0, y, 0), cam, W, H);
-    const b = projPt(v3(ARENA_WIDTH, y, 0), cam, W, H);
-    if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
-  }
-
-  const edges: [V3, V3][] = [
-    [v3(0, 0, 0),                      v3(ARENA_WIDTH, 0, 0)],
-    [v3(ARENA_WIDTH, 0, 0),            v3(ARENA_WIDTH, ARENA_HEIGHT, 0)],
-    [v3(ARENA_WIDTH, ARENA_HEIGHT, 0), v3(0, ARENA_HEIGHT, 0)],
-    [v3(0, ARENA_HEIGHT, 0),           v3(0, 0, 0)],
-  ];
-  ctx.strokeStyle = 'rgba(40, 140, 255, 0.9)';
-  ctx.lineWidth   = 1.8;
-  ctx.shadowColor = '#1a6fff';
-  ctx.shadowBlur  = 9;
-  for (const [a, b] of edges) {
-    const pa = projPt(a, cam, W, H);
-    const pb = projPt(b, cam, W, H);
-    if (pa && pb) { ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke(); }
-  }
-  ctx.shadowBlur = 0;
-}
-
-function renderRangeCircle(
-  ctx: CanvasRenderingContext2D,
-  pos: V3,
-  radius: number,
-  cam: Cam,
-  W: number, H: number,
-  color: string,
-) {
-  const segments = 48;
-  ctx.strokeStyle = color;
-  ctx.lineWidth   = 1;
-  ctx.setLineDash([5, 6]);
-  ctx.beginPath();
-  let first = true;
-  for (let i = 0; i <= segments; i++) {
-    const ang = (i / segments) * Math.PI * 2;
-    const p = projPt(
-      v3(pos.x + Math.cos(ang) * radius, pos.y + Math.sin(ang) * radius, 0.05),
-      cam, W, H,
-    );
-    if (!p) { first = true; continue; }
-    if (first) { ctx.moveTo(p.x, p.y); first = false; } else ctx.lineTo(p.x, p.y);
-  }
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
-/* Ghost outline drawn behind dashing characters */
-function renderDashGhost(
-  ctx: CanvasRenderingContext2D,
-  pos: V3,
-  cam: Cam,
-  W: number, H: number,
-  color: string,
-  alpha: number,
-) {
-  const baseP = projPt(v3(pos.x, pos.y, pos.z),              cam, W, H);
-  const topP  = projPt(v3(pos.x, pos.y, pos.z + CHAR_HEIGHT), cam, W, H);
-  if (!baseP || !topP) return;
-  const rs = (CHAR_RADIUS / baseP.depth) * cam.fl;
-  if (rs < 1) return;
-  const ellipseRy = rs * 0.32;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.strokeStyle = color;
-  ctx.lineWidth   = 1.5;
-  ctx.shadowColor = color;
-  ctx.shadowBlur  = 10;
-  ctx.beginPath();
-  ctx.moveTo(topP.x - rs, topP.y);
-  ctx.lineTo(baseP.x - rs, baseP.y);
-  ctx.ellipse(baseP.x, baseP.y, rs, ellipseRy, 0, Math.PI, 0, true);
-  ctx.lineTo(topP.x + rs, topP.y);
-  ctx.ellipse(topP.x, topP.y, rs, ellipseRy, 0, 0, Math.PI, true);
-  ctx.closePath();
-  ctx.stroke();
-  ctx.restore();
-}
-
-/* Facing direction arrow drawn above a character */
-/* Half-circle arc showing facing direction, drawn above character head */
-function renderFacingArrow(
-  ctx: CanvasRenderingContext2D,
-  charPos: V3,
-  facing: { x: number; y: number },
-  cam: Cam,
-  W: number, H: number,
-  color: string,
-) {
-  const f = Math.sqrt(facing.x * facing.x + facing.y * facing.y);
-  if (f < 0.1) return;
-  const nx = facing.x / f, ny = facing.y / f;
-  const arcZ = charPos.z + CHAR_HEIGHT + 0.5;
-  const R = 1.4; // world-unit radius of the half-circle
-  const STEPS = 14;
-  const fAngle = Math.atan2(ny, nx);
-
-  const pts: Array<{ x: number; y: number } | null> = [];
-  for (let i = 0; i <= STEPS; i++) {
-    const a = fAngle - Math.PI / 2 + (Math.PI * i / STEPS);
-    pts.push(projPt(v3(charPos.x + R * Math.cos(a), charPos.y + R * Math.sin(a), arcZ), cam, W, H));
-  }
-
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth   = 2.5;
-  ctx.lineCap     = 'round';
-  ctx.lineJoin    = 'round';
-  ctx.shadowColor = color;
-  ctx.shadowBlur  = 10;
-  ctx.globalAlpha = 0.88;
-  ctx.beginPath();
-  let started = false;
-  for (const p of pts) {
-    if (!p) { started = false; continue; }
-    if (!started) { ctx.moveTo(p.x, p.y); started = true; }
-    else ctx.lineTo(p.x, p.y);
-  }
-  ctx.stroke();
-  ctx.restore();
-}
-
-function shadeHex(hex: string, amt: number): string {
-  const n = parseInt(hex.replace('#', ''), 16);
-  const r = Math.max(0, Math.min(255, (n >> 16) + amt));
-  const g = Math.max(0, Math.min(255, ((n >> 8) & 0xff) + amt));
-  const b = Math.max(0, Math.min(255, (n & 0xff) + amt));
-  return `rgb(${r},${g},${b})`;
-}
-
-function pRoundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number, r: number,
-) {
-  const cr = Math.min(r, w / 2, Math.max(0, h / 2));
-  ctx.moveTo(x + cr, y);
-  ctx.arcTo(x + w, y,     x + w, y + h, cr);
-  ctx.arcTo(x + w, y + h, x,     y + h, cr);
-  ctx.arcTo(x,     y + h, x,     y,     cr);
-  ctx.arcTo(x,     y,     x + w, y,     cr);
-  ctx.closePath();
-}
-
-function renderCharacter(
-  ctx: CanvasRenderingContext2D,
-  pos: V3,
-  cam: Cam,
-  W: number, H: number,
-  color: string,
-  glowColor: string,
-  hpFrac: number,
-  hpCurrent: number,
-  isMe: boolean,
-) {
-  const baseP = projPt(v3(pos.x, pos.y, pos.z),             cam, W, H);
-  const topP  = projPt(v3(pos.x, pos.y, pos.z + CHAR_HEIGHT), cam, W, H);
-  if (!baseP || !topP) return;
-
-  const depth  = baseP.depth;
-  const rs     = (CHAR_RADIUS / depth) * cam.fl;
-  if (rs < 1.5) return;
-
-  const bodyH     = baseP.y - topP.y;
-  if (bodyH < 1) return;
-
-  const cx        = topP.x;
-  const ellipseRy = rs * 0.32;
-
-  // Ground shadow — always projected at floor level (fades as player goes higher)
-  const shadowP = projPt(v3(pos.x, pos.y, 0), cam, W, H);
-  if (shadowP) {
-    const sRs = (CHAR_RADIUS / shadowP.depth) * cam.fl;
-    ctx.save();
-    ctx.globalAlpha = Math.max(0.08, 0.35 - pos.z * 0.05);
-    ctx.fillStyle   = '#000';
-    ctx.beginPath();
-    ctx.ellipse(shadowP.x, shadowP.y, sRs * 1.5, sRs * 0.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // Cylinder body
-  const bodyGrad = ctx.createLinearGradient(cx - rs, 0, cx + rs, 0);
-  bodyGrad.addColorStop(0,    shadeHex(color, -45));
-  bodyGrad.addColorStop(0.28, color);
-  bodyGrad.addColorStop(0.55, color);
-  bodyGrad.addColorStop(1,    shadeHex(color, -40));
-  ctx.fillStyle = bodyGrad;
-  ctx.beginPath();
-  ctx.moveTo(cx - rs, topP.y);
-  ctx.lineTo(cx - rs, baseP.y);
-  ctx.ellipse(baseP.x, baseP.y, rs, ellipseRy, 0, Math.PI, 0, true);
-  ctx.lineTo(cx + rs, topP.y);
-  ctx.ellipse(topP.x,  topP.y,  rs, ellipseRy, 0, 0, Math.PI, true);
-  ctx.closePath();
-  ctx.fill();
-
-  // Top face
-  ctx.fillStyle  = color;
-  ctx.globalAlpha = 0.92;
-  ctx.beginPath();
-  ctx.ellipse(cx, topP.y, rs, ellipseRy, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1.0;
-
-  // Top highlight
-  const topHL = ctx.createRadialGradient(cx - rs * 0.28, topP.y - ellipseRy * 0.35, 0, cx, topP.y, rs);
-  topHL.addColorStop(0,   'rgba(255,255,255,0.5)');
-  topHL.addColorStop(0.5, 'rgba(255,255,255,0.1)');
-  topHL.addColorStop(1,   'rgba(0,0,0,0)');
-  ctx.fillStyle = topHL;
-  ctx.beginPath();
-  ctx.ellipse(cx, topP.y, rs, ellipseRy, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Glow outline for the local player
-  if (isMe) {
-    ctx.save();
-    ctx.strokeStyle = glowColor;
-    ctx.lineWidth   = 1.8;
-    ctx.shadowColor = glowColor;
-    ctx.shadowBlur  = 14;
-    ctx.beginPath();
-    ctx.moveTo(cx - rs, topP.y);
-    ctx.lineTo(cx - rs, baseP.y);
-    ctx.ellipse(baseP.x, baseP.y, rs, ellipseRy, 0, Math.PI, 0, true);
-    ctx.lineTo(cx + rs, topP.y);
-    ctx.ellipse(topP.x, topP.y, rs, ellipseRy, 0, 0, Math.PI, true);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  // Floating HP bar
-  const barW = Math.max(rs * 2.6, 38);
-  const barH = 5;
-  const barX = cx - barW / 2;
-  const barY = topP.y - 18;
-
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.beginPath();
-  pRoundRect(ctx, barX - 1, barY - 1, barW + 2, barH + 2, 3);
-  ctx.fill();
-
-  const hpColor = hpFrac > 0.5 ? '#44dd55' : hpFrac > 0.25 ? '#ffcc22' : '#ee3333';
-  ctx.fillStyle = hpColor;
-  const fillW = Math.max(0, barW * hpFrac);
-  if (fillW > 0) {
-    ctx.beginPath();
-    pRoundRect(ctx, barX, barY, fillW, barH, 2);
-    ctx.fill();
-  }
-
-  const fontSize = Math.max(9, Math.min(12, rs * 1.3));
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.font      = `${fontSize}px monospace`;
-  ctx.textAlign = 'center';
-  ctx.fillText(`${hpCurrent}`, cx, barY - 3);
-}
+// Fixed camera direction constant — referenced in physics tick
+const CAM_DIR = { x: 0, y: 1 };
+const DEFAULT_PITCH = Math.atan2(10, 20);
 
 /* ============================================================
    TYPES
    ============================================================ */
 interface Position { x: number; y: number; z?: number; }
+interface Facing { x: number; y: number; }
 
 interface AbilityInfo {
-  id: string;        // instanceId (or cardId fallback for common)
-  cardId: string;    // always the plain card id (e.g. 'fuyao_zhishang')
+  id: string;        // instanceId (or abilityId fallback for common)
+  abilityId: string;    // always the plain ability id (e.g. 'fuyao_zhishang')
   name: string;
   range?: number;
   minRange?: number;
   cooldown: number;
   maxCooldown: number;
+  chargeCount?: number;
+  maxCharges?: number;
+  chargeRegenTicksRemaining?: number;
+  chargeRegenProgress?: number;
+  chargeRecoveryTicks?: number;
+  chargeLockTicks?: number;
+  chargeCastLockTicks?: number;
   isReady: boolean;
   isCommon: boolean;
+  target: 'SELF' | 'OPPONENT';
+  faceDirection?: boolean;
+  requiresGrounded?: boolean;
+  requiresStanding?: boolean;
+  minSelfHpExclusive?: number;
+  qinggong?: boolean;
+  allowGroundCastWithoutTarget?: boolean;
 }
 
 /** Fixed display order for the common-ability bar. */
@@ -462,14 +303,30 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; position: Position; hp: number; hand: any[]; buffs?: ActiveBuff[] };
-  opponent: { userId: string; position: Position; hp: number; buffs?: ActiveBuff[] };
+  me: { userId: string; position: Position; hp: number; maxHp?: number; shield?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
+  opponent: { userId: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing };
+  /** All other players (opponents) — supports 1v1 and N-player modes */
+  opponents?: { userId: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing }[];
   gameId: string;
-  onCastAbility: (cardInstanceId: string) => Promise<void>;
+  onCastAbility: (
+    abilityInstanceId: string,
+    targetUserId?: string,
+    groundTarget?: { x: number; y: number },
+  ) => Promise<void>;
   distance: number;
   maxHp: number;
-  cards: Record<string, any>;
-  opponentPositionBufferRef?: React.MutableRefObject<Array<{ t: number; pos: Position }>>;
+  abilities: Record<string, any>;
+  opponentPositionBufferRef?: React.MutableRefObject<Map<string, Array<{ t: number; pos: Position }>>>;
+  /** Full game events array from state — used to spawn per-event floating numbers */
+  events?: any[];
+  /** Pickup items (ability books) currently on the ground */
+  pickups?: PickupItem[];
+  /** Safe zone state for poison zone rendering */
+  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
+  /** Persistent ground damage zones */
+  groundZones?: GroundZone[];
+  /** Game mode: 'arena' (100×100) or 'pubg' (2000×2000) */
+  mode?: string;
 }
 
 /* ============================================================
@@ -478,29 +335,216 @@ interface BattleArenaProps {
 export default function BattleArena({
   me,
   opponent,
+  opponents,
   gameId,
   onCastAbility,
   distance,
   maxHp,
-  cards,
+  abilities,
   opponentPositionBufferRef,
+  events = [],
+  pickups = [],
+  safeZone,
+  groundZones,
+  mode,
 }: BattleArenaProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const wrapRef   = useRef<HTMLDivElement>(null);
+  const mapData = useMemo(() => getMapForMode(mode), [mode]);
+  const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : mode === 'collision-test' ? mapData.width : PUBG_WIDTH;
+  const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : mode === 'collision-test' ? mapData.height : PUBG_HEIGHT;
+  const playerRadius = mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : DEFAULT_PLAYER_RADIUS;
+  const mapObjectsRef = useRef(mapData.objects);
+  useEffect(() => {
+    mapObjectsRef.current = mapData.objects;
+  }, [mapData]);
+  // CODE FRESHNESS MARKER — if you see this in console, the new code IS running
+  useEffect(() => { console.log('[BA-FRESH] BattleArena v2 loaded — activeDash support active'); }, []);
+  const wrapRef        = useRef<HTMLDivElement>(null);
+  const canvasSizeRef  = useRef({ w: 800, h: 500 });
+
+  useEffect(() => {
+    const updateCanvasSize = () => {
+      const el = wrapRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        canvasSizeRef.current = { w: rect.width, h: rect.height };
+      }
+    };
+
+    updateCanvasSize();
+    const ro = new ResizeObserver(updateCanvasSize);
+    if (wrapRef.current) ro.observe(wrapRef.current);
+    window.addEventListener('resize', updateCanvasSize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateCanvasSize);
+    };
+  }, []);
+
+  const opponentsList = useMemo(
+    () => ((opponents && opponents.length > 0 ? opponents : [opponent]).filter(Boolean)),
+    [opponents, opponent],
+  );
+  const visibleOpponentsList = useMemo(
+    () => opponentsList.filter((o) => !shouldHideOpponentByStealth(o?.buffs)),
+    [opponentsList],
+  );
+  const targetableOpponentsList = useMemo(
+    () => opponentsList.filter((o) => !blocksTargetingClient(o?.buffs)),
+    [opponentsList],
+  );
 
   /* --- React state (UI only) --- */
-  const [abilities,        setAbilities]        = useState<AbilityInfo[]>([]);
+  const [handAbilities,    setHandAbilities]    = useState<AbilityInfo[]>([]);
   const [rtt,              setRtt]              = useState<number | null>(null);
   const [wasdKeys,         setWasdKeys]         = useState({ w: false, a: false, s: false, d: false });
   const [controlMode,      setControlMode]      = useState<'joystick' | 'traditional'>('traditional');
   const [showControlPanel, setShowControlPanel] = useState(false);
+  const [showCheatWindow,  setShowCheatWindow]  = useState(false);
+  const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
+  const [runningCheatAction, setRunningCheatAction] = useState<string | null>(null);
+  const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  const [selectedSelf,     setSelectedSelf]     = useState(false);
+  const [pendingGroundCastAbilityId, setPendingGroundCastAbilityId] = useState<string | null>(null);
+  const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number } | null>(null);
+  const [autoForward, setAutoForward] = useState(false);
+  const [draggingDraftInstanceId, setDraggingDraftInstanceId] = useState<string | null>(null);
+  const [dragHoverIndex, setDragHoverIndex] = useState<number | null>(null);
+  const [discardZoneHover, setDiscardZoneHover] = useState(false);
+  const [, ] = useState(0); // placeholder (was setChannelTick)
+
+  /* --- Pickup interaction state --- */
+  const [nearbyPickupIds,   setNearbyPickupIds]   = useState<string[]>([]);         // sorted closest-first
+  const [channelPickupId,   setChannelPickupId]   = useState<string | null>(null); // book being channeled
+  const [channelProgress,   setChannelProgress]   = useState(0);                  // 0-1
+  const [pickupModals,      setPickupModals]      = useState<Array<{ pickupId: string; abilityId: string; name: string; description: string }>>([]);
+  const channelTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const channelStartRef     = useRef<number>(0);
+  const channelAnimRef      = useRef<number>(0);
+  const pickupsRef          = useRef<PickupItem[]>([]);
+  const nearbyPickupIdsRef  = useRef<string[]>([]);  // synced from state; used in callbacks
+  const pickupModalsRef     = useRef<Array<{ pickupId: string; abilityId: string; name: string; description: string }>>([]);
+  const channelPickupIdRef  = useRef<string | null>(null);
+  const [minimizedModals,   setMinimizedModals]   = useState<Set<string>>(new Set());
+
+  /* --- Draggable UI positions (persisted to localStorage) --- */
+  const [uiPositions, setUiPositions] = useState<Record<string, { left: number; top: number }>>(() => {
+    try { return JSON.parse(localStorage.getItem('zhenchuan-ui-positions') ?? '{}'); } catch { return {}; }
+  });
+  const uiPositionsRef = useRef<Record<string, { left: number; top: number }>>({});
+
+  /* --- Debug position overlay --- */
+  const [showDebugGrid, setShowDebugGrid] = useState(false);
+  const [showCollisionShells, setShowCollisionShells] = useState(false);
+  const [showCollisionBoxes, setShowCollisionBoxes] = useState(false);
+  const collisionSysRef = useRef<MapCollisionSystem | null>(null);
+  const collisionReadyRef = useRef(mode !== 'collision-test');
+  const [collisionReady, setCollisionReady] = useState(mode !== 'collision-test');
+  const collisionDebugRef = useRef<CollisionDebugState>({
+    enabled: false,
+    center: { x: 0, y: 0, z: 0 },
+    supportY: null,
+  });
+  useEffect(() => {
+    collisionSysRef.current = null;
+    collisionReadyRef.current = mode !== 'collision-test';
+    setCollisionReady(mode !== 'collision-test');
+    collisionDebugRef.current = {
+      enabled: false,
+      center: { x: 0, y: 0, z: 0 },
+      supportY: null,
+    };
+  }, [mode]);
+  const onCollisionSystemReady = useCallback((sys: MapCollisionSystem) => {
+    collisionSysRef.current = sys;
+    const pos = localPositionRef.current ?? { x: mapData.width / 2, y: mapData.height / 2 };
+    const halfW = mapData.width / 2;
+    const halfH = mapData.height / 2;
+    const tmpCenter = new THREE.Vector3(
+      (pos.x - halfW - GROUP_POS_X) / RENDER_SF,
+      5000,
+      (halfH - pos.y - GROUP_POS_Z) / RENDER_SF,
+    );
+    const groundY = sys.getSupportGroundY(tmpCenter);
+    collisionDebugRef.current = {
+      enabled: true,
+      center: { x: tmpCenter.x, y: tmpCenter.y, z: tmpCenter.z },
+      supportY: groundY,
+    };
+    if (groundY !== null) {
+      const feetGameZ = groundY * RENDER_SF + GROUP_POS_Y;
+      localZRef.current = feetGameZ;
+      localVzRef.current = 0;
+      localRenderPosRef.current = { x: pos.x, y: pos.y, z: feetGameZ };
+      console.log('[BVH] Initial ground at export Y', groundY.toFixed(1), '→ game Z', feetGameZ.toFixed(3));
+    } else {
+      console.warn('[BVH] No ground found at spawn, using Z=0');
+    }
+    bvhCenterYInitRef.current = false; // force sphere center resync on first tick
+    collisionReadyRef.current = true;
+    setCollisionReady(true);
+    console.log('[BVH] Collision system ready');
+  }, [mapData.height, mapData.width]);
+  const [debugCursor,   setDebugCursor]   = useState<{ x: number; y: number } | null>(null);
+  const [debugBounds,   setDebugBounds]   = useState<{
+    me:  { cx: number; topY: number; hpBarY: number } | null;
+    opp: { cx: number; topY: number } | null;
+    cw: number; ch: number;
+  }>({ me: null, opp: null, cw: 800, ch: 500 });
+
+  /* --- Height-above-ground display + jump timing --- */
+  const [myZ, setMyZ] = useState(0);
+  const myZRef = useRef(0);
+  // Jump timing records (seconds, null = not yet measured)
+  type JumpRecord = { riseMs: number | null; fallMs: number | null; totalMs: number | null; peakZ: number | null };
+  const [jumpRecord, setJumpRecord] = useState<JumpRecord>({ riseMs: null, fallMs: null, totalMs: null, peakZ: null });
+  // Internal tracking refs (updated every rAF frame)
+  const jumpPhaseRef  = useRef<'ground' | 'rising' | 'falling'>('ground');
+  const takeoffTimeRef = useRef<number>(0);   // when feet left the ground
+  const peakTimeRef    = useRef<number>(0);   // when apex was detected
+  const prevZRef       = useRef<number>(0);   // previous frame Z for transition detection
+  const peakZRef       = useRef<number>(0);   // max Z reached during current jump
+
+  /* --- Floating damage/heal numbers --- */
+  type FloatType = 'dmg_dealt' | 'dmg_taken' | 'heal';
+  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number }; yOffset: number };
+  const [floats, setFloats] = useState<FloatEntry[]>([]);
+  const floatIdRef = useRef(0);
+  const lastCastNameRef = useRef<string | null>(null);
+  // Per-type stagger counter — increments each time a float of a given type
+  // is spawned, so simultaneous hits don’t visually overlap.
+  const floatTypeCountRef = useRef<Record<string, number>>({});
+  // Track how many events we've already processed to avoid re-processing on re-render
+  const prevEventsLenRef = useRef<number>(-1);
+  const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number } }) => {
+    if (value <= 0) return;
+    const id = ++floatIdRef.current;
+    const safeScreenPct =
+      opts?.screenPct && Number.isFinite(opts.screenPct.x) && Number.isFinite(opts.screenPct.y)
+        ? {
+            x: Math.max(0, Math.min(1, opts.screenPct.x)),
+            y: Math.max(0, Math.min(1, opts.screenPct.y)),
+          }
+        : undefined;
+    // Stagger: count how many same-type floats are currently alive to offset them
+    const stagger = floatTypeCountRef.current[type] ?? 0;
+    floatTypeCountRef.current[type] = stagger + 1;
+    const yOffset = stagger * 28; // 28px per simultaneous float of the same type
+    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: safeScreenPct, yOffset }]);
+    setTimeout(() => {
+      setFloats(f => f.filter(e => e.id !== id));
+      floatTypeCountRef.current[type] = Math.max(0, (floatTypeCountRef.current[type] ?? 1) - 1);
+    }, 1400);
+  };
 
   // Split abilities into two rows for rendering
-  const commonAbilities = abilities.filter(a => a.isCommon);
-  const draftAbilities  = abilities.filter(a => !a.isCommon);
+  const commonAbilities = handAbilities.filter(a => a.isCommon);
+  const draftAbilities  = handAbilities.filter(a => !a.isCommon);
 
   /* --- Game logic refs --- */
   const keysRef          = useRef({ w: false, a: false, s: false, d: false });
+  const autoForwardRef   = useRef(false);
+  const dragJustEndedRef = useRef(false);
   const localPositionRef = useRef<Position | null>(null);
   const localVelocityRef = useRef({ x: 0, y: 0 });
   const initializedRef   = useRef(false);
@@ -512,7 +556,16 @@ export default function BattleArena({
   const localZRef         = useRef(0);     // current Z height (world units)
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
+  const bvhCenterYInitRef = useRef(false); // true after _bvhCenter.y first initialised
+  const airNudgeRemainingRef = useRef(0);  // post-double-jump correction budget (units)
+  const airNudgeTicksRemainingRef = useRef(0); // correction animation ticks remaining
+  const airNudgeDirRef = useRef<{ x: number; y: number } | null>(null);
+  const airDirectionLockedRef = useRef(false); // locked after directional 2nd+ jump
   const localFacingRef    = useRef({ x: 0, y: 1 }); // current facing direction (default +Y)
+  const facingInitRef     = useRef(false);
+  const meFacingRef       = useRef<Facing>({ x: 0, y: 1 });
+  const oppFacingRef      = useRef<Facing>({ x: 0, y: 1 });
+  const prevActiveChannelRef = useRef<ActiveChannel | null>(null);
 
   /* --- Opponent interpolation --- */
   const internalOpponentBufferRef = useRef<Array<{ t: number; pos: Position }>>([]);
@@ -530,29 +583,166 @@ export default function BattleArena({
   const camYawRef      = useRef(0);             // camera yaw
   const camPitchRef    = useRef(DEFAULT_PITCH); // camera pitch angle (radians)
   const camZoomRef     = useRef(1.0);           // zoom multiplier (scroll wheel)
-  const mouseStateRef  = useRef({ isLeft: false, isRight: false, lastX: 0, lastY: 0 });
+  const mouseStateRef  = useRef({ isLeft: false, isRight: false, lastX: 0, lastY: 0, downX: NaN, downY: NaN });
+
+  /* --- Target selection refs --- */
+  const selectedTargetRef   = useRef<string | null>(null);
+  const selectedSelfRef     = useRef(false);
+  const pendingGroundCastAbilityRef = useRef<string | null>(null);
+  const oppScreenBoundsRef  = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
+  const meScreenBoundsRef   = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
+  const opponentIdsRef      = useRef<string[]>([]);
+  // Always reflects current primary opponent userId
+  const opponentUserIdRef   = useRef<string>(targetableOpponentsList[0]?.userId ?? '');
+  opponentUserIdRef.current = targetableOpponentsList[0]?.userId ?? '';
 
   /* --- Dash animation refs --- */
   const localDashAnimRef = useRef<{ start: V3; startTime: number } | null>(null);
   const oppDashAnimRef   = useRef<{ start: V3; startTime: number } | null>(null);
+
+  /* --- Server-authoritative dash tracking --- */
+  const meActiveDashRef  = useRef<any>(null);  // mirrors me.activeDash from server
+  // *** SYNCHRONOUS ref update during render — NOT in useEffect ***
+  // useEffect fires AFTER requestAnimationFrame, so if we set the ref there,
+  // the render loop reads the STALE value and falls back to cosmetic easing.
+  // Setting it here ensures RAF always sees the latest activeDash.
+  const _prevDashRef = useRef<boolean>(false);
+  {
+    const ad = (me as any)?.activeDash;
+    const isDashing = !!ad && ad.ticksRemaining > 0;
+    meActiveDashRef.current = isDashing ? ad : null;
+    // Transition logging (synchronous, fine for refs)
+    if (isDashing && !_prevDashRef.current) {
+      (window as any).__dashStartMs = performance.now();
+      console.log(`[DASH] >>> FRONTEND START  time=${new Date().toISOString()}`);
+    }
+    if (!isDashing && _prevDashRef.current) {
+      const elapsed = performance.now() - ((window as any).__dashStartMs ?? 0);
+      console.log(`[DASH] <<< FRONTEND END    elapsed=${elapsed.toFixed(0)}ms  (expected ~1000ms)`);
+    }
+    _prevDashRef.current = isDashing;
+  }
 
   /* --- Render-loop refs (avoid stale closures) --- */
   const abilitiesRef  = useRef<AbilityInfo[]>([]);
   const meHpRef       = useRef(me?.hp ?? 0);
   const oppHpRef      = useRef(opponent?.hp ?? 0);
   const maxHpRef      = useRef(maxHp);
-  const canvasSizeRef = useRef({ w: 800, h: 500 });
+  const distanceRef   = useRef(distance);
+  distanceRef.current = distance;
 
   /* --- Fuyao (扶摇直上) local buff prediction --- */
-  const hasFuyaoBuffRef = useRef(false);
+  const hasFuyaoBuffRef          = useRef(false);
+  const isPowerJumpRef           = useRef(false); // true while airborne from a power jump (different gravity)
+  const isPowerJumpCombinedRef   = useRef(false); // true for 扶摇+鸟翔 combined 24u jump
+  const maxJumpsRef              = useRef(2);     // updated from me.buffs MULTI_JUMP effect
+  const moveSpeedScaleRef        = useRef(1);     // SPEED_BOOST/SLOW local prediction multiplier
+
+  /* --- Channel AOE refs (used in render loop, updated via useEffect) --- */
+  const meChannelingRef  = useRef(false);
+  const oppChannelingRef = useRef(false);
 
   // Ref-based cast wrapper — updated every render, so it always captures the
   // latest onCastAbility without causing keyboard/mouse useEffect re-runs.
   const castAbilityRef = useRef<(id: string) => void>(() => {});
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
-    if (ability?.cardId === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
-    onCastAbility(id);
+    if (ability?.abilityId === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
+    const selectedTargetIdNow = selectedTargetRef.current;
+    const selectedTarget = selectedTargetIdNow
+      ? opponentsList.find((o) => o.userId === selectedTargetIdNow)
+      : null;
+    const targetPos = selectedTarget?.position;
+
+    // Abilities targeting the opponent require a target to be selected first
+    if (ability?.target === 'OPPONENT' && !selectedTargetIdNow) {
+      if (ability?.allowGroundCastWithoutTarget) {
+        setPendingGroundCastAbilityId(id);
+        setGroundCastPreview(null);
+        toastSuccess('请选择地面位置施放');
+        return;
+      }
+      toastError('请先选择目标');
+      return;
+    }
+    if (ability?.target === 'OPPONENT' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
+      toastError('目标不可选中');
+      return;
+    }
+    if (ability?.target === 'OPPONENT' && !targetPos) {
+      toastError('目标不可见或已失去目标');
+      return;
+    }
+
+    const airborneLockedLocal =
+      jumpLocalRef.current ||
+      jumpSendRef.current ||
+      localJumpCountRef.current > 0 ||
+      Math.abs(localVzRef.current) > 0.01;
+    if (ability?.requiresGrounded && airborneLockedLocal) {
+      toastError('该技能需要落地后施放');
+      return;
+    }
+    if (ability?.requiresStanding) {
+      const movingByInput =
+        keysRef.current.w ||
+        keysRef.current.a ||
+        keysRef.current.s ||
+        keysRef.current.d;
+      const movingLocal =
+        movingByInput ||
+        Math.abs(localVelocityRef.current.x) > 0.01 ||
+        Math.abs(localVelocityRef.current.y) > 0.01;
+      if (airborneLockedLocal || movingLocal) {
+        toastError('该技能需要站立后施放');
+        return;
+      }
+    }
+    if (typeof ability?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ability.minSelfHpExclusive) {
+      toastError(`当前气血必须大于${ability.minSelfHpExclusive}才能施放`);
+      return;
+    }
+
+    // Face direction check (180° hemisphere)
+    if (ability?.target === 'OPPONENT' && requiresFacingByDefault(ability)) {
+      const myPos = localPositionRef.current ?? me.position;
+      const myFacing = localFacingRef.current;
+      if (myPos && myFacing && targetPos) {
+        const dx = targetPos.x - myPos.x;
+        const dy = targetPos.y - myPos.y;
+        const dot = myFacing.x * dx + myFacing.y * dy;
+        if (dot < 0) {
+          toastError('目标不在面朝方向内');
+          return;
+        }
+      }
+    }
+    // Line-of-sight check (structure blocking)
+    if (ability?.target === 'OPPONENT') {
+      const myPos = localPositionRef.current ?? me.position;
+      if (myPos && targetPos && isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current)) {
+        toastError('视线被建筑遮挡');
+        return;
+      }
+    }
+    // Stamp the ability name so the damage / heal float can label itself
+    lastCastNameRef.current = ability?.name ?? null;
+    setPendingGroundCastAbilityId(null);
+    setGroundCastPreview(null);
+    onCastAbility(id, selectedTargetIdNow ?? undefined);
+  };
+
+  const castGroundAbilityRef = useRef<(x: number, y: number) => void>(() => {});
+  castGroundAbilityRef.current = (x: number, y: number) => {
+    const abilityId = pendingGroundCastAbilityRef.current;
+    if (!abilityId) return;
+    const ability = abilitiesRef.current.find((a) => a.id === abilityId);
+    if (!ability) return;
+
+    lastCastNameRef.current = ability.name ?? null;
+    setPendingGroundCastAbilityId(null);
+    setGroundCastPreview(null);
+    onCastAbility(abilityId, undefined, { x, y });
   };
 
   /* --- Render position + dash-trail refs --- */
@@ -562,9 +752,149 @@ export default function BattleArena({
   const oppTrailRef       = useRef<Array<{ pos: V3; alpha: number }>>([]);
   const lastFrameTimeRef  = useRef<number>(0);
 
+  // Restore the old rAF render-position loop exactly.
+  // Handles: smooth position lerp, dash snap animation, jump phase tracking, Z display.
+  useEffect(() => {
+    let rafId = 0;
+    const DASH_THRESH = 3.5;
+    const SNAP_THRESH = 20;
+
+    const tick = () => {
+      const frameNow = performance.now();
+      const frameDt = lastFrameTimeRef.current === 0 ? 16 : Math.min(frameNow - lastFrameTimeRef.current, 50);
+      lastFrameTimeRef.current = frameNow;
+      const dtF = frameDt / 16.67;
+
+      // --- local player render pos ---
+      const myPos = localPositionRef.current ?? me?.position;
+      if (myPos) {
+        const tx = myPos.x, ty = myPos.y, tz = localZRef.current;
+        const r  = localRenderPosRef.current;
+        const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
+        const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
+
+        // During server-authoritative dash: HARD SNAP to server position.
+        // Do NOT lerp — any lerp causes the visual to lag behind the server,
+        // extending the perceived dash duration beyond the actual 1-second window.
+        if (meActiveDashRef.current) {
+          localDashAnimRef.current = null;
+          localRenderPosRef.current = { x: tx, y: ty, z: tz };
+        } else if (dist2d > SNAP_THRESH) {
+          localRenderPosRef.current = { x: tx, y: ty, z: tz };
+          localDashAnimRef.current  = null;
+        } else if (!localDashAnimRef.current && dist2d > DASH_THRESH) {
+          localDashAnimRef.current = { start: { ...r }, startTime: frameNow };
+        }
+        if (!meActiveDashRef.current) {
+          if (localDashAnimRef.current) {
+            const elapsed = frameNow - localDashAnimRef.current.startTime;
+            const t = Math.min(1, elapsed / DASH_ANIM_MS);
+            const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+            localRenderPosRef.current = {
+              x: localDashAnimRef.current.start.x + (tx - localDashAnimRef.current.start.x) * eased,
+              y: localDashAnimRef.current.start.y + (ty - localDashAnimRef.current.start.y) * eased,
+              z: localDashAnimRef.current.start.z + (tz - localDashAnimRef.current.start.z) * eased,
+            };
+            if (t >= 1) localDashAnimRef.current = null;
+          } else {
+            const k = Math.min(1, 0.3 * dtF);
+            localRenderPosRef.current = { x: r.x + ddx * k, y: r.y + ddy * k, z: r.z + ddz * k };
+          }
+        }
+      }
+
+      // --- Jump phase tracking (height display + timing) ---
+      const curZ   = localRenderPosRef.current.z ?? 0;
+      const prevZ  = prevZRef.current;
+      const nowMs  = performance.now();
+      const phase  = jumpPhaseRef.current;
+
+      if (phase === 'ground') {
+        if (curZ > 0.01) {
+          jumpPhaseRef.current   = 'rising';
+          takeoffTimeRef.current  = nowMs;
+          peakTimeRef.current     = nowMs;
+          peakZRef.current        = curZ;
+        }
+      } else if (phase === 'rising') {
+        if (curZ > prevZ) {
+          peakTimeRef.current = nowMs;
+          peakZRef.current    = Math.max(peakZRef.current, curZ);
+        } else {
+          jumpPhaseRef.current = 'falling';
+        }
+      } else {
+        if (curZ <= 0.01 && prevZ > 0.01) {
+          const total = nowMs - takeoffTimeRef.current;
+          const rise  = peakTimeRef.current - takeoffTimeRef.current;
+          const fall  = nowMs - peakTimeRef.current;
+          jumpRecordNextRef.current = { riseMs: rise, fallMs: fall, totalMs: total, peakZ: peakZRef.current };
+          jumpPhaseRef.current = 'ground';
+        }
+      }
+
+      prevZRef.current = curZ;
+      myZRef.current   = curZ;
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [me?.position?.x, me?.position?.y]);
+
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
+  // Keep max-jumps ref in sync with MULTI_JUMP buff from server state
+  useEffect(() => {
+    const multiJump = me?.buffs?.flatMap((b: any) => (b.effects ?? []).filter(Boolean)).find((e: any) => e.type === 'MULTI_JUMP');
+    maxJumpsRef.current = multiJump ? (multiJump.value ?? 2) : 2;
+  }, [me?.buffs]);
+
+  // Keep local movement-speed prediction aligned with backend movement.ts
+  useEffect(() => {
+    const effects = (me?.buffs ?? []).flatMap((b: any) => (b.effects ?? []).filter(Boolean));
+    const speedBoost = effects
+      .filter((e: any) => e.type === 'SPEED_BOOST')
+      .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
+    const slow = effects
+      .filter((e: any) => e.type === 'SLOW')
+      .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
+    moveSpeedScaleRef.current = Math.max(0, 1 + speedBoost - slow);
+  }, [me?.buffs]);
+
+  // activeDash side-effects: reset local prediction state when dash ends
+  const activeDashJson = JSON.stringify((me as any)?.activeDash ?? null);
+  useEffect(() => {
+    const ad = (me as any)?.activeDash;
+    const isDashing = !!ad && ad.ticksRemaining > 0;
+    if (!isDashing) {
+      // Reset local prediction state so jump works immediately after dash
+      localJumpCountRef.current = 0;
+      localVzRef.current = 0;
+      isPowerJumpRef.current = false;
+    }
+  }, [activeDashJson]);
   useEffect(() => { oppHpRef.current = opponent?.hp ?? 0; }, [opponent?.hp]);
   useEffect(() => { maxHpRef.current = maxHp;             }, [maxHp]);
+  useEffect(() => {
+    const f = me?.facing;
+    if (f && Number.isFinite(f.x) && Number.isFinite(f.y)) {
+      meFacingRef.current = { x: f.x, y: f.y };
+      if (!facingInitRef.current) {
+        localFacingRef.current = { x: f.x, y: f.y };
+        const yaw = Math.atan2(f.x, f.y);
+        charYawRef.current = yaw;
+        camYawRef.current = yaw;
+        facingInitRef.current = true;
+      }
+    }
+  }, [me?.facing?.x, me?.facing?.y]);
+  useEffect(() => {
+    const f = opponent?.facing;
+    if (f && Number.isFinite(f.x) && Number.isFinite(f.y)) {
+      oppFacingRef.current = { x: f.x, y: f.y };
+    }
+  }, [opponent?.facing?.x, opponent?.facing?.y]);
 
   // Restore control mode from localStorage on mount
   useEffect(() => {
@@ -573,6 +903,247 @@ export default function BattleArena({
     setControlMode(mode);
     controlModeRef.current = mode;
   }, []);
+
+  // Channel bar: now uses CSS animation — no JS polling needed.
+  // Keep channelBuff computed so the bar mounts/unmounts correctly.
+  // Prefer activeChannel (pure channel system) over legacy buff-based channels.
+  // -- Forward channel (正读条): from player.activeChannel (e.g. 云飞玉皇)
+  // -- Reverse channel (倒读条): from buff buffId 1014/1017/2001/2003
+  //    (e.g. 风来吴山, 心诤, 笑醉狂, 千蝶吐瑞)
+  const channelBarData: ChannelBarData | null = (() => {
+    if (me?.activeChannel) {
+      const ch = me.activeChannel;
+      return {
+        kind: 'forward' as const,
+        name: ch.abilityName,
+        startedAt: ch.startedAt,
+        durationMs: ch.durationMs,
+        cancelOnMove: !!ch.cancelOnMove,
+        cancelOnJump: !!ch.cancelOnJump,
+      };
+    }
+    const buff = me?.buffs?.find((b: any) =>
+      b.buffId === 1014 || b.buffId === 1017 || b.buffId === 2001 || b.buffId === 2003
+    );
+    if (buff) {
+      const appliedAt: number = (buff as any).appliedAt ?? 0;
+      const expiresAt: number = (buff as any).expiresAt ?? 0;
+      const durationMs = expiresAt - appliedAt > 0 ? expiresAt - appliedAt : 5_000;
+      return {
+        kind: 'reverse' as const,
+        name: (buff as any).name ?? '运功',
+        appliedAt: appliedAt > 0 ? appliedAt : expiresAt - durationMs,
+        durationMs,
+        tickIntervalMs: (buff as any).periodicMs,
+      };
+    }
+    return null;
+  })();
+
+  // Ref that the rAF writes a new jump record into (avoids stale closure in rAF)
+  const jumpRecordNextRef = useRef<{ riseMs: number; fallMs: number; totalMs: number; peakZ: number } | null>(null);
+  const jumpLockedRef = useRef(false);
+
+  useEffect(() => {
+    const locked = !!me?.buffs?.some((b: any) => b.buffId === 1014);
+    jumpLockedRef.current = locked;
+    if (locked) {
+      jumpLocalRef.current = false;
+      jumpSendRef.current = false;
+    }
+  }, [me?.buffs]);
+
+  // Poll height + consume any finished jump record every 50 ms
+  useEffect(() => {
+    const id = setInterval(() => {
+      setMyZ(Math.round(myZRef.current * 10) / 10);
+      const rec = jumpRecordNextRef.current;
+      if (rec) {
+        jumpRecordNextRef.current = null;
+        setJumpRecord({ riseMs: rec.riseMs, fallMs: rec.fallMs, totalMs: rec.totalMs, peakZ: rec.peakZ });
+      }
+    }, 50);
+    return () => clearInterval(id);
+  }, []);
+
+  // Keep render-loop refs up to date for channel AOE circles
+  useEffect(() => {
+    meChannelingRef.current = !!(me?.buffs?.some((b: any) => b.buffId === 1014));
+  }, [me?.buffs]);
+  useEffect(() => {
+    oppChannelingRef.current = !!(opponent?.buffs?.some((b: any) => b.buffId === 1014));
+  }, [opponent?.buffs]);
+
+  // Keep selected target valid as opponent list changes (N-player support)
+  useEffect(() => {
+    const ids = targetableOpponentsList.map((o) => o.userId);
+    opponentIdsRef.current = ids;
+    const current = selectedTargetRef.current;
+    if (ids.length === 0) {
+      setSelectedTargetId(null);
+      selectedTargetRef.current = null;
+      return;
+    }
+    if (current && !ids.includes(current)) {
+      setSelectedTargetId(null);
+      selectedTargetRef.current = null;
+    }
+  }, [targetableOpponentsList]);
+
+  useEffect(() => {
+    selectedTargetRef.current = selectedTargetId;
+  }, [selectedTargetId]);
+
+  useEffect(() => {
+    pendingGroundCastAbilityRef.current = pendingGroundCastAbilityId;
+  }, [pendingGroundCastAbilityId]);
+
+  // Keep pickups ref up-to-date for render loop
+  useEffect(() => {
+    pickupsRef.current = pickups;
+  }, [pickups]);
+
+  // Keep nearbyPickupIdsRef + pickupModalsRef + uiPositionsRef in sync
+  useEffect(() => { nearbyPickupIdsRef.current = nearbyPickupIds; }, [nearbyPickupIds]);
+  useEffect(() => { pickupModalsRef.current    = pickupModals;    }, [pickupModals]);
+  useEffect(() => { uiPositionsRef.current     = uiPositions;     }, [uiPositions]);
+  useEffect(() => { channelPickupIdRef.current = channelPickupId; }, [channelPickupId]);
+
+  // Proximity check: collect ALL books within range, sorted closest-first (runs every 100ms)
+  // Also auto-close pickup panels whose book is now beyond claim range (20 units)
+  useEffect(() => {
+    const PICKUP_RANGE = 5;
+    const CLAIM_RANGE  = 20;
+    const id = setInterval(() => {
+      const pos = localPositionRef.current;
+      if (!pos) return;
+      const pz = localZRef.current;
+      const items = pickupsRef.current;
+      const nearby: Array<{ id: string; dist: number }> = [];
+      for (const p of items) {
+        const dx = pos.x - p.position.x;
+        const dy = pos.y - p.position.y;
+        const dz = 0;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist < PICKUP_RANGE) nearby.push({ id: p.id, dist });
+      }
+      nearby.sort((a, b) => a.dist - b.dist);
+      const ids = nearby.map(n => n.id);
+      nearbyPickupIdsRef.current = ids;
+      setNearbyPickupIds(prev =>
+        prev.length === ids.length && prev.every((v, i) => v === ids[i]) ? prev : ids
+      );
+      // Close any open panels whose book drifted beyond claim range
+      const modals = pickupModalsRef.current;
+      if (modals.length > 0) {
+        const toClose = modals.filter(m => {
+          const pu = items.find(p => p.id === m.pickupId);
+          if (!pu) return true;
+          const dx = pos.x - pu.position.x;
+          const dy = pos.y - pu.position.y;
+          return Math.sqrt(dx * dx + dy * dy) > CLAIM_RANGE;
+        }).map(m => m.pickupId);
+        if (toClose.length > 0) {
+          setPickupModals(prev => prev.filter(m => !toClose.includes(m.pickupId)));
+        }
+      }
+    }, 100);
+    return () => clearInterval(id);
+  }, []);
+
+  // Poll canvas bounds for debug overlay
+  useEffect(() => {
+    if (!showDebugGrid) return;
+    const id = setInterval(() => {
+      const me  = meScreenBoundsRef.current;
+      const opp = oppScreenBoundsRef.current;
+      const { w: cw, h: ch } = canvasSizeRef.current;
+      setDebugBounds({
+        me:  me  ? { cx: me.cx,  topY: me.topY,  hpBarY: me.topY  - 20 } : null,
+        opp: opp ? { cx: opp.cx, topY: opp.topY } : null,
+        cw, ch,
+      });
+    }, 100);
+    return () => clearInterval(id);
+  }, [showDebugGrid]);
+
+  /* --- Event-based floating numbers (replaces HP-delta system) --- */
+  // Initialize on first render so we don't replay old events from before mount
+  useEffect(() => {
+    if (prevEventsLenRef.current === -1) {
+      prevEventsLenRef.current = events.length;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // Skip on very first render before initialization
+    if (prevEventsLenRef.current === -1) return;
+    const lastSeen = prevEventsLenRef.current;
+    if (events.length <= lastSeen) return;
+    const newEvents = events.slice(lastSeen);
+    prevEventsLenRef.current = events.length;
+
+    const myId = me?.userId;
+    for (const evt of newEvents) {
+      // WS array patches can momentarily produce sparse event slices.
+      // Ignore empty/malformed entries instead of crashing the whole arena.
+      if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
+      if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0) {
+        if (evt.targetUserId === myId) {
+          if (!selectedTargetRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
+            const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
+            if (attackerStillPresent) {
+              setSelectedTargetId(evt.actorUserId);
+              selectedTargetRef.current = evt.actorUserId;
+              setSelectedSelf(false);
+              selectedSelfRef.current = false;
+            }
+          }
+          // I took damage — fixed position (x=40%, y=60%)
+          addFloat(evt.value, 'dmg_taken', { label: evt.abilityName });
+        } else if (evt.actorUserId === myId) {
+          // I dealt damage to opponent
+          const bounds = oppScreenBoundsRef.current;
+          const { w, h } = canvasSizeRef.current;
+          const screenPct = bounds
+            ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 55) / h) }
+            : undefined;
+          addFloat(evt.value, 'dmg_dealt', { label: evt.abilityName, screenPct });
+        }
+      } else if (evt.type === 'HEAL' && (evt.value ?? 0) > 0 && evt.targetUserId === myId) {
+        // Heal — fixed position (x=60%, y=60%)
+        addFloat(evt.value, 'heal', { label: evt.abilityName });
+      } else if (evt.type === 'DODGE' && evt.targetUserId === myId) {
+        toastError(`警告：${evt.abilityName ?? '技能'}被闪避`);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events.length]);
+
+  // Warn when a targeted channel is interrupted because target became untargetable (e.g. entered stealth).
+  useEffect(() => {
+    const prev = prevActiveChannelRef.current;
+    const curr = me?.activeChannel ?? null;
+
+    if (prev && !curr) {
+      const targetIsOpponent = !!prev.targetUserId && prev.targetUserId !== me.userId;
+      const elapsedMs = Math.max(0, Date.now() - (prev.startedAt ?? 0));
+      const interruptedEarly = elapsedMs + 120 < (prev.durationMs ?? 0);
+      if (targetIsOpponent && interruptedEarly) {
+        const target = opponentsList.find((o) => o.userId === prev.targetUserId);
+        const targetLost = !target || blocksTargetingClient(target.buffs);
+        if (targetLost) {
+          toastError('警告：目标丢失，运功中断');
+        }
+      }
+    }
+
+    prevActiveChannelRef.current = curr ? { ...curr } : null;
+  }, [me?.activeChannel, me?.userId, opponentsList]);
+
+  /* --- Track opponent hand cooldown resets (kept for other UI purposes) --- */
+  const prevOppHandRef      = useRef<any[]>([]);
 
   /* ========================= MOVEMENT ========================= */
 
@@ -594,24 +1165,51 @@ export default function BattleArena({
           // Always send the character's current facing direction so server-side
           // abilities (dashes, etc.) use the correct orientation
           facing: {
-            x: Math.sin(charYawRef.current),
-            y: Math.cos(charYawRef.current),
+            x: localFacingRef.current.x,
+            y: localFacingRef.current.y,
           },
           direction: (() => {
             if (controlModeRef.current === 'traditional') {
-              const bothMouse = mouseStateRef.current.isLeft && mouseStateRef.current.isRight;
-              // Recompute charYaw inline — don't rely on the physics-tick interval having
-              // already run this frame (the two setIntervals are unsynchronized).
-              const effectiveYaw = bothMouse
-                ? camYawRef.current + (k.a ? -Math.PI / 4 : 0) + (k.d ? Math.PI / 4 : 0)
-                : charYawRef.current;
-              const moveFwd = { x: Math.sin(effectiveYaw), y: Math.cos(effectiveYaw) };
+              const mouseLook = mouseStateRef.current.isRight;
+              const bothMouse = mouseStateRef.current.isRight && mouseStateRef.current.isLeft;
+
+              if (mouseLook) {
+                // MMO mouselook: move relative to camera, camera yaw unchanged unless mouse moves.
+                const yaw = camYawRef.current;
+                const fwd = { x: Math.sin(yaw), y: -Math.cos(yaw) };
+                const right = { x: Math.cos(yaw), y: Math.sin(yaw) };
+
+                let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
+                // Negate strafe to match R3F camera convention.
+                let strafeInput = (k.a ? 1 : 0) + (k.d ? -1 : 0);
+
+                // Requested behavior: RMB + A + D => forward-right diagonal.
+                if (k.a && k.d) {
+                  strafeInput = -1;
+                  forwardInput += 1;
+                }
+
+                let dx = fwd.x * forwardInput + right.x * strafeInput;
+                let dy = fwd.y * forwardInput + right.y * strafeInput;
+                if (dx === 0 && dy === 0 && !shouldJump) return null;
+
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                const backpedalOnly = k.s && !k.w && !k.a && !k.d && !bothMouse;
+                const speedMult = backpedalOnly ? 0.5 : 1.0;
+                dx = (dx / len) * speedMult;
+                dy = (dy / len) * speedMult;
+                return { dx, dy, jump: shouldJump };
+              }
+
+              // Keyboard-only traditional mode: movement follows facing.
+              const moveFwd = { x: Math.sin(charYawRef.current), y: -Math.cos(charYawRef.current) };
               let dx = 0, dy = 0;
-              if (k.w || bothMouse) { dx += moveFwd.x; dy += moveFwd.y; }
-              if (k.s && !bothMouse) { dx -= moveFwd.x; dy -= moveFwd.y; }
+              if (k.w) { dx += moveFwd.x; dy += moveFwd.y; }
+              if (k.s) { dx -= moveFwd.x; dy -= moveFwd.y; }
               if (dx === 0 && dy === 0 && !shouldJump) return null;
               const len = Math.sqrt(dx * dx + dy * dy) || 1;
-              const speedMult = (k.s && !k.w && !bothMouse) ? 0.5 : 1.0;
+              const backpedalOnly = k.s && !k.w && !k.a && !k.d;
+              const speedMult = backpedalOnly ? 0.5 : 1.0;
               return { dx: (dx / len) * speedMult, dy: (dy / len) * speedMult, jump: shouldJump };
             }
             // 摇杆模式: absolute WASD
@@ -627,9 +1225,11 @@ export default function BattleArena({
   useEffect(() => {
     if (me?.position && !initializedRef.current) {
       localPositionRef.current = { ...me.position };
+      localZRef.current = (me.position as any).z ?? 0;
+      localRenderPosRef.current = { x: me.position.x, y: me.position.y, z: localZRef.current };
       initializedRef.current   = true;
     }
-  }, [me?.position?.x, me?.position?.y]);
+  }, [me?.position?.x, me?.position?.y, (me?.position as any)?.z]);
 
   useEffect(() => {
     if (!me?.position || !initializedRef.current) return;
@@ -637,10 +1237,65 @@ export default function BattleArena({
     if (!local) return;
     const dx = me.position.x - local.x;
     const dy = me.position.y - local.y;
+    const activeDash = (me as any)?.activeDash;
+
+    // Collision-test mode: both client and backend now use BVH collision, so we can
+    // reconcile position normally. Only skip reconciliation on dash (server owns dash).
+    if (mode === 'collision-test') {
+      if (activeDash && activeDash.ticksRemaining > 0) {
+        meActiveDashRef.current = activeDash;
+        localPositionRef.current = { ...me.position };
+        localZRef.current  = (me.position as any).z ?? 0;
+        localVzRef.current = 0;
+        bvhCenterYInitRef.current = false; // resync cylinder center after dash
+        return;
+      }
+
+      if (!collisionReadyRef.current) {
+        const serverZ = (me.position as any).z ?? 0;
+        localPositionRef.current = { ...me.position };
+        localZRef.current = serverZ;
+        localRenderPosRef.current = {
+          x: me.position.x,
+          y: me.position.y,
+          z: serverZ,
+        };
+        return;
+      }
+      // Fall through to standard smooth reconciliation (fixes jump-range mismatch between
+      // client prediction and server-authoritative BVH result).
+    }
+
     // Hard-snap if server position is far away (e.g. new battle start)
     if (dx * dx + dy * dy > 25) {
       localPositionRef.current = { ...me.position };
       return;
+    }
+
+    // During active dash: server owns position — hard-snap XY + Z
+    // Check me.activeDash directly (not ref) so this works even before React
+    // fires the activeDash tracking useEffect on this render cycle.
+    if (activeDash && activeDash.ticksRemaining > 0) {
+      meActiveDashRef.current = activeDash;
+      localPositionRef.current = { ...me.position };
+      localZRef.current  = (me.position as any).z ?? 0;
+      localVzRef.current = 0;
+      return;
+    }
+
+    // Reconcile Z with smoothing to reduce visible snap/jitter when stepping/jumping onto rooftops.
+    const serverZ = (me.position as any).z ?? 0;
+    const localZ  = localZRef.current;
+    const zError = serverZ - localZ;
+    if (Math.abs(zError) > 1.2) {
+      localZRef.current = serverZ;
+      localVzRef.current = 0;
+      bvhCenterYInitRef.current = false; // large Z snap — resync sphere center next tick
+    } else {
+      localZRef.current = localZ + zError * 0.35;
+      if (Math.abs(serverZ - localZRef.current) < 0.02) {
+        localZRef.current = serverZ;
+      }
     }
     const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
     const blend  = moving ? 0.03 : 0.25;
@@ -648,7 +1303,7 @@ export default function BattleArena({
       x: local.x + dx * blend,
       y: local.y + dy * blend,
     };
-  }, [me?.position?.x, me?.position?.y]);
+  }, [me?.position?.x, me?.position?.y, (me?.position as any)?.z]);
 
   useEffect(() => {
     if (!opponent?.position) return;
@@ -662,93 +1317,490 @@ export default function BattleArena({
   }, [opponent?.position?.x, opponent?.position?.y, opponentPositionBufferRef]);
 
   useEffect(() => {
-    // ── Draft abilities: sourced from me.hand (only non-common cards) ──
+    // ── Draft abilities: sourced from me.hand (only non-common abilities) ──
+    const GCD_WINDOW_TICKS = 45;
+    const getDisplayMaxCooldown = (ab: any): number => {
+      const base = ab?.cooldownTicks ?? 0;
+      const gcdWindow = ab?.gcd === true ? GCD_WINDOW_TICKS : 0;
+      return Math.max(base, gcdWindow);
+    };
+    const getChargeDisplay = (ab: any, instance: any) => {
+      const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
+      if (maxCharges <= 1) {
+        return {
+          maxCharges: undefined,
+          chargeCount: undefined,
+          chargeRecoveryTicks: undefined,
+          chargeRegenTicksRemaining: undefined,
+          chargeRegenProgress: undefined,
+          chargeCastLockTicks: undefined,
+          chargeLockTicks: undefined,
+          cooldown: instance?.cooldown ?? 0,
+          maxCooldown: getDisplayMaxCooldown(ab),
+        };
+      }
+
+      const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
+      const chargeRecoveryTicks = Math.max(1, Number(ab?.chargeRecoveryTicks ?? ab?.cooldownTicks ?? 1));
+      const chargeRegenTicksRemaining = Math.max(0, Number(instance?.chargeRegenTicksRemaining ?? 0));
+      const chargeRegenProgress = chargeCount < maxCharges
+        ? Math.max(0, Math.min(1, 1 - (chargeRegenTicksRemaining / chargeRecoveryTicks)))
+        : undefined;
+      const chargeCastLockTicks = Math.max(0, Number(ab?.chargeCastLockTicks ?? 0));
+      const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0));
+
+      if (chargeCount <= 0) {
+        return {
+          maxCharges,
+          chargeCount,
+          chargeRecoveryTicks,
+          chargeRegenTicksRemaining,
+          chargeRegenProgress,
+          chargeCastLockTicks,
+          chargeLockTicks,
+          cooldown: chargeRegenTicksRemaining,
+          maxCooldown: chargeRecoveryTicks,
+        };
+      }
+
+      if (chargeLockTicks > 0) {
+        return {
+          maxCharges,
+          chargeCount,
+          chargeRecoveryTicks,
+          chargeRegenTicksRemaining,
+          chargeRegenProgress,
+          chargeCastLockTicks,
+          chargeLockTicks,
+          cooldown: chargeLockTicks,
+          maxCooldown: Math.max(1, chargeCastLockTicks),
+        };
+      }
+
+      return {
+        maxCharges,
+        chargeCount,
+        chargeRecoveryTicks,
+        chargeRegenTicksRemaining,
+        chargeRegenProgress,
+        chargeCastLockTicks,
+        chargeLockTicks,
+        cooldown: 0,
+        maxCooldown: chargeRecoveryTicks,
+      };
+    };
+    const selectedTarget = selectedTargetId
+      ? targetableOpponentsList.find((o) => o.userId === selectedTargetId) ?? null
+      : null;
+    const targetForChecks = selectedTarget ?? targetableOpponentsList[0] ?? null;
+    const myPos = me.position ?? localPositionRef.current;
+    const myFacing = me.facing ?? localFacingRef.current;
+    const targetPos = targetForChecks?.position;
+    const qinggongSealed = hasQinggongSealClient(me.buffs);
+
+    const isAbilityReady = (ab: any, instance: any): boolean => {
+      const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
+      if (maxCharges > 1) {
+        const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
+        const chargeLockTicks = Number(instance?.chargeLockTicks ?? 0);
+        if (chargeLockTicks > 0) return false;
+        if (chargeCount <= 0) return false;
+      } else if ((instance?.cooldown ?? 0) > 0) {
+        return false;
+      }
+      const airborneLockedLocal =
+        jumpLocalRef.current ||
+        jumpSendRef.current ||
+        localJumpCountRef.current > 0 ||
+        Math.abs(localVzRef.current) > 0.01;
+      if (ab?.requiresGrounded && airborneLockedLocal) return false;
+      if (ab?.requiresStanding) {
+        const movingByInput =
+          wasdKeys.w ||
+          wasdKeys.a ||
+          wasdKeys.s ||
+          wasdKeys.d;
+        const movingLocal =
+          movingByInput ||
+          Math.abs(localVelocityRef.current.x) > 0.01 ||
+          Math.abs(localVelocityRef.current.y) > 0.01;
+        if (airborneLockedLocal || movingLocal) return false;
+      }
+      if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
+        return false;
+      }
+      if (ab?.qinggong && qinggongSealed) return false;
+      const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
+      if (needsSelectedTarget && !targetPos) return false;
+
+      if (ab?.target === 'OPPONENT' && !targetPos && ab?.allowGroundCastWithoutTarget) {
+        return true;
+      }
+
+      const distanceToTarget = (myPos && targetPos)
+        ? Math.hypot(targetPos.x - myPos.x, targetPos.y - myPos.y)
+        : distance;
+      const inMaxRange = !ab?.range || distanceToTarget <= ab.range;
+      const inMinRange = !ab?.minRange || distanceToTarget >= ab.minRange;
+      if (!inMaxRange || !inMinRange) return false;
+
+      if (ab?.target === 'OPPONENT' && myPos && targetPos) {
+        if (requiresFacingByDefault(ab) && myFacing) {
+          const dx = targetPos.x - myPos.x;
+          const dy = targetPos.y - myPos.y;
+          if (myFacing.x * dx + myFacing.y * dy < 0) return false;
+        }
+        if (isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current)) {
+          return false;
+        }
+      }
+
+      return true;
+    };
+
     const draftUpdated: AbilityInfo[] = me.hand
       .map((instance: any) => {
-        const card =
-          (instance.cardId && cards[instance.cardId]) ||
-          (instance.id    && cards[instance.id])     ||
+        const ability =
+          (instance.abilityId && abilities[instance.abilityId]) ||
+          (instance.id    && abilities[instance.id])     ||
           (instance.name  ? instance : null);
 
         // Skip common abilities — they are shown in the top row independently
-        if (card?.isCommon) return null;
+        if (ability?.isCommon) return null;
 
         const instanceId = instance.instanceId || instance.id || String(Math.random());
-        if (!card) {
-          console.warn('[BattleArena] card lookup failed for hand item:', instance);
+        if (!ability) {
+          console.warn('[BattleArena] ability lookup failed for hand item:', instance);
           return {
             id:          instanceId,
-            cardId:      instance.cardId || instance.id || instanceId,
-            name:        instance.name || instance.cardId || instance.id || '?',
+            abilityId:      instance.abilityId || instance.id || instanceId,
+            name:        instance.name || instance.abilityId || instance.id || '?',
             range:       undefined as number | undefined,
             minRange:    undefined as number | undefined,
             cooldown:    instance.cooldown || 0,
             maxCooldown: 0,
-            isReady:     (instance.cooldown ?? 0) === 0,
+            isReady:     isAbilityReady(ability, instance),
             isCommon:    false,
+            target:      'OPPONENT' as 'SELF' | 'OPPONENT',
+            minSelfHpExclusive: undefined,
+            requiresGrounded: false,
+            requiresStanding: false,
+            qinggong: false,
+            allowGroundCastWithoutTarget: false,
           };
         }
+        const chargeDisplay = getChargeDisplay(ability, instance);
         return {
           id:          instanceId,
-          cardId:      card.id,
-          name:        card.name,
-          range:       card.range,
-          minRange:    card.minRange,
-          cooldown:    instance.cooldown || 0,
-          maxCooldown: card.cooldownTicks ?? 0,
-          isReady:     (instance.cooldown ?? 0) === 0 && (!card.range || distance <= card.range),
+          abilityId:      ability.id,
+          name:        ability.name,
+          range:       ability.range,
+          minRange:    ability.minRange,
+          cooldown:    chargeDisplay.cooldown,
+          maxCooldown: chargeDisplay.maxCooldown,
+          maxCharges: chargeDisplay.maxCharges,
+          chargeCount: chargeDisplay.chargeCount,
+          chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
+          chargeRegenTicksRemaining: chargeDisplay.chargeRegenTicksRemaining,
+          chargeRegenProgress: chargeDisplay.chargeRegenProgress,
+          chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
+          chargeLockTicks: chargeDisplay.chargeLockTicks,
+          isReady:     isAbilityReady(ability, instance),
           isCommon:    false,
+          target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
+          faceDirection: requiresFacingByDefault(ability as any),
+          minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
+          requiresGrounded: !!(ability as any).requiresGrounded,
+          requiresStanding: !!(ability as any).requiresStanding,
+          qinggong: !!(ability as any).qinggong,
+          allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
         };
       })
       .filter(Boolean) as AbilityInfo[];
 
-    // ── Common abilities: always built from preload cards in fixed display order ──
-    const cardValues: any[] = Object.values(cards);
+    // ── Common abilities: always built from preload abilities in fixed display order ──
+    const cardValues: any[] = Object.values(abilities);
     const commonUpdated: AbilityInfo[] = COMMON_ABILITY_ORDER
       .map((orderedCardId) => {
-        const card = cardValues.find((c: any) => c.id === orderedCardId);
-        if (!card) return null;
+        const ability = cardValues.find((c: any) => c.id === orderedCardId);
+        if (!ability) return null;
         const instance = me.hand.find(
-          (h: any) => (h.cardId ?? h.id) === card.id
+          (h: any) => (h.abilityId ?? h.id) === ability.id
         );
-        const instanceId = instance?.instanceId ?? card.id;
-        const cooldown   = instance?.cooldown ?? 0;
+        const instanceId = instance?.instanceId ?? ability.id;
+        const chargeDisplay = getChargeDisplay(ability, instance ?? {});
         return {
           id:          instanceId,
-          cardId:      card.id,
-          name:        card.name,
-          range:       card.range,
-          minRange:    card.minRange,
-          cooldown,
-          maxCooldown: card.cooldownTicks ?? 0,
-          isReady:     cooldown === 0 && (!card.range || distance <= card.range),
+          abilityId:      ability.id,
+          name:        ability.name,
+          range:       ability.range,
+          minRange:    ability.minRange,
+          cooldown:    chargeDisplay.cooldown,
+          maxCooldown: chargeDisplay.maxCooldown,
+          maxCharges: chargeDisplay.maxCharges,
+          chargeCount: chargeDisplay.chargeCount,
+          chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
+          chargeRegenTicksRemaining: chargeDisplay.chargeRegenTicksRemaining,
+          chargeRegenProgress: chargeDisplay.chargeRegenProgress,
+          chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
+          chargeLockTicks: chargeDisplay.chargeLockTicks,
+          isReady:     isAbilityReady(ability, instance),
           isCommon:    true,
+          target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
+          faceDirection: requiresFacingByDefault(ability as any),
+          minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
+          requiresGrounded: !!(ability as any).requiresGrounded,
+          requiresStanding: !!(ability as any).requiresStanding,
+          qinggong: !!(ability as any).qinggong,
+          allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
 
     const updated = [...commonUpdated, ...draftUpdated];
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[BattleArena] hand: ${me.hand.length} items → ${draftUpdated.length} draft + ${commonUpdated.length} common`);
-    }
-    setAbilities(updated);
+    setHandAbilities(updated);
     abilitiesRef.current = updated;
-  }, [me.hand, distance, cards]);
+  }, [
+    me.hand,
+    me.buffs,
+    me.hp,
+    me.position,
+    me.facing,
+    selectedTargetId,
+    targetableOpponentsList,
+    distance,
+    abilities,
+    wasdKeys,
+  ]);
 
+  /* ========================= PICKUP INTERACTION ========================= */
+
+  /** Start a drag session for any draggable UI panel. Key is stored in localStorage. */
+  const startUIDrag = useCallback((key: string, defaultPos: { left: number; top: number }, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY;
+    const base = uiPositionsRef.current[key] ?? defaultPos;
+    const onMove = (me: MouseEvent) => {
+      setUiPositions(prev => ({
+        ...prev,
+        [key]: { left: base.left + me.clientX - startX, top: base.top + me.clientY - startY },
+      }));
+    };
+    const onUp = (me: MouseEvent) => {
+      const next = { left: base.left + me.clientX - startX, top: base.top + me.clientY - startY };
+      setUiPositions(prev => {
+        const updated = { ...prev, [key]: next };
+        try { localStorage.setItem('zhenchuan-ui-positions', JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handlePickupInteract = useCallback(() => {
+    const target = nearbyPickupIdsRef.current[0] ?? null;
+    if (!target) return;
+
+    // Block channeling if moving or airborne
+    const keys = keysRef.current;
+    if (keys.w || keys.a || keys.s || keys.d) return;
+    if (localJumpCountRef.current > 0 || Math.abs(localVzRef.current) > 0.01) return;
+
+    // If the closest book's panel is already open → claim it (F toggles open→claim)
+    if (pickupModalsRef.current.some(m => m.pickupId === target)) {
+      claimPickup(target);
+      return;
+    }
+
+    // If already channeling this same book, ignore (debounce)
+    if (channelPickupId === target) return;
+
+    // Start 0.5s channel
+    setChannelPickupId(target);
+    setChannelProgress(0);
+    channelStartRef.current = performance.now();
+
+    // Animate progress bar
+    const animate = () => {
+      const elapsed  = performance.now() - channelStartRef.current;
+      const progress = Math.min(1, elapsed / 500);
+      setChannelProgress(progress);
+      if (progress < 1) {
+        channelAnimRef.current = requestAnimationFrame(animate);
+      } else {
+        // Channel complete — inspect pickup
+        inspectPickup(target);
+      }
+    };
+    channelAnimRef.current = requestAnimationFrame(animate);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelPickupId]);
+
+  const handlePickupInteractRef = useRef(handlePickupInteract);
+  handlePickupInteractRef.current = handlePickupInteract;
+
+  const inspectPickup = useCallback(async (pickupId: string) => {
+    setChannelPickupId(null);
+    setChannelProgress(0);
+    try {
+      const res = await fetch('/api/game/pickup/inspect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameId, pickupId }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toastError(err.error ?? '无法读取');
+        return;
+      }
+      const data = await res.json();
+      // Add panel if not already open for this pickup
+      setPickupModals(prev =>
+        prev.some(m => m.pickupId === data.pickupId)
+          ? prev
+          : [...prev, { pickupId: data.pickupId, abilityId: data.abilityId, name: data.name, description: data.description }]
+      );
+    } catch {
+      toastError('网络错误');
+    }
+  }, [gameId]);
+
+  const claimPickup = useCallback(async (pickupId: string) => {
+    try {
+      const res = await fetch('/api/game/pickup/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameId, pickupId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toastError(data.error ?? '无法拾取');
+        return; // keep panel open on failure
+      }
+      setPickupModals(prev => prev.filter(m => m.pickupId !== pickupId));
+      toastSuccess(`拾取了 ${data.name}`);
+    } catch {
+      toastError('网络错误');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId]);
+
+  // Clean up channel animation on unmount or when nearby pickup changes
   useEffect(() => {
+    return () => {
+      cancelAnimationFrame(channelAnimRef.current);
+      if (channelTimerRef.current) clearTimeout(channelTimerRef.current);
+    };
+  }, []);
+
+  // Cancel channel if the book being channeled leaves the nearby range
+  useEffect(() => {
+    if (channelPickupId && !nearbyPickupIds.includes(channelPickupId)) {
+      cancelAnimationFrame(channelAnimRef.current);
+      setChannelPickupId(null);
+      setChannelProgress(0);
+    }
+  }, [nearbyPickupIds, channelPickupId]);
+
+  // ── Keyboard input ──
+  useEffect(() => {
+    const resetMovementKeys = () => {
+      autoForwardRef.current = false;
+      setAutoForward(false);
+      keysRef.current = { w: false, a: false, s: false, d: false };
+      setWasdKeys({ w: false, a: false, s: false, d: false });
+    };
     const onDown = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
-      // WASD — skip when Alt held (Alt+A/D/S are ability hotkeys)
-      if (['w', 'a', 's', 'd'].includes(k) && !e.altKey) {
+      if (['w', 'a', 's', 'd'].includes(k)) {
         e.preventDefault();
+
+        if (k === 's' && autoForwardRef.current) {
+          autoForwardRef.current = false;
+          setAutoForward(false);
+          keysRef.current.w = false;
+          setWasdKeys(prev => ({ ...prev, w: false }));
+        }
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = true;
         setWasdKeys(prev => ({ ...prev, [k]: true }));
+
+        // Movement breaks channeling
+        if (channelPickupIdRef.current) {
+          cancelAnimationFrame(channelAnimRef.current);
+          setChannelPickupId(null);
+          setChannelProgress(0);
+        }
+        // Movement closes all pickup modals
+        if (pickupModalsRef.current.length > 0) {
+          setPickupModals([]);
+        }
       }
       // Space = jump
       if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
+        if (e.repeat) return;
+        if (keysRef.current.s) {
+          const commons = abilitiesRef.current.filter(a => a.isCommon);
+          const backstep = commons.find(a => a.abilityId === 'houyao');
+          if (backstep?.isReady) {
+            castAbilityRef.current(backstep.id);
+            return;
+          }
+        }
+        if (jumpLockedRef.current) return;
         jumpLocalRef.current = true;
         jumpSendRef.current  = true;
+      }
+      // Escape = close any open overlay (pickup panel; extend here for future modals)
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setPickupModals([]);
+        setSelectedTargetId(null);
+        selectedTargetRef.current = null;
+        setSelectedSelf(false);
+        selectedSelfRef.current = false;
+        setPendingGroundCastAbilityId(null);
+        setGroundCastPreview(null);
+        return;
+      }
+      // F = interact with nearby pickup (channel to open panel; claim if panel already open)
+      if (k === 'f') {
+        e.preventDefault();
+        handlePickupInteractRef.current();
+        return;
+      }
+      // G = auto-forward (persists until S is pressed)
+      if (k === 'g') {
+        e.preventDefault();
+        if (!e.repeat && !autoForwardRef.current) {
+          autoForwardRef.current = true;
+          setAutoForward(true);
+          keysRef.current.w = true;
+          setWasdKeys(prev => ({ ...prev, w: true }));
+          toastSuccess('自动前行已开启（按 S 停止）');
+        }
+        return;
+      }
+      // Tab / F1 — select primary opponent target (old 1v1 behavior)
+      if (e.key === 'Tab' || e.key === 'F1') {
+        e.preventDefault();
+        const primary = opponentIdsRef.current[0] ?? opponentUserIdRef.current;
+        if (!primary) {
+          toastError('当前没有可选目标');
+          return;
+        }
+        setSelectedTargetId(primary);
+        selectedTargetRef.current = primary;
+        setSelectedSelf(false);
+        selectedSelfRef.current = false;
+        return;
       }
       // ── Draft slots: 1  2  3  Q ──
       const drafts = abilitiesRef.current.filter(a => !a.isCommon);
@@ -784,15 +1836,25 @@ export default function BattleArena({
     const onUp = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
       if (['w', 'a', 's', 'd'].includes(k)) {
+        if (k === 'w' && autoForwardRef.current) {
+          return;
+        }
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = false;
         setWasdKeys(prev => ({ ...prev, [k]: false }));
       }
     };
+    const onVisibilityChange = () => {
+      if (document.hidden) resetMovementKeys();
+    };
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup',   onUp);
+    window.addEventListener('blur',    resetMovementKeys);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup',   onUp);
+      window.removeEventListener('blur',    resetMovementKeys);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
 
@@ -801,22 +1863,31 @@ export default function BattleArena({
   //   Right-drag             → rotate camera + snap character facing (traditional mode)
   //   Middle-down (MD)       → common[1] 扶摇直上
   //   Alt+W                  → common[2] 蹑云逐月
-  //   Button-3 / XB1 (down)  → draft[4]
-  //   Button-4 / XB2 (down)  → draft[5]
+  //   Button-3 / XB1 (down)  → draft[5]
+  //   Button-4 / XB2 (down)  → draft[4]
   //   Wheel up/down          → zoom in/out
   useEffect(() => {
+    const resetMouseButtons = () => {
+      mouseStateRef.current.isLeft = false;
+      mouseStateRef.current.isRight = false;
+    };
+
     const onMouseDown = (e: MouseEvent) => {
       // Left button — start camera drag
       if (e.button === 0) {
-        // Only start drag if not clicking a UI button
-        if ((e.target as HTMLElement).closest('button')) return;
+        // Only start drag if not clicking a UI button or a draggable panel
+        if ((e.target as HTMLElement).closest('button, [data-ui-drag]')) return;
         mouseStateRef.current.isLeft = true;
         mouseStateRef.current.lastX  = e.clientX;
         mouseStateRef.current.lastY  = e.clientY;
+        mouseStateRef.current.downX  = e.clientX;
+        mouseStateRef.current.downY  = e.clientY;
         return;
       }
       // Right button — start character rotate drag (context menu already suppressed by onContextMenu)
       if (e.button === 2) {
+        e.preventDefault();
+        e.stopPropagation();
         mouseStateRef.current.isRight = true;
         mouseStateRef.current.lastX   = e.clientX;
         mouseStateRef.current.lastY   = e.clientY;
@@ -832,14 +1903,14 @@ export default function BattleArena({
       if (e.button === 3) {
         e.preventDefault();
         e.stopPropagation();
-        const ab = abilitiesRef.current.filter(a => !a.isCommon)[4]; // draft slot 5 (XB1)
+        const ab = abilitiesRef.current.filter(a => !a.isCommon)[5]; // draft slot 6 (XB1)
         if (ab?.isReady) castAbilityRef.current(ab.id);
         return;
       }
       if (e.button === 4) {
         e.preventDefault();
         e.stopPropagation();
-        const ab = abilitiesRef.current.filter(a => !a.isCommon)[5]; // draft slot 6 (XB2)
+        const ab = abilitiesRef.current.filter(a => !a.isCommon)[4]; // draft slot 5 (XB2)
         if (ab?.isReady) castAbilityRef.current(ab.id);
         return;
       }
@@ -847,9 +1918,14 @@ export default function BattleArena({
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) {
         mouseStateRef.current.isLeft = false;
+        // Keep old behavior compatibility: do not force clear or cycle targets on plain mouse up.
+        mouseStateRef.current.downX = NaN;
+        mouseStateRef.current.downY = NaN;
         return;
       }
       if (e.button === 2) {
+        e.preventDefault();
+        e.stopPropagation();
         mouseStateRef.current.isRight = false;
         return;
       }
@@ -864,41 +1940,41 @@ export default function BattleArena({
       }
     };
     const onMouseMove = (e: MouseEvent) => {
-      if (controlModeRef.current !== 'traditional') return;
       const ms = mouseStateRef.current;
       if (!ms.isLeft && !ms.isRight) return;
+      e.preventDefault();
       const dx = e.clientX - ms.lastX;
       const dy = e.clientY - ms.lastY;
       ms.lastX = e.clientX;
       ms.lastY = e.clientY;
 
       if (ms.isRight && !ms.isLeft) {
-        // RMB only: rotate camera + character facing together
-        charYawRef.current += dx * 0.005;
-        camYawRef.current   = charYawRef.current;
+        // RMB only: rotate camera; character snaps to camera direction
+        camYawRef.current  -= dx * 0.005;
+        charYawRef.current  = camYawRef.current;
         // Update pitch too (drag up/down tilts view)
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
         // Immediately sync facing arrow so it updates without requiring movement
         localFacingRef.current = {
           x: Math.sin(charYawRef.current),
-          y: Math.cos(charYawRef.current),
+          y: -Math.cos(charYawRef.current),
         };
       } else if (ms.isLeft && !ms.isRight) {
         // LMB only: rotate camera yaw + pitch
-        camYawRef.current  += dx * 0.005;
+        camYawRef.current  -= dx * 0.005;
         // dy > 0 = drag down = look more from above (increase pitch)
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
       } else {
         // LMB + RMB together: rotate camera + character facing; physics tick moves forward
-        camYawRef.current  += dx * 0.005;
+        camYawRef.current  -= dx * 0.005;
         charYawRef.current  = camYawRef.current;
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
         localFacingRef.current = {
           x: Math.sin(charYawRef.current),
-          y: Math.cos(charYawRef.current),
+          y: -Math.cos(charYawRef.current),
         };
       }
     };
@@ -924,6 +2000,7 @@ export default function BattleArena({
     window.addEventListener('contextmenu', onContextMenu, { capture: true });
     window.addEventListener('auxclick',    onAuxClick,    { capture: true });
     window.addEventListener('wheel',       onWheel,       { passive: false, capture: true });
+    window.addEventListener('blur',        resetMouseButtons);
     return () => {
       window.removeEventListener('mousedown',   onMouseDown,   { capture: true });
       window.removeEventListener('mouseup',     onMouseUp,     { capture: true });
@@ -931,73 +2008,208 @@ export default function BattleArena({
       window.removeEventListener('contextmenu', onContextMenu, { capture: true });
       window.removeEventListener('auxclick',    onAuxClick,    { capture: true });
       window.removeEventListener('wheel',       onWheel,       { capture: true } as EventListenerOptions);
+      window.removeEventListener('blur',        resetMouseButtons);
     };
   }, []);
 
   const handleJoystickDirection = useCallback(
     (keys: { w: boolean; a: boolean; s: boolean; d: boolean }) => {
-      keysRef.current = keys;
-      setWasdKeys(keys);
+      const nextKeys = { ...keys };
+      if (nextKeys.s && autoForwardRef.current) {
+        autoForwardRef.current = false;
+        setAutoForward(false);
+      }
+      if (autoForwardRef.current && !nextKeys.s) {
+        nextKeys.w = true;
+      }
+      keysRef.current = nextKeys;
+      setWasdKeys(nextKeys);
     },
     [],
   );
 
   /* Physics — mirrors server exactly */
   useEffect(() => {
-    // 7.5 u/s at 30 Hz = 0.25 u/tick
-    const MAX_SPEED = 0.25, ACCEL = 0.3, DECEL = 0.9;
-    const JUMP_VZ_CLIENT = 0.346, POWER_JUMP_VZ_CLIENT = 1.47, GRAVITY_CLIENT = 0.04;
+    const CLIENT_TICK_HZ = 30;
+    const CLIENT_TICK_MS = 1000 / CLIENT_TICK_HZ;
+    // Match backend movement constants at 30Hz.
+    const MAX_SPEED = 0.1666667, ACCEL = 0.3, DECEL = 0.9;
+    // 30 Hz client physics — asymmetric gravity, tuned per jump type:
+    //   Single jump : 1.7 u peak, 1.0 s rise, 0.7 s fall  → 1.7 s total
+    //   Double jump : +0.755 u extra (peak 2.455 u)         → ~2.51 s total from takeoff
+    //   Power jump  : 12.8 u peak, 1.77 s rise, 1.93 s fall → 3.7 s total
+    const GRAVITY_UP_CLIENT         = 2 * 1.7  / (30 * 30);            // ≈ 0.003778 (regular rise)
+    const GRAVITY_DOWN_CLIENT       = 2 * 1.7  / (21 * 21);            // ≈ 0.007710 (regular fall, 0.7 s)
+    const JUMP_VZ_CLIENT            = GRAVITY_UP_CLIENT * 30;           // ≈ 0.11333 (1.0 s → 1.7 u)
+    const DOUBLE_JUMP_VZ_CLIENT     = GRAVITY_UP_CLIENT * 20;           // ≈ 0.07556 (+0.755 u → 2.51 s total)
+    const POWER_GRAVITY_UP_CLIENT   = 2 * 12.8 / (53.1 * 53.1);        // ≈ 0.009079 (1.77 s rise)
+    const POWER_GRAVITY_DOWN_CLIENT = 2 * 12.8 / (57.9 * 57.9);        // ≈ 0.007636 (1.93 s fall)
+    const POWER_JUMP_VZ_CLIENT      = POWER_GRAVITY_UP_CLIENT * 53.1;   // ≈ 0.4823  (12.8 u peak)
+    // 扶摇直上 + 鸟翔碧空 combined: 24u peak, same 53.1-tick rise / 57.9-tick fall
+    const COMBINED_GRAVITY_UP_CLIENT   = 2 * 24 / (53.1 * 53.1);
+    const COMBINED_GRAVITY_DOWN_CLIENT = 2 * 24 / (57.9 * 57.9);
+    const COMBINED_JUMP_VZ_CLIENT      = COMBINED_GRAVITY_UP_CLIENT * 53.1;
+    const AIR_NUDGE_TOTAL_DISTANCE = 1;
+    const AIR_NUDGE_DURATION_TICKS = 30; // 1.0s at 30Hz
+    const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
     const TURN_RATE = 0.055; // radians / tick at 30 Hz ≈ 95°/sec
     const tick = () => {
       const pos = localPositionRef.current;
       if (!pos) return;
+      if (mode === 'collision-test' && !collisionReadyRef.current) {
+        localVelocityRef.current = { x: 0, y: 0 };
+        localVzRef.current = 0;
+        return;
+      }
+      const effectiveMaxSpeed = MAX_SPEED * moveSpeedScaleRef.current;
+
+      // During server-authoritative dash: skip movement + gravity, but KEEP camera/turning
+      if (meActiveDashRef.current) {
+        localVelocityRef.current.x = 0;
+        localVelocityRef.current.y = 0;
+        jumpLocalRef.current = false;
+        // Post-dash jump allowance: MULTI_JUMP → full reset, normal → 1 jump only
+        localJumpCountRef.current = maxJumpsRef.current > 2 ? 0 : 1;
+        airNudgeRemainingRef.current = 0;
+        airNudgeTicksRemainingRef.current = 0;
+        airNudgeDirRef.current = null;
+        airDirectionLockedRef.current = false;
+        // Still allow A/D camera turning while dashing
+        const k = keysRef.current;
+        const ms = mouseStateRef.current;
+        if (controlModeRef.current === 'traditional' && !ms.isRight) {
+          const turning = (k.a ? 1 : 0) + (k.d ? -1 : 0);
+          if (turning !== 0) {
+            camYawRef.current  += turning * TURN_RATE;
+            charYawRef.current  = camYawRef.current;
+            localFacingRef.current = {
+              x: Math.sin(charYawRef.current),
+              y: -Math.cos(charYawRef.current),
+            };
+          }
+        }
+        return;
+      }
+
       const vel = localVelocityRef.current;
       const k   = keysRef.current;
       const ms  = mouseStateRef.current;
+      const objs = mapObjectsRef.current;
+      const useBVH = mode === 'collision-test' && !!collisionSysRef.current;
+      const tickGroundH = (() => {
+        if (!useBVH) {
+          return getGroundHeightClient(pos.x, pos.y, localZRef.current, objs, playerRadius);
+        }
+
+        const sys = collisionSysRef.current!;
+        const halfW = ARENA_WIDTH / 2;
+        const halfH = ARENA_HEIGHT / 2;
+        _bvhCenter.set(
+          (pos.x - halfW - GROUP_POS_X) / RENDER_SF,
+          (localZRef.current - GROUP_POS_Y) / RENDER_SF + EXPORT_CYL_HALF_HEIGHT,
+          (halfH - pos.y - GROUP_POS_Z) / RENDER_SF,
+        );
+        const supportY = sys.getSupportGroundY(_bvhCenter);
+        if (supportY === null) {
+          return getGroundHeightClient(pos.x, pos.y, localZRef.current, objs, playerRadius);
+        }
+        return supportY * RENDER_SF + GROUP_POS_Y;
+      })();
+      const airborne = localZRef.current > tickGroundH + 0.01;
+      let airNudgeDx = 0;
+      let airNudgeDy = 0;
+      let moveIntentDx = 0;
+      let moveIntentDy = 0;
 
       if (controlModeRef.current === 'traditional') {
-        const bothMouse = ms.isLeft && ms.isRight;
+        const mouseLook = ms.isRight;
+        const bothMouse = ms.isRight && ms.isLeft;
 
-        // A/D turn character + camera (only if not in bothMouse mode)
-        if (!bothMouse) {
-          const turning = (k.a ? -1 : 0) + (k.d ? 1 : 0);
+        if (mouseLook) {
+          // MMO mouselook: camera turns from mouse; movement is camera-relative.
+          // Facing follows movement intent except pure backpedal.
+        } else {
+          // WoW-style keyboard turning: A/D turn camera AND character together immediately.
+          const turning = (k.a ? 1 : 0) + (k.d ? -1 : 0);
           if (turning !== 0) {
-            charYawRef.current += turning * TURN_RATE;
-            camYawRef.current   = charYawRef.current; // always sync camera
+            camYawRef.current  += turning * TURN_RATE;
+            charYawRef.current  = camYawRef.current;
             localFacingRef.current = {
               x: Math.sin(charYawRef.current),
-              y: Math.cos(charYawRef.current),
+              y: -Math.cos(charYawRef.current),
             };
           }
         }
 
-        // LMB+RMB: character faces camera direction, A/D add ±45° offset for strafing look
-        if (bothMouse) {
-          const sideAngle = (k.a ? -Math.PI / 4 : 0) + (k.d ? Math.PI / 4 : 0);
-          charYawRef.current = camYawRef.current + sideAngle;
-          localFacingRef.current = {
-            x: Math.sin(charYawRef.current),
-            y: Math.cos(charYawRef.current),
-          };
-        }
-
-        // Movement direction always follows charYaw — when bothMouse + A/D it already
-        // carries the ±45° strafe offset; without A/D it equals camYaw (straight forward).
-        const moveFwd = { x: Math.sin(charYawRef.current), y: Math.cos(charYawRef.current) };
         let fx = 0, fy = 0;
-        if (k.w || bothMouse) { fx += moveFwd.x; fy += moveFwd.y; }
-        if (k.s && !bothMouse) { fx -= moveFwd.x; fy -= moveFwd.y; }
 
-        if (fx !== 0 || fy !== 0) {
-          const len = Math.sqrt(fx * fx + fy * fy);
-          // Backpedaling is slower (S only, no W or bothMouse)
-          const speedMult = (k.s && !k.w && !bothMouse) ? 0.5 : 1.0;
-          vel.x += ((fx / len) * MAX_SPEED * speedMult - vel.x) * ACCEL;
-          vel.y += ((fy / len) * MAX_SPEED * speedMult - vel.y) * ACCEL;
-          if (!bothMouse) localFacingRef.current = { x: moveFwd.x, y: moveFwd.y };
+        if (mouseLook) {
+          const yaw = camYawRef.current;
+          const moveFwd = { x: Math.sin(yaw), y: -Math.cos(yaw) };
+          const moveRight = { x: Math.cos(yaw), y: Math.sin(yaw) };
+
+          let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
+          // Negate strafe: game moveRight=(cos,−sin) maps to screen-left in R3F camera,
+          // so we flip sign so D=screen-right, A=screen-left.
+          let strafeInput = (k.a ? 1 : 0) + (k.d ? -1 : 0);
+
+          // Requested behavior: RMB + A + D => forward-right diagonal.
+          if (k.a && k.d) {
+            strafeInput = -1;
+            forwardInput += 1;
+          }
+
+          fx = moveFwd.x * forwardInput + moveRight.x * strafeInput;
+          fy = moveFwd.y * forwardInput + moveRight.y * strafeInput;
         } else {
-          vel.x *= DECEL;
-          vel.y *= DECEL;
+          const moveFwd = { x: Math.sin(charYawRef.current), y: -Math.cos(charYawRef.current) };
+          if (k.w) { fx += moveFwd.x; fy += moveFwd.y; }
+          if (k.s) { fx -= moveFwd.x; fy -= moveFwd.y; }
+        }
+        moveIntentDx = fx;
+        moveIntentDy = fy;
+
+        const inLimitedAirControl =
+          airborne &&
+          !jumpLocalRef.current &&
+          (airNudgeRemainingRef.current > 0 ||
+            airNudgeTicksRemainingRef.current > 0 ||
+            !!airNudgeDirRef.current);
+        if (airDirectionLockedRef.current && airborne) {
+          // After directional double jump: velocity locked, no steering.
+        } else if (!inLimitedAirControl) {
+          if (fx !== 0 || fy !== 0) {
+            const len = Math.sqrt(fx * fx + fy * fy);
+            // Backpedal is slower while keeping facing unchanged.
+            const backpedalOnly = k.s && !k.w && !k.a && !k.d && !bothMouse;
+            const speedMult = backpedalOnly ? 0.5 : 1.0;
+            vel.x += ((fx / len) * effectiveMaxSpeed * speedMult - vel.x) * ACCEL;
+            vel.y += ((fy / len) * effectiveMaxSpeed * speedMult - vel.y) * ACCEL;
+            if (mouseLook && !backpedalOnly) {
+              charYawRef.current = Math.atan2(fx / len, -fy / len);
+              localFacingRef.current = {
+                x: Math.sin(charYawRef.current),
+                y: -Math.cos(charYawRef.current),
+              };
+            }
+          } else {
+            if (!airborne) {
+              vel.x *= DECEL;
+              vel.y *= DECEL;
+            }
+            // In mouselook mode with no movement, restore facing to camera direction
+            if (mouseLook) {
+              charYawRef.current = camYawRef.current;
+              localFacingRef.current = {
+                x: Math.sin(camYawRef.current),
+                y: -Math.cos(camYawRef.current),
+              };
+            }
+          }
+        } else {
+          // Post-upward-jump airborne phase: keep momentum, use limited correction.
+          airNudgeDx = fx;
+          airNudgeDy = fy;
         }
       } else {
         // 摇杆模式: WASD = absolute world directions
@@ -1006,44 +2218,238 @@ export default function BattleArena({
         if (k.s) iy -= 1;
         if (k.a) ix -= 1;
         if (k.d) ix += 1;
-        if (ix !== 0 || iy !== 0) {
-          const len = Math.sqrt(ix * ix + iy * iy);
-          vel.x += ((ix / len) * MAX_SPEED - vel.x) * ACCEL;
-          vel.y += ((iy / len) * MAX_SPEED - vel.y) * ACCEL;
-          localFacingRef.current = { x: ix / len, y: iy / len };
+        moveIntentDx = ix;
+        moveIntentDy = iy;
+        const inLimitedAirControl =
+          airborne &&
+          !jumpLocalRef.current &&
+          (airNudgeRemainingRef.current > 0 ||
+            airNudgeTicksRemainingRef.current > 0 ||
+            !!airNudgeDirRef.current);
+        if (airDirectionLockedRef.current && airborne) {
+          // After directional double jump: velocity locked, no steering.
+        } else if (!inLimitedAirControl) {
+          if (ix !== 0 || iy !== 0) {
+            const len = Math.sqrt(ix * ix + iy * iy);
+            vel.x += ((ix / len) * effectiveMaxSpeed - vel.x) * ACCEL;
+            vel.y += ((iy / len) * effectiveMaxSpeed - vel.y) * ACCEL;
+            localFacingRef.current = { x: ix / len, y: iy / len };
+          } else {
+            if (!airborne) {
+              vel.x *= DECEL;
+              vel.y *= DECEL;
+            }
+          }
         } else {
-          vel.x *= DECEL;
-          vel.y *= DECEL;
+          airNudgeDx = ix;
+          airNudgeDy = iy;
         }
       }
 
-      localPositionRef.current = {
-        x: Math.max(2, Math.min(98, pos.x + vel.x)),
-        y: Math.max(2, Math.min(98, pos.y + vel.y)),
-      };
+      // Start limited correction only after double jump and only when input appears.
+      if (
+        airborne &&
+        !jumpLocalRef.current &&
+        airNudgeRemainingRef.current > 0 &&
+        airNudgeTicksRemainingRef.current <= 0
+      ) {
+        const nlen = Math.sqrt(airNudgeDx * airNudgeDx + airNudgeDy * airNudgeDy);
+        if (nlen > 0.01) {
+          airNudgeDirRef.current = { x: airNudgeDx / nlen, y: airNudgeDy / nlen };
+          airNudgeTicksRemainingRef.current = AIR_NUDGE_DURATION_TICKS;
+        }
+      }
+
+      let nudgeX = 0;
+      let nudgeY = 0;
+      if (
+        airborne &&
+        !jumpLocalRef.current &&
+        airNudgeTicksRemainingRef.current > 0 &&
+        airNudgeRemainingRef.current > 0 &&
+        airNudgeDirRef.current
+      ) {
+        const ticksLeft = Math.max(1, airNudgeTicksRemainingRef.current);
+        const step = Math.min(airNudgeRemainingRef.current, airNudgeRemainingRef.current / ticksLeft);
+        nudgeX = airNudgeDirRef.current.x * step;
+        nudgeY = airNudgeDirRef.current.y * step;
+        airNudgeRemainingRef.current = Math.max(0, airNudgeRemainingRef.current - step);
+        airNudgeTicksRemainingRef.current = Math.max(0, airNudgeTicksRemainingRef.current - 1);
+        if (airNudgeRemainingRef.current <= 0 || airNudgeTicksRemainingRef.current <= 0) {
+          airNudgeRemainingRef.current = 0;
+          airNudgeTicksRemainingRef.current = 0;
+          airNudgeDirRef.current = null;
+        }
+      }
+
+      let newPx = Math.max(playerRadius, Math.min(ARENA_WIDTH - playerRadius, pos.x + vel.x + nudgeX));
+      let newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius, pos.y + vel.y + nudgeY));
+
+      // Map object collision
+
+      if (useBVH) {
+        // ── BVH sphere collision (matches export-reader exactly) ──
+        const sys = collisionSysRef.current!;
+        const halfW = ARENA_WIDTH / 2;
+        const halfH = ARENA_HEIGHT / 2;
+        // ── Cylinder horizontal pass ──
+        // _bvhCenter.y = cylinder centre (feet + half-height); preserved between ticks.
+        // Only update X/Z for horizontal movement; Y is owned by the vertical pass.
+        _bvhCenter.x = (newPx - halfW - GROUP_POS_X) / RENDER_SF;
+        _bvhCenter.z = (halfH - newPy - GROUP_POS_Z) / RENDER_SF;
+        if (!bvhCenterYInitRef.current) {
+          // First tick after spawn/teleport: set centre from current feet position.
+          _bvhCenter.y = (localZRef.current - GROUP_POS_Y) / RENDER_SF + EXPORT_CYL_HALF_HEIGHT;
+          bvhCenterYInitRef.current = true;
+        }
+        // Sphere at cylinder centre provides correct horizontal wall push (push.y=0 for walls)
+        _bvhVelocity.set(
+          (vel.x + nudgeX) / RENDER_SF,
+          0, // vertical handled separately; don't let wall contacts corrupt Vz
+          -(vel.y + nudgeY) / RENDER_SF,
+        );
+        sys.resolveSphereCollision(_bvhCenter, EXPORT_CYL_RADIUS, _bvhVelocity);
+
+        // Convert back → game horizontal (clamp to arena bounds)
+        newPx = Math.max(playerRadius, Math.min(ARENA_WIDTH - playerRadius,
+          _bvhCenter.x * RENDER_SF + GROUP_POS_X + halfW));
+        newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius,
+          halfH - (_bvhCenter.z * RENDER_SF + GROUP_POS_Z)));
+        // Do NOT read _bvhVelocity.y here — vertical velocity is managed by the vertical pass.
+      } else {
+        for (const obj of objs) {
+          const resolved = resolveObjCollisionClient(newPx, newPy, localZRef.current, vel, obj, playerRadius);
+          newPx = resolved.x;
+          newPy = resolved.y;
+        }
+      }
+
+      localPositionRef.current = { x: newPx, y: newPy };
 
       // ── Z axis: jump + gravity ──
-      if (jumpLocalRef.current && localJumpCountRef.current < 2) {
-        const jumpVz = hasFuyaoBuffRef.current ? POWER_JUMP_VZ_CLIENT : JUMP_VZ_CLIENT;
+      if (jumpLocalRef.current && localJumpCountRef.current < maxJumpsRef.current) {
+        const hadDirectionalInput =
+          Math.abs(moveIntentDx) > 0.01 || Math.abs(moveIntentDy) > 0.01;
+        const isMultiJump = maxJumpsRef.current > 2;
+        let jumpVz: number;
+        if (hasFuyaoBuffRef.current && isMultiJump) {
+          // Combined 扶摇直上 + 鸟翔碧空: 24u peak, same timing as power jump
+          jumpVz = COMBINED_JUMP_VZ_CLIENT;
+          isPowerJumpCombinedRef.current = true;
+          isPowerJumpRef.current = false;
+        } else if (hasFuyaoBuffRef.current) {
+          jumpVz = POWER_JUMP_VZ_CLIENT;
+          isPowerJumpRef.current = true;
+          isPowerJumpCombinedRef.current = false;
+        } else if (localJumpCountRef.current === 0) {
+          jumpVz = isMultiJump ? JUMP_VZ_CLIENT * MULTI_JUMP_HEIGHT_MULT : JUMP_VZ_CLIENT;
+          isPowerJumpRef.current = false;
+          isPowerJumpCombinedRef.current = false;
+        } else {
+          // 鸟翔碧空: every jump is full 3× strength
+          jumpVz = isMultiJump ? JUMP_VZ_CLIENT * MULTI_JUMP_HEIGHT_MULT : DOUBLE_JUMP_VZ_CLIENT;
+          isPowerJumpRef.current = false;
+          isPowerJumpCombinedRef.current = false;
+        }
         hasFuyaoBuffRef.current   = false;
         localVzRef.current        = jumpVz;
         localJumpCountRef.current += 1;
         jumpLocalRef.current       = false;
+
+        // Direction lock: directional 2nd+ jump locks air steering (not for MULTI_JUMP)
+        if (hadDirectionalInput && localJumpCountRef.current >= 2 && !isMultiJump) {
+          airDirectionLockedRef.current = true;
+        } else {
+          airDirectionLockedRef.current = false;
+        }
+
+        if (!hadDirectionalInput) {
+          airNudgeRemainingRef.current = AIR_NUDGE_TOTAL_DISTANCE;
+          airNudgeTicksRemainingRef.current = 0;
+          airNudgeDirRef.current = null;
+        } else {
+          // Directional jump: no limiter.
+          airNudgeRemainingRef.current = 0;
+          airNudgeTicksRemainingRef.current = 0;
+          airNudgeDirRef.current = null;
+        }
       }
-      localVzRef.current -= GRAVITY_CLIENT;
-      localZRef.current   = Math.max(0, localZRef.current + localVzRef.current);
-      if (localZRef.current <= 0 && localVzRef.current < 0) {
-        localZRef.current         = 0;
-        localVzRef.current        = 0;
-        localJumpCountRef.current = 0;
+      const gravUp   = isPowerJumpCombinedRef.current ? COMBINED_GRAVITY_UP_CLIENT
+                     : isPowerJumpRef.current         ? POWER_GRAVITY_UP_CLIENT
+                     : GRAVITY_UP_CLIENT;
+      const gravDown = isPowerJumpCombinedRef.current ? COMBINED_GRAVITY_DOWN_CLIENT
+                     : isPowerJumpRef.current         ? POWER_GRAVITY_DOWN_CLIENT
+                     : GRAVITY_DOWN_CLIENT;
+      localVzRef.current -= (localVzRef.current >= 0 ? gravUp : gravDown);
+
+      // Ground height: BVH cylinder (collision-test) or AABB (other modes)
+      let clientGroundH: number;
+      if (useBVH) {
+        const sys = collisionSysRef.current!;
+        // ── Cylinder vertical pass ──
+        // Apply gravity to cylinder centre (feet + halfHeight).
+        _bvhCenter.y += localVzRef.current / RENDER_SF;
+
+        const groundExportY = sys.getSupportGroundY(_bvhCenter);
+        const feetExportY   = _bvhCenter.y - EXPORT_CYL_HALF_HEIGHT;
+        let bvhOnGround = false;
+
+        if (groundExportY !== null) {
+          const gap = feetExportY - groundExportY; // negative → below surface, positive → above
+          if (gap <= 0) {
+            // Feet at or below terrain surface → snap up, land
+            _bvhCenter.y    = groundExportY + EXPORT_CYL_HALF_HEIGHT;
+            localVzRef.current = 0;
+            bvhOnGround     = true;
+          } else if (gap <= BVH_STEP_UP_EXPORT && localVzRef.current <= 0) {
+            // Small gap while falling/standing → step-up snap (stairs / lips)
+            _bvhCenter.y    = groundExportY + EXPORT_CYL_HALF_HEIGHT;
+            localVzRef.current = 0;
+            bvhOnGround     = true;
+          }
+        }
+
+        // Fall recovery: if somehow far below terrain, teleport up
+        const floorY = groundExportY ?? feetExportY;
+        if (_bvhCenter.y - EXPORT_CYL_HALF_HEIGHT < floorY - 3500) {
+          _bvhCenter.y    = floorY + EXPORT_CYL_HALF_HEIGHT + 120;
+          localVzRef.current = 0;
+        }
+
+        collisionDebugRef.current = {
+          enabled: true,
+          center: { x: _bvhCenter.x, y: _bvhCenter.y, z: _bvhCenter.z },
+          supportY: groundExportY,
+        };
+
+        // Feet = cylinder bottom = exact terrain surface when grounded (no slope float)
+        const feetGameZ = (_bvhCenter.y - EXPORT_CYL_HALF_HEIGHT) * RENDER_SF + GROUP_POS_Y;
+        localZRef.current = feetGameZ;
+        clientGroundH = bvhOnGround
+          ? feetGameZ
+          : (groundExportY !== null ? groundExportY * RENDER_SF + GROUP_POS_Y : feetGameZ);
+      } else {
+        clientGroundH = getGroundHeightClient(localPositionRef.current.x, localPositionRef.current.y, localZRef.current, objs, playerRadius);
+        localZRef.current = Math.max(clientGroundH, localZRef.current + localVzRef.current);
+      }
+      if (localZRef.current <= clientGroundH) {
+        localZRef.current              = clientGroundH;
+        localVzRef.current             = 0;
+        localJumpCountRef.current      = 0;
+        isPowerJumpRef.current         = false;
+        isPowerJumpCombinedRef.current = false;
+        airDirectionLockedRef.current  = false;
+        airNudgeRemainingRef.current = 0;
+        airNudgeTicksRemainingRef.current = 0;
+        airNudgeDirRef.current = null;
       }
     };
-    const id = setInterval(tick, 33);
+    const id = setInterval(tick, CLIENT_TICK_MS);
     return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
-    const id = setInterval(sendMovement, 33);
+    const id = setInterval(sendMovement, 1000 / 30);
     return () => { clearInterval(id); movementAbortRef.current?.abort(); };
   }, [sendMovement]);
 
@@ -1061,241 +2467,470 @@ export default function BattleArena({
     return () => clearInterval(id);
   }, [gameId]);
 
-  /* ResizeObserver: keep canvas pixel size in sync */
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(entries => {
-      const { width, height } = entries[0].contentRect;
-      const w = Math.round(width), h = Math.round(height);
-      canvasSizeRef.current = { w, h };
-      const canvas = canvasRef.current;
-      if (canvas) { canvas.width = w; canvas.height = h; }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  /* ========================= RENDER LOOP ========================= */
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animId: number;
-
-    const loop = () => {
-      /* Resolove opponent position with interpolation */
-      const renderTime = performance.now() - RENDER_DELAY_MS;
-      const buf  = activeOpponentBuffer.current;
-      let opPos: Position | null = opponentRawRef.current;
-
-      if (buf.length >= 2) {
-        const last = buf[buf.length - 1];
-        const prev = buf[buf.length - 2];
-        if (renderTime <= buf[0].t) {
-          opPos = buf[0].pos;
-        } else if (renderTime >= last.t) {
-          const span = last.t - prev.t;
-          if (span > 0) {
-            const over = Math.min((renderTime - last.t) / span, 1);
-            opPos = {
-              x: Math.max(2, Math.min(98, last.pos.x + (last.pos.x - prev.pos.x) * over)),
-              y: Math.max(2, Math.min(98, last.pos.y + (last.pos.y - prev.pos.y) * over)),
-              z: Math.max(0, (last.pos.z ?? 0) + ((last.pos.z ?? 0) - (prev.pos.z ?? 0)) * over),
-            };
-          } else opPos = last.pos;
-        } else {
-          for (let i = 0; i < buf.length - 1; i++) {
-            if (buf[i].t <= renderTime && buf[i + 1].t >= renderTime) {
-              const lo = buf[i], hi = buf[i + 1];
-              const span = hi.t - lo.t;
-              const t = span > 0 ? (renderTime - lo.t) / span : 1;
-              opPos = {
-                x: lo.pos.x + (hi.pos.x - lo.pos.x) * t,
-                y: lo.pos.y + (hi.pos.y - lo.pos.y) * t,
-                z: (lo.pos.z ?? 0) + ((hi.pos.z ?? 0) - (lo.pos.z ?? 0)) * t,
-              };
-              break;
-            }
-          }
-        }
-      } else if (buf.length === 1) {
-        opPos = buf[0].pos;
-      }
-
-      const myPos = localPositionRef.current;
-      const { w, h } = canvasSizeRef.current;
-
-      if (!myPos || !opPos || w < 10 || h < 10) {
-        if (w >= 10 && h >= 10) {
-          ctx.fillStyle = '#020509';
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = '#444';
-          ctx.font = '14px monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText('Connecting…', w / 2, h / 2);
-        }
-        animId = requestAnimationFrame(loop);
-        return;
-      }
-
-      // ── Smooth render positions; large jumps trigger 1.5 s cosmetic dash animation ──
-      const frameNow = performance.now();
-      const frameDt  = lastFrameTimeRef.current === 0 ? 16 : Math.min(frameNow - lastFrameTimeRef.current, 50);
-      lastFrameTimeRef.current = frameNow;
-      const dtF = frameDt / 16.67; // normalised to 60 fps
-      const DASH_THRESH = 3.5;     // world units — smaller = walk blend, larger = dash anim
-      const SNAP_THRESH = 20;       // world units — instant-snap for initial position or server teleport
-
-      // --- local player render pos ---
-      {
-        const tx = myPos.x, ty = myPos.y, tz = localZRef.current;
-        const r  = localRenderPosRef.current;
-        const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
-        const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
-        if (dist2d > SNAP_THRESH) {
-          // Very large jump — snap instantly (initial position, server correction)
-          localRenderPosRef.current = { x: tx, y: ty, z: tz };
-          localDashAnimRef.current  = null;
-        } else if (!localDashAnimRef.current && dist2d > DASH_THRESH) {
-          // Moderate jump — start travel animation (no visible trail)
-          localDashAnimRef.current = { start: { ...r }, startTime: frameNow };
-        }
-        if (localDashAnimRef.current) {
-          const elapsed = frameNow - localDashAnimRef.current.startTime;
-          const t = Math.min(1, elapsed / DASH_ANIM_MS);
-          const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-          localRenderPosRef.current = {
-            x: localDashAnimRef.current.start.x + (tx - localDashAnimRef.current.start.x) * eased,
-            y: localDashAnimRef.current.start.y + (ty - localDashAnimRef.current.start.y) * eased,
-            z: localDashAnimRef.current.start.z + (tz - localDashAnimRef.current.start.z) * eased,
-          };
-          if (t >= 1) localDashAnimRef.current = null;
-        } else {
-          const k = Math.min(1, 0.3 * dtF);
-          localRenderPosRef.current = { x: r.x + ddx * k, y: r.y + ddy * k, z: r.z + ddz * k };
-        }
-        // Trails removed
-      }
-
-      // --- opponent render pos ---
-      {
-        const tx = opPos.x, ty = opPos.y, tz = opPos.z ?? 0;
-        const r  = oppRenderPosRef.current;
-        const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
-        const oppDist2d = Math.sqrt(ddx * ddx + ddy * ddy);
-        if (oppDist2d > SNAP_THRESH) {
-          oppRenderPosRef.current = { x: tx, y: ty, z: tz };
-          oppDashAnimRef.current  = null;
-        } else if (!oppDashAnimRef.current && oppDist2d > DASH_THRESH) {
-          oppDashAnimRef.current = { start: { ...r }, startTime: frameNow };
-        }
-        if (oppDashAnimRef.current) {
-          const elapsed = frameNow - oppDashAnimRef.current.startTime;
-          const t = Math.min(1, elapsed / DASH_ANIM_MS);
-          const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-          oppRenderPosRef.current = {
-            x: oppDashAnimRef.current.start.x + (tx - oppDashAnimRef.current.start.x) * eased,
-            y: oppDashAnimRef.current.start.y + (ty - oppDashAnimRef.current.start.y) * eased,
-            z: oppDashAnimRef.current.start.z + (tz - oppDashAnimRef.current.start.z) * eased,
-          };
-          if (t >= 1) oppDashAnimRef.current = null;
-        } else {
-          const k = Math.min(1, 0.3 * dtF);
-          oppRenderPosRef.current = { x: r.x + ddx * k, y: r.y + ddy * k, z: r.z + ddz * k };
-        }
-        // Trails removed
-      }
-
-      const myRP = localRenderPosRef.current;
-      const opRP = oppRenderPosRef.current;
-
-      // Camera follows smooth render pos (including jump Z)
-      const camDir = controlModeRef.current === 'traditional'
-        ? { x: Math.sin(camYawRef.current), y: Math.cos(camYawRef.current) }
-        : CAM_DIR;
-      const cam = buildCam(v3(myRP.x, myRP.y, myRP.z), camDir, w, h, camZoomRef.current, camPitchRef.current);
-
-      /* Draw scene */
-      renderBg(ctx, cam, w, h);
-      renderFloor(ctx, cam, w, h);
-
-      /* Range indicator circle */
-      const abilityList    = abilitiesRef.current;
-      const readyAbility   = abilityList.find(a => a.isReady && a.range);
-      const minRangeAbil   = abilityList.find(a => a.minRange);
-      if (readyAbility?.range)
-        renderRangeCircle(ctx, v3(myRP.x, myRP.y, 0), readyAbility.range, cam, w, h, 'rgba(80, 210, 100, 0.55)');
-      if (minRangeAbil?.minRange)
-        renderRangeCircle(ctx, v3(myRP.x, myRP.y, 0), minRangeAbil.minRange, cam, w, h, 'rgba(255, 80, 80, 0.45)');
-
-      /* Sort back-to-front */
-      const mxHp = maxHpRef.current;
-      const entities = [
-        { pos: v3(opRP.x, opRP.y, opRP.z), color: '#cc3333', glow: '#ff5555', hp: oppHpRef.current, isMe: false },
-        { pos: v3(myRP.x, myRP.y, myRP.z), color: '#1a66cc', glow: '#44aaff', hp: meHpRef.current,  isMe: true  },
-      ];
-      entities.sort((a, b) => {
-        const dA = dot3(sub3(a.pos, cam.pos), cam.fwd);
-        const dB = dot3(sub3(b.pos, cam.pos), cam.fwd);
-        return dB - dA;
-      });
-      for (const e of entities) {
-        renderCharacter(ctx, e.pos, cam, w, h, e.color, e.glow, Math.max(0, e.hp / mxHp), e.hp, e.isMe);
-        if (e.isMe) {
-          renderFacingArrow(ctx, e.pos, localFacingRef.current, cam, w, h, '#44aaff');
-        }
-      }
-
-      animId = requestAnimationFrame(loop);
-    };
-
-    animId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animId);
-  }, []); // stable — all live data accessed via refs
-
   /* ========================= HUD DATA ========================= */
-  const myHpPct  = Math.max(0, Math.min(100, ((me?.hp  ?? 0) / maxHp) * 100));
-  const oppHpPct = Math.max(0, Math.min(100, ((opponent?.hp ?? 0) / maxHp) * 100));
-  const isMoving = Object.values(wasdKeys).some(v => v);
+  const myMaxHp = me?.maxHp ?? maxHp;
+  const myShield = Math.max(0, me?.shield ?? 0);
+  const myBarSegments = computeHpShieldSegments(me?.hp ?? 0, myShield, myMaxHp);
+  const myHpPct = myBarSegments.hpPct;
+  const myShieldPct = myBarSegments.shieldPct;
+  const myFacingArrow = facingArrow(me.facing ?? meFacingRef.current);
+  const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
+  const moveSpeedBoostSum = meEffects
+    .filter((e: any) => e?.type === 'SPEED_BOOST')
+    .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
+  const moveSpeedSlowSum = meEffects
+    .filter((e: any) => e?.type === 'SLOW')
+    .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
+  const baseMoveSpeed = Number(me?.moveSpeed ?? 0.1666667);
+  const finalMoveSpeed = Math.max(0, baseMoveSpeed * Math.max(0, 1 + moveSpeedBoostSum - moveSpeedSlowSum));
+  const damageReductionEffect = meEffects.find((e: any) => e?.type === 'DAMAGE_REDUCTION');
+  const damageReductionPct = Math.max(0, Number(damageReductionEffect?.value ?? 0) * 100);
+  const dodgeChancePct = Math.max(
+    0,
+    Math.min(
+      100,
+      meEffects
+        .filter((e: any) => e?.type === 'DODGE_NEXT')
+        .reduce((sum: number, e: any) => sum + Number(e?.chance ?? 0), 0) * 100,
+    ),
+  );
 
-  // Facing direction arrow derived from current movement keys
-  const facingArrow = (() => {
-    const { w, a, s, d } = wasdKeys;
-    if (w && d) return '↗'; if (w && a) return '↖';
-    if (s && d) return '↘'; if (s && a) return '↙';
-    if (w) return '↑'; if (s) return '↓';
-    if (a) return '←'; if (d) return '→';
-    return '·';
-  })();
+  const cheatAbilities = useMemo(
+    () =>
+      Object.values(abilities)
+        .filter((c: any) => c && !c.isCommon && c.id && c.name)
+        .sort((a: any, b: any) => a.name.localeCompare(b.name)),
+    [abilities],
+  );
+
+  const testedAbilityIds = useMemo(
+    () =>
+      new Set([
+        'sanhuan_taoyue',
+        'yun_fei_yu_huang',
+        'hua_xue_biao',
+        'qiandie_turui',
+        'xinzheng',
+        'wu_jianyu',
+        'anchen_misan',
+        'xiao_zui_kuang',
+        'zhuiming_jian',
+        'fenglai_wushan',
+        'niao_xiang_bi_kong',
+        'nuwa_butian',
+        'kong_que_ling',
+        'fuguang_lueying',
+        'kuang_long_luan_wu',
+        'ji',
+        'jiru_feng',
+        'zhenshen_xingsi',
+        'sanliu_xia',
+        'baizu',
+        'fengxiu_diang',
+        'jianpo_xukong',
+        'mohe_wuliang',
+        'shengsi_jie',
+        'da_shizi_hou',
+        'chan_xiao',
+        'tiandi_wuji',
+      ]),
+    [],
+  );
+
+  const testingAbilityIds = useMemo(
+    () => new Set<string>([]),
+    [],
+  );
+
+  const testedCheatAbilities = cheatAbilities.filter((a: any) => testedAbilityIds.has(a.id));
+  const testingCheatAbilities = cheatAbilities.filter(
+    (a: any) => testingAbilityIds.has(a.id) || !testedAbilityIds.has(a.id),
+  );
+  const reworkCheatAbilities: any[] = [];
+
+  const renderCheatIcon = (ability: any) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      key={ability.id}
+      src={`/game/icons/Skills/${ability.name}.png`}
+      alt={ability.name}
+      title={`${ability.name}${ability.description ? '\n' + ability.description : ''}`}
+      style={{
+        width: 32,
+        height: 32,
+        objectFit: 'contain',
+        borderRadius: 4,
+        border: '1px solid #ff6b00',
+        cursor: addingAbility === ability.id ? 'wait' : 'pointer',
+        opacity: addingAbility === ability.id ? 0.4 : 1,
+        background: 'rgba(20,5,5,0.8)',
+      }}
+      onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
+      onClick={async () => {
+        if (addingAbility) return;
+        setAddingAbility(ability.id);
+        try {
+          const res = await fetch('/api/game/cheat/add-ability', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ gameId, abilityId: ability.id }),
+          });
+          if (!res.ok) {
+            const err = await res.json();
+            console.error('[CheatWindow] add-ability failed:', err);
+          }
+        } catch (e) {
+          console.error('[CheatWindow] error:', e);
+        } finally {
+          setAddingAbility(null);
+        }
+      }}
+    />
+  );
+
+  const runCheatAction = useCallback(
+    async (actionId: string, url: string, successText: string, body?: Record<string, any>) => {
+      if (runningCheatAction) return false;
+      setRunningCheatAction(actionId);
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ gameId, ...(body ?? {}) }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          toastError(err.error ?? '操作失败');
+          return false;
+        }
+        toastSuccess(successText);
+        return true;
+      } catch {
+        toastError('网络错误');
+        return false;
+      } finally {
+        setRunningCheatAction(null);
+      }
+    },
+    [gameId, runningCheatAction],
+  );
+
+  const reorderDraftAbility = useCallback(
+    async (instanceId: string, toIndex: number) => {
+      const res = await fetch('/api/game/cheat/reorder-ability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameId, instanceId, toIndex }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toastError(err.error ?? '拖拽换位失败');
+        return false;
+      }
+      return true;
+    },
+    [gameId],
+  );
+
+  const discardDraftAbility = useCallback(
+    async (instanceId: string) => {
+      const res = await fetch('/api/game/cheat/discard-ability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameId, instanceId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toastError(err.error ?? '弃置失败');
+        return false;
+      }
+      toastSuccess('技能已弃置');
+      return true;
+    },
+    [gameId],
+  );
+
+  const handleDraftDragStart = (e: React.DragEvent, instanceId: string, slotIndex: number) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', instanceId);
+    dragJustEndedRef.current = false;
+    setDraggingDraftInstanceId(instanceId);
+    setDragHoverIndex(slotIndex);
+    setDiscardZoneHover(false);
+  };
+
+  const handleDraftDragEnd = () => {
+    setDraggingDraftInstanceId(null);
+    setDragHoverIndex(null);
+    setDiscardZoneHover(false);
+    dragJustEndedRef.current = true;
+    window.setTimeout(() => {
+      dragJustEndedRef.current = false;
+    }, 120);
+  };
+
+  const handleDraftSlotDrop = async (e: React.DragEvent, slotIndex: number) => {
+    e.preventDefault();
+    const instanceId = e.dataTransfer.getData('text/plain') || draggingDraftInstanceId;
+    if (!instanceId) return;
+    await reorderDraftAbility(instanceId, slotIndex);
+    setDraggingDraftInstanceId(null);
+    setDragHoverIndex(null);
+    setDiscardZoneHover(false);
+  };
+
+  const handleDiscardDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const instanceId = e.dataTransfer.getData('text/plain') || draggingDraftInstanceId;
+    if (!instanceId) return;
+    await discardDraftAbility(instanceId);
+    setDraggingDraftInstanceId(null);
+    setDragHoverIndex(null);
+    setDiscardZoneHover(false);
+  };
+
+  // Mouse move handler for debug cursor tracking
+  const handleDebugMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!showDebugGrid) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setDebugCursor({
+      x: ((e.clientX - rect.left) / rect.width)  * 100,
+      y: ((e.clientY - rect.top)  / rect.height) * 100,
+    });
+  };
 
   return (
-    <div className={styles.container}>
+    <div
+      className={styles.container}
+      onMouseMove={handleDebugMouseMove}
+      onMouseLeave={() => showDebugGrid && setDebugCursor(null)}
+    >
+
+      {/* ===== MODE INDICATOR ===== */}
+      <div style={{
+        position: 'absolute', top: 10, left: 10, zIndex: 500,
+        display: 'flex', alignItems: 'center', gap: 6,
+        background: 'rgba(12,18,16,0.78)',
+        border: mode === 'arena' ? '1px solid rgba(255,60,60,0.70)' : '1px solid rgba(80,180,120,0.55)',
+        borderRadius: 6,
+        padding: '4px 10px',
+        pointerEvents: 'none',
+        backdropFilter: 'blur(2px)',
+      }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: '50%',
+          background: mode === 'arena' ? '#ff4444' : '#44cc88',
+          boxShadow: mode === 'arena' ? '0 0 6px #ff2222' : '0 0 6px #22aa66',
+          display: 'inline-block', flexShrink: 0,
+        }} />
+        <span style={{
+          fontSize: 12, fontWeight: 700, letterSpacing: '0.5px',
+          color: mode === 'arena' ? '#ffaaaa' : '#aaeec8',
+          fontFamily: '"Microsoft YaHei", sans-serif',
+        }}>
+          {mode === 'arena' ? '竞技场' : '吃鸡'}
+        </span>
+      </div>
+      <div style={{
+        position: 'absolute',
+        top: 42,
+        left: 10,
+        zIndex: 500,
+        background: 'rgba(10, 16, 14, 0.72)',
+        border: '1px solid rgba(120, 160, 145, 0.35)',
+        borderRadius: 6,
+        padding: '4px 8px',
+        fontSize: 11,
+        color: '#c7e6da',
+        letterSpacing: '0.2px',
+        fontFamily: '"Microsoft YaHei", sans-serif',
+        pointerEvents: 'none',
+        backdropFilter: 'blur(2px)',
+      }}>
+        {`移速 ${finalMoveSpeed.toFixed(3)} | 减伤 ${damageReductionPct.toFixed(1)}% | 闪避 ${dodgeChancePct.toFixed(1)}%${autoForward ? ' | 自动前行' : ''}`}
+      </div>
 
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
-      <div ref={wrapRef} className={styles.canvasWrap}>
-        <canvas ref={canvasRef} className={styles.canvas} />
+      {/* ===== R3F 3D CANVAS ===== */}
+      <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+        <Canvas
+          camera={{ fov: 72, near: 0.5, far: 2000 }}
+          style={{ background: mode === 'collision-test' ? '#c8b888' : '#62a054' }}
+          gl={{ antialias: true }}
+        >
+          <ArenaScene
+            me={me}
+            opponents={visibleOpponentsList}
+            selectedTargetId={selectedTargetId}
+            onSelectTarget={(userId) => {
+              const clicked = opponentsList.find((o) => o.userId === userId);
+              if (clicked && blocksTargetingClient(clicked.buffs)) {
+                toastError('目标不可选中');
+                return;
+              }
+              setPendingGroundCastAbilityId(null);
+              setGroundCastPreview(null);
+              setSelectedTargetId(userId);
+              selectedTargetRef.current = userId;
+              setSelectedSelf(false);
+              selectedSelfRef.current = false;
+            }}
+            pickups={pickups}
+            meChanneling={meChannelingRef.current}
+            channelingOpponentId={visibleOpponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014))?.userId ?? null}
+            selectedSelf={selectedSelf}
+            localRenderPosRef={localRenderPosRef}
+            camYawRef={camYawRef}
+            camPitchRef={camPitchRef}
+            camZoomRef={camZoomRef}
+            meFacingRef={localFacingRef as React.MutableRefObject<{ x: number; y: number }>}
+            maxHp={maxHp}
+            meScreenBoundsRef={meScreenBoundsRef}
+            oppScreenBoundsRef={oppScreenBoundsRef}
+            mode={mode}
+            safeZone={safeZone}
+            groundZones={groundZones}
+            groundCastPreview={
+              pendingGroundCastAbilityId && groundCastPreview
+                ? { x: groundCastPreview.x, y: groundCastPreview.y, radius: 6, label: '百足' }
+                : null
+            }
+            onGroundPointerMove={(x, y) => {
+              if (!pendingGroundCastAbilityRef.current) return;
+              setGroundCastPreview({ x, y });
+            }}
+            onGroundPointerDown={(x, y) => {
+              if (!pendingGroundCastAbilityRef.current) return;
+              castGroundAbilityRef.current(x, y);
+            }}
+            showCollisionShells={showCollisionShells}
+            showCollisionBoxes={showCollisionBoxes}
+            collisionReady={collisionReady}
+            collisionDebugRef={collisionDebugRef}
+            onCollisionSystemReady={onCollisionSystemReady}
+          />
+        </Canvas>
+      </div>
+      {mode === 'collision-test' && !collisionReady && (
+        <div style={{
+          position: 'absolute',
+          top: 14,
+          right: 14,
+          zIndex: 520,
+          background: 'rgba(18, 18, 18, 0.82)',
+          border: '1px solid rgba(255, 210, 74, 0.42)',
+          color: '#ffd24a',
+          fontSize: 12,
+          padding: '6px 10px',
+          borderRadius: 6,
+          pointerEvents: 'none',
+          fontFamily: 'monospace',
+        }}>
+          loading real collision...
+        </div>
+      )}
+
+      {/* ===== JUMP STATS + HEIGHT DISPLAY ===== */}
+      <div style={{
+        position: 'absolute',
+        left: '30%',
+        top: '67%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 3,
+        pointerEvents: 'none',
+        zIndex: 490,
+      }}>
+        {/* Jump timing record */}
+        <div style={{
+          background: 'rgba(0,0,0,0.65)',
+          color: 'rgba(255,220,100,0.85)',
+          fontFamily: 'monospace',
+          fontSize: 11,
+          padding: '3px 10px',
+          borderRadius: 5,
+          border: '1px solid rgba(255,255,255,0.12)',
+          whiteSpace: 'nowrap',
+        }}>
+          {jumpRecord.riseMs !== null
+            ? `↑ ${(jumpRecord.riseMs / 1000).toFixed(2)}s  ↓ ${(jumpRecord.fallMs! / 1000).toFixed(2)}s  ⟳ ${(jumpRecord.totalMs! / 1000).toFixed(2)}s  ⬆ ${jumpRecord.peakZ!.toFixed(1)}u`
+            : '— — —'}
+        </div>
+        {/* Current height */}
+        <div style={{
+          background: 'rgba(0,0,0,0.65)',
+          color: myZ > 0.01 ? '#44ffaa' : 'rgba(255,255,255,0.5)',
+          fontFamily: 'monospace',
+          fontSize: 13,
+          fontWeight: 700,
+          padding: '3px 10px',
+          borderRadius: 5,
+          border: '1px solid rgba(255,255,255,0.15)',
+          letterSpacing: '0.05em',
+        }}>
+          {myZ.toFixed(1)}
+        </div>
       </div>
 
       {/* ===== TOP-LEFT: My HP panel ===== */}
-      <div className={styles.playerPanel}>
+      <div
+        className={styles.playerPanel}
+        style={{ pointerEvents: 'all', cursor: 'pointer' }}
+        onClick={() => {
+          const next = !selectedSelfRef.current;
+          selectedSelfRef.current = next;
+          setSelectedSelf(next);
+          if (next) {
+            setSelectedTargetId(null);
+            selectedTargetRef.current = null;
+          }
+        }}
+      >
         <div className={styles.playerLabelRow}>
-          <span className={styles.playerLabel}>YOU</span>
-          <span className={styles.facingDir}>{facingArrow}</span>
+          <span className={styles.playerLabel}>玩家</span>
         </div>
-        <div className={styles.myHpRow}>
-          <div className={styles.myHpTrack}>
+        <div className={styles.myHpTrack}>
+          {myShieldPct > 0 && (
             <div
-              className={styles.myHpFill}
+              className={styles.myShieldFill}
               style={{
-                width:      `${myHpPct}%`,
-                background: myHpPct > 50 ? '#44cc55' : myHpPct > 25 ? '#ffcc22' : '#ee3333',
+                left: `${myHpPct}%`,
+                width: `${myShieldPct}%`,
               }}
             />
-          </div>
-          <span className={styles.myHpNum}>{me?.hp ?? 0}</span>
+          )}
+          <div
+            className={styles.myHpFill}
+            style={{
+              width:      `${myHpPct}%`,
+              background: myHpPct > 50 ? '#44cc55' : myHpPct > 25 ? '#ffcc22' : '#ee3333',
+            }}
+          />
+          {(me?.hp ?? 0) > 0 && (
+            <span
+              className={styles.hpSegmentNum}
+              style={{ left: `${Math.max(6, Math.min(94, myHpPct / 2))}%` }}
+            >
+              {Math.round(me?.hp ?? 0)}
+            </span>
+          )}
+          {myShield > 0 && (
+            <span
+              className={styles.shieldSegmentNum}
+              style={{ left: `${Math.max(6, Math.min(94, myHpPct + myShieldPct / 2))}%` }}
+            >
+              {Math.round(myShield)}
+            </span>
+          )}
+        </div>
+        <div className={styles.myManaTrack}>
+          <div className={styles.myManaFill} />
         </div>
       </div>
 
@@ -1333,7 +2968,7 @@ export default function BattleArena({
           </div>
           <div className={styles.controlHints}>
             {controlMode === 'traditional' ? (
-              <><span>W/S</span> 前进/后退 <span>A/D</span> 转向<br/><span>右键拖拽</span> 转向+转镜头 <span>左键拖拽</span> 转镜头<br/><span>滚轮</span> 镜头缩放</>
+              <><span>W/S</span> 前进/后退 <span>A/D</span> 转向 <span>G</span> 自动前行（按S停止）<br/><span>右键拖拽</span> 转向+转镜头 <span>左键拖拽</span> 转镜头<br/><span>S+Space</span> 后撤 <span>滚轮</span> 镜头缩放</>
             ) : (
               <><span>WASD</span> 绝对方向移动<br/><span>镜头固定</span> 不随角色旋转</>
             )}
@@ -1341,95 +2976,706 @@ export default function BattleArena({
         </div>
       )}
 
-      {/* ===== TOP-CENTER: Enemy boss bar + buffs below ===== */}
+      {/* ===== TOP-CENTER: Target info panel — health → buffs → abilities (self or enemy) ===== */}
       <div className={styles.enemyBossGroup}>
-        <div className={styles.enemyBossBar}>
-          <div className={styles.enemyName}>ENEMY</div>
-          <div className={styles.enemyHpRow}>
-            <div className={styles.enemyHpTrack}>
-              <div
-                className={styles.enemyHpFill}
-                style={{
-                  width:      `${oppHpPct}%`,
-                  background: oppHpPct > 50
-                    ? 'linear-gradient(90deg, #991111, #cc2222)'
-                    : oppHpPct > 25
-                    ? 'linear-gradient(90deg, #aa7700, #ddaa00)'
-                    : 'linear-gradient(90deg, #771111, #aa1111)',
-                }}
-              />
-              {[25, 50, 75].map(t => (
-                <div key={t} className={styles.enemyHpTick} style={{ left: `${t}%` }} />
-              ))}
-            </div>
-            <span className={styles.enemyHpNum}>{opponent?.hp ?? 0}</span>
-          </div>
-        </div>
-        {opponent?.buffs && opponent.buffs.length > 0 && (
-          <div className={styles.enemyBuffRow}>
-            <StatusBar buffs={opponent.buffs} />
-          </div>
-        )}
+        {(selectedTargetId || selectedSelf) && (() => {
+          const selectedTarget = selectedTargetId
+            ? opponentsList.find((o) => o.userId === selectedTargetId) ?? null
+            : null;
+          const isSelf       = selectedSelf && !selectedTargetId;
+          const targetHp     = isSelf ? (me?.hp ?? 0) : (selectedTarget?.hp ?? 0);
+          const targetShield = Math.max(0, isSelf ? (me?.shield ?? 0) : (selectedTarget?.shield ?? 0));
+          const targetMaxHp  = isSelf
+            ? (me?.maxHp ?? maxHp)
+            : (selectedTarget?.maxHp ?? maxHp);
+          const targetBarSegments = computeHpShieldSegments(targetHp, targetShield, targetMaxHp);
+          const targetHpPct = targetBarSegments.hpPct;
+          const targetShieldPct = targetBarSegments.shieldPct;
+          const targetName   = isSelf ? '玩家' : '恐怖花萝';
+          const targetBuffs  = isSelf ? (me?.buffs ?? []) : (selectedTarget?.buffs ?? []);
+          const targetHand   = isSelf ? me.hand : (selectedTarget?.hand ?? []);
+          const hpGradient   = 'linear-gradient(90deg, #991111, #cc2222)';
+          const barBg        = isSelf
+            ? { background: 'rgba(210, 215, 220, 0.18)', border: '1px solid rgba(200, 210, 220, 0.35)' }
+            : {};
+          const draftedAbilities = targetHand.filter((ability: any) => {
+            const abilityId = ability.abilityId || ability.id;
+            return abilityId && !COMMON_ABILITY_ORDER.includes(abilityId as any);
+          });
+          return (
+            <>
+              <div className={styles.enemyBossBar} style={barBg}>
+                <div className={styles.enemyName}>{targetName}</div>
+                <div className={styles.enemyHpTrack}>
+                  {targetShieldPct > 0 && (
+                    <div
+                      className={styles.enemyShieldFill}
+                      style={{
+                        left: `${targetHpPct}%`,
+                        width: `${targetShieldPct}%`,
+                      }}
+                    />
+                  )}
+                  <div
+                    className={styles.enemyHpFill}
+                    style={{ width: `${targetHpPct}%`, background: hpGradient }}
+                  />
+                  {targetHp > 0 && (
+                    <span
+                      className={styles.hpSegmentNum}
+                      style={{ left: `${Math.max(6, Math.min(94, targetHpPct / 2))}%` }}
+                    >
+                      {Math.round(targetHp)}
+                    </span>
+                  )}
+                  {targetShield > 0 && (
+                    <span
+                      className={styles.shieldSegmentNum}
+                      style={{ left: `${Math.max(6, Math.min(94, targetHpPct + targetShieldPct / 2))}%` }}
+                    >
+                      {Math.round(targetShield)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* Buffs row — fixed-height wrapper so ability row never shifts up */}
+              <div style={{ minHeight: 72, width: '100%' }}>
+                <StatusBar buffs={targetBuffs} debugLabel={isSelf ? 'me-target' : 'opp'} />
+              </div>
+              {/* Drafted abilities */}
+              <div className={styles.enemyAbilityRow}>
+                {draftedAbilities.map((ability: any) => {
+                  const abilityId = ability.abilityId || ability.id;
+                  const cardData = abilities[abilityId];
+                  const name = cardData?.name || abilityId || '?';
+                  return (
+                    <div key={ability.instanceId || abilityId} className={styles.enemyAbilityItem}>
+                      <div className={styles.enemyAbilitySlot} title={name}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/game/icons/Skills/${name}.png`}
+                          alt={name}
+                          className={styles.enemyAbilityIcon}
+                          draggable={false}
+                        />
+                      </div>
+                      <span className={styles.enemyAbilityName}>{name.slice(0, 2)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          );
+        })()}
       </div>
 
-      {/* ===== TOP-RIGHT: RTT badge ===== */}
+      {/* ===== TOP-RIGHT: RTT badge + debug grid toggle ===== */}
       <div className={styles.rttBadge}>{rtt !== null ? `${rtt}ms` : '—'}</div>
+
+      {/* ===== WORLD POSITION DISPLAY (collision-test) ===== */}
+      {mode === 'collision-test' && (
+        <PositionDisplay posRef={localRenderPosRef} />
+      )}
+
+      {/* ===== COLLISION TOGGLE BUTTONS (collision-test) ===== */}
+      {mode === 'collision-test' && (
+        <div style={{ position: 'absolute', top: 14, right: 120, zIndex: 500, display: 'flex', gap: 4 }}>
+          <button
+            onClick={() => setShowCollisionShells(v => !v)}
+            title="Toggle real shell mesh (green) and live BVH probe markers (red/yellow)"
+            style={{
+              background: showCollisionShells ? 'rgba(63,213,109,0.25)' : 'rgba(0,0,0,0.55)',
+              border: `1px solid ${showCollisionShells ? '#3fd56d' : 'rgba(255,255,255,0.2)'}`,
+              color: showCollisionShells ? '#3fd56d' : 'rgba(255,255,255,0.55)',
+              borderRadius: 4, padding: '3px 8px', fontSize: 11,
+              cursor: 'pointer', fontFamily: 'monospace',
+            }}
+          >
+            Shell+Probe
+          </button>
+          <button
+            onClick={() => setShowCollisionBoxes(v => !v)}
+            title="Toggle real part collision boxes (orange)"
+            style={{
+              background: showCollisionBoxes ? 'rgba(255,140,58,0.25)' : 'rgba(0,0,0,0.55)',
+              border: `1px solid ${showCollisionBoxes ? '#ff8c3a' : 'rgba(255,255,255,0.2)'}`,
+              color: showCollisionBoxes ? '#ff8c3a' : 'rgba(255,255,255,0.55)',
+              borderRadius: 4, padding: '3px 8px', fontSize: 11,
+              cursor: 'pointer', fontFamily: 'monospace',
+            }}
+          >
+            Part Boxes
+          </button>
+        </div>
+      )}
+
+      <button
+        onClick={() => setShowDebugGrid(v => !v)}
+        title="Toggle XY% grid"
+        style={{
+          position: 'absolute', top: 14, right: 60, zIndex: 500,
+          background: showDebugGrid ? 'rgba(255,220,0,0.18)' : 'rgba(0,0,0,0.55)',
+          border: `1px solid ${showDebugGrid ? '#ffdd00' : 'rgba(255,255,255,0.2)'}`,
+          color: showDebugGrid ? '#ffdd00' : 'rgba(255,255,255,0.55)',
+          borderRadius: 4, padding: '3px 8px', fontSize: 11,
+          cursor: 'pointer', fontFamily: 'monospace', letterSpacing: 1,
+        }}
+      >
+        XY%
+      </button>
+
+      {/* ===== DEBUG POSITION GRID ===== */}
+      {showDebugGrid && (
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 490 }}>
+          {/* Grid lines every 10% */}
+          {[10, 20, 30, 40, 50, 60, 70, 80, 90].map(p => (
+            <React.Fragment key={p}>
+              {/* horizontal */}
+              <div style={{ position: 'absolute', left: 0, right: 0, top: `${p}%`, height: 1,
+                background: p === 50 ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)' }} />
+              {/* vertical */}
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${p}%`, width: 1,
+                background: p === 50 ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)' }} />
+              {/* Y label on left edge */}
+              <div style={{
+                position: 'absolute', left: 3, top: `${p}%`,
+                transform: 'translateY(-50%)',
+                background: 'rgba(0,0,0,0.75)', color: '#ffdd00',
+                fontSize: 10, fontFamily: 'monospace', padding: '1px 4px', borderRadius: 2,
+              }}>Y{p}</div>
+              {/* X label on top edge */}
+              <div style={{
+                position: 'absolute', top: 3, left: `${p}%`,
+                transform: 'translateX(-50%)',
+                background: 'rgba(0,0,0,0.75)', color: '#ffdd00',
+                fontSize: 10, fontFamily: 'monospace', padding: '1px 4px', borderRadius: 2,
+              }}>X{p}</div>
+            </React.Fragment>
+          ))}
+
+          {/* Cursor coordinates readout */}
+          {debugCursor && (
+            <div style={{
+              position: 'absolute',
+              left: `${Math.min(debugCursor.x, 80)}%`,
+              top:  `${Math.min(debugCursor.y, 90)}%`,
+              transform: 'translate(8px, -50%)',
+              background: 'rgba(0,0,0,0.88)', color: '#ffdd00',
+              fontFamily: 'monospace', fontSize: 12, fontWeight: 700,
+              padding: '3px 8px', borderRadius: 4,
+              border: '1px solid rgba(255,221,0,0.6)',
+              pointerEvents: 'none',
+              zIndex: 495,
+            }}>
+              X:{debugCursor.x.toFixed(1)}% Y:{debugCursor.y.toFixed(1)}%
+            </div>
+          )}
+
+          {/* Live canvas bounds markers */}
+          {(() => {
+            const { me, opp, cw, ch } = debugBounds;
+            if (!cw || !ch) return null;
+            const markers: Array<{ x: number; y: number; color: string; label: string }> = [];
+            if (me) {
+              const x = (me.cx / cw) * 100;
+              const y = (me.hpBarY / ch) * 100;
+              markers.push({ x, y, color: '#44aaff', label: `ME hp-bar\nX:${x.toFixed(1)}% Y:${y.toFixed(1)}%` });
+            }
+            if (opp) {
+              const x = (opp.cx / cw) * 100;
+              const y = (opp.topY / ch) * 100;
+              markers.push({ x, y, color: '#ff5555', label: `OPP head\nX:${x.toFixed(1)}% Y:${y.toFixed(1)}%` });
+            }
+            return markers.map((m, i) => (
+              <div key={i} style={{ position: 'absolute', left: `${m.x}%`, top: `${m.y}%`,
+                transform: 'translate(-50%,-50%)', zIndex: 496 }}>
+                {/* crosshair dot */}
+                <div style={{ width: 10, height: 10, borderRadius: '50%',
+                  background: m.color, border: '2px solid #fff',
+                  boxShadow: '0 0 8px rgba(0,0,0,0.9)' }} />
+                {/* horizontal tick */}
+                <div style={{ position: 'absolute', top: 4, left: -18, width: 14, height: 2, background: m.color }} />
+                <div style={{ position: 'absolute', top: 4, left: 12, width: 14, height: 2, background: m.color }} />
+                {/* label */}
+                <div style={{
+                  position: 'absolute', top: 14, left: '50%',
+                  transform: 'translateX(-50%)',
+                  background: 'rgba(0,0,0,0.88)', color: m.color,
+                  fontSize: 10, fontFamily: 'monospace', padding: '2px 6px',
+                  borderRadius: 3, border: `1px solid ${m.color}`,
+                  whiteSpace: 'pre', textAlign: 'center',
+                }}>
+                  {m.label}
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
 
       {/* ===== CENTER: Distance floating label ===== */}
       <div className={styles.distIndicator}>
-        <span className={styles.distVal}>{distance.toFixed(1)}</span>
-        <span className={styles.distUnit}>units</span>
+        <span className={styles.distVal}>
+          {selectedSelf ? '0.0尺' : selectedTargetId ? `${distance.toFixed(1)}尺` : '没有目标'}
+        </span>
       </div>
+
+      {/* ===== PICKUP: "拾取 [F]" prompts — draggable, always visible when near books ===== */}
+      {nearbyPickupIds.length > 0 && (() => {
+        const promptPos = uiPositions['pickup-prompt'] ?? { left: 64, top: 60 };
+        return (
+          <div
+            style={{
+              position: 'absolute',
+              left: promptPos.left,
+              top: promptPos.top,
+              display: 'flex', flexDirection: 'column', gap: 4,
+              pointerEvents: 'auto',
+              zIndex: 650,
+              cursor: 'move',
+            }}
+            data-ui-drag="true"
+            onMouseDown={(e) => startUIDrag('pickup-prompt', { left: 64, top: 60 }, e)}
+          >
+            {nearbyPickupIds.map((id) => (
+              <div key={id} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                background: 'rgba(26,24,20,0.84)',
+                border: '1px solid rgba(190,170,110,0.50)',
+                borderRadius: 22,
+                padding: '5px 16px 5px 12px',
+                color: '#e5d9af',
+                fontSize: 13,
+                fontFamily: '"Microsoft YaHei", sans-serif',
+                letterSpacing: '0.05em',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.60)',
+                userSelect: 'none',
+              }}>
+                拾取【<span style={{ color: '#ffe060', fontWeight: 700, fontFamily: 'monospace', fontSize: 14 }}>F</span>】
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* ===== PICKUP: Channel progress bar ===== */}
+      {channelPickupId && (
+        <div style={{
+          position: 'absolute', bottom: '38%', left: '50%',
+          transform: 'translateX(-50%)',
+          width: 220,
+          background: 'rgba(0,20,10,0.9)',
+          border: '1px solid #00ff80',
+          borderRadius: 8,
+          padding: '10px 16px',
+          zIndex: 600,
+          textAlign: 'center',
+        }}>
+          <div style={{ color: '#aaffcc', fontSize: 13, marginBottom: 6, fontFamily: '"Microsoft YaHei", sans-serif' }}>正在研读秘籍…</div>
+          <div style={{ background: 'rgba(0,80,40,0.5)', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', borderRadius: 4,
+              background: 'linear-gradient(90deg, #00cc55, #00ff88)',
+              width: `${channelProgress * 100}%`,
+              transition: 'width 0.05s linear',
+              boxShadow: '0 0 8px rgba(0,255,100,0.7)',
+            }} />
+          </div>
+        </div>
+      )}
+
+      {/* ===== PICKUP: Ability panels — draggable, stacked with no gap ===== */}
+      {pickupModals.length > 0 && (() => {
+        // Layout constants
+        const SLOT = 40, ITEM_GAP = 3, COLS = 6;
+        const BODY_PAD = 8; // px padding each side of item area
+        const bodyW   = COLS * SLOT + (COLS - 1) * ITEM_GAP + BODY_PAD * 2;
+        const TITLE_H = 28;
+        const BODY_H  = BODY_PAD * 2 + SLOT; // 8+40+8 = 56
+        const PANEL_H = TITLE_H + BODY_H + 2; // +2 borders
+        const panelBase = uiPositions['pickup-panel'] ?? { left: 200, top: 150 };
+
+        return pickupModals.slice(0, 5).map((modal, idx) => {
+          return (
+            <div key={modal.pickupId} style={{
+              position: 'absolute',
+              left: panelBase.left,
+              top: panelBase.top + idx * PANEL_H,
+              background: 'rgba(34,44,42,0.97)',
+              border: '1px solid rgba(90,130,110,0.60)',
+              borderRadius: idx === 0 ? 4 : 0,
+              borderTop: idx === 0 ? undefined : 'none',
+              zIndex: 700 + idx,
+              width: bodyW,
+              boxShadow: idx === pickupModals.length - 1 ? '0 4px 20px rgba(0,0,0,0.80)' : 'none',
+              fontFamily: '"Microsoft YaHei", sans-serif',
+              userSelect: 'none',
+            }}>
+              {/* ── Title bar — drag handle ── */}
+              <div
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '0 8px',
+                  background: 'rgba(55,75,68,0.90)',
+                  borderBottom: '1px solid rgba(90,130,110,0.40)',
+                  borderRadius: idx === 0 ? '3px 3px 0 0' : 0,
+                  height: TITLE_H,
+                  cursor: 'move',
+                }}
+                data-ui-drag="true"
+                onMouseDown={(e) => startUIDrag('pickup-panel', { left: 200, top: 150 }, e)}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#cde5d8', fontSize: 13, fontWeight: 600 }}>
+                  <span style={{ fontSize: 14, lineHeight: 1 }}>目</span>
+                  技能 (1)
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {/* Navigator: fat cursor arrow in circle, rotated to point at book */}
+                  {(() => {
+                    const pu2 = pickupsRef.current.find(p => p.id === modal.pickupId);
+                    const pp  = localPositionRef.current;
+                    let deg2  = 0;
+                    let dist2 = '';
+                    if (pu2 && pp) {
+                      const ddx = pu2.position.x - pp.x;
+                      const ddy = pu2.position.y - pp.y;
+                      const d   = Math.sqrt(ddx * ddx + ddy * ddy);
+                      dist2 = d < 1 ? '<1' : `${Math.round(d)}`;
+                      // 0° = right (+X). SVG arrow default points up (−90°), so subtract 90
+                      deg2 = ((Math.atan2(ddy, ddx) * 180 / Math.PI) - 90 + 360) % 360;
+                    }
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <svg width="20" height="20" viewBox="0 0 20 20" style={{ flexShrink: 0 }}>
+                          {/* Circle */}
+                          <circle cx="10" cy="10" r="9" fill="none" stroke="#7ab898" strokeWidth="1.5" />
+                          {/* Fat cursor arrow, rotated */}
+                          <g transform={`rotate(${deg2}, 10, 10)`}>
+                            <polygon
+                              points="10,3 13.5,12 10,10.5 6.5,12"
+                              fill="#a8dfbf"
+                              stroke="rgba(0,0,0,0.5)"
+                              strokeWidth="0.6"
+                              strokeLinejoin="round"
+                            />
+                          </g>
+                        </svg>
+                        {dist2 && <span style={{ fontSize: 10, color: '#7ab898', minWidth: 14 }}>{dist2}</span>}
+                      </div>
+                    );
+                  })()}
+                  {/* Minimize button */}
+                  <button
+                    onClick={() => setMinimizedModals(prev => {
+                      const next = new Set(prev);
+                      if (next.has(modal.pickupId)) next.delete(modal.pickupId); else next.add(modal.pickupId);
+                      return next;
+                    })}
+                    style={{ background: 'none', border: 'none', color: '#aaccbb', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px' }}
+                  >{minimizedModals.has(modal.pickupId) ? '+' : '−'}</button>
+                  {/* Close button */}
+                  <button
+                    onClick={() => setPickupModals(prev => prev.filter(m => m.pickupId !== modal.pickupId))}
+                    style={{ background: 'none', border: 'none', color: '#aaccbb', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px' }}
+                  >×</button>
+                </div>
+              </div>
+
+              {/* ── Items: hidden when minimized ── */}
+              {!minimizedModals.has(modal.pickupId) && (
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: ITEM_GAP,
+                  padding: BODY_PAD,
+                  background: 'rgba(26,36,34,0.95)',
+                  borderRadius: '0 0 3px 3px',
+                }}>
+                <div
+                  style={{
+                    position: 'relative', width: SLOT, height: SLOT,
+                    borderRadius: 4, overflow: 'hidden', cursor: 'pointer',
+                    border: '1px solid rgba(80,200,120,0.55)',
+                    boxShadow: '0 0 6px rgba(0,200,80,0.25)',
+                    flexShrink: 0,
+                  }}
+                  onClick={() => claimPickup(modal.pickupId)}
+                  title={modal.name}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/game/icons/Skills/${modal.name}.png`}
+                    alt={modal.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.20'; }}
+                  />
+                  <div style={{
+                    position: 'absolute', bottom: 0, left: 0, right: 0,
+                    background: 'rgba(0,0,0,0.68)',
+                    color: '#dff5e8',
+                    fontSize: 9,
+                    textAlign: 'center',
+                    lineHeight: '14px',
+                    padding: '0 1px',
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                  }}>{modal.name.slice(0, 4)}</div>
+                </div>
+                </div>
+              )}
+            </div>
+          );
+        });
+      })()}
+
+      {/* ===== CHEAT: Ability picker (bottom-right, toggleable) ===== */}
+      <button
+        style={{
+          position: 'absolute', bottom: 170, right: 8, zIndex: 200,
+          background: showCheatWindow ? '#ff6b00' : 'rgba(20,20,30,0.92)',
+          color: showCheatWindow ? '#fff' : '#ff6b00',
+          border: '1px solid #ff6b00', borderRadius: 4,
+          padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+          fontWeight: 600, letterSpacing: '0.5px',
+          boxShadow: showCheatWindow ? '0 0 10px rgba(255,107,0,0.5)' : 'none',
+        }}
+        onClick={() => setShowCheatWindow(v => !v)}
+        title="测试用：直接添加技能"
+      >
+        {showCheatWindow ? '✕ 关闭技能面板' : '⚡ 添加技能'}
+      </button>
+      {showCheatWindow && (
+        <div style={{
+          position: 'absolute', bottom: 200, right: 8, zIndex: 200,
+          background: 'rgba(10,18,28,0.97)', border: '1px solid #ff6b00',
+          borderRadius: 6, padding: 8, maxHeight: '70vh',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          minWidth: 164,
+        }}>
+          <div style={{
+            fontSize: 10,
+            lineHeight: 1.35,
+            color: '#e9edf5',
+            padding: '4px 6px',
+            border: '1px solid rgba(255,255,255,0.16)',
+            borderRadius: 4,
+            background: 'rgba(255,255,255,0.04)',
+          }}>
+            图标已按目录分区，便于快速定位技能。
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: 6,
+          }}>
+            <button
+              type="button"
+              disabled={!!runningCheatAction}
+              onClick={() => void runCheatAction('full-heal', '/api/game/cheat/full-heal', '双方已恢复满血')}
+              style={{
+                background: 'rgba(40, 160, 80, 0.20)',
+                color: '#b6ffcd',
+                border: '1px solid rgba(80, 210, 120, 0.55)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '6px 8px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}
+            >双方满血</button>
+            <button
+              type="button"
+              disabled={!!runningCheatAction}
+              onClick={() => void runCheatAction('reset-cd', '/api/game/cheat/reset-cooldowns', '双方技能已重置冷却')}
+              style={{
+                background: 'rgba(40, 100, 190, 0.20)',
+                color: '#bcd9ff',
+                border: '1px solid rgba(90, 150, 255, 0.55)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '6px 8px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}
+            >重置CD</button>
+            <button
+              type="button"
+              disabled={!!runningCheatAction}
+              onClick={() => void runCheatAction('clear-buffs', '/api/game/cheat/clear-buffs', '双方增益减益已清空')}
+              style={{
+                background: 'rgba(170, 120, 30, 0.20)',
+                color: '#ffe0a8',
+                border: '1px solid rgba(255, 180, 80, 0.55)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '6px 8px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}
+            >清空Buff</button>
+            <button
+              type="button"
+              disabled={!!runningCheatAction}
+              onClick={() => void runCheatAction('discard-all', '/api/game/cheat/discard-all', '已清空当前技能栏')}
+              style={{
+                background: 'rgba(40, 110, 210, 0.24)',
+                color: '#c6e8ff',
+                border: '1px solid rgba(120, 190, 255, 0.70)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '6px 8px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}
+            >清空技能</button>
+          </div>
+
+          <div style={{ fontSize: 11, color: '#69f0ae', fontWeight: 700 }}>已测试</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4 }}>
+            {testedCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
+          </div>
+
+          <div style={{ fontSize: 11, color: '#ffd166', fontWeight: 700 }}>测试中</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4 }}>
+            {testingCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
+          </div>
+
+          <div style={{ fontSize: 11, color: '#ff6b6b', fontWeight: 700 }}>待重做</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4 }}>
+            {reworkCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
+          </div>
+        </div>
+      )}
 
       {/* ===== BOTTOM: WASD (mobile left) + centered hotbar ===== */}
       <div className={styles.bottomHud}>
 
         <div className={styles.wasdWrap}>
           <WASDButtons onDirectionChange={handleJoystickDirection} />
-          <div className={`${styles.movingDot} ${isMoving ? styles.moving : ''}`} />
         </div>
 
         <div className={styles.hotbarStack}>
           {/* ── Player buffs above drafted slots ── */}
           {me?.buffs && me.buffs.length > 0 && (
             <div className={styles.playerBuffRow}>
-              <StatusBar buffs={me.buffs} />
+              <StatusBar buffs={me.buffs} showDebug debugLabel="me" />
             </div>
           )}
+
+          {/* ── Channel bar (正读条 / 倒读条) ── */}
+          {channelBarData && <ChannelBar data={channelBarData} />}
 
           {/* ── Top row: draft abilities (6 fixed slots) ── */}
           <div className={styles.hotbar}>
             {Array.from({ length: 6 }, (_, idx) => {
               const ability = draftAbilities[idx];
-              const keyHint = ['1','2','3','Q','XB1','XB2'][idx];
-              if (!ability) {
-                return (
-                  <div key={`empty-${idx}`} className={`${styles.abilityBtn} ${styles.emptySlot}`}>
-                    <span className={styles.abilityKey}>{keyHint}</span>
-                  </div>
-                );
-              }
-              const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
+              const keyHint = ['1','2','3','Q','XB2','XB1'][idx];
               return (
-                <button
-                  key={ability.id}
-                  className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
-                  disabled={!ability.isReady}
-                  onClick={() => castAbilityRef.current(ability.id)}
-                  title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}` : ''}`}
+                <div
+                  key={ability ? `slot-${ability.id}` : `empty-${idx}`}
+                  className={`${styles.draftSlot} ${dragHoverIndex === idx ? styles.draftSlotHover : ''}`}
+                  onDragOver={(e) => {
+                    if (!draggingDraftInstanceId) return;
+                    e.preventDefault();
+                    setDragHoverIndex(idx);
+                  }}
+                  onDragLeave={() => {
+                    if (dragHoverIndex === idx) setDragHoverIndex(null);
+                  }}
+                  onDrop={(e) => void handleDraftSlotDrop(e, idx)}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
-                  {ability.cooldown > 0 && ability.maxCooldown > 0 && (
-                    <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
-                      <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}</span>
+                  {!ability ? (
+                    <div className={`${styles.abilityBtn} ${styles.emptySlot}`}>
+                      <span className={styles.abilityKey}>{keyHint}</span>
                     </div>
-                  )}
-                  <span className={styles.abilityKey}>{keyHint}</span>
-                </button>
+                  ) : (() => {
+                    const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
+                    const cdSeconds = Math.floor(ability.cooldown / 30);
+                    const hasCharges = (ability.maxCharges ?? 0) > 1;
+                    const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
+                    const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
+                    const chargeRegenProgress = hasCharges
+                      ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
+                      : 0;
+                    const recoveringCharge = hasCharges && chargeCount < maxCharges;
+                    const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
+                    const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
+                    const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
+                    return (
+                      <button
+                        className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
+                        draggable
+                        onDragStart={(e) => handleDraftDragStart(e, ability.id, idx)}
+                        onDragEnd={handleDraftDragEnd}
+                        onClick={() => {
+                          if (dragJustEndedRef.current) return;
+                          if (!ability.isReady) return;
+                          castAbilityRef.current(ability.id);
+                        }}
+                        title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                        {ability.cooldown > 0 && ability.maxCooldown > 0 && (
+                          <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
+                            <span className={styles.cdNum}>{cdSeconds}</span>
+                          </div>
+                        )}
+                        {hasCharges && (
+                          <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
+                            <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
+                              <rect
+                                className={styles.chargeFrameTrack}
+                                x="3"
+                                y="3"
+                                width="94"
+                                height="94"
+                                rx="8"
+                                ry="8"
+                                pathLength={100}
+                              />
+                              <rect
+                                className={styles.chargeFrameProgress}
+                                x="3"
+                                y="3"
+                                width="94"
+                                height="94"
+                                rx="8"
+                                ry="8"
+                                pathLength={100}
+                                strokeDasharray={`${chargePathLength} 100`}
+                              />
+                            </svg>
+                            <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
+                              {Math.max(0, chargeCount)}
+                            </span>
+                          </div>
+                        )}
+                        <span className={styles.abilityKey}>{keyHint}</span>
+                      </button>
+                    );
+                  })()}
+                </div>
               );
             })}
           </div>
+          {draggingDraftInstanceId && (
+            <div
+              className={`${styles.discardDropZone} ${discardZoneHover ? styles.discardDropZoneActive : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDiscardZoneHover(true);
+              }}
+              onDragLeave={() => setDiscardZoneHover(false)}
+              onDrop={(e) => void handleDiscardDrop(e)}
+            >
+              拖到蓝色区域删除技能
+            </div>
+          )}
 
           {/* ── Bottom row: 8 common abilities (with visual gaps) ── */}
           <div className={styles.commonBar}>
@@ -1437,6 +3683,17 @@ export default function BattleArena({
               const COMMON_KEY_HINTS = ['X','MD','MU','A+A','A+D','A+S','`','T'] as const;
               const keyHint = COMMON_KEY_HINTS[idx] ?? '';
               const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
+              const cdSeconds = Math.floor(ability.cooldown / 30);
+              const hasCharges = (ability.maxCharges ?? 0) > 1;
+              const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
+              const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
+              const chargeRegenProgress = hasCharges
+                ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
+                : 0;
+              const recoveringCharge = hasCharges && chargeCount < maxCharges;
+              const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
+              const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
+              const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
               return (
                 <React.Fragment key={ability.id}>
                   {/* gap between 猛虎下山 and 扶摇 */}
@@ -1447,13 +3704,43 @@ export default function BattleArena({
                     className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
                     disabled={!ability.isReady}
                     onClick={() => castAbilityRef.current(ability.id)}
-                    title={`${ability.name}${ability.cooldown > 0 ? ` | CD: ${Math.ceil(ability.cooldown / 60)}` : ''}`}
+                    title={`${ability.name}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                     {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                       <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
-                        <span className={styles.cdNum}>{Math.ceil(ability.cooldown / 60)}</span>
+                        <span className={styles.cdNum}>{cdSeconds}</span>
+                      </div>
+                    )}
+                    {hasCharges && (
+                      <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
+                        <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
+                          <rect
+                            className={styles.chargeFrameTrack}
+                            x="3"
+                            y="3"
+                            width="94"
+                            height="94"
+                            rx="8"
+                            ry="8"
+                            pathLength={100}
+                          />
+                          <rect
+                            className={styles.chargeFrameProgress}
+                            x="3"
+                            y="3"
+                            width="94"
+                            height="94"
+                            rx="8"
+                            ry="8"
+                            pathLength={100}
+                            strokeDasharray={`${chargePathLength} 100`}
+                          />
+                        </svg>
+                        <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
+                          {Math.max(0, chargeCount)}
+                        </span>
                       </div>
                     )}
                     <span className={styles.abilityKey}>{keyHint}</span>
@@ -1467,6 +3754,104 @@ export default function BattleArena({
         <div className={styles.wasdSpacer} />
 
       </div>
+
+      {/* ===== SAFE ZONE TIMER / PROGRESS BAR ===== */}
+      {safeZone && safeZone.nextChangeIn > 0 && (
+        <div style={{
+          position: 'absolute',
+          left: '95%',
+          top: '30%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 4,
+          pointerEvents: 'none',
+          zIndex: 500,
+        }}>
+          {/* Progress bar container */}
+          <div style={{
+            width: 120,
+            height: 12,
+            background: 'rgba(0,0,0,0.5)',
+            borderRadius: 3,
+            border: '1px solid rgba(255,255,255,0.2)',
+            overflow: 'hidden',
+          }}>
+            {safeZone.shrinking && (
+              <div style={{
+                width: `${Math.min(100, safeZone.shrinkProgress * 100)}%`,
+                height: '100%',
+                background: 'linear-gradient(90deg, #ff4444, #ff8800)',
+                borderRadius: 3,
+                transition: 'width 0.3s linear',
+              }} />
+            )}
+          </div>
+          {/* Timer text */}
+          <div style={{
+            color: safeZone.shrinking ? '#ff8800' : '#ffffff',
+            fontSize: 13,
+            fontWeight: 700,
+            fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+            textShadow: '1px 1px 3px rgba(0,0,0,0.8)',
+            whiteSpace: 'nowrap',
+          }}>
+            {safeZone.shrinking
+              ? `缩圈中 ${Math.ceil(safeZone.nextChangeIn)}s`
+              : `风暴倒计时: ${Math.ceil(safeZone.nextChangeIn)}`}
+          </div>
+        </div>
+      )}
+
+      {/* ===== FLOATING DAMAGE / HEAL NUMBERS ===== */}
+      {floats.map(entry => {
+        const age      = (Date.now() - entry.startTime) / 1300; // 0→1 over 1.3s
+        // quick fade-in (0→8%), hold (8→75%), fade-out (75→100%)
+        const opacity  = age < 0.08 ? age / 0.08 : Math.max(0, 1 - Math.max(0, age - 0.75) / 0.25);
+        const travelUp = -80 * age; // floats upward
+        const color = entry.type === 'dmg_dealt'
+          ? '#ffffff'
+          : entry.type === 'heal'
+          ? '#44ff66'
+          : '#ff2222';
+        const pctX = entry.screenPct && Number.isFinite(entry.screenPct.x) ? entry.screenPct.x * 100 : undefined;
+        const pctY = entry.screenPct && Number.isFinite(entry.screenPct.y) ? entry.screenPct.y * 100 : undefined;
+        let posStyle: React.CSSProperties;
+        if (entry.type === 'dmg_dealt') {
+          // Float above enemy — fixed-size text in screen space (not distance-scaled)
+          posStyle = {
+            top: `calc(${pctY ?? 12}% + ${travelUp - entry.yOffset}px)`,
+            left: `${pctX ?? 50}%`,
+            transform: 'translateX(-50%)',
+          };
+        } else if (entry.type === 'dmg_taken') {
+            posStyle = {
+              top: `calc(${pctY ?? 65}% + ${travelUp - entry.yOffset}px)`,
+              left: `${pctX ?? 40}%`,
+              transform: 'translateX(-50%)',
+            };
+        } else {
+            posStyle = {
+              top: `calc(${pctY ?? 65}% + ${travelUp - entry.yOffset}px)`,
+              left: `${pctX ?? 60}%`,
+              transform: 'translateX(-50%)',
+            };
+        }
+        const sign = entry.type === 'heal' ? '+' : '-';
+        const displayText = entry.label
+          ? `${entry.label}: ${sign}${entry.value}`
+          : `${sign}${entry.value}`;
+        return (
+          <div
+            key={entry.id}
+            className={`${styles.floatNumber} ${entry.type === 'dmg_dealt' ? styles.floatDealt : entry.type === 'heal' ? styles.floatHeal : styles.floatTaken}`}
+            style={{ ...posStyle, opacity, color }}
+          >
+            {displayText}
+          </div>
+        );
+      })}
     </div>
   );
 }

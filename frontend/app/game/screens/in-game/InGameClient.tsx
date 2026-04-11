@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import BattleArena from "./components/BattleArena";
 import GameOverModal from "./components/GameBoard/components/GameOverModal";
 import DraftScreen from "./components/DraftScreen";
-import { toastError } from "@/app/components/toast/toast";
+import { toastError, toastSuccess } from "@/app/components/toast/toast";
 import { useGameState } from "./hooks/useGameState";
 import {
   GamePreloadProvider,
@@ -23,13 +23,16 @@ function showGameError(rawCode: string) {
     case "ERR_SILENCED":
       toastError("你被沉默，无法释放技能");
       break;
+    case "ERR_KNOCKED_BACK":
+      toastError("你被击退，无法行动");
+      break;
     case "ERR_CONTROLLED":
       toastError("你被控制，无法行动");
       break;
     case "ERR_TARGET_UNTARGETABLE":
       toastError("目标无法选中");
       break;
-    case "ERR_CARD_NOT_IN_HAND":
+    case "ERR_ABILITY_NOT_IN_HAND":
       toastError("技能不可用");
       break;
     case "ERR_ON_COOLDOWN":
@@ -51,7 +54,19 @@ function showGameError(rawCode: string) {
       toastError("距离太近，无法释放该能力");
       break;
     case "ERR_TARGET_UNAVAILABLE":
-      toastError("目标不可选中");
+      toastError("警告：目标丢失或不可选中");
+      break;
+    case "ERR_REQUIRES_GROUNDED":
+      toastError("该技能需要落地后施放");
+      break;
+    case "ERR_REQUIRES_STANDING":
+      toastError("该技能需要站立后施放");
+      break;
+    case "ERR_QINGGONG_SEALED":
+      toastError("你被封轻功，无法施放轻功技能");
+      break;
+    case "ERR_HP_TOO_LOW":
+      toastError("当前气血必须大于35才能施放");
       break;
     default:
       toastError("操作无法执行");
@@ -61,8 +76,8 @@ function showGameError(rawCode: string) {
 /* ================= TYPES ================= */
 
 type GamePreload = {
-  cards: any[];
-  cardMap: Record<string, any>;
+  abilities: any[];
+  abilityMap: Record<string, any>;
   buffs: any[];
   buffMap: Record<number, any>;
 };
@@ -87,11 +102,13 @@ export default function InGameClient({
     loading,
     state,
     tournament,
+    gameMode,
     me,
     opponent,
+    opponents,
     isMyTurn,
     isWinner,
-    playCard,
+    playAbility,
     endTurn,
     rtt,
     refetch,
@@ -107,6 +124,12 @@ export default function InGameClient({
       battleInitiatedRef.current = false;
     }
   }, [tournament?.phase]);
+
+  // DRAFT is disabled, so phase can remain BATTLE across rounds.
+  // Reset the guard on battle number changes so /battle/start runs for each new round.
+  useEffect(() => {
+    battleInitiatedRef.current = false;
+  }, [tournament?.battleNumber]);
 
   // Auto-call /battle/start when phase transitions to BATTLE (only once)
   useEffect(() => {
@@ -128,6 +151,10 @@ export default function InGameClient({
             console.error("[InGameClient] /battle/start failed:", res.status, errText);
           } else {
             console.log("[InGameClient] ✅ /battle/start succeeded, GameLoop should now be running");
+            // Refetch state from DB so the frontend gets the freshly-generated pickups
+            // (the regular 30Hz loop broadcasts do NOT include /pickups)
+            await new Promise((r) => setTimeout(r, 350));
+            refetch();
           }
         } catch (err) {
           console.error("[InGameClient] Error calling /battle/start:", err);
@@ -136,22 +163,12 @@ export default function InGameClient({
       
       initiateBattle();
     }
-  }, [tournament?.phase, gameId]); // Only depend on phase and gameId, not state
+  }, [tournament?.phase, tournament?.battleNumber, gameId, loading, state, refetch]);
 
-  // ✉ Poll for phase changes while in DRAFT phase — catches missed WS updates
-  // (Robust fallback: even if WS misses the transition broadcast, polling will detect it)
-  useEffect(() => {
-    if (tournament?.phase !== "DRAFT") return;
-    const id = setInterval(() => { refetch(); }, 2000);
-    return () => clearInterval(id);
-  }, [tournament?.phase, refetch]);
-
-  // ✉ Poll during BATTLE phase to detect when battle ends and phase transitions to DRAFT/GAME_OVER
-  useEffect(() => {
-    if (tournament?.phase !== "BATTLE") return;
-    const id = setInterval(() => { refetch(); }, 3000);
-    return () => clearInterval(id);
-  }, [tournament?.phase, refetch]);
+  // No polling — all phase transitions (DRAFT↔BATTLE↔GAME_OVER) are broadcast
+  // over WebSocket by the backend (draft/finalize and battle/complete routes).
+  // Continuous REST polling was the root cause of stale snapshots corrupting
+  // live buff/cooldown state during battle.
 
   /* ================= PRELOAD ================= */
 
@@ -189,45 +206,6 @@ export default function InGameClient({
     };
   }, []);
 
-  /* ================= BATTLE INITIALIZATION ================= */
-
-  useEffect(() => {
-    if (
-      tournament &&
-      tournament.phase === "BATTLE" &&
-      state &&
-      !battleInitiatedRef.current &&
-      state.players.some((p: any) => p.hand.length === 0)
-    ) {
-      battleInitiatedRef.current = true; // guard before async so it never fires twice
-      (async () => {
-        try {
-          console.log("[InGameClient] Initializing battle state...");
-          const res = await fetch("/api/game/battle/start", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ gameId }),
-          });
-
-          if (res.ok) {
-            console.log("[InGameClient] Battle initialized, refetching state...");
-            await new Promise((r) => setTimeout(r, 300));
-            refetch();
-          } else {
-            console.error("[InGameClient] Battle start failed:", res.status);
-            battleInitiatedRef.current = false; // allow retry on genuine failure
-          }
-        } catch (err) {
-          console.error("[InGameClient] Battle initialization error:", err);
-          battleInitiatedRef.current = false; // allow retry after network error
-        }
-      })();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tournament?.phase, gameId]); // intentionally excludes `state` and `refetch` —
-  // state changes 30x/sec from position broadcasts and would re-trigger this every tick
-
   /* ================= BATTLE COMPLETION ================= */
 
   useEffect(() => {
@@ -238,9 +216,17 @@ export default function InGameClient({
       state.gameOver &&
       state.winnerUserId
     ) {
-      // Battle is over, call battle/complete to advance tournament
+      // Show win/lose toast immediately
+      if (state.winnerUserId === selfUserId) {
+        toastSuccess("🏆 你赢了！");
+      } else {
+        toastError("💀 你输了，将重新开始…");
+      }
+      // Battle is over, call battle/complete to advance tournament after delay
       (async () => {
         try {
+          // Give player 2.5 s to read the result
+          await new Promise((r) => setTimeout(r, 2500));
           console.log("[InGameClient] Battle ended, completing tournament battle...");
           const res = await fetch("/api/game/battle/complete", {
             method: "POST",
@@ -267,7 +253,7 @@ export default function InGameClient({
         }
       })();
     }
-  }, [tournament?.phase, state?.gameOver, state?.winnerUserId, gameId, refetch]);
+  }, [tournament?.phase, state?.gameOver, state?.winnerUserId, gameId, refetch, selfUserId]);
 
   /* ================= LOADING ================= */
 
@@ -275,22 +261,24 @@ export default function InGameClient({
     loading ||
     !state ||
     !me ||
-    !opponent ||
+    opponents.length === 0 ||
     !preload ||
     preloadError
   ) {
     return <div>Loading game…</div>;
   }
 
-  /* ================= DRAFT PHASE ================= */
-
+  /* ================= DRAFT PHASE (DISABLED) ================= */
+  // Draft phase is currently disabled — game starts directly in BATTLE.
+  // Uncomment to re-enable the draft flow.
+  /*
   if (tournament && tournament.phase === "DRAFT") {
     return (
       <DraftScreen
         gameId={gameId}
         selfUserId={selfUserId}
         tournament={tournament}
-        cardMap={preload.cardMap}
+        abilityMap={preload.abilityMap}
         onFinalizeDraft={async () => {
           // Finalization API call is handled within DraftScreen
           // Just need to wait for state update via WebSocket
@@ -299,40 +287,63 @@ export default function InGameClient({
       />
     );
   }
+  */
   
   /* ================= RENDER BATTLE ================= */
 
-  // Only render if we have valid player data
-  if (!me || !opponent) {
-    return <div>Loading battle state...</div>;
-  }
+  // Calculate 3D distance to nearest opponent
+  const distance = (() => {
+    let minDist = 0;
+    for (const opp of opponents) {
+      if (!me?.position || !opp?.position) continue;
+      const d = Math.sqrt(
+        Math.pow(opp.position.x - me.position.x, 2) +
+        Math.pow(opp.position.y - me.position.y, 2) +
+        Math.pow((opp.position.z ?? 0) - (me.position.z ?? 0), 2)
+      );
+      if (minDist === 0 || d < minDist) minDist = d;
+    }
+    return minDist;
+  })();
 
-  // Calculate 3D distance between players (includes Z so jumping increases effective range)
-  const distance = me?.position && opponent?.position
-    ? Math.sqrt(
-        Math.pow(opponent.position.x - me.position.x, 2) +
-        Math.pow(opponent.position.y - me.position.y, 2) +
-        Math.pow((opponent.position.z ?? 0) - (me.position.z ?? 0), 2)
-      )
-    : 0;
+  const mePlayer = {
+    ...me,
+    position: me.position ?? { x: 1000, y: 1000, z: 0 },
+  };
+  const normalizedOpponents = opponents.map((opp) => ({
+    ...opp,
+    position: opp.position ?? { x: 1000, y: 1000, z: 0 },
+  }));
+  const primaryOpponent = (opponent ?? normalizedOpponents[0])
+    ? {
+        ...(opponent ?? normalizedOpponents[0]),
+        position: (opponent ?? normalizedOpponents[0]).position ?? { x: 1000, y: 1000, z: 0 },
+      }
+    : normalizedOpponents[0];
 
   return (
     <GamePreloadProvider value={preload}>
       <BattleArena
-        me={me}
-        opponent={opponent}
+        me={mePlayer}
+        opponent={primaryOpponent}
+        opponents={normalizedOpponents}
         gameId={gameId}
         distance={distance}
-        maxHp={me.hp + (state.players[1]?.hp || 0) === me.hp ? me.hp : 30} // Fallback to 30
-        cards={preload.cardMap}
+        maxHp={me.maxHp ?? 100}
+        abilities={preload.abilityMap}
+        events={state?.events ?? []}
+        pickups={state?.pickups ?? []}
+        safeZone={state?.safeZone}
+        groundZones={state?.groundZones}
         opponentPositionBufferRef={opponentPositionBufferRef}
-        onCastAbility={async (cardInstanceId) => {
-          // Find by instanceId (normal drafted cards) or by cardId (common abilities)
+        mode={gameMode ?? 'arena'}
+        onCastAbility={async (abilityInstanceId, targetUserId, groundTarget) => {
+          // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
           const cardInstance =
-            me.hand.find((c) => c.instanceId === cardInstanceId) ??
-            me.hand.find((c) => ((c as any).cardId ?? (c as any).id) === cardInstanceId) ??
-            ({ instanceId: cardInstanceId } as any); // synthetic stub — backend validates
-          const res = await playCard(cardInstance);
+            me.hand.find((c) => c.instanceId === abilityInstanceId) ??
+            me.hand.find((c) => ((c as any).abilityId ?? (c as any).id) === abilityInstanceId) ??
+            ({ instanceId: abilityInstanceId } as any); // synthetic stub — backend validates
+          const res = await playAbility(cardInstance, targetUserId, groundTarget);
           if (!res.ok && res.error) {
             console.error("[CastAbility] Error response:", res.error);
             showGameError(res.error);

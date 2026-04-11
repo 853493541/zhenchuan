@@ -7,8 +7,8 @@ export function pushDamageEvent(params: {
   state: GameState;
   actorUserId: string;
   targetUserId: string;
-  cardId: string | undefined;
-  cardName: string | undefined;
+  abilityId: string | undefined;
+  abilityName: string | undefined;
   value: number;
   effectType?: "DAMAGE" | "SCHEDULED_DAMAGE";
 }) {
@@ -16,8 +16,8 @@ export function pushDamageEvent(params: {
     state,
     actorUserId,
     targetUserId,
-    cardId,
-    cardName,
+    abilityId,
+    abilityName,
     value,
     effectType = "DAMAGE",
   } = params;
@@ -29,8 +29,8 @@ export function pushDamageEvent(params: {
     type: "DAMAGE",
     actorUserId,
     targetUserId,
-    cardId,
-    cardName,
+    abilityId,
+    abilityName,
     effectType,
     value,
   });
@@ -40,11 +40,11 @@ export function pushHealEvent(params: {
   state: GameState;
   actorUserId: string;
   targetUserId: string;
-  cardId: string | undefined;
-  cardName: string | undefined;
+  abilityId: string | undefined;
+  abilityName: string | undefined;
   value: number;
 }) {
-  const { state, actorUserId, targetUserId, cardId, cardName, value } = params;
+  const { state, actorUserId, targetUserId, abilityId, abilityName, value } = params;
 
   state.events.push({
     id: randomUUID(),
@@ -53,8 +53,8 @@ export function pushHealEvent(params: {
     type: "HEAL",
     actorUserId,
     targetUserId,
-    cardId,
-    cardName,
+    abilityId,
+    abilityName,
     effectType: "HEAL",
     value,
   });

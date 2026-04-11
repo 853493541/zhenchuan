@@ -3,7 +3,10 @@
 import { createContext, useContext } from "react";
 
 export type GamePreload = {
-  cards: any[]; // display-only, backend authoritative
+  abilities: any[]; // display-only, backend authoritative
+  abilityMap: Record<string, any>;
+  buffs: any[];
+  buffMap: Record<number, any>;
 };
 
 const GamePreloadContext = createContext<GamePreload | null>(null);

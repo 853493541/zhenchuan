@@ -5,43 +5,43 @@ import { useGamePreload } from "../../preload/GamePreloadContext";
 
 /* ================= TYPES ================= */
 
-type CardVariant = "hand" | "arena" | "preview" | "disabled";
+type AbilityVariant = "hand" | "arena" | "preview" | "disabled";
 
 type Props = {
-  cardId: string;
-  variant?: CardVariant;
+  abilityId: string;
+  variant?: AbilityVariant;
   remainingGcd?: number; // 👈 
-  cooldown?: number; // NEW: cooldown on this card instance
+  cooldown?: number; // NEW: cooldown on this ability instance
   onClick?: () => void;
 };
 
 /* ================= HELPERS ================= */
 
-function getCardIconByName(cardName: string | undefined) {
-  if (!cardName) return null;
+function getAbilityIconByName(abilityName: string | undefined) {
+  if (!abilityName) return null;
 
   // icons are named by Chinese display name, e.g. 剑破虚空.png
-  return `/game/icons/Skills/${cardName}.png`;
+  return `/game/icons/Skills/${abilityName}.png`;
 }
 
 /* ================= COMPONENT ================= */
 
-export default function Card({
-  cardId,
+export default function Ability({
+  abilityId,
   variant = "hand",
   remainingGcd,
   cooldown = 0,
   onClick,
 }: Props) {
   const preload = useGamePreload();
-  const card = preload.cardMap[cardId];
+  const ability = preload.abilityMap[abilityId];
 
-  const name = card?.name ?? cardId;
-  const desc = card?.description ?? "暂无描述";
-  const iconSrc = getCardIconByName(card?.name);
+  const name = ability?.name ?? abilityId;
+  const desc = ability?.description ?? "暂无描述";
+  const iconSrc = getAbilityIconByName(ability?.name);
 
   // 🔑 IMPORTANT: do NOT coerce, show raw value
-  const gcdValue = card?.gcdCost;
+  const gcdValue = ability?.gcdCost;
 
   const isClickable = variant === "hand";
   const isDisabled = variant === "disabled";
@@ -58,7 +58,7 @@ export default function Card({
   return (
     <div
       className={[
-        styles.card,
+        styles.ability,
         styles[variant],
         isClickable && styles.clickable,
         isDisabled && styles.disabled,

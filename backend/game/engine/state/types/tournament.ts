@@ -4,7 +4,7 @@
  */
 
 import type { PlayerID } from "./common";
-import type { CardInstance } from "./cards";
+import type { AbilityInstance } from "./abilities";
 
 /* ================= Economy (TFT-based) ================= */
 
@@ -20,8 +20,8 @@ export interface PlayerEconomy {
 }
 
 export interface Shop {
-  /** Cards available for purchase this round (5 cards) */
-  cards: CardInstance[];
+  /** Cards available for purchase this round (5 abilities) */
+  abilities: AbilityInstance[];
 
   /** Cards locked from refresh (TFT mechanic) */
   locked: boolean[];
@@ -53,10 +53,10 @@ export interface TournamentState {
   economy: Record<PlayerID, PlayerEconomy>;
 
   /** Each player's selected 6 abilities for current battle */
-  selectedAbilities: Record<PlayerID, CardInstance[]>;
+  selectedAbilities: Record<PlayerID, AbilityInstance[]>;
 
   /** Each player's benched abilities (8 slots max, persist across battles) */
-  bench: Record<PlayerID, CardInstance[]>;
+  bench: Record<PlayerID, AbilityInstance[]>;
 
   /** History of battles completed */
   battleHistory: BattleInstance[];
@@ -85,7 +85,7 @@ export const LOSER_DAMAGE_BY_BATTLE: Record<number, number> = {
 };
 
 export const STARTING_GAME_HP = 100;
-export const STARTING_BATTLE_HP = 30;
+export const STARTING_BATTLE_HP = 100;
 export const STARTING_GOLD = 5;
 export const GOLD_PER_ROUND = 5; // Income earned per battle
 

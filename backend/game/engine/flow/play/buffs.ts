@@ -1,6 +1,6 @@
-// engine/flow/applyCardBuffs.ts
+// engine/flow/applyAbilityBuffs.ts
 
-import { GameState, Card, ActiveBuff } from "../../state/types";
+import { GameState, Ability, ActiveBuff } from "../../state/types";
 import {
   shouldSkipDueToDodge,
   blocksNewBuffByUntargetable,
@@ -9,10 +9,10 @@ import {
 import { handleApplyBuffs } from "../../effects/handlers";
 
 /**
- * Apply persistent buffs defined on a card (card.buffs).
+ * Apply persistent buffs defined on a ability (ability.buffs).
  *
  * IMPORTANT:
- * - card.buffs contains BuffDefinition[] (static definitions)
+ * - ability.buffs contains BuffDefinition[] (static definitions)
  * - ActiveBuffs exist on players (runtime) and are created ONLY by handlers
  *
  * Rules preserved:
@@ -21,48 +21,65 @@ import { handleApplyBuffs } from "../../effects/handlers";
  * - Control immunity blocks CONTROL buffs only
  * - Buffs are applied one-by-one (legacy behavior)
  */
-export function applyCardBuffs(params: {
+export function applyAbilityBuffs(params: {
   state: GameState;
-  card: Card;
+  ability: Ability;
   source: { userId: string; buffs: ActiveBuff[] };
   target: { userId: string; buffs: ActiveBuff[] };
-  cardDodged: boolean;
+  abilityDodged: boolean;
 }) {
-  const { state, card, source, target, cardDodged } = params;
+  const { state, ability, source, target, abilityDodged } = params;
 
-  if (!Array.isArray(card.buffs) || card.buffs.length === 0) return;
+  // 百足/大狮子吼 buff application is handled via custom immediate AoE effect logic.
+  if (
+    ability.id === "baizu" ||
+    Array.isArray(ability.effects) && ability.effects.some((e: any) => e.type === "AOE_APPLY_BUFFS")
+  ) {
+    return;
+  }
 
-  const buffTarget = card.target === "SELF" ? source : target;
-  const enemyApplied = buffTarget.userId !== source.userId;
+  if (!Array.isArray(ability.buffs) || ability.buffs.length === 0) return;
 
-  // Dodge cancels enemy-applied buffs only
-  if (shouldSkipDueToDodge(cardDodged, enemyApplied)) return;
+  // Ability-level target (used as fallback when buff has no applyTo override)
+  const abilityBuffTarget = ability.target === "SELF" ? source : target;
+  const abilityEnemyApplied = abilityBuffTarget.userId !== source.userId;
 
-  // Untargetable blocks enemy-applied NEW buffs (guard needs target.buffs)
-  if (blocksNewBuffByUntargetable(source, buffTarget)) return;
+  // Dodge cancels enemy-applied buffs only (ability-level check)
+  if (shouldSkipDueToDodge(abilityDodged, abilityEnemyApplied)) return;
 
-  for (const buff of card.buffs) {
+  // Untargetable blocks enemy-applied NEW buffs (ability-level check)
+  if (blocksNewBuffByUntargetable(source, abilityBuffTarget)) return;
+
+  for (const buff of ability.buffs) {
+    // Per-buff applyTo override: a buff can specify "SELF" or "OPPONENT" regardless
+    // of the ability's target field (e.g. 云飞玉皇 channels a self-buff while targeting an enemy)
+    const localBuffTarget =
+      buff.applyTo === "SELF" ? source
+      : buff.applyTo === "OPPONENT" ? target
+      : abilityBuffTarget;
+    const localEnemyApplied = localBuffTarget.userId !== source.userId;
+
     const isControl =
       Array.isArray(buff.effects) &&
-      buff.effects.some((e) => e.type === "CONTROL");
+      buff.effects.some((e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK");
 
     // Control immunity blocks CONTROL buffs (guard needs target.buffs)
-    if (isControl && blocksControlByImmunity("CONTROL", buffTarget)) {
+    if (isControl && blocksControlByImmunity("CONTROL", localBuffTarget)) {
       continue;
     }
 
     // Legacy behavior: apply buffs one-by-one
-    const originalBuffs: Card["buffs"] = card.buffs;
-    card.buffs = [buff];
+    const originalBuffs: Ability["buffs"] = ability.buffs;
+    ability.buffs = [buff];
 
     handleApplyBuffs({
       state,
-      card,
+      ability,
       source,
-      target: buffTarget,
-      isEnemyEffect: enemyApplied,
+      target: localBuffTarget,
+      isEnemyEffect: localEnemyApplied,
     });
 
-    card.buffs = originalBuffs;
+    ability.buffs = originalBuffs;
   }
 }

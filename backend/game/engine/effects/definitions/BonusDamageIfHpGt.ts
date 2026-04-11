@@ -1,8 +1,9 @@
 // backend/game/engine/effects/handlers/handleBonusDamageIfHpGt.ts
 
-import { GameState, Card, CardEffect, ActiveBuff } from "../../state/types";
+import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
 import { blocksEnemyTargeting } from "../../rules/guards";
 import { resolveScheduledDamage } from "../../utils/combatMath";
+import { applyDamageToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 
 export function handleBonusDamageIfHpGt(
@@ -10,8 +11,8 @@ export function handleBonusDamageIfHpGt(
   source: { userId: string; hp: number; buffs: ActiveBuff[] },
   target: { userId: string; hp: number; buffs: ActiveBuff[] },
   opponentHpAtCardStart: number,
-  card: Card,
-  effect: CardEffect
+  ability: Ability,
+  effect: AbilityEffect
 ) {
   const threshold = effect.threshold ?? 0;
   const bonus = effect.value ?? 0;
@@ -24,8 +25,8 @@ export function handleBonusDamageIfHpGt(
       type: "DAMAGE",
       actorUserId: source.userId,
       targetUserId: target.userId,
-      cardId: card.id,
-      cardName: card.name,
+      abilityId: ability.id,
+      abilityName: ability.name,
       effectType: "DAMAGE",
       value: 0,
     });
@@ -39,7 +40,7 @@ export function handleBonusDamageIfHpGt(
   });
 
   if (final > 0) {
-    target.hp = Math.max(0, target.hp - final);
+    applyDamageToTarget(target as any, final);
   }
 
   pushEvent(state, {
@@ -47,8 +48,8 @@ export function handleBonusDamageIfHpGt(
     type: "DAMAGE",
     actorUserId: source.userId,
     targetUserId: target.userId,
-    cardId: card.id,
-    cardName: card.name,
+    abilityId: ability.id,
+    abilityName: ability.name,
     effectType: "DAMAGE",
     value: final,
   });

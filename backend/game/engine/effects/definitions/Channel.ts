@@ -2,12 +2,13 @@
 
 import {
   GameState,
-  Card,
-  CardEffect,
+  Ability,
+  AbilityEffect,
   ActiveBuff,
 } from "../../state/types";
 import { blocksEnemyTargeting } from "../../rules/guards";
 import { resolveScheduledDamage, resolveHealAmount } from "../../utils/combatMath";
+import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 
 /**
@@ -23,8 +24,8 @@ export function handleChannelEffect(
   state: GameState,
   source: { userId: string; hp: number; buffs: ActiveBuff[] },
   enemy: { userId: string; hp: number; buffs: ActiveBuff[] },
-  card: Card,
-  effect: CardEffect
+  ability: Ability,
+  effect: AbilityEffect
 ) {
   // 心证：no immediate tick
   if (effect.type === "XINZHENG_CHANNEL") return;
@@ -38,8 +39,8 @@ export function handleChannelEffect(
       type: "DAMAGE",
       actorUserId: source.userId,
       targetUserId: enemy.userId,
-      cardId: card.id,
-      cardName: card.name,
+      abilityId: ability.id,
+      abilityName: ability.name,
       effectType: "DAMAGE",
       value: 0,
     });
@@ -50,15 +51,15 @@ export function handleChannelEffect(
       base: 10,
     });
 
-    enemy.hp = Math.max(0, enemy.hp - dmg);
+    applyDamageToTarget(enemy as any, dmg);
 
     pushEvent(state, {
       turn: state.turn,
       type: "DAMAGE",
       actorUserId: source.userId,
       targetUserId: enemy.userId,
-      cardId: card.id,
-      cardName: card.name,
+      abilityId: ability.id,
+      abilityName: ability.name,
       effectType: "DAMAGE",
       value: dmg,
     });
@@ -66,9 +67,7 @@ export function handleChannelEffect(
 
   // 无间狱 immediate self-heal
   const heal = resolveHealAmount({ target: source, base: 3 });
-  const before = source.hp;
-  source.hp = Math.min(100, source.hp + heal);
-  const applied = Math.max(0, source.hp - before);
+  const applied = applyHealToTarget(source as any, heal);
 
   if (applied > 0) {
     pushEvent(state, {
@@ -76,8 +75,8 @@ export function handleChannelEffect(
       type: "HEAL",
       actorUserId: source.userId,
       targetUserId: source.userId,
-      cardId: card.id,
-      cardName: card.name,
+      abilityId: ability.id,
+      abilityName: ability.name,
       effectType: "HEAL",
       value: applied,
     });
