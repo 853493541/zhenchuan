@@ -29,7 +29,7 @@ export default function CameraRig({
     // world: x=right, y=forward, z=up → three: x=right, y=up, z=back
     const px = p.x - worldHalf;
     const py = p.z; // player height in Three.js y
-    const pz = p.y - worldHalf; // player forward in Three.js z
+    const pz = worldHalf - p.y; // z-flip: game y→Three.js z inverted
 
     const pitch = camPitchRef.current;
     const yaw = camYawRef.current;

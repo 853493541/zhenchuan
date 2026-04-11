@@ -2,10 +2,10 @@ module.exports = {
   apps: [
     {
       name: "frontend",
-      cwd: "/home/azureuser/baizhan-v2/frontend",
-      script: "npm",
-      args: "run start",
-      interpreter: "none",
+      cwd: "/home/ubuntu/zhenchuan/frontend",
+      script: "node_modules/next/dist/bin/next",
+      args: "start -p 3000",
+      interpreter: "node",
       env: {
         PORT: 3000,
         NODE_ENV: "production"
@@ -13,10 +13,9 @@ module.exports = {
     },
     {
       name: "backend",
-      cwd: "/home/azureuser/baizhan-v2/backend",
-      script: "npm",
-      args: "run start",
-      interpreter: "none",
+      cwd: "/home/ubuntu/zhenchuan/backend",
+      script: "dist/index.js",
+      interpreter: "node",
       env: {
         PORT: 5000,
         NODE_ENV: "production"

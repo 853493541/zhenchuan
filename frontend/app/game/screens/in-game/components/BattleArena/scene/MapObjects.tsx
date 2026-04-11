@@ -56,7 +56,7 @@ export default function MapObjects({ localRenderPosRef, mapObjects, worldHalf }:
       // Center the box: obj.x/y are min corners, convert to center
       px: obj.x + obj.w * 0.5 - worldHalf,
       py: obj.h * 0.5,            // Three.js y = height, box sits on floor
-      pz: obj.y + obj.d * 0.5 - worldHalf,
+      pz: worldHalf - (obj.y + obj.d * 0.5),
       sx: obj.w,
       sy: obj.h,
       sz: obj.d,

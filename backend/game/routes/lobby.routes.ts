@@ -13,7 +13,7 @@ router.post("/create", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
     const { mode } = req.body;
-    const validMode = mode === 'pubg' ? 'pubg' : 'arena';
+    const validMode = mode === 'pubg' ? 'pubg' : mode === 'collision-test' ? 'collision-test' : 'arena';
     const game = await createGame(userId, validMode);
     res.json(game);
   } catch (err: any) {

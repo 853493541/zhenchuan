@@ -10,8 +10,16 @@ import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone } from '../../types';
 import ArenaScene from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
+import type { MapCollisionSystem } from './scene/MapCollisionSystem';
+import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z } from './scene/ExportedMapScene';
+import * as THREE from 'three';
 
 type V3 = { x: number; y: number; z: number };
+type CollisionDebugState = {
+  enabled: boolean;
+  center: V3;
+  supportY: number | null;
+};
 
 /* ============================================================
    ARENA SETTINGS  (must match backend)
@@ -21,16 +29,18 @@ const PUBG_HEIGHT = 2000;
 const ARENA_WIDTH_SMALL  = 200;
 const ARENA_HEIGHT_SMALL = 200;
 const DASH_ANIM_MS = 1500; // ms — cosmetic dash travel animation
-const PLAYER_RADIUS = 2; // must match backend
+const DEFAULT_PLAYER_RADIUS = 2; // must match backend
+const COLLISION_TEST_PLAYER_RADIUS = 0.64; // matches export-reader avatar (57 export units * SF)
 
 /** Resolve circle-vs-AABB collision (client-side prediction). Z-aware: skip if player is above obj. */
 function resolveObjCollisionClient(
   px: number, py: number, pz: number,
   vel: { x: number; y: number },
   obj: MapObject,
+  playerRadius = DEFAULT_PLAYER_RADIUS,
 ): { x: number; y: number } {
   if (pz >= obj.h) return { x: px, y: py }; // above rooftop
-  const pr = PLAYER_RADIUS;
+  const pr = playerRadius;
   const cx = Math.max(obj.x, Math.min(px, obj.x + obj.w));
   const cy = Math.max(obj.y, Math.min(py, obj.y + obj.d));
   const dx = px - cx;
@@ -62,7 +72,7 @@ function resolveObjCollisionClient(
 }
 
 /** Get ground height at XY (tallest object the player overlaps and is above). */
-function getGroundHeightClient(px: number, py: number, pz: number, objects: MapObject[]): number {
+function getGroundHeightClient(px: number, py: number, pz: number, objects: MapObject[], playerRadius = DEFAULT_PLAYER_RADIUS): number {
   let ground = 0;
   for (const obj of objects) {
     if (pz < obj.h - 0.1) continue; // player is below this object's top
@@ -70,11 +80,37 @@ function getGroundHeightClient(px: number, py: number, pz: number, objects: MapO
     const cy = Math.max(obj.y, Math.min(py, obj.y + obj.d));
     const dx = px - cx;
     const dy = py - cy;
-    if (dx * dx + dy * dy < PLAYER_RADIUS * PLAYER_RADIUS && obj.h > ground) {
+    if (dx * dx + dy * dy < playerRadius * playerRadius && obj.h > ground) {
       ground = obj.h;
     }
   }
   return ground;
+}
+
+/* ─── BVH collision scratch objects (reused to avoid GC pressure) ─── */
+const _bvhCenter   = new THREE.Vector3();
+const _bvhVelocity = new THREE.Vector3();
+const EXPORT_RADIUS = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF; // ~57.6 export units
+
+/** Live position display — reads a ref every 200ms */
+function PositionDisplay({ posRef }: { posRef: React.MutableRefObject<{ x: number; y: number; z: number }> }) {
+  const [pos, setPos] = React.useState({ x: 0, y: 0, z: 0 });
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      const p = posRef.current;
+      setPos({ x: p.x, y: p.y, z: p.z });
+    }, 200);
+    return () => clearInterval(id);
+  }, [posRef]);
+  return (
+    <div style={{
+      position: 'absolute', top: 14, left: 14, zIndex: 500,
+      background: 'rgba(0,0,0,0.7)', color: '#0f0', fontFamily: 'monospace',
+      fontSize: 12, padding: '4px 8px', borderRadius: 4, pointerEvents: 'none',
+    }}>
+      X:{pos.x.toFixed(1)} Y:{pos.y.toFixed(1)} Z:{pos.z.toFixed(1)}
+    </div>
+  );
 }
 
 /** 2D segment vs AABB intersection (for line-of-sight checks). */
@@ -307,9 +343,10 @@ export default function BattleArena({
   groundZones,
   mode,
 }: BattleArenaProps) {
-  const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : PUBG_WIDTH;
-  const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : PUBG_HEIGHT;
   const mapData = useMemo(() => getMapForMode(mode), [mode]);
+  const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : mode === 'collision-test' ? mapData.width : PUBG_WIDTH;
+  const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : mode === 'collision-test' ? mapData.height : PUBG_HEIGHT;
+  const playerRadius = mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : DEFAULT_PLAYER_RADIUS;
   const mapObjectsRef = useRef(mapData.objects);
   useEffect(() => {
     mapObjectsRef.current = mapData.objects;
@@ -393,6 +430,54 @@ export default function BattleArena({
 
   /* --- Debug position overlay --- */
   const [showDebugGrid, setShowDebugGrid] = useState(false);
+  const [showCollisionShells, setShowCollisionShells] = useState(false);
+  const [showCollisionBoxes, setShowCollisionBoxes] = useState(false);
+  const collisionSysRef = useRef<MapCollisionSystem | null>(null);
+  const collisionReadyRef = useRef(mode !== 'collision-test');
+  const [collisionReady, setCollisionReady] = useState(mode !== 'collision-test');
+  const collisionDebugRef = useRef<CollisionDebugState>({
+    enabled: false,
+    center: { x: 0, y: 0, z: 0 },
+    supportY: null,
+  });
+  useEffect(() => {
+    collisionSysRef.current = null;
+    collisionReadyRef.current = mode !== 'collision-test';
+    setCollisionReady(mode !== 'collision-test');
+    collisionDebugRef.current = {
+      enabled: false,
+      center: { x: 0, y: 0, z: 0 },
+      supportY: null,
+    };
+  }, [mode]);
+  const onCollisionSystemReady = useCallback((sys: MapCollisionSystem) => {
+    collisionSysRef.current = sys;
+    const pos = localPositionRef.current ?? { x: mapData.width / 2, y: mapData.height / 2 };
+    const wh = mapData.width / 2;
+    const tmpCenter = new THREE.Vector3(
+      (pos.x - wh - GROUP_POS_X) / RENDER_SF,
+      5000,
+      (wh - pos.y - GROUP_POS_Z) / RENDER_SF,
+    );
+    const groundY = sys.getSupportGroundY(tmpCenter);
+    collisionDebugRef.current = {
+      enabled: true,
+      center: { x: tmpCenter.x, y: tmpCenter.y, z: tmpCenter.z },
+      supportY: groundY,
+    };
+    if (groundY !== null) {
+      const feetGameZ = groundY * RENDER_SF + GROUP_POS_Y;
+      localZRef.current = feetGameZ;
+      localVzRef.current = 0;
+      localRenderPosRef.current = { x: pos.x, y: pos.y, z: feetGameZ };
+      console.log('[BVH] Initial ground at export Y', groundY.toFixed(1), '→ game Z', feetGameZ.toFixed(3));
+    } else {
+      console.warn('[BVH] No ground found at spawn, using Z=0');
+    }
+    collisionReadyRef.current = true;
+    setCollisionReady(true);
+    console.log('[BVH] Collision system ready');
+  }, [mapData.height, mapData.width]);
   const [debugCursor,   setDebugCursor]   = useState<{ x: number; y: number } | null>(null);
   const [debugBounds,   setDebugBounds]   = useState<{
     me:  { cx: number; topY: number; hpBarY: number } | null;
@@ -1083,8 +1168,8 @@ export default function BattleArena({
               if (mouseLook) {
                 // MMO mouselook: move relative to camera, camera yaw unchanged unless mouse moves.
                 const yaw = camYawRef.current;
-                const fwd = { x: Math.sin(yaw), y: Math.cos(yaw) };
-                const right = { x: Math.cos(yaw), y: -Math.sin(yaw) };
+                const fwd = { x: Math.sin(yaw), y: -Math.cos(yaw) };
+                const right = { x: Math.cos(yaw), y: Math.sin(yaw) };
 
                 let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
                 // Negate strafe to match R3F camera convention.
@@ -1109,7 +1194,7 @@ export default function BattleArena({
               }
 
               // Keyboard-only traditional mode: movement follows facing.
-              const moveFwd = { x: Math.sin(charYawRef.current), y: Math.cos(charYawRef.current) };
+              const moveFwd = { x: Math.sin(charYawRef.current), y: -Math.cos(charYawRef.current) };
               let dx = 0, dy = 0;
               if (k.w) { dx += moveFwd.x; dy += moveFwd.y; }
               if (k.s) { dx -= moveFwd.x; dy -= moveFwd.y; }
@@ -1132,9 +1217,11 @@ export default function BattleArena({
   useEffect(() => {
     if (me?.position && !initializedRef.current) {
       localPositionRef.current = { ...me.position };
+      localZRef.current = (me.position as any).z ?? 0;
+      localRenderPosRef.current = { x: me.position.x, y: me.position.y, z: localZRef.current };
       initializedRef.current   = true;
     }
-  }, [me?.position?.x, me?.position?.y]);
+  }, [me?.position?.x, me?.position?.y, (me?.position as any)?.z]);
 
   useEffect(() => {
     if (!me?.position || !initializedRef.current) return;
@@ -1142,15 +1229,42 @@ export default function BattleArena({
     if (!local) return;
     const dx = me.position.x - local.x;
     const dy = me.position.y - local.y;
+    const activeDash = (me as any)?.activeDash;
+
+    // Collision-test mode uses viewer-side BVH collision on the client while the
+    // backend still runs coarse AABB collision. If the generic hard-snap runs
+    // first, touching any wall can exceed the threshold and yank the player back.
+    if (mode === 'collision-test') {
+      if (activeDash && activeDash.ticksRemaining > 0) {
+        meActiveDashRef.current = activeDash;
+        localPositionRef.current = { ...me.position };
+        localZRef.current  = (me.position as any).z ?? 0;
+        localVzRef.current = 0;
+        return;
+      }
+
+      if (!collisionReadyRef.current) {
+        const serverZ = (me.position as any).z ?? 0;
+        localPositionRef.current = { ...me.position };
+        localZRef.current = serverZ;
+        localRenderPosRef.current = {
+          x: me.position.x,
+          y: me.position.y,
+          z: serverZ,
+        };
+      }
+      return;
+    }
+
     // Hard-snap if server position is far away (e.g. new battle start)
     if (dx * dx + dy * dy > 25) {
       localPositionRef.current = { ...me.position };
       return;
     }
+
     // During active dash: server owns position — hard-snap XY + Z
     // Check me.activeDash directly (not ref) so this works even before React
     // fires the activeDash tracking useEffect on this render cycle.
-    const activeDash = (me as any)?.activeDash;
     if (activeDash && activeDash.ticksRemaining > 0) {
       meActiveDashRef.current = activeDash;
       localPositionRef.current = { ...me.position };
@@ -1158,6 +1272,7 @@ export default function BattleArena({
       localVzRef.current = 0;
       return;
     }
+
     // Reconcile Z with smoothing to reduce visible snap/jitter when stepping/jumping onto rooftops.
     const serverZ = (me.position as any).z ?? 0;
     const localZ  = localZRef.current;
@@ -1819,7 +1934,7 @@ export default function BattleArena({
         // Immediately sync facing arrow so it updates without requiring movement
         localFacingRef.current = {
           x: Math.sin(charYawRef.current),
-          y: Math.cos(charYawRef.current),
+          y: -Math.cos(charYawRef.current),
         };
       } else if (ms.isLeft && !ms.isRight) {
         // LMB only: rotate camera yaw + pitch
@@ -1835,7 +1950,7 @@ export default function BattleArena({
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
         localFacingRef.current = {
           x: Math.sin(charYawRef.current),
-          y: Math.cos(charYawRef.current),
+          y: -Math.cos(charYawRef.current),
         };
       }
     };
@@ -1917,6 +2032,11 @@ export default function BattleArena({
     const tick = () => {
       const pos = localPositionRef.current;
       if (!pos) return;
+      if (mode === 'collision-test' && !collisionReadyRef.current) {
+        localVelocityRef.current = { x: 0, y: 0 };
+        localVzRef.current = 0;
+        return;
+      }
       const effectiveMaxSpeed = MAX_SPEED * moveSpeedScaleRef.current;
 
       // During server-authoritative dash: skip movement + gravity, but KEEP camera/turning
@@ -1940,7 +2060,7 @@ export default function BattleArena({
             charYawRef.current  = camYawRef.current;
             localFacingRef.current = {
               x: Math.sin(charYawRef.current),
-              y: Math.cos(charYawRef.current),
+              y: -Math.cos(charYawRef.current),
             };
           }
         }
@@ -1950,7 +2070,7 @@ export default function BattleArena({
       const vel = localVelocityRef.current;
       const k   = keysRef.current;
       const ms  = mouseStateRef.current;
-      const tickGroundH = getGroundHeightClient(pos.x, pos.y, localZRef.current, mapObjectsRef.current);
+      const tickGroundH = getGroundHeightClient(pos.x, pos.y, localZRef.current, mapObjectsRef.current, playerRadius);
       const airborne = localZRef.current > tickGroundH + 0.01;
       let airNudgeDx = 0;
       let airNudgeDy = 0;
@@ -1972,7 +2092,7 @@ export default function BattleArena({
             charYawRef.current  = camYawRef.current;
             localFacingRef.current = {
               x: Math.sin(charYawRef.current),
-              y: Math.cos(charYawRef.current),
+              y: -Math.cos(charYawRef.current),
             };
           }
         }
@@ -1981,8 +2101,8 @@ export default function BattleArena({
 
         if (mouseLook) {
           const yaw = camYawRef.current;
-          const moveFwd = { x: Math.sin(yaw), y: Math.cos(yaw) };
-          const moveRight = { x: Math.cos(yaw), y: -Math.sin(yaw) };
+          const moveFwd = { x: Math.sin(yaw), y: -Math.cos(yaw) };
+          const moveRight = { x: Math.cos(yaw), y: Math.sin(yaw) };
 
           let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
           // Negate strafe: game moveRight=(cos,−sin) maps to screen-left in R3F camera,
@@ -1998,7 +2118,7 @@ export default function BattleArena({
           fx = moveFwd.x * forwardInput + moveRight.x * strafeInput;
           fy = moveFwd.y * forwardInput + moveRight.y * strafeInput;
         } else {
-          const moveFwd = { x: Math.sin(charYawRef.current), y: Math.cos(charYawRef.current) };
+          const moveFwd = { x: Math.sin(charYawRef.current), y: -Math.cos(charYawRef.current) };
           if (k.w) { fx += moveFwd.x; fy += moveFwd.y; }
           if (k.s) { fx -= moveFwd.x; fy -= moveFwd.y; }
         }
@@ -2022,10 +2142,10 @@ export default function BattleArena({
             vel.x += ((fx / len) * effectiveMaxSpeed * speedMult - vel.x) * ACCEL;
             vel.y += ((fy / len) * effectiveMaxSpeed * speedMult - vel.y) * ACCEL;
             if (mouseLook && !backpedalOnly) {
-              charYawRef.current = Math.atan2(fx / len, fy / len);
+              charYawRef.current = Math.atan2(fx / len, -fy / len);
               localFacingRef.current = {
                 x: Math.sin(charYawRef.current),
-                y: Math.cos(charYawRef.current),
+                y: -Math.cos(charYawRef.current),
               };
             }
           } else {
@@ -2038,7 +2158,7 @@ export default function BattleArena({
               charYawRef.current = camYawRef.current;
               localFacingRef.current = {
                 x: Math.sin(camYawRef.current),
-                y: Math.cos(camYawRef.current),
+                y: -Math.cos(camYawRef.current),
               };
             }
           }
@@ -2118,15 +2238,43 @@ export default function BattleArena({
         }
       }
 
-      let newPx = Math.max(2, Math.min(ARENA_WIDTH - 2, pos.x + vel.x + nudgeX));
-      let newPy = Math.max(2, Math.min(ARENA_HEIGHT - 2, pos.y + vel.y + nudgeY));
+      let newPx = Math.max(playerRadius, Math.min(ARENA_WIDTH - playerRadius, pos.x + vel.x + nudgeX));
+      let newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius, pos.y + vel.y + nudgeY));
 
-      // Map object collision (must match backend resolveObjectCollision)
+      // Map object collision
       const objs = mapObjectsRef.current;
-      for (const obj of objs) {
-        const resolved = resolveObjCollisionClient(newPx, newPy, localZRef.current, vel, obj);
-        newPx = resolved.x;
-        newPy = resolved.y;
+      const useBVH = mode === 'collision-test' && !!collisionSysRef.current;
+
+      if (useBVH) {
+        // ── BVH sphere collision (matches export-reader exactly) ──
+        const sys = collisionSysRef.current!;
+        const wh = ARENA_WIDTH / 2;
+        // Convert game pos → export-space body center
+        _bvhCenter.set(
+          (newPx - wh - GROUP_POS_X) / RENDER_SF,
+          (localZRef.current + playerRadius - GROUP_POS_Y) / RENDER_SF,
+          (wh - newPy - GROUP_POS_Z) / RENDER_SF,
+        );
+        _bvhVelocity.set(
+          (vel.x + nudgeX) / RENDER_SF,
+          localVzRef.current / RENDER_SF,
+          -(vel.y + nudgeY) / RENDER_SF,
+        );
+        sys.resolveSphereCollision(_bvhCenter, EXPORT_RADIUS, _bvhVelocity);
+
+        // Convert back → game horizontal (clamp to arena bounds)
+        newPx = Math.max(playerRadius, Math.min(ARENA_WIDTH - playerRadius,
+          _bvhCenter.x * RENDER_SF + GROUP_POS_X + wh));
+        newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius,
+          wh - (_bvhCenter.z * RENDER_SF + GROUP_POS_Z)));
+        // Update Vz in case floor/ceiling contact modified vertical velocity
+        localVzRef.current = _bvhVelocity.y * RENDER_SF;
+      } else {
+        for (const obj of objs) {
+          const resolved = resolveObjCollisionClient(newPx, newPy, localZRef.current, vel, obj, playerRadius);
+          newPx = resolved.x;
+          newPy = resolved.y;
+        }
       }
 
       localPositionRef.current = { x: newPx, y: newPy };
@@ -2186,8 +2334,53 @@ export default function BattleArena({
                      : isPowerJumpRef.current         ? POWER_GRAVITY_DOWN_CLIENT
                      : GRAVITY_DOWN_CLIENT;
       localVzRef.current -= (localVzRef.current >= 0 ? gravUp : gravDown);
-      const clientGroundH = getGroundHeightClient(localPositionRef.current.x, localPositionRef.current.y, localZRef.current, objs);
-      localZRef.current   = Math.max(clientGroundH, localZRef.current + localVzRef.current);
+
+      // Ground height: BVH raycast + terrain for collision-test, AABB for others
+      let clientGroundH: number;
+      if (useBVH) {
+        const sys = collisionSysRef.current!;
+        // _bvhCenter X/Z preserved from horizontal pass; apply vertical delta in export space
+        _bvhCenter.y += localVzRef.current / RENDER_SF;
+        _bvhVelocity.set(0, localVzRef.current / RENDER_SF, 0);
+        sys.resolveSphereCollision(_bvhCenter, EXPORT_RADIUS, _bvhVelocity);
+        localVzRef.current = _bvhVelocity.y * RENDER_SF;
+
+        // Ground support query
+        const groundExportY = sys.getSupportGroundY(_bvhCenter);
+        if (groundExportY !== null) {
+          const desiredCenterY = groundExportY + EXPORT_RADIUS + 2;
+          const stepUpLimit = 56;
+          if (desiredCenterY <= _bvhCenter.y + stepUpLimit
+              && _bvhCenter.y <= desiredCenterY + 10
+              && _bvhVelocity.y <= 0) {
+            _bvhCenter.y = desiredCenterY;
+            _bvhVelocity.y = 0;
+            localVzRef.current = 0;
+          }
+        }
+
+        // Fall recovery
+        const floorY = groundExportY ?? _bvhCenter.y;
+        if (_bvhCenter.y < floorY - 3500) {
+          _bvhCenter.y = floorY + EXPORT_RADIUS + 120;
+          localVzRef.current = 0;
+        }
+
+        collisionDebugRef.current = {
+          enabled: true,
+          center: { x: _bvhCenter.x, y: _bvhCenter.y, z: _bvhCenter.z },
+          supportY: groundExportY,
+        };
+
+        // Convert body center Y back to game feet Z
+        clientGroundH = groundExportY !== null
+          ? (groundExportY * RENDER_SF + GROUP_POS_Y)
+          : localZRef.current;
+        localZRef.current = (_bvhCenter.y - EXPORT_RADIUS) * RENDER_SF + GROUP_POS_Y;
+      } else {
+        clientGroundH = getGroundHeightClient(localPositionRef.current.x, localPositionRef.current.y, localZRef.current, objs, playerRadius);
+        localZRef.current = Math.max(clientGroundH, localZRef.current + localVzRef.current);
+      }
       if (localZRef.current <= clientGroundH && localVzRef.current < 0) {
         localZRef.current              = clientGroundH;
         localVzRef.current             = 0;
@@ -2515,7 +2708,7 @@ export default function BattleArena({
       <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
         <Canvas
           camera={{ fov: 72, near: 0.5, far: 2000 }}
-          style={{ background: '#62a054' }}
+          style={{ background: mode === 'collision-test' ? '#c8b888' : '#62a054' }}
           gl={{ antialias: true }}
         >
           <ArenaScene
@@ -2563,9 +2756,32 @@ export default function BattleArena({
               if (!pendingGroundCastAbilityRef.current) return;
               castGroundAbilityRef.current(x, y);
             }}
+            showCollisionShells={showCollisionShells}
+            showCollisionBoxes={showCollisionBoxes}
+            collisionReady={collisionReady}
+            collisionDebugRef={collisionDebugRef}
+            onCollisionSystemReady={onCollisionSystemReady}
           />
         </Canvas>
       </div>
+      {mode === 'collision-test' && !collisionReady && (
+        <div style={{
+          position: 'absolute',
+          top: 14,
+          right: 14,
+          zIndex: 520,
+          background: 'rgba(18, 18, 18, 0.82)',
+          border: '1px solid rgba(255, 210, 74, 0.42)',
+          color: '#ffd24a',
+          fontSize: 12,
+          padding: '6px 10px',
+          borderRadius: 6,
+          pointerEvents: 'none',
+          fontFamily: 'monospace',
+        }}>
+          loading real collision...
+        </div>
+      )}
 
       {/* ===== JUMP STATS + HEIGHT DISPLAY ===== */}
       <div style={{
@@ -2804,6 +3020,44 @@ export default function BattleArena({
 
       {/* ===== TOP-RIGHT: RTT badge + debug grid toggle ===== */}
       <div className={styles.rttBadge}>{rtt !== null ? `${rtt}ms` : '—'}</div>
+
+      {/* ===== WORLD POSITION DISPLAY (collision-test) ===== */}
+      {mode === 'collision-test' && (
+        <PositionDisplay posRef={localRenderPosRef} />
+      )}
+
+      {/* ===== COLLISION TOGGLE BUTTONS (collision-test) ===== */}
+      {mode === 'collision-test' && (
+        <div style={{ position: 'absolute', top: 14, right: 120, zIndex: 500, display: 'flex', gap: 4 }}>
+          <button
+            onClick={() => setShowCollisionShells(v => !v)}
+            title="Toggle real shell mesh (green) and live BVH probe markers (red/yellow)"
+            style={{
+              background: showCollisionShells ? 'rgba(63,213,109,0.25)' : 'rgba(0,0,0,0.55)',
+              border: `1px solid ${showCollisionShells ? '#3fd56d' : 'rgba(255,255,255,0.2)'}`,
+              color: showCollisionShells ? '#3fd56d' : 'rgba(255,255,255,0.55)',
+              borderRadius: 4, padding: '3px 8px', fontSize: 11,
+              cursor: 'pointer', fontFamily: 'monospace',
+            }}
+          >
+            Shell+Probe
+          </button>
+          <button
+            onClick={() => setShowCollisionBoxes(v => !v)}
+            title="Toggle real part collision boxes (orange)"
+            style={{
+              background: showCollisionBoxes ? 'rgba(255,140,58,0.25)' : 'rgba(0,0,0,0.55)',
+              border: `1px solid ${showCollisionBoxes ? '#ff8c3a' : 'rgba(255,255,255,0.2)'}`,
+              color: showCollisionBoxes ? '#ff8c3a' : 'rgba(255,255,255,0.55)',
+              borderRadius: 4, padding: '3px 8px', fontSize: 11,
+              cursor: 'pointer', fontFamily: 'monospace',
+            }}
+          >
+            Part Boxes
+          </button>
+        </div>
+      )}
+
       <button
         onClick={() => setShowDebugGrid(v => !v)}
         title="Toggle XY% grid"

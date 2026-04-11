@@ -19,7 +19,7 @@ async function getUsernameById(userId: string): Promise<string> {
   return username;
 }
 
-export async function createGame(userId: string, mode: 'arena' | 'pubg' = 'arena') {
+export async function createGame(userId: string, mode: 'arena' | 'pubg' | 'collision-test' = 'arena') {
   const username = await getUsernameById(userId);
 
   const state: GameState = {
@@ -127,7 +127,8 @@ export async function startGame(gameId: string, userId: string) {
   tournament.phase = "BATTLE";
 
   // Initialize battle state for all players (common abilities only, draft skipped)
-  const state = initializeBattleState(tournament, game.players as string[]);
+  const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test';
+  const state = initializeBattleState(tournament, game.players as string[], gameMode);
 
   game.state = state;
   game.tournament = tournament;

@@ -38,7 +38,7 @@ export default function AoeZone({
   });
 
   const x = worldX - worldHalf;
-  const z = worldY - worldHalf;
+  const z = worldHalf - worldY;
   const textColor = labelColor ?? color;
 
   return (

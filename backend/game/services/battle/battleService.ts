@@ -10,6 +10,7 @@ import { PlayerID } from "../../engine/state/types/common";
 import { AbilityInstance } from "../../engine/state/types/abilities";
 import { ABILITIES } from "../../abilities/abilities";
 import { randomUUID } from "crypto";
+import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT, EXPORTED_MAP_SPAWN_POSITIONS } from "../../map/exportedMap";
 
 // Arena dimensions (must match backend arena size)
 const PUBG_WIDTH = 2000;
@@ -206,12 +207,13 @@ function makeCommonAbilities(): AbilityInstance[] {
 export function initializeBattleState(
   tournament: TournamentState,
   playerIds: PlayerID[],
-  mode: 'arena' | 'pubg' = 'pubg'
+  mode: 'arena' | 'pubg' | 'collision-test' = 'pubg'
 ): GameState {
   const isArena = mode === 'arena';
-  const mapWidth  = isArena ? ARENA_WIDTH  : PUBG_WIDTH;
-  const mapHeight = isArena ? ARENA_HEIGHT : PUBG_HEIGHT;
-  const spawnList = isArena ? ARENA_SPAWN_POSITIONS : PUBG_SPAWN_POSITIONS;
+  const isCollisionTest = mode === 'collision-test';
+  const mapWidth  = isCollisionTest ? EXPORTED_MAP_WIDTH  : isArena ? ARENA_WIDTH  : PUBG_WIDTH;
+  const mapHeight = isCollisionTest ? EXPORTED_MAP_HEIGHT : isArena ? ARENA_HEIGHT : PUBG_HEIGHT;
+  const spawnList = isCollisionTest ? EXPORTED_MAP_SPAWN_POSITIONS : isArena ? ARENA_SPAWN_POSITIONS : PUBG_SPAWN_POSITIONS;
 
   const players: PlayerState[] = playerIds.map((id, i) => {
     const spawn = spawnList[i % spawnList.length];
@@ -248,7 +250,7 @@ export function initializeBattleState(
     gameOver: false,
     players,
     events: [],
-    pickups: isArena ? generateArenaPickups() : generatePickups(),
+    pickups: isArena || isCollisionTest ? generateArenaPickups() : generatePickups(),
   };
 
   return state;

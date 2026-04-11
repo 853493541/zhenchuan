@@ -1,0 +1,18 @@
+{
+  "name": "龙门寻宝",
+  "landscape": {
+    "regionSize": 512,
+    "leafNodeSize": 64,
+    "worldOriginX": -102400,
+    "worldOriginY": -102400,
+    "unitScaleX": 100,
+    "unitScaleY": 100,
+    "regionGridX": 8,
+    "regionGridY": 8,
+    "heightMax": 409600,
+    "heightMin": -409600,
+    "heightmapResolution": 513
+  },
+  "totalSceneObjects": 4964,
+  "meshCount": 622
+}

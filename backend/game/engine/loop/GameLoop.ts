@@ -21,6 +21,8 @@ import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../u
 import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
+import { exportedMap } from "../../map/exportedMap";
+import { getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
 import { ABILITIES } from "../../abilities/abilities";
 import { blocksCardTargeting, hasUntargetable, shouldDodge } from "../rules/guards";
 import type { MapObject } from "../state/types/map";
@@ -174,7 +176,7 @@ const SHENGTAIJI_ENEMY_SLOW_BUFF_ID = 1311;
 
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
-  mode?: "arena" | "pubg";
+  mode?: "arena" | "pubg" | "collision-test";
 }
 
 /**
@@ -221,12 +223,16 @@ export class GameLoop {
     this.isArenaMode = config?.mode === 'arena';
 
     // Select map based on game mode
-    const map = this.isArenaMode ? arenaMap : worldMap;
+    const map = config?.mode === 'collision-test' ? exportedMap : this.isArenaMode ? arenaMap : worldMap;
+    const collisionSystem = config?.mode === 'collision-test' ? getCollisionTestExportedSystem() : null;
     this.mapCtx = {
       objects: map.objects,
       width: map.width,
       height: map.height,
       circular: false,
+      // Export-reader avatar: radius 57 export units = ~0.32 game units (doubled: 0.64)
+      playerRadius: config?.mode === 'collision-test' ? 0.64 : undefined,
+      collisionSystem,
     };
 
     // Initialize safe zone for arena mode

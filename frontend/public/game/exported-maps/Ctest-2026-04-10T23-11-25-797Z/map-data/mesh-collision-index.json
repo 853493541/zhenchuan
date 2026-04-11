@@ -1,0 +1,626 @@
+{
+  "version": 1,
+  "generatedAt": 1775862686943,
+  "packageName": "Ctest-2026-04-10T23-11-25-797Z",
+  "sidecarSuffix": ".collision.json",
+  "summary": {
+    "expected": 68,
+    "written": 68,
+    "failedWrites": 0,
+    "missing": 0
+  },
+  "entries": [
+    {
+      "mesh": "sd_崖壁狱门fb_001_hd.glb",
+      "sidecar": "meshes/sd_崖壁狱门fb_001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 729,
+      "shellTriangles": 7888,
+      "error": null
+    },
+    {
+      "mesh": "xwj_破军物件001_004_hd.glb",
+      "sidecar": "meshes/xwj_破军物件001_004_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 53,
+      "shellTriangles": 4475,
+      "error": null
+    },
+    {
+      "mesh": "jz_xb楼兰哨台001_004_hd.glb",
+      "sidecar": "meshes/jz_xb楼兰哨台001_004_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 237,
+      "shellTriangles": 4018,
+      "error": null
+    },
+    {
+      "mesh": "st_xb龙门荒漠石001_004_hd.glb",
+      "sidecar": "meshes/st_xb龙门荒漠石001_004_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 60,
+      "shellTriangles": 1430,
+      "error": null
+    },
+    {
+      "mesh": "jz_xb楼兰哨台001_007_hd.glb",
+      "sidecar": "meshes/jz_xb楼兰哨台001_007_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 57,
+      "shellTriangles": 728,
+      "error": null
+    },
+    {
+      "mesh": "cq_玉门关城墙001_008_hd.glb",
+      "sidecar": "meshes/cq_玉门关城墙001_008_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 118,
+      "shellTriangles": 666,
+      "error": null
+    },
+    {
+      "mesh": "jz_xb楼兰哨台001_005_hd.glb",
+      "sidecar": "meshes/jz_xb楼兰哨台001_005_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 181,
+      "shellTriangles": 3392,
+      "error": null
+    },
+    {
+      "mesh": "wj_药煲_001_hd.glb",
+      "sidecar": "meshes/wj_药煲_001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 768,
+      "error": null
+    },
+    {
+      "mesh": "cq_玉门关城墙001_007_hd.glb",
+      "sidecar": "meshes/cq_玉门关城墙001_007_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 56,
+      "shellTriangles": 2112,
+      "error": null
+    },
+    {
+      "mesh": "cq_玉门关城墙001_003_hd.glb",
+      "sidecar": "meshes/cq_玉门关城墙001_003_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 255,
+      "shellTriangles": 770,
+      "error": null
+    },
+    {
+      "mesh": "st_mj石头002_003_hd.glb",
+      "sidecar": "meshes/st_mj石头002_003_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 244,
+      "shellTriangles": 4416,
+      "error": null
+    },
+    {
+      "mesh": "wj_木桌005_002_hd.glb",
+      "sidecar": "meshes/wj_木桌005_002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 5,
+      "shellTriangles": 996,
+      "error": null
+    },
+    {
+      "mesh": "xwj_破军物件001_003_hd.glb",
+      "sidecar": "meshes/xwj_破军物件001_003_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 21,
+      "shellTriangles": 5270,
+      "error": null
+    },
+    {
+      "mesh": "wj_沙包009_01_hd.glb",
+      "sidecar": "meshes/wj_沙包009_01_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 2,
+      "shellTriangles": 1904,
+      "error": null
+    },
+    {
+      "mesh": "pj_玉门草棚001_hd.glb",
+      "sidecar": "meshes/pj_玉门草棚001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 10,
+      "shellTriangles": 2350,
+      "error": null
+    },
+    {
+      "mesh": "xwj_xb楼兰墓地001_005_hd.glb",
+      "sidecar": "meshes/xwj_xb楼兰墓地001_005_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 3,
+      "shellTriangles": 568,
+      "error": null
+    },
+    {
+      "mesh": "wj_壁挂灯笼001_hd.glb",
+      "sidecar": "meshes/wj_壁挂灯笼001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 790,
+      "error": null
+    },
+    {
+      "mesh": "wj_竹帘棚001_hd.glb",
+      "sidecar": "meshes/wj_竹帘棚001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 4,
+      "shellTriangles": 450,
+      "error": null
+    },
+    {
+      "mesh": "wj_mj篝火001_002_hd.glb",
+      "sidecar": "meshes/wj_mj篝火001_002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 2,
+      "shellTriangles": 1334,
+      "error": null
+    },
+    {
+      "mesh": "wj_mj篝火001_003_hd.glb",
+      "sidecar": "meshes/wj_mj篝火001_003_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 316,
+      "error": null
+    },
+    {
+      "mesh": "st_mj石头002_002_hd.glb",
+      "sidecar": "meshes/st_mj石头002_002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 443,
+      "shellTriangles": 3194,
+      "error": null
+    },
+    {
+      "mesh": "xwj_赌桌002_002_hd.glb",
+      "sidecar": "meshes/xwj_赌桌002_002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 1186,
+      "error": null
+    },
+    {
+      "mesh": "st_xb龙门荒漠石001_012_hd.glb",
+      "sidecar": "meshes/st_xb龙门荒漠石001_012_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 72,
+      "shellTriangles": 1580,
+      "error": null
+    },
+    {
+      "mesh": "jz_xb玉门关建筑002_006_hd.glb",
+      "sidecar": "meshes/jz_xb玉门关建筑002_006_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 48,
+      "shellTriangles": 9613,
+      "error": null
+    },
+    {
+      "mesh": "jz_xb玉门关建筑002_003_hd.glb",
+      "sidecar": "meshes/jz_xb玉门关建筑002_003_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 325,
+      "shellTriangles": 47293,
+      "error": null
+    },
+    {
+      "mesh": "cq_玉门关城墙001_001_hd.glb",
+      "sidecar": "meshes/cq_玉门关城墙001_001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 104,
+      "shellTriangles": 1617,
+      "error": null
+    },
+    {
+      "mesh": "wj_木箱堆002_hd.glb",
+      "sidecar": "meshes/wj_木箱堆002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 2,
+      "shellTriangles": 600,
+      "error": null
+    },
+    {
+      "mesh": "wj_erg笔架002_hd.glb",
+      "sidecar": "meshes/wj_erg笔架002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 980,
+      "error": null
+    },
+    {
+      "mesh": "pj_玉门布棚001_hd.glb",
+      "sidecar": "meshes/pj_玉门布棚001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 20,
+      "shellTriangles": 3031,
+      "error": null
+    },
+    {
+      "mesh": "jz_xb楼兰哨台001_001_hd.glb",
+      "sidecar": "meshes/jz_xb楼兰哨台001_001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 139,
+      "shellTriangles": 7307,
+      "error": null
+    },
+    {
+      "mesh": "xwj_xb楼兰墓地001_004_hd.glb",
+      "sidecar": "meshes/xwj_xb楼兰墓地001_004_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 4,
+      "shellTriangles": 836,
+      "error": null
+    },
+    {
+      "mesh": "xwj_斗笠001_hd.glb",
+      "sidecar": "meshes/xwj_斗笠001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 254,
+      "error": null
+    },
+    {
+      "mesh": "xwj_扬州路灯002_005a_hd.glb",
+      "sidecar": "meshes/xwj_扬州路灯002_005a_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 7,
+      "shellTriangles": 2300,
+      "error": null
+    },
+    {
+      "mesh": "st_mj石拱002_hd.glb",
+      "sidecar": "meshes/st_mj石拱002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 137,
+      "shellTriangles": 3606,
+      "error": null
+    },
+    {
+      "mesh": "wj_桌子002_001_hd.glb",
+      "sidecar": "meshes/wj_桌子002_001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 709,
+      "error": null
+    },
+    {
+      "mesh": "cq_玉门关城墙001_005_hd.glb",
+      "sidecar": "meshes/cq_玉门关城墙001_005_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 140,
+      "shellTriangles": 13753,
+      "error": null
+    },
+    {
+      "mesh": "xwj_ca柜子003_004_hd.glb",
+      "sidecar": "meshes/xwj_ca柜子003_004_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 4,
+      "shellTriangles": 116,
+      "error": null
+    },
+    {
+      "mesh": "st_mj戈壁碎石002_002_hd.glb",
+      "sidecar": "meshes/st_mj戈壁碎石002_002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 241,
+      "shellTriangles": 6444,
+      "error": null
+    },
+    {
+      "mesh": "jz_xb玉门关建筑001_003sw_hd.glb",
+      "sidecar": "meshes/jz_xb玉门关建筑001_003sw_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 133,
+      "shellTriangles": 34575,
+      "error": null
+    },
+    {
+      "mesh": "jz_xb玉门关建筑001_004_hd.glb",
+      "sidecar": "meshes/jz_xb玉门关建筑001_004_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 198,
+      "shellTriangles": 34786,
+      "error": null
+    },
+    {
+      "mesh": "wj_erg纸张001_hd.glb",
+      "sidecar": "meshes/wj_erg纸张001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 6,
+      "error": null
+    },
+    {
+      "mesh": "wj_木箱004_001_hd.glb",
+      "sidecar": "meshes/wj_木箱004_001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 864,
+      "error": null
+    },
+    {
+      "mesh": "wj_火堆001_003_hd.glb",
+      "sidecar": "meshes/wj_火堆001_003_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 6,
+      "shellTriangles": 3236,
+      "error": null
+    },
+    {
+      "mesh": "wj_木箱001_hd.glb",
+      "sidecar": "meshes/wj_木箱001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 278,
+      "error": null
+    },
+    {
+      "mesh": "st_mj石头003_003_hd.glb",
+      "sidecar": "meshes/st_mj石头003_003_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 308,
+      "shellTriangles": 3584,
+      "error": null
+    },
+    {
+      "mesh": "wj_小木台001_hd.glb",
+      "sidecar": "meshes/wj_小木台001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 3,
+      "shellTriangles": 3716,
+      "error": null
+    },
+    {
+      "mesh": "wj_物什箱014_hd.glb",
+      "sidecar": "meshes/wj_物什箱014_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 1107,
+      "error": null
+    },
+    {
+      "mesh": "wj_erg地毯001_hd.glb",
+      "sidecar": "meshes/wj_erg地毯001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 4,
+      "shellTriangles": 24,
+      "error": null
+    },
+    {
+      "mesh": "wj_火堆001_001_hd.glb",
+      "sidecar": "meshes/wj_火堆001_001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 2,
+      "shellTriangles": 3145,
+      "error": null
+    },
+    {
+      "mesh": "st_xb龙门荒漠石001_008_hd.glb",
+      "sidecar": "meshes/st_xb龙门荒漠石001_008_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 88,
+      "shellTriangles": 1172,
+      "error": null
+    },
+    {
+      "mesh": "wj_木箱004_002_hd.glb",
+      "sidecar": "meshes/wj_木箱004_002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 2,
+      "shellTriangles": 576,
+      "error": null
+    },
+    {
+      "mesh": "jz_xb玉门关建筑002_008_hd.glb",
+      "sidecar": "meshes/jz_xb玉门关建筑002_008_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 101,
+      "shellTriangles": 10804,
+      "error": null
+    },
+    {
+      "mesh": "st_xb龙门荒漠石001_002_hd.glb",
+      "sidecar": "meshes/st_xb龙门荒漠石001_002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 102,
+      "shellTriangles": 1423,
+      "error": null
+    },
+    {
+      "mesh": "wj_木车002_hd.glb",
+      "sidecar": "meshes/wj_木车002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 6,
+      "shellTriangles": 3416,
+      "error": null
+    },
+    {
+      "mesh": "jz_xb玉门关建筑001_002_hd.glb",
+      "sidecar": "meshes/jz_xb玉门关建筑001_002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 91,
+      "shellTriangles": 24342,
+      "error": null
+    },
+    {
+      "mesh": "jz_xb楼兰哨台001_003_hd.glb",
+      "sidecar": "meshes/jz_xb楼兰哨台001_003_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 207,
+      "shellTriangles": 10321,
+      "error": null
+    },
+    {
+      "mesh": "wj_摇钱树001_hd.glb",
+      "sidecar": "meshes/wj_摇钱树001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 9,
+      "shellTriangles": 2237,
+      "error": null
+    },
+    {
+      "mesh": "wj_圆木桶003_hd.glb",
+      "sidecar": "meshes/wj_圆木桶003_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 266,
+      "error": null
+    },
+    {
+      "mesh": "wj_破车001_001_hd.glb",
+      "sidecar": "meshes/wj_破车001_001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 5,
+      "shellTriangles": 2644,
+      "error": null
+    },
+    {
+      "mesh": "cq_玉门关城墙001_004_hd.glb",
+      "sidecar": "meshes/cq_玉门关城墙001_004_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 205,
+      "shellTriangles": 750,
+      "error": null
+    },
+    {
+      "mesh": "wj_中级挂饰004_001_hd.glb",
+      "sidecar": "meshes/wj_中级挂饰004_001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 568,
+      "error": null
+    },
+    {
+      "mesh": "xwj_农家物件008_hd.glb",
+      "sidecar": "meshes/xwj_农家物件008_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 2,
+      "shellTriangles": 208,
+      "error": null
+    },
+    {
+      "mesh": "cq_玉门关城墙001_002_hd.glb",
+      "sidecar": "meshes/cq_玉门关城墙001_002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 108,
+      "shellTriangles": 1133,
+      "error": null
+    },
+    {
+      "mesh": "wj_圆木桶堆002_hd.glb",
+      "sidecar": "meshes/wj_圆木桶堆002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 2,
+      "shellTriangles": 1410,
+      "error": null
+    },
+    {
+      "mesh": "wj_挂毯001_001_hd.glb",
+      "sidecar": "meshes/wj_挂毯001_001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 176,
+      "error": null
+    },
+    {
+      "mesh": "wj_erg书001_hd.glb",
+      "sidecar": "meshes/wj_erg书001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 1,
+      "shellTriangles": 20,
+      "error": null
+    },
+    {
+      "mesh": "pj_帐篷001_002_hd.glb",
+      "sidecar": "meshes/pj_帐篷001_002_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 19,
+      "shellTriangles": 3215,
+      "error": null
+    },
+    {
+      "mesh": "wj_坛子001_001_hd.glb",
+      "sidecar": "meshes/wj_坛子001_001_hd.glb.collision.json",
+      "status": "ok",
+      "hasCollision": true,
+      "parts": 3,
+      "shellTriangles": 1344,
+      "error": null
+    }
+  ]
+}

@@ -1,7 +1,9 @@
 'use client';
 
-import { MutableRefObject, useEffect, useState } from 'react';
+import { MutableRefObject, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { Line } from '@react-three/drei';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
 import Ground from './Ground';
 import MapObjects from './MapObjects';
 import Character from './Character';
@@ -10,10 +12,14 @@ import AoeZone from './AoeZone';
 import CameraRig from './CameraRig';
 import type { PickupItem, GroundZone } from '../../../types';
 import { getMapForMode } from '../worldMap';
+import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF } from './ExportedMapScene';
+import type { MapCollisionSystem } from './MapCollisionSystem';
 
 // Colors for up to 5 opponents (index 0 = primary, etc.)
 const OPP_COLORS = ['#cc3333', '#cc8800', '#9933cc', '#cc3388'];
 const OPP_EMISSIVES = ['#440000', '#332200', '#220044', '#330022'];
+
+const COLLISION_TEST_VIS_RADIUS = 0.64; // game units — matches export-reader avatar
 
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
@@ -77,6 +83,15 @@ interface ArenaSceneProps {
   groundCastPreview?: { x: number; y: number; radius: number; label?: string } | null;
   onGroundPointerMove?: (x: number, y: number) => void;
   onGroundPointerDown?: (x: number, y: number) => void;
+  showCollisionShells?: boolean;
+  showCollisionBoxes?: boolean;
+  collisionReady?: boolean;
+  collisionDebugRef?: MutableRefObject<{
+    enabled: boolean;
+    center: { x: number; y: number; z: number };
+    supportY: number | null;
+  }>;
+  onCollisionSystemReady?: (sys: MapCollisionSystem) => void;
 }
 
 export default function ArenaScene({
@@ -102,6 +117,11 @@ export default function ArenaScene({
   groundCastPreview,
   onGroundPointerMove,
   onGroundPointerDown,
+  showCollisionShells,
+  showCollisionBoxes,
+  collisionReady = true,
+  collisionDebugRef,
+  onCollisionSystemReady,
 }: ArenaSceneProps) {
   const { objects: mapObjects, width: mapWidth } = getMapForMode(mode);
   const worldHalf = mapWidth / 2;
@@ -123,25 +143,27 @@ export default function ArenaScene({
         [
           localRenderPosRef.current.x - worldHalf,
           (localRenderPosRef.current.z ?? 0) + 1,
-          localRenderPosRef.current.y - worldHalf,
+          worldHalf - localRenderPosRef.current.y,
         ],
         [
           selectedTarget.position.x - worldHalf,
           (selectedTarget.position.z ?? 0) + 1,
-          selectedTarget.position.y - worldHalf,
+          worldHalf - selectedTarget.position.y,
         ],
       ] as [number, number, number][]
     : null;
 
   const handleGroundPointerMove = (e: any) => {
     if (!onGroundPointerMove) return;
-    onGroundPointerMove(e.point.x + worldHalf, e.point.z + worldHalf);
+    onGroundPointerMove(e.point.x + worldHalf, worldHalf - e.point.z);
   };
 
   const handleGroundPointerDown = (e: any) => {
     if (!onGroundPointerDown) return;
-    onGroundPointerDown(e.point.x + worldHalf, e.point.z + worldHalf);
+    onGroundPointerDown(e.point.x + worldHalf, worldHalf - e.point.z);
   };
+
+  const isCollisionTest = mode === 'collision-test';
 
   return (
     <>
@@ -154,21 +176,49 @@ export default function ArenaScene({
         worldHalf={worldHalf}
       />
 
-      {/* Lighting — daylight for all modes */}
-      <ambientLight intensity={1.0} color="#c0ddb8" />
-      <directionalLight position={[300, 500, 100]} intensity={2.8} color="#e8eedc" />
-      <directionalLight position={[-100, 50, -200]} intensity={0.4} color="#3d7045" />
-      {!isArena && <fog attach="fog" args={['#7ab86a', 300, 1000]} />}
+      {/* Lighting — mode-specific */}
+      {isCollisionTest ? (
+        <>
+          {/* Lighting from environment.json + visual-settings.json (matches export-reader exactly) */}
+          {/* Sun: diffuse=[0.984,0.890,0.847], dir=[0.709,0.574,-0.410], intensity=3 */}
+          <directionalLight
+            position={[709, 574, -410]}
+            intensity={3.0}
+            color="#fbe3d8"
+            castShadow
+          />
+          {/* Ambient: ambientColor=[0.498,0.498,0.498], intensity=0.8 */}
+          <ambientLight intensity={0.8} color="#7f7f7f" />
+          {/* Hemisphere: skyLightColor*[0.8,0.9,1.2]=[0.398,0.448,0.598], ground=#8b7355, intensity=1 */}
+          <hemisphereLight args={['#667299', '#8b7355', 1.0]} />
+          {/* Fog: FogExp2 from visual-settings, density scaled for our scene (original 0.0000035 / SF) */}
+          <fogExp2 attach="fog" args={['#c8b888', 0.00063]} />
+        </>
+      ) : (
+        <>
+          <ambientLight intensity={1.0} color="#c0ddb8" />
+          <directionalLight position={[300, 500, 100]} intensity={2.8} color="#e8eedc" />
+          <directionalLight position={[-100, 50, -200]} intensity={0.4} color="#3d7045" />
+          {!isArena && <fog attach="fog" args={['#7ab86a', 300, 1000]} />}
+        </>
+      )}
 
       {/* World */}
-      <Ground
-        arenaSize={mapWidth}
-        isArena={isArena}
-        safeZone={safeZone}
-        onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
-        onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
-      />
-      <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalf={worldHalf} />
+      {isCollisionTest ? (
+        <ExportedMapScene worldHalf={worldHalf} showCollisionShells={showCollisionShells} showCollisionBoxes={showCollisionBoxes} onCollisionSystemReady={onCollisionSystemReady} />
+      ) : (
+        <>
+          <Ground
+            arenaSize={mapWidth}
+            isArena={isArena}
+            mode={mode}
+            safeZone={safeZone}
+            onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
+            onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
+          />
+          <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalf={worldHalf} />
+        </>
+      )}
       <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalf={worldHalf} />
 
       {/* Always-visible target connection line (not blocked by structures). */}
@@ -286,23 +336,115 @@ export default function ArenaScene({
       })}
 
       {/* Local player — rendered last (on top) */}
-      <Character
-        worldX={me.position.x}
-        worldY={me.position.y}
-        worldZ={me.position.z ?? 0}
-        color="#1a66cc"
-        emissive="#0a2255"
-        hp={me.hp}
-        shield={me.shield ?? 0}
-        maxHp={me.maxHp ?? maxHp}
-        isMe={true}
-        isSelected={selectedSelf}
-        facingRef={meFacingRef}
-        posRef={localRenderPosRef}
-        onScreenBounds={meScreenBoundsRef ? (b) => { meScreenBoundsRef.current = b; } : undefined}
-        worldHalf={worldHalf}
-        isStealthed={meSemiTransparent}
-      />
+      {(!isCollisionTest || collisionReady) && (
+        <Character
+          worldX={me.position.x}
+          worldY={me.position.y}
+          worldZ={me.position.z ?? 0}
+          color="#1a66cc"
+          emissive="#0a2255"
+          hp={me.hp}
+          shield={me.shield ?? 0}
+          maxHp={me.maxHp ?? maxHp}
+          isMe={true}
+          isSelected={selectedSelf}
+          facingRef={meFacingRef}
+          posRef={localRenderPosRef}
+          onScreenBounds={meScreenBoundsRef ? (b) => { meScreenBoundsRef.current = b; } : undefined}
+          worldHalf={worldHalf}
+          isStealthed={meSemiTransparent}
+        />
+      )}
+
+      {isCollisionTest && collisionDebugRef && (showCollisionShells || showCollisionBoxes) && (
+        <CollisionProbeOverlay debugRef={collisionDebugRef} />
+      )}
+
+      {/* Player's own collision sphere (visible when Shell or Box toggles are on) */}
+      {isCollisionTest && collisionReady && (showCollisionShells || showCollisionBoxes) && (
+        <PlayerCollisionSphere posRef={localRenderPosRef} worldHalf={worldHalf} playerRadius={COLLISION_TEST_VIS_RADIUS} />
+      )}
     </>
+  );
+}
+
+function CollisionProbeOverlay({
+  debugRef,
+}: {
+  debugRef: MutableRefObject<{
+    enabled: boolean;
+    center: { x: number; y: number; z: number };
+    supportY: number | null;
+  }>;
+}) {
+  const probeRef = useRef<THREE.Mesh>(null);
+  const groundRef = useRef<THREE.Mesh>(null);
+
+  useFrame(() => {
+    const debug = debugRef.current;
+    if (probeRef.current) {
+      probeRef.current.visible = debug.enabled;
+      if (debug.enabled) {
+        probeRef.current.position.set(
+          debug.center.x * RENDER_SF + GROUP_POS_X,
+          debug.center.y * RENDER_SF + GROUP_POS_Y,
+          debug.center.z * RENDER_SF + GROUP_POS_Z,
+        );
+      }
+    }
+    if (groundRef.current) {
+      const visible = debug.enabled && debug.supportY !== null;
+      groundRef.current.visible = visible;
+      if (visible) {
+        groundRef.current.position.set(
+          debug.center.x * RENDER_SF + GROUP_POS_X,
+          debug.supportY! * RENDER_SF + GROUP_POS_Y,
+          debug.center.z * RENDER_SF + GROUP_POS_Z,
+        );
+      }
+    }
+  });
+
+  return (
+    <>
+      <mesh ref={probeRef} renderOrder={11} visible={false}>
+        <sphereGeometry args={[COLLISION_TEST_VIS_RADIUS, 18, 14]} />
+        <meshBasicMaterial color="#ff3344" wireframe transparent opacity={0.95} depthTest={false} />
+      </mesh>
+      <mesh ref={groundRef} renderOrder={12} visible={false}>
+        <sphereGeometry args={[0.16, 12, 10]} />
+        <meshBasicMaterial color="#ffd24a" transparent opacity={0.95} depthTest={false} />
+      </mesh>
+    </>
+  );
+}
+
+/* ─── Player collision sphere wireframe ─── */
+function PlayerCollisionSphere({
+  posRef,
+  worldHalf,
+  playerRadius,
+}: {
+  posRef: MutableRefObject<{ x: number; y: number; z: number }>;
+  worldHalf: number;
+  playerRadius: number;
+}) {
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  useFrame(() => {
+    if (!meshRef.current) return;
+    const p = posRef.current;
+    meshRef.current.position.set(
+      p.x - worldHalf,
+      (p.z ?? 0) + playerRadius,
+      worldHalf - p.y,
+    );
+  });
+
+  return (
+    <mesh ref={meshRef} renderOrder={10}>
+      <sphereGeometry args={[playerRadius, 16, 12]} />
+      <meshBasicMaterial color="#00ffff" wireframe transparent opacity={0.7} depthTest={false} />
+    </mesh>
   );
 }

@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 interface GroundProps {
   arenaSize?: number;
   isArena?: boolean;
+  mode?: string;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number };
   onPointerMove?: (e: any) => void;
   onPointerDown?: (e: any) => void;
@@ -13,15 +14,18 @@ interface GroundProps {
 export default function Ground({
   arenaSize = 2000,
   isArena = false,
+  mode,
   safeZone,
   onPointerMove,
   onPointerDown,
 }: GroundProps) {
   const half = arenaSize / 2;
 
+  const isCollisionTest = mode === 'collision-test';
+
   /* ── Arena grid lines ── */
   const arenaGridPositions = useMemo(() => {
-    if (!isArena) return new Float32Array(0);
+    if (!isArena && !isCollisionTest) return new Float32Array(0);
     const positions: number[] = [];
     const step = 20;
     for (let x = -half; x <= half; x += step) {
@@ -31,18 +35,18 @@ export default function Ground({
       positions.push(-half, 0.02, z, half, 0.02, z);
     }
     return new Float32Array(positions);
-  }, [isArena, half]);
+  }, [isArena, isCollisionTest, half]);
 
   /* ── Arena white glowing border (double line for glow effect) ── */
   const arenaBorderPositions = useMemo(() => {
-    if (!isArena) return new Float32Array(0);
+    if (!isArena && !isCollisionTest) return new Float32Array(0);
     return new Float32Array([
       -half, 0.06, -half,   half, 0.06, -half,
        half, 0.06, -half,   half, 0.06,  half,
        half, 0.06,  half,  -half, 0.06,  half,
       -half, 0.06,  half,  -half, 0.06, -half,
     ]);
-  }, [isArena, half]);
+  }, [isArena, isCollisionTest, half]);
 
   // Slightly wider outer border for glow halo
   const arenaBorderOuterPositions = useMemo(() => {
@@ -89,7 +93,7 @@ export default function Ground({
   const safeZoneBorderPositions = useMemo(() => {
     if (!safeZone || safeZone.currentHalf >= half) return new Float32Array(0);
     const cx = safeZone.centerX - half;
-    const cz = safeZone.centerY - half;
+    const cz = half - safeZone.centerY;
     const h = safeZone.currentHalf;
     const y = 0.10;
     return new Float32Array([
@@ -99,6 +103,41 @@ export default function Ground({
       cx - h, y, cz + h,   cx - h, y, cz - h,
     ]);
   }, [safeZone, half]);
+
+  // ═══════════════════════════════════════════════════
+  //  COLLISION-TEST MODE — Sandy desert ground matching exported map
+  // ═══════════════════════════════════════════════════
+  if (mode === 'collision-test') {
+    return (
+      <group>
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, -0.01, 0]}
+          onPointerMove={onPointerMove}
+          onPointerDown={onPointerDown}
+        >
+          <planeGeometry args={[arenaSize, arenaSize]} />
+          <meshLambertMaterial color="#b8a878" />
+        </mesh>
+
+        {/* Grid lines every 20 units */}
+        <lineSegments>
+          <bufferGeometry>
+            <bufferAttribute attach="attributes-position" args={[arenaGridPositions, 3]} />
+          </bufferGeometry>
+          <lineBasicMaterial color="#8a7a58" transparent opacity={0.25} />
+        </lineSegments>
+
+        {/* Boundary */}
+        <lineSegments>
+          <bufferGeometry>
+            <bufferAttribute attach="attributes-position" args={[arenaBorderPositions, 3]} />
+          </bufferGeometry>
+          <lineBasicMaterial color="#ffffff" transparent opacity={0.9} />
+        </lineSegments>
+      </group>
+    );
+  }
 
   // ═══════════════════════════════════════════════════
   //  ARENA MODE — Green grass + white glowing border
@@ -154,7 +193,7 @@ export default function Ground({
         {/* Safe zone gradient barrier wall — fades from strong at bottom to invisible at 15 units */}
         {safeZone && safeZone.currentHalf < half && safeZone.currentHalf > 0 && (() => {
           const cx = safeZone.centerX - half;
-          const cz = safeZone.centerY - half;
+          const cz = half - safeZone.centerY;
           const h = safeZone.currentHalf;
           const wallHeight = 15;
           const layers = 6;

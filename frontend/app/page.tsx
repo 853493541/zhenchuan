@@ -94,7 +94,7 @@ export default function HomePage() {
   /* =========================================================
      创建房间
   ========================================================= */
-  const createGame = async (mode: 'arena' | 'pubg') => {
+  const createGame = async (mode: 'arena' | 'pubg' | 'collision-test') => {
     setLoading(true);
     try {
       const res = await fetch("/api/game/create", {
@@ -140,6 +140,13 @@ export default function HomePage() {
           {loading ? "创建中…" : "创建竞技场"}
         </button>
         <button
+          className={`${styles.createBtn} ${styles.createBtnCollisionTest}`}
+          onClick={() => createGame('collision-test')}
+          disabled={loading}
+        >
+          {loading ? "创建中…" : "碰撞测试"}
+        </button>
+        <button
           className={`${styles.createBtn} ${styles.createBtnExportViewer}`}
           onClick={openExportViewer}
         >
@@ -172,7 +179,7 @@ export default function HomePage() {
 
               {/* 模式 */}
               <div className={styles.modeBadge}>
-                {g.mode === 'arena' ? '竞技场' : '吃鸡'}
+                {g.mode === 'arena' ? '竞技场' : g.mode === 'collision-test' ? '碰撞测试' : '吃鸡'}
               </div>
 
               {/* 人数 */}

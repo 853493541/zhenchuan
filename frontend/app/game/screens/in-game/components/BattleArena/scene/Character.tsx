@@ -111,7 +111,7 @@ export default function Character({
 
   const threeX = worldX - worldHalf;
   const threeY = worldZ;
-  const threeZ = worldY - worldHalf;
+  const threeZ = worldHalf - worldY;
 
   // For opponent (no posRef): smooth lerp toward prop position
   const currentPos = useRef(new THREE.Vector3(threeX, threeY, threeZ));
@@ -124,12 +124,12 @@ export default function Character({
       // Local player: posRef is already smoothed by the rAF loop in BattleArena.
       // Copy directly — NO additional lerp (avoids sluggish double-smoothing).
       const p = posRef.current;
-      groupRef.current.position.set(p.x - worldHalf, p.z, p.y - worldHalf);
+      groupRef.current.position.set(p.x - worldHalf, p.z, worldHalf - p.y);
     } else {
       // Opponent: smooth lerp toward prop-driven position
       const tx = worldX - worldHalf;
       const ty = worldZ;
-      const tz = worldY - worldHalf;
+      const tz = worldHalf - worldY;
       currentPos.current.lerp(new THREE.Vector3(tx, ty, tz), 0.18);
       groupRef.current.position.copy(currentPos.current);
     }
@@ -137,7 +137,7 @@ export default function Character({
     // --- Facing rotation (updated every frame) ---
     const f = facingRef ? facingRef.current : facing;
     if (f && bodyRef.current) {
-      const yaw = Math.atan2(f.x, f.y);
+      const yaw = Math.atan2(f.x, -f.y); // z-flip: negate game-y for correct Three.js facing
       bodyRef.current.rotation.set(0, yaw, 0);
 
       // Smooth arc display yaw — rotates at max 720°/s so a full 180° takes ~0.25s
@@ -209,7 +209,7 @@ export default function Character({
 
   // Initial facing yaw (for static JSX initial values)
   const initFacing = facingRef ? facingRef.current : facing;
-  const facingYaw = initFacing ? Math.atan2(initFacing.x, initFacing.y) : 0;
+  const facingYaw = initFacing ? Math.atan2(initFacing.x, -initFacing.y) : 0;
 
   return (
     <group ref={groupRef} position={[threeX, threeY, threeZ]}>

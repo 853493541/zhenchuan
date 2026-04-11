@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "formatRevision": 2,
+  "generator": "collision-generator-v3-shell",
+  "generatedAt": 1775862686723,
+  "mesh": "wj_erg纸张001_hd.glb",
+  "models": {
+    "broadPhase": "box-prisms",
+    "narrowPhase": "surface-shell-triangles",
+    "shellThickness": 0.06,
+    "shellTriangleFormat": "packed-triangle-xyz9",
+    "attachment": "per-glb-sidecar-json"
+  },
+  "status": "ok",
+  "error": null,
+  "hasCollision": true,
+  "collisionStats": {
+    "parts": 1,
+    "shells": 1,
+    "shellTriangles": 6
+  },
+  "parts": [
+    {
+      "id": "part_0",
+      "localCx": 5.282,
+      "localCz": -18.634,
+      "localW": 57.58,
+      "localD": 57.58,
+      "localBaseY": 21.524,
+      "localTopY": 21.524
+    }
+  ],
+  "shells": [
+    {
+      "type": "surface-shell",
+      "thickness": 0.06,
+      "triangleCount": 6,
+      "triangleFormat": "packed-triangle-xyz9",
+      "bounds": {
+        "minX": -23.507,
+        "maxX": 26.2,
+        "minY": -4.475,
+        "maxY": 21.524,
+        "minZ": -47.424,
+        "maxZ": 2.709
+      },
+      "triangles": [
+        [
+          -23.488,
+          -4.475,
+          2.709,
+          26.19,
+          19.636,
+          1.742,
+          26.2,
+          -4.475,
+          2.531
+        ],
+        [
+          26.19,
+          19.636,
+          1.742,
+          -23.488,
+          -4.475,
+          2.709,
+          -23.497,
+          19.636,
+          1.919
+        ],
+        [
+          -23.507,
+          21.524,
+          -47.247,
+          26.189,
+          21.524,
+          -0.21,
+          -23.498,
+          21.524,
+          -0.032
+        ],
+        [
+          26.189,
+          21.524,
+          -0.21,
+          -23.507,
+          21.524,
+          -47.247,
+          26.177,
+          21.524,
+          -47.424
+        ],
+        [
+          26.19,
+          19.636,
+          1.742,
+          -23.498,
+          21.524,
+          -0.032,
+          26.189,
+          21.524,
+          -0.21
+        ],
+        [
+          -23.498,
+          21.524,
+          -0.032,
+          26.19,
+          19.636,
+          1.742,
+          -23.497,
+          19.636,
+          1.919
+        ]
+      ]
+    }
+  ]
+}

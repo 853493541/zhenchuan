@@ -15,7 +15,7 @@ interface PickupBooksProps {
 
 function PickupBook({ pickup, worldHalf }: { pickup: PickupItem; worldHalf: number }) {
   const x = pickup.position.x - worldHalf;
-  const z = pickup.position.y - worldHalf;
+  const z = worldHalf - pickup.position.y;
 
   // Stable angle from id hash
   const angle = (parseInt(pickup.id.replace(/-/g, '').slice(0, 6), 16) % 360) * (Math.PI / 180);

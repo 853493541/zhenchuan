@@ -539,7 +539,7 @@ router.post("/battle/start", async (req, res) => {
     }
 
     // Create battle state with positions + use finalized hands
-    const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg';
+    const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test';
     const battleState = initializeBattleState(game.tournament, playerIds, gameMode);
 
     // Override hands — preserve instanceId but reset cooldowns for a fresh battle
@@ -646,7 +646,7 @@ router.post("/battle/complete", async (req, res) => {
         game.tournament.selectedAbilities[pid] = [];
       }
       // Initialize fresh battle state with only common abilities
-      game.state = initializeBattleState(game.tournament, allPlayers, ((game as any).mode ?? 'arena') as 'arena' | 'pubg');
+      game.state = initializeBattleState(game.tournament, allPlayers, ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test');
     }
 
     game.markModified("state");
