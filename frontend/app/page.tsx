@@ -8,8 +8,6 @@ export default function HomePage() {
   const router = useRouter();
 
   const [waitingGames, setWaitingGames] = useState<any[]>([]);
-  const [exportPackages, setExportPackages] = useState<Array<{ packageName: string }>>([]);
-  const [selectedExportPackage, setSelectedExportPackage] = useState<string>("");
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const previousGameIds = useRef<Set<string>>(new Set());
@@ -82,26 +80,8 @@ export default function HomePage() {
     }
   };
 
-  const fetchExportPackages = async () => {
-    try {
-      const res = await fetch("/api/full-exports", {
-        credentials: "include",
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      const list = Array.isArray(data?.exports) ? data.exports : [];
-      setExportPackages(list);
-      if (!selectedExportPackage && list.length > 0) {
-        setSelectedExportPackage(String(list[0].packageName));
-      }
-    } catch {
-      // Keep default PUBG map behavior if export list is unavailable.
-    }
-  };
-
   useEffect(() => {
     fetchMe(); // called once on mount
-    fetchExportPackages();
   }, []);
 
   useEffect(() => {
@@ -117,16 +97,11 @@ export default function HomePage() {
   const createGame = async (mode: 'arena' | 'pubg') => {
     setLoading(true);
     try {
-      const body: { mode: 'arena' | 'pubg'; exportPackageName?: string } = { mode };
-      if (mode === 'pubg' && selectedExportPackage) {
-        body.exportPackageName = selectedExportPackage;
-      }
-
       const res = await fetch("/api/game/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(body),
+        body: JSON.stringify({ mode }),
       });
 
       if (!res.ok) throw new Error(await res.text());
@@ -150,19 +125,6 @@ export default function HomePage() {
       <h1 className={styles.title}>对战大厅</h1>
 
       <div className={styles.createActions}>
-        {exportPackages.length > 0 && (
-          <select
-            className={styles.exportSelect}
-            value={selectedExportPackage}
-            onChange={(e) => setSelectedExportPackage(e.target.value)}
-          >
-            {exportPackages.map((pkg) => (
-              <option key={pkg.packageName} value={pkg.packageName}>
-                {pkg.packageName}
-              </option>
-            ))}
-          </select>
-        )}
         <button
           className={styles.createBtn}
           onClick={() => createGame('pubg')}
@@ -210,14 +172,8 @@ export default function HomePage() {
 
               {/* 模式 */}
               <div className={styles.modeBadge}>
-                {g.mode === 'arena'
-                  ? '竞技场'
-                  : (g.exportPackageName ? '吃鸡·导入地图' : '吃鸡')}
+                {g.mode === 'arena' ? '竞技场' : '吃鸡'}
               </div>
-
-              {g.mode !== 'arena' && g.exportPackageName && (
-                <div className={styles.playerCount}>地图：{g.exportPackageName}</div>
-              )}
 
               {/* 人数 */}
               <div className={styles.playerCount}>

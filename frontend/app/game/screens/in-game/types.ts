@@ -203,30 +203,6 @@ export interface GameResponse {
   playerNames?: Record<string, string>;
   tournament?: TournamentState;
   mode?: string;
-  exportPackageName?: string | null;
-}
-
-export interface RuntimeMapObject {
-  id: string;
-  type: 'building' | 'rock' | 'mountain' | 'hill_high' | 'hill_low';
-  x: number;
-  y: number;
-  w: number;
-  d: number;
-  h: number;
-}
-
-export interface RuntimeMapResponse {
-  mode: string;
-  exportPackageName?: string | null;
-  map: {
-    width: number;
-    height: number;
-    spawnCenterX: number;
-    spawnCenterY: number;
-    source: string;
-    objects: RuntimeMapObject[];
-  };
 }
 
 /* =========================================================

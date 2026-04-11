@@ -8,11 +8,6 @@ import { User } from "../../../models/User";
 import { GameState } from "../../engine/state/types";
 import { initializeTournament } from "../economy/tournamentService";
 import { initializeBattleState } from "../battle/battleService";
-import {
-  resolveLatestExportPackageName,
-  resolveExportPackageName,
-} from "../../map/exportedMapResolver";
-import { resolveGameMap, toBattleMapConfig } from "../../map/gameMapResolver";
 
 /**
  * Helper: fetch username by user ID
@@ -24,24 +19,8 @@ async function getUsernameById(userId: string): Promise<string> {
   return username;
 }
 
-export async function createGame(
-  userId: string,
-  mode: 'arena' | 'pubg' = 'arena',
-  exportPackageName?: string
-) {
+export async function createGame(userId: string, mode: 'arena' | 'pubg' = 'arena') {
   const username = await getUsernameById(userId);
-
-  let selectedExportPackageName: string | null = null;
-  if (mode === 'pubg') {
-    if (typeof exportPackageName === 'string' && exportPackageName.trim().length > 0) {
-      selectedExportPackageName = resolveExportPackageName(exportPackageName.trim());
-      if (!selectedExportPackageName) {
-        throw new Error(`Export package not found: ${exportPackageName}`);
-      }
-    } else {
-      selectedExportPackageName = resolveLatestExportPackageName();
-    }
-  }
 
   const state: GameState = {
     /** authoritative state version */
@@ -77,7 +56,6 @@ export async function createGame(
     state,
     started: false,
     mode,
-    exportPackageName: selectedExportPackageName,
     playerNames: {
       [userId]: username,
     },
@@ -149,19 +127,7 @@ export async function startGame(gameId: string, userId: string) {
   tournament.phase = "BATTLE";
 
   // Initialize battle state for all players (common abilities only, draft skipped)
-  const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg';
-  const selectedExportPackageName =
-    typeof (game as any).exportPackageName === 'string'
-      ? ((game as any).exportPackageName as string)
-      : null;
-  const resolvedMap = resolveGameMap(gameMode, selectedExportPackageName);
-
-  const state = initializeBattleState(
-    tournament,
-    game.players as string[],
-    gameMode,
-    toBattleMapConfig(resolvedMap),
-  );
+  const state = initializeBattleState(tournament, game.players as string[]);
 
   game.state = state;
   game.tournament = tournament;

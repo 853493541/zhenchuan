@@ -10,15 +10,12 @@ import { PlayerID } from "../../engine/state/types/common";
 import { AbilityInstance } from "../../engine/state/types/abilities";
 import { ABILITIES } from "../../abilities/abilities";
 import { randomUUID } from "crypto";
-import type { BattleMapConfig } from "../../map/gameMapResolver";
 
 // Arena dimensions (must match backend arena size)
 const PUBG_WIDTH = 2000;
 const PUBG_HEIGHT = 2000;
 const ARENA_WIDTH = 200;
 const ARENA_HEIGHT = 200;
-const DEFAULT_PUBG_CENTER_X = PUBG_WIDTH / 2;
-const DEFAULT_PUBG_CENTER_Y = PUBG_HEIGHT / 2;
 
 // Five spawn positions for PUBG-style battle royale
 // First two are 20 units apart, facing each other near center
@@ -39,33 +36,6 @@ const ARENA_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
 
 // Keep SPAWN_POSITIONS as alias for pubg (backward compat)
 const SPAWN_POSITIONS = PUBG_SPAWN_POSITIONS;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function scalePubgPoint(point: { x: number; y: number }, mapConfig?: BattleMapConfig): { x: number; y: number } {
-  if (!mapConfig) return point;
-
-  const sx = mapConfig.width / PUBG_WIDTH;
-  const sy = mapConfig.height / PUBG_HEIGHT;
-
-  const x = mapConfig.spawnCenterX + (point.x - DEFAULT_PUBG_CENTER_X) * sx;
-  const y = mapConfig.spawnCenterY + (point.y - DEFAULT_PUBG_CENTER_Y) * sy;
-
-  return {
-    x: clamp(x, 4, Math.max(4, mapConfig.width - 4)),
-    y: clamp(y, 4, Math.max(4, mapConfig.height - 4)),
-  };
-}
-
-function buildPubgSpawns(mapConfig?: BattleMapConfig): Array<{ x: number; y: number }> {
-  return PUBG_SPAWN_POSITIONS.map((point) => scalePubgPoint(point, mapConfig));
-}
-
-function buildPubgPickupAnchors(mapConfig?: BattleMapConfig): Array<{ x: number; y: number }> {
-  return PICKUP_SPAWN_POSITIONS.map((point) => scalePubgPoint(point, mapConfig));
-}
 
 // Pickup spawn positions — clusters near each player spawn (P0≈985,1000 | P1≈1015,1000)
 // so books appear within arm's reach without needing to walk far.
@@ -121,7 +91,7 @@ const BOOKS_PER_CLUSTER      = 4;
 const NEAR_SPAWN_CLUSTER_SIZE = 5;
 const NEAR_SPAWN_COUNT        = 12; // number of near-spawn positions at the top of the list
 
-function generatePickups(mapConfig?: BattleMapConfig): PickupItem[] {
+function generatePickups(): PickupItem[] {
   const nonCommonIds = Object.values(ABILITIES)
     .filter((a) => !(a as any).isCommon && a.id)
     .map((a) => a.id);
@@ -129,9 +99,8 @@ function generatePickups(mapConfig?: BattleMapConfig): PickupItem[] {
   if (nonCommonIds.length === 0) return [];
 
   const pickups: PickupItem[] = [];
-  const anchors = buildPubgPickupAnchors(mapConfig);
 
-  anchors.forEach((center, idx) => {
+  PICKUP_SPAWN_POSITIONS.forEach((center, idx) => {
     const clusterSize = idx < NEAR_SPAWN_COUNT ? NEAR_SPAWN_CLUSTER_SIZE : BOOKS_PER_CLUSTER;
     for (let i = 0; i < clusterSize; i++) {
       const angle  = (Math.PI * 2 * i / clusterSize) + (Math.random() - 0.5) * (Math.PI / clusterSize);
@@ -237,22 +206,12 @@ function makeCommonAbilities(): AbilityInstance[] {
 export function initializeBattleState(
   tournament: TournamentState,
   playerIds: PlayerID[],
-  mode: 'arena' | 'pubg' = 'pubg',
-  mapConfig?: BattleMapConfig,
+  mode: 'arena' | 'pubg' = 'pubg'
 ): GameState {
   const isArena = mode === 'arena';
-  const mapWidth  = mapConfig?.width  ?? (isArena ? ARENA_WIDTH  : PUBG_WIDTH);
-  const mapHeight = mapConfig?.height ?? (isArena ? ARENA_HEIGHT : PUBG_HEIGHT);
-  const spawnList = isArena
-    ? ARENA_SPAWN_POSITIONS
-    : buildPubgSpawns(
-        mapConfig ?? {
-          width: mapWidth,
-          height: mapHeight,
-          spawnCenterX: mapWidth / 2,
-          spawnCenterY: mapHeight / 2,
-        },
-      );
+  const mapWidth  = isArena ? ARENA_WIDTH  : PUBG_WIDTH;
+  const mapHeight = isArena ? ARENA_HEIGHT : PUBG_HEIGHT;
+  const spawnList = isArena ? ARENA_SPAWN_POSITIONS : PUBG_SPAWN_POSITIONS;
 
   const players: PlayerState[] = playerIds.map((id, i) => {
     const spawn = spawnList[i % spawnList.length];
@@ -289,16 +248,7 @@ export function initializeBattleState(
     gameOver: false,
     players,
     events: [],
-    pickups: isArena
-      ? generateArenaPickups()
-      : generatePickups(
-          mapConfig ?? {
-            width: mapWidth,
-            height: mapHeight,
-            spawnCenterX: mapWidth / 2,
-            spawnCenterY: mapHeight / 2,
-          },
-        ),
+    pickups: isArena ? generateArenaPickups() : generatePickups(),
   };
 
   return state;

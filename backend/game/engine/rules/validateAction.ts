@@ -122,7 +122,6 @@ export function validateCastAbility(
     pendingJump?: boolean;
     targetUserId?: string;
     groundTarget?: { x: number; y: number };
-    mapObjects?: MapObject[];
   }
 ) {
   if (state.gameOver) {
@@ -311,7 +310,7 @@ export function validateCastAbility(
     }
 
     /* ================= LINE OF SIGHT (structure blocking) ================= */
-    const mapObjects = options?.mapObjects ?? worldMap.objects;
+    const mapObjects = worldMap.objects; // TODO: pass map context for arena mode
     if (isLOSBlocked(
       player.position.x, player.position.y,
       enemy.position.x, enemy.position.y,

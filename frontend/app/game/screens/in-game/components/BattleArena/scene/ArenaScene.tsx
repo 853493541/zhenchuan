@@ -9,7 +9,7 @@ import PickupBooks from './PickupBooks';
 import AoeZone from './AoeZone';
 import CameraRig from './CameraRig';
 import type { PickupItem, GroundZone } from '../../../types';
-import { getMapForMode, type MapObject } from '../worldMap';
+import { getMapForMode } from '../worldMap';
 
 // Colors for up to 5 opponents (index 0 = primary, etc.)
 const OPP_COLORS = ['#cc3333', '#cc8800', '#9933cc', '#cc3388'];
@@ -72,7 +72,6 @@ interface ArenaSceneProps {
   meScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
   oppScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
   mode?: string;
-  mapData?: { objects: MapObject[]; width: number; height: number };
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
   groundZones?: GroundZone[];
   groundCastPreview?: { x: number; y: number; radius: number; label?: string } | null;
@@ -98,15 +97,13 @@ export default function ArenaScene({
   meScreenBoundsRef,
   oppScreenBoundsRef,
   mode,
-  mapData,
   safeZone,
   groundZones,
   groundCastPreview,
   onGroundPointerMove,
   onGroundPointerDown,
 }: ArenaSceneProps) {
-  const resolvedMap = mapData ?? getMapForMode(mode);
-  const { objects: mapObjects, width: mapWidth } = resolvedMap;
+  const { objects: mapObjects, width: mapWidth } = getMapForMode(mode);
   const worldHalf = mapWidth / 2;
   const isArena = mode === 'arena';
   const [nowMs, setNowMs] = useState(() => Date.now());

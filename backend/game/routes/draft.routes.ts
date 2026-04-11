@@ -15,7 +15,6 @@ import { ABILITIES } from "../abilities/abilities";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { diffState } from "../services/flow/stateDiff";
 import type { AbilityInstance } from "../engine/state/types";
-import { resolveGameMap, toBattleMapConfig } from "../map/gameMapResolver";
 
 const router = express.Router();
 
@@ -513,10 +512,6 @@ router.post("/battle/start", async (req, res) => {
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not ready for battle" });
 
-    const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg';
-    const resolvedMap = resolveGameMap(gameMode, (game as any).exportPackageName ?? null);
-    const battleMapConfig = toBattleMapConfig(resolvedMap);
-
     // ✅ CHECK IF GAME LOOP ALREADY STARTED (prevent duplicate from second player)
     const existingLoop = GameLoop.get(gameId);
     if (existingLoop) {
@@ -524,8 +519,8 @@ router.post("/battle/start", async (req, res) => {
       // Retroactively inject pickups if the loop state is empty so claim/inspect work.
       const ls = existingLoop.getState();
       if (!ls.pickups || ls.pickups.length === 0) {
-        const isArena = gameMode === 'arena';
-        ls.pickups = isArena ? generateArenaPickups() : generatePickups(battleMapConfig);
+        const isArena = ((game as any).mode ?? 'arena') === 'arena';
+        ls.pickups = isArena ? generateArenaPickups() : generatePickups();
         existingLoop.updateState(ls);
         await GameSession.findByIdAndUpdate(gameId, { "state.pickups": ls.pickups });
       }
@@ -544,7 +539,8 @@ router.post("/battle/start", async (req, res) => {
     }
 
     // Create battle state with positions + use finalized hands
-    const battleState = initializeBattleState(game.tournament, playerIds, gameMode, battleMapConfig);
+    const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg';
+    const battleState = initializeBattleState(game.tournament, playerIds, gameMode);
 
     // Override hands — preserve instanceId but reset cooldowns for a fresh battle
     for (const ps of battleState.players) {
@@ -573,15 +569,7 @@ router.post("/battle/start", async (req, res) => {
 
     // ✅ START LOOP (only once)
     // Keep simulation at 30Hz for lower CPU usage on the VM.
-    GameLoop.start(gameId, battleState, {
-      tickRate: 30,
-      mode: gameMode,
-      map: {
-        width: resolvedMap.width,
-        height: resolvedMap.height,
-        objects: resolvedMap.objects,
-      },
-    });
+    GameLoop.start(gameId, battleState, { tickRate: 30, mode: gameMode });
     // Disabled: spam during testing
     // console.log(`[battle/start] ✅ GameLoop started for ${gameId}`);
 
@@ -658,14 +646,7 @@ router.post("/battle/complete", async (req, res) => {
         game.tournament.selectedAbilities[pid] = [];
       }
       // Initialize fresh battle state with only common abilities
-      const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg';
-      const resolvedMap = resolveGameMap(gameMode, (game as any).exportPackageName ?? null);
-      game.state = initializeBattleState(
-        game.tournament,
-        allPlayers,
-        gameMode,
-        toBattleMapConfig(resolvedMap),
-      );
+      game.state = initializeBattleState(game.tournament, allPlayers, ((game as any).mode ?? 'arena') as 'arena' | 'pubg');
     }
 
     game.markModified("state");

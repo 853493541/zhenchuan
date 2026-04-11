@@ -22,9 +22,6 @@ const GameSessionSchema = new mongoose.Schema(
     // 🎮 Game mode: 'arena' (100×100 map, 1v1 focused) | 'pubg' (2000×2000 map)
     mode: { type: String, enum: ['arena', 'pubg'], default: 'arena' },
 
-    // 🌍 Optional imported map package (used by PUBG mode)
-    exportPackageName: { type: String, default: null },
-
     // 🎮 Tournament/Draft/Economy state (persists across battles)
     tournament: { type: mongoose.Schema.Types.Mixed, default: null },
 
