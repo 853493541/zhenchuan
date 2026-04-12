@@ -984,8 +984,12 @@ export default function BattleArena({
       navigator.maxTouchPoints > 0 &&
       !window.matchMedia('(pointer: fine)').matches;
     setIsMobileDevice(isMobile);
-    const defaultMode = isMobile ? 'joystick' : 'traditional';
-    const mode  = (saved === 'joystick' || saved === 'traditional') ? saved : defaultMode;
+    // Mobile always uses traditional mode so W/S move relative to faced direction (charYawRef).
+    // In joystick mode W/S use absolute world axes, which fights the touch-swipe facing.
+    const defaultMode: 'traditional' | 'joystick' = 'traditional';
+    const mode: 'traditional' | 'joystick'  = isMobile
+      ? 'traditional'
+      : ((saved === 'joystick' || saved === 'traditional') ? saved : defaultMode);
     setControlMode(mode);
     controlModeRef.current = mode;
   }, []);
@@ -3972,18 +3976,18 @@ export default function BattleArena({
 
       </div>{/* end bottomHud */}
 
-      {/* ===== MOBILE FORWARD/BACK BUTTONS — anchored to root container ===== */}
+      {/* ===== MOBILE FORWARD/BACK + JUMP BUTTONS — anchored to root container ===== */}
       {isMobileDevice && (
         <div style={{
           position: 'absolute',
           left: '67%',
-          bottom: '60%',
+          bottom: '45%',
           transform: 'translate(-50%, 50%)',
           zIndex: 500,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 14,
+          gap: 10,
           pointerEvents: 'auto',
         }}>
           {/* Forward button */}
@@ -4000,6 +4004,18 @@ export default function BattleArena({
               touchAction: 'none', userSelect: 'none', flexShrink: 0,
             }}
           >↑</div>
+          {/* Jump button */}
+          <div
+            onTouchStart={(e) => { e.stopPropagation(); handleJoystickJump(); }}
+            style={{
+              width: 60, height: 60, borderRadius: '50%',
+              background: 'rgba(80,180,255,0.25)',
+              border: '2px solid rgba(100,200,255,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 14, fontWeight: 700, color: 'rgba(160,230,255,0.9)',
+              touchAction: 'none', userSelect: 'none', flexShrink: 0,
+            }}
+          >跳</div>
           {/* Backward button */}
           <div
             onTouchStart={(e) => { e.stopPropagation(); handleJoystickDirection({ w: false, a: false, s: true, d: false }); }}
