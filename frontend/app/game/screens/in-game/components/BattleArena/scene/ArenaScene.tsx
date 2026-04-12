@@ -11,7 +11,7 @@ import PickupBooks from './PickupBooks';
 import AoeZone from './AoeZone';
 import CameraRig from './CameraRig';
 import type { PickupItem, GroundZone } from '../../../types';
-import { getMapForMode } from '../worldMap';
+import { getMapForMode, type MapObject } from '../worldMap';
 import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF } from './ExportedMapScene';
 import type { MapCollisionSystem } from './MapCollisionSystem';
 
@@ -92,6 +92,10 @@ interface ArenaSceneProps {
     supportY: number | null;
   }>;
   onCollisionSystemReady?: (sys: MapCollisionSystem) => void;
+  /** When set, renders a red wireframe box at this AABB's world position for LOS debug. */
+  losBlocker?: MapObject | null;
+  /** Hides all visual mesh/terrain; shows only the collision shell wireframe on a black canvas. */
+  blueprintMode?: boolean;
 }
 
 export default function ArenaScene({
@@ -122,6 +126,8 @@ export default function ArenaScene({
   collisionReady = true,
   collisionDebugRef,
   onCollisionSystemReady,
+  losBlocker,
+  blueprintMode = false,
 }: ArenaSceneProps) {
   const { objects: mapObjects, width: mapWidth, height: mapHeight } = getMapForMode(mode);
   const worldHalfX = mapWidth / 2;
@@ -206,7 +212,7 @@ export default function ArenaScene({
 
       {/* World */}
       {isCollisionTest ? (
-        <ExportedMapScene worldWidth={mapWidth} worldHeight={mapHeight} showCollisionShells={showCollisionShells} showCollisionBoxes={showCollisionBoxes} onCollisionSystemReady={onCollisionSystemReady} />
+        <ExportedMapScene worldWidth={mapWidth} worldHeight={mapHeight} showCollisionShells={showCollisionShells} showCollisionBoxes={showCollisionBoxes} blueprintMode={blueprintMode} onCollisionSystemReady={onCollisionSystemReady} />
       ) : (
         <>
           <Ground
@@ -220,10 +226,10 @@ export default function ArenaScene({
           <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />
         </>
       )}
-      <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />
+      {!blueprintMode && <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
 
       {/* Always-visible target connection line (not blocked by structures). */}
-      {targetLinePoints && (
+      {!blueprintMode && targetLinePoints && (
         <Line
           points={targetLinePoints}
           color="#ffd24a"
@@ -234,6 +240,8 @@ export default function ArenaScene({
         />
       )}
 
+      {/* All game-play visuals hidden in blueprint mode */}
+      {!blueprintMode && <>
       {/* Ground damage zones (e.g. 狂龙乱舞 雷云) */}
       {(groundZones ?? []).map(zone => {
         const isBaizuMarker = zone.abilityId === 'baizu_marker';
@@ -362,13 +370,14 @@ export default function ArenaScene({
           isStealthed={meSemiTransparent}
         />
       )}
+      </>}  {/* end !blueprintMode */}
 
       {isCollisionTest && collisionDebugRef && (showCollisionShells || showCollisionBoxes) && (
         <CollisionProbeOverlay debugRef={collisionDebugRef} />
       )}
 
-      {/* Player's own collision sphere (visible when Shell or Box toggles are on) */}
-      {isCollisionTest && collisionReady && (showCollisionShells || showCollisionBoxes) && (
+      {/* Player's own collision sphere (visible when Shell/Box/Blueprint is on) */}
+      {isCollisionTest && collisionReady && (showCollisionShells || showCollisionBoxes || blueprintMode) && (
         <PlayerCollisionSphere posRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} playerRadius={COLLISION_TEST_VIS_RADIUS} />
       )}
     </>

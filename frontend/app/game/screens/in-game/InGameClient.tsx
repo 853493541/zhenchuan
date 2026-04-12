@@ -68,6 +68,9 @@ function showGameError(rawCode: string) {
     case "ERR_HP_TOO_LOW":
       toastError("当前气血必须大于35才能施放");
       break;
+    case "ERR_NO_LINE_OF_SIGHT":
+      toastError("目标不在视线范围内");
+      break;
     default:
       toastError("操作无法执行");
   }

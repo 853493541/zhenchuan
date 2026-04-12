@@ -490,11 +490,47 @@ export function applyMovement(
     const intendedStepX = dash.vxPerTick;
     const intendedStepY = dash.vyPerTick;
     const intendedStep = Math.sqrt(intendedStepX * intendedStepX + intendedStepY * intendedStepY);
-    player.position.x += intendedStepX;
-    player.position.y += intendedStepY;
+
+    // Sub-step XY to prevent wall tunneling. Fast dashes (疾 = 1.23 u/tick) can
+    // teleport through thin walls in one step; dividing into smaller steps ensures
+    // each collision pass can catch the penetration.
+    const MAX_XY_SUBSTEP = pr * 0.85; // ~0.54 game units — well under any wall thickness
+    const numSubSteps = Math.max(1, Math.ceil(intendedStep / MAX_XY_SUBSTEP));
+    const subStepX = intendedStepX / numSubSteps;
+    const subStepY = intendedStepY / numSubSteps;
+
+    for (let _ss = 0; _ss < numSubSteps; _ss++) {
+      player.position.x += subStepX;
+      player.position.y += subStepY;
+
+      // Arena bounds clamp per sub-step
+      if (mapCtx?.circular) {
+        const cx = arenaW / 2;
+        const cy = arenaH / 2;
+        clampToCircle(player, cx, cy, arenaW / 2 - pr);
+      } else {
+        const minX = pr; const maxX = arenaW - pr;
+        const minY = pr; const maxY = arenaH - pr;
+        if (player.position.x < minX) { player.position.x = minX; }
+        if (player.position.x > maxX) { player.position.x = maxX; }
+        if (player.position.y < minY) { player.position.y = minY; }
+        if (player.position.y > maxY) { player.position.y = maxY; }
+      }
+      // Collision resolution per sub-step
+      if (hasExportedCollision(mapCtx)) {
+        resolveExportedHorizontalCollision(player, arenaW, arenaH, pr, mapCtx.collisionSystem);
+      } else {
+        for (const obj of mapObjects) {
+          resolveObjectCollision(player, obj, pr);
+        }
+      }
+    }
 
     // Apply frozen vertical velocity (gravity suspended)
-    const dashGroundH = getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects);
+    // In collision-test mode use BVH ground height; otherwise fall back to AABB.
+    const dashGroundH = hasExportedCollision(mapCtx)
+      ? getExportedGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, arenaW, arenaH, pr, mapCtx.collisionSystem)
+      : getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects);
     player.position.z = Math.max(dashGroundH, player.position.z! + dash.vzPerTick);
     if (dash.useArcGravity) {
       const gUp = dash.arcGravityUpPerTick ?? 0;
@@ -511,7 +547,9 @@ export function applyMovement(
       const elapsed = Date.now() - ((dash as any)._startMs ?? 0);
       console.log(`[DASH] <<< END    time=${new Date().toISOString()}  elapsed=${elapsed}ms  (expected ~1000ms for 30 ticks @ 30Hz)`);
       // Dash complete — gravity resets
-      const dashEndGroundH = getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects);
+      const dashEndGroundH = hasExportedCollision(mapCtx)
+        ? getExportedGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, arenaW, arenaH, pr, mapCtx.collisionSystem)
+        : getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects);
       if (player.position.z! <= dashEndGroundH + 0.01) {
         // On the ground (or rooftop): fully land
         player.position.z  = dashEndGroundH;
@@ -532,23 +570,6 @@ export function applyMovement(
       delete player.activeDash;
       // Remove dash CC immunity buff
       player.buffs = player.buffs.filter(b => b.buffId !== DASH_CC_IMMUNE_BUFF_ID);
-    }
-
-    // Clamp XY to arena and resolve obstacles — same as normal movement
-    if (mapCtx?.circular) {
-      const cx = arenaW / 2;
-      const cy = arenaH / 2;
-      clampToCircle(player, cx, cy, arenaW / 2 - pr);
-    } else {
-      const minX = pr; const maxX = arenaW - pr;
-      const minY = pr; const maxY = arenaH - pr;
-      if (player.position.x < minX) { player.position.x = minX; }
-      if (player.position.x > maxX) { player.position.x = maxX; }
-      if (player.position.y < minY) { player.position.y = minY; }
-      if (player.position.y > maxY) { player.position.y = maxY; }
-    }
-    for (const obj of mapObjects) {
-      resolveObjectCollision(player, obj, pr);
     }
 
     if (dash.wallDiveOnBlock && intendedStep > 0.001) {

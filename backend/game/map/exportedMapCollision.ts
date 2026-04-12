@@ -51,6 +51,52 @@ export class ExportedMapCollisionSystem {
   private readonly triC = new THREE.Vector3();
   private readonly edgeA = new THREE.Vector3();
   private readonly edgeB = new THREE.Vector3();
+  private readonly _losRay = new THREE.Ray();
+  private readonly _losOrigin = new THREE.Vector3();
+  private readonly _losDir = new THREE.Vector3();
+
+  /** Check if the line-of-sight between two world-space positions is blocked by geometry.
+   *  Uses the actual BVH mesh, so carts/props that have no solid wall won't falsely block.
+   *  arenaW / arenaH must match the map dimensions (546 × 552 for collision-test).
+   *  eyeHeight is added to both az / bz before the cast.
+   *  Returns true = LOS blocked.
+   */
+  checkLOS(
+    ax: number, ay: number, az: number,
+    bx: number, by: number, bz: number,
+    arenaW: number, arenaH: number,
+    eyeHeight = 1.5,
+  ): boolean {
+    if (!this.shellBVH) return false;
+    const halfW = arenaW / 2;
+    const halfH = arenaH / 2;
+    const sf = EXPORTED_COLLISION_RENDER_SF;
+    const gx = EXPORTED_COLLISION_GROUP_POS_X;
+    const gy = EXPORTED_COLLISION_GROUP_POS_Y;
+    const gz = EXPORTED_COLLISION_GROUP_POS_Z;
+    // world → BVH coords (same as syncExportCenter, at eye height)
+    this._losOrigin.set(
+      (ax - halfW - gx) / sf,
+      (az + eyeHeight - gy) / sf,
+      (halfH - ay - gz) / sf,
+    );
+    const tbx = (bx - halfW - gx) / sf;
+    const tby = (bz + eyeHeight - gy) / sf;
+    const tbz = (halfH - by - gz) / sf;
+    this._losDir.set(tbx - this._losOrigin.x, tby - this._losOrigin.y, tbz - this._losOrigin.z);
+    const dist = this._losDir.length();
+    if (dist < 1e-4) return false;
+    this._losDir.multiplyScalar(1 / dist);
+    this._losRay.origin.copy(this._losOrigin);
+    this._losRay.direction.copy(this._losDir);
+    // Offset by one player-radius worth of BVH units to avoid self-intersection
+    const near = EXPORTED_COLLISION_RADIUS;
+    const far  = dist - EXPORTED_COLLISION_RADIUS;
+    if (far <= near) return false;
+    const bvh = this.shellBVH as any;
+    const hit = bvh.raycastFirst(this._losRay, THREE.DoubleSide, near, far) as { point?: THREE.Vector3 } | null;
+    return !!hit;
+  }
 
   initBVH(trianglesFlat: Float32Array | number[]) {
     const geometry = new THREE.BufferGeometry();
