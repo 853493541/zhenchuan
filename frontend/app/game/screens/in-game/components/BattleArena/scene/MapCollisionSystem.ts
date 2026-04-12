@@ -49,6 +49,10 @@ export class MapCollisionSystem {
   private readonly _triC   = new THREE.Vector3();
   private readonly _edgeA  = new THREE.Vector3();
   private readonly _edgeB  = new THREE.Vector3();
+  /* LOS raycast scratch */
+  private readonly _losRay    = new THREE.Ray();
+  private readonly _losOrigin = new THREE.Vector3();
+  private readonly _losDir    = new THREE.Vector3();
 
   /* ─── Init ─── */
 
@@ -138,6 +142,31 @@ export class MapCollisionSystem {
     }
 
     return { onGround, hitDistance };
+  }
+
+  /* ─── LOS check ─── */
+
+  /**
+   * Check line-of-sight between two points in BVH (export-unit) space.
+   * `from` and `to` should be pre-converted to export-unit coords (e.g. via the
+   * same transform used by resolveSphereCollision callers).
+   * `radius` is the player radius in export units — used as near/far margin
+   * to avoid self-intersection at both ends of the ray.
+   * Returns true = LOS is blocked by geometry.
+   */
+  checkLOS(from: THREE.Vector3, to: THREE.Vector3, radius: number): boolean {
+    if (!this.shellBVH) return false;
+    this._losDir.subVectors(to, from);
+    const dist = this._losDir.length();
+    if (dist < 1e-4) return false;
+    this._losDir.multiplyScalar(1 / dist);
+    this._losRay.origin.copy(from);
+    this._losRay.direction.copy(this._losDir);
+    const near = radius;
+    const far  = dist - radius;
+    if (far <= near) return false;
+    const hit = (this.shellBVH as any).raycastFirst(this._losRay, THREE.DoubleSide, near, far);
+    return !!hit;
   }
 
   /* ─── Ground support (port of export-reader.js CollisionSystem.getSupportGroundY) ─── */

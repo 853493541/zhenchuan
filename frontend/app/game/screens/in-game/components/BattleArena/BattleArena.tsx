@@ -98,6 +98,38 @@ const CYL_HALF_HEIGHT_GAME   = 1.0;                                       // gam
 const EXPORT_CYL_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / RENDER_SF;          // ~90 export units
 const BVH_STEP_UP_EXPORT     = 56;                                         // max step-up in export units
 
+/* --- LOS BVH scratch (avoid GC in render loop) --- */
+const _losFrom = new THREE.Vector3();
+const _losTo   = new THREE.Vector3();
+const LOS_EYE_HEIGHT_GAME = 1.5; // eye height above feet in game units
+
+/**
+ * Convert a game-space position to BVH export-unit space at eye height,
+ * then check BVH LOS between caster and target.
+ * Returns true = LOS is blocked.
+ */
+function clientCheckLOS(
+  sys: import('./scene/MapCollisionSystem').MapCollisionSystem,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+  halfW: number, halfH: number,
+): boolean {
+  if (!sys.shellBVH) return false;
+  const sf = RENDER_SF;
+  const gx = GROUP_POS_X, gy = GROUP_POS_Y, gz = GROUP_POS_Z;
+  _losFrom.set(
+    (ax - halfW - gx) / sf,
+    (az + LOS_EYE_HEIGHT_GAME - gy) / sf,
+    (halfH - ay - gz) / sf,
+  );
+  _losTo.set(
+    (bx - halfW - gx) / sf,
+    (bz + LOS_EYE_HEIGHT_GAME - gy) / sf,
+    (halfH - by - gz) / sf,
+  );
+  return sys.checkLOS(_losFrom, _losTo, EXPORT_CYL_RADIUS);
+}
+
 /** Live position display — reads a ref every 200ms */
 function PositionDisplay({ posRef }: { posRef: React.MutableRefObject<{ x: number; y: number; z: number }> }) {
   const [pos, setPos] = React.useState({ x: 0, y: 0, z: 0 });
@@ -454,12 +486,12 @@ export default function BattleArena({
   const [showCollisionShells, setShowCollisionShells] = useState(false);
   const [showCollisionBoxes, setShowCollisionBoxes] = useState(false);
   const [blueprintMode, setBlueprintMode] = useState(false);
-  const [losBlocker, setLosBlocker] = useState<MapObject | null>(null);
+  const [losBlocker, setLosBlocker] = useState<string | null>(null);
   const losBlockerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showLOSBlocker = useCallback((obj: MapObject) => {
-    setLosBlocker(obj);
+  const showLOSBlocker = useCallback((msg: string) => {
+    setLosBlocker(msg);
     if (losBlockerTimerRef.current) clearTimeout(losBlockerTimerRef.current);
-    losBlockerTimerRef.current = setTimeout(() => setLosBlocker(null), 4000);
+    losBlockerTimerRef.current = setTimeout(() => setLosBlocker(null), 3000);
   }, []);
   const collisionSysRef = useRef<MapCollisionSystem | null>(null);
   const collisionReadyRef = useRef(mode !== 'collision-test');
@@ -745,14 +777,24 @@ export default function BattleArena({
     // Line-of-sight check (structure blocking)
     if (ability?.target === 'OPPONENT') {
       const myPos = localPositionRef.current ?? me.position;
-      const losMinH = mode === 'collision-test' ? 5.5 : 0;
       const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
       const tgtZ = (targetPos as any)?.z ?? 0;
       if (myPos && targetPos) {
-        const blocker = isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, losMinH, myZ, tgtZ);
-        if (blocker) {
-          showLOSBlocker(blocker);
-          toastError('视线被建筑遮挡');
+        const halfW = ARENA_WIDTH / 2;
+        const halfH = ARENA_HEIGHT / 2;
+        let losBlocked = false;
+        if (mode === 'collision-test' && collisionSysRef.current) {
+          losBlocked = clientCheckLOS(collisionSysRef.current, myPos.x, myPos.y, myZ, targetPos.x, targetPos.y, tgtZ, halfW, halfH);
+        } else if (mode !== 'collision-test') {
+          const aabbBlocker = isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, myZ, tgtZ);
+          if (aabbBlocker) {
+            losBlocked = true;
+            showLOSBlocker(`视线被 ${aabbBlocker.id} 遮挡`);
+          }
+        }
+        if (losBlocked) {
+          if (mode === 'collision-test') showLOSBlocker('视线被遮挡');
+          toastError('视线被遮挡');
           return;
         }
       }
@@ -1494,19 +1536,19 @@ export default function BattleArena({
           const dy = targetPos.y - myPos.y;
           if (myFacing.x * dx + myFacing.y * dy < 0) return false;
         }
-        // In collision-test mode the backend uses BVH-based LOS (accurate geometry).
-        // The entity-level AABB list is not accurate for LOS — it creates ghost blocks.
-        // Skip client-side LOS graying in this mode; rely on server rejection + toast feedback.
-        if (mode !== 'collision-test') {
-          const losMinH2 = 0;
           const myZ2 = (myPos as any)?.z ?? localZRef.current ?? 0;
           const tgtZ2 = (targetPos as any)?.z ?? 0;
-          if (isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, losMinH2, myZ2, tgtZ2)) {
-            return false;
+          if (mode === 'collision-test' && collisionSysRef.current) {
+            // BVH-based LOS: same accurate geometry as backend + blueprint wireframe
+            if (clientCheckLOS(collisionSysRef.current, myPos.x, myPos.y, myZ2, targetPos.x, targetPos.y, tgtZ2, ARENA_WIDTH / 2, ARENA_HEIGHT / 2)) {
+              return false;
+            }
+          } else if (mode !== 'collision-test') {
+            if (isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, myZ2, tgtZ2)) {
+              return false;
+            }
           }
-        }
       }
-
       return true;
     };
 
@@ -1543,8 +1585,12 @@ export default function BattleArena({
         }
         const chargeDisplay = getChargeDisplay(ability, instance);
         const isReadyVal = isAbilityReady(ability, instance);
-        const losBlockedVal = mode !== 'collision-test' && !isReadyVal && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
-          ? !!isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, (myPos as any)?.z ?? localZRef.current ?? 0, (targetPos as any)?.z ?? 0)
+        const losBlockedVal = !isReadyVal && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
+          ? (mode === 'collision-test' && collisionSysRef.current
+              ? clientCheckLOS(collisionSysRef.current, myPos.x, myPos.y, (myPos as any)?.z ?? localZRef.current ?? 0, targetPos.x, targetPos.y, (targetPos as any)?.z ?? 0, ARENA_WIDTH / 2, ARENA_HEIGHT / 2)
+              : mode !== 'collision-test'
+                ? !!isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, (myPos as any)?.z ?? localZRef.current ?? 0, (targetPos as any)?.z ?? 0)
+                : false)
           : false;
         return {
           id:          instanceId,
@@ -1584,11 +1630,14 @@ export default function BattleArena({
         const instance = me.hand.find(
           (h: any) => (h.abilityId ?? h.id) === ability.id
         );
-        const instanceId = instance?.instanceId ?? ability.id;
         const chargeDisplay = getChargeDisplay(ability, instance ?? {});
         const isReadyCom = isAbilityReady(ability, instance);
-        const losBlockedCom = mode !== 'collision-test' && !isReadyCom && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
-          ? !!isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, (myPos as any)?.z ?? localZRef.current ?? 0, (targetPos as any)?.z ?? 0)
+        const losBlockedCom = !isReadyCom && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
+          ? (mode === 'collision-test' && collisionSysRef.current
+              ? clientCheckLOS(collisionSysRef.current, myPos.x, myPos.y, (myPos as any)?.z ?? localZRef.current ?? 0, targetPos.x, targetPos.y, (targetPos as any)?.z ?? 0, ARENA_WIDTH / 2, ARENA_HEIGHT / 2)
+              : mode !== 'collision-test'
+                ? !!isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, (myPos as any)?.z ?? localZRef.current ?? 0, (targetPos as any)?.z ?? 0)
+                : false)
           : false;
         return {
           id:          instanceId,
@@ -2888,6 +2937,7 @@ export default function BattleArena({
             onCollisionSystemReady={onCollisionSystemReady}
             losBlocker={losBlocker}
             blueprintMode={blueprintMode}
+            losIsBlocked={draftAbilities.some(a => a.losBlocked) || commonAbilities.some(a => a.losBlocked)}
           />
         </Canvas>
       </div>
@@ -2921,15 +2971,14 @@ export default function BattleArena({
           background: 'rgba(180, 0, 0, 0.85)',
           border: '1px solid #ff4444',
           color: '#fff',
-          fontSize: 12,
-          padding: '6px 12px',
+          fontSize: 13,
+          padding: '7px 16px',
           borderRadius: 6,
           fontFamily: 'monospace',
           pointerEvents: 'none',
           textAlign: 'center',
         }}>
-          视线被 <b>{losBlocker.id}</b> 遮挡<br />
-          h={losBlocker.h.toFixed(2)} · x={losBlocker.x.toFixed(0)}-{(losBlocker.x+losBlocker.w).toFixed(0)} · y={losBlocker.y.toFixed(0)}-{(losBlocker.y+losBlocker.d).toFixed(0)}
+          {losBlocker}
         </div>
       )}
 
@@ -3729,6 +3778,7 @@ export default function BattleArena({
                     return (
                       <button
                         className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
+                        style={ability.losBlocked ? { boxShadow: '0 0 0 2px #ff3333, 0 0 10px 3px rgba(255,50,50,0.45)', outline: 'none' } : undefined}
                         draggable
                         onDragStart={(e) => handleDraftDragStart(e, ability.id, idx)}
                         onDragEnd={handleDraftDragEnd}
@@ -3736,13 +3786,7 @@ export default function BattleArena({
                           if (dragJustEndedRef.current) return;
                           if (!ability.isReady) {
                             if (ability.losBlocked) {
-                              const pos = localPositionRef.current ?? me.position;
-                              const tgt = (selectedTargetId ? targetableOpponentsList.find(o => o.userId === selectedTargetId) : targetableOpponentsList[0])?.position;
-                              if (pos && tgt) {
-                                const losH = mode === 'collision-test' ? 5.5 : 0;
-                                const blocker = isLOSBlockedClient(pos.x, pos.y, tgt.x, tgt.y, mapObjectsRef.current, losH, (pos as any)?.z ?? localZRef.current ?? 0, (tgt as any)?.z ?? 0);
-                                if (blocker) showLOSBlocker(blocker);
-                              }
+                              showLOSBlocker('视线被遮挡');
                             }
                             return;
                           }

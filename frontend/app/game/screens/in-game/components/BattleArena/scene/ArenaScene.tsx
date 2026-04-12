@@ -11,7 +11,7 @@ import PickupBooks from './PickupBooks';
 import AoeZone from './AoeZone';
 import CameraRig from './CameraRig';
 import type { PickupItem, GroundZone } from '../../../types';
-import { getMapForMode, type MapObject } from '../worldMap';
+import { getMapForMode } from '../worldMap';
 import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF } from './ExportedMapScene';
 import type { MapCollisionSystem } from './MapCollisionSystem';
 
@@ -93,9 +93,11 @@ interface ArenaSceneProps {
   }>;
   onCollisionSystemReady?: (sys: MapCollisionSystem) => void;
   /** When set, renders a red wireframe box at this AABB's world position for LOS debug. */
-  losBlocker?: MapObject | null;
+  losBlocker?: string | null;
   /** Hides all visual mesh/terrain; shows only the collision shell wireframe on a black canvas. */
   blueprintMode?: boolean;
+  /** Whether LOS to the selected target is currently blocked (for blueprint mode LOS line). */
+  losIsBlocked?: boolean;
 }
 
 export default function ArenaScene({
@@ -128,6 +130,7 @@ export default function ArenaScene({
   onCollisionSystemReady,
   losBlocker,
   blueprintMode = false,
+  losIsBlocked = false,
 }: ArenaSceneProps) {
   const { objects: mapObjects, width: mapWidth, height: mapHeight } = getMapForMode(mode);
   const worldHalfX = mapWidth / 2;
@@ -229,11 +232,11 @@ export default function ArenaScene({
       {!blueprintMode && <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
 
       {/* Always-visible target connection line (not blocked by structures). */}
-      {!blueprintMode && targetLinePoints && (
+      {targetLinePoints && (
         <Line
           points={targetLinePoints}
-          color="#ffd24a"
-          lineWidth={2}
+          color={blueprintMode ? (losIsBlocked ? '#ff2222' : '#00ff88') : '#ffd24a'}
+          lineWidth={blueprintMode ? 3 : 2}
           transparent
           opacity={0.9}
           depthTest={false}
