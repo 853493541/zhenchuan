@@ -1640,7 +1640,7 @@ export default function BattleArena({
                 : false)
           : false;
         return {
-          id:          instanceId,
+          id:          ability.id,
           abilityId:      ability.id,
           name:        ability.name,
           range:       ability.range,
