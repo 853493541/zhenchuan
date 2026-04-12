@@ -404,6 +404,12 @@ export default function BattleArena({
   }, [mapData]);
   // CODE FRESHNESS MARKER — if you see this in console, the new code IS running
   useEffect(() => { console.log('[BA-FRESH] BattleArena v2 loaded — activeDash support active'); }, []);
+  // Prevent page scroll while the game is mounted (critical for touch devices)
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
   const wrapRef        = useRef<HTMLDivElement>(null);
   const canvasSizeRef  = useRef({ w: 800, h: 500 });
 
@@ -2124,9 +2130,10 @@ export default function BattleArena({
   }, []);
 
   // ── Touch camera rotation (mobile/iPad) ──────────────────────────────────
-  // A single touch that starts on the 3D canvas (wrapRef) pans the camera
-  // the same way as PC left-click drag.  UI elements (joystick, buttons) have
-  // higher z-index and consume their own touches, so they never reach wrapRef.
+  // A single touch that starts on the 3D canvas (wrapRef) rotates camera + player
+  // the same way as PC right-click drag (charYawRef also updated → facing changes).
+  // UI elements (joystick, buttons) have higher z-index and consume their own
+  // touches, so they never reach wrapRef.
   useEffect(() => {
     const camTouchRef = { id: null as number | null, lastX: 0, lastY: 0 };
 
@@ -2149,7 +2156,13 @@ export default function BattleArena({
       const dy = touch.clientY - camTouchRef.lastY;
       camTouchRef.lastX = touch.clientX;
       camTouchRef.lastY = touch.clientY;
+      // Right-click behaviour: camera + character facing both rotate
       camYawRef.current  -= dx * 0.005;
+      charYawRef.current  = camYawRef.current;
+      localFacingRef.current = {
+        x: Math.sin(charYawRef.current),
+        y: -Math.cos(charYawRef.current),
+      };
       const newPitch = camPitchRef.current + dy * 0.003;
       camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
     };
@@ -3749,7 +3762,7 @@ export default function BattleArena({
       {/* ===== BOTTOM: WASD / Joystick (mobile left) + centered hotbar ===== */}
       <div className={styles.bottomHud} style={isMobileDevice ? { justifyContent: 'center' } : undefined}>
 
-        <div className={styles.wasdWrap} style={isMobileDevice ? { position: 'absolute', left: 70, bottom: 60 } : undefined}>
+        <div className={styles.wasdWrap} style={isMobileDevice ? { position: 'absolute', left: '70%', bottom: '60%', transform: 'translate(-50%, 50%)' } : undefined}>
           {isMobileDevice ? (
             <VirtualJoystick
               onDirectionChange={handleJoystickDirection}

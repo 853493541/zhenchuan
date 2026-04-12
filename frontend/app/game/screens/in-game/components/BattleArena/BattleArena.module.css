@@ -10,6 +10,7 @@
   font-family: 'Courier New', monospace;
   color: #fff;
   user-select: none;
+  touch-action: none; /* prevent page scroll on touch devices */
 }
 
 /* ============================================================
