@@ -36,7 +36,6 @@ interface ExportedMapSceneProps {
   worldWidth: number;
   worldHeight: number;
   showCollisionShells?: boolean;
-  showCollisionBoxes?: boolean;
   /** Shows only the collision wireframe on a black background — hides all visual mesh/terrain. */
   blueprintMode?: boolean;
   onCollisionSystemReady?: (sys: MapCollisionSystem) => void;
@@ -124,7 +123,7 @@ function encodePathSegments(pathLike: string): string {
 
 /* ────────────────────── Main Component ────────────────────── */
 
-export default function ExportedMapScene({ worldWidth, worldHeight, showCollisionShells = false, showCollisionBoxes = false, blueprintMode = false, onCollisionSystemReady }: ExportedMapSceneProps) {
+export default function ExportedMapScene({ worldWidth, worldHeight, showCollisionShells = false, blueprintMode = false, onCollisionSystemReady }: ExportedMapSceneProps) {
   const { scene, gl } = useThree();
   const groupRef = useRef<THREE.Group | null>(null);
   const contentGroupRef = useRef<THREE.Group | null>(null); // entity + terrain meshes
@@ -149,8 +148,8 @@ export default function ExportedMapScene({ worldWidth, worldHeight, showCollisio
     if (shellLinesRef.current) shellLinesRef.current.visible = showCollisionShells || blueprintMode;
   }, [showCollisionShells, blueprintMode]);
   useEffect(() => {
-    if (boxLinesRef.current) boxLinesRef.current.visible = showCollisionBoxes && !blueprintMode;
-  }, [showCollisionBoxes, blueprintMode]);
+    if (boxLinesRef.current) boxLinesRef.current.visible = false;
+  }, []);
 
   // Blueprint mode: hide content, show wireframe in cyan; restore when off
   useEffect(() => {

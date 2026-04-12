@@ -2123,6 +2123,54 @@ export default function BattleArena({
     };
   }, []);
 
+  // ── Touch camera rotation (mobile/iPad) ──────────────────────────────────
+  // A single touch that starts on the 3D canvas (wrapRef) pans the camera
+  // the same way as PC left-click drag.  UI elements (joystick, buttons) have
+  // higher z-index and consume their own touches, so they never reach wrapRef.
+  useEffect(() => {
+    const camTouchRef = { id: null as number | null, lastX: 0, lastY: 0 };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (camTouchRef.id !== null) return; // already tracking one finger
+      const touch = e.changedTouches[0];
+      const target = touch.target as HTMLElement;
+      // Only start camera rotation if the touch landed on the canvas wrapper
+      if (!wrapRef.current?.contains(target)) return;
+      camTouchRef.id    = touch.identifier;
+      camTouchRef.lastX = touch.clientX;
+      camTouchRef.lastY = touch.clientY;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (camTouchRef.id === null) return;
+      const touch = Array.from(e.changedTouches).find(t => t.identifier === camTouchRef.id);
+      if (!touch) return;
+      const dx = touch.clientX - camTouchRef.lastX;
+      const dy = touch.clientY - camTouchRef.lastY;
+      camTouchRef.lastX = touch.clientX;
+      camTouchRef.lastY = touch.clientY;
+      camYawRef.current  -= dx * 0.005;
+      const newPitch = camPitchRef.current + dy * 0.003;
+      camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      const touch = Array.from(e.changedTouches).find(t => t.identifier === camTouchRef.id);
+      if (touch) camTouchRef.id = null;
+    };
+
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove',  onTouchMove,  { passive: true });
+    window.addEventListener('touchend',   onTouchEnd,   { passive: true });
+    window.addEventListener('touchcancel',onTouchEnd,   { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove',  onTouchMove);
+      window.removeEventListener('touchend',   onTouchEnd);
+      window.removeEventListener('touchcancel',onTouchEnd);
+    };
+  }, []);
+
   const handleJoystickDirection = useCallback(
     (keys: { w: boolean; a: boolean; s: boolean; d: boolean }) => {
       const nextKeys = { ...keys };
@@ -2931,7 +2979,6 @@ export default function BattleArena({
               castGroundAbilityRef.current(x, y);
             }}
             showCollisionShells={showCollisionShells}
-            showCollisionBoxes={showCollisionBoxes}
             collisionReady={collisionReady}
             collisionDebugRef={collisionDebugRef}
             onCollisionSystemReady={onCollisionSystemReady}
@@ -3230,7 +3277,7 @@ export default function BattleArena({
         <div style={{ position: 'absolute', top: 14, right: 120, zIndex: 500, display: 'flex', gap: 4 }}>
           <button
             onClick={() => setShowCollisionShells(v => !v)}
-            title="Toggle real shell mesh (green) and live BVH probe markers (red/yellow)"
+            title="Toggle real BVH collision mesh wireframe"
             style={{
               background: showCollisionShells ? 'rgba(63,213,109,0.25)' : 'rgba(0,0,0,0.55)',
               border: `1px solid ${showCollisionShells ? '#3fd56d' : 'rgba(255,255,255,0.2)'}`,
@@ -3239,20 +3286,7 @@ export default function BattleArena({
               cursor: 'pointer', fontFamily: 'monospace',
             }}
           >
-            Shell+Probe
-          </button>
-          <button
-            onClick={() => setShowCollisionBoxes(v => !v)}
-            title="Toggle real part collision boxes (orange)"
-            style={{
-              background: showCollisionBoxes ? 'rgba(255,140,58,0.25)' : 'rgba(0,0,0,0.55)',
-              border: `1px solid ${showCollisionBoxes ? '#ff8c3a' : 'rgba(255,255,255,0.2)'}`,
-              color: showCollisionBoxes ? '#ff8c3a' : 'rgba(255,255,255,0.55)',
-              borderRadius: 4, padding: '3px 8px', fontSize: 11,
-              cursor: 'pointer', fontFamily: 'monospace',
-            }}
-          >
-            Part Boxes
+            碰撞体
           </button>
           <button
             onClick={() => setBlueprintMode(v => !v)}
@@ -3715,7 +3749,7 @@ export default function BattleArena({
       {/* ===== BOTTOM: WASD / Joystick (mobile left) + centered hotbar ===== */}
       <div className={styles.bottomHud} style={isMobileDevice ? { justifyContent: 'center' } : undefined}>
 
-        <div className={styles.wasdWrap} style={isMobileDevice ? { position: 'absolute', left: 60, bottom: 60 } : undefined}>
+        <div className={styles.wasdWrap} style={isMobileDevice ? { position: 'absolute', left: 70, bottom: 60 } : undefined}>
           {isMobileDevice ? (
             <VirtualJoystick
               onDirectionChange={handleJoystickDirection}
@@ -3796,9 +3830,6 @@ export default function BattleArena({
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
-                        {ability.losBlocked && (
-                          <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 13, zIndex: 5, pointerEvents: 'none', lineHeight: 1, filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.9))' }}>🧱</div>
-                        )}
                         {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                           <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
                             <span className={styles.cdNum}>{cdSeconds}</span>

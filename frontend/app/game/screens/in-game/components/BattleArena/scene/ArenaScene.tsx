@@ -84,7 +84,6 @@ interface ArenaSceneProps {
   onGroundPointerMove?: (x: number, y: number) => void;
   onGroundPointerDown?: (x: number, y: number) => void;
   showCollisionShells?: boolean;
-  showCollisionBoxes?: boolean;
   collisionReady?: boolean;
   collisionDebugRef?: MutableRefObject<{
     enabled: boolean;
@@ -124,7 +123,6 @@ export default function ArenaScene({
   onGroundPointerMove,
   onGroundPointerDown,
   showCollisionShells,
-  showCollisionBoxes,
   collisionReady = true,
   collisionDebugRef,
   onCollisionSystemReady,
@@ -215,7 +213,7 @@ export default function ArenaScene({
 
       {/* World */}
       {isCollisionTest ? (
-        <ExportedMapScene worldWidth={mapWidth} worldHeight={mapHeight} showCollisionShells={showCollisionShells} showCollisionBoxes={showCollisionBoxes} blueprintMode={blueprintMode} onCollisionSystemReady={onCollisionSystemReady} />
+        <ExportedMapScene worldWidth={mapWidth} worldHeight={mapHeight} showCollisionShells={showCollisionShells} blueprintMode={blueprintMode} onCollisionSystemReady={onCollisionSystemReady} />
       ) : (
         <>
           <Ground
@@ -375,12 +373,12 @@ export default function ArenaScene({
       )}
       </>}  {/* end !blueprintMode */}
 
-      {isCollisionTest && collisionDebugRef && (showCollisionShells || showCollisionBoxes) && (
+      {isCollisionTest && collisionDebugRef && showCollisionShells && (
         <CollisionProbeOverlay debugRef={collisionDebugRef} />
       )}
 
-      {/* Player's own collision sphere (visible when Shell/Box/Blueprint is on) */}
-      {isCollisionTest && collisionReady && (showCollisionShells || showCollisionBoxes || blueprintMode) && (
+      {/* Player's own collision sphere (visible when Shell/Blueprint is on) */}
+      {isCollisionTest && collisionReady && (showCollisionShells || blueprintMode) && (
         <PlayerCollisionSphere posRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} playerRadius={COLLISION_TEST_VIS_RADIUS} />
       )}
     </>
