@@ -3762,18 +3762,12 @@ export default function BattleArena({
       {/* ===== BOTTOM: WASD / Joystick (mobile left) + centered hotbar ===== */}
       <div className={styles.bottomHud} style={isMobileDevice ? { justifyContent: 'center' } : undefined}>
 
-        <div className={styles.wasdWrap} style={isMobileDevice ? { position: 'absolute', left: '70%', bottom: '60%', transform: 'translate(-50%, 50%)' } : undefined}>
-          {isMobileDevice ? (
-            <VirtualJoystick
-              onDirectionChange={handleJoystickDirection}
-              onAnalogMove={handleJoystickAnalog}
-              onJump={handleJoystickJump}
-              size={130}
-            />
-          ) : (
+        {/* Desktop WASD buttons */}
+        {!isMobileDevice && (
+          <div className={styles.wasdWrap}>
             <WASDButtons onDirectionChange={handleJoystickDirection} />
-          )}
-        </div>
+          </div>
+        )}
 
         <div className={styles.hotbarStack}>
           {/* ── Player buffs above drafted slots ── */}
@@ -3976,7 +3970,52 @@ export default function BattleArena({
 
         {!isMobileDevice && <div className={styles.wasdSpacer} />}
 
-      </div>
+      </div>{/* end bottomHud */}
+
+      {/* ===== MOBILE FORWARD/BACK BUTTONS — anchored to root container ===== */}
+      {isMobileDevice && (
+        <div style={{
+          position: 'absolute',
+          left: '67%',
+          bottom: '60%',
+          transform: 'translate(-50%, 50%)',
+          zIndex: 500,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 14,
+          pointerEvents: 'auto',
+        }}>
+          {/* Forward button */}
+          <div
+            onTouchStart={(e) => { e.stopPropagation(); handleJoystickDirection({ w: true, a: false, s: false, d: false }); }}
+            onTouchEnd={(e) => { e.stopPropagation(); handleJoystickDirection({ w: false, a: false, s: false, d: false }); }}
+            onTouchCancel={(e) => { e.stopPropagation(); handleJoystickDirection({ w: false, a: false, s: false, d: false }); }}
+            style={{
+              width: 72, height: 72, borderRadius: '50%',
+              background: 'rgba(0,0,0,0.45)',
+              border: '2px solid rgba(255,255,255,0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 30, color: 'rgba(255,255,255,0.85)',
+              touchAction: 'none', userSelect: 'none', flexShrink: 0,
+            }}
+          >↑</div>
+          {/* Backward button */}
+          <div
+            onTouchStart={(e) => { e.stopPropagation(); handleJoystickDirection({ w: false, a: false, s: true, d: false }); }}
+            onTouchEnd={(e) => { e.stopPropagation(); handleJoystickDirection({ w: false, a: false, s: false, d: false }); }}
+            onTouchCancel={(e) => { e.stopPropagation(); handleJoystickDirection({ w: false, a: false, s: false, d: false }); }}
+            style={{
+              width: 72, height: 72, borderRadius: '50%',
+              background: 'rgba(0,0,0,0.45)',
+              border: '2px solid rgba(255,255,255,0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 30, color: 'rgba(255,255,255,0.85)',
+              touchAction: 'none', userSelect: 'none', flexShrink: 0,
+            }}
+          >↓</div>
+        </div>
+      )}
 
       {/* ===== SAFE ZONE TIMER / PROGRESS BAR ===== */}
       {safeZone && safeZone.nextChangeIn > 0 && (
