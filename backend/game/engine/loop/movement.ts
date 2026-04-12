@@ -490,8 +490,41 @@ export function applyMovement(
     const intendedStepX = dash.vxPerTick;
     const intendedStepY = dash.vyPerTick;
     const intendedStep = Math.sqrt(intendedStepX * intendedStepX + intendedStepY * intendedStepY);
-    player.position.x += intendedStepX;
-    player.position.y += intendedStepY;
+
+    // Sub-step XY to prevent wall tunneling. Fast dashes (疾 = 1.23 u/tick) can
+    // teleport through thin walls in one step; dividing into smaller steps ensures
+    // each collision pass can catch the penetration.
+    const MAX_XY_SUBSTEP = pr * 0.85; // ~0.54 game units — well under any wall thickness
+    const numSubSteps = Math.max(1, Math.ceil(intendedStep / MAX_XY_SUBSTEP));
+    const subStepX = intendedStepX / numSubSteps;
+    const subStepY = intendedStepY / numSubSteps;
+
+    for (let _ss = 0; _ss < numSubSteps; _ss++) {
+      player.position.x += subStepX;
+      player.position.y += subStepY;
+
+      // Arena bounds clamp per sub-step
+      if (mapCtx?.circular) {
+        const cx = arenaW / 2;
+        const cy = arenaH / 2;
+        clampToCircle(player, cx, cy, arenaW / 2 - pr);
+      } else {
+        const minX = pr; const maxX = arenaW - pr;
+        const minY = pr; const maxY = arenaH - pr;
+        if (player.position.x < minX) { player.position.x = minX; }
+        if (player.position.x > maxX) { player.position.x = maxX; }
+        if (player.position.y < minY) { player.position.y = minY; }
+        if (player.position.y > maxY) { player.position.y = maxY; }
+      }
+      // Collision resolution per sub-step
+      if (hasExportedCollision(mapCtx)) {
+        resolveExportedHorizontalCollision(player, arenaW, arenaH, pr, mapCtx.collisionSystem);
+      } else {
+        for (const obj of mapObjects) {
+          resolveObjectCollision(player, obj, pr);
+        }
+      }
+    }
 
     // Apply frozen vertical velocity (gravity suspended)
     // In collision-test mode use BVH ground height; otherwise fall back to AABB.
@@ -537,28 +570,6 @@ export function applyMovement(
       delete player.activeDash;
       // Remove dash CC immunity buff
       player.buffs = player.buffs.filter(b => b.buffId !== DASH_CC_IMMUNE_BUFF_ID);
-    }
-
-    // Clamp XY to arena and resolve obstacles — same as normal movement
-    if (mapCtx?.circular) {
-      const cx = arenaW / 2;
-      const cy = arenaH / 2;
-      clampToCircle(player, cx, cy, arenaW / 2 - pr);
-    } else {
-      const minX = pr; const maxX = arenaW - pr;
-      const minY = pr; const maxY = arenaH - pr;
-      if (player.position.x < minX) { player.position.x = minX; }
-      if (player.position.x > maxX) { player.position.x = maxX; }
-      if (player.position.y < minY) { player.position.y = minY; }
-      if (player.position.y > maxY) { player.position.y = maxY; }
-    }
-    // Use BVH collision in collision-test mode; AABB objects otherwise.
-    if (hasExportedCollision(mapCtx)) {
-      resolveExportedHorizontalCollision(player, arenaW, arenaH, pr, mapCtx.collisionSystem);
-    } else {
-      for (const obj of mapObjects) {
-        resolveObjectCollision(player, obj, pr);
-      }
     }
 
     if (dash.wallDiveOnBlock && intendedStep > 0.001) {
