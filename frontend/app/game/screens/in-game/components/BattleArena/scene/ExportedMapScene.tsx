@@ -124,24 +124,12 @@ function encodePathSegments(pathLike: string): string {
 /* ────────────────────── Main Component ────────────────────── */
 
 export default function ExportedMapScene({ worldWidth, worldHeight, showCollisionShells = false, blueprintMode = false, onCollisionSystemReady }: ExportedMapSceneProps) {
-  const { scene, gl } = useThree();
+  const { scene } = useThree();
   const groupRef = useRef<THREE.Group | null>(null);
   const contentGroupRef = useRef<THREE.Group | null>(null); // entity + terrain meshes
   const shellLinesRef = useRef<THREE.LineSegments | null>(null);
   const boxLinesRef = useRef<THREE.LineSegments | null>(null);
-
-  // Match export-reader renderer settings
-  useEffect(() => {
-    gl.toneMapping = THREE.ACESFilmicToneMapping;
-    gl.toneMappingExposure = 1.5;  // Slightly brighter than export-reader's 1.25
-    gl.outputColorSpace = THREE.SRGBColorSpace;
-    gl.shadowMap.enabled = true;
-    gl.shadowMap.type = THREE.PCFSoftShadowMap;
-    return () => {
-      gl.toneMapping = THREE.NoToneMapping;
-      gl.toneMappingExposure = 1.0;
-    };
-  }, [gl]);
+  // Renderer setup (toneMapping, exposure, shadows) is handled by CollisionTestSetup in ArenaScene.
 
   // Toggle collision visibility
   useEffect(() => {

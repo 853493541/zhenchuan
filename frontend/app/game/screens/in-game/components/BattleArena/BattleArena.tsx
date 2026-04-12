@@ -9,7 +9,7 @@ import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, type ChannelBarData } from './ChannelBar';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone } from '../../types';
-import ArenaScene from './scene/ArenaScene';
+import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
 import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z } from './scene/ExportedMapScene';
@@ -493,6 +493,17 @@ export default function BattleArena({
   const [showCollisionBoxes, setShowCollisionBoxes] = useState(false);
   const [blueprintMode, setBlueprintMode] = useState(false);
   const [losBlocker, setLosBlocker] = useState<string | null>(null);
+  const [envDebugInfo, setEnvDebugInfo] = useState<EnvDebugInfo | null>(null);
+  const [envToggles, setEnvToggles] = useState<EnvToggles>({
+    toneMapping: false, exposure: false, shadows: false,
+    dirLight: false, ambLight: false, hemiLight: false,
+    fog: false, skyDome: false, cameraFar: false,
+  });
+  const [dirLightConfig, setDirLightConfig] = useState<DirLightConfig>({
+    intensity: 0.25,
+    colorMode: 'export',
+    customColor: '#fdf2ed',
+  });
   const losBlockerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showLOSBlocker = useCallback((msg: string) => {
     setLosBlocker(msg);
@@ -2947,8 +2958,9 @@ export default function BattleArena({
       <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
         <Canvas
           camera={{ fov: 72, near: 0.5, far: 2000 }}
-          style={{ background: blueprintMode ? '#000010' : (mode === 'collision-test' ? '#c8b888' : '#62a054') }}
+          style={{ background: blueprintMode ? '#000010' : '#888888' }}
           gl={{ antialias: true }}
+          shadows={mode === 'collision-test' && envToggles.shadows && !blueprintMode}
         >
           <ArenaScene
             me={me}
@@ -3002,9 +3014,97 @@ export default function BattleArena({
             losBlocker={losBlocker}
             blueprintMode={blueprintMode}
             losIsBlocked={draftAbilities.some(a => a.losBlocked) || commonAbilities.some(a => a.losBlocked)}
+            onEnvDebug={mode === 'collision-test' ? setEnvDebugInfo : undefined}
+            envToggles={mode === 'collision-test' ? envToggles : undefined}
+            dirLightConfig={mode === 'collision-test' ? dirLightConfig : undefined}
           />
         </Canvas>
       </div>
+      {/* ENV TOGGLES — click each to enable/disable */}
+      {mode === 'collision-test' && (
+        <div style={{
+          position: 'absolute', top: 10, left: 10, zIndex: 9999,
+          background: 'rgba(0,0,0,0.88)', border: '1px solid #444',
+          borderRadius: 6, padding: '8px 14px', fontFamily: 'monospace',
+          fontSize: 12, lineHeight: 2.0, userSelect: 'none',
+        }}>
+          <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 2 }}>ENV TOGGLES (click to flip)</div>
+          {([
+            ['toneMapping', 'toneMapping = ACESFilmic'],
+            ['exposure',    'toneMappingExposure = 1.25'],
+            ['shadows',     'shadowMap.enabled'],
+            ['dirLight',    'DirectionalLight  (default 0.25)'],
+            ['ambLight',    'AmbientLight  intensity=0.8'],
+            ['hemiLight',   'HemisphereLight  intensity=1.0'],
+            ['fog',         'FogExp2  density=3.5e−6'],
+            ['skyDome',     'Sky dome (gradient sphere)'],
+            ['cameraFar',   'camera.far = 500000'],
+          ] as [keyof EnvToggles, string][]).map(([key, label]) => (
+            <div key={key}
+              onClick={() => setEnvToggles(prev => {
+                const next = { ...prev, [key]: !prev[key] };
+                // export-reader always runs dir+amb+hemi+toneMapping+exposure together
+                if (key === 'dirLight' && next.dirLight) {
+                  next.toneMapping = true; next.exposure = true;
+                  next.ambLight = true; next.hemiLight = true;
+                  next.shadows = true; next.cameraFar = true;
+                }
+                return next;
+              })}
+              style={{ cursor: 'pointer', color: envToggles[key] ? '#00ff88' : '#888' }}
+            >
+              {envToggles[key] ? '☑' : '☐'} {label}
+            </div>
+          ))}
+        </div>
+      )}
+      {mode === 'collision-test' && (
+        <div style={{
+          position: 'absolute', top: 10, right: 10, zIndex: 9998,
+          background: 'rgba(0,0,0,0.88)', border: '1px solid #444',
+          borderRadius: 6, padding: '10px 14px', fontFamily: 'monospace',
+          fontSize: 12, lineHeight: 1.8, userSelect: 'none', minWidth: 260,
+        }}>
+          <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 6 }}>SUN CONFIG</div>
+          <div style={{ color: '#bbb', marginBottom: 6 }}>Affects directional light only.</div>
+          <div style={{ color: '#888', marginBottom: 6 }}>Default here is 0.25. Export-reader uses 3.0.</div>
+          <div style={{ color: '#ddd' }}>Brightness: {dirLightConfig.intensity.toFixed(2)}</div>
+          <input
+            type="range"
+            min="0"
+            max="6"
+            step="0.05"
+            value={dirLightConfig.intensity}
+            onChange={(e) => setDirLightConfig((prev) => ({ ...prev, intensity: Number(e.target.value) }))}
+            style={{ width: '100%' }}
+          />
+          <div style={{ color: '#ddd', marginTop: 8 }}>Color</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="color"
+              value={dirLightConfig.customColor}
+              onChange={(e) => setDirLightConfig((prev) => ({
+                ...prev,
+                colorMode: 'custom',
+                customColor: e.target.value,
+              }))}
+            />
+            <button
+              type="button"
+              onClick={() => setDirLightConfig({ intensity: 3.0, colorMode: 'export', customColor: '#fdf2ed' })}
+              style={{
+                background: '#1f2937', color: '#e5e7eb', border: '1px solid #4b5563',
+                borderRadius: 4, padding: '4px 8px', cursor: 'pointer',
+              }}
+            >
+              Reset Export (3.0)
+            </button>
+          </div>
+          <div style={{ color: dirLightConfig.colorMode === 'export' ? '#00ff88' : '#fbbf24', marginTop: 6 }}>
+            {dirLightConfig.colorMode === 'export' ? 'Using exact export-reader sun color' : `Using custom color ${dirLightConfig.customColor}`}
+          </div>
+        </div>
+      )}
       {mode === 'collision-test' && !collisionReady && (
         <div style={{
           position: 'absolute',
