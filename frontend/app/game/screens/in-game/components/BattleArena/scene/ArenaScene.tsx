@@ -2,7 +2,7 @@
 
 import { MutableRefObject, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { Line } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import Ground from './Ground';
 import MapObjects from './MapObjects';
@@ -97,6 +97,214 @@ interface ArenaSceneProps {
   blueprintMode?: boolean;
   /** Whether LOS to the selected target is currently blocked (for blueprint mode LOS line). */
   losIsBlocked?: boolean;
+  /** Proof callback — called once on mount with actual Three.js runtime values */
+  onEnvDebug?: (info: EnvDebugInfo) => void;
+  envToggles?: EnvToggles;
+  dirLightConfig?: DirLightConfig;
+}
+
+export interface EnvDebugInfo {
+  exposure: number;
+  toneMapping: string;
+  dirIntensity: number;
+  dirColor: string;
+  ambIntensity: number;
+  hemiIntensity: number;
+  fog: string | null;
+  hasSkyDome: boolean;
+  shadowNormalBias: number;
+}
+
+export interface EnvToggles {
+  toneMapping: boolean;
+  exposure: boolean;
+  shadows: boolean;
+  dirLight: boolean;
+  ambLight: boolean;
+  hemiLight: boolean;
+  fog: boolean;
+  skyDome: boolean;
+  cameraFar: boolean;
+}
+
+export interface DirLightConfig {
+  intensity: number;
+  colorMode: 'export' | 'custom';
+  customColor: string;
+}
+
+const DEFAULT_ENV_TOGGLES: EnvToggles = {
+  toneMapping: false, exposure: false, shadows: false,
+  dirLight: false, ambLight: false, hemiLight: false,
+  fog: false, skyDome: false, cameraFar: false,
+};
+
+const DEFAULT_DIR_LIGHT_CONFIG: DirLightConfig = {
+  intensity: 0.25,
+  colorMode: 'export',
+  customColor: '#fdf2ed',
+};
+
+/**
+ * Sets renderer properties for collision-test mode.
+ * Must render FIRST in the isCollisionTest block so its useEffect fires before EnvProbe.
+ */
+function CollisionTestSetup({ blueprintMode, t }: { blueprintMode: boolean; t: EnvToggles }) {
+  const { gl } = useThree();
+  useEffect(() => {
+    gl.toneMapping = (!blueprintMode && t.toneMapping) ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+    gl.toneMappingExposure = (!blueprintMode && t.exposure) ? 1.25 : 1.0;
+    gl.outputColorSpace = THREE.SRGBColorSpace;
+    gl.shadowMap.enabled = !blueprintMode && t.shadows;
+    gl.shadowMap.type = THREE.PCFSoftShadowMap;
+    gl.shadowMap.needsUpdate = true;
+  }, [gl, blueprintMode, t.toneMapping, t.exposure, t.shadows]);
+  return null;
+}
+
+function CameraFarSetup({ far }: { far: number }) {
+  const { camera } = useThree();
+  useEffect(() => {
+    (camera as THREE.PerspectiveCamera).far = far;
+    camera.updateProjectionMatrix();
+  }, [camera, far]);
+  return null;
+}
+
+const SUN_DIR = new THREE.Vector3(0.709406, 0.573576, -0.409576).normalize();
+const SUN_COLOR = new THREE.Color(0.984313, 0.890196, 0.847058);
+const AMBIENT_COLOR = new THREE.Color(0.498039, 0.498039, 0.498039);
+const HEMI_SKY_COLOR = new THREE.Color(0.3984312, 0.4482351, 0.5976468);
+const HEMI_GROUND_COLOR = new THREE.Color('#8b7355');
+
+function ExportReaderSunLight({ config = DEFAULT_DIR_LIGHT_CONFIG }: { config?: DirLightConfig }) {
+  const { camera, scene } = useThree();
+  const lightRef = useRef<THREE.DirectionalLight | null>(null);
+
+  useEffect(() => {
+    const sun = new THREE.DirectionalLight(SUN_COLOR, 3.0);
+    sun.position.copy(SUN_DIR).multiplyScalar(100000);
+    sun.castShadow = true;
+    sun.shadow.mapSize.width = 2048;
+    sun.shadow.mapSize.height = 2048;
+    sun.shadow.camera.near = 100;
+    sun.shadow.camera.far = 200000;
+    sun.shadow.camera.left = -50000;
+    sun.shadow.camera.right = 50000;
+    sun.shadow.camera.top = 50000;
+    sun.shadow.camera.bottom = -50000;
+    sun.shadow.bias = -0.001;
+    sun.shadow.normalBias = 200;
+    scene.add(sun);
+    scene.add(sun.target);
+    lightRef.current = sun;
+    return () => {
+      if (sun.target.parent) sun.target.parent.remove(sun.target);
+      scene.remove(sun);
+      if (sun.parent) sun.parent.remove(sun);
+      lightRef.current = null;
+    };
+  }, [scene]);
+
+  useEffect(() => {
+    const light = lightRef.current;
+    if (!light) return;
+    light.intensity = config.intensity;
+    light.color.copy(config.colorMode === 'export' ? SUN_COLOR : new THREE.Color(config.customColor));
+  }, [config]);
+
+  useFrame(() => {
+    const light = lightRef.current;
+    if (!light) return;
+    const dir = light.position.clone().normalize();
+    light.position.copy(camera.position).addScaledVector(dir, 100000);
+    light.target.position.copy(camera.position);
+    light.target.updateMatrixWorld();
+  });
+
+  return null;
+}
+
+/** Sky dome that follows the camera so it stays within camera.far. */
+const SKY_UNIFORMS = {
+  topColor:    { value: new THREE.Color('#4488cc') },
+  bottomColor: { value: new THREE.Color('#d4c5a0') },
+  horizonColor:{ value: new THREE.Color('#c8b888') },
+  exponent:    { value: 0.5 },
+};
+const SKY_VERT = `
+  varying vec3 vDir;
+  void main() {
+    vDir = normalize(position);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const SKY_FRAG = `
+  uniform vec3 topColor;
+  uniform vec3 bottomColor;
+  uniform vec3 horizonColor;
+  uniform float exponent;
+  varying vec3 vDir;
+  void main() {
+    float h = vDir.y;
+    float t = max(pow(max(h, 0.0), exponent), 0.0);
+    vec3 col = mix(horizonColor, topColor, t);
+    if (h < 0.0) col = mix(horizonColor, bottomColor, min(-h * 3.0, 1.0));
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+function SkyDome() {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const { camera } = useThree();
+  useFrame(() => { if (meshRef.current) meshRef.current.position.copy(camera.position); });
+  return (
+    <mesh ref={meshRef} renderOrder={-1} frustumCulled={false}>
+      <sphereGeometry args={[1800, 32, 16]} />
+      <shaderMaterial side={THREE.BackSide} depthWrite={false} uniforms={SKY_UNIFORMS}
+        vertexShader={SKY_VERT} fragmentShader={SKY_FRAG} />
+    </mesh>
+  );
+}
+
+/** Reads actual Three.js scene/renderer state and fires onEnvDebug.
+ *  Reads after next animation frame so CollisionTestSetup's useEffect has already run. */
+function EnvProbe({ onEnvDebug }: { onEnvDebug: (info: EnvDebugInfo) => void }) {
+  const { scene, gl } = useThree();
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const toneMappingName = ({
+        [THREE.NoToneMapping]: 'None',
+        [THREE.LinearToneMapping]: 'Linear',
+        [THREE.ReinhardToneMapping]: 'Reinhard',
+        [THREE.CineonToneMapping]: 'Cineon',
+        [THREE.ACESFilmicToneMapping]: 'ACESFilmic',
+      } as Record<number, string>)[gl.toneMapping] ?? `#${gl.toneMapping}`;
+      const dir = scene.children.find((c): c is THREE.DirectionalLight => c instanceof THREE.DirectionalLight);
+      const amb = scene.children.find((c): c is THREE.AmbientLight => c instanceof THREE.AmbientLight);
+      const hemi = scene.children.find((c): c is THREE.HemisphereLight => c instanceof THREE.HemisphereLight);
+      const dirColor = dir ? '#' + dir.color.getHexString() : 'n/a';
+      const fogInfo = scene.fog
+        ? `${scene.fog.constructor.name} color=#${(scene.fog as any).color?.getHexString() ?? '?'} density=${(scene.fog as any).density ?? 'n/a'}`
+        : null;
+      const hasSkyDome = scene.children.some(
+        (c) => c instanceof THREE.Mesh && c.geometry instanceof THREE.SphereGeometry && (c.material as any).isShaderMaterial
+      );
+      onEnvDebug({
+        exposure: +gl.toneMappingExposure.toFixed(3),
+        toneMapping: toneMappingName,
+        dirIntensity: +(dir?.intensity ?? 0).toFixed(2),
+        dirColor,
+        ambIntensity: +(amb?.intensity ?? 0).toFixed(2),
+        hemiIntensity: +(hemi?.intensity ?? 0).toFixed(2),
+        fog: fogInfo,
+        hasSkyDome,
+        shadowNormalBias: +(dir?.shadow?.normalBias ?? 0),
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
 }
 
 export default function ArenaScene({
@@ -129,6 +337,9 @@ export default function ArenaScene({
   losBlocker,
   blueprintMode = false,
   losIsBlocked = false,
+  onEnvDebug,
+  envToggles,
+  dirLightConfig,
 }: ArenaSceneProps) {
   const { objects: mapObjects, width: mapWidth, height: mapHeight } = getMapForMode(mode);
   const worldHalfX = mapWidth / 2;
@@ -188,19 +399,14 @@ export default function ArenaScene({
       {/* Lighting — mode-specific */}
       {isCollisionTest ? (
         <>
-          {/* Lighting from environment.json + visual-settings.json (matches export-reader, then boosted) */}
-          {/* Sun: diffuse=[0.984,0.890,0.847], dir=[0.709,0.574,-0.410], intensity boosted */}
-          <directionalLight
-            position={[709, 574, -410]}
-            intensity={3.8}
-            color="#fbe3d8"
-            castShadow
-          />
-          {/* Ambient: ambientColor=[0.498,0.498,0.498], boosted for brightness */}
-          <ambientLight intensity={1.2} color="#7f7f7f" />
-          {/* Hemisphere: skyLightColor*[0.8,0.9,1.2]=[0.398,0.448,0.598], ground=#8b7355, intensity=1 */}
-          <hemisphereLight args={['#667299', '#8b7355', 1.0]} />
-          {/* No fog — removed per user request (fog was darkening the scene) */}
+          <CollisionTestSetup blueprintMode={blueprintMode} t={envToggles ?? DEFAULT_ENV_TOGGLES} />
+          <CameraFarSetup far={envToggles?.cameraFar ? 500000 : 2000} />
+          {envToggles?.dirLight && <ExportReaderSunLight config={dirLightConfig} />}
+          {envToggles?.ambLight && <ambientLight intensity={0.8} color={AMBIENT_COLOR} />}
+          {envToggles?.hemiLight && <hemisphereLight args={[HEMI_SKY_COLOR, HEMI_GROUND_COLOR, 1.0]} />}
+          {envToggles?.fog && <fogExp2 attach="fog" args={['#c8b888', 0.0000035]} />}
+          {envToggles?.skyDome && <SkyDome />}
+          {onEnvDebug && <EnvProbe onEnvDebug={onEnvDebug} />}
         </>
       ) : (
         <>
