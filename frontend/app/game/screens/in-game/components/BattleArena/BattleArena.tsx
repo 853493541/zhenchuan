@@ -131,7 +131,13 @@ function clientCheckLOS(
 }
 
 /** Live position display — reads a ref every 200ms */
-function PositionDisplay({ posRef }: { posRef: React.MutableRefObject<{ x: number; y: number; z: number }> }) {
+function PositionDisplay({
+  posRef,
+  inline = false,
+}: {
+  posRef: React.MutableRefObject<{ x: number; y: number; z: number }>;
+  inline?: boolean;
+}) {
   const [pos, setPos] = React.useState({ x: 0, y: 0, z: 0 });
   React.useEffect(() => {
     const id = setInterval(() => {
@@ -142,9 +148,21 @@ function PositionDisplay({ posRef }: { posRef: React.MutableRefObject<{ x: numbe
   }, [posRef]);
   return (
     <div style={{
-      position: 'absolute', top: 14, left: 14, zIndex: 500,
-      background: 'rgba(0,0,0,0.7)', color: '#0f0', fontFamily: 'monospace',
-      fontSize: 12, padding: '4px 8px', borderRadius: 4, pointerEvents: 'none',
+      ...(inline
+        ? {
+            background: 'rgba(255,255,255,0.04)',
+            color: '#86efac',
+            fontFamily: 'monospace',
+            fontSize: 12,
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid rgba(255,255,255,0.08)',
+          }
+        : {
+            position: 'absolute', top: 14, left: 14, zIndex: 500,
+            background: 'rgba(0,0,0,0.7)', color: '#0f0', fontFamily: 'monospace',
+            fontSize: 12, padding: '4px 8px', borderRadius: 4, pointerEvents: 'none',
+          }),
     }}>
       X:{pos.x.toFixed(1)} Y:{pos.y.toFixed(1)} Z:{pos.z.toFixed(1)}
     </div>
@@ -453,7 +471,7 @@ export default function BattleArena({
   const [controlMode,      setControlMode]      = useState<'joystick' | 'traditional'>('traditional');
   // Mobile detection: touch device without fine pointer (mouse) = phone/tablet
   const [isMobileDevice, setIsMobileDevice]    = useState(false);
-  const [showControlPanel, setShowControlPanel] = useState(false);
+  const [showControlPanel, setShowControlPanel] = useState(true);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
   const [runningCheatAction, setRunningCheatAction] = useState<string | null>(null);
@@ -492,18 +510,22 @@ export default function BattleArena({
   const [showCollisionShells, setShowCollisionShells] = useState(false);
   const [showCollisionBoxes, setShowCollisionBoxes] = useState(false);
   const [blueprintMode, setBlueprintMode] = useState(false);
+  const [showTestingPanel, setShowTestingPanel] = useState(false);
+  const [showEnvTestingPanel, setShowEnvTestingPanel] = useState(true);
+  const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(true);
   const [losBlocker, setLosBlocker] = useState<string | null>(null);
   const [envDebugInfo, setEnvDebugInfo] = useState<EnvDebugInfo | null>(null);
   const [envToggles, setEnvToggles] = useState<EnvToggles>({
-    toneMapping: false, exposure: false, shadows: false,
-    dirLight: false, ambLight: false, hemiLight: false,
-    fog: false, skyDome: false, cameraFar: false,
+    toneMapping: true, exposure: true, shadows: true,
+    dirLight: true, ambLight: true, hemiLight: true,
+    fog: true, skyDome: true, cameraFar: true,
   });
   const [dirLightConfig, setDirLightConfig] = useState<DirLightConfig>({
     intensity: 0.25,
     colorMode: 'export',
     customColor: '#fdf2ed',
   });
+  const [cameraZoomLevel, setCameraZoomLevel] = useState(1.0);
   const losBlockerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showLOSBlocker = useCallback((msg: string) => {
     setLosBlocker(msg);
@@ -1850,6 +1872,11 @@ export default function BattleArena({
       setWasdKeys({ w: false, a: false, s: false, d: false });
     };
     const onDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowTestingPanel(v => !v);
+        return;
+      }
       const k = e.key.toLowerCase();
       if (['w', 'a', 's', 'd'].includes(k)) {
         e.preventDefault();
@@ -1889,18 +1916,6 @@ export default function BattleArena({
         if (jumpLockedRef.current) return;
         jumpLocalRef.current = true;
         jumpSendRef.current  = true;
-      }
-      // Escape = close any open overlay (pickup panel; extend here for future modals)
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setPickupModals([]);
-        setSelectedTargetId(null);
-        selectedTargetRef.current = null;
-        setSelectedSelf(false);
-        selectedSelfRef.current = false;
-        setPendingGroundCastAbilityId(null);
-        setGroundCastPreview(null);
-        return;
       }
       // F = interact with nearby pickup (channel to open panel; claim if panel already open)
       if (k === 'f') {
@@ -2120,10 +2135,11 @@ export default function BattleArena({
       }
     };
     const onWheel = (e: WheelEvent) => {
+      if ((e.target as HTMLElement | null)?.closest('[data-testing-panel]')) return;
       e.preventDefault();
-      // deltaY > 0 = scroll down = zoom out; < 0 = scroll up = zoom in
       const delta = e.deltaY > 0 ? 0.12 : -0.12;
       camZoomRef.current = Math.max(0.4, Math.min(2.5, camZoomRef.current + delta));
+      setCameraZoomLevel(camZoomRef.current);
     };
     // Use capture phase so we intercept BEFORE the browser's own navigation handlers
     window.addEventListener('mousedown',   onMouseDown,   { capture: true });
@@ -2934,25 +2950,6 @@ export default function BattleArena({
           {mode === 'arena' ? '竞技场' : '吃鸡'}
         </span>
       </div>
-      <div style={{
-        position: 'absolute',
-        top: 42,
-        left: 10,
-        zIndex: 500,
-        background: 'rgba(10, 16, 14, 0.72)',
-        border: '1px solid rgba(120, 160, 145, 0.35)',
-        borderRadius: 6,
-        padding: '4px 8px',
-        fontSize: 11,
-        color: '#c7e6da',
-        letterSpacing: '0.2px',
-        fontFamily: '"Microsoft YaHei", sans-serif',
-        pointerEvents: 'none',
-        backdropFilter: 'blur(2px)',
-      }}>
-        {`移速 ${finalMoveSpeed.toFixed(3)} | 减伤 ${damageReductionPct.toFixed(1)}% | 闪避 ${dodgeChancePct.toFixed(1)}%${autoForward ? ' | 自动前行' : ''}`}
-      </div>
-
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
       {/* ===== R3F 3D CANVAS ===== */}
       <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
@@ -3020,88 +3017,272 @@ export default function BattleArena({
           />
         </Canvas>
       </div>
-      {/* ENV TOGGLES — click each to enable/disable */}
-      {mode === 'collision-test' && (
+      {mode === 'collision-test' && showTestingPanel && (
         <div style={{
-          position: 'absolute', top: 10, left: 10, zIndex: 9999,
-          background: 'rgba(0,0,0,0.88)', border: '1px solid #444',
-          borderRadius: 6, padding: '8px 14px', fontFamily: 'monospace',
-          fontSize: 12, lineHeight: 2.0, userSelect: 'none',
+          position: 'absolute', inset: 0, zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none',
         }}>
-          <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 2 }}>ENV TOGGLES (click to flip)</div>
-          {([
-            ['toneMapping', 'toneMapping = ACESFilmic'],
-            ['exposure',    'toneMappingExposure = 1.25'],
-            ['shadows',     'shadowMap.enabled'],
-            ['dirLight',    'DirectionalLight  (default 0.25)'],
-            ['ambLight',    'AmbientLight  intensity=0.8'],
-            ['hemiLight',   'HemisphereLight  intensity=1.0'],
-            ['fog',         'FogExp2  density=3.5e−6'],
-            ['skyDome',     'Sky dome (gradient sphere)'],
-            ['cameraFar',   'camera.far = 500000'],
-          ] as [keyof EnvToggles, string][]).map(([key, label]) => (
-            <div key={key}
-              onClick={() => setEnvToggles(prev => {
-                const next = { ...prev, [key]: !prev[key] };
-                // export-reader always runs dir+amb+hemi+toneMapping+exposure together
-                if (key === 'dirLight' && next.dirLight) {
-                  next.toneMapping = true; next.exposure = true;
-                  next.ambLight = true; next.hemiLight = true;
-                  next.shadows = true; next.cameraFar = true;
-                }
-                return next;
-              })}
-              style={{ cursor: 'pointer', color: envToggles[key] ? '#00ff88' : '#888' }}
-            >
-              {envToggles[key] ? '☑' : '☐'} {label}
+          <div style={{
+            width: 'min(760px, 92vw)', maxHeight: '80vh', overflowY: 'auto',
+            background: 'rgba(5, 8, 12, 0.94)', border: '1px solid rgba(255,255,255,0.16)',
+            borderRadius: 12, boxShadow: '0 18px 50px rgba(0,0,0,0.45)',
+            color: '#e5e7eb', padding: '18px 20px', pointerEvents: 'auto',
+            fontFamily: 'monospace',
+          }} data-testing-panel>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: 0.8 }}>ESC Panel</div>
+                <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>Press Esc to open or close.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTestingPanel(false)}
+                style={{
+                  background: 'rgba(255,255,255,0.06)', color: '#e5e7eb', border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontFamily: 'monospace',
+                }}
+              >
+                Close
+              </button>
             </div>
-          ))}
-        </div>
-      )}
-      {mode === 'collision-test' && (
-        <div style={{
-          position: 'absolute', top: 10, right: 10, zIndex: 9998,
-          background: 'rgba(0,0,0,0.88)', border: '1px solid #444',
-          borderRadius: 6, padding: '10px 14px', fontFamily: 'monospace',
-          fontSize: 12, lineHeight: 1.8, userSelect: 'none', minWidth: 260,
-        }}>
-          <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 6 }}>SUN CONFIG</div>
-          <div style={{ color: '#bbb', marginBottom: 6 }}>Affects directional light only.</div>
-          <div style={{ color: '#888', marginBottom: 6 }}>Default here is 0.25. Export-reader uses 3.0.</div>
-          <div style={{ color: '#ddd' }}>Brightness: {dirLightConfig.intensity.toFixed(2)}</div>
-          <input
-            type="range"
-            min="0"
-            max="6"
-            step="0.05"
-            value={dirLightConfig.intensity}
-            onChange={(e) => setDirLightConfig((prev) => ({ ...prev, intensity: Number(e.target.value) }))}
-            style={{ width: '100%' }}
-          />
-          <div style={{ color: '#ddd', marginTop: 8 }}>Color</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              type="color"
-              value={dirLightConfig.customColor}
-              onChange={(e) => setDirLightConfig((prev) => ({
-                ...prev,
-                colorMode: 'custom',
-                customColor: e.target.value,
-              }))}
-            />
-            <button
-              type="button"
-              onClick={() => setDirLightConfig({ intensity: 3.0, colorMode: 'export', customColor: '#fdf2ed' })}
-              style={{
-                background: '#1f2937', color: '#e5e7eb', border: '1px solid #4b5563',
-                borderRadius: 4, padding: '4px 8px', cursor: 'pointer',
-              }}
-            >
-              Reset Export (3.0)
-            </button>
-          </div>
-          <div style={{ color: dirLightConfig.colorMode === 'export' ? '#00ff88' : '#fbbf24', marginTop: 6 }}>
-            {dirLightConfig.colorMode === 'export' ? 'Using exact export-reader sun color' : `Using custom color ${dirLightConfig.customColor}`}
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setShowEnvTestingPanel(v => !v)}
+                style={{
+                  background: showEnvTestingPanel ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)',
+                  color: showEnvTestingPanel ? '#93c5fd' : '#cbd5e1',
+                  border: `1px solid ${showEnvTestingPanel ? 'rgba(96,165,250,0.6)' : 'rgba(255,255,255,0.14)'}`,
+                  borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace',
+                }}
+              >
+                {showEnvTestingPanel ? 'Hide' : 'Show'} Environment Controls
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSceneTestingPanel(v => !v)}
+                style={{
+                  background: showSceneTestingPanel ? 'rgba(16,185,129,0.18)' : 'rgba(255,255,255,0.05)',
+                  color: showSceneTestingPanel ? '#6ee7b7' : '#cbd5e1',
+                  border: `1px solid ${showSceneTestingPanel ? 'rgba(52,211,153,0.55)' : 'rgba(255,255,255,0.14)'}`,
+                  borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace',
+                }}
+              >
+                {showSceneTestingPanel ? 'Hide' : 'Show'} Scene / Status
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowControlPanel(v => !v)}
+                style={{
+                  background: showControlPanel ? 'rgba(245,158,11,0.18)' : 'rgba(255,255,255,0.05)',
+                  color: showControlPanel ? '#fcd34d' : '#cbd5e1',
+                  border: `1px solid ${showControlPanel ? 'rgba(251,191,36,0.55)' : 'rgba(255,255,255,0.14)'}`,
+                  borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace',
+                }}
+              >
+                {showControlPanel ? 'Hide' : 'Show'} Control Settings
+              </button>
+            </div>
+
+            {showSceneTestingPanel && (
+              <div style={{
+                marginBottom: 18,
+                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14,
+              }}>
+                <div style={{ color: '#fff', fontWeight: 700, marginBottom: 10 }}>Scene / Status</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 12 }}>
+                  <PositionDisplay posRef={localRenderPosRef} inline />
+                  <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1' }}>
+                    状态: 移速 {finalMoveSpeed.toFixed(3)} | 减伤 {damageReductionPct.toFixed(1)}% | 闪避 {dodgeChancePct.toFixed(1)}%{autoForward ? ' | 自动前行' : ''}
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1' }}>
+                    镜头: 缩放 {cameraZoomLevel.toFixed(2)} | 滚轮上拉近 / 滚轮下拉远
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowCollisionShells(v => !v)}
+                    style={{
+                      background: showCollisionShells ? 'rgba(63,213,109,0.25)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${showCollisionShells ? '#3fd56d' : 'rgba(255,255,255,0.14)'}`,
+                      color: showCollisionShells ? '#3fd56d' : '#cbd5e1',
+                      borderRadius: 6, padding: '6px 10px', fontSize: 12,
+                      cursor: 'pointer', fontFamily: 'monospace',
+                    }}
+                  >
+                    碰撞体 {showCollisionShells ? 'ON' : 'OFF'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBlueprintMode(v => !v)}
+                    style={{
+                      background: blueprintMode ? 'rgba(0,220,255,0.25)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${blueprintMode ? '#00dcff' : 'rgba(255,255,255,0.14)'}`,
+                      color: blueprintMode ? '#00dcff' : '#cbd5e1',
+                      borderRadius: 6, padding: '6px 10px', fontSize: 12,
+                      cursor: 'pointer', fontFamily: 'monospace',
+                    }}
+                  >
+                    Blueprint {blueprintMode ? 'ON' : 'OFF'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDebugGrid(v => !v)}
+                    style={{
+                      background: showDebugGrid ? 'rgba(255,220,0,0.18)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${showDebugGrid ? '#ffdd00' : 'rgba(255,255,255,0.14)'}`,
+                      color: showDebugGrid ? '#ffdd00' : '#cbd5e1',
+                      borderRadius: 6, padding: '6px 10px', fontSize: 12,
+                      cursor: 'pointer', fontFamily: 'monospace',
+                    }}
+                  >
+                    XY% {showDebugGrid ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {showEnvTestingPanel && (
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 18,
+                alignItems: 'start',
+              }}>
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14 }}>
+                  <div style={{ color: '#fff', fontWeight: 700, marginBottom: 10 }}>Env Toggles</div>
+                  {([
+                    ['toneMapping', 'toneMapping = ACESFilmic'],
+                    ['exposure',    'toneMappingExposure = 1.25'],
+                    ['shadows',     'shadowMap.enabled'],
+                    ['dirLight',    'DirectionalLight  (default 0.25)'],
+                    ['ambLight',    'AmbientLight  intensity=0.8'],
+                    ['hemiLight',   'HemisphereLight  intensity=1.0'],
+                    ['fog',         'FogExp2  density=3.5e−6'],
+                    ['skyDome',     'Sky dome (gradient sphere)'],
+                    ['cameraFar',   'camera.far = 500000'],
+                  ] as [keyof EnvToggles, string][]).map(([key, label]) => (
+                    <div key={key}
+                      onClick={() => setEnvToggles(prev => {
+                        const next = { ...prev, [key]: !prev[key] };
+                        if (key === 'dirLight' && next.dirLight) {
+                          next.toneMapping = true; next.exposure = true;
+                          next.ambLight = true; next.hemiLight = true;
+                          next.shadows = true; next.cameraFar = true;
+                        }
+                        return next;
+                      })}
+                      style={{ cursor: 'pointer', color: envToggles[key] ? '#00ff88' : '#94a3b8', padding: '2px 0' }}
+                    >
+                      {envToggles[key] ? '☑' : '☐'} {label}
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14 }}>
+                  <div style={{ color: '#fff', fontWeight: 700, marginBottom: 6 }}>Sun Config</div>
+                  <div style={{ color: '#94a3b8', marginBottom: 10 }}>Directional light only. Default here is 0.25.</div>
+                  <div style={{ color: '#ddd' }}>Brightness: {dirLightConfig.intensity.toFixed(2)}</div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="6"
+                    step="0.05"
+                    value={dirLightConfig.intensity}
+                    onChange={(e) => setDirLightConfig((prev) => ({ ...prev, intensity: Number(e.target.value) }))}
+                    style={{ width: '100%' }}
+                  />
+                  <div style={{ color: '#ddd', marginTop: 12 }}>Color</div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                      type="color"
+                      value={dirLightConfig.customColor}
+                      onChange={(e) => setDirLightConfig((prev) => ({
+                        ...prev,
+                        colorMode: 'custom',
+                        customColor: e.target.value,
+                      }))}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDirLightConfig({ intensity: 3.0, colorMode: 'export', customColor: '#fdf2ed' })}
+                      style={{
+                        background: '#1f2937', color: '#e5e7eb', border: '1px solid #4b5563',
+                        borderRadius: 4, padding: '4px 8px', cursor: 'pointer', fontFamily: 'monospace',
+                      }}
+                    >
+                      Reset Export (3.0)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDirLightConfig({ intensity: 0.25, colorMode: 'export', customColor: '#fdf2ed' })}
+                      style={{
+                        background: '#0f172a', color: '#e5e7eb', border: '1px solid #334155',
+                        borderRadius: 4, padding: '4px 8px', cursor: 'pointer', fontFamily: 'monospace',
+                      }}
+                    >
+                      Reset Default (0.25)
+                    </button>
+                  </div>
+                  <div style={{ color: dirLightConfig.colorMode === 'export' ? '#00ff88' : '#fbbf24', marginTop: 8 }}>
+                    {dirLightConfig.colorMode === 'export' ? 'Using export-reader sun color' : `Using custom color ${dirLightConfig.customColor}`}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showControlPanel && (
+              <div style={{
+                marginTop: 18,
+                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14,
+              }}>
+                <div style={{ color: '#fff', fontWeight: 700, marginBottom: 10 }}>控制模式</div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setControlMode('traditional');
+                      controlModeRef.current = 'traditional';
+                      localStorage.setItem('controlMode', 'traditional');
+                      const f = localFacingRef.current;
+                      const yaw = Math.atan2(f.x, f.y);
+                      charYawRef.current = yaw;
+                      camYawRef.current = yaw;
+                    }}
+                    style={{
+                      background: controlMode === 'traditional' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)',
+                      color: controlMode === 'traditional' ? '#93c5fd' : '#e5e7eb',
+                      border: `1px solid ${controlMode === 'traditional' ? 'rgba(96,165,250,0.6)' : 'rgba(255,255,255,0.14)'}`,
+                      borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontFamily: 'monospace',
+                    }}
+                  >
+                    传统模式
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setControlMode('joystick');
+                      controlModeRef.current = 'joystick';
+                      localStorage.setItem('controlMode', 'joystick');
+                    }}
+                    style={{
+                      background: controlMode === 'joystick' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)',
+                      color: controlMode === 'joystick' ? '#93c5fd' : '#e5e7eb',
+                      border: `1px solid ${controlMode === 'joystick' ? 'rgba(96,165,250,0.6)' : 'rgba(255,255,255,0.14)'}`,
+                      borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontFamily: 'monospace',
+                    }}
+                  >
+                    摇杆模式
+                  </button>
+                </div>
+                <div style={{ color: '#cbd5e1', fontSize: 12, lineHeight: 1.8 }}>
+                  {controlMode === 'traditional'
+                    ? <>W/S 前进/后退  A/D 转向  G 自动前行（按S停止）<br />右键拖拽 转向+转镜头  左键拖拽 转镜头<br />S+Space 后撤  滚轮 镜头缩放</>
+                    : <>WASD 绝对方向移动<br />镜头固定 不随角色旋转</>}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -3246,48 +3427,6 @@ export default function BattleArena({
         </div>
       </div>
 
-      {/* ===== TOP-RIGHT: Control mode settings ===== */}
-      <button
-        className={styles.controlBtn}
-        onClick={() => setShowControlPanel(v => !v)}
-        title="控制设置"
-      >&#9881;</button>
-      {showControlPanel && (
-        <div className={styles.controlPanel}>
-          <div className={styles.controlPanelTitle}>控制模式</div>
-          <div className={styles.controlModeRow}>
-            <button
-              className={`${styles.controlModeBtn} ${controlMode === 'traditional' ? styles.controlModeActive : ''}`}
-              onClick={() => {
-                setControlMode('traditional');
-                controlModeRef.current = 'traditional';
-                localStorage.setItem('controlMode', 'traditional');
-                // Sync yaw to current facing so camera doesn’t jump
-                const f = localFacingRef.current;
-                const yaw = Math.atan2(f.x, f.y);
-                charYawRef.current = yaw;
-                camYawRef.current  = yaw;
-              }}
-            >传统模式</button>
-            <button
-              className={`${styles.controlModeBtn} ${controlMode === 'joystick' ? styles.controlModeActive : ''}`}
-              onClick={() => {
-                setControlMode('joystick');
-                controlModeRef.current = 'joystick';
-                localStorage.setItem('controlMode', 'joystick');
-              }}
-            >摇杆模式</button>
-          </div>
-          <div className={styles.controlHints}>
-            {controlMode === 'traditional' ? (
-              <><span>W/S</span> 前进/后退 <span>A/D</span> 转向 <span>G</span> 自动前行（按S停止）<br/><span>右键拖拽</span> 转向+转镜头 <span>左键拖拽</span> 转镜头<br/><span>S+Space</span> 后撤 <span>滚轮</span> 镜头缩放</>
-            ) : (
-              <><span>WASD</span> 绝对方向移动<br/><span>镜头固定</span> 不随角色旋转</>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* ===== TOP-CENTER: Target info panel — health → buffs → abilities (self or enemy) ===== */}
       <div className={styles.enemyBossGroup}>
         {(selectedTargetId || selectedSelf) && (() => {
@@ -3383,58 +3522,6 @@ export default function BattleArena({
 
       {/* ===== TOP-RIGHT: RTT badge + debug grid toggle ===== */}
       <div className={styles.rttBadge}>{rtt !== null ? `${rtt}ms` : '—'}</div>
-
-      {/* ===== WORLD POSITION DISPLAY (collision-test) ===== */}
-      {mode === 'collision-test' && (
-        <PositionDisplay posRef={localRenderPosRef} />
-      )}
-
-      {/* ===== COLLISION TOGGLE BUTTONS (collision-test) ===== */}
-      {mode === 'collision-test' && (
-        <div style={{ position: 'absolute', top: 14, right: 120, zIndex: 500, display: 'flex', gap: 4 }}>
-          <button
-            onClick={() => setShowCollisionShells(v => !v)}
-            title="Toggle real BVH collision mesh wireframe"
-            style={{
-              background: showCollisionShells ? 'rgba(63,213,109,0.25)' : 'rgba(0,0,0,0.55)',
-              border: `1px solid ${showCollisionShells ? '#3fd56d' : 'rgba(255,255,255,0.2)'}`,
-              color: showCollisionShells ? '#3fd56d' : 'rgba(255,255,255,0.55)',
-              borderRadius: 4, padding: '3px 8px', fontSize: 11,
-              cursor: 'pointer', fontFamily: 'monospace',
-            }}
-          >
-            碰撞体
-          </button>
-          <button
-            onClick={() => setBlueprintMode(v => !v)}
-            title="Blueprint mode: hide all visuals, show only LOS collision wireframe (cyan)"
-            style={{
-              background: blueprintMode ? 'rgba(0,220,255,0.25)' : 'rgba(0,0,0,0.55)',
-              border: `1px solid ${blueprintMode ? '#00dcff' : 'rgba(255,255,255,0.2)'}`,
-              color: blueprintMode ? '#00dcff' : 'rgba(255,255,255,0.55)',
-              borderRadius: 4, padding: '3px 8px', fontSize: 11,
-              cursor: 'pointer', fontFamily: 'monospace',
-            }}
-          >
-            Blueprint
-          </button>
-        </div>
-      )}
-
-      <button
-        onClick={() => setShowDebugGrid(v => !v)}
-        title="Toggle XY% grid"
-        style={{
-          position: 'absolute', top: 14, right: 60, zIndex: 500,
-          background: showDebugGrid ? 'rgba(255,220,0,0.18)' : 'rgba(0,0,0,0.55)',
-          border: `1px solid ${showDebugGrid ? '#ffdd00' : 'rgba(255,255,255,0.2)'}`,
-          color: showDebugGrid ? '#ffdd00' : 'rgba(255,255,255,0.55)',
-          borderRadius: 4, padding: '3px 8px', fontSize: 11,
-          cursor: 'pointer', fontFamily: 'monospace', letterSpacing: 1,
-        }}
-      >
-        XY%
-      </button>
 
       {/* ===== DEBUG POSITION GRID ===== */}
       {showDebugGrid && (
