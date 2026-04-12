@@ -6,6 +6,8 @@ import { blocksCardTargeting } from "./guards";
 import { calculateDistance } from "../state/types";
 import { worldMap } from "../../map/worldMap";
 import type { MapObject } from "../state/types/map";
+import type { ExportedMapCollisionSystem } from "../../map/exportedMapCollision";
+import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT } from "../../map/exportedMap";
 
 /* =========================================================
    INTERNAL HELPERS
@@ -58,19 +60,33 @@ function isInFacingHemisphere(
 
 /**
  * Check if line-of-sight between two positions is blocked by any map object.
- * Uses 2D segment-vs-AABB test (ignores Z for now — structures are full-height blockers).
+ * Uses 2D segment-vs-AABB test with optional Z-aware height filtering.
+ *
+ * @param minBlockH  Objects shorter than this are not considered LOS blockers.
+ * @param casterZ    Caster feet height (world units).
+ * @param targetZ    Target feet height (world units).
+ * Returns the blocking entity id, or null if clear.
  */
+const LOS_EYE_HEIGHT = 1.5; // game units above player feet
 function isLOSBlocked(
   ax: number, ay: number,
   bx: number, by: number,
-  objects: MapObject[]
-): boolean {
+  objects: MapObject[],
+  minBlockH: number = 0,
+  casterZ: number = 0,
+  targetZ: number = 0,
+): string | null {
+  const casterEye = casterZ + LOS_EYE_HEIGHT;
+  const targetEye = targetZ + LOS_EYE_HEIGHT;
   for (const obj of objects) {
-    if (segmentIntersectsAABB(ax, ay, bx, by, obj.x, obj.y, obj.x + obj.w, obj.y + obj.d)) {
-      return true;
+    if (obj.h < minBlockH) continue;
+    // Skip if both eye-levels clear the object's top
+    if (obj.h <= Math.min(casterEye, targetEye)) continue;
+    if (segmentIntersectsAABB(ax, ay, bx, by, obj.x - 0.5, obj.y - 0.5, obj.x + obj.w + 0.5, obj.y + obj.d + 0.5)) {
+      return obj.id;
     }
   }
-  return false;
+  return null;
 }
 
 /** 2D segment vs AABB intersection test. */
@@ -122,6 +138,12 @@ export function validateCastAbility(
     pendingJump?: boolean;
     targetUserId?: string;
     groundTarget?: { x: number; y: number };
+    /** Map objects to use for LOS checks. Defaults to worldMap.objects if omitted. */
+    mapObjects?: MapObject[];
+    /** Minimum object height for LOS blocking (0 = all heights block). */
+    minLOSBlockH?: number;
+    /** If provided, uses BVH-based LOS instead of AABB-based (more accurate). */
+    collisionSystem?: ExportedMapCollisionSystem | null;
   }
 ) {
   if (state.gameOver) {
@@ -310,12 +332,26 @@ export function validateCastAbility(
     }
 
     /* ================= LINE OF SIGHT (structure blocking) ================= */
-    const mapObjects = worldMap.objects; // TODO: pass map context for arena mode
-    if (isLOSBlocked(
-      player.position.x, player.position.y,
-      enemy.position.x, enemy.position.y,
-      mapObjects
-    )) {
+    const losBlocked = (() => {
+      const pz = (player.position as any).z ?? 0;
+      const ez = (enemy.position as any).z ?? 0;
+      if (options?.collisionSystem) {
+        return options.collisionSystem.checkLOS(
+          player.position.x, player.position.y, pz,
+          enemy.position.x, enemy.position.y, ez,
+          EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT,
+        );
+      }
+      const mapObjects = options?.mapObjects ?? worldMap.objects;
+      const minLOSBlockH = options?.minLOSBlockH ?? 0;
+      return !!isLOSBlocked(
+        player.position.x, player.position.y,
+        enemy.position.x, enemy.position.y,
+        mapObjects, minLOSBlockH, pz, ez,
+      );
+    })();
+    if (losBlocked) {
+      console.log(`[LOS] blocked (casterZ=${((player.position as any).z ?? 0).toFixed(2)} targetZ=${((enemy.position as any).z ?? 0).toFixed(2)})`);
       throw new Error("ERR_NO_LINE_OF_SIGHT");
     }
   }

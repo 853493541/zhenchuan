@@ -59,18 +59,31 @@ function segmentIntersectsAABB(
   return true;
 }
 
-/** Check if line-of-sight between two 2D positions is blocked by any map object. */
+/** Check if line-of-sight between two 2D positions is blocked by any map object.
+ *  minBlockH: objects shorter than this are ignored (ground-level terrain bumps).
+ *  casterZ / targetZ: feet heights; eyeHeight is added to get eye-level.
+ *  An object is skipped only when both players' eye-levels clear its top.
+ */
+const LOS_EYE_HEIGHT = 1.5; // game units above feet
 function isLOSBlocked(
   ax: number, ay: number,
   bx: number, by: number,
-  objects: MapObject[]
-): boolean {
+  objects: MapObject[],
+  minBlockH: number = 0,
+  casterZ: number = 0,
+  targetZ: number = 0,
+): string | null { // returns blocking entity id or null
+  const casterEye = casterZ + LOS_EYE_HEIGHT;
+  const targetEye = targetZ + LOS_EYE_HEIGHT;
   for (const obj of objects) {
-    if (segmentIntersectsAABB(ax, ay, bx, by, obj.x, obj.y, obj.x + obj.w, obj.y + obj.d)) {
-      return true;
+    if (obj.h < minBlockH) continue;
+    // Skip if both eye-levels clear the object's top
+    if (obj.h <= Math.min(casterEye, targetEye)) continue;
+    if (segmentIntersectsAABB(ax, ay, bx, by, obj.x - 0.5, obj.y - 0.5, obj.x + obj.w + 0.5, obj.y + obj.d + 0.5)) {
+      return obj.id;
     }
   }
-  return false;
+  return null;
 }
 
 /** Check if target is within the caster's forward 180-degree hemisphere. */
@@ -191,7 +204,6 @@ export class GameLoop {
   private tickRate: number; // Hz
   private tickInterval: any;
   private playerInputs: Map<number, MovementInput | null> = new Map();
-  private playerInputSeq: Map<number, number> = new Map();
   private lastBroadcast = 0;
   private ticksSinceBroadcast = 0;
   // Broadcast cadence in ticks. Derived from tickRate to keep roughly 30Hz net updates.
@@ -255,7 +267,6 @@ export class GameLoop {
     // Initialize player input buffers
     this.state.players.forEach((_, idx) => {
       this.playerInputs.set(idx, null);
-      this.playerInputSeq.set(idx, Number.NEGATIVE_INFINITY);
     });
   }
 
@@ -333,15 +344,7 @@ export class GameLoop {
    * Queue player movement input
    * Called when client sends WASD input
    */
-  setPlayerInput(playerIndex: number, input: MovementInput | null, seq?: number) {
-    if (typeof seq === "number" && Number.isFinite(seq)) {
-      const lastSeq = this.playerInputSeq.get(playerIndex) ?? Number.NEGATIVE_INFINITY;
-      if (seq <= lastSeq) {
-        return;
-      }
-      this.playerInputSeq.set(playerIndex, seq);
-    }
-
+  setPlayerInput(playerIndex: number, input: MovementInput | null) {
     if (input?.jump) {
       const player = this.state.players[playerIndex];
       if (player) {
@@ -585,16 +588,23 @@ export class GameLoop {
         }
 
         // Task 7: cancel opponent-targeted channels if LOS is blocked by structures.
-        if (
-          channelAbility?.target === "OPPONENT" &&
-          isLOSBlocked(
-            player.position.x,
-            player.position.y,
-            target.position.x,
-            target.position.y,
-            this.mapCtx.objects,
-          )
-        ) {
+        const _losBlockedChannel = channelAbility?.target === "OPPONENT" && (() => {
+          const pz = (player.position as any).z ?? 0;
+          const tz = (target.position as any).z ?? 0;
+          if (this.mapCtx.collisionSystem) {
+            return this.mapCtx.collisionSystem.checkLOS(
+              player.position.x, player.position.y, pz,
+              target.position.x, target.position.y, tz,
+              this.mapCtx.width, this.mapCtx.height,
+            );
+          }
+          return !!isLOSBlocked(
+            player.position.x, player.position.y,
+            target.position.x, target.position.y,
+            this.mapCtx.objects, 0, pz, tz,
+          );
+        })();
+        if (_losBlockedChannel) {
           player.activeChannel = undefined;
           channelStateChanged = true;
           continue;
@@ -931,13 +941,23 @@ export class GameLoop {
                     }
                   }
                   // Task 7: channel ticks stop applying through structures
-                  if (isLOSBlocked(
-                    player.position.x,
-                    player.position.y,
-                    opp.position.x,
-                    opp.position.y,
-                    this.mapCtx.objects,
-                  )) {
+                  const _losBlockedTick = (() => {
+                    const pz = (player.position as any).z ?? 0;
+                    const oz = (opp.position as any).z ?? 0;
+                    if (this.mapCtx.collisionSystem) {
+                      return this.mapCtx.collisionSystem.checkLOS(
+                        player.position.x, player.position.y, pz,
+                        opp.position.x, opp.position.y, oz,
+                        this.mapCtx.width, this.mapCtx.height,
+                      );
+                    }
+                    return !!isLOSBlocked(
+                      player.position.x, player.position.y,
+                      opp.position.x, opp.position.y,
+                      this.mapCtx.objects, 0, pz, oz,
+                    );
+                  })();
+                  if (_losBlockedTick) {
                     player.activeChannel = undefined;
                     channelStateChanged = true;
                     continue;
@@ -1740,6 +1760,13 @@ export class GameLoop {
    */
   getState(): GameState {
     return structuredClone(this.state);
+  }
+
+  /**
+   * Expose map context for LOS validation in ability cast path.
+   */
+  getMapCtx(): MapContext {
+    return this.mapCtx;
   }
 
   /**

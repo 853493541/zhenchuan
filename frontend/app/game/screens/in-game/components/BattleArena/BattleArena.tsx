@@ -4,6 +4,7 @@ import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber';
 import styles from './BattleArena.module.css';
 import WASDButtons from './WASDButtons';
+import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, type ChannelBarData } from './ChannelBar';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
@@ -142,14 +143,26 @@ function segmentIntersectsAABB(
   return true;
 }
 
-/** Check if LOS between two positions is blocked by any map object. */
+/** Check if LOS between two positions is blocked by any map object.
+ *  Returns the first blocking MapObject, or null if clear.
+ *  minBlockH: objects shorter than this are ignored.
+ *  casterZ / targetZ: feet heights; EYE_HEIGHT is added for eye-level check.
+ */
+const LOS_EYE_HEIGHT = 1.5; // game units above player feet
 function isLOSBlockedClient(
-  ax: number, ay: number, bx: number, by: number, objects: MapObject[]
-): boolean {
+  ax: number, ay: number, bx: number, by: number, objects: MapObject[],
+  minBlockH: number = 0,
+  casterZ: number = 0,
+  targetZ: number = 0,
+): MapObject | null {
+  const casterEye = casterZ + LOS_EYE_HEIGHT;
+  const targetEye = targetZ + LOS_EYE_HEIGHT;
   for (const obj of objects) {
-    if (segmentIntersectsAABB(ax, ay, bx, by, obj.x, obj.y, obj.x + obj.w, obj.y + obj.d)) return true;
+    if (obj.h < minBlockH) continue;
+    if (obj.h <= Math.min(casterEye, targetEye)) continue;
+    if (segmentIntersectsAABB(ax, ay, bx, by, obj.x - 0.5, obj.y - 0.5, obj.x + obj.w + 0.5, obj.y + obj.d + 0.5)) return obj;
   }
-  return false;
+  return null;
 }
 
 function normalizeAngle(rad: number): number {
@@ -288,6 +301,7 @@ interface AbilityInfo {
   minSelfHpExclusive?: number;
   qinggong?: boolean;
   allowGroundCastWithoutTarget?: boolean;
+  losBlocked?: boolean;
 }
 
 /** Fixed display order for the common-ability bar. */
@@ -399,6 +413,8 @@ export default function BattleArena({
   const [rtt,              setRtt]              = useState<number | null>(null);
   const [wasdKeys,         setWasdKeys]         = useState({ w: false, a: false, s: false, d: false });
   const [controlMode,      setControlMode]      = useState<'joystick' | 'traditional'>('traditional');
+  // Mobile detection: touch device without fine pointer (mouse) = phone/tablet
+  const [isMobileDevice, setIsMobileDevice]    = useState(false);
   const [showControlPanel, setShowControlPanel] = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
@@ -437,6 +453,14 @@ export default function BattleArena({
   const [showDebugGrid, setShowDebugGrid] = useState(false);
   const [showCollisionShells, setShowCollisionShells] = useState(false);
   const [showCollisionBoxes, setShowCollisionBoxes] = useState(false);
+  const [blueprintMode, setBlueprintMode] = useState(false);
+  const [losBlocker, setLosBlocker] = useState<MapObject | null>(null);
+  const losBlockerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showLOSBlocker = useCallback((obj: MapObject) => {
+    setLosBlocker(obj);
+    if (losBlockerTimerRef.current) clearTimeout(losBlockerTimerRef.current);
+    losBlockerTimerRef.current = setTimeout(() => setLosBlocker(null), 4000);
+  }, []);
   const collisionSysRef = useRef<MapCollisionSystem | null>(null);
   const collisionReadyRef = useRef(mode !== 'collision-test');
   const [collisionReady, setCollisionReady] = useState(mode !== 'collision-test');
@@ -543,6 +567,7 @@ export default function BattleArena({
 
   /* --- Game logic refs --- */
   const keysRef          = useRef({ w: false, a: false, s: false, d: false });
+  const joystickDirRef   = useRef<{ dx: number; dy: number } | null>(null); // analog joystick
   const autoForwardRef   = useRef(false);
   const dragJustEndedRef = useRef(false);
   const localPositionRef = useRef<Position | null>(null);
@@ -720,9 +745,16 @@ export default function BattleArena({
     // Line-of-sight check (structure blocking)
     if (ability?.target === 'OPPONENT') {
       const myPos = localPositionRef.current ?? me.position;
-      if (myPos && targetPos && isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current)) {
-        toastError('视线被建筑遮挡');
-        return;
+      const losMinH = mode === 'collision-test' ? 5.5 : 0;
+      const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
+      const tgtZ = (targetPos as any)?.z ?? 0;
+      if (myPos && targetPos) {
+        const blocker = isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, losMinH, myZ, tgtZ);
+        if (blocker) {
+          showLOSBlocker(blocker);
+          toastError('视线被建筑遮挡');
+          return;
+        }
       }
     }
     // Stamp the ability name so the damage / heal float can label itself
@@ -896,10 +928,16 @@ export default function BattleArena({
     }
   }, [opponent?.facing?.x, opponent?.facing?.y]);
 
-  // Restore control mode from localStorage on mount
+  // Restore control mode from localStorage on mount; auto-detect mobile
   useEffect(() => {
     const saved = (localStorage.getItem('controlMode')) as 'joystick' | 'traditional' | null;
-    const mode  = (saved === 'joystick' || saved === 'traditional') ? saved : 'traditional';
+    // Mobile = touch device without a fine pointer (mouse), e.g. phones/iPads
+    const isMobile = typeof window !== 'undefined' &&
+      navigator.maxTouchPoints > 0 &&
+      !window.matchMedia('(pointer: fine)').matches;
+    setIsMobileDevice(isMobile);
+    const defaultMode = isMobile ? 'joystick' : 'traditional';
+    const mode  = (saved === 'joystick' || saved === 'traditional') ? saved : defaultMode;
     setControlMode(mode);
     controlModeRef.current = mode;
   }, []);
@@ -1212,7 +1250,13 @@ export default function BattleArena({
               const speedMult = backpedalOnly ? 0.5 : 1.0;
               return { dx: (dx / len) * speedMult, dy: (dy / len) * speedMult, jump: shouldJump };
             }
-            // 摇杆模式: absolute WASD
+            // 摇杆模式: use analog dx/dy if joystick active, otherwise WASD booleans
+            if (joystickDirRef.current) {
+              const jd = joystickDirRef.current;
+              const mag = Math.sqrt(jd.dx * jd.dx + jd.dy * jd.dy);
+              if (mag < 0.01 && !shouldJump) return null;
+              return { dx: jd.dx, dy: jd.dy, jump: shouldJump };
+            }
             return (k.w || k.a || k.s || k.d || shouldJump)
               ? { up: k.s, down: k.w, left: k.a, right: k.d, jump: shouldJump }
               : null;
@@ -1450,8 +1494,16 @@ export default function BattleArena({
           const dy = targetPos.y - myPos.y;
           if (myFacing.x * dx + myFacing.y * dy < 0) return false;
         }
-        if (isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current)) {
-          return false;
+        // In collision-test mode the backend uses BVH-based LOS (accurate geometry).
+        // The entity-level AABB list is not accurate for LOS — it creates ghost blocks.
+        // Skip client-side LOS graying in this mode; rely on server rejection + toast feedback.
+        if (mode !== 'collision-test') {
+          const losMinH2 = 0;
+          const myZ2 = (myPos as any)?.z ?? localZRef.current ?? 0;
+          const tgtZ2 = (targetPos as any)?.z ?? 0;
+          if (isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, losMinH2, myZ2, tgtZ2)) {
+            return false;
+          }
         }
       }
 
@@ -1490,6 +1542,10 @@ export default function BattleArena({
           };
         }
         const chargeDisplay = getChargeDisplay(ability, instance);
+        const isReadyVal = isAbilityReady(ability, instance);
+        const losBlockedVal = mode !== 'collision-test' && !isReadyVal && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
+          ? !!isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, (myPos as any)?.z ?? localZRef.current ?? 0, (targetPos as any)?.z ?? 0)
+          : false;
         return {
           id:          instanceId,
           abilityId:      ability.id,
@@ -1505,7 +1561,8 @@ export default function BattleArena({
           chargeRegenProgress: chargeDisplay.chargeRegenProgress,
           chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
           chargeLockTicks: chargeDisplay.chargeLockTicks,
-          isReady:     isAbilityReady(ability, instance),
+          isReady:     isReadyVal,
+          losBlocked:  losBlockedVal,
           isCommon:    false,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
           faceDirection: requiresFacingByDefault(ability as any),
@@ -1529,6 +1586,10 @@ export default function BattleArena({
         );
         const instanceId = instance?.instanceId ?? ability.id;
         const chargeDisplay = getChargeDisplay(ability, instance ?? {});
+        const isReadyCom = isAbilityReady(ability, instance);
+        const losBlockedCom = mode !== 'collision-test' && !isReadyCom && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
+          ? !!isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, (myPos as any)?.z ?? localZRef.current ?? 0, (targetPos as any)?.z ?? 0)
+          : false;
         return {
           id:          instanceId,
           abilityId:      ability.id,
@@ -1544,7 +1605,8 @@ export default function BattleArena({
           chargeRegenProgress: chargeDisplay.chargeRegenProgress,
           chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
           chargeLockTicks: chargeDisplay.chargeLockTicks,
-          isReady:     isAbilityReady(ability, instance),
+          isReady:     isReadyCom,
+          losBlocked:  losBlockedCom,
           isCommon:    true,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
           faceDirection: requiresFacingByDefault(ability as any),
@@ -2028,6 +2090,17 @@ export default function BattleArena({
     [],
   );
 
+  // Analog joystick direction — stored separately and used in sendMovement
+  const handleJoystickAnalog = useCallback((dx: number, dy: number) => {
+    joystickDirRef.current = (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) ? { dx, dy } : null;
+  }, []);
+
+  // Jump triggered from the virtual joystick's jump button  
+  const handleJoystickJump = useCallback(() => {
+    jumpLocalRef.current  = true;
+    jumpSendRef.current   = true;
+  }, []);
+
   /* Physics — mirrors server exactly */
   useEffect(() => {
     const CLIENT_TICK_HZ = 30;
@@ -2185,11 +2258,12 @@ export default function BattleArena({
             const speedMult = backpedalOnly ? 0.5 : 1.0;
             vel.x += ((fx / len) * effectiveMaxSpeed * speedMult - vel.x) * ACCEL;
             vel.y += ((fy / len) * effectiveMaxSpeed * speedMult - vel.y) * ACCEL;
-            if (mouseLook && !backpedalOnly) {
-              charYawRef.current = Math.atan2(fx / len, -fy / len);
+            // In mouselook mode: character always faces camera direction regardless of strafe
+            if (mouseLook) {
+              charYawRef.current = camYawRef.current;
               localFacingRef.current = {
-                x: Math.sin(charYawRef.current),
-                y: -Math.cos(charYawRef.current),
+                x: Math.sin(camYawRef.current),
+                y: -Math.cos(camYawRef.current),
               };
             }
           } else {
@@ -2759,7 +2833,7 @@ export default function BattleArena({
       <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
         <Canvas
           camera={{ fov: 72, near: 0.5, far: 2000 }}
-          style={{ background: mode === 'collision-test' ? '#c8b888' : '#62a054' }}
+          style={{ background: blueprintMode ? '#000010' : (mode === 'collision-test' ? '#c8b888' : '#62a054') }}
           gl={{ antialias: true }}
         >
           <ArenaScene
@@ -2812,6 +2886,8 @@ export default function BattleArena({
             collisionReady={collisionReady}
             collisionDebugRef={collisionDebugRef}
             onCollisionSystemReady={onCollisionSystemReady}
+            losBlocker={losBlocker}
+            blueprintMode={blueprintMode}
           />
         </Canvas>
       </div>
@@ -2831,6 +2907,29 @@ export default function BattleArena({
           fontFamily: 'monospace',
         }}>
           loading real collision...
+        </div>
+      )}
+
+      {/* ===== LOS BLOCKER DEBUG OVERLAY ===== */}
+      {losBlocker && (
+        <div style={{
+          position: 'absolute',
+          top: 60,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 530,
+          background: 'rgba(180, 0, 0, 0.85)',
+          border: '1px solid #ff4444',
+          color: '#fff',
+          fontSize: 12,
+          padding: '6px 12px',
+          borderRadius: 6,
+          fontFamily: 'monospace',
+          pointerEvents: 'none',
+          textAlign: 'center',
+        }}>
+          视线被 <b>{losBlocker.id}</b> 遮挡<br />
+          h={losBlocker.h.toFixed(2)} · x={losBlocker.x.toFixed(0)}-{(losBlocker.x+losBlocker.w).toFixed(0)} · y={losBlocker.y.toFixed(0)}-{(losBlocker.y+losBlocker.d).toFixed(0)}
         </div>
       )}
 
@@ -3105,6 +3204,19 @@ export default function BattleArena({
             }}
           >
             Part Boxes
+          </button>
+          <button
+            onClick={() => setBlueprintMode(v => !v)}
+            title="Blueprint mode: hide all visuals, show only LOS collision wireframe (cyan)"
+            style={{
+              background: blueprintMode ? 'rgba(0,220,255,0.25)' : 'rgba(0,0,0,0.55)',
+              border: `1px solid ${blueprintMode ? '#00dcff' : 'rgba(255,255,255,0.2)'}`,
+              color: blueprintMode ? '#00dcff' : 'rgba(255,255,255,0.55)',
+              borderRadius: 4, padding: '3px 8px', fontSize: 11,
+              cursor: 'pointer', fontFamily: 'monospace',
+            }}
+          >
+            Blueprint
           </button>
         </div>
       )}
@@ -3551,11 +3663,20 @@ export default function BattleArena({
         </div>
       )}
 
-      {/* ===== BOTTOM: WASD (mobile left) + centered hotbar ===== */}
-      <div className={styles.bottomHud}>
+      {/* ===== BOTTOM: WASD / Joystick (mobile left) + centered hotbar ===== */}
+      <div className={styles.bottomHud} style={isMobileDevice ? { justifyContent: 'center' } : undefined}>
 
-        <div className={styles.wasdWrap}>
-          <WASDButtons onDirectionChange={handleJoystickDirection} />
+        <div className={styles.wasdWrap} style={isMobileDevice ? { position: 'absolute', left: 60, bottom: 60 } : undefined}>
+          {isMobileDevice ? (
+            <VirtualJoystick
+              onDirectionChange={handleJoystickDirection}
+              onAnalogMove={handleJoystickAnalog}
+              onJump={handleJoystickJump}
+              size={130}
+            />
+          ) : (
+            <WASDButtons onDirectionChange={handleJoystickDirection} />
+          )}
         </div>
 
         <div className={styles.hotbarStack}>
@@ -3613,13 +3734,27 @@ export default function BattleArena({
                         onDragEnd={handleDraftDragEnd}
                         onClick={() => {
                           if (dragJustEndedRef.current) return;
-                          if (!ability.isReady) return;
+                          if (!ability.isReady) {
+                            if (ability.losBlocked) {
+                              const pos = localPositionRef.current ?? me.position;
+                              const tgt = (selectedTargetId ? targetableOpponentsList.find(o => o.userId === selectedTargetId) : targetableOpponentsList[0])?.position;
+                              if (pos && tgt) {
+                                const losH = mode === 'collision-test' ? 5.5 : 0;
+                                const blocker = isLOSBlockedClient(pos.x, pos.y, tgt.x, tgt.y, mapObjectsRef.current, losH, (pos as any)?.z ?? localZRef.current ?? 0, (tgt as any)?.z ?? 0);
+                                if (blocker) showLOSBlocker(blocker);
+                              }
+                            }
+                            return;
+                          }
                           castAbilityRef.current(ability.id);
                         }}
                         title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                        {ability.losBlocked && (
+                          <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 13, zIndex: 5, pointerEvents: 'none', lineHeight: 1, filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.9))' }}>🧱</div>
+                        )}
                         {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                           <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
                             <span className={styles.cdNum}>{cdSeconds}</span>
@@ -3751,7 +3886,7 @@ export default function BattleArena({
           </div>
         </div>
 
-        <div className={styles.wasdSpacer} />
+        {!isMobileDevice && <div className={styles.wasdSpacer} />}
 
       </div>
 

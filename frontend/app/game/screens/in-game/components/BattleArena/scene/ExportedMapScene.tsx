@@ -37,6 +37,8 @@ interface ExportedMapSceneProps {
   worldHeight: number;
   showCollisionShells?: boolean;
   showCollisionBoxes?: boolean;
+  /** Shows only the collision wireframe on a black background — hides all visual mesh/terrain. */
+  blueprintMode?: boolean;
   onCollisionSystemReady?: (sys: MapCollisionSystem) => void;
 }
 
@@ -122,9 +124,10 @@ function encodePathSegments(pathLike: string): string {
 
 /* ────────────────────── Main Component ────────────────────── */
 
-export default function ExportedMapScene({ worldWidth, worldHeight, showCollisionShells = false, showCollisionBoxes = false, onCollisionSystemReady }: ExportedMapSceneProps) {
+export default function ExportedMapScene({ worldWidth, worldHeight, showCollisionShells = false, showCollisionBoxes = false, blueprintMode = false, onCollisionSystemReady }: ExportedMapSceneProps) {
   const { scene, gl } = useThree();
   const groupRef = useRef<THREE.Group | null>(null);
+  const contentGroupRef = useRef<THREE.Group | null>(null); // entity + terrain meshes
   const shellLinesRef = useRef<THREE.LineSegments | null>(null);
   const boxLinesRef = useRef<THREE.LineSegments | null>(null);
 
@@ -143,11 +146,21 @@ export default function ExportedMapScene({ worldWidth, worldHeight, showCollisio
 
   // Toggle collision visibility
   useEffect(() => {
-    if (shellLinesRef.current) shellLinesRef.current.visible = showCollisionShells;
-  }, [showCollisionShells]);
+    if (shellLinesRef.current) shellLinesRef.current.visible = showCollisionShells || blueprintMode;
+  }, [showCollisionShells, blueprintMode]);
   useEffect(() => {
-    if (boxLinesRef.current) boxLinesRef.current.visible = showCollisionBoxes;
-  }, [showCollisionBoxes]);
+    if (boxLinesRef.current) boxLinesRef.current.visible = showCollisionBoxes && !blueprintMode;
+  }, [showCollisionBoxes, blueprintMode]);
+
+  // Blueprint mode: hide content, show wireframe in cyan; restore when off
+  useEffect(() => {
+    if (contentGroupRef.current) contentGroupRef.current.visible = !blueprintMode;
+    if (shellLinesRef.current) {
+      const mat = shellLinesRef.current.material as THREE.LineBasicMaterial;
+      mat.color.set(blueprintMode ? 0x00ffff : 0x3fd56d);
+      mat.opacity = blueprintMode ? 1.0 : 0.65;
+    }
+  }, [blueprintMode]);
 
   useEffect(() => {
     const group = new THREE.Group();
@@ -155,6 +168,12 @@ export default function ExportedMapScene({ worldWidth, worldHeight, showCollisio
     group.scale.setScalar(RENDER_SF);  // Uniform scale, no Z-flip (data is already RH)
     group.position.set(GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z);
     groupRef.current = group;
+
+    // Separate sub-group for entity + terrain meshes so blueprint mode can hide them
+    const contentGroup = new THREE.Group();
+    contentGroup.name = 'exported-map-content';
+    contentGroupRef.current = contentGroup;
+    group.add(contentGroup);
     scene.add(group);
 
     let disposed = false;
@@ -170,10 +189,10 @@ export default function ExportedMapScene({ worldWidth, worldHeight, showCollisio
         ]);
         if (disposed) return;
 
-        const entityStats = await loadEntities(group, entities, meshMap, textureMap, disposed);
+        const entityStats = await loadEntities(contentGroup, entities, meshMap, textureMap, disposed);
         if (disposed) return;
 
-        const terrainResult = await loadTerrain(group, mapConfig, terrainTexIndex, disposed);
+        const terrainResult = await loadTerrain(contentGroup, mapConfig, terrainTexIndex, disposed);
         if (disposed) return;
 
         const collisionResult = await loadCollision(group, entities, meshMap, disposed, shellLinesRef, boxLinesRef);
@@ -228,7 +247,7 @@ export default function ExportedMapScene({ worldWidth, worldHeight, showCollisio
 
   return (
     <>
-      <SkyDome />
+      {!blueprintMode && <SkyDome />}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
         <planeGeometry args={[worldWidth, worldHeight]} />
         <meshBasicMaterial visible={false} />

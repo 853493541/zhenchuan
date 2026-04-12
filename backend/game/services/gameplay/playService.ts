@@ -121,10 +121,15 @@ async function playCastAbility(
   }
 
   // Validate ability can be cast (cooldown, range, silence, grounded lock)
+  const mapCtx = loop.getMapCtx();
   validateCastAbility(state, playerIndex, abilityInstanceId, {
     pendingJump: loop.hasPendingJump(playerIndex),
     targetUserId,
     groundTarget,
+    mapObjects: mapCtx.objects,
+    // Use BVH-based LOS for collision-test mode (accurate geometry vs entity AABBs)
+    collisionSystem: mapCtx.collisionSystem ?? null,
+    minLOSBlockH: mapCtx.collisionSystem ? 5.5 : 0,
   });
 
   const prevState: GameState = structuredClone(state);
