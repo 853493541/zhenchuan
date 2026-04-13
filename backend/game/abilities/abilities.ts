@@ -11,7 +11,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成1点伤害",
     type: "ATTACK",
     target: "OPPONENT",
-    range: 4,
+    range: 8.8,
     gcd: true,
     cooldownTicks: 0,
     effects: [{ type: "DAMAGE", value: 1 }],
@@ -21,48 +21,48 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   nieyun_zhuyue: {
     id: "nieyun_zhuyue",
     name: "蹑云逐月",
-    description: "向对手方向冲刺20格",
+    description: "向对手方向冲刺44格",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
-    effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD", durationTicks: 30 }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 44, dirMode: "TOWARD", durationTicks: 30 }],
     isCommon: true,
   },
 
   yingfeng_huilang: {
     id: "yingfeng_huilang",
     name: "迎风回浪",
-    description: "向身后方向冲刺10格",
+    description: "向身后方向冲刺22格",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
-    effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY", durationTicks: 21 }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 22, dirMode: "AWAY", durationTicks: 21 }],
     isCommon: true,
   },
 
   lingxiao_lansheng: {
     id: "lingxiao_lansheng",
     name: "凌霄揽胜",
-    description: "向左侧冲刺7格",
+    description: "向左侧冲刺15格",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
-    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT", durationTicks: 30 }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 15.4, dirMode: "PERP_LEFT", durationTicks: 30 }],
     isCommon: true,
   },
 
   yaotai_zhenhe: {
     id: "yaotai_zhenhe",
     name: "瑶台枕鹤",
-    description: "向右侧冲刺7格",
+    description: "向右侧冲刺15格",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
-    effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT", durationTicks: 30 }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 15.4, dirMode: "PERP_RIGHT", durationTicks: 30 }],
     isCommon: true,
   },
 
@@ -82,7 +82,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         name: "弹跳",
         category: "BUFF",
         durationMs: 30_000,  // consumed by movement.ts on next jump; 30-second fallback expiry
-        description: "下次跳跃高度提升至12单位",
+        description: "下次跳跃高度提升至28单位",
         effects: [{ type: "JUMP_BOOST" }],
         applyTo: "SELF",
       },
@@ -93,21 +93,21 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   houyao: {
     id: "houyao",
     name: "后撤",
-    description: "向身后方向后撤2.7格（持续1秒）\n只能在地面施放",
+    description: "向身后方向后撤6格（持续1秒）\n只能在地面施放",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 0,
     gcd: false,
     qinggong: true,
     requiresGrounded: true,
-    effects: [{ type: "DIRECTIONAL_DASH", value: 2.7, dirMode: "AWAY", durationTicks: 30 }],
+    effects: [{ type: "DIRECTIONAL_DASH", value: 5.94, dirMode: "AWAY", durationTicks: 30 }],
     isCommon: true,
   },
 
   ji: {
     id: "ji",
     name: "疾",
-    description: "向前冲刺37格（1秒），对冲刺路径上的敌方单位造成10点伤害",
+    description: "向前冲刺81格（1秒），对冲刺路径上的敌方单位造成10点伤害",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -116,11 +116,11 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     effects: [
       {
         type: "DIRECTIONAL_DASH",
-        value: 37,
+        value: 81.4,
         dirMode: "TOWARD",
         durationTicks: 30,
         routeDamage: 10,
-        routeRadius: 2,
+        routeRadius: 4.4,
       },
     ],
     isCommon: false,
@@ -145,7 +145,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "需要目标，正面180°\n造成10点伤害并附加【剑破虚空】2秒（减速20%，无法施展轻功）\n叠加【急曲】18秒：每3秒受到1点伤害，最多3层",
     type: "ATTACK",
     target: "OPPONENT",
-    range: 20,
+    range: 44,
     cooldownTicks: 300,
     gcd: true,
     faceDirection: true,
@@ -184,7 +184,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     target: "OPPONENT",
     cooldownTicks: 0,
     gcd: true,
-    range: 4,
+    range: 8.8,
     effects: [
       { type: "DAMAGE", value: 3 },
     ],
@@ -208,12 +208,12 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "可选目标或地面施放（范围6）\n命中后立刻造成5点伤害\n附加【百足】18秒：每3秒造成6点伤害，结束时额外造成5点伤害",
     type: "ATTACK",
     target: "OPPONENT",
-    range: 25,
+    range: 55,
     cooldownTicks: 300,
     gcd: true,
     faceDirection: false,
     allowGroundCastWithoutTarget: true,
-    effects: [{ type: "BAIZU_AOE", value: 5, range: 6 }],
+    effects: [{ type: "BAIZU_AOE", value: 5, range: 13.2 }],
     buffs: [
       {
         buffId: 1001,
@@ -238,7 +238,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成10点伤害并击倒3秒；击倒自然结束时若目标气血低于30%，额外眩晕2秒",
     type: "CONTROL",
     target: "OPPONENT",
-    range: 20,
+    range: 44,
     cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 10 }],
@@ -260,7 +260,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成1点伤害\n附加【日劫】眩晕4秒\n附加【月劫】治疗效果降低50%",
     type: "CONTROL",
     target: "OPPONENT",
-    range: 20,
+    range: 44,
     cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 1 }],
@@ -290,7 +290,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "造成10点伤害\n目标沉默2秒\n附加【蟾啸】16秒：每2秒受到1点伤害",
     type: "CONTROL",
     target: "OPPONENT",
-    range: 20,
+    range: 44,
     cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 10 }],
@@ -321,10 +321,10 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "怒吼震慑周围敌人，眩晕5秒并降低其技能冷却回复50%",
     type: "CONTROL",
     target: "SELF",
-    range: 8,
+    range: 17.6,
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "AOE_APPLY_BUFFS", range: 8 }],
+    effects: [{ type: "AOE_APPLY_BUFFS", range: 17.6 }],
     buffs: [
       {
         buffId: 1005,
@@ -372,7 +372,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   sanliu_xia: {
     id: "sanliu_xia",
     name: "散流霞",
-    description: "解控并向前翻越10尺\n起跳获得【散流霞隐藏】1秒：不可选中且自我沉默\n落地后获得【散流霞】5秒：不可选中、移动速度提高20%，首秒无治疗，随后4秒内回复5次贯体（每次2%）",
+    description: "解控并向前翻越22尺\n起跳获得【散流霞隐藏】1秒：不可选中且自我沉默\n落地后获得【散流霞】5秒：不可选中、移动速度提高20%，首秒无治疗，随后4秒内回复5次贯体（每次2%）",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -381,10 +381,10 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
       { type: "CLEANSE", allowWhileControlled: true },
       {
         type: "DIRECTIONAL_DASH",
-        value: 10,
+        value: 22,
         dirMode: "TOWARD",
         durationTicks: 30,
-        arcPeakHeight: 2.5,
+        arcPeakHeight: 5.5,
         allowWhileControlled: true,
       },
     ],
@@ -473,10 +473,10 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
       },
       {
         type: "DIRECTIONAL_DASH",
-        value: 25,
+        value: 55,
         dirMode: "TOWARD",
         durationTicks: 60,
-        speedPerTick: 0.4166667,
+        speedPerTick: 0.9166667,
         steerByFacing: true,
       },
     ],
@@ -559,7 +559,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     type: "ATTACK",
     target: "OPPONENT",
     faceDirection: true,
-    range: 20,
+    range: 44,
     cooldownTicks: 300,
     gcd: true,
     effects: [{ type: "DAMAGE", value: 2 }],
@@ -603,7 +603,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "INTERRUPT_IMMUNE" },
-          { type: "CHANNEL_AOE_TICK", value: 8, range: 10 },
+          { type: "CHANNEL_AOE_TICK", value: 8, range: 22 },
         ],
       },
     ],
@@ -626,42 +626,42 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         description: "修罗附体",
         durationMs: 10_000, // 10 seconds
         effects: [
-          // t+3s: front 180° cone, range 10, 5 damage, 30% lifesteal
+          // t+3s: front 180° cone, range 22, 5 damage, 30% lifesteal
           {
             type: "TIMED_AOE_DAMAGE",
             delayMs: 3_000,
             value: 5,
             aoeAngle: 180,
-            range: 10,
+            range: 22,
             lifestealPct: 0.3,
           },
-          // t+4s: front 180° cone, range 10, 5 damage, 30% lifesteal
+          // t+4s: front 180° cone, range 22, 5 damage, 30% lifesteal
           {
             type: "TIMED_AOE_DAMAGE",
             delayMs: 4_000,
             value: 5,
             aoeAngle: 180,
-            range: 10,
+            range: 22,
             lifestealPct: 0.3,
           },
-          // t+5s: front 180° cone, range 10, 5 damage, 30% lifesteal
+          // t+5s: front 180° cone, range 22, 5 damage, 30% lifesteal
           {
             type: "TIMED_AOE_DAMAGE",
             delayMs: 5_000,
             value: 5,
             aoeAngle: 180,
-            range: 10,
+            range: 22,
             lifestealPct: 0.3,
           },
-          // t+5s: full 360° circle, range 10, 10 damage, knockback 3 + 0.8s silence, 30% lifesteal
+          // t+5s: full 360° circle, range 22, 10 damage, knockback 6.6 + 0.8s silence, 30% lifesteal
           {
             type: "TIMED_AOE_DAMAGE",
             delayMs: 5_000,
             value: 10,
             aoeAngle: 360,
-            range: 10,
+            range: 22,
             lifestealPct: 0.3,
-            knockbackUnits: 3,
+            knockbackUnits: 6.6,
             knockbackSilenceMs: 800,
           },
         ],
@@ -692,8 +692,8 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "INTERRUPT_IMMUNE" },
-          { type: "CHANNEL_AOE_TICK", value: 2, range: 6, aoeAngle: 180 },
-          { type: "TIMED_AOE_DAMAGE", delayMs: 3_000, value: 10, range: 12, aoeAngle: 180 },
+          { type: "CHANNEL_AOE_TICK", value: 2, range: 13.2, aoeAngle: 180 },
+          { type: "TIMED_AOE_DAMAGE", delayMs: 3_000, value: 10, range: 26.4, aoeAngle: 180 },
         ],
       },
     ],
@@ -743,14 +743,14 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
       },
       {
         type: "DIRECTIONAL_DASH",
-        value: 62.5,
+        value: 137.5,
         dirMode: "TOWARD",
         durationTicks: 150,
-        speedPerTick: 0.4166667,
+        speedPerTick: 0.9166667,
         steerByFacing: true,
-        snapUpUnits: 8,
+        snapUpUnits: 17.6,
         wallDiveOnBlock: true,
-        diveVzPerTick: -0.45,
+        diveVzPerTick: -0.99,
       },
     ],
     buffs: [
@@ -780,7 +780,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     target: "OPPONENT",
     cooldownTicks: 300,
     gcd: true,
-    range: 25,
+    range: 55,
     requiresGrounded: true,
     requiresStanding: true,
     effects: [],
@@ -788,11 +788,11 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     channelDurationMs: 2_000,
     channelCancelOnMove: true,
     channelCancelOnJump: true,
-    channelCancelOnOutOfRange: 25,
+    channelCancelOnOutOfRange: 55,
     channelForward: true,
     channelEffects: [
-      { type: "TIMED_AOE_DAMAGE", value: 15, range: 50 },
-      { type: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT", value: 9, threshold: 60, range: 50 },
+      { type: "TIMED_AOE_DAMAGE", value: 15, range: 110 },
+      { type: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT", value: 9, threshold: 60, range: 110 },
     ],
   } as any,
 
@@ -806,10 +806,10 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     target: "OPPONENT",
     cooldownTicks: 300,
     gcd: true,
-    range: 20,
+    range: 44,
     effects: [
       { type: "DAMAGE", value: 20 },
-      { type: "DASH", value: 8 },
+      { type: "DASH", value: 17.6 },
     ],
   },
 
@@ -912,7 +912,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   kuang_long_luan_wu: {
     id: "kuang_long_luan_wu",
     name: "狂龙乱舞",
-    description: "运功2秒，于前方2尺处唤起雷云，雷云半径8尺，每0.5秒造成4点伤害，持续6秒",
+    description: "运功2秒，于前方4.4尺处唤起雷云，雷云半径17.6尺，每0.5秒造成4点伤害，持续6秒",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 300,
@@ -925,7 +925,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     channelCancelOnJump: true,
     channelForward: true,
     channelEffects: [
-      { type: "PLACE_GROUND_ZONE", value: 4, range: 8 },
+      { type: "PLACE_GROUND_ZONE", value: 4, range: 17.6 },
     ],
   } as any,
 
@@ -935,12 +935,12 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   yun_fei_yu_huang: {
     id: "yun_fei_yu_huang",
     name: "云飞玉皇",
-    description: "需要目标，运功2秒（不可移动），对目标造成20点伤害；运功完成时目标在4码内额外造成10点伤害",
+    description: "需要目标，运功2秒（不可移动），对目标造成20点伤害；运功完成时目标在8.8码内额外造成10点伤害",
     type: "CHANNEL",
     target: "OPPONENT",
     cooldownTicks: 150,
     gcd: true,
-    range: 8,
+    range: 17.6,
     requiresGrounded: true,
     effects: [],
     buffs: [],
@@ -948,11 +948,11 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     channelDurationMs: 2_000,
     channelCancelOnMove: true,
     channelCancelOnJump: true,
-    channelCancelOnOutOfRange: 8,
+    channelCancelOnOutOfRange: 17.6,
     channelForward: true,
     channelEffects: [
-      { type: "TIMED_AOE_DAMAGE", value: 20, range: 50 },
-      { type: "TIMED_AOE_DAMAGE", value: 10, range: 4 },
+      { type: "TIMED_AOE_DAMAGE", value: 20, range: 110 },
+      { type: "TIMED_AOE_DAMAGE", value: 10, range: 8.8 },
     ],
   } as any,
 
@@ -962,12 +962,12 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   kong_que_ling: {
     id: "kong_que_ling",
     name: "孔雀翎",
-    description: "范围25，即刻对目标造成3点伤害，并附加【孔雀翎受击】（8层，每次受攻击触发额外3点伤害）和【孔雀翎】（减速50%），各持续6秒",
+    description: "范围55，即刻对目标造成3点伤害，并附加【孔雀翎受击】（8层，每次受攻击触发额外3点伤害）和【孔雀翎】（减速50%），各持续6秒",
     type: "ATTACK",
     target: "OPPONENT",
     cooldownTicks: 600,
     gcd: true,
-    range: 25,
+    range: 55,
     effects: [
       { type: "DAMAGE", value: 3 },
     ],
@@ -1009,7 +1009,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "需要目标，正面180°\n瞬发造成5点伤害\n附加【韦陀献杵易伤】5秒：受到伤害提高10%\n自身获得【韦陀献杵防御】5秒：受到伤害降低10%\n可在移动与跳跃中施放",
     type: "ATTACK",
     target: "OPPONENT",
-    range: 20,
+    range: 44,
     cooldownTicks: 300,
     gcd: true,
     faceDirection: true,
@@ -1041,7 +1041,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     description: "需要目标，正面180°\n附加【雷震子】4秒：眩晕",
     type: "CONTROL",
     target: "OPPONENT",
-    range: 20,
+    range: 44,
     cooldownTicks: 300,
     gcd: true,
     faceDirection: true,
@@ -1117,12 +1117,12 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   dican_longxiang: {
     id: "dican_longxiang",
     name: "帝骖龙翔",
-    description: "自我施放\n使8尺范围内敌方获得【帝骖龙翔】5秒：眩晕",
+    description: "自我施放\n使17.6尺范围内敌方获得【帝骖龙翔】5秒：眩晕",
     type: "CONTROL",
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "AOE_APPLY_BUFFS", range: 8 }],
+    effects: [{ type: "AOE_APPLY_BUFFS", range: 17.6 }],
     buffs: [
       {
         buffId: 2307,
@@ -1321,12 +1321,12 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   hua_xue_biao: {
     id: "hua_xue_biao",
     name: "化血镖",
-    description: "范围25，无冷却，附加【化血镖】毒效果，最多2层，每层每3秒造成1点伤害，持续24秒",
+    description: "范围55，无冷却，附加【化血镖】毒效果，最多2层，每层每3秒造成1点伤害，持续24秒",
     type: "ATTACK",
     target: "OPPONENT",
     cooldownTicks: 0,
     gcd: true,
-    range: 25,
+    range: 55,
     effects: [],
     buffs: [
       {

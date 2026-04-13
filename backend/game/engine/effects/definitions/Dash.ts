@@ -8,8 +8,8 @@ import { pushEvent } from "../events";
 /** Stable buffId for the CC-immunity granted while dashing */
 const DASH_CC_IMMUNE_BUFF_ID = 999901;
 
-/** Dash speed: 20 units per 0.5 seconds = 40 units/s */
-const DASH_SPEED_UNITS_PER_SEC = 40;
+/** Dash speed: 44 units per 0.5 seconds = 88 units/s (rescaled ×2.2) */
+const DASH_SPEED_UNITS_PER_SEC = 88;
 const TICK_RATE = 30;
 
 /**
