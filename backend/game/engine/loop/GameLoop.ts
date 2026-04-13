@@ -64,7 +64,7 @@ function segmentIntersectsAABB(
  *  casterZ / targetZ: feet heights; eyeHeight is added to get eye-level.
  *  An object is skipped only when both players' eye-levels clear its top.
  */
-const LOS_EYE_HEIGHT = 3.3; // game units above feet (rescaled ×2.2)
+const LOS_EYE_HEIGHT = 1.5; // game units above feet
 function isLOSBlocked(
   ax: number, ay: number,
   bx: number, by: number,
@@ -456,8 +456,8 @@ export class GameLoop {
           x: player.position.x,
           y: player.position.y,
           z: player.position.z ?? 0,
-          height: 22,
-          radius: 17.6,
+          height: 10,
+          radius: 8,
           expiresAt: dashEndNow + 24_000,
           damagePerInterval: 0,
           intervalMs: 3_000,
@@ -678,15 +678,15 @@ export class GameLoop {
               }
             } else if (e.type === "PLACE_GROUND_ZONE") {
               const facing = player.facing ?? { x: 0, y: 1 };
-              const zoneX = player.position.x + facing.x * 13.2;
-              const zoneY = player.position.y + facing.y * 13.2;
+              const zoneX = player.position.x + facing.x * 6;
+              const zoneY = player.position.y + facing.y * 6;
               if (!this.state.groundZones) this.state.groundZones = [];
               this.state.groundZones.push({
                 id: randomUUID(),
                 ownerUserId: player.userId,
                 x: zoneX,
                 y: zoneY,
-                radius: e.range ?? 17.6,
+                radius: e.range ?? 8,
                 expiresAt: chNow + 6000,
                 damagePerInterval: e.value ?? 4,
                 intervalMs: 500,
@@ -1056,15 +1056,15 @@ export class GameLoop {
             // PLACE_GROUND_ZONE: place a persistent damage zone in front of caster
             if (e.type === "PLACE_GROUND_ZONE") {
               const facing = player.facing ?? { x: 0, y: 1 };
-              const zoneX = player.position.x + facing.x * 13.2;
-              const zoneY = player.position.y + facing.y * 13.2;
+              const zoneX = player.position.x + facing.x * 6;
+              const zoneY = player.position.y + facing.y * 6;
               if (!this.state.groundZones) this.state.groundZones = [];
               this.state.groundZones.push({
                 id: randomUUID(),
                 ownerUserId: player.userId,
                 x: zoneX,
                 y: zoneY,
-                radius: e.range ?? 17.6,
+                radius: e.range ?? 8,
                 expiresAt: now + 6000,
                 damagePerInterval: e.value ?? 4,
                 intervalMs: 500,

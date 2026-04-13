@@ -2247,23 +2247,23 @@ export default function BattleArena({
     const CLIENT_TICK_HZ = 30;
     const CLIENT_TICK_MS = 1000 / CLIENT_TICK_HZ;
     // Match backend movement constants at 30Hz.
-    const MAX_SPEED = 0.3666667, ACCEL = 0.3, DECEL = 0.9;
+    const MAX_SPEED = 0.1666667, ACCEL = 0.3, DECEL = 0.9;
     // 30 Hz client physics — asymmetric gravity, tuned per jump type:
-    //   Single jump : 3.74 u peak, 1.0 s rise, 0.7 s fall  → 1.7 s total
-    //   Double jump : +1.661 u extra (peak 5.401 u)          → ~2.51 s total from takeoff
-    //   Power jump  : 28.16 u peak, 1.77 s rise, 1.93 s fall → 3.7 s total
-    const GRAVITY_UP_CLIENT         = 2 * 3.74  / (30 * 30);           // ≈ 0.008311 (regular rise)
-    const GRAVITY_DOWN_CLIENT       = 2 * 3.74  / (21 * 21);           // ≈ 0.016961 (regular fall, 0.7 s)
-    const JUMP_VZ_CLIENT            = GRAVITY_UP_CLIENT * 30;           // ≈ 0.24933 (1.0 s → 3.74 u)
-    const DOUBLE_JUMP_VZ_CLIENT     = GRAVITY_UP_CLIENT * 20;           // ≈ 0.16622 (+1.661 u → 5.401 u peak)
-    const POWER_GRAVITY_UP_CLIENT   = 2 * 28.16 / (53.1 * 53.1);       // ≈ 0.019974 (1.77 s rise)
-    const POWER_GRAVITY_DOWN_CLIENT = 2 * 28.16 / (57.9 * 57.9);       // ≈ 0.016799 (1.93 s fall)
-    const POWER_JUMP_VZ_CLIENT      = POWER_GRAVITY_UP_CLIENT * 53.1;   // ≈ 1.0607  (28.16 u peak)
-    // 扶摇直上 + 鸟翔碧空 combined: 52.8u peak, same 53.1-tick rise / 57.9-tick fall
-    const COMBINED_GRAVITY_UP_CLIENT   = 2 * 52.8 / (53.1 * 53.1);
-    const COMBINED_GRAVITY_DOWN_CLIENT = 2 * 52.8 / (57.9 * 57.9);
+    //   Single jump : 1.7 u peak, 1.0 s rise, 0.7 s fall  → 1.7 s total
+    //   Double jump : +0.755 u extra (peak 2.455 u)         → ~2.51 s total from takeoff
+    //   Power jump  : 12.8 u peak, 1.77 s rise, 1.93 s fall → 3.7 s total
+    const GRAVITY_UP_CLIENT         = 2 * 1.7  / (30 * 30);            // ≈ 0.003778 (regular rise)
+    const GRAVITY_DOWN_CLIENT       = 2 * 1.7  / (21 * 21);            // ≈ 0.007710 (regular fall, 0.7 s)
+    const JUMP_VZ_CLIENT            = GRAVITY_UP_CLIENT * 30;           // ≈ 0.11333 (1.0 s → 1.7 u)
+    const DOUBLE_JUMP_VZ_CLIENT     = GRAVITY_UP_CLIENT * 20;           // ≈ 0.07556 (+0.755 u → 2.51 s total)
+    const POWER_GRAVITY_UP_CLIENT   = 2 * 12.8 / (53.1 * 53.1);        // ≈ 0.009079 (1.77 s rise)
+    const POWER_GRAVITY_DOWN_CLIENT = 2 * 12.8 / (57.9 * 57.9);        // ≈ 0.007636 (1.93 s fall)
+    const POWER_JUMP_VZ_CLIENT      = POWER_GRAVITY_UP_CLIENT * 53.1;   // ≈ 0.4823  (12.8 u peak)
+    // 扶摇直上 + 鸟翔碧空 combined: 24u peak, same 53.1-tick rise / 57.9-tick fall
+    const COMBINED_GRAVITY_UP_CLIENT   = 2 * 24 / (53.1 * 53.1);
+    const COMBINED_GRAVITY_DOWN_CLIENT = 2 * 24 / (57.9 * 57.9);
     const COMBINED_JUMP_VZ_CLIENT      = COMBINED_GRAVITY_UP_CLIENT * 53.1;
-    const AIR_NUDGE_TOTAL_DISTANCE = 2.2;
+    const AIR_NUDGE_TOTAL_DISTANCE = 1;
     const AIR_NUDGE_DURATION_TICKS = 30; // 1.0s at 30Hz
     const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
     const TURN_RATE = 0.055; // radians / tick at 30 Hz ≈ 95°/sec

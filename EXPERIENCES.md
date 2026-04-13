@@ -8,9 +8,9 @@ Each entry goes under its relevant section header.
 ## Coordinate System
 
 - World → Three.js transform: `threeX = worldX − worldHalf`, `threeZ = worldY − worldHalf`, `threeY = worldZ`.
-- Collision-test map is **non-square (737.1 × 745.2 after 35% scale-up)**. Always use `width/2` for X offsets and `height/2` for Y/Z offsets. Reusing `width/2` for Z causes slope-support drift and airborne-state issues.
+- Collision-test map is **non-square (819 × 828 after 50% scale-up)**. Always use `width/2` for X offsets and `height/2` for Y/Z offsets. Reusing `width/2` for Z causes slope-support drift and airborne-state issues.
 
-### Scaling the exported 3D map (35% scale-up, 2026-04-13)
+### Scaling the exported 3D map (50% scale-up, 2026-04-12)
 The map is a coupled system — all of these must stay in sync when scaling:
 1. `MAP_SCALE` in both `exportedMapCollision.ts` (backend) and `ExportedMapScene.tsx` (frontend): the GLB group scale factor.
 2. `GROUP_POS_X/Y/Z` in both files: scale linearly by the same factor as MAP_SCALE (they're in Three.js world units derived from the scale).
@@ -18,7 +18,6 @@ The map is a coupled system — all of these must stay in sync when scaling:
 4. All entity AABBs in `exportedMap.ts` and `collisionTestMap.ts`: x, y, w, d, h all scale proportionally.
 5. Spawn positions in `exportedMap.ts` → `EXPORTED_MAP_SPAWN_POSITIONS`: scale x, y by the same factor.
 The BVH collision triangles in the GLBs do NOT change — only the coordinate mapping constants change.
-- When shrinking or enlarging after a previous rescale, apply the factor to the live scaled values in all five places above. For the current collision-test map, a 10% scale-down from the 1.5x state means `MAP_SCALE 3.6 → 3.24`, `GROUP_POS_* × 0.9`, map bounds `819 × 828 → 737.1 × 745.2`, spawn positions `360/375/390 → 324/337.5/351`, and every entity AABB number in both map-data files must also be multiplied by `0.9`.
 
 ---
 
@@ -83,21 +82,6 @@ The BVH collision triangles in the GLBs do NOT change — only the coordinate ma
 - **Debug overlay added**: When a cast fails with LOS blocked, a red overlay shows the blocking entity ID and bounds. A wireframe red box highlights it in the 3D scene.
 - **Backend logging**: `validateAction.ts` now logs `[LOS] blocked by entity_X (casterZ=N targetZ=N)` for server-side debugging.
 - **Files**: Same + `frontend/app/game/screens/in-game/components/BattleArena/scene/ArenaScene.tsx`
-
----
-
-## Movement / Physics
-
-### ×2.2 Unit Rescale (April 2026)
-- **Context**: Real game uses 10 units for a house; our game used 22 units — coordinates were ×2.2 inflated.
-- **Principle**: Map coordinates and character physical radius stay unchanged. Only the "design values" (speeds, heights, ranges) authored in "real game units" need ×2.2 to match our world coordinates.
-- **Files changed**:
-  - `backend/game/engine/loop/movement.ts`: jump peaks (1.7→3.74, 12.8→28.16, 24→52.8), AIR_NUDGE_TOTAL_DISTANCE (1→2.2), dead-zone velocity thresholds (0.006→0.0132, 0.04→0.088).
-  - `backend/game/services/battle/battleService.ts` + `backend/game/routes/draft.routes.ts`: moveSpeed (0.1666667→0.3666667).
-  - `backend/game/engine/loop/GameLoop.ts`: SHENGTAIJI zone radius (8→17.6), height (10→22), PLACE_GROUND_ZONE offset (6→13.2), LOS_EYE_HEIGHT (1.5→3.3).
-  - `backend/game/engine/effects/definitions/Dash.ts`: DASH_SPEED_UNITS_PER_SEC (40→88).
-  - `backend/game/abilities/abilities.ts`: all ability `range`, dash `value`, AoE `range`, knockback, speedPerTick, snapUpUnits, arcPeakHeight, diveVzPerTick ×2.2.
-- **Do NOT scale**: BVH export constants (BVH_STEP_UP_LIMIT, BVH_RECOVERY_DROP, EXPORTED_COLLISION_RADIUS — these are in export-unit space), player collision radius, map width/height.
 
 ---
 

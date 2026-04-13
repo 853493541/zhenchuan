@@ -34,7 +34,7 @@
 ## Coordinate System
 
 - World → Three.js: `threeX = worldX − worldHalf`, `threeZ = worldY − worldHalf`, `threeY = worldZ`.
-- Collision-test map is non-square (737.1 × 745.2 after 35% scale-up): use **width/2** for X offsets, **height/2** for Y/Z offsets.
+- Collision-test map is non-square (819 × 828 after 50% scale-up): use **width/2** for X offsets, **height/2** for Y/Z offsets.
 
 ## Git / Version Control
 

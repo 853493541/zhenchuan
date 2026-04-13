@@ -239,7 +239,7 @@ export function initializeBattleState(
       position: { x: spawn.x, y: spawn.y },
       velocity: { vx: 0, vy: 0 },
       facing: { x: dx / mag, y: dy / mag },
-      moveSpeed: 0.3666667,
+      moveSpeed: 0.1666667,
     };
   });
 
