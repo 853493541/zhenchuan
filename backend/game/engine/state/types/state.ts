@@ -100,27 +100,38 @@ export interface PlayerState {
   isPowerJumpCombined?: boolean;
 
   /**
-   * Remaining limited-air-control allowance (units).
-    * Armed by upward jump phases (single or double) and consumed over time while airborne.
+    * Remaining travel budget for the current jump phase (world units).
+    * Upward jumps arm a 2-unit budget that locks on the first airborne direction input.
+    * Directional jumps arm a larger budget immediately at jump start.
    */
   airNudgeRemaining?: number;
 
   /**
-   * Remaining ticks for animated limited-air-control correction.
+    * Remaining ticks for the current jump-phase travel animation.
    * At 30Hz, 30 ticks = 1.0s.
    */
   airNudgeTicksRemaining?: number;
 
   /**
-   * Locked direction for the animated limited-air-control correction.
+    * Locked direction for the current jump-phase travel.
    */
   airNudgeDir?: { x: number; y: number };
 
   /**
-   * True after a directional 2nd+ jump (non-MULTI_JUMP). Freezes horizontal
-   * steering until landing — player rides existing momentum only.
+    * Once a jump phase chooses a direction, ignore later WASD changes until the
+    * next jump or landing. Upward jumps set this on the first airborne input;
+    * directional jumps set it immediately at jump start.
    */
   airDirectionLocked?: boolean;
+
+  /**
+   * Latest airborne/special-movement planar speed snapshot (world units per tick).
+   * Used so follow-up jump phases can scale from the actual speed state that
+   * launched them, such as airborne dashes, instead of always falling back to
+   * base run speed.
+   * Cleared on landing.
+   */
+  airborneSpeedCarry?: number;
 
   /**
    * Last movement facing direction (unit vector).

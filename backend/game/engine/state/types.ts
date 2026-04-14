@@ -85,4 +85,7 @@ export type {
 export {
   calculateDistance,
   calculateAngle,
+  NEW_WORLD_UNIT_SCALE,
+  gameplayUnitsToWorldUnits,
+  worldUnitsToGameplayUnits,
 } from "./types/position";

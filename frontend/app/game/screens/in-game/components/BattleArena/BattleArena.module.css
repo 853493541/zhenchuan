@@ -395,6 +395,16 @@
   z-index: 15;
 }
 
+.distLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: rgba(190, 245, 255, 0.82);
+  text-transform: uppercase;
+  text-shadow: 0 0 6px rgba(0, 212, 232, 0.2);
+  margin-bottom: 2px;
+}
+
 .distVal {
   font-size: 14px;
   font-weight: 700;

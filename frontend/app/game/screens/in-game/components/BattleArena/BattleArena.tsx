@@ -35,6 +35,95 @@ const COLLISION_TEST_PLAYER_RADIUS = 0.64; // matches export-reader avatar (57 e
 const NEW_UNIT_SCALE = 2.2;
 const SERVER_TICK_RATE = 30;
 const DEFAULT_MOVE_SPEED_WORLD_PER_TICK = 0.3666667;
+const UPWARD_JUMP_AIR_SHIFT_DISTANCE = 2 * NEW_UNIT_SCALE;
+const DIRECTIONAL_JUMP_DISTANCE = 6 * NEW_UNIT_SCALE;
+const AIR_SHIFT_DURATION_TICKS = SERVER_TICK_RATE;
+
+function normalizePlanar(x: number, y: number): { x: number; y: number } | null {
+  const len = Math.sqrt(x * x + y * y);
+  if (len <= 0.01) return null;
+  return { x: x / len, y: y / len };
+}
+
+function worldUnitsToNewUnits(value: number): number {
+  return value / NEW_UNIT_SCALE;
+}
+
+function facingToYaw(facing: { x: number; y: number }): number {
+  return Math.atan2(facing.x, -facing.y);
+}
+
+function buildTraditionalMoveIntent(
+  keys: { w: boolean; a: boolean; s: boolean; d: boolean },
+  mouseLook: boolean,
+  bothMouse: boolean,
+  camYaw: number,
+  charYaw: number,
+): { direction: { dx: number; dy: number } | null; backpedalOnly: boolean } {
+  let dx = 0;
+  let dy = 0;
+  let backpedalOnly = false;
+
+  if (mouseLook) {
+    const moveFwd = { x: Math.sin(camYaw), y: -Math.cos(camYaw) };
+    const moveRight = { x: Math.cos(camYaw), y: Math.sin(camYaw) };
+
+    let forwardInput = (keys.w ? 1 : 0) + (keys.s ? -1 : 0) + (bothMouse ? 1 : 0);
+    let strafeInput = (keys.a ? 1 : 0) + (keys.d ? -1 : 0);
+    if (keys.a && keys.d) {
+      strafeInput = -1;
+      forwardInput += 1;
+    }
+
+    dx = moveFwd.x * forwardInput + moveRight.x * strafeInput;
+    dy = moveFwd.y * forwardInput + moveRight.y * strafeInput;
+    backpedalOnly = keys.s && !keys.w && !keys.a && !keys.d && !bothMouse;
+  } else {
+    const moveFwd = { x: Math.sin(charYaw), y: -Math.cos(charYaw) };
+    if (keys.w) {
+      dx += moveFwd.x;
+      dy += moveFwd.y;
+    }
+    if (keys.s) {
+      dx -= moveFwd.x;
+      dy -= moveFwd.y;
+    }
+    backpedalOnly = keys.s && !keys.w && !keys.a && !keys.d;
+  }
+
+  const dir = normalizePlanar(dx, dy);
+  if (!dir) return { direction: null, backpedalOnly };
+  const speedMult = backpedalOnly ? 0.5 : 1.0;
+  return {
+    direction: { dx: dir.x * speedMult, dy: dir.y * speedMult },
+    backpedalOnly,
+  };
+}
+
+function estimateAirborneTicks(
+  heightAboveGround: number,
+  initialVz: number,
+  gravityUp: number,
+  gravityDown: number,
+): number {
+  let height = Math.max(0, heightAboveGround);
+  let vz = initialVz;
+  let ticks = 0;
+
+  while (ticks < 360) {
+    vz -= vz >= 0 ? gravityUp : gravityDown;
+    height += vz;
+    ticks += 1;
+    if (height <= 0) return Math.max(1, ticks);
+  }
+
+  return 360;
+}
+
+function getTravelSpeedPerTick(distance: number, ticks: number): number {
+  if (distance <= 0 || ticks <= 0) return 0;
+  return distance / Math.max(1, ticks);
+}
 
 /** Resolve circle-vs-AABB collision (client-side prediction). Z-aware: skip if player is above obj. */
 function resolveObjCollisionClient(
@@ -636,8 +725,39 @@ export default function BattleArena({
   const [myZ, setMyZ] = useState(0);
   const myZRef = useRef(0);
   // Jump timing records (seconds, null = not yet measured)
-  type JumpRecord = { riseMs: number | null; fallMs: number | null; totalMs: number | null; peakUnits: number | null };
-  const [jumpRecord, setJumpRecord] = useState<JumpRecord>({ riseMs: null, fallMs: null, totalMs: null, peakUnits: null });
+  type JumpRecord = {
+    riseMs: number | null;
+    fallMs: number | null;
+    totalMs: number | null;
+    peakUnits: number | null;
+    startSpeedUnitsPerSec: number | null;
+    expectedLandUnits: number | null;
+    actualLandUnits: number | null;
+    jumpPhase: number | null;
+    mode: 'directional' | 'upward' | null;
+  };
+  type JumpTelemetry = {
+    startMs: number;
+    peakMs: number;
+    takeoffGround: number;
+    peakHeightWorld: number;
+    takeoffPos: { x: number; y: number };
+    expectedLandWorld: number;
+    startSpeedUnitsPerSec: number;
+    jumpPhase: number;
+    mode: 'directional' | 'upward';
+  };
+  const [jumpRecord, setJumpRecord] = useState<JumpRecord>({
+    riseMs: null,
+    fallMs: null,
+    totalMs: null,
+    peakUnits: null,
+    startSpeedUnitsPerSec: null,
+    expectedLandUnits: null,
+    actualLandUnits: null,
+    jumpPhase: null,
+    mode: null,
+  });
   // Internal tracking refs (updated every rAF frame)
   const jumpPhaseRef  = useRef<'ground' | 'rising' | 'falling'>('ground');
   const takeoffTimeRef = useRef<number>(0);   // when feet left the ground
@@ -709,7 +829,7 @@ export default function BattleArena({
   const localPositionRef = useRef<Position | null>(null);
   const localVelocityRef = useRef({ x: 0, y: 0 });
   const initializedRef   = useRef(false);
-  const movementAbortRef = useRef<AbortController | null>(null);
+  const movementSeqRef   = useRef(0);
 
   /* --- Jump / Z refs --- */
   const jumpLocalRef      = useRef(false); // drives local Z prediction
@@ -717,12 +837,14 @@ export default function BattleArena({
   const localZRef         = useRef(0);     // current Z height (world units)
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
+  const airborneSpeedCarryRef = useRef(0); // latest special airborne planar speed snapshot (world units/tick)
+  const jumpTelemetryRef  = useRef<JumpTelemetry | null>(null);
   const lastJumpInputAtRef = useRef(0);    // last local jump press time for air reconciliation
   const bvhCenterYInitRef = useRef(false); // true after _bvhCenter.y first initialised
-  const airNudgeRemainingRef = useRef(0);  // post-double-jump correction budget (units)
-  const airNudgeTicksRemainingRef = useRef(0); // correction animation ticks remaining
+  const airNudgeRemainingRef = useRef(0);  // current jump phase travel budget (world units)
+  const airNudgeTicksRemainingRef = useRef(0); // current jump phase travel ticks remaining
   const airNudgeDirRef = useRef<{ x: number; y: number } | null>(null);
-  const airDirectionLockedRef = useRef(false); // locked after directional 2nd+ jump
+  const airDirectionLockedRef = useRef(false); // once this jump phase picks a direction, ignore other movement inputs
   const localFacingRef    = useRef({ x: 0, y: 1 }); // current facing direction (default +Y)
   const facingInitRef     = useRef(false);
   const meFacingRef       = useRef<Facing>({ x: 0, y: 1 });
@@ -875,7 +997,7 @@ export default function BattleArena({
     // Face direction check (180° hemisphere)
     if (ability?.target === 'OPPONENT' && requiresFacingByDefault(ability)) {
       const myPos = localPositionRef.current ?? me.position;
-      const myFacing = localFacingRef.current;
+      const myFacing = me.facing ?? meFacingRef.current;
       if (myPos && myFacing && targetPos) {
         const dx = targetPos.x - myPos.x;
         const dy = targetPos.y - myPos.y;
@@ -989,50 +1111,7 @@ export default function BattleArena({
         }
       }
 
-      // --- Jump phase tracking (height display + timing) ---
-      const TRACK_EPS = 0.05;
-      const curZ = localRenderPosRef.current.z ?? 0;
-      const curGround = groundHRef.current;
-      const curAboveGround = Math.max(0, curZ - curGround);
-      const prevAboveGround = prevAboveGroundRef.current;
-      const nowMs = performance.now();
-      const phase = jumpPhaseRef.current;
-      const heightFromTakeoff = Math.max(0, curZ - takeoffGroundRef.current);
-
-      if (phase === 'ground') {
-        if (curAboveGround > TRACK_EPS) {
-          jumpPhaseRef.current = 'rising';
-          takeoffTimeRef.current = nowMs;
-          takeoffGroundRef.current = curGround;
-          peakTimeRef.current = nowMs;
-          peakHeightRef.current = heightFromTakeoff;
-        }
-      } else if (phase === 'rising') {
-        if (heightFromTakeoff >= peakHeightRef.current - 0.001) {
-          peakTimeRef.current = nowMs;
-          peakHeightRef.current = Math.max(peakHeightRef.current, heightFromTakeoff);
-        } else if (curAboveGround < prevAboveGround - 0.001 || localVzRef.current < 0) {
-          jumpPhaseRef.current = 'falling';
-        }
-      } else {
-        if (curAboveGround <= TRACK_EPS && prevAboveGround > TRACK_EPS) {
-          const total = nowMs - takeoffTimeRef.current;
-          const rise  = peakTimeRef.current - takeoffTimeRef.current;
-          const fall  = nowMs - peakTimeRef.current;
-          jumpRecordNextRef.current = {
-            riseMs: rise,
-            fallMs: fall,
-            totalMs: total,
-            peakUnits: peakHeightRef.current / 2.2,
-          };
-          jumpPhaseRef.current = 'ground';
-          takeoffGroundRef.current = curGround;
-          peakHeightRef.current = 0;
-        }
-      }
-
-      prevAboveGroundRef.current = curAboveGround;
-      myZRef.current   = curZ;
+      myZRef.current = localRenderPosRef.current.z ?? 0;
 
       rafId = requestAnimationFrame(tick);
     };
@@ -1119,10 +1198,12 @@ export default function BattleArena({
     const ad = (me as any)?.activeDash;
     const isDashing = !!ad && ad.ticksRemaining > 0;
     if (!isDashing) {
-      // Reset local prediction state so jump works immediately after dash
-      localJumpCountRef.current = 0;
+      const airborneAfterDash = localZRef.current > groundHRef.current + 0.01;
+      localJumpCountRef.current = airborneAfterDash ? (maxJumpsRef.current > 2 ? 0 : 1) : 0;
       localVzRef.current = 0;
       isPowerJumpRef.current = false;
+      isPowerJumpCombinedRef.current = false;
+      if (!airborneAfterDash) airborneSpeedCarryRef.current = 0;
     }
   }, [activeDashJson]);
   useEffect(() => { oppHpRef.current = opponent?.hp ?? 0; }, [opponent?.hp]);
@@ -1202,7 +1283,7 @@ export default function BattleArena({
   })();
 
   // Ref that the rAF writes a new jump record into (avoids stale closure in rAF)
-  const jumpRecordNextRef = useRef<{ riseMs: number; fallMs: number; totalMs: number; peakUnits: number } | null>(null);
+  const jumpRecordNextRef = useRef<JumpRecord | null>(null);
   const jumpLockedRef = useRef(false);
 
   useEffect(() => {
@@ -1228,7 +1309,7 @@ export default function BattleArena({
       const rec = jumpRecordNextRef.current;
       if (rec) {
         jumpRecordNextRef.current = null;
-        setJumpRecord({ riseMs: rec.riseMs, fallMs: rec.fallMs, totalMs: rec.totalMs, peakUnits: rec.peakUnits });
+        setJumpRecord(rec);
       }
     }, 50);
     return () => clearInterval(id);
@@ -1292,7 +1373,7 @@ export default function BattleArena({
         const dx = pos.x - p.position.x;
         const dy = pos.y - p.position.y;
         const dz = 0;
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const dist = worldUnitsToNewUnits(Math.sqrt(dx * dx + dy * dy + dz * dz));
         if (dist < PICKUP_RANGE) nearby.push({ id: p.id, dist });
       }
       nearby.sort((a, b) => a.dist - b.dist);
@@ -1309,7 +1390,7 @@ export default function BattleArena({
           if (!pu) return true;
           const dx = pos.x - pu.position.x;
           const dy = pos.y - pu.position.y;
-          return Math.sqrt(dx * dx + dy * dy) > CLAIM_RANGE;
+          return worldUnitsToNewUnits(Math.sqrt(dx * dx + dy * dy)) > CLAIM_RANGE;
         }).map(m => m.pickupId);
         if (toClose.length > 0) {
           setPickupModals(prev => prev.filter(m => !toClose.includes(m.pickupId)));
@@ -1417,80 +1498,80 @@ export default function BattleArena({
 
   const sendMovement = useCallback(async () => {
     const k = keysRef.current;
+    const mouseLook = controlModeRef.current === 'traditional' && mouseStateRef.current.isRight;
+    const bothMouse = mouseStateRef.current.isRight && mouseStateRef.current.isLeft;
     // Capture & clear jump flag atomically before the async POST
     const shouldJump = jumpSendRef.current;
     if (shouldJump) jumpSendRef.current = false;
-    movementAbortRef.current?.abort();
-    movementAbortRef.current = new AbortController();
+    let facingPayload = { ...meFacingRef.current };
+    let directionPayload:
+      | { dx: number; dy: number; jump: boolean }
+      | { up: boolean; down: boolean; left: boolean; right: boolean; jump: boolean }
+      | null = null;
+
+    if (controlModeRef.current === 'traditional') {
+      const moveIntent = buildTraditionalMoveIntent(
+        k,
+        mouseLook,
+        bothMouse,
+        camYawRef.current,
+        charYawRef.current,
+      );
+      if (moveIntent.direction) {
+        directionPayload = {
+          dx: moveIntent.direction.dx,
+          dy: moveIntent.direction.dy,
+          jump: shouldJump,
+        };
+      } else if (shouldJump) {
+        directionPayload = { dx: 0, dy: 0, jump: true };
+      }
+
+      if (mouseLook) {
+        facingPayload = {
+          x: Math.sin(camYawRef.current),
+          y: -Math.cos(camYawRef.current),
+        };
+      } else if (moveIntent.direction && !moveIntent.backpedalOnly) {
+        const facingDir = normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy);
+        if (facingDir) facingPayload = facingDir;
+      }
+    } else if (joystickDirRef.current) {
+      const jd = joystickDirRef.current;
+      const mag = Math.sqrt(jd.dx * jd.dx + jd.dy * jd.dy);
+      if (mag >= 0.01 || shouldJump) {
+        directionPayload = { dx: jd.dx, dy: jd.dy, jump: shouldJump };
+      }
+      const facingDir = normalizePlanar(jd.dx, jd.dy);
+      if (facingDir) facingPayload = facingDir;
+    } else {
+      if (k.w || k.a || k.s || k.d || shouldJump) {
+        directionPayload = { up: k.s, down: k.w, left: k.a, right: k.d, jump: shouldJump };
+      }
+      const facingDir = normalizePlanar(
+        (k.a ? -1 : 0) + (k.d ? 1 : 0),
+        (k.w ? 1 : 0) + (k.s ? -1 : 0),
+      );
+      if (facingDir) facingPayload = facingDir;
+    }
+
+    meFacingRef.current = facingPayload;
+    const seq = ++movementSeqRef.current;
     try {
       await fetch('/api/game/movement', {
         method:      'POST',
         headers:     { 'Content-Type': 'application/json' },
         credentials: 'include',
-        signal:      movementAbortRef.current.signal,
         body: JSON.stringify({
           gameId,
-          // Always send the character's current facing direction so server-side
-          // abilities (dashes, etc.) use the correct orientation
+          seq,
+          // Server-facing is authoritative for ability logic and stays camera-forward
+          // during RMB strafing / RMB diagonals even if the local avatar is rendered sideways.
           facing: {
-            x: localFacingRef.current.x,
-            y: localFacingRef.current.y,
+            x: facingPayload.x,
+            y: facingPayload.y,
           },
-          direction: (() => {
-            if (controlModeRef.current === 'traditional') {
-              const mouseLook = mouseStateRef.current.isRight;
-              const bothMouse = mouseStateRef.current.isRight && mouseStateRef.current.isLeft;
-
-              if (mouseLook) {
-                // MMO mouselook: move relative to camera, camera yaw unchanged unless mouse moves.
-                const yaw = camYawRef.current;
-                const fwd = { x: Math.sin(yaw), y: -Math.cos(yaw) };
-                const right = { x: Math.cos(yaw), y: Math.sin(yaw) };
-
-                let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
-                // Negate strafe to match R3F camera convention.
-                let strafeInput = (k.a ? 1 : 0) + (k.d ? -1 : 0);
-
-                // Requested behavior: RMB + A + D => forward-right diagonal.
-                if (k.a && k.d) {
-                  strafeInput = -1;
-                  forwardInput += 1;
-                }
-
-                let dx = fwd.x * forwardInput + right.x * strafeInput;
-                let dy = fwd.y * forwardInput + right.y * strafeInput;
-                if (dx === 0 && dy === 0 && !shouldJump) return null;
-
-                const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                const backpedalOnly = k.s && !k.w && !k.a && !k.d && !bothMouse;
-                const speedMult = backpedalOnly ? 0.5 : 1.0;
-                dx = (dx / len) * speedMult;
-                dy = (dy / len) * speedMult;
-                return { dx, dy, jump: shouldJump };
-              }
-
-              // Keyboard-only traditional mode: movement follows facing.
-              const moveFwd = { x: Math.sin(charYawRef.current), y: -Math.cos(charYawRef.current) };
-              let dx = 0, dy = 0;
-              if (k.w) { dx += moveFwd.x; dy += moveFwd.y; }
-              if (k.s) { dx -= moveFwd.x; dy -= moveFwd.y; }
-              if (dx === 0 && dy === 0 && !shouldJump) return null;
-              const len = Math.sqrt(dx * dx + dy * dy) || 1;
-              const backpedalOnly = k.s && !k.w && !k.a && !k.d;
-              const speedMult = backpedalOnly ? 0.5 : 1.0;
-              return { dx: (dx / len) * speedMult, dy: (dy / len) * speedMult, jump: shouldJump };
-            }
-            // 摇杆模式: use analog dx/dy if joystick active, otherwise WASD booleans
-            if (joystickDirRef.current) {
-              const jd = joystickDirRef.current;
-              const mag = Math.sqrt(jd.dx * jd.dx + jd.dy * jd.dy);
-              if (mag < 0.01 && !shouldJump) return null;
-              return { dx: jd.dx, dy: jd.dy, jump: shouldJump };
-            }
-            return (k.w || k.a || k.s || k.d || shouldJump)
-              ? { up: k.s, down: k.w, left: k.a, right: k.d, jump: shouldJump }
-              : null;
-          })(),
+          direction: directionPayload,
         }),
       });
     } catch { /* AbortError expected */ }
@@ -1681,7 +1762,7 @@ export default function BattleArena({
       : null;
     const targetForChecks = selectedTarget ?? targetableOpponentsList[0] ?? null;
     const myPos = me.position ?? localPositionRef.current;
-    const myFacing = me.facing ?? localFacingRef.current;
+    const myFacing = me.facing ?? meFacingRef.current;
     const targetPos = targetForChecks?.position;
     const qinggongSealed = hasQinggongSealClient(me.buffs);
 
@@ -1725,7 +1806,11 @@ export default function BattleArena({
       }
 
       const distanceToTarget = (myPos && targetPos)
-        ? Math.hypot(targetPos.x - myPos.x, targetPos.y - myPos.y)
+        ? worldUnitsToNewUnits(Math.sqrt(
+            Math.pow(targetPos.x - myPos.x, 2) +
+            Math.pow(targetPos.y - myPos.y, 2) +
+            Math.pow(((targetPos as any)?.z ?? 0) - ((myPos as any)?.z ?? 0), 2)
+          ))
         : distance;
       const inMaxRange = !ab?.range || distanceToTarget <= ab.range;
       const inMinRange = !ab?.minRange || distanceToTarget >= ab.minRange;
@@ -2257,15 +2342,26 @@ export default function BattleArena({
       if (ms.isRight && !ms.isLeft) {
         // RMB only: rotate camera; character snaps to camera direction
         camYawRef.current  -= dx * 0.005;
-        charYawRef.current  = camYawRef.current;
         // Update pitch too (drag up/down tilts view)
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
-        // Immediately sync facing arrow so it updates without requiring movement
-        localFacingRef.current = {
-          x: Math.sin(charYawRef.current),
-          y: -Math.cos(charYawRef.current),
-        };
+        const moveIntent = buildTraditionalMoveIntent(
+          keysRef.current,
+          true,
+          false,
+          camYawRef.current,
+          charYawRef.current,
+        );
+        const facingDir = moveIntent.direction && !moveIntent.backpedalOnly
+          ? normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy)
+          : {
+              x: Math.sin(camYawRef.current),
+              y: -Math.cos(camYawRef.current),
+            };
+        if (facingDir) {
+          localFacingRef.current = facingDir;
+          charYawRef.current = facingToYaw(facingDir);
+        }
       } else if (ms.isLeft && !ms.isRight) {
         // LMB only: rotate camera yaw + pitch
         camYawRef.current  -= dx * 0.005;
@@ -2275,13 +2371,25 @@ export default function BattleArena({
       } else {
         // LMB + RMB together: rotate camera + character facing; physics tick moves forward
         camYawRef.current  -= dx * 0.005;
-        charYawRef.current  = camYawRef.current;
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
-        localFacingRef.current = {
-          x: Math.sin(charYawRef.current),
-          y: -Math.cos(charYawRef.current),
-        };
+        const moveIntent = buildTraditionalMoveIntent(
+          keysRef.current,
+          true,
+          true,
+          camYawRef.current,
+          charYawRef.current,
+        );
+        const facingDir = moveIntent.direction && !moveIntent.backpedalOnly
+          ? normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy)
+          : {
+              x: Math.sin(camYawRef.current),
+              y: -Math.cos(camYawRef.current),
+            };
+        if (facingDir) {
+          localFacingRef.current = facingDir;
+          charYawRef.current = facingToYaw(facingDir);
+        }
       }
     };
     // Prevent native right-click context menu
@@ -2425,11 +2533,10 @@ export default function BattleArena({
     const COMBINED_GRAVITY_UP_CLIENT   = 2 * 24 * UNIT_SCALE / (53.1 * 53.1);
     const COMBINED_GRAVITY_DOWN_CLIENT = 2 * 24 * UNIT_SCALE / (57.9 * 57.9);
     const COMBINED_JUMP_VZ_CLIENT      = COMBINED_GRAVITY_UP_CLIENT * 53.1;
-    const AIR_NUDGE_TOTAL_DISTANCE = 1 * UNIT_SCALE; // 1 new unit = 2.2 world units
-    const AIR_NUDGE_DURATION_TICKS = 30; // 1.0s at 30Hz
     const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
     const TURN_RATE = 0.055; // radians / tick at 30 Hz ≈ 95°/sec
     const tick = () => {
+      const tickNowMs = performance.now();
       const pos = localPositionRef.current;
       if (!pos) return;
       if (mode === 'collision-test' && !collisionReadyRef.current) {
@@ -2441,6 +2548,11 @@ export default function BattleArena({
 
       // During server-authoritative dash: skip movement + gravity, but KEEP camera/turning
       if (meActiveDashRef.current) {
+        const activeDash = meActiveDashRef.current;
+        const dashSpeed = Number(
+          activeDash?.speedPerTick ?? Math.hypot(activeDash?.vxPerTick ?? 0, activeDash?.vyPerTick ?? 0),
+        );
+        if (dashSpeed > 0.0001) airborneSpeedCarryRef.current = dashSpeed;
         localVelocityRef.current.x = 0;
         localVelocityRef.current.y = 0;
         jumpLocalRef.current = false;
@@ -2494,10 +2606,14 @@ export default function BattleArena({
       const airborne = localZRef.current > tickGroundH + 0.01;
       groundHRef.current = tickGroundH; // keep height display in sync
       if (groundBaseRef.current === null) groundBaseRef.current = tickGroundH; // init baseline once
+      if (!airborne && localJumpCountRef.current === 0) {
+        airborneSpeedCarryRef.current = 0;
+      }
       let airNudgeDx = 0;
       let airNudgeDy = 0;
       let moveIntentDx = 0;
       let moveIntentDy = 0;
+      const jumpAirborne = airborne && localJumpCountRef.current > 0;
 
       if (controlModeRef.current === 'traditional') {
         const mouseLook = ms.isRight;
@@ -2519,76 +2635,50 @@ export default function BattleArena({
           }
         }
 
-        let fx = 0, fy = 0;
+        const moveIntent = buildTraditionalMoveIntent(
+          k,
+          mouseLook,
+          bothMouse,
+          camYawRef.current,
+          charYawRef.current,
+        );
+        moveIntentDx = moveIntent.direction?.dx ?? 0;
+        moveIntentDy = moveIntent.direction?.dy ?? 0;
 
-        if (mouseLook) {
-          const yaw = camYawRef.current;
-          const moveFwd = { x: Math.sin(yaw), y: -Math.cos(yaw) };
-          const moveRight = { x: Math.cos(yaw), y: Math.sin(yaw) };
+        if (jumpAirborne) {
+          airNudgeDx = moveIntentDx;
+          airNudgeDy = moveIntentDy;
+        } else if (moveIntent.direction) {
+          vel.x += (moveIntent.direction.dx * effectiveMaxSpeed - vel.x) * ACCEL;
+          vel.y += (moveIntent.direction.dy * effectiveMaxSpeed - vel.y) * ACCEL;
 
-          let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
-          // Negate strafe: game moveRight=(cos,−sin) maps to screen-left in R3F camera,
-          // so we flip sign so D=screen-right, A=screen-left.
-          let strafeInput = (k.a ? 1 : 0) + (k.d ? -1 : 0);
-
-          // Requested behavior: RMB + A + D => forward-right diagonal.
-          if (k.a && k.d) {
-            strafeInput = -1;
-            forwardInput += 1;
-          }
-
-          fx = moveFwd.x * forwardInput + moveRight.x * strafeInput;
-          fy = moveFwd.y * forwardInput + moveRight.y * strafeInput;
-        } else {
-          const moveFwd = { x: Math.sin(charYawRef.current), y: -Math.cos(charYawRef.current) };
-          if (k.w) { fx += moveFwd.x; fy += moveFwd.y; }
-          if (k.s) { fx -= moveFwd.x; fy -= moveFwd.y; }
-        }
-        moveIntentDx = fx;
-        moveIntentDy = fy;
-
-        const inLimitedAirControl =
-          airborne &&
-          !jumpLocalRef.current &&
-          (airNudgeRemainingRef.current > 0 ||
-            airNudgeTicksRemainingRef.current > 0 ||
-            !!airNudgeDirRef.current);
-        if (airDirectionLockedRef.current && airborne) {
-          // After directional double jump: velocity locked, no steering.
-        } else if (!inLimitedAirControl) {
-          if (fx !== 0 || fy !== 0) {
-            const len = Math.sqrt(fx * fx + fy * fy);
-            // Backpedal is slower while keeping facing unchanged.
-            const backpedalOnly = k.s && !k.w && !k.a && !k.d && !bothMouse;
-            const speedMult = backpedalOnly ? 0.5 : 1.0;
-            vel.x += ((fx / len) * effectiveMaxSpeed * speedMult - vel.x) * ACCEL;
-            vel.y += ((fy / len) * effectiveMaxSpeed * speedMult - vel.y) * ACCEL;
-            // In mouselook mode: character always faces camera direction regardless of strafe
-            if (mouseLook) {
-              charYawRef.current = camYawRef.current;
-              localFacingRef.current = {
-                x: Math.sin(camYawRef.current),
-                y: -Math.cos(camYawRef.current),
-              };
+          if (!moveIntent.backpedalOnly) {
+            const facingDir = normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy);
+            if (facingDir) {
+              localFacingRef.current = facingDir;
+              charYawRef.current = facingToYaw(facingDir);
             }
-          } else {
-            if (!airborne) {
-              vel.x *= DECEL;
-              vel.y *= DECEL;
-            }
-            // In mouselook mode with no movement, restore facing to camera direction
-            if (mouseLook) {
-              charYawRef.current = camYawRef.current;
-              localFacingRef.current = {
-                x: Math.sin(camYawRef.current),
-                y: -Math.cos(camYawRef.current),
-              };
-            }
+          } else if (mouseLook) {
+            const facingDir = {
+              x: Math.sin(camYawRef.current),
+              y: -Math.cos(camYawRef.current),
+            };
+            localFacingRef.current = facingDir;
+            charYawRef.current = facingToYaw(facingDir);
           }
         } else {
-          // Post-upward-jump airborne phase: keep momentum, use limited correction.
-          airNudgeDx = fx;
-          airNudgeDy = fy;
+          if (!airborne) {
+            vel.x *= DECEL;
+            vel.y *= DECEL;
+          }
+          if (mouseLook) {
+            const facingDir = {
+              x: Math.sin(camYawRef.current),
+              y: -Math.cos(camYawRef.current),
+            };
+            localFacingRef.current = facingDir;
+            charYawRef.current = facingToYaw(facingDir);
+          }
         }
       } else {
         // 摇杆模式: WASD = absolute world directions
@@ -2597,45 +2687,49 @@ export default function BattleArena({
         if (k.s) iy -= 1;
         if (k.a) ix -= 1;
         if (k.d) ix += 1;
-        moveIntentDx = ix;
-        moveIntentDy = iy;
-        const inLimitedAirControl =
-          airborne &&
-          !jumpLocalRef.current &&
-          (airNudgeRemainingRef.current > 0 ||
-            airNudgeTicksRemainingRef.current > 0 ||
-            !!airNudgeDirRef.current);
-        if (airDirectionLockedRef.current && airborne) {
-          // After directional double jump: velocity locked, no steering.
-        } else if (!inLimitedAirControl) {
-          if (ix !== 0 || iy !== 0) {
-            const len = Math.sqrt(ix * ix + iy * iy);
-            vel.x += ((ix / len) * effectiveMaxSpeed - vel.x) * ACCEL;
-            vel.y += ((iy / len) * effectiveMaxSpeed - vel.y) * ACCEL;
-            localFacingRef.current = { x: ix / len, y: iy / len };
-          } else {
-            if (!airborne) {
-              vel.x *= DECEL;
-              vel.y *= DECEL;
-            }
-          }
-        } else {
-          airNudgeDx = ix;
-          airNudgeDy = iy;
+        const moveDir = normalizePlanar(ix, iy);
+        moveIntentDx = moveDir?.x ?? 0;
+        moveIntentDy = moveDir?.y ?? 0;
+        if (jumpAirborne) {
+          airNudgeDx = moveIntentDx;
+          airNudgeDy = moveIntentDy;
+        } else if (moveDir) {
+          vel.x += (moveDir.x * effectiveMaxSpeed - vel.x) * ACCEL;
+          vel.y += (moveDir.y * effectiveMaxSpeed - vel.y) * ACCEL;
+          localFacingRef.current = moveDir;
+          charYawRef.current = facingToYaw(moveDir);
+        } else if (!airborne) {
+          vel.x *= DECEL;
+          vel.y *= DECEL;
         }
       }
 
-      // Start limited correction only after double jump and only when input appears.
+      // Upward jump: first mid-air direction input locks the drift direction for this jump phase.
       if (
-        airborne &&
+        jumpAirborne &&
         !jumpLocalRef.current &&
         airNudgeRemainingRef.current > 0 &&
-        airNudgeTicksRemainingRef.current <= 0
+        airNudgeTicksRemainingRef.current <= 0 &&
+        !airDirectionLockedRef.current
       ) {
-        const nlen = Math.sqrt(airNudgeDx * airNudgeDx + airNudgeDy * airNudgeDy);
-        if (nlen > 0.01) {
-          airNudgeDirRef.current = { x: airNudgeDx / nlen, y: airNudgeDy / nlen };
-          airNudgeTicksRemainingRef.current = AIR_NUDGE_DURATION_TICKS;
+        const airDir = normalizePlanar(airNudgeDx, airNudgeDy);
+        if (airDir) {
+          airNudgeDirRef.current = airDir;
+          airNudgeTicksRemainingRef.current = AIR_SHIFT_DURATION_TICKS;
+          airDirectionLockedRef.current = true;
+          if (jumpTelemetryRef.current?.mode === 'upward') {
+            jumpTelemetryRef.current.expectedLandWorld = UPWARD_JUMP_AIR_SHIFT_DISTANCE;
+          }
+        }
+      }
+
+      if (airborne) {
+        const planarAirborneSpeed = Math.max(
+          Math.hypot(vel.x, vel.y),
+          getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current),
+        );
+        if (planarAirborneSpeed > 0.0001) {
+          airborneSpeedCarryRef.current = planarAirborneSpeed;
         }
       }
 
@@ -2707,17 +2801,32 @@ export default function BattleArena({
 
       // ── Z axis: jump + gravity ──
       if (jumpLocalRef.current && localJumpCountRef.current < maxJumpsRef.current) {
-        const hadDirectionalInput =
-          Math.abs(moveIntentDx) > 0.01 || Math.abs(moveIntentDy) > 0.01;
+        const jumpDir = normalizePlanar(moveIntentDx, moveIntentDy);
         const isMultiJump = maxJumpsRef.current > 2;
+        const heightAboveGround = Math.max(0, localZRef.current - tickGroundH);
+        const jumpSpeedSource = Math.max(
+          effectiveMaxSpeed,
+          airborneSpeedCarryRef.current,
+          Math.hypot(vel.x, vel.y),
+          getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current),
+        );
+        const jumpSpeedScale = DEFAULT_MOVE_SPEED_WORLD_PER_TICK > 0.0001
+          ? jumpSpeedSource / DEFAULT_MOVE_SPEED_WORLD_PER_TICK
+          : 0;
         let jumpVz: number;
+        let jumpGravityUp = GRAVITY_UP_CLIENT;
+        let jumpGravityDown = GRAVITY_DOWN_CLIENT;
         if (hasFuyaoBuffRef.current && isMultiJump) {
           // Combined 扶摇直上 + 鸟翔碧空: 24u peak, same timing as power jump
           jumpVz = COMBINED_JUMP_VZ_CLIENT;
+          jumpGravityUp = COMBINED_GRAVITY_UP_CLIENT;
+          jumpGravityDown = COMBINED_GRAVITY_DOWN_CLIENT;
           isPowerJumpCombinedRef.current = true;
           isPowerJumpRef.current = false;
         } else if (hasFuyaoBuffRef.current) {
           jumpVz = POWER_JUMP_VZ_CLIENT;
+          jumpGravityUp = POWER_GRAVITY_UP_CLIENT;
+          jumpGravityDown = POWER_GRAVITY_DOWN_CLIENT;
           isPowerJumpRef.current = true;
           isPowerJumpCombinedRef.current = false;
         } else if (localJumpCountRef.current === 0) {
@@ -2732,25 +2841,46 @@ export default function BattleArena({
         }
         hasFuyaoBuffRef.current   = false;
         localVzRef.current        = jumpVz;
-        localJumpCountRef.current += 1;
+        vel.x = 0;
+        vel.y = 0;
+        const nextJumpPhase = localJumpCountRef.current + 1;
+        localJumpCountRef.current = nextJumpPhase;
         jumpLocalRef.current       = false;
+        airborneSpeedCarryRef.current = jumpSpeedSource;
+        jumpTelemetryRef.current = {
+          startMs: tickNowMs,
+          peakMs: tickNowMs,
+          takeoffGround: tickGroundH,
+          peakHeightWorld: 0,
+          takeoffPos: {
+            x: localPositionRef.current?.x ?? pos.x,
+            y: localPositionRef.current?.y ?? pos.y,
+          },
+          expectedLandWorld: jumpDir ? DIRECTIONAL_JUMP_DISTANCE * Math.max(0, jumpSpeedScale) : 0,
+          startSpeedUnitsPerSec: (jumpSpeedSource * CLIENT_TICK_HZ) / NEW_UNIT_SCALE,
+          jumpPhase: nextJumpPhase,
+          mode: jumpDir ? 'directional' : 'upward',
+        };
 
-        // Direction lock: directional 2nd+ jump locks air steering (not for MULTI_JUMP)
-        if (hadDirectionalInput && localJumpCountRef.current >= 2 && !isMultiJump) {
+        airNudgeRemainingRef.current = 0;
+        airNudgeTicksRemainingRef.current = 0;
+        airNudgeDirRef.current = null;
+        airDirectionLockedRef.current = false;
+
+        if (jumpDir) {
+          airNudgeRemainingRef.current = DIRECTIONAL_JUMP_DISTANCE * Math.max(0, jumpSpeedScale);
+          airNudgeTicksRemainingRef.current = estimateAirborneTicks(
+            heightAboveGround,
+            jumpVz,
+            jumpGravityUp,
+            jumpGravityDown,
+          );
+          airNudgeDirRef.current = jumpDir;
           airDirectionLockedRef.current = true;
+          localFacingRef.current = jumpDir;
+          charYawRef.current = facingToYaw(jumpDir);
         } else {
-          airDirectionLockedRef.current = false;
-        }
-
-        if (!hadDirectionalInput) {
-          airNudgeRemainingRef.current = AIR_NUDGE_TOTAL_DISTANCE;
-          airNudgeTicksRemainingRef.current = 0;
-          airNudgeDirRef.current = null;
-        } else {
-          // Directional jump: no limiter.
-          airNudgeRemainingRef.current = 0;
-          airNudgeTicksRemainingRef.current = 0;
-          airNudgeDirRef.current = null;
+          airNudgeRemainingRef.current = UPWARD_JUMP_AIR_SHIFT_DISTANCE;
         }
       }
       const gravUp   = isPowerJumpCombinedRef.current ? COMBINED_GRAVITY_UP_CLIENT
@@ -2780,7 +2910,11 @@ export default function BattleArena({
             _bvhCenter.y    = groundExportY + EXPORT_CYL_HALF_HEIGHT;
             localVzRef.current = 0;
             bvhOnGround     = true;
-          } else if (gap <= BVH_STEP_UP_EXPORT && localVzRef.current <= 0) {
+          } else if (
+            gap <= BVH_STEP_UP_EXPORT &&
+            localVzRef.current <= 0 &&
+            localJumpCountRef.current === 0
+          ) {
             // Small gap while falling/standing → step-up snap (stairs / lips)
             _bvhCenter.y    = groundExportY + EXPORT_CYL_HALF_HEIGHT;
             localVzRef.current = 0;
@@ -2811,13 +2945,41 @@ export default function BattleArena({
         clientGroundH = getGroundHeightClient(localPositionRef.current.x, localPositionRef.current.y, localZRef.current, objs, playerRadius);
         localZRef.current = Math.max(clientGroundH, localZRef.current + localVzRef.current);
       }
+      if (jumpTelemetryRef.current) {
+        const currentHeightWorld = Math.max(0, localZRef.current - jumpTelemetryRef.current.takeoffGround);
+        if (currentHeightWorld >= jumpTelemetryRef.current.peakHeightWorld - 0.001) {
+          jumpTelemetryRef.current.peakHeightWorld = Math.max(jumpTelemetryRef.current.peakHeightWorld, currentHeightWorld);
+          jumpTelemetryRef.current.peakMs = tickNowMs;
+        }
+      }
       if (localZRef.current <= clientGroundH) {
+        const telemetry = jumpTelemetryRef.current;
+        if (telemetry) {
+          const landPos = localPositionRef.current ?? pos;
+          const actualLandWorld = Math.hypot(
+            landPos.x - telemetry.takeoffPos.x,
+            landPos.y - telemetry.takeoffPos.y,
+          );
+          jumpRecordNextRef.current = {
+            riseMs: Math.max(0, telemetry.peakMs - telemetry.startMs),
+            fallMs: Math.max(0, tickNowMs - telemetry.peakMs),
+            totalMs: Math.max(0, tickNowMs - telemetry.startMs),
+            peakUnits: telemetry.peakHeightWorld / NEW_UNIT_SCALE,
+            startSpeedUnitsPerSec: telemetry.startSpeedUnitsPerSec,
+            expectedLandUnits: telemetry.expectedLandWorld / NEW_UNIT_SCALE,
+            actualLandUnits: actualLandWorld / NEW_UNIT_SCALE,
+            jumpPhase: telemetry.jumpPhase,
+            mode: telemetry.mode,
+          };
+          jumpTelemetryRef.current = null;
+        }
         localZRef.current              = clientGroundH;
         localVzRef.current             = 0;
         localJumpCountRef.current      = 0;
         isPowerJumpRef.current         = false;
         isPowerJumpCombinedRef.current = false;
         airDirectionLockedRef.current  = false;
+        airborneSpeedCarryRef.current  = 0;
         airNudgeRemainingRef.current = 0;
         airNudgeTicksRemainingRef.current = 0;
         airNudgeDirRef.current = null;
@@ -2829,7 +2991,7 @@ export default function BattleArena({
 
   useEffect(() => {
     const id = setInterval(sendMovement, 1000 / 30);
-    return () => { clearInterval(id); movementAbortRef.current?.abort(); };
+    return () => { clearInterval(id); };
   }, [sendMovement]);
 
   useEffect(() => {
@@ -2852,7 +3014,7 @@ export default function BattleArena({
   const myBarSegments = computeHpShieldSegments(me?.hp ?? 0, myShield, myMaxHp);
   const myHpPct = myBarSegments.hpPct;
   const myShieldPct = myBarSegments.shieldPct;
-  const myFacingArrow = facingArrow(me.facing ?? meFacingRef.current);
+  const myFacingArrow = facingArrow(localFacingRef.current);
   const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
   const moveSpeedBoostSum = meEffects
     .filter((e: any) => e?.type === 'SPEED_BOOST')
@@ -3207,7 +3369,7 @@ export default function BattleArena({
             groundZones={groundZones}
             groundCastPreview={
               pendingGroundCastAbilityId && groundCastPreview
-                ? { x: groundCastPreview.x, y: groundCastPreview.y, radius: 6, label: '百足' }
+                ? { x: groundCastPreview.x, y: groundCastPreview.y, radius: 6 * NEW_UNIT_SCALE, label: '百足' }
                 : null
             }
             onGroundPointerMove={(x, y) => {
@@ -3659,10 +3821,20 @@ export default function BattleArena({
           padding: '3px 10px',
           borderRadius: 5,
           border: '1px solid rgba(255,255,255,0.12)',
-          whiteSpace: 'nowrap',
+          whiteSpace: 'normal',
+          lineHeight: 1.4,
         }}>
           {jumpRecord.riseMs !== null
-            ? `↑ ${(jumpRecord.riseMs / 1000).toFixed(2)}s  ↓ ${(jumpRecord.fallMs! / 1000).toFixed(2)}s  ⟳ ${(jumpRecord.totalMs! / 1000).toFixed(2)}s  ⬆ ${jumpRecord.peakUnits!.toFixed(1)}u`
+            ? (
+              <>
+                <div>
+                  {`J${jumpRecord.jumpPhase ?? '?'} ${jumpRecord.mode === 'directional' ? 'dir' : 'up'}  ↑ ${(jumpRecord.riseMs / 1000).toFixed(2)}s  ↓ ${(jumpRecord.fallMs! / 1000).toFixed(2)}s  ⟳ ${(jumpRecord.totalMs! / 1000).toFixed(2)}s  ⬆ ${jumpRecord.peakUnits!.toFixed(1)}u`}
+                </div>
+                <div>
+                  {`v0 ${(jumpRecord.startSpeedUnitsPerSec ?? 0).toFixed(2)} u/s  exp ${(jumpRecord.expectedLandUnits ?? 0).toFixed(2)}u  land ${(jumpRecord.actualLandUnits ?? 0).toFixed(2)}u`}
+                </div>
+              </>
+            )
             : '— — —'}
         </div>
         {/* Current height: A = above current floor, B = relative floor elevation */}
@@ -4016,6 +4188,7 @@ export default function BattleArena({
 
       {/* ===== CENTER: Distance floating label ===== */}
       <div className={styles.distIndicator}>
+        <span className={styles.distLabel}>目标距离</span>
         <span className={styles.distVal}>
           {selectedSelf ? '0.0尺' : selectedTargetId ? `${distance.toFixed(1)}尺` : '没有目标'}
         </span>
@@ -4140,7 +4313,7 @@ export default function BattleArena({
                     if (pu2 && pp) {
                       const ddx = pu2.position.x - pp.x;
                       const ddy = pu2.position.y - pp.y;
-                      const d   = Math.sqrt(ddx * ddx + ddy * ddy);
+                      const d   = worldUnitsToNewUnits(Math.sqrt(ddx * ddx + ddy * ddy));
                       dist2 = d < 1 ? '<1' : `${Math.round(d)}`;
                       // 0° = right (+X). SVG arrow default points up (−90°), so subtract 90
                       deg2 = ((Math.atan2(ddy, ddx) * 180 / Math.PI) - 90 + 360) % 360;

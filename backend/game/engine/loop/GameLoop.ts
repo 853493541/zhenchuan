@@ -9,7 +9,7 @@
  * - Win condition checks
  */
 
-import { GameState, MovementInput, GroundZone, calculateDistance } from "../state/types";
+import { GameState, MovementInput, GroundZone, calculateDistance, gameplayUnitsToWorldUnits } from "../state/types";
 import { checkGameOver } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
 import { diffState } from "../../services/flow/stateDiff";
@@ -204,6 +204,7 @@ export class GameLoop {
   private tickRate: number; // Hz
   private tickInterval: any;
   private playerInputs: Map<number, MovementInput | null> = new Map();
+  private playerInputSeq: Map<number, number> = new Map();
   private lastBroadcast = 0;
   private ticksSinceBroadcast = 0;
   // Broadcast cadence in ticks. Derived from tickRate to keep roughly 30Hz net updates.
@@ -344,15 +345,31 @@ export class GameLoop {
    * Queue player movement input
    * Called when client sends WASD input
    */
-  setPlayerInput(playerIndex: number, input: MovementInput | null) {
-    if (input?.jump) {
+  setPlayerInput(playerIndex: number, input: MovementInput | null, seq?: number) {
+    if (typeof seq === "number") {
+      const lastSeq = this.playerInputSeq.get(playerIndex);
+      if (typeof lastSeq === "number" && seq < lastSeq) {
+        return;
+      }
+      this.playerInputSeq.set(playerIndex, seq);
+    }
+
+    const pendingInput = this.playerInputs.get(playerIndex) ?? null;
+    let nextInput = input;
+
+    // Jump is a one-shot pulse, so keep it latched until the loop tick consumes it.
+    if (pendingInput?.jump && !nextInput?.jump) {
+      nextInput = nextInput ? { ...nextInput, jump: true } : pendingInput;
+    }
+
+    if (nextInput?.jump) {
       const player = this.state.players[playerIndex];
       if (player) {
         // Short lock window for requiresGrounded casts to close jump/cast race.
         player.groundedCastLockUntil = Date.now() + 250;
       }
     }
-    this.playerInputs.set(playerIndex, input);
+    this.playerInputs.set(playerIndex, nextInput);
   }
 
   hasPendingJump(playerIndex: number): boolean {
@@ -456,8 +473,8 @@ export class GameLoop {
           x: player.position.x,
           y: player.position.y,
           z: player.position.z ?? 0,
-          height: 10,
-          radius: 8,
+                height: gameplayUnitsToWorldUnits(10),
+                radius: gameplayUnitsToWorldUnits(8),
           expiresAt: dashEndNow + 24_000,
           damagePerInterval: 0,
           intervalMs: 3_000,
@@ -678,15 +695,16 @@ export class GameLoop {
               }
             } else if (e.type === "PLACE_GROUND_ZONE") {
               const facing = player.facing ?? { x: 0, y: 1 };
-              const zoneX = player.position.x + facing.x * 6;
-              const zoneY = player.position.y + facing.y * 6;
+                  const zoneOffset = gameplayUnitsToWorldUnits(6);
+                  const zoneX = player.position.x + facing.x * zoneOffset;
+                  const zoneY = player.position.y + facing.y * zoneOffset;
               if (!this.state.groundZones) this.state.groundZones = [];
               this.state.groundZones.push({
                 id: randomUUID(),
                 ownerUserId: player.userId,
                 x: zoneX,
                 y: zoneY,
-                radius: e.range ?? 8,
+                    radius: gameplayUnitsToWorldUnits(e.range ?? 8),
                 expiresAt: chNow + 6000,
                 damagePerInterval: e.value ?? 4,
                 intervalMs: 500,
@@ -923,10 +941,7 @@ export class GameLoop {
               } else if (e.type === "CHANNEL_AOE_TICK") {
                 // Channel AOE: deal damage to opponent if within range
                 const range = e.range ?? 10;
-                const dx = opp.position.x - player.position.x;
-                const dy = opp.position.y - player.position.y;
-                const dz = (opp.position.z ?? 0) - (player.position.z ?? 0);
-                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                  const dist = calculateDistance(player.position, opp.position);
                 if (dist <= range && opp.hp > 0) {
                   if (player.userId !== opp.userId && hasUntargetable(opp as any)) {
                     continue;
@@ -934,7 +949,10 @@ export class GameLoop {
                   const angle = (e as any).aoeAngle ?? 360;
                   if (angle < 360 && dist > 0) {
                     const facing = player.facing ?? { x: 0, y: 1 };
-                    const dot = (facing.x * dx + facing.y * dy) / dist;
+                    const dx = opp.position.x - player.position.x;
+                    const dy = opp.position.y - player.position.y;
+                    const planarDist = Math.sqrt(dx * dx + dy * dy);
+                    const dot = planarDist > 0.0001 ? (facing.x * dx + facing.y * dy) / planarDist : 1;
                     const halfAngleRad = (angle / 2) * (Math.PI / 180);
                     if (dot < Math.cos(halfAngleRad)) {
                       continue;
@@ -1325,7 +1343,7 @@ export class GameLoop {
           if (zone.abilityId === SHENGTAIJI_ZONE_ID) {
             const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
             const zoneZ = zone.z ?? 0;
-            const zoneHeight = zone.height ?? 10;
+            const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10);
             const isInsideZone = (p: any) => {
               const dx = p.position.x - zone.x;
               const dy = p.position.y - zone.y;

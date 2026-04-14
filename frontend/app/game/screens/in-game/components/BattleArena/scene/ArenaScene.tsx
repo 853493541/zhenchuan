@@ -19,6 +19,7 @@ import type { MapCollisionSystem } from './MapCollisionSystem';
 const OPP_COLORS = ['#cc3333', '#cc8800', '#9933cc', '#cc3388'];
 const OPP_EMISSIVES = ['#440000', '#332200', '#220044', '#330022'];
 
+const NEW_UNIT_SCALE = 2.2;
 const COLLISION_TEST_VIS_RADIUS = 0.64; // game units — matches export-reader avatar
 const CHANNEL_RING_WAIST_Z = 1.0;
 
@@ -543,7 +544,7 @@ export default function ArenaScene({
           worldX={me.position.x}
           worldY={me.position.y}
           worldZ={(me.position.z ?? 0) + CHANNEL_RING_WAIST_Z}
-          radius={10}
+          radius={10 * NEW_UNIT_SCALE}
           color="#ffd700"
           worldHalfX={worldHalfX}
           worldHalfY={worldHalfY}
@@ -558,7 +559,7 @@ export default function ArenaScene({
         const dx = opp.position.x - me.position.x;
         const dy = opp.position.y - me.position.y;
         const dz = (opp.position.z ?? 0) - (me.position.z ?? 0);
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) / NEW_UNIT_SCALE;
         return (
           <group key={opp.userId}>
             {/* Opponent AOE zone */}
@@ -567,7 +568,7 @@ export default function ArenaScene({
                 worldX={opp.position.x}
                 worldY={opp.position.y}
                 worldZ={(opp.position.z ?? 0) + CHANNEL_RING_WAIST_Z}
-                radius={10}
+                radius={10 * NEW_UNIT_SCALE}
                 color="#ff5500"
                 worldHalfX={worldHalfX}
                 worldHalfY={worldHalfY}

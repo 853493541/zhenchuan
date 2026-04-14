@@ -110,7 +110,8 @@ router.post("/movement", async (req, res) => {
         }
       }
 
-      loop.setPlayerInput(playerIndex, input);
+      const seq = typeof req.body.seq === 'number' ? req.body.seq : undefined;
+      loop.setPlayerInput(playerIndex, input, seq);
       
       // Return current position immediately so client can update without waiting for broadcast
       // Also include any pending input so client can predict the next position

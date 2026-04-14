@@ -3,7 +3,7 @@
 import { GameState } from "../state/types";
 import { ABILITIES } from "../../abilities/abilities";
 import { blocksCardTargeting } from "./guards";
-import { calculateDistance } from "../state/types";
+import { calculateDistance, worldUnitsToGameplayUnits } from "../state/types";
 import { worldMap } from "../../map/worldMap";
 import type { MapObject } from "../state/types/map";
 import type { ExportedMapCollisionSystem } from "../../map/exportedMapCollision";
@@ -298,10 +298,10 @@ export function validateCastAbility(
   /* ================= RANGE CHECK ================= */
   if (ability.range !== undefined) {
     const distance = allowGroundCastWithoutTarget
-      ? Math.hypot(
+      ? worldUnitsToGameplayUnits(Math.hypot(
           (options?.groundTarget?.x ?? 0) - state.players[playerIndex].position.x,
           (options?.groundTarget?.y ?? 0) - state.players[playerIndex].position.y,
-        )
+        ))
       : calculateDistance(
           state.players[playerIndex].position,
           targetPlayer.position

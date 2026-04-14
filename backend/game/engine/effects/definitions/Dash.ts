@@ -2,17 +2,17 @@
 
 import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
 import { PlayerState } from "../../state/types";
-import { Position } from "../../state/types/position";
+import { Position, gameplayUnitsToWorldUnits, worldUnitsToGameplayUnits } from "../../state/types/position";
 import { pushEvent } from "../events";
 
 /** Stable buffId for the CC-immunity granted while dashing */
 const DASH_CC_IMMUNE_BUFF_ID = 999901;
 
-/** Dash ability distances/speed are already authored in live gameplay units. */
-const DASH_SPEED_UNITS_PER_SEC = 40;
+/** Dash ability distances/speed are authored in new world units. */
+const DASH_SPEED_UNITS_PER_SEC = gameplayUnitsToWorldUnits(40);
 const TICK_RATE = 30;
 /** Stop 1 unit away from target. */
-const STOP_DISTANCE = 1;
+const STOP_DISTANCE = gameplayUnitsToWorldUnits(1);
 
 /**
  * Handle DASH effects.
@@ -107,6 +107,6 @@ export function handleDash(
     abilityId: ability.id,
     abilityName: ability.name,
     effectType: "DASH",
-    value: Math.round(travelDistance),
+    value: Math.round(worldUnitsToGameplayUnits(travelDistance)),
   });
 }
