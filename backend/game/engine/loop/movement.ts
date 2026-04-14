@@ -285,10 +285,10 @@ function resolveExportedRecovery(
 }
 
 /**
- * Unit scale: all game-design distances are expressed in "new units".
+ * Unit scale: movement/jump physics in this file are expressed in "new units".
  * 1 new unit = 2.2 old world units (derived from map measurement: same house
  * is 22 new units tall in our world and 10 units in the reference game → ×2.2).
- * Map coordinates and collision never change — only movement physics are scaled.
+ * Map coordinates and collision never change — only locomotion/jump physics are scaled here.
  */
 const UNIT_SCALE = 2.2;
 
@@ -631,10 +631,18 @@ export function applyMovement(
       targetVy = (input.dy ?? 0) * effectiveMoveSpeed;
     } else {
       // 摇杆模式: WASD boolean flags
-      if (input.up)    targetVy -= effectiveMoveSpeed;
-      if (input.down)  targetVy += effectiveMoveSpeed;
-      if (input.left)  targetVx -= effectiveMoveSpeed;
-      if (input.right) targetVx += effectiveMoveSpeed;
+      let inputX = 0;
+      let inputY = 0;
+      if (input.up)    inputY -= 1;
+      if (input.down)  inputY += 1;
+      if (input.left)  inputX -= 1;
+      if (input.right) inputX += 1;
+
+      const inputLen = Math.sqrt(inputX * inputX + inputY * inputY);
+      if (inputLen > 0.01) {
+        targetVx = (inputX / inputLen) * effectiveMoveSpeed;
+        targetVy = (inputY / inputLen) * effectiveMoveSpeed;
+      }
     }
 
     const inLimitedAirControl =

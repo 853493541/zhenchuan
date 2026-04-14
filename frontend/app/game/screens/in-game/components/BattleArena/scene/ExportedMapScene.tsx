@@ -39,6 +39,8 @@ interface ExportedMapSceneProps {
   /** Shows only the collision wireframe on a black background — hides all visual mesh/terrain. */
   blueprintMode?: boolean;
   onCollisionSystemReady?: (sys: MapCollisionSystem) => void;
+  onPointerMove?: (e: any) => void;
+  onPointerDown?: (e: any) => void;
 }
 
 /* ────────────────────── Texture caches (module-level singletons) ────────────────────── */
@@ -123,7 +125,15 @@ function encodePathSegments(pathLike: string): string {
 
 /* ────────────────────── Main Component ────────────────────── */
 
-export default function ExportedMapScene({ worldWidth, worldHeight, showCollisionShells = false, blueprintMode = false, onCollisionSystemReady }: ExportedMapSceneProps) {
+export default function ExportedMapScene({
+  worldWidth,
+  worldHeight,
+  showCollisionShells = false,
+  blueprintMode = false,
+  onCollisionSystemReady,
+  onPointerMove,
+  onPointerDown,
+}: ExportedMapSceneProps) {
   const { scene } = useThree();
   const groupRef = useRef<THREE.Group | null>(null);
   const contentGroupRef = useRef<THREE.Group | null>(null); // entity + terrain meshes
@@ -235,9 +245,14 @@ export default function ExportedMapScene({ worldWidth, worldHeight, showCollisio
   return (
     <>
       {!blueprintMode && <SkyDome />}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, -0.01, 0]}
+        onPointerMove={onPointerMove}
+        onPointerDown={onPointerDown}
+      >
         <planeGeometry args={[worldWidth, worldHeight]} />
-        <meshBasicMaterial visible={false} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
     </>
   );

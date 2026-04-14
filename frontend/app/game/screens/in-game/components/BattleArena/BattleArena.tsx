@@ -32,6 +32,9 @@ const ARENA_HEIGHT_SMALL = 200;
 const DASH_ANIM_MS = 1500; // ms — cosmetic dash travel animation
 const DEFAULT_PLAYER_RADIUS = 2; // must match backend
 const COLLISION_TEST_PLAYER_RADIUS = 0.64; // matches export-reader avatar (57 export units * SF)
+const NEW_UNIT_SCALE = 2.2;
+const SERVER_TICK_RATE = 30;
+const DEFAULT_MOVE_SPEED_WORLD_PER_TICK = 0.3666667;
 
 /** Resolve circle-vs-AABB collision (client-side prediction). Z-aware: skip if player is above obj. */
 function resolveObjCollisionClient(
@@ -130,22 +133,31 @@ function clientCheckLOS(
   return sys.checkLOS(_losFrom, _losTo, EXPORT_CYL_RADIUS);
 }
 
-/** Live position display — reads a ref every 200ms */
+/** Live position + height display — reads refs every 200ms.
+ *  Shows:  X / Y world coords,  "↑ Xm" above-ground (new units),  "floor Xm" floor elevation (new units).
+ */
 function PositionDisplay({
   posRef,
+  groundHRef,
+  unitScale = 2.2,
   inline = false,
 }: {
   posRef: React.MutableRefObject<{ x: number; y: number; z: number }>;
+  groundHRef?: React.MutableRefObject<number>;
+  unitScale?: number;
   inline?: boolean;
 }) {
-  const [pos, setPos] = React.useState({ x: 0, y: 0, z: 0 });
+  const [pos, setPos] = React.useState({ x: 0, y: 0, z: 0, groundH: 0 });
   React.useEffect(() => {
     const id = setInterval(() => {
       const p = posRef.current;
-      setPos({ x: p.x, y: p.y, z: p.z });
+      const g = groundHRef?.current ?? 0;
+      setPos({ x: p.x, y: p.y, z: p.z, groundH: g });
     }, 200);
     return () => clearInterval(id);
-  }, [posRef]);
+  }, [posRef, groundHRef]);
+  const aboveGround = (pos.z - pos.groundH) / unitScale;
+  const floorElev   = pos.groundH / unitScale;
   return (
     <div style={{
       ...(inline
@@ -157,16 +169,48 @@ function PositionDisplay({
             padding: '6px 10px',
             borderRadius: 6,
             border: '1px solid rgba(255,255,255,0.08)',
+            lineHeight: 1.6,
           }
         : {
             position: 'absolute', top: 14, left: 14, zIndex: 500,
             background: 'rgba(0,0,0,0.7)', color: '#0f0', fontFamily: 'monospace',
             fontSize: 12, padding: '4px 8px', borderRadius: 4, pointerEvents: 'none',
+            lineHeight: 1.5,
           }),
     }}>
-      X:{pos.x.toFixed(1)} Y:{pos.y.toFixed(1)} Z:{pos.z.toFixed(1)}
+      <div>X:{pos.x.toFixed(1)} Y:{pos.y.toFixed(1)}</div>
+      <div>↑ {aboveGround.toFixed(2)} u  (above ground)</div>
+      <div>floor {floorElev.toFixed(2)} u  (elevation)</div>
     </div>
   );
+}
+
+/** Golden 3D line between two world-coord pins — rendered inside the R3F Canvas. */
+function MeasureLine3D({
+  pinA,
+  pinB,
+  halfX,
+  halfY,
+}: {
+  pinA: { x: number; y: number; z: number } | null;
+  pinB: { x: number; y: number; z: number } | null;
+  halfX: number;
+  halfY: number;
+}) {
+  const geoRef  = React.useRef(new THREE.BufferGeometry());
+  const matRef  = React.useRef(new THREE.LineBasicMaterial({ color: '#FFD700' }));
+  const lineObj = React.useRef(new THREE.Line(geoRef.current, matRef.current));
+  React.useEffect(() => {
+    return () => { geoRef.current.dispose(); matRef.current.dispose(); };
+  }, []);
+  React.useEffect(() => {
+    if (!pinA || !pinB) return;
+    const ax = pinA.x - halfX, ay = (pinA.z ?? 0) + 0.3, az = halfY - pinA.y;
+    const bx = pinB.x - halfX, by = (pinB.z ?? 0) + 0.3, bz = halfY - pinB.y;
+    geoRef.current.setFromPoints([new THREE.Vector3(ax, ay, az), new THREE.Vector3(bx, by, bz)]);
+    geoRef.current.computeBoundingSphere();
+  }, [pinA, pinB, halfX, halfY]);
+  return <primitive object={lineObj.current} visible={!!(pinA && pinB)} />;
 }
 
 /** 2D segment vs AABB intersection (for line-of-sight checks). */
@@ -570,6 +614,7 @@ export default function BattleArena({
       const feetGameZ = groundY * RENDER_SF + GROUP_POS_Y;
       localZRef.current = feetGameZ;
       localVzRef.current = 0;
+      groundBaseRef.current = feetGameZ;
       localRenderPosRef.current = { x: pos.x, y: pos.y, z: feetGameZ };
       console.log('[BVH] Initial ground at export Y', groundY.toFixed(1), '→ game Z', feetGameZ.toFixed(3));
     } else {
@@ -591,14 +636,15 @@ export default function BattleArena({
   const [myZ, setMyZ] = useState(0);
   const myZRef = useRef(0);
   // Jump timing records (seconds, null = not yet measured)
-  type JumpRecord = { riseMs: number | null; fallMs: number | null; totalMs: number | null; peakZ: number | null };
-  const [jumpRecord, setJumpRecord] = useState<JumpRecord>({ riseMs: null, fallMs: null, totalMs: null, peakZ: null });
+  type JumpRecord = { riseMs: number | null; fallMs: number | null; totalMs: number | null; peakUnits: number | null };
+  const [jumpRecord, setJumpRecord] = useState<JumpRecord>({ riseMs: null, fallMs: null, totalMs: null, peakUnits: null });
   // Internal tracking refs (updated every rAF frame)
   const jumpPhaseRef  = useRef<'ground' | 'rising' | 'falling'>('ground');
   const takeoffTimeRef = useRef<number>(0);   // when feet left the ground
+  const takeoffGroundRef = useRef<number>(0); // floor height under feet at takeoff
   const peakTimeRef    = useRef<number>(0);   // when apex was detected
-  const prevZRef       = useRef<number>(0);   // previous frame Z for transition detection
-  const peakZRef       = useRef<number>(0);   // max Z reached during current jump
+  const prevAboveGroundRef = useRef<number>(0); // previous frame height above current floor
+  const peakHeightRef  = useRef<number>(0);   // max jump height above takeoff floor (world units)
 
   /* --- Floating damage/heal numbers --- */
   type FloatType = 'dmg_dealt' | 'dmg_taken' | 'heal';
@@ -640,6 +686,25 @@ export default function BattleArena({
   const keysRef          = useRef({ w: false, a: false, s: false, d: false });
   const joystickDirRef   = useRef<{ dx: number; dy: number } | null>(null); // analog joystick
   const autoForwardRef   = useRef(false);
+
+  // Ground height under player — updated every physics tick for height display.
+  const groundHRef = useRef(0);
+  // First stable ground height — relative-elevation baseline (0 = flat starting ground)
+  const groundBaseRef = useRef<number | null>(null);
+  // Height display state: updated every 50ms
+  const [heightDisplay, setHeightDisplay] = React.useState({ aboveGround: 0, floorElev: 0 });
+  const [speedTestState, setSpeedTestState] = React.useState({
+    active: false,
+    currentUnitsPerSec: 0,
+    measuredDistanceUnits: 0,
+    measuredElapsedMs: 0,
+    averageUnitsPerSec: 0,
+    maxUnitsPerSec: 0,
+    baseEligible: true,
+    lockReason: null as string | null,
+  });
+  // Measurement pins — up to 2 world-coord positions {x, y, z}
+  const [measurePins, setMeasurePins] = React.useState<Array<{ x: number; y: number; z: number }>>([]);
   const dragJustEndedRef = useRef(false);
   const localPositionRef = useRef<Position | null>(null);
   const localVelocityRef = useRef({ x: 0, y: 0 });
@@ -652,6 +717,7 @@ export default function BattleArena({
   const localZRef         = useRef(0);     // current Z height (world units)
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
+  const lastJumpInputAtRef = useRef(0);    // last local jump press time for air reconciliation
   const bvhCenterYInitRef = useRef(false); // true after _bvhCenter.y first initialised
   const airNudgeRemainingRef = useRef(0);  // post-double-jump correction budget (units)
   const airNudgeTicksRemainingRef = useRef(0); // correction animation ticks remaining
@@ -662,6 +728,13 @@ export default function BattleArena({
   const meFacingRef       = useRef<Facing>({ x: 0, y: 1 });
   const oppFacingRef      = useRef<Facing>({ x: 0, y: 1 });
   const prevActiveChannelRef = useRef<ActiveChannel | null>(null);
+  const speedSamplePrevRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const speedTestRunRef = useRef({
+    active: false,
+    distanceWorld: 0,
+    validElapsedMs: 0,
+    maxUnitsPerSec: 0,
+  });
 
   /* --- Opponent interpolation --- */
   const internalOpponentBufferRef = useRef<Array<{ t: number; pos: Position }>>([]);
@@ -917,36 +990,48 @@ export default function BattleArena({
       }
 
       // --- Jump phase tracking (height display + timing) ---
-      const curZ   = localRenderPosRef.current.z ?? 0;
-      const prevZ  = prevZRef.current;
-      const nowMs  = performance.now();
-      const phase  = jumpPhaseRef.current;
+      const TRACK_EPS = 0.05;
+      const curZ = localRenderPosRef.current.z ?? 0;
+      const curGround = groundHRef.current;
+      const curAboveGround = Math.max(0, curZ - curGround);
+      const prevAboveGround = prevAboveGroundRef.current;
+      const nowMs = performance.now();
+      const phase = jumpPhaseRef.current;
+      const heightFromTakeoff = Math.max(0, curZ - takeoffGroundRef.current);
 
       if (phase === 'ground') {
-        if (curZ > 0.01) {
-          jumpPhaseRef.current   = 'rising';
-          takeoffTimeRef.current  = nowMs;
-          peakTimeRef.current     = nowMs;
-          peakZRef.current        = curZ;
+        if (curAboveGround > TRACK_EPS) {
+          jumpPhaseRef.current = 'rising';
+          takeoffTimeRef.current = nowMs;
+          takeoffGroundRef.current = curGround;
+          peakTimeRef.current = nowMs;
+          peakHeightRef.current = heightFromTakeoff;
         }
       } else if (phase === 'rising') {
-        if (curZ > prevZ) {
+        if (heightFromTakeoff >= peakHeightRef.current - 0.001) {
           peakTimeRef.current = nowMs;
-          peakZRef.current    = Math.max(peakZRef.current, curZ);
-        } else {
+          peakHeightRef.current = Math.max(peakHeightRef.current, heightFromTakeoff);
+        } else if (curAboveGround < prevAboveGround - 0.001 || localVzRef.current < 0) {
           jumpPhaseRef.current = 'falling';
         }
       } else {
-        if (curZ <= 0.01 && prevZ > 0.01) {
+        if (curAboveGround <= TRACK_EPS && prevAboveGround > TRACK_EPS) {
           const total = nowMs - takeoffTimeRef.current;
           const rise  = peakTimeRef.current - takeoffTimeRef.current;
           const fall  = nowMs - peakTimeRef.current;
-          jumpRecordNextRef.current = { riseMs: rise, fallMs: fall, totalMs: total, peakZ: peakZRef.current };
+          jumpRecordNextRef.current = {
+            riseMs: rise,
+            fallMs: fall,
+            totalMs: total,
+            peakUnits: peakHeightRef.current / 2.2,
+          };
           jumpPhaseRef.current = 'ground';
+          takeoffGroundRef.current = curGround;
+          peakHeightRef.current = 0;
         }
       }
 
-      prevZRef.current = curZ;
+      prevAboveGroundRef.current = curAboveGround;
       myZRef.current   = curZ;
 
       rafId = requestAnimationFrame(tick);
@@ -974,6 +1059,59 @@ export default function BattleArena({
       .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
     moveSpeedScaleRef.current = Math.max(0, 1 + speedBoost - slow);
   }, [me?.buffs]);
+
+  useEffect(() => {
+    const getBaseSpeedLockReason = () => {
+      if (meActiveDashRef.current) return '冲刺中';
+      if (localJumpCountRef.current > 0 || Math.abs(localVzRef.current) > 0.01) return '空中';
+      if (Math.abs(moveSpeedScaleRef.current - 1) > 0.001) return '有移速修正';
+      return null;
+    };
+
+    const id = window.setInterval(() => {
+      const pos = localPositionRef.current;
+      const now = performance.now();
+      const prev = speedSamplePrevRef.current;
+      const lockReason = getBaseSpeedLockReason();
+      let currentUnitsPerSec = 0;
+
+      if (pos && prev) {
+        const dtMs = now - prev.t;
+        if (dtMs > 1) {
+          const distanceWorld = Math.hypot(pos.x - prev.x, pos.y - prev.y);
+          currentUnitsPerSec = (distanceWorld / NEW_UNIT_SCALE) / (dtMs / 1000);
+
+          if (speedTestRunRef.current.active && !lockReason) {
+            speedTestRunRef.current.distanceWorld += distanceWorld;
+            speedTestRunRef.current.validElapsedMs += dtMs;
+            speedTestRunRef.current.maxUnitsPerSec = Math.max(
+              speedTestRunRef.current.maxUnitsPerSec,
+              currentUnitsPerSec,
+            );
+          }
+        }
+      }
+
+      if (pos) {
+        speedSamplePrevRef.current = { x: pos.x, y: pos.y, t: now };
+      }
+
+      const measuredDistanceUnits = speedTestRunRef.current.distanceWorld / NEW_UNIT_SCALE;
+      const measuredElapsedMs = speedTestRunRef.current.validElapsedMs;
+      setSpeedTestState({
+        active: speedTestRunRef.current.active,
+        currentUnitsPerSec,
+        measuredDistanceUnits,
+        measuredElapsedMs,
+        averageUnitsPerSec: measuredElapsedMs > 0 ? measuredDistanceUnits / (measuredElapsedMs / 1000) : 0,
+        maxUnitsPerSec: speedTestRunRef.current.maxUnitsPerSec,
+        baseEligible: !lockReason,
+        lockReason,
+      });
+    }, 100);
+
+    return () => window.clearInterval(id);
+  }, []);
 
   // activeDash side-effects: reset local prediction state when dash ends
   const activeDashJson = JSON.stringify((me as any)?.activeDash ?? null);
@@ -1064,7 +1202,7 @@ export default function BattleArena({
   })();
 
   // Ref that the rAF writes a new jump record into (avoids stale closure in rAF)
-  const jumpRecordNextRef = useRef<{ riseMs: number; fallMs: number; totalMs: number; peakZ: number } | null>(null);
+  const jumpRecordNextRef = useRef<{ riseMs: number; fallMs: number; totalMs: number; peakUnits: number } | null>(null);
   const jumpLockedRef = useRef(false);
 
   useEffect(() => {
@@ -1079,11 +1217,18 @@ export default function BattleArena({
   // Poll height + consume any finished jump record every 50 ms
   useEffect(() => {
     const id = setInterval(() => {
-      setMyZ(Math.round(myZRef.current * 10) / 10);
+      const curZ  = myZRef.current;
+      const gH    = groundHRef.current;
+      const gBase = groundBaseRef.current ?? gH;
+      setMyZ(Math.round(curZ * 10) / 10);
+      setHeightDisplay({
+        aboveGround: Math.max(0, (curZ - gH)) / 2.2,
+        floorElev:   Math.max(0, (gH - gBase)) / 2.2,
+      });
       const rec = jumpRecordNextRef.current;
       if (rec) {
         jumpRecordNextRef.current = null;
-        setJumpRecord({ riseMs: rec.riseMs, fallMs: rec.fallMs, totalMs: rec.totalMs, peakZ: rec.peakZ });
+        setJumpRecord({ riseMs: rec.riseMs, fallMs: rec.fallMs, totalMs: rec.totalMs, peakUnits: rec.peakUnits });
       }
     }, 50);
     return () => clearInterval(id);
@@ -1355,6 +1500,7 @@ export default function BattleArena({
     if (me?.position && !initializedRef.current) {
       localPositionRef.current = { ...me.position };
       localZRef.current = (me.position as any).z ?? 0;
+      groundBaseRef.current = localZRef.current;
       localRenderPosRef.current = { x: me.position.x, y: me.position.y, z: localZRef.current };
       initializedRef.current   = true;
     }
@@ -1412,18 +1558,29 @@ export default function BattleArena({
       return;
     }
 
-    // Reconcile Z with smoothing to reduce visible snap/jitter when stepping/jumping onto rooftops.
-    // Thresholds are in world units; scaled by UNIT_SCALE (2.2) because VZ values are 2.2× larger.
+    // Reconcile Z with softer airborne correction to avoid double-jump snap.
+    // When the client just jumped locally, trust prediction more briefly.
     const serverZ = (me.position as any).z ?? 0;
     const localZ  = localZRef.current;
     const zError = serverZ - localZ;
-    if (Math.abs(zError) > 2.64) { // 1.2 × UNIT_SCALE
+    const airborneLocal =
+      localJumpCountRef.current > 0 ||
+      Math.abs(localVzRef.current) > 0.01 ||
+      localZ > groundHRef.current + 0.05;
+    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 160;
+    const hardSnapThreshold = airborneLocal ? (justJumpedLocally ? 6.6 : 4.4) : 2.64;
+    const settleThreshold = airborneLocal ? 0.132 : 0.044;
+    const zBlend = airborneLocal ? (justJumpedLocally ? 0.08 : 0.16) : 0.35;
+    const shouldSoftReconcile = !airborneLocal || !justJumpedLocally || Math.abs(zError) > 0.66;
+    if (Math.abs(zError) > hardSnapThreshold) {
       localZRef.current = serverZ;
-      localVzRef.current = 0;
+      if (!airborneLocal || serverZ <= groundHRef.current + 0.05) {
+        localVzRef.current = 0;
+      }
       bvhCenterYInitRef.current = false; // large Z snap — resync sphere center next tick
-    } else {
-      localZRef.current = localZ + zError * 0.35;
-      if (Math.abs(serverZ - localZRef.current) < 0.044) { // 0.02 × UNIT_SCALE
+    } else if (shouldSoftReconcile) {
+      localZRef.current = localZ + zError * zBlend;
+      if (Math.abs(serverZ - localZRef.current) < settleThreshold) {
         localZRef.current = serverZ;
       }
     }
@@ -1915,6 +2072,7 @@ export default function BattleArena({
           }
         }
         if (jumpLockedRef.current) return;
+        lastJumpInputAtRef.current = performance.now();
         jumpLocalRef.current = true;
         jumpSendRef.current  = true;
       }
@@ -2239,6 +2397,7 @@ export default function BattleArena({
 
   // Jump triggered from the virtual joystick's jump button  
   const handleJoystickJump = useCallback(() => {
+    lastJumpInputAtRef.current = performance.now();
     jumpLocalRef.current  = true;
     jumpSendRef.current   = true;
   }, []);
@@ -2333,6 +2492,8 @@ export default function BattleArena({
         return supportY * RENDER_SF + GROUP_POS_Y;
       })();
       const airborne = localZRef.current > tickGroundH + 0.01;
+      groundHRef.current = tickGroundH; // keep height display in sync
+      if (groundBaseRef.current === null) groundBaseRef.current = tickGroundH; // init baseline once
       let airNudgeDx = 0;
       let airNudgeDy = 0;
       let moveIntentDx = 0;
@@ -2699,8 +2860,10 @@ export default function BattleArena({
   const moveSpeedSlowSum = meEffects
     .filter((e: any) => e?.type === 'SLOW')
     .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
-  const baseMoveSpeed = Number(me?.moveSpeed ?? 0.3666667); // 0.1666667 × UNIT_SCALE(2.2)
+  const baseMoveSpeed = Number(me?.moveSpeed ?? DEFAULT_MOVE_SPEED_WORLD_PER_TICK); // 0.1666667 × UNIT_SCALE(2.2)
   const finalMoveSpeed = Math.max(0, baseMoveSpeed * Math.max(0, 1 + moveSpeedBoostSum - moveSpeedSlowSum));
+  const baseMoveSpeedUnitsPerSec = baseMoveSpeed * SERVER_TICK_RATE / NEW_UNIT_SCALE;
+  const effectiveMoveSpeedUnitsPerSec = finalMoveSpeed * SERVER_TICK_RATE / NEW_UNIT_SCALE;
   const damageReductionEffect = meEffects.find((e: any) => e?.type === 'DAMAGE_REDUCTION');
   const damageReductionPct = Math.max(0, Number(damageReductionEffect?.value ?? 0) * 100);
   const dodgeChancePct = Math.max(
@@ -2712,6 +2875,54 @@ export default function BattleArena({
         .reduce((sum: number, e: any) => sum + Number(e?.chance ?? 0), 0) * 100,
     ),
   );
+
+    const startSpeedTest = useCallback(() => {
+      const pos = localPositionRef.current;
+      const now = performance.now();
+      speedTestRunRef.current = {
+        active: true,
+        distanceWorld: 0,
+        validElapsedMs: 0,
+        maxUnitsPerSec: 0,
+      };
+      speedSamplePrevRef.current = pos ? { x: pos.x, y: pos.y, t: now } : null;
+      setSpeedTestState((prev) => ({
+        ...prev,
+        active: true,
+        measuredDistanceUnits: 0,
+        measuredElapsedMs: 0,
+        averageUnitsPerSec: 0,
+        maxUnitsPerSec: 0,
+      }));
+    }, []);
+
+    const stopSpeedTest = useCallback(() => {
+      speedTestRunRef.current = {
+        ...speedTestRunRef.current,
+        active: false,
+      };
+      setSpeedTestState((prev) => ({ ...prev, active: false }));
+    }, []);
+
+    const resetSpeedTest = useCallback(() => {
+      const pos = localPositionRef.current;
+      const now = performance.now();
+      speedTestRunRef.current = {
+        active: false,
+        distanceWorld: 0,
+        validElapsedMs: 0,
+        maxUnitsPerSec: 0,
+      };
+      speedSamplePrevRef.current = pos ? { x: pos.x, y: pos.y, t: now } : null;
+      setSpeedTestState((prev) => ({
+        ...prev,
+        active: false,
+        measuredDistanceUnits: 0,
+        measuredElapsedMs: 0,
+        averageUnitsPerSec: 0,
+        maxUnitsPerSec: 0,
+      }));
+    }, []);
 
   const cheatAbilities = useMemo(
     () =>
@@ -3009,6 +3220,7 @@ export default function BattleArena({
             }}
             showCollisionShells={showCollisionShells}
             collisionReady={collisionReady}
+            collisionSystemRef={collisionSysRef}
             collisionDebugRef={collisionDebugRef}
             onCollisionSystemReady={onCollisionSystemReady}
             losBlocker={losBlocker}
@@ -3017,6 +3229,13 @@ export default function BattleArena({
             onEnvDebug={mode === 'collision-test' ? setEnvDebugInfo : undefined}
             envToggles={mode === 'collision-test' ? envToggles : undefined}
             dirLightConfig={mode === 'collision-test' ? dirLightConfig : undefined}
+          />
+          {/* Golden measurement line */}
+          <MeasureLine3D
+            pinA={measurePins[0] ?? null}
+            pinB={measurePins[1] ?? null}
+            halfX={ARENA_WIDTH / 2}
+            halfY={ARENA_HEIGHT / 2}
           />
         </Canvas>
       </div>
@@ -3096,14 +3315,102 @@ export default function BattleArena({
               }}>
                 <div style={{ color: '#fff', fontWeight: 700, marginBottom: 10 }}>Scene / Status</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 12 }}>
-                  <PositionDisplay posRef={localRenderPosRef} inline />
+                  <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#86efac', fontFamily: 'monospace', fontSize: 12 }}>
+                    X:{localRenderPosRef.current.x.toFixed(1)} Y:{localRenderPosRef.current.y.toFixed(1)}
+                  </div>
                   <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1' }}>
-                    状态: 移速 {finalMoveSpeed.toFixed(3)} | 减伤 {damageReductionPct.toFixed(1)}% | 闪避 {dodgeChancePct.toFixed(1)}%{autoForward ? ' | 自动前行' : ''}
+                    状态: 理论 {effectiveMoveSpeedUnitsPerSec.toFixed(2)} u/s | 基础 {baseMoveSpeedUnitsPerSec.toFixed(2)} u/s | 实测 {speedTestState.currentUnitsPerSec.toFixed(2)} u/s | 减伤 {damageReductionPct.toFixed(1)}% | 闪避 {dodgeChancePct.toFixed(1)}%{autoForward ? ' | 自动前行' : ''}
                   </div>
                   <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1' }}>
                     镜头: 缩放 {cameraZoomLevel.toFixed(2)} | 滚轮上拉近 / 滚轮下拉远
                   </div>
                 </div>
+
+                <div style={{
+                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14,
+                  marginBottom: 12,
+                }}>
+                  <div style={{ color: '#fff', fontWeight: 700, marginBottom: 8 }}>Base Move Speed Test</div>
+                  <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 10 }}>
+                    Hold W on flat ground with no dash, no jump, and no speed buffs. The test only records valid base-movement samples.
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginBottom: 10 }}>
+                    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1', fontFamily: 'monospace', fontSize: 12 }}>
+                      Config base: {baseMoveSpeedUnitsPerSec.toFixed(2)} u/s
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1', fontFamily: 'monospace', fontSize: 12 }}>
+                      Current measured: {speedTestState.currentUnitsPerSec.toFixed(2)} u/s
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1', fontFamily: 'monospace', fontSize: 12 }}>
+                      Test avg/max: {speedTestState.averageUnitsPerSec.toFixed(2)} / {speedTestState.maxUnitsPerSec.toFixed(2)} u/s
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1', fontFamily: 'monospace', fontSize: 12 }}>
+                      Distance/time: {speedTestState.measuredDistanceUnits.toFixed(2)} u / {(speedTestState.measuredElapsedMs / 1000).toFixed(2)} s
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <button
+                      type="button"
+                      onClick={startSpeedTest}
+                      style={{
+                        background: 'rgba(16,185,129,0.18)',
+                        border: '1px solid rgba(52,211,153,0.55)',
+                        color: '#6ee7b7',
+                        borderRadius: 6,
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      {speedTestState.active ? 'Restart Test' : 'Start Test'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={stopSpeedTest}
+                      style={{
+                        background: 'rgba(245,158,11,0.18)',
+                        border: '1px solid rgba(251,191,36,0.55)',
+                        color: '#fcd34d',
+                        borderRadius: 6,
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      Stop
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetSpeedTest}
+                      style={{
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.14)',
+                        color: '#cbd5e1',
+                        borderRadius: 6,
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  <div style={{
+                    color: speedTestState.baseEligible ? '#86efac' : '#fca5a5',
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  }}>
+                    {speedTestState.baseEligible
+                      ? 'Base-state capture active: samples count toward the 5.00 u/s check.'
+                      : `Base-state capture paused: ${speedTestState.lockReason}`}
+                  </div>
+                </div>
+
+                {/* ── Measurement tool removed — use floating overlay (at 80%/60%) ── */}
+
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     type="button"
@@ -3355,13 +3662,12 @@ export default function BattleArena({
           whiteSpace: 'nowrap',
         }}>
           {jumpRecord.riseMs !== null
-            ? `↑ ${(jumpRecord.riseMs / 1000).toFixed(2)}s  ↓ ${(jumpRecord.fallMs! / 1000).toFixed(2)}s  ⟳ ${(jumpRecord.totalMs! / 1000).toFixed(2)}s  ⬆ ${jumpRecord.peakZ!.toFixed(1)}u`
+            ? `↑ ${(jumpRecord.riseMs / 1000).toFixed(2)}s  ↓ ${(jumpRecord.fallMs! / 1000).toFixed(2)}s  ⟳ ${(jumpRecord.totalMs! / 1000).toFixed(2)}s  ⬆ ${jumpRecord.peakUnits!.toFixed(1)}u`
             : '— — —'}
         </div>
-        {/* Current height */}
+        {/* Current height: A = above current floor, B = relative floor elevation */}
         <div style={{
           background: 'rgba(0,0,0,0.65)',
-          color: myZ > 0.01 ? '#44ffaa' : 'rgba(255,255,255,0.5)',
           fontFamily: 'monospace',
           fontSize: 13,
           fontWeight: 700,
@@ -3370,8 +3676,101 @@ export default function BattleArena({
           border: '1px solid rgba(255,255,255,0.15)',
           letterSpacing: '0.05em',
         }}>
-          {myZ.toFixed(1)}
+          <span style={{ color: '#44ffaa' }}>{heightDisplay.aboveGround.toFixed(1)} u</span>
+          <span style={{ color: 'rgba(255,255,255,0.5)' }}> | </span>
+          <span style={{ color: '#ffd700' }}>{heightDisplay.floorElev.toFixed(1)} u</span>
         </div>
+      </div>
+
+      {/* ===== MEASUREMENT TOOL OVERLAY (80% x, 60% y) ===== */}
+      <div style={{
+        position: 'absolute',
+        left: '80%',
+        top: '60%',
+        transform: 'translate(-50%, -50%)',
+        zIndex: 490,
+        pointerEvents: 'all',
+        background: 'rgba(10,10,15,0.82)',
+        border: '1px solid rgba(255,215,0,0.35)',
+        borderRadius: 10,
+        padding: '10px 14px',
+        minWidth: 180,
+        fontFamily: 'monospace',
+        fontSize: 12,
+      }}>
+        <div style={{ color: '#ffd700', fontWeight: 700, marginBottom: 8, fontSize: 13 }}>📏 测量</div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <button
+            type="button"
+            onClick={() => {
+              const pos = localPositionRef.current ?? localRenderPosRef.current;
+              const nextPin = { x: pos.x, y: pos.y, z: localZRef.current };
+              setMeasurePins(prev => prev.length >= 2 ? [nextPin, prev[1]] : [nextPin]);
+            }}
+            style={{
+              flex: 1, background: measurePins.length >= 1 ? 'rgba(255,215,0,0.18)' : 'rgba(255,255,255,0.06)',
+              border: `1px solid ${measurePins.length >= 1 ? 'rgba(255,215,0,0.6)' : 'rgba(255,255,255,0.2)'}`,
+              color: measurePins.length >= 1 ? '#ffd700' : '#cbd5e1',
+              borderRadius: 6, padding: '5px 0', cursor: 'pointer', fontSize: 12,
+            }}
+          >Pin A</button>
+          <button
+            type="button"
+            onClick={() => {
+              const pos = localPositionRef.current ?? localRenderPosRef.current;
+              const nextPin = { x: pos.x, y: pos.y, z: localZRef.current };
+              setMeasurePins(prev => {
+                if (prev.length === 0) return prev; // need A first
+                return [prev[0], nextPin];
+              });
+            }}
+            style={{
+              flex: 1, background: measurePins.length >= 2 ? 'rgba(255,215,0,0.18)' : 'rgba(255,255,255,0.06)',
+              border: `1px solid ${measurePins.length >= 2 ? 'rgba(255,215,0,0.6)' : 'rgba(255,255,255,0.2)'}`,
+              color: measurePins.length >= 2 ? '#ffd700' : '#94a3b8',
+              borderRadius: 6, padding: '5px 0', cursor: 'pointer', fontSize: 12,
+            }}
+          >Pin B</button>
+        </div>
+        {measurePins.length === 0 && (
+          <div style={{ color: '#64748b', fontSize: 11 }}>先点 Pin A 记录起点</div>
+        )}
+        {measurePins.length === 1 && (
+          <div style={{ color: '#94a3b8', fontSize: 11 }}>
+            A 已记录<br/>
+            再点 Pin B 记录终点
+          </div>
+        )}
+        {measurePins.length >= 2 && (() => {
+          const dx = measurePins[1].x - measurePins[0].x;
+          const dy = measurePins[1].y - measurePins[0].y;
+          const dz = measurePins[1].z - measurePins[0].z;
+          const flatDist = Math.sqrt(dx * dx + dy * dy) / 2.2;
+          const heightDelta = Math.abs(dz) / 2.2;
+          const totalDist = Math.sqrt(dx * dx + dy * dy + dz * dz) / 2.2;
+          return (
+            <div style={{ color: '#86efac', fontSize: 12, lineHeight: 1.7 }}>
+              <div>A 已记录</div>
+              <div>B 已记录</div>
+              <div>平面 {flatDist.toFixed(1)} u</div>
+              <div>高差 {heightDelta.toFixed(1)} u</div>
+              <div style={{ color: '#ffd700', fontWeight: 700, marginTop: 4, fontSize: 13 }}>
+                总长 {totalDist.toFixed(1)} u
+              </div>
+            </div>
+          );
+        })()}
+        {measurePins.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setMeasurePins([])}
+            style={{
+              marginTop: 8, width: '100%', background: 'rgba(239,68,68,0.12)',
+              border: '1px solid rgba(239,68,68,0.35)', color: '#fca5a5',
+              borderRadius: 5, padding: '4px 0', fontSize: 11, cursor: 'pointer',
+            }}
+          >清除</button>
+        )}
       </div>
 
       {/* ===== TOP-LEFT: My HP panel ===== */}

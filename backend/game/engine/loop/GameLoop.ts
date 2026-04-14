@@ -1182,12 +1182,10 @@ export class GameLoop {
             const targetIsKnockedDown = opp.buffs.some((b) => isMoheKnockdown(b as any));
             if (e.knockbackUnits && e.knockbackUnits > 0 && dist > 0 && !targetIsKnockedDown) {
               const removedStuns = removeStunDebuffsFromPlayer(this.state, opp as any);
-              // knockbackUnits is in new units; multiply by UNIT_SCALE for world coordinates
-              const UNIT_SCALE = 2.2;
               opp.position = {
                 ...opp.position,
-                x: opp.position.x + (dx / dist) * e.knockbackUnits * UNIT_SCALE,
-                y: opp.position.y + (dy / dist) * e.knockbackUnits * UNIT_SCALE,
+                x: opp.position.x + (dx / dist) * e.knockbackUnits,
+                y: opp.position.y + (dy / dist) * e.knockbackUnits,
               };
               // Resolve collisions so player doesn't end up inside a wall
               resolveMapCollisions(opp, this.mapCtx);

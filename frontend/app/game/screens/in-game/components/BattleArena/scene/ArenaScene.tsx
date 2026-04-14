@@ -20,6 +20,7 @@ const OPP_COLORS = ['#cc3333', '#cc8800', '#9933cc', '#cc3388'];
 const OPP_EMISSIVES = ['#440000', '#332200', '#220044', '#330022'];
 
 const COLLISION_TEST_VIS_RADIUS = 0.64; // game units — matches export-reader avatar
+const CHANNEL_RING_WAIST_Z = 1.0;
 
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
@@ -85,6 +86,7 @@ interface ArenaSceneProps {
   onGroundPointerDown?: (x: number, y: number) => void;
   showCollisionShells?: boolean;
   collisionReady?: boolean;
+  collisionSystemRef?: MutableRefObject<MapCollisionSystem | null>;
   collisionDebugRef?: MutableRefObject<{
     enabled: boolean;
     center: { x: number; y: number; z: number };
@@ -332,6 +334,7 @@ export default function ArenaScene({
   onGroundPointerDown,
   showCollisionShells,
   collisionReady = true,
+  collisionSystemRef,
   collisionDebugRef,
   onCollisionSystemReady,
   losBlocker,
@@ -346,6 +349,7 @@ export default function ArenaScene({
   const worldHalfY = mapHeight / 2;
   const isArena = mode === 'arena';
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const zoneProbeRef = useRef(new THREE.Vector3());
 
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 250);
@@ -384,6 +388,35 @@ export default function ArenaScene({
 
   const isCollisionTest = mode === 'collision-test';
 
+  const getZoneVisualZ = (worldX: number, worldY: number, worldZ = 0) => {
+    let groundZ = 0;
+
+    if (isCollisionTest && collisionSystemRef?.current) {
+      const probe = zoneProbeRef.current;
+      probe.set(
+        (worldX - worldHalfX - GROUP_POS_X) / RENDER_SF,
+        5000,
+        (worldHalfY - worldY - GROUP_POS_Z) / RENDER_SF,
+      );
+      const supportY = collisionSystemRef.current.getSupportGroundY(probe);
+      if (supportY !== null) {
+        groundZ = supportY * RENDER_SF + GROUP_POS_Y;
+      }
+    } else {
+      for (const obj of mapObjects) {
+        if (
+          worldX >= obj.x && worldX <= obj.x + obj.w &&
+          worldY >= obj.y && worldY <= obj.y + obj.d &&
+          obj.h > groundZ
+        ) {
+          groundZ = obj.h;
+        }
+      }
+    }
+
+    return Math.max(worldZ, groundZ) + 0.16;
+  };
+
   return (
     <>
       {/* Camera */}
@@ -419,7 +452,15 @@ export default function ArenaScene({
 
       {/* World */}
       {isCollisionTest ? (
-        <ExportedMapScene worldWidth={mapWidth} worldHeight={mapHeight} showCollisionShells={showCollisionShells} blueprintMode={blueprintMode} onCollisionSystemReady={onCollisionSystemReady} />
+        <ExportedMapScene
+          worldWidth={mapWidth}
+          worldHeight={mapHeight}
+          showCollisionShells={showCollisionShells}
+          blueprintMode={blueprintMode}
+          onCollisionSystemReady={onCollisionSystemReady}
+          onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
+          onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
+        />
       ) : (
         <>
           <Ground
@@ -471,7 +512,7 @@ export default function ArenaScene({
             key={zone.id}
             worldX={zone.x}
             worldY={zone.y}
-            worldZ={zone.z ?? 0}
+            worldZ={getZoneVisualZ(zone.x, zone.y, zone.z ?? 0)}
             radius={zone.radius}
             color={color}
             labelColor={color}
@@ -486,7 +527,7 @@ export default function ArenaScene({
         <AoeZone
           worldX={groundCastPreview.x}
           worldY={groundCastPreview.y}
-          worldZ={0}
+          worldZ={getZoneVisualZ(groundCastPreview.x, groundCastPreview.y, 0)}
           radius={groundCastPreview.radius}
           color={groundCastPreview.label === '百足' ? '#b06cff' : '#ffd24a'}
           labelColor={groundCastPreview.label === '百足' ? '#d8b6ff' : '#ffe98a'}
@@ -501,7 +542,7 @@ export default function ArenaScene({
         <AoeZone
           worldX={me.position.x}
           worldY={me.position.y}
-          worldZ={me.position.z ?? 0}
+          worldZ={(me.position.z ?? 0) + CHANNEL_RING_WAIST_Z}
           radius={10}
           color="#ffd700"
           worldHalfX={worldHalfX}
@@ -525,7 +566,7 @@ export default function ArenaScene({
               <AoeZone
                 worldX={opp.position.x}
                 worldY={opp.position.y}
-                worldZ={opp.position.z ?? 0}
+                worldZ={(opp.position.z ?? 0) + CHANNEL_RING_WAIST_Z}
                 radius={10}
                 color="#ff5500"
                 worldHalfX={worldHalfX}

@@ -26,15 +26,8 @@ import { blocksEnemyTargeting } from "../../rules/guards";
 /** Stable buffId for the CC-immunity granted while dashing */
 export const DASH_CC_IMMUNE_BUFF_ID = 999900;
 
-/**
- * Unit scale: dash distance values in abilities.ts are in "new units".
- * Multiply by UNIT_SCALE to get old world units used in position math.
- * 1 new unit = 2.2 old world units (same constant as movement.ts).
- */
-const UNIT_SCALE = 2.2;
-
-// Default dash speed at 30Hz: 20 new units / 30 ticks × UNIT_SCALE world units per new unit.
-const DASH_UNITS_PER_TICK = 20 * UNIT_SCALE / 30;
+// Dash ability distances are already authored in live gameplay units.
+const DASH_UNITS_PER_TICK = 20 / 30;
 
 // Maximum angle caps (degrees from horizontal)
 const MAX_DOWN_ANGLE_DEG = 35;
@@ -82,8 +75,7 @@ export function handleDirectionalDash(
   effect: AbilityEffect
 ) {
   const distance = effect.value ?? 10;
-  // Convert game-design distance (new units) → world units for position math
-  const worldDistance = distance * UNIT_SCALE;
+  const worldDistance = distance;
 
   const rawFacing = source.facing;
   const facingLen = rawFacing
@@ -130,7 +122,7 @@ export function handleDirectionalDash(
   let useArcGravity = false;
   let arcGravityUpPerTick: number | undefined;
   let arcGravityDownPerTick: number | undefined;
-  const arcPeakHeight = (effect.arcPeakHeight ?? 0) * UNIT_SCALE; // scale to world units
+  const arcPeakHeight = effect.arcPeakHeight ?? 0;
   if (arcPeakHeight > 0) {
     const halfTicks = Math.max(1, durationTicks / 2);
     const g = (2 * arcPeakHeight) / (halfTicks * halfTicks);
@@ -165,7 +157,7 @@ export function handleDirectionalDash(
     const startY = source.position.y;
     const endX = startX + dirX * worldDistance;
     const endY = startY + dirY * worldDistance;
-    const routeRadius = (effect.routeRadius ?? 2) * UNIT_SCALE; // scale to world units
+    const routeRadius = effect.routeRadius ?? 2;
 
     for (const targetPlayer of state.players as any[]) {
       if (targetPlayer.userId === source.userId) continue;
