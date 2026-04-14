@@ -437,8 +437,8 @@ router.post("/draft/finalize", async (req, res) => {
         game.state.players[1].facing = { x: -1, y: 0 };
       }
 
-      game.state.players[0].moveSpeed = 0.1666667;
-      game.state.players[1].moveSpeed = 0.1666667;
+      game.state.players[0].moveSpeed = 0.3666667; // 0.1666667 × UNIT_SCALE(2.2)
+      game.state.players[1].moveSpeed = 0.3666667;
 
       // Force Mongoose to recognize nested changes
       game.state.players[0] = {

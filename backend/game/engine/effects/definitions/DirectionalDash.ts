@@ -26,7 +26,7 @@ import { blocksEnemyTargeting } from "../../rules/guards";
 /** Stable buffId for the CC-immunity granted while dashing */
 export const DASH_CC_IMMUNE_BUFF_ID = 999900;
 
-// Default dash speed at 30Hz: 20 units / 30 ticks = 2/3 unit per tick.
+// Dash ability distances are already authored in live gameplay units.
 const DASH_UNITS_PER_TICK = 20 / 30;
 
 // Maximum angle caps (degrees from horizontal)
@@ -75,6 +75,7 @@ export function handleDirectionalDash(
   effect: AbilityEffect
 ) {
   const distance = effect.value ?? 10;
+  const worldDistance = distance;
 
   const rawFacing = source.facing;
   const facingLen = rawFacing
@@ -109,12 +110,12 @@ export function handleDirectionalDash(
       break;
   }
 
-  const durationTicks = effect.durationTicks ?? Math.round(distance / DASH_UNITS_PER_TICK);
+  const durationTicks = effect.durationTicks ?? Math.round(worldDistance / DASH_UNITS_PER_TICK);
 
   // Pre-compute per-tick vz caps from the angle limits.
   // Actual vz capture happens on the first game-loop tick in movement.ts.
-  const maxUpVz   =  (distance * Math.tan(MAX_UP_ANGLE_DEG   * Math.PI / 180)) / durationTicks;
-  const maxDownVz = -(distance * Math.tan(MAX_DOWN_ANGLE_DEG * Math.PI / 180)) / durationTicks;
+  const maxUpVz   =  (worldDistance * Math.tan(MAX_UP_ANGLE_DEG   * Math.PI / 180)) / durationTicks;
+  const maxDownVz = -(worldDistance * Math.tan(MAX_DOWN_ANGLE_DEG * Math.PI / 180)) / durationTicks;
 
   // Optional arc mode: enforce a jump-like parabola with the configured peak height.
   let forceVzPerTick: number | undefined;
@@ -133,8 +134,8 @@ export function handleDirectionalDash(
 
   source.activeDash = {
     abilityId: ability.id,
-    vxPerTick: dirX * distance / durationTicks,
-    vyPerTick: dirY * distance / durationTicks,
+    vxPerTick: dirX * worldDistance / durationTicks,
+    vyPerTick: dirY * worldDistance / durationTicks,
     speedPerTick: effect.speedPerTick,
     steerByFacing: effect.steerByFacing,
     wallDiveOnBlock: effect.wallDiveOnBlock,
@@ -154,8 +155,8 @@ export function handleDirectionalDash(
   if ((effect.routeDamage ?? 0) > 0) {
     const startX = source.position.x;
     const startY = source.position.y;
-    const endX = startX + dirX * distance;
-    const endY = startY + dirY * distance;
+    const endX = startX + dirX * worldDistance;
+    const endY = startY + dirY * worldDistance;
     const routeRadius = effect.routeRadius ?? 2;
 
     for (const targetPlayer of state.players as any[]) {

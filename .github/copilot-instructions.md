@@ -15,6 +15,8 @@
 3. **Record experiences.** Every problem solved, unresolved issue, or disproved approach must be written to:  
    `/home/ubuntu/zhenchuan/EXPERIENCES.md` — filed under appropriate section headers.
 
+4. **Re-read every file before editing it.** Before making changes to any file, read its current contents again first. This prevents edits from being made against stale file state.
+
 ## Game: Active Mode
 
 - **`collision-test`** is the **primary / official game mode** (uses the exported 3D map, player radius 0.64).  
