@@ -1413,16 +1413,17 @@ export default function BattleArena({
     }
 
     // Reconcile Z with smoothing to reduce visible snap/jitter when stepping/jumping onto rooftops.
+    // Thresholds are in world units; scaled by UNIT_SCALE (2.2) because VZ values are 2.2× larger.
     const serverZ = (me.position as any).z ?? 0;
     const localZ  = localZRef.current;
     const zError = serverZ - localZ;
-    if (Math.abs(zError) > 1.2) {
+    if (Math.abs(zError) > 2.64) { // 1.2 × UNIT_SCALE
       localZRef.current = serverZ;
       localVzRef.current = 0;
       bvhCenterYInitRef.current = false; // large Z snap — resync sphere center next tick
     } else {
       localZRef.current = localZ + zError * 0.35;
-      if (Math.abs(serverZ - localZRef.current) < 0.02) {
+      if (Math.abs(serverZ - localZRef.current) < 0.044) { // 0.02 × UNIT_SCALE
         localZRef.current = serverZ;
       }
     }
@@ -2247,23 +2248,25 @@ export default function BattleArena({
     const CLIENT_TICK_HZ = 30;
     const CLIENT_TICK_MS = 1000 / CLIENT_TICK_HZ;
     // Match backend movement constants at 30Hz.
-    const MAX_SPEED = 0.1666667, ACCEL = 0.3, DECEL = 0.9;
+    // UNIT_SCALE = 2.2: all heights below are in new units; world displacement = height × 2.2.
+    const UNIT_SCALE = 2.2;
+    const MAX_SPEED = 0.1666667 * UNIT_SCALE, ACCEL = 0.3, DECEL = 0.9;
     // 30 Hz client physics — asymmetric gravity, tuned per jump type:
     //   Single jump : 1.7 u peak, 1.0 s rise, 0.7 s fall  → 1.7 s total
     //   Double jump : +0.755 u extra (peak 2.455 u)         → ~2.51 s total from takeoff
     //   Power jump  : 12.8 u peak, 1.77 s rise, 1.93 s fall → 3.7 s total
-    const GRAVITY_UP_CLIENT         = 2 * 1.7  / (30 * 30);            // ≈ 0.003778 (regular rise)
-    const GRAVITY_DOWN_CLIENT       = 2 * 1.7  / (21 * 21);            // ≈ 0.007710 (regular fall, 0.7 s)
-    const JUMP_VZ_CLIENT            = GRAVITY_UP_CLIENT * 30;           // ≈ 0.11333 (1.0 s → 1.7 u)
-    const DOUBLE_JUMP_VZ_CLIENT     = GRAVITY_UP_CLIENT * 20;           // ≈ 0.07556 (+0.755 u → 2.51 s total)
-    const POWER_GRAVITY_UP_CLIENT   = 2 * 12.8 / (53.1 * 53.1);        // ≈ 0.009079 (1.77 s rise)
-    const POWER_GRAVITY_DOWN_CLIENT = 2 * 12.8 / (57.9 * 57.9);        // ≈ 0.007636 (1.93 s fall)
-    const POWER_JUMP_VZ_CLIENT      = POWER_GRAVITY_UP_CLIENT * 53.1;   // ≈ 0.4823  (12.8 u peak)
+    const GRAVITY_UP_CLIENT         = 2 * 1.7  * UNIT_SCALE / (30 * 30);   // ≈ 0.008311 (regular rise)
+    const GRAVITY_DOWN_CLIENT       = 2 * 1.7  * UNIT_SCALE / (21 * 21);   // ≈ 0.016962 (regular fall, 0.7 s)
+    const JUMP_VZ_CLIENT            = GRAVITY_UP_CLIENT * 30;               // ≈ 0.24933 (1.0 s → 1.7 u)
+    const DOUBLE_JUMP_VZ_CLIENT     = GRAVITY_UP_CLIENT * 20;               // ≈ 0.16622 (+0.755 u → 2.51 s total)
+    const POWER_GRAVITY_UP_CLIENT   = 2 * 12.8 * UNIT_SCALE / (53.1 * 53.1); // ≈ 0.019974 (1.77 s rise)
+    const POWER_GRAVITY_DOWN_CLIENT = 2 * 12.8 * UNIT_SCALE / (57.9 * 57.9); // ≈ 0.016799 (1.93 s fall)
+    const POWER_JUMP_VZ_CLIENT      = POWER_GRAVITY_UP_CLIENT * 53.1;        // ≈ 1.0606  (12.8 u peak)
     // 扶摇直上 + 鸟翔碧空 combined: 24u peak, same 53.1-tick rise / 57.9-tick fall
-    const COMBINED_GRAVITY_UP_CLIENT   = 2 * 24 / (53.1 * 53.1);
-    const COMBINED_GRAVITY_DOWN_CLIENT = 2 * 24 / (57.9 * 57.9);
+    const COMBINED_GRAVITY_UP_CLIENT   = 2 * 24 * UNIT_SCALE / (53.1 * 53.1);
+    const COMBINED_GRAVITY_DOWN_CLIENT = 2 * 24 * UNIT_SCALE / (57.9 * 57.9);
     const COMBINED_JUMP_VZ_CLIENT      = COMBINED_GRAVITY_UP_CLIENT * 53.1;
-    const AIR_NUDGE_TOTAL_DISTANCE = 1;
+    const AIR_NUDGE_TOTAL_DISTANCE = 1 * UNIT_SCALE; // 1 new unit = 2.2 world units
     const AIR_NUDGE_DURATION_TICKS = 30; // 1.0s at 30Hz
     const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
     const TURN_RATE = 0.055; // radians / tick at 30 Hz ≈ 95°/sec
@@ -2696,7 +2699,7 @@ export default function BattleArena({
   const moveSpeedSlowSum = meEffects
     .filter((e: any) => e?.type === 'SLOW')
     .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
-  const baseMoveSpeed = Number(me?.moveSpeed ?? 0.1666667);
+  const baseMoveSpeed = Number(me?.moveSpeed ?? 0.3666667); // 0.1666667 × UNIT_SCALE(2.2)
   const finalMoveSpeed = Math.max(0, baseMoveSpeed * Math.max(0, 1 + moveSpeedBoostSum - moveSpeedSlowSum));
   const damageReductionEffect = meEffects.find((e: any) => e?.type === 'DAMAGE_REDUCTION');
   const damageReductionPct = Math.max(0, Number(damageReductionEffect?.value ?? 0) * 100);

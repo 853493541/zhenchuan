@@ -285,26 +285,35 @@ function resolveExportedRecovery(
 }
 
 /**
+ * Unit scale: all game-design distances are expressed in "new units".
+ * 1 new unit = 2.2 old world units (derived from map measurement: same house
+ * is 22 new units tall in our world and 10 units in the reference game → ×2.2).
+ * Map coordinates and collision never change — only movement physics are scaled.
+ */
+const UNIT_SCALE = 2.2;
+
+/**
  * Vertical physics (30 Hz tick rate)
  *
- * Asymmetric gravity, 30 Hz:
+ * Asymmetric gravity, 30 Hz.  Heights below are in NEW units; actual world
+ * displacement = height × UNIT_SCALE.
  *   Single jump : 1.7 u peak, 1.0 s rise (30 ticks), 0.7 s fall (21 ticks) → 1.7 s total
  *   Double jump : +0.755 u extra (peak 2.455 u) → ~2.51 s total from takeoff
  *   Power jump  : 12.8 u peak, 1.77 s rise (53.1 ticks), 1.93 s fall (57.9 ticks) → 3.7 s total
  */
-const GRAVITY_UP     = 2 * 1.7 / (30 * 30);        // ≈ 0.003778
-const GRAVITY_DOWN   = 2 * 1.7 / (21 * 21);        // ≈ 0.007710
-const JUMP_VZ        = GRAVITY_UP * 30;            // ≈ 0.11333
-const DOUBLE_JUMP_VZ = GRAVITY_UP * 20;            // ≈ 0.07556
-const POWER_GRAVITY_UP   = 2 * 12.8 / (53.1 * 53.1); // ≈ 0.009079
-const POWER_GRAVITY_DOWN = 2 * 12.8 / (57.9 * 57.9); // ≈ 0.007636
-const POWER_JUMP_VZ      = POWER_GRAVITY_UP * 53.1;    // ≈ 0.4823
+const GRAVITY_UP     = 2 * 1.7  * UNIT_SCALE / (30 * 30);        // ≈ 0.008311
+const GRAVITY_DOWN   = 2 * 1.7  * UNIT_SCALE / (21 * 21);        // ≈ 0.016962
+const JUMP_VZ        = GRAVITY_UP * 30;                           // ≈ 0.24933
+const DOUBLE_JUMP_VZ = GRAVITY_UP * 20;                           // ≈ 0.16622
+const POWER_GRAVITY_UP   = 2 * 12.8 * UNIT_SCALE / (53.1 * 53.1); // ≈ 0.019974
+const POWER_GRAVITY_DOWN = 2 * 12.8 * UNIT_SCALE / (57.9 * 57.9); // ≈ 0.016799
+const POWER_JUMP_VZ      = POWER_GRAVITY_UP * 53.1;                // ≈ 1.0606 (12.8 u peak)
 // 扶摇直上 + 鸟翔碧空 combined: 24u peak, same 53.1-tick rise / 57.9-tick fall as power jump
-const COMBINED_GRAVITY_UP   = 2 * 24 / (53.1 * 53.1); // = POWER_GRAVITY_UP * (24/12.8)
-const COMBINED_GRAVITY_DOWN = 2 * 24 / (57.9 * 57.9); // = POWER_GRAVITY_DOWN * (24/12.8)
-const COMBINED_JUMP_VZ      = COMBINED_GRAVITY_UP * 53.1; // ≈ 0.9046 (24u peak)
+const COMBINED_GRAVITY_UP   = 2 * 24 * UNIT_SCALE / (53.1 * 53.1); // = POWER_GRAVITY_UP × (24/12.8)
+const COMBINED_GRAVITY_DOWN = 2 * 24 * UNIT_SCALE / (57.9 * 57.9);
+const COMBINED_JUMP_VZ      = COMBINED_GRAVITY_UP * 53.1;            // ≈ 1.9886 (24 u peak)
 const MAX_JUMPS = 2;           // default double-jump cap
-const AIR_NUDGE_TOTAL_DISTANCE = 1;
+const AIR_NUDGE_TOTAL_DISTANCE = 1 * UNIT_SCALE; // 1 new unit = 2.2 world units
 const AIR_NUDGE_DURATION_TICKS = 30; // 1.0s at 30Hz
 const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
 
@@ -428,8 +437,9 @@ export function applyMovement(
         // the upward-dash feel. But negative vz must exceed -0.02 (~10 ticks of
         // falling) before the dash tilts downward — this gives a generous 0.17 s
         // window after the apex where the dash stays horizontal.
-        const DEAD_ZONE_UP   = 0.006;  // almost any upward motion → upward dash
-        const DEAD_ZONE_DOWN = 0.04;   // must fall for ~0.17s before dash tilts down
+        // Scaled by UNIT_SCALE because vz values are now ×2.2 larger.
+        const DEAD_ZONE_UP   = 0.006 * UNIT_SCALE;  // almost any upward motion → upward dash
+        const DEAD_ZONE_DOWN = 0.04  * UNIT_SCALE;   // must fall for ~0.17s before dash tilts down
 
         if (rawVz > DEAD_ZONE_UP) {
           // Rising: dash upward, capped at max angle
@@ -458,7 +468,7 @@ export function applyMovement(
     }
 
     if (dash.snapUpUnits && !(dash as any)._snapApplied) {
-      player.position.z = (player.position.z ?? 0) + dash.snapUpUnits;
+      player.position.z = (player.position.z ?? 0) + dash.snapUpUnits * UNIT_SCALE;
       (dash as any)._snapApplied = true;
     }
 
@@ -580,7 +590,7 @@ export function applyMovement(
         dash.vxPerTick = 0;
         dash.vyPerTick = 0;
         dash.steerByFacing = false;
-        const diveVz = dash.diveVzPerTick ?? -0.45;
+        const diveVz = (dash.diveVzPerTick ?? -0.45) * UNIT_SCALE;
         dash.vzPerTick = Math.min(dash.vzPerTick ?? 0, diveVz);
       }
     }

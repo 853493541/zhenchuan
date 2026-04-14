@@ -9,6 +9,13 @@ import type { MapObject } from "../state/types/map";
 import type { ExportedMapCollisionSystem } from "../../map/exportedMapCollision";
 import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT } from "../../map/exportedMap";
 
+/**
+ * Unit scale: ability range values in abilities.ts are in "new units".
+ * Multiply by UNIT_SCALE to get old world units for position comparisons.
+ * 1 new unit = 2.2 old world units (same constant as movement.ts).
+ */
+const UNIT_SCALE = 2.2;
+
 /* =========================================================
    INTERNAL HELPERS
 ========================================================= */
@@ -307,11 +314,11 @@ export function validateCastAbility(
           targetPlayer.position
         );
 
-    if (distance > ability.range) {
+    if (distance > ability.range * UNIT_SCALE) {
       throw new Error("ERR_OUT_OF_RANGE");
     }
 
-    if (ability.minRange !== undefined && distance < ability.minRange) {
+    if (ability.minRange !== undefined && distance < ability.minRange * UNIT_SCALE) {
       throw new Error("ERR_TOO_CLOSE");
     }
   }

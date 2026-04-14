@@ -8,9 +8,17 @@ import { pushEvent } from "../events";
 /** Stable buffId for the CC-immunity granted while dashing */
 const DASH_CC_IMMUNE_BUFF_ID = 999901;
 
-/** Dash speed: 20 units per 0.5 seconds = 40 units/s */
-const DASH_SPEED_UNITS_PER_SEC = 40;
+/**
+ * Unit scale: game-design distances in abilities.ts are in "new units".
+ * 1 new unit = 2.2 old world units (same constant as movement.ts).
+ */
+const UNIT_SCALE = 2.2;
+
+/** Dash speed in new units/sec. World conversion happens at speedPerTick below. */
+const DASH_SPEED_NEW_UNITS_PER_SEC = 40; // design value: 40 new units/sec
 const TICK_RATE = 30;
+/** Stop 1 new unit away from target, converted to world coordinates. */
+const STOP_DISTANCE_WORLD = 1 * UNIT_SCALE;
 
 /**
  * Handle DASH effects.
@@ -34,7 +42,7 @@ export function handleDash(
   const dz = targetZ - sourceZ;
 
   // If already close in XYZ, don't move
-  if (distance <= 1 && Math.abs(dz) <= 0.1) {
+  if (distance <= STOP_DISTANCE_WORLD && Math.abs(dz) <= 0.1 * UNIT_SCALE) {
     pushEvent(state, {
       turn: state.turn,
       type: "DASH",
@@ -48,14 +56,14 @@ export function handleDash(
     return;
   }
 
-  // We want to end up 1 unit away from target on XY, but snap vertical travel to target Z.
-  const desiredDistance = distance > 1 ? 1 : 0;
+  // We want to end up STOP_DISTANCE_NEW_UNITS away from target on XY, but snap vertical travel to target Z.
+  const desiredDistance = distance > STOP_DISTANCE_WORLD ? STOP_DISTANCE_WORLD : 0;
   const travelDistance = Math.max(0, distance - desiredDistance);
   const dirX = distance > 0.001 ? dx / distance : 0;
   const dirY = distance > 0.001 ? dy / distance : 0;
 
-  // Speed-based duration: distance / speed, converted to ticks
-  const speedPerTick = DASH_SPEED_UNITS_PER_SEC / TICK_RATE;
+  // Speed-based duration: convert design speed (new units/sec) → world units/tick
+  const speedPerTick = DASH_SPEED_NEW_UNITS_PER_SEC * UNIT_SCALE / TICK_RATE;
   const horizontalTicks = Math.round(travelDistance / speedPerTick);
   const verticalTicks = Math.round(Math.abs(dz) / speedPerTick);
   const durationTicks = Math.max(1, horizontalTicks, verticalTicks);
