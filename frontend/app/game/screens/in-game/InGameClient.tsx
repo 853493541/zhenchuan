@@ -12,7 +12,11 @@ import {
   GamePreloadProvider,
 } from "./preload/GamePreloadContext";
 
-const NEW_UNIT_SCALE = 2.2;
+const LEGACY_STORED_UNIT_SCALE = 2.2;
+
+function getStoredUnitScale(mode?: string): number {
+  return mode === 'collision-test' ? 1 : LEGACY_STORED_UNIT_SCALE;
+}
 
 /* ================= ERROR CODE → TOAST TEXT ================= */
 function showGameError(rawCode: string) {
@@ -298,6 +302,7 @@ export default function InGameClient({
 
   // Calculate 3D distance to nearest opponent in new world units.
   const distance = (() => {
+    const storedUnitScale = getStoredUnitScale(gameMode);
     let minDist = 0;
     for (const opp of opponents) {
       if (!me?.position || !opp?.position) continue;
@@ -305,7 +310,7 @@ export default function InGameClient({
         Math.pow(opp.position.x - me.position.x, 2) +
         Math.pow(opp.position.y - me.position.y, 2) +
         Math.pow((opp.position.z ?? 0) - (me.position.z ?? 0), 2)
-      ) / NEW_UNIT_SCALE;
+      ) / storedUnitScale;
       if (minDist === 0 || d < minDist) minDist = d;
     }
     return minDist;

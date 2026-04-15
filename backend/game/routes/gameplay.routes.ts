@@ -7,6 +7,7 @@ import { ABILITIES } from "../abilities/abilities";
 import GameSession from "../models/GameSession";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { randomUUID } from "crypto";
+import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types";
 
 const router = express.Router();
 
@@ -144,8 +145,8 @@ router.post("/ping", async (req, res) => {
 
 /* ======================== PICKUP SYSTEM ======================== */
 
-const PICKUP_INTERACT_RANGE = 5;  // world units — must be within this distance to start channeling
-const PICKUP_CLAIM_RANGE    = 20; // world units — can claim after channeling even if walked away
+const PICKUP_INTERACT_RANGE = 5;  // gameplay units — must be within this distance to start channeling
+const PICKUP_CLAIM_RANGE    = 20; // gameplay units — can claim after channeling even if walked away
 const MAX_DRAFT_HAND = 6;        // draft-ability cap (common abilities excluded)
 
 /**
@@ -181,10 +182,12 @@ router.post("/pickup/inspect", async (req, res) => {
 
     // Check distance (3D — includes Z height)
     const player = state.players[playerIndex];
+    const storedUnitScale = state.unitScale ?? NEW_WORLD_UNIT_SCALE;
+    const interactRange = PICKUP_INTERACT_RANGE * storedUnitScale;
     const dx = player.position.x - pickup.position.x;
     const dy = player.position.y - pickup.position.y;
     const dz = player.position.z ?? 0;
-    if (dx * dx + dy * dy + dz * dz > PICKUP_INTERACT_RANGE * PICKUP_INTERACT_RANGE) {
+    if (dx * dx + dy * dy + dz * dz > interactRange * interactRange) {
       return res.status(400).json({ error: "Too far away to interact" });
     }
 
@@ -240,10 +243,12 @@ router.post("/pickup/claim", async (req, res) => {
 
     // Check distance — claim allows up to PICKUP_CLAIM_RANGE so player can walk away after channeling
     const player = loopState.players[playerIndex];
+    const storedUnitScale = loopState.unitScale ?? NEW_WORLD_UNIT_SCALE;
+    const claimRange = PICKUP_CLAIM_RANGE * storedUnitScale;
     const dx = player.position.x - pickup.position.x;
     const dy = player.position.y - pickup.position.y;
     const dz = player.position.z ?? 0;
-    if (dx * dx + dy * dy + dz * dz > PICKUP_CLAIM_RANGE * PICKUP_CLAIM_RANGE) {
+    if (dx * dx + dy * dy + dz * dz > claimRange * claimRange) {
       return res.status(400).json({ error: "Too far away to pick up" });
     }
 

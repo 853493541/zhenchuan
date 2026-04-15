@@ -8,11 +8,7 @@ import { pushEvent } from "../events";
 /** Stable buffId for the CC-immunity granted while dashing */
 const DASH_CC_IMMUNE_BUFF_ID = 999901;
 
-/** Dash ability distances/speed are authored in new world units. */
-const DASH_SPEED_UNITS_PER_SEC = gameplayUnitsToWorldUnits(40);
 const TICK_RATE = 30;
-/** Stop 1 unit away from target. */
-const STOP_DISTANCE = gameplayUnitsToWorldUnits(1);
 
 /**
  * Handle DASH effects.
@@ -27,6 +23,10 @@ export function handleDash(
   ability: Ability,
   effect: AbilityEffect
 ) {
+  const storedUnitScale = state.unitScale;
+  const dashSpeedUnitsPerSec = gameplayUnitsToWorldUnits(40, storedUnitScale);
+  const stopDistance = gameplayUnitsToWorldUnits(1, storedUnitScale);
+
   // Calculate vector from source to target
   const dx = target.position.x - source.position.x;
   const dy = target.position.y - source.position.y;
@@ -36,7 +36,7 @@ export function handleDash(
   const dz = targetZ - sourceZ;
 
   // If already close in XYZ, don't move
-  if (distance <= STOP_DISTANCE && Math.abs(dz) <= 0.1) {
+  if (distance <= stopDistance && Math.abs(dz) <= 0.1) {
     pushEvent(state, {
       turn: state.turn,
       type: "DASH",
@@ -51,12 +51,12 @@ export function handleDash(
   }
 
   // We want to end up STOP_DISTANCE_NEW_UNITS away from target on XY, but snap vertical travel to target Z.
-  const desiredDistance = distance > STOP_DISTANCE ? STOP_DISTANCE : 0;
+  const desiredDistance = distance > stopDistance ? stopDistance : 0;
   const travelDistance = Math.max(0, distance - desiredDistance);
   const dirX = distance > 0.001 ? dx / distance : 0;
   const dirY = distance > 0.001 ? dy / distance : 0;
 
-  const speedPerTick = DASH_SPEED_UNITS_PER_SEC / TICK_RATE;
+  const speedPerTick = dashSpeedUnitsPerSec / TICK_RATE;
   const horizontalTicks = Math.round(travelDistance / speedPerTick);
   const verticalTicks = Math.round(Math.abs(dz) / speedPerTick);
   const durationTicks = Math.max(1, horizontalTicks, verticalTicks);
@@ -107,6 +107,6 @@ export function handleDash(
     abilityId: ability.id,
     abilityName: ability.name,
     effectType: "DASH",
-    value: Math.round(worldUnitsToGameplayUnits(travelDistance)),
+    value: Math.round(worldUnitsToGameplayUnits(travelDistance, storedUnitScale)),
   });
 }

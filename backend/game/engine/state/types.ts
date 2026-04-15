@@ -86,6 +86,7 @@ export {
   calculateDistance,
   calculateAngle,
   NEW_WORLD_UNIT_SCALE,
+  normalizeStoredUnitScale,
   gameplayUnitsToWorldUnits,
   worldUnitsToGameplayUnits,
 } from "./types/position";

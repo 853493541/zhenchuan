@@ -26,9 +26,6 @@ import { blocksEnemyTargeting } from "../../rules/guards";
 /** Stable buffId for the CC-immunity granted while dashing */
 export const DASH_CC_IMMUNE_BUFF_ID = 999900;
 
-// Dash ability distances are authored in new world units; movement runs in raw world coords.
-const DASH_UNITS_PER_TICK = gameplayUnitsToWorldUnits(20) / 30;
-
 // Maximum angle caps (degrees from horizontal)
 const MAX_DOWN_ANGLE_DEG = 35;
 const MAX_UP_ANGLE_DEG   = 45;
@@ -75,7 +72,9 @@ export function handleDirectionalDash(
   effect: AbilityEffect
 ) {
   const distance = effect.value ?? 10;
-  const worldDistance = gameplayUnitsToWorldUnits(distance);
+  const storedUnitScale = state.unitScale;
+  const worldDistance = gameplayUnitsToWorldUnits(distance, storedUnitScale);
+  const dashUnitsPerTick = gameplayUnitsToWorldUnits(20, storedUnitScale) / 30;
 
   const rawFacing = source.facing;
   const facingLen = rawFacing
@@ -110,7 +109,7 @@ export function handleDirectionalDash(
       break;
   }
 
-  const durationTicks = effect.durationTicks ?? Math.round(worldDistance / DASH_UNITS_PER_TICK);
+  const durationTicks = effect.durationTicks ?? Math.round(worldDistance / dashUnitsPerTick);
 
   // Pre-compute per-tick vz caps from the angle limits.
   // Actual vz capture happens on the first game-loop tick in movement.ts.
@@ -122,7 +121,7 @@ export function handleDirectionalDash(
   let useArcGravity = false;
   let arcGravityUpPerTick: number | undefined;
   let arcGravityDownPerTick: number | undefined;
-  const arcPeakHeight = gameplayUnitsToWorldUnits(effect.arcPeakHeight ?? 0);
+  const arcPeakHeight = gameplayUnitsToWorldUnits(effect.arcPeakHeight ?? 0, storedUnitScale);
   if (arcPeakHeight > 0) {
     const halfTicks = Math.max(1, durationTicks / 2);
     const g = (2 * arcPeakHeight) / (halfTicks * halfTicks);
@@ -137,7 +136,7 @@ export function handleDirectionalDash(
     vxPerTick: dirX * worldDistance / durationTicks,
     vyPerTick: dirY * worldDistance / durationTicks,
     speedPerTick: effect.speedPerTick !== undefined
-      ? gameplayUnitsToWorldUnits(effect.speedPerTick)
+      ? gameplayUnitsToWorldUnits(effect.speedPerTick, storedUnitScale)
       : undefined,
     steerByFacing: effect.steerByFacing,
     wallDiveOnBlock: effect.wallDiveOnBlock,
@@ -159,7 +158,7 @@ export function handleDirectionalDash(
     const startY = source.position.y;
     const endX = startX + dirX * worldDistance;
     const endY = startY + dirY * worldDistance;
-    const routeRadius = gameplayUnitsToWorldUnits(effect.routeRadius ?? 2);
+    const routeRadius = gameplayUnitsToWorldUnits(effect.routeRadius ?? 2, storedUnitScale);
 
     for (const targetPlayer of state.players as any[]) {
       if (targetPlayer.userId === source.userId) continue;

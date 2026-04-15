@@ -5,8 +5,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 
-const CHAR_RADIUS = 0.7;
-const CHAR_HEIGHT = 2.0;
+const CHAR_RADIUS = 0.42;
+const CHAR_HEIGHT = 1.5;
 /** Camera distance at which the HP bar has scale=1 (matches default camera offset) */
 const HP_REF_DIST = 20;
 const _hpWorldPos = new THREE.Vector3();

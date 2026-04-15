@@ -4,7 +4,7 @@
  * Handles applying player input to position/velocity
  */
 
-import { PlayerState, MovementInput } from "../state/types";
+import { PlayerState, MovementInput, NEW_WORLD_UNIT_SCALE } from "../state/types";
 import type { MapObject } from "../state/types/map";
 import * as THREE from "three";
 import { worldMap } from "../../map/worldMap";
@@ -30,6 +30,7 @@ export interface MapContext {
   objects: import("../state/types/map").MapObject[];
   width: number;
   height: number;
+  unitScale?: number;
   /** If true, enforce a circular boundary (center = width/2, height/2; radius = width/2). */
   circular?: boolean;
   /** Override player collision radius (default 2). Export-reader avatar uses ~0.32. */
@@ -41,9 +42,9 @@ export interface MapContext {
 const BVH_STEP_UP_LIMIT = 56;
 const BVH_RECOVERY_DROP = 3500;
 const BVH_RECOVERY_LIFT = 120;
-// Cylinder collision: half-height in game units (character 2.0 m tall)
-const CYL_HALF_HEIGHT_GAME = 1.0;
-const EXPORTED_CYLINDER_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / EXPORTED_COLLISION_RENDER_SF; // ~90 export units
+// Cylinder collision: half-height in game units (character 1.5 units tall)
+const CYL_HALF_HEIGHT_GAME = 0.75;
+const EXPORTED_CYLINDER_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / EXPORTED_COLLISION_RENDER_SF;
 const _bvhCenter = new THREE.Vector3();
 const _bvhVelocity = new THREE.Vector3();
 
@@ -163,6 +164,24 @@ function syncExportCenter(px: number, py: number, pz: number, arenaW: number, ar
   return _bvhCenter;
 }
 
+function getExportedGroundProbeOriginY(center: THREE.Vector3): number {
+  return center.y - EXPORTED_CYLINDER_HALF_HEIGHT + BVH_STEP_UP_LIMIT;
+}
+
+function getExportedGroundSupportY(
+  center: THREE.Vector3,
+  collisionSystem: ExportedMapCollisionSystem,
+): number | null {
+  return collisionSystem.getSupportGroundY(center, getExportedGroundProbeOriginY(center));
+}
+
+function getExportedCeilingY(
+  center: THREE.Vector3,
+  collisionSystem: ExportedMapCollisionSystem,
+): number | null {
+  return collisionSystem.getCeilingY(center, center.y);
+}
+
 function applyHorizontalFromExportCenter(
   player: PlayerState,
   center: THREE.Vector3,
@@ -192,7 +211,7 @@ function getExportedGroundHeight(
   collisionSystem: ExportedMapCollisionSystem,
 ): number {
   const center = syncExportCenter(px, py, pz, arenaW, arenaH, playerRadius);
-  const groundExportY = collisionSystem.getSupportGroundY(center);
+  const groundExportY = getExportedGroundSupportY(center, collisionSystem);
   return groundExportY === null
     ? 0
     : groundExportY * EXPORTED_COLLISION_RENDER_SF + EXPORTED_COLLISION_GROUP_POS_Y;
@@ -224,7 +243,14 @@ function resolveExportedVerticalCollision(
   // player.position.z already has gravity applied by the caller.
   const center = syncExportCenter(player.position.x, player.position.y, player.position.z ?? 0, arenaW, arenaH, playerRadius);
 
-  const groundExportY = collisionSystem.getSupportGroundY(center);
+  const ceilingExportY = getExportedCeilingY(center, collisionSystem);
+  const headExportY = center.y + EXPORTED_CYLINDER_HALF_HEIGHT;
+  if ((player.velocity.vz ?? 0) > 0 && ceilingExportY !== null && headExportY >= ceilingExportY) {
+    center.y = ceilingExportY - EXPORTED_CYLINDER_HALF_HEIGHT;
+    player.velocity.vz = -0.0001;
+  }
+
+  const groundExportY = getExportedGroundSupportY(center, collisionSystem);
   const feetExportY   = center.y - EXPORTED_CYLINDER_HALF_HEIGHT;
   let bvhOnGround = false;
 
@@ -278,7 +304,7 @@ function resolveExportedRecovery(
   collisionSystem.resolveSphereCollision(center, EXPORTED_COLLISION_RADIUS, _bvhVelocity);
   applyHorizontalFromExportCenter(player, center, arenaW, arenaH, playerRadius);
 
-  const groundExportY = collisionSystem.getSupportGroundY(center);
+  const groundExportY = getExportedGroundSupportY(center, collisionSystem);
   if (groundExportY === null) return;
 
   const groundH = groundExportY * EXPORTED_COLLISION_RENDER_SF + EXPORTED_COLLISION_GROUP_POS_Y;
@@ -288,38 +314,8 @@ function resolveExportedRecovery(
   }
 }
 
-/**
- * Unit scale: movement/jump physics in this file are expressed in "new units".
- * 1 new unit = 2.2 old world units (derived from map measurement: same house
- * is 22 new units tall in our world and 10 units in the reference game → ×2.2).
- * Map coordinates and collision never change — only locomotion/jump physics are scaled here.
- */
-const UNIT_SCALE = 2.2;
-
-/**
- * Vertical physics (30 Hz tick rate)
- *
- * Asymmetric gravity, 30 Hz.  Heights below are in NEW units; actual world
- * displacement = height × UNIT_SCALE.
- *   Single jump : 1.7 u peak, 1.0 s rise (30 ticks), 0.7 s fall (21 ticks) → 1.7 s total
- *   Double jump : +0.755 u extra (peak 2.455 u) → ~2.51 s total from takeoff
- *   Power jump  : 12.8 u peak, 1.77 s rise (53.1 ticks), 1.93 s fall (57.9 ticks) → 3.7 s total
- */
-const GRAVITY_UP     = 2 * 1.7  * UNIT_SCALE / (30 * 30);        // ≈ 0.008311
-const GRAVITY_DOWN   = 2 * 1.7  * UNIT_SCALE / (21 * 21);        // ≈ 0.016962
-const JUMP_VZ        = GRAVITY_UP * 30;                           // ≈ 0.24933
-const DOUBLE_JUMP_VZ = GRAVITY_UP * 20;                           // ≈ 0.16622
-const POWER_GRAVITY_UP   = 2 * 12.8 * UNIT_SCALE / (53.1 * 53.1); // ≈ 0.019974
-const POWER_GRAVITY_DOWN = 2 * 12.8 * UNIT_SCALE / (57.9 * 57.9); // ≈ 0.016799
-const POWER_JUMP_VZ      = POWER_GRAVITY_UP * 53.1;                // ≈ 1.0606 (12.8 u peak)
-// 扶摇直上 + 鸟翔碧空 combined: 24u peak, same 53.1-tick rise / 57.9-tick fall as power jump
-const COMBINED_GRAVITY_UP   = 2 * 24 * UNIT_SCALE / (53.1 * 53.1); // = POWER_GRAVITY_UP × (24/12.8)
-const COMBINED_GRAVITY_DOWN = 2 * 24 * UNIT_SCALE / (57.9 * 57.9);
-const COMBINED_JUMP_VZ      = COMBINED_GRAVITY_UP * 53.1;            // ≈ 1.9886 (24 u peak)
 const MAX_JUMPS = 2;           // default double-jump cap
 const BASE_MOVE_SPEED_NEW_PER_SECOND = 5;
-const UPWARD_JUMP_AIR_SHIFT_DISTANCE = 2 * UNIT_SCALE;
-const DIRECTIONAL_JUMP_DISTANCE = 6 * UNIT_SCALE;
 const AIR_SHIFT_DURATION_SECONDS = 1;
 const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
 
@@ -413,6 +409,22 @@ export function applyMovement(
   const mapObjects = mapCtx?.objects ?? worldMap.objects;
   const arenaW     = mapCtx?.width  ?? ARENA_WIDTH;
   const arenaH     = mapCtx?.height ?? ARENA_HEIGHT;
+  const UNIT_SCALE = mapCtx?.unitScale ?? NEW_WORLD_UNIT_SCALE;
+  const GRAVITY_UP     = 2 * 1.7  * UNIT_SCALE / (30 * 30);
+  const GRAVITY_DOWN   = 2 * 1.7  * UNIT_SCALE / (21 * 21);
+  const JUMP_VZ        = GRAVITY_UP * 30;
+  const DOUBLE_JUMP_VZ = GRAVITY_UP * 20;
+  const POWER_GRAVITY_UP   = 2 * 12.8 * UNIT_SCALE / (53.1 * 53.1);
+  const POWER_GRAVITY_DOWN = 2 * 12.8 * UNIT_SCALE / (57.9 * 57.9);
+  const POWER_JUMP_VZ      = POWER_GRAVITY_UP * 53.1;
+  const COMBINED_GRAVITY_UP   = 2 * 24 * UNIT_SCALE / (53.1 * 53.1);
+  const COMBINED_GRAVITY_DOWN = 2 * 24 * UNIT_SCALE / (57.9 * 57.9);
+  const COMBINED_JUMP_VZ      = COMBINED_GRAVITY_UP * 53.1;
+  const UPWARD_JUMP_AIR_SHIFT_DISTANCE = 2 * UNIT_SCALE;
+  const DIRECTIONAL_JUMP_DISTANCE = 6 * UNIT_SCALE;
+  const POWER_DIRECTIONAL_JUMP_DISTANCE = 18 * UNIT_SCALE;
+  const POWER_DOUBLE_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
+  const MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
   const pr         = mapCtx?.playerRadius ?? DEFAULT_PLAYER_RADIUS;
   const airShiftDurationTicks = Math.max(1, Math.round(tickRate * AIR_SHIFT_DURATION_SECONDS));
   const baseMoveSpeedPerTick = (BASE_MOVE_SPEED_NEW_PER_SECOND * UNIT_SCALE) / tickRate;
@@ -516,7 +528,7 @@ export function applyMovement(
         // the upward-dash feel. But negative vz must exceed -0.02 (~10 ticks of
         // falling) before the dash tilts downward — this gives a generous 0.17 s
         // window after the apex where the dash stays horizontal.
-        // Scaled by UNIT_SCALE because vz values are now ×2.2 larger.
+        // Scale with the active runtime unit size so dash inheritance matches the current mode.
         const DEAD_ZONE_UP   = 0.006 * UNIT_SCALE;  // almost any upward motion → upward dash
         const DEAD_ZONE_DOWN = 0.04  * UNIT_SCALE;   // must fall for ~0.17s before dash tilts down
 
@@ -538,6 +550,8 @@ export function applyMovement(
       const hasMultiJumpDash = allEffects.some((e) => e.type === "MULTI_JUMP");
       player.jumpCount = hasMultiJumpDash ? 0 : 1;
       clearAirShift(player);
+      // A completed dash must not seed the next jump with dash-speed carry.
+      clearAirborneSpeedCarry(player);
 
       (dash as any)._startMs = Date.now();
       console.log(`[DASH] >>> START  time=${new Date().toISOString()}  ticks=${dash.ticksRemaining}`);
@@ -569,11 +583,6 @@ export function applyMovement(
         }
       }
     }
-
-    rememberAirborneSpeedCarry(
-      player,
-      dash.speedPerTick ?? Math.sqrt(dash.vxPerTick * dash.vxPerTick + dash.vyPerTick * dash.vyPerTick),
-    );
 
     // ── Apply dash movement ────────────────────────────────────────────────
     const prevX = player.position.x;
@@ -655,6 +664,7 @@ export function applyMovement(
         const hasMultiJumpEnd = allEffects.some((e) => e.type === "MULTI_JUMP");
         player.jumpCount = hasMultiJumpEnd ? 0 : 1;
         clearAirShift(player);
+        clearAirborneSpeedCarry(player);
       }
       player.isPowerJump = false;
       delete player.activeDash;
@@ -774,6 +784,7 @@ export function applyMovement(
       const isMultiJump = !!multiJumpEffect;
       const jumpDir = normalizePlanar(targetVx, targetVy);
       const isDirectionalJump = jumpDir !== null;
+      const hadPowerJumpAirtime = !!player.isPowerJump && !player.isPowerJumpCombined && (player.jumpCount ?? 0) > 0;
       const heightAboveGround = Math.max(0, (player.position.z ?? 0) - currentGroundH);
       let jumpGravityUp = GRAVITY_UP;
       let jumpGravityDown = GRAVITY_DOWN;
@@ -824,6 +835,13 @@ export function applyMovement(
         const speedScale = baseMoveSpeedPerTick > 0.0001
           ? jumpStartPlanarSpeed / baseMoveSpeedPerTick
           : 0;
+        const directionalJumpDistance = boostIdx >= 0 && !isMultiJump
+          ? POWER_DIRECTIONAL_JUMP_DISTANCE
+          : hadPowerJumpAirtime
+            ? POWER_DOUBLE_DIRECTIONAL_JUMP_DISTANCE
+            : isMultiJump && boostIdx < 0
+              ? MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE
+            : DIRECTIONAL_JUMP_DISTANCE;
         const jumpTravelTicks = estimateAirborneTicks(
           heightAboveGround,
           jumpVz,
@@ -833,7 +851,7 @@ export function applyMovement(
         startAirShift(
           player,
           jumpDir,
-          DIRECTIONAL_JUMP_DISTANCE * Math.max(0, speedScale),
+          directionalJumpDistance * Math.max(0, speedScale),
           jumpTravelTicks,
         );
         player.facing = { x: jumpDir.x, y: jumpDir.y };

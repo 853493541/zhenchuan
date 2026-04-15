@@ -126,9 +126,10 @@ export interface PlayerState {
 
   /**
    * Latest airborne/special-movement planar speed snapshot (world units per tick).
-   * Used so follow-up jump phases can scale from the actual speed state that
-   * launched them, such as airborne dashes, instead of always falling back to
-   * base run speed.
+    * Used so follow-up jump phases can scale from the actual non-dash airborne
+    * speed state that launched them instead of always falling back to base run
+    * speed. Completed dashes clear this carry so post-dash jumps use restored
+    * movement speed.
    * Cleared on landing.
    */
   airborneSpeedCarry?: number;
@@ -196,6 +197,9 @@ export interface GroundZone {
 export interface GameState {
   /** increments on every authoritative state mutation */
   version: number;
+
+  /** Stored units per gameplay unit. Collision-test = 1, legacy modes = 2.2. */
+  unitScale?: number;
 
   players: PlayerState[];
 

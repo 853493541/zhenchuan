@@ -106,7 +106,8 @@ export function applyImmediateEffects(params: {
         const center = castContext?.groundTarget
           ? { x: castContext.groundTarget.x, y: castContext.groundTarget.y }
           : { x: target.position.x, y: target.position.y };
-        const radius = gameplayUnitsToWorldUnits(effect.range ?? 6);
+        const storedUnitScale = state.unitScale;
+        const radius = gameplayUnitsToWorldUnits(effect.range ?? 6, storedUnitScale);
         const baizuBuff = Array.isArray(ability.buffs)
           ? ability.buffs.find((b: any) => b.name === "百足")
           : null;
@@ -118,7 +119,7 @@ export function applyImmediateEffects(params: {
           x: center.x,
           y: center.y,
           z: castContext?.groundTarget ? (source.position?.z ?? 0) : (target.position?.z ?? 0),
-          height: gameplayUnitsToWorldUnits(10),
+          height: gameplayUnitsToWorldUnits(10, storedUnitScale),
           radius,
           expiresAt: now + 1_000,
           damagePerInterval: 0,
@@ -176,7 +177,7 @@ export function applyImmediateEffects(params: {
 
       case "AOE_APPLY_BUFFS": {
         if (!Array.isArray(ability.buffs) || ability.buffs.length === 0) break;
-        const radius = gameplayUnitsToWorldUnits(effect.range ?? 10);
+        const radius = gameplayUnitsToWorldUnits(effect.range ?? 10, state.unitScale);
         for (const victim of state.players) {
           if (victim.userId === source.userId) continue;
           if ((victim.hp ?? 0) <= 0) continue;

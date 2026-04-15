@@ -297,14 +297,16 @@ export function validateCastAbility(
 
   /* ================= RANGE CHECK ================= */
   if (ability.range !== undefined) {
+    const storedUnitScale = state.unitScale;
     const distance = allowGroundCastWithoutTarget
       ? worldUnitsToGameplayUnits(Math.hypot(
           (options?.groundTarget?.x ?? 0) - state.players[playerIndex].position.x,
           (options?.groundTarget?.y ?? 0) - state.players[playerIndex].position.y,
-        ))
+        ), storedUnitScale)
       : calculateDistance(
           state.players[playerIndex].position,
-          targetPlayer.position
+          targetPlayer.position,
+          storedUnitScale,
         );
 
     if (distance > ability.range) {

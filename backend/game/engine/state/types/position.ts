@@ -16,19 +16,22 @@ export interface Velocity {
 }
 
 /**
- * Coordinate relationship:
- * - Raw map / collision positions remain in legacy world units.
- * - Gameplay-authored distances (range, jump, dash, speed) use new world units.
- * - 1 new world unit = 2.2 legacy world units.
+ * Stored-unit scale used by runtime state.
+ * - Legacy modes keep storing positions in the older 2.2x coordinate scale.
+ * - Collision-test stores canonical gameplay units directly, so its scale is 1.
  */
 export const NEW_WORLD_UNIT_SCALE = 2.2;
 
-export function gameplayUnitsToWorldUnits(value: number): number {
-  return value * NEW_WORLD_UNIT_SCALE;
+export function normalizeStoredUnitScale(unitScale?: number): number {
+  return unitScale && unitScale > 0 ? unitScale : NEW_WORLD_UNIT_SCALE;
 }
 
-export function worldUnitsToGameplayUnits(value: number): number {
-  return value / NEW_WORLD_UNIT_SCALE;
+export function gameplayUnitsToWorldUnits(value: number, unitScale?: number): number {
+  return value * normalizeStoredUnitScale(unitScale);
+}
+
+export function worldUnitsToGameplayUnits(value: number, unitScale?: number): number {
+  return value / normalizeStoredUnitScale(unitScale);
 }
 
 /**
@@ -50,13 +53,13 @@ export interface MovementInput {
 }
 
 /**
- * Calculate Euclidean distance between two positions in new world units.
+ * Calculate Euclidean distance between two positions in gameplay units.
  */
-export function calculateDistance(p1: Position, p2: Position): number {
+export function calculateDistance(p1: Position, p2: Position, unitScale?: number): number {
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;
   const dz = (p2.z ?? 0) - (p1.z ?? 0);
-  return worldUnitsToGameplayUnits(Math.sqrt(dx * dx + dy * dy + dz * dz));
+  return worldUnitsToGameplayUnits(Math.sqrt(dx * dx + dy * dy + dz * dz), unitScale);
 }
 
 /**

@@ -17,9 +17,13 @@
 
 4. **Re-read every file before editing it.** Before making changes to any file, read its current contents again first. This prevents edits from being made against stale file state.
 
+5. **After gameplay or movement changes, always check frontend prediction.** If backend movement, jump, dash, collision, facing, or buff timing changes, verify the frontend prediction path in `BattleArena.tsx` and correct it in the same session. Do not leave backend and prediction logic knowingly out of sync.
+
+6. **Do not use blur-backed UI panels.** Never use `backdrop-filter: blur(...)` or blur-style overlay backgrounds for in-game panels or menus. Use solid or semi-opaque surfaces instead; blur hurts the user's eyes.
+
 ## Game: Active Mode
 
-- **`collision-test`** is the **primary / official game mode** (uses the exported 3D map, player radius 0.64).  
+- **`collision-test`** is the **primary / official game mode** (uses the exported 3D map and the authoritative collision body defined in `exportedMapCollision.ts`).  
   Treat all game-play logic, collision, ability, and movement work as targeting this mode unless otherwise stated.  
   Modes `arena` and `pubg` are legacy/secondary.
 

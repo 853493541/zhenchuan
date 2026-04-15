@@ -1,13 +1,14 @@
 // Collision-test map data — exported 3D map entity-level AABBs
 // Source: Ctest-2026-04-10T23-11-25-797Z (139 entity AABBs from 11311 collision parts)
-// Values match backend/game/map/exportedMap.ts (doubled coordinates).
+// Raw export coordinates are converted here into canonical collision-test gameplay units.
 
 import type { MapObject } from "./worldMap";
 
-export const COLLISION_TEST_MAP_WIDTH  = 819;  // 546 × 1.5 — map scaled up 50%
-export const COLLISION_TEST_MAP_HEIGHT = 828;  // 552 × 1.5 — map scaled up 50%
+const LEGACY_COLLISION_TEST_SCALE = 2.2;
+const RAW_COLLISION_TEST_MAP_WIDTH  = 819;  // 546 × 1.5 — map scaled up 50%
+const RAW_COLLISION_TEST_MAP_HEIGHT = 828;  // 552 × 1.5 — map scaled up 50%
 
-export const collisionTestMapObjects: MapObject[] = [
+const rawCollisionTestMapObjects: MapObject[] = [
   { id: "entity_0", type: "building" as const, x: 518.58, y: 476.57, w: 133.65, d: 172.65, h: 202.88 },
   { id: "entity_1", type: "building" as const, x: 536.40, y: 193.48, w: 132.89, d: 241.26, h: 167.10 },
   { id: "entity_2", type: "building" as const, x: 511.26, y: 313.58, w: 156.67, d: 226.68, h: 124.71 },
@@ -148,3 +149,22 @@ export const collisionTestMapObjects: MapObject[] = [
   { id: "entity_137", type: "building" as const, x: 640.18, y: 158.72, w: 17.79, d: 17.76, h: 14.94 },
   { id: "entity_138", type: "building" as const, x: 274.26, y: 289.68, w: 4.71, d: 5.49, h: 9.99 },
 ];
+
+function toCollisionTestUnits(value: number): number {
+  return value / LEGACY_COLLISION_TEST_SCALE;
+}
+
+function scaleMapObject(obj: MapObject): MapObject {
+  return {
+    ...obj,
+    x: toCollisionTestUnits(obj.x),
+    y: toCollisionTestUnits(obj.y),
+    w: toCollisionTestUnits(obj.w),
+    d: toCollisionTestUnits(obj.d),
+    h: toCollisionTestUnits(obj.h),
+  };
+}
+
+export const COLLISION_TEST_MAP_WIDTH = toCollisionTestUnits(RAW_COLLISION_TEST_MAP_WIDTH);
+export const COLLISION_TEST_MAP_HEIGHT = toCollisionTestUnits(RAW_COLLISION_TEST_MAP_HEIGHT);
+export const collisionTestMapObjects: MapObject[] = rawCollisionTestMapObjects.map(scaleMapObject);
