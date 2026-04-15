@@ -10,6 +10,9 @@ const CHAR_HEIGHT = 1.5;
 /** Camera distance at which the HP bar has scale=1 (matches default camera offset) */
 const HP_REF_DIST = 20;
 const _hpWorldPos = new THREE.Vector3();
+const _bodyWorldPos = new THREE.Vector3();
+const SELF_HIDE_DISTANCE = CHAR_HEIGHT;
+const SELF_FADE_DISTANCE = CHAR_HEIGHT * 1.8;
 
 function computeHpShieldSegments(hp: number, shield: number, maxHp: number): { hpPct: number; shieldPct: number } {
   const safeMaxHp = Math.max(1, Number(maxHp || 100));
@@ -58,6 +61,7 @@ interface CharacterProps {
   worldHalfY: number;
   /** Visual-only stealth state: model becomes semi-transparent (HP UI unchanged). */
   isStealthed?: boolean;
+  cameraFadeEnabled?: boolean;
 }
 
 export default function Character({
@@ -81,9 +85,12 @@ export default function Character({
   worldHalfX,
   worldHalfY,
   isStealthed = false,
+  cameraFadeEnabled = false,
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
+  const capRef = useRef<THREE.Mesh>(null);
+  const shadowRef = useRef<THREE.Mesh>(null);
   const arcRef = useRef<THREE.Mesh>(null);
   const arcBorderRef = useRef<THREE.Mesh>(null);
   const arcGlowRef = useRef<THREE.Mesh>(null);
@@ -170,14 +177,61 @@ export default function Character({
       }
     }
 
+    const visualAlpha = cameraFadeEnabled && isMe
+      ? THREE.MathUtils.clamp(
+          (camera.position.distanceTo(
+            _bodyWorldPos.set(
+              groupRef.current.position.x,
+              groupRef.current.position.y + CHAR_HEIGHT * 0.55,
+              groupRef.current.position.z,
+            ),
+          ) - SELF_HIDE_DISTANCE) / (SELF_FADE_DISTANCE - SELF_HIDE_DISTANCE),
+          0,
+          1,
+        )
+      : 1;
+
+    if (bodyRef.current) {
+      bodyRef.current.visible = visualAlpha > 0.01;
+      const bodyMaterial = bodyRef.current.material as THREE.MeshStandardMaterial;
+      bodyMaterial.opacity = (isStealthed ? 0.45 : 1) * visualAlpha;
+      bodyMaterial.depthWrite = !isStealthed && visualAlpha > 0.05;
+    }
+
+    if (capRef.current) {
+      capRef.current.visible = visualAlpha > 0.01;
+      const capMaterial = capRef.current.material as THREE.MeshStandardMaterial;
+      capMaterial.opacity = (isStealthed ? 0.45 : 1) * visualAlpha;
+      capMaterial.depthWrite = !isStealthed && visualAlpha > 0.05;
+    }
+
+    if (shadowRef.current) {
+      shadowRef.current.visible = visualAlpha > 0.01;
+      const shadowMaterial = shadowRef.current.material as THREE.MeshBasicMaterial;
+      shadowMaterial.opacity = 0.3 * visualAlpha;
+    }
+
     // --- Billboard HP bar: always face camera, fixed screen size ---
     if (hpGroupRef.current) {
+      hpGroupRef.current.visible = showHpBar && visualAlpha > 0.02;
       hpGroupRef.current.quaternion.copy(camera.quaternion);
-      // Scale inversely with distance so on-screen size stays constant
-      hpGroupRef.current.getWorldPosition(_hpWorldPos);
-      const camDist = camera.position.distanceTo(_hpWorldPos);
-      const s = camDist / HP_REF_DIST;
-      hpGroupRef.current.scale.setScalar(s);
+      if (hpGroupRef.current.visible) {
+        // Scale inversely with distance so on-screen size stays constant
+        hpGroupRef.current.getWorldPosition(_hpWorldPos);
+        const camDist = camera.position.distanceTo(_hpWorldPos);
+        const s = camDist / HP_REF_DIST;
+        hpGroupRef.current.scale.setScalar(s);
+      }
+    }
+
+    if (arcRef.current) {
+      arcRef.current.visible = visualAlpha > 0.02;
+    }
+    if (arcBorderRef.current) {
+      arcBorderRef.current.visible = visualAlpha > 0.02;
+    }
+    if (arcGlowRef.current) {
+      arcGlowRef.current.visible = visualAlpha > 0.02;
     }
 
     // --- World->screen anchor for floating numbers / HUD overlays ---
@@ -231,7 +285,7 @@ export default function Character({
       </mesh>
 
       {/* Top cap highlight */}
-      <mesh position={[0, CHAR_HEIGHT + 0.02, 0]} onPointerDown={handleSelect}>
+      <mesh ref={capRef} position={[0, CHAR_HEIGHT + 0.02, 0]} onPointerDown={handleSelect}>
         <cylinderGeometry args={[CHAR_RADIUS * 0.95, CHAR_RADIUS * 0.95, 0.06, 16]} />
         <meshStandardMaterial
           color={isMe ? '#aaccff' : '#ff9999'}
@@ -245,7 +299,7 @@ export default function Character({
       </mesh>
 
       {/* Shadow blob on ground */}
-      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh ref={shadowRef} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[CHAR_RADIUS * 1.4, 16]} />
         <meshBasicMaterial color="#000000" transparent opacity={0.3} depthWrite={false} />
       </mesh>

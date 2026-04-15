@@ -169,6 +169,47 @@ export class MapCollisionSystem {
     return !!hit;
   }
 
+  raycastDistance(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    near = 0,
+    far = Infinity,
+  ): number | null {
+    if (!this.shellBVH) return null;
+    this._ray.origin.copy(origin);
+    this._ray.direction.copy(direction);
+    const hit = (this.shellBVH as any).raycastFirst(this._ray, THREE.DoubleSide, near, far);
+    return hit?.distance ?? null;
+  }
+
+  raycastDistanceIgnoringFloorHits(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    near = 0,
+    far = Infinity,
+    floorNormalY = 0.65,
+  ): number | null {
+    if (!this.shellBVH) return null;
+
+    let currentNear = near;
+    for (let i = 0; i < 8 && currentNear < far; i++) {
+      this._ray.origin.copy(origin);
+      this._ray.direction.copy(direction);
+      const hit = (this.shellBVH as any).raycastFirst(this._ray, THREE.DoubleSide, currentNear, far);
+      if (!hit) return null;
+
+      const normal = this._getFaceNormal(hit.faceIndex ?? -1, this._normal);
+      const isFloorLike = !!normal && Math.abs(normal.y) >= floorNormalY;
+      if (!(direction.y < -0.01 && isFloorLike)) {
+        return hit.distance;
+      }
+
+      currentNear = hit.distance + 0.02;
+    }
+
+    return null;
+  }
+
   /* ─── Ground support (port of export-reader.js CollisionSystem.getSupportGroundY) ─── */
 
   getSupportGroundY(center: THREE.Vector3, shellProbeOriginY?: number): number | null {
