@@ -3,17 +3,18 @@ import os from "node:os";
 import path from "node:path";
 import * as THREE from "three";
 import { MeshBVH } from "three-mesh-bvh";
+import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types/position";
 
 const EXPORT_SCAN_DEPTH = 7;
 const PACKAGE_NAME = "Ctest-2026-04-10T23-11-25-797Z";
 const BASE_RENDER_SF = 0.005557531566779299;
 const MAP_SCALE = 3.6;  // 2.4 × 1.5 — map scaled up 50%
 
-export const EXPORTED_COLLISION_RENDER_SF = BASE_RENDER_SF * MAP_SCALE;
-export const EXPORTED_COLLISION_GROUP_POS_X = -462.66;
-export const EXPORTED_COLLISION_GROUP_POS_Y = -4.515;
-export const EXPORTED_COLLISION_GROUP_POS_Z = 2524.065;
-export const COLLISION_TEST_PLAYER_RADIUS = 0.64;
+export const EXPORTED_COLLISION_RENDER_SF = (BASE_RENDER_SF * MAP_SCALE) / NEW_WORLD_UNIT_SCALE;
+export const EXPORTED_COLLISION_GROUP_POS_X = -462.66 / NEW_WORLD_UNIT_SCALE;
+export const EXPORTED_COLLISION_GROUP_POS_Y = -4.515 / NEW_WORLD_UNIT_SCALE;
+export const EXPORTED_COLLISION_GROUP_POS_Z = 2524.065 / NEW_WORLD_UNIT_SCALE;
+export const COLLISION_TEST_PLAYER_RADIUS = 0.384;
 export const EXPORTED_COLLISION_RADIUS = COLLISION_TEST_PLAYER_RADIUS / EXPORTED_COLLISION_RENDER_SF;
 
 interface HeightmapConfig {
@@ -178,14 +179,18 @@ export class ExportedMapCollisionSystem {
     return { onGround, hitDistance };
   }
 
-  getSupportGroundY(center: THREE.Vector3): number | null {
-    const shellY = this.sampleShellGroundY(center);
+  getSupportGroundY(center: THREE.Vector3, shellProbeOriginY?: number): number | null {
+    const shellY = this.sampleShellGroundY(center, shellProbeOriginY);
     const terrainY = this.getTerrainHeightAt(center.x, center.z);
 
     if (shellY === null && terrainY === null) return null;
     if (shellY === null) return terrainY;
     if (terrainY === null) return shellY;
     return Math.max(shellY, terrainY);
+  }
+
+  getCeilingY(center: THREE.Vector3, shellProbeOriginY?: number): number | null {
+    return this.sampleShellCeilingY(center, shellProbeOriginY);
   }
 
   private getFaceNormal(faceIndex: number, out: THREE.Vector3): THREE.Vector3 | null {
@@ -209,14 +214,14 @@ export class ExportedMapCollisionSystem {
     return out;
   }
 
-  private sampleShellGroundY(center: THREE.Vector3): number | null {
+  private sampleShellGroundY(center: THREE.Vector3, probeOriginY?: number): number | null {
     if (!this.shellBVH) return null;
     const bvh = this.shellBVH as any;
 
     const maxRise = 72;
     const maxDrop = 12000;
 
-    this.ray.origin.set(center.x, center.y + maxRise, center.z);
+    this.ray.origin.set(center.x, probeOriginY ?? center.y + maxRise, center.z);
     this.ray.direction.set(0, -1, 0);
 
     let hit = bvh.raycastFirst(this.ray, THREE.DoubleSide, 0, maxDrop + maxRise) as
@@ -224,10 +229,26 @@ export class ExportedMapCollisionSystem {
       | null;
     if (hit?.point && Number.isFinite(hit.point.y)) return hit.point.y;
 
+    if (probeOriginY !== undefined) return null;
+
     this.ray.origin.set(center.x, center.y + 2600, center.z);
     hit = bvh.raycastFirst(this.ray, THREE.DoubleSide, 0, 16000) as { point?: THREE.Vector3 } | null;
     if (!hit?.point || !Number.isFinite(hit.point.y)) return null;
     if (hit.point.y > center.y + maxRise) return null;
+    return hit.point.y;
+  }
+
+  private sampleShellCeilingY(center: THREE.Vector3, probeOriginY?: number): number | null {
+    if (!this.shellBVH) return null;
+    const bvh = this.shellBVH as any;
+
+    this.ray.origin.set(center.x, probeOriginY ?? center.y, center.z);
+    this.ray.direction.set(0, 1, 0);
+
+    const hit = bvh.raycastFirst(this.ray, THREE.DoubleSide, 0.01, 12000) as
+      | { point?: THREE.Vector3 }
+      | null;
+    if (!hit?.point || !Number.isFinite(hit.point.y)) return null;
     return hit.point.y;
   }
 

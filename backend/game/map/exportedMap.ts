@@ -1,20 +1,21 @@
 // backend/game/map/exportedMap.ts
 // Auto-generated from collision.json: entity-level AABBs for the exported map
 // Source package: Ctest-2026-04-10T23-11-25-797Z (139 entities, 11311 collision parts)
-// Coordinates are 0-based with 20u padding around all objects.
+// Raw export coordinates are converted here into canonical collision-test gameplay units.
 
 import type { WorldMap, MapObject } from "../engine/state/types/map";
+import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types/position";
 
-export const EXPORTED_MAP_WIDTH = 819;  // 546 × 1.5 — map scaled up 50%
-export const EXPORTED_MAP_HEIGHT = 828;  // 552 × 1.5 — map scaled up 50%
+const RAW_EXPORTED_MAP_WIDTH = 819;  // 546 × 1.5 — map scaled up 50%
+const RAW_EXPORTED_MAP_HEIGHT = 828;  // 552 × 1.5 — map scaled up 50%
 
-export const EXPORTED_MAP_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
+const RAW_EXPORTED_MAP_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
   { x: 360, y: 390 }, // P0 — user-specified spawn (scaled ×1.5)
   { x: 375, y: 390 }, // P1 (scaled ×1.5)
   { x: 360, y: 390 }, // Center (fallback, scaled ×1.5)
 ];
 
-const objects: MapObject[] = [
+const rawObjects: MapObject[] = [
   { id: "entity_0", type: "building", x: 518.58, y: 476.57, w: 133.65, d: 172.65, h: 202.88 },
   { id: "entity_1", type: "building", x: 536.40, y: 193.48, w: 132.89, d: 241.26, h: 167.10 },
   { id: "entity_2", type: "building", x: 511.26, y: 313.58, w: 156.67, d: 226.68, h: 124.71 },
@@ -155,6 +156,29 @@ const objects: MapObject[] = [
   { id: "entity_137", type: "building", x: 640.18, y: 158.72, w: 17.79, d: 17.76, h: 14.94 },
   { id: "entity_138", type: "building", x: 274.26, y: 289.68, w: 4.71, d: 5.49, h: 9.99 },
 ];
+
+function toCollisionTestUnits(value: number): number {
+  return value / NEW_WORLD_UNIT_SCALE;
+}
+
+function scaleMapObject(obj: MapObject): MapObject {
+  return {
+    ...obj,
+    x: toCollisionTestUnits(obj.x),
+    y: toCollisionTestUnits(obj.y),
+    w: toCollisionTestUnits(obj.w),
+    d: toCollisionTestUnits(obj.d),
+    h: toCollisionTestUnits(obj.h),
+  };
+}
+
+export const EXPORTED_MAP_WIDTH = toCollisionTestUnits(RAW_EXPORTED_MAP_WIDTH);
+export const EXPORTED_MAP_HEIGHT = toCollisionTestUnits(RAW_EXPORTED_MAP_HEIGHT);
+export const EXPORTED_MAP_SPAWN_POSITIONS: Array<{ x: number; y: number }> = RAW_EXPORTED_MAP_SPAWN_POSITIONS.map(
+  (spawn) => ({ x: toCollisionTestUnits(spawn.x), y: toCollisionTestUnits(spawn.y) })
+);
+
+const objects: MapObject[] = rawObjects.map(scaleMapObject);
 
 export const exportedMap: WorldMap = {
   width: EXPORTED_MAP_WIDTH,

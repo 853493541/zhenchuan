@@ -9,7 +9,7 @@
  * - Win condition checks
  */
 
-import { GameState, MovementInput, GroundZone, calculateDistance } from "../state/types";
+import { GameState, MovementInput, GroundZone, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
 import { checkGameOver } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
 import { diffState } from "../../services/flow/stateDiff";
@@ -22,7 +22,7 @@ import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
 import { exportedMap } from "../../map/exportedMap";
-import { getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
+import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
 import { ABILITIES } from "../../abilities/abilities";
 import { blocksCardTargeting, hasUntargetable, shouldDodge } from "../rules/guards";
 import type { MapObject } from "../state/types/map";
@@ -204,6 +204,7 @@ export class GameLoop {
   private tickRate: number; // Hz
   private tickInterval: any;
   private playerInputs: Map<number, MovementInput | null> = new Map();
+  private playerInputSeq: Map<number, number> = new Map();
   private lastBroadcast = 0;
   private ticksSinceBroadcast = 0;
   // Broadcast cadence in ticks. Derived from tickRate to keep roughly 30Hz net updates.
@@ -230,6 +231,7 @@ export class GameLoop {
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
     this.state = structuredClone(state);
+    this.state.unitScale = normalizeStoredUnitScale(this.state.unitScale ?? (config?.mode === 'collision-test' ? 1 : undefined));
     this.stackProcScanIndex = this.state.events?.length ?? 0;
     this.tickRate = config?.tickRate ?? 30;
     this.broadcastTickInterval = Math.max(1, Math.round(this.tickRate / 30));
@@ -243,8 +245,8 @@ export class GameLoop {
       width: map.width,
       height: map.height,
       circular: false,
-      // Export-reader avatar: radius 57 export units = ~0.32 game units (doubled: 0.64)
-      playerRadius: config?.mode === 'collision-test' ? 0.64 : undefined,
+      unitScale: this.state.unitScale,
+      playerRadius: config?.mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : undefined,
       collisionSystem,
     };
 
@@ -344,15 +346,31 @@ export class GameLoop {
    * Queue player movement input
    * Called when client sends WASD input
    */
-  setPlayerInput(playerIndex: number, input: MovementInput | null) {
-    if (input?.jump) {
+  setPlayerInput(playerIndex: number, input: MovementInput | null, seq?: number) {
+    if (typeof seq === "number") {
+      const lastSeq = this.playerInputSeq.get(playerIndex);
+      if (typeof lastSeq === "number" && seq < lastSeq) {
+        return;
+      }
+      this.playerInputSeq.set(playerIndex, seq);
+    }
+
+    const pendingInput = this.playerInputs.get(playerIndex) ?? null;
+    let nextInput = input;
+
+    // Jump is a one-shot pulse, so keep it latched until the loop tick consumes it.
+    if (pendingInput?.jump && !nextInput?.jump) {
+      nextInput = nextInput ? { ...nextInput, jump: true } : pendingInput;
+    }
+
+    if (nextInput?.jump) {
       const player = this.state.players[playerIndex];
       if (player) {
         // Short lock window for requiresGrounded casts to close jump/cast race.
         player.groundedCastLockUntil = Date.now() + 250;
       }
     }
-    this.playerInputs.set(playerIndex, input);
+    this.playerInputs.set(playerIndex, nextInput);
   }
 
   hasPendingJump(playerIndex: number): boolean {
@@ -411,6 +429,7 @@ export class GameLoop {
    */
   private tick() {
     const tickStart = performance.now();
+    const storedUnitScale = normalizeStoredUnitScale(this.state.unitScale);
 
     if (this.state.gameOver) {
       this.stop();
@@ -456,8 +475,8 @@ export class GameLoop {
           x: player.position.x,
           y: player.position.y,
           z: player.position.z ?? 0,
-          height: 10,
-          radius: 8,
+          height: gameplayUnitsToWorldUnits(10, storedUnitScale),
+          radius: gameplayUnitsToWorldUnits(8, storedUnitScale),
           expiresAt: dashEndNow + 24_000,
           damagePerInterval: 0,
           intervalMs: 3_000,
@@ -565,7 +584,7 @@ export class GameLoop {
 
         // cancelOnOutOfRange check
         if (ch.cancelOnOutOfRange !== undefined) {
-          const dist = calculateDistance(player.position, target.position);
+          const dist = calculateDistance(player.position, target.position, storedUnitScale);
           if (dist > ch.cancelOnOutOfRange) {
             player.activeChannel = undefined;
             channelStateChanged = true;
@@ -633,7 +652,7 @@ export class GameLoop {
               }
             } else if (e.type === "TIMED_AOE_DAMAGE") {
               const range = e.range ?? 50;
-              const dist = calculateDistance(player.position, target.position);
+              const dist = calculateDistance(player.position, target.position, storedUnitScale);
               if (dist <= range && target.hp > 0) {
                 if (player.userId !== target.userId && hasUntargetable(target as any)) {
                   continue;
@@ -659,7 +678,7 @@ export class GameLoop {
               const threshold = (e as any).threshold ?? 0;
               const range = e.range ?? 50;
               if (player.hp <= threshold) continue;
-              const dist = calculateDistance(player.position, target.position);
+              const dist = calculateDistance(player.position, target.position, storedUnitScale);
               if (dist > range || target.hp <= 0) continue;
               if (player.userId !== target.userId && hasUntargetable(target as any)) continue;
               const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
@@ -678,15 +697,16 @@ export class GameLoop {
               }
             } else if (e.type === "PLACE_GROUND_ZONE") {
               const facing = player.facing ?? { x: 0, y: 1 };
-              const zoneX = player.position.x + facing.x * 6;
-              const zoneY = player.position.y + facing.y * 6;
+              const zoneOffset = gameplayUnitsToWorldUnits(6, storedUnitScale);
+              const zoneX = player.position.x + facing.x * zoneOffset;
+              const zoneY = player.position.y + facing.y * zoneOffset;
               if (!this.state.groundZones) this.state.groundZones = [];
               this.state.groundZones.push({
                 id: randomUUID(),
                 ownerUserId: player.userId,
                 x: zoneX,
                 y: zoneY,
-                radius: e.range ?? 8,
+                radius: gameplayUnitsToWorldUnits(e.range ?? 8, storedUnitScale),
                 expiresAt: chNow + 6000,
                 damagePerInterval: e.value ?? 4,
                 intervalMs: 500,
@@ -810,7 +830,7 @@ export class GameLoop {
         const before = player.buffs.length;
         const removedByRange = player.buffs.filter((b: any) => {
           if (b.cancelOnOutOfRange === undefined) return false;
-          const dist = calculateDistance(player.position, opp.position);
+          const dist = calculateDistance(player.position, opp.position, storedUnitScale);
           return dist > b.cancelOnOutOfRange;
         });
         for (const removed of removedByRange) {
@@ -818,7 +838,7 @@ export class GameLoop {
         }
         player.buffs = player.buffs.filter((b: any) => {
           if (b.cancelOnOutOfRange === undefined) return true;
-          const dist = calculateDistance(player.position, opp.position);
+          const dist = calculateDistance(player.position, opp.position, storedUnitScale);
           return dist <= b.cancelOnOutOfRange;
         });
         if (player.buffs.length !== before) buffsChanged = true;
@@ -923,10 +943,7 @@ export class GameLoop {
               } else if (e.type === "CHANNEL_AOE_TICK") {
                 // Channel AOE: deal damage to opponent if within range
                 const range = e.range ?? 10;
-                const dx = opp.position.x - player.position.x;
-                const dy = opp.position.y - player.position.y;
-                const dz = (opp.position.z ?? 0) - (player.position.z ?? 0);
-                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                const dist = calculateDistance(player.position, opp.position, storedUnitScale);
                 if (dist <= range && opp.hp > 0) {
                   if (player.userId !== opp.userId && hasUntargetable(opp as any)) {
                     continue;
@@ -934,7 +951,10 @@ export class GameLoop {
                   const angle = (e as any).aoeAngle ?? 360;
                   if (angle < 360 && dist > 0) {
                     const facing = player.facing ?? { x: 0, y: 1 };
-                    const dot = (facing.x * dx + facing.y * dy) / dist;
+                    const dx = opp.position.x - player.position.x;
+                    const dy = opp.position.y - player.position.y;
+                    const planarDist = Math.sqrt(dx * dx + dy * dy);
+                    const dot = planarDist > 0.0001 ? (facing.x * dx + facing.y * dy) / planarDist : 1;
                     const halfAngleRad = (angle / 2) * (Math.PI / 180);
                     if (dot < Math.cos(halfAngleRad)) {
                       continue;
@@ -1325,7 +1345,7 @@ export class GameLoop {
           if (zone.abilityId === SHENGTAIJI_ZONE_ID) {
             const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
             const zoneZ = zone.z ?? 0;
-            const zoneHeight = zone.height ?? 10;
+            const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
             const isInsideZone = (p: any) => {
               const dx = p.position.x - zone.x;
               const dy = p.position.y - zone.y;
@@ -1796,7 +1816,7 @@ export class GameLoop {
   getPlayerDistance(): number {
     const p1 = this.state.players[0];
     const p2 = this.state.players[1];
-    return calculateDistance(p1.position, p2.position);
+    return calculateDistance(p1.position, p2.position, this.state.unitScale);
   }
 
   /**

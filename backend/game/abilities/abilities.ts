@@ -816,7 +816,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   niao_xiang_bi_kong: {
     id: "niao_xiang_bi_kong",
     name: "鸟翔碧空",
-    description: "获得【鸟翔碧空】15秒：跳跃次数上限提升至5次",
+    description: "获得【鸟翔碧空】15秒：最多可连续跳跃5次，每段跳跃均为高跳",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds
@@ -830,7 +830,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         name: "鸟翔碧空",
         category: "BUFF",
         durationMs: 15_000, // 15 seconds
-        description: "跳跃次数上限提升至5次",
+        description: "最多可连续跳跃5次，每段跳跃均为高跳",
         effects: [{ type: "MULTI_JUMP", value: 5 }],
       },
     ],

@@ -171,14 +171,18 @@ export class MapCollisionSystem {
 
   /* ─── Ground support (port of export-reader.js CollisionSystem.getSupportGroundY) ─── */
 
-  getSupportGroundY(center: THREE.Vector3): number | null {
-    const shellY   = this._sampleShellGroundY(center);
+  getSupportGroundY(center: THREE.Vector3, shellProbeOriginY?: number): number | null {
+    const shellY   = this._sampleShellGroundY(center, shellProbeOriginY);
     const terrainY = this._getTerrainHeightAt(center.x, center.z);
 
     if (shellY === null && terrainY === null) return null;
     if (shellY === null) return terrainY;
     if (terrainY === null) return shellY;
     return Math.max(shellY, terrainY);
+  }
+
+  getCeilingY(center: THREE.Vector3, shellProbeOriginY?: number): number | null {
+    return this._sampleShellCeilingY(center, shellProbeOriginY);
   }
 
   /* ─── Private helpers ─── */
@@ -205,23 +209,36 @@ export class MapCollisionSystem {
   }
 
   /** Raycast down from sphere center to find shell ground surface. */
-  private _sampleShellGroundY(center: THREE.Vector3): number | null {
+  private _sampleShellGroundY(center: THREE.Vector3, probeOriginY?: number): number | null {
     if (!this.shellBVH) return null;
 
     const maxRise = 72;
     const maxDrop = 12000;
 
-    this._ray.origin.set(center.x, center.y + maxRise, center.z);
+    this._ray.origin.set(center.x, probeOriginY ?? center.y + maxRise, center.z);
     this._ray.direction.set(0, -1, 0);
 
     let hit = this.shellBVH.raycastFirst(this._ray, THREE.DoubleSide, 0, maxDrop + maxRise);
     if (hit?.point && Number.isFinite(hit.point.y)) return hit.point.y;
+
+    if (probeOriginY !== undefined) return null;
 
     // Recovery ray when player is far below expected support
     this._ray.origin.set(center.x, center.y + 2600, center.z);
     hit = this.shellBVH.raycastFirst(this._ray, THREE.DoubleSide, 0, 16000);
     if (!hit?.point || !Number.isFinite(hit.point.y)) return null;
     if (hit.point.y > center.y + maxRise) return null;
+    return hit.point.y;
+  }
+
+  private _sampleShellCeilingY(center: THREE.Vector3, probeOriginY?: number): number | null {
+    if (!this.shellBVH) return null;
+
+    this._ray.origin.set(center.x, probeOriginY ?? center.y, center.z);
+    this._ray.direction.set(0, 1, 0);
+
+    const hit = this.shellBVH.raycastFirst(this._ray, THREE.DoubleSide, 0.01, 12000);
+    if (!hit?.point || !Number.isFinite(hit.point.y)) return null;
     return hit.point.y;
   }
 

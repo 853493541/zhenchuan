@@ -31,10 +31,113 @@ const ARENA_WIDTH_SMALL  = 200;
 const ARENA_HEIGHT_SMALL = 200;
 const DASH_ANIM_MS = 1500; // ms — cosmetic dash travel animation
 const DEFAULT_PLAYER_RADIUS = 2; // must match backend
-const COLLISION_TEST_PLAYER_RADIUS = 0.64; // matches export-reader avatar (57 export units * SF)
-const NEW_UNIT_SCALE = 2.2;
+const COLLISION_TEST_PLAYER_RADIUS = 0.384;
+const LEGACY_STORED_UNIT_SCALE = 2.2;
 const SERVER_TICK_RATE = 30;
-const DEFAULT_MOVE_SPEED_WORLD_PER_TICK = 0.3666667;
+const BASE_MOVE_SPEED_PER_TICK = 0.1666667;
+const AIR_SHIFT_DURATION_TICKS = SERVER_TICK_RATE;
+
+function getStoredUnitScale(mode?: string): number {
+  return mode === 'collision-test' ? 1 : LEGACY_STORED_UNIT_SCALE;
+}
+
+function getDefaultMoveSpeedPerTick(mode?: string): number {
+  return BASE_MOVE_SPEED_PER_TICK * getStoredUnitScale(mode);
+}
+
+function getUpwardJumpAirShiftDistance(mode?: string): number {
+  return 2 * getStoredUnitScale(mode);
+}
+
+function getDirectionalJumpDistance(mode?: string): number {
+  return 6 * getStoredUnitScale(mode);
+}
+
+function normalizePlanar(x: number, y: number): { x: number; y: number } | null {
+  const len = Math.sqrt(x * x + y * y);
+  if (len <= 0.01) return null;
+  return { x: x / len, y: y / len };
+}
+
+function worldUnitsToNewUnits(value: number, mode?: string): number {
+  return value / getStoredUnitScale(mode);
+}
+
+function facingToYaw(facing: { x: number; y: number }): number {
+  return Math.atan2(facing.x, -facing.y);
+}
+
+function buildTraditionalMoveIntent(
+  keys: { w: boolean; a: boolean; s: boolean; d: boolean },
+  mouseLook: boolean,
+  bothMouse: boolean,
+  camYaw: number,
+  charYaw: number,
+): { direction: { dx: number; dy: number } | null; backpedalOnly: boolean } {
+  let dx = 0;
+  let dy = 0;
+  let backpedalOnly = false;
+
+  if (mouseLook) {
+    const moveFwd = { x: Math.sin(camYaw), y: -Math.cos(camYaw) };
+    const moveRight = { x: Math.cos(camYaw), y: Math.sin(camYaw) };
+
+    let forwardInput = (keys.w ? 1 : 0) + (keys.s ? -1 : 0) + (bothMouse ? 1 : 0);
+    let strafeInput = (keys.a ? 1 : 0) + (keys.d ? -1 : 0);
+    if (keys.a && keys.d) {
+      strafeInput = -1;
+      forwardInput += 1;
+    }
+
+    dx = moveFwd.x * forwardInput + moveRight.x * strafeInput;
+    dy = moveFwd.y * forwardInput + moveRight.y * strafeInput;
+    backpedalOnly = keys.s && !keys.w && !keys.a && !keys.d && !bothMouse;
+  } else {
+    const moveFwd = { x: Math.sin(charYaw), y: -Math.cos(charYaw) };
+    if (keys.w) {
+      dx += moveFwd.x;
+      dy += moveFwd.y;
+    }
+    if (keys.s) {
+      dx -= moveFwd.x;
+      dy -= moveFwd.y;
+    }
+    backpedalOnly = keys.s && !keys.w && !keys.a && !keys.d;
+  }
+
+  const dir = normalizePlanar(dx, dy);
+  if (!dir) return { direction: null, backpedalOnly };
+  const speedMult = backpedalOnly ? 0.5 : 1.0;
+  return {
+    direction: { dx: dir.x * speedMult, dy: dir.y * speedMult },
+    backpedalOnly,
+  };
+}
+
+function estimateAirborneTicks(
+  heightAboveGround: number,
+  initialVz: number,
+  gravityUp: number,
+  gravityDown: number,
+): number {
+  let height = Math.max(0, heightAboveGround);
+  let vz = initialVz;
+  let ticks = 0;
+
+  while (ticks < 360) {
+    vz -= vz >= 0 ? gravityUp : gravityDown;
+    height += vz;
+    ticks += 1;
+    if (height <= 0) return Math.max(1, ticks);
+  }
+
+  return 360;
+}
+
+function getTravelSpeedPerTick(distance: number, ticks: number): number {
+  if (distance <= 0 || ticks <= 0) return 0;
+  return distance / Math.max(1, ticks);
+}
 
 /** Resolve circle-vs-AABB collision (client-side prediction). Z-aware: skip if player is above obj. */
 function resolveObjCollisionClient(
@@ -96,10 +199,22 @@ const _bvhCenter   = new THREE.Vector3();
 const _bvhVelocity = new THREE.Vector3();
 // Cylinder collision shape: horizontal radius + half-height tracked separately.
 // _bvhCenter.y is always the CYLINDER CENTRE (feet + half-height), never sphere-bottom.
-const EXPORT_CYL_RADIUS      = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF; // ~57.6 export units (horizontal)
-const CYL_HALF_HEIGHT_GAME   = 1.0;                                       // game units (total height = 2.0)
-const EXPORT_CYL_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / RENDER_SF;          // ~90 export units
+const EXPORT_CYL_RADIUS      = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF;
+const CYL_HALF_HEIGHT_GAME   = 0.75;                                      // game units (total height = 1.5)
+const EXPORT_CYL_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / RENDER_SF;
 const BVH_STEP_UP_EXPORT     = 56;                                         // max step-up in export units
+
+function getBvhGroundProbeOriginY(centerY: number): number {
+  return centerY - EXPORT_CYL_HALF_HEIGHT + BVH_STEP_UP_EXPORT;
+}
+
+function getBvhGroundSupportY(sys: MapCollisionSystem, center: THREE.Vector3): number | null {
+  return sys.getSupportGroundY(center, getBvhGroundProbeOriginY(center.y));
+}
+
+function getBvhCeilingY(sys: MapCollisionSystem, center: THREE.Vector3): number | null {
+  return sys.getCeilingY(center, center.y);
+}
 
 /* --- LOS BVH scratch (avoid GC in render loop) --- */
 const _losFrom = new THREE.Vector3();
@@ -139,7 +254,7 @@ function clientCheckLOS(
 function PositionDisplay({
   posRef,
   groundHRef,
-  unitScale = 2.2,
+  unitScale = LEGACY_STORED_UNIT_SCALE,
   inline = false,
 }: {
   posRef: React.MutableRefObject<{ x: number; y: number; z: number }>;
@@ -460,6 +575,8 @@ export default function BattleArena({
   const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : mode === 'collision-test' ? mapData.width : PUBG_WIDTH;
   const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : mode === 'collision-test' ? mapData.height : PUBG_HEIGHT;
   const playerRadius = mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : DEFAULT_PLAYER_RADIUS;
+  const storedUnitScale = getStoredUnitScale(mode);
+  const modePickups = useMemo(() => (mode === 'collision-test' ? [] : pickups), [mode, pickups]);
   const mapObjectsRef = useRef(mapData.objects);
   useEffect(() => {
     mapObjectsRef.current = mapData.objects;
@@ -515,7 +632,8 @@ export default function BattleArena({
   const [controlMode,      setControlMode]      = useState<'joystick' | 'traditional'>('traditional');
   // Mobile detection: touch device without fine pointer (mouse) = phone/tablet
   const [isMobileDevice, setIsMobileDevice]    = useState(false);
-  const [showControlPanel, setShowControlPanel] = useState(true);
+  const [showCollisionControlPanel, setShowCollisionControlPanel] = useState(false);
+  const [showScreenCoordPanel, setShowScreenCoordPanel] = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
   const [runningCheatAction, setRunningCheatAction] = useState<string | null>(null);
@@ -555,8 +673,11 @@ export default function BattleArena({
   const [showCollisionBoxes, setShowCollisionBoxes] = useState(false);
   const [blueprintMode, setBlueprintMode] = useState(false);
   const [showTestingPanel, setShowTestingPanel] = useState(false);
-  const [showEnvTestingPanel, setShowEnvTestingPanel] = useState(true);
-  const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(true);
+  const [showEnvTestingPanel, setShowEnvTestingPanel] = useState(false);
+  const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
+  const [showMeasurePanel, setShowMeasurePanel] = useState(false);
+  const [showJumpDetailsPanel, setShowJumpDetailsPanel] = useState(false);
+  const [showGroundDistanceDetail, setShowGroundDistanceDetail] = useState(true);
   const [losBlocker, setLosBlocker] = useState<string | null>(null);
   const [envDebugInfo, setEnvDebugInfo] = useState<EnvDebugInfo | null>(null);
   const [envToggles, setEnvToggles] = useState<EnvToggles>({
@@ -604,7 +725,7 @@ export default function BattleArena({
       5000,
       (halfH - pos.y - GROUP_POS_Z) / RENDER_SF,
     );
-    const groundY = sys.getSupportGroundY(tmpCenter);
+    const groundY = getBvhGroundSupportY(sys, tmpCenter);
     collisionDebugRef.current = {
       enabled: true,
       center: { x: tmpCenter.x, y: tmpCenter.y, z: tmpCenter.z },
@@ -636,8 +757,39 @@ export default function BattleArena({
   const [myZ, setMyZ] = useState(0);
   const myZRef = useRef(0);
   // Jump timing records (seconds, null = not yet measured)
-  type JumpRecord = { riseMs: number | null; fallMs: number | null; totalMs: number | null; peakUnits: number | null };
-  const [jumpRecord, setJumpRecord] = useState<JumpRecord>({ riseMs: null, fallMs: null, totalMs: null, peakUnits: null });
+  type JumpRecord = {
+    riseMs: number | null;
+    fallMs: number | null;
+    totalMs: number | null;
+    peakUnits: number | null;
+    startSpeedUnitsPerSec: number | null;
+    expectedLandUnits: number | null;
+    actualLandUnits: number | null;
+    jumpPhase: number | null;
+    mode: 'directional' | 'upward' | null;
+  };
+  type JumpTelemetry = {
+    startMs: number;
+    peakMs: number;
+    takeoffGround: number;
+    peakHeightWorld: number;
+    takeoffPos: { x: number; y: number };
+    expectedLandWorld: number;
+    startSpeedUnitsPerSec: number;
+    jumpPhase: number;
+    mode: 'directional' | 'upward';
+  };
+  const [jumpRecord, setJumpRecord] = useState<JumpRecord>({
+    riseMs: null,
+    fallMs: null,
+    totalMs: null,
+    peakUnits: null,
+    startSpeedUnitsPerSec: null,
+    expectedLandUnits: null,
+    actualLandUnits: null,
+    jumpPhase: null,
+    mode: null,
+  });
   // Internal tracking refs (updated every rAF frame)
   const jumpPhaseRef  = useRef<'ground' | 'rising' | 'falling'>('ground');
   const takeoffTimeRef = useRef<number>(0);   // when feet left the ground
@@ -709,7 +861,7 @@ export default function BattleArena({
   const localPositionRef = useRef<Position | null>(null);
   const localVelocityRef = useRef({ x: 0, y: 0 });
   const initializedRef   = useRef(false);
-  const movementAbortRef = useRef<AbortController | null>(null);
+  const movementSeqRef   = useRef(0);
 
   /* --- Jump / Z refs --- */
   const jumpLocalRef      = useRef(false); // drives local Z prediction
@@ -717,12 +869,14 @@ export default function BattleArena({
   const localZRef         = useRef(0);     // current Z height (world units)
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
+  const airborneSpeedCarryRef = useRef(0); // latest special airborne planar speed snapshot (world units/tick)
+  const jumpTelemetryRef  = useRef<JumpTelemetry | null>(null);
   const lastJumpInputAtRef = useRef(0);    // last local jump press time for air reconciliation
   const bvhCenterYInitRef = useRef(false); // true after _bvhCenter.y first initialised
-  const airNudgeRemainingRef = useRef(0);  // post-double-jump correction budget (units)
-  const airNudgeTicksRemainingRef = useRef(0); // correction animation ticks remaining
+  const airNudgeRemainingRef = useRef(0);  // current jump phase travel budget (world units)
+  const airNudgeTicksRemainingRef = useRef(0); // current jump phase travel ticks remaining
   const airNudgeDirRef = useRef<{ x: number; y: number } | null>(null);
-  const airDirectionLockedRef = useRef(false); // locked after directional 2nd+ jump
+  const airDirectionLockedRef = useRef(false); // once this jump phase picks a direction, ignore other movement inputs
   const localFacingRef    = useRef({ x: 0, y: 1 }); // current facing direction (default +Y)
   const facingInitRef     = useRef(false);
   const meFacingRef       = useRef<Facing>({ x: 0, y: 1 });
@@ -805,6 +959,7 @@ export default function BattleArena({
   const isPowerJumpRef           = useRef(false); // true while airborne from a power jump (different gravity)
   const isPowerJumpCombinedRef   = useRef(false); // true for 扶摇+鸟翔 combined 24u jump
   const maxJumpsRef              = useRef(2);     // updated from me.buffs MULTI_JUMP effect
+  const predictedMultiJumpExpiresAtRef = useRef(0);
   const moveSpeedScaleRef        = useRef(1);     // SPEED_BOOST/SLOW local prediction multiplier
 
   /* --- Channel AOE refs (used in render loop, updated via useEffect) --- */
@@ -817,6 +972,9 @@ export default function BattleArena({
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
     if (ability?.abilityId === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
+    if (ability?.abilityId === 'niao_xiang_bi_kong') {
+      predictedMultiJumpExpiresAtRef.current = performance.now() + 15_000;
+    }
     const selectedTargetIdNow = selectedTargetRef.current;
     const selectedTarget = selectedTargetIdNow
       ? opponentsList.find((o) => o.userId === selectedTargetIdNow)
@@ -875,7 +1033,7 @@ export default function BattleArena({
     // Face direction check (180° hemisphere)
     if (ability?.target === 'OPPONENT' && requiresFacingByDefault(ability)) {
       const myPos = localPositionRef.current ?? me.position;
-      const myFacing = localFacingRef.current;
+      const myFacing = me.facing ?? meFacingRef.current;
       if (myPos && myFacing && targetPos) {
         const dx = targetPos.x - myPos.x;
         const dy = targetPos.y - myPos.y;
@@ -958,6 +1116,11 @@ export default function BattleArena({
         const r  = localRenderPosRef.current;
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
         const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
+        const airborneRender =
+          localJumpCountRef.current > 0 ||
+          Math.abs(localVzRef.current) > 0.01 ||
+          tz > groundHRef.current + 0.05;
+        const justJumpedRender = frameNow - lastJumpInputAtRef.current < 320;
 
         // During server-authoritative dash: HARD SNAP to server position.
         // Do NOT lerp — any lerp causes the visual to lag behind the server,
@@ -983,56 +1146,18 @@ export default function BattleArena({
             };
             if (t >= 1) localDashAnimRef.current = null;
           } else {
-            const k = Math.min(1, 0.3 * dtF);
-            localRenderPosRef.current = { x: r.x + ddx * k, y: r.y + ddy * k, z: r.z + ddz * k };
+            const horizontalK = Math.min(1, (airborneRender ? (justJumpedRender ? 0.52 : 0.4) : 0.3) * dtF);
+            const verticalK = Math.min(1, (airborneRender ? (justJumpedRender ? 0.62 : 0.46) : 0.3) * dtF);
+            localRenderPosRef.current = {
+              x: r.x + ddx * horizontalK,
+              y: r.y + ddy * horizontalK,
+              z: r.z + ddz * verticalK,
+            };
           }
         }
       }
 
-      // --- Jump phase tracking (height display + timing) ---
-      const TRACK_EPS = 0.05;
-      const curZ = localRenderPosRef.current.z ?? 0;
-      const curGround = groundHRef.current;
-      const curAboveGround = Math.max(0, curZ - curGround);
-      const prevAboveGround = prevAboveGroundRef.current;
-      const nowMs = performance.now();
-      const phase = jumpPhaseRef.current;
-      const heightFromTakeoff = Math.max(0, curZ - takeoffGroundRef.current);
-
-      if (phase === 'ground') {
-        if (curAboveGround > TRACK_EPS) {
-          jumpPhaseRef.current = 'rising';
-          takeoffTimeRef.current = nowMs;
-          takeoffGroundRef.current = curGround;
-          peakTimeRef.current = nowMs;
-          peakHeightRef.current = heightFromTakeoff;
-        }
-      } else if (phase === 'rising') {
-        if (heightFromTakeoff >= peakHeightRef.current - 0.001) {
-          peakTimeRef.current = nowMs;
-          peakHeightRef.current = Math.max(peakHeightRef.current, heightFromTakeoff);
-        } else if (curAboveGround < prevAboveGround - 0.001 || localVzRef.current < 0) {
-          jumpPhaseRef.current = 'falling';
-        }
-      } else {
-        if (curAboveGround <= TRACK_EPS && prevAboveGround > TRACK_EPS) {
-          const total = nowMs - takeoffTimeRef.current;
-          const rise  = peakTimeRef.current - takeoffTimeRef.current;
-          const fall  = nowMs - peakTimeRef.current;
-          jumpRecordNextRef.current = {
-            riseMs: rise,
-            fallMs: fall,
-            totalMs: total,
-            peakUnits: peakHeightRef.current / 2.2,
-          };
-          jumpPhaseRef.current = 'ground';
-          takeoffGroundRef.current = curGround;
-          peakHeightRef.current = 0;
-        }
-      }
-
-      prevAboveGroundRef.current = curAboveGround;
-      myZRef.current   = curZ;
+      myZRef.current = localRenderPosRef.current.z ?? 0;
 
       rafId = requestAnimationFrame(tick);
     };
@@ -1047,6 +1172,24 @@ export default function BattleArena({
     const multiJump = me?.buffs?.flatMap((b: any) => (b.effects ?? []).filter(Boolean)).find((e: any) => e.type === 'MULTI_JUMP');
     maxJumpsRef.current = multiJump ? (multiJump.value ?? 2) : 2;
   }, [me?.buffs]);
+
+  const getEffectiveMaxJumps = useCallback(() => {
+    const predictedMultiJumpActive = predictedMultiJumpExpiresAtRef.current > performance.now();
+    return predictedMultiJumpActive ? Math.max(maxJumpsRef.current, 5) : maxJumpsRef.current;
+  }, []);
+
+  const tryQueueLocalJump = useCallback(() => {
+    if (jumpLockedRef.current) return;
+    const maxJumps = getEffectiveMaxJumps();
+    if (localJumpCountRef.current >= maxJumps) {
+      jumpLocalRef.current = false;
+      jumpSendRef.current = false;
+      return;
+    }
+    lastJumpInputAtRef.current = performance.now();
+    jumpLocalRef.current = true;
+    jumpSendRef.current = true;
+  }, [getEffectiveMaxJumps]);
 
   // Keep local movement-speed prediction aligned with backend movement.ts
   useEffect(() => {
@@ -1079,7 +1222,7 @@ export default function BattleArena({
         const dtMs = now - prev.t;
         if (dtMs > 1) {
           const distanceWorld = Math.hypot(pos.x - prev.x, pos.y - prev.y);
-          currentUnitsPerSec = (distanceWorld / NEW_UNIT_SCALE) / (dtMs / 1000);
+          currentUnitsPerSec = (distanceWorld / storedUnitScale) / (dtMs / 1000);
 
           if (speedTestRunRef.current.active && !lockReason) {
             speedTestRunRef.current.distanceWorld += distanceWorld;
@@ -1096,7 +1239,7 @@ export default function BattleArena({
         speedSamplePrevRef.current = { x: pos.x, y: pos.y, t: now };
       }
 
-      const measuredDistanceUnits = speedTestRunRef.current.distanceWorld / NEW_UNIT_SCALE;
+      const measuredDistanceUnits = speedTestRunRef.current.distanceWorld / storedUnitScale;
       const measuredElapsedMs = speedTestRunRef.current.validElapsedMs;
       setSpeedTestState({
         active: speedTestRunRef.current.active,
@@ -1119,12 +1262,14 @@ export default function BattleArena({
     const ad = (me as any)?.activeDash;
     const isDashing = !!ad && ad.ticksRemaining > 0;
     if (!isDashing) {
-      // Reset local prediction state so jump works immediately after dash
-      localJumpCountRef.current = 0;
+      const airborneAfterDash = localZRef.current > groundHRef.current + 0.01;
+      localJumpCountRef.current = airborneAfterDash ? (getEffectiveMaxJumps() > 2 ? 0 : 1) : 0;
       localVzRef.current = 0;
       isPowerJumpRef.current = false;
+      isPowerJumpCombinedRef.current = false;
+      airborneSpeedCarryRef.current = 0;
     }
-  }, [activeDashJson]);
+  }, [activeDashJson, getEffectiveMaxJumps]);
   useEffect(() => { oppHpRef.current = opponent?.hp ?? 0; }, [opponent?.hp]);
   useEffect(() => { maxHpRef.current = maxHp;             }, [maxHp]);
   useEffect(() => {
@@ -1147,20 +1292,14 @@ export default function BattleArena({
     }
   }, [opponent?.facing?.x, opponent?.facing?.y]);
 
-  // Restore control mode from localStorage on mount; auto-detect mobile
+  // Auto-detect mobile, but keep gameplay on the traditional movement path.
   useEffect(() => {
-    const saved = (localStorage.getItem('controlMode')) as 'joystick' | 'traditional' | null;
     // Mobile = touch device without a fine pointer (mouse), e.g. phones/iPads
     const isMobile = typeof window !== 'undefined' &&
       navigator.maxTouchPoints > 0 &&
       !window.matchMedia('(pointer: fine)').matches;
     setIsMobileDevice(isMobile);
-    // Mobile always uses traditional mode so W/S move relative to faced direction (charYawRef).
-    // In joystick mode W/S use absolute world axes, which fights the touch-swipe facing.
-    const defaultMode: 'traditional' | 'joystick' = 'traditional';
-    const mode: 'traditional' | 'joystick'  = isMobile
-      ? 'traditional'
-      : ((saved === 'joystick' || saved === 'traditional') ? saved : defaultMode);
+    const mode: 'traditional' | 'joystick' = 'traditional';
     setControlMode(mode);
     controlModeRef.current = mode;
   }, []);
@@ -1202,7 +1341,7 @@ export default function BattleArena({
   })();
 
   // Ref that the rAF writes a new jump record into (avoids stale closure in rAF)
-  const jumpRecordNextRef = useRef<{ riseMs: number; fallMs: number; totalMs: number; peakUnits: number } | null>(null);
+  const jumpRecordNextRef = useRef<JumpRecord | null>(null);
   const jumpLockedRef = useRef(false);
 
   useEffect(() => {
@@ -1222,13 +1361,13 @@ export default function BattleArena({
       const gBase = groundBaseRef.current ?? gH;
       setMyZ(Math.round(curZ * 10) / 10);
       setHeightDisplay({
-        aboveGround: Math.max(0, (curZ - gH)) / 2.2,
-        floorElev:   Math.max(0, (gH - gBase)) / 2.2,
+        aboveGround: Math.max(0, (curZ - gH)) / storedUnitScale,
+        floorElev:   Math.max(0, (gH - gBase)) / storedUnitScale,
       });
       const rec = jumpRecordNextRef.current;
       if (rec) {
         jumpRecordNextRef.current = null;
-        setJumpRecord({ riseMs: rec.riseMs, fallMs: rec.fallMs, totalMs: rec.totalMs, peakUnits: rec.peakUnits });
+        setJumpRecord(rec);
       }
     }, 50);
     return () => clearInterval(id);
@@ -1268,8 +1407,8 @@ export default function BattleArena({
 
   // Keep pickups ref up-to-date for render loop
   useEffect(() => {
-    pickupsRef.current = pickups;
-  }, [pickups]);
+    pickupsRef.current = modePickups;
+  }, [modePickups]);
 
   // Keep nearbyPickupIdsRef + pickupModalsRef + uiPositionsRef in sync
   useEffect(() => { nearbyPickupIdsRef.current = nearbyPickupIds; }, [nearbyPickupIds]);
@@ -1292,7 +1431,7 @@ export default function BattleArena({
         const dx = pos.x - p.position.x;
         const dy = pos.y - p.position.y;
         const dz = 0;
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const dist = worldUnitsToNewUnits(Math.sqrt(dx * dx + dy * dy + dz * dz), mode);
         if (dist < PICKUP_RANGE) nearby.push({ id: p.id, dist });
       }
       nearby.sort((a, b) => a.dist - b.dist);
@@ -1309,7 +1448,7 @@ export default function BattleArena({
           if (!pu) return true;
           const dx = pos.x - pu.position.x;
           const dy = pos.y - pu.position.y;
-          return Math.sqrt(dx * dx + dy * dy) > CLAIM_RANGE;
+          return worldUnitsToNewUnits(Math.sqrt(dx * dx + dy * dy), mode) > CLAIM_RANGE;
         }).map(m => m.pickupId);
         if (toClose.length > 0) {
           setPickupModals(prev => prev.filter(m => !toClose.includes(m.pickupId)));
@@ -1417,80 +1556,80 @@ export default function BattleArena({
 
   const sendMovement = useCallback(async () => {
     const k = keysRef.current;
+    const mouseLook = controlModeRef.current === 'traditional' && mouseStateRef.current.isRight;
+    const bothMouse = mouseStateRef.current.isRight && mouseStateRef.current.isLeft;
     // Capture & clear jump flag atomically before the async POST
     const shouldJump = jumpSendRef.current;
     if (shouldJump) jumpSendRef.current = false;
-    movementAbortRef.current?.abort();
-    movementAbortRef.current = new AbortController();
+    let facingPayload = { ...meFacingRef.current };
+    let directionPayload:
+      | { dx: number; dy: number; jump: boolean }
+      | { up: boolean; down: boolean; left: boolean; right: boolean; jump: boolean }
+      | null = null;
+
+    if (controlModeRef.current === 'traditional') {
+      const moveIntent = buildTraditionalMoveIntent(
+        k,
+        mouseLook,
+        bothMouse,
+        camYawRef.current,
+        charYawRef.current,
+      );
+      if (moveIntent.direction) {
+        directionPayload = {
+          dx: moveIntent.direction.dx,
+          dy: moveIntent.direction.dy,
+          jump: shouldJump,
+        };
+      } else if (shouldJump) {
+        directionPayload = { dx: 0, dy: 0, jump: true };
+      }
+
+      if (mouseLook) {
+        facingPayload = {
+          x: Math.sin(camYawRef.current),
+          y: -Math.cos(camYawRef.current),
+        };
+      } else if (moveIntent.direction && !moveIntent.backpedalOnly) {
+        const facingDir = normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy);
+        if (facingDir) facingPayload = facingDir;
+      }
+    } else if (joystickDirRef.current) {
+      const jd = joystickDirRef.current;
+      const mag = Math.sqrt(jd.dx * jd.dx + jd.dy * jd.dy);
+      if (mag >= 0.01 || shouldJump) {
+        directionPayload = { dx: jd.dx, dy: jd.dy, jump: shouldJump };
+      }
+      const facingDir = normalizePlanar(jd.dx, jd.dy);
+      if (facingDir) facingPayload = facingDir;
+    } else {
+      if (k.w || k.a || k.s || k.d || shouldJump) {
+        directionPayload = { up: k.s, down: k.w, left: k.a, right: k.d, jump: shouldJump };
+      }
+      const facingDir = normalizePlanar(
+        (k.a ? -1 : 0) + (k.d ? 1 : 0),
+        (k.w ? 1 : 0) + (k.s ? -1 : 0),
+      );
+      if (facingDir) facingPayload = facingDir;
+    }
+
+    meFacingRef.current = facingPayload;
+    const seq = ++movementSeqRef.current;
     try {
       await fetch('/api/game/movement', {
         method:      'POST',
         headers:     { 'Content-Type': 'application/json' },
         credentials: 'include',
-        signal:      movementAbortRef.current.signal,
         body: JSON.stringify({
           gameId,
-          // Always send the character's current facing direction so server-side
-          // abilities (dashes, etc.) use the correct orientation
+          seq,
+          // Server-facing is authoritative for ability logic and stays camera-forward
+          // during RMB strafing / RMB diagonals even if the local avatar is rendered sideways.
           facing: {
-            x: localFacingRef.current.x,
-            y: localFacingRef.current.y,
+            x: facingPayload.x,
+            y: facingPayload.y,
           },
-          direction: (() => {
-            if (controlModeRef.current === 'traditional') {
-              const mouseLook = mouseStateRef.current.isRight;
-              const bothMouse = mouseStateRef.current.isRight && mouseStateRef.current.isLeft;
-
-              if (mouseLook) {
-                // MMO mouselook: move relative to camera, camera yaw unchanged unless mouse moves.
-                const yaw = camYawRef.current;
-                const fwd = { x: Math.sin(yaw), y: -Math.cos(yaw) };
-                const right = { x: Math.cos(yaw), y: Math.sin(yaw) };
-
-                let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
-                // Negate strafe to match R3F camera convention.
-                let strafeInput = (k.a ? 1 : 0) + (k.d ? -1 : 0);
-
-                // Requested behavior: RMB + A + D => forward-right diagonal.
-                if (k.a && k.d) {
-                  strafeInput = -1;
-                  forwardInput += 1;
-                }
-
-                let dx = fwd.x * forwardInput + right.x * strafeInput;
-                let dy = fwd.y * forwardInput + right.y * strafeInput;
-                if (dx === 0 && dy === 0 && !shouldJump) return null;
-
-                const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                const backpedalOnly = k.s && !k.w && !k.a && !k.d && !bothMouse;
-                const speedMult = backpedalOnly ? 0.5 : 1.0;
-                dx = (dx / len) * speedMult;
-                dy = (dy / len) * speedMult;
-                return { dx, dy, jump: shouldJump };
-              }
-
-              // Keyboard-only traditional mode: movement follows facing.
-              const moveFwd = { x: Math.sin(charYawRef.current), y: -Math.cos(charYawRef.current) };
-              let dx = 0, dy = 0;
-              if (k.w) { dx += moveFwd.x; dy += moveFwd.y; }
-              if (k.s) { dx -= moveFwd.x; dy -= moveFwd.y; }
-              if (dx === 0 && dy === 0 && !shouldJump) return null;
-              const len = Math.sqrt(dx * dx + dy * dy) || 1;
-              const backpedalOnly = k.s && !k.w && !k.a && !k.d;
-              const speedMult = backpedalOnly ? 0.5 : 1.0;
-              return { dx: (dx / len) * speedMult, dy: (dy / len) * speedMult, jump: shouldJump };
-            }
-            // 摇杆模式: use analog dx/dy if joystick active, otherwise WASD booleans
-            if (joystickDirRef.current) {
-              const jd = joystickDirRef.current;
-              const mag = Math.sqrt(jd.dx * jd.dx + jd.dy * jd.dy);
-              if (mag < 0.01 && !shouldJump) return null;
-              return { dx: jd.dx, dy: jd.dy, jump: shouldJump };
-            }
-            return (k.w || k.a || k.s || k.d || shouldJump)
-              ? { up: k.s, down: k.w, left: k.a, right: k.d, jump: shouldJump }
-              : null;
-          })(),
+          direction: directionPayload,
         }),
       });
     } catch { /* AbortError expected */ }
@@ -1567,7 +1706,7 @@ export default function BattleArena({
       localJumpCountRef.current > 0 ||
       Math.abs(localVzRef.current) > 0.01 ||
       localZ > groundHRef.current + 0.05;
-    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 160;
+    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 260;
     const hardSnapThreshold = airborneLocal ? (justJumpedLocally ? 6.6 : 4.4) : 2.64;
     const settleThreshold = airborneLocal ? 0.132 : 0.044;
     const zBlend = airborneLocal ? (justJumpedLocally ? 0.08 : 0.16) : 0.35;
@@ -1585,7 +1724,7 @@ export default function BattleArena({
       }
     }
     const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
-    const blend  = moving ? 0.03 : 0.25;
+    const blend  = airborneLocal && justJumpedLocally ? 0 : moving ? 0.03 : 0.25;
     localPositionRef.current = {
       x: local.x + dx * blend,
       y: local.y + dy * blend,
@@ -1681,7 +1820,7 @@ export default function BattleArena({
       : null;
     const targetForChecks = selectedTarget ?? targetableOpponentsList[0] ?? null;
     const myPos = me.position ?? localPositionRef.current;
-    const myFacing = me.facing ?? localFacingRef.current;
+    const myFacing = me.facing ?? meFacingRef.current;
     const targetPos = targetForChecks?.position;
     const qinggongSealed = hasQinggongSealClient(me.buffs);
 
@@ -1725,7 +1864,11 @@ export default function BattleArena({
       }
 
       const distanceToTarget = (myPos && targetPos)
-        ? Math.hypot(targetPos.x - myPos.x, targetPos.y - myPos.y)
+        ? worldUnitsToNewUnits(Math.sqrt(
+            Math.pow(targetPos.x - myPos.x, 2) +
+            Math.pow(targetPos.y - myPos.y, 2) +
+            Math.pow(((targetPos as any)?.z ?? 0) - ((myPos as any)?.z ?? 0), 2)
+          ), mode)
         : distance;
       const inMaxRange = !ab?.range || distanceToTarget <= ab.range;
       const inMinRange = !ab?.minRange || distanceToTarget >= ab.minRange;
@@ -2032,6 +2175,13 @@ export default function BattleArena({
     const onDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (selectedTargetRef.current || selectedSelfRef.current) {
+          selectedTargetRef.current = null;
+          selectedSelfRef.current = false;
+          setSelectedTargetId(null);
+          setSelectedSelf(false);
+          return;
+        }
         setShowTestingPanel(v => !v);
         return;
       }
@@ -2071,10 +2221,7 @@ export default function BattleArena({
             return;
           }
         }
-        if (jumpLockedRef.current) return;
-        lastJumpInputAtRef.current = performance.now();
-        jumpLocalRef.current = true;
-        jumpSendRef.current  = true;
+        tryQueueLocalJump();
       }
       // F = interact with nearby pickup (channel to open panel; claim if panel already open)
       if (k === 'f') {
@@ -2162,7 +2309,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [tryQueueLocalJump]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -2257,15 +2404,26 @@ export default function BattleArena({
       if (ms.isRight && !ms.isLeft) {
         // RMB only: rotate camera; character snaps to camera direction
         camYawRef.current  -= dx * 0.005;
-        charYawRef.current  = camYawRef.current;
         // Update pitch too (drag up/down tilts view)
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
-        // Immediately sync facing arrow so it updates without requiring movement
-        localFacingRef.current = {
-          x: Math.sin(charYawRef.current),
-          y: -Math.cos(charYawRef.current),
-        };
+        const moveIntent = buildTraditionalMoveIntent(
+          keysRef.current,
+          true,
+          false,
+          camYawRef.current,
+          charYawRef.current,
+        );
+        const facingDir = moveIntent.direction && !moveIntent.backpedalOnly
+          ? normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy)
+          : {
+              x: Math.sin(camYawRef.current),
+              y: -Math.cos(camYawRef.current),
+            };
+        if (facingDir) {
+          localFacingRef.current = facingDir;
+          charYawRef.current = facingToYaw(facingDir);
+        }
       } else if (ms.isLeft && !ms.isRight) {
         // LMB only: rotate camera yaw + pitch
         camYawRef.current  -= dx * 0.005;
@@ -2275,13 +2433,25 @@ export default function BattleArena({
       } else {
         // LMB + RMB together: rotate camera + character facing; physics tick moves forward
         camYawRef.current  -= dx * 0.005;
-        charYawRef.current  = camYawRef.current;
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
-        localFacingRef.current = {
-          x: Math.sin(charYawRef.current),
-          y: -Math.cos(charYawRef.current),
-        };
+        const moveIntent = buildTraditionalMoveIntent(
+          keysRef.current,
+          true,
+          true,
+          camYawRef.current,
+          charYawRef.current,
+        );
+        const facingDir = moveIntent.direction && !moveIntent.backpedalOnly
+          ? normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy)
+          : {
+              x: Math.sin(camYawRef.current),
+              y: -Math.cos(camYawRef.current),
+            };
+        if (facingDir) {
+          localFacingRef.current = facingDir;
+          charYawRef.current = facingToYaw(facingDir);
+        }
       }
     };
     // Prevent native right-click context menu
@@ -2397,18 +2567,18 @@ export default function BattleArena({
 
   // Jump triggered from the virtual joystick's jump button  
   const handleJoystickJump = useCallback(() => {
-    lastJumpInputAtRef.current = performance.now();
-    jumpLocalRef.current  = true;
-    jumpSendRef.current   = true;
-  }, []);
+    tryQueueLocalJump();
+  }, [tryQueueLocalJump]);
 
   /* Physics — mirrors server exactly */
   useEffect(() => {
     const CLIENT_TICK_HZ = 30;
     const CLIENT_TICK_MS = 1000 / CLIENT_TICK_HZ;
     // Match backend movement constants at 30Hz.
-    // UNIT_SCALE = 2.2: all heights below are in new units; world displacement = height × 2.2.
-    const UNIT_SCALE = 2.2;
+    const UNIT_SCALE = getStoredUnitScale(mode);
+    const DEFAULT_MOVE_SPEED_WORLD_PER_TICK = getDefaultMoveSpeedPerTick(mode);
+    const UPWARD_JUMP_AIR_SHIFT_DISTANCE = getUpwardJumpAirShiftDistance(mode);
+    const DIRECTIONAL_JUMP_DISTANCE = getDirectionalJumpDistance(mode);
     const MAX_SPEED = 0.1666667 * UNIT_SCALE, ACCEL = 0.3, DECEL = 0.9;
     // 30 Hz client physics — asymmetric gravity, tuned per jump type:
     //   Single jump : 1.7 u peak, 1.0 s rise, 0.7 s fall  → 1.7 s total
@@ -2425,11 +2595,13 @@ export default function BattleArena({
     const COMBINED_GRAVITY_UP_CLIENT   = 2 * 24 * UNIT_SCALE / (53.1 * 53.1);
     const COMBINED_GRAVITY_DOWN_CLIENT = 2 * 24 * UNIT_SCALE / (57.9 * 57.9);
     const COMBINED_JUMP_VZ_CLIENT      = COMBINED_GRAVITY_UP_CLIENT * 53.1;
-    const AIR_NUDGE_TOTAL_DISTANCE = 1 * UNIT_SCALE; // 1 new unit = 2.2 world units
-    const AIR_NUDGE_DURATION_TICKS = 30; // 1.0s at 30Hz
+    const POWER_DIRECTIONAL_JUMP_DISTANCE = 18 * UNIT_SCALE;
+    const POWER_DOUBLE_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
+    const MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
     const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
     const TURN_RATE = 0.055; // radians / tick at 30 Hz ≈ 95°/sec
     const tick = () => {
+      const tickNowMs = performance.now();
       const pos = localPositionRef.current;
       if (!pos) return;
       if (mode === 'collision-test' && !collisionReadyRef.current) {
@@ -2438,6 +2610,7 @@ export default function BattleArena({
         return;
       }
       const effectiveMaxSpeed = MAX_SPEED * moveSpeedScaleRef.current;
+      const effectiveMaxJumps = getEffectiveMaxJumps();
 
       // During server-authoritative dash: skip movement + gravity, but KEEP camera/turning
       if (meActiveDashRef.current) {
@@ -2445,7 +2618,7 @@ export default function BattleArena({
         localVelocityRef.current.y = 0;
         jumpLocalRef.current = false;
         // Post-dash jump allowance: MULTI_JUMP → full reset, normal → 1 jump only
-        localJumpCountRef.current = maxJumpsRef.current > 2 ? 0 : 1;
+        localJumpCountRef.current = effectiveMaxJumps > 2 ? 0 : 1;
         airNudgeRemainingRef.current = 0;
         airNudgeTicksRemainingRef.current = 0;
         airNudgeDirRef.current = null;
@@ -2485,7 +2658,7 @@ export default function BattleArena({
           (localZRef.current - GROUP_POS_Y) / RENDER_SF + EXPORT_CYL_HALF_HEIGHT,
           (halfH - pos.y - GROUP_POS_Z) / RENDER_SF,
         );
-        const supportY = sys.getSupportGroundY(_bvhCenter);
+        const supportY = getBvhGroundSupportY(sys, _bvhCenter);
         if (supportY === null) {
           return getGroundHeightClient(pos.x, pos.y, localZRef.current, objs, playerRadius);
         }
@@ -2494,10 +2667,18 @@ export default function BattleArena({
       const airborne = localZRef.current > tickGroundH + 0.01;
       groundHRef.current = tickGroundH; // keep height display in sync
       if (groundBaseRef.current === null) groundBaseRef.current = tickGroundH; // init baseline once
+      if (!airborne && localJumpCountRef.current === 0) {
+        airborneSpeedCarryRef.current = 0;
+      }
       let airNudgeDx = 0;
       let airNudgeDy = 0;
       let moveIntentDx = 0;
       let moveIntentDy = 0;
+      const jumpAirborne = airborne && localJumpCountRef.current > 0;
+
+      if (jumpLocalRef.current && localJumpCountRef.current >= effectiveMaxJumps) {
+        jumpLocalRef.current = false;
+      }
 
       if (controlModeRef.current === 'traditional') {
         const mouseLook = ms.isRight;
@@ -2519,76 +2700,50 @@ export default function BattleArena({
           }
         }
 
-        let fx = 0, fy = 0;
+        const moveIntent = buildTraditionalMoveIntent(
+          k,
+          mouseLook,
+          bothMouse,
+          camYawRef.current,
+          charYawRef.current,
+        );
+        moveIntentDx = moveIntent.direction?.dx ?? 0;
+        moveIntentDy = moveIntent.direction?.dy ?? 0;
 
-        if (mouseLook) {
-          const yaw = camYawRef.current;
-          const moveFwd = { x: Math.sin(yaw), y: -Math.cos(yaw) };
-          const moveRight = { x: Math.cos(yaw), y: Math.sin(yaw) };
+        if (jumpAirborne) {
+          airNudgeDx = moveIntentDx;
+          airNudgeDy = moveIntentDy;
+        } else if (moveIntent.direction) {
+          vel.x += (moveIntent.direction.dx * effectiveMaxSpeed - vel.x) * ACCEL;
+          vel.y += (moveIntent.direction.dy * effectiveMaxSpeed - vel.y) * ACCEL;
 
-          let forwardInput = (k.w ? 1 : 0) + (k.s ? -1 : 0) + (bothMouse ? 1 : 0);
-          // Negate strafe: game moveRight=(cos,−sin) maps to screen-left in R3F camera,
-          // so we flip sign so D=screen-right, A=screen-left.
-          let strafeInput = (k.a ? 1 : 0) + (k.d ? -1 : 0);
-
-          // Requested behavior: RMB + A + D => forward-right diagonal.
-          if (k.a && k.d) {
-            strafeInput = -1;
-            forwardInput += 1;
-          }
-
-          fx = moveFwd.x * forwardInput + moveRight.x * strafeInput;
-          fy = moveFwd.y * forwardInput + moveRight.y * strafeInput;
-        } else {
-          const moveFwd = { x: Math.sin(charYawRef.current), y: -Math.cos(charYawRef.current) };
-          if (k.w) { fx += moveFwd.x; fy += moveFwd.y; }
-          if (k.s) { fx -= moveFwd.x; fy -= moveFwd.y; }
-        }
-        moveIntentDx = fx;
-        moveIntentDy = fy;
-
-        const inLimitedAirControl =
-          airborne &&
-          !jumpLocalRef.current &&
-          (airNudgeRemainingRef.current > 0 ||
-            airNudgeTicksRemainingRef.current > 0 ||
-            !!airNudgeDirRef.current);
-        if (airDirectionLockedRef.current && airborne) {
-          // After directional double jump: velocity locked, no steering.
-        } else if (!inLimitedAirControl) {
-          if (fx !== 0 || fy !== 0) {
-            const len = Math.sqrt(fx * fx + fy * fy);
-            // Backpedal is slower while keeping facing unchanged.
-            const backpedalOnly = k.s && !k.w && !k.a && !k.d && !bothMouse;
-            const speedMult = backpedalOnly ? 0.5 : 1.0;
-            vel.x += ((fx / len) * effectiveMaxSpeed * speedMult - vel.x) * ACCEL;
-            vel.y += ((fy / len) * effectiveMaxSpeed * speedMult - vel.y) * ACCEL;
-            // In mouselook mode: character always faces camera direction regardless of strafe
-            if (mouseLook) {
-              charYawRef.current = camYawRef.current;
-              localFacingRef.current = {
-                x: Math.sin(camYawRef.current),
-                y: -Math.cos(camYawRef.current),
-              };
+          if (!moveIntent.backpedalOnly) {
+            const facingDir = normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy);
+            if (facingDir) {
+              localFacingRef.current = facingDir;
+              charYawRef.current = facingToYaw(facingDir);
             }
-          } else {
-            if (!airborne) {
-              vel.x *= DECEL;
-              vel.y *= DECEL;
-            }
-            // In mouselook mode with no movement, restore facing to camera direction
-            if (mouseLook) {
-              charYawRef.current = camYawRef.current;
-              localFacingRef.current = {
-                x: Math.sin(camYawRef.current),
-                y: -Math.cos(camYawRef.current),
-              };
-            }
+          } else if (mouseLook) {
+            const facingDir = {
+              x: Math.sin(camYawRef.current),
+              y: -Math.cos(camYawRef.current),
+            };
+            localFacingRef.current = facingDir;
+            charYawRef.current = facingToYaw(facingDir);
           }
         } else {
-          // Post-upward-jump airborne phase: keep momentum, use limited correction.
-          airNudgeDx = fx;
-          airNudgeDy = fy;
+          if (!airborne) {
+            vel.x *= DECEL;
+            vel.y *= DECEL;
+          }
+          if (mouseLook) {
+            const facingDir = {
+              x: Math.sin(camYawRef.current),
+              y: -Math.cos(camYawRef.current),
+            };
+            localFacingRef.current = facingDir;
+            charYawRef.current = facingToYaw(facingDir);
+          }
         }
       } else {
         // 摇杆模式: WASD = absolute world directions
@@ -2597,45 +2752,49 @@ export default function BattleArena({
         if (k.s) iy -= 1;
         if (k.a) ix -= 1;
         if (k.d) ix += 1;
-        moveIntentDx = ix;
-        moveIntentDy = iy;
-        const inLimitedAirControl =
-          airborne &&
-          !jumpLocalRef.current &&
-          (airNudgeRemainingRef.current > 0 ||
-            airNudgeTicksRemainingRef.current > 0 ||
-            !!airNudgeDirRef.current);
-        if (airDirectionLockedRef.current && airborne) {
-          // After directional double jump: velocity locked, no steering.
-        } else if (!inLimitedAirControl) {
-          if (ix !== 0 || iy !== 0) {
-            const len = Math.sqrt(ix * ix + iy * iy);
-            vel.x += ((ix / len) * effectiveMaxSpeed - vel.x) * ACCEL;
-            vel.y += ((iy / len) * effectiveMaxSpeed - vel.y) * ACCEL;
-            localFacingRef.current = { x: ix / len, y: iy / len };
-          } else {
-            if (!airborne) {
-              vel.x *= DECEL;
-              vel.y *= DECEL;
-            }
-          }
-        } else {
-          airNudgeDx = ix;
-          airNudgeDy = iy;
+        const moveDir = normalizePlanar(ix, iy);
+        moveIntentDx = moveDir?.x ?? 0;
+        moveIntentDy = moveDir?.y ?? 0;
+        if (jumpAirborne) {
+          airNudgeDx = moveIntentDx;
+          airNudgeDy = moveIntentDy;
+        } else if (moveDir) {
+          vel.x += (moveDir.x * effectiveMaxSpeed - vel.x) * ACCEL;
+          vel.y += (moveDir.y * effectiveMaxSpeed - vel.y) * ACCEL;
+          localFacingRef.current = moveDir;
+          charYawRef.current = facingToYaw(moveDir);
+        } else if (!airborne) {
+          vel.x *= DECEL;
+          vel.y *= DECEL;
         }
       }
 
-      // Start limited correction only after double jump and only when input appears.
+      // Upward jump: first mid-air direction input locks the drift direction for this jump phase.
       if (
-        airborne &&
+        jumpAirborne &&
         !jumpLocalRef.current &&
         airNudgeRemainingRef.current > 0 &&
-        airNudgeTicksRemainingRef.current <= 0
+        airNudgeTicksRemainingRef.current <= 0 &&
+        !airDirectionLockedRef.current
       ) {
-        const nlen = Math.sqrt(airNudgeDx * airNudgeDx + airNudgeDy * airNudgeDy);
-        if (nlen > 0.01) {
-          airNudgeDirRef.current = { x: airNudgeDx / nlen, y: airNudgeDy / nlen };
-          airNudgeTicksRemainingRef.current = AIR_NUDGE_DURATION_TICKS;
+        const airDir = normalizePlanar(airNudgeDx, airNudgeDy);
+        if (airDir) {
+          airNudgeDirRef.current = airDir;
+          airNudgeTicksRemainingRef.current = AIR_SHIFT_DURATION_TICKS;
+          airDirectionLockedRef.current = true;
+          if (jumpTelemetryRef.current?.mode === 'upward') {
+            jumpTelemetryRef.current.expectedLandWorld = UPWARD_JUMP_AIR_SHIFT_DISTANCE;
+          }
+        }
+      }
+
+      if (airborne) {
+        const planarAirborneSpeed = Math.max(
+          Math.hypot(vel.x, vel.y),
+          getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current),
+        );
+        if (planarAirborneSpeed > 0.0001) {
+          airborneSpeedCarryRef.current = planarAirborneSpeed;
         }
       }
 
@@ -2706,18 +2865,35 @@ export default function BattleArena({
       localPositionRef.current = { x: newPx, y: newPy };
 
       // ── Z axis: jump + gravity ──
-      if (jumpLocalRef.current && localJumpCountRef.current < maxJumpsRef.current) {
-        const hadDirectionalInput =
-          Math.abs(moveIntentDx) > 0.01 || Math.abs(moveIntentDy) > 0.01;
-        const isMultiJump = maxJumpsRef.current > 2;
+      if (jumpLocalRef.current && localJumpCountRef.current < effectiveMaxJumps) {
+        const jumpDir = normalizePlanar(moveIntentDx, moveIntentDy);
+        const isMultiJump = effectiveMaxJumps > 2;
+        const hadPowerJumpAirtime = isPowerJumpRef.current && !isPowerJumpCombinedRef.current && localJumpCountRef.current > 0;
+        const usePowerDirectionalBudget = hasFuyaoBuffRef.current && !isMultiJump;
+        const heightAboveGround = Math.max(0, localZRef.current - tickGroundH);
+        const jumpSpeedSource = Math.max(
+          effectiveMaxSpeed,
+          airborneSpeedCarryRef.current,
+          Math.hypot(vel.x, vel.y),
+          getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current),
+        );
+        const jumpSpeedScale = DEFAULT_MOVE_SPEED_WORLD_PER_TICK > 0.0001
+          ? jumpSpeedSource / DEFAULT_MOVE_SPEED_WORLD_PER_TICK
+          : 0;
         let jumpVz: number;
+        let jumpGravityUp = GRAVITY_UP_CLIENT;
+        let jumpGravityDown = GRAVITY_DOWN_CLIENT;
         if (hasFuyaoBuffRef.current && isMultiJump) {
           // Combined 扶摇直上 + 鸟翔碧空: 24u peak, same timing as power jump
           jumpVz = COMBINED_JUMP_VZ_CLIENT;
+          jumpGravityUp = COMBINED_GRAVITY_UP_CLIENT;
+          jumpGravityDown = COMBINED_GRAVITY_DOWN_CLIENT;
           isPowerJumpCombinedRef.current = true;
           isPowerJumpRef.current = false;
         } else if (hasFuyaoBuffRef.current) {
           jumpVz = POWER_JUMP_VZ_CLIENT;
+          jumpGravityUp = POWER_GRAVITY_UP_CLIENT;
+          jumpGravityDown = POWER_GRAVITY_DOWN_CLIENT;
           isPowerJumpRef.current = true;
           isPowerJumpCombinedRef.current = false;
         } else if (localJumpCountRef.current === 0) {
@@ -2730,27 +2906,55 @@ export default function BattleArena({
           isPowerJumpRef.current = false;
           isPowerJumpCombinedRef.current = false;
         }
+        const directionalJumpDistance = usePowerDirectionalBudget
+          ? POWER_DIRECTIONAL_JUMP_DISTANCE
+          : hadPowerJumpAirtime
+            ? POWER_DOUBLE_DIRECTIONAL_JUMP_DISTANCE
+            : isMultiJump && !hasFuyaoBuffRef.current
+              ? MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE
+            : DIRECTIONAL_JUMP_DISTANCE;
         hasFuyaoBuffRef.current   = false;
         localVzRef.current        = jumpVz;
-        localJumpCountRef.current += 1;
+        vel.x = 0;
+        vel.y = 0;
+        const nextJumpPhase = localJumpCountRef.current + 1;
+        localJumpCountRef.current = nextJumpPhase;
         jumpLocalRef.current       = false;
+        airborneSpeedCarryRef.current = jumpSpeedSource;
+        jumpTelemetryRef.current = {
+          startMs: tickNowMs,
+          peakMs: tickNowMs,
+          takeoffGround: tickGroundH,
+          peakHeightWorld: 0,
+          takeoffPos: {
+            x: localPositionRef.current?.x ?? pos.x,
+            y: localPositionRef.current?.y ?? pos.y,
+          },
+          expectedLandWorld: jumpDir ? directionalJumpDistance * Math.max(0, jumpSpeedScale) : 0,
+          startSpeedUnitsPerSec: (jumpSpeedSource * CLIENT_TICK_HZ) / UNIT_SCALE,
+          jumpPhase: nextJumpPhase,
+          mode: jumpDir ? 'directional' : 'upward',
+        };
 
-        // Direction lock: directional 2nd+ jump locks air steering (not for MULTI_JUMP)
-        if (hadDirectionalInput && localJumpCountRef.current >= 2 && !isMultiJump) {
+        airNudgeRemainingRef.current = 0;
+        airNudgeTicksRemainingRef.current = 0;
+        airNudgeDirRef.current = null;
+        airDirectionLockedRef.current = false;
+
+        if (jumpDir) {
+          airNudgeRemainingRef.current = directionalJumpDistance * Math.max(0, jumpSpeedScale);
+          airNudgeTicksRemainingRef.current = estimateAirborneTicks(
+            heightAboveGround,
+            jumpVz,
+            jumpGravityUp,
+            jumpGravityDown,
+          );
+          airNudgeDirRef.current = jumpDir;
           airDirectionLockedRef.current = true;
+          localFacingRef.current = jumpDir;
+          charYawRef.current = facingToYaw(jumpDir);
         } else {
-          airDirectionLockedRef.current = false;
-        }
-
-        if (!hadDirectionalInput) {
-          airNudgeRemainingRef.current = AIR_NUDGE_TOTAL_DISTANCE;
-          airNudgeTicksRemainingRef.current = 0;
-          airNudgeDirRef.current = null;
-        } else {
-          // Directional jump: no limiter.
-          airNudgeRemainingRef.current = 0;
-          airNudgeTicksRemainingRef.current = 0;
-          airNudgeDirRef.current = null;
+          airNudgeRemainingRef.current = UPWARD_JUMP_AIR_SHIFT_DISTANCE;
         }
       }
       const gravUp   = isPowerJumpCombinedRef.current ? COMBINED_GRAVITY_UP_CLIENT
@@ -2769,7 +2973,14 @@ export default function BattleArena({
         // Apply gravity to cylinder centre (feet + halfHeight).
         _bvhCenter.y += localVzRef.current / RENDER_SF;
 
-        const groundExportY = sys.getSupportGroundY(_bvhCenter);
+        const ceilingExportY = getBvhCeilingY(sys, _bvhCenter);
+        const headExportY = _bvhCenter.y + EXPORT_CYL_HALF_HEIGHT;
+        if (localVzRef.current > 0 && ceilingExportY !== null && headExportY >= ceilingExportY) {
+          _bvhCenter.y = ceilingExportY - EXPORT_CYL_HALF_HEIGHT;
+          localVzRef.current = -0.0001;
+        }
+
+        const groundExportY = getBvhGroundSupportY(sys, _bvhCenter);
         const feetExportY   = _bvhCenter.y - EXPORT_CYL_HALF_HEIGHT;
         let bvhOnGround = false;
 
@@ -2780,7 +2991,11 @@ export default function BattleArena({
             _bvhCenter.y    = groundExportY + EXPORT_CYL_HALF_HEIGHT;
             localVzRef.current = 0;
             bvhOnGround     = true;
-          } else if (gap <= BVH_STEP_UP_EXPORT && localVzRef.current <= 0) {
+          } else if (
+            gap <= BVH_STEP_UP_EXPORT &&
+            localVzRef.current <= 0 &&
+            localJumpCountRef.current === 0
+          ) {
             // Small gap while falling/standing → step-up snap (stairs / lips)
             _bvhCenter.y    = groundExportY + EXPORT_CYL_HALF_HEIGHT;
             localVzRef.current = 0;
@@ -2811,13 +3026,41 @@ export default function BattleArena({
         clientGroundH = getGroundHeightClient(localPositionRef.current.x, localPositionRef.current.y, localZRef.current, objs, playerRadius);
         localZRef.current = Math.max(clientGroundH, localZRef.current + localVzRef.current);
       }
+      if (jumpTelemetryRef.current) {
+        const currentHeightWorld = Math.max(0, localZRef.current - jumpTelemetryRef.current.takeoffGround);
+        if (currentHeightWorld >= jumpTelemetryRef.current.peakHeightWorld - 0.001) {
+          jumpTelemetryRef.current.peakHeightWorld = Math.max(jumpTelemetryRef.current.peakHeightWorld, currentHeightWorld);
+          jumpTelemetryRef.current.peakMs = tickNowMs;
+        }
+      }
       if (localZRef.current <= clientGroundH) {
+        const telemetry = jumpTelemetryRef.current;
+        if (telemetry) {
+          const landPos = localPositionRef.current ?? pos;
+          const actualLandWorld = Math.hypot(
+            landPos.x - telemetry.takeoffPos.x,
+            landPos.y - telemetry.takeoffPos.y,
+          );
+          jumpRecordNextRef.current = {
+            riseMs: Math.max(0, telemetry.peakMs - telemetry.startMs),
+            fallMs: Math.max(0, tickNowMs - telemetry.peakMs),
+            totalMs: Math.max(0, tickNowMs - telemetry.startMs),
+            peakUnits: telemetry.peakHeightWorld / UNIT_SCALE,
+            startSpeedUnitsPerSec: telemetry.startSpeedUnitsPerSec,
+            expectedLandUnits: telemetry.expectedLandWorld / UNIT_SCALE,
+            actualLandUnits: actualLandWorld / UNIT_SCALE,
+            jumpPhase: telemetry.jumpPhase,
+            mode: telemetry.mode,
+          };
+          jumpTelemetryRef.current = null;
+        }
         localZRef.current              = clientGroundH;
         localVzRef.current             = 0;
         localJumpCountRef.current      = 0;
         isPowerJumpRef.current         = false;
         isPowerJumpCombinedRef.current = false;
         airDirectionLockedRef.current  = false;
+        airborneSpeedCarryRef.current  = 0;
         airNudgeRemainingRef.current = 0;
         airNudgeTicksRemainingRef.current = 0;
         airNudgeDirRef.current = null;
@@ -2825,11 +3068,11 @@ export default function BattleArena({
     };
     const id = setInterval(tick, CLIENT_TICK_MS);
     return () => clearInterval(id);
-  }, []);
+  }, [ARENA_HEIGHT, ARENA_WIDTH, getEffectiveMaxJumps, mode, playerRadius]);
 
   useEffect(() => {
     const id = setInterval(sendMovement, 1000 / 30);
-    return () => { clearInterval(id); movementAbortRef.current?.abort(); };
+    return () => { clearInterval(id); };
   }, [sendMovement]);
 
   useEffect(() => {
@@ -2852,7 +3095,7 @@ export default function BattleArena({
   const myBarSegments = computeHpShieldSegments(me?.hp ?? 0, myShield, myMaxHp);
   const myHpPct = myBarSegments.hpPct;
   const myShieldPct = myBarSegments.shieldPct;
-  const myFacingArrow = facingArrow(me.facing ?? meFacingRef.current);
+  const myFacingArrow = facingArrow(localFacingRef.current);
   const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
   const moveSpeedBoostSum = meEffects
     .filter((e: any) => e?.type === 'SPEED_BOOST')
@@ -2860,10 +3103,10 @@ export default function BattleArena({
   const moveSpeedSlowSum = meEffects
     .filter((e: any) => e?.type === 'SLOW')
     .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
-  const baseMoveSpeed = Number(me?.moveSpeed ?? DEFAULT_MOVE_SPEED_WORLD_PER_TICK); // 0.1666667 × UNIT_SCALE(2.2)
+  const baseMoveSpeed = Number(me?.moveSpeed ?? getDefaultMoveSpeedPerTick(mode));
   const finalMoveSpeed = Math.max(0, baseMoveSpeed * Math.max(0, 1 + moveSpeedBoostSum - moveSpeedSlowSum));
-  const baseMoveSpeedUnitsPerSec = baseMoveSpeed * SERVER_TICK_RATE / NEW_UNIT_SCALE;
-  const effectiveMoveSpeedUnitsPerSec = finalMoveSpeed * SERVER_TICK_RATE / NEW_UNIT_SCALE;
+  const baseMoveSpeedUnitsPerSec = baseMoveSpeed * SERVER_TICK_RATE / storedUnitScale;
+  const effectiveMoveSpeedUnitsPerSec = finalMoveSpeed * SERVER_TICK_RATE / storedUnitScale;
   const damageReductionEffect = meEffects.find((e: any) => e?.type === 'DAMAGE_REDUCTION');
   const damageReductionPct = Math.max(0, Number(damageReductionEffect?.value ?? 0) * 100);
   const dodgeChancePct = Math.max(
@@ -3161,7 +3404,7 @@ export default function BattleArena({
           color: mode === 'arena' ? '#ffaaaa' : '#aaeec8',
           fontFamily: '"Microsoft YaHei", sans-serif',
         }}>
-          {mode === 'arena' ? '竞技场' : '吃鸡'}
+          {mode === 'arena' ? '竞技场' : mode === 'collision-test' ? '玉门关' : '吃鸡'}
         </span>
       </div>
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
@@ -3190,7 +3433,7 @@ export default function BattleArena({
               setSelectedSelf(false);
               selectedSelfRef.current = false;
             }}
-            pickups={pickups}
+            pickups={modePickups}
             meChanneling={meChannelingRef.current}
             channelingOpponentId={visibleOpponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014))?.userId ?? null}
             selectedSelf={selectedSelf}
@@ -3207,7 +3450,7 @@ export default function BattleArena({
             groundZones={groundZones}
             groundCastPreview={
               pendingGroundCastAbilityId && groundCastPreview
-                ? { x: groundCastPreview.x, y: groundCastPreview.y, radius: 6, label: '百足' }
+                ? { x: groundCastPreview.x, y: groundCastPreview.y, radius: 6 * storedUnitScale, label: '百足' }
                 : null
             }
             onGroundPointerMove={(x, y) => {
@@ -3239,360 +3482,204 @@ export default function BattleArena({
           />
         </Canvas>
       </div>
-      {mode === 'collision-test' && showTestingPanel && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 9999,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          pointerEvents: 'none',
-        }}>
-          <div style={{
-            width: 'min(760px, 92vw)', maxHeight: '80vh', overflowY: 'auto',
-            background: 'rgba(5, 8, 12, 0.94)', border: '1px solid rgba(255,255,255,0.16)',
-            borderRadius: 12, boxShadow: '0 18px 50px rgba(0,0,0,0.45)',
-            color: '#e5e7eb', padding: '18px 20px', pointerEvents: 'auto',
-            fontFamily: 'monospace',
-          }} data-testing-panel>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: 0.8 }}>ESC Panel</div>
-                <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>Press Esc to open or close.</div>
+      {mode === 'collision-test' && showEnvTestingPanel && (
+        <div className={styles.uiFloatingPanel} style={{ top: 14, left: 14, width: 'min(360px, calc(100vw - 28px))' }}>
+          <div className={styles.uiFloatingTitle}>灯光控制</div>
+          <div className={styles.uiFloatingSection}>
+            {([
+              ['toneMapping', 'toneMapping'],
+              ['exposure', '曝光'],
+              ['shadows', '阴影'],
+              ['dirLight', '方向光'],
+              ['ambLight', '环境光'],
+              ['hemiLight', '半球光'],
+              ['fog', '雾效'],
+              ['skyDome', '天空球'],
+              ['cameraFar', '远裁剪'],
+            ] as [keyof EnvToggles, string][]).map(([key, label]) => (
+              <label key={key} className={styles.uiCheckboxRow}>
+                <input
+                  type="checkbox"
+                  checked={envToggles[key]}
+                  className={styles.uiCheckboxInput}
+                  onChange={() => setEnvToggles(prev => {
+                    const next = { ...prev, [key]: !prev[key] };
+                    if (key === 'dirLight' && next.dirLight) {
+                      next.toneMapping = true;
+                      next.exposure = true;
+                      next.ambLight = true;
+                      next.hemiLight = true;
+                      next.shadows = true;
+                      next.cameraFar = true;
+                    }
+                    return next;
+                  })}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          <div className={styles.uiFloatingSubsection}>
+            <div className={styles.uiFloatingLabel}>太阳亮度 {dirLightConfig.intensity.toFixed(2)}</div>
+            <input
+              type="range"
+              min="0"
+              max="6"
+              step="0.05"
+              value={dirLightConfig.intensity}
+              onChange={(e) => setDirLightConfig((prev) => ({ ...prev, intensity: Number(e.target.value) }))}
+              style={{ width: '100%' }}
+            />
+            <div className={styles.uiFloatingLabel} style={{ marginTop: 10 }}>太阳颜色</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                type="color"
+                value={dirLightConfig.customColor}
+                onChange={(e) => setDirLightConfig((prev) => ({
+                  ...prev,
+                  colorMode: 'custom',
+                  customColor: e.target.value,
+                }))}
+              />
+              <button type="button" onClick={() => setDirLightConfig({ intensity: 3.0, colorMode: 'export', customColor: '#fdf2ed' })} className={styles.uiInlineButton}>导出默认</button>
+              <button type="button" onClick={() => setDirLightConfig({ intensity: 0.25, colorMode: 'export', customColor: '#fdf2ed' })} className={styles.uiInlineButton}>低亮默认</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mode === 'collision-test' && showSceneTestingPanel && (
+        <div className={styles.uiInfoPanel} style={{ left: '5%', top: '50%', transform: 'translateY(-50%)' }}>
+          <div className={styles.uiFloatingTitle}>角色状态</div>
+          <div className={styles.uiInfoValue}>位置 {localRenderPosRef.current.x.toFixed(1)}, {localRenderPosRef.current.y.toFixed(1)}</div>
+          <div className={styles.uiInfoValue}>移速 {effectiveMoveSpeedUnitsPerSec.toFixed(2)}</div>
+          <div className={styles.uiInfoValue}>镜头距离 {cameraZoomLevel.toFixed(2)}</div>
+        </div>
+      )}
+
+      {mode === 'collision-test' && (showCollisionControlPanel || showScreenCoordPanel) && (
+        <div className={styles.uiTopRightStack}>
+          {showCollisionControlPanel && (
+            <>
+              <label className={`${styles.uiCheckboxRow} ${styles.uiCheckboxBox}`}>
+                <input type="checkbox" checked={showCollisionShells} className={styles.uiCheckboxInput} onChange={(e) => setShowCollisionShells(e.target.checked)} />
+                <span>显示碰撞体</span>
+              </label>
+              <label className={`${styles.uiCheckboxRow} ${styles.uiCheckboxBox}`}>
+                <input type="checkbox" checked={blueprintMode} className={styles.uiCheckboxInput} onChange={(e) => setBlueprintMode(e.target.checked)} />
+                <span>显示蓝本</span>
+              </label>
+            </>
+          )}
+          {showScreenCoordPanel && (
+            <label className={`${styles.uiCheckboxRow} ${styles.uiCheckboxBox}`}>
+              <input type="checkbox" checked={showDebugGrid} className={styles.uiCheckboxInput} onChange={(e) => setShowDebugGrid(e.target.checked)} />
+              <span>显示屏幕坐标</span>
+            </label>
+          )}
+        </div>
+      )}
+
+      {mode === 'collision-test' && showMeasurePanel && (
+        <div className={styles.uiFloatingPanel} style={{ left: '70%', top: '60%', width: 220, transform: 'translate(-50%, -50%)' }}>
+          <div className={styles.uiFloatingTitle}>距离测试</div>
+          <div className={styles.escMeasureGrid}>
+            <button
+              type="button"
+              onClick={() => {
+                const pos = localPositionRef.current ?? localRenderPosRef.current;
+                const nextPin = { x: pos.x, y: pos.y, z: localZRef.current };
+                setMeasurePins(prev => prev.length >= 2 ? [nextPin, prev[1]] : [nextPin]);
+              }}
+              className={`${styles.escMeasureButton} ${measurePins.length >= 1 ? styles.escMeasureButtonActive : ''}`}
+            >
+              Pin A
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const pos = localPositionRef.current ?? localRenderPosRef.current;
+                const nextPin = { x: pos.x, y: pos.y, z: localZRef.current };
+                setMeasurePins(prev => {
+                  if (prev.length === 0) return prev;
+                  return [prev[0], nextPin];
+                });
+              }}
+              className={`${styles.escMeasureButton} ${measurePins.length >= 2 ? styles.escMeasureButtonActive : ''}`}
+            >
+              Pin B
+            </button>
+          </div>
+          {measurePins.length === 0 && <div className={styles.uiInlineHint}>先点 Pin A 记录起点。</div>}
+          {measurePins.length === 1 && <div className={styles.uiInlineHint}>A 已记录，再点 Pin B 记录终点。</div>}
+          {measurePins.length >= 2 && (() => {
+            const dx = measurePins[1].x - measurePins[0].x;
+            const dy = measurePins[1].y - measurePins[0].y;
+            const dz = measurePins[1].z - measurePins[0].z;
+            const flatDist = Math.sqrt(dx * dx + dy * dy) / storedUnitScale;
+            const heightDelta = Math.abs(dz) / storedUnitScale;
+            const totalDist = Math.sqrt(dx * dx + dy * dy + dz * dz) / storedUnitScale;
+            return (
+              <div className={styles.escMeasureReadout}>
+                <div>A 已记录</div>
+                <div>B 已记录</div>
+                <div>平面 {flatDist.toFixed(1)}</div>
+                <div>高差 {heightDelta.toFixed(1)}</div>
+                <div className={styles.escMeasureTotal}>总长 {totalDist.toFixed(1)}</div>
               </div>
+            );
+          })()}
+          {measurePins.length > 0 && (
+            <button type="button" onClick={() => setMeasurePins([])} className={styles.escMeasureClear}>清除</button>
+          )}
+        </div>
+      )}
+
+      {mode === 'collision-test' && showTestingPanel && (
+        <div className={styles.escOverlay}>
+          <div className={styles.escPanelShell} data-testing-panel>
+            <div className={styles.escPanelHeader}>
+              <div className={styles.escTitle}>控制面板</div>
               <button
                 type="button"
                 onClick={() => setShowTestingPanel(false)}
-                style={{
-                  background: 'rgba(255,255,255,0.06)', color: '#e5e7eb', border: '1px solid rgba(255,255,255,0.18)',
-                  borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontFamily: 'monospace',
-                }}
+                className={styles.escCloseIcon}
+                aria-label="关闭控制面板"
               >
-                Close
+                ×
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => setShowEnvTestingPanel(v => !v)}
-                style={{
-                  background: showEnvTestingPanel ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)',
-                  color: showEnvTestingPanel ? '#93c5fd' : '#cbd5e1',
-                  border: `1px solid ${showEnvTestingPanel ? 'rgba(96,165,250,0.6)' : 'rgba(255,255,255,0.14)'}`,
-                  borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace',
-                }}
-              >
-                {showEnvTestingPanel ? 'Hide' : 'Show'} Environment Controls
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowSceneTestingPanel(v => !v)}
-                style={{
-                  background: showSceneTestingPanel ? 'rgba(16,185,129,0.18)' : 'rgba(255,255,255,0.05)',
-                  color: showSceneTestingPanel ? '#6ee7b7' : '#cbd5e1',
-                  border: `1px solid ${showSceneTestingPanel ? 'rgba(52,211,153,0.55)' : 'rgba(255,255,255,0.14)'}`,
-                  borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace',
-                }}
-              >
-                {showSceneTestingPanel ? 'Hide' : 'Show'} Scene / Status
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowControlPanel(v => !v)}
-                style={{
-                  background: showControlPanel ? 'rgba(245,158,11,0.18)' : 'rgba(255,255,255,0.05)',
-                  color: showControlPanel ? '#fcd34d' : '#cbd5e1',
-                  border: `1px solid ${showControlPanel ? 'rgba(251,191,36,0.55)' : 'rgba(255,255,255,0.14)'}`,
-                  borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace',
-                }}
-              >
-                {showControlPanel ? 'Hide' : 'Show'} Control Settings
-              </button>
+            <div className={styles.escToggleList}>
+              <label className={styles.escToggleRow}>
+                <input type="checkbox" checked={showEnvTestingPanel} onChange={(e) => setShowEnvTestingPanel(e.target.checked)} className={styles.escToggleInput} />
+                <span>灯光控制</span>
+              </label>
+              <label className={styles.escToggleRow}>
+                <input type="checkbox" checked={showSceneTestingPanel} onChange={(e) => setShowSceneTestingPanel(e.target.checked)} className={styles.escToggleInput} />
+                <span>角色状态</span>
+              </label>
+              <label className={styles.escToggleRow}>
+                <input type="checkbox" checked={showCollisionControlPanel} onChange={(e) => setShowCollisionControlPanel(e.target.checked)} className={styles.escToggleInput} />
+                <span>体积碰撞开关</span>
+              </label>
+              <label className={styles.escToggleRow}>
+                <input type="checkbox" checked={showScreenCoordPanel} onChange={(e) => setShowScreenCoordPanel(e.target.checked)} className={styles.escToggleInput} />
+                <span>显示屏幕坐标</span>
+              </label>
+              <label className={styles.escToggleRow}>
+                <input type="checkbox" checked={showMeasurePanel} onChange={(e) => setShowMeasurePanel(e.target.checked)} className={styles.escToggleInput} />
+                <span>距离测试</span>
+              </label>
+              <label className={styles.escToggleRow}>
+                <input type="checkbox" checked={showJumpDetailsPanel} onChange={(e) => setShowJumpDetailsPanel(e.target.checked)} className={styles.escToggleInput} />
+                <span>跳跃细节</span>
+              </label>
+              <label className={styles.escToggleRow}>
+                <input type="checkbox" checked={showGroundDistanceDetail} onChange={(e) => setShowGroundDistanceDetail(e.target.checked)} className={styles.escToggleInput} />
+                <span>显示距离地面的距离</span>
+              </label>
             </div>
-
-            {showSceneTestingPanel && (
-              <div style={{
-                marginBottom: 18,
-                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14,
-              }}>
-                <div style={{ color: '#fff', fontWeight: 700, marginBottom: 10 }}>Scene / Status</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 12 }}>
-                  <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#86efac', fontFamily: 'monospace', fontSize: 12 }}>
-                    X:{localRenderPosRef.current.x.toFixed(1)} Y:{localRenderPosRef.current.y.toFixed(1)}
-                  </div>
-                  <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1' }}>
-                    状态: 理论 {effectiveMoveSpeedUnitsPerSec.toFixed(2)} u/s | 基础 {baseMoveSpeedUnitsPerSec.toFixed(2)} u/s | 实测 {speedTestState.currentUnitsPerSec.toFixed(2)} u/s | 减伤 {damageReductionPct.toFixed(1)}% | 闪避 {dodgeChancePct.toFixed(1)}%{autoForward ? ' | 自动前行' : ''}
-                  </div>
-                  <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1' }}>
-                    镜头: 缩放 {cameraZoomLevel.toFixed(2)} | 滚轮上拉近 / 滚轮下拉远
-                  </div>
-                </div>
-
-                <div style={{
-                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14,
-                  marginBottom: 12,
-                }}>
-                  <div style={{ color: '#fff', fontWeight: 700, marginBottom: 8 }}>Base Move Speed Test</div>
-                  <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 10 }}>
-                    Hold W on flat ground with no dash, no jump, and no speed buffs. The test only records valid base-movement samples.
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginBottom: 10 }}>
-                    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1', fontFamily: 'monospace', fontSize: 12 }}>
-                      Config base: {baseMoveSpeedUnitsPerSec.toFixed(2)} u/s
-                    </div>
-                    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1', fontFamily: 'monospace', fontSize: 12 }}>
-                      Current measured: {speedTestState.currentUnitsPerSec.toFixed(2)} u/s
-                    </div>
-                    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1', fontFamily: 'monospace', fontSize: 12 }}>
-                      Test avg/max: {speedTestState.averageUnitsPerSec.toFixed(2)} / {speedTestState.maxUnitsPerSec.toFixed(2)} u/s
-                    </div>
-                    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', color: '#cbd5e1', fontFamily: 'monospace', fontSize: 12 }}>
-                      Distance/time: {speedTestState.measuredDistanceUnits.toFixed(2)} u / {(speedTestState.measuredElapsedMs / 1000).toFixed(2)} s
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                    <button
-                      type="button"
-                      onClick={startSpeedTest}
-                      style={{
-                        background: 'rgba(16,185,129,0.18)',
-                        border: '1px solid rgba(52,211,153,0.55)',
-                        color: '#6ee7b7',
-                        borderRadius: 6,
-                        padding: '6px 10px',
-                        fontSize: 12,
-                        cursor: 'pointer',
-                        fontFamily: 'monospace',
-                      }}
-                    >
-                      {speedTestState.active ? 'Restart Test' : 'Start Test'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={stopSpeedTest}
-                      style={{
-                        background: 'rgba(245,158,11,0.18)',
-                        border: '1px solid rgba(251,191,36,0.55)',
-                        color: '#fcd34d',
-                        borderRadius: 6,
-                        padding: '6px 10px',
-                        fontSize: 12,
-                        cursor: 'pointer',
-                        fontFamily: 'monospace',
-                      }}
-                    >
-                      Stop
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetSpeedTest}
-                      style={{
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.14)',
-                        color: '#cbd5e1',
-                        borderRadius: 6,
-                        padding: '6px 10px',
-                        fontSize: 12,
-                        cursor: 'pointer',
-                        fontFamily: 'monospace',
-                      }}
-                    >
-                      Reset
-                    </button>
-                  </div>
-                  <div style={{
-                    color: speedTestState.baseEligible ? '#86efac' : '#fca5a5',
-                    fontSize: 12,
-                    fontFamily: 'monospace',
-                  }}>
-                    {speedTestState.baseEligible
-                      ? 'Base-state capture active: samples count toward the 5.00 u/s check.'
-                      : `Base-state capture paused: ${speedTestState.lockReason}`}
-                  </div>
-                </div>
-
-                {/* ── Measurement tool removed — use floating overlay (at 80%/60%) ── */}
-
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowCollisionShells(v => !v)}
-                    style={{
-                      background: showCollisionShells ? 'rgba(63,213,109,0.25)' : 'rgba(255,255,255,0.05)',
-                      border: `1px solid ${showCollisionShells ? '#3fd56d' : 'rgba(255,255,255,0.14)'}`,
-                      color: showCollisionShells ? '#3fd56d' : '#cbd5e1',
-                      borderRadius: 6, padding: '6px 10px', fontSize: 12,
-                      cursor: 'pointer', fontFamily: 'monospace',
-                    }}
-                  >
-                    碰撞体 {showCollisionShells ? 'ON' : 'OFF'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBlueprintMode(v => !v)}
-                    style={{
-                      background: blueprintMode ? 'rgba(0,220,255,0.25)' : 'rgba(255,255,255,0.05)',
-                      border: `1px solid ${blueprintMode ? '#00dcff' : 'rgba(255,255,255,0.14)'}`,
-                      color: blueprintMode ? '#00dcff' : '#cbd5e1',
-                      borderRadius: 6, padding: '6px 10px', fontSize: 12,
-                      cursor: 'pointer', fontFamily: 'monospace',
-                    }}
-                  >
-                    Blueprint {blueprintMode ? 'ON' : 'OFF'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowDebugGrid(v => !v)}
-                    style={{
-                      background: showDebugGrid ? 'rgba(255,220,0,0.18)' : 'rgba(255,255,255,0.05)',
-                      border: `1px solid ${showDebugGrid ? '#ffdd00' : 'rgba(255,255,255,0.14)'}`,
-                      color: showDebugGrid ? '#ffdd00' : '#cbd5e1',
-                      borderRadius: 6, padding: '6px 10px', fontSize: 12,
-                      cursor: 'pointer', fontFamily: 'monospace',
-                    }}
-                  >
-                    XY% {showDebugGrid ? 'ON' : 'OFF'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {showEnvTestingPanel && (
-              <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 18,
-                alignItems: 'start',
-              }}>
-                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14 }}>
-                  <div style={{ color: '#fff', fontWeight: 700, marginBottom: 10 }}>Env Toggles</div>
-                  {([
-                    ['toneMapping', 'toneMapping = ACESFilmic'],
-                    ['exposure',    'toneMappingExposure = 1.25'],
-                    ['shadows',     'shadowMap.enabled'],
-                    ['dirLight',    'DirectionalLight  (default 0.25)'],
-                    ['ambLight',    'AmbientLight  intensity=0.8'],
-                    ['hemiLight',   'HemisphereLight  intensity=1.0'],
-                    ['fog',         'FogExp2  density=3.5e−6'],
-                    ['skyDome',     'Sky dome (gradient sphere)'],
-                    ['cameraFar',   'camera.far = 500000'],
-                  ] as [keyof EnvToggles, string][]).map(([key, label]) => (
-                    <div key={key}
-                      onClick={() => setEnvToggles(prev => {
-                        const next = { ...prev, [key]: !prev[key] };
-                        if (key === 'dirLight' && next.dirLight) {
-                          next.toneMapping = true; next.exposure = true;
-                          next.ambLight = true; next.hemiLight = true;
-                          next.shadows = true; next.cameraFar = true;
-                        }
-                        return next;
-                      })}
-                      style={{ cursor: 'pointer', color: envToggles[key] ? '#00ff88' : '#94a3b8', padding: '2px 0' }}
-                    >
-                      {envToggles[key] ? '☑' : '☐'} {label}
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14 }}>
-                  <div style={{ color: '#fff', fontWeight: 700, marginBottom: 6 }}>Sun Config</div>
-                  <div style={{ color: '#94a3b8', marginBottom: 10 }}>Directional light only. Default here is 0.25.</div>
-                  <div style={{ color: '#ddd' }}>Brightness: {dirLightConfig.intensity.toFixed(2)}</div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="6"
-                    step="0.05"
-                    value={dirLightConfig.intensity}
-                    onChange={(e) => setDirLightConfig((prev) => ({ ...prev, intensity: Number(e.target.value) }))}
-                    style={{ width: '100%' }}
-                  />
-                  <div style={{ color: '#ddd', marginTop: 12 }}>Color</div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <input
-                      type="color"
-                      value={dirLightConfig.customColor}
-                      onChange={(e) => setDirLightConfig((prev) => ({
-                        ...prev,
-                        colorMode: 'custom',
-                        customColor: e.target.value,
-                      }))}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setDirLightConfig({ intensity: 3.0, colorMode: 'export', customColor: '#fdf2ed' })}
-                      style={{
-                        background: '#1f2937', color: '#e5e7eb', border: '1px solid #4b5563',
-                        borderRadius: 4, padding: '4px 8px', cursor: 'pointer', fontFamily: 'monospace',
-                      }}
-                    >
-                      Reset Export (3.0)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDirLightConfig({ intensity: 0.25, colorMode: 'export', customColor: '#fdf2ed' })}
-                      style={{
-                        background: '#0f172a', color: '#e5e7eb', border: '1px solid #334155',
-                        borderRadius: 4, padding: '4px 8px', cursor: 'pointer', fontFamily: 'monospace',
-                      }}
-                    >
-                      Reset Default (0.25)
-                    </button>
-                  </div>
-                  <div style={{ color: dirLightConfig.colorMode === 'export' ? '#00ff88' : '#fbbf24', marginTop: 8 }}>
-                    {dirLightConfig.colorMode === 'export' ? 'Using export-reader sun color' : `Using custom color ${dirLightConfig.customColor}`}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {showControlPanel && (
-              <div style={{
-                marginTop: 18,
-                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14,
-              }}>
-                <div style={{ color: '#fff', fontWeight: 700, marginBottom: 10 }}>控制模式</div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setControlMode('traditional');
-                      controlModeRef.current = 'traditional';
-                      localStorage.setItem('controlMode', 'traditional');
-                      const f = localFacingRef.current;
-                      const yaw = Math.atan2(f.x, f.y);
-                      charYawRef.current = yaw;
-                      camYawRef.current = yaw;
-                    }}
-                    style={{
-                      background: controlMode === 'traditional' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)',
-                      color: controlMode === 'traditional' ? '#93c5fd' : '#e5e7eb',
-                      border: `1px solid ${controlMode === 'traditional' ? 'rgba(96,165,250,0.6)' : 'rgba(255,255,255,0.14)'}`,
-                      borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontFamily: 'monospace',
-                    }}
-                  >
-                    传统模式
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setControlMode('joystick');
-                      controlModeRef.current = 'joystick';
-                      localStorage.setItem('controlMode', 'joystick');
-                    }}
-                    style={{
-                      background: controlMode === 'joystick' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)',
-                      color: controlMode === 'joystick' ? '#93c5fd' : '#e5e7eb',
-                      border: `1px solid ${controlMode === 'joystick' ? 'rgba(96,165,250,0.6)' : 'rgba(255,255,255,0.14)'}`,
-                      borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontFamily: 'monospace',
-                    }}
-                  >
-                    摇杆模式
-                  </button>
-                </div>
-                <div style={{ color: '#cbd5e1', fontSize: 12, lineHeight: 1.8 }}>
-                  {controlMode === 'traditional'
-                    ? <>W/S 前进/后退  A/D 转向  G 自动前行（按S停止）<br />右键拖拽 转向+转镜头  左键拖拽 转镜头<br />S+Space 后撤  滚轮 镜头缩放</>
-                    : <>WASD 绝对方向移动<br />镜头固定 不随角色旋转</>}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -3646,25 +3733,36 @@ export default function BattleArena({
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: 3,
+        gap: showJumpDetailsPanel ? 3 : 0,
         pointerEvents: 'none',
         zIndex: 490,
       }}>
-        {/* Jump timing record */}
-        <div style={{
-          background: 'rgba(0,0,0,0.65)',
-          color: 'rgba(255,220,100,0.85)',
-          fontFamily: 'monospace',
-          fontSize: 11,
-          padding: '3px 10px',
-          borderRadius: 5,
-          border: '1px solid rgba(255,255,255,0.12)',
-          whiteSpace: 'nowrap',
-        }}>
-          {jumpRecord.riseMs !== null
-            ? `↑ ${(jumpRecord.riseMs / 1000).toFixed(2)}s  ↓ ${(jumpRecord.fallMs! / 1000).toFixed(2)}s  ⟳ ${(jumpRecord.totalMs! / 1000).toFixed(2)}s  ⬆ ${jumpRecord.peakUnits!.toFixed(1)}u`
-            : '— — —'}
-        </div>
+        {showJumpDetailsPanel && (
+          <div style={{
+            background: 'rgba(0,0,0,0.65)',
+            color: 'rgba(255,220,100,0.85)',
+            fontFamily: 'monospace',
+            fontSize: 11,
+            padding: '3px 10px',
+            borderRadius: 5,
+            border: '1px solid rgba(255,255,255,0.12)',
+            whiteSpace: 'normal',
+            lineHeight: 1.4,
+          }}>
+            {jumpRecord.riseMs !== null
+              ? (
+                <>
+                  <div>
+                    {`J${jumpRecord.jumpPhase ?? '?'} ${jumpRecord.mode === 'directional' ? 'dir' : 'up'}  ↑ ${(jumpRecord.riseMs / 1000).toFixed(2)}s  ↓ ${(jumpRecord.fallMs! / 1000).toFixed(2)}s  ⟳ ${(jumpRecord.totalMs! / 1000).toFixed(2)}s  ⬆ ${jumpRecord.peakUnits!.toFixed(1)}u`}
+                  </div>
+                  <div>
+                    {`v0 ${(jumpRecord.startSpeedUnitsPerSec ?? 0).toFixed(2)} u/s  exp ${(jumpRecord.expectedLandUnits ?? 0).toFixed(2)}u  land ${(jumpRecord.actualLandUnits ?? 0).toFixed(2)}u`}
+                  </div>
+                </>
+              )
+              : '— — —'}
+          </div>
+        )}
         {/* Current height: A = above current floor, B = relative floor elevation */}
         <div style={{
           background: 'rgba(0,0,0,0.65)',
@@ -3676,101 +3774,14 @@ export default function BattleArena({
           border: '1px solid rgba(255,255,255,0.15)',
           letterSpacing: '0.05em',
         }}>
-          <span style={{ color: '#44ffaa' }}>{heightDisplay.aboveGround.toFixed(1)} u</span>
-          <span style={{ color: 'rgba(255,255,255,0.5)' }}> | </span>
-          <span style={{ color: '#ffd700' }}>{heightDisplay.floorElev.toFixed(1)} u</span>
+          <span style={{ color: '#44ffaa' }}>{heightDisplay.aboveGround.toFixed(1)}</span>
+          {showGroundDistanceDetail && (
+            <>
+              <span style={{ color: 'rgba(255,255,255,0.5)' }}> | </span>
+              <span style={{ color: '#ffd700' }}>{heightDisplay.floorElev.toFixed(1)}</span>
+            </>
+          )}
         </div>
-      </div>
-
-      {/* ===== MEASUREMENT TOOL OVERLAY (80% x, 60% y) ===== */}
-      <div style={{
-        position: 'absolute',
-        left: '80%',
-        top: '60%',
-        transform: 'translate(-50%, -50%)',
-        zIndex: 490,
-        pointerEvents: 'all',
-        background: 'rgba(10,10,15,0.82)',
-        border: '1px solid rgba(255,215,0,0.35)',
-        borderRadius: 10,
-        padding: '10px 14px',
-        minWidth: 180,
-        fontFamily: 'monospace',
-        fontSize: 12,
-      }}>
-        <div style={{ color: '#ffd700', fontWeight: 700, marginBottom: 8, fontSize: 13 }}>📏 测量</div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-          <button
-            type="button"
-            onClick={() => {
-              const pos = localPositionRef.current ?? localRenderPosRef.current;
-              const nextPin = { x: pos.x, y: pos.y, z: localZRef.current };
-              setMeasurePins(prev => prev.length >= 2 ? [nextPin, prev[1]] : [nextPin]);
-            }}
-            style={{
-              flex: 1, background: measurePins.length >= 1 ? 'rgba(255,215,0,0.18)' : 'rgba(255,255,255,0.06)',
-              border: `1px solid ${measurePins.length >= 1 ? 'rgba(255,215,0,0.6)' : 'rgba(255,255,255,0.2)'}`,
-              color: measurePins.length >= 1 ? '#ffd700' : '#cbd5e1',
-              borderRadius: 6, padding: '5px 0', cursor: 'pointer', fontSize: 12,
-            }}
-          >Pin A</button>
-          <button
-            type="button"
-            onClick={() => {
-              const pos = localPositionRef.current ?? localRenderPosRef.current;
-              const nextPin = { x: pos.x, y: pos.y, z: localZRef.current };
-              setMeasurePins(prev => {
-                if (prev.length === 0) return prev; // need A first
-                return [prev[0], nextPin];
-              });
-            }}
-            style={{
-              flex: 1, background: measurePins.length >= 2 ? 'rgba(255,215,0,0.18)' : 'rgba(255,255,255,0.06)',
-              border: `1px solid ${measurePins.length >= 2 ? 'rgba(255,215,0,0.6)' : 'rgba(255,255,255,0.2)'}`,
-              color: measurePins.length >= 2 ? '#ffd700' : '#94a3b8',
-              borderRadius: 6, padding: '5px 0', cursor: 'pointer', fontSize: 12,
-            }}
-          >Pin B</button>
-        </div>
-        {measurePins.length === 0 && (
-          <div style={{ color: '#64748b', fontSize: 11 }}>先点 Pin A 记录起点</div>
-        )}
-        {measurePins.length === 1 && (
-          <div style={{ color: '#94a3b8', fontSize: 11 }}>
-            A 已记录<br/>
-            再点 Pin B 记录终点
-          </div>
-        )}
-        {measurePins.length >= 2 && (() => {
-          const dx = measurePins[1].x - measurePins[0].x;
-          const dy = measurePins[1].y - measurePins[0].y;
-          const dz = measurePins[1].z - measurePins[0].z;
-          const flatDist = Math.sqrt(dx * dx + dy * dy) / 2.2;
-          const heightDelta = Math.abs(dz) / 2.2;
-          const totalDist = Math.sqrt(dx * dx + dy * dy + dz * dz) / 2.2;
-          return (
-            <div style={{ color: '#86efac', fontSize: 12, lineHeight: 1.7 }}>
-              <div>A 已记录</div>
-              <div>B 已记录</div>
-              <div>平面 {flatDist.toFixed(1)} u</div>
-              <div>高差 {heightDelta.toFixed(1)} u</div>
-              <div style={{ color: '#ffd700', fontWeight: 700, marginTop: 4, fontSize: 13 }}>
-                总长 {totalDist.toFixed(1)} u
-              </div>
-            </div>
-          );
-        })()}
-        {measurePins.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setMeasurePins([])}
-            style={{
-              marginTop: 8, width: '100%', background: 'rgba(239,68,68,0.12)',
-              border: '1px solid rgba(239,68,68,0.35)', color: '#fca5a5',
-              borderRadius: 5, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-            }}
-          >清除</button>
-        )}
       </div>
 
       {/* ===== TOP-LEFT: My HP panel ===== */}
@@ -3823,9 +3834,6 @@ export default function BattleArena({
               {Math.round(myShield)}
             </span>
           )}
-        </div>
-        <div className={styles.myManaTrack}>
-          <div className={styles.myManaFill} />
         </div>
       </div>
 
@@ -4140,7 +4148,7 @@ export default function BattleArena({
                     if (pu2 && pp) {
                       const ddx = pu2.position.x - pp.x;
                       const ddy = pu2.position.y - pp.y;
-                      const d   = Math.sqrt(ddx * ddx + ddy * ddy);
+                      const d   = worldUnitsToNewUnits(Math.sqrt(ddx * ddx + ddy * ddy), mode);
                       dist2 = d < 1 ? '<1' : `${Math.round(d)}`;
                       // 0° = right (+X). SVG arrow default points up (−90°), so subtract 90
                       deg2 = ((Math.atan2(ddy, ddx) * 180 / Math.PI) - 90 + 360) % 360;

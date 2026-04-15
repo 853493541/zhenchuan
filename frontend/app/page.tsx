@@ -144,7 +144,7 @@ export default function HomePage() {
           onClick={() => createGame('collision-test')}
           disabled={loading}
         >
-          {loading ? "创建中…" : "碰撞测试"}
+          {loading ? "创建中…" : "创建玉门关"}
         </button>
         <button
           className={`${styles.createBtn} ${styles.createBtnExportViewer}`}
@@ -179,7 +179,7 @@ export default function HomePage() {
 
               {/* 模式 */}
               <div className={styles.modeBadge}>
-                {g.mode === 'arena' ? '竞技场' : g.mode === 'collision-test' ? '碰撞测试' : '吃鸡'}
+                {g.mode === 'arena' ? '竞技场' : g.mode === 'collision-test' ? '玉门关' : '吃鸡'}
               </div>
 
               {/* 人数 */}

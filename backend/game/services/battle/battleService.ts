@@ -10,6 +10,7 @@ import { PlayerID } from "../../engine/state/types/common";
 import { AbilityInstance } from "../../engine/state/types/abilities";
 import { ABILITIES } from "../../abilities/abilities";
 import { randomUUID } from "crypto";
+import { NEW_WORLD_UNIT_SCALE } from "../../engine/state/types/position";
 import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT, EXPORTED_MAP_SPAWN_POSITIONS } from "../../map/exportedMap";
 
 // Arena dimensions (must match backend arena size)
@@ -192,6 +193,8 @@ const COMMON_ABILITY_IDS = [
   "yuqi",
 ];
 
+const BASE_MOVE_SPEED_PER_TICK = 0.1666667;
+
 function makeCommonAbilities(): AbilityInstance[] {
   return COMMON_ABILITY_IDS.map((id) => ({
     instanceId: randomUUID(),
@@ -211,6 +214,7 @@ export function initializeBattleState(
 ): GameState {
   const isArena = mode === 'arena';
   const isCollisionTest = mode === 'collision-test';
+  const unitScale = isCollisionTest ? 1 : NEW_WORLD_UNIT_SCALE;
   const mapWidth  = isCollisionTest ? EXPORTED_MAP_WIDTH  : isArena ? ARENA_WIDTH  : PUBG_WIDTH;
   const mapHeight = isCollisionTest ? EXPORTED_MAP_HEIGHT : isArena ? ARENA_HEIGHT : PUBG_HEIGHT;
   const spawnList = isCollisionTest ? EXPORTED_MAP_SPAWN_POSITIONS : isArena ? ARENA_SPAWN_POSITIONS : PUBG_SPAWN_POSITIONS;
@@ -239,18 +243,19 @@ export function initializeBattleState(
       position: { x: spawn.x, y: spawn.y },
       velocity: { vx: 0, vy: 0 },
       facing: { x: dx / mag, y: dy / mag },
-      moveSpeed: 0.3666667, // 0.1666667 × UNIT_SCALE(2.2) — 1 new unit = 2.2 world units
+      moveSpeed: BASE_MOVE_SPEED_PER_TICK * unitScale,
     };
   });
 
   const state: GameState = {
     version: 1,
+    unitScale,
     turn: 0,
     activePlayerIndex: 0,
     gameOver: false,
     players,
     events: [],
-    pickups: isArena || isCollisionTest ? generateArenaPickups() : generatePickups(),
+    pickups: isCollisionTest ? [] : isArena ? generateArenaPickups() : generatePickups(),
   };
 
   return state;

@@ -15,6 +15,7 @@ import { ABILITIES } from "../abilities/abilities";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { diffState } from "../services/flow/stateDiff";
 import type { AbilityInstance } from "../engine/state/types";
+import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types";
 
 const router = express.Router();
 
@@ -437,8 +438,9 @@ router.post("/draft/finalize", async (req, res) => {
         game.state.players[1].facing = { x: -1, y: 0 };
       }
 
-      game.state.players[0].moveSpeed = 0.3666667; // 0.1666667 × UNIT_SCALE(2.2)
-      game.state.players[1].moveSpeed = 0.3666667;
+      const unitScale = game.state.unitScale ?? NEW_WORLD_UNIT_SCALE;
+      game.state.players[0].moveSpeed = 0.1666667 * unitScale;
+      game.state.players[1].moveSpeed = 0.1666667 * unitScale;
 
       // Force Mongoose to recognize nested changes
       game.state.players[0] = {
@@ -517,9 +519,18 @@ router.post("/battle/start", async (req, res) => {
     if (existingLoop) {
       // The loop may have been started before the pickup system was added.
       // Retroactively inject pickups if the loop state is empty so claim/inspect work.
+      // Collision-test no longer uses pickups at all.
       const ls = existingLoop.getState();
-      if (!ls.pickups || ls.pickups.length === 0) {
-        const isArena = ((game as any).mode ?? 'arena') === 'arena';
+      const mode = ((game as any).mode ?? 'arena') as string;
+      const isArena = mode === 'arena';
+      const isCollisionTest = mode === 'collision-test';
+      if (isCollisionTest) {
+        if ((ls.pickups ?? []).length > 0) {
+          ls.pickups = [];
+          existingLoop.updateState(ls);
+          await GameSession.findByIdAndUpdate(gameId, { "state.pickups": [] });
+        }
+      } else if (!ls.pickups || ls.pickups.length === 0) {
         ls.pickups = isArena ? generateArenaPickups() : generatePickups();
         existingLoop.updateState(ls);
         await GameSession.findByIdAndUpdate(gameId, { "state.pickups": ls.pickups });

@@ -181,6 +181,7 @@ export interface GroundZone {
 export interface GameState {
   turn: number;
   activePlayerIndex: number;
+  unitScale?: number;
 
   gameOver: boolean;
   winnerUserId?: string;
