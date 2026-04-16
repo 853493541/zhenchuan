@@ -79,6 +79,48 @@ interface ArenaSceneProps {
   camYawRef: MutableRefObject<number>;
   camPitchRef: MutableRefObject<number>;
   camZoomRef: MutableRefObject<number>;
+  cameraMoveCommandActiveRef?: MutableRefObject<boolean>;
+  cameraLookInputVersionRef?: MutableRefObject<number>;
+  manualCameraLookActiveRef?: MutableRefObject<boolean>;
+  onCameraDebugEvent?: (entry: {
+    type: string;
+    message: string;
+    camera: { x: number; y: number; z: number };
+    lookTarget: { x: number; y: number; z: number };
+    pivot: { x: number; y: number; z: number };
+    yaw: number;
+    pitch: number;
+    zoom: number;
+    desiredDistance: number;
+    actualDistance: number;
+    wallClamp: boolean;
+    probeClamp: boolean;
+    groundClamp: boolean;
+    recenter: boolean;
+    wallDebug?: {
+      hitCount: number;
+      sampleCount: number;
+      hitMask: string;
+      spanX: number;
+      spanY: number;
+      minDistance: number | null;
+      maxDistance: number | null;
+      rawDistance: number | null;
+      retainedDistance: number | null;
+      clearMs: number;
+      pendingExpandDistance: number | null;
+      pendingExpandMs: number;
+    };
+    probeDebug?: {
+      hitCount: number;
+      sampleCount: number;
+      hitMask: string;
+      minDistance: number | null;
+      maxDistance: number | null;
+      rawDistance: number | null;
+      retainedDistance: number | null;
+    };
+  }) => void;
   meFacingRef: MutableRefObject<{ x: number; y: number }>;
   maxHp: number;
   meScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
@@ -327,6 +369,10 @@ export default function ArenaScene({
   camYawRef,
   camPitchRef,
   camZoomRef,
+  cameraMoveCommandActiveRef,
+  cameraLookInputVersionRef,
+  manualCameraLookActiveRef,
+  onCameraDebugEvent,
   meFacingRef,
   maxHp,
   meScreenBoundsRef,
@@ -431,8 +477,13 @@ export default function ArenaScene({
         camYawRef={camYawRef}
         camPitchRef={camPitchRef}
         camZoomRef={camZoomRef}
+        moveCommandActiveRef={cameraMoveCommandActiveRef}
+        cameraLookInputVersionRef={cameraLookInputVersionRef}
+        manualCameraLookActiveRef={manualCameraLookActiveRef}
+        onCameraDebugEvent={onCameraDebugEvent}
         worldHalfX={worldHalfX}
         worldHalfY={worldHalfY}
+        collisionSystemRef={isCollisionTest ? collisionSystemRef : undefined}
       />
 
       {/* Lighting — mode-specific */}
@@ -622,6 +673,7 @@ export default function ArenaScene({
           worldHalfX={worldHalfX}
           worldHalfY={worldHalfY}
           isStealthed={meSemiTransparent}
+          cameraFadeEnabled={isCollisionTest}
         />
       )}
       </>}  {/* end !blueprintMode */}

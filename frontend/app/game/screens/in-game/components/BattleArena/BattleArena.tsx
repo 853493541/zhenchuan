@@ -479,6 +479,14 @@ function computeHpShieldSegments(
 // Fixed camera direction constant — referenced in physics tick
 const CAM_DIR = { x: 0, y: 1 };
 const DEFAULT_PITCH = Math.atan2(10, 20);
+const DEFAULT_MIN_CAMERA_PITCH = 0.08;
+const COLLISION_TEST_MIN_CAMERA_PITCH = -1.05;
+const MAX_CAMERA_PITCH = Math.PI * 0.47;
+
+function clampCameraPitch(pitch: number, mode?: string): number {
+  const minPitch = mode === 'collision-test' ? COLLISION_TEST_MIN_CAMERA_PITCH : DEFAULT_MIN_CAMERA_PITCH;
+  return Math.max(minPitch, Math.min(MAX_CAMERA_PITCH, pitch));
+}
 
 /* ============================================================
    TYPES
@@ -512,6 +520,48 @@ interface AbilityInfo {
   allowGroundCastWithoutTarget?: boolean;
   losBlocked?: boolean;
 }
+
+type CameraDebugEntry = {
+  id: number;
+  ts: number;
+  type: string;
+  message: string;
+  camera: { x: number; y: number; z: number };
+  lookTarget: { x: number; y: number; z: number };
+  pivot: { x: number; y: number; z: number };
+  yaw: number;
+  pitch: number;
+  zoom: number;
+  desiredDistance: number;
+  actualDistance: number;
+  wallClamp: boolean;
+  probeClamp: boolean;
+  groundClamp: boolean;
+  recenter: boolean;
+  wallDebug?: {
+    hitCount: number;
+    sampleCount: number;
+    hitMask: string;
+    spanX: number;
+    spanY: number;
+    minDistance: number | null;
+    maxDistance: number | null;
+    rawDistance: number | null;
+    retainedDistance: number | null;
+    clearMs: number;
+    pendingExpandDistance: number | null;
+    pendingExpandMs: number;
+  };
+  probeDebug?: {
+    hitCount: number;
+    sampleCount: number;
+    hitMask: string;
+    minDistance: number | null;
+    maxDistance: number | null;
+    rawDistance: number | null;
+    retainedDistance: number | null;
+  };
+};
 
 /** Fixed display order for the common-ability bar. */
 const COMMON_ABILITY_ORDER = [
@@ -675,9 +725,10 @@ export default function BattleArena({
   const [showTestingPanel, setShowTestingPanel] = useState(false);
   const [showEnvTestingPanel, setShowEnvTestingPanel] = useState(false);
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
+  const [showCameraEventTestingPanel, setShowCameraEventTestingPanel] = useState(false);
   const [showMeasurePanel, setShowMeasurePanel] = useState(false);
   const [showJumpDetailsPanel, setShowJumpDetailsPanel] = useState(false);
-  const [showGroundDistanceDetail, setShowGroundDistanceDetail] = useState(true);
+  const [showGroundDistanceDetail, setShowGroundDistanceDetail] = useState(false);
   const [losBlocker, setLosBlocker] = useState<string | null>(null);
   const [envDebugInfo, setEnvDebugInfo] = useState<EnvDebugInfo | null>(null);
   const [envToggles, setEnvToggles] = useState<EnvToggles>({
@@ -691,12 +742,83 @@ export default function BattleArena({
     customColor: '#fdf2ed',
   });
   const [cameraZoomLevel, setCameraZoomLevel] = useState(1.0);
+  const [cameraDebugEntries, setCameraDebugEntries] = useState<CameraDebugEntry[]>([]);
+  const cameraDebugIdRef = useRef(0);
+  const cameraEventTestingEnabledRef = useRef(false);
   const losBlockerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showLOSBlocker = useCallback((msg: string) => {
     setLosBlocker(msg);
     if (losBlockerTimerRef.current) clearTimeout(losBlockerTimerRef.current);
     losBlockerTimerRef.current = setTimeout(() => setLosBlocker(null), 3000);
   }, []);
+  const clearCameraDebugEntries = useCallback(() => {
+    cameraDebugIdRef.current = 0;
+    setCameraDebugEntries(prev => (prev.length === 0 ? prev : []));
+  }, []);
+  const appendCameraDebugEntry = useCallback((entry: Omit<CameraDebugEntry, 'id' | 'ts'>) => {
+    if (!cameraEventTestingEnabledRef.current) return;
+    setCameraDebugEntries(prev => {
+      const nextId = cameraDebugIdRef.current + 1;
+      cameraDebugIdRef.current = nextId;
+      const next = [...prev, { ...entry, id: nextId, ts: Date.now() }];
+      return next.slice(-180);
+    });
+  }, []);
+  useEffect(() => {
+    cameraEventTestingEnabledRef.current = showCameraEventTestingPanel;
+    if (!showCameraEventTestingPanel) {
+      clearCameraDebugEntries();
+    }
+  }, [clearCameraDebugEntries, showCameraEventTestingPanel]);
+  const formatCameraDebugEntry = useCallback((entry: CameraDebugEntry) => {
+    const time = new Date(entry.ts).toLocaleTimeString('en-GB', { hour12: false });
+    const millis = String(entry.ts % 1000).padStart(3, '0');
+    const flags = [
+      entry.wallClamp ? 'wall' : null,
+      entry.probeClamp ? 'probe' : null,
+      entry.groundClamp ? 'ground' : null,
+      entry.recenter ? 'recenter' : null,
+    ].filter(Boolean).join('/');
+    const wallLine = entry.wallDebug
+      ? `wall hits=${entry.wallDebug.hitCount}/${entry.wallDebug.sampleCount} mask=${entry.wallDebug.hitMask || '-'} ` +
+        `span=${entry.wallDebug.spanX.toFixed(2)}x${entry.wallDebug.spanY.toFixed(2)} ` +
+        `range=${entry.wallDebug.minDistance === null ? '-' : `${entry.wallDebug.minDistance.toFixed(2)}..${entry.wallDebug.maxDistance?.toFixed(2) ?? entry.wallDebug.minDistance.toFixed(2)}`} ` +
+        `raw=${entry.wallDebug.rawDistance === null ? '-' : entry.wallDebug.rawDistance.toFixed(2)} ` +
+        `keep=${entry.wallDebug.retainedDistance === null ? '-' : entry.wallDebug.retainedDistance.toFixed(2)} ` +
+        `clear=${entry.wallDebug.clearMs}ms ` +
+        `pending=${entry.wallDebug.pendingExpandDistance === null ? '-' : `${entry.wallDebug.pendingExpandDistance.toFixed(2)}@${entry.wallDebug.pendingExpandMs}ms`}`
+      : null;
+    const probeLine = entry.probeDebug
+      ? `probe hits=${entry.probeDebug.hitCount}/${entry.probeDebug.sampleCount} mask=${entry.probeDebug.hitMask || '-'} ` +
+        `range=${entry.probeDebug.minDistance === null ? '-' : `${entry.probeDebug.minDistance.toFixed(2)}..${entry.probeDebug.maxDistance?.toFixed(2) ?? entry.probeDebug.minDistance.toFixed(2)}`} ` +
+        `raw=${entry.probeDebug.rawDistance === null ? '-' : entry.probeDebug.rawDistance.toFixed(2)} ` +
+        `keep=${entry.probeDebug.retainedDistance === null ? '-' : entry.probeDebug.retainedDistance.toFixed(2)}`
+      : null;
+
+    return [
+      `[${time}.${millis}] ${entry.type} ${entry.message}`,
+      `cam(${entry.camera.x.toFixed(2)}, ${entry.camera.y.toFixed(2)}, ${entry.camera.z.toFixed(2)}) ` +
+        `look(${entry.lookTarget.x.toFixed(2)}, ${entry.lookTarget.y.toFixed(2)}, ${entry.lookTarget.z.toFixed(2)}) ` +
+        `pivot(${entry.pivot.x.toFixed(2)}, ${entry.pivot.y.toFixed(2)}, ${entry.pivot.z.toFixed(2)})`,
+      `yaw=${entry.yaw.toFixed(2)} pitch=${entry.pitch.toFixed(2)} zoom=${entry.zoom.toFixed(2)} ` +
+        `dist=${entry.actualDistance.toFixed(2)}/${entry.desiredDistance.toFixed(2)}${flags ? ` flags=${flags}` : ''}`,
+      wallLine,
+      probeLine,
+    ].filter(Boolean).join('\n');
+  }, []);
+  const copyCameraDebugEntries = useCallback(async () => {
+    if (cameraDebugEntries.length === 0) {
+      toastError('没有可复制的镜头日志');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(cameraDebugEntries.map(formatCameraDebugEntry).join('\n\n'));
+      toastSuccess(`已复制 ${cameraDebugEntries.length} 条镜头日志`);
+    } catch {
+      toastError('复制镜头日志失败');
+    }
+  }, [cameraDebugEntries, formatCameraDebugEntry]);
   const collisionSysRef = useRef<MapCollisionSystem | null>(null);
   const collisionReadyRef = useRef(mode !== 'collision-test');
   const [collisionReady, setCollisionReady] = useState(mode !== 'collision-test');
@@ -906,6 +1028,9 @@ export default function BattleArena({
   const camYawRef      = useRef(0);             // camera yaw
   const camPitchRef    = useRef(DEFAULT_PITCH); // camera pitch angle (radians)
   const camZoomRef     = useRef(1.0);           // zoom multiplier (scroll wheel)
+  const cameraMoveCommandActiveRef = useRef(false);
+  const cameraLookInputVersionRef = useRef(0);
+  const manualCameraLookActiveRef = useRef(false);
   const mouseStateRef  = useRef({ isLeft: false, isRight: false, lastX: 0, lastY: 0, downX: NaN, downY: NaN });
 
   /* --- Target selection refs --- */
@@ -2323,6 +2448,7 @@ export default function BattleArena({
     const resetMouseButtons = () => {
       mouseStateRef.current.isLeft = false;
       mouseStateRef.current.isRight = false;
+      manualCameraLookActiveRef.current = false;
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -2331,6 +2457,7 @@ export default function BattleArena({
         // Only start drag if not clicking a UI button or a draggable panel
         if ((e.target as HTMLElement).closest('button, [data-ui-drag]')) return;
         mouseStateRef.current.isLeft = true;
+        manualCameraLookActiveRef.current = true;
         mouseStateRef.current.lastX  = e.clientX;
         mouseStateRef.current.lastY  = e.clientY;
         mouseStateRef.current.downX  = e.clientX;
@@ -2342,6 +2469,7 @@ export default function BattleArena({
         e.preventDefault();
         e.stopPropagation();
         mouseStateRef.current.isRight = true;
+        manualCameraLookActiveRef.current = mouseStateRef.current.isLeft;
         mouseStateRef.current.lastX   = e.clientX;
         mouseStateRef.current.lastY   = e.clientY;
         return;
@@ -2371,6 +2499,7 @@ export default function BattleArena({
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) {
         mouseStateRef.current.isLeft = false;
+        manualCameraLookActiveRef.current = false;
         // Keep old behavior compatibility: do not force clear or cycle targets on plain mouse up.
         mouseStateRef.current.downX = NaN;
         mouseStateRef.current.downY = NaN;
@@ -2380,6 +2509,7 @@ export default function BattleArena({
         e.preventDefault();
         e.stopPropagation();
         mouseStateRef.current.isRight = false;
+        manualCameraLookActiveRef.current = mouseStateRef.current.isLeft;
         return;
       }
       if (e.button === 1) {
@@ -2406,7 +2536,8 @@ export default function BattleArena({
         camYawRef.current  -= dx * 0.005;
         // Update pitch too (drag up/down tilts view)
         const newPitch = camPitchRef.current + dy * 0.003;
-        camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
+        camPitchRef.current = clampCameraPitch(newPitch, mode);
+        cameraLookInputVersionRef.current += 1;
         const moveIntent = buildTraditionalMoveIntent(
           keysRef.current,
           true,
@@ -2429,12 +2560,14 @@ export default function BattleArena({
         camYawRef.current  -= dx * 0.005;
         // dy > 0 = drag down = look more from above (increase pitch)
         const newPitch = camPitchRef.current + dy * 0.003;
-        camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
+        camPitchRef.current = clampCameraPitch(newPitch, mode);
+        cameraLookInputVersionRef.current += 1;
       } else {
         // LMB + RMB together: rotate camera + character facing; physics tick moves forward
         camYawRef.current  -= dx * 0.005;
         const newPitch = camPitchRef.current + dy * 0.003;
-        camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
+        camPitchRef.current = clampCameraPitch(newPitch, mode);
+        cameraLookInputVersionRef.current += 1;
         const moveIntent = buildTraditionalMoveIntent(
           keysRef.current,
           true,
@@ -2506,6 +2639,7 @@ export default function BattleArena({
       camTouchRef.id    = touch.identifier;
       camTouchRef.lastX = touch.clientX;
       camTouchRef.lastY = touch.clientY;
+      manualCameraLookActiveRef.current = true;
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -2524,12 +2658,16 @@ export default function BattleArena({
         y: -Math.cos(charYawRef.current),
       };
       const newPitch = camPitchRef.current + dy * 0.003;
-      camPitchRef.current = Math.max(0.08, Math.min(Math.PI * 0.47, newPitch));
+      camPitchRef.current = clampCameraPitch(newPitch, mode);
+      cameraLookInputVersionRef.current += 1;
     };
 
     const onTouchEnd = (e: TouchEvent) => {
       const touch = Array.from(e.changedTouches).find(t => t.identifier === camTouchRef.id);
-      if (touch) camTouchRef.id = null;
+      if (touch) {
+        camTouchRef.id = null;
+        manualCameraLookActiveRef.current = false;
+      }
     };
 
     window.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -2603,8 +2741,12 @@ export default function BattleArena({
     const tick = () => {
       const tickNowMs = performance.now();
       const pos = localPositionRef.current;
-      if (!pos) return;
+      if (!pos) {
+        cameraMoveCommandActiveRef.current = false;
+        return;
+      }
       if (mode === 'collision-test' && !collisionReadyRef.current) {
+        cameraMoveCommandActiveRef.current = false;
         localVelocityRef.current = { x: 0, y: 0 };
         localVzRef.current = 0;
         return;
@@ -2614,6 +2756,7 @@ export default function BattleArena({
 
       // During server-authoritative dash: skip movement + gravity, but KEEP camera/turning
       if (meActiveDashRef.current) {
+        cameraMoveCommandActiveRef.current = false;
         localVelocityRef.current.x = 0;
         localVelocityRef.current.y = 0;
         jumpLocalRef.current = false;
@@ -2707,6 +2850,7 @@ export default function BattleArena({
           camYawRef.current,
           charYawRef.current,
         );
+        cameraMoveCommandActiveRef.current = !!moveIntent.direction;
         moveIntentDx = moveIntent.direction?.dx ?? 0;
         moveIntentDy = moveIntent.direction?.dy ?? 0;
 
@@ -2753,6 +2897,7 @@ export default function BattleArena({
         if (k.a) ix -= 1;
         if (k.d) ix += 1;
         const moveDir = normalizePlanar(ix, iy);
+        cameraMoveCommandActiveRef.current = !!moveDir || !!joystickDirRef.current;
         moveIntentDx = moveDir?.x ?? 0;
         moveIntentDy = moveDir?.y ?? 0;
         if (jumpAirborne) {
@@ -2869,7 +3014,7 @@ export default function BattleArena({
         const jumpDir = normalizePlanar(moveIntentDx, moveIntentDy);
         const isMultiJump = effectiveMaxJumps > 2;
         const hadPowerJumpAirtime = isPowerJumpRef.current && !isPowerJumpCombinedRef.current && localJumpCountRef.current > 0;
-        const usePowerDirectionalBudget = hasFuyaoBuffRef.current && !isMultiJump;
+        const usePowerDirectionalBudget = hasFuyaoBuffRef.current;
         const heightAboveGround = Math.max(0, localZRef.current - tickGroundH);
         const jumpSpeedSource = Math.max(
           effectiveMaxSpeed,
@@ -3441,6 +3586,9 @@ export default function BattleArena({
             camYawRef={camYawRef}
             camPitchRef={camPitchRef}
             camZoomRef={camZoomRef}
+            cameraMoveCommandActiveRef={cameraMoveCommandActiveRef}
+            cameraLookInputVersionRef={cameraLookInputVersionRef}
+            manualCameraLookActiveRef={manualCameraLookActiveRef}
             meFacingRef={localFacingRef as React.MutableRefObject<{ x: number; y: number }>}
             maxHp={maxHp}
             meScreenBoundsRef={meScreenBoundsRef}
@@ -3466,10 +3614,11 @@ export default function BattleArena({
             collisionSystemRef={collisionSysRef}
             collisionDebugRef={collisionDebugRef}
             onCollisionSystemReady={onCollisionSystemReady}
+            onCameraDebugEvent={mode === 'collision-test' && showCameraEventTestingPanel ? appendCameraDebugEntry : undefined}
             losBlocker={losBlocker}
             blueprintMode={blueprintMode}
             losIsBlocked={draftAbilities.some(a => a.losBlocked) || commonAbilities.some(a => a.losBlocked)}
-            onEnvDebug={mode === 'collision-test' ? setEnvDebugInfo : undefined}
+            onEnvDebug={mode === 'collision-test' && showEnvTestingPanel ? setEnvDebugInfo : undefined}
             envToggles={mode === 'collision-test' ? envToggles : undefined}
             dirLightConfig={mode === 'collision-test' ? dirLightConfig : undefined}
           />
@@ -3554,6 +3703,72 @@ export default function BattleArena({
           <div className={styles.uiInfoValue}>位置 {localRenderPosRef.current.x.toFixed(1)}, {localRenderPosRef.current.y.toFixed(1)}</div>
           <div className={styles.uiInfoValue}>移速 {effectiveMoveSpeedUnitsPerSec.toFixed(2)}</div>
           <div className={styles.uiInfoValue}>镜头距离 {cameraZoomLevel.toFixed(2)}</div>
+        </div>
+      )}
+
+      {mode === 'collision-test' && showCameraEventTestingPanel && (
+        <div
+          className={styles.uiFloatingPanel}
+          style={{
+            left: '5%',
+            top: '60%',
+            width: 'min(420px, calc(100vw - 28px))',
+            maxHeight: '34vh',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            paddingBottom: 10,
+            pointerEvents: 'auto',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div>
+              <div className={styles.uiFloatingTitle}>镜头事件</div>
+              <div className={styles.uiInlineHint}>记录镜头卡墙、贴墙、回正和跳变事件</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button type="button" className={styles.uiInlineButton} onClick={clearCameraDebugEntries}>清空</button>
+              <button type="button" className={styles.uiInlineButton} onClick={() => void copyCameraDebugEntries()}>复制</button>
+            </div>
+          </div>
+
+          <div style={{ fontFamily: 'monospace', fontSize: 11, color: 'rgba(255,255,255,0.86)' }}>
+            已记录 {cameraDebugEntries.length} 条
+          </div>
+
+          <div
+            style={{
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              maxHeight: '24vh',
+              paddingRight: 4,
+            }}
+          >
+            {cameraDebugEntries.length === 0 ? (
+              <div style={{ fontFamily: 'monospace', fontSize: 11, color: 'rgba(255,255,255,0.58)', lineHeight: 1.5 }}>
+                暂无镜头事件。发生卡墙、贴身、回正或明显跳变时会自动写入这里。
+              </div>
+            ) : cameraDebugEntries.map((entry) => (
+              <div
+                key={entry.id}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: 6,
+                  background: 'rgba(0,0,0,0.28)',
+                  padding: '7px 8px',
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  color: 'rgba(255,255,255,0.9)',
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: 1.45,
+                }}
+              >
+                {formatCameraDebugEntry(entry)}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -3658,6 +3873,10 @@ export default function BattleArena({
               <label className={styles.escToggleRow}>
                 <input type="checkbox" checked={showSceneTestingPanel} onChange={(e) => setShowSceneTestingPanel(e.target.checked)} className={styles.escToggleInput} />
                 <span>角色状态</span>
+              </label>
+              <label className={styles.escToggleRow}>
+                <input type="checkbox" checked={showCameraEventTestingPanel} onChange={(e) => setShowCameraEventTestingPanel(e.target.checked)} className={styles.escToggleInput} />
+                <span>镜头事件测试</span>
               </label>
               <label className={styles.escToggleRow}>
                 <input type="checkbox" checked={showCollisionControlPanel} onChange={(e) => setShowCollisionControlPanel(e.target.checked)} className={styles.escToggleInput} />

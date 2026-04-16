@@ -124,8 +124,11 @@ export default function InGameClient({
     opponentPositionBufferRef,
   } = useGameState(gameId, selfUserId, authToken);
 
+  const hasState = !!state;
+
   // Track if we've already initiated battle to prevent duplicate calls
   const battleInitiatedRef = useRef(false);
+  const battleCompletionHandledRef = useRef<string | null>(null);
 
   // Reset battleInitiatedRef when phase leaves BATTLE (so next battle can start)
   useEffect(() => {
@@ -140,9 +143,15 @@ export default function InGameClient({
     battleInitiatedRef.current = false;
   }, [tournament?.battleNumber]);
 
+  useEffect(() => {
+    if (tournament?.phase !== "BATTLE" || !state?.gameOver || !state?.winnerUserId) {
+      battleCompletionHandledRef.current = null;
+    }
+  }, [tournament?.phase, tournament?.battleNumber, state?.gameOver, state?.winnerUserId]);
+
   // Auto-call /battle/start when phase transitions to BATTLE (only once)
   useEffect(() => {
-    if (tournament?.phase === "BATTLE" && state && !loading && !battleInitiatedRef.current) {
+    if (tournament?.phase === "BATTLE" && hasState && !loading && !battleInitiatedRef.current) {
       battleInitiatedRef.current = true; // Mark as initiated immediately
       
       const initiateBattle = async () => {
@@ -172,7 +181,7 @@ export default function InGameClient({
       
       initiateBattle();
     }
-  }, [tournament?.phase, tournament?.battleNumber, gameId, loading, state, refetch]);
+  }, [tournament?.phase, tournament?.battleNumber, gameId, hasState, loading, refetch]);
 
   // No polling — all phase transitions (DRAFT↔BATTLE↔GAME_OVER) are broadcast
   // over WebSocket by the backend (draft/finalize and battle/complete routes).
@@ -225,6 +234,14 @@ export default function InGameClient({
       state.gameOver &&
       state.winnerUserId
     ) {
+      const battleCompletionKey = `${tournament.battleNumber ?? "battle"}:${state.winnerUserId}`;
+      if (battleCompletionHandledRef.current === battleCompletionKey) {
+        return;
+      }
+      battleCompletionHandledRef.current = battleCompletionKey;
+
+      let cancelled = false;
+
       // Show win/lose toast immediately
       if (state.winnerUserId === selfUserId) {
         toastSuccess("🏆 你赢了！");
@@ -236,6 +253,7 @@ export default function InGameClient({
         try {
           // Give player 2.5 s to read the result
           await new Promise((r) => setTimeout(r, 2500));
+          if (cancelled) return;
           console.log("[InGameClient] Battle ended, completing tournament battle...");
           const res = await fetch("/api/game/battle/complete", {
             method: "POST",
@@ -248,19 +266,29 @@ export default function InGameClient({
             const result = await res.json();
             console.log("[InGameClient] Battle completed:", result);
             await new Promise((r) => setTimeout(r, 300));
-            refetch();
+            if (!cancelled) {
+              refetch();
+            }
           } else if (res.status === 400) {
             // Already completed by the other player — refetch to get the new DRAFT state
             console.log("[InGameClient] Battle already completed by other player, refetching...");
             await new Promise((r) => setTimeout(r, 500));
-            refetch();
+            if (!cancelled) {
+              refetch();
+            }
           } else {
             console.error("[InGameClient] Battle complete failed:", res.status);
+            battleCompletionHandledRef.current = null;
           }
         } catch (err) {
           console.error("[InGameClient] Battle completion error:", err);
+          battleCompletionHandledRef.current = null;
         }
       })();
+
+      return () => {
+        cancelled = true;
+      };
     }
   }, [tournament?.phase, state?.gameOver, state?.winnerUserId, gameId, refetch, selfUserId]);
 

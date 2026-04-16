@@ -217,7 +217,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
           if (message.timestamp) {
             const now = Date.now();
             const rttValue = now - message.timestamp;
-            setRtt(rttValue);
+            setRtt((prev) => (prev === rttValue ? prev : rttValue));
           }
           return;
         }
@@ -247,27 +247,6 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
           }
 
           versionRef.current = message.version ?? 0;
-
-          // Measure round-trip time if server sent timestamp
-          // RTT = (client receive time in ms) - (server timestamp in ms)
-          // This is accurate to ~1ms precision (browser RTT + server processing)
-          if (message.timestamp) {
-            // message.timestamp is in milliseconds (Date.now())
-            // receiveTime is in microseconds (performance.now())
-            // Convert: performance.now() gives total milliseconds from page load
-            // We need: now_ms - timestamp_ms
-            const now = Date.now(); // Current time in ms
-            const rttValue = now - message.timestamp; // RTT in ms
-            
-            // Update RTT state for display
-            setRtt(rttValue);
-            
-            const emoji = rttValue < 20 ? "⚡" : rttValue < 50 ? "✅" : rttValue < 100 ? "⚠️" : "❌";
-            // Disabled: spam during testing
-            // console.log(
-            //   `${emoji} [Sync] RTT: ${rttValue}ms (${message.diff.length} patches, v${message.version})`
-            // );
-          }
 
           setGame((prev) => {
             if (!prev) return prev;
