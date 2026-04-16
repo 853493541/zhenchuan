@@ -97,6 +97,29 @@ interface ArenaSceneProps {
     probeClamp: boolean;
     groundClamp: boolean;
     recenter: boolean;
+    wallDebug?: {
+      hitCount: number;
+      sampleCount: number;
+      hitMask: string;
+      spanX: number;
+      spanY: number;
+      minDistance: number | null;
+      maxDistance: number | null;
+      rawDistance: number | null;
+      retainedDistance: number | null;
+      clearMs: number;
+      pendingExpandDistance: number | null;
+      pendingExpandMs: number;
+    };
+    probeDebug?: {
+      hitCount: number;
+      sampleCount: number;
+      hitMask: string;
+      minDistance: number | null;
+      maxDistance: number | null;
+      rawDistance: number | null;
+      retainedDistance: number | null;
+    };
   }) => void;
   meFacingRef: MutableRefObject<{ x: number; y: number }>;
   maxHp: number;

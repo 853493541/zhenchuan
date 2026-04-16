@@ -538,6 +538,29 @@ type CameraDebugEntry = {
   probeClamp: boolean;
   groundClamp: boolean;
   recenter: boolean;
+  wallDebug?: {
+    hitCount: number;
+    sampleCount: number;
+    hitMask: string;
+    spanX: number;
+    spanY: number;
+    minDistance: number | null;
+    maxDistance: number | null;
+    rawDistance: number | null;
+    retainedDistance: number | null;
+    clearMs: number;
+    pendingExpandDistance: number | null;
+    pendingExpandMs: number;
+  };
+  probeDebug?: {
+    hitCount: number;
+    sampleCount: number;
+    hitMask: string;
+    minDistance: number | null;
+    maxDistance: number | null;
+    rawDistance: number | null;
+    retainedDistance: number | null;
+  };
 };
 
 /** Fixed display order for the common-ability bar. */
@@ -742,6 +765,22 @@ export default function BattleArena({
       entry.groundClamp ? 'ground' : null,
       entry.recenter ? 'recenter' : null,
     ].filter(Boolean).join('/');
+    const wallLine = entry.wallDebug
+      ? `wall hits=${entry.wallDebug.hitCount}/${entry.wallDebug.sampleCount} mask=${entry.wallDebug.hitMask || '-'} ` +
+        `span=${entry.wallDebug.spanX.toFixed(2)}x${entry.wallDebug.spanY.toFixed(2)} ` +
+        `range=${entry.wallDebug.minDistance === null ? '-' : `${entry.wallDebug.minDistance.toFixed(2)}..${entry.wallDebug.maxDistance?.toFixed(2) ?? entry.wallDebug.minDistance.toFixed(2)}`} ` +
+        `raw=${entry.wallDebug.rawDistance === null ? '-' : entry.wallDebug.rawDistance.toFixed(2)} ` +
+        `keep=${entry.wallDebug.retainedDistance === null ? '-' : entry.wallDebug.retainedDistance.toFixed(2)} ` +
+        `clear=${entry.wallDebug.clearMs}ms ` +
+        `pending=${entry.wallDebug.pendingExpandDistance === null ? '-' : `${entry.wallDebug.pendingExpandDistance.toFixed(2)}@${entry.wallDebug.pendingExpandMs}ms`}`
+      : null;
+    const probeLine = entry.probeDebug
+      ? `probe hits=${entry.probeDebug.hitCount}/${entry.probeDebug.sampleCount} mask=${entry.probeDebug.hitMask || '-'} ` +
+        `range=${entry.probeDebug.minDistance === null ? '-' : `${entry.probeDebug.minDistance.toFixed(2)}..${entry.probeDebug.maxDistance?.toFixed(2) ?? entry.probeDebug.minDistance.toFixed(2)}`} ` +
+        `raw=${entry.probeDebug.rawDistance === null ? '-' : entry.probeDebug.rawDistance.toFixed(2)} ` +
+        `keep=${entry.probeDebug.retainedDistance === null ? '-' : entry.probeDebug.retainedDistance.toFixed(2)}`
+      : null;
+
     return [
       `[${time}.${millis}] ${entry.type} ${entry.message}`,
       `cam(${entry.camera.x.toFixed(2)}, ${entry.camera.y.toFixed(2)}, ${entry.camera.z.toFixed(2)}) ` +
@@ -749,7 +788,9 @@ export default function BattleArena({
         `pivot(${entry.pivot.x.toFixed(2)}, ${entry.pivot.y.toFixed(2)}, ${entry.pivot.z.toFixed(2)})`,
       `yaw=${entry.yaw.toFixed(2)} pitch=${entry.pitch.toFixed(2)} zoom=${entry.zoom.toFixed(2)} ` +
         `dist=${entry.actualDistance.toFixed(2)}/${entry.desiredDistance.toFixed(2)}${flags ? ` flags=${flags}` : ''}`,
-    ].join('\n');
+      wallLine,
+      probeLine,
+    ].filter(Boolean).join('\n');
   }, []);
   const copyCameraDebugEntries = useCallback(async () => {
     if (cameraDebugEntries.length === 0) {

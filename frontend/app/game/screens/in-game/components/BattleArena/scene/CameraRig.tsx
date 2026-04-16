@@ -29,11 +29,36 @@ interface CameraRigProps {
     probeClamp: boolean;
     groundClamp: boolean;
     recenter: boolean;
+    wallDebug?: {
+      hitCount: number;
+      sampleCount: number;
+      hitMask: string;
+      spanX: number;
+      spanY: number;
+      minDistance: number | null;
+      maxDistance: number | null;
+      rawDistance: number | null;
+      retainedDistance: number | null;
+      clearMs: number;
+      pendingExpandDistance: number | null;
+      pendingExpandMs: number;
+    };
+    probeDebug?: {
+      hitCount: number;
+      sampleCount: number;
+      hitMask: string;
+      minDistance: number | null;
+      maxDistance: number | null;
+      rawDistance: number | null;
+      retainedDistance: number | null;
+    };
   }) => void;
   worldHalfX: number;
   worldHalfY: number;
   collisionSystemRef?: MutableRefObject<MapCollisionSystem | null>;
 }
+
+type CollisionZoomDirection = -1 | 0 | 1;
 
 const CAM_DIST_BACK = 20;
 const CAMERA_PIVOT_HEIGHT = 1.25;
@@ -53,9 +78,25 @@ const CAMERA_PROBE_DOWN = 0.24;
 const CAMERA_CLOSE_FOCUS_RANGE = 3.5;
 const CAMERA_STATE_EPSILON = 0.05;
 const CAMERA_DISTANCE_SETTLE_EPSILON = 0.035;
-const CAMERA_COLLISION_ZOOM_IN_SPEED = 16;
-const CAMERA_COLLISION_BLOCKED_ZOOM_OUT_SPEED = 1.6;
-const CAMERA_COLLISION_RELEASE_ZOOM_OUT_SPEED = 4.2;
+const CAMERA_COLLISION_DIRECTION_EPSILON = 0.04;
+const CAMERA_COLLISION_ZOOM_IN_SPEED = 8;
+const CAMERA_COLLISION_BLOCKED_ZOOM_OUT_SPEED = 0.8;
+const CAMERA_COLLISION_RELEASE_ZOOM_OUT_SPEED = 2.1;
+const CAMERA_COLLISION_REVERSE_ZOOM_IN_SPEED = 3.2;
+const CAMERA_COLLISION_DIRECTION_CHANGE_COOLDOWN_MS = 260;
+const CAMERA_WALL_CLAMP_RELEASE_HOLD_MS = 220;
+const CAMERA_WALL_DISTANCE_SHRINK_SPEED = 8;
+const CAMERA_WALL_DISTANCE_GROW_SPEED = 0.6;
+const CAMERA_WALL_DISTANCE_EXPAND_HOLD_MS = 520;
+const CAMERA_WALL_DISTANCE_EXPAND_MIN_DELTA = 0.55;
+const CAMERA_WALL_DISTANCE_EXPAND_TARGET_EPSILON = 0.3;
+const CAMERA_WALL_SUPPORT_SIDE = 0.78;
+const CAMERA_WALL_SUPPORT_UP = 0.56;
+const CAMERA_WALL_SUPPORT_DOWN = 0.42;
+const CAMERA_WALL_MIN_RELIABLE_HITS = 5;
+const CAMERA_WALL_RELIABLE_HIT_INDEX = 4;
+const CAMERA_WALL_MIN_REDUCTION = 0.6;
+const CAMERA_WALL_MIN_HORIZONTAL_SPAN = 1.0;
 const CAMERA_PROBE_CLAMP_ENTER_DELTA = 0.16;
 const CAMERA_PROBE_CLAMP_EXIT_DELTA = 0.07;
 const CAMERA_PROBE_CLAMP_ENTER_HOLD_MS = 90;
@@ -66,20 +107,34 @@ const CAMERA_GROUND_CLAMP_MAX_ABOVE_PLAYER = 1.2;
 const CAMERA_PROBE_MIN_RELIABLE_HITS = 2;
 const CAMERA_PROBE_RELIABLE_HIT_INDEX = 1;
 const CAMERA_PROBE_MIN_REDUCTION = 0.28;
+const CAMERA_PROBE_DISTANCE_SHRINK_SPEED = 6;
+const CAMERA_PROBE_DISTANCE_GROW_SPEED = 2.5;
 const CAMERA_CLOSE_CAMERA_ENTER_DISTANCE = 1.44;
 const CAMERA_CLOSE_CAMERA_EXIT_DISTANCE = 1.62;
 const CAMERA_SNAP_LOG_DISTANCE = 0.9;
 const CAMERA_SNAP_LOG_INTERVAL_MS = 120;
 
+const CAMERA_WALL_SUPPORT_SAMPLES = [
+  { label: 'C', x: 0, y: 0 },
+  { label: 'R', x: 1, y: 0 },
+  { label: 'L', x: -1, y: 0 },
+  { label: 'U', x: 0, y: 1 },
+  { label: 'D', x: 0, y: -1 },
+  { label: 'UR', x: 0.82, y: 0.76 },
+  { label: 'UL', x: -0.82, y: 0.76 },
+  { label: 'DR', x: 0.82, y: -0.64 },
+  { label: 'DL', x: -0.82, y: -0.64 },
+] as const;
+
 const CAMERA_PROBE_SAMPLES = [
-  { x: 1, y: 0 },
-  { x: -1, y: 0 },
-  { x: 0, y: 1 },
-  { x: 0, y: -1 },
-  { x: 0.82, y: 0.72 },
-  { x: -0.82, y: 0.72 },
-  { x: 0.82, y: -0.58 },
-  { x: -0.82, y: -0.58 },
+  { label: 'R', x: 1, y: 0 },
+  { label: 'L', x: -1, y: 0 },
+  { label: 'U', x: 0, y: 1 },
+  { label: 'D', x: 0, y: -1 },
+  { label: 'UR', x: 0.82, y: 0.72 },
+  { label: 'UL', x: -0.82, y: 0.72 },
+  { label: 'DR', x: 0.82, y: -0.58 },
+  { label: 'DL', x: -0.82, y: -0.58 },
 ] as const;
 
 const _pivot = new THREE.Vector3();
@@ -98,6 +153,7 @@ const _probeDirExport = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
 const _targetCamera = new THREE.Vector3();
 const _targetCameraDir = new THREE.Vector3();
+const _wallAllowedDistances: number[] = [];
 const _probeAllowedDistances: number[] = [];
 
 function sceneToExport(scenePos: THREE.Vector3, out: THREE.Vector3) {
@@ -140,12 +196,18 @@ export default function CameraRig({
   const closeCameraActiveRef = useRef(false);
   const recenterStateRef = useRef(false);
   const lastSnapLogAtRef = useRef(0);
+  const lastWallClampHitAtRef = useRef(0);
+  const retainedWallClampDistanceSceneRef = useRef<number | null>(null);
+  const pendingWallExpandTargetSceneRef = useRef<number | null>(null);
+  const pendingWallExpandSinceRef = useRef(0);
   const probeClampPendingStateRef = useRef<boolean | null>(null);
   const probeClampPendingSinceRef = useRef(0);
   const retainedProbeDistanceSceneRef = useRef<number | null>(null);
   const smoothedCameraDistanceRef = useRef(CAM_DIST_BACK);
   const collisionBlendActiveRef = useRef(false);
   const smoothedLookUpRatioRef = useRef(0);
+  const lastCollisionZoomDirectionRef = useRef<CollisionZoomDirection>(0);
+  const lastCollisionZoomDirectionChangeAtRef = useRef(0);
 
   useFrame((_, delta) => {
     const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -174,6 +236,22 @@ export default function CameraRig({
     let probeClampActive = false;
     let targetWallClampActive = false;
     let rawReliableProbeDistanceScene: number | null = null;
+    let rawWallClampDistanceScene: number | null = null;
+    let wallHitCount = 0;
+    let wallHitMask = '';
+    let wallMinDistanceScene: number | null = null;
+    let wallMaxDistanceScene: number | null = null;
+    let wallMinOffsetX = 0;
+    let wallMaxOffsetX = 0;
+    let wallMinOffsetY = 0;
+    let wallMaxOffsetY = 0;
+    let wallLeftHitCount = 0;
+    let wallRightHitCount = 0;
+    let wallCenterHitCount = 0;
+    let probeHitCount = 0;
+    let probeHitMask = '';
+    let probeMinDistanceScene: number | null = null;
+    let probeMaxDistanceScene: number | null = null;
 
     _pivot.set(px, py + CAMERA_PIVOT_HEIGHT, pz);
     _desiredCamera.set(
@@ -191,21 +269,9 @@ export default function CameraRig({
       if (desiredDistance > 1e-4) {
         const minDistance = CAMERA_MIN_DISTANCE / RENDER_SF;
         _centerDirExport.copy(_cameraDirExport).multiplyScalar(1 / desiredDistance);
-        const hitDistance = collisionSystemRef.current.raycastDistanceIgnoringFloorHits(
-          _pivotExport,
-          _centerDirExport,
-          0.01,
-          desiredDistance,
-        );
         let wallClampedDistance = desiredDistance;
 
-        if (hitDistance !== null) {
-          wallClampedDistance = Math.max(minDistance, hitDistance - CAMERA_WALL_PADDING / RENDER_SF);
-        }
-
-        centerClampDistanceScene = wallClampedDistance * RENDER_SF;
-        let clampedDistance = wallClampedDistance;
-        _probeAllowedDistances.length = 0;
+        _wallAllowedDistances.length = 0;
 
         _cameraForwardExport.subVectors(_pivotExport, _desiredCameraExport);
         if (_cameraForwardExport.lengthSq() > 1e-8) {
@@ -221,6 +287,82 @@ export default function CameraRig({
           } else {
             _cameraUpExport.normalize();
           }
+
+          for (const sample of CAMERA_WALL_SUPPORT_SAMPLES) {
+            const offsetX = sample.x * CAMERA_WALL_SUPPORT_SIDE;
+            const offsetY = sample.y > 0
+              ? sample.y * CAMERA_WALL_SUPPORT_UP
+              : sample.y * CAMERA_WALL_SUPPORT_DOWN;
+            _probeTargetExport.copy(_desiredCameraExport)
+              .addScaledVector(_cameraRightExport, offsetX / RENDER_SF)
+              .addScaledVector(_cameraUpExport, offsetY / RENDER_SF);
+
+            _probeDirExport.subVectors(_probeTargetExport, _pivotExport);
+            const supportDistance = _probeDirExport.length();
+            if (supportDistance <= 1e-4) continue;
+
+            _probeDirExport.multiplyScalar(1 / supportDistance);
+            const supportHitDistance = collisionSystemRef.current.raycastDistanceIgnoringFloorHits(
+              _pivotExport,
+              _probeDirExport,
+              0.01,
+              supportDistance,
+            );
+
+            if (supportHitDistance === null) continue;
+
+            const allowedDistance = Math.max(
+              minDistance,
+              (supportHitDistance - CAMERA_WALL_PADDING / RENDER_SF) * (desiredDistance / supportDistance),
+            );
+            _wallAllowedDistances.push(allowedDistance);
+
+            const allowedDistanceScene = allowedDistance * RENDER_SF;
+            wallHitCount += 1;
+            wallHitMask = wallHitMask ? `${wallHitMask},${sample.label}` : sample.label;
+            wallMinDistanceScene = wallMinDistanceScene === null ? allowedDistanceScene : Math.min(wallMinDistanceScene, allowedDistanceScene);
+            wallMaxDistanceScene = wallMaxDistanceScene === null ? allowedDistanceScene : Math.max(wallMaxDistanceScene, allowedDistanceScene);
+            if (sample.x < 0) {
+              wallLeftHitCount += 1;
+            } else if (sample.x > 0) {
+              wallRightHitCount += 1;
+            } else {
+              wallCenterHitCount += 1;
+            }
+            if (wallHitCount === 1) {
+              wallMinOffsetX = offsetX;
+              wallMaxOffsetX = offsetX;
+              wallMinOffsetY = offsetY;
+              wallMaxOffsetY = offsetY;
+            } else {
+              wallMinOffsetX = Math.min(wallMinOffsetX, offsetX);
+              wallMaxOffsetX = Math.max(wallMaxOffsetX, offsetX);
+              wallMinOffsetY = Math.min(wallMinOffsetY, offsetY);
+              wallMaxOffsetY = Math.max(wallMaxOffsetY, offsetY);
+            }
+          }
+
+          const wallHorizontalSpan = wallHitCount > 0 ? wallMaxOffsetX - wallMinOffsetX : 0;
+          const wallHasBroadHorizontalCoverage =
+            wallCenterHitCount > 0 &&
+            wallLeftHitCount > 0 &&
+            wallRightHitCount > 0 &&
+            wallHorizontalSpan >= CAMERA_WALL_MIN_HORIZONTAL_SPAN;
+
+          // One-sided blocker clusters are usually posts, bridge sticks, or trim. Let the probe clamp
+          // handle those edge occluders instead of collapsing the full boom like a real wall.
+          if (wallHasBroadHorizontalCoverage && _wallAllowedDistances.length >= CAMERA_WALL_MIN_RELIABLE_HITS) {
+            _wallAllowedDistances.sort((a, b) => a - b);
+            const reliableWallDistance = _wallAllowedDistances[Math.min(
+              CAMERA_WALL_RELIABLE_HIT_INDEX,
+              _wallAllowedDistances.length - 1,
+            )];
+            if (desiredDistance - reliableWallDistance > CAMERA_WALL_MIN_REDUCTION / RENDER_SF) {
+              wallClampedDistance = reliableWallDistance;
+            }
+          }
+
+          _probeAllowedDistances.length = 0;
 
           for (const sample of CAMERA_PROBE_SAMPLES) {
             _probeTargetExport.copy(_desiredCameraExport)
@@ -246,6 +388,12 @@ export default function CameraRig({
               (probeHitDistance - CAMERA_WALL_PADDING / RENDER_SF) * (desiredDistance / probeDistance),
             );
             _probeAllowedDistances.push(allowedDistance);
+
+            const allowedDistanceScene = allowedDistance * RENDER_SF;
+            probeHitCount += 1;
+            probeHitMask = probeHitMask ? `${probeHitMask},${sample.label}` : sample.label;
+            probeMinDistanceScene = probeMinDistanceScene === null ? allowedDistanceScene : Math.min(probeMinDistanceScene, allowedDistanceScene);
+            probeMaxDistanceScene = probeMaxDistanceScene === null ? allowedDistanceScene : Math.max(probeMaxDistanceScene, allowedDistanceScene);
           }
 
           if (_probeAllowedDistances.length >= CAMERA_PROBE_MIN_RELIABLE_HITS) {
@@ -260,8 +408,50 @@ export default function CameraRig({
           }
         }
 
-        actualClampDistanceScene = clampedDistance * RENDER_SF;
-        targetWallClampActive = actualClampDistanceScene + CAMERA_STATE_EPSILON < desiredDistanceScene;
+        rawWallClampDistanceScene = wallClampedDistance * RENDER_SF;
+        const rawWallClampActive = rawWallClampDistanceScene + CAMERA_STATE_EPSILON < desiredDistanceScene;
+        if (rawWallClampActive) {
+          lastWallClampHitAtRef.current = nowMs;
+          const currentRetainedWallDistance = retainedWallClampDistanceSceneRef.current ?? rawWallClampDistanceScene;
+          if (rawWallClampDistanceScene <= currentRetainedWallDistance) {
+            retainedWallClampDistanceSceneRef.current = THREE.MathUtils.damp(
+              currentRetainedWallDistance,
+              rawWallClampDistanceScene,
+              CAMERA_WALL_DISTANCE_SHRINK_SPEED,
+              delta,
+            );
+            pendingWallExpandTargetSceneRef.current = null;
+          } else if (rawWallClampDistanceScene - currentRetainedWallDistance >= CAMERA_WALL_DISTANCE_EXPAND_MIN_DELTA) {
+            if (
+              pendingWallExpandTargetSceneRef.current === null ||
+              Math.abs(pendingWallExpandTargetSceneRef.current - rawWallClampDistanceScene) > CAMERA_WALL_DISTANCE_EXPAND_TARGET_EPSILON
+            ) {
+              pendingWallExpandTargetSceneRef.current = rawWallClampDistanceScene;
+              pendingWallExpandSinceRef.current = nowMs;
+            } else if (nowMs - pendingWallExpandSinceRef.current >= CAMERA_WALL_DISTANCE_EXPAND_HOLD_MS) {
+              retainedWallClampDistanceSceneRef.current = THREE.MathUtils.damp(
+                currentRetainedWallDistance,
+                rawWallClampDistanceScene,
+                CAMERA_WALL_DISTANCE_GROW_SPEED,
+                delta,
+              );
+            }
+          } else {
+            pendingWallExpandTargetSceneRef.current = null;
+          }
+        } else if (
+          retainedWallClampDistanceSceneRef.current !== null &&
+          nowMs - lastWallClampHitAtRef.current >= CAMERA_WALL_CLAMP_RELEASE_HOLD_MS
+        ) {
+          retainedWallClampDistanceSceneRef.current = null;
+          pendingWallExpandTargetSceneRef.current = null;
+        }
+
+        centerClampDistanceScene = retainedWallClampDistanceSceneRef.current ?? rawWallClampDistanceScene;
+        let clampedDistance = centerClampDistanceScene / RENDER_SF;
+
+        actualClampDistanceScene = centerClampDistanceScene;
+        targetWallClampActive = centerClampDistanceScene + CAMERA_STATE_EPSILON < desiredDistanceScene;
         const rawProbeClampDelta = rawReliableProbeDistanceScene === null
           ? 0
           : centerClampDistanceScene - rawReliableProbeDistanceScene;
@@ -289,7 +479,9 @@ export default function CameraRig({
         if (probeClampActive) {
           if (rawReliableProbeDistanceScene !== null) {
             const currentRetainedProbeDistance = retainedProbeDistanceSceneRef.current ?? rawReliableProbeDistanceScene;
-            const probeDistanceSpeed = rawReliableProbeDistanceScene < currentRetainedProbeDistance ? 12 : 5;
+            const probeDistanceSpeed = rawReliableProbeDistanceScene < currentRetainedProbeDistance
+              ? CAMERA_PROBE_DISTANCE_SHRINK_SPEED
+              : CAMERA_PROBE_DISTANCE_GROW_SPEED;
             retainedProbeDistanceSceneRef.current = THREE.MathUtils.damp(
               currentRetainedProbeDistance,
               rawReliableProbeDistanceScene,
@@ -305,6 +497,8 @@ export default function CameraRig({
         } else {
           retainedProbeDistanceSceneRef.current = null;
         }
+
+        actualClampDistanceScene = clampedDistance * RENDER_SF;
 
         if (clampedDistance + CAMERA_STATE_EPSILON / RENDER_SF < desiredDistance) {
           _desiredCameraExport.copy(_pivotExport).addScaledVector(_centerDirExport, clampedDistance);
@@ -361,15 +555,53 @@ export default function CameraRig({
     if (collisionBlendActiveRef.current) {
       const currentBlendDistance = smoothedCameraDistanceRef.current;
       const targetBlendDistance = targetCameraDistance;
-      const blendSpeed = targetBlendDistance < currentBlendDistance
-        ? CAMERA_COLLISION_ZOOM_IN_SPEED
-        : targetWallClampActive || probeClampActive
-          ? CAMERA_COLLISION_BLOCKED_ZOOM_OUT_SPEED
-          : CAMERA_COLLISION_RELEASE_ZOOM_OUT_SPEED;
+      let effectiveTargetBlendDistance = targetBlendDistance;
+      let blendDirection: CollisionZoomDirection = 0;
+      if (targetBlendDistance < currentBlendDistance - CAMERA_COLLISION_DIRECTION_EPSILON) {
+        blendDirection = -1;
+      } else if (targetBlendDistance > currentBlendDistance + CAMERA_COLLISION_DIRECTION_EPSILON) {
+        blendDirection = 1;
+      }
+
+      const previousBlendDirection = lastCollisionZoomDirectionRef.current;
+      const reversingBlendDirection =
+        blendDirection !== 0 &&
+        previousBlendDirection !== 0 &&
+        blendDirection !== previousBlendDirection;
+
+      let blendSpeed: number;
+
+      // Prevent collision zoom from immediately reversing direction when clamp state flickers.
+      if (reversingBlendDirection) {
+        const reversalAgeMs = nowMs - lastCollisionZoomDirectionChangeAtRef.current;
+        if (reversalAgeMs < CAMERA_COLLISION_DIRECTION_CHANGE_COOLDOWN_MS) {
+          if (blendDirection > 0) {
+            effectiveTargetBlendDistance = currentBlendDistance;
+            blendDirection = 0;
+          } else {
+            blendSpeed = CAMERA_COLLISION_REVERSE_ZOOM_IN_SPEED;
+          }
+        }
+      }
+
+      if (blendDirection !== 0 && blendDirection !== previousBlendDirection) {
+        lastCollisionZoomDirectionRef.current = blendDirection;
+        lastCollisionZoomDirectionChangeAtRef.current = nowMs;
+      } else if (blendDirection === 0 && !targetCollisionActive) {
+        lastCollisionZoomDirectionRef.current = 0;
+      }
+
+      if (blendSpeed === undefined) {
+        blendSpeed = effectiveTargetBlendDistance < currentBlendDistance - CAMERA_COLLISION_DIRECTION_EPSILON
+          ? CAMERA_COLLISION_ZOOM_IN_SPEED
+          : targetWallClampActive || probeClampActive
+            ? CAMERA_COLLISION_BLOCKED_ZOOM_OUT_SPEED
+            : CAMERA_COLLISION_RELEASE_ZOOM_OUT_SPEED;
+      }
 
       smoothedCameraDistanceRef.current = THREE.MathUtils.damp(
         currentBlendDistance,
-        targetBlendDistance,
+        effectiveTargetBlendDistance,
         blendSpeed,
         delta,
       );
@@ -445,6 +677,12 @@ export default function CameraRig({
       ? actualDistanceScene <= CAMERA_CLOSE_CAMERA_EXIT_DISTANCE
       : actualDistanceScene <= CAMERA_CLOSE_CAMERA_ENTER_DISTANCE;
     const recenterActive = recenterLookRef.current;
+    const wallSpanX = wallHitCount > 0 ? wallMaxOffsetX - wallMinOffsetX : 0;
+    const wallSpanY = wallHitCount > 0 ? wallMaxOffsetY - wallMinOffsetY : 0;
+    const wallClearMs = targetWallClampActive ? 0 : Math.max(0, Math.round(nowMs - lastWallClampHitAtRef.current));
+    const wallPendingExpandMs = pendingWallExpandTargetSceneRef.current === null
+      ? 0
+      : Math.max(0, Math.round(nowMs - pendingWallExpandSinceRef.current));
     const emitDebug = (type: string, message: string) => {
       onCameraDebugEvent?.({
         type,
@@ -461,6 +699,29 @@ export default function CameraRig({
         probeClamp: probeClampActive,
         groundClamp: groundClampActive,
         recenter: recenterActive,
+        wallDebug: {
+          hitCount: wallHitCount,
+          sampleCount: CAMERA_WALL_SUPPORT_SAMPLES.length,
+          hitMask: wallHitMask,
+          spanX: wallSpanX,
+          spanY: wallSpanY,
+          minDistance: wallMinDistanceScene,
+          maxDistance: wallMaxDistanceScene,
+          rawDistance: rawWallClampDistanceScene,
+          retainedDistance: centerClampDistanceScene < desiredDistanceScene - CAMERA_STATE_EPSILON ? centerClampDistanceScene : null,
+          clearMs: wallClearMs,
+          pendingExpandDistance: pendingWallExpandTargetSceneRef.current,
+          pendingExpandMs: wallPendingExpandMs,
+        },
+        probeDebug: {
+          hitCount: probeHitCount,
+          sampleCount: CAMERA_PROBE_SAMPLES.length,
+          hitMask: probeHitMask,
+          minDistance: probeMinDistanceScene,
+          maxDistance: probeMaxDistanceScene,
+          rawDistance: rawReliableProbeDistanceScene,
+          retainedDistance: retainedProbeDistanceSceneRef.current,
+        },
       });
     };
 
