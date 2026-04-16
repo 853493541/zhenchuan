@@ -7,6 +7,12 @@ import * as THREE from 'three';
 
 const CHAR_RADIUS = 0.42;
 const CHAR_HEIGHT = 1.5;
+const FACING_ARC_RADIUS = 7;
+const FACING_ARC_CENTER_OFFSET = CHAR_RADIUS + 0.06;
+const FACING_ARC_BORDER_INNER_RADIUS = FACING_ARC_RADIUS - 0.16;
+const FACING_ARC_BORDER_OUTER_RADIUS = FACING_ARC_RADIUS + 0.02;
+const FACING_ARC_GLOW_INNER_RADIUS = FACING_ARC_RADIUS - 0.28;
+const FACING_ARC_GLOW_OUTER_RADIUS = FACING_ARC_RADIUS + 0.16;
 /** Camera distance at which the HP bar has scale=1 (matches default camera offset) */
 const HP_REF_DIST = 20;
 const _hpWorldPos = new THREE.Vector3();
@@ -161,17 +167,29 @@ export default function Character({
       // Update facing arc: YXZ Euler order so Ry(yaw) spins in world XZ first,
       // then Rx(-π/2) lays the circle flat on the ground.
       if (arcRef.current) {
-        arcRef.current.position.set(Math.sin(arcYaw) * 0.8, 0.04, Math.cos(arcYaw) * 0.8);
+        arcRef.current.position.set(
+          Math.sin(arcYaw) * FACING_ARC_CENTER_OFFSET,
+          0.04,
+          Math.cos(arcYaw) * FACING_ARC_CENTER_OFFSET,
+        );
         arcRef.current.rotation.order = 'YXZ';
         arcRef.current.rotation.set(-Math.PI / 2, arcYaw, 0);
       }
       if (arcBorderRef.current) {
-        arcBorderRef.current.position.set(Math.sin(arcYaw) * 0.8, 0.04, Math.cos(arcYaw) * 0.8);
+        arcBorderRef.current.position.set(
+          Math.sin(arcYaw) * FACING_ARC_CENTER_OFFSET,
+          0.04,
+          Math.cos(arcYaw) * FACING_ARC_CENTER_OFFSET,
+        );
         arcBorderRef.current.rotation.order = 'YXZ';
         arcBorderRef.current.rotation.set(-Math.PI / 2, arcYaw, 0);
       }
       if (arcGlowRef.current) {
-        arcGlowRef.current.position.set(Math.sin(arcYaw) * 0.8, 0.035, Math.cos(arcYaw) * 0.8);
+        arcGlowRef.current.position.set(
+          Math.sin(arcYaw) * FACING_ARC_CENTER_OFFSET,
+          0.035,
+          Math.cos(arcYaw) * FACING_ARC_CENTER_OFFSET,
+        );
         arcGlowRef.current.rotation.order = 'YXZ';
         arcGlowRef.current.rotation.set(-Math.PI / 2, arcYaw, 0);
       }
@@ -361,28 +379,40 @@ export default function Character({
           {/* Fill */}
           <mesh
             ref={arcRef}
-            position={[Math.sin(facingYaw) * 0.8, 0.04, Math.cos(facingYaw) * 0.8]}
+            position={[
+              Math.sin(facingYaw) * FACING_ARC_CENTER_OFFSET,
+              0.04,
+              Math.cos(facingYaw) * FACING_ARC_CENTER_OFFSET,
+            ]}
             rotation={new THREE.Euler(-Math.PI / 2, facingYaw, 0, 'YXZ')}
           >
-            <circleGeometry args={[2.4, 32, -Math.PI, Math.PI]} />
+            <circleGeometry args={[FACING_ARC_RADIUS, 64, -Math.PI, Math.PI]} />
             <meshBasicMaterial color="#ff6600" transparent opacity={0.38} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
           </mesh>
           {/* Lighter border ring with glow */}
           <mesh
             ref={arcBorderRef}
-            position={[Math.sin(facingYaw) * 0.8, 0.04, Math.cos(facingYaw) * 0.8]}
+            position={[
+              Math.sin(facingYaw) * FACING_ARC_CENTER_OFFSET,
+              0.04,
+              Math.cos(facingYaw) * FACING_ARC_CENTER_OFFSET,
+            ]}
             rotation={new THREE.Euler(-Math.PI / 2, facingYaw, 0, 'YXZ')}
           >
-            <ringGeometry args={[2.28, 2.42, 48, 1, -Math.PI, Math.PI]} />
+            <ringGeometry args={[FACING_ARC_BORDER_INNER_RADIUS, FACING_ARC_BORDER_OUTER_RADIUS, 64, 1, -Math.PI, Math.PI]} />
             <meshBasicMaterial color="#ffee00" transparent opacity={0.85} side={THREE.DoubleSide} depthWrite={false} depthTest={false} toneMapped={false} />
           </mesh>
           {/* Outer glow ring */}
           <mesh
             ref={arcGlowRef}
-            position={[Math.sin(facingYaw) * 0.8, 0.035, Math.cos(facingYaw) * 0.8]}
+            position={[
+              Math.sin(facingYaw) * FACING_ARC_CENTER_OFFSET,
+              0.035,
+              Math.cos(facingYaw) * FACING_ARC_CENTER_OFFSET,
+            ]}
             rotation={new THREE.Euler(-Math.PI / 2, facingYaw, 0, 'YXZ')}
           >
-            <ringGeometry args={[2.18, 2.52, 48, 1, -Math.PI, Math.PI]} />
+            <ringGeometry args={[FACING_ARC_GLOW_INNER_RADIUS, FACING_ARC_GLOW_OUTER_RADIUS, 64, 1, -Math.PI, Math.PI]} />
             <meshBasicMaterial color="#ffdd44" transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} depthTest={false} toneMapped={false} />
           </mesh>
         </>

@@ -3014,7 +3014,7 @@ export default function BattleArena({
         const jumpDir = normalizePlanar(moveIntentDx, moveIntentDy);
         const isMultiJump = effectiveMaxJumps > 2;
         const hadPowerJumpAirtime = isPowerJumpRef.current && !isPowerJumpCombinedRef.current && localJumpCountRef.current > 0;
-        const usePowerDirectionalBudget = hasFuyaoBuffRef.current && !isMultiJump;
+        const usePowerDirectionalBudget = hasFuyaoBuffRef.current;
         const heightAboveGround = Math.max(0, localZRef.current - tickGroundH);
         const jumpSpeedSource = Math.max(
           effectiveMaxSpeed,

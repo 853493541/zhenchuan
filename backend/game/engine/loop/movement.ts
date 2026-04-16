@@ -750,6 +750,20 @@ export function applyMovement(
       rememberAirborneSpeedCarry(player, planarAirborneSpeed);
     }
 
+    // Explicit client-facing is authoritative even during jump airtime so mid-air
+    // turning updates server-facing for directional abilities. The only intentional
+    // client/server facing mismatch remains the RMB diagonal display exception,
+    // which is already encoded in the client-facing payload itself.
+    if (input.facing) {
+      const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
+      if (flen > 0.01) {
+        player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
+      }
+    } else if (!jumpAirborne && (targetVx !== 0 || targetVy !== 0)) {
+      const flen = Math.sqrt(targetVx * targetVx + targetVy * targetVy);
+      player.facing = { x: targetVx / flen, y: targetVy / flen };
+    }
+
     if (jumpAirborne) {
       airInputDx = targetVx;
       airInputDy = targetVy;
@@ -760,19 +774,6 @@ export function applyMovement(
       if (!wasAirborne || hasDirectionalIntent) {
         player.velocity.vx += (targetVx - player.velocity.vx) * acceleration;
         player.velocity.vy += (targetVy - player.velocity.vy) * acceleration;
-      }
-
-      // Update facing direction from input (immediate, not velocity-lagged).
-      // In traditional/MMO control, facing can intentionally differ from movement
-      // (backpedal or strafe), so explicit input.facing takes precedence.
-      if (input.facing) {
-        const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
-        if (flen > 0.01) {
-          player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
-        }
-      } else if (targetVx !== 0 || targetVy !== 0) {
-        const flen = Math.sqrt(targetVx * targetVx + targetVy * targetVy);
-        player.facing = { x: targetVx / flen, y: targetVy / flen };
       }
     }
 
@@ -835,7 +836,7 @@ export function applyMovement(
         const speedScale = baseMoveSpeedPerTick > 0.0001
           ? jumpStartPlanarSpeed / baseMoveSpeedPerTick
           : 0;
-        const directionalJumpDistance = boostIdx >= 0 && !isMultiJump
+        const directionalJumpDistance = boostIdx >= 0
           ? POWER_DIRECTIONAL_JUMP_DISTANCE
           : hadPowerJumpAirtime
             ? POWER_DOUBLE_DIRECTIONAL_JUMP_DISTANCE
