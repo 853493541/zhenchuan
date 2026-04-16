@@ -725,9 +725,10 @@ export default function BattleArena({
   const [showTestingPanel, setShowTestingPanel] = useState(false);
   const [showEnvTestingPanel, setShowEnvTestingPanel] = useState(false);
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
+  const [showCameraEventTestingPanel, setShowCameraEventTestingPanel] = useState(false);
   const [showMeasurePanel, setShowMeasurePanel] = useState(false);
   const [showJumpDetailsPanel, setShowJumpDetailsPanel] = useState(false);
-  const [showGroundDistanceDetail, setShowGroundDistanceDetail] = useState(true);
+  const [showGroundDistanceDetail, setShowGroundDistanceDetail] = useState(false);
   const [losBlocker, setLosBlocker] = useState<string | null>(null);
   const [envDebugInfo, setEnvDebugInfo] = useState<EnvDebugInfo | null>(null);
   const [envToggles, setEnvToggles] = useState<EnvToggles>({
@@ -743,19 +744,32 @@ export default function BattleArena({
   const [cameraZoomLevel, setCameraZoomLevel] = useState(1.0);
   const [cameraDebugEntries, setCameraDebugEntries] = useState<CameraDebugEntry[]>([]);
   const cameraDebugIdRef = useRef(0);
+  const cameraEventTestingEnabledRef = useRef(false);
   const losBlockerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showLOSBlocker = useCallback((msg: string) => {
     setLosBlocker(msg);
     if (losBlockerTimerRef.current) clearTimeout(losBlockerTimerRef.current);
     losBlockerTimerRef.current = setTimeout(() => setLosBlocker(null), 3000);
   }, []);
+  const clearCameraDebugEntries = useCallback(() => {
+    cameraDebugIdRef.current = 0;
+    setCameraDebugEntries(prev => (prev.length === 0 ? prev : []));
+  }, []);
   const appendCameraDebugEntry = useCallback((entry: Omit<CameraDebugEntry, 'id' | 'ts'>) => {
+    if (!cameraEventTestingEnabledRef.current) return;
     setCameraDebugEntries(prev => {
-      const next = [...prev, { ...entry, id: cameraDebugIdRef.current + 1, ts: Date.now() }];
-      cameraDebugIdRef.current += 1;
+      const nextId = cameraDebugIdRef.current + 1;
+      cameraDebugIdRef.current = nextId;
+      const next = [...prev, { ...entry, id: nextId, ts: Date.now() }];
       return next.slice(-180);
     });
   }, []);
+  useEffect(() => {
+    cameraEventTestingEnabledRef.current = showCameraEventTestingPanel;
+    if (!showCameraEventTestingPanel) {
+      clearCameraDebugEntries();
+    }
+  }, [clearCameraDebugEntries, showCameraEventTestingPanel]);
   const formatCameraDebugEntry = useCallback((entry: CameraDebugEntry) => {
     const time = new Date(entry.ts).toLocaleTimeString('en-GB', { hour12: false });
     const millis = String(entry.ts % 1000).padStart(3, '0');
@@ -3600,11 +3614,11 @@ export default function BattleArena({
             collisionSystemRef={collisionSysRef}
             collisionDebugRef={collisionDebugRef}
             onCollisionSystemReady={onCollisionSystemReady}
-            onCameraDebugEvent={mode === 'collision-test' ? appendCameraDebugEntry : undefined}
+            onCameraDebugEvent={mode === 'collision-test' && showCameraEventTestingPanel ? appendCameraDebugEntry : undefined}
             losBlocker={losBlocker}
             blueprintMode={blueprintMode}
             losIsBlocked={draftAbilities.some(a => a.losBlocked) || commonAbilities.some(a => a.losBlocked)}
-            onEnvDebug={mode === 'collision-test' ? setEnvDebugInfo : undefined}
+            onEnvDebug={mode === 'collision-test' && showEnvTestingPanel ? setEnvDebugInfo : undefined}
             envToggles={mode === 'collision-test' ? envToggles : undefined}
             dirLightConfig={mode === 'collision-test' ? dirLightConfig : undefined}
           />
@@ -3692,7 +3706,7 @@ export default function BattleArena({
         </div>
       )}
 
-      {mode === 'collision-test' && (
+      {mode === 'collision-test' && showCameraEventTestingPanel && (
         <div
           className={styles.uiFloatingPanel}
           style={{
@@ -3713,7 +3727,7 @@ export default function BattleArena({
               <div className={styles.uiInlineHint}>记录镜头卡墙、贴墙、回正和跳变事件</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button type="button" className={styles.uiInlineButton} onClick={() => setCameraDebugEntries([])}>清空</button>
+              <button type="button" className={styles.uiInlineButton} onClick={clearCameraDebugEntries}>清空</button>
               <button type="button" className={styles.uiInlineButton} onClick={() => void copyCameraDebugEntries()}>复制</button>
             </div>
           </div>
@@ -3859,6 +3873,10 @@ export default function BattleArena({
               <label className={styles.escToggleRow}>
                 <input type="checkbox" checked={showSceneTestingPanel} onChange={(e) => setShowSceneTestingPanel(e.target.checked)} className={styles.escToggleInput} />
                 <span>角色状态</span>
+              </label>
+              <label className={styles.escToggleRow}>
+                <input type="checkbox" checked={showCameraEventTestingPanel} onChange={(e) => setShowCameraEventTestingPanel(e.target.checked)} className={styles.escToggleInput} />
+                <span>镜头事件测试</span>
               </label>
               <label className={styles.escToggleRow}>
                 <input type="checkbox" checked={showCollisionControlPanel} onChange={(e) => setShowCollisionControlPanel(e.target.checked)} className={styles.escToggleInput} />
