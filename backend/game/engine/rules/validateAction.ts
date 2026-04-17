@@ -239,8 +239,9 @@ export function validateCastAbility(
   /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
   if (hasEffect(player, "KNOCKED_BACK")) {
     const allowsKnockback =
-      Array.isArray(ability.effects) &&
-      ability.effects.some((e: any) => e.allowWhileKnockedBack === true);
+      (ability as any).allowWhileKnockedBack === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e: any) => e.allowWhileKnockedBack === true));
     if (!allowsKnockback) {
       throw new Error("ERR_KNOCKED_BACK");
     }
@@ -250,8 +251,9 @@ export function validateCastAbility(
   const isControlled =
     hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
   const allowsOverride =
-    Array.isArray(ability.effects) &&
-    ability.effects.some((e: any) => e.allowWhileControlled === true);
+    (ability as any).allowWhileControlled === true ||
+    (Array.isArray(ability.effects) &&
+      ability.effects.some((e: any) => e.allowWhileControlled === true));
   if (isControlled && !allowsOverride) {
     throw new Error("ERR_CONTROLLED");
   }
@@ -419,8 +421,9 @@ export function validatePlayAbility(
 
   if (hasEffect(player, "KNOCKED_BACK")) {
     const allowsKnockback =
-      Array.isArray(ability.effects) &&
-      ability.effects.some((e) => (e as any).allowWhileKnockedBack === true);
+      (ability as any).allowWhileKnockedBack === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e) => (e as any).allowWhileKnockedBack === true));
     if (!allowsKnockback) {
       throw new Error("ERR_KNOCKED_BACK");
     }
@@ -432,8 +435,9 @@ export function validatePlayAbility(
     hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
 
   const allowsOverride =
-    Array.isArray(ability.effects) &&
-    ability.effects.some((e) => e.allowWhileControlled === true);
+    (ability as any).allowWhileControlled === true ||
+    (Array.isArray(ability.effects) &&
+      ability.effects.some((e) => e.allowWhileControlled === true));
 
   if (isControlled && !allowsOverride) {
     throw new Error("ERR_CONTROLLED");

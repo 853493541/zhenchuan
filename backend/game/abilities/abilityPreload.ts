@@ -1,5 +1,18 @@
 import { ABILITIES } from "./abilities";
 
+function hasEffectFlag(
+  ability: { effects?: Array<Record<string, unknown>> },
+  flag: "allowWhileControlled" | "allowWhileKnockedBack" | "cleanseRootSlow",
+  effectType?: string
+) {
+  return Array.isArray(ability.effects)
+    ? ability.effects.some((effect) => {
+        if (effectType && effect.type !== effectType) return false;
+        return effect[flag] === true;
+      })
+    : false;
+}
+
 /**
  * Frontend-facing preload payload.
  * - Display only
@@ -66,6 +79,19 @@ export function buildAbilityPreload() {
 
       // Hybrid cast abilities may be cast on ground without a selected target.
       allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
+
+      // Editor/runtime cast exception flags.
+      allowWhileControlled:
+        (ability as any).allowWhileControlled === true ||
+        hasEffectFlag(ability as any, "allowWhileControlled"),
+
+      allowWhileKnockedBack:
+        (ability as any).allowWhileKnockedBack === true ||
+        hasEffectFlag(ability as any, "allowWhileKnockedBack"),
+
+      cleanseRootSlow:
+        (ability as any).cleanseRootSlow === true ||
+        hasEffectFlag(ability as any, "cleanseRootSlow", "CLEANSE"),
     };
 
     abilities.push(cardPayload);

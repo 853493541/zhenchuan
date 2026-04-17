@@ -1,5 +1,6 @@
 import express from "express";
 
+import abilityEditorRoutes from "./abilityEditor.routes";
 import preloadRoutes from "./preload.routes";
 import lobbyRoutes from "./lobby.routes";
 import draftRoutes from "./draft.routes";
@@ -24,6 +25,7 @@ const router = express.Router();
 // });
 
 /* ORDER MATTERS */
+router.use(abilityEditorRoutes);
 router.use(preloadRoutes);
 router.use(lobbyRoutes);
 router.use(draftRoutes);

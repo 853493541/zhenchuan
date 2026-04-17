@@ -19,6 +19,7 @@
 
 .createActions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
 }
@@ -59,6 +60,10 @@
 
 .createBtnExportViewer {
   background: #b45309;
+}
+
+.createBtnAbilityEditor {
+  background: #7c2d12;
 }
 
 .createBtn:disabled {

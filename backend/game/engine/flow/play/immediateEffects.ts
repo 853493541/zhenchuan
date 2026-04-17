@@ -81,7 +81,11 @@ export function applyImmediateEffects(params: {
         break;
 
       case "CLEANSE":
-        handleCleanse(source, effect);
+        handleCleanse(source, {
+          cleanseRootSlow:
+            (ability as any).cleanseRootSlow === true ||
+            (effect as any).cleanseRootSlow === true,
+        });
         break;
 
       case "DASH":

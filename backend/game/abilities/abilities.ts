@@ -1,8 +1,21 @@
 // backend/game/abilities/abilities.ts
 
 import { Ability } from "../engine/state/types";
+import {
+  AbilityEditorOverrideEntry,
+  AbilityEditorOverrideMap,
+  AbilityPropertyId,
+  AbilityRecord,
+  buildAbilityEditorEntry,
+  buildResolvedAbilities,
+  getAbilityNumericFieldDefinition,
+  getAbilityPropertyDefinition,
+  listAbilityPropertyDefinitions,
+  loadAbilityEditorOverrides,
+  saveAbilityEditorOverrides,
+} from "./abilityPropertySystem";
 
-export const ABILITIES: Record<string, Ability & { description: string }> = {
+export const BASE_ABILITIES: AbilityRecord = {
   /* ================= 通用技能 (common abilities — always in every player's hand) ================= */
 
   menghu_xiasha: {
@@ -1346,3 +1359,175 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     ],
   },
 };
+
+let abilityPropertyOverrides: AbilityEditorOverrideMap = {};
+let abilityPropertyOverridesUpdatedAt: string | null = null;
+
+export const ABILITIES: AbilityRecord = {};
+
+function replaceAbilities(nextAbilities: AbilityRecord) {
+  for (const abilityId of Object.keys(ABILITIES)) {
+    if (!nextAbilities[abilityId]) {
+      delete ABILITIES[abilityId];
+    }
+  }
+
+  for (const [abilityId, ability] of Object.entries(nextAbilities)) {
+    ABILITIES[abilityId] = ability;
+  }
+}
+
+function rebuildAbilities() {
+  replaceAbilities(buildResolvedAbilities(BASE_ABILITIES, abilityPropertyOverrides));
+}
+
+const loadedAbilityPropertyOverrides = loadAbilityEditorOverrides();
+abilityPropertyOverrides = loadedAbilityPropertyOverrides.overrides;
+abilityPropertyOverridesUpdatedAt = loadedAbilityPropertyOverrides.updatedAt;
+rebuildAbilities();
+
+const ABILITY_TYPE_ORDER: Record<Ability["type"], number> = {
+  ATTACK: 1,
+  CONTROL: 2,
+  SUPPORT: 3,
+  STANCE: 4,
+  CHANNEL: 5,
+};
+
+export function buildAbilityEditorSnapshot() {
+  const abilities = Object.values(ABILITIES)
+    .map((ability) =>
+      buildAbilityEditorEntry({
+        ability,
+        baseAbility: BASE_ABILITIES[ability.id],
+        overrides: abilityPropertyOverrides[ability.id],
+      })
+    )
+    .sort((left, right) => {
+      const typeDelta = ABILITY_TYPE_ORDER[left.type] - ABILITY_TYPE_ORDER[right.type];
+      if (typeDelta !== 0) return typeDelta;
+      return left.name.localeCompare(right.name, "zh-Hans-CN");
+    });
+
+  return {
+    updatedAt: abilityPropertyOverridesUpdatedAt,
+    propertyCatalog: listAbilityPropertyDefinitions(),
+    abilities,
+  };
+}
+
+export function setAbilityEditorProperty(
+  abilityId: string,
+  propertyId: AbilityPropertyId,
+  enabled: boolean
+) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
+  }
+
+  const definition = getAbilityPropertyDefinition(propertyId);
+  if (!definition) {
+    throw new Error("ERR_INVALID_ABILITY_PROPERTY");
+  }
+
+  if (!definition.isApplicable(baseAbility)) {
+    throw new Error("ERR_PROPERTY_NOT_APPLICABLE");
+  }
+
+  const baseEnabled = definition.getValue(baseAbility);
+  const nextPropertyOverrides = {
+    ...(abilityPropertyOverrides[abilityId]?.properties ?? {}),
+  };
+  const nextAbilityOverrides: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+    properties: nextPropertyOverrides,
+  };
+
+  if (enabled === baseEnabled) {
+    delete nextPropertyOverrides[propertyId];
+  } else {
+    nextPropertyOverrides[propertyId] = enabled;
+  }
+
+  if (Object.keys(nextPropertyOverrides).length === 0) {
+    delete nextAbilityOverrides.properties;
+  }
+
+  if (!nextAbilityOverrides.properties && !nextAbilityOverrides.numeric) {
+    delete abilityPropertyOverrides[abilityId];
+  } else {
+    abilityPropertyOverrides[abilityId] = nextAbilityOverrides;
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+
+  return buildAbilityEditorEntry({
+    ability: ABILITIES[abilityId],
+    baseAbility,
+    overrides: abilityPropertyOverrides[abilityId],
+  });
+}
+
+export function setAbilityEditorNumericValue(
+  abilityId: string,
+  fieldId: string,
+  value: number
+) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
+  }
+
+  if (!Number.isFinite(value)) {
+    throw new Error("ERR_INVALID_ABILITY_NUMERIC_VALUE");
+  }
+
+  const definition = getAbilityNumericFieldDefinition(baseAbility, fieldId);
+  if (!definition) {
+    throw new Error("ERR_INVALID_ABILITY_NUMERIC_FIELD");
+  }
+
+  const baseValue = definition.getValue(baseAbility);
+  const nextNumericOverrides = {
+    ...(abilityPropertyOverrides[abilityId]?.numeric ?? {}),
+  };
+  const nextAbilityOverrides: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+    numeric: nextNumericOverrides,
+  };
+
+  if (value === baseValue) {
+    delete nextNumericOverrides[fieldId];
+  } else {
+    nextNumericOverrides[fieldId] = value;
+  }
+
+  if (Object.keys(nextNumericOverrides).length === 0) {
+    delete nextAbilityOverrides.numeric;
+  }
+
+  if (!nextAbilityOverrides.properties && !nextAbilityOverrides.numeric) {
+    delete abilityPropertyOverrides[abilityId];
+  } else {
+    abilityPropertyOverrides[abilityId] = nextAbilityOverrides;
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+
+  return buildAbilityEditorEntry({
+    ability: ABILITIES[abilityId],
+    baseAbility,
+    overrides: abilityPropertyOverrides[abilityId],
+  });
+}
+
+export function setAbilityEditorDamageValue(
+  abilityId: string,
+  damageId: string,
+  value: number
+) {
+  return setAbilityEditorNumericValue(abilityId, damageId, value);
+}

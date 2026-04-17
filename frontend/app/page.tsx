@@ -117,6 +117,10 @@ export default function HomePage() {
     router.push("/export-reader.html");
   };
 
+  const openAbilityEditor = () => {
+    router.push("/ability-editor");
+  };
+
   /* =========================================================
      UI
   ========================================================= */
@@ -151,6 +155,12 @@ export default function HomePage() {
           onClick={openExportViewer}
         >
           Export Viewer
+        </button>
+        <button
+          className={`${styles.createBtn} ${styles.createBtnAbilityEditor}`}
+          onClick={openAbilityEditor}
+        >
+          能力属性编辑
         </button>
       </div>
 
