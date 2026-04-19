@@ -14,6 +14,7 @@ export type EffectType =
   | "DAMAGE_MULTIPLIER"
   | "HEAL_REDUCTION"
   | "UNTARGETABLE"
+  | "INVULNERABLE"
   | "STEALTH"
   | "ATTACK_LOCK"
   | "CONTROL"
@@ -22,6 +23,9 @@ export type EffectType =
   | "QINGGONG_SEAL"
   | "KNOCKBACK_IMMUNE"
   | "CONTROL_IMMUNE"
+  | "DASH_TURN_LOCK"
+  | "DASH_TURN_OVERRIDE"
+  | "DISPLACEMENT"
   | "INTERRUPT_IMMUNE"
   | "ROOT_SLOW_IMMUNE"
   | "DODGE_NEXT"
@@ -47,9 +51,12 @@ export type EffectType =
   | "TIMED_SELF_HEAL"
   | "TIMED_AOE_DAMAGE_IF_SELF_HP_GT"
   | "TIMED_GUAN_TI_HEAL"
+  | "TIMED_PULL_TARGET_TO_FRONT"
   | "PLACE_GROUND_ZONE"
   | "PLACE_SHENGTAIJI_ZONE"
   | "BAIZU_AOE"
+  | "WUFANG_XINGJIN_AOE"
+  | "BANG_DA_GOU_TOU"
   | "STACK_ON_HIT_DAMAGE"
   | "KNOCKED_BACK"
   | "SPEED_BOOST"
@@ -67,6 +74,7 @@ export interface AbilityEffect {
   value?: number;
   chance?: number;
   repeatTurns?: number;
+  maxTargets?: number;
 
   allowWhileControlled?: boolean;
   allowWhileKnockedBack?: boolean;
@@ -87,6 +95,18 @@ export interface AbilityEffect {
 
   /** Range (units) for CHANNEL_AOE_TICK — target must be within this distance */
   range?: number;
+
+  /** For zone placement effects: custom zone duration in ms. */
+  zoneDurationMs?: number;
+
+  /** For zone placement effects: custom tick interval in ms. */
+  zoneIntervalMs?: number;
+
+  /** For zone placement effects: offset from caster in gameplay units. */
+  zoneOffsetUnits?: number;
+
+  /** For zone placement effects: vertical effective height in gameplay units. */
+  zoneHeight?: number;
 
   /**
    * For DIRECTIONAL_DASH: when true, dash heading is steered by live facing every tick.

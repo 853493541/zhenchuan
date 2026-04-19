@@ -80,6 +80,9 @@ export function buildAbilityPreload() {
       // Hybrid cast abilities may be cast on ground without a selected target.
       allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
 
+      // Some mobility skills are explicitly blocked while rooted.
+      cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
+
       // Editor/runtime cast exception flags.
       allowWhileControlled:
         (ability as any).allowWhileControlled === true ||
@@ -98,7 +101,7 @@ export function buildAbilityPreload() {
 
     if (Array.isArray(ability.buffs)) {
       for (const buff of ability.buffs) {
-        buffs.push({
+        const buffPayload: any = {
           buffId: buff.buffId,
           name: buff.name,
           category: buff.category,
@@ -113,7 +116,14 @@ export function buildAbilityPreload() {
           // UI helpers
           sourceAbilityId: ability.id,
           sourceAbilityName: ability.name,
-        });
+        };
+        if (buff.buffId === 1008) {
+          buffPayload.hiddenInStatusBar = true;
+        }
+        if (Array.isArray(buff.effects) && buff.effects.some((effect) => effect?.type === "DASH_TURN_OVERRIDE")) {
+          buffPayload.hiddenInStatusBar = true;
+        }
+        buffs.push(buffPayload);
       }
     }
   }
@@ -136,6 +146,21 @@ export function buildAbilityPreload() {
   });
 
   buffs.push({
+    buffId: 999900,
+    name: "位移中",
+    category: "BUFF",
+    breakOnPlay: false,
+    description: "冲刺期间无法转向、无法施放技能或轻功，并免疫控制与击退。所有 dash 共用这一运行态。",
+    effects: [
+      { type: "CONTROL_IMMUNE" },
+      { type: "KNOCKBACK_IMMUNE" },
+      { type: "DISPLACEMENT" },
+      { type: "DASH_TURN_LOCK" },
+    ],
+    iconPath: "/game/icons/Skills/蹑云逐月.png",
+  });
+
+  buffs.push({
     buffId: 1202,
     name: "摩诃无量·眩晕",
     category: "DEBUFF",
@@ -145,6 +170,36 @@ export function buildAbilityPreload() {
     effects: [{ type: "CONTROL" }],
     sourceAbilityId: "mohe_wuliang",
     sourceAbilityName: "摩诃无量",
+  });
+
+  buffs.push({
+    buffId: 990100,
+    name: "锁足抗性",
+    category: "BUFF",
+    durationMs: 10_000,
+    breakOnPlay: false,
+    description: "10秒内锁足递减。每次锁足成功后层数+1并刷新计时，下一次锁足持续时间按0.5^层数递减。",
+    effects: [],
+  });
+
+  buffs.push({
+    buffId: 990101,
+    name: "眩晕抗性",
+    category: "BUFF",
+    durationMs: 10_000,
+    breakOnPlay: false,
+    description: "10秒内眩晕递减。每次眩晕成功后层数+1并刷新计时，下一次眩晕持续时间按0.5^层数递减。击倒不计入眩晕递减。",
+    effects: [],
+  });
+
+  buffs.push({
+    buffId: 990102,
+    name: "锁招抗性",
+    category: "BUFF",
+    durationMs: 10_000,
+    breakOnPlay: false,
+    description: "10秒内锁招递减。每次沉默或同类锁招成功后层数+1并刷新计时，下一次持续时间按0.5^层数递减。封轻功不参与这一递减。",
+    effects: [],
   });
 
   buffs.push({
@@ -169,6 +224,54 @@ export function buildAbilityPreload() {
     effects: [{ type: "SLOW", value: 0.4 }],
     sourceAbilityId: "qionglong_huasheng",
     sourceAbilityName: "穹隆化生",
+  });
+
+  buffs.push({
+    buffId: 1320,
+    name: "镇山河",
+    category: "BUFF",
+    durationMs: 2_000,
+    breakOnPlay: false,
+    description: "施放后至少获得2秒无敌，敌方技能会正常消耗，但不会对你造成伤害或附加效果。",
+    effects: [{ type: "INVULNERABLE" }],
+    sourceAbilityId: "zhen_shan_he",
+    sourceAbilityName: "镇山河",
+  });
+
+  buffs.push({
+    buffId: 1323,
+    name: "镇山河",
+    category: "BUFF",
+    durationMs: 100,
+    breakOnPlay: false,
+    description: "位于镇山河区域内时每0.1秒刷新0.1秒无敌效果。",
+    effects: [{ type: "INVULNERABLE" }],
+    sourceAbilityId: "zhen_shan_he",
+    sourceAbilityName: "镇山河",
+  });
+
+  buffs.push({
+    buffId: 1321,
+    name: "玄剑",
+    category: "DEBUFF",
+    durationMs: 12_000,
+    breakOnPlay: false,
+    description: "镇山河入场标记。自然结束后转为【化生势】。",
+    effects: [],
+    sourceAbilityId: "zhen_shan_he",
+    sourceAbilityName: "镇山河",
+  });
+
+  buffs.push({
+    buffId: 1322,
+    name: "化生势",
+    category: "DEBUFF",
+    durationMs: 180_000,
+    breakOnPlay: false,
+    description: "期间无法再次获得镇山河区域效果。",
+    effects: [],
+    sourceAbilityId: "zhen_shan_he",
+    sourceAbilityName: "镇山河",
   });
 
   const abilityMap = Object.fromEntries(

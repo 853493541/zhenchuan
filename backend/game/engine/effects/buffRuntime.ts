@@ -36,6 +36,117 @@ function isMoheStun(buff: ActiveBuff): boolean {
   return buff.buffId === 1202 && buff.sourceAbilityId === "mohe_wuliang";
 }
 
+const ROOT_DR_BUFF_ID = 990100;
+const STUN_DR_BUFF_ID = 990101;
+const LOCKOUT_DR_BUFF_ID = 990102;
+const CONTROL_DR_DURATION_MS = 10_000;
+
+type ResistanceConfig = {
+  buffId: number;
+  name: string;
+};
+
+const ROOT_DR_CONFIG: ResistanceConfig = {
+  buffId: ROOT_DR_BUFF_ID,
+  name: "锁足抗性",
+};
+
+const STUN_DR_CONFIG: ResistanceConfig = {
+  buffId: STUN_DR_BUFF_ID,
+  name: "眩晕抗性",
+};
+
+const LOCKOUT_DR_CONFIG: ResistanceConfig = {
+  buffId: LOCKOUT_DR_BUFF_ID,
+  name: "锁招抗性",
+};
+
+const SHARED_LOCKOUT_EFFECT_TYPES = new Set(["SILENCE", "ATTACK_LOCK"]);
+
+function getActiveResistanceBuff(
+  target: { buffs: ActiveBuff[] },
+  buffId: number,
+  now: number
+): ActiveBuff | undefined {
+  return target.buffs.find(
+    (b) => b.buffId === buffId && b.expiresAt > now
+  );
+}
+
+function getResistanceConfig(runtimeBuff: BuffDefinition): ResistanceConfig | null {
+  if (runtimeBuff.category !== "DEBUFF") return null;
+  if (runtimeBuff.buffId === 1002) return null;
+
+  if (runtimeBuff.effects.some((e) => SHARED_LOCKOUT_EFFECT_TYPES.has(e.type))) {
+    return LOCKOUT_DR_CONFIG;
+  }
+
+  if (runtimeBuff.effects.some((e) => e.type === "CONTROL")) {
+    return STUN_DR_CONFIG;
+  }
+
+  if (runtimeBuff.effects.some((e) => e.type === "ROOT")) {
+    return ROOT_DR_CONFIG;
+  }
+
+  return null;
+}
+
+function refreshResistanceBuff(params: {
+  state: GameState;
+  target: { userId: string; buffs: ActiveBuff[] };
+  ability: Ability;
+  now: number;
+  config: ResistanceConfig;
+}) {
+  const { state, target, ability, now, config } = params;
+  const activeResistance = getActiveResistanceBuff(target, config.buffId, now);
+  const nextStacks = (activeResistance?.stacks ?? 0) + 1;
+
+  if (activeResistance) {
+    activeResistance.name = config.name;
+    activeResistance.category = "BUFF";
+    activeResistance.effects = [];
+    activeResistance.expiresAt = now + CONTROL_DR_DURATION_MS;
+    activeResistance.appliedAt = now;
+    activeResistance.appliedAtTurn = state.turn;
+    activeResistance.breakOnPlay = false;
+    activeResistance.sourceAbilityId = ability.id;
+    activeResistance.sourceAbilityName = ability.name;
+    activeResistance.stacks = nextStacks;
+    activeResistance.maxStacks = 99;
+  } else {
+    target.buffs = target.buffs.filter((b) => b.buffId !== config.buffId);
+    target.buffs.push({
+      buffId: config.buffId,
+      name: config.name,
+      category: "BUFF",
+      effects: [],
+      expiresAt: now + CONTROL_DR_DURATION_MS,
+      appliedAt: now,
+      appliedAtTurn: state.turn,
+      breakOnPlay: false,
+      stacks: nextStacks,
+      maxStacks: 99,
+      sourceAbilityId: ability.id,
+      sourceAbilityName: ability.name,
+    });
+  }
+
+  pushEvent(state, {
+    turn: state.turn,
+    type: "BUFF_APPLIED",
+    actorUserId: target.userId,
+    targetUserId: target.userId,
+    abilityId: ability.id,
+    abilityName: ability.name,
+    buffId: config.buffId,
+    buffName: config.name,
+    buffCategory: "BUFF",
+    appliedAtTurn: state.turn,
+  });
+}
+
 function isStunDebuff(buff: ActiveBuff): boolean {
   if (isMoheKnockdown(buff)) return false;
   if (buff.category !== "DEBUFF") return false;
@@ -63,6 +174,40 @@ function hasControlImmune(target: { buffs: ActiveBuff[] }): boolean {
 
 function hasSilenceImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "SILENCE_IMMUNE"));
+}
+
+function hasInvulnerable(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "INVULNERABLE"));
+}
+
+function isSharedLockoutDebuff(buff: ActiveBuff): boolean {
+  if (buff.category !== "DEBUFF") return false;
+  return buff.effects.some((e) => SHARED_LOCKOUT_EFFECT_TYPES.has(e.type));
+}
+
+function removeSharedLockoutDebuffs(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  const { state, targetUserId, target } = params;
+  const removed = target.buffs.filter((b) => isSharedLockoutDebuff(b));
+  if (removed.length === 0) return;
+
+  target.buffs = target.buffs.filter((b) => !isSharedLockoutDebuff(b));
+  for (const b of removed) {
+    pushEvent(state, {
+      turn: state.turn,
+      type: "BUFF_EXPIRED",
+      actorUserId: targetUserId,
+      targetUserId,
+      abilityId: b.sourceAbilityId,
+      abilityName: b.sourceAbilityName,
+      buffId: b.buffId,
+      buffName: b.name,
+      buffCategory: b.category,
+    });
+  }
 }
 
 function removeStealthOnIncomingControl(params: {
@@ -146,6 +291,15 @@ export function addBuff(params: {
   } = params;
 
   let runtimeBuff: BuffDefinition = buff;
+  const now = Date.now();
+  const incomingMoheKnockdown =
+    sourceUserId !== targetUserId &&
+    runtimeBuff.buffId === 1002 &&
+    runtimeBuff.effects.some((e) => e.type === "CONTROL");
+
+  if (sourceUserId !== targetUserId && hasInvulnerable(buffTarget)) {
+    return;
+  }
 
   if (sourceUserId !== targetUserId && hasRootSlowImmune(buffTarget)) {
     const filteredEffects = runtimeBuff.effects.filter(
@@ -172,7 +326,7 @@ export function addBuff(params: {
 
   if (sourceUserId !== targetUserId && hasControlImmune(buffTarget)) {
     const filteredEffects = runtimeBuff.effects.filter(
-      (e) => e.type !== "CONTROL" && e.type !== "ATTACK_LOCK"
+      (e) => e.type !== "CONTROL" && e.type !== "ATTACK_LOCK" && e.type !== "ROOT"
     );
     if (filteredEffects.length === 0) {
       return;
@@ -198,11 +352,19 @@ export function addBuff(params: {
     }
   }
 
+  if (
+    sourceUserId !== targetUserId &&
+    runtimeBuff.effects.some((e) => SHARED_LOCKOUT_EFFECT_TYPES.has(e.type))
+  ) {
+    removeSharedLockoutDebuffs({
+      state,
+      targetUserId,
+      target: buffTarget,
+    });
+  }
+
   // 摩诃无量交互：倒地期间免疫其他控制层级（可被沉默），并且新硬控会替换摩诃无量·眩晕。
   if (sourceUserId !== targetUserId) {
-    const incomingMoheKnockdown =
-      (ability.id === "mohe_wuliang" || runtimeBuff.buffId === 1002) &&
-      runtimeBuff.effects.some((e) => e.type === "CONTROL");
     if (incomingMoheKnockdown) {
       const removedStuns = buffTarget.buffs.filter(isStunDebuff);
       if (removedStuns.length > 0) {
@@ -223,7 +385,7 @@ export function addBuff(params: {
       }
     }
 
-    if (buffTarget.buffs.some(isMoheKnockdown)) {
+    if (buffTarget.buffs.some((b) => isMoheKnockdown(b) && b.expiresAt > now)) {
       const filteredEffects = runtimeBuff.effects.filter(
         (e) => !CONTROL_TYPES_BLOCKED_WHILE_KNOCKED_DOWN.has(e.type)
       );
@@ -262,13 +424,28 @@ export function addBuff(params: {
     }
   }
 
+  const resistanceConfig =
+    sourceUserId !== targetUserId ? getResistanceConfig(runtimeBuff) : null;
+  if (resistanceConfig && runtimeBuff.durationMs > 0) {
+    const resistanceStacks =
+      getActiveResistanceBuff(buffTarget, resistanceConfig.buffId, now)?.stacks ?? 0;
+    if (resistanceStacks > 0) {
+      runtimeBuff = {
+        ...runtimeBuff,
+        durationMs: Math.max(
+          1,
+          Math.round(runtimeBuff.durationMs * Math.pow(0.5, resistanceStacks))
+        ),
+      };
+    }
+  }
+
   // Stacking: if buff defines maxStacks > 1, increment stacks on the existing buff
   // instead of replacing it. The lastTickAt is intentionally NOT reset — this prevents
   // stack-refresh abuse (re-casting resets the tick timer allowing faster ticks).
   if (runtimeBuff.maxStacks !== undefined && runtimeBuff.maxStacks > 1) {
     const existing = buffTarget.buffs.find((b) => b.buffId === runtimeBuff.buffId);
     if (existing) {
-      const now = Date.now();
       existing.stacks = Math.min((existing.stacks ?? 1) + 1, runtimeBuff.maxStacks);
       existing.expiresAt = now + runtimeBuff.durationMs;
 
@@ -332,7 +509,6 @@ export function addBuff(params: {
   }
   buffTarget.buffs = buffTarget.buffs.filter((b) => b.buffId !== runtimeBuff.buffId);
 
-  const now = Date.now();
   const linkedShield = runtimeBuff.effects
     .filter((e) => e.type === "SHIELD")
     .reduce((sum, e) => sum + (e.value ?? 0), 0);
@@ -405,6 +581,16 @@ export function addBuff(params: {
     buffCategory: active.category,
     appliedAtTurn: active.appliedAtTurn,
   });
+
+  if (resistanceConfig) {
+    refreshResistanceBuff({
+      state,
+      target: buffTarget,
+      ability,
+      now,
+      config: resistanceConfig,
+    });
+  }
 }
 
 /**

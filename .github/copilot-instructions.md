@@ -9,7 +9,10 @@
    - Backend: `cd /home/ubuntu/zhenchuan/backend && npm run build`  
    - Frontend: `cd /home/ubuntu/zhenchuan/frontend && npm run build`  
    - Restart: `pm2 restart all` (from `/home/ubuntu/zhenchuan`)  
-   - If a port is in use: kill the occupying process (`lsof -ti:PORT | xargs kill -9`), *then* do `pm2 restart all`.  
+   - At the end of **each numbered round / point**, run both builds again to check for errors before replying.  
+   - PM2 must be restarted only after the newest successful build, and the reply must confirm PM2 is running that newest build with no reported startup errors.  
+   - If port `3000` or `5000` is in use when PM2 starts or restarts, kill the occupying process (`lsof -ti:PORT | xargs kill -9`) and start PM2 again.  
+   - If a different required port is in use: kill the occupying process (`lsof -ti:PORT | xargs kill -9`), *then* do `pm2 restart all`.  
    - Never skip the build step — ts-node compiles at startup only.
 
 3. **Record experiences.** Every problem solved, unresolved issue, or disproved approach must be written to:  

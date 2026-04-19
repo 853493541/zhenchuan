@@ -12,16 +12,18 @@
 
 import { GameState, Ability } from "../../state/types";
 import { applyAbility } from "./PlayAbility";
+import type { MapContext } from "../../loop/movement";
 
 export function applyEffects(
   state: GameState,
   ability: Ability,
   playerIndex: number,
   targetIndex: number,
+  mapCtx?: MapContext,
   castContext?: {
     targetUserId?: string;
     groundTarget?: { x: number; y: number };
   }
 ) {
-  applyAbility(state, ability, playerIndex, targetIndex, castContext);
+  applyAbility(state, ability, playerIndex, targetIndex, mapCtx, castContext);
 }

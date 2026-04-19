@@ -17,12 +17,13 @@ router.get("/:id/diff", async (req, res) => {
     const state = game.state;
 
     if (state.version <= sinceVersion) {
-      return res.json({ version: state.version, diff: [] });
+      return res.json({ version: state.version, diff: [], serverTimestamp: Date.now() });
     }
 
     res.json({
       version: state.version,
       diff: [{ path: "/", value: state }],
+      serverTimestamp: Date.now(),
     });
   } catch (err: any) {
     res.status(400).send(err.message);

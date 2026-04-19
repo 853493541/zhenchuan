@@ -44,6 +44,10 @@ export function hasUntargetable(target: { buffs: ActiveBuff[] }) {
   return hasEffect(target, "UNTARGETABLE");
 }
 
+export function hasInvulnerable(target: { buffs: ActiveBuff[] }) {
+  return hasEffect(target, "INVULNERABLE");
+}
+
 /**
  * Stealth (targeting-only)
  * - blocks ability targeting
@@ -56,10 +60,10 @@ export function hasStealth(target: { buffs: ActiveBuff[] }) {
 /**
  * Hard block for enemy-applied EFFECTS
  * - used during effect resolution
- * - ONLY untargetable applies here
+ * - untargetable and invulnerable apply here
  */
 export function blocksEnemyTargeting(target: { buffs: ActiveBuff[] }) {
-  return hasUntargetable(target);
+  return hasUntargetable(target) || hasInvulnerable(target);
 }
 
 /**
@@ -126,7 +130,7 @@ export function blocksNewBuffByUntargetable(
   source: { userId: string },
   target: { userId: string; buffs: ActiveBuff[] }
 ) {
-  return target.userId !== source.userId && hasUntargetable(target);
+  return target.userId !== source.userId && (hasUntargetable(target) || hasInvulnerable(target));
 }
 
 /**
@@ -138,4 +142,8 @@ export function blocksControlByImmunity(
 ) {
   if (effectType !== "CONTROL" && effectType !== "ATTACK_LOCK") return false;
   return allEffects(target).some((e) => e.type === "CONTROL_IMMUNE");
+}
+
+export function hasKnockbackImmune(target: { buffs: ActiveBuff[] }) {
+  return allEffects(target).some((e) => e.type === "KNOCKBACK_IMMUNE");
 }

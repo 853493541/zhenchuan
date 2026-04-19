@@ -11,6 +11,7 @@ export type AbilityPropertyId =
   | "allowWhileControlled"
   | "allowWhileKnockedBack"
   | "cleanseRootSlow"
+  | "cannotCastWhileRooted"
   | "requiresGrounded"
   | "requiresStanding"
   | "qinggong"
@@ -207,6 +208,7 @@ function setBooleanAbilityField(
     | "gcd"
     | "isCommon"
     | "qinggong"
+    | "cannotCastWhileRooted"
     | "requiresGrounded"
     | "requiresStanding"
     | "allowGroundCastWithoutTarget",
@@ -712,6 +714,17 @@ const abilityPropertyDefinitions: AbilityPropertyDefinition[] = [
       if (!enabled) {
         stripEffectFlag(ability, "cleanseRootSlow", "CLEANSE");
       }
+    },
+  },
+  {
+    id: "cannotCastWhileRooted",
+    label: "锁足中不可施放",
+    description: "角色处于锁足(ROOT)时不可施放该技能。",
+    group: "施放限制",
+    isApplicable: () => true,
+    getValue: (ability) => !!(ability as any).cannotCastWhileRooted,
+    setValue: (ability, enabled) => {
+      setBooleanAbilityField(ability, "cannotCastWhileRooted", enabled);
     },
   },
   {

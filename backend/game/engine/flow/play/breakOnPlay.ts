@@ -19,6 +19,8 @@ function isDunyingCompanion(buff: ActiveBuff): boolean {
   return buff.buffId === 1021 && (buff.name === "遁影" || buff.sourceAbilityId === "fuguang_lueying");
 }
 
+const TRIGGERED_STEALTH_BREAK_ABILITIES = new Set(["wu_jianyu"]);
+
 /**
  * Stealth buffs have per-skill break exceptions.
  * Keep this logic centralized so future tuning only needs one edit point.
@@ -72,4 +74,22 @@ export function breakOnPlay(source: { buffs?: ActiveBuff[] }, playedAbility: Abi
   if (hadFuguangBefore && !hasFuguangAfter) {
     source.buffs = source.buffs.filter((b) => !isDunyingCompanion(b));
   }
+}
+
+/**
+ * Certain delayed follow-up strikes are special-cased to break stealth only.
+ * They do not count as a normal "play" for channel breaking.
+ */
+export function applyTriggeredFollowUpPlayRules(
+  source: { buffs?: ActiveBuff[] },
+  playedAbility: Ability
+) {
+  if (!TRIGGERED_STEALTH_BREAK_ABILITIES.has(playedAbility.id)) {
+    return false;
+  }
+
+  const beforeBuffCount = Array.isArray(source.buffs) ? source.buffs.length : 0;
+  breakOnPlay(source, playedAbility);
+  const afterBuffCount = Array.isArray(source.buffs) ? source.buffs.length : 0;
+  return beforeBuffCount !== afterBuffCount;
 }

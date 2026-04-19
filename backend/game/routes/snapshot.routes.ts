@@ -40,6 +40,7 @@ router.get("/:id", async (req, res) => {
       _id: gameObj._id,
       players: gameObj.players,
       state: gameObj.state,
+      serverTimestamp: Date.now(),
       playerNames: gameObj.playerNames,
       tournament: gameObj.tournament, // EXPLICITLY INCLUDE
       started: gameObj.started,

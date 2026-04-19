@@ -9,12 +9,14 @@ import { computeAbilityDodge } from "../../rules/dodge";
 import { applyImmediateEffects } from "./immediateEffects";
 import { applyAbilityBuffs } from "./buffs";
 import { checkGameOver } from "../turn/checkGameOver";
+import type { MapContext } from "../../loop/movement";
 
 export function applyAbility(
   state: GameState,
   ability: Ability,
   playerIndex: number,
   targetIndex: number,
+  mapCtx?: MapContext,
   castContext?: {
     targetUserId?: string;
     groundTarget?: { x: number; y: number };
@@ -66,6 +68,7 @@ export function applyAbility(
     targetIndex,
     opponentHpAtStart,
     abilityDodged,
+    mapCtx,
     castContext,
   });
 

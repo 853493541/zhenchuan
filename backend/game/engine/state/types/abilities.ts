@@ -95,6 +95,11 @@ export interface Ability {
   cleanseRootSlow?: boolean;
 
   /**
+   * If true, this ability cannot be cast while under ROOT.
+   */
+  cannotCastWhileRooted?: boolean;
+
+  /**
    * If true, this ability can only be cast while grounded and not moving.
    */
   requiresStanding?: boolean;

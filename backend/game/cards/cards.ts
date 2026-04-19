@@ -415,10 +415,33 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         category: "BUFF",
         durationMs: 5_000, // 5 seconds
         description: "免疫控制",
-        effects: [{ type: "CONTROL_IMMUNE" }],
+        effects: [{ type: "CONTROL_IMMUNE" }, { type: "DASH_TURN_OVERRIDE" }],
       },
     ],
   },
+
+  zhen_shan_he: {
+    id: "zhen_shan_he",
+    name: "镇山河",
+    description: "展开镇山河8秒，自身立即获得2秒无敌。区域内友方每0.1秒刷新0.1秒无敌；首次获得区域效果时附加【玄剑】12秒，结束后转为【化生势】180秒，期间无法再次获得镇山河效果",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    allowWhileControlled: true,
+    effects: [
+      {
+        type: "PLACE_GROUND_ZONE",
+        value: 0,
+        range: 8,
+        zoneDurationMs: 8_000,
+        zoneIntervalMs: 100,
+        zoneOffsetUnits: 0,
+        zoneHeight: 10,
+      },
+    ],
+    buffs: [],
+  } as any,
 
   /* ================= 隐身 / 干扰 ================= */
 
@@ -707,6 +730,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         effects: [
           { type: "DODGE_NEXT", chance: 0.65 },
           { type: "CONTROL_IMMUNE" },
+          { type: "DASH_TURN_OVERRIDE" },
           { type: "SILENCE" },
         ],
       },

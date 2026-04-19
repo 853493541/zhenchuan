@@ -16,7 +16,9 @@ import {
   EXPORTED_COLLISION_RENDER_SF,
   type ExportedMapCollisionSystem,
 } from "../../map/exportedMapCollision";
-import { DASH_CC_IMMUNE_BUFF_ID } from "../effects/definitions/DirectionalDash";
+import {
+  DASH_CC_IMMUNE_BUFF_ID,
+} from "../effects/definitions/DirectionalDash";
 
 /**
  * Arena boundaries (in units)
@@ -217,6 +219,22 @@ function getExportedGroundHeight(
     : groundExportY * EXPORTED_COLLISION_RENDER_SF + EXPORTED_COLLISION_GROUP_POS_Y;
 }
 
+export function getGroundHeightForMap(
+  px: number,
+  py: number,
+  pz: number,
+  mapCtx?: MapContext,
+): number {
+  const mapObjects = mapCtx?.objects ?? worldMap.objects;
+  const arenaW = mapCtx?.width ?? ARENA_WIDTH;
+  const arenaH = mapCtx?.height ?? ARENA_HEIGHT;
+  const playerRadius = mapCtx?.playerRadius ?? DEFAULT_PLAYER_RADIUS;
+
+  return hasExportedCollision(mapCtx)
+    ? getExportedGroundHeight(px, py, pz, arenaW, arenaH, playerRadius, mapCtx.collisionSystem)
+    : getGroundHeight(px, py, pz, mapObjects, playerRadius);
+}
+
 function resolveExportedHorizontalCollision(
   player: PlayerState,
   arenaW: number,
@@ -336,6 +354,28 @@ function clearAirborneSpeedCarry(player: PlayerState): void {
   player.airborneSpeedCarry = 0;
 }
 
+function isPureUpwardJumpRise(player: PlayerState, wasAirborne: boolean): boolean {
+  if (!wasAirborne) return false;
+  if ((player.jumpCount ?? 0) <= 0) return false;
+  if ((player.velocity.vz ?? 0) <= 0.01) return false;
+  return player.airDirectionLocked !== true && !player.airNudgeDir;
+}
+
+function applyForcedControlFall(player: PlayerState, wasAirborne: boolean): void {
+  if (isPureUpwardJumpRise(player, wasAirborne)) {
+    return;
+  }
+
+  clearAirShift(player);
+  clearAirborneSpeedCarry(player);
+  player.velocity.vx = 0;
+  player.velocity.vy = 0;
+
+  if (wasAirborne) {
+    player.velocity.vz = Math.min(player.velocity.vz ?? 0, -0.0001);
+  }
+}
+
 function getAirShiftSpeedPerTick(player: PlayerState): number {
   if ((player.airNudgeRemaining ?? 0) <= 0 || (player.airNudgeTicksRemaining ?? 0) <= 0) {
     return 0;
@@ -450,12 +490,16 @@ export function applyMovement(
     allEffects.some((e) => e.type === "KNOCKED_BACK") ||
     allEffects.some((e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK");
   if (isFullyLocked) {
+    applyForcedControlFall(player, wasAirborne);
     input = null;
   }
 
   // ── Level 0 ROOT: blocks WASD + facing direction + jump. ──
   // Camera movement is purely client-side and is unaffected.
   const isRooted = !isFullyLocked && allEffects.some((e) => e.type === "ROOT");
+  if (isRooted) {
+    applyForcedControlFall(player, wasAirborne);
+  }
   if (isRooted && input) {
     input = {
       ...input,
@@ -479,6 +523,10 @@ export function applyMovement(
       jump: false,
     };
   }
+
+  const dashFacingLocked =
+    allEffects.some((e) => e.type === "DASH_TURN_LOCK") &&
+    !allEffects.some((e) => e.type === "DASH_TURN_OVERRIDE");
 
   // ── 惯性 animated dash (蹑云逐月 / DIRECTIONAL_DASH momentum system) ────────
   // While activeDash is in progress the dash owns all movement. Normal input,
@@ -563,7 +611,7 @@ export function applyMovement(
     }
 
     // Steering mode: keep moving forward, but heading follows live facing.
-    if (dash.steerByFacing) {
+    if (dash.steerByFacing && !dashFacingLocked) {
       if (input?.facing) {
         const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
         if (flen > 0.01) {
@@ -668,8 +716,12 @@ export function applyMovement(
       }
       player.isPowerJump = false;
       delete player.activeDash;
-      // Remove dash CC immunity buff
-      player.buffs = player.buffs.filter(b => b.buffId !== DASH_CC_IMMUNE_BUFF_ID);
+      // Remove the shared dash runtime buff once the active dash ends.
+      player.buffs = player.buffs.filter(
+        (b) =>
+          (b.buffId !== DASH_CC_IMMUNE_BUFF_ID ||
+            b.sourceAbilityId !== dash.abilityId)
+      );
     }
 
     if (dash.wallDiveOnBlock && intendedStep > 0.001) {

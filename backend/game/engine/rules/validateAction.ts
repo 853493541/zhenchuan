@@ -222,7 +222,10 @@ export function validateCastAbility(
   }
 
   /* ================= QINGGONG SEAL ================= */
-  if ((ability as any).qinggong && hasEffect(player, "QINGGONG_SEAL")) {
+  if (
+    (ability as any).qinggong &&
+    (hasEffect(player, "QINGGONG_SEAL") || hasEffect(player, "DISPLACEMENT"))
+  ) {
     throw new Error("ERR_QINGGONG_SEALED");
   }
 
@@ -234,6 +237,10 @@ export function validateCastAbility(
   /* ================= SILENCE (Level 3 — not removable) ================= */
   if (hasEffect(player, "SILENCE")) {
     throw new Error("ERR_SILENCED");
+  }
+
+  if (hasEffect(player, "DISPLACEMENT")) {
+    throw new Error("ERR_DISPLACEMENT");
   }
 
   /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
@@ -258,7 +265,11 @@ export function validateCastAbility(
     throw new Error("ERR_CONTROLLED");
   }
 
-  /* (Level 0 — ROOT / SLOW only restrict movement, spells are not blocked) */
+  if (hasEffect(player, "ROOT") && (ability as any).cannotCastWhileRooted === true) {
+    throw new Error("ERR_ROOTED");
+  }
+
+  /* (Level 0 — ROOT / SLOW only restrict movement unless ability is ROOT-locked) */
 
   /* ================= MIN SELF HP (exclusive, shields not counted) ================= */
   if (typeof (ability as any).minSelfHpExclusive === "number") {
@@ -397,7 +408,10 @@ export function validatePlayAbility(
   ensureChargeRuntime(instance, ability);
 
   /* ================= QINGGONG SEAL ================= */
-  if ((ability as any).qinggong && hasEffect(player, "QINGGONG_SEAL")) {
+  if (
+    (ability as any).qinggong &&
+    (hasEffect(player, "QINGGONG_SEAL") || hasEffect(player, "DISPLACEMENT"))
+  ) {
     throw new Error("ERR_QINGGONG_SEALED");
   }
 
@@ -415,6 +429,10 @@ export function validatePlayAbility(
 
   if (hasEffect(player, "SILENCE")) {
     throw new Error("ERR_SILENCED");
+  }
+
+  if (hasEffect(player, "DISPLACEMENT")) {
+    throw new Error("ERR_DISPLACEMENT");
   }
 
   /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
@@ -443,7 +461,11 @@ export function validatePlayAbility(
     throw new Error("ERR_CONTROLLED");
   }
 
-  /* (Level 0 — ROOT / SLOW only restrict movement, spells are not blocked) */
+  if (hasEffect(player, "ROOT") && (ability as any).cannotCastWhileRooted === true) {
+    throw new Error("ERR_ROOTED");
+  }
+
+  /* (Level 0 — ROOT / SLOW only restrict movement unless ability is ROOT-locked) */
 
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
 

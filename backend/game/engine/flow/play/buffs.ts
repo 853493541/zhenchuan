@@ -30,10 +30,16 @@ export function applyAbilityBuffs(params: {
 }) {
   const { state, ability, source, target, abilityDodged } = params;
 
-  // 百足/大狮子吼 buff application is handled via custom immediate AoE effect logic.
+  // 百足/五方行尽/棒打狗头/大狮子吼 buff application is handled via custom immediate effect logic.
   if (
     ability.id === "baizu" ||
-    Array.isArray(ability.effects) && ability.effects.some((e: any) => e.type === "AOE_APPLY_BUFFS")
+    ability.id === "wufang_xingjin" ||
+    (Array.isArray(ability.effects) &&
+      ability.effects.some((e: any) =>
+        e.type === "AOE_APPLY_BUFFS" ||
+        e.type === "WUFANG_XINGJIN_AOE" ||
+        e.type === "BANG_DA_GOU_TOU"
+      ))
   ) {
     return;
   }

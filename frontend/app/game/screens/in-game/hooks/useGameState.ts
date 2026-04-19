@@ -111,6 +111,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const playerIdsRef = useRef<string[]>([]);
   const rttRef = useRef<number | null>(null);
   const serverTimeOffsetRef = useRef<number>(0);
+  const hasServerTimeSyncRef = useRef<boolean>(false);
   
   // WebSocket connection
   const wsRef = useRef<WebSocket | null>(null);
@@ -122,8 +123,19 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       return serverTimeOffsetRef.current;
     }
 
-    const oneWayLatencyMs = rttRef.current !== null ? Math.max(0, rttRef.current / 2) : 0;
-    serverTimeOffsetRef.current = clientReceivedAt - (serverTimestamp + oneWayLatencyMs);
+    const oneWayLatencyMs = rttRef.current !== null
+      ? Math.max(0, Math.min(rttRef.current / 2, 120))
+      : 0;
+    const observedOffset = clientReceivedAt - (serverTimestamp + oneWayLatencyMs);
+
+    if (!hasServerTimeSyncRef.current) {
+      serverTimeOffsetRef.current = observedOffset;
+      hasServerTimeSyncRef.current = true;
+      return serverTimeOffsetRef.current;
+    }
+
+    // Smooth offset changes to avoid timestamp jitter affecting channel UI pace.
+    serverTimeOffsetRef.current = serverTimeOffsetRef.current * 0.85 + observedOffset * 0.15;
     return serverTimeOffsetRef.current;
   }, []);
 
@@ -286,7 +298,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         if (message.type === "STATE_DIFF" || message.type === "GAME_OVER") {
           if (!message.diff || message.diff.length === 0) return;
 
-          const offsetMs = updateServerTimeOffset(message.timestamp, receiveDateNow);
+          const offsetMs = hasServerTimeSyncRef.current
+            ? serverTimeOffsetRef.current
+            : updateServerTimeOffset(message.timestamp, receiveDateNow);
           const normalizedDiff = normalizeDiffTimestamps(message.diff, offsetMs);
 
 

@@ -38,6 +38,9 @@ function showGameError(rawCode: string) {
     case "ERR_CONTROLLED":
       toastError("你被控制，无法行动");
       break;
+    case "ERR_ROOTED":
+      toastError("你被锁足，无法施展该招式");
+      break;
     case "ERR_TARGET_UNTARGETABLE":
       toastError("目标无法选中");
       break;

@@ -12,8 +12,8 @@ Purpose: persist the requested 2026-04-17 control-system redesign before impleme
 
 - Current code still uses the old four-tier model: ROOT and SLOW as level 0, CONTROL and ATTACK_LOCK as level 1, KNOCKED_BACK as level 2, and SILENCE as level 3.
 - Current code conflates most stun-like states and knockdown into CONTROL, except mohe_wuliang knockdown which is special-cased by buff id and source ability.
-- Current code has no diminishing-returns system, no per-control resistance stacks, no pull control, and no dedicated freeze effect.
-- Current movement code preserves airborne XY momentum when input is blocked, so live root, stun, and knockback do not currently force an immediate straight-down fall. The redesign explicitly requires root, stun, and freeze to kill horizontal carry and start falling.
+- Current code now has visible root/stun resistance buffs, but it still has no freeze resistance family, no pull control, and no dedicated freeze effect.
+- Current movement code now preserves only a pure upward-jump rise under root or stun. Grounded movement and directional airborne travel are forced to stop immediately, and directional airborne travel is converted into straight-down fall. The redesign still requires a dedicated freeze family and a true type-3 dash-travel system.
 - Current knockback is implemented as forced displacement plus a short KNOCKED_BACK buff. The redesign instead treats pull and knockback as dash-state controls with forced travel time, cast lock, and control immunity during the movement.
 - Current silence is treated like a control tier. The redesign moves silence into the separate lockout system.
 
@@ -30,8 +30,9 @@ Purpose: persist the requested 2026-04-17 control-system redesign before impleme
 - Root prevents movement.
 - Root prevents turning or changing facing direction.
 - Root blocks jump input while grounded.
-- Root is intended to stop momentum immediately.
+- Root is intended to stop momentum immediately, except during a pure upward-jump rise.
 - If the target is moving forward in the air and gets rooted, horizontal motion stops at once and the remaining movement becomes straight downward until landing.
+- If the target is still rising from a pure upward jump with no committed directional air travel, that upward rise is preserved.
 - Root uses diminishing returns.
 - Successful root applies a 10-second resistance buff, 锁足抗性.
 - While 锁足抗性 exists, the next successful root duration is halved.
@@ -51,7 +52,7 @@ Purpose: persist the requested 2026-04-17 control-system redesign before impleme
 
 - Stun is a hard control.
 - While stunned, the target cannot use any ability unless that ability is explicitly marked as can cast while controlled or remove control.
-- Stun stops momentum and makes an airborne target start falling immediately, the same way root should.
+- Stun stops momentum and makes an airborne target start falling immediately, the same way root should, except for the same pure upward-jump rise exception.
 - Freeze is currently a placeholder but should behave the same as stun for now.
 - Freeze also uses diminishing returns.
 - Stun and freeze are the same priority level.
@@ -111,6 +112,8 @@ Purpose: persist the requested 2026-04-17 control-system redesign before impleme
 - Pull and knockback were not described as using diminishing returns, so current design intent is no diminishing returns for type 3 unless specified later.
 - Diminishing returns only advance when the control actually works.
 - Failed control due to immunity, cleanse immunity, or any other prevention should not create future duration reduction.
+- Diminishing-returns resistance needs to be visible as a normal buff in the client so stack count and timer can be tested directly.
+- The visible resistance buff is the only source of truth for DR state. If that buff is gone, the next successful control starts again at 1 stack; there is no hidden counter behind it.
 
 ## Clarification points resolved
 
@@ -148,6 +151,8 @@ Purpose: persist the requested 2026-04-17 control-system redesign before impleme
 
 - Example 1: jianpo_xukong slow plus future root. Today jianpo_xukong already provides the slow half of the rule. Under the redesign, if a future root lands during that slow, root should stop movement and facing immediately, but when root ends the remaining slow time should still continue.
 - Example 2: shengsi_jie stun into wu_jianyu knockback. Under the redesign, the target first enters type 1 stun. When wu_jianyu's timed knockback fires, it should remove the stun first, then apply type 3 knockback travel. During that forced travel the target cannot cast anything and is immune to further controls.
+- Example 2b: wu_jianyu itself is still a 10-second buff. Its special hits happen 2 seconds, 3 seconds, and 4 seconds after buff gain, which means the buff bar is usually showing about 8, 7, and 6 seconds remaining when those hits land.
+- Example 2a: wu_jianyu follow-up strikes are special-case attacks. They should be treated as stealth-breaking follow-up hits only, not as generic channel-breaking plays.
 - Example 3: shengsi_jie stun into mohe_wuliang knockdown. Under the redesign, mohe_wuliang should replace the stun with type 2 knockdown. While knockdown is active, later root, stun, freeze, pull, and knockback attempts should all fail. If mohe_wuliang reaches its natural end and the low-health condition is met, the follow-up 2-second stun should then apply as a fresh type 1 control after knockdown has ended.
 - Example 4: stun plus silence lockdown. shengsi_jie provides the control portion and chan_xiao provides the lockout portion. This is the intended combo case: the target is controlled by stun and also locked out by silence, so even a remove-control skill can be blocked if its skill category is covered by silence.
 - Example 5: remove-control while under control. If the target is stunned by leizhenzi, a skill like zhuan_qiankun or jiru_feng should still be legal because it is explicitly a remove-control tool. If the same target is also silenced by chan_xiao, then the lockout layer may still block that skill depending on its school tagging.

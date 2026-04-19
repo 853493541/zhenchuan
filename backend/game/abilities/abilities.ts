@@ -39,6 +39,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
+    cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD", durationTicks: 30 }],
     isCommon: true,
   },
@@ -51,6 +52,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
+    cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY", durationTicks: 21 }],
     isCommon: true,
   },
@@ -63,6 +65,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
+    cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT", durationTicks: 30 }],
     isCommon: true,
   },
@@ -75,6 +78,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
+    cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT", durationTicks: 30 }],
     isCommon: true,
   },
@@ -97,7 +101,6 @@ export const BASE_ABILITIES: AbilityRecord = {
         durationMs: 30_000,  // consumed by movement.ts on next jump; 30-second fallback expiry
         description: "下次跳跃高度提升至12单位",
         effects: [{ type: "JUMP_BOOST" }],
-        applyTo: "SELF",
       },
     ],
     isCommon: true,
@@ -112,6 +115,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 0,
     gcd: false,
     qinggong: true,
+    cannotCastWhileRooted: true,
     requiresGrounded: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 2.7, dirMode: "AWAY", durationTicks: 30 }],
     isCommon: true,
@@ -126,6 +130,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: true,
     qinggong: true,
+    cannotCastWhileRooted: true,
     effects: [
       {
         type: "DIRECTIONAL_DASH",
@@ -242,6 +247,143 @@ export const BASE_ABILITIES: AbilityRecord = {
       },
     ],
   },
+
+  wufang_xingjin: {
+    id: "wufang_xingjin",
+    name: "五方行尽",
+    description: "可选目标或地面施放（范围8）\n命中后立刻造成1点伤害\n附加【五方行尽】10秒：锁足；后半段被击时有50%概率解除\n若命中至少1名敌方目标，获得【会神】8秒：伤害提高20%",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    faceDirection: false,
+    allowGroundCastWithoutTarget: true,
+    effects: [{ type: "WUFANG_XINGJIN_AOE", value: 1, range: 8 }],
+    buffs: [
+      {
+        buffId: 1330,
+        name: "五方行尽",
+        category: "DEBUFF",
+        durationMs: 10_000,
+        description: "锁足：无法移动和转向；后半段被击时有50%概率解除",
+        effects: [{ type: "ROOT" }],
+      },
+      {
+        buffId: 1331,
+        name: "被击不会解除五方锁足",
+        category: "DEBUFF",
+        durationMs: 5_000,
+        description: "存在期间，五方行尽锁足不会因受击解除",
+        effects: [],
+      },
+      {
+        buffId: 1336,
+        name: "会神",
+        category: "BUFF",
+        durationMs: 8_000,
+        description: "伤害提高20%",
+        effects: [{ type: "DAMAGE_MULTIPLIER", value: 1.2 }],
+      },
+    ],
+  },
+
+  bang_da_gou_tou: {
+    id: "bang_da_gou_tou",
+    name: "棒打狗头",
+    description: "20尺，正面施放\n起手即附加效果并冲向目标，抵达时造成10点伤害\n常态：附加【棒打狗头·锁足】2秒，并附加【心怵·一】6秒（受到伤害增加6%）\n若目标已有【心怵·一】：改为附加【棒打狗头·定身】2秒，移除【心怵·一】，并附加【心怵·二】6秒（受到伤害增加6%），本次进入16秒冷却",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 0,
+    gcd: true,
+    effects: [{ type: "BANG_DA_GOU_TOU", value: 10 }],
+    buffs: [
+      {
+        buffId: 1334,
+        name: "棒打狗头·锁足",
+        category: "DEBUFF",
+        durationMs: 2_000,
+        description: "锁足：无法移动和转向",
+        effects: [{ type: "ROOT" }],
+      },
+      {
+        buffId: 1335,
+        name: "棒打狗头·定身",
+        category: "DEBUFF",
+        durationMs: 2_000,
+        description: "定身：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+      {
+        buffId: 1332,
+        name: "心怵·一",
+        category: "DEBUFF",
+        durationMs: 6_000,
+        description: "受到伤害增加6%",
+        effects: [{ type: "DAMAGE_TAKEN_INCREASE", value: 0.06 }],
+      },
+      {
+        buffId: 1333,
+        name: "心怵·二",
+        category: "DEBUFF",
+        durationMs: 6_000,
+        description: "受到伤害增加6%",
+        effects: [{ type: "DAMAGE_TAKEN_INCREASE", value: 0.06 }],
+      },
+    ],
+  },
+
+  jieyang: {
+    id: "jieyang",
+    name: "截阳",
+    description: "瞬发，对目标造成10点伤害\n附加【绝脉】3层（30秒）：每层使技能调息速度降低1%\n3层充能，每层12秒恢复",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 0,
+    maxCharges: 3,
+    chargeRecoveryTicks: 360,
+    gcd: true,
+    effects: [{ type: "DAMAGE", value: 10 }],
+    buffs: [
+      {
+        buffId: 1337,
+        name: "绝脉",
+        category: "DEBUFF",
+        durationMs: 30_000,
+        initialStacks: 3,
+        maxStacks: 3,
+        description: "每层使技能调息速度降低1%",
+        effects: [
+          { type: "COOLDOWN_SLOW", value: 0.01 },
+          { type: "COOLDOWN_SLOW", value: 0.01 },
+          { type: "COOLDOWN_SLOW", value: 0.01 },
+        ],
+      },
+    ],
+  },
+
+  zhuo_ying_shi: {
+    id: "zhuo_ying_shi",
+    name: "捉影式",
+    description: "需要目标，射程35，运功0.5秒（正读条）\n读条完成后以20单位/秒将目标拉拽最多1秒（最多20单位），并附加【滞影】5秒（封轻功）",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    range: 35,
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [],
+    buffs: [],
+    channelDurationMs: 500,
+    channelCancelOnMove: false,
+    channelCancelOnJump: false,
+    channelCancelOnOutOfRange: 35,
+    channelForward: true,
+    channelEffects: [
+      { type: "TIMED_PULL_TARGET_TO_FRONT", value: 20, durationTicks: 30 },
+    ],
+  } as any,
 
   /* ================= 控制 / 压制 ================= */
 
@@ -407,10 +549,10 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "散流霞隐藏",
         category: "BUFF",
         durationMs: 1_000,
-        description: "不可选中，无法施展技能",
+        description: "不可选中，处于位移状态",
         effects: [
           { type: "UNTARGETABLE" },
-          { type: "SILENCE" },
+          { type: "DISPLACEMENT" },
         ],
       },
     ],
@@ -448,6 +590,57 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
   },
 
+  yun_qi_song: {
+    id: "yun_qi_song",
+    name: "云栖松",
+    description: "自身获得【云栖松】12秒：闪避率提高60%\n同时获得【栖松】5秒：每秒回复1点气血",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2401,
+        name: "云栖松",
+        category: "BUFF",
+        durationMs: 12_000,
+        description: "闪避率提高60%",
+        effects: [{ type: "DODGE_NEXT", chance: 0.6 }],
+      },
+      {
+        buffId: 2402,
+        name: "栖松",
+        category: "BUFF",
+        durationMs: 5_000,
+        periodicMs: 1_000,
+        description: "每秒回复1点气血",
+        effects: [{ type: "PERIODIC_HEAL", value: 1 }],
+      },
+    ],
+  },
+
+  shou_ru_shan: {
+    id: "shou_ru_shan",
+    name: "守如山",
+    description: "瞬发，自身获得【守如山】8秒：受到伤害降低80%",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2404,
+        name: "守如山",
+        category: "BUFF",
+        durationMs: 8_000,
+        description: "受到伤害降低80%",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.8 }],
+      },
+    ],
+  },
+
   /* ================= 生存 / 回复 ================= */
 
   fengxiu_diang: {
@@ -474,7 +667,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   qionglong_huasheng: {
     id: "qionglong_huasheng",
     name: "穹隆化生",
-    description: "向前冲刺2秒（可转向）\n施放时解除锁足与减速\n冲刺期间沉默且免疫等级1/2控制\n结束时恢复10点气血并展开【生太极】24秒",
+    description: "向前冲刺2秒\n施放时解除锁足与减速\n冲刺期间处于位移状态且免疫等级1/2控制\n结束时恢复10点气血并展开【生太极】24秒",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -496,11 +689,12 @@ export const BASE_ABILITIES: AbilityRecord = {
     buffs: [
       {
         buffId: 1010,
-        name: "穹隆化生",
+        name: "穹隆化生·转向",
         category: "BUFF",
         durationMs: 2_000,
-        description: "冲刺期间沉默且免疫等级1/2控制",
-        effects: [{ type: "SILENCE" }, { type: "CONTROL_IMMUNE" }, { type: "KNOCKBACK_IMMUNE" }],
+        breakOnPlay: false,
+        description: "冲刺期间可转向",
+        effects: [{ type: "DASH_TURN_OVERRIDE" }],
       },
     ],
   },
@@ -625,7 +819,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   wu_jianyu: {
     id: "wu_jianyu",
     name: "无间狱",
-    description: "修罗附体\n3秒后正面180°/10码造成5伤害\n4秒后正面180°/10码造成5伤害\n5秒后正面180°/10码造成5伤害\n同时360°/10码造成10伤害并击退3码，击退期间沉默0.8秒\n所有伤害30%吸血",
+    description: "修罗附体\n2秒后正面180°/10码造成5伤害\n3秒后正面180°/10码造成5伤害\n4秒后正面180°/10码造成5伤害\n同时360°/10码造成10伤害并击退3码，击退期间沉默0.8秒\n所有伤害30%吸血",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -639,6 +833,15 @@ export const BASE_ABILITIES: AbilityRecord = {
         description: "修罗附体",
         durationMs: 10_000, // 10 seconds
         effects: [
+          // t+2s: front 180° cone, range 10, 5 damage, 30% lifesteal
+          {
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 2_000,
+            value: 5,
+            aoeAngle: 180,
+            range: 10,
+            lifestealPct: 0.3,
+          },
           // t+3s: front 180° cone, range 10, 5 damage, 30% lifesteal
           {
             type: "TIMED_AOE_DAMAGE",
@@ -657,19 +860,10 @@ export const BASE_ABILITIES: AbilityRecord = {
             range: 10,
             lifestealPct: 0.3,
           },
-          // t+5s: front 180° cone, range 10, 5 damage, 30% lifesteal
+          // t+4s: full 360° circle, range 10, 10 damage, knockback 3 + 0.8s silence, 30% lifesteal
           {
             type: "TIMED_AOE_DAMAGE",
-            delayMs: 5_000,
-            value: 5,
-            aoeAngle: 180,
-            range: 10,
-            lifestealPct: 0.3,
-          },
-          // t+5s: full 360° circle, range 10, 10 damage, knockback 3 + 0.8s silence, 30% lifesteal
-          {
-            type: "TIMED_AOE_DAMAGE",
-            delayMs: 5_000,
+            delayMs: 4_000,
             value: 10,
             aoeAngle: 360,
             range: 10,
@@ -743,7 +937,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   taxingxing: {
     id: "taxingxing",
     name: "踏星行",
-    description: "轻功化形5秒：以12.5尺/秒向前冲刺（可转向）\n施放时解除锁足与减速\n起跳抬升8尺，撞墙后立刻下坠\n期间沉默并免疫等级1/2控制\n期间闪避率65%",
+    description: "轻功化形5秒：以12.5尺/秒向前冲刺\n施放时解除锁足与减速\n起跳抬升8尺，撞墙后立刻下坠\n期间处于位移状态并免疫等级1/2控制\n期间闪避率65%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -769,16 +963,12 @@ export const BASE_ABILITIES: AbilityRecord = {
     buffs: [
       {
         buffId: 1020,
-        name: "踏星行",
+        name: "踏星行·转向",
         category: "BUFF",
-        durationMs: 5_000, // 5 seconds
-        description: "沉默；免疫等级1/2控制",
-        effects: [
-          { type: "CONTROL_IMMUNE" },
-          { type: "KNOCKBACK_IMMUNE" },
-          { type: "DODGE_NEXT", chance: 0.65 },
-          { type: "SILENCE" },
-        ],
+        durationMs: 5_000,
+        breakOnPlay: false,
+        description: "冲刺期间可转向",
+        effects: [{ type: "DASH_TURN_OVERRIDE" }],
       },
     ],
   },
@@ -835,6 +1025,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300, // 30 seconds
     gcd: true,
     qinggong: true,
+    cannotCastWhileRooted: true,
     requiresGrounded: true,
     effects: [],
     buffs: [
@@ -940,6 +1131,32 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelEffects: [
       { type: "PLACE_GROUND_ZONE", value: 4, range: 8 },
     ],
+  } as any,
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 镇山河 — instant self zone, 0.1s pulse refresh, xuanjian -> huashengshi lockout
+  // ──────────────────────────────────────────────────────────────────────────
+  zhen_shan_he: {
+    id: "zhen_shan_he",
+    name: "镇山河",
+    description: "展开镇山河8秒，自身立即获得2秒无敌\n区域内友方每0.1秒刷新0.1秒无敌\n首次获得区域效果时附加【玄剑】12秒；自然结束后转为【化生势】180秒，期间无法再次获得镇山河效果",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    allowWhileControlled: true,
+    effects: [
+      {
+        type: "PLACE_GROUND_ZONE",
+        value: 0,
+        range: 8,
+        zoneDurationMs: 8_000,
+        zoneIntervalMs: 100,
+        zoneOffsetUnits: 0,
+        zoneHeight: 10,
+      },
+    ],
+    buffs: [],
   } as any,
 
   // ──────────────────────────────────────────────────────────────────────────

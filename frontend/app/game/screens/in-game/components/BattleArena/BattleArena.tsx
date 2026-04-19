@@ -542,6 +542,7 @@ interface AbilityInfo {
   requiresStanding?: boolean;
   minSelfHpExclusive?: number;
   qinggong?: boolean;
+  cannotCastWhileRooted?: boolean;
   allowGroundCastWithoutTarget?: boolean;
   losBlocked?: boolean;
 }
@@ -1140,7 +1141,6 @@ export default function BattleArena({
       if (ability?.allowGroundCastWithoutTarget) {
         setPendingGroundCastAbilityId(id);
         setGroundCastPreview(null);
-        toastSuccess('请选择地面位置施放');
         return;
       }
       toastError('请先选择目标');
@@ -1151,6 +1151,11 @@ export default function BattleArena({
       return;
     }
     if (ability?.target === 'OPPONENT' && !targetPos) {
+      if (ability?.allowGroundCastWithoutTarget) {
+        setPendingGroundCastAbilityId(id);
+        setGroundCastPreview(null);
+        return;
+      }
       toastError('目标不可见或已失去目标');
       return;
     }
@@ -1178,6 +1183,10 @@ export default function BattleArena({
         toastError('该技能需要站立后施放');
         return;
       }
+    }
+    if (ability?.cannotCastWhileRooted && buffsHaveAnyEffect(me?.buffs, ['ROOT'])) {
+      toastError('你被锁足，无法施展该招式');
+      return;
     }
     if (typeof ability?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ability.minSelfHpExclusive) {
       toastError(`当前气血必须大于${ability.minSelfHpExclusive}才能施放`);
@@ -1916,6 +1925,7 @@ export default function BattleArena({
     const getChargeDisplay = (ab: any, instance: any) => {
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       if (maxCharges <= 1) {
+        const currentCooldown = Math.max(0, Number(instance?.cooldown ?? 0));
         return {
           maxCharges: undefined,
           chargeCount: undefined,
@@ -1924,8 +1934,8 @@ export default function BattleArena({
           chargeRegenProgress: undefined,
           chargeCastLockTicks: undefined,
           chargeLockTicks: undefined,
-          cooldown: instance?.cooldown ?? 0,
-          maxCooldown: getDisplayMaxCooldown(ab),
+          cooldown: currentCooldown,
+          maxCooldown: Math.max(getDisplayMaxCooldown(ab), currentCooldown),
         };
       }
 
@@ -1981,11 +1991,13 @@ export default function BattleArena({
     const selectedTarget = selectedTargetId
       ? targetableOpponentsList.find((o) => o.userId === selectedTargetId) ?? null
       : null;
+    const hasSelectedTarget = !!selectedTarget;
     const targetForChecks = selectedTarget ?? targetableOpponentsList[0] ?? null;
     const myPos = me.position ?? localPositionRef.current;
     const myFacing = me.facing ?? meFacingRef.current;
     const targetPos = targetForChecks?.position;
     const qinggongSealed = hasQinggongSealClient(me.buffs);
+    const rootedByDebuff = buffsHaveAnyEffect(me.buffs, ['ROOT']);
 
     const isAbilityReady = (ab: any, instance: any): boolean => {
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
@@ -2019,6 +2031,14 @@ export default function BattleArena({
         return false;
       }
       if (ab?.qinggong && qinggongSealed) return false;
+      if (ab?.cannotCastWhileRooted && rootedByDebuff) return false;
+
+      const canGroundCastWithoutSelection =
+        ab?.target === 'OPPONENT' &&
+        !!ab?.allowGroundCastWithoutTarget &&
+        !hasSelectedTarget;
+      if (canGroundCastWithoutSelection) return true;
+
       const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
       if (needsSelectedTarget && !targetPos) return false;
 
@@ -2087,6 +2107,7 @@ export default function BattleArena({
             requiresGrounded: false,
             requiresStanding: false,
             qinggong: false,
+            cannotCastWhileRooted: false,
             allowGroundCastWithoutTarget: false,
           };
         }
@@ -2123,6 +2144,7 @@ export default function BattleArena({
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
+          cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
         };
       })
@@ -2170,6 +2192,7 @@ export default function BattleArena({
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
+          cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
         } as AbilityInfo;
       })
@@ -3658,9 +3681,29 @@ export default function BattleArena({
             safeZone={safeZone}
             groundZones={groundZones}
             groundCastPreview={
-              pendingGroundCastAbilityId && groundCastPreview
-                ? { x: groundCastPreview.x, y: groundCastPreview.y, radius: 6 * storedUnitScale, label: '百足' }
-                : null
+              (() => {
+                if (!pendingGroundCastAbilityId || !groundCastPreview) return null;
+
+                const previewAbilityInfo = abilitiesRef.current.find(
+                  (a: any) => a.id === pendingGroundCastAbilityId
+                );
+                const previewAbilityId = previewAbilityInfo?.abilityId ?? pendingGroundCastAbilityId;
+                const previewAbility =
+                  abilities[previewAbilityId] ??
+                  Object.values(abilities).find((c: any) => c.id === previewAbilityId);
+                const previewRadiusUnits = Array.isArray((previewAbility as any)?.effects)
+                  ? ((previewAbility as any).effects.find((e: any) =>
+                      e.type === 'BAIZU_AOE' || e.type === 'WUFANG_XINGJIN_AOE'
+                    )?.range ?? 6)
+                  : 6;
+
+                return {
+                  x: groundCastPreview.x,
+                  y: groundCastPreview.y,
+                  radius: previewRadiusUnits * storedUnitScale,
+                  label: previewAbilityInfo?.name ?? previewAbility?.name ?? '范围预览',
+                };
+              })()
             }
             onGroundPointerMove={(x, y) => {
               if (!pendingGroundCastAbilityRef.current) return;
@@ -4752,20 +4795,20 @@ export default function BattleArena({
                             <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
                               <rect
                                 className={styles.chargeFrameTrack}
-                                x="3"
-                                y="3"
-                                width="94"
-                                height="94"
+                                x="5"
+                                y="5"
+                                width="90"
+                                height="90"
                                 rx="8"
                                 ry="8"
                                 pathLength={100}
                               />
                               <rect
                                 className={styles.chargeFrameProgress}
-                                x="3"
-                                y="3"
-                                width="94"
-                                height="94"
+                                x="5"
+                                y="5"
+                                width="90"
+                                height="90"
                                 rx="8"
                                 ry="8"
                                 pathLength={100}
@@ -4840,20 +4883,20 @@ export default function BattleArena({
                         <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
                           <rect
                             className={styles.chargeFrameTrack}
-                            x="3"
-                            y="3"
-                            width="94"
-                            height="94"
+                            x="5"
+                            y="5"
+                            width="90"
+                            height="90"
                             rx="8"
                             ry="8"
                             pathLength={100}
                           />
                           <rect
                             className={styles.chargeFrameProgress}
-                            x="3"
-                            y="3"
-                            width="94"
-                            height="94"
+                            x="5"
+                            y="5"
+                            width="90"
+                            height="90"
                             rx="8"
                             ry="8"
                             pathLength={100}

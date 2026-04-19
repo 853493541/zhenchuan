@@ -5,6 +5,7 @@ import type { PlayerID } from "./common";
 import type { AbilityInstance } from "./abilities";
 import type { ActiveBuff } from "./buffs";
 import type { GameEvent } from "./events";
+import type { AbilityEffect } from "./effects";
 import type { Position, Velocity } from "./position";
 
 // ==================== PICKUP ====================
@@ -46,7 +47,7 @@ export interface ActiveChannel {
   /** true = forward-fill bar (0→100%), false = drain bar (100→0%) */
   forwardChannel?: boolean;
   /** Effects to fire on channel completion */
-  effects: Array<{ type: string; value?: number; range?: number; threshold?: number }>;
+  effects: AbilityEffect[];
   /** Cooldown ticks to set on the ability instance after completion */
   cooldownTicks: number;
 }
@@ -164,6 +165,9 @@ export interface PlayerState {
     arcGravityDownPerTick?: number;
     maxUpVz:   number;    // per-tick upward vz cap (positive)
     maxDownVz: number;    // per-tick downward vz cap (negative)
+    hitTargetUserId?: string;
+    hitDamageOnComplete?: number;
+    hitEffectTypeOnComplete?: string;
     ticksRemaining: number;
   };
 
