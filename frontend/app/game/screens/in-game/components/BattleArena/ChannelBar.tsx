@@ -58,6 +58,7 @@ export function ChannelBar({ data }: ChannelBarProps) {
 /* ---- 正读条: fills 0→100% ---- */
 function ForwardBar({ data }: { data: ForwardChannelData }) {
   const { name, startedAt, durationMs } = data;
+  const elapsedMs = Math.max(0, Math.min(durationMs, Date.now() - startedAt));
   // Tick marks at 1-second intervals
   const tickCount = Math.max(2, Math.round(durationMs / 1000));
 
@@ -69,7 +70,10 @@ function ForwardBar({ data }: { data: ForwardChannelData }) {
         <div
           key={startedAt}
           className={styles.channelBarFillForward}
-          style={{ animationDuration: `${durationMs}ms` }}
+          style={{
+            animationDuration: `${durationMs}ms`,
+            animationDelay: `-${elapsedMs}ms`,
+          }}
         />
         {Array.from({ length: tickCount - 1 }, (_, i) => (
           <div
@@ -87,6 +91,7 @@ function ForwardBar({ data }: { data: ForwardChannelData }) {
 function ReverseBar({ data }: { data: ReverseChannelData }) {
   const { name, appliedAt, durationMs, tickIntervalMs } = data;
   const expiresAt = appliedAt + durationMs;
+  const elapsedMs = Math.max(0, Math.min(durationMs, Date.now() - appliedAt));
 
   // Tick marks at tickIntervalMs positions (e.g. 625ms for 风来吴山, 1s for 笑醉狂)
   const tickCount = tickIntervalMs && durationMs > 0
@@ -101,7 +106,10 @@ function ReverseBar({ data }: { data: ReverseChannelData }) {
         <div
           key={expiresAt}
           className={styles.channelBarFill}
-          style={{ animationDuration: `${durationMs}ms` }}
+          style={{
+            animationDuration: `${durationMs}ms`,
+            animationDelay: `-${elapsedMs}ms`,
+          }}
         />
         {tickIntervalMs && tickCount > 1 && Array.from({ length: tickCount - 1 }, (_, i) => (
           <div

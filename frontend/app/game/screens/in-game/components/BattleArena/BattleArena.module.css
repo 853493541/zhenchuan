@@ -328,14 +328,23 @@
   position: absolute;
   top: 14px;
   right: 14px;
-  font-size: 9px;
-  color: #444;
+  font-size: 18px;
+  line-height: 1;
+  color: #e8eef5;
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 4px;
-  padding: 3px 7px;
+  border-radius: 8px;
+  padding: 8px 12px;
   pointer-events: none;
   z-index: 20;
+}
+
+.rttBadgeValue {
+  display: inline-block;
+  min-width: 3.6em;
+  text-align: right;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 /* ============================================================

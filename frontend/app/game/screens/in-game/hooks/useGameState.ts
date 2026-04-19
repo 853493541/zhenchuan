@@ -47,7 +47,51 @@ type WSMessage = {
   events?: any[];
   winnerUserId?: string;
   timestamp?: number; // Server timestamp for RTT measurement
+  serverTimestamp?: number;
 };
+
+const ABSOLUTE_SERVER_TIME_KEYS = new Set([
+  "expiresAt",
+  "appliedAt",
+  "startedAt",
+  "lastTickAt",
+  "timestamp",
+]);
+
+function normalizeServerTimes<T>(value: T, offsetMs: number): T {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== "object") return value;
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeServerTimes(entry, offsetMs)) as T;
+  }
+
+  const normalized: Record<string, any> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, any>)) {
+    if (typeof entry === "number" && ABSOLUTE_SERVER_TIME_KEYS.has(key)) {
+      normalized[key] = entry + offsetMs;
+      continue;
+    }
+    normalized[key] = normalizeServerTimes(entry, offsetMs);
+  }
+
+  return normalized as T;
+}
+
+function normalizeDiffTimestamps(diff: DiffPatch[], offsetMs: number): DiffPatch[] {
+  return diff.map((patch) => ({
+    ...patch,
+    value: normalizeServerTimes(patch.value, offsetMs),
+  }));
+}
+
+function normalizeGamePayloadTimestamps<T extends { state?: any }>(payload: T, offsetMs: number): T {
+  if (!payload?.state) return payload;
+  return {
+    ...payload,
+    state: normalizeServerTimes(payload.state, offsetMs),
+  };
+}
 
 /* ================= HOOK ================= */
 
@@ -65,11 +109,23 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const meIndexRef = useRef<number>(-1); // set once when game loads, never changes
   // Stable index→userId mapping so WS handler can resolve opponents without stale closure
   const playerIdsRef = useRef<string[]>([]);
+  const rttRef = useRef<number | null>(null);
+  const serverTimeOffsetRef = useRef<number>(0);
   
   // WebSocket connection
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const updateServerTimeOffset = useCallback((serverTimestamp?: number, clientReceivedAt = Date.now()) => {
+    if (typeof serverTimestamp !== "number" || !Number.isFinite(serverTimestamp)) {
+      return serverTimeOffsetRef.current;
+    }
+
+    const oneWayLatencyMs = rttRef.current !== null ? Math.max(0, rttRef.current / 2) : 0;
+    serverTimeOffsetRef.current = clientReceivedAt - (serverTimestamp + oneWayLatencyMs);
+    return serverTimeOffsetRef.current;
+  }, []);
 
   /* ================= INITIAL SNAPSHOT ================= */
 
@@ -84,20 +140,23 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     }
 
     const full = await res.json();
+    const snapshotReceivedAt = Date.now();
+    const offsetMs = updateServerTimeOffset(full.serverTimestamp, snapshotReceivedAt);
+    const normalizedFull = normalizeGamePayloadTimestamps(full, offsetMs);
     console.log("[useGameState] Snapshot fetched:", {
-      hasGame: !!full,
-      hasTournament: !!full.tournament,
-      tournamentPhase: full.tournament?.phase,
-      gameId: full._id,
+      hasGame: !!normalizedFull,
+      hasTournament: !!normalizedFull.tournament,
+      tournamentPhase: normalizedFull.tournament?.phase,
+      gameId: normalizedFull._id,
     });
 
-    versionRef.current = full.state.version ?? 0;
+    versionRef.current = normalizedFull.state.version ?? 0;
     // Compute and cache meIndex + playerIds so WS handler can identify opponent patches
-    meIndexRef.current = full.state.players.findIndex((p: any) => p.userId === selfUserId);
-    playerIdsRef.current = full.state.players.map((p: any) => p.userId as string);
-    setGame(full);
+    meIndexRef.current = normalizedFull.state.players.findIndex((p: any) => p.userId === selfUserId);
+    playerIdsRef.current = normalizedFull.state.players.map((p: any) => p.userId as string);
+    setGame(normalizedFull);
     setLoading(false);
-  }, [gameId, selfUserId]);
+  }, [gameId, selfUserId, updateServerTimeOffset]);
 
   useEffect(() => {
     fetchInitialGame();
@@ -211,26 +270,31 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       try {
         const message: WSMessage = JSON.parse(event.data);
         const receiveTime = performance.now();
+        const receiveDateNow = Date.now();
 
         if (message.type === "PONG") {
           // Measure RTT from ping/pong
           if (message.timestamp) {
-            const now = Date.now();
-            const rttValue = now - message.timestamp;
+            const rttValue = receiveDateNow - message.timestamp;
+            rttRef.current = rttValue;
             setRtt((prev) => (prev === rttValue ? prev : rttValue));
           }
+          updateServerTimeOffset(message.serverTimestamp, receiveDateNow);
           return;
         }
 
         if (message.type === "STATE_DIFF" || message.type === "GAME_OVER") {
           if (!message.diff || message.diff.length === 0) return;
 
+          const offsetMs = updateServerTimeOffset(message.timestamp, receiveDateNow);
+          const normalizedDiff = normalizeDiffTimestamps(message.diff, offsetMs);
+
 
 
           // Push opponent position patches IMMEDIATELY with accurate timestamp.
           // This bypasses React setState + re-render + useEffect delay (~16-32ms variable).
           // We track all players by userId so it works with N players.
-          for (const patch of message.diff) {
+          for (const patch of normalizedDiff) {
             const match = patch.path.match(/^\/players\/(\d+)\/position$/);
             if (match && patch.value?.x !== undefined) {
               const pIdx = parseInt(match[1]);
@@ -253,11 +317,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             
             // Separate tournament and state patches based on path prefix
             const tournamentKeys = ["phase", "economy", "selectedAbilities", "bench", "shop", "battleNumber"];
-            const tournamentPatches = message.diff!.filter(p => {
+            const tournamentPatches = normalizedDiff.filter(p => {
               const firstKey = p.path.split("/").filter(Boolean)[0] ?? ""; // handles /key and //key paths
               return tournamentKeys.includes(firstKey);
             });
-            const statePatches = message.diff!.filter(p => !tournamentPatches.includes(p));
+            const statePatches = normalizedDiff.filter(p => !tournamentPatches.includes(p));
             
             let updated = prev;
             
@@ -351,7 +415,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         }, 2000);
       }
     };
-  }, [gameId, initialAuthToken]);
+  }, [gameId, initialAuthToken, fetchInitialGame, selfUserId, updateServerTimeOffset]);
 
   // Connect WebSocket when game is loaded — connect once, keep alive, only close on unmount
   useEffect(() => {
@@ -470,13 +534,15 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       }
 
       const patch = await res.json();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
+      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
       versionRef.current = patch.version;
 
       setGame((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
-          state: applyDiff(prev.state, patch.diff),
+          state: applyDiff(prev.state, normalizedDiff),
         };
       });
 
@@ -507,13 +573,15 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       }
 
       const patch = await res.json();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
+      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
       versionRef.current = patch.version;
 
       setGame((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
-          state: applyDiff(prev.state, patch.diff),
+          state: applyDiff(prev.state, normalizedDiff),
         };
       });
 

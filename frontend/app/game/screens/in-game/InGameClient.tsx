@@ -27,7 +27,10 @@ function showGameError(rawCode: string) {
       toastError("还没轮到你");
       break;
     case "ERR_SILENCED":
-      toastError("你被沉默，无法释放技能");
+      toastError("经脉受损，无法运功");
+      break;
+    case "ERR_DISPLACEMENT":
+      toastError("该招式无法在位移时施展");
       break;
     case "ERR_KNOCKED_BACK":
       toastError("你被击退，无法行动");

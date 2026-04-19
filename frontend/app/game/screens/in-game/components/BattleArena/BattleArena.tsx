@@ -30,6 +30,10 @@ const PUBG_HEIGHT = 2000;
 const ARENA_WIDTH_SMALL  = 200;
 const ARENA_HEIGHT_SMALL = 200;
 const DASH_ANIM_MS = 1500; // ms — cosmetic dash travel animation
+const CAMERA_FOV = 72;
+const DEFAULT_CAMERA_ZOOM = 0.7;
+const CAMERA_ZOOM_MAX = 0.7;
+const CAMERA_ZOOM_OVER_MAX = 2.5;
 const DEFAULT_PLAYER_RADIUS = 2; // must match backend
 const COLLISION_TEST_PLAYER_RADIUS = 0.384;
 const LEGACY_STORED_UNIT_SCALE = 2.2;
@@ -438,9 +442,30 @@ function blocksTargetingClient(buffs?: ActiveBuff[]): boolean {
 function hasQinggongSealClient(buffs?: ActiveBuff[]): boolean {
   if (!Array.isArray(buffs) || buffs.length === 0) return false;
   return buffs.some((b: any) =>
+    buffHasEffect(b, 'DISPLACEMENT') ||
     buffHasEffect(b, 'QINGGONG_SEAL') ||
     buffNameIncludes(b, '封轻功')
   );
+}
+
+function hasSilenceClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => buffHasEffect(b, 'SILENCE') || buffNameIncludes(b, '沉默'));
+}
+
+function hasDisplacementClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => buffHasEffect(b, 'DISPLACEMENT'));
+}
+
+function hasDashTurnOverrideClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => buffHasEffect(b, 'DASH_TURN_OVERRIDE'));
+}
+
+function buffsHaveAnyEffect(buffs: ActiveBuff[] | undefined, effectTypes: string[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => effectTypes.some((effectType) => buffHasEffect(b, effectType)));
 }
 
 function requiresFacingByDefault(ability?: { target?: 'SELF' | 'OPPONENT'; faceDirection?: boolean } | null): boolean {
@@ -741,7 +766,8 @@ export default function BattleArena({
     colorMode: 'export',
     customColor: '#fdf2ed',
   });
-  const [cameraZoomLevel, setCameraZoomLevel] = useState(1.0);
+  const [cameraZoomLevel, setCameraZoomLevel] = useState(DEFAULT_CAMERA_ZOOM);
+  const [allowOverrangeCameraZoom, setAllowOverrangeCameraZoom] = useState(false);
   const [cameraDebugEntries, setCameraDebugEntries] = useState<CameraDebugEntry[]>([]);
   const cameraDebugIdRef = useRef(0);
   const cameraEventTestingEnabledRef = useRef(false);
@@ -1027,7 +1053,7 @@ export default function BattleArena({
   const charYawRef     = useRef(0);             // character facing yaw (radians, 0 = facing +Y)
   const camYawRef      = useRef(0);             // camera yaw
   const camPitchRef    = useRef(DEFAULT_PITCH); // camera pitch angle (radians)
-  const camZoomRef     = useRef(1.0);           // zoom multiplier (scroll wheel)
+  const camZoomRef     = useRef(DEFAULT_CAMERA_ZOOM);           // zoom multiplier (scroll wheel)
   const cameraMoveCommandActiveRef = useRef(false);
   const cameraLookInputVersionRef = useRef(0);
   const manualCameraLookActiveRef = useRef(false);
@@ -1050,6 +1076,7 @@ export default function BattleArena({
 
   /* --- Server-authoritative dash tracking --- */
   const meActiveDashRef  = useRef<any>(null);  // mirrors me.activeDash from server
+  const dashTurnOverrideRef = useRef(false);
   // *** SYNCHRONOUS ref update during render — NOT in useEffect ***
   // useEffect fires AFTER requestAnimationFrame, so if we set the ref there,
   // the render loop reads the STALE value and falls back to cosmetic easing.
@@ -1059,6 +1086,7 @@ export default function BattleArena({
     const ad = (me as any)?.activeDash;
     const isDashing = !!ad && ad.ticksRemaining > 0;
     meActiveDashRef.current = isDashing ? ad : null;
+    dashTurnOverrideRef.current = hasDashTurnOverrideClient(me?.buffs);
     // Transition logging (synchronous, fine for refs)
     if (isDashing && !_prevDashRef.current) {
       (window as any).__dashStartMs = performance.now();
@@ -1086,6 +1114,7 @@ export default function BattleArena({
   const maxJumpsRef              = useRef(2);     // updated from me.buffs MULTI_JUMP effect
   const predictedMultiJumpExpiresAtRef = useRef(0);
   const moveSpeedScaleRef        = useRef(1);     // SPEED_BOOST/SLOW local prediction multiplier
+  const movementControlStateRef  = useRef({ fullyLocked: false, rooted: false });
 
   /* --- Channel AOE refs (used in render loop, updated via useEffect) --- */
   const meChannelingRef  = useRef(false);
@@ -1470,7 +1499,11 @@ export default function BattleArena({
   const jumpLockedRef = useRef(false);
 
   useEffect(() => {
-    const locked = !!me?.buffs?.some((b: any) => b.buffId === 1014);
+    const buffs = me?.buffs ?? [];
+    const fullyLocked = buffsHaveAnyEffect(buffs, ['KNOCKED_BACK', 'CONTROL', 'ATTACK_LOCK']);
+    const rooted = !fullyLocked && buffsHaveAnyEffect(buffs, ['ROOT']);
+    const locked = buffs.some((b: any) => b.buffId === 1014) || fullyLocked || rooted;
+    movementControlStateRef.current = { fullyLocked, rooted };
     jumpLockedRef.current = locked;
     if (locked) {
       jumpLocalRef.current = false;
@@ -1686,6 +1719,7 @@ export default function BattleArena({
     // Capture & clear jump flag atomically before the async POST
     const shouldJump = jumpSendRef.current;
     if (shouldJump) jumpSendRef.current = false;
+    const dashFacingLocked = !!meActiveDashRef.current && !dashTurnOverrideRef.current;
     let facingPayload = { ...meFacingRef.current };
     let directionPayload:
       | { dx: number; dy: number; jump: boolean }
@@ -1710,12 +1744,12 @@ export default function BattleArena({
         directionPayload = { dx: 0, dy: 0, jump: true };
       }
 
-      if (mouseLook) {
+      if (!dashFacingLocked && mouseLook) {
         facingPayload = {
           x: Math.sin(camYawRef.current),
           y: -Math.cos(camYawRef.current),
         };
-      } else if (moveIntent.direction && !moveIntent.backpedalOnly) {
+      } else if (!dashFacingLocked && moveIntent.direction && !moveIntent.backpedalOnly) {
         const facingDir = normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy);
         if (facingDir) facingPayload = facingDir;
       }
@@ -1725,17 +1759,21 @@ export default function BattleArena({
       if (mag >= 0.01 || shouldJump) {
         directionPayload = { dx: jd.dx, dy: jd.dy, jump: shouldJump };
       }
-      const facingDir = normalizePlanar(jd.dx, jd.dy);
-      if (facingDir) facingPayload = facingDir;
+      if (!dashFacingLocked) {
+        const facingDir = normalizePlanar(jd.dx, jd.dy);
+        if (facingDir) facingPayload = facingDir;
+      }
     } else {
       if (k.w || k.a || k.s || k.d || shouldJump) {
         directionPayload = { up: k.s, down: k.w, left: k.a, right: k.d, jump: shouldJump };
       }
-      const facingDir = normalizePlanar(
-        (k.a ? -1 : 0) + (k.d ? 1 : 0),
-        (k.w ? 1 : 0) + (k.s ? -1 : 0),
-      );
-      if (facingDir) facingPayload = facingDir;
+      if (!dashFacingLocked) {
+        const facingDir = normalizePlanar(
+          (k.a ? -1 : 0) + (k.d ? 1 : 0),
+          (k.w ? 1 : 0) + (k.s ? -1 : 0),
+        );
+        if (facingDir) facingPayload = facingDir;
+      }
     }
 
     meFacingRef.current = facingPayload;
@@ -2551,7 +2589,7 @@ export default function BattleArena({
               x: Math.sin(camYawRef.current),
               y: -Math.cos(camYawRef.current),
             };
-        if (facingDir) {
+        if (facingDir && (!meActiveDashRef.current || dashTurnOverrideRef.current)) {
           localFacingRef.current = facingDir;
           charYawRef.current = facingToYaw(facingDir);
         }
@@ -2581,7 +2619,7 @@ export default function BattleArena({
               x: Math.sin(camYawRef.current),
               y: -Math.cos(camYawRef.current),
             };
-        if (facingDir) {
+        if (facingDir && (!meActiveDashRef.current || dashTurnOverrideRef.current)) {
           localFacingRef.current = facingDir;
           charYawRef.current = facingToYaw(facingDir);
         }
@@ -2600,7 +2638,8 @@ export default function BattleArena({
       if ((e.target as HTMLElement | null)?.closest('[data-testing-panel]')) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.12 : -0.12;
-      camZoomRef.current = Math.max(0.4, Math.min(2.5, camZoomRef.current + delta));
+      const zoomMax = allowOverrangeCameraZoom ? CAMERA_ZOOM_OVER_MAX : CAMERA_ZOOM_MAX;
+      camZoomRef.current = Math.max(0.4, Math.min(zoomMax, camZoomRef.current + delta));
       setCameraZoomLevel(camZoomRef.current);
     };
     // Use capture phase so we intercept BEFORE the browser's own navigation handlers
@@ -2620,7 +2659,7 @@ export default function BattleArena({
       window.removeEventListener('wheel',       onWheel,       { capture: true } as EventListenerOptions);
       window.removeEventListener('blur',        resetMouseButtons);
     };
-  }, []);
+  }, [allowOverrangeCameraZoom]);
 
   // ── Touch camera rotation (mobile/iPad) ──────────────────────────────────
   // A single touch that starts on the 3D canvas (wrapRef) rotates camera + player
@@ -2652,11 +2691,13 @@ export default function BattleArena({
       camTouchRef.lastY = touch.clientY;
       // Right-click behaviour: camera + character facing both rotate
       camYawRef.current  -= dx * 0.005;
-      charYawRef.current  = camYawRef.current;
-      localFacingRef.current = {
-        x: Math.sin(charYawRef.current),
-        y: -Math.cos(charYawRef.current),
-      };
+      if (!meActiveDashRef.current || dashTurnOverrideRef.current) {
+        charYawRef.current  = camYawRef.current;
+        localFacingRef.current = {
+          x: Math.sin(charYawRef.current),
+          y: -Math.cos(charYawRef.current),
+        };
+      }
       const newPitch = camPitchRef.current + dy * 0.003;
       camPitchRef.current = clampCameraPitch(newPitch, mode);
       cameraLookInputVersionRef.current += 1;
@@ -2773,11 +2814,6 @@ export default function BattleArena({
           const turning = (k.a ? 1 : 0) + (k.d ? -1 : 0);
           if (turning !== 0) {
             camYawRef.current  += turning * TURN_RATE;
-            charYawRef.current  = camYawRef.current;
-            localFacingRef.current = {
-              x: Math.sin(charYawRef.current),
-              y: -Math.cos(charYawRef.current),
-            };
           }
         }
         return;
@@ -2813,6 +2849,28 @@ export default function BattleArena({
       if (!airborne && localJumpCountRef.current === 0) {
         airborneSpeedCarryRef.current = 0;
       }
+      const { fullyLocked, rooted } = movementControlStateRef.current;
+      const movementLocked = fullyLocked || rooted;
+      const preserveUpwardJumpRise =
+        airborne &&
+        localJumpCountRef.current > 0 &&
+        localVzRef.current > 0.01 &&
+        !airDirectionLockedRef.current &&
+        !airNudgeDirRef.current;
+
+      if (movementLocked && !preserveUpwardJumpRise) {
+        airNudgeRemainingRef.current = 0;
+        airNudgeTicksRemainingRef.current = 0;
+        airNudgeDirRef.current = null;
+        airDirectionLockedRef.current = false;
+        airborneSpeedCarryRef.current = 0;
+        vel.x = 0;
+        vel.y = 0;
+        if (airborne) {
+          localVzRef.current = Math.min(localVzRef.current, -0.0001);
+        }
+      }
+
       let airNudgeDx = 0;
       let airNudgeDy = 0;
       let moveIntentDx = 0;
@@ -2827,7 +2885,9 @@ export default function BattleArena({
         const mouseLook = ms.isRight;
         const bothMouse = ms.isRight && ms.isLeft;
 
-        if (mouseLook) {
+        if (movementLocked) {
+          cameraMoveCommandActiveRef.current = false;
+        } else if (mouseLook) {
           // MMO mouselook: camera turns from mouse; movement is camera-relative.
           // Facing follows movement intent except pure backpedal.
         } else {
@@ -2850,19 +2910,20 @@ export default function BattleArena({
           camYawRef.current,
           charYawRef.current,
         );
-        cameraMoveCommandActiveRef.current = !!moveIntent.direction;
-        moveIntentDx = moveIntent.direction?.dx ?? 0;
-        moveIntentDy = moveIntent.direction?.dy ?? 0;
+        const moveDirection = movementLocked ? null : moveIntent.direction;
+        cameraMoveCommandActiveRef.current = !!moveDirection;
+        moveIntentDx = moveDirection?.dx ?? 0;
+        moveIntentDy = moveDirection?.dy ?? 0;
 
         if (jumpAirborne) {
           airNudgeDx = moveIntentDx;
           airNudgeDy = moveIntentDy;
-        } else if (moveIntent.direction) {
-          vel.x += (moveIntent.direction.dx * effectiveMaxSpeed - vel.x) * ACCEL;
-          vel.y += (moveIntent.direction.dy * effectiveMaxSpeed - vel.y) * ACCEL;
+        } else if (moveDirection) {
+          vel.x += (moveDirection.dx * effectiveMaxSpeed - vel.x) * ACCEL;
+          vel.y += (moveDirection.dy * effectiveMaxSpeed - vel.y) * ACCEL;
 
           if (!moveIntent.backpedalOnly) {
-            const facingDir = normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy);
+            const facingDir = normalizePlanar(moveDirection.dx, moveDirection.dy);
             if (facingDir) {
               localFacingRef.current = facingDir;
               charYawRef.current = facingToYaw(facingDir);
@@ -2880,7 +2941,7 @@ export default function BattleArena({
             vel.x *= DECEL;
             vel.y *= DECEL;
           }
-          if (mouseLook) {
+          if (mouseLook && !movementLocked) {
             const facingDir = {
               x: Math.sin(camYawRef.current),
               y: -Math.cos(camYawRef.current),
@@ -2896,8 +2957,8 @@ export default function BattleArena({
         if (k.s) iy -= 1;
         if (k.a) ix -= 1;
         if (k.d) ix += 1;
-        const moveDir = normalizePlanar(ix, iy);
-        cameraMoveCommandActiveRef.current = !!moveDir || !!joystickDirRef.current;
+        const moveDir = movementLocked ? null : normalizePlanar(ix, iy);
+        cameraMoveCommandActiveRef.current = !!moveDir || (!movementLocked && !!joystickDirRef.current);
         moveIntentDx = moveDir?.x ?? 0;
         moveIntentDy = moveDir?.y ?? 0;
         if (jumpAirborne) {
@@ -3010,7 +3071,7 @@ export default function BattleArena({
       localPositionRef.current = { x: newPx, y: newPy };
 
       // ── Z axis: jump + gravity ──
-      if (jumpLocalRef.current && localJumpCountRef.current < effectiveMaxJumps) {
+      if (!movementLocked && jumpLocalRef.current && localJumpCountRef.current < effectiveMaxJumps) {
         const jumpDir = normalizePlanar(moveIntentDx, moveIntentDy);
         const isMultiJump = effectiveMaxJumps > 2;
         const hadPowerJumpAirtime = isPowerJumpRef.current && !isPowerJumpCombinedRef.current && localJumpCountRef.current > 0;
@@ -3559,7 +3620,7 @@ export default function BattleArena({
           camera={{ fov: 72, near: 0.5, far: 2000 }}
           style={{ background: blueprintMode ? '#000010' : '#888888' }}
           gl={{ antialias: true }}
-          shadows={mode === 'collision-test' && envToggles.shadows && !blueprintMode}
+          shadows={mode === 'collision-test' && envToggles.shadows && !blueprintMode ? 'percentage' : false}
         >
           <ArenaScene
             me={me}
@@ -3703,6 +3764,7 @@ export default function BattleArena({
           <div className={styles.uiInfoValue}>位置 {localRenderPosRef.current.x.toFixed(1)}, {localRenderPosRef.current.y.toFixed(1)}</div>
           <div className={styles.uiInfoValue}>移速 {effectiveMoveSpeedUnitsPerSec.toFixed(2)}</div>
           <div className={styles.uiInfoValue}>镜头距离 {cameraZoomLevel.toFixed(2)}</div>
+          <div className={styles.uiInfoValue}>广角 {CAMERA_FOV}</div>
         </div>
       )}
 
@@ -3897,6 +3959,22 @@ export default function BattleArena({
               <label className={styles.escToggleRow}>
                 <input type="checkbox" checked={showGroundDistanceDetail} onChange={(e) => setShowGroundDistanceDetail(e.target.checked)} className={styles.escToggleInput} />
                 <span>显示距离地面的距离</span>
+              </label>
+              <label className={styles.escToggleRow}>
+                <input
+                  type="checkbox"
+                  checked={allowOverrangeCameraZoom}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setAllowOverrangeCameraZoom(next);
+                    if (!next) {
+                      camZoomRef.current = Math.min(camZoomRef.current, CAMERA_ZOOM_MAX);
+                      setCameraZoomLevel(camZoomRef.current);
+                    }
+                  }}
+                  className={styles.escToggleInput}
+                />
+                <span>允许超距镜头</span>
               </label>
             </div>
           </div>
@@ -4150,7 +4228,14 @@ export default function BattleArena({
       </div>
 
       {/* ===== TOP-RIGHT: RTT badge + debug grid toggle ===== */}
-      <div className={styles.rttBadge}>{rtt !== null ? `${rtt}ms` : '—'}</div>
+      <div
+        className={styles.rttBadge}
+        style={{
+          color: rtt === null ? '#e8eef5' : rtt < 100 ? '#59d36a' : rtt < 200 ? '#ffb547' : '#ff5b5b',
+        }}
+      >
+        <span className={styles.rttBadgeValue}>{rtt !== null ? `${rtt}ms` : '—'}</span>
+      </div>
 
       {/* ===== DEBUG POSITION GRID ===== */}
       {showDebugGrid && (
