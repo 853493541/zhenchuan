@@ -695,6 +695,65 @@ export class GameLoop {
         }
       }
 
+      // 撼地: when dash ends, apply stun to enemies within 5u
+      if (dashAbilityIdBefore === "han_di" && !player.activeDash) {
+        const hanDiAbility = ABILITIES["han_di"] as any;
+        if (hanDiAbility) {
+          const stunBuff = hanDiAbility.buffs?.[0];
+          if (stunBuff) {
+            const stunRadius = gameplayUnitsToWorldUnits(5, storedUnitScale);
+            for (const opp of this.state.players as any[]) {
+              if (opp.userId === player.userId) continue;
+              if ((opp.hp ?? 0) <= 0) continue;
+              if (blocksEnemyTargeting(opp)) continue;
+              const hdx = opp.position.x - player.position.x;
+              const hdy = opp.position.y - player.position.y;
+              if (Math.hypot(hdx, hdy) > stunRadius) continue;
+              addBuff({
+                state: this.state,
+                sourceUserId: player.userId,
+                targetUserId: opp.userId,
+                ability: hanDiAbility,
+                buffTarget: opp,
+                buff: stunBuff,
+              });
+            }
+            movementStateChanged = true;
+          }
+        }
+      }
+
+      // 跃潮斩波: when dash ends, deal 15 damage to enemies within 8u
+      if (dashAbilityIdBefore === "yue_chao_zhan_bo" && !player.activeDash) {
+        const yczbAbility = ABILITIES["yue_chao_zhan_bo"] as any;
+        if (yczbAbility) {
+          const landRadius = gameplayUnitsToWorldUnits(8, storedUnitScale);
+          for (const opp of this.state.players as any[]) {
+            if (opp.userId === player.userId) continue;
+            if ((opp.hp ?? 0) <= 0) continue;
+            if (blocksEnemyTargeting(opp)) continue;
+            const ydx = opp.position.x - player.position.x;
+            const ydy = opp.position.y - player.position.y;
+            if (Math.hypot(ydx, ydy) > landRadius) continue;
+            const dmg = resolveScheduledDamage({ source: player, target: opp, base: 15 });
+            applyDamageToTarget(opp, dmg);
+            if (dmg > 0) {
+              this.state.events.push({
+                id: randomUUID(), timestamp: Date.now(), turn: this.state.turn,
+                type: "DAMAGE",
+                actorUserId: player.userId,
+                targetUserId: opp.userId,
+                abilityId: "yue_chao_zhan_bo",
+                abilityName: yczbAbility.name,
+                effectType: "DAMAGE",
+                value: dmg,
+              } as any);
+            }
+          }
+          movementStateChanged = true;
+        }
+      }
+
       // Cancel channel buffs based on input — read BEFORE clearing the one-shot jump flag
       if (input) {
         const isMoving =
@@ -876,6 +935,7 @@ export class GameLoop {
             } else if (e.type === "TIMED_PULL_TARGET_TO_FRONT") {
               if (player.userId === target.userId || target.hp <= 0) continue;
               if (blocksEnemyTargeting(target as any)) continue;
+              if (hasKnockbackImmune(target as any)) continue;
 
               const facing = player.facing ?? { x: 0, y: 1 };
               const facingLen = Math.hypot(facing.x, facing.y);
@@ -1443,19 +1503,19 @@ export class GameLoop {
 
             if (opp.hp <= 0) continue;
 
-            // Range check (3D — height matters)
+            // Range check (using gameplay units via calculateDistance)
             const range = e.range ?? 10;
-            const dx = opp.position.x - player.position.x;
-            const dy = opp.position.y - player.position.y;
-            const dz = (opp.position.z ?? 0) - (player.position.z ?? 0);
-            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            const dist = calculateDistance(player.position, opp.position, storedUnitScale);
             if (dist > range) continue;
 
             // Cone angle check (skip for full-circle 360°)
             const angle = e.aoeAngle ?? 360;
             if (angle < 360 && dist > 0) {
               const facing = player.facing ?? { x: 0, y: 1 };
-              const dot = (facing.x * dx + facing.y * dy) / dist;
+              const rawDx = opp.position.x - player.position.x;
+              const rawDy = opp.position.y - player.position.y;
+              const rawDist2d = Math.sqrt(rawDx * rawDx + rawDy * rawDy);
+              const dot = rawDist2d > 0 ? (facing.x * rawDx + facing.y * rawDy) / rawDist2d : 0;
               const halfAngleRad = (angle / 2) * (Math.PI / 180);
               if (dot < Math.cos(halfAngleRad)) continue;
             }
@@ -1886,6 +1946,42 @@ export class GameLoop {
                 effectType: "STACK_ON_HIT_DAMAGE",
                 value: dmg,
               });
+              if (stackBuff.stacks <= 0) {
+                targetPlayer.buffs.splice(bi, 1);
+                pushBuffExpired(this.state, {
+                  targetUserId: targetId,
+                  buffId: stackBuff.buffId,
+                  buffName: stackBuff.name,
+                  buffCategory: stackBuff.category,
+                  sourceAbilityId: stackBuff.sourceAbilityId,
+                  sourceAbilityName: stackBuff.sourceAbilityName,
+                });
+              }
+              buffsChanged = true;
+              break; // one stack proc per hit per buff
+            } else if (e.type === "STACK_ON_HIT_GUAN_TI_HEAL") {
+              // Rate-limit: skip if within procCooldownMs of last proc
+              if (stackBuff.procCooldownMs !== undefined && stackBuff.lastProcAt !== undefined) {
+                if (now - stackBuff.lastProcAt < stackBuff.procCooldownMs) break;
+              }
+              const healBase = e.value ?? 0;
+              // 贯体 heal: bypass HEAL_REDUCTION, apply directly
+              const healApplied = applyHealToTarget(targetPlayer as any, healBase);
+              stackBuff.stacks = (stackBuff.stacks ?? 1) - 1;
+              stackBuff.lastProcAt = now;
+              if (healApplied > 0) {
+                const guanTiName = stackBuff.name.includes("（贯体）") ? stackBuff.name : `${stackBuff.name}（贯体）`;
+                this.state.events.push({
+                  id: randomUUID(), timestamp: now, turn: this.state.turn,
+                  type: "HEAL",
+                  actorUserId: targetId,
+                  targetUserId: targetId,
+                  abilityId: stackBuff.sourceAbilityId,
+                  abilityName: guanTiName,
+                  effectType: "STACK_ON_HIT_GUAN_TI_HEAL",
+                  value: healApplied,
+                });
+              }
               if (stackBuff.stacks <= 0) {
                 targetPlayer.buffs.splice(bi, 1);
                 pushBuffExpired(this.state, {

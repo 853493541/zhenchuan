@@ -274,6 +274,23 @@ export function buildAbilityPreload() {
     sourceAbilityName: "镇山河",
   });
 
+  // 2316 春泥护花 is declared on the ability itself (buildAbilityPreload auto-includes it)
+  // 2317 圣明佑 dodge buff — auto-included from ability
+  // 2318 太阴指 dodge buff — auto-included from ability
+
+  // 2403 滞影 — dynamically applied by GameLoop on 捉影式 channel completion
+  buffs.push({
+    buffId: 2403,
+    name: "滞影",
+    category: "DEBUFF",
+    durationMs: 5_000,
+    breakOnPlay: false,
+    description: "封轻功：无法施展轻功招式",
+    effects: [{ type: "QINGGONG_SEAL" }],
+    sourceAbilityId: "zhuo_ying_shi",
+    sourceAbilityName: "捉影式",
+  });
+
   const abilityMap = Object.fromEntries(
     abilities.map((c) => [c.id, c])
   );

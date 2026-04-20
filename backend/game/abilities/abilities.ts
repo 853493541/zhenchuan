@@ -353,7 +353,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "DEBUFF",
         durationMs: 30_000,
         initialStacks: 3,
-        maxStacks: 3,
+        maxStacks: 12,
         description: "每层使技能调息速度降低1%",
         effects: [
           { type: "COOLDOWN_SLOW", value: 0.01 },
@@ -890,7 +890,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         buffId: 1017,
         name: "心诤",
         category: "BUFF",
-        durationMs: 3_000,
+        durationMs: 3_200,
         periodicMs: 500,
         breakOnPlay: true,
         description: "免疫控制",
@@ -898,6 +898,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         cancelOnJump: false,
         effects: [
           { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
           { type: "INTERRUPT_IMMUNE" },
           { type: "CHANNEL_AOE_TICK", value: 2, range: 6, aoeAngle: 180 },
           { type: "TIMED_AOE_DAMAGE", delayMs: 3_000, value: 10, range: 12, aoeAngle: 180 },
@@ -1066,6 +1067,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         description: "运功中：持续回复，免控",
         effects: [
           { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
           { type: "INTERRUPT_IMMUNE" },
           { type: "PERIODIC_HEAL", value: 3 },
         ],
@@ -1102,6 +1104,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         effects: [
           { type: "DAMAGE_REDUCTION", value: 0.5 },
           { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
           { type: "INTERRUPT_IMMUNE" },
           { type: "PERIODIC_GUAN_TI_HEAL", value: 5 },
           { type: "TIMED_GUAN_TI_HEAL", delayMs: 9_000, value: 30 },
@@ -1574,6 +1577,258 @@ export const BASE_ABILITIES: AbilityRecord = {
         ],
       },
     ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 春泥护花 — instant self, 8 stacks: each hit -1 stack +3hp(贯体), 40% DR, GCD
+  // ──────────────────────────────────────────────────────────────────────────
+  chun_ni_hu_hua: {
+    id: "chun_ni_hu_hua",
+    name: "春泥护花",
+    description: "瞬发，可在空中或移动中施放\n获得【春泥护花】5层：每次受击失去1层并回复3点气血（贯体）；持有至少1层时减伤40%（不叠加）\n触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2316,
+        name: "春泥护花",
+        category: "BUFF",
+        durationMs: 15_000,
+        initialStacks: 5,
+        maxStacks: 5,
+        breakOnPlay: false,
+        description: "每次受击失去1层并回复3点气血（贯体），40%减伤（不叠加）",
+        effects: [
+          { type: "DAMAGE_REDUCTION", value: 0.4 },
+          { type: "STACK_ON_HIT_GUAN_TI_HEAL", value: 3 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 圣明佑 — instant self, 20贯体 heal + 20% dodge buff 10s, no GCD
+  // ──────────────────────────────────────────────────────────────────────────
+  sheng_ming_you: {
+    id: "sheng_ming_you",
+    name: "圣明佑",
+    description: "瞬发，可在空中或移动中施放\n立即回复20点气血（贯体）\n获得【圣明佑】10秒：闪避率提高20%\n不触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "INSTANT_GUAN_TI_HEAL", value: 20 },
+    ],
+    buffs: [
+      {
+        buffId: 2317,
+        name: "圣明佑",
+        category: "BUFF",
+        durationMs: 10_000,
+        breakOnPlay: false,
+        description: "闪避率提高20%",
+        effects: [
+          { type: "DODGE_NEXT", chance: 0.2 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 烟雨行 — instant, cleanse root/slow, dash forward 20u, 2 charges, 轻功, no GCD
+  // ──────────────────────────────────────────────────────────────────────────
+  yan_yu_xing: {
+    id: "yan_yu_xing",
+    name: "烟雨行",
+    description: "轻功，瞬发，可在空中或移动中施放\n解除减速与锁足\n向前冲刺20尺\n2充能，每10秒恢复1充能\n不触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 0,
+    maxCharges: 2,
+    chargeRecoveryTicks: 300,
+    gcd: false,
+    qinggong: true,
+    effects: [
+      {
+        type: "CLEANSE",
+        cleanseRootSlow: true,
+      },
+      {
+        type: "DIRECTIONAL_DASH",
+        value: 20,
+        dirMode: "TOWARD",
+      },
+    ],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 太阴指 — instant, cleanse root/slow, dash back 30u in 0.7s, 100% dodge, GCD, 轻功
+  // ──────────────────────────────────────────────────────────────────────────
+  tai_yin_zhi: {
+    id: "tai_yin_zhi",
+    name: "太阴指",
+    description: "轻功，瞬发，可在空中或移动中施放\n解除减速与锁足，向后冲刺30尺（0.7秒完成）\n冲刺期间获得【太阴指】：100%闪避率\n触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    qinggong: true,
+    effects: [
+      {
+        type: "CLEANSE",
+        cleanseRootSlow: true,
+      },
+      {
+        type: "DIRECTIONAL_DASH",
+        value: 30,
+        dirMode: "AWAY",
+        durationTicks: 21,
+      },
+    ],
+    buffs: [
+      {
+        buffId: 2318,
+        name: "太阴指",
+        category: "BUFF",
+        durationMs: 800,
+        breakOnPlay: false,
+        description: "冲刺期间100%闪避",
+        effects: [
+          { type: "DODGE_NEXT", chance: 1.0 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 万剑归宗 — self-centered AOE: root 6u/3s + 玄一5层(每层10%抑疗), 无GCD, 可空中施放
+  // ──────────────────────────────────────────────────────────────────────────
+  wan_jian_gui_zong: {
+    id: "wan_jian_gui_zong",
+    name: "万剑归宗",
+    description: "瞬发，可在空中或移动中施放\n锁足6尺范围内的敌人3秒\n附加【玄一】5层（30秒）：每层使治疗效果降低10%\n不触发GCD",
+    type: "CONTROL",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "AOE_APPLY_BUFFS", range: 6 },
+    ],
+    buffs: [
+      {
+        buffId: 2319,
+        name: "万剑归宗",
+        category: "DEBUFF",
+        durationMs: 3_000,
+        breakOnPlay: false,
+        description: "锁足",
+        effects: [{ type: "ROOT" }],
+      },
+      {
+        buffId: 2320,
+        name: "玄一",
+        category: "DEBUFF",
+        durationMs: 30_000,
+        initialStacks: 5,
+        maxStacks: 5,
+        breakOnPlay: false,
+        description: "每层使治疗效果降低10%",
+        effects: [{ type: "HEAL_REDUCTION", value: 0.1 }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 孤风飒踏 — ground-cast dash (mouse target), 0.5s/20u, cleanse controls, no GCD
+  // ──────────────────────────────────────────────────────────────────────────
+  gu_feng_sa_ta: {
+    id: "gu_feng_sa_ta",
+    name: "孤风飒踏",
+    description: "可选目标或地面施放\n向目标方向冲刺20尺（0.5秒完成）\n解除控制效果\n不触发GCD",
+    type: "SUPPORT",
+    target: "OPPONENT",
+    range: 40,
+    cooldownTicks: 300,
+    gcd: false,
+    faceDirection: false,
+    allowGroundCastWithoutTarget: true,
+    effects: [
+      { type: "CLEANSE", cleanseRootSlow: true },
+      { type: "GROUND_TARGET_DASH", value: 20, durationTicks: 15 },
+    ],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 撼地 — ground-cast dash 20u/0.5s, stun 5u/3s on land, 轻功, GCD, range 20u
+  // ──────────────────────────────────────────────────────────────────────────
+  han_di: {
+    id: "han_di",
+    name: "撼地",
+    description: "轻功，可选目标或地面施放（射程20）\n向目标方向冲刺20尺（0.5秒完成）\n落地时眩晕5尺范围内的敌人3秒\n触发GCD",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    qinggong: true,
+    faceDirection: false,
+    allowGroundCastWithoutTarget: true,
+    effects: [
+      { type: "GROUND_TARGET_DASH", value: 20, durationTicks: 15 },
+    ],
+    buffs: [
+      {
+        buffId: 2321,
+        name: "撼地",
+        category: "DEBUFF",
+        durationMs: 3_000,
+        breakOnPlay: false,
+        description: "眩晕：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 跃潮斩波 — dash toward target at 20u/sec (30 ticks), on land 15 damage, 轻功, GCD
+  // ──────────────────────────────────────────────────────────────────────────
+  yue_chao_zhan_bo: {
+    id: "yue_chao_zhan_bo",
+    name: "跃潮斩波",
+    description: "轻功，需要目标，射程25\n向目标冲刺（停在8尺处）\n落地时造成15点伤害\n触发GCD",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 25,
+    cooldownTicks: 300,
+    gcd: true,
+    qinggong: true,
+    faceDirection: false,
+    effects: [
+      { type: "DASH", value: 8 },
+    ],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 无我无剑 — range 4u, 7 damage, GCD, can cast in air/moving
+  // ──────────────────────────────────────────────────────────────────────────
+  wu_wo_wu_jian: {
+    id: "wu_wo_wu_jian",
+    name: "无我无剑",
+    description: "瞬发，可在空中或移动中施放\n对目标造成7点伤害\n射程4，触发GCD",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "DAMAGE", value: 7 }],
+    buffs: [],
   },
 };
 

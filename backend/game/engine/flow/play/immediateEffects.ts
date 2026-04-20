@@ -14,7 +14,7 @@ import {
 } from "../../effects/handlers";
 import { gameplayUnitsToWorldUnits } from "../../state/types";
 import { resolveScheduledDamage } from "../../utils/combatMath";
-import { applyDamageToTarget } from "../../utils/health";
+import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { addBuff, pushBuffExpired } from "../../effects/buffRuntime";
 import {
   applyZhenShanHeSelfCastBuff,
@@ -94,6 +94,28 @@ export function applyImmediateEffects(params: {
         handleHeal(state, source, effTarget, ability, effect);
         break;
 
+      case "INSTANT_GUAN_TI_HEAL": {
+        // 贯体 heal: bypass HEAL_REDUCTION, apply directly
+        const healBase = effect.value ?? 0;
+        const healApplied = applyHealToTarget(effTarget, healBase);
+        if (healApplied > 0) {
+          const guanTiName = ability.name.includes("（贯体）") ? ability.name : `${ability.name}（贯体）`;
+          state.events.push({
+            id: randomUUID(),
+            timestamp: Date.now(),
+            turn: state.turn,
+            type: "HEAL",
+            actorUserId: source.userId,
+            targetUserId: effTarget.userId,
+            abilityId: ability.id,
+            abilityName: guanTiName,
+            effectType: "INSTANT_GUAN_TI_HEAL",
+            value: healApplied,
+          });
+        }
+        break;
+      }
+
       case "DRAW":
         handleDraw(state, source, effect);
         break;
@@ -115,6 +137,24 @@ export function applyImmediateEffects(params: {
         const oppIdx = playerIndex === 0 ? 1 : 0;
         const oppPos = state.players[oppIdx].position;
         handleDirectionalDash(state, source, oppPos, ability, effect);
+        break;
+      }
+
+      case "GROUND_TARGET_DASH": {
+        // Compute direction from source to the ground target (or to opponent if no ground target).
+        // Then set source.facing to that direction and call handleDirectionalDash with TOWARD.
+        const gTargetX = castContext?.groundTarget?.x ?? effTarget.position?.x ?? source.position.x;
+        const gTargetY = castContext?.groundTarget?.y ?? effTarget.position?.y ?? source.position.y;
+        const gDx = gTargetX - source.position.x;
+        const gDy = gTargetY - source.position.y;
+        const gLen = Math.sqrt(gDx * gDx + gDy * gDy);
+        if (gLen > 0.01) {
+          source.facing = { x: gDx / gLen, y: gDy / gLen };
+        }
+        const oppIdx2 = playerIndex === 0 ? 1 : 0;
+        const oppPos2 = state.players[oppIdx2].position;
+        const gtdEffect = { ...effect, type: "DIRECTIONAL_DASH" as const, dirMode: "TOWARD" as const };
+        handleDirectionalDash(state, source, oppPos2, ability, gtdEffect);
         break;
       }
 

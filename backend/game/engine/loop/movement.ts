@@ -595,8 +595,9 @@ export function applyMovement(
       // Clear vz — the dash now owns vertical movement
       player.velocity.vz = 0;
       // Post-dash jump allowance: MULTI_JUMP → full reset (5 jumps), normal → 1 jump only
+      // 烟雨行 → consume all remaining jumps (can't jump in air after this dash)
       const hasMultiJumpDash = allEffects.some((e) => e.type === "MULTI_JUMP");
-      player.jumpCount = hasMultiJumpDash ? 0 : 1;
+      player.jumpCount = hasMultiJumpDash ? 0 : (dash.abilityId === "yan_yu_xing" ? MAX_JUMPS : 1);
       clearAirShift(player);
       // A completed dash must not seed the next jump with dash-speed carry.
       clearAirborneSpeedCarry(player);
@@ -709,8 +710,9 @@ export function applyMovement(
         // Airborne: start falling from rest (gravity reset)
         player.velocity.vz = 0;
         // Post-dash jump allowance: MULTI_JUMP → full reset, normal → 1 jump only
+        // 烟雨行 → consume all remaining jumps
         const hasMultiJumpEnd = allEffects.some((e) => e.type === "MULTI_JUMP");
-        player.jumpCount = hasMultiJumpEnd ? 0 : 1;
+        player.jumpCount = hasMultiJumpEnd ? 0 : (dash.abilityId === "yan_yu_xing" ? MAX_JUMPS : 1);
         clearAirShift(player);
         clearAirborneSpeedCarry(player);
       }

@@ -446,7 +446,7 @@ export function addBuff(params: {
   if (runtimeBuff.maxStacks !== undefined && runtimeBuff.maxStacks > 1) {
     const existing = buffTarget.buffs.find((b) => b.buffId === runtimeBuff.buffId);
     if (existing) {
-      existing.stacks = Math.min((existing.stacks ?? 1) + 1, runtimeBuff.maxStacks);
+      existing.stacks = Math.min((existing.stacks ?? 1) + (runtimeBuff.initialStacks ?? 1), runtimeBuff.maxStacks);
       existing.expiresAt = now + runtimeBuff.durationMs;
 
       // 三环套月: consume at 3 stacks and deal immediate bonus damage.
@@ -553,6 +553,19 @@ export function addBuff(params: {
 
   if (linkedShield > 0) {
     addShieldToTarget(buffTarget as any, linkedShield);
+  }
+
+  // CC that hits a channeling player (with no INTERRUPT_IMMUNE) cancels their channel.
+  if ((buffTarget as any).activeChannel) {
+    const isCC = runtimeBuff.effects.some((e) =>
+      e.type === "CONTROL" || e.type === "KNOCKED_BACK" || e.type === "ATTACK_LOCK"
+    );
+    const isImmune = buffTarget.buffs.some((b) =>
+      b.effects.some((e) => e.type === "INTERRUPT_IMMUNE" || e.type === "CONTROL_IMMUNE")
+    );
+    if (isCC && !isImmune) {
+      (buffTarget as any).activeChannel = undefined;
+    }
   }
 
   // Incoming control can forcibly break specific stealth buffs.

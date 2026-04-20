@@ -42,6 +42,7 @@ export type EffectType =
   | "DIRECTIONAL_DASH"
   | "AOE_APPLY_BUFFS"
   | "JUMP_BOOST"
+  | "GROUND_TARGET_DASH"
   | "PERIODIC_DAMAGE"
   | "PERIODIC_HEAL"
   | "PERIODIC_GUAN_TI_HEAL"
@@ -58,6 +59,8 @@ export type EffectType =
   | "WUFANG_XINGJIN_AOE"
   | "BANG_DA_GOU_TOU"
   | "STACK_ON_HIT_DAMAGE"
+  | "STACK_ON_HIT_GUAN_TI_HEAL"
+  | "INSTANT_GUAN_TI_HEAL"
   | "KNOCKED_BACK"
   | "SPEED_BOOST"
   // Level 0 control (removable by cleanse)

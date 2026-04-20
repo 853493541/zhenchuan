@@ -137,6 +137,7 @@ const DAMAGE_VALUE_EFFECT_LABELS: Partial<Record<AbilityEffect["type"], string>>
   BAIZU_AOE: "范围初始伤害",
   ON_PLAY_DAMAGE: "出招触发伤害",
   STACK_ON_HIT_DAMAGE: "层数触发伤害",
+  STACK_ON_HIT_GUAN_TI_HEAL: "层数触发贯体回血",
   SCHEDULED_DAMAGE: "计划伤害",
   DELAYED_DAMAGE: "延时伤害",
 };

@@ -40,8 +40,14 @@ export function resolveHealAmount(params: {
 }) {
   let heal = params.base;
 
-  const hr = allEffects(params.target).find((e) => e.type === "HEAL_REDUCTION");
-  if (hr) heal *= 1 - (hr.value ?? 0);
+  // Sum HEAL_REDUCTION across all buffs, multiplied by stack count for stackable debuffs.
+  const totalHealReduction = params.target.buffs.reduce((sum, buff) => {
+    const hr = buff.effects.find((e) => e.type === "HEAL_REDUCTION");
+    if (!hr) return sum;
+    const stacks = buff.stacks ?? 1;
+    return sum + (hr.value ?? 0) * stacks;
+  }, 0);
+  if (totalHealReduction > 0) heal *= Math.max(0, 1 - totalHealReduction);
 
   return Math.max(0, Math.floor(heal));
 }

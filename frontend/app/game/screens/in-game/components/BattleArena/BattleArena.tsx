@@ -1018,6 +1018,7 @@ export default function BattleArena({
   const localZRef         = useRef(0);     // current Z height (world units)
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
+  const lastDashAbilityIdRef = useRef<string | null>(null); // track last active dash for jump-restore logic
   const airborneSpeedCarryRef = useRef(0); // latest special airborne planar speed snapshot (world units/tick)
   const jumpTelemetryRef  = useRef<JumpTelemetry | null>(null);
   const lastJumpInputAtRef = useRef(0);    // last local jump press time for air reconciliation
@@ -1126,9 +1127,20 @@ export default function BattleArena({
   const castAbilityRef = useRef<(id: string) => void>(() => {});
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
+    // 孤风飒踏 and 撼地 always use mouse-click direction (ground-target dash)
+    // Even with an enemy selected, they must enter pending ground-cast mode.
+    if (ability?.allowGroundCastWithoutTarget && (ability?.abilityId === 'gu_feng_sa_ta' || ability?.abilityId === 'han_di')) {
+      setPendingGroundCastAbilityId(id);
+      setGroundCastPreview(null);
+      return;
+    }
     if (ability?.abilityId === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
     if (ability?.abilityId === 'niao_xiang_bi_kong') {
       predictedMultiJumpExpiresAtRef.current = performance.now() + 15_000;
+    }
+    if (ability?.abilityId === 'yan_yu_xing') {
+      // 烟雨行 consumes ALL remaining air jumps (interaction with 鸟翔碧空's 6 jumps)
+      localJumpCountRef.current = getEffectiveMaxJumps();
     }
     const selectedTargetIdNow = selectedTargetRef.current;
     const selectedTarget = selectedTargetIdNow
@@ -1424,9 +1436,17 @@ export default function BattleArena({
   useEffect(() => {
     const ad = (me as any)?.activeDash;
     const isDashing = !!ad && ad.ticksRemaining > 0;
+    if (isDashing) {
+      // Track which ability is currently dashing so we can restore jumps correctly on end
+      lastDashAbilityIdRef.current = ad.abilityId ?? null;
+    }
     if (!isDashing) {
+      const wasYanYuXing = lastDashAbilityIdRef.current === 'yan_yu_xing';
       const airborneAfterDash = localZRef.current > groundHRef.current + 0.01;
-      localJumpCountRef.current = airborneAfterDash ? (getEffectiveMaxJumps() > 2 ? 0 : 1) : 0;
+      // 烟雨行: consumes ALL remaining jumps (backend sets jumpCount = MAX_JUMPS)
+      localJumpCountRef.current = airborneAfterDash
+        ? (wasYanYuXing ? getEffectiveMaxJumps() : (getEffectiveMaxJumps() > 2 ? 0 : 1))
+        : 0;
       localVzRef.current = 0;
       isPowerJumpRef.current = false;
       isPowerJumpCombinedRef.current = false;
@@ -1474,8 +1494,15 @@ export default function BattleArena({
   // -- Reverse channel (倒读条): from buff buffId 1014/1017/2001/2003
   //    (e.g. 风来吴山, 心诤, 笑醉狂, 千蝶吐瑞)
   const channelBarData: ChannelBarData | null = (() => {
+    const locallyAirborne = localJumpCountRef.current > 0 || Math.abs(localVzRef.current) > 0.01;
+    // CC (stun/freeze/knockdown) cancels channels that have no INTERRUPT_IMMUNE protection
+    const hasBlockingCC = buffsHaveAnyEffect(me?.buffs, ['CONTROL', 'KNOCKED_BACK', 'ATTACK_LOCK']);
+    const hasInterruptImmune = buffsHaveAnyEffect(me?.buffs, ['INTERRUPT_IMMUNE', 'CONTROL_IMMUNE']);
+    if (hasBlockingCC && !hasInterruptImmune) return null;
     if (me?.activeChannel) {
       const ch = me.activeChannel;
+      // Hide immediately on local jump if this channel cancels on jump
+      if (locallyAirborne && ch.cancelOnJump) return null;
       return {
         kind: 'forward' as const,
         name: ch.abilityName,
@@ -1489,6 +1516,9 @@ export default function BattleArena({
       b.buffId === 1014 || b.buffId === 1017 || b.buffId === 2001 || b.buffId === 2003
     );
     if (buff) {
+      // Buffs 2001 (笑醉狂) and 2003 (千蝶吐瑞) cancel on jump — hide bar immediately
+      const cancelOnJump = (buff as any).buffId === 2001 || (buff as any).buffId === 2003;
+      if (locallyAirborne && cancelOnJump) return null;
       const appliedAt: number = (buff as any).appliedAt ?? 0;
       const expiresAt: number = (buff as any).expiresAt ?? 0;
       const durationMs = expiresAt - appliedAt > 0 ? expiresAt - appliedAt : 5_000;
@@ -1503,7 +1533,6 @@ export default function BattleArena({
     return null;
   })();
 
-  // Ref that the rAF writes a new jump record into (avoids stale closure in rAF)
   const jumpRecordNextRef = useRef<JumpRecord | null>(null);
   const jumpLockedRef = useRef(false);
 
@@ -4604,12 +4633,12 @@ export default function BattleArena({
         <div style={{
           position: 'absolute', bottom: 200, right: 8, zIndex: 200,
           background: 'rgba(10,18,28,0.97)', border: '1px solid #ff6b00',
-          borderRadius: 6, padding: 8, maxHeight: '70vh',
+          borderRadius: 6, padding: 8, maxHeight: 'calc(100vh - 230px)',
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
           gap: 8,
-          minWidth: 164,
+          minWidth: 220,
         }}>
           <div style={{
             fontSize: 10,
@@ -4691,17 +4720,17 @@ export default function BattleArena({
           </div>
 
           <div style={{ fontSize: 11, color: '#69f0ae', fontWeight: 700 }}>已测试</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 32px)', gap: 4 }}>
             {testedCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
           </div>
 
           <div style={{ fontSize: 11, color: '#ffd166', fontWeight: 700 }}>测试中</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 32px)', gap: 4 }}>
             {testingCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
           </div>
 
           <div style={{ fontSize: 11, color: '#ff6b6b', fontWeight: 700 }}>待重做</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 32px)', gap: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 32px)', gap: 4 }}>
             {reworkCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
           </div>
         </div>

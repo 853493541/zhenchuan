@@ -58,6 +58,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   /* ================= REAL-TIME MOVEMENT ================= */
   DASH: "BUFF",
   DIRECTIONAL_DASH: "BUFF",
+  GROUND_TARGET_DASH: "BUFF",
   AOE_APPLY_BUFFS: "DEBUFF",
   JUMP_BOOST: "BUFF",
 
@@ -80,6 +81,10 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   BANG_DA_GOU_TOU: "DEBUFF",
   // Stack-based on-hit debuff
   STACK_ON_HIT_DAMAGE: "DEBUFF",
+  // Stack-based on-hit heal (贯体)
+  STACK_ON_HIT_GUAN_TI_HEAL: "BUFF",
+  // Instant 贯体 heal bypassing HEAL_REDUCTION
+  INSTANT_GUAN_TI_HEAL: "BUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {
