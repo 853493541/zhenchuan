@@ -21,7 +21,7 @@ function getAbilityIconByName(abilityName: string | undefined) {
   if (!abilityName) return null;
 
   // icons are named by Chinese display name, e.g. 剑破虚空.png
-  return `/game/icons/${abilityName}.png`;
+  return `/icons/${abilityName}.png`;
 }
 
 /* ================= COMPONENT ================= */

@@ -2,10 +2,10 @@ import { ABILITIES } from "./abilities";
 import { loadBuffEditorOverrides } from "./buffEditorOverrides";
 
 const BUFF_ICON_PATH_OVERRIDES: Record<string, string> = {
-  "心诤": "/game/icons/心诤-buff.png",
-  "散流霞": "/game/icons/散流霞-buff.png",
-  "长针": "/game/icons/长针-buff.png",
-  "风袖低昂": "/game/icons/风袖低昂-buff.png",
+  "心诤": "/icons/心诤-buff.png",
+  "散流霞": "/icons/散流霞-buff.png",
+  "长针": "/icons/长针-buff.png",
+  "风袖低昂": "/icons/风袖低昂-buff.png",
 };
 
 function hasEffectFlag(
@@ -169,7 +169,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       { type: "DISPLACEMENT" },
       { type: "DASH_TURN_LOCK" },
     ],
-    iconPath: "/game/icons/蹑云逐月.png",
+    iconPath: "/icons/蹑云逐月.png",
   });
 
   buffs.push({
@@ -306,7 +306,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
   for (const buff of buffs) {
     const override = buffEditorOverrides[String(buff.buffId)];
     if (!buff.iconPath) {
-      buff.iconPath = BUFF_ICON_PATH_OVERRIDES[buff.name] ?? `/game/icons/${buff.name}.png`;
+      buff.iconPath = BUFF_ICON_PATH_OVERRIDES[buff.name] ?? `/icons/${buff.name}.png`;
     }
     if (override?.name) {
       buff.name = override.name;

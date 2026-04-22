@@ -65,7 +65,7 @@ export default function BenchArea({
             >
               {!failedImages.has(ability.abilityId) ? (
                 <img 
-                  src={`/game/icons/${abilityDef?.name}.png`} 
+                  src={`/icons/${abilityDef?.name}.png`} 
                   alt={abilityDef?.name} 
                   className={styles.portrait}
                   onError={() => handleImageError(ability.abilityId)}

@@ -105,7 +105,7 @@ export const targetTypeLabel: Record<AbilityEditorAbility["target"], string> = {
 };
 
 export function getAbilityIconByName(abilityName: string) {
-  return `/game/icons/${abilityName}.png`;
+  return `/icons/${abilityName}.png`;
 }
 
 export function getBuffIconPath(entry: Pick<BuffEditorEntry, "name" | "iconPath">): string {
