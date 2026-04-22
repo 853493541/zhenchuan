@@ -25,6 +25,8 @@ type ResolvedBuff = {
   shortName: string;
   category: "BUFF" | "DEBUFF";
   description: string;
+  expiresAt: number;
+  iconPath?: string;
   stacks?: number; // live stack count for stackable debuffs
 };
 
@@ -34,6 +36,8 @@ type ActiveHint = {
   remaining: number;
   anchorRect: DOMRect;
 };
+
+const ALWAYS_SHOW_STACK_BADGE = new Set([990100, 990101, 990102]);
 
 export default function StatusBar({
   buffs = [],
@@ -56,14 +60,22 @@ export default function StatusBar({
   // Sync server expiresAt → expiresAtRef (and seed localSecs for new buffs).
   useEffect(() => {
     const currentIds = new Set(buffs.map((b) => b.buffId));
+    const now = Date.now();
+    const seededSecs: Record<number, number> = {};
     for (const b of buffs) {
       expiresAtRef.current[b.buffId] = b.expiresAt;
+      seededSecs[b.buffId] = Math.max(0, (b.expiresAt - now) / 1000);
     }
     for (const idStr of Object.keys(expiresAtRef.current)) {
       if (!currentIds.has(+idStr)) delete expiresAtRef.current[+idStr];
     }
+    setLocalSecs(seededSecs);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buffs]);
+
+  function getRemainingSeconds(buff: Pick<ResolvedBuff, "buffId" | "expiresAt">): number {
+    return localSecs[buff.buffId] ?? Math.max(0, (buff.expiresAt - Date.now()) / 1000);
+  }
 
   // Recompute display values from wall-clock every 100ms for smooth decimals.
   useEffect(() => {
@@ -82,6 +94,7 @@ export default function StatusBar({
     .map((b) => {
       const meta = preload?.buffMap?.[b.buffId];
       if (!meta) return null;
+      if (meta.hiddenInStatusBar === true) return null;
       const shortName = meta.name.length > 2 ? meta.name.slice(0, 2) : meta.name;
       return {
         buffId:      b.buffId,
@@ -89,6 +102,8 @@ export default function StatusBar({
         shortName,
         category:    meta.category,
         description: meta.description ?? "无",
+        expiresAt:   b.expiresAt,
+        iconPath:    meta.iconPath,
         stacks:      b.stacks,
       };
     })
@@ -98,8 +113,7 @@ export default function StatusBar({
   // This hides the buff immediately when the timer drains, without waiting
   // up to 5 s for the server to send the removal.
   const visibleResolved = resolved.filter((b) => {
-    const secs = localSecs[b.buffId];
-    return secs === undefined || secs > 0;
+    return getRemainingSeconds(b) > 0;
   });
 
   const buffsPos = visibleResolved.filter((b) => b.category === "BUFF");
@@ -109,7 +123,7 @@ export default function StatusBar({
     setActiveHint({
       name:        b.name,
       description: b.description,
-      remaining:   localSecs[b.buffId] ?? 0,
+      remaining:   getRemainingSeconds(b),
       anchorRect,
     });
   }
@@ -120,10 +134,10 @@ export default function StatusBar({
 
   function renderBuff(b: ResolvedBuff) {
     const colorClass  = b.category === "BUFF" ? styles.buffText : styles.debuffText;
-    const secsLeft    = localSecs[b.buffId] ?? 0;
+    const secsLeft    = getRemainingSeconds(b);
     const isLastTick  = secsLeft < 5;
     // Timer always shows countdown; stacks shown as icon overlay badge
-    const timerStr    = secsLeft >= 5 ? String(Math.floor(secsLeft)) : secsLeft.toFixed(1);
+    const timerStr    = secsLeft >= 10 ? String(Math.floor(secsLeft)) : secsLeft.toFixed(1);
 
     return (
       <div key={b.buffId} className={styles.buffItem}>
@@ -136,11 +150,11 @@ export default function StatusBar({
             className={`${styles.buffIcon} ${
               b.category === "BUFF" ? styles.buffBorder : styles.debuffBorder
             }`}
-            style={{ backgroundImage: `url(/game/icons/buffs/${b.name}.png)` }}
+            style={{ backgroundImage: `url(${b.iconPath ?? `/game/icons/buffs/${b.name}.png`})` }}
             onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b)}
             onMouseLeave={closeHint}
           />
-          {b.stacks !== undefined && b.stacks >= 2 && (
+          {b.stacks !== undefined && (b.stacks >= 2 || ALWAYS_SHOW_STACK_BADGE.has(b.buffId)) && (
             <span className={styles.stackBadge}>{b.stacks}</span>
           )}
         </div>
@@ -207,7 +221,7 @@ export default function StatusBar({
           )}
           {buffs.map(b => {
             const secsLeft = Math.max(0, (b.expiresAt - Date.now()) / 1000);
-            const dispSecs = localSecs[b.buffId];
+            const dispSecs = localSecs[b.buffId] ?? secsLeft;
             return (
               <div key={b.buffId} style={{
                 borderTop: '1px solid rgba(255,255,255,0.12)',
@@ -217,8 +231,9 @@ export default function StatusBar({
                 <span style={{ color: b.category === 'DEBUFF' ? '#ff6666' : '#66ccff' }}>
                   {b.name}
                 </span>{' '}(id:{b.buffId})<br />
+                {b.stacks !== undefined && <>stacks: <b>{b.stacks}</b><br /></>}
                 expiresAt: <b>{new Date(b.expiresAt).toLocaleTimeString()}</b><br />
-                calc: <b>{secsLeft.toFixed(1)}s</b> | display: <b>{dispSecs ?? '?'}s</b>
+                calc: <b>{secsLeft.toFixed(1)}s</b> | display: <b>{dispSecs.toFixed(1)}s</b>
               </div>
             );
           })}

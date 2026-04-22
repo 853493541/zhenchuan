@@ -17,6 +17,9 @@ import { applyOnPlayBuffEffects } from "../../engine/flow/play/onPlayEffects";
 import { broadcastGameUpdate } from "../broadcast";
 import { globalTimer } from "../../../utils/timing";
 import { gameStateCache } from "../gameStateCache";
+import { addBuff } from "../../engine/effects/buffRuntime";
+import { applyDamageToTarget } from "../../engine/utils/health";
+import { resolveScheduledDamage } from "../../engine/utils/combatMath";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -37,29 +40,69 @@ function hasChargeSystem(ability: any): boolean {
   return Number(ability?.maxCharges ?? 0) > 1;
 }
 
+function getChargeRecoveryTicks(ability: any): number {
+  return Math.max(
+    1,
+    clampCooldownTicksForTesting((ability as any).chargeRecoveryTicks ?? ability.cooldownTicks ?? 1)
+  );
+}
+
+function normalizeChargeRegenQueue(instance: any, ability: any) {
+  if (!hasChargeSystem(ability)) return;
+
+  const maxCharges = Math.max(0, Number(ability.maxCharges ?? 0));
+  const recoveryTicks = getChargeRecoveryTicks(ability);
+  const clampedChargeCount = Math.max(0, Math.min(maxCharges, Number(instance.chargeCount ?? maxCharges)));
+  const missingCharges = Math.max(0, maxCharges - clampedChargeCount);
+
+  let queue: number[] = Array.isArray(instance._chargeRegenQueueTicks)
+    ? instance._chargeRegenQueueTicks
+        .map((ticks: any) => Math.max(0, Number(ticks) || 0))
+        .filter((ticks: number) => ticks > 0)
+    : [];
+
+  if (queue.length === 0 && missingCharges > 0) {
+    const seededRemaining = Math.max(0, Number(instance.chargeRegenTicksRemaining ?? 0));
+    if (seededRemaining > 0) {
+      queue.push(seededRemaining);
+    }
+  }
+
+  while (queue.length < missingCharges) {
+    queue.push(recoveryTicks);
+  }
+  if (queue.length > missingCharges) {
+    queue = queue.slice(0, missingCharges);
+  }
+
+  instance.chargeCount = clampedChargeCount;
+  instance._chargeRegenQueueTicks = queue;
+  instance.chargeRegenTicksRemaining = queue.length > 0
+    ? Math.max(0, Math.ceil(Math.min(...queue)))
+    : 0;
+}
+
 function ensureChargeRuntime(instance: any, ability: any) {
   if (!hasChargeSystem(ability)) return;
   const maxCharges = Math.max(0, Number(ability.maxCharges ?? 0));
   if (typeof instance.chargeCount !== "number") instance.chargeCount = maxCharges;
   if (typeof instance.chargeRegenTicksRemaining !== "number") instance.chargeRegenTicksRemaining = 0;
   if (typeof instance.chargeLockTicks !== "number") instance.chargeLockTicks = 0;
+  normalizeChargeRegenQueue(instance, ability);
 }
 
 function consumeAbilityUseRuntime(instance: any, ability: any, applyBaseCooldown: boolean) {
   if (hasChargeSystem(ability)) {
     ensureChargeRuntime(instance, ability);
     const maxCharges = Math.max(1, Number(ability.maxCharges ?? 1));
-    const recoveryTicks = Math.max(
-      1,
-      clampCooldownTicksForTesting((ability as any).chargeRecoveryTicks ?? ability.cooldownTicks ?? 1)
-    );
+    const recoveryTicks = getChargeRecoveryTicks(ability);
     const castLockTicks = Math.max(0, Number((ability as any).chargeCastLockTicks ?? 0));
 
     instance.chargeCount = Math.max(0, (instance.chargeCount ?? maxCharges) - 1);
     instance.chargeLockTicks = Math.max(instance.chargeLockTicks ?? 0, castLockTicks);
+    normalizeChargeRegenQueue(instance, ability);
 
-    if (instance.chargeCount < maxCharges && (instance.chargeRegenTicksRemaining ?? 0) <= 0) {
-      instance.chargeRegenTicksRemaining = recoveryTicks;
+    if ((instance._chargeRegenQueueTicks?.length ?? 0) <= 0) {
       instance._chargeRegenProgress = 0;
     }
 
@@ -78,6 +121,10 @@ function consumeAbilityUseRuntime(instance: any, ability: any, applyBaseCooldown
   }
 }
 
+const BANG_DA_GOU_TOU_ABILITY_ID = "bang_da_gou_tou";
+const BANG_DA_GOU_TOU_XINCHU_ER_BUFF_ID = 1333;
+const BANG_DA_GOU_TOU_COOLDOWN_TICKS = 16 * 30;
+
 /* ================= PLAY CARD ================= */
 
 export async function playAbility(
@@ -85,7 +132,7 @@ export async function playAbility(
   userId: string,
   abilityInstanceId: string,
   targetUserId?: string,
-  groundTarget?: { x: number; y: number }
+  groundTarget?: { x: number; y: number; z?: number }
 ) {
   const startTime = performance.now();
   globalTimer.start(`play_card_${gameId}`);
@@ -111,7 +158,7 @@ async function playCastAbility(
   userId: string,
   abilityInstanceId: string,
   targetUserId?: string,
-  groundTarget?: { x: number; y: number }
+  groundTarget?: { x: number; y: number; z?: number }
 ) {
   const state = loop.getState();
   const playerIndex = state.players.findIndex((p) => p.userId === userId);
@@ -217,15 +264,56 @@ async function playCastAbility(
       consumeAbilityUseRuntime(played, ability, false);
     }
   } else {
+    const castStartedAt = Date.now();
+
     // Apply ability effects
-    applyEffects(state, ability, playerIndex, targetIndex, {
+    applyEffects(state, ability, playerIndex, targetIndex, mapCtx, {
       targetUserId,
       groundTarget,
     });
     applyOnPlayBuffEffects(state, playerIndex);
 
+    const upgradedBangDaGouTouCast =
+      ability.id === BANG_DA_GOU_TOU_ABILITY_ID &&
+      state.players[targetIndex]?.buffs?.some(
+        (b: any) =>
+          b.buffId === BANG_DA_GOU_TOU_XINCHU_ER_BUFF_ID &&
+          b.sourceAbilityId === BANG_DA_GOU_TOU_ABILITY_ID &&
+          (b.appliedAt ?? 0) >= castStartedAt - 250
+      );
+
     // Set runtime cooldown/charges after ability is consumed.
     consumeAbilityUseRuntime(played, ability, true);
+
+    if (upgradedBangDaGouTouCast) {
+      played.cooldown = Math.max(played.cooldown ?? 0, BANG_DA_GOU_TOU_COOLDOWN_TICKS);
+    }
+  }
+
+  // 绛唇珠袖 trigger: if the caster has the 绛唇珠袖 debuff and just cast a qinggong ability,
+  // immediately apply 绛唇珠袖·沉默 (SILENCE 2s) and deal 1 damage.
+  const JIANG_CHUN_DEBUFF_ID = 2323;
+  if ((ability as any).qinggong === true) {
+    const jiangBuff = (player as any).buffs?.find(
+      (b: any) => b.buffId === JIANG_CHUN_DEBUFF_ID && b.expiresAt > Date.now()
+    );
+    if (jiangBuff) {
+      const jiangAbility = ABILITIES["jiang_chun_zhu_xiu"] as any;
+      const silenceBuff = jiangAbility?.buffs?.find((b: any) => b.buffId === 2324);
+      const opp = (state as any).players?.find((p: any) => p.userId !== player.userId);
+      if (jiangAbility && silenceBuff && opp) {
+        addBuff({
+          state: state as any,
+          sourceUserId: opp.userId,
+          targetUserId: player.userId,
+          ability: jiangAbility,
+          buffTarget: player as any,
+          buff: silenceBuff,
+        });
+        const dmg = resolveScheduledDamage({ source: opp, target: player as any, base: 1 });
+        if (dmg > 0) applyDamageToTarget(player as any, dmg);
+      }
+    }
   }
 
   // 轻功 GCD: casting any 轻功 ability imposes a 3-second minimum cooldown on the other 3
@@ -247,7 +335,13 @@ async function playCastAbility(
       const instCardId = (inst as any).abilityId || (inst as any).id;
       const instCard = ABILITIES[instCardId];
       if (instCard && (instCard as any).gcd === true) {
-        inst.cooldown = Math.max(inst.cooldown, DRAFT_GCD_TICKS);
+        if (hasChargeSystem(instCard)) {
+          ensureChargeRuntime(inst, instCard);
+          inst.chargeLockTicks = Math.max(inst.chargeLockTicks ?? 0, DRAFT_GCD_TICKS);
+          inst.cooldown = Math.max(inst.cooldown ?? 0, inst.chargeLockTicks);
+        } else {
+          inst.cooldown = Math.max(inst.cooldown ?? 0, DRAFT_GCD_TICKS);
+        }
       }
     }
   }

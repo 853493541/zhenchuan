@@ -30,10 +30,24 @@ export function applyAbilityBuffs(params: {
 }) {
   const { state, ability, source, target, abilityDodged } = params;
 
-  // 百足/大狮子吼 buff application is handled via custom immediate AoE effect logic.
+  // 百足/五方行尽/棒打狗头/大狮子吼 buff application is handled via custom immediate effect logic.
+  // 撼地 stun is applied by the post-dash GameLoop handler (only when enemy is within AOE range on landing).
+  // 九转归一 buffs are applied manually in immediateEffects (KNOCKED_BACK) and GameLoop (羽化 wall stun).
+  // 鹤归孤山 stun is applied by the post-dash GameLoop handler; only its own buffs[0] stun is excluded.
+  // 绛唇珠袖: only buff 2323 (debuff) is applied at cast time; buff 2324 (silence) is trigger-only.
   if (
     ability.id === "baizu" ||
-    Array.isArray(ability.effects) && ability.effects.some((e: any) => e.type === "AOE_APPLY_BUFFS")
+    ability.id === "han_di" ||
+    ability.id === "jiu_zhuan_gui_yi" ||
+    ability.id === "he_gui_gu_shan" ||
+    ability.id === "jiang_chun_zhu_xiu" ||
+    ability.id === "wufang_xingjin" ||
+    (Array.isArray(ability.effects) &&
+      ability.effects.some((e: any) =>
+        e.type === "AOE_APPLY_BUFFS" ||
+        e.type === "WUFANG_XINGJIN_AOE" ||
+        e.type === "BANG_DA_GOU_TOU"
+      ))
   ) {
     return;
   }

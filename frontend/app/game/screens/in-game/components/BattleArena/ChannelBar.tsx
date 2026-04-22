@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import styles from './ChannelBar.module.css';
 
 /* ============================================================
@@ -55,21 +55,45 @@ export function ChannelBar({ data }: ChannelBarProps) {
   return <ReverseBar data={data} />;
 }
 
+function useNowMs() {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    let rafId = 0;
+    const tick = () => {
+      setNowMs(Date.now());
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  return nowMs;
+}
+
 /* ---- 正读条: fills 0→100% ---- */
 function ForwardBar({ data }: { data: ForwardChannelData }) {
   const { name, startedAt, durationMs } = data;
+  const nowMs = useNowMs();
+  const safeDurationMs = Math.max(1, durationMs);
+  const elapsedMs = Math.max(0, Math.min(safeDurationMs, nowMs - startedAt));
+  const progressPct = (elapsedMs / safeDurationMs) * 100;
   // Tick marks at 1-second intervals
-  const tickCount = Math.max(2, Math.round(durationMs / 1000));
+  const tickCount = Math.max(2, Math.round(safeDurationMs / 1000));
 
   return (
     <div className={styles.channelBarWrap}>
       <span className={styles.channelBarLabel}>{name}</span>
       <div className={styles.channelBarTrack}>
-        {/* key=startedAt: CSS animation restarts when a new channel begins */}
         <div
-          key={startedAt}
           className={styles.channelBarFillForward}
-          style={{ animationDuration: `${durationMs}ms` }}
+          style={{
+            width: `${progressPct.toFixed(2)}%`,
+          }}
         />
         {Array.from({ length: tickCount - 1 }, (_, i) => (
           <div
@@ -86,22 +110,25 @@ function ForwardBar({ data }: { data: ForwardChannelData }) {
 /* ---- 倒读条: drains 100→0% ---- */
 function ReverseBar({ data }: { data: ReverseChannelData }) {
   const { name, appliedAt, durationMs, tickIntervalMs } = data;
-  const expiresAt = appliedAt + durationMs;
+  const nowMs = useNowMs();
+  const safeDurationMs = Math.max(1, durationMs);
+  const elapsedMs = Math.max(0, Math.min(safeDurationMs, nowMs - appliedAt));
+  const remainingPct = 100 - (elapsedMs / safeDurationMs) * 100;
 
   // Tick marks at tickIntervalMs positions (e.g. 625ms for 风来吴山, 1s for 笑醉狂)
-  const tickCount = tickIntervalMs && durationMs > 0
-    ? Math.floor(durationMs / tickIntervalMs)
+  const tickCount = tickIntervalMs && safeDurationMs > 0
+    ? Math.floor(safeDurationMs / tickIntervalMs)
     : 0;
 
   return (
     <div className={styles.channelBarWrap}>
       <span className={styles.channelBarLabel}>{name}</span>
       <div className={styles.channelBarTrack}>
-        {/* key=expiresAt: CSS animation restarts when a new buff instance is applied */}
         <div
-          key={expiresAt}
           className={styles.channelBarFill}
-          style={{ animationDuration: `${durationMs}ms` }}
+          style={{
+            width: `${Math.max(0, remainingPct).toFixed(2)}%`,
+          }}
         />
         {tickIntervalMs && tickCount > 1 && Array.from({ length: tickCount - 1 }, (_, i) => (
           <div

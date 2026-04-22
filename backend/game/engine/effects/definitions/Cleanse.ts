@@ -2,6 +2,10 @@
 
 import { ActiveBuff } from "../../state/types";
 
+function isMoheKnockdown(buff: ActiveBuff) {
+  return buff.buffId === 1002 && buff.sourceAbilityId === "mohe_wuliang";
+}
+
 /**
  * Control level cleansability:
  *   Level 0 – ROOT, SLOW           → REMOVABLE only when effect.cleanseRootSlow=true
@@ -17,6 +21,7 @@ export function handleCleanse(
 
   source.buffs = source.buffs.filter(
     (b) =>
+      isMoheKnockdown(b) ||
       !b.effects.some(
         (e) =>
           ((e.type === "ROOT" || e.type === "SLOW") && cleanseRootSlow) ||

@@ -328,14 +328,23 @@
   position: absolute;
   top: 14px;
   right: 14px;
-  font-size: 9px;
-  color: #444;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 4px;
-  padding: 3px 7px;
+  font-size: 18px;
+  line-height: 1;
+  color: #e8eef5;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  padding: 6px 10px;
   pointer-events: none;
   z-index: 20;
+}
+
+.rttBadgeValue {
+  display: inline-block;
+  min-width: 2.8em;
+  text-align: right;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 /* ============================================================
@@ -989,19 +998,19 @@
 }
 
 .chargeFrameQueTaZhi .chargeFrameProgress {
-  stroke-width: 6;
+  stroke-width: 9;
 }
 
 .chargeFrameTrack {
   fill: none;
   stroke: rgba(80, 14, 14, 0.95);
-  stroke-width: 4;
+  stroke-width: 6;
 }
 
 .chargeFrameProgress {
   fill: none;
   stroke: #ff2e2e;
-  stroke-width: 4;
+  stroke-width: 6;
   stroke-linecap: square;
   stroke-linejoin: miter;
 }

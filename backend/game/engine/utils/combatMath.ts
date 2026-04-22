@@ -10,17 +10,24 @@ export function resolveScheduledDamage(params: {
   source: { buffs: ActiveBuff[] };
   target: { buffs: ActiveBuff[] };
   base: number;
+  /** When provided, DAMAGE_MULTIPLIER effects with restrictToAbilityId are only applied if they match. */
+  abilityId?: string;
 }) {
   let dmg = params.base;
 
-  // DAMAGE MULTIPLIER (e.g. 女娲补天, 夺命蛊)
-  // Stack additively by bonus portion: 2.0 and 1.3 => 1 + (1.0 + 0.3) = 2.3
-  const multipliers = allEffects(params.source)
-    .filter((e) => e.type === "DAMAGE_MULTIPLIER")
-    .map((e) => e.value ?? 1);
-  if (multipliers.length > 0) {
-    const additiveMultiplier = 1 + multipliers.reduce((sum, value) => sum + (value - 1), 0);
-    dmg *= Math.max(0, additiveMultiplier);
+  // DAMAGE MULTIPLIER (e.g. 女娲补天, 夺命蛊, 听雷·伤)
+  // Stack additively by bonus portion per stack: value 1.1 with 3 stacks = +30%
+  // If a buff effect has restrictToAbilityId set, it only applies when abilityId matches.
+  let dmgMultiBonus = 0;
+  for (const buff of params.source.buffs) {
+    const dmEff = buff.effects.find((e) => e.type === "DAMAGE_MULTIPLIER");
+    if (dmEff) {
+      if ((dmEff as any).restrictToAbilityId && (dmEff as any).restrictToAbilityId !== params.abilityId) continue;
+      dmgMultiBonus += ((dmEff.value ?? 1) - 1) * (buff.stacks ?? 1);
+    }
+  }
+  if (dmgMultiBonus > 0) {
+    dmg *= Math.max(0, 1 + dmgMultiBonus);
   }
 
   // DAMAGE REDUCTION (e.g. 风袖低昂)
@@ -40,8 +47,14 @@ export function resolveHealAmount(params: {
 }) {
   let heal = params.base;
 
-  const hr = allEffects(params.target).find((e) => e.type === "HEAL_REDUCTION");
-  if (hr) heal *= 1 - (hr.value ?? 0);
+  // Sum HEAL_REDUCTION across all buffs, multiplied by stack count for stackable debuffs.
+  const totalHealReduction = params.target.buffs.reduce((sum, buff) => {
+    const hr = buff.effects.find((e) => e.type === "HEAL_REDUCTION");
+    if (!hr) return sum;
+    const stacks = buff.stacks ?? 1;
+    return sum + (hr.value ?? 0) * stacks;
+  }, 0);
+  if (totalHealReduction > 0) heal *= Math.max(0, 1 - totalHealReduction);
 
   return Math.max(0, Math.floor(heal));
 }

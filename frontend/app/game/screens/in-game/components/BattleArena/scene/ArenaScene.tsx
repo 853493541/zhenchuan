@@ -128,9 +128,9 @@ interface ArenaSceneProps {
   mode?: string;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
   groundZones?: GroundZone[];
-  groundCastPreview?: { x: number; y: number; radius: number; label?: string } | null;
-  onGroundPointerMove?: (x: number, y: number) => void;
-  onGroundPointerDown?: (x: number, y: number) => void;
+  groundCastPreview?: { x: number; y: number; z?: number; radius: number; label?: string; isValid?: boolean } | null;
+  onGroundPointerMove?: (x: number, y: number, worldZ?: number, isHorizontal?: boolean) => void;
+  onGroundPointerDown?: (x: number, y: number, worldZ?: number) => void;
   showCollisionShells?: boolean;
   collisionReady?: boolean;
   collisionSystemRef?: MutableRefObject<MapCollisionSystem | null>;
@@ -205,7 +205,7 @@ function CollisionTestSetup({ blueprintMode, t }: { blueprintMode: boolean; t: E
     gl.toneMappingExposure = (!blueprintMode && t.exposure) ? 1.25 : 1.0;
     gl.outputColorSpace = THREE.SRGBColorSpace;
     gl.shadowMap.enabled = !blueprintMode && t.shadows;
-    gl.shadowMap.type = THREE.PCFSoftShadowMap;
+    gl.shadowMap.type = THREE.PCFShadowMap;
     gl.shadowMap.needsUpdate = true;
   }, [gl, blueprintMode, t.toneMapping, t.exposure, t.shadows]);
   return null;
@@ -430,12 +430,12 @@ export default function ArenaScene({
 
   const handleGroundPointerMove = (e: any) => {
     if (!onGroundPointerMove) return;
-    onGroundPointerMove(e.point.x + worldHalfX, worldHalfY - e.point.z);
+    onGroundPointerMove(e.point.x + worldHalfX, worldHalfY - e.point.z, e.point.y, e.isHorizontal !== false);
   };
 
   const handleGroundPointerDown = (e: any) => {
     if (!onGroundPointerDown) return;
-    onGroundPointerDown(e.point.x + worldHalfX, worldHalfY - e.point.z);
+    onGroundPointerDown(e.point.x + worldHalfX, worldHalfY - e.point.z, e.point.y);
   };
 
   const isCollisionTest = mode === 'collision-test';
@@ -552,16 +552,21 @@ export default function ArenaScene({
         const isBaizuMarker = zone.abilityId === 'baizu_marker';
         const isShengTaiji = zone.abilityId === 'qionglong_huasheng_zone';
         const isKuanglong = zone.abilityId === 'kuang_long_luan_wu';
+        const isZhenShanHe = zone.abilityId === 'zhen_shan_he';
         const isOwn = zone.ownerUserId === me.userId;
         const color = isBaizuMarker
           ? (isOwn ? '#b06cff' : '#ff3333')
           : isShengTaiji
           ? (isOwn ? '#4488ff' : '#ff3333')
+          : isZhenShanHe
+          ? (isOwn ? '#f0c44f' : '#ff8a4b')
           : (isOwn ? '#4488ff' : '#ff3333');
         const baseLabel = isBaizuMarker
           ? '百足'
+          : isZhenShanHe
+          ? '镇山河'
           : (zone.abilityName ?? '雷云');
-        const showOwnTimer = isOwn && (isShengTaiji || isKuanglong);
+        const showOwnTimer = isOwn && (isShengTaiji || isKuanglong || isZhenShanHe);
         const secondsLeft = Math.max(1, Math.ceil((zone.expiresAt - nowMs) / 1000));
         const label = showOwnTimer ? `${baseLabel} · ${secondsLeft}` : baseLabel;
         return (
@@ -584,10 +589,22 @@ export default function ArenaScene({
         <AoeZone
           worldX={groundCastPreview.x}
           worldY={groundCastPreview.y}
-          worldZ={getZoneVisualZ(groundCastPreview.x, groundCastPreview.y, 0)}
+          worldZ={
+            groundCastPreview.isValid === false
+              ? (groundCastPreview.z ?? 0)  // On a wall: use raw hit Z, no snap
+              : getZoneVisualZ(groundCastPreview.x, groundCastPreview.y, groundCastPreview.z ?? 0)
+          }
           radius={groundCastPreview.radius}
-          color={groundCastPreview.label === '百足' ? '#b06cff' : '#ffd24a'}
-          labelColor={groundCastPreview.label === '百足' ? '#d8b6ff' : '#ffe98a'}
+          color={
+            groundCastPreview.isValid === false ? '#ff3333'
+            : groundCastPreview.label === '百足' ? '#b06cff'
+            : '#ffd24a'
+          }
+          labelColor={
+            groundCastPreview.isValid === false ? '#ff8888'
+            : groundCastPreview.label === '百足' ? '#d8b6ff'
+            : '#ffe98a'
+          }
           label={groundCastPreview.label ?? "预览"}
           worldHalfX={worldHalfX}
           worldHalfY={worldHalfY}

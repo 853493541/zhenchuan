@@ -1,12 +1,9 @@
 // backend/game/engine/effects/definitions/Dash.ts
-
 import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
 import { PlayerState } from "../../state/types";
 import { Position, gameplayUnitsToWorldUnits, worldUnitsToGameplayUnits } from "../../state/types/position";
 import { pushEvent } from "../events";
-
-/** Stable buffId for the CC-immunity granted while dashing */
-const DASH_CC_IMMUNE_BUFF_ID = 999901;
+import { applyDashRuntimeBuff } from "./DirectionalDash";
 
 const TICK_RATE = 30;
 
@@ -89,14 +86,18 @@ export function handleDash(
   sourcePlayer.isPowerJump = false;
   sourcePlayer.isPowerJumpCombined = false;
 
-  // Grant CC immunity for the duration of the dash
-  sourcePlayer.buffs = sourcePlayer.buffs.filter(b => b.buffId !== DASH_CC_IMMUNE_BUFF_ID);
-  sourcePlayer.buffs.push({
-    buffId: DASH_CC_IMMUNE_BUFF_ID,
-    name: "龙牙冲刺",
-    category: "BUFF",
-    effects: [{ type: "CONTROL_IMMUNE" }],
-    expiresAt: Date.now() + durationSec * 1000 + 100,
+  applyDashRuntimeBuff({
+    state,
+    target: sourcePlayer,
+    durationMs: Math.ceil(durationSec * 1000) + 100,
+    effects: [
+      { type: "CONTROL_IMMUNE" },
+      { type: "KNOCKBACK_IMMUNE" },
+      { type: "DISPLACEMENT" },
+      { type: "DASH_TURN_LOCK" },
+    ] as ActiveBuff["effects"],
+    sourceAbilityId: ability.id,
+    sourceAbilityName: ability.name,
   });
 
   pushEvent(state, {

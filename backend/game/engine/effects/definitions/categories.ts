@@ -15,9 +15,13 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DAMAGE_MULTIPLIER: "BUFF",
 
   UNTARGETABLE: "BUFF",
+  INVULNERABLE: "BUFF",
   STEALTH: "BUFF",
   CONTROL_IMMUNE: "BUFF",
   KNOCKBACK_IMMUNE: "BUFF",
+  DASH_TURN_LOCK: "BUFF",
+  DASH_TURN_OVERRIDE: "BUFF",
+  DISPLACEMENT: "BUFF",
   INTERRUPT_IMMUNE: "BUFF",
   ROOT_SLOW_IMMUNE: "BUFF",
   DODGE_NEXT: "BUFF",
@@ -40,6 +44,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   TIMED_SELF_DAMAGE: "DEBUFF",
   TIMED_SELF_HEAL: "BUFF",
   TIMED_AOE_DAMAGE_IF_SELF_HP_GT: "BUFF",
+  TIMED_PULL_TARGET_TO_FRONT: "DEBUFF",
 
   /* ================= PATCH 0.3 ================= */
   DRAW_REDUCTION: "DEBUFF",
@@ -53,6 +58,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   /* ================= REAL-TIME MOVEMENT ================= */
   DASH: "BUFF",
   DIRECTIONAL_DASH: "BUFF",
+  GROUND_TARGET_DASH: "BUFF",
   AOE_APPLY_BUFFS: "DEBUFF",
   JUMP_BOOST: "BUFF",
 
@@ -71,8 +77,16 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   PLACE_GROUND_ZONE: "BUFF",
   PLACE_SHENGTAIJI_ZONE: "BUFF",
   BAIZU_AOE: "DEBUFF",
+  WUFANG_XINGJIN_AOE: "DEBUFF",
+  BANG_DA_GOU_TOU: "DEBUFF",
   // Stack-based on-hit debuff
   STACK_ON_HIT_DAMAGE: "DEBUFF",
+  // Stack-based on-hit heal (贯体)
+  STACK_ON_HIT_GUAN_TI_HEAL: "BUFF",
+  // Instant 贯体 heal bypassing HEAL_REDUCTION
+  INSTANT_GUAN_TI_HEAL: "BUFF",
+  // Knockback dash (九转归一): force target away, stun if wall hit
+  KNOCKBACK_DASH: "DEBUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

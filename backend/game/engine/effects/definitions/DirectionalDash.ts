@@ -30,13 +30,43 @@ export const DASH_CC_IMMUNE_BUFF_ID = 999900;
 const MAX_DOWN_ANGLE_DEG = 35;
 const MAX_UP_ANGLE_DEG   = 45;
 
-const DASH_CAST_LOCK_IDS = new Set([
-  "nieyun_zhuyue",
-  "lingxiao_lansheng",
-  "yaotai_zhenhe",
-  "yingfeng_huilang",
-  "houyao",
-]);
+export function applyDashRuntimeBuff(params: {
+  state: GameState;
+  target: PlayerState;
+  durationMs: number;
+  effects: ActiveBuff["effects"];
+  sourceAbilityId?: string;
+  sourceAbilityName?: string;
+  appliedAt?: number;
+}) {
+  const {
+    state,
+    target,
+    durationMs,
+    effects,
+    sourceAbilityId,
+    sourceAbilityName,
+    appliedAt = Date.now(),
+  } = params;
+
+  const dedupedEffects = Array.from(
+    new Map(effects.map((effect) => [effect.type, effect])).values()
+  ) as ActiveBuff["effects"];
+
+  target.buffs = target.buffs.filter((b) => b.buffId !== DASH_CC_IMMUNE_BUFF_ID);
+  target.buffs.push({
+    buffId: DASH_CC_IMMUNE_BUFF_ID,
+    name: "Dash Runtime",
+    category: "BUFF",
+    effects: dedupedEffects,
+    expiresAt: appliedAt + Math.max(0, durationMs),
+    breakOnPlay: false,
+    sourceAbilityId,
+    sourceAbilityName,
+    appliedAtTurn: state.turn,
+    appliedAt,
+  } as ActiveBuff);
+}
 
 function pointToSegmentDistance2D(
   px: number,
@@ -202,22 +232,25 @@ export function handleDirectionalDash(
   source.velocity.vy = 0;
 
   // Grant CC immunity for the duration of the dash
-  const dashRuntimeEffects: Array<{ type: string }> = [{ type: "CONTROL_IMMUNE" }];
-  if (DASH_CAST_LOCK_IDS.has(ability.id)) {
-    dashRuntimeEffects.push({ type: "KNOCKBACK_IMMUNE" });
-    dashRuntimeEffects.push({ type: "SILENCE" });
+  const dashRuntimeEffects: ActiveBuff["effects"] = [
+    { type: "CONTROL_IMMUNE" },
+    { type: "KNOCKBACK_IMMUNE" },
+    { type: "DISPLACEMENT" },
+    { type: "DASH_TURN_LOCK" },
+  ];
+  if (ability.id === "taxingxing") {
+    dashRuntimeEffects.push({ type: "DODGE_NEXT", chance: 0.65 } as any);
   }
-
-  source.buffs = source.buffs.filter(b => b.buffId !== DASH_CC_IMMUNE_BUFF_ID);
-  source.buffs.push({
-    buffId: DASH_CC_IMMUNE_BUFF_ID,
-    name: "Dash Runtime",
-    category: "BUFF",
-    effects: dashRuntimeEffects as any,
-    expiresAt: Date.now() + Math.ceil(durationTicks * (1000 / 30)) + 500,
-    appliedAtTurn: state.turn,
-    appliedAt: Date.now(),
-  } as ActiveBuff);
+  const dashRuntimeAppliedAt = Date.now();
+  applyDashRuntimeBuff({
+    state,
+    target: source,
+    durationMs: Math.ceil(durationTicks * (1000 / 30)) + 500,
+    effects: dashRuntimeEffects,
+    sourceAbilityId: ability.id,
+    sourceAbilityName: ability.name,
+    appliedAt: dashRuntimeAppliedAt,
+  });
 
   pushEvent(state, {
     turn: state.turn,

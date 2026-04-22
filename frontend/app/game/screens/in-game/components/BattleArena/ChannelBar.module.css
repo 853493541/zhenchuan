@@ -28,15 +28,7 @@
   bottom: 0;
   background: linear-gradient(90deg, #c8960c, #f0c030, #f5e080);
   border-radius: 2px 0 0 2px;
-  animation-name: channelFillShrink;
-  animation-timing-function: linear;
-  animation-fill-mode: forwards;
-  /* animation-duration is set via inline style */
-}
-
-@keyframes channelFillShrink {
-  from { width: 100%; }
-  to   { width: 0%; }
+  will-change: width;
 }
 
 /* ── 正读条: bar fills 0 → 100% as the channel charges ── */
@@ -47,15 +39,7 @@
   bottom: 0;
   background: linear-gradient(90deg, #c8960c, #f0c030, #f5e080);
   border-radius: 2px 0 0 2px;
-  animation-name: channelFillGrow;
-  animation-timing-function: linear;
-  animation-fill-mode: forwards;
-  /* animation-duration is set via inline style */
-}
-
-@keyframes channelFillGrow {
-  from { width: 0%; }
-  to   { width: 100%; }
+  will-change: width;
 }
 
 /* Tick marks — vertical dividers showing periodic intervals */

@@ -9,7 +9,10 @@
    - Backend: `cd /home/ubuntu/zhenchuan/backend && npm run build`  
    - Frontend: `cd /home/ubuntu/zhenchuan/frontend && npm run build`  
    - Restart: `pm2 restart all` (from `/home/ubuntu/zhenchuan`)  
-   - If a port is in use: kill the occupying process (`lsof -ti:PORT | xargs kill -9`), *then* do `pm2 restart all`.  
+   - At the end of **each numbered round / point**, run both builds again to check for errors before replying.  
+   - PM2 must be restarted only after the newest successful build, and the reply must confirm PM2 is running that newest build with no reported startup errors.  
+   - If port `3000` or `5000` is in use when PM2 starts or restarts, kill the occupying process (`lsof -ti:PORT | xargs kill -9`) and start PM2 again.  
+   - If a different required port is in use: kill the occupying process (`lsof -ti:PORT | xargs kill -9`), *then* do `pm2 restart all`.  
    - Never skip the build step — ts-node compiles at startup only.
 
 3. **Record experiences.** Every problem solved, unresolved issue, or disproved approach must be written to:  
@@ -45,6 +48,12 @@
 ## Git / Version Control
 
 - **Never commit** unless explicitly told to. If the user says "commit once", do exactly one commit — never more.
+
+## Buff Implementation Rules
+
+- **All buffs must go through `addBuff()` in `buffRuntime.ts`.** Never directly push objects into a player's `buffs` array. Direct pushes bypass immunity checks, the 递减 (diminishing returns) system, BUFF_APPLIED event emission, and the status bar display.
+- **Every buff applied to a player must be declared in the ability's `buffs: []` array** so it is visible, editable, and preloadable. If an ability's custom handler applies a buff, exclude that ability from `applyAbilityBuffs` in `buffs.ts` and call `addBuff` manually.
+- **CONTROL buffs automatically trigger 眩晕递减** (stun diminishing returns, buffId 990101) via `getResistanceConfig` in `addBuff`. ROOT buffs trigger 锁足递减 (990100). No extra code needed — just use `addBuff`.
 
 ## Common Pitfalls
 

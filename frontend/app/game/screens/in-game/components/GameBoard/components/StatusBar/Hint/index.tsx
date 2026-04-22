@@ -89,7 +89,7 @@ export default function StatusHint({
       <div className={styles.title}>{name}</div>
       <div className={styles.desc}>{description || "无"}</div>
       <div className={styles.time}>
-        剩余时间：{Math.max(5, remainingTurns)}s
+        剩余时间：{Math.max(0, remainingTurns).toFixed(1)}s
       </div>
     </div>
   );

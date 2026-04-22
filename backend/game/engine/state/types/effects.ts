@@ -14,6 +14,7 @@ export type EffectType =
   | "DAMAGE_MULTIPLIER"
   | "HEAL_REDUCTION"
   | "UNTARGETABLE"
+  | "INVULNERABLE"
   | "STEALTH"
   | "ATTACK_LOCK"
   | "CONTROL"
@@ -22,6 +23,9 @@ export type EffectType =
   | "QINGGONG_SEAL"
   | "KNOCKBACK_IMMUNE"
   | "CONTROL_IMMUNE"
+  | "DASH_TURN_LOCK"
+  | "DASH_TURN_OVERRIDE"
+  | "DISPLACEMENT"
   | "INTERRUPT_IMMUNE"
   | "ROOT_SLOW_IMMUNE"
   | "DODGE_NEXT"
@@ -38,6 +42,7 @@ export type EffectType =
   | "DIRECTIONAL_DASH"
   | "AOE_APPLY_BUFFS"
   | "JUMP_BOOST"
+  | "GROUND_TARGET_DASH"
   | "PERIODIC_DAMAGE"
   | "PERIODIC_HEAL"
   | "PERIODIC_GUAN_TI_HEAL"
@@ -47,17 +52,24 @@ export type EffectType =
   | "TIMED_SELF_HEAL"
   | "TIMED_AOE_DAMAGE_IF_SELF_HP_GT"
   | "TIMED_GUAN_TI_HEAL"
+  | "TIMED_PULL_TARGET_TO_FRONT"
   | "PLACE_GROUND_ZONE"
   | "PLACE_SHENGTAIJI_ZONE"
   | "BAIZU_AOE"
+  | "WUFANG_XINGJIN_AOE"
+  | "BANG_DA_GOU_TOU"
   | "STACK_ON_HIT_DAMAGE"
+  | "STACK_ON_HIT_GUAN_TI_HEAL"
+  | "INSTANT_GUAN_TI_HEAL"
   | "KNOCKED_BACK"
   | "SPEED_BOOST"
   // Level 0 control (removable by cleanse)
   | "ROOT"
   | "SLOW"
   // Jump enhancements
-  | "MULTI_JUMP";
+  | "MULTI_JUMP"
+  // Knockback: force a dash on the target away from the caster
+  | "KNOCKBACK_DASH";
 
 /**
  * Immediate ability effects
@@ -67,6 +79,7 @@ export interface AbilityEffect {
   value?: number;
   chance?: number;
   repeatTurns?: number;
+  maxTargets?: number;
 
   allowWhileControlled?: boolean;
   allowWhileKnockedBack?: boolean;
@@ -87,6 +100,18 @@ export interface AbilityEffect {
 
   /** Range (units) for CHANNEL_AOE_TICK — target must be within this distance */
   range?: number;
+
+  /** For zone placement effects: custom zone duration in ms. */
+  zoneDurationMs?: number;
+
+  /** For zone placement effects: custom tick interval in ms. */
+  zoneIntervalMs?: number;
+
+  /** For zone placement effects: offset from caster in gameplay units. */
+  zoneOffsetUnits?: number;
+
+  /** For zone placement effects: vertical effective height in gameplay units. */
+  zoneHeight?: number;
 
   /**
    * For DIRECTIONAL_DASH: when true, dash heading is steered by live facing every tick.
@@ -124,6 +149,11 @@ export interface AbilityEffect {
    * For DIRECTIONAL_DASH route damage: collision radius around dash path.
    */
   routeRadius?: number;
+
+  /**
+   * For KNOCKBACK_DASH: stun duration (ms) if target hits a wall during the dash.
+   */
+  wallStunMs?: number;
 
   /**
    * For DIRECTIONAL_DASH: optional arc peak height in world units.
@@ -177,4 +207,11 @@ export type BuffEffect = Omit<AbilityEffect, "allowWhileControlled"> & {
    * For zone placement effects: vertical effective height.
    */
   zoneHeight?: number;
+
+  /**
+   * When set on a DAMAGE_MULTIPLIER (or similar) effect inside a buff,
+   * the bonus only applies when the ability being cast matches this id.
+   * e.g. '听雷·伤' buff should only boost damage from 'ting_lei' casts.
+   */
+  restrictToAbilityId?: string;
 };

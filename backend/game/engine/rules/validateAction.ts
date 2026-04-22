@@ -137,7 +137,7 @@ export function validateCastAbility(
   options?: {
     pendingJump?: boolean;
     targetUserId?: string;
-    groundTarget?: { x: number; y: number };
+    groundTarget?: { x: number; y: number; z?: number };
     /** Map objects to use for LOS checks. Defaults to worldMap.objects if omitted. */
     mapObjects?: MapObject[];
     /** Minimum object height for LOS blocking (0 = all heights block). */
@@ -222,7 +222,10 @@ export function validateCastAbility(
   }
 
   /* ================= QINGGONG SEAL ================= */
-  if ((ability as any).qinggong && hasEffect(player, "QINGGONG_SEAL")) {
+  if (
+    (ability as any).qinggong &&
+    (hasEffect(player, "QINGGONG_SEAL") || hasEffect(player, "DISPLACEMENT"))
+  ) {
     throw new Error("ERR_QINGGONG_SEALED");
   }
 
@@ -236,11 +239,16 @@ export function validateCastAbility(
     throw new Error("ERR_SILENCED");
   }
 
+  if (hasEffect(player, "DISPLACEMENT")) {
+    throw new Error("ERR_DISPLACEMENT");
+  }
+
   /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
   if (hasEffect(player, "KNOCKED_BACK")) {
     const allowsKnockback =
-      Array.isArray(ability.effects) &&
-      ability.effects.some((e: any) => e.allowWhileKnockedBack === true);
+      (ability as any).allowWhileKnockedBack === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e: any) => e.allowWhileKnockedBack === true));
     if (!allowsKnockback) {
       throw new Error("ERR_KNOCKED_BACK");
     }
@@ -250,13 +258,18 @@ export function validateCastAbility(
   const isControlled =
     hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
   const allowsOverride =
-    Array.isArray(ability.effects) &&
-    ability.effects.some((e: any) => e.allowWhileControlled === true);
+    (ability as any).allowWhileControlled === true ||
+    (Array.isArray(ability.effects) &&
+      ability.effects.some((e: any) => e.allowWhileControlled === true));
   if (isControlled && !allowsOverride) {
     throw new Error("ERR_CONTROLLED");
   }
 
-  /* (Level 0 — ROOT / SLOW only restrict movement, spells are not blocked) */
+  if (hasEffect(player, "ROOT") && (ability as any).cannotCastWhileRooted === true) {
+    throw new Error("ERR_ROOTED");
+  }
+
+  /* (Level 0 — ROOT / SLOW only restrict movement unless ability is ROOT-locked) */
 
   /* ================= MIN SELF HP (exclusive, shields not counted) ================= */
   if (typeof (ability as any).minSelfHpExclusive === "number") {
@@ -395,7 +408,10 @@ export function validatePlayAbility(
   ensureChargeRuntime(instance, ability);
 
   /* ================= QINGGONG SEAL ================= */
-  if ((ability as any).qinggong && hasEffect(player, "QINGGONG_SEAL")) {
+  if (
+    (ability as any).qinggong &&
+    (hasEffect(player, "QINGGONG_SEAL") || hasEffect(player, "DISPLACEMENT"))
+  ) {
     throw new Error("ERR_QINGGONG_SEALED");
   }
 
@@ -415,12 +431,17 @@ export function validatePlayAbility(
     throw new Error("ERR_SILENCED");
   }
 
+  if (hasEffect(player, "DISPLACEMENT")) {
+    throw new Error("ERR_DISPLACEMENT");
+  }
+
   /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
 
   if (hasEffect(player, "KNOCKED_BACK")) {
     const allowsKnockback =
-      Array.isArray(ability.effects) &&
-      ability.effects.some((e) => (e as any).allowWhileKnockedBack === true);
+      (ability as any).allowWhileKnockedBack === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e) => (e as any).allowWhileKnockedBack === true));
     if (!allowsKnockback) {
       throw new Error("ERR_KNOCKED_BACK");
     }
@@ -432,14 +453,19 @@ export function validatePlayAbility(
     hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
 
   const allowsOverride =
-    Array.isArray(ability.effects) &&
-    ability.effects.some((e) => e.allowWhileControlled === true);
+    (ability as any).allowWhileControlled === true ||
+    (Array.isArray(ability.effects) &&
+      ability.effects.some((e) => e.allowWhileControlled === true));
 
   if (isControlled && !allowsOverride) {
     throw new Error("ERR_CONTROLLED");
   }
 
-  /* (Level 0 — ROOT / SLOW only restrict movement, spells are not blocked) */
+  if (hasEffect(player, "ROOT") && (ability as any).cannotCastWhileRooted === true) {
+    throw new Error("ERR_ROOTED");
+  }
+
+  /* (Level 0 — ROOT / SLOW only restrict movement unless ability is ROOT-locked) */
 
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
 

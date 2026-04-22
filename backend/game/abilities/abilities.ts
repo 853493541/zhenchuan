@@ -1,8 +1,21 @@
 // backend/game/abilities/abilities.ts
 
 import { Ability } from "../engine/state/types";
+import {
+  AbilityEditorOverrideEntry,
+  AbilityEditorOverrideMap,
+  AbilityPropertyId,
+  AbilityRecord,
+  buildAbilityEditorEntry,
+  buildResolvedAbilities,
+  getAbilityNumericFieldDefinition,
+  getAbilityPropertyDefinition,
+  listAbilityPropertyDefinitions,
+  loadAbilityEditorOverrides,
+  saveAbilityEditorOverrides,
+} from "./abilityPropertySystem";
 
-export const ABILITIES: Record<string, Ability & { description: string }> = {
+export const BASE_ABILITIES: AbilityRecord = {
   /* ================= 通用技能 (common abilities — always in every player's hand) ================= */
 
   menghu_xiasha: {
@@ -26,6 +39,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
+    cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD", durationTicks: 30 }],
     isCommon: true,
   },
@@ -38,6 +52,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
+    cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY", durationTicks: 21 }],
     isCommon: true,
   },
@@ -50,6 +65,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
+    cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT", durationTicks: 30 }],
     isCommon: true,
   },
@@ -62,6 +78,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
     qinggong: true,
+    cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT", durationTicks: 30 }],
     isCommon: true,
   },
@@ -84,7 +101,6 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         durationMs: 30_000,  // consumed by movement.ts on next jump; 30-second fallback expiry
         description: "下次跳跃高度提升至12单位",
         effects: [{ type: "JUMP_BOOST" }],
-        applyTo: "SELF",
       },
     ],
     isCommon: true,
@@ -99,6 +115,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     cooldownTicks: 0,
     gcd: false,
     qinggong: true,
+    cannotCastWhileRooted: true,
     requiresGrounded: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 2.7, dirMode: "AWAY", durationTicks: 30 }],
     isCommon: true,
@@ -113,6 +130,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     cooldownTicks: 300,
     gcd: true,
     qinggong: true,
+    cannotCastWhileRooted: true,
     effects: [
       {
         type: "DIRECTIONAL_DASH",
@@ -229,6 +247,143 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
       },
     ],
   },
+
+  wufang_xingjin: {
+    id: "wufang_xingjin",
+    name: "五方行尽",
+    description: "可选目标或地面施放（范围8）\n命中后立刻造成1点伤害\n附加【五方行尽】10秒：锁足；后半段被击时有50%概率解除\n若命中至少1名敌方目标，获得【会神】8秒：伤害提高20%",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    faceDirection: false,
+    allowGroundCastWithoutTarget: true,
+    effects: [{ type: "WUFANG_XINGJIN_AOE", value: 1, range: 8 }],
+    buffs: [
+      {
+        buffId: 1330,
+        name: "五方行尽",
+        category: "DEBUFF",
+        durationMs: 10_000,
+        description: "锁足：无法移动和转向；后半段被击时有50%概率解除",
+        effects: [{ type: "ROOT" }],
+      },
+      {
+        buffId: 1331,
+        name: "被击不会解除五方锁足",
+        category: "DEBUFF",
+        durationMs: 5_000,
+        description: "存在期间，五方行尽锁足不会因受击解除",
+        effects: [],
+      },
+      {
+        buffId: 1336,
+        name: "会神",
+        category: "BUFF",
+        durationMs: 8_000,
+        description: "伤害提高20%",
+        effects: [{ type: "DAMAGE_MULTIPLIER", value: 1.2 }],
+      },
+    ],
+  },
+
+  bang_da_gou_tou: {
+    id: "bang_da_gou_tou",
+    name: "棒打狗头",
+    description: "20尺，正面施放\n起手即附加效果并冲向目标，抵达时造成10点伤害\n常态：附加【棒打狗头·锁足】2秒，并附加【心怵·一】6秒（受到伤害增加6%）\n若目标已有【心怵·一】：改为附加【棒打狗头·定身】2秒，移除【心怵·一】，并附加【心怵·二】6秒（受到伤害增加6%），本次进入16秒冷却",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 0,
+    gcd: true,
+    effects: [{ type: "BANG_DA_GOU_TOU", value: 10 }],
+    buffs: [
+      {
+        buffId: 1334,
+        name: "棒打狗头·锁足",
+        category: "DEBUFF",
+        durationMs: 2_000,
+        description: "锁足：无法移动和转向",
+        effects: [{ type: "ROOT" }],
+      },
+      {
+        buffId: 1335,
+        name: "棒打狗头·定身",
+        category: "DEBUFF",
+        durationMs: 2_000,
+        description: "定身：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+      {
+        buffId: 1332,
+        name: "心怵·一",
+        category: "DEBUFF",
+        durationMs: 6_000,
+        description: "受到伤害增加6%",
+        effects: [{ type: "DAMAGE_TAKEN_INCREASE", value: 0.06 }],
+      },
+      {
+        buffId: 1333,
+        name: "心怵·二",
+        category: "DEBUFF",
+        durationMs: 6_000,
+        description: "受到伤害增加6%",
+        effects: [{ type: "DAMAGE_TAKEN_INCREASE", value: 0.06 }],
+      },
+    ],
+  },
+
+  jieyang: {
+    id: "jieyang",
+    name: "截阳",
+    description: "瞬发，对目标造成10点伤害\n附加【绝脉】3层（30秒）：每层使技能调息速度降低1%\n3层充能，每层12秒恢复",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 0,
+    maxCharges: 3,
+    chargeRecoveryTicks: 360,
+    gcd: true,
+    effects: [{ type: "DAMAGE", value: 10 }],
+    buffs: [
+      {
+        buffId: 1337,
+        name: "绝脉",
+        category: "DEBUFF",
+        durationMs: 30_000,
+        initialStacks: 3,
+        maxStacks: 12,
+        description: "每层使技能调息速度降低1%",
+        effects: [
+          { type: "COOLDOWN_SLOW", value: 0.01 },
+          { type: "COOLDOWN_SLOW", value: 0.01 },
+          { type: "COOLDOWN_SLOW", value: 0.01 },
+        ],
+      },
+    ],
+  },
+
+  zhuo_ying_shi: {
+    id: "zhuo_ying_shi",
+    name: "捉影式",
+    description: "需要目标，射程35，运功0.5秒（正读条）\n读条完成后以20单位/秒将目标拉拽最多1秒（最多20单位），并附加【滞影】5秒（封轻功）",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    range: 35,
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [],
+    buffs: [],
+    channelDurationMs: 500,
+    channelCancelOnMove: false,
+    channelCancelOnJump: false,
+    channelCancelOnOutOfRange: 35,
+    channelForward: true,
+    channelEffects: [
+      { type: "TIMED_PULL_TARGET_TO_FRONT", value: 20, durationTicks: 30 },
+    ],
+  } as any,
 
   /* ================= 控制 / 压制 ================= */
 
@@ -394,10 +549,10 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         name: "散流霞隐藏",
         category: "BUFF",
         durationMs: 1_000,
-        description: "不可选中，无法施展技能",
+        description: "不可选中，处于位移状态",
         effects: [
           { type: "UNTARGETABLE" },
-          { type: "SILENCE" },
+          { type: "DISPLACEMENT" },
         ],
       },
     ],
@@ -435,6 +590,57 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     ],
   },
 
+  yun_qi_song: {
+    id: "yun_qi_song",
+    name: "云栖松",
+    description: "自身获得【云栖松】12秒：闪避率提高60%\n同时获得【栖松】5秒：每秒回复1点气血",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2401,
+        name: "云栖松",
+        category: "BUFF",
+        durationMs: 12_000,
+        description: "闪避率提高60%",
+        effects: [{ type: "DODGE_NEXT", chance: 0.6 }],
+      },
+      {
+        buffId: 2402,
+        name: "栖松",
+        category: "BUFF",
+        durationMs: 5_000,
+        periodicMs: 1_000,
+        description: "每秒回复1点气血",
+        effects: [{ type: "PERIODIC_HEAL", value: 1 }],
+      },
+    ],
+  },
+
+  shou_ru_shan: {
+    id: "shou_ru_shan",
+    name: "守如山",
+    description: "瞬发，自身获得【守如山】8秒：受到伤害降低80%",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2404,
+        name: "守如山",
+        category: "BUFF",
+        durationMs: 8_000,
+        description: "受到伤害降低80%",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.8 }],
+      },
+    ],
+  },
+
   /* ================= 生存 / 回复 ================= */
 
   fengxiu_diang: {
@@ -461,7 +667,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   qionglong_huasheng: {
     id: "qionglong_huasheng",
     name: "穹隆化生",
-    description: "向前冲刺2秒（可转向）\n施放时解除锁足与减速\n冲刺期间沉默且免疫等级1/2控制\n结束时恢复10点气血并展开【生太极】24秒",
+    description: "向前冲刺2秒\n施放时解除锁足与减速\n冲刺期间处于位移状态且免疫等级1/2控制\n结束时恢复10点气血并展开【生太极】24秒",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -483,11 +689,12 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     buffs: [
       {
         buffId: 1010,
-        name: "穹隆化生",
+        name: "穹隆化生·转向",
         category: "BUFF",
         durationMs: 2_000,
-        description: "冲刺期间沉默且免疫等级1/2控制",
-        effects: [{ type: "SILENCE" }, { type: "CONTROL_IMMUNE" }, { type: "KNOCKBACK_IMMUNE" }],
+        breakOnPlay: false,
+        description: "冲刺期间可转向",
+        effects: [{ type: "DASH_TURN_OVERRIDE" }],
       },
     ],
   },
@@ -612,7 +819,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   wu_jianyu: {
     id: "wu_jianyu",
     name: "无间狱",
-    description: "修罗附体\n3秒后正面180°/10码造成5伤害\n4秒后正面180°/10码造成5伤害\n5秒后正面180°/10码造成5伤害\n同时360°/10码造成10伤害并击退3码，击退期间沉默0.8秒\n所有伤害30%吸血",
+    description: "修罗附体\n2秒后正面180°/10码造成5伤害\n3秒后正面180°/10码造成5伤害\n4秒后正面180°/10码造成5伤害\n同时360°/10码造成10伤害并击退3码，击退期间沉默0.8秒\n所有伤害30%吸血",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -626,6 +833,15 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         description: "修罗附体",
         durationMs: 10_000, // 10 seconds
         effects: [
+          // t+2s: front 180° cone, range 10, 5 damage, 30% lifesteal
+          {
+            type: "TIMED_AOE_DAMAGE",
+            delayMs: 2_000,
+            value: 5,
+            aoeAngle: 180,
+            range: 10,
+            lifestealPct: 0.3,
+          },
           // t+3s: front 180° cone, range 10, 5 damage, 30% lifesteal
           {
             type: "TIMED_AOE_DAMAGE",
@@ -644,19 +860,10 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
             range: 10,
             lifestealPct: 0.3,
           },
-          // t+5s: front 180° cone, range 10, 5 damage, 30% lifesteal
+          // t+4s: full 360° circle, range 10, 10 damage, knockback 3 + 0.8s silence, 30% lifesteal
           {
             type: "TIMED_AOE_DAMAGE",
-            delayMs: 5_000,
-            value: 5,
-            aoeAngle: 180,
-            range: 10,
-            lifestealPct: 0.3,
-          },
-          // t+5s: full 360° circle, range 10, 10 damage, knockback 3 + 0.8s silence, 30% lifesteal
-          {
-            type: "TIMED_AOE_DAMAGE",
-            delayMs: 5_000,
+            delayMs: 4_000,
             value: 10,
             aoeAngle: 360,
             range: 10,
@@ -683,7 +890,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         buffId: 1017,
         name: "心诤",
         category: "BUFF",
-        durationMs: 3_000,
+        durationMs: 3_200,
         periodicMs: 500,
         breakOnPlay: true,
         description: "免疫控制",
@@ -691,6 +898,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         cancelOnJump: false,
         effects: [
           { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
           { type: "INTERRUPT_IMMUNE" },
           { type: "CHANNEL_AOE_TICK", value: 2, range: 6, aoeAngle: 180 },
           { type: "TIMED_AOE_DAMAGE", delayMs: 3_000, value: 10, range: 12, aoeAngle: 180 },
@@ -730,7 +938,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   taxingxing: {
     id: "taxingxing",
     name: "踏星行",
-    description: "轻功化形5秒：以12.5尺/秒向前冲刺（可转向）\n施放时解除锁足与减速\n起跳抬升8尺，撞墙后立刻下坠\n期间沉默并免疫等级1/2控制\n期间闪避率65%",
+    description: "轻功化形5秒：以12.5尺/秒向前冲刺\n施放时解除锁足与减速\n起跳抬升8尺，撞墙后立刻下坠\n期间处于位移状态并免疫等级1/2控制\n期间闪避率65%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -756,16 +964,12 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     buffs: [
       {
         buffId: 1020,
-        name: "踏星行",
+        name: "踏星行·转向",
         category: "BUFF",
-        durationMs: 5_000, // 5 seconds
-        description: "沉默；免疫等级1/2控制",
-        effects: [
-          { type: "CONTROL_IMMUNE" },
-          { type: "KNOCKBACK_IMMUNE" },
-          { type: "DODGE_NEXT", chance: 0.65 },
-          { type: "SILENCE" },
-        ],
+        durationMs: 5_000,
+        breakOnPlay: false,
+        description: "冲刺期间可转向",
+        effects: [{ type: "DASH_TURN_OVERRIDE" }],
       },
     ],
   },
@@ -822,6 +1026,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     cooldownTicks: 300, // 30 seconds
     gcd: true,
     qinggong: true,
+    cannotCastWhileRooted: true,
     requiresGrounded: true,
     effects: [],
     buffs: [
@@ -862,6 +1067,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         description: "运功中：持续回复，免控",
         effects: [
           { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
           { type: "INTERRUPT_IMMUNE" },
           { type: "PERIODIC_HEAL", value: 3 },
         ],
@@ -898,6 +1104,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         effects: [
           { type: "DAMAGE_REDUCTION", value: 0.5 },
           { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
           { type: "INTERRUPT_IMMUNE" },
           { type: "PERIODIC_GUAN_TI_HEAL", value: 5 },
           { type: "TIMED_GUAN_TI_HEAL", delayMs: 9_000, value: 30 },
@@ -927,6 +1134,32 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     channelEffects: [
       { type: "PLACE_GROUND_ZONE", value: 4, range: 8 },
     ],
+  } as any,
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 镇山河 — instant self zone, 0.1s pulse refresh, xuanjian -> huashengshi lockout
+  // ──────────────────────────────────────────────────────────────────────────
+  zhen_shan_he: {
+    id: "zhen_shan_he",
+    name: "镇山河",
+    description: "展开镇山河8秒，自身立即获得2秒无敌\n区域内友方每0.1秒刷新0.1秒无敌\n首次获得区域效果时附加【玄剑】12秒；自然结束后转为【化生势】180秒，期间无法再次获得镇山河效果",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    allowWhileControlled: true,
+    effects: [
+      {
+        type: "PLACE_GROUND_ZONE",
+        value: 0,
+        range: 8,
+        zoneDurationMs: 8_000,
+        zoneIntervalMs: 100,
+        zoneOffsetUnits: 0,
+        zoneHeight: 10,
+      },
+    ],
+    buffs: [],
   } as any,
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1345,4 +1578,592 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
       },
     ],
   },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 春泥护花 — instant self, 8 stacks: each hit -1 stack +3hp(贯体), 40% DR, GCD
+  // ──────────────────────────────────────────────────────────────────────────
+  chun_ni_hu_hua: {
+    id: "chun_ni_hu_hua",
+    name: "春泥护花",
+    description: "瞬发，可在空中或移动中施放\n获得【春泥护花】5层：每次受击失去1层并回复3点气血（贯体）；持有至少1层时减伤40%（不叠加）\n触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2316,
+        name: "春泥护花",
+        category: "BUFF",
+        durationMs: 15_000,
+        initialStacks: 5,
+        maxStacks: 5,
+        breakOnPlay: false,
+        description: "每次受击失去1层并回复3点气血（贯体），40%减伤（不叠加）",
+        effects: [
+          { type: "DAMAGE_REDUCTION", value: 0.4 },
+          { type: "STACK_ON_HIT_GUAN_TI_HEAL", value: 3 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 圣明佑 — instant self, 20贯体 heal + 20% dodge buff 10s, no GCD
+  // ──────────────────────────────────────────────────────────────────────────
+  sheng_ming_you: {
+    id: "sheng_ming_you",
+    name: "圣明佑",
+    description: "瞬发，可在空中或移动中施放\n立即回复20点气血（贯体）\n获得【圣明佑】10秒：闪避率提高20%\n不触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "INSTANT_GUAN_TI_HEAL", value: 20 },
+    ],
+    buffs: [
+      {
+        buffId: 2317,
+        name: "圣明佑",
+        category: "BUFF",
+        durationMs: 10_000,
+        breakOnPlay: false,
+        description: "闪避率提高20%",
+        effects: [
+          { type: "DODGE_NEXT", chance: 0.2 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 烟雨行 — instant, cleanse root/slow, dash forward 20u, 2 charges, 轻功, no GCD
+  // ──────────────────────────────────────────────────────────────────────────
+  yan_yu_xing: {
+    id: "yan_yu_xing",
+    name: "烟雨行",
+    description: "轻功，瞬发，可在空中或移动中施放\n解除减速与锁足\n向前冲刺20尺\n2充能，每10秒恢复1充能\n不触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 0,
+    maxCharges: 2,
+    chargeRecoveryTicks: 300,
+    gcd: false,
+    qinggong: true,
+    effects: [
+      {
+        type: "CLEANSE",
+        cleanseRootSlow: true,
+      },
+      {
+        type: "DIRECTIONAL_DASH",
+        value: 20,
+        dirMode: "TOWARD",
+      },
+    ],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 太阴指 — instant, cleanse root/slow, dash back 30u in 0.7s, 100% dodge, GCD, 轻功
+  // ──────────────────────────────────────────────────────────────────────────
+  tai_yin_zhi: {
+    id: "tai_yin_zhi",
+    name: "太阴指",
+    description: "轻功，瞬发，可在空中或移动中施放\n解除减速与锁足，向后冲刺30尺（0.7秒完成）\n冲刺期间获得【太阴指】：100%闪避率\n触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    qinggong: true,
+    effects: [
+      {
+        type: "CLEANSE",
+        cleanseRootSlow: true,
+      },
+      {
+        type: "DIRECTIONAL_DASH",
+        value: 30,
+        dirMode: "AWAY",
+        durationTicks: 21,
+      },
+    ],
+    buffs: [
+      {
+        buffId: 2318,
+        name: "太阴指",
+        category: "BUFF",
+        durationMs: 800,
+        breakOnPlay: false,
+        description: "冲刺期间100%闪避",
+        effects: [
+          { type: "DODGE_NEXT", chance: 1.0 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 万剑归宗 — self-centered AOE: root 6u/3s + 玄一5层(每层10%抑疗), 无GCD, 可空中施放
+  // ──────────────────────────────────────────────────────────────────────────
+  wan_jian_gui_zong: {
+    id: "wan_jian_gui_zong",
+    name: "万剑归宗",
+    description: "瞬发，可在空中或移动中施放\n锁足6尺范围内的敌人3秒\n附加【玄一】5层（30秒）：每层使治疗效果降低10%\n不触发GCD",
+    type: "CONTROL",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "AOE_APPLY_BUFFS", range: 6 },
+    ],
+    buffs: [
+      {
+        buffId: 2319,
+        name: "万剑归宗",
+        category: "DEBUFF",
+        durationMs: 3_000,
+        breakOnPlay: false,
+        description: "锁足",
+        effects: [{ type: "ROOT" }],
+      },
+      {
+        buffId: 2320,
+        name: "玄一",
+        category: "DEBUFF",
+        durationMs: 30_000,
+        initialStacks: 5,
+        maxStacks: 5,
+        breakOnPlay: false,
+        description: "每层使治疗效果降低10%",
+        effects: [{ type: "HEAL_REDUCTION", value: 0.1 }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 孤风飒踏 — ground-cast dash (mouse target), 0.5s/20u, cleanse controls, no GCD
+  // ──────────────────────────────────────────────────────────────────────────
+  gu_feng_sa_ta: {
+    id: "gu_feng_sa_ta",
+    name: "孤风飒踏",
+    description: "可选目标或地面施放\n向目标方向冲刺20尺（0.5秒完成）\n解除控制效果\n不触发GCD",
+    type: "SUPPORT",
+    target: "OPPONENT",
+    range: 40,
+    cooldownTicks: 300,
+    gcd: false,
+    faceDirection: false,
+    allowGroundCastWithoutTarget: true,
+    effects: [
+      { type: "CLEANSE", cleanseRootSlow: true },
+      { type: "GROUND_TARGET_DASH", value: 20, durationTicks: 15 },
+    ],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 撼地 — ground-cast dash 20u/0.5s, stun 5u/3s on land, 轻功, GCD, range 20u
+  // ──────────────────────────────────────────────────────────────────────────
+  han_di: {
+    id: "han_di",
+    name: "撼地",
+    description: "轻功，可选目标或地面施放（射程20）\n向目标方向冲刺20尺（0.5秒完成）\n落地时眩晕5尺范围内的敌人3秒\n触发GCD",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    qinggong: true,
+    faceDirection: false,
+    allowGroundCastWithoutTarget: true,
+    effects: [
+      { type: "GROUND_TARGET_DASH", value: 20, durationTicks: 15 },
+    ],
+    buffs: [
+      {
+        buffId: 2321,
+        name: "撼地",
+        category: "DEBUFF",
+        durationMs: 3_000,
+        breakOnPlay: false,
+        description: "眩晕：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 九转归一 — knock back enemy 12u in 1 second; if they hit a wall → stun 4s
+  // ──────────────────────────────────────────────────────────────────────────
+  jiu_zhuan_gui_yi: {
+    id: "jiu_zhuan_gui_yi",
+    name: "九转归一",
+    description: "将目标击退12尺（20尺/秒，0.6秒完成）\n击退期间目标被锁定1秒\n若击退过程中撞墙，则附加羽化眩晕4秒\n射程8，触发GCD",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 8,
+    cooldownTicks: 300,
+    gcd: true,
+    faceDirection: false,
+    effects: [
+      // durationTicks: 18 = 12u ÷ (20u/sec) × 30 ticks/sec
+      { type: "KNOCKBACK_DASH", value: 12, durationTicks: 18, wallStunMs: 4_000 },
+    ],
+    buffs: [
+      {
+        // 0: KNOCKED_BACK phase debuff — locks target during the 1-second CC window
+        buffId: 9201,
+        name: "九转击退",
+        description: "被击退中，行动受限1秒",
+        category: "DEBUFF",
+        durationMs: 1_000,
+        breakOnPlay: false,
+        effects: [{ type: "KNOCKED_BACK" }],
+      },
+      {
+        // 1: 羽化 — CONTROL stun applied only on wall hit (by GameLoop handler)
+        buffId: 9202,
+        name: "羽化",
+        description: "撞墙后陷入眩晕，无法行动",
+        category: "DEBUFF",
+        durationMs: 4_000,
+        breakOnPlay: false,
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 跃潮斩波 — dash toward target at 20u/sec (30 ticks), on land 15 damage, 轻功, GCD
+  // ──────────────────────────────────────────────────────────────────────────
+  yue_chao_zhan_bo: {
+    id: "yue_chao_zhan_bo",
+    name: "跃潮斩波",
+    description: "轻功，需要目标，射程25\n向目标冲刺（停在8尺处）\n落地时造成15点伤害\n触发GCD",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 25,
+    cooldownTicks: 300,
+    gcd: true,
+    qinggong: true,
+    faceDirection: false,
+    effects: [
+      { type: "DASH", value: 8 },
+    ],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 无我无剑 — range 4u, 7 damage, GCD, can cast in air/moving
+  // ──────────────────────────────────────────────────────────────────────────
+  wu_wo_wu_jian: {
+    id: "wu_wo_wu_jian",
+    name: "无我无剑",
+    description: "瞬发，可在空中或移动中施放\n对目标造成7点伤害\n射程4，触发GCD",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "DAMAGE", value: 7 }],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 听雷 — range 4, 3 damage, self-buff: 听雷·伤 (+10% DMG, 12s, 3 stacks max)
+  // No GCD, can cast in air or while moving
+  // ──────────────────────────────────────────────────────────────────────────
+  ting_lei: {
+    id: "ting_lei",
+    name: "听雷",
+    description: "瞬发，可在空中或移动中施放\n射程4，对目标造成3点伤害\n命中后自身获得「听雷·伤」：伤害提升10%（12秒，最多3层）",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 150,
+    gcd: false,
+    effects: [{ type: "DAMAGE", value: 3 }],
+    buffs: [
+      {
+        buffId: 2322,
+        name: "听雷·伤",
+        description: "伤害提升10%（最多3层）",
+        category: "BUFF",
+        durationMs: 12_000,
+        breakOnPlay: false,
+        maxStacks: 3,
+        initialStacks: 1,
+        effects: [{ type: "DAMAGE_MULTIPLIER", value: 1.1, restrictToAbilityId: "ting_lei" }],
+        applyTo: "SELF",
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 绛唇珠袖 — range 22, give enemy debuff: using 轻功 → silence 2s + 1 damage
+  // ──────────────────────────────────────────────────────────────────────────
+  jiang_chun_zhu_xiu: {
+    id: "jiang_chun_zhu_xiu",
+    name: "绛唇珠袖",
+    description: "瞬发，射程22\n对目标施加「绛唇珠袖」9秒：\n  使用轻功时，立即沉默2秒并受到1点伤害",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 22,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2323,
+        name: "绛唇珠袖",
+        description: "使用轻功时立即沉默2秒并受到1点伤害",
+        category: "DEBUFF",
+        durationMs: 9_000,
+        breakOnPlay: false,
+        effects: [],
+      },
+      {
+        // Applied on trigger, not on cast. Declared here so abilityPreload can surface it.
+        buffId: 2324,
+        name: "绛唇珠袖·沉默",
+        description: "沉默：无法施放技能",
+        category: "DEBUFF",
+        durationMs: 2_000,
+        breakOnPlay: false,
+        effects: [{ type: "SILENCE" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 鹤归孤山 — forward dash 15u/1s, on land: 2 dmg + stun 3s (10u AOE), +2 dmg (4u)
+  // ──────────────────────────────────────────────────────────────────────────
+  he_gui_gu_shan: {
+    id: "he_gui_gu_shan",
+    name: "鹤归孤山",
+    description: "轻功，向目标冲刺15尺（1秒）\n落地时对10尺内敌人造成2点伤害并眩晕3秒\n4尺内额外造成2点伤害\n触发GCD",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 25,
+    cooldownTicks: 300,
+    gcd: true,
+    qinggong: true,
+    faceDirection: false,
+    effects: [
+      { type: "DIRECTIONAL_DASH", dirMode: "TOWARD", value: 15, durationTicks: 30 },
+    ],
+    buffs: [
+      {
+        buffId: 2325,
+        name: "鹤归孤山·震慑",
+        description: "眩晕：无法移动、跳跃和施放技能",
+        category: "DEBUFF",
+        durationMs: 3_000,
+        breakOnPlay: false,
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 天地低昂 — instant self-buff: 40% DR for 10s, castable while controlled
+  // ──────────────────────────────────────────────────────────────────────────
+  tian_di_di_ang: {
+    id: "tian_di_di_ang",
+    name: "天地低昂",
+    description: "瞬发，自身减少受到的伤害40%，持续10秒\n可在眩晕/控制中施放",
+    type: "SUPPORT",
+    target: "SELF",
+    range: 0,
+    cooldownTicks: 300,
+    gcd: true,
+    allowWhileControlled: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2326,
+        name: "天地低昂",
+        description: "受到的伤害减少40%",
+        category: "BUFF",
+        durationMs: 10_000,
+        breakOnPlay: false,
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.4 }],
+      },
+    ],
+  },
 };
+
+let abilityPropertyOverrides: AbilityEditorOverrideMap = {};
+let abilityPropertyOverridesUpdatedAt: string | null = null;
+
+export const ABILITIES: AbilityRecord = {};
+
+function replaceAbilities(nextAbilities: AbilityRecord) {
+  for (const abilityId of Object.keys(ABILITIES)) {
+    if (!nextAbilities[abilityId]) {
+      delete ABILITIES[abilityId];
+    }
+  }
+
+  for (const [abilityId, ability] of Object.entries(nextAbilities)) {
+    ABILITIES[abilityId] = ability;
+  }
+}
+
+function rebuildAbilities() {
+  replaceAbilities(buildResolvedAbilities(BASE_ABILITIES, abilityPropertyOverrides));
+}
+
+const loadedAbilityPropertyOverrides = loadAbilityEditorOverrides();
+abilityPropertyOverrides = loadedAbilityPropertyOverrides.overrides;
+abilityPropertyOverridesUpdatedAt = loadedAbilityPropertyOverrides.updatedAt;
+rebuildAbilities();
+
+const ABILITY_TYPE_ORDER: Record<Ability["type"], number> = {
+  ATTACK: 1,
+  CONTROL: 2,
+  SUPPORT: 3,
+  STANCE: 4,
+  CHANNEL: 5,
+};
+
+export function buildAbilityEditorSnapshot() {
+  const abilities = Object.values(ABILITIES)
+    .map((ability) =>
+      buildAbilityEditorEntry({
+        ability,
+        baseAbility: BASE_ABILITIES[ability.id],
+        overrides: abilityPropertyOverrides[ability.id],
+      })
+    )
+    .sort((left, right) => {
+      const typeDelta = ABILITY_TYPE_ORDER[left.type] - ABILITY_TYPE_ORDER[right.type];
+      if (typeDelta !== 0) return typeDelta;
+      return left.name.localeCompare(right.name, "zh-Hans-CN");
+    });
+
+  return {
+    updatedAt: abilityPropertyOverridesUpdatedAt,
+    propertyCatalog: listAbilityPropertyDefinitions(),
+    abilities,
+  };
+}
+
+export function setAbilityEditorProperty(
+  abilityId: string,
+  propertyId: AbilityPropertyId,
+  enabled: boolean
+) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
+  }
+
+  const definition = getAbilityPropertyDefinition(propertyId);
+  if (!definition) {
+    throw new Error("ERR_INVALID_ABILITY_PROPERTY");
+  }
+
+  if (!definition.isApplicable(baseAbility)) {
+    throw new Error("ERR_PROPERTY_NOT_APPLICABLE");
+  }
+
+  const baseEnabled = definition.getValue(baseAbility);
+  const nextPropertyOverrides = {
+    ...(abilityPropertyOverrides[abilityId]?.properties ?? {}),
+  };
+  const nextAbilityOverrides: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+    properties: nextPropertyOverrides,
+  };
+
+  if (enabled === baseEnabled) {
+    delete nextPropertyOverrides[propertyId];
+  } else {
+    nextPropertyOverrides[propertyId] = enabled;
+  }
+
+  if (Object.keys(nextPropertyOverrides).length === 0) {
+    delete nextAbilityOverrides.properties;
+  }
+
+  if (!nextAbilityOverrides.properties && !nextAbilityOverrides.numeric) {
+    delete abilityPropertyOverrides[abilityId];
+  } else {
+    abilityPropertyOverrides[abilityId] = nextAbilityOverrides;
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+
+  return buildAbilityEditorEntry({
+    ability: ABILITIES[abilityId],
+    baseAbility,
+    overrides: abilityPropertyOverrides[abilityId],
+  });
+}
+
+export function setAbilityEditorNumericValue(
+  abilityId: string,
+  fieldId: string,
+  value: number
+) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
+  }
+
+  if (!Number.isFinite(value)) {
+    throw new Error("ERR_INVALID_ABILITY_NUMERIC_VALUE");
+  }
+
+  const definition = getAbilityNumericFieldDefinition(baseAbility, fieldId);
+  if (!definition) {
+    throw new Error("ERR_INVALID_ABILITY_NUMERIC_FIELD");
+  }
+
+  const baseValue = definition.getValue(baseAbility);
+  const nextNumericOverrides = {
+    ...(abilityPropertyOverrides[abilityId]?.numeric ?? {}),
+  };
+  const nextAbilityOverrides: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+    numeric: nextNumericOverrides,
+  };
+
+  if (value === baseValue) {
+    delete nextNumericOverrides[fieldId];
+  } else {
+    nextNumericOverrides[fieldId] = value;
+  }
+
+  if (Object.keys(nextNumericOverrides).length === 0) {
+    delete nextAbilityOverrides.numeric;
+  }
+
+  if (!nextAbilityOverrides.properties && !nextAbilityOverrides.numeric) {
+    delete abilityPropertyOverrides[abilityId];
+  } else {
+    abilityPropertyOverrides[abilityId] = nextAbilityOverrides;
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+
+  return buildAbilityEditorEntry({
+    ability: ABILITIES[abilityId],
+    baseAbility,
+    overrides: abilityPropertyOverrides[abilityId],
+  });
+}
+
+export function setAbilityEditorDamageValue(
+  abilityId: string,
+  damageId: string,
+  value: number
+) {
+  return setAbilityEditorNumericValue(abilityId, damageId, value);
+}

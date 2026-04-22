@@ -2,7 +2,6 @@
 
 import { AbilityEffect } from "./effects";
 import { BuffDefinition } from "./buffs";
-
 export type AbilityType =
   | "ATTACK"
   | "SUPPORT"
@@ -79,6 +78,26 @@ export interface Ability {
    * If true, this ability cannot be cast while the player is airborne (z > 0.5).
    */
   requiresGrounded?: boolean;
+
+  /**
+   * If true, this ability can still be cast while under removable level-1 control.
+   */
+  allowWhileControlled?: boolean;
+
+  /**
+   * If true, this ability can still be cast while under level-2 knockback / pull control.
+   */
+  allowWhileKnockedBack?: boolean;
+
+  /**
+   * If true, this ability's cleanse effect may also remove root and slow.
+   */
+  cleanseRootSlow?: boolean;
+
+  /**
+   * If true, this ability cannot be cast while under ROOT.
+   */
+  cannotCastWhileRooted?: boolean;
 
   /**
    * If true, this ability can only be cast while grounded and not moving.
