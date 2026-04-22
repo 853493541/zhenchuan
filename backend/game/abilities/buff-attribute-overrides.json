@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updatedAt": "2026-04-22T23:09:55.108Z",
+  "updatedAt": "2026-04-22T23:58:19.921Z",
   "buffs": {
     "1007": {
       "attribute": "无"
@@ -50,6 +50,10 @@
     },
     "1323": {
       "attribute": "无"
+    },
+    "1331": {
+      "attribute": "未选择",
+      "hidden": true
     },
     "1336": {
       "attribute": "混元"
