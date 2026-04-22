@@ -40,6 +40,10 @@ function normalizeDescription(value: unknown) {
   return trimmed ? trimmed : undefined;
 }
 
+function getEffectiveHidden(hidden: boolean | undefined, baseHidden: boolean) {
+  return typeof hidden === "boolean" ? hidden : baseHidden;
+}
+
 function requireBaseBuff(buffId: number) {
   const { buffs } = buildAbilityPreload({ applyBuffEditorOverrides: false });
   const baseBuff = buffs.find((buff) => buff.buffId === buffId);
@@ -57,18 +61,20 @@ function sanitizeOverrideEntry(
   baseDescription: string,
   baseHidden: boolean
 ): BuffEditorOverrideEntry | null {
+  const effectiveHidden = getEffectiveHidden(entry.hidden, baseHidden);
+  const normalizedAttribute: BuffAttribute = effectiveHidden ? "未选择" : entry.attribute;
   const name = normalizeName(entry.name);
   const normalizedName = name && name !== baseName ? name : undefined;
   const description = normalizeDescription(entry.description);
   const normalizedDescription = description && description !== baseDescription ? description : undefined;
   const normalizedHidden = typeof entry.hidden === "boolean" && entry.hidden !== baseHidden ? entry.hidden : undefined;
 
-  if (entry.attribute === "未选择" && normalizedHidden === undefined && !normalizedName && !normalizedDescription) {
+  if (normalizedAttribute === "未选择" && normalizedHidden === undefined && !normalizedName && !normalizedDescription) {
     return null;
   }
 
   return {
-    attribute: entry.attribute,
+    attribute: normalizedAttribute,
     ...(normalizedHidden === undefined ? {} : { hidden: normalizedHidden }),
     ...(normalizedName ? { name: normalizedName } : {}),
     ...(normalizedDescription ? { description: normalizedDescription } : {}),
@@ -120,14 +126,15 @@ export function buildBuffEditorSnapshot(): BuffEditorSnapshot {
       buff.category === "DEBUFF" ? "DEBUFF" : "BUFF";
 
     const override = overrides[String(buff.buffId)];
-    const attribute: BuffAttribute = override?.attribute ?? "未选择";
+    const hidden = override?.hidden ?? buff.hiddenInStatusBar === true;
+    const attribute: BuffAttribute = hidden ? "未选择" : override?.attribute ?? "未选择";
 
     entries.push({
       buffId: buff.buffId,
       name: buff.name,
       category,
       attribute,
-      hidden: override?.hidden ?? buff.hiddenInStatusBar === true,
+      hidden,
       description: override?.description ?? normalizeDescription(buff.description) ?? "无",
       iconPath: buff.iconPath ?? undefined,
       sourceAbilityName: buff.sourceAbilityName ?? undefined,
@@ -141,9 +148,13 @@ export function buildBuffEditorSnapshot(): BuffEditorSnapshot {
 }
 
 export function setBuffAttribute(buffId: number, attribute: BuffAttribute): string {
-  return updateBuffOverride(buffId, (currentOverride, baseName, baseDescription, baseHidden) =>
-    sanitizeOverrideEntry({ ...currentOverride, attribute }, baseName, baseDescription, baseHidden)
-  );
+  return updateBuffOverride(buffId, (currentOverride, baseName, baseDescription, baseHidden) => {
+    if (getEffectiveHidden(currentOverride.hidden, baseHidden)) {
+      throw new Error("ERR_HIDDEN_BUFF_CANNOT_HAVE_ATTRIBUTE");
+    }
+
+    return sanitizeOverrideEntry({ ...currentOverride, attribute }, baseName, baseDescription, baseHidden);
+  });
 }
 
 export function setBuffHidden(buffId: number, hidden: boolean): string {

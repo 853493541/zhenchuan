@@ -52,7 +52,7 @@ export default function SelectedAbilities({
                 <>
                   {!failedImages.has(ability.abilityId) ? (
                     <img 
-                      src={`/game/icons/Skills/${abilityDef.name}.png`} 
+                      src={`/game/icons/${abilityDef.name}.png`} 
                       alt={abilityDef.name} 
                       className={styles.portrait}
                       onError={() => handleImageError(ability.abilityId)}

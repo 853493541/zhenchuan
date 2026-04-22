@@ -3474,7 +3474,7 @@ export default function BattleArena({
     // eslint-disable-next-line @next/next/no-img-element
     <img
       key={ability.id}
-      src={`/game/icons/Skills/${ability.name}.png`}
+      src={`/game/icons/${ability.name}.png`}
       alt={ability.name}
       title={`${ability.name}${ability.description ? '\n' + ability.description : ''}`}
       style={{
@@ -4285,7 +4285,7 @@ export default function BattleArena({
                       <div className={styles.enemyAbilitySlot} title={name}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={`/game/icons/Skills/${name}.png`}
+                          src={`/game/icons/${name}.png`}
                           alt={name}
                           className={styles.enemyAbilityIcon}
                           draggable={false}
@@ -4591,7 +4591,7 @@ export default function BattleArena({
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={`/game/icons/Skills/${modal.name}.png`}
+                    src={`/game/icons/${modal.name}.png`}
                     alt={modal.name}
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.20'; }}
@@ -4815,7 +4815,7 @@ export default function BattleArena({
                         title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                        <img src={`/game/icons/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                         {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                           <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
                             <span className={styles.cdNum}>{cdSeconds}</span>
@@ -4903,7 +4903,7 @@ export default function BattleArena({
                     title={`${ability.name}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`/game/icons/Skills/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                    <img src={`/game/icons/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                     {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                       <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
                         <span className={styles.cdNum}>{cdSeconds}</span>

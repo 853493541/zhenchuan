@@ -41,7 +41,8 @@ function handleAbilityEditorError(res: express.Response, error: unknown) {
     message === "ERR_INVALID_ABILITY_NUMERIC_FIELD" ||
     message === "ERR_INVALID_ABILITY_NUMERIC_VALUE" ||
     message === "ERR_INVALID_BUFF_DESCRIPTION" ||
-    message === "ERR_INVALID_BUFF_NAME"
+    message === "ERR_INVALID_BUFF_NAME" ||
+    message === "ERR_HIDDEN_BUFF_CANNOT_HAVE_ATTRIBUTE"
   ) {
     return res.status(400).json({ error: message });
   }

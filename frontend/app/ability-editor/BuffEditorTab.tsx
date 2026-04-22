@@ -202,7 +202,7 @@ export default function BuffEditorTab({
 
       const next = (await response.json()) as BuffEditorSnapshot;
       onSnapshotUpdate(next);
-      toastSuccess(`已更新 ${entry.name} · ${hidden ? "隐藏" : "显示"}`);
+      toastSuccess(`已更新 ${entry.name} · ${hidden ? "隐藏并清除属性" : "显示"}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "保存失败";
       toastError(message);
@@ -465,7 +465,7 @@ function BuffCard({
         <span className={styles.buffAttrLabel}>属性</span>
         <select
           className={styles.buffAttrSelect}
-          disabled={saving}
+          disabled={saving || entry.hidden}
           value={entry.attribute}
           onChange={(event) => {
             const nextAttribute = event.target.value as BuffAttribute;
@@ -473,6 +473,7 @@ function BuffCard({
               onAttributeChange(entry, nextAttribute);
             }
           }}
+          title={entry.hidden ? "隐藏 Buff 不可设置属性" : undefined}
         >
           {BUFF_ATTRIBUTES.map((attr) => (
             <option key={attr} value={attr}>
