@@ -1,4 +1,5 @@
 import { ABILITIES } from "./abilities";
+import { loadBuffEditorOverrides } from "./buffEditorOverrides";
 
 function hasEffectFlag(
   ability: { effects?: Array<Record<string, unknown>> },
@@ -20,9 +21,13 @@ function hasEffectFlag(
  * - O(1) lookup friendly
  * - Backend is the single source of truth for ALL text
  */
-export function buildAbilityPreload() {
+export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boolean }) {
   const abilities: any[] = [];
   const buffs: any[] = [];
+  const applyBuffEditorOverrides = options?.applyBuffEditorOverrides !== false;
+  const { overrides: buffEditorOverrides } = applyBuffEditorOverrides
+    ? loadBuffEditorOverrides()
+    : { overrides: {} as Record<string, { name?: string; description?: string; hidden?: boolean }> };
 
   const TEST_COOLDOWN_CAP_TICKS = 150; // 5 seconds at 30Hz
   const clampCooldownTicksForTesting = (ticks: number | undefined) => {
@@ -290,6 +295,22 @@ export function buildAbilityPreload() {
     sourceAbilityId: "zhuo_ying_shi",
     sourceAbilityName: "捉影式",
   });
+
+  for (const buff of buffs) {
+    const override = buffEditorOverrides[String(buff.buffId)];
+    if (!buff.iconPath) {
+      buff.iconPath = `/game/icons/buffs/${buff.name}.png`;
+    }
+    if (override?.name) {
+      buff.name = override.name;
+    }
+    if (override?.description) {
+      buff.description = override.description;
+    }
+    if (typeof override?.hidden === "boolean") {
+      buff.hiddenInStatusBar = override.hidden;
+    }
+  }
 
   const abilityMap = Object.fromEntries(
     abilities.map((c) => [c.id, c])

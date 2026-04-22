@@ -333,3 +333,490 @@
     height: 48px;
   }
 }
+
+/* ─── Main tab bar ──────────────────────────────────────────────────────────── */
+
+.mainTabBar {
+  display: flex;
+  gap: 6px;
+  margin-top: 20px;
+  border-bottom: 2px solid #e4ddd4;
+  padding-bottom: 0;
+}
+
+.mainTab {
+  padding: 9px 20px;
+  border: none;
+  border-radius: 10px 10px 0 0;
+  background: transparent;
+  color: #7a6e62;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  margin-bottom: -2px;
+  border-bottom: 2px solid transparent;
+}
+
+.mainTab:hover {
+  background: #f4f1eb;
+  color: #3d3226;
+}
+
+.mainTabActive {
+  background: #ffffff;
+  color: #3d3226;
+  border-bottom: 2px solid #6f3f16;
+}
+
+/* ─── Buff editor section ───────────────────────────────────────────────────── */
+
+.buffEditorSection {
+  max-width: 1260px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-top: 12px;
+}
+
+/* Sub-tab bar inside buff editor */
+.buffSubTabBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0 12px;
+  flex-wrap: wrap;
+}
+
+.buffSubTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border: 1px solid #ddd7cb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #5d5145;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.buffSubTab:hover {
+  background: #f4f1eb;
+}
+
+.buffSubTabActive {
+  background: #3d2a16;
+  color: #ffffff;
+  border-color: #3d2a16;
+}
+
+.buffSubTabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.buffSubTabActive .buffSubTabCount {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.buffSubTabSpacer {
+  flex: 1;
+  min-width: 12px;
+}
+
+.buffSubTabSearch {
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid #d9d3c8;
+  background: #ffffff;
+  color: #2d2416;
+  font-size: 13px;
+  width: 200px;
+}
+
+.buffSubTabSelect {
+  min-width: 128px;
+  padding: 8px 32px 8px 12px;
+  border-radius: 12px;
+  border: 1px solid #d9d3c8;
+  background: #ffffff;
+  color: #2d2416;
+  font-size: 13px;
+  font-weight: 700;
+  outline: none;
+}
+
+.buffSubTabSelect:focus {
+  border-color: #8a5a2b;
+  box-shadow: 0 0 0 3px rgba(138, 90, 43, 0.12);
+}
+
+.buffUpdatedAt {
+  font-size: 12px;
+  color: #7a7368;
+}
+
+.buffAttrFilterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 14px;
+}
+
+.buffAttrFilterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #ddd7cb;
+  border-radius: 999px;
+  background: #f8f5ef;
+  color: #5d5145;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.buffAttrFilterChip:hover {
+  background: #efe8dc;
+  border-color: #cfc4b1;
+}
+
+.buffAttrFilterChipActive {
+  background: #6f3f16;
+  border-color: #6f3f16;
+  color: #ffffff;
+}
+
+.buffAttrFilterCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+/* Buff grid */
+.buffGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding-bottom: 40px;
+}
+
+@media (max-width: 1100px) {
+  .buffGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .buffGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Buff card */
+.buffCard {
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid #ddd7cb;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(26, 21, 14, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.buffCardBuff {
+  border-left: 3px solid #22c55e;
+}
+
+.buffCardDebuff {
+  border-left: 3px solid #dc2626;
+}
+
+.buffCardTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.buffIconFrame {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f3efe7 0%, #e9e1d2 100%);
+  border: 1px solid #ddd6ca;
+  overflow: hidden;
+}
+
+.buffIcon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.buffCardMeta {
+  flex: 1;
+  min-width: 0;
+}
+
+.buffNameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.buffCardName {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 16px;
+  font-weight: 800;
+  font-family: Georgia, "Noto Serif SC", serif;
+  color: #1e1a14;
+  line-height: 1.2;
+}
+
+.buffNameInput {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid #ddd7cb;
+  border-radius: 10px;
+  background: #fbf8f2;
+  color: #1e1a14;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+}
+
+.buffNameInput:focus {
+  outline: none;
+  border-color: #8a5a2b;
+  box-shadow: 0 0 0 3px rgba(138, 90, 43, 0.12);
+}
+
+.buffNameActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.buffNameIconButton {
+  border: none;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.buffNameIconButton {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3efe7;
+  color: #6f3f16;
+}
+
+.buffNameIconButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.penIcon {
+  width: 14px;
+  height: 14px;
+}
+
+.buffTopTag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.buffTopTagBuff {
+  background: #e9f8ee;
+  color: #15803d;
+}
+
+.buffTopTagDebuff {
+  background: #fdecec;
+  color: #b91c1c;
+}
+
+.buffCardDesc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #5a5145;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.buffDescEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.buffSectionLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #7d7467;
+}
+
+.buffDescTextarea {
+  width: 100%;
+  min-height: 88px;
+  padding: 10px 12px;
+  border: 1px solid #ddd7cb;
+  border-radius: 14px;
+  background: #fbf8f2;
+  color: #4c4337;
+  font-size: 12px;
+  line-height: 1.55;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.buffDescTextarea:focus {
+  outline: none;
+  border-color: #8a5a2b;
+  box-shadow: 0 0 0 3px rgba(138, 90, 43, 0.12);
+}
+
+.buffDescTextarea:disabled {
+  opacity: 0.65;
+}
+
+.buffDescActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.buffDescSave {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 10px;
+  background: #1f5d4b;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.buffDescSave:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Attribute selector */
+.buffAttrRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.buffAttrLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7d7467;
+  padding-top: 6px;
+  flex-shrink: 0;
+}
+
+.buffAttrSelect {
+  min-width: 132px;
+  padding: 8px 32px 8px 12px;
+  border: 1px solid #d8d0c2;
+  border-radius: 12px;
+  background: #fbf8f2;
+  color: #382f24;
+  font-size: 12px;
+  font-weight: 700;
+  outline: none;
+}
+
+.buffAttrSelect:focus {
+  border-color: #8a5a2b;
+  box-shadow: 0 0 0 3px rgba(138, 90, 43, 0.12);
+}
+
+.buffAttrSelect:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.buffHiddenToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid #ddd7cb;
+  border-radius: 12px;
+  background: #fbf8f2;
+  color: #4d4337;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.buffHiddenToggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.buffCardFooter {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.buffSourceAbilityIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  border: 1px solid #ddd6ca;
+  background: linear-gradient(180deg, #f3efe7 0%, #e9e1d2 100%);
+  object-fit: cover;
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { getBuffIconBackgroundImage } from "@/app/lib/buffIcons";
 import styles from "./styles.module.css";
 import StatusHint from "./Hint";
 
@@ -150,7 +151,7 @@ export default function StatusBar({
             className={`${styles.buffIcon} ${
               b.category === "BUFF" ? styles.buffBorder : styles.debuffBorder
             }`}
-            style={{ backgroundImage: `url(${b.iconPath ?? `/game/icons/buffs/${b.name}.png`})` }}
+            style={{ backgroundImage: getBuffIconBackgroundImage(b.name, b.iconPath) }}
             onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b)}
             onMouseLeave={closeHint}
           />

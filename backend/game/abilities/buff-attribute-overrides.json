@@ -1,0 +1,147 @@
+{
+  "version": 3,
+  "updatedAt": "2026-04-22T23:09:55.108Z",
+  "buffs": {
+    "1007": {
+      "attribute": "无"
+    },
+    "1009": {
+      "attribute": "阴性"
+    },
+    "1011": {
+      "attribute": "无"
+    },
+    "1012": {
+      "attribute": "无"
+    },
+    "1013": {
+      "attribute": "无"
+    },
+    "1014": {
+      "attribute": "无"
+    },
+    "1016": {
+      "attribute": "无"
+    },
+    "1017": {
+      "attribute": "无"
+    },
+    "1019": {
+      "attribute": "无"
+    },
+    "1021": {
+      "attribute": "无"
+    },
+    "1030": {
+      "attribute": "阴性"
+    },
+    "1031": {
+      "attribute": "无"
+    },
+    "1033": {
+      "attribute": "无"
+    },
+    "1310": {
+      "attribute": "无",
+      "name": "生太极"
+    },
+    "1320": {
+      "attribute": "无"
+    },
+    "1323": {
+      "attribute": "无"
+    },
+    "1336": {
+      "attribute": "混元"
+    },
+    "2001": {
+      "attribute": "无"
+    },
+    "2003": {
+      "attribute": "无"
+    },
+    "2202": {
+      "attribute": "阴性"
+    },
+    "2302": {
+      "attribute": "无",
+      "name": "韦陀献杵·防御"
+    },
+    "2304": {
+      "attribute": "无"
+    },
+    "2305": {
+      "attribute": "无"
+    },
+    "2308": {
+      "attribute": "混元"
+    },
+    "2309": {
+      "attribute": "阴性"
+    },
+    "2310": {
+      "attribute": "无"
+    },
+    "2311": {
+      "attribute": "无"
+    },
+    "2312": {
+      "attribute": "无"
+    },
+    "2313": {
+      "attribute": "混元"
+    },
+    "2314": {
+      "attribute": "毒性"
+    },
+    "2315": {
+      "attribute": "蛊"
+    },
+    "2316": {
+      "attribute": "混元"
+    },
+    "2317": {
+      "attribute": "阴性"
+    },
+    "2318": {
+      "attribute": "无"
+    },
+    "2322": {
+      "attribute": "无"
+    },
+    "2326": {
+      "attribute": "阴性"
+    },
+    "2401": {
+      "attribute": "无"
+    },
+    "2402": {
+      "attribute": "外功"
+    },
+    "2404": {
+      "attribute": "无"
+    },
+    "9001": {
+      "attribute": "外功"
+    },
+    "9002": {
+      "attribute": "无"
+    },
+    "990100": {
+      "attribute": "未选择",
+      "hidden": true
+    },
+    "990101": {
+      "attribute": "未选择",
+      "hidden": true
+    },
+    "990102": {
+      "attribute": "未选择",
+      "hidden": true
+    },
+    "999900": {
+      "attribute": "未选择",
+      "hidden": true
+    }
+  }
+}

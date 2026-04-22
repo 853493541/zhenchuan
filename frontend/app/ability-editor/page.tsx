@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import BuffEditorTab from "./BuffEditorTab";
 import {
   AbilityEditorAbility,
   AbilityEditorSnapshot,
+  BuffEditorSnapshot,
   abilityTypeLabel,
   formatUpdatedAt,
   getAbilityIconByName,
@@ -14,6 +16,8 @@ import {
   targetTypeLabel,
 } from "./editorShared";
 import styles from "./page.module.css";
+
+type MainTab = "abilities" | "buffs";
 
 function buildOverviewTags(ability: AbilityEditorAbility) {
   const tags: string[] = [];
@@ -37,6 +41,9 @@ function buildOverviewTags(ability: AbilityEditorAbility) {
 }
 
 export default function AbilityEditorPage() {
+  const [mainTab, setMainTab] = useState<MainTab>("abilities");
+
+  // ── Ability snapshot ──────────────────────────────────────────────────────
   const [snapshot, setSnapshot] = useState<AbilityEditorSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -66,9 +73,44 @@ export default function AbilityEditorPage() {
     }
   };
 
+  // ── Buff snapshot ─────────────────────────────────────────────────────────
+  const [buffSnapshot, setBuffSnapshot] = useState<BuffEditorSnapshot | null>(null);
+  const [buffLoading, setBuffLoading] = useState(false);
+  const [buffError, setBuffError] = useState("");
+
+  const loadBuffSnapshot = async () => {
+    setBuffLoading(true);
+    setBuffError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/buffs", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setBuffSnapshot((await response.json()) as BuffEditorSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setBuffError(message);
+    } finally {
+      setBuffLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSnapshot();
   }, []);
+
+  // Load buff snapshot when the buff tab is first opened
+  useEffect(() => {
+    if (mainTab === "buffs" && !buffSnapshot && !buffLoading) {
+      loadBuffSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
 
   const normalizedSearch = search.trim().toLowerCase();
   const abilities = (snapshot?.abilities ?? []).filter((ability) => {
@@ -115,95 +157,131 @@ export default function AbilityEditorPage() {
             <span className={styles.summaryPill}>已覆盖 {overriddenCount}</span>
           </div>
         </div>
-      </section>
 
-      <section className={styles.toolbar}>
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          className={styles.searchInput}
-          placeholder="搜索技能名、ID 或属性名"
-        />
-
-        <label className={styles.toggleRow}>
-          <input
-            type="checkbox"
-            checked={showOnlyOverrides}
-            onChange={(event) => setShowOnlyOverrides(event.target.checked)}
-          />
-          只看已覆盖技能
-        </label>
-      </section>
-
-      {loading && <div className={styles.statePanel}>正在加载技能属性…</div>}
-
-      {!loading && errorMessage && (
-        <div className={styles.statePanel}>
-          <p className={styles.stateTitle}>加载失败</p>
-          <p className={styles.stateCopy}>{errorMessage}</p>
-          <button className={styles.retryButton} onClick={loadSnapshot}>
-            重新加载
+        {/* Main tab bar */}
+        <div className={styles.mainTabBar}>
+          <button
+            type="button"
+            className={`${styles.mainTab} ${mainTab === "abilities" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("abilities")}
+          >
+            技能列表
+          </button>
+          <button
+            type="button"
+            className={`${styles.mainTab} ${mainTab === "buffs" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("buffs")}
+          >
+            BUFF 编辑
           </button>
         </div>
-      )}
+      </section>
 
-      {!loading && !errorMessage && abilities.length === 0 && (
-        <div className={styles.statePanel}>
-          <p className={styles.stateTitle}>没有匹配结果</p>
-          <p className={styles.stateCopy}>换一个关键词，或者取消“只看已覆盖技能”。</p>
-        </div>
-      )}
+      {/* ── Abilities tab ───────────────────────────────────────────────────── */}
+      {mainTab === "abilities" && (
+        <>
+          <section className={styles.toolbar}>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className={styles.searchInput}
+              placeholder="搜索技能名、ID 或属性名"
+            />
 
-      {!loading && !errorMessage && abilities.length > 0 && (
-        <section className={styles.cardList}>
-          {abilities.map((ability) => {
-            const tags = buildOverviewTags(ability);
+            <label className={styles.toggleRow}>
+              <input
+                type="checkbox"
+                checked={showOnlyOverrides}
+                onChange={(event) => setShowOnlyOverrides(event.target.checked)}
+              />
+              只看已覆盖技能
+            </label>
+          </section>
 
-            return (
-              <Link key={ability.id} href={`/ability-editor/${ability.id}`} className={styles.cardLink}>
-                <article className={styles.card}>
-                  <div className={styles.cardTopRow}>
-                    <div className={styles.cardIdentity}>
-                      <div className={styles.iconFrame}>
-                        <img
-                          src={getAbilityIconByName(ability.name)}
-                          alt={ability.name}
-                          className={styles.abilityIcon}
-                          draggable={false}
-                          loading="lazy"
-                        />
+          {loading && <div className={styles.statePanel}>正在加载技能属性…</div>}
+
+          {!loading && errorMessage && (
+            <div className={styles.statePanel}>
+              <p className={styles.stateTitle}>加载失败</p>
+              <p className={styles.stateCopy}>{errorMessage}</p>
+              <button className={styles.retryButton} onClick={loadSnapshot}>
+                重新加载
+              </button>
+            </div>
+          )}
+
+          {!loading && !errorMessage && abilities.length === 0 && (
+            <div className={styles.statePanel}>
+              <p className={styles.stateTitle}>没有匹配结果</p>
+              <p className={styles.stateCopy}>换一个关键词，或者取消"只看已覆盖技能"。</p>
+            </div>
+          )}
+
+          {!loading && !errorMessage && abilities.length > 0 && (
+            <section className={styles.cardList}>
+              {abilities.map((ability) => {
+                const tags = buildOverviewTags(ability);
+
+                return (
+                  <Link key={ability.id} href={`/ability-editor/${ability.id}`} className={styles.cardLink}>
+                    <article className={styles.card}>
+                      <div className={styles.cardTopRow}>
+                        <div className={styles.cardIdentity}>
+                          <div className={styles.iconFrame}>
+                            <img
+                              src={getAbilityIconByName(ability.name)}
+                              alt={ability.name}
+                              className={styles.abilityIcon}
+                              draggable={false}
+                              loading="lazy"
+                            />
+                          </div>
+
+                          <div className={styles.cardHeadingBlock}>
+                        <div className={styles.cardMetaRow}>
+                          <span className={styles.typeBadge}>{abilityTypeLabel[ability.type]}</span>
+                          <span className={styles.targetBadge}>{targetTypeLabel[ability.target]}</span>
+                          {ability.hasOverrides && (
+                            <span className={styles.overrideBadge}>已覆盖默认值</span>
+                          )}
+                        </div>
+                        <h2 className={styles.cardTitle}>{ability.name}</h2>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className={styles.cardHeadingBlock}>
-                    <div className={styles.cardMetaRow}>
-                      <span className={styles.typeBadge}>{abilityTypeLabel[ability.type]}</span>
-                      <span className={styles.targetBadge}>{targetTypeLabel[ability.target]}</span>
-                      {ability.hasOverrides && (
-                        <span className={styles.overrideBadge}>已覆盖默认值</span>
+                      <p className={styles.cardDescription}>{getSimpleDescription(ability.description)}</p>
+
+                      {tags.length > 0 && (
+                        <div className={styles.tagRow}>
+                          {tags.map((tag) => (
+                            <span key={tag} className={styles.infoTag}>
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
                       )}
-                    </div>
-                    <h2 className={styles.cardTitle}>{ability.name}</h2>
-                      </div>
-                    </div>
-                  </div>
 
-                  <p className={styles.cardDescription}>{getSimpleDescription(ability.description)}</p>
+                      <div className={styles.enterHint}>点击进入编辑</div>
+                    </article>
+                  </Link>
+                );
+              })}
+            </section>
+          )}
+        </>
+      )}
 
-                  {tags.length > 0 && (
-                    <div className={styles.tagRow}>
-                      {tags.map((tag) => (
-                        <span key={tag} className={styles.infoTag}>
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className={styles.enterHint}>点击进入编辑</div>
-                </article>
-              </Link>
-            );
-          })}
+      {/* ── Buff editor tab ─────────────────────────────────────────────────── */}
+      {mainTab === "buffs" && (
+        <section className={styles.buffEditorSection}>
+          <BuffEditorTab
+            snapshot={buffSnapshot}
+            loading={buffLoading}
+            errorMessage={buffError}
+            onSnapshotUpdate={setBuffSnapshot}
+            onRetry={loadBuffSnapshot}
+          />
         </section>
       )}
     </div>

@@ -1,3 +1,5 @@
+import { resolveBuffIconPath } from "../lib/buffIcons";
+
 export type PropertyCatalogItem = {
   id: string;
   label: string;
@@ -59,6 +61,36 @@ export type AbilityEditorSnapshot = {
   abilities: AbilityEditorAbility[];
 };
 
+// ─── Buff editor types ───────────────────────────────────────────────────────
+
+export type BuffAttribute = "未选择" | "无" | "阴性" | "阳性" | "毒性" | "外功" | "持续伤害" | "混元" | "蛊" | "点穴";
+
+export const BUFF_ATTRIBUTES: BuffAttribute[] = ["未选择", "无", "阴性", "阳性", "毒性", "外功", "持续伤害", "混元", "蛊", "点穴"];
+
+export type BuffEditorEntry = {
+  buffId: number;
+  name: string;
+  category: "BUFF" | "DEBUFF";
+  attribute: BuffAttribute;
+  hidden: boolean;
+  description: string;
+  iconPath?: string;
+  sourceAbilityName?: string;
+};
+
+export type BuffEditorSnapshot = {
+  updatedAt: string | null;
+  buffs: BuffEditorEntry[];
+};
+
+export function getBuffSubtitle(entry: Pick<BuffEditorEntry, "category" | "attribute">): string {
+  const attrPrefix = entry.attribute !== "未选择" ? entry.attribute : "";
+  return attrPrefix +
+    (entry.category === "BUFF" ? "有利效果" : "不利效果");
+}
+
+// ─── Shared helpers ──────────────────────────────────────────────────────────
+
 export const abilityTypeLabel: Record<AbilityEditorAbility["type"], string> = {
   ATTACK: "攻击",
   SUPPORT: "辅助",
@@ -74,6 +106,10 @@ export const targetTypeLabel: Record<AbilityEditorAbility["target"], string> = {
 
 export function getAbilityIconByName(abilityName: string) {
   return `/game/icons/Skills/${abilityName}.png`;
+}
+
+export function getBuffIconPath(entry: Pick<BuffEditorEntry, "name" | "iconPath">): string {
+  return resolveBuffIconPath(entry.name, entry.iconPath);
 }
 
 export function parseNumericDraft(rawValue: string) {
@@ -111,3 +147,4 @@ export function getSimpleDescription(description: string) {
 export function getStatValue(stats: AbilityEditorStat[], id: string) {
   return stats.find((stat) => stat.id === id)?.value;
 }
+
