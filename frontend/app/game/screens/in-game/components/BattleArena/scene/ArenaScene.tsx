@@ -128,9 +128,9 @@ interface ArenaSceneProps {
   mode?: string;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
   groundZones?: GroundZone[];
-  groundCastPreview?: { x: number; y: number; radius: number; label?: string } | null;
-  onGroundPointerMove?: (x: number, y: number) => void;
-  onGroundPointerDown?: (x: number, y: number) => void;
+  groundCastPreview?: { x: number; y: number; z?: number; radius: number; label?: string; isValid?: boolean } | null;
+  onGroundPointerMove?: (x: number, y: number, worldZ?: number, isHorizontal?: boolean) => void;
+  onGroundPointerDown?: (x: number, y: number, worldZ?: number) => void;
   showCollisionShells?: boolean;
   collisionReady?: boolean;
   collisionSystemRef?: MutableRefObject<MapCollisionSystem | null>;
@@ -430,12 +430,12 @@ export default function ArenaScene({
 
   const handleGroundPointerMove = (e: any) => {
     if (!onGroundPointerMove) return;
-    onGroundPointerMove(e.point.x + worldHalfX, worldHalfY - e.point.z);
+    onGroundPointerMove(e.point.x + worldHalfX, worldHalfY - e.point.z, e.point.y, e.isHorizontal !== false);
   };
 
   const handleGroundPointerDown = (e: any) => {
     if (!onGroundPointerDown) return;
-    onGroundPointerDown(e.point.x + worldHalfX, worldHalfY - e.point.z);
+    onGroundPointerDown(e.point.x + worldHalfX, worldHalfY - e.point.z, e.point.y);
   };
 
   const isCollisionTest = mode === 'collision-test';
@@ -589,10 +589,22 @@ export default function ArenaScene({
         <AoeZone
           worldX={groundCastPreview.x}
           worldY={groundCastPreview.y}
-          worldZ={getZoneVisualZ(groundCastPreview.x, groundCastPreview.y, 0)}
+          worldZ={
+            groundCastPreview.isValid === false
+              ? (groundCastPreview.z ?? 0)  // On a wall: use raw hit Z, no snap
+              : getZoneVisualZ(groundCastPreview.x, groundCastPreview.y, groundCastPreview.z ?? 0)
+          }
           radius={groundCastPreview.radius}
-          color={groundCastPreview.label === '百足' ? '#b06cff' : '#ffd24a'}
-          labelColor={groundCastPreview.label === '百足' ? '#d8b6ff' : '#ffe98a'}
+          color={
+            groundCastPreview.isValid === false ? '#ff3333'
+            : groundCastPreview.label === '百足' ? '#b06cff'
+            : '#ffd24a'
+          }
+          labelColor={
+            groundCastPreview.isValid === false ? '#ff8888'
+            : groundCastPreview.label === '百足' ? '#d8b6ff'
+            : '#ffe98a'
+          }
           label={groundCastPreview.label ?? "预览"}
           worldHalfX={worldHalfX}
           worldHalfY={worldHalfY}

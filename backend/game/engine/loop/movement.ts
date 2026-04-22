@@ -739,6 +739,21 @@ export function applyMovement(
       }
     }
 
+    // Wall-stun knockback: if the dash was blocked by a wall, flag it and end the dash
+    if (dash.wallStunMs && dash.wallStunMs > 0 && intendedStep > 0.001) {
+      const actualStepX = player.position.x - prevX;
+      const actualStepY = player.position.y - prevY;
+      const actualStep = Math.sqrt(actualStepX * actualStepX + actualStepY * actualStepY);
+      if (actualStep < intendedStep * 0.35) {
+        // Wall hit — stop dash immediately and flag for stun application in GameLoop
+        dash.wallBlocked = true;
+        dash.ticksRemaining = 0;
+        // Also store on player so the flag survives `delete player.activeDash`
+        (player as any)._wallKnockStunMs = dash.wallStunMs;
+        (player as any)._wallKnockAbilityId = dash.abilityId;
+      }
+    }
+
     return; // Skip normal movement + normal gravity entirely
   }
 

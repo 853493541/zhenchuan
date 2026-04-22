@@ -137,7 +137,7 @@ export function validateCastAbility(
   options?: {
     pendingJump?: boolean;
     targetUserId?: string;
-    groundTarget?: { x: number; y: number };
+    groundTarget?: { x: number; y: number; z?: number };
     /** Map objects to use for LOS checks. Defaults to worldMap.objects if omitted. */
     mapObjects?: MapObject[];
     /** Minimum object height for LOS blocking (0 = all heights block). */

@@ -22,7 +22,7 @@ export function applyEffects(
   mapCtx?: MapContext,
   castContext?: {
     targetUserId?: string;
-    groundTarget?: { x: number; y: number };
+    groundTarget?: { x: number; y: number; z?: number };
   }
 ) {
   applyAbility(state, ability, playerIndex, targetIndex, mapCtx, castContext);

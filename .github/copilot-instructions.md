@@ -49,6 +49,12 @@
 
 - **Never commit** unless explicitly told to. If the user says "commit once", do exactly one commit — never more.
 
+## Buff Implementation Rules
+
+- **All buffs must go through `addBuff()` in `buffRuntime.ts`.** Never directly push objects into a player's `buffs` array. Direct pushes bypass immunity checks, the 递减 (diminishing returns) system, BUFF_APPLIED event emission, and the status bar display.
+- **Every buff applied to a player must be declared in the ability's `buffs: []` array** so it is visible, editable, and preloadable. If an ability's custom handler applies a buff, exclude that ability from `applyAbilityBuffs` in `buffs.ts` and call `addBuff` manually.
+- **CONTROL buffs automatically trigger 眩晕递减** (stun diminishing returns, buffId 990101) via `getResistanceConfig` in `addBuff`. ROOT buffs trigger 锁足递减 (990100). No extra code needed — just use `addBuff`.
+
 ## Common Pitfalls
 
 - Do **not** use external URLs in `BACKEND_URL` — causes nginx 404.  

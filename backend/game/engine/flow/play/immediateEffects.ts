@@ -1,7 +1,7 @@
 // engine/flow/applyImmediateEffects.ts
 import { randomUUID } from "crypto";
 import { resolveEffectTargetIndex } from "../../utils/targeting";
-import { blocksEnemyTargeting, isEnemyEffect, shouldSkipDueToDodge } from "../../rules/guards";
+import { blocksEnemyTargeting, isEnemyEffect, shouldSkipDueToDodge, hasKnockbackImmune } from "../../rules/guards";
 import {
   handleDamage,
   handleBonusDamageIfHpGt,
@@ -12,7 +12,7 @@ import {
   handleDash,
   handleDirectionalDash,
 } from "../../effects/handlers";
-import { gameplayUnitsToWorldUnits } from "../../state/types";
+import { gameplayUnitsToWorldUnits, worldUnitsToGameplayUnits } from "../../state/types";
 import { resolveScheduledDamage } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { addBuff, pushBuffExpired } from "../../effects/buffRuntime";
@@ -46,7 +46,7 @@ export function applyImmediateEffects(params: {
   mapCtx?: MapContext;
   castContext?: {
     targetUserId?: string;
-    groundTarget?: { x: number; y: number };
+    groundTarget?: { x: number; y: number; z?: number };
   };
 }) {
   const {
@@ -153,8 +153,85 @@ export function applyImmediateEffects(params: {
         }
         const oppIdx2 = playerIndex === 0 ? 1 : 0;
         const oppPos2 = state.players[oppIdx2].position;
-        const gtdEffect = { ...effect, type: "DIRECTIONAL_DASH" as const, dirMode: "TOWARD" as const };
+        // Cap dash distance: if click is closer than max range, only dash that far
+        const clickDistGpu = worldUnitsToGameplayUnits(gLen, state.unitScale);
+        const cappedValue = gLen > 0.01 ? Math.min(effect.value ?? 20, clickDistGpu) : (effect.value ?? 20);
+        // Proportional durationTicks at 40 u/sec so short dashes aren't slowed down
+        const cappedDurationTicks = Math.max(1, Math.round((cappedValue / 40) * 30));
+        const gtdEffect = { ...effect, type: "DIRECTIONAL_DASH" as const, dirMode: "TOWARD" as const, value: cappedValue, durationTicks: cappedDurationTicks };
         handleDirectionalDash(state, source, oppPos2, ability, gtdEffect);
+        // Height targeting: if groundTarget has an explicit Z, force dash to climb/descend to that height
+        const gTargetZ = castContext?.groundTarget?.z;
+        if (gTargetZ !== undefined && source.activeDash) {
+          const heightDiff = gTargetZ - (source.position.z ?? 0);
+          if (Math.abs(heightDiff) > 0.1) {
+            const vzForce = heightDiff / cappedDurationTicks;
+            source.activeDash.forceVzPerTick = vzForce;
+            // Relax angle caps so tall targets are always reachable
+            if (vzForce > 0) source.activeDash.maxUpVz = Math.max(source.activeDash.maxUpVz, vzForce);
+            if (vzForce < 0) source.activeDash.maxDownVz = Math.min(source.activeDash.maxDownVz, vzForce);
+          }
+        }
+        break;
+      }
+
+      case "KNOCKBACK_DASH": {
+        // Apply a forced dash to the target — pushing them away from the source.
+        // Uses addBuff for proper status bar display, immunity checks, and 递减.
+        const kbTarget = effTarget; // the opponent
+        if (!kbTarget) break;
+        const kdx = kbTarget.position.x - source.position.x;
+        const kdy = kbTarget.position.y - source.position.y;
+        const kdist = Math.sqrt(kdx * kdx + kdy * kdy);
+        if (kdist < 0.001) break; // no direction to push
+
+        // Apply the KNOCKED_BACK buff via official system (checks immunity).
+        // If immune, addBuff silently returns — skip setting the activeDash too.
+        const knockedBackBuffDef = ability.buffs?.find((b: any) => b.buffId === 9201);
+        if (!knockedBackBuffDef) break;
+
+        // Check knockback immunity before committing (addBuff would also catch it,
+        // but we need to know whether to set activeDash).
+        if (hasKnockbackImmune(kbTarget)) break;
+
+        const kbDirX = kdx / kdist;
+        const kbDirY = kdy / kdist;
+        const kbDistance = gameplayUnitsToWorldUnits(effect.value ?? 12, state.unitScale);
+        // durationTicks = movement ticks only (12u ÷ 20u/sec × 30tick/sec = 18 ticks)
+        const moveTicks = effect.durationTicks ?? 18;
+
+        // Clear any existing dash on the target and freeze velocity
+        delete (kbTarget as any).activeDash;
+        if ((kbTarget as any).velocity) {
+          (kbTarget as any).velocity.vx = 0;
+          (kbTarget as any).velocity.vy = 0;
+        }
+
+        (kbTarget as any).activeDash = {
+          abilityId: ability.id,
+          vxPerTick: kbDirX * kbDistance / moveTicks,
+          vyPerTick: kbDirY * kbDistance / moveTicks,
+          forceVzPerTick: 0,
+          maxUpVz: 0,
+          maxDownVz: 0,
+          ticksRemaining: moveTicks,
+          wallStunMs: effect.wallStunMs ?? 0,
+          vzPerTick: 0,  // suppress vz capture on first tick
+        };
+
+        // Store caster userId so GameLoop can find it when applying the wall stun
+        (kbTarget as any)._wallKnockSourceUserId = source.userId;
+
+        // Apply KNOCKED_BACK debuff via official addBuff (shows in status bar, triggers events)
+        // Duration 1000ms so target is locked for a full second even after movement ends
+        addBuff({
+          state,
+          sourceUserId: source.userId,
+          targetUserId: kbTarget.userId,
+          ability,
+          buffTarget: kbTarget,
+          buff: { ...knockedBackBuffDef, durationMs: 1_000 },
+        });
         break;
       }
 

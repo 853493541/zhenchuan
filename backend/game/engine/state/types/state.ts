@@ -156,6 +156,8 @@ export interface PlayerState {
     speedPerTick?: number; // optional steering speed (units/tick)
     steerByFacing?: boolean;
     wallDiveOnBlock?: boolean;
+    wallStunMs?: number;     // if >0 and wall blocks the dash, stop and stun for this duration
+    wallBlocked?: boolean;   // set by movement.ts when a wall hit is detected
     snapUpUnits?: number;
     diveVzPerTick?: number;
     vzPerTick?: number;   // undefined = not yet captured; set on first tick of dash

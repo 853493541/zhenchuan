@@ -610,7 +610,7 @@ interface BattleArenaProps {
   onCastAbility: (
     abilityInstanceId: string,
     targetUserId?: string,
-    groundTarget?: { x: number; y: number },
+    groundTarget?: { x: number; y: number; z?: number },
   ) => Promise<void>;
   distance: number;
   maxHp: number;
@@ -716,7 +716,7 @@ export default function BattleArena({
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [selectedSelf,     setSelectedSelf]     = useState(false);
   const [pendingGroundCastAbilityId, setPendingGroundCastAbilityId] = useState<string | null>(null);
-  const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number } | null>(null);
+  const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number; z?: number; isValid?: boolean } | null>(null);
   const [autoForward, setAutoForward] = useState(false);
   const [draggingDraftInstanceId, setDraggingDraftInstanceId] = useState<string | null>(null);
   const [dragHoverIndex, setDragHoverIndex] = useState<number | null>(null);
@@ -1065,6 +1065,7 @@ export default function BattleArena({
   const selectedTargetRef   = useRef<string | null>(null);
   const selectedSelfRef     = useRef(false);
   const pendingGroundCastAbilityRef = useRef<string | null>(null);
+  const mouseWorldPosRef = useRef<{ x: number; y: number; z?: number } | null>(null);
   const oppScreenBoundsRef  = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
   const meScreenBoundsRef   = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
   const opponentIdsRef      = useRef<string[]>([]);
@@ -1127,11 +1128,9 @@ export default function BattleArena({
   const castAbilityRef = useRef<(id: string) => void>(() => {});
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
-    // 孤风飒踏 and 撼地 always use mouse-click direction (ground-target dash)
-    // Even with an enemy selected, they must enter pending ground-cast mode.
-    if (ability?.allowGroundCastWithoutTarget && (ability?.abilityId === 'gu_feng_sa_ta' || ability?.abilityId === 'han_di')) {
+    // 孤风飒踏 and 撼地: enter pending ground-cast mode (shows hover circle, click to confirm)
+    if (ability?.abilityId === 'gu_feng_sa_ta' || ability?.abilityId === 'han_di') {
       setPendingGroundCastAbilityId(id);
-      setGroundCastPreview(null);
       return;
     }
     if (ability?.abilityId === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
@@ -1251,8 +1250,8 @@ export default function BattleArena({
     onCastAbility(id, selectedTargetIdNow ?? undefined);
   };
 
-  const castGroundAbilityRef = useRef<(x: number, y: number) => void>(() => {});
-  castGroundAbilityRef.current = (x: number, y: number) => {
+  const castGroundAbilityRef = useRef<(x: number, y: number, worldZ?: number) => void>(() => {});
+  castGroundAbilityRef.current = (x: number, y: number, worldZ?: number) => {
     const abilityId = pendingGroundCastAbilityRef.current;
     if (!abilityId) return;
     const ability = abilitiesRef.current.find((a) => a.id === abilityId);
@@ -1261,7 +1260,7 @@ export default function BattleArena({
     lastCastNameRef.current = ability.name ?? null;
     setPendingGroundCastAbilityId(null);
     setGroundCastPreview(null);
-    onCastAbility(abilityId, undefined, { x, y });
+    onCastAbility(abilityId, undefined, { x, y, z: worldZ });
   };
 
   /* --- Render position + dash-trail refs --- */
@@ -2062,18 +2061,11 @@ export default function BattleArena({
       if (ab?.qinggong && qinggongSealed) return false;
       if (ab?.cannotCastWhileRooted && rootedByDebuff) return false;
 
-      const canGroundCastWithoutSelection =
-        ab?.target === 'OPPONENT' &&
-        !!ab?.allowGroundCastWithoutTarget &&
-        !hasSelectedTarget;
-      if (canGroundCastWithoutSelection) return true;
+      // Ground-target abilities always ready regardless of target selection or range
+      if (ab?.target === 'OPPONENT' && !!ab?.allowGroundCastWithoutTarget) return true;
 
       const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
       if (needsSelectedTarget && !targetPos) return false;
-
-      if (ab?.target === 'OPPONENT' && !targetPos && ab?.allowGroundCastWithoutTarget) {
-        return true;
-      }
 
       const distanceToTarget = (myPos && targetPos)
         ? worldUnitsToNewUnits(Math.sqrt(
@@ -3711,36 +3703,46 @@ export default function BattleArena({
             groundZones={groundZones}
             groundCastPreview={
               (() => {
-                if (!pendingGroundCastAbilityId || !groundCastPreview) return null;
+                if (!groundCastPreview) return null;
 
-                const previewAbilityInfo = abilitiesRef.current.find(
-                  (a: any) => a.id === pendingGroundCastAbilityId
-                );
-                const previewAbilityId = previewAbilityInfo?.abilityId ?? pendingGroundCastAbilityId;
-                const previewAbility =
-                  abilities[previewAbilityId] ??
-                  Object.values(abilities).find((c: any) => c.id === previewAbilityId);
-                const previewRadiusUnits = Array.isArray((previewAbility as any)?.effects)
-                  ? ((previewAbility as any).effects.find((e: any) =>
-                      e.type === 'BAIZU_AOE' || e.type === 'WUFANG_XINGJIN_AOE'
-                    )?.range ?? 6)
-                  : 6;
+                // Pending ground cast (e.g. 百足, 五方行尽)
+                if (pendingGroundCastAbilityId) {
+                  const previewAbilityInfo = abilitiesRef.current.find(
+                    (a: any) => a.id === pendingGroundCastAbilityId
+                  );
+                  const previewAbilityId = previewAbilityInfo?.abilityId ?? pendingGroundCastAbilityId;
+                  const previewAbility =
+                    abilities[previewAbilityId] ??
+                    Object.values(abilities).find((c: any) => c.id === previewAbilityId);
+                  const previewRadiusUnits = Array.isArray((previewAbility as any)?.effects)
+                    ? ((previewAbility as any).effects.find((e: any) =>
+                        e.type === 'BAIZU_AOE' || e.type === 'WUFANG_XINGJIN_AOE'
+                      )?.range ?? 6)
+                    : 6;
+                  return {
+                    x: groundCastPreview.x,
+                    y: groundCastPreview.y,
+                    z: groundCastPreview.z,
+                    radius: previewRadiusUnits * storedUnitScale,
+                    label: previewAbilityInfo?.name ?? previewAbility?.name ?? '范围预览',
+                    isValid: groundCastPreview.isValid !== false,
+                  };
+                }
 
-                return {
-                  x: groundCastPreview.x,
-                  y: groundCastPreview.y,
-                  radius: previewRadiusUnits * storedUnitScale,
-                  label: previewAbilityInfo?.name ?? previewAbility?.name ?? '范围预览',
-                };
+                // No hover unless a pending ground cast is active
+                return null;
               })()
             }
-            onGroundPointerMove={(x, y) => {
-              if (!pendingGroundCastAbilityRef.current) return;
-              setGroundCastPreview({ x, y });
+            onGroundPointerMove={(x, y, worldZ, isHorizontal) => {
+              mouseWorldPosRef.current = { x, y, z: worldZ };
+              // Only update preview state when there is an active pending ground cast
+              if (pendingGroundCastAbilityRef.current) {
+                setGroundCastPreview({ x, y, z: worldZ, isValid: isHorizontal !== false });
+              }
             }}
-            onGroundPointerDown={(x, y) => {
+            onGroundPointerDown={(x, y, worldZ) => {
               if (!pendingGroundCastAbilityRef.current) return;
-              castGroundAbilityRef.current(x, y);
+              castGroundAbilityRef.current(x, y, worldZ);
             }}
             showCollisionShells={showCollisionShells}
             collisionReady={collisionReady}

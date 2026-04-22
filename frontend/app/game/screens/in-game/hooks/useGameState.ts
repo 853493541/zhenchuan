@@ -518,7 +518,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const playAbility = async (
     ability: AbilityInstance,
     targetUserId?: string,
-    groundTarget?: { x: number; y: number },
+    groundTarget?: { x: number; y: number; z?: number },
   ) => {
     // Real-time battles: no turn restrictions (both players act simultaneously)
     // Turn-based (draft): must be your turn

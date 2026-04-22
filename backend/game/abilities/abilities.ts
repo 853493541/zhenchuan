@@ -1796,6 +1796,47 @@ export const BASE_ABILITIES: AbilityRecord = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
+  // 九转归一 — knock back enemy 12u in 1 second; if they hit a wall → stun 4s
+  // ──────────────────────────────────────────────────────────────────────────
+  jiu_zhuan_gui_yi: {
+    id: "jiu_zhuan_gui_yi",
+    name: "九转归一",
+    description: "将目标击退12尺（20尺/秒，0.6秒完成）\n击退期间目标被锁定1秒\n若击退过程中撞墙，则附加羽化眩晕4秒\n射程8，触发GCD",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 8,
+    cooldownTicks: 300,
+    gcd: true,
+    faceDirection: false,
+    effects: [
+      // durationTicks: 18 = 12u ÷ (20u/sec) × 30 ticks/sec
+      { type: "KNOCKBACK_DASH", value: 12, durationTicks: 18, wallStunMs: 4_000 },
+    ],
+    buffs: [
+      {
+        // 0: KNOCKED_BACK phase debuff — locks target during the 1-second CC window
+        buffId: 9201,
+        name: "九转击退",
+        description: "被击退中，行动受限1秒",
+        category: "DEBUFF",
+        durationMs: 1_000,
+        breakOnPlay: false,
+        effects: [{ type: "KNOCKED_BACK" }],
+      },
+      {
+        // 1: 羽化 — CONTROL stun applied only on wall hit (by GameLoop handler)
+        buffId: 9202,
+        name: "羽化",
+        description: "撞墙后陷入眩晕，无法行动",
+        category: "DEBUFF",
+        durationMs: 4_000,
+        breakOnPlay: false,
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
   // 跃潮斩波 — dash toward target at 20u/sec (30 ticks), on land 15 damage, 轻功, GCD
   // ──────────────────────────────────────────────────────────────────────────
   yue_chao_zhan_bo: {
@@ -1829,6 +1870,129 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     effects: [{ type: "DAMAGE", value: 7 }],
     buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 听雷 — range 4, 3 damage, self-buff: 听雷·伤 (+10% DMG, 12s, 3 stacks max)
+  // No GCD, can cast in air or while moving
+  // ──────────────────────────────────────────────────────────────────────────
+  ting_lei: {
+    id: "ting_lei",
+    name: "听雷",
+    description: "瞬发，可在空中或移动中施放\n射程4，对目标造成3点伤害\n命中后自身获得「听雷·伤」：伤害提升10%（12秒，最多3层）",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 150,
+    gcd: false,
+    effects: [{ type: "DAMAGE", value: 3 }],
+    buffs: [
+      {
+        buffId: 2322,
+        name: "听雷·伤",
+        description: "伤害提升10%（最多3层）",
+        category: "BUFF",
+        durationMs: 12_000,
+        breakOnPlay: false,
+        maxStacks: 3,
+        initialStacks: 1,
+        effects: [{ type: "DAMAGE_MULTIPLIER", value: 1.1, restrictToAbilityId: "ting_lei" }],
+        applyTo: "SELF",
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 绛唇珠袖 — range 22, give enemy debuff: using 轻功 → silence 2s + 1 damage
+  // ──────────────────────────────────────────────────────────────────────────
+  jiang_chun_zhu_xiu: {
+    id: "jiang_chun_zhu_xiu",
+    name: "绛唇珠袖",
+    description: "瞬发，射程22\n对目标施加「绛唇珠袖」9秒：\n  使用轻功时，立即沉默2秒并受到1点伤害",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 22,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2323,
+        name: "绛唇珠袖",
+        description: "使用轻功时立即沉默2秒并受到1点伤害",
+        category: "DEBUFF",
+        durationMs: 9_000,
+        breakOnPlay: false,
+        effects: [],
+      },
+      {
+        // Applied on trigger, not on cast. Declared here so abilityPreload can surface it.
+        buffId: 2324,
+        name: "绛唇珠袖·沉默",
+        description: "沉默：无法施放技能",
+        category: "DEBUFF",
+        durationMs: 2_000,
+        breakOnPlay: false,
+        effects: [{ type: "SILENCE" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 鹤归孤山 — forward dash 15u/1s, on land: 2 dmg + stun 3s (10u AOE), +2 dmg (4u)
+  // ──────────────────────────────────────────────────────────────────────────
+  he_gui_gu_shan: {
+    id: "he_gui_gu_shan",
+    name: "鹤归孤山",
+    description: "轻功，向目标冲刺15尺（1秒）\n落地时对10尺内敌人造成2点伤害并眩晕3秒\n4尺内额外造成2点伤害\n触发GCD",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 25,
+    cooldownTicks: 300,
+    gcd: true,
+    qinggong: true,
+    faceDirection: false,
+    effects: [
+      { type: "DIRECTIONAL_DASH", dirMode: "TOWARD", value: 15, durationTicks: 30 },
+    ],
+    buffs: [
+      {
+        buffId: 2325,
+        name: "鹤归孤山·震慑",
+        description: "眩晕：无法移动、跳跃和施放技能",
+        category: "DEBUFF",
+        durationMs: 3_000,
+        breakOnPlay: false,
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 天地低昂 — instant self-buff: 40% DR for 10s, castable while controlled
+  // ──────────────────────────────────────────────────────────────────────────
+  tian_di_di_ang: {
+    id: "tian_di_di_ang",
+    name: "天地低昂",
+    description: "瞬发，自身减少受到的伤害40%，持续10秒\n可在眩晕/控制中施放",
+    type: "SUPPORT",
+    target: "SELF",
+    range: 0,
+    cooldownTicks: 300,
+    gcd: true,
+    allowWhileControlled: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2326,
+        name: "天地低昂",
+        description: "受到的伤害减少40%",
+        category: "BUFF",
+        durationMs: 10_000,
+        breakOnPlay: false,
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.4 }],
+      },
+    ],
   },
 };
 

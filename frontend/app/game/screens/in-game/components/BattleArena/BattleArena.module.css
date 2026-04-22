@@ -331,17 +331,17 @@
   font-size: 18px;
   line-height: 1;
   color: #e8eef5;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   pointer-events: none;
   z-index: 20;
 }
 
 .rttBadgeValue {
   display: inline-block;
-  min-width: 3.6em;
+  min-width: 2.8em;
   text-align: right;
   font-weight: 800;
   letter-spacing: 0.02em;

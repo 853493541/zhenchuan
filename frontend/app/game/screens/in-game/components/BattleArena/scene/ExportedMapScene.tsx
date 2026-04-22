@@ -135,12 +135,16 @@ export default function ExportedMapScene({
   onPointerMove,
   onPointerDown,
 }: ExportedMapSceneProps) {
-  const { scene } = useThree();
+  const { scene, camera, gl } = useThree();
   const groupRef = useRef<THREE.Group | null>(null);
   const contentGroupRef = useRef<THREE.Group | null>(null); // entity + terrain meshes
   const shellLinesRef = useRef<THREE.LineSegments | null>(null);
   const boxLinesRef = useRef<THREE.LineSegments | null>(null);
-  // Renderer setup (toneMapping, exposure, shadows) is handled by CollisionTestSetup in ArenaScene.
+  // Keep latest callbacks in refs so the canvas event listener doesn't need to re-register
+  const onPointerMoveRef = useRef(onPointerMove);
+  const onPointerDownRef = useRef(onPointerDown);
+  useEffect(() => { onPointerMoveRef.current = onPointerMove; });
+  useEffect(() => { onPointerDownRef.current = onPointerDown; });
 
   // Toggle collision visibility
   useEffect(() => {
@@ -159,6 +163,63 @@ export default function ExportedMapScene({
       mat.opacity = blueprintMode ? 1.0 : 0.65;
     }
   }, [blueprintMode]);
+
+  // Canvas-level pointer events: raycast against GLB group first, fall back to y=0 ground plane
+  const worldHalfX = worldWidth / 2;
+  const worldHalfY = worldHeight / 2;
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const raycaster = new THREE.Raycaster();
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0.01);
+    const _target = new THREE.Vector3();
+    const _worldNormal = new THREE.Vector3();
+
+    /** Returns { point, isHorizontal } — isHorizontal = face normal Y > 0.5 in world space */
+    const getHitPoint = (clientX: number, clientY: number): { point: THREE.Vector3; isHorizontal: boolean } | null => {
+      const rect = canvas.getBoundingClientRect();
+      const ndc = {
+        x: ((clientX - rect.left) / rect.width) * 2 - 1,
+        y: -((clientY - rect.top) / rect.height) * 2 + 1,
+      };
+      raycaster.setFromCamera(ndc as THREE.Vector2, camera);
+      // Prefer hits on the loaded GLB group (buildings, terrain, etc.)
+      const group = contentGroupRef.current;
+      if (group) {
+        const hits = raycaster.intersectObject(group, true);
+        if (hits.length > 0) {
+          const hit = hits[0];
+          let isHorizontal = true; // default to valid if no face data
+          if (hit.face) {
+            // Transform face normal from object local space to world space
+            _worldNormal.copy(hit.face.normal).transformDirection(hit.object.matrixWorld).normalize();
+            isHorizontal = _worldNormal.y > 0.5;
+          }
+          return { point: hit.point, isHorizontal };
+        }
+      }
+      // Fallback: flat ground plane — always horizontal
+      const pt = raycaster.ray.intersectPlane(groundPlane, _target.clone()) ?? null;
+      return pt ? { point: pt, isHorizontal: true } : null;
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const hit = getHitPoint(e.clientX, e.clientY);
+      if (hit) onPointerMoveRef.current?.({ point: hit.point, isHorizontal: hit.isHorizontal });
+    };
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const hit = getHitPoint(e.clientX, e.clientY);
+      if (hit) onPointerDownRef.current?.({ point: hit.point, isHorizontal: hit.isHorizontal });
+    };
+
+    canvas.addEventListener('pointermove', onMove, { passive: true });
+    canvas.addEventListener('pointerdown', onDown);
+    return () => {
+      canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerdown', onDown);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camera, gl]); // stable after mount
 
   useEffect(() => {
     const group = new THREE.Group();
@@ -246,11 +307,10 @@ export default function ExportedMapScene({
   return (
     <>
       {!blueprintMode && <SkyDome />}
+      {/* Invisible ground plane kept as a visual backdrop — pointer events now handled by canvas raycaster above */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, -0.01, 0]}
-        onPointerMove={onPointerMove}
-        onPointerDown={onPointerDown}
       >
         <planeGeometry args={[worldWidth, worldHeight]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />

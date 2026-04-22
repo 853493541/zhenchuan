@@ -3,6 +3,7 @@
 import { GameState, Ability } from "../../state/types";
 import { getEnemy } from "../../utils/targeting";
 import { pushEvent } from "../../../services/flow/events";
+import { addBuff } from "../../effects/buffRuntime";
 
 import { breakOnPlay } from "./breakOnPlay";
 import { computeAbilityDodge } from "../../rules/dodge";
@@ -19,7 +20,7 @@ export function applyAbility(
   mapCtx?: MapContext,
   castContext?: {
     targetUserId?: string;
-    groundTarget?: { x: number; y: number };
+    groundTarget?: { x: number; y: number; z?: number };
   }
 ) {
   if (state.gameOver) return;
@@ -79,6 +80,22 @@ export function applyAbility(
     target,
     abilityDodged,
   });
+
+  // 绛唇珠袖: manually apply only the cast-time debuff (2323) to the opponent.
+  // Buff 2324 (沉默) is trigger-only; applied in playService when opponent uses 轻功.
+  if (ability.id === "jiang_chun_zhu_xiu" && !abilityDodged) {
+    const debuffDef = (ability as any).buffs?.find((b: any) => b.buffId === 2323);
+    if (debuffDef) {
+      addBuff({
+        state,
+        sourceUserId: source.userId,
+        targetUserId: target.userId,
+        ability: ability as any,
+        buffTarget: target as any,
+        buff: debuffDef,
+      });
+    }
+  }
 
   checkGameOver(state);
 }

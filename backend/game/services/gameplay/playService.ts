@@ -17,6 +17,9 @@ import { applyOnPlayBuffEffects } from "../../engine/flow/play/onPlayEffects";
 import { broadcastGameUpdate } from "../broadcast";
 import { globalTimer } from "../../../utils/timing";
 import { gameStateCache } from "../gameStateCache";
+import { addBuff } from "../../engine/effects/buffRuntime";
+import { applyDamageToTarget } from "../../engine/utils/health";
+import { resolveScheduledDamage } from "../../engine/utils/combatMath";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -129,7 +132,7 @@ export async function playAbility(
   userId: string,
   abilityInstanceId: string,
   targetUserId?: string,
-  groundTarget?: { x: number; y: number }
+  groundTarget?: { x: number; y: number; z?: number }
 ) {
   const startTime = performance.now();
   globalTimer.start(`play_card_${gameId}`);
@@ -155,7 +158,7 @@ async function playCastAbility(
   userId: string,
   abilityInstanceId: string,
   targetUserId?: string,
-  groundTarget?: { x: number; y: number }
+  groundTarget?: { x: number; y: number; z?: number }
 ) {
   const state = loop.getState();
   const playerIndex = state.players.findIndex((p) => p.userId === userId);
@@ -284,6 +287,32 @@ async function playCastAbility(
 
     if (upgradedBangDaGouTouCast) {
       played.cooldown = Math.max(played.cooldown ?? 0, BANG_DA_GOU_TOU_COOLDOWN_TICKS);
+    }
+  }
+
+  // 绛唇珠袖 trigger: if the caster has the 绛唇珠袖 debuff and just cast a qinggong ability,
+  // immediately apply 绛唇珠袖·沉默 (SILENCE 2s) and deal 1 damage.
+  const JIANG_CHUN_DEBUFF_ID = 2323;
+  if ((ability as any).qinggong === true) {
+    const jiangBuff = (player as any).buffs?.find(
+      (b: any) => b.buffId === JIANG_CHUN_DEBUFF_ID && b.expiresAt > Date.now()
+    );
+    if (jiangBuff) {
+      const jiangAbility = ABILITIES["jiang_chun_zhu_xiu"] as any;
+      const silenceBuff = jiangAbility?.buffs?.find((b: any) => b.buffId === 2324);
+      const opp = (state as any).players?.find((p: any) => p.userId !== player.userId);
+      if (jiangAbility && silenceBuff && opp) {
+        addBuff({
+          state: state as any,
+          sourceUserId: opp.userId,
+          targetUserId: player.userId,
+          ability: jiangAbility,
+          buffTarget: player as any,
+          buff: silenceBuff,
+        });
+        const dmg = resolveScheduledDamage({ source: opp, target: player as any, base: 1 });
+        if (dmg > 0) applyDamageToTarget(player as any, dmg);
+      }
     }
   }
 

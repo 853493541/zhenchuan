@@ -67,7 +67,9 @@ export type EffectType =
   | "ROOT"
   | "SLOW"
   // Jump enhancements
-  | "MULTI_JUMP";
+  | "MULTI_JUMP"
+  // Knockback: force a dash on the target away from the caster
+  | "KNOCKBACK_DASH";
 
 /**
  * Immediate ability effects
@@ -149,6 +151,11 @@ export interface AbilityEffect {
   routeRadius?: number;
 
   /**
+   * For KNOCKBACK_DASH: stun duration (ms) if target hits a wall during the dash.
+   */
+  wallStunMs?: number;
+
+  /**
    * For DIRECTIONAL_DASH: optional arc peak height in world units.
    * When set, dash vertical movement follows a jump-like arc instead of flat inertia.
    */
@@ -200,4 +207,11 @@ export type BuffEffect = Omit<AbilityEffect, "allowWhileControlled"> & {
    * For zone placement effects: vertical effective height.
    */
   zoneHeight?: number;
+
+  /**
+   * When set on a DAMAGE_MULTIPLIER (or similar) effect inside a buff,
+   * the bonus only applies when the ability being cast matches this id.
+   * e.g. '听雷·伤' buff should only boost damage from 'ting_lei' casts.
+   */
+  restrictToAbilityId?: string;
 };

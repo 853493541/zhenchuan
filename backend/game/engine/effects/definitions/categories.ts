@@ -85,6 +85,8 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   STACK_ON_HIT_GUAN_TI_HEAL: "BUFF",
   // Instant 贯体 heal bypassing HEAL_REDUCTION
   INSTANT_GUAN_TI_HEAL: "BUFF",
+  // Knockback dash (九转归一): force target away, stun if wall hit
+  KNOCKBACK_DASH: "DEBUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

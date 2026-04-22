@@ -717,6 +717,9 @@ export class GameLoop {
                 buffTarget: opp,
                 buff: stunBuff,
               });
+              // 1 impact damage on landing
+              const hdDmg = resolveScheduledDamage({ source: player, target: opp, base: 1 });
+              if (hdDmg > 0) applyDamageToTarget(opp, hdDmg);
             }
             movementStateChanged = true;
           }
@@ -750,6 +753,99 @@ export class GameLoop {
               } as any);
             }
           }
+          movementStateChanged = true;
+        }
+      }
+
+      // 九转归一: when the knockback dash ends AND wall was hit, apply 羽化 stun
+      if (dashAbilityIdBefore === "jiu_zhuan_gui_yi" && !player.activeDash) {        const stunMs: number = (player as any)._wallKnockStunMs ?? 0;
+        if (stunMs > 0) {
+          const jiuAbility = ABILITIES["jiu_zhuan_gui_yi"] as any;
+          const yuHuaBuff = jiuAbility?.buffs?.find((b: any) => b.buffId === 9202);
+          if (jiuAbility && yuHuaBuff) {
+            // Remove the KNOCKED_BACK phase debuff so it doesn't overlap
+            player.buffs = player.buffs.filter((b) => b.buffId !== 9201);
+            const sourceId: string = (player as any)._wallKnockSourceUserId ?? player.userId;
+            // addBuff handles: 递减, CONTROL_IMMUNE check, BUFF_APPLIED event, status bar
+            addBuff({
+              state: this.state,
+              sourceUserId: sourceId,
+              targetUserId: player.userId,
+              ability: jiuAbility,
+              buffTarget: player as any,
+              buff: { ...yuHuaBuff, durationMs: stunMs },
+            });
+            movementStateChanged = true;
+          }
+        }
+        delete (player as any)._wallKnockStunMs;
+        delete (player as any)._wallKnockAbilityId;
+        delete (player as any)._wallKnockSourceUserId;
+      }
+
+      // 鹤归孤山: on dash end, deal damage + stun to nearby enemies, then give caster 0.5s dash buff
+      if (dashAbilityIdBefore === "he_gui_gu_shan" && !player.activeDash) {
+        const heAbility = ABILITIES["he_gui_gu_shan"] as any;
+        if (heAbility) {
+          const stunBuff = heAbility.buffs?.find((b: any) => b.buffId === 2325);
+          const outerRadius = gameplayUnitsToWorldUnits(10, storedUnitScale);
+          const innerRadius = gameplayUnitsToWorldUnits(4, storedUnitScale);
+          for (const opp of this.state.players as any[]) {
+            if (opp.userId === player.userId) continue;
+            if ((opp.hp ?? 0) <= 0) continue;
+            if (blocksEnemyTargeting(opp)) continue;
+            const hdx = opp.position.x - player.position.x;
+            const hdy = opp.position.y - player.position.y;
+            const dist = Math.hypot(hdx, hdy);
+            if (dist > outerRadius) continue;
+            // Base 2 damage for all within 10u
+            const baseDmg = resolveScheduledDamage({ source: player, target: opp, base: 2 });
+            if (baseDmg > 0) {
+              applyDamageToTarget(opp, baseDmg);
+              this.state.events.push({
+                id: randomUUID(), timestamp: Date.now(), turn: this.state.turn,
+                type: "DAMAGE", actorUserId: player.userId, targetUserId: opp.userId,
+                abilityId: "he_gui_gu_shan", abilityName: heAbility.name,
+                effectType: "DAMAGE", value: baseDmg,
+              } as any);
+            }
+            // Extra 2 damage for within 4u
+            if (dist <= innerRadius) {
+              const extraDmg = resolveScheduledDamage({ source: player, target: opp, base: 2 });
+              if (extraDmg > 0) {
+                applyDamageToTarget(opp, extraDmg);
+                this.state.events.push({
+                  id: randomUUID(), timestamp: Date.now(), turn: this.state.turn,
+                  type: "DAMAGE", actorUserId: player.userId, targetUserId: opp.userId,
+                  abilityId: "he_gui_gu_shan", abilityName: heAbility.name,
+                  effectType: "DAMAGE", value: extraDmg,
+                } as any);
+              }
+            }
+            // Stun via addBuff (handles 递减, CONTROL_IMMUNE, status bar)
+            if (stunBuff) {
+              addBuff({
+                state: this.state,
+                sourceUserId: player.userId,
+                targetUserId: opp.userId,
+                ability: heAbility,
+                buffTarget: opp,
+                buff: stunBuff,
+              });
+            }
+          }
+          // Grant caster 0.5s of post-landing dash CC immunity (冲势)
+          applyDashRuntimeBuff({
+            state: this.state,
+            target: player as any,
+            durationMs: 500,
+            effects: [
+              { type: "CONTROL_IMMUNE" },
+              { type: "KNOCKBACK_IMMUNE" },
+            ],
+            sourceAbilityId: "he_gui_gu_shan",
+            sourceAbilityName: heAbility.name,
+          });
           movementStateChanged = true;
         }
       }

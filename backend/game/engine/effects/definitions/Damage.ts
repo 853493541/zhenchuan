@@ -43,6 +43,7 @@ export function handleDamage(
     source,
     target,
     base,
+    abilityId: ability.id,
   });
 
   if (final > 0) {
