@@ -10,11 +10,14 @@ import { AbilityPropertyId } from "../abilities/abilityPropertySystem";
 import {
   BUFF_ATTRIBUTES,
   BuffAttribute,
+  BuffProperty,
+  BUFF_PROPERTY_TYPES,
   buildBuffEditorSnapshot,
   setBuffAttribute,
   setBuffDescription,
   setBuffHidden,
   setBuffName,
+  setBuffProperties,
 } from "../abilities/buffTagSystem";
 import { getUserIdFromCookie } from "./auth";
 
@@ -42,6 +45,7 @@ function handleAbilityEditorError(res: express.Response, error: unknown) {
     message === "ERR_INVALID_ABILITY_NUMERIC_VALUE" ||
     message === "ERR_INVALID_BUFF_DESCRIPTION" ||
     message === "ERR_INVALID_BUFF_NAME" ||
+    message === "ERR_INVALID_BUFF_PROPERTIES" ||
     message === "ERR_HIDDEN_BUFF_CANNOT_HAVE_ATTRIBUTE"
   ) {
     return res.status(400).json({ error: message });
@@ -207,6 +211,43 @@ router.put("/ability-editor/buffs/:buffId/hidden", (req, res) => {
     }
 
     setBuffHidden(buffId, hidden);
+
+    return res.json(buildBuffEditorSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/buffs/:buffId/properties", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+
+    const buffId = parseInt(req.params.buffId, 10);
+    if (!Number.isFinite(buffId)) {
+      return res.status(400).json({ error: "ERR_INVALID_BUFF_ID" });
+    }
+
+    const { properties } = req.body ?? {};
+    if (!Array.isArray(properties)) {
+      return res.status(400).json({ error: "ERR_INVALID_BUFF_PROPERTIES" });
+    }
+
+    for (const prop of properties) {
+      if (!prop || typeof prop !== "object") {
+        return res.status(400).json({ error: "ERR_INVALID_BUFF_PROPERTIES" });
+      }
+      if (!(BUFF_PROPERTY_TYPES as string[]).includes(prop.type)) {
+        return res.status(400).json({ error: "ERR_INVALID_BUFF_PROPERTIES" });
+      }
+      if (prop.value !== undefined && (typeof prop.value !== "number" || !Number.isFinite(prop.value))) {
+        return res.status(400).json({ error: "ERR_INVALID_BUFF_PROPERTIES" });
+      }
+      if (prop.noOverride !== undefined && typeof prop.noOverride !== "boolean") {
+        return res.status(400).json({ error: "ERR_INVALID_BUFF_PROPERTIES" });
+      }
+    }
+
+    setBuffProperties(buffId, properties as BuffProperty[]);
 
     return res.json(buildBuffEditorSnapshot());
   } catch (error) {

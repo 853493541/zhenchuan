@@ -67,6 +67,16 @@ export type BuffAttribute = "未选择" | "无" | "阴性" | "阳性" | "毒性"
 
 export const BUFF_ATTRIBUTES: BuffAttribute[] = ["未选择", "无", "阴性", "阳性", "毒性", "外功", "持续伤害", "混元", "蛊", "点穴"];
 
+export type BuffPropertyType = "减伤" | "无敌";
+
+export const BUFF_PROPERTY_TYPES: BuffPropertyType[] = ["减伤", "无敌"];
+
+export interface BuffProperty {
+  type: BuffPropertyType;
+  value?: number;       // for 减伤: 0–100
+  noOverride?: boolean; // for 减伤: 不可被顶
+}
+
 export type BuffEditorEntry = {
   buffId: number;
   name: string;
@@ -76,6 +86,7 @@ export type BuffEditorEntry = {
   description: string;
   iconPath?: string;
   sourceAbilityName?: string;
+  properties: BuffProperty[];
 };
 
 export type BuffEditorSnapshot = {

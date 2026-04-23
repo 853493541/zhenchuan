@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updatedAt": "2026-04-22T23:58:19.921Z",
+  "updatedAt": "2026-04-23T00:17:38.906Z",
   "buffs": {
     "1007": {
       "attribute": "无"
@@ -126,7 +126,8 @@
       "attribute": "无"
     },
     "9001": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "下一次跳跃将跳得更高"
     },
     "9002": {
       "attribute": "无"

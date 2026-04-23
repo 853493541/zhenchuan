@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { toastError, toastSuccess } from "../components/toast/toast";
 import { FALLBACK_BUFF_ICON_PATH } from "../lib/buffIcons";
 import {
   BUFF_ATTRIBUTES,
+  BUFF_PROPERTY_TYPES,
   BuffAttribute,
   BuffEditorEntry,
   BuffEditorSnapshot,
+  BuffProperty,
+  BuffPropertyType,
   formatUpdatedAt,
   getAbilityIconByName,
   getBuffIconPath,
@@ -47,6 +50,31 @@ export default function BuffEditorTab({
   const [descriptionDrafts, setDescriptionDrafts] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+
+  const handlePropertiesChange = async (entry: BuffEditorEntry, properties: BuffProperty[]) => {
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/game/ability-editor/buffs/${entry.buffId}/properties`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ properties }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const next = (await response.json()) as BuffEditorSnapshot;
+      onSnapshotUpdate(next);
+      toastSuccess(`已更新 ${entry.name} · 属性效果`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "保存失败";
+      toastError(message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const allBuffs = snapshot?.buffs ?? [];
   const normalizedSearch = search.trim().toLowerCase();
@@ -316,6 +344,7 @@ export default function BuffEditorTab({
               onNameSave={handleNameSave}
               onDescriptionChange={handleDescriptionChange}
               onDescriptionSave={handleDescriptionSave}
+              onPropertiesChange={handlePropertiesChange}
             />
           ))}
         </div>
@@ -338,6 +367,7 @@ function BuffCard({
   onNameSave,
   onDescriptionChange,
   onDescriptionSave,
+  onPropertiesChange,
 }: {
   entry: BuffEditorEntry;
   isEditingName: boolean;
@@ -352,6 +382,7 @@ function BuffCard({
   onNameSave: (entry: BuffEditorEntry, name: string) => void;
   onDescriptionChange: (buffId: number, description: string) => void;
   onDescriptionSave: (entry: BuffEditorEntry, description: string) => void;
+  onPropertiesChange: (entry: BuffEditorEntry, properties: BuffProperty[]) => void;
 }) {
   const subtitle = getBuffSubtitle(entry);
   const iconSrc = getBuffIconPath(entry);
@@ -361,6 +392,34 @@ function BuffCard({
   const canSaveName = trimmedNameDraft.length > 0 && trimmedNameDraft !== entry.name.trim();
   const trimmedDraft = descriptionDraft.trim();
   const canSaveDescription = trimmedDraft.length > 0 && trimmedDraft !== entry.description.trim();
+
+  const jianShangProp = entry.properties.find((p) => p.type === "减伤");
+  const [valueDraft, setValueDraft] = useState(String(jianShangProp?.value ?? 0));
+
+  useEffect(() => {
+    const prop = entry.properties.find((p) => p.type === "减伤");
+    setValueDraft(String(prop?.value ?? 0));
+  }, [entry.properties]);
+
+  const handleToggleProperty = (type: BuffPropertyType) => {
+    const current = entry.properties;
+    const isActive = current.some((p) => p.type === type);
+    const next = isActive ? current.filter((p) => p.type !== type) : [...current, { type }];
+    onPropertiesChange(entry, next);
+  };
+
+  const commitValueDraft = () => {
+    const num = parseFloat(valueDraft);
+    const clamped = Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : 0;
+    setValueDraft(String(clamped));
+    const next = entry.properties.map((p) => (p.type === "减伤" ? { ...p, value: clamped } : p));
+    onPropertiesChange(entry, next);
+  };
+
+  const handleNoOverrideChange = (checked: boolean) => {
+    const next = entry.properties.map((p) => (p.type === "减伤" ? { ...p, noOverride: checked } : p));
+    onPropertiesChange(entry, next);
+  };
 
   return (
     <article className={`${styles.buffCard} ${isDebuff ? styles.buffCardDebuff : styles.buffCardBuff}`}>
@@ -430,6 +489,15 @@ function BuffCard({
               >
                 {isEditingName ? <CheckIcon /> : <PenIcon />}
               </button>
+              <label className={styles.buffHiddenToggle}>
+                <input
+                  type="checkbox"
+                  checked={entry.hidden}
+                  disabled={saving}
+                  onChange={(event) => onHiddenChange(entry, event.target.checked)}
+                />
+                隐藏
+              </label>
             </div>
           </div>
         </div>
@@ -481,15 +549,59 @@ function BuffCard({
             </option>
           ))}
         </select>
-        <label className={styles.buffHiddenToggle}>
-          <input
-            type="checkbox"
-            checked={entry.hidden}
-            disabled={saving}
-            onChange={(event) => onHiddenChange(entry, event.target.checked)}
-          />
-          隐藏
-        </label>
+      </div>
+
+      {/* Properties */}
+      <div className={styles.buffPropsSection}>
+        <span className={styles.buffSectionLabel}>属性效果</span>
+        <div className={styles.buffPropsChips}>
+          {BUFF_PROPERTY_TYPES.map((type) => {
+            const isActive = entry.properties.some((p) => p.type === type);
+            return (
+              <button
+                key={type}
+                type="button"
+                disabled={saving}
+                className={`${styles.buffPropChip} ${isActive ? styles.buffPropChipActive : ""}`}
+                onClick={() => handleToggleProperty(type)}
+              >
+                {type}
+              </button>
+            );
+          })}
+        </div>
+
+        {jianShangProp && (
+          <div className={styles.buffPropValueRow}>
+            <span className={styles.buffPropValueLabel}>减伤值</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              disabled={saving}
+              className={styles.buffPropValueInput}
+              value={valueDraft}
+              onChange={(e) => setValueDraft(e.target.value)}
+              onBlur={commitValueDraft}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+            <span className={styles.buffPropValueUnit}>%</span>
+            <label className={styles.buffPropNoOverride}>
+              <input
+                type="checkbox"
+                checked={jianShangProp.noOverride ?? false}
+                disabled={saving}
+                onChange={(e) => handleNoOverrideChange(e.target.checked)}
+              />
+              不可被顶
+            </label>
+          </div>
+        )}
       </div>
 
       {sourceAbilityIcon && (

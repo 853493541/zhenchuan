@@ -3,14 +3,16 @@ import {
   BUFF_ATTRIBUTES,
   BuffAttribute,
   BuffEditorOverrideEntry,
+  BuffProperty,
+  BUFF_PROPERTY_TYPES,
   loadBuffEditorOverrides,
   saveBuffEditorOverrides,
 } from "./buffEditorOverrides";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────────────
 
-export { BUFF_ATTRIBUTES };
-export type { BuffAttribute };
+export { BUFF_ATTRIBUTES, BUFF_PROPERTY_TYPES };
+export type { BuffAttribute, BuffProperty };
 
 export interface BuffEditorEntry {
   buffId: number;
@@ -21,6 +23,7 @@ export interface BuffEditorEntry {
   description: string;
   iconPath?: string;
   sourceAbilityName?: string;
+  properties: BuffProperty[];
 }
 
 export interface BuffEditorSnapshot {
@@ -68,8 +71,9 @@ function sanitizeOverrideEntry(
   const description = normalizeDescription(entry.description);
   const normalizedDescription = description && description !== baseDescription ? description : undefined;
   const normalizedHidden = typeof entry.hidden === "boolean" && entry.hidden !== baseHidden ? entry.hidden : undefined;
+  const normalizedProperties = entry.properties && entry.properties.length > 0 ? entry.properties : undefined;
 
-  if (normalizedAttribute === "未选择" && normalizedHidden === undefined && !normalizedName && !normalizedDescription) {
+  if (normalizedAttribute === "未选择" && normalizedHidden === undefined && !normalizedName && !normalizedDescription && !normalizedProperties) {
     return null;
   }
 
@@ -78,6 +82,7 @@ function sanitizeOverrideEntry(
     ...(normalizedHidden === undefined ? {} : { hidden: normalizedHidden }),
     ...(normalizedName ? { name: normalizedName } : {}),
     ...(normalizedDescription ? { description: normalizedDescription } : {}),
+    ...(normalizedProperties ? { properties: normalizedProperties } : {}),
   };
 }
 
@@ -138,6 +143,7 @@ export function buildBuffEditorSnapshot(): BuffEditorSnapshot {
       description: override?.description ?? normalizeDescription(buff.description) ?? "无",
       iconPath: buff.iconPath ?? undefined,
       sourceAbilityName: buff.sourceAbilityName ?? undefined,
+      properties: override?.properties ?? [],
     });
   }
 
@@ -188,6 +194,17 @@ export function setBuffDescription(buffId: number, description: string): string 
   return updateBuffOverride(buffId, (currentOverride, baseName, baseDescription, baseHidden) =>
     sanitizeOverrideEntry(
       { ...currentOverride, description: normalizedDescription },
+      baseName,
+      baseDescription,
+      baseHidden
+    )
+  );
+}
+
+export function setBuffProperties(buffId: number, properties: BuffProperty[]): string {
+  return updateBuffOverride(buffId, (currentOverride, baseName, baseDescription, baseHidden) =>
+    sanitizeOverrideEntry(
+      { ...currentOverride, properties },
       baseName,
       baseDescription,
       baseHidden
