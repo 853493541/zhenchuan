@@ -18,6 +18,7 @@ import {
   setBuffHidden,
   setBuffName,
   setBuffProperties,
+  setBuffDurationMs,
 } from "../abilities/buffTagSystem";
 import { getUserIdFromCookie } from "./auth";
 
@@ -248,6 +249,28 @@ router.put("/ability-editor/buffs/:buffId/properties", (req, res) => {
     }
 
     setBuffProperties(buffId, properties as BuffProperty[]);
+
+    return res.json(buildBuffEditorSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/buffs/:buffId/duration", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+
+    const buffId = parseInt(req.params.buffId, 10);
+    if (!Number.isFinite(buffId)) {
+      return res.status(400).json({ error: "ERR_INVALID_BUFF_ID" });
+    }
+
+    const { durationMs } = req.body ?? {};
+    if (typeof durationMs !== "number" || !Number.isFinite(durationMs) || durationMs < 100 || durationMs > 300_000) {
+      return res.status(400).json({ error: "ERR_INVALID_DURATION" });
+    }
+
+    setBuffDurationMs(buffId, durationMs);
 
     return res.json(buildBuffEditorSnapshot());
   } catch (error) {

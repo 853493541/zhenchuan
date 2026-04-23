@@ -43,6 +43,15 @@ function buildOverviewTags(ability: AbilityEditorAbility) {
 export default function AbilityEditorPage() {
   const [mainTab, setMainTab] = useState<MainTab>("abilities");
 
+  // Read ?tab= from URL on first mount to support deep-linking to the buff tab
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "buffs") {
+      setMainTab("buffs");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Ability snapshot ──────────────────────────────────────────────────────
   const [snapshot, setSnapshot] = useState<AbilityEditorSnapshot | null>(null);
   const [loading, setLoading] = useState(true);

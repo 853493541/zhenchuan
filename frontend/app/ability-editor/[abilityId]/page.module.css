@@ -1,58 +1,71 @@
+/* ── Base ─────────────────────────────────────────────────────────────────── */
 .page {
   min-height: 100%;
-  padding: 22px 18px 34px;
+  padding: 22px 18px 48px;
   background: linear-gradient(180deg, #f7f5f1 0%, #f1eee8 100%);
   color: #211d18;
   font-family: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+  max-width: 900px;
+  margin: 0 auto;
 }
 
-.shell,
-.statePanel {
-  max-width: 1160px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.topRow {
+/* ── Top nav ──────────────────────────────────────────────────────────────── */
+.topNav {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
-.backLink,
-.backLinkInline {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.backLink {
   color: #6f3f16;
   font-weight: 700;
   text-decoration: none;
+  font-size: 14px;
 }
+.backLink:hover { text-decoration: underline; }
 
 .updatedAt {
   font-size: 12px;
   color: #7a7368;
 }
 
-.hero {
-  padding: 22px 24px;
-  border: 1px solid #ddd7cb;
-  border-radius: 24px;
+/* ── Detail card ──────────────────────────────────────────────────────────── */
+.detailCard {
   background: #ffffff;
-  box-shadow: 0 12px 28px rgba(26, 21, 14, 0.05);
+  border: 1px solid #ddd7cb;
+  border-radius: 22px;
+  padding: 22px 24px;
+  box-shadow: 0 8px 20px rgba(26, 21, 14, 0.04);
+  margin-bottom: 16px;
 }
 
-.heroIdentity {
+.detailCardTitle {
+  margin: 0 0 18px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7d7467;
+}
+
+/* ── 基本信息 layout ─────────────────────────────────────────────────────── */
+.basicLayout {
   display: flex;
-  justify-content: space-between;
-  gap: 18px;
   align-items: flex-start;
+  gap: 20px;
+}
+
+.iconCol {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 .iconFrame {
-  flex: 0 0 72px;
   width: 72px;
   height: 72px;
   border-radius: 20px;
@@ -61,276 +74,303 @@
   overflow: hidden;
 }
 
-.abilityIcon {
+.iconFrame img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.heroCopy {
+.idBadge {
+  font-size: 10px;
+  font-weight: 800;
+  color: #7a7368;
+  background: #f0ede6;
+  border: 1px solid #ddd7cb;
+  border-radius: 8px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.fields {
   flex: 1;
   min-width: 0;
-}
-
-.heroMetaRow {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
+  flex-direction: column;
+  gap: 12px;
 }
 
+/* ── Info row (label | value) ────────────────────────────────────────────── */
+.infoRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.infoLabel {
+  flex: 0 0 56px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7d7467;
+  padding-top: 2px;
+}
+
+.infoValue {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e1a14;
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
 .typeBadge,
 .targetBadge,
 .channelBadge,
 .overrideBadge {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
+  min-height: 24px;
   padding: 0 10px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
 }
+.typeBadge    { background: #d1fae5; color: #166534; }
+.targetBadge  { background: #dbeafe; color: #1d4ed8; }
+.channelBadge { background: #ede9fe; color: #6d28d9; }
+.overrideBadge{ background: #fef3c7; color: #92400e; }
 
-.typeBadge {
-  background: #d1fae5;
-  color: #166534;
+/* ── Stats pills ─────────────────────────────────────────────────────────── */
+.statsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.targetBadge {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.channelBadge {
-  background: #ede9fe;
-  color: #6d28d9;
-}
-
-.overrideBadge {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.title {
-  margin: 0;
-  font-size: clamp(28px, 4vw, 42px);
-  line-height: 1.03;
-  font-family: Georgia, "Noto Serif SC", serif;
-}
-
-.subtitle {
-  margin: 10px 0 0;
-  line-height: 1.6;
-  color: #5a5145;
-}
-
-.statGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px;
-  margin-top: 18px;
-}
-
-.statCard,
-.channelStatCard {
-  padding: 12px 14px;
-  border-radius: 18px;
+.statPill {
+  padding: 8px 12px;
+  border-radius: 12px;
   background: #f4f1eb;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 80px;
 }
 
-.statLabel,
-.channelStatLabel {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 11px;
+.statLabel {
+  font-size: 10px;
+  font-weight: 600;
   color: #7b7467;
 }
 
-.statValue,
-.channelStatValue {
-  display: block;
-  font-size: 15px;
+.statValue {
+  font-size: 14px;
   font-weight: 800;
   color: #1e1a14;
 }
 
-.contentGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 18px;
+/* ── Description ─────────────────────────────────────────────────────────── */
+.descText {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #5a5145;
+  background: #f6f3ee;
+  border: 1px solid #e8e0d4;
+  border-radius: 8px;
+  padding: 8px 10px;
 }
 
-.sectionCard {
-  padding: 18px;
-  border: 1px solid #ddd7cb;
-  border-radius: 22px;
-  background: #ffffff;
-  box-shadow: 0 10px 24px rgba(26, 21, 14, 0.04);
-}
-
-.damageSection {
-  grid-column: 1 / -1;
-}
-
-.sectionTitle {
-  margin-bottom: 14px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #7d7467;
-}
-
-.activeChipRow {
+/* ── Property chips ──────────────────────────────────────────────────────── */
+.chipRow {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 14px;
 }
 
 .activeChip {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  min-height: 38px;
-  padding: 0 14px;
-  border: 1px solid rgba(31, 41, 55, 0.08);
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #d4cfc7;
   border-radius: 999px;
   background: #f2efe9;
   color: #322b22;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.activeChip:hover:not(:disabled) { background: #e8e0d2; }
+.activeChip:disabled { opacity: 0.6; cursor: wait; }
+
+.chipRemove {
+  font-size: 11px;
+  color: #8c6a40;
+  font-weight: 700;
 }
 
-.activeChip:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.chipAction {
-  font-size: 12px;
-  opacity: 0.78;
-}
-
+/* ── Add property row ────────────────────────────────────────────────────── */
 .addRow {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
+  display: flex;
   align-items: center;
+  gap: 12px;
 }
 
 .addLabel {
   font-size: 13px;
   font-weight: 700;
   color: #5d5344;
+  white-space: nowrap;
 }
 
-.select {
-  width: 100%;
-  padding: 12px 14px;
-  border-radius: 14px;
+.addSelect {
+  flex: 1;
+  max-width: 280px;
+  padding: 8px 12px;
+  border-radius: 12px;
   border: 1px solid #d9d3c8;
   background: #fffdf9;
   color: #2d2416;
+  font-size: 13px;
+  font-family: inherit;
 }
 
+/* ── Numeric list ────────────────────────────────────────────────────────── */
 .numericList {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.numericRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: center;
+/* Each numeric setting row */
+.fieldRow {
   padding: 14px 16px;
-  border-radius: 18px;
+  border-radius: 16px;
   border: 1px solid #ece5d9;
   background: #faf8f4;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 16px;
+  row-gap: 6px;
+  align-items: center;
 }
 
-.numericCopy {
-  min-width: 0;
-}
-
-.numericTitleRow {
+.fieldLabel {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
 }
 
-.numericLabel {
-  font-size: 15px;
+.fieldLabelText {
+  font-size: 14px;
   font-weight: 800;
+  color: #1e1a14;
 }
 
-.numericDescription {
+.overridePill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.fieldControl {
+  grid-row: 1 / 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Text-only number input — no browser arrows */
+.numericInput {
+  width: 110px;
+  padding: 8px 12px;
+  border: 1px solid #d4cfc7;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1e1a14;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.numericInput::-webkit-outer-spin-button,
+.numericInput::-webkit-inner-spin-button { display: none; }
+.numericInput:focus {
+  outline: none;
+  border-color: #8a5a2b;
+  box-shadow: 0 0 0 3px rgba(138, 90, 43, 0.12);
+}
+
+.saveBtn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 10px;
+  background: #f0e8d8;
+  color: #5a3a10;
   font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.saveBtn:hover:not(:disabled) { background: #e8d8c0; }
+.saveBtn:disabled { background: #e0dbd3; color: #a09580; cursor: not-allowed; }
+
+.fieldMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fieldDesc {
+  font-size: 12px;
   color: #696154;
 }
 
-.numericBase {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #908678;
+.fieldBase {
+  font-size: 11px;
+  color: #a09080;
+  font-style: italic;
 }
 
-.numericInputGroup {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.numericInput {
-  width: 140px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid #d9d3c8;
-  background: #ffffff;
-  text-align: right;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.saveButton,
-.retryButton {
-  padding: 12px 18px;
-  border: none;
-  border-radius: 14px;
-  background: #1f5d4b;
-  color: #ffffff;
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.saveButton:disabled {
-  background: #c8c2b8;
-  cursor: not-allowed;
-}
-
-.channelSummaryRow {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
+/* ── Empty copy ──────────────────────────────────────────────────────────── */
 .emptyCopy {
   font-size: 13px;
   color: #6e6559;
+  margin: 0;
 }
 
+/* ── State panels ────────────────────────────────────────────────────────── */
 .statePanel {
   padding: 24px;
   border-radius: 22px;
   border: 1px solid #ddd7cb;
   background: #ffffff;
   box-shadow: 0 12px 24px rgba(88, 60, 22, 0.05);
+  max-width: 900px;
+  margin: 32px auto;
 }
 
 .stateTitle {
@@ -344,49 +384,36 @@
   color: #65523a;
 }
 
-@media (max-width: 980px) {
-  .heroIdentity,
-  .contentGrid,
-  .numericRow {
-    grid-template-columns: 1fr;
-    display: grid;
-  }
-
-  .damageSection {
-    grid-column: auto;
-  }
+.retryButton {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 12px;
+  background: #1f5d4b;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 700;
+  font-family: inherit;
 }
 
-@media (max-width: 720px) {
-  .page {
-    padding: 18px 14px 28px;
-  }
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .page { padding: 16px 14px 36px; }
 
-  .topRow {
+  .basicLayout {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
   }
 
-  .hero,
-  .sectionCard,
-  .statePanel {
-    padding: 16px;
-    border-radius: 18px;
-  }
+  .iconCol { flex-direction: row; align-items: center; }
 
-  .iconFrame {
-    width: 60px;
-    height: 60px;
-    flex-basis: 60px;
-  }
-
-  .addRow,
-  .numericInputGroup {
+  .fieldRow {
     grid-template-columns: 1fr;
-    display: grid;
+    grid-template-rows: auto auto auto;
   }
 
-  .numericInput {
-    width: 100%;
+  .fieldControl {
+    grid-row: auto;
   }
+
+  .numericInput { width: 100%; }
 }

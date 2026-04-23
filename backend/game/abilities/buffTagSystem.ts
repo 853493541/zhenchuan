@@ -23,7 +23,14 @@ export interface BuffEditorEntry {
   description: string;
   iconPath?: string;
   sourceAbilityName?: string;
+  /** Effective duration in ms (override if set, else code-defined). */
+  durationMs: number | null;
+  /** Code-defined duration in ms (read-only). */
+  baseDurationMs: number | null;
+  /** Properties set by the user override (saved to JSON). */
   properties: BuffProperty[];
+  /** Properties auto-derived from the buff's effects[] in code — never saved, always read-only. */
+  baseProperties: BuffProperty[];
 }
 
 export interface BuffEditorSnapshot {
@@ -41,6 +48,42 @@ function normalizeDescription(value: unknown) {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
+}
+
+/**
+ * Derive base display properties from a buff's effects array.
+ * DAMAGE_REDUCTION → 减伤 (value * 100, rounded)
+ * INVULNERABLE    → 无敌
+ * DODGE_NEXT      → 闪避 (value = count)
+ */
+function extractBaseProperties(effects: Array<{ type: string; value?: number }> | undefined): BuffProperty[] {
+  if (!Array.isArray(effects)) return [];
+  const result: BuffProperty[] = [];
+
+  const dr = effects.find((e) => e.type === "DAMAGE_REDUCTION");
+  if (dr) {
+    result.push({
+      type: "减伤",
+      value: typeof dr.value === "number" ? Math.round(dr.value * 100) : undefined,
+    });
+  }
+
+  const invuln = effects.find((e) => e.type === "INVULNERABLE");
+  if (invuln) {
+    result.push({ type: "无敌" });
+  }
+
+  const dodge = effects.find((e) => e.type === "DODGE_NEXT");
+  if (dodge) {
+    // DODGE_NEXT stores probability in 'chance' (0.0–1.0), not 'value'
+    const chanceVal = (dodge as unknown as { chance?: number }).chance;
+    result.push({
+      type: "闪避",
+      value: typeof chanceVal === "number" ? Math.round(chanceVal * 100) : 60,
+    });
+  }
+
+  return result;
 }
 
 function getEffectiveHidden(hidden: boolean | undefined, baseHidden: boolean) {
@@ -71,9 +114,13 @@ function sanitizeOverrideEntry(
   const description = normalizeDescription(entry.description);
   const normalizedDescription = description && description !== baseDescription ? description : undefined;
   const normalizedHidden = typeof entry.hidden === "boolean" && entry.hidden !== baseHidden ? entry.hidden : undefined;
-  const normalizedProperties = entry.properties && entry.properties.length > 0 ? entry.properties : undefined;
+  // Allow empty array [] as a valid override sentinel (means user explicitly removed all properties)
+  const normalizedProperties = Array.isArray(entry.properties) ? entry.properties : undefined;
+  const normalizedDurationMs = typeof entry.durationMs === "number" && Number.isFinite(entry.durationMs)
+    ? Math.max(100, Math.min(300_000, Math.round(entry.durationMs)))
+    : undefined;
 
-  if (normalizedAttribute === "未选择" && normalizedHidden === undefined && !normalizedName && !normalizedDescription && !normalizedProperties) {
+  if (normalizedAttribute === "\u672a\u9009\u62e9" && normalizedHidden === undefined && !normalizedName && !normalizedDescription && normalizedProperties === undefined && normalizedDurationMs === undefined) {
     return null;
   }
 
@@ -82,7 +129,8 @@ function sanitizeOverrideEntry(
     ...(normalizedHidden === undefined ? {} : { hidden: normalizedHidden }),
     ...(normalizedName ? { name: normalizedName } : {}),
     ...(normalizedDescription ? { description: normalizedDescription } : {}),
-    ...(normalizedProperties ? { properties: normalizedProperties } : {}),
+    ...(normalizedProperties !== undefined ? { properties: normalizedProperties } : {}),
+    ...(normalizedDurationMs !== undefined ? { durationMs: normalizedDurationMs } : {}),
   };
 }
 
@@ -133,6 +181,7 @@ export function buildBuffEditorSnapshot(): BuffEditorSnapshot {
     const override = overrides[String(buff.buffId)];
     const hidden = override?.hidden ?? buff.hiddenInStatusBar === true;
     const attribute: BuffAttribute = hidden ? "未选择" : override?.attribute ?? "未选择";
+    const baseDurationMs: number | null = typeof buff.durationMs === "number" ? buff.durationMs : null;
 
     entries.push({
       buffId: buff.buffId,
@@ -140,10 +189,13 @@ export function buildBuffEditorSnapshot(): BuffEditorSnapshot {
       category,
       attribute,
       hidden,
-      description: override?.description ?? normalizeDescription(buff.description) ?? "无",
+      description: override?.description ?? normalizeDescription(buff.description) ?? "\u65e0",
       iconPath: buff.iconPath ?? undefined,
       sourceAbilityName: buff.sourceAbilityName ?? undefined,
+      baseDurationMs,
+      durationMs: override?.durationMs !== undefined ? override.durationMs : baseDurationMs,
       properties: override?.properties ?? [],
+      baseProperties: extractBaseProperties(buff.effects),
     });
   }
 
@@ -205,6 +257,18 @@ export function setBuffProperties(buffId: number, properties: BuffProperty[]): s
   return updateBuffOverride(buffId, (currentOverride, baseName, baseDescription, baseHidden) =>
     sanitizeOverrideEntry(
       { ...currentOverride, properties },
+      baseName,
+      baseDescription,
+      baseHidden
+    )
+  );
+}
+
+export function setBuffDurationMs(buffId: number, durationMs: number): string {
+  const clamped = Math.max(100, Math.min(300_000, Math.round(durationMs)));
+  return updateBuffOverride(buffId, (currentOverride, baseName, baseDescription, baseHidden) =>
+    sanitizeOverrideEntry(
+      { ...currentOverride, durationMs: clamped },
       baseName,
       baseDescription,
       baseHidden

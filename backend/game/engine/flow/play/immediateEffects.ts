@@ -22,6 +22,7 @@ import {
   ZHEN_SHAN_HE_ABILITY_ID,
 } from "../../effects/definitions/ZhenShanHe";
 import { getGroundHeightForMap, type MapContext } from "../../loop/movement";
+import { loadBuffEditorOverrides } from "../../../abilities/buffEditorOverrides";
 
 const WUFANG_ROOT_BUFF_ID = 1330;
 const WUFANG_HIT_PROTECT_BUFF_ID = 1331;
@@ -664,6 +665,64 @@ export function applyImmediateEffects(params: {
               buffTarget: victim,
               buff: buffDef,
             });
+          }
+        }
+        break;
+      }
+
+      case "DISPEL_BUFF_ATTRIBUTE": {
+        // Remove one BUFF-category buff per listed attribute from the target.
+        // Respects dodge via the shouldSkipDueToDodge check above (which runs before switch).
+        if (!enemyApplied) break;
+        const { overrides: buffOverrides } = loadBuffEditorOverrides();
+        const attrs: string[] = (effect as any).attributes ?? [];
+        for (const attr of attrs) {
+          const idx = effTarget.buffs.findIndex((b: any) => {
+            if (b.category !== "BUFF") return false;
+            const entry = buffOverrides[String(b.buffId)];
+            return entry?.attribute === attr;
+          });
+          if (idx === -1) continue;
+          const removed = effTarget.buffs[idx];
+          effTarget.buffs.splice(idx, 1);
+          pushBuffExpired(state, {
+            targetUserId: effTarget.userId,
+            buffId: removed.buffId,
+            buffName: removed.name,
+            buffCategory: removed.category,
+            sourceAbilityId: removed.sourceAbilityId,
+            sourceAbilityName: removed.sourceAbilityName,
+          });
+        }
+        break;
+      }
+
+      case "CLEANSE_DEBUFF_ATTRIBUTE": {
+        // Remove DEBUFF-category buffs from self/friendly by attribute.
+        // count (default 1) controls how many per attribute to remove.
+        const { overrides: cleanseBOvr } = loadBuffEditorOverrides();
+        const cleanseAttrs: string[] = (effect as any).attributes ?? [];
+        const removeCount: number = (effect as any).count ?? 1;
+        for (const attr of cleanseAttrs) {
+          let removed = 0;
+          while (removed < removeCount) {
+            const idx = effTarget.buffs.findIndex((b: any) => {
+              if (b.category !== "DEBUFF") return false;
+              const entry = cleanseBOvr[String(b.buffId)];
+              return entry?.attribute === attr;
+            });
+            if (idx === -1) break;
+            const removedBuff = effTarget.buffs[idx];
+            effTarget.buffs.splice(idx, 1);
+            pushBuffExpired(state, {
+              targetUserId: effTarget.userId,
+              buffId: removedBuff.buffId,
+              buffName: removedBuff.name,
+              buffCategory: removedBuff.category,
+              sourceAbilityId: removedBuff.sourceAbilityId,
+              sourceAbilityName: removedBuff.sourceAbilityName,
+            });
+            removed++;
           }
         }
         break;

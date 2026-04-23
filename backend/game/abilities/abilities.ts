@@ -593,12 +593,18 @@ export const BASE_ABILITIES: AbilityRecord = {
   yun_qi_song: {
     id: "yun_qi_song",
     name: "云栖松",
-    description: "自身获得【云栖松】12秒：闪避率提高60%\n同时获得【栖松】5秒：每秒回复1点气血",
+    description: "自身获得【云栖松】12秒：闪避率提高60%\n同时获得【栖松】5秒：每秒回复1点气血\n并驱散自身阳性、混元、阴性、毒性不利效果各两个",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    effects: [],
+    effects: [
+      {
+        type: "CLEANSE_DEBUFF_ATTRIBUTE",
+        attributes: ["阳性", "混元", "阴性", "毒性"],
+        count: 2,
+      } as any,
+    ],
     buffs: [
       {
         buffId: 2401,
@@ -1993,6 +1999,56 @@ export const BASE_ABILITIES: AbilityRecord = {
         effects: [{ type: "DAMAGE_REDUCTION", value: 0.4 }],
       },
     ],
+  },
+
+  jian_zhuan_liu_yun: {
+    id: "jian_zhuan_liu_yun",
+    name: "剑转流云",
+    description: "瞬发，驱散目标阴性、混元、阳性、毒性内功增益气劲各一个\n可在空中或移动中施放",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: false,
+    effects: [
+      {
+        type: "DISPEL_BUFF_ATTRIBUTE",
+        attributes: ["阴性", "混元", "阳性", "毒性"],
+      } as any,
+    ],
+    buffs: [],
+  },
+
+  jing_shi_po_mo_ji: {
+    id: "jing_shi_po_mo_ji",
+    name: "净世破魔击",
+    description: "瞬发，向目标冲刺（最多12尺，速20尺/秒），立即造成3点伤害并驱散目标混元、阳性、阴性、毒性增益气劲各三次\n无视闪避",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 12,
+    cooldownTicks: 300,
+    gcd: true,
+    ignoreDodge: true,
+    effects: [
+      { type: "DASH", value: 12 },
+      { type: "DAMAGE", value: 1 },
+      {
+        type: "DISPEL_BUFF_ATTRIBUTE",
+        attributes: ["混元", "阳性", "阴性", "毒性"],
+      } as any,
+      { type: "DAMAGE", value: 1 },
+      {
+        type: "DISPEL_BUFF_ATTRIBUTE",
+        attributes: ["混元", "阳性", "阴性", "毒性"],
+      } as any,
+      { type: "DAMAGE", value: 1 },
+      {
+        type: "DISPEL_BUFF_ATTRIBUTE",
+        attributes: ["混元", "阳性", "阴性", "毒性"],
+      } as any,
+    ],
+    buffs: [],
   },
 };
 

@@ -5,9 +5,9 @@ export type BuffAttribute = "未选择" | "无" | "阴性" | "阳性" | "毒性"
 
 export const BUFF_ATTRIBUTES: BuffAttribute[] = ["未选择", "无", "阴性", "阳性", "毒性", "外功", "持续伤害", "混元", "蛊", "点穴"];
 
-export type BuffPropertyType = "减伤" | "无敌";
+export type BuffPropertyType = "减伤" | "无敌" | "闪避";
 
-export const BUFF_PROPERTY_TYPES: BuffPropertyType[] = ["减伤", "无敌"];
+export const BUFF_PROPERTY_TYPES: BuffPropertyType[] = ["减伤", "无敌", "闪避"];
 
 export interface BuffProperty {
   type: BuffPropertyType;
@@ -21,6 +21,7 @@ export interface BuffEditorOverrideEntry {
   name?: string;
   description?: string;
   properties?: BuffProperty[];
+  durationMs?: number;
 }
 
 interface StoredBuffEditorOverrideEntry {
@@ -28,6 +29,7 @@ interface StoredBuffEditorOverrideEntry {
   hidden?: boolean;
   name?: string;
   description?: string;
+  durationMs?: number;
 }
 
 interface StoredBuffEditorOverrides {
@@ -65,13 +67,19 @@ function normalizeDescription(value: unknown) {
   return trimmed ? trimmed : undefined;
 }
 
+function normalizeDurationMs(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  // 100ms min (0.1s), 300s max
+  return Math.max(100, Math.min(300_000, Math.round(value)));
+}
+
 function normalizeProperties(value: unknown): BuffProperty[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const result: BuffProperty[] = [];
   for (const item of value) {
     if (!item || typeof item !== "object") continue;
     const type = (item as Record<string, unknown>).type;
-    if (type !== "减伤" && type !== "无敌") continue;
+    if (type !== "减伤" && type !== "无敌" && type !== "闪避") continue;
     const prop: BuffProperty = { type: type as BuffPropertyType };
     if (type === "减伤") {
       const rawValue = (item as Record<string, unknown>).value;
@@ -83,9 +91,16 @@ function normalizeProperties(value: unknown): BuffProperty[] | undefined {
         prop.noOverride = rawNoOverride;
       }
     }
+    if (type === "闪避") {
+      const rawValue = (item as Record<string, unknown>).value;
+      if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+        prop.value = Math.max(0, Math.min(100, Math.round(rawValue)));
+      }
+    }
     result.push(prop);
   }
-  return result.length > 0 ? result : undefined;
+  // Return [] for explicitly-empty arrays (sentinel: user cleared all properties)
+  return result;
 }
 
 function normalizeName(value: unknown) {
@@ -122,8 +137,9 @@ function normalizeOverrideEntry(
   const name = normalizeName(value.name);
   const description = normalizeDescription(value.description);
   const properties = normalizeProperties((value as Record<string, unknown>).properties);
+  const durationMs = normalizeDurationMs((value as Record<string, unknown>).durationMs);
 
-  if (attribute === "未选择" && hidden === undefined && !name && !description && !properties) {
+  if (attribute === "\u672a\u9009\u62e9" && hidden === undefined && !name && !description && properties === undefined && durationMs === undefined) {
     return null;
   }
 
@@ -132,7 +148,9 @@ function normalizeOverrideEntry(
     ...(hidden === undefined ? {} : { hidden }),
     ...(name ? { name } : {}),
     ...(description ? { description } : {}),
-    ...(properties ? { properties } : {}),
+    // Save even if empty [] \u2014 empty array is a valid sentinel meaning "user cleared all properties"
+    ...(properties !== undefined ? { properties } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {}),
   };
 }
 
@@ -192,4 +210,65 @@ export function saveBuffEditorOverrides(overrides: Record<string, BuffEditorOver
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2) + "\n", "utf8");
 
   return updatedAt;
+}
+
+/**
+ * Apply property overrides to a buff's effects array.
+ * Used both by abilityPreload (for UI display) and buffRuntime (for engine behavior).
+ *
+ * Mapping:
+ *   减伤  → DAMAGE_REDUCTION  (value 0-100 → 0-1.0)
+ *   无敌  → INVULNERABLE      (boolean presence)
+ *   闪避  → DODGE_NEXT        (value 0-100% → chance 0-1.0)
+ */
+export function applyPropertyOverridesToEffects(
+  buff: { effects?: Array<{ type: string; value?: number; chance?: number }> },
+  properties: BuffProperty[]
+): Array<{ type: string; value?: number; chance?: number }> {
+  const effects = [...(buff.effects || [])] as Array<{ type: string; value?: number; chance?: number }>;
+
+  // 减伤 ↔ DAMAGE_REDUCTION
+  const drProp = properties.find((p) => p.type === "减伤");
+  const drIdx = effects.findIndex((e) => e.type === "DAMAGE_REDUCTION");
+  if (drProp) {
+    const val = drProp.value !== undefined
+      ? drProp.value / 100
+      : drIdx >= 0
+        ? (effects[drIdx].value ?? 0)
+        : 0;
+    if (drIdx >= 0) {
+      effects[drIdx] = { ...effects[drIdx], value: val };
+    } else {
+      effects.push({ type: "DAMAGE_REDUCTION", value: val });
+    }
+  } else if (drIdx >= 0) {
+    effects.splice(drIdx, 1);
+  }
+
+  // 无敌 ↔ INVULNERABLE
+  const wudiProp = properties.find((p) => p.type === "无敌");
+  const invIdx = effects.findIndex((e) => e.type === "INVULNERABLE");
+  if (wudiProp) {
+    if (invIdx < 0) effects.push({ type: "INVULNERABLE" });
+  } else if (invIdx >= 0) {
+    effects.splice(invIdx, 1);
+  }
+
+  // 闪避 ↔ DODGE_NEXT (uses 'chance' field, 0.0–1.0)
+  const shanbiProp = properties.find((p) => p.type === "闪避");
+  const dodgeIdx = effects.findIndex((e) => e.type === "DODGE_NEXT");
+  if (shanbiProp) {
+    const chance = (shanbiProp.value !== undefined ? shanbiProp.value : 60) / 100;
+    if (dodgeIdx >= 0) {
+      // preserve existing fields, update/add chance
+      const { value: _v, ...rest } = effects[dodgeIdx] as Record<string, unknown>;
+      effects[dodgeIdx] = { ...rest, chance } as typeof effects[number];
+    } else {
+      effects.push({ type: "DODGE_NEXT", chance });
+    }
+  } else if (dodgeIdx >= 0) {
+    effects.splice(dodgeIdx, 1);
+  }
+
+  return effects;
 }

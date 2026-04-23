@@ -20,6 +20,8 @@ import {
 } from "../editorShared";
 import styles from "./page.module.css";
 
+const FALLBACK_ICON = "/icons/default.png";
+
 function findAbility(snapshot: AbilityEditorSnapshot | null, abilityId: string) {
   return snapshot?.abilities.find((ability) => ability.id === abilityId) ?? null;
 }
@@ -41,28 +43,18 @@ export default function AbilityDetailPage() {
   const loadSnapshot = async () => {
     setLoading(true);
     setErrorMessage("");
-
     try {
-      const response = await fetch("/api/game/ability-editor", {
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-
+      const response = await fetch("/api/game/ability-editor", { credentials: "include" });
+      if (!response.ok) throw new Error(await response.text());
       setSnapshot((await response.json()) as AbilityEditorSnapshot);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "加载失败";
-      setErrorMessage(message);
+      setErrorMessage(error instanceof Error ? error.message : "加载失败");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadSnapshot();
-  }, []);
+  useEffect(() => { loadSnapshot(); }, []);
 
   const ability = useMemo(() => findAbility(snapshot, abilityId), [snapshot, abilityId]);
 
@@ -70,12 +62,12 @@ export default function AbilityDetailPage() {
     () => ability?.properties.filter(isNonChannelProperty) ?? [],
     [ability]
   );
-  const activeSkillProperties = skillProperties.filter((property) => property.enabled);
-  const availableSkillProperties = skillProperties.filter((property) => !property.enabled);
+  const activeSkillProperties = skillProperties.filter((p) => p.enabled);
+  const availableSkillProperties = skillProperties.filter((p) => !p.enabled);
 
   const channelInfo: AbilityEditorChannelInfo | null = ability?.channelInfo ?? null;
-  const activeChannelProperties = channelInfo?.properties.filter((property) => property.enabled) ?? [];
-  const availableChannelProperties = channelInfo?.properties.filter((property) => !property.enabled) ?? [];
+  const activeChannelProperties = channelInfo?.properties.filter((p) => p.enabled) ?? [];
+  const availableChannelProperties = channelInfo?.properties.filter((p) => !p.enabled) ?? [];
 
   const getDraftKey = (fieldId: string) => `${abilityId}::${fieldId}`;
 
@@ -85,29 +77,18 @@ export default function AbilityDetailPage() {
     enabled: boolean
   ) => {
     setSaving(true);
-
     try {
-      const response = await fetch(`/api/game/ability-editor/${targetAbility.id}/property`, {
+      const res = await fetch(`/api/game/ability-editor/${targetAbility.id}/property`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          propertyId: property.id,
-          enabled,
-        }),
+        body: JSON.stringify({ propertyId: property.id, enabled }),
       });
-
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-
-      setSnapshot((await response.json()) as AbilityEditorSnapshot);
+      if (!res.ok) throw new Error(await res.text());
+      setSnapshot((await res.json()) as AbilityEditorSnapshot);
       toastSuccess(`${enabled ? "已添加" : "已移除"} ${property.label} · ${targetAbility.name}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "保存失败";
-      toastError(message);
+      toastError(error instanceof Error ? error.message : "保存失败");
     } finally {
       setSaving(false);
     }
@@ -120,47 +101,28 @@ export default function AbilityDetailPage() {
     const draftKey = getDraftKey(setting.id);
     const rawValue = numericDrafts[draftKey] ?? String(setting.value);
     const parsedValue = parseNumericDraft(rawValue);
-
-    if (parsedValue === null) {
-      toastError("请输入有效数字");
-      return;
-    }
-
+    if (parsedValue === null) { toastError("请输入有效数字"); return; }
     setSaving(true);
-
     try {
-      const response = await fetch(`/api/game/ability-editor/${targetAbility.id}/numeric`, {
+      const res = await fetch(`/api/game/ability-editor/${targetAbility.id}/numeric`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          fieldId: setting.id,
-          value: parsedValue,
-        }),
+        body: JSON.stringify({ fieldId: setting.id, value: parsedValue }),
       });
-
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-
-      setSnapshot((await response.json()) as AbilityEditorSnapshot);
-      setNumericDrafts((currentDrafts) => {
-        const nextDrafts = { ...currentDrafts };
-        delete nextDrafts[draftKey];
-        return nextDrafts;
-      });
+      if (!res.ok) throw new Error(await res.text());
+      setSnapshot((await res.json()) as AbilityEditorSnapshot);
+      setNumericDrafts((d) => { const n = { ...d }; delete n[draftKey]; return n; });
       toastSuccess(`已更新 ${setting.label} · ${targetAbility.name}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "保存失败";
-      toastError(message);
+      toastError(error instanceof Error ? error.message : "保存失败");
     } finally {
       setSaving(false);
     }
   };
 
-  const renderNumericEditor = (
+  // Numeric input row — no arrow spinners, text-only
+  const renderNumericRow = (
     targetAbility: AbilityEditorAbility,
     setting: AbilityEditorNumericSetting
   ) => {
@@ -170,253 +132,278 @@ export default function AbilityDetailPage() {
     const canSave = parsedDraftValue !== null && parsedDraftValue !== setting.value && !saving;
 
     return (
-      <div key={setting.id} className={styles.numericRow}>
-        <div className={styles.numericCopy}>
-          <div className={styles.numericTitleRow}>
-            <span className={styles.numericLabel}>{setting.label}</span>
-            {setting.overridden && <span className={styles.overrideBadge}>覆盖</span>}
-          </div>
-          <div className={styles.numericDescription}>{setting.description}</div>
-          <div className={styles.numericBase}>默认值 {setting.baseValue}</div>
+      <div key={setting.id} className={styles.fieldRow}>
+        <div className={styles.fieldLabel}>
+          <span className={styles.fieldLabelText}>{setting.label}</span>
+          {setting.overridden && <span className={styles.overridePill}>覆盖</span>}
         </div>
-
-        <div className={styles.numericInputGroup}>
+        <div className={styles.fieldControl}>
           <input
-            type="number"
-            step={setting.step ?? 1}
+            type="text"
+            inputMode="decimal"
             className={styles.numericInput}
             value={draftValue}
             disabled={saving}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-              setNumericDrafts((currentDrafts) => ({
-                ...currentDrafts,
-                [draftKey]: nextValue,
-              }));
+            onChange={(e) => {
+              const raw = e.target.value.replace(/[^0-9.\-]/g, "");
+              setNumericDrafts((d) => ({ ...d, [draftKey]: raw }));
             }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && canSave) {
-                updateNumeric(targetAbility, setting);
-              }
-            }}
+            onKeyDown={(e) => { if (e.key === "Enter" && canSave) updateNumeric(targetAbility, setting); }}
           />
           <button
             type="button"
-            className={styles.saveButton}
+            className={styles.saveBtn}
             disabled={!canSave}
             onClick={() => updateNumeric(targetAbility, setting)}
           >
             保存
           </button>
         </div>
+        <div className={styles.fieldMeta}>
+          <span className={styles.fieldDesc}>{setting.description}</span>
+          <span className={styles.fieldBase}>默认值 {setting.baseValue}</span>
+        </div>
       </div>
     );
   };
 
   if (loading) {
-    return <div className={styles.statePanel}>正在加载技能详情…</div>;
+    return <div className={styles.page}><div className={styles.statePanel}>正在加载技能详情…</div></div>;
   }
 
   if (errorMessage) {
     return (
-      <div className={styles.statePanel}>
-        <p className={styles.stateTitle}>加载失败</p>
-        <p className={styles.stateCopy}>{errorMessage}</p>
-        <button className={styles.retryButton} onClick={loadSnapshot}>
-          重新加载
-        </button>
+      <div className={styles.page}>
+        <div className={styles.statePanel}>
+          <p className={styles.stateTitle}>加载失败</p>
+          <p className={styles.stateCopy}>{errorMessage}</p>
+          <button className={styles.retryButton} onClick={loadSnapshot}>重新加载</button>
+        </div>
       </div>
     );
   }
 
   if (!ability) {
     return (
-      <div className={styles.statePanel}>
-        <p className={styles.stateTitle}>没有找到这个技能</p>
-        <p className={styles.stateCopy}>可能是技能 ID 不存在，或者数据还没有加载成功。</p>
-        <Link href="/ability-editor" className={styles.backLinkInline}>
-          返回技能总览
-        </Link>
+      <div className={styles.page}>
+        <div className={styles.statePanel}>
+          <p className={styles.stateTitle}>没有找到这个技能</p>
+          <p className={styles.stateCopy}>可能是技能 ID 不存在，或者数据还没有加载成功。</p>
+          <Link href="/ability-editor" className={styles.backLink}>← 返回技能总览</Link>
+        </div>
       </div>
     );
   }
 
+  const iconSrc = getAbilityIconByName(ability.name);
+  const isChannelAbility = !!ability.channelInfo;
+
   return (
     <div className={styles.page}>
-      <section className={styles.shell}>
-        <div className={styles.topRow}>
-          <Link href="/ability-editor" className={styles.backLink}>
-            返回技能总览
-          </Link>
-          <div className={styles.updatedAt}>最后保存：{formatUpdatedAt(snapshot?.updatedAt ?? null)}</div>
-        </div>
+      {/* Top nav */}
+      <div className={styles.topNav}>
+        <Link href="/ability-editor" className={styles.backLink}>← 技能列表</Link>
+        <span className={styles.updatedAt}>最后保存：{formatUpdatedAt(snapshot?.updatedAt ?? null)}</span>
+      </div>
 
-        <div className={styles.hero}>
-          <div className={styles.heroIdentity}>
+      {/* ── 基本信息 ──────────────────────────────────── */}
+      <section className={styles.detailCard}>
+        <h2 className={styles.detailCardTitle}>基本信息</h2>
+        <div className={styles.basicLayout}>
+          {/* Icon column */}
+          <div className={styles.iconCol}>
             <div className={styles.iconFrame}>
               <img
-                src={getAbilityIconByName(ability.name)}
+                src={iconSrc}
                 alt={ability.name}
-                className={styles.abilityIcon}
                 draggable={false}
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  if (!img.src.endsWith(FALLBACK_ICON)) img.src = FALLBACK_ICON;
+                  else img.style.opacity = "0.25";
+                }}
               />
             </div>
+            <div className={styles.idBadge}>{ability.id}</div>
+          </div>
 
-            <div className={styles.heroCopy}>
-              <div className={styles.heroMetaRow}>
+          {/* Fields column */}
+          <div className={styles.fields}>
+            {/* Name */}
+            <div className={styles.infoRow}>
+              <span className={styles.infoLabel}>名称</span>
+              <span className={styles.infoValue}>{ability.name}</span>
+            </div>
+
+            {/* Type + Target */}
+            <div className={styles.infoRow}>
+              <span className={styles.infoLabel}>类型</span>
+              <div className={styles.infoValue}>
                 <span className={styles.typeBadge}>{abilityTypeLabel[ability.type]}</span>
                 <span className={styles.targetBadge}>{targetTypeLabel[ability.target]}</span>
-                {ability.channelInfo && <span className={styles.channelBadge}>{ability.channelInfo.label}</span>}
+                {isChannelAbility && <span className={styles.channelBadge}>{channelInfo!.label}</span>}
                 {ability.hasOverrides && <span className={styles.overrideBadge}>已覆盖默认值</span>}
               </div>
-              <h1 className={styles.title}>{ability.name}</h1>
-              <p className={styles.subtitle}>{getSimpleDescription(ability.description)}</p>
             </div>
-          </div>
 
-          <div className={styles.statGrid}>
-            {ability.stats.map((stat) => (
-              <div key={stat.id} className={styles.statCard}>
-                <span className={styles.statLabel}>{stat.label}</span>
-                <strong className={styles.statValue}>{stat.value}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className={styles.contentGrid}>
-          <section className={styles.sectionCard}>
-            <div className={styles.sectionTitle}>技能属性</div>
-
-            {activeSkillProperties.length > 0 && (
-              <div className={styles.activeChipRow}>
-                {activeSkillProperties.map((property) => (
-                  <button
-                    key={property.id}
-                    type="button"
-                    className={styles.activeChip}
-                    disabled={saving}
-                    onClick={() => updateProperty(ability, property, false)}
-                    title={property.description}
-                  >
-                    <span>{property.label}</span>
-                    <span className={styles.chipAction}>移除</span>
-                  </button>
-                ))}
+            {/* Stats */}
+            {ability.stats.length > 0 && (
+              <div className={styles.infoRow}>
+                <span className={styles.infoLabel}>数值</span>
+                <div className={styles.statsRow}>
+                  {ability.stats.map((stat) => (
+                    <div key={stat.id} className={styles.statPill}>
+                      <span className={styles.statLabel}>{stat.label}</span>
+                      <strong className={styles.statValue}>{stat.value}</strong>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
+            {/* Description */}
+            <div className={styles.infoRow}>
+              <span className={styles.infoLabel}>描述</span>
+              <p className={styles.descText}>{getSimpleDescription(ability.description)}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 技能属性 ──────────────────────────────────── */}
+      <section className={styles.detailCard}>
+        <h2 className={styles.detailCardTitle}>技能属性</h2>
+
+        {activeSkillProperties.length > 0 && (
+          <div className={styles.chipRow}>
+            {activeSkillProperties.map((property) => (
+              <button
+                key={property.id}
+                type="button"
+                className={styles.activeChip}
+                disabled={saving}
+                onClick={() => updateProperty(ability, property, false)}
+                title={property.description}
+              >
+                {property.label}
+                <span className={styles.chipRemove}>移除</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {availableSkillProperties.length > 0 && (
+          <div className={styles.addRow}>
+            <span className={styles.addLabel}>添加属性</span>
+            <select
+              className={styles.addSelect}
+              defaultValue=""
+              disabled={saving}
+              onChange={(e) => {
+                const property = availableSkillProperties.find((p) => p.id === e.target.value);
+                e.target.value = "";
+                if (property) updateProperty(ability, property, true);
+              }}
+            >
+              <option value="">选择一个属性…</option>
+              {availableSkillProperties.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {activeSkillProperties.length === 0 && availableSkillProperties.length === 0 && (
+          <p className={styles.emptyCopy}>没有可编辑的属性。</p>
+        )}
+      </section>
+
+      {/* ── 读条设置 ─────────────────────────────────── */}
+      {channelInfo && (
+        <section className={styles.detailCard}>
+          <h2 className={styles.detailCardTitle}>读条设置</h2>
+
+          {/* Channel derived stats */}
+          {channelInfo.derivedStats.length > 0 && (
+            <div className={styles.statsRow} style={{ marginBottom: 16 }}>
+              {channelInfo.derivedStats.map((stat) => (
+                <div key={stat.id} className={styles.statPill}>
+                  <span className={styles.statLabel}>{stat.label}</span>
+                  <strong className={styles.statValue}>{stat.value}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Channel properties */}
+          {activeChannelProperties.length > 0 && (
+            <div className={styles.chipRow}>
+              {activeChannelProperties.map((property) => (
+                <button
+                  key={property.id}
+                  type="button"
+                  className={styles.activeChip}
+                  disabled={saving}
+                  onClick={() => updateProperty(ability, property, false)}
+                  title={property.description}
+                >
+                  {property.label}
+                  <span className={styles.chipRemove}>移除</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {availableChannelProperties.length > 0 && (
             <div className={styles.addRow}>
-              <label className={styles.addLabel} htmlFor="skill-property-select">
-                添加技能属性
-              </label>
+              <span className={styles.addLabel}>添加读条属性</span>
               <select
-                id="skill-property-select"
-                className={styles.select}
+                className={styles.addSelect}
                 defaultValue=""
-                disabled={saving || availableSkillProperties.length === 0}
-                onChange={(event) => {
-                  const nextPropertyId = event.target.value;
-                  const property = availableSkillProperties.find((item) => item.id === nextPropertyId);
-                  event.target.value = "";
-                  if (!property) return;
-                  updateProperty(ability, property, true);
+                disabled={saving}
+                onChange={(e) => {
+                  const property = availableChannelProperties.find((p) => p.id === e.target.value);
+                  e.target.value = "";
+                  if (property) updateProperty(ability, property, true);
                 }}
               >
-                <option value="">
-                  {availableSkillProperties.length === 0 ? "没有可添加属性" : "选择一个属性"}
-                </option>
-                {availableSkillProperties.map((property) => (
-                  <option key={property.id} value={property.id}>
-                    {property.label}
-                  </option>
+                <option value="">选择一个属性…</option>
+                {availableChannelProperties.map((p) => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
                 ))}
               </select>
             </div>
-          </section>
-
-          <section className={styles.sectionCard}>
-            <div className={styles.sectionTitle}>技能数值</div>
-            <div className={styles.numericList}>
-              {ability.coreSettings.map((setting) => renderNumericEditor(ability, setting))}
-            </div>
-          </section>
-
-          {channelInfo && (
-            <section className={styles.sectionCard}>
-              <div className={styles.sectionTitle}>读条设置</div>
-              <div className={styles.channelSummaryRow}>
-                {channelInfo.derivedStats.map((stat) => (
-                  <div key={stat.id} className={styles.channelStatCard}>
-                    <span className={styles.channelStatLabel}>{stat.label}</span>
-                    <strong className={styles.channelStatValue}>{stat.value}</strong>
-                  </div>
-                ))}
-              </div>
-
-              {activeChannelProperties.length > 0 && (
-                <div className={styles.activeChipRow}>
-                  {activeChannelProperties.map((property) => (
-                    <button
-                      key={property.id}
-                      type="button"
-                      className={styles.activeChip}
-                      disabled={saving}
-                      onClick={() => updateProperty(ability, property, false)}
-                      title={property.description}
-                    >
-                      <span>{property.label}</span>
-                      <span className={styles.chipAction}>移除</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className={styles.addRow}>
-                <label className={styles.addLabel} htmlFor="channel-property-select">
-                  添加读条属性
-                </label>
-                <select
-                  id="channel-property-select"
-                  className={styles.select}
-                  defaultValue=""
-                  disabled={saving || availableChannelProperties.length === 0}
-                  onChange={(event) => {
-                    const nextPropertyId = event.target.value;
-                    const property = availableChannelProperties.find((item) => item.id === nextPropertyId);
-                    event.target.value = "";
-                    if (!property) return;
-                    updateProperty(ability, property, true);
-                  }}
-                >
-                  <option value="">
-                    {availableChannelProperties.length === 0 ? "没有可添加属性" : "选择一个属性"}
-                  </option>
-                  {availableChannelProperties.map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className={styles.numericList}>
-                {channelInfo.timingSettings.map((setting) => renderNumericEditor(ability, setting))}
-              </div>
-            </section>
           )}
 
-          <section className={`${styles.sectionCard} ${styles.damageSection}`}>
-            <div className={styles.sectionTitle}>伤害数值</div>
+          {/* Channel timing numeric settings */}
+          {channelInfo.timingSettings.length > 0 && (
             <div className={styles.numericList}>
-              {ability.damageSettings.length > 0 ? (
-                ability.damageSettings.map((setting) => renderNumericEditor(ability, setting))
-              ) : (
-                <div className={styles.emptyCopy}>这个技能当前没有可直接编辑的伤害项。</div>
-              )}
+              {channelInfo.timingSettings.map((setting) => renderNumericRow(ability, setting))}
             </div>
-          </section>
-        </div>
+          )}
+        </section>
+      )}
+
+      {/* ── 技能数值 ──────────────────────────────────── */}
+      {ability.coreSettings.length > 0 && (
+        <section className={styles.detailCard}>
+          <h2 className={styles.detailCardTitle}>技能数值</h2>
+          <div className={styles.numericList}>
+            {ability.coreSettings.map((setting) => renderNumericRow(ability, setting))}
+          </div>
+        </section>
+      )}
+
+      {/* ── 伤害数值 ──────────────────────────────────── */}
+      <section className={styles.detailCard}>
+        <h2 className={styles.detailCardTitle}>伤害数值</h2>
+        {ability.damageSettings.length > 0 ? (
+          <div className={styles.numericList}>
+            {ability.damageSettings.map((setting) => renderNumericRow(ability, setting))}
+          </div>
+        ) : (
+          <p className={styles.emptyCopy}>这个技能当前没有可直接编辑的伤害项。</p>
+        )}
       </section>
     </div>
   );

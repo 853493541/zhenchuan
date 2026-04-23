@@ -153,6 +153,12 @@ export interface Ability {
    * Minimal delay (ticks) between two consecutive casts when charges remain.
    */
   chargeCastLockTicks?: number;
+
+  /**
+   * If true, this ability ignores the target's dodge chance entirely.
+   * 无视闪避.
+   */
+  ignoreDodge?: boolean;
 }
 
 export interface AbilityInstance {

@@ -10,6 +10,7 @@ import {
 } from "../state/types";
 import { resolveScheduledDamage } from "../utils/combatMath";
 import { addShieldToTarget, applyDamageToTarget, removeLinkedShield } from "../utils/health";
+import { applyPropertyOverridesToEffects, loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
 
 /* ================= Utilities ================= */
 
@@ -291,6 +292,16 @@ export function addBuff(params: {
   } = params;
 
   let runtimeBuff: BuffDefinition = buff;
+  // Apply property overrides from the editor (so game engine uses edited values)
+  const { overrides: editorOverrides } = loadBuffEditorOverrides();
+  const propEntry = editorOverrides[String(buff.buffId)];
+  if (propEntry?.properties !== undefined) {
+    runtimeBuff = { ...runtimeBuff, effects: applyPropertyOverridesToEffects(runtimeBuff, propEntry.properties) as typeof runtimeBuff.effects };
+  }
+  // Apply duration override live so changes take effect without a server restart
+  if (typeof propEntry?.durationMs === "number") {
+    runtimeBuff = { ...runtimeBuff, durationMs: propEntry.durationMs };
+  }
   const now = Date.now();
   const incomingMoheKnockdown =
     sourceUserId !== targetUserId &&

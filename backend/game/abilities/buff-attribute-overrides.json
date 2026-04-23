@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updatedAt": "2026-04-23T00:17:38.906Z",
+  "updatedAt": "2026-04-23T05:41:04.854Z",
   "buffs": {
     "1007": {
       "attribute": "无"
@@ -9,7 +9,13 @@
       "attribute": "阴性"
     },
     "1011": {
-      "attribute": "无"
+      "attribute": "无",
+      "properties": [
+        {
+          "type": "减伤",
+          "value": 20
+        }
+      ]
     },
     "1012": {
       "attribute": "无"
@@ -67,6 +73,10 @@
     "2202": {
       "attribute": "阴性"
     },
+    "2301": {
+      "attribute": "未选择",
+      "name": "韦陀献杵·易伤"
+    },
     "2302": {
       "attribute": "无",
       "name": "韦陀献杵·防御"
@@ -123,7 +133,14 @@
       "attribute": "外功"
     },
     "2404": {
-      "attribute": "无"
+      "attribute": "无",
+      "properties": [
+        {
+          "type": "减伤",
+          "value": 2
+        }
+      ],
+      "durationMs": 8000
     },
     "9001": {
       "attribute": "外功",

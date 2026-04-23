@@ -87,6 +87,10 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   INSTANT_GUAN_TI_HEAL: "BUFF",
   // Knockback dash (九转归一): force target away, stun if wall hit
   KNOCKBACK_DASH: "DEBUFF",
+  // Dispel one BUFF-category buff per listed attribute from the target
+  DISPEL_BUFF_ATTRIBUTE: "DEBUFF",
+  // Cleanse DEBUFF-category buffs from self/friendly by attribute
+  CLEANSE_DEBUFF_ATTRIBUTE: "BUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

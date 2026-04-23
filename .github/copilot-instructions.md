@@ -45,6 +45,15 @@
 - World → Three.js: `threeX = worldX − worldHalf`, `threeZ = worldY − worldHalf`, `threeY = worldZ`.
 - Collision-test map is non-square (819 × 828 after 50% scale-up): use **width/2** for X offsets, **height/2** for Y/Z offsets.
 
+## Input Fields
+
+- **Never use `<input type="number">`.** It renders browser arrow spinners that are visually unacceptable. Always use `<input type="text" inputMode="decimal">` (or `inputMode="numeric"` for integers), with a regex `onChange` filter that strips non-numeric characters. Add `-moz-appearance: textfield` and hide webkit spin buttons in CSS:
+  ```css
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button { display: none; }
+  ```
+- Apply this rule to ALL editor pages (ability detail, buff detail, and any future forms).
+
 ## Git / Version Control
 
 - **Never commit** unless explicitly told to. If the user says "commit once", do exactly one commit — never more.

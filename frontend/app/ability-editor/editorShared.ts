@@ -67,9 +67,9 @@ export type BuffAttribute = "未选择" | "无" | "阴性" | "阳性" | "毒性"
 
 export const BUFF_ATTRIBUTES: BuffAttribute[] = ["未选择", "无", "阴性", "阳性", "毒性", "外功", "持续伤害", "混元", "蛊", "点穴"];
 
-export type BuffPropertyType = "减伤" | "无敌";
+export type BuffPropertyType = "减伤" | "无敌" | "闪避";
 
-export const BUFF_PROPERTY_TYPES: BuffPropertyType[] = ["减伤", "无敌"];
+export const BUFF_PROPERTY_TYPES: BuffPropertyType[] = ["减伤", "无敌", "闪避"];
 
 export interface BuffProperty {
   type: BuffPropertyType;
@@ -86,7 +86,14 @@ export type BuffEditorEntry = {
   description: string;
   iconPath?: string;
   sourceAbilityName?: string;
+  /** Duration in ms as exposed by the editor (override value if set, else base). */
+  durationMs: number | null;
+  /** Duration in ms from the code definition (read-only). */
+  baseDurationMs: number | null;
+  /** Properties set by the user override (saved to JSON). */
   properties: BuffProperty[];
+  /** Properties auto-derived from the buff's effects[] in code — never saved, always read-only. */
+  baseProperties: BuffProperty[];
 };
 
 export type BuffEditorSnapshot = {
@@ -95,9 +102,13 @@ export type BuffEditorSnapshot = {
 };
 
 export function getBuffSubtitle(entry: Pick<BuffEditorEntry, "category" | "attribute">): string {
-  const attrPrefix = entry.attribute !== "未选择" ? entry.attribute : "";
-  return attrPrefix +
-    (entry.category === "BUFF" ? "有利效果" : "不利效果");
+  // No valid attribute → no tag at all
+  const validAttr = entry.attribute !== "未选择" && entry.attribute !== "无";
+  if (!validAttr) return "";
+  // BUFF: 属性气劲（drop 有利）
+  if (entry.category === "BUFF") return `${entry.attribute}气劲`;
+  // DEBUFF: 属性不利气劲
+  return `${entry.attribute}不利气劲`;
 }
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────

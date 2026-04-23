@@ -1,5 +1,5 @@
 import { ABILITIES } from "./abilities";
-import { loadBuffEditorOverrides } from "./buffEditorOverrides";
+import { applyPropertyOverridesToEffects, BuffEditorOverrideEntry, loadBuffEditorOverrides } from "./buffEditorOverrides";
 
 const BUFF_ICON_PATH_OVERRIDES: Record<string, string> = {
   "心诤": "/icons/心诤-buff.png",
@@ -34,7 +34,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
   const applyBuffEditorOverrides = options?.applyBuffEditorOverrides !== false;
   const { overrides: buffEditorOverrides } = applyBuffEditorOverrides
     ? loadBuffEditorOverrides()
-    : { overrides: {} as Record<string, { name?: string; description?: string; hidden?: boolean }> };
+    : { overrides: {} as Record<string, BuffEditorOverrideEntry> };
 
   const TEST_COOLDOWN_CAP_TICKS = 150; // 5 seconds at 30Hz
   const clampCooldownTicksForTesting = (ticks: number | undefined) => {
@@ -316,6 +316,14 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     }
     if (typeof override?.hidden === "boolean") {
       buff.hiddenInStatusBar = override.hidden;
+    }
+    // Apply duration override so the engine uses the editor-set duration
+    if (typeof override?.durationMs === "number") {
+      buff.durationMs = override.durationMs;
+    }
+    // Apply property overrides to effects (so UI snapshot reflects actual engine values)
+    if (override?.properties !== undefined) {
+      buff.effects = applyPropertyOverridesToEffects(buff, override.properties);
     }
   }
 

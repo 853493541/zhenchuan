@@ -69,7 +69,11 @@ export type EffectType =
   // Jump enhancements
   | "MULTI_JUMP"
   // Knockback: force a dash on the target away from the caster
-  | "KNOCKBACK_DASH";
+  | "KNOCKBACK_DASH"
+  // Dispel one BUFF-category buff per listed attribute from the target
+  | "DISPEL_BUFF_ATTRIBUTE"
+  // Cleanse DEBUFF-category buffs from self/friendly by attribute
+  | "CLEANSE_DEBUFF_ATTRIBUTE";
 
 /**
  * Immediate ability effects
@@ -160,6 +164,18 @@ export interface AbilityEffect {
    * When set, dash vertical movement follows a jump-like arc instead of flat inertia.
    */
   arcPeakHeight?: number;
+
+  /**
+   * For DISPEL_BUFF_ATTRIBUTE: list of buff attributes to dispel.
+   * One BUFF-category buff per attribute will be removed from the target.
+   * For CLEANSE_DEBUFF_ATTRIBUTE: list of attributes to cleanse from self/friendly.
+   */
+  attributes?: string[];
+
+  /**
+   * For CLEANSE_DEBUFF_ATTRIBUTE: how many buffs per attribute to remove. Defaults to 1.
+   */
+  count?: number;
 }
 
 // Fields only used on BuffEffect (not AbilityEffect) are declared below.
