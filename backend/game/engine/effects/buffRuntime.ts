@@ -40,6 +40,7 @@ function isMoheStun(buff: ActiveBuff): boolean {
 const ROOT_DR_BUFF_ID = 990100;
 const STUN_DR_BUFF_ID = 990101;
 const LOCKOUT_DR_BUFF_ID = 990102;
+const FREEZE_DR_BUFF_ID = 990103;
 const CONTROL_DR_DURATION_MS = 10_000;
 // 雷霆震怒: stun + damage immunity package
 const LEI_TING_ZHEN_NU_BUFF_ID = 2506;
@@ -57,6 +58,11 @@ const ROOT_DR_CONFIG: ResistanceConfig = {
 const STUN_DR_CONFIG: ResistanceConfig = {
   buffId: STUN_DR_BUFF_ID,
   name: "眩晕抗性",
+};
+
+const FREEZE_DR_CONFIG: ResistanceConfig = {
+  buffId: FREEZE_DR_BUFF_ID,
+  name: "定身抗性",
 };
 
 const LOCKOUT_DR_CONFIG: ResistanceConfig = {
@@ -84,11 +90,19 @@ function getResistanceConfig(runtimeBuff: BuffDefinition): ResistanceConfig | nu
     return LOCKOUT_DR_CONFIG;
   }
 
-  if (runtimeBuff.effects.some((e) => e.type === "CONTROL")) {
+  const hasControl = runtimeBuff.effects.some((e) => e.type === "CONTROL");
+  const hasRoot    = runtimeBuff.effects.some((e) => e.type === "ROOT");
+
+  // Freeze (定身) = CONTROL + ROOT on the same buff → separate DR from pure stun
+  if (hasControl && hasRoot) {
+    return FREEZE_DR_CONFIG;
+  }
+
+  if (hasControl) {
     return STUN_DR_CONFIG;
   }
 
-  if (runtimeBuff.effects.some((e) => e.type === "ROOT")) {
+  if (hasRoot) {
     return ROOT_DR_CONFIG;
   }
 

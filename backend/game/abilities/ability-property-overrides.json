@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-04-24T06:09:55.936Z",
+  "updatedAt": "2026-04-24T09:34:02.313Z",
   "abilities": {
     "baizu": {
       "tags": {
@@ -76,7 +76,8 @@
     },
     "xiao_zui_kuang": {
       "tags": {
-        "rarity": "珍奇"
+        "rarity": "珍奇",
+        "school": "丐帮"
       }
     },
     "nuwa_butian": {
@@ -99,27 +100,32 @@
     },
     "hua_xue_biao": {
       "tags": {
-        "school": "唐门"
+        "school": "唐门",
+        "rarity": "卓越"
       }
     },
     "jian_zhuan_liu_yun": {
       "tags": {
-        "school": "七秀"
+        "school": "七秀",
+        "rarity": "精巧"
       }
     },
     "kong_que_ling": {
       "tags": {
-        "school": "唐门"
+        "school": "唐门",
+        "rarity": "珍奇"
       }
     },
     "lie_ri_zhan": {
       "tags": {
-        "school": "明教"
+        "school": "明教",
+        "rarity": "精巧"
       }
     },
     "sanhuan_taoyue": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "精巧"
       }
     },
     "shang_yang_zhi": {
@@ -130,12 +136,14 @@
     },
     "she_ying": {
       "tags": {
-        "school": "五毒"
+        "school": "五毒",
+        "rarity": "卓越"
       }
     },
     "tiandi_wuji": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "珍奇"
       }
     },
     "weituo_xianchu": {
@@ -146,7 +154,8 @@
     },
     "wu_wo_wu_jian": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "卓越"
       }
     },
     "yin_yue_zhan": {
@@ -172,7 +181,8 @@
     },
     "chan_xiao": {
       "tags": {
-        "school": "五毒"
+        "school": "五毒",
+        "rarity": "卓越"
       }
     },
     "da_shizi_hou": {
@@ -183,7 +193,8 @@
     },
     "dican_longxiang": {
       "tags": {
-        "school": "七秀"
+        "school": "七秀",
+        "rarity": "精巧"
       }
     },
     "han_di": {
@@ -192,33 +203,42 @@
       }
     },
     "he_gui_gu_shan": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
-        "school": "藏剑"
+        "school": "藏剑",
+        "rarity": "卓越"
       }
     },
     "jiang_chun_zhu_xiu": {
       "tags": {
-        "school": "七秀"
+        "school": "七秀",
+        "rarity": "卓越"
       }
     },
     "jiu_zhuan_gui_yi": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "精巧"
       }
     },
     "lei_ting_zhen_nu": {
       "tags": {
-        "school": "七秀"
+        "school": "七秀",
+        "rarity": "珍奇"
       }
     },
     "leizhenzi": {
       "tags": {
-        "school": "唐门"
+        "school": "唐门",
+        "rarity": "精巧"
       }
     },
     "zhenshen_xingsi": {
       "tags": {
-        "school": "天策"
+        "school": "天策",
+        "rarity": "珍奇"
       }
     },
     "mohe_wuliang": {
@@ -229,7 +249,8 @@
     },
     "san_cai_hua_sheng": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "卓越"
       }
     },
     "shengsi_jie": {
@@ -239,22 +260,26 @@
     },
     "xuanshui_gu": {
       "tags": {
-        "school": "五毒"
+        "school": "五毒",
+        "rarity": "卓越"
       }
     },
     "chuan": {
       "tags": {
-        "school": "天策"
+        "school": "天策",
+        "rarity": "精巧"
       }
     },
     "wan_jian_gui_zong": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "卓越"
       }
     },
     "wufang_xingjin": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "卓越"
       }
     },
     "wuyun_jiekong": {
@@ -271,7 +296,8 @@
     },
     "dienong_zu": {
       "tags": {
-        "school": "七秀"
+        "school": "七秀",
+        "rarity": "精巧"
       }
     },
     "duangu_jue": {
@@ -282,7 +308,8 @@
     },
     "duoming_gu": {
       "tags": {
-        "school": "五毒"
+        "school": "五毒",
+        "rarity": "卓越"
       }
     },
     "gu_feng_sa_ta": {
@@ -303,12 +330,14 @@
     },
     "ji": {
       "tags": {
-        "school": "天策"
+        "school": "天策",
+        "rarity": "精巧"
       }
     },
     "jiru_feng": {
       "tags": {
-        "school": "天策"
+        "school": "天策",
+        "rarity": "精巧"
       }
     },
     "lingxiao_lansheng": {
@@ -318,7 +347,8 @@
     },
     "niao_xiang_bi_kong": {
       "tags": {
-        "school": "唐门"
+        "school": "唐门",
+        "rarity": "精巧"
       }
     },
     "nieyun_zhuyue": {
@@ -328,12 +358,14 @@
     },
     "qionglong_huasheng": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "精巧"
       }
     },
     "que_ta_zhi": {
       "tags": {
-        "school": "七秀"
+        "school": "七秀",
+        "rarity": "卓越"
       }
     },
     "sheng_ming_you": {
@@ -343,7 +375,8 @@
     },
     "shou_ru_shan": {
       "tags": {
-        "school": "天策"
+        "school": "天策",
+        "rarity": "珍奇"
       }
     },
     "taxingxing": {
@@ -359,7 +392,8 @@
     },
     "tian_di_di_ang": {
       "tags": {
-        "school": "七秀"
+        "school": "七秀",
+        "rarity": "精巧"
       }
     },
     "wu_jianyu": {
@@ -369,7 +403,8 @@
     },
     "xiao_ru_hu": {
       "tags": {
-        "school": "天策"
+        "school": "天策",
+        "rarity": "珍奇"
       }
     },
     "xinglou_yueying": {
@@ -395,32 +430,38 @@
     },
     "yun_qi_song": {
       "tags": {
-        "school": "藏剑"
+        "school": "藏剑",
+        "rarity": "精巧"
       }
     },
     "zhen_shan_he": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "珍奇"
       }
     },
     "zhuan_qiankun": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "卓越"
       }
     },
     "zuowang_wuwo": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "精巧"
       }
     },
     "chuan_xin_nu": {
       "tags": {
-        "school": "唐门"
+        "school": "唐门",
+        "rarity": "精巧"
       }
     },
     "fenglai_wushan": {
       "tags": {
-        "school": "藏剑"
+        "school": "藏剑",
+        "rarity": "卓越"
       }
     },
     "lan_cui_yu_zhe": {
@@ -431,12 +472,14 @@
     },
     "qixing_gongrui": {
       "tags": {
-        "school": "纯阳"
+        "school": "纯阳",
+        "rarity": "卓越"
       }
     },
     "qiandie_turui": {
       "tags": {
-        "school": "五毒"
+        "school": "五毒",
+        "rarity": "珍奇"
       }
     },
     "xinzheng": {
@@ -447,7 +490,8 @@
     },
     "yun_fei_yu_huang": {
       "tags": {
-        "school": "藏剑"
+        "school": "藏剑",
+        "rarity": "卓越"
       }
     },
     "changzhen": {
@@ -464,13 +508,24 @@
     },
     "zhuiming_jian": {
       "tags": {
-        "school": "唐门"
+        "school": "唐门",
+        "rarity": "珍奇"
       }
     },
     "zhuo_ying_shi": {
       "tags": {
         "school": "少林",
         "rarity": "珍奇"
+      }
+    },
+    "yan_yu_xing": {
+      "tags": {
+        "school": "丐帮"
+      }
+    },
+    "kuang_long_luan_wu": {
+      "tags": {
+        "school": "丐帮"
       }
     }
   }

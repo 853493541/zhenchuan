@@ -11,6 +11,7 @@
 
 import { GameState, Ability } from "../state/types";
 import { addBuff, pushBuffExpired } from "./buffRuntime";
+import { pushEvent } from "./events";
 import { hasDamageImmune } from "../rules/guards";
 
 // ── 七星拱瑞 ──────────────────────────────────────────────────────────────────
@@ -127,8 +128,19 @@ export function processOnDamageTaken(
       ) {
         redirectTarget.hp = 1;
       }
-      // No damage event emitted — redirect is silent on-screen.
-      // HP bar updates are visible; no floating damage number appears.
+      // No floating number for A (actorUserId = B = redirectTarget.userId so A
+      // never hits the "I dealt damage" branch).
+      // B sees a dmg_taken float with no ability text (abilityName = "").
+      pushEvent(state, {
+        turn: state.turn,
+        type: "DAMAGE",
+        actorUserId: redirectTarget.userId,
+        targetUserId: redirectTarget.userId,
+        abilityId: "xuanshui_gu",
+        abilityName: "",
+        effectType: "DAMAGE_REDIRECT_55",
+        value: redirectAmt,
+      } as any);
       void rtHpBefore; // suppress unused warning
     }
   }

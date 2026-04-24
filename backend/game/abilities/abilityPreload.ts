@@ -210,6 +210,16 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
   });
 
   buffs.push({
+    buffId: 990103,
+    name: "定身抗性",
+    category: "BUFF",
+    durationMs: 10_000,
+    breakOnPlay: false,
+    description: "10秒内定身递减。每次定身成功后层数+1并刷新计时，下一次定身持续时间按0.5^层数递减。",
+    effects: [],
+  });
+
+  buffs.push({
     buffId: 990102,
     name: "锁招抗性",
     category: "BUFF",
@@ -296,6 +306,18 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
   // 2318 太阴指 dodge buff — auto-included from ability
 
   // 2403 滞影 — dynamically applied by GameLoop on 捉影式 channel completion
+  buffs.push({
+    buffId: 2601,
+    name: "北斗",
+    category: "DEBUFF",
+    durationMs: 4_000,
+    breakOnPlay: false,
+    description: "眩晕4秒（七星拱瑞被破时触发）",
+    effects: [{ type: "CONTROL" }],
+    sourceAbilityId: "qixing_gongrui",
+    sourceAbilityName: "七星拱瑞",
+  });
+
   buffs.push({
     buffId: 2403,
     name: "滞影",
