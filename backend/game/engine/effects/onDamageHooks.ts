@@ -1,13 +1,15 @@
 // backend/game/engine/effects/onDamageHooks.ts
 //
-// Shared on-damage effect hooks. Call processOnDamageTaken() after any call
-// to applyDamageToTarget() that deals HP damage to a player.
+// Shared on-damage effect hooks.
 //
-// Handles:
-//   • 七星拱瑞 (buff 2600): when the frozen player takes HP damage, instantly
-//     remove the freeze and apply 北斗 (buff 2601, CONTROL 4 s).
-//   • 玄水蛊  (buff 2607): when the buff-holder takes HP damage, restore 55%
-//     of it to them and deal that 55% to the opponent carrying 毒手 (buff 2606).
+// PRE-DAMAGE  — call preCheckRedirect() BEFORE applyDamageToTarget().
+//   Returns the adjusted (reduced) damage for the primary target (A) plus the
+//   redirect player (B) and amount.  Apply the reduced value to A; then call
+//   applyRedirectToOpponent() to apply the 55% portion to B.
+//   This ensures the DAMAGE event value matches what A actually takes.
+//
+// POST-DAMAGE — call processOnDamageTaken() AFTER applyDamageToTarget().
+//   Handles 七星拱瑞 freeze-break only (redirect is now pre-damage).
 
 import { GameState, Ability } from "../state/types";
 import { addBuff, pushBuffExpired } from "./buffRuntime";
@@ -24,13 +26,102 @@ const XUANSHUI_SELF_BUFF_ID   = 2607; // carried by the ability caster (A)
 const XUANSHUI_POISON_BUFF_ID = 2606; // carried by the opponent (B) — 毒手
 const XUANSHUI_REDIRECT_PCT   = 0.55;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PRE-DAMAGE: 玄水蛊 redirect split
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Call this after applyDamageToTarget() reports hpDamage > 0.
+ * Call BEFORE applyDamageToTarget().
+ *
+ * Checks whether `target` (A) carries 玄水蛊 (buff 2607) and the opponent (B)
+ * carries 毒手 (buff 2606).  If yes, returns:
+ *   - adjustedDamage: the reduced amount A should actually receive (≈45%)
+ *   - redirectPlayer: B (the player who will take the redirect hit)
+ *   - redirectAmt:    the portion dealt to B (≈55%)
+ *
+ * If redirect does not apply, returns rawDamage unchanged and null redirectPlayer.
+ */
+export function preCheckRedirect(
+  state: GameState,
+  target: { userId: string; buffs: any[] },
+  rawDamage: number
+): { adjustedDamage: number; redirectPlayer: any | null; redirectAmt: number } {
+  const noRedirect = { adjustedDamage: rawDamage, redirectPlayer: null, redirectAmt: 0 };
+  if (rawDamage <= 0) return noRedirect;
+
+  const now = Date.now();
+  const hasSelfBuff = target.buffs.some(
+    (b: any) => b.buffId === XUANSHUI_SELF_BUFF_ID && b.expiresAt > now
+  );
+  if (!hasSelfBuff) return noRedirect;
+
+  const redirectPlayer = (state.players as any[]).find(
+    (p: any) =>
+      p.userId !== target.userId &&
+      p.buffs?.some(
+        (b: any) => b.buffId === XUANSHUI_POISON_BUFF_ID && b.expiresAt > now
+      )
+  );
+  if (!redirectPlayer || redirectPlayer.hp <= 0 || hasDamageImmune(redirectPlayer as any)) {
+    return noRedirect;
+  }
+
+  const redirectAmt  = Math.max(1, Math.round(rawDamage * XUANSHUI_REDIRECT_PCT));
+  const adjustedDamage = Math.max(0, rawDamage - redirectAmt);
+  return { adjustedDamage, redirectPlayer, redirectAmt };
+}
+
+/**
+ * Call AFTER preCheckRedirect() returned a non-null redirectPlayer.
+ * Applies the redirect damage directly to B (bypasses shields) and emits a
+ * silent DAMAGE event so B sees a floating number with no ability text.
+ */
+export function applyRedirectToOpponent(
+  state: GameState,
+  redirectPlayer: any,
+  redirectAmt: number
+): void {
+  const before: number = redirectPlayer.hp;
+  redirectPlayer.hp = Math.max(0, redirectPlayer.hp - redirectAmt);
+  // MIN_HP_1 (啸如虎 unkillable)
+  if (
+    redirectPlayer.hp <= 0 &&
+    (redirectPlayer.buffs as any[])?.some((b: any) =>
+      b.effects?.some((e: any) => e.type === "MIN_HP_1")
+    )
+  ) {
+    redirectPlayer.hp = 1;
+  }
+  const actual = before - redirectPlayer.hp;
+  if (actual > 0) {
+    // B sees a damage float with no ability text.
+    // actorUserId = B (redirectPlayer) → A's client never matches as attacker.
+    pushEvent(state, {
+      turn: state.turn,
+      type: "DAMAGE",
+      actorUserId: redirectPlayer.userId,
+      targetUserId: redirectPlayer.userId,
+      abilityId:    "xuanshui_gu",
+      abilityName:  "",
+      effectType:   "DAMAGE_REDIRECT_55",
+      value:        actual,
+    } as any);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST-DAMAGE: 七星拱瑞 freeze-break (and future post-damage hooks)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Call this AFTER applyDamageToTarget() reports hpDamage > 0.
+ * (Redirect is handled pre-damage via preCheckRedirect; this only handles
+ *  七星拱瑞 freeze-break and any future post-damage triggers.)
  *
  * @param state           – current game state
- * @param damagedPlayer   – player who just lost HP (must expose .userId, .hp, .buffs)
- * @param hpDamage        – actual HP lost (the hpDamage returned by applyDamageToTarget)
- * @param attackerUserId  – userId of whoever dealt the damage (optional but recommended)
+ * @param damagedPlayer   – player who just lost HP
+ * @param hpDamage        – actual HP lost
+ * @param attackerUserId  – userId of whoever dealt the damage
  */
 export function processOnDamageTaken(
   state: GameState,
@@ -59,8 +150,6 @@ export function processOnDamageTaken(
       sourceAbilityName: fb.sourceAbilityName ?? "七星拱瑞",
     });
 
-    // The caster who froze this player is the attacker; fall back to the
-    // other player when attackerUserId is absent or points to self.
     const casterUserId =
       attackerUserId && attackerUserId !== damagedPlayer.userId
         ? attackerUserId
@@ -83,65 +172,5 @@ export function processOnDamageTaken(
         effects: [{ type: "CONTROL" }],
       },
     });
-  }
-
-  // ── 玄水蛊 damage redirect ─────────────────────────────────────────────────
-  // No isEnemyEffect restriction — redirect fires regardless of damage source.
-  const hasXuanshui = damagedPlayer.buffs.some(
-    (b) => b.buffId === XUANSHUI_SELF_BUFF_ID && b.expiresAt > now
-  );
-  if (hasXuanshui) {
-    const redirectTarget = (state.players as any[]).find(
-      (p: any) =>
-        p.userId !== damagedPlayer.userId &&
-        p.buffs?.some(
-          (b: any) => b.buffId === XUANSHUI_POISON_BUFF_ID && b.expiresAt > now
-        )
-    );
-    if (redirectTarget && redirectTarget.hp > 0) {
-      // Respect DAMAGE_IMMUNE / 无敌 — cannot force damage through invulnerability
-      if (hasDamageImmune(redirectTarget as any)) return;
-
-      const redirectAmt = Math.max(1, Math.round(hpDamage * XUANSHUI_REDIRECT_PCT));
-      // Restore the redirected portion to the original damaged player.
-      // Look up via state.players to ensure we always mutate the authoritative ref.
-      const damagedInState =
-        (state.players as any[]).find((p: any) => p.userId === damagedPlayer.userId) ??
-        (damagedPlayer as any);
-      damagedInState.hp = Math.min(
-        damagedInState.maxHp ?? 100,
-        damagedInState.hp + redirectAmt
-      );
-      // Keep passed reference in sync in case it differed
-      (damagedPlayer as any).hp = damagedInState.hp;
-
-      // Redirected damage bypasses shields and damage reduction — apply directly to HP.
-      // Still respects MIN_HP_1 (啸如虎 unkillable).
-      const rtHpBefore: number = redirectTarget.hp;
-      redirectTarget.hp = Math.max(0, redirectTarget.hp - redirectAmt);
-      // MIN_HP_1 clamp
-      if (
-        redirectTarget.hp <= 0 &&
-        (redirectTarget.buffs as any[])?.some((b: any) =>
-          b.effects?.some((e: any) => e.type === "MIN_HP_1")
-        )
-      ) {
-        redirectTarget.hp = 1;
-      }
-      // No floating number for A (actorUserId = B = redirectTarget.userId so A
-      // never hits the "I dealt damage" branch).
-      // B sees a dmg_taken float with no ability text (abilityName = "").
-      pushEvent(state, {
-        turn: state.turn,
-        type: "DAMAGE",
-        actorUserId: redirectTarget.userId,
-        targetUserId: redirectTarget.userId,
-        abilityId: "xuanshui_gu",
-        abilityName: "",
-        effectType: "DAMAGE_REDIRECT_55",
-        value: redirectAmt,
-      } as any);
-      void rtHpBefore; // suppress unused warning
-    }
   }
 }

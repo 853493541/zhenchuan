@@ -330,6 +330,129 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     sourceAbilityName: "捉影式",
   });
 
+  // ── 极乐引 post-pull stun ──────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2608,
+    name: "极乐引",
+    category: "DEBUFF",
+    durationMs: 4_000,
+    breakOnPlay: false,
+    description: "眩晕4秒（极乐引拉拽完成时触发）",
+    effects: [{ type: "CONTROL" }],
+    sourceAbilityId: "ji_le_yin",
+    sourceAbilityName: "极乐引",
+  });
+
+  // ── 大道无术 freeze ────────────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2609,
+    name: "大道无术",
+    category: "DEBUFF",
+    durationMs: 6_000,
+    breakOnPlay: false,
+    description: "定身6秒",
+    effects: [{ type: "CONTROL" }, { type: "ROOT" }],
+    sourceAbilityId: "da_dao_wu_shu",
+    sourceAbilityName: "大道无术",
+  });
+
+  // ── 惊鸿游龙 dodge+dmg-reduce buff ────────────────────────────────────────
+  buffs.push({
+    buffId: 2610,
+    name: "惊鸿游龙",
+    category: "BUFF",
+    durationMs: 10_000,
+    breakOnPlay: false,
+    description: "闪避率提高65%，受到伤害降低45%",
+    effects: [
+      { type: "DODGE_NEXT", chance: 0.65 },
+      { type: "DAMAGE_REDUCTION", value: 0.45 },
+    ],
+    sourceAbilityId: "jing_hong_you_long",
+    sourceAbilityName: "惊鸿游龙",
+  });
+
+  // ── 傍花随柳 debuff stack ──────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2611,
+    name: "傍花随柳",
+    category: "DEBUFF",
+    durationMs: 30_000,
+    breakOnPlay: false,
+    description: "每次出招消耗1层：前2层造成1点伤害，最后1层沉默4秒",
+    effects: [],
+    sourceAbilityId: "bang_hua_sui_liu",
+    sourceAbilityName: "傍花随柳",
+  });
+
+  // ── 束发 silence (applied by 傍花随柳 last stack) ─────────────────────────
+  buffs.push({
+    buffId: 2612,
+    name: "束发",
+    category: "DEBUFF",
+    durationMs: 4_000,
+    breakOnPlay: false,
+    description: "沉默4秒",
+    effects: [{ type: "SILENCE" }],
+    sourceAbilityId: "bang_hua_sui_liu",
+    sourceAbilityName: "傍花随柳",
+  });
+
+  // ── 化蝶 stealth + damage-immune dash buff (Phase 2)
+  buffs.push({
+    buffId: 2613,
+    name: "化蝶",
+    category: "BUFF",
+    durationMs: 1_200,
+    breakOnPlay: false,
+    description: "隐身，免疫伤害",
+    effects: [
+      { type: "STEALTH" },
+      { type: "DAMAGE_IMMUNE" },
+    ],
+    sourceAbilityId: "hua_die",
+    sourceAbilityName: "化蝶",
+  });
+
+  // ── 剑主天地·急曲 periodic damage dot ────────────────────────────────────────────
+  buffs.push({
+    buffId: 2614,
+    name: "剑主天地·急曲",
+    category: "DEBUFF",
+    durationMs: 18_000,
+    breakOnPlay: false,
+    description: "每3秒受到1点伤害（最多3层）",
+    effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+    sourceAbilityId: "jian_zhu_tian_di",
+    sourceAbilityName: "剑主天地",
+  });
+
+  // ── 破风 flat extra damage debuff ────────────────────────────────────────────
+  buffs.push({
+    buffId: 2615,
+    name: "破风",
+    category: "DEBUFF",
+    durationMs: 12_000,
+    breakOnPlay: false,
+    description: "额外受到5%伤害",
+    effects: [{ type: "DAMAGE_TAKEN_INCREASE", value: 0.05 }],
+    sourceAbilityId: "po_feng",
+    sourceAbilityName: "破风",
+  });
+
+  // ── 流血 periodic bleed dot ────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2616,
+    name: "流血",
+    category: "DEBUFF",
+    durationMs: 12_000,
+    breakOnPlay: false,
+    description: "每2秒受到1点伤害（最多2层）",
+    effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+    sourceAbilityId: "po_feng",
+    sourceAbilityName: "破风",
+  });
+
   for (const buff of buffs) {
     const override = buffEditorOverrides[String(buff.buffId)];
     if (!buff.iconPath) {

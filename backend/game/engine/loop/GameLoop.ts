@@ -24,11 +24,12 @@ import { arenaMap } from "../../map/arenaMap";
 import { exportedMap } from "../../map/exportedMap";
 import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
 import { ABILITIES } from "../../abilities/abilities";
+import { loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
 import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasUntargetable, hasDamageImmune, shouldDodge } from "../rules/guards";
 import type { MapObject } from "../state/types/map";
 import { applyTriggeredFollowUpPlayRules, breakOnPlay } from "../flow/play/breakOnPlay";
 import { applyDashRuntimeBuff } from "../effects/definitions/DirectionalDash";
-import { processOnDamageTaken } from "../effects/onDamageHooks";
+import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../effects/onDamageHooks";
 import {
   pulseZhenShanHeTarget,
   transformExpiredXuanjian,
@@ -181,6 +182,12 @@ const SAN_CAI_HUA_SHENG_PROTECT_BUFF_ID = 2510;
 const SAN_CAI_HUA_SHENG_REMOVE_ON_HIT_CHANCE = 0.5;
 const PULL_CHANNEL_QINGGONG_SEAL_CONFIG: Record<string, { buffId: number; buffName: string; durationMs: number }> = {
   zhuo_ying_shi: { buffId: 2403, buffName: "滞影", durationMs: 5_000 },
+};
+
+// After the pull completes (activeDash cleared), apply a stun to the target.
+// NOTE: 极乐引 is now an instant AOE and no longer uses this channel-pull mechanism.
+// The config is kept but empty; the code below won't fire for any current ability.
+const PULL_CHANNEL_POST_STUN_CONFIG: Record<string, { buffId: number; buffName: string; durationMs: number }> = {
 };
 
 function tryRemoveWufangRootOnHit(state: GameState, target: any, now: number): boolean {
@@ -391,6 +398,11 @@ export class GameLoop {
   // Index into state.events for STACK_ON_HIT_DAMAGE scanning.
   // Prevents missing immediate cast damage that lands between loop ticks.
   private stackProcScanIndex = 0;
+  // Pending post-pull stuns: keyed by targetUserId; fires when activeDash clears.
+  private readonly pendingPostPullStuns = new Map<
+    string,
+    { sourceUserId: string; abilityId: string; abilityName: string }
+  >();
 
   // Phase table: each phase defines a time window, zone size transition, and DPS.
   static ZONE_PHASES = [
@@ -639,8 +651,14 @@ export class GameLoop {
               target: reachTarget,
               base: reachDamage,
             });
-            const reachResult = applyDamageToTarget(reachTarget as any, finalDamage);
             if (finalDamage > 0) {
+              const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(
+                this.state, reachTarget as any, finalDamage
+              );
+              const reachApply = redirectPlayer ? adjustedDamage : finalDamage;
+              const reachResult = reachApply > 0
+                ? applyDamageToTarget(reachTarget as any, reachApply)
+                : { hpDamage: 0 };
               this.state.events.push({
                 id: randomUUID(),
                 timestamp: Date.now(),
@@ -651,11 +669,14 @@ export class GameLoop {
                 abilityId: reachAbility.id,
                 abilityName: reachAbility.name,
                 effectType: dashStateBefore.hitEffectTypeOnComplete ?? "DAMAGE",
-                value: finalDamage,
+                value: reachApply,
               } as any);
-            }
-            if (reachResult.hpDamage > 0) {
-              processOnDamageTaken(this.state, reachTarget as any, reachResult.hpDamage, player.userId);
+              if (reachResult.hpDamage > 0) {
+                processOnDamageTaken(this.state, reachTarget as any, reachResult.hpDamage, player.userId);
+              }
+              if (redirectPlayer && redirectAmt > 0) {
+                applyRedirectToOpponent(this.state, redirectPlayer, redirectAmt);
+              }
             }
           }
         }
@@ -884,6 +905,61 @@ export class GameLoop {
         }
       }
 
+      // 化蝶 Phase 2: when Phase 1 dash ends, start the forward 27u dash + apply stealth/immune buff
+      if (dashAbilityIdBefore === "hua_die" && !player.activeDash && !(player as any)._huaDieP2Done) {
+        (player as any)._huaDieP2Done = true;
+        const huaDieAbility = ABILITIES["hua_die"] as any;
+        const huaDieBuffDef = huaDieAbility?.buffs?.find((b: any) => b.buffId === 2613);
+        if (huaDieBuffDef) {
+          addBuff({
+            state: this.state,
+            sourceUserId: player.userId,
+            targetUserId: player.userId,
+            ability: huaDieAbility ?? { id: "hua_die", name: "化蝶" },
+            buffTarget: player as any,
+            buff: huaDieBuffDef,
+          });
+        }
+        // Phase 2: forward 27 units over 30 ticks
+        const fLen4 = player.facing
+          ? Math.sqrt(player.facing.x * player.facing.x + player.facing.y * player.facing.y)
+          : 0;
+        const fX4 = fLen4 > 0.01 ? player.facing!.x / fLen4 : 0;
+        const fY4 = fLen4 > 0.01 ? player.facing!.y / fLen4 : 1;
+        const p2Ticks = 30;
+        const p2ForwardWorld = gameplayUnitsToWorldUnits(27, storedUnitScale);
+        player.velocity.vx = 0;
+        player.velocity.vy = 0;
+        player.activeDash = {
+          abilityId: "hua_die_p2",
+          vxPerTick: fX4 * p2ForwardWorld / p2Ticks,
+          vyPerTick: fY4 * p2ForwardWorld / p2Ticks,
+          forceVzPerTick: 0,
+          maxUpVz: 0.05,
+          maxDownVz: -0.3,
+          ticksRemaining: p2Ticks,
+        } as any;
+        applyDashRuntimeBuff({
+          state: this.state,
+          target: player as any,
+          durationMs: Math.ceil(p2Ticks * (1000 / 30)) + 300,
+          effects: [
+            { type: "CONTROL_IMMUNE" },
+            { type: "KNOCKBACK_IMMUNE" },
+            { type: "DISPLACEMENT" },
+            { type: "DASH_TURN_LOCK" },
+          ],
+          sourceAbilityId: "hua_die_p2",
+          sourceAbilityName: "化蝶",
+        });
+        movementStateChanged = true;
+      }
+
+      // 化蝶 Phase 2 cleanup
+      if (dashAbilityIdBefore === "hua_die_p2" && !player.activeDash) {
+        (player as any)._huaDieP2Done = false;
+      }
+
       // Cancel channel buffs based on input — read BEFORE clearing the one-shot jump flag
       if (input) {
         const isMoving =
@@ -920,6 +996,32 @@ export class GameLoop {
         if (player.activeChannel) {
           if (player.activeChannel.cancelOnMove && isMoving) player.activeChannel = undefined;
           else if (player.activeChannel.cancelOnJump && isJumping) player.activeChannel = undefined;
+        }
+      }
+
+      // Post-pull stun (极乐引): when the pull's activeDash ends, apply 眩晕.
+      // NOTE: 极乐引 is now instant AOE, so this block will never fire — kept for safety.
+      if (dashStateBefore && !player.activeDash && this.pendingPostPullStuns.has(player.userId)) {
+        const pendingStun = this.pendingPostPullStuns.get(player.userId)!;
+        this.pendingPostPullStuns.delete(player.userId);
+        const stunCfg = PULL_CHANNEL_POST_STUN_CONFIG[pendingStun.abilityId];
+        if (stunCfg && (player.hp ?? 0) > 0) {
+          const abilityRef = ABILITIES[pendingStun.abilityId] as any ?? { id: pendingStun.abilityId, name: pendingStun.abilityName };
+          addBuff({
+            state: this.state,
+            sourceUserId: pendingStun.sourceUserId,
+            targetUserId: player.userId,
+            ability: abilityRef,
+            buffTarget: player as any,
+            buff: {
+              buffId: stunCfg.buffId,
+              name: stunCfg.buffName,
+              category: "DEBUFF",
+              durationMs: stunCfg.durationMs,
+              effects: [{ type: "CONTROL" }],
+            } as any,
+          });
+          movementStateChanged = true;
         }
       }
 
@@ -999,6 +1101,7 @@ export class GameLoop {
         // Channel completion
         const chNow = Date.now();
         if (chNow >= ch.startedAt + ch.durationMs) {
+          let channelEffectDodged = false;
           for (const e of ch.effects) {
             if (e.type === "TIMED_SELF_HEAL") {
               const heal = resolveHealAmount({ target: player, base: e.value ?? 0 });
@@ -1022,11 +1125,34 @@ export class GameLoop {
               const dist = calculateDistance(player.position, target.position, storedUnitScale);
               if (dist <= range && target.hp > 0) {
                 if (player.userId !== target.userId && blocksEnemyTargeting(target as any)) {
+                  channelEffectDodged = true;
+                  continue;
+                }
+                if (player.userId !== target.userId && hasDamageImmune(target as any)) {
+                  channelEffectDodged = true;
+                  continue;
+                }
+                // Dodge check: if target has DODGE_NEXT, the whole channel completion misses
+                if (player.userId !== target.userId && shouldDodge(target as any)) {
+                  channelEffectDodged = true;
+                  this.state.events.push({
+                    id: randomUUID(), timestamp: chNow, turn: this.state.turn,
+                    type: "DODGE",
+                    actorUserId: target.userId,
+                    targetUserId: player.userId,
+                    abilityId: ch.abilityId,
+                    abilityName: ch.abilityName,
+                  } as any);
                   continue;
                 }
                 const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
-                const timedResult = applyDamageToTarget(target as any, dmg);
                 if (dmg > 0) {
+                  const { adjustedDamage: adjTimed, redirectPlayer: rtTimed, redirectAmt: raTimed } =
+                    preCheckRedirect(this.state, target as any, dmg);
+                  const timedApply = rtTimed ? adjTimed : dmg;
+                  const timedResult = timedApply > 0
+                    ? applyDamageToTarget(target as any, timedApply)
+                    : { hpDamage: 0 };
                   this.state.events.push({
                     id: randomUUID(),
                     timestamp: chNow,
@@ -1037,11 +1163,14 @@ export class GameLoop {
                     abilityId: ch.abilityId,
                     abilityName: ch.abilityName,
                     effectType: "TIMED_AOE_DAMAGE",
-                    value: dmg,
+                    value: timedApply,
                   });
-                }
-                if (timedResult.hpDamage > 0) {
-                  processOnDamageTaken(this.state, target as any, timedResult.hpDamage, player.userId);
+                  if (timedResult.hpDamage > 0) {
+                    processOnDamageTaken(this.state, target as any, timedResult.hpDamage, player.userId);
+                  }
+                  if (rtTimed && raTimed > 0) {
+                    applyRedirectToOpponent(this.state, rtTimed, raTimed);
+                  }
                 }
               }
             } else if (e.type === "TIMED_AOE_DAMAGE_IF_SELF_HP_GT") {
@@ -1172,6 +1301,15 @@ export class GameLoop {
                   sourceAbilityName: ch.abilityName,
                   appliedAt: chNow,
                 });
+
+                // Register post-pull stun if configured for this ability.
+                if (PULL_CHANNEL_POST_STUN_CONFIG[ch.abilityId]) {
+                  this.pendingPostPullStuns.set(target.userId, {
+                    sourceUserId: player.userId,
+                    abilityId: ch.abilityId,
+                    abilityName: ch.abilityName,
+                  });
+                }
               }
 
               resolveMapCollisions(target as any, this.mapCtx);
@@ -1193,6 +1331,38 @@ export class GameLoop {
                     effects: [{ type: "QINGGONG_SEAL" }],
                   } as any,
                 });
+              }
+            } else if (e.type === "DISPEL_BUFF_ATTRIBUTE") {
+              // Dispel BUFF-category buffs from target by attribute (used by channel abilities like 少明指)
+              // Skip if the preceding TIMED_AOE_DAMAGE was dodged/blocked
+              if (channelEffectDodged) continue;
+              if (target && target.hp > 0 && !blocksEnemyTargeting(target as any)) {
+                const { overrides: chDispelOvr } = loadBuffEditorOverrides();
+                const chAttrs: string[] = (e as any).attributes ?? [];
+                const chDispelCount: number = (e as any).count ?? 1;
+                for (const attr of chAttrs) {
+                  let dispelled = 0;
+                  while (dispelled < chDispelCount) {
+                    const idx = (target.buffs as any[]).findIndex((b: any) => {
+                      if (b.category !== "BUFF") return false;
+                      const entry = chDispelOvr[String(b.buffId)];
+                      return entry?.attribute === attr;
+                    });
+                    if (idx === -1) break;
+                    const removed = (target.buffs as any[])[idx];
+                    removeLinkedShield(target as any, removed);
+                    (target.buffs as any[]).splice(idx, 1);
+                    pushBuffExpired(this.state, {
+                      targetUserId: target.userId,
+                      buffId: removed.buffId,
+                      buffName: removed.name,
+                      buffCategory: removed.category,
+                      sourceAbilityId: removed.sourceAbilityId,
+                      sourceAbilityName: removed.sourceAbilityName,
+                    });
+                    dispelled++;
+                  }
+                }
               }
             } else if (e.type === "PLACE_GROUND_ZONE") {
               const facing = player.facing ?? { x: 0, y: 1 };
@@ -1435,8 +1605,13 @@ export class GameLoop {
                   target: player,
                   base: (e.value ?? 0) * stackMult,
                 });
-                const periResult = applyDamageToTarget(player as any, dmg);
                 if (dmg > 0) {
+                  const { adjustedDamage: adjPeri, redirectPlayer: rtPeri, redirectAmt: raPeri } =
+                    preCheckRedirect(this.state, player as any, dmg);
+                  const periApply = rtPeri ? adjPeri : dmg;
+                  const periResult = periApply > 0
+                    ? applyDamageToTarget(player as any, periApply)
+                    : { hpDamage: 0 };
                   this.state.events.push({
                     id: randomUUID(), timestamp: now, turn: this.state.turn,
                     type: "DAMAGE",
@@ -1445,11 +1620,14 @@ export class GameLoop {
                     abilityId: buff.sourceAbilityId,
                     abilityName: buff.sourceAbilityName ?? buff.name,
                     effectType: "PERIODIC_DAMAGE",
-                    value: dmg,
+                    value: periApply,
                   });
-                }
-                if (periResult.hpDamage > 0) {
-                  processOnDamageTaken(this.state, player as any, periResult.hpDamage, opp.userId);
+                  if (periResult.hpDamage > 0) {
+                    processOnDamageTaken(this.state, player as any, periResult.hpDamage, opp.userId);
+                  }
+                  if (rtPeri && raPeri > 0) {
+                    applyRedirectToOpponent(this.state, rtPeri, raPeri);
+                  }
                 }
                 buffsChanged = true;
               } else if (e.type === "PERIODIC_HEAL") {
@@ -1548,8 +1726,13 @@ export class GameLoop {
                     target: opp,
                     base: e.value ?? 0,
                   });
-                  const aoeResult = applyDamageToTarget(opp as any, dmg);
                   if (dmg > 0) {
+                    const { adjustedDamage: adjAoe, redirectPlayer: rtAoe, redirectAmt: raAoe } =
+                      preCheckRedirect(this.state, opp as any, dmg);
+                    const aoeApply = rtAoe ? adjAoe : dmg;
+                    const aoeResult = aoeApply > 0
+                      ? applyDamageToTarget(opp as any, aoeApply)
+                      : { hpDamage: 0 };
                     this.state.events.push({
                       id: randomUUID(), timestamp: now, turn: this.state.turn,
                       type: "DAMAGE",
@@ -1558,11 +1741,14 @@ export class GameLoop {
                       abilityId: buff.sourceAbilityId,
                       abilityName: buff.sourceAbilityName ?? buff.name,
                       effectType: "CHANNEL_AOE_TICK",
-                      value: dmg,
+                      value: aoeApply,
                     });
-                  }
-                  if (aoeResult.hpDamage > 0) {
-                    processOnDamageTaken(this.state, opp as any, aoeResult.hpDamage, player.userId);
+                    if (aoeResult.hpDamage > 0) {
+                      processOnDamageTaken(this.state, opp as any, aoeResult.hpDamage, player.userId);
+                    }
+                    if (rtAoe && raAoe > 0) {
+                      applyRedirectToOpponent(this.state, rtAoe, raAoe);
+                    }
                   }
                   buffsChanged = true;
                 }
@@ -2017,6 +2203,7 @@ export class GameLoop {
             if (target.hp <= 0) continue;
             if (zone.maxTargets !== undefined && targetsHit >= zone.maxTargets) break;
             if (blocksEnemyTargeting(target as any)) continue;
+            if (hasDamageImmune(target as any)) continue;
             const dx = target.position.x - zone.x;
             const dy = target.position.y - zone.y;
             if (Math.sqrt(dx * dx + dy * dy) > zone.radius) continue;
@@ -2044,8 +2231,13 @@ export class GameLoop {
               target,
               base: zone.damagePerInterval,
             });
-            const zoneResult = applyDamageToTarget(target as any, dmg);
             if (dmg > 0) {
+              const { adjustedDamage: adjZone, redirectPlayer: rtZone, redirectAmt: raZone } =
+                preCheckRedirect(this.state, target as any, dmg);
+              const zoneApply = rtZone ? adjZone : dmg;
+              const zoneResult = zoneApply > 0
+                ? applyDamageToTarget(target as any, zoneApply)
+                : { hpDamage: 0 };
               this.state.events.push({
                 id: randomUUID(), timestamp: now, turn: this.state.turn,
                 type: "DAMAGE",
@@ -2054,11 +2246,14 @@ export class GameLoop {
                 abilityId: zone.abilityId,
                 abilityName: zone.abilityName,
                 effectType: "PERIODIC_DAMAGE",
-                value: dmg,
+                value: zoneApply,
               });
-            }
-            if (zoneResult.hpDamage > 0) {
-              processOnDamageTaken(this.state, target as any, zoneResult.hpDamage, zone.ownerUserId);
+              if (zoneResult.hpDamage > 0) {
+                processOnDamageTaken(this.state, target as any, zoneResult.hpDamage, zone.ownerUserId);
+              }
+              if (rtZone && raZone > 0) {
+                applyRedirectToOpponent(this.state, rtZone, raZone);
+              }
             }
             targetsHit++;
             buffsChanged = true;

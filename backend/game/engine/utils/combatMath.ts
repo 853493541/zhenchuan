@@ -38,6 +38,12 @@ export function resolveScheduledDamage(params: {
   const takenInc = allEffects(params.target).find((e) => e.type === "DAMAGE_TAKEN_INCREASE");
   if (takenInc) dmg *= 1 + (takenInc.value ?? 0);
 
+  // DAMAGE TAKEN FLAT (e.g. 破风 — fixed bonus added after multipliers)
+  const flatBonusList = allEffects(params.target).filter((e) => e.type === "DAMAGE_TAKEN_FLAT");
+  for (const fb of flatBonusList) {
+    dmg += (fb.value ?? 0);
+  }
+
   return Math.max(0, Math.floor(dmg));
 }
 

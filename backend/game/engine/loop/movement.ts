@@ -534,6 +534,17 @@ export function applyMovement(
   // the FIRST tick (not at HTTP-cast time) so any pending jump is processed
   // first — this eliminates the race where jump + dash are pressed together
   // and the jump gets swallowed.
+
+  // 临时飞爪: if dash has ccStopsMe, cancel it when any CC/control is active
+  if (player.activeDash && (player.activeDash as any).ccStopsMe) {
+    const hasCCNow = (player.buffs as any[]).some((b: any) =>
+      b.effects?.some((e: any) => ["CONTROL", "ROOT", "ATTACK_LOCK"].includes(e.type))
+    );
+    if (hasCCNow) {
+      delete (player as any).activeDash;
+    }
+  }
+
   if (player.activeDash) {
     const dash = player.activeDash;
 

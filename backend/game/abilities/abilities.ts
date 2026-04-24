@@ -2553,6 +2553,266 @@ export const BASE_ABILITIES: AbilityRecord = {
       },
     ],
   },
+
+  // ─── 蓬莱 / 新增 ────────────────────────────────────────────────────────────
+
+  ji_le_yin: {
+    id: "ji_le_yin",
+    name: "极乐引",
+    description: "瞬发，自身施放。将10尺范围内的敌人拉拽至身侧1尺，随后施加【极乐引】眩晕4秒",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [
+      { type: "JILE_YIN_AOE_PULL", value: 10 } as any,
+    ],
+    // buffs declared here for editor visibility only — applied manually in JILE_YIN_AOE_PULL handler
+    buffs: [
+      {
+        buffId: 2608,
+        name: "极乐引",
+        category: "DEBUFF",
+        durationMs: 4_000,
+        description: "眩晕：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  da_dao_wu_shu: {
+    id: "da_dao_wu_shu",
+    name: "大道无术",
+    description: "瞬发，射程8。将目标定身6秒",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 8,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2609,
+        name: "大道无术",
+        category: "DEBUFF",
+        durationMs: 6_000,
+        description: "定身：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }, { type: "ROOT" }],
+      },
+    ],
+  },
+
+  jing_hong_you_long: {
+    id: "jing_hong_you_long",
+    name: "惊鸿游龙",
+    description: "瞬发，自身施放。获得【惊鸿游龙】10秒：闪避率提高65%，受到伤害降低45%",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2610,
+        name: "惊鸿游龙",
+        category: "BUFF",
+        durationMs: 10_000,
+        breakOnPlay: false,
+        description: "闪避率提高65%，受到伤害降低45%",
+        effects: [
+          { type: "DODGE_NEXT", chance: 0.65 },
+          { type: "DAMAGE_REDUCTION", value: 0.45 },
+        ],
+      },
+    ],
+  },
+
+  bang_hua_sui_liu: {
+    id: "bang_hua_sui_liu",
+    name: "傍花随柳",
+    description: "运功1秒（可移动、可在空中施放）。读条完成后对目标附加【傍花随柳】3层（30秒）：目标每次出招消耗1层并受到2点伤害；消耗第3层时额外施加【束发】沉默4秒",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2611,
+        name: "傍花随柳",
+        category: "DEBUFF",
+        durationMs: 30_000,
+        initialStacks: 3,
+        maxStacks: 3,
+        breakOnPlay: false,
+        description: "每次出招消耗1层并受到2点伤害；消耗第3层时额外施加【束发】沉默4秒",
+        effects: [],
+        applyTo: "OPPONENT",
+      },
+    ],
+    channelDurationMs: 1_000,
+    channelCancelOnMove: false,
+    channelCancelOnJump: false,
+    channelCancelOnOutOfRange: 20,
+    channelForward: false,
+    applyBuffsOnComplete: true,
+    channelEffects: [],
+  } as any,
+
+  hua_die: {
+    id: "hua_die",
+    name: "化蝶",
+    description: "瞬发，自身施放。斜向升高4尺并前进2尺（1秒），随后向前冲刺27尺（1秒），第二段冲刺期间隐身并免疫伤害",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    qinggong: true,
+    effects: [
+      { type: "HUA_DIE_PHASE1" } as any,
+    ],
+    // buff 2613 declared here for editor visibility only — applied in GameLoop when Phase 2 starts
+    buffs: [
+      {
+        buffId: 2613,
+        name: "化蝶",
+        category: "BUFF",
+        durationMs: 1_200,
+        breakOnPlay: false,
+        description: "隐身，免疫伤害（第二段冲刺期间）",
+        effects: [
+          { type: "STEALTH" },
+          { type: "DAMAGE_IMMUNE" },
+        ],
+      },
+    ],
+  },
+
+  liang_yi_hua_xing: {
+    id: "liang_yi_hua_xing",
+    name: "两仪化形",
+    description: "瞬发，造成2点伤害",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "DAMAGE", value: 2 }],
+    buffs: [],
+  },
+
+  // ─── 少明指 — channel 1s (can move), dispel 2 BUFF per attribute ─────────
+  shao_ming_zhi: {
+    id: "shao_ming_zhi",
+    name: "少明指",
+    description: "运功1秒（可移动，不可跳跃），射程20。造成1点伤害，驱散目标身上的混元、阳性、阴性、毒性有益气劲各两个",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [],
+    channelDurationMs: 1_000,
+    channelCancelOnMove: false,
+    channelCancelOnJump: true,
+    channelCancelOnOutOfRange: 20,
+    channelForward: false,
+    channelEffects: [
+      { type: "TIMED_AOE_DAMAGE", value: 1, range: 20 },
+      { type: "DISPEL_BUFF_ATTRIBUTE", attributes: ["混元", "阳性", "阴性", "毒性"], count: 2 } as any,
+    ],
+  } as any,
+
+  // ─── 临时飞爪 — ground-target dash 40u, no dash buff, CC stops it ────────
+  lin_shi_fei_zhua: {
+    id: "lin_shi_fei_zhua",
+    name: "临时飞爪",
+    description: "轻功，可选目标或地面施放（射程40）。以飞爪冲刺至目标位置，期间可施放技能；冲刺不提供无敌，受到控制立即中断",
+    type: "SUPPORT",
+    target: "OPPONENT",
+    range: 40,
+    cooldownTicks: 300,
+    gcd: false,
+    qinggong: true,
+    faceDirection: false,
+    allowGroundCastWithoutTarget: true,
+    effects: [
+      { type: "LIN_SHI_FEI_ZHUA_DASH", value: 40 } as any,
+    ],
+    buffs: [],
+  },
+
+  // ─── 剑主天地 — targeted dot that detonates at 3 stacks ──────────────────
+  jian_zhu_tian_di: {
+    id: "jian_zhu_tian_di",
+    name: "剑主天地",
+    description: "瞬发，射程20。造成1点伤害，附加【剑主天地】持续伤害（每3秒1点，持续18秒，最多3层）。当目标已有3层时，立即引爆消耗所有层数，直接结算剩余伤害",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [
+      { type: "JIAN_ZHU_TIAN_DI_STRIKE" } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2614,
+        name: "剑主天地·急曲",
+        category: "DEBUFF",
+        durationMs: 18_000,
+        periodicMs: 3_000,
+        initialStacks: 1,
+        maxStacks: 3,
+        breakOnPlay: false,
+        description: "每3秒受到1点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+        applyTo: "OPPONENT",
+      },
+    ],
+  },
+
+  // ─── 破风 — damage + flat dmg-taken debuff + bleed ──────────────────────
+  po_feng: {
+    id: "po_feng",
+    name: "破风",
+    description: "瞬发，射程4。造成2点伤害，附加【破风】（额外受到5%伤害，持续12秒）和【流血】（每2秒1点伤害，持续12秒，最多2层）。若目标拥有控制免疫，额外附加一层【流血】",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [
+      { type: "PO_FENG_STRIKE" } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2615,
+        name: "破风",
+        category: "DEBUFF",
+        durationMs: 12_000,
+        breakOnPlay: false,
+        description: "额外受到5%伤害",
+        effects: [{ type: "DAMAGE_TAKEN_INCREASE", value: 0.05 }],
+        applyTo: "OPPONENT",
+      },
+      {
+        buffId: 2616,
+        name: "流血",
+        category: "DEBUFF",
+        durationMs: 12_000,
+        periodicMs: 2_000,
+        initialStacks: 1,
+        maxStacks: 2,
+        breakOnPlay: false,
+        description: "每2秒受到1点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+        applyTo: "OPPONENT",
+      },
+    ],
+  },
 };
 
 let abilityPropertyOverrides: AbilityEditorOverrideMap = {};

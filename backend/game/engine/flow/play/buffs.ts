@@ -37,6 +37,10 @@ export function applyAbilityBuffs(params: {
   // 绛唇珠袖: only buff 2323 (debuff) is applied at cast time; buff 2324 (silence) is trigger-only.
   // 银月斩/烈日斩/横扫六合: buff application handled in custom effect handlers (synergy logic).
   // 三才化生: buff application handled in SAN_CAI_HUA_SHENG_AOE handler.
+  // 极乐引: SELF-cast AOE; buffs applied manually in JILE_YIN_AOE_PULL handler to enemies only.
+  // 化蝶: buff 2613 (stealth/immune) applied in GameLoop when Phase 2 starts, NOT on cast.
+  // 剑主天地: buff 2614 applied/managed in JIAN_ZHU_TIAN_DI_STRIKE handler (detonation logic).
+  // 破风: buffs 2615/2616 applied in PO_FENG_STRIKE handler (conditional extra bleed stack).
   if (
     ability.id === "baizu" ||
     ability.id === "han_di" ||
@@ -48,6 +52,10 @@ export function applyAbilityBuffs(params: {
     ability.id === "lie_ri_zhan" ||
     ability.id === "heng_sao_liu_he" ||
     ability.id === "san_cai_hua_sheng" ||
+    ability.id === "ji_le_yin" ||
+    ability.id === "hua_die" ||
+    ability.id === "jian_zhu_tian_di" ||
+    ability.id === "po_feng" ||
     (Array.isArray(ability.effects) &&
       ability.effects.some((e: any) =>
         e.type === "AOE_APPLY_BUFFS" ||

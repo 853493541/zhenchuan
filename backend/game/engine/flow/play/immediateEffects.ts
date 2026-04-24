@@ -1,7 +1,7 @@
 // engine/flow/applyImmediateEffects.ts
 import { randomUUID } from "crypto";
 import { resolveEffectTargetIndex } from "../../utils/targeting";
-import { blocksEnemyTargeting, isEnemyEffect, shouldSkipDueToDodge, hasKnockbackImmune, hasDamageImmune } from "../../rules/guards";
+import { blocksEnemyTargeting, isEnemyEffect, shouldSkipDueToDodge, hasKnockbackImmune, hasDamageImmune, blocksControlByImmunity } from "../../rules/guards";
 import {
   handleDamage,
   handleBonusDamageIfHpGt,
@@ -14,7 +14,7 @@ import {
 } from "../../effects/handlers";
 import { gameplayUnitsToWorldUnits, worldUnitsToGameplayUnits } from "../../state/types";
 import { resolveScheduledDamage } from "../../utils/combatMath";
-import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
+import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../../utils/health";
 import { addBuff, pushBuffExpired } from "../../effects/buffRuntime";
 import {
   applyZhenShanHeSelfCastBuff,
@@ -24,6 +24,7 @@ import {
 import { getGroundHeightForMap, type MapContext } from "../../loop/movement";
 import { loadBuffEditorOverrides } from "../../../abilities/buffEditorOverrides";
 import { ABILITIES } from "../../../abilities/abilities";
+import { applyDashRuntimeBuff, DASH_CC_IMMUNE_BUFF_ID } from "../../effects/definitions/DirectionalDash";
 
 const WUFANG_ROOT_BUFF_ID = 1330;
 const WUFANG_HIT_PROTECT_BUFF_ID = 1331;
@@ -711,28 +712,35 @@ export function applyImmediateEffects(params: {
       }
 
       case "DISPEL_BUFF_ATTRIBUTE": {
-        // Remove one BUFF-category buff per listed attribute from the target.
+        // Remove BUFF-category buffs per listed attribute from the target.
+        // count (default 1) controls how many per attribute to remove.
         // Respects dodge via the shouldSkipDueToDodge check above (which runs before switch).
         if (!enemyApplied) break;
         const { overrides: buffOverrides } = loadBuffEditorOverrides();
         const attrs: string[] = (effect as any).attributes ?? [];
+        const dispelCount: number = (effect as any).count ?? 1;
         for (const attr of attrs) {
-          const idx = effTarget.buffs.findIndex((b: any) => {
-            if (b.category !== "BUFF") return false;
-            const entry = buffOverrides[String(b.buffId)];
-            return entry?.attribute === attr;
-          });
-          if (idx === -1) continue;
-          const removed = effTarget.buffs[idx];
-          effTarget.buffs.splice(idx, 1);
-          pushBuffExpired(state, {
-            targetUserId: effTarget.userId,
-            buffId: removed.buffId,
-            buffName: removed.name,
-            buffCategory: removed.category,
-            sourceAbilityId: removed.sourceAbilityId,
-            sourceAbilityName: removed.sourceAbilityName,
-          });
+          let dispelled = 0;
+          while (dispelled < dispelCount) {
+            const idx = effTarget.buffs.findIndex((b: any) => {
+              if (b.category !== "BUFF") return false;
+              const entry = buffOverrides[String(b.buffId)];
+              return entry?.attribute === attr;
+            });
+            if (idx === -1) break;
+            const removed = effTarget.buffs[idx];
+            removeLinkedShield(effTarget as any, removed);
+            effTarget.buffs.splice(idx, 1);
+            pushBuffExpired(state, {
+              targetUserId: effTarget.userId,
+              buffId: removed.buffId,
+              buffName: removed.name,
+              buffCategory: removed.category,
+              sourceAbilityId: removed.sourceAbilityId,
+              sourceAbilityName: removed.sourceAbilityName,
+            });
+            dispelled++;
+          }
         }
         break;
       }
@@ -753,6 +761,7 @@ export function applyImmediateEffects(params: {
             });
             if (idx === -1) break;
             const removedBuff = effTarget.buffs[idx];
+            removeLinkedShield(effTarget as any, removedBuff);
             effTarget.buffs.splice(idx, 1);
             pushBuffExpired(state, {
               targetUserId: effTarget.userId,
@@ -1043,6 +1052,272 @@ export function applyImmediateEffects(params: {
               ability,
               buffTarget: victim,
               buff: dotBuff,
+            });
+          }
+        }
+        break;
+      }
+
+      // ─── 极乐引: instant self-cast AOE pull all enemies within range to 1 unit in front ──
+      case "JILE_YIN_AOE_PULL": {
+        const jileRange = gameplayUnitsToWorldUnits(effect.value ?? 10, state.unitScale);
+        const jileStunBuffDef = ability.buffs?.find((b: any) => b.buffId === 2608);
+        for (const candidate of state.players as any[]) {
+          if (candidate.userId === source.userId) continue;
+          if ((candidate.hp ?? 0) <= 0) continue;
+          if (blocksEnemyTargeting(candidate)) continue;
+          const cdx = candidate.position.x - source.position.x;
+          const cdy = candidate.position.y - source.position.y;
+          const cdist = Math.hypot(cdx, cdy);
+          if (cdist > jileRange) continue;
+          // Pull to 1 unit away from caster in the direction of the enemy
+          // (so if enemy is behind, they land 1u behind; if in front, 1u in front)
+          const pullDist = gameplayUnitsToWorldUnits(1, state.unitScale);
+          if (cdist > 0.001) {
+            const dirX = cdx / cdist;
+            const dirY = cdy / cdist;
+            candidate.position.x = source.position.x + dirX * pullDist;
+            candidate.position.y = source.position.y + dirY * pullDist;
+          }
+          candidate.position.z = source.position.z ?? 0;
+          // Apply stun buff to enemy (NOT to self — applyAbilityBuffs is excluded for ji_le_yin)
+          if (jileStunBuffDef) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: candidate.userId,
+              ability,
+              buffTarget: candidate,
+              buff: jileStunBuffDef,
+            });
+          }
+        }
+        break;
+      }
+
+      // ─── 临时飞爪: ground-target dash without dash CC-immunity buff ────────
+      case "LIN_SHI_FEI_ZHUA_DASH": {
+        // Always use mouse ground-target position — NEVER fall back to opponent position
+        const gTargetX2 = castContext?.groundTarget?.x;
+        const gTargetY2 = castContext?.groundTarget?.y;
+        const hasGroundTarget = gTargetX2 !== undefined && gTargetY2 !== undefined;
+        const tX = hasGroundTarget ? gTargetX2! : source.position.x + (source.facing?.x ?? 0) * gameplayUnitsToWorldUnits(effect.value ?? 40, state.unitScale);
+        const tY = hasGroundTarget ? gTargetY2! : source.position.y + (source.facing?.y ?? 1) * gameplayUnitsToWorldUnits(effect.value ?? 40, state.unitScale);
+        const gDx2 = tX - source.position.x;
+        const gDy2 = tY - source.position.y;
+        const gLen2 = Math.sqrt(gDx2 * gDx2 + gDy2 * gDy2);
+        const linMaxDistWorld = gameplayUnitsToWorldUnits(effect.value ?? 40, state.unitScale);
+        const linActualWorld = Math.min(linMaxDistWorld, gLen2 > 0.01 ? gLen2 : linMaxDistWorld);
+        if (gLen2 > 0.01) {
+          source.facing = { x: gDx2 / gLen2, y: gDy2 / gLen2 };
+        }
+        // Speed: 20 units/sec → ticks = (dist / 20) * 30
+        const linActualGpu = worldUnitsToGameplayUnits(linActualWorld, state.unitScale);
+        const linDurationTicks = Math.max(1, Math.round((linActualGpu / 20) * 30));
+        const linDirX = gLen2 > 0.01 ? gDx2 / gLen2 : source.facing?.x ?? 0;
+        const linDirY = gLen2 > 0.01 ? gDy2 / gLen2 : source.facing?.y ?? 1;
+        source.velocity.vx = 0;
+        source.velocity.vy = 0;
+        source.activeDash = {
+          abilityId: ability.id,
+          vxPerTick: linDirX * linActualWorld / linDurationTicks,
+          vyPerTick: linDirY * linActualWorld / linDurationTicks,
+          maxUpVz: 0.3,
+          maxDownVz: -0.3,
+          ticksRemaining: linDurationTicks,
+          ccStopsMe: true,
+        } as any;
+        // Height targeting
+        const linTargetZ = castContext?.groundTarget?.z;
+        if (linTargetZ !== undefined) {
+          const linHDiff = linTargetZ - (source.position.z ?? 0);
+          if (Math.abs(linHDiff) > 0.1) {
+            (source.activeDash as any).forceVzPerTick = linHDiff / linDurationTicks;
+          }
+        }
+        // NOTE: intentionally NO applyDashRuntimeBuff — no CC immunity while dashing
+        state.events.push({
+          id: randomUUID(), timestamp: Date.now(), turn: state.turn,
+          type: "DASH",
+          actorUserId: source.userId,
+          targetUserId: source.userId,
+          abilityId: ability.id,
+          abilityName: ability.name,
+        } as any);
+        break;
+      }
+
+      // ─── 化蝶 Phase 1: diagonal dash (up 4u + forward 2u over 30 ticks) ──
+      case "HUA_DIE_PHASE1": {
+        const fLen3 = source.facing
+          ? Math.sqrt(source.facing.x * source.facing.x + source.facing.y * source.facing.y)
+          : 0;
+        const fX3 = fLen3 > 0.01 ? source.facing!.x / fLen3 : 0;
+        const fY3 = fLen3 > 0.01 ? source.facing!.y / fLen3 : 1;
+        const p1Ticks = 30; // 1 second
+        const p1ForwardWorld = gameplayUnitsToWorldUnits(2, state.unitScale);
+        const p1UpWorld = gameplayUnitsToWorldUnits(4, state.unitScale);
+        source.velocity.vx = 0;
+        source.velocity.vy = 0;
+        source.activeDash = {
+          abilityId: "hua_die",
+          vxPerTick: fX3 * p1ForwardWorld / p1Ticks,
+          vyPerTick: fY3 * p1ForwardWorld / p1Ticks,
+          forceVzPerTick: p1UpWorld / p1Ticks,
+          maxUpVz: p1UpWorld / p1Ticks + 0.1,
+          maxDownVz: -0.1,
+          ticksRemaining: p1Ticks,
+        } as any;
+        // Apply dash runtime buff for Phase 1 (CC immune during phase 1)
+        applyDashRuntimeBuff({
+          state,
+          target: source,
+          durationMs: Math.ceil(p1Ticks * (1000 / 30)) + 200,
+          effects: [
+            { type: "CONTROL_IMMUNE" },
+            { type: "KNOCKBACK_IMMUNE" },
+            { type: "DISPLACEMENT" },
+            { type: "DASH_TURN_LOCK" },
+          ],
+          sourceAbilityId: ability.id,
+          sourceAbilityName: ability.name,
+        });
+        state.events.push({
+          id: randomUUID(), timestamp: Date.now(), turn: state.turn,
+          type: "DASH",
+          actorUserId: source.userId,
+          targetUserId: source.userId,
+          abilityId: ability.id,
+          abilityName: ability.name,
+        } as any);
+        break;
+      }
+
+      // ─── 剑主天地: stacking dot, detonate at 3 stacks ─────────────────────
+      case "JIAN_ZHU_TIAN_DI_STRIKE": {
+        if (!enemyApplied) break;
+        const jztdBuffDef = ability.buffs?.find((b: any) => b.buffId === 2614);
+        const existing2614 = effTarget.buffs.find((b: any) => b.buffId === 2614);
+        if (existing2614 && (existing2614.stacks ?? 1) >= (jztdBuffDef?.maxStacks ?? 3)) {
+          // Detonate: remove buff and deal total remaining DoT immediately
+          const dmgPerTick2 = jztdBuffDef?.effects?.find((e: any) => e.type === "PERIODIC_DAMAGE")?.value ?? 1;
+          const remainingMs2 = Math.max(0, existing2614.expiresAt - Date.now());
+          const periodicMs2 = jztdBuffDef?.periodicMs ?? 3000;
+          const remainTicks2 = Math.max(0, Math.ceil(remainingMs2 / periodicMs2));
+          const burstDmg = remainTicks2 * dmgPerTick2 + 1; // +1 for the hit itself
+          effTarget.buffs = effTarget.buffs.filter((b: any) => b.buffId !== 2614);
+          pushBuffExpired(state, {
+            targetUserId: effTarget.userId,
+            buffId: 2614,
+            buffName: "剑主天地·急曲",
+            buffCategory: "DEBUFF",
+            sourceAbilityId: ability.id,
+            sourceAbilityName: ability.name,
+          });
+          const finalBurst = resolveScheduledDamage({ source, target: effTarget, base: burstDmg });
+          if (finalBurst > 0 && !hasDamageImmune(effTarget as any)) {
+            applyDamageToTarget(effTarget as any, finalBurst);
+            state.events.push({
+              id: randomUUID(), timestamp: Date.now(), turn: state.turn,
+              type: "DAMAGE",
+              actorUserId: source.userId,
+              targetUserId: effTarget.userId,
+              abilityId: ability.id,
+              abilityName: ability.name,
+              effectType: "DAMAGE",
+              value: finalBurst,
+            } as any);
+          }
+          // After detonation, apply one fresh stack of the DoT buff
+          if (jztdBuffDef) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: effTarget.userId,
+              ability,
+              buffTarget: effTarget,
+              buff: jztdBuffDef,
+            });
+          }
+        } else {
+          // Normal hit: 1 damage + apply/stack buff 2614
+          const dmg1 = resolveScheduledDamage({ source, target: effTarget, base: 1 });
+          if (dmg1 > 0 && !hasDamageImmune(effTarget as any)) {
+            applyDamageToTarget(effTarget as any, dmg1);
+            state.events.push({
+              id: randomUUID(), timestamp: Date.now(), turn: state.turn,
+              type: "DAMAGE",
+              actorUserId: source.userId,
+              targetUserId: effTarget.userId,
+              abilityId: ability.id,
+              abilityName: ability.name,
+              effectType: "DAMAGE",
+              value: dmg1,
+            } as any);
+          }
+          if (jztdBuffDef) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: effTarget.userId,
+              ability,
+              buffTarget: effTarget,
+              buff: jztdBuffDef,
+            });
+          }
+        }
+        break;
+      }
+
+      // ─── 破风: 2 damage + 破风 debuff + 流血, extra 流血 if CONTROL_IMMUNE ──
+      case "PO_FENG_STRIKE": {
+        if (!enemyApplied) break;
+        const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: 2 });
+        if (pfDmg > 0 && !hasDamageImmune(effTarget as any)) {
+          applyDamageToTarget(effTarget as any, pfDmg);
+          state.events.push({
+            id: randomUUID(), timestamp: Date.now(), turn: state.turn,
+            type: "DAMAGE",
+            actorUserId: source.userId,
+            targetUserId: effTarget.userId,
+            abilityId: ability.id,
+            abilityName: ability.name,
+            effectType: "DAMAGE",
+            value: pfDmg,
+          } as any);
+        }
+        // Apply 破风 (flat damage-taken debuff)
+        const pfWindBuffDef = ability.buffs?.find((b: any) => b.buffId === 2615);
+        if (pfWindBuffDef) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: effTarget.userId,
+            ability,
+            buffTarget: effTarget,
+            buff: pfWindBuffDef,
+          });
+        }
+        // Apply 流血 (bleed DoT)
+        const pfBleedBuffDef = ability.buffs?.find((b: any) => b.buffId === 2616);
+        if (pfBleedBuffDef) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: effTarget.userId,
+            ability,
+            buffTarget: effTarget,
+            buff: pfBleedBuffDef,
+          });
+          // If target has CONTROL_IMMUNE, apply an extra stack of 流血
+          if (blocksControlByImmunity("CONTROL", effTarget as any)) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: effTarget.userId,
+              ability,
+              buffTarget: effTarget,
+              buff: pfBleedBuffDef,
             });
           }
         }

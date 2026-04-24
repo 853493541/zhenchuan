@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-04-24T09:34:02.313Z",
+  "updatedAt": "2026-04-24T15:19:46.193Z",
   "abilities": {
     "baizu": {
       "tags": {
@@ -160,7 +160,8 @@
     },
     "yin_yue_zhan": {
       "tags": {
-        "school": "明教"
+        "school": "明教",
+        "rarity": "精巧"
       }
     },
     "yu_shi_ju_fen": {
@@ -171,12 +172,14 @@
     },
     "yue_chao_zhan_bo": {
       "tags": {
-        "school": "蓬莱"
+        "school": "蓬莱",
+        "rarity": "精巧"
       }
     },
     "bang_da_gou_tou": {
       "tags": {
-        "school": "丐帮"
+        "school": "丐帮",
+        "rarity": "精巧"
       }
     },
     "chan_xiao": {
@@ -199,7 +202,8 @@
     },
     "han_di": {
       "tags": {
-        "school": "苍云"
+        "school": "苍云",
+        "rarity": "精巧"
       }
     },
     "he_gui_gu_shan": {
@@ -255,7 +259,8 @@
     },
     "shengsi_jie": {
       "tags": {
-        "school": "明教"
+        "school": "明教",
+        "rarity": "卓越"
       }
     },
     "xuanshui_gu": {
@@ -314,12 +319,14 @@
     },
     "gu_feng_sa_ta": {
       "tags": {
-        "school": "凌雪"
+        "school": "凌雪",
+        "rarity": "精巧"
       }
     },
     "houyao": {
       "tags": {
-        "school": "通用"
+        "school": "通用",
+        "rarity": "精巧"
       }
     },
     "huayu_suxin": {
@@ -342,7 +349,8 @@
     },
     "lingxiao_lansheng": {
       "tags": {
-        "school": "通用"
+        "school": "通用",
+        "rarity": "精巧"
       }
     },
     "niao_xiang_bi_kong": {
@@ -353,7 +361,8 @@
     },
     "nieyun_zhuyue": {
       "tags": {
-        "school": "通用"
+        "school": "通用",
+        "rarity": "精巧"
       }
     },
     "qionglong_huasheng": {
@@ -370,7 +379,8 @@
     },
     "sheng_ming_you": {
       "tags": {
-        "school": "明教"
+        "school": "明教",
+        "rarity": "卓越"
       }
     },
     "shou_ru_shan": {
@@ -381,7 +391,8 @@
     },
     "taxingxing": {
       "tags": {
-        "school": "衍天"
+        "school": "衍天",
+        "rarity": "卓越"
       }
     },
     "tai_yin_zhi": {
@@ -398,7 +409,8 @@
     },
     "wu_jianyu": {
       "tags": {
-        "school": "凌雪"
+        "school": "凌雪",
+        "rarity": "卓越"
       }
     },
     "xiao_ru_hu": {
@@ -415,17 +427,20 @@
     },
     "yaotai_zhenhe": {
       "tags": {
-        "school": "通用"
+        "school": "通用",
+        "rarity": "精巧"
       }
     },
     "yingfeng_huilang": {
       "tags": {
-        "school": "通用"
+        "school": "通用",
+        "rarity": "精巧"
       }
     },
     "yuqi": {
       "tags": {
-        "school": "通用"
+        "school": "通用",
+        "rarity": "精巧"
       }
     },
     "yun_qi_song": {
@@ -520,12 +535,67 @@
     },
     "yan_yu_xing": {
       "tags": {
-        "school": "丐帮"
+        "school": "丐帮",
+        "rarity": "精巧"
       }
     },
     "kuang_long_luan_wu": {
       "tags": {
-        "school": "丐帮"
+        "school": "丐帮",
+        "rarity": "珍奇"
+      }
+    },
+    "jian_zhu_tian_di": {
+      "tags": {
+        "school": "七秀"
+      }
+    },
+    "liang_yi_hua_xing": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "po_feng": {
+      "tags": {
+        "school": "天策"
+      }
+    },
+    "da_dao_wu_shu": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "hua_die": {
+      "tags": {
+        "school": "五毒"
+      }
+    },
+    "ji_le_yin": {
+      "tags": {
+        "school": "明教"
+      }
+    },
+    "jing_hong_you_long": {
+      "tags": {
+        "school": "唐门"
+      }
+    },
+    "lin_shi_fei_zhua": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "通用"
+      }
+    },
+    "bang_hua_sui_liu": {
+      "tags": {
+        "rarity": "珍奇",
+        "school": "万花"
+      }
+    },
+    "shao_ming_zhi": {
+      "tags": {
+        "rarity": "精巧",
+        "school": "万花"
       }
     }
   }

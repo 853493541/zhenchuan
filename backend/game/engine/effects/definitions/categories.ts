@@ -111,6 +111,18 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   NIEYUN_DASH_REDUCTION: "DEBUFF",
   // 玄水蛊·毒手: redirect marker
   DAMAGE_REDIRECT_55: "DEBUFF",
+  // 极乐引: instant AOE pull
+  JILE_YIN_AOE_PULL: "DEBUFF",
+  // 临时飞爪: no-buff ground dash
+  LIN_SHI_FEI_ZHUA_DASH: "BUFF",
+  // 化蝶 Phase 1: diagonal dash
+  HUA_DIE_PHASE1: "BUFF",
+  // 破风: flat damage taken bonus
+  DAMAGE_TAKEN_FLAT: "DEBUFF",
+  // 剑主天地: stacking dot strike
+  JIAN_ZHU_TIAN_DI_STRIKE: "DEBUFF",
+  // 破风: strike handler
+  PO_FENG_STRIKE: "DEBUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

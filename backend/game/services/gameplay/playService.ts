@@ -266,6 +266,58 @@ async function playCastAbility(
     if (hasChargeSystem(ability)) {
       consumeAbilityUseRuntime(played, ability, false);
     }
+
+    // ── 傍花随柳 on-play trigger (channel cast counts as "出招") ─────────────
+    {
+      const BANG_HUA_BUFF_ID = 2611;
+      const bangHuaNow = Date.now();
+      const bangHuaIdx = (player.buffs as any[]).findIndex(
+        (b: any) => b.buffId === BANG_HUA_BUFF_ID && b.expiresAt > bangHuaNow
+      );
+      if (bangHuaIdx >= 0) {
+        const bangHuaBuff = (player.buffs as any[])[bangHuaIdx];
+        const currentStacks = bangHuaBuff.stacks ?? 1;
+        const opp = state.players.find((p) => p.userId !== player.userId);
+        const isLastStack = currentStacks <= 1;
+        if (opp) {
+          // Always: consume 1 stack and deal 2 damage
+          if (isLastStack) {
+            (player.buffs as any[]).splice(bangHuaIdx, 1);
+          } else {
+            bangHuaBuff.stacks = currentStacks - 1;
+          }
+          applyDamageToTarget(player as any, 2);
+          pushEvent(state, {
+            turn: state.turn,
+            type: "DAMAGE",
+            actorUserId: opp.userId,
+            targetUserId: player.userId,
+            abilityId: "bang_hua_sui_liu",
+            abilityName: "傍花随柳",
+            effectType: "BANG_HUA_TRIGGER",
+            value: 2,
+          } as any);
+          // Last stack: also apply 束发 silence 4s
+          if (isLastStack) {
+            addBuff({
+              state,
+              sourceUserId: opp.userId,
+              targetUserId: player.userId,
+              ability: ABILITIES["bang_hua_sui_liu"] as any ?? { id: "bang_hua_sui_liu", name: "傍花随柳" },
+              buffTarget: player as any,
+              buff: {
+                buffId: 2612,
+                name: "束发",
+                category: "DEBUFF",
+                durationMs: 4_000,
+                description: "沉默4秒",
+                effects: [{ type: "SILENCE" }],
+              } as any,
+            });
+          }
+        }
+      }
+    }
   } else {
     const castStartedAt = Date.now();
 

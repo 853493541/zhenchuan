@@ -185,9 +185,6 @@ export default function AbilityDetailPage() {
             保存
           </button>
         </div>
-        <div className={styles.fieldMeta}>
-          <span className={styles.fieldDesc}>{setting.description}</span>
-        </div>
       </div>
     );
   };
@@ -249,7 +246,6 @@ export default function AbilityDetailPage() {
                 }}
               />
             </div>
-            <div className={styles.idBadge}>{ability.id}</div>
           </div>
 
           {/* Fields column */}

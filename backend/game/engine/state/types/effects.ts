@@ -93,7 +93,19 @@ export type EffectType =
   // 五蕴皆空·聂云缩减: reduces the caster's 蹑云逐月 dash distance and duration by 70%
   | "NIEYUN_DASH_REDUCTION"
   // 玄水蛊·毒手: redirects 55% of incoming HP damage to the opponent (source of 毒手)
-  | "DAMAGE_REDIRECT_55";
+  | "DAMAGE_REDIRECT_55"
+  // 极乐引: instant AOE pull all enemies within range to 1 unit in front of caster, then stun
+  | "JILE_YIN_AOE_PULL"
+  // 临时飞爪: ground-target dash with no CC-immunity buff (controls can stop it, casting allowed)
+  | "LIN_SHI_FEI_ZHUA_DASH"
+  // 化蝶 Phase 1: diagonal dash (up + forward) over 1 second
+  | "HUA_DIE_PHASE1"
+  // Flat bonus damage taken (added to base damage, not multiplicative)
+  | "DAMAGE_TAKEN_FLAT"
+  // 剑主天地: 1 damage + stacking dot, detonates at 3 stacks
+  | "JIAN_ZHU_TIAN_DI_STRIKE"
+  // 破风: 1 damage + 破风 debuff + 流血, extra stack if CONTROL_IMMUNE
+  | "PO_FENG_STRIKE";
 
 /**
  * Immediate ability effects

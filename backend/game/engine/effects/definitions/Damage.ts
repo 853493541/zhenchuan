@@ -5,7 +5,7 @@ import { blocksEnemyTargeting, hasDamageImmune } from "../../rules/guards";
 import { resolveScheduledDamage } from "../../utils/combatMath";
 import { applyDamageToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
-import { processOnDamageTaken } from "../onDamageHooks";
+import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../onDamageHooks";
 
 /**
  * Handle immediate DAMAGE effects.
@@ -53,23 +53,47 @@ export function handleDamage(
   });
 
   if (final > 0) {
-    const { hpDamage: actualHpDamage } = applyDamageToTarget(target as any, final);
+    // Pre-damage: split redirect so A's DAMAGE event shows net (45%) value.
+    const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(
+      state,
+      target,
+      final
+    );
+    const damageToApply = redirectPlayer ? adjustedDamage : final;
 
-    // Trigger on-damage effects (七星拱瑞 break, 玄水蛊 redirect) for ALL
-    // damage sources — no isEnemyEffect restriction.
-    processOnDamageTaken(state, target as any, actualHpDamage, source.userId);
+    if (damageToApply > 0) {
+      const { hpDamage: actualHpDamage } = applyDamageToTarget(target as any, damageToApply);
+      // Post-damage hooks (七星拱瑞 freeze-break, etc.)
+      processOnDamageTaken(state, target as any, actualHpDamage, source.userId);
+    }
+
+    // Apply the 55% redirect to the opponent (B) directly.
+    if (redirectPlayer && redirectAmt > 0) {
+      applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
+    }
+
+    // Emit A's DAMAGE event with the net value so the float matches actual HP loss.
+    pushEvent(state, {
+      turn: state.turn,
+      type: "DAMAGE",
+      actorUserId: source.userId,
+      targetUserId: target.userId,
+      abilityId: ability.id,
+      abilityName: ability.name,
+      effectType: "DAMAGE",
+      value: redirectPlayer ? adjustedDamage : final,
+    });
   } else {
-    // final === 0: still run applyDamageToTarget for event consistency
+    // final === 0 (dodge / immune): still emit the zero-damage event.
+    pushEvent(state, {
+      turn: state.turn,
+      type: "DAMAGE",
+      actorUserId: source.userId,
+      targetUserId: target.userId,
+      abilityId: ability.id,
+      abilityName: ability.name,
+      effectType: "DAMAGE",
+      value: 0,
+    });
   }
-
-  pushEvent(state, {
-    turn: state.turn,
-    type: "DAMAGE",
-    actorUserId: source.userId,
-    targetUserId: target.userId,
-    abilityId: ability.id,
-    abilityName: ability.name,
-    effectType: "DAMAGE",
-    value: final,
-  });
 }
