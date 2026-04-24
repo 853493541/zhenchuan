@@ -24,10 +24,11 @@ import { arenaMap } from "../../map/arenaMap";
 import { exportedMap } from "../../map/exportedMap";
 import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
 import { ABILITIES } from "../../abilities/abilities";
-import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasUntargetable, shouldDodge } from "../rules/guards";
+import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasUntargetable, hasDamageImmune, shouldDodge } from "../rules/guards";
 import type { MapObject } from "../state/types/map";
 import { applyTriggeredFollowUpPlayRules, breakOnPlay } from "../flow/play/breakOnPlay";
 import { applyDashRuntimeBuff } from "../effects/definitions/DirectionalDash";
+import { processOnDamageTaken } from "../effects/onDamageHooks";
 import {
   pulseZhenShanHeTarget,
   transformExpiredXuanjian,
@@ -175,6 +176,9 @@ function isStunDebuff(buff: {
 const WUFANG_XINGJIN_ROOT_BUFF_ID = 1330;
 const WUFANG_XINGJIN_HIT_PROTECT_BUFF_ID = 1331;
 const WUFANG_XINGJIN_REMOVE_ON_HIT_CHANCE = 0.5;
+const SAN_CAI_HUA_SHENG_ROOT_BUFF_ID = 2509;
+const SAN_CAI_HUA_SHENG_PROTECT_BUFF_ID = 2510;
+const SAN_CAI_HUA_SHENG_REMOVE_ON_HIT_CHANCE = 0.5;
 const PULL_CHANNEL_QINGGONG_SEAL_CONFIG: Record<string, { buffId: number; buffName: string; durationMs: number }> = {
   zhuo_ying_shi: { buffId: 2403, buffName: "滞影", durationMs: 5_000 },
 };
@@ -193,6 +197,33 @@ function tryRemoveWufangRootOnHit(state: GameState, target: any, now: number): b
   if (!rootBuff) return false;
 
   if (Math.random() > WUFANG_XINGJIN_REMOVE_ON_HIT_CHANCE) return false;
+
+  target.buffs = target.buffs.filter((b: any) => b !== rootBuff);
+  pushBuffExpired(state, {
+    targetUserId: target.userId,
+    buffId: rootBuff.buffId,
+    buffName: rootBuff.name,
+    buffCategory: rootBuff.category,
+    sourceAbilityId: rootBuff.sourceAbilityId,
+    sourceAbilityName: rootBuff.sourceAbilityName,
+  });
+  return true;
+}
+
+function tryRemoveSanCaiRootOnHit(state: GameState, target: any, now: number): boolean {
+  if (!Array.isArray(target?.buffs) || target.buffs.length === 0) return false;
+
+  const hasProtect = target.buffs.some(
+    (b: any) => b.buffId === SAN_CAI_HUA_SHENG_PROTECT_BUFF_ID && b.expiresAt > now
+  );
+  if (hasProtect) return false;
+
+  const rootBuff = target.buffs.find(
+    (b: any) => b.buffId === SAN_CAI_HUA_SHENG_ROOT_BUFF_ID && b.expiresAt > now
+  );
+  if (!rootBuff) return false;
+
+  if (Math.random() > SAN_CAI_HUA_SHENG_REMOVE_ON_HIT_CHANCE) return false;
 
   target.buffs = target.buffs.filter((b: any) => b !== rootBuff);
   pushBuffExpired(state, {
@@ -600,7 +631,7 @@ export class GameLoop {
           (p) => p.userId === dashStateBefore.hitTargetUserId
         );
 
-        if (reachAbility && reachTarget && (reachTarget.hp ?? 0) > 0 && !blocksEnemyTargeting(reachTarget)) {
+        if (reachAbility && reachTarget && (reachTarget.hp ?? 0) > 0 && !blocksEnemyTargeting(reachTarget) && !hasDamageImmune(reachTarget as any)) {
           const reachDamage = Math.max(0, Number(dashStateBefore.hitDamageOnComplete ?? 0));
           if (reachDamage > 0) {
             const finalDamage = resolveScheduledDamage({
@@ -608,7 +639,7 @@ export class GameLoop {
               target: reachTarget,
               base: reachDamage,
             });
-            applyDamageToTarget(reachTarget as any, finalDamage);
+            const reachResult = applyDamageToTarget(reachTarget as any, finalDamage);
             if (finalDamage > 0) {
               this.state.events.push({
                 id: randomUUID(),
@@ -622,6 +653,9 @@ export class GameLoop {
                 effectType: dashStateBefore.hitEffectTypeOnComplete ?? "DAMAGE",
                 value: finalDamage,
               } as any);
+            }
+            if (reachResult.hpDamage > 0) {
+              processOnDamageTaken(this.state, reachTarget as any, reachResult.hpDamage, player.userId);
             }
           }
         }
@@ -991,7 +1025,7 @@ export class GameLoop {
                   continue;
                 }
                 const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
-                applyDamageToTarget(target as any, dmg);
+                const timedResult = applyDamageToTarget(target as any, dmg);
                 if (dmg > 0) {
                   this.state.events.push({
                     id: randomUUID(),
@@ -1005,6 +1039,9 @@ export class GameLoop {
                     effectType: "TIMED_AOE_DAMAGE",
                     value: dmg,
                   });
+                }
+                if (timedResult.hpDamage > 0) {
+                  processOnDamageTaken(this.state, target as any, timedResult.hpDamage, player.userId);
                 }
               }
             } else if (e.type === "TIMED_AOE_DAMAGE_IF_SELF_HP_GT") {
@@ -1032,6 +1069,21 @@ export class GameLoop {
               if (player.userId === target.userId || target.hp <= 0) continue;
               if (blocksEnemyTargeting(target as any)) continue;
               if (hasKnockbackImmune(target as any)) continue;
+
+              // 雷霆震怒 interaction: pull also strips the buff first
+              const leiTingIdx = (target.buffs as any[]).findIndex((b: any) => b.buffId === 2506);
+              if (leiTingIdx !== -1) {
+                const leiTingBuff = (target.buffs as any[])[leiTingIdx];
+                (target.buffs as any[]).splice(leiTingIdx, 1);
+                pushBuffExpired(this.state, {
+                  targetUserId: target.userId,
+                  buffId: leiTingBuff.buffId,
+                  buffName: leiTingBuff.name,
+                  buffCategory: leiTingBuff.category,
+                  sourceAbilityId: leiTingBuff.sourceAbilityId,
+                  sourceAbilityName: leiTingBuff.sourceAbilityName,
+                });
+              }
 
               const facing = player.facing ?? { x: 0, y: 1 };
               const facingLen = Math.hypot(facing.x, facing.y);
@@ -1172,6 +1224,24 @@ export class GameLoop {
           const ability = player.hand.find((a) => a.instanceId === ch.instanceId);
           if (ability) {
             ability.cooldown = Math.max(ability.cooldown ?? 0, ch.cooldownTicks ?? 0);
+          }
+
+          // applyBuffsOnComplete: apply buffs[] to opponent on channel finish (not on cast)
+          if ((channelAbility as any)?.applyBuffsOnComplete === true) {
+            const buffDefs = (channelAbility as any)?.buffs ?? [];
+            const oppAlive = target && (target.hp ?? 0) > 0;
+            for (const buffDef of buffDefs) {
+              const applyTarget = buffDef.applyTo === "SELF" ? player : target;
+              if (applyTarget !== player && (!oppAlive || blocksEnemyTargeting(target as any))) continue;
+              addBuff({
+                state: this.state,
+                sourceUserId: player.userId,
+                targetUserId: (applyTarget as any).userId,
+                ability: channelAbility as any,
+                buffTarget: applyTarget as any,
+                buff: buffDef,
+              });
+            }
           }
 
           // Forward channel completion counts as the cast "taking effect" and breaks stealth.
@@ -1355,7 +1425,7 @@ export class GameLoop {
             buff.lastTickAt = now;
             for (const e of buff.effects) {
               if (e.type === "PERIODIC_DAMAGE") {
-                if (opp.userId !== player.userId && blocksEnemyTargeting(player as any)) {
+                if (opp.userId !== player.userId && (blocksEnemyTargeting(player as any) || hasDamageImmune(player as any))) {
                   buffsChanged = true;
                   continue;
                 }
@@ -1365,7 +1435,7 @@ export class GameLoop {
                   target: player,
                   base: (e.value ?? 0) * stackMult,
                 });
-                applyDamageToTarget(player as any, dmg);
+                const periResult = applyDamageToTarget(player as any, dmg);
                 if (dmg > 0) {
                   this.state.events.push({
                     id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -1377,6 +1447,9 @@ export class GameLoop {
                     effectType: "PERIODIC_DAMAGE",
                     value: dmg,
                   });
+                }
+                if (periResult.hpDamage > 0) {
+                  processOnDamageTaken(this.state, player as any, periResult.hpDamage, opp.userId);
                 }
                 buffsChanged = true;
               } else if (e.type === "PERIODIC_HEAL") {
@@ -1475,7 +1548,7 @@ export class GameLoop {
                     target: opp,
                     base: e.value ?? 0,
                   });
-                  applyDamageToTarget(opp as any, dmg);
+                  const aoeResult = applyDamageToTarget(opp as any, dmg);
                   if (dmg > 0) {
                     this.state.events.push({
                       id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -1487,6 +1560,9 @@ export class GameLoop {
                       effectType: "CHANNEL_AOE_TICK",
                       value: dmg,
                     });
+                  }
+                  if (aoeResult.hpDamage > 0) {
+                    processOnDamageTaken(this.state, opp as any, aoeResult.hpDamage, player.userId);
                   }
                   buffsChanged = true;
                 }
@@ -1968,7 +2044,7 @@ export class GameLoop {
               target,
               base: zone.damagePerInterval,
             });
-            applyDamageToTarget(target as any, dmg);
+            const zoneResult = applyDamageToTarget(target as any, dmg);
             if (dmg > 0) {
               this.state.events.push({
                 id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -1980,6 +2056,9 @@ export class GameLoop {
                 effectType: "PERIODIC_DAMAGE",
                 value: dmg,
               });
+            }
+            if (zoneResult.hpDamage > 0) {
+              processOnDamageTaken(this.state, target as any, zoneResult.hpDamage, zone.ownerUserId);
             }
             targetsHit++;
             buffsChanged = true;
@@ -2014,6 +2093,9 @@ export class GameLoop {
         if (!targetPlayer || targetPlayer.hp <= 0) continue;
 
         if (tryRemoveWufangRootOnHit(this.state, targetPlayer as any, now)) {
+          buffsChanged = true;
+        }
+        if (tryRemoveSanCaiRootOnHit(this.state, targetPlayer as any, now)) {
           buffsChanged = true;
         }
 

@@ -48,6 +48,10 @@ export function hasInvulnerable(target: { buffs: ActiveBuff[] }) {
   return hasEffect(target, "INVULNERABLE");
 }
 
+export function hasDamageImmune(target: { buffs: ActiveBuff[] }) {
+  return target.buffs.some((b) => b.effects?.some((e: any) => e.type === "DAMAGE_IMMUNE"));
+}
+
 /**
  * Stealth (targeting-only)
  * - blocks ability targeting

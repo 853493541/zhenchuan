@@ -11,6 +11,14 @@ import {
   AbilityEditorNumericSetting,
   AbilityEditorPropertyState,
   AbilityEditorSnapshot,
+  AbilitySchool,
+  ABILITY_RARITIES,
+  AbilityRarity,
+  TAG_GROUP_DEFINITIONS,
+  TagGroupId,
+  RARITY_COLOR,
+  SCHOOL_COLOR,
+  SCHOOL_TAGS,
   abilityTypeLabel,
   formatUpdatedAt,
   getAbilityIconByName,
@@ -121,6 +129,25 @@ export default function AbilityDetailPage() {
     }
   };
 
+  const updateTag = async (targetAbility: AbilityEditorAbility, tagGroup: TagGroupId, value: string | null) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/game/ability-editor/${targetAbility.id}/tag`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tagGroup, value }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSnapshot((await res.json()) as AbilityEditorSnapshot);
+      toastSuccess(value ? `标签已设为 ${value}` : `已清除标签`);
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Numeric input row — no arrow spinners, text-only
   const renderNumericRow = (
     targetAbility: AbilityEditorAbility,
@@ -135,7 +162,6 @@ export default function AbilityDetailPage() {
       <div key={setting.id} className={styles.fieldRow}>
         <div className={styles.fieldLabel}>
           <span className={styles.fieldLabelText}>{setting.label}</span>
-          {setting.overridden && <span className={styles.overridePill}>覆盖</span>}
         </div>
         <div className={styles.fieldControl}>
           <input
@@ -161,7 +187,6 @@ export default function AbilityDetailPage() {
         </div>
         <div className={styles.fieldMeta}>
           <span className={styles.fieldDesc}>{setting.description}</span>
-          <span className={styles.fieldBase}>默认值 {setting.baseValue}</span>
         </div>
       </div>
     );
@@ -242,7 +267,6 @@ export default function AbilityDetailPage() {
                 <span className={styles.typeBadge}>{abilityTypeLabel[ability.type]}</span>
                 <span className={styles.targetBadge}>{targetTypeLabel[ability.target]}</span>
                 {isChannelAbility && <span className={styles.channelBadge}>{channelInfo!.label}</span>}
-                {ability.hasOverrides && <span className={styles.overrideBadge}>已覆盖默认值</span>}
               </div>
             </div>
 
@@ -265,6 +289,46 @@ export default function AbilityDetailPage() {
             <div className={styles.infoRow}>
               <span className={styles.infoLabel}>描述</span>
               <p className={styles.descText}>{getSimpleDescription(ability.description)}</p>
+            </div>
+
+            {/* Tags (rarity + school) */}
+            {/* Rarity */}
+            <div className={styles.infoRow}>
+              <span className={styles.infoLabel}>{TAG_GROUP_DEFINITIONS.rarity.label}</span>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                {ABILITY_RARITIES.map((v) => {
+                  const color = RARITY_COLOR[v as AbilityRarity] ?? "#aaa";
+                  const isActive = ability.tags?.rarity === v;
+                  return (
+                    <button key={v} type="button" disabled={saving}
+                      onClick={() => updateTag(ability, "rarity", isActive ? null : v)}
+                      style={{ padding: "3px 10px", borderRadius: 4, border: `1px solid ${color}`, background: isActive ? color : "transparent", color: isActive ? "#1a1a2e" : color, fontWeight: isActive ? 700 : 400, fontSize: 12, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.55 : 1 }}
+                    >{v}</button>
+                  );
+                })}
+                {ability.tags?.rarity && (
+                  <span style={{ fontSize: 11, color: "#888" }}>（点击已选中项可清除）</span>
+                )}
+              </div>
+            </div>
+            {/* School — 5 per row grid */}
+            <div className={styles.infoRow}>
+              <span className={styles.infoLabel}>{TAG_GROUP_DEFINITIONS.school.label}</span>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, auto)", gap: 4 }}>
+                {SCHOOL_TAGS.map((v) => {
+                  const color = SCHOOL_COLOR[v as AbilitySchool] ?? "#aaa";
+                  const isActive = ability.tags?.school === v;
+                  return (
+                    <button key={v} type="button" disabled={saving}
+                      onClick={() => updateTag(ability, "school", isActive ? null : v)}
+                      style={{ padding: "3px 8px", borderRadius: 4, border: `1px solid ${color}`, background: isActive ? color : "transparent", color: isActive ? "#1a1a2e" : color, fontWeight: isActive ? 700 : 400, fontSize: 12, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.55 : 1, textAlign: "center" }}
+                    >{v}</button>
+                  );
+                })}
+              </div>
+              {ability.tags?.school && (
+                <span style={{ fontSize: 11, color: "#888", marginTop: 4, display: "block" }}>（点击已选中项可清除）</span>
+              )}
             </div>
           </div>
         </div>

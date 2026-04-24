@@ -1,5 +1,6 @@
 import { ABILITIES } from "./abilities";
 import { applyPropertyOverridesToEffects, BuffEditorOverrideEntry, loadBuffEditorOverrides } from "./buffEditorOverrides";
+import { loadAbilityEditorOverrides } from "./abilityPropertySystem";
 
 const BUFF_ICON_PATH_OVERRIDES: Record<string, string> = {
   "心诤": "/icons/心诤-buff.png",
@@ -35,6 +36,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
   const { overrides: buffEditorOverrides } = applyBuffEditorOverrides
     ? loadBuffEditorOverrides()
     : { overrides: {} as Record<string, BuffEditorOverrideEntry> };
+  const { overrides: abilityEditorOverrides } = loadAbilityEditorOverrides();
 
   const TEST_COOLDOWN_CAP_TICKS = 150; // 5 seconds at 30Hz
   const clampCooldownTicksForTesting = (ticks: number | undefined) => {
@@ -107,6 +109,9 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       cleanseRootSlow:
         (ability as any).cleanseRootSlow === true ||
         hasEffectFlag(ability as any, "cleanseRootSlow", "CLEANSE"),
+
+      rarity: abilityEditorOverrides[ability.id]?.tags?.rarity,  // backward compat for BattleArena
+      tags: abilityEditorOverrides[ability.id]?.tags ?? {},
     };
 
     abilities.push(cardPayload);

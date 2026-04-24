@@ -39,6 +39,68 @@ export type AbilityEditorChannelInfo = {
   derivedStats: AbilityEditorStat[];
 };
 
+export const ABILITY_RARITIES = ["精巧", "卓越", "珍奇", "稀世"] as const;
+export type AbilityRarity = (typeof ABILITY_RARITIES)[number];
+
+export const RARITY_COLOR: Record<AbilityRarity, string> = {
+  "精巧": "#69db7c",   // green
+  "卓越": "#74c0fc",   // blue
+  "珍奇": "#cc5de8",   // purple
+  "稀世": "#ff922b",   // orange
+};
+
+export const SCHOOL_TAGS = [
+  "少林", "万花", "天策", "纯阳", "七秀", "藏剑", "五毒", "唐门",
+  "丐帮", "明教", "苍云", "长歌", "霸刀", "蓬莱", "凌雪", "衍天",
+  "药宗", "刀宗", "万灵", "段氏", "通用",
+] as const;
+export type AbilitySchool = (typeof SCHOOL_TAGS)[number];
+
+export const SCHOOL_COLOR: Record<AbilitySchool, string> = {
+  "七秀": "#f9a8d4",  // light pink
+  "万花": "#b197fc",  // purple
+  "五毒": "#60a5fa",  // blue
+  "长歌": "#63e6be",  // 青色 / light green
+  "药宗": "#20c997",  // darker 青色
+  "天策": "#ff922b",  // orange
+  "少林": "#fbbf24",  // between orange and yellow
+  "明教": "#f87171",  // light red
+  "苍云": "#b08060",  // 褐色
+  "纯阳": "#a5d8ff",  // light blue
+  "唐门": "#339af0",  // darker blue
+  "藏剑": "#ffe066",  // light yellow
+  "丐帮": "#ffa94d",  // between yellow and orange
+  "霸刀": "#4dabf7",  // dark blue but lighter
+  "蓬莱": "#ced4da",  // gray white
+  "凌雪": "#e03131",  // dark red
+  "衍天": "#d0bfff",  // light purple
+  "刀宗": "#adb5bd",  // gray white, darker than 蓬莱
+  "万灵": "#fab005",  // golden
+  "段氏": "#868e96",  // gray
+  "通用": "#94a3b8",  // medium gray (visible on both dark/light)
+};
+
+export type TagGroupId = "rarity" | "school";
+
+export interface TagGroupDefinition {
+  label: string;
+  values: readonly string[];
+  getColor?: (value: string) => string | undefined;
+}
+
+export const TAG_GROUP_DEFINITIONS: Record<TagGroupId, TagGroupDefinition> = {
+  rarity: {
+    label: "稀有度",
+    values: ABILITY_RARITIES,
+    getColor: (v) => RARITY_COLOR[v as AbilityRarity],
+  },
+  school: {
+    label: "门派",
+    values: SCHOOL_TAGS,
+    getColor: (v) => SCHOOL_COLOR[v as AbilitySchool],
+  },
+};
+
 export type AbilityEditorAbility = {
   id: string;
   name: string;
@@ -46,6 +108,7 @@ export type AbilityEditorAbility = {
   type: "ATTACK" | "SUPPORT" | "CONTROL" | "STANCE" | "CHANNEL";
   target: "SELF" | "OPPONENT";
   hasOverrides: boolean;
+  tags: Record<string, string>;
   stats: AbilityEditorStat[];
   activePropertyIds: string[];
   availablePropertyIds: string[];

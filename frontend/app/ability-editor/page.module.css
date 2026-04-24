@@ -300,6 +300,96 @@
   font-weight: 700;
 }
 
+/* ── Rarity filter bar ──────────────────────────────────────────────────────── */
+.rarityFilterBar {
+  max-width: 1260px;
+  margin: 0 auto 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tagFilterRow {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+
+.rarityFilterLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7a7368;
+  min-width: 52px;
+  padding-top: 6px;
+  flex-shrink: 0;
+}
+
+.rarityFilterBtn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1.5px solid #ccc;
+  color: #888;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+/* ── Card footer (enterHint + rarity buttons row) ──────────────────────────── */
+.cardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+.rarityBtnsRow {
+  display: flex;
+  gap: 4px;
+}
+
+.tagBtnsArea {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-end;
+}
+
+.rarityBtn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.classBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  white-space: nowrap;
+}
+
 @media (max-width: 1200px) {
   .cardList {
     grid-template-columns: repeat(3, minmax(0, 1fr));

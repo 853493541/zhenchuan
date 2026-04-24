@@ -1,13 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import BuffEditorTab from "./BuffEditorTab";
 import {
+  ABILITY_RARITIES,
   AbilityEditorAbility,
   AbilityEditorSnapshot,
+  AbilityRarity,
+  AbilitySchool,
   BuffEditorSnapshot,
+  RARITY_COLOR,
+  SCHOOL_COLOR,
+  SCHOOL_TAGS,
+  TAG_GROUP_DEFINITIONS,
+  TagGroupId,
   abilityTypeLabel,
   formatUpdatedAt,
   getAbilityIconByName,
@@ -15,6 +23,13 @@ import {
   getStatValue,
   targetTypeLabel,
 } from "./editorShared";
+
+const RARITY_CARD_BG: Record<string, string> = {
+  "精巧": "rgba(105, 219, 124, 0.09)",
+  "卓越": "rgba(116, 192, 252, 0.09)",
+  "珍奇": "rgba(204, 93, 232, 0.09)",
+  "稀世": "rgba(255, 146, 43, 0.09)",
+};
 import styles from "./page.module.css";
 
 type MainTab = "abilities" | "buffs";
@@ -55,8 +70,22 @@ export default function AbilityEditorPage() {
   // ── Ability snapshot ──────────────────────────────────────────────────────
   const [snapshot, setSnapshot] = useState<AbilityEditorSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [showOnlyOverrides, setShowOnlyOverrides] = useState(false);
+
+  // ── Filter persistence via sessionStorage ────────────────────────────────
+  const FILTER_KEY = "abilityEditorFilters_v1";
+  const savedFilters = typeof window !== "undefined"
+    ? (() => { try { return JSON.parse(sessionStorage.getItem(FILTER_KEY) ?? "null"); } catch { return null; } })()
+    : null;
+  const [search, setSearch] = useState<string>(savedFilters?.search ?? "");
+  // tagFilters: groupId → "" (all) | "unset" | actual value
+  const [tagFilters, setTagFilters] = useState<Record<TagGroupId, string>>(
+    savedFilters?.tagFilters ?? { rarity: "", school: "" }
+  );
+  // Persist to sessionStorage whenever filters change
+  useEffect(() => {
+    try { sessionStorage.setItem(FILTER_KEY, JSON.stringify({ search, tagFilters })); } catch { /* ignore */ }
+  }, [search, tagFilters]);
+
   const [errorMessage, setErrorMessage] = useState("");
 
   const loadSnapshot = async () => {
@@ -121,10 +150,28 @@ export default function AbilityEditorPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab]);
 
+  const updateTag = async (abilityId: string, tagGroup: TagGroupId, value: string | null) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/${abilityId}/tag`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tagGroup, value }),
+      });
+      if (!res.ok) return;
+      setSnapshot((await res.json()) as AbilityEditorSnapshot);
+    } catch { /* silent */ }
+  };
+
   const normalizedSearch = search.trim().toLowerCase();
   const abilities = (snapshot?.abilities ?? []).filter((ability) => {
-    if (showOnlyOverrides && !ability.hasOverrides) {
-      return false;
+    for (const [groupId, filterVal] of Object.entries(tagFilters)) {
+      if (!filterVal) continue;
+      if (filterVal === "unset") {
+        if (ability.tags?.[groupId]) return false;
+      } else {
+        if (ability.tags?.[groupId] !== filterVal) return false;
+      }
     }
 
     if (!normalizedSearch) {
@@ -143,7 +190,18 @@ export default function AbilityEditorPage() {
     return searchableText.includes(normalizedSearch);
   });
 
-  const overriddenCount = snapshot?.abilities.filter((ability) => ability.hasOverrides).length ?? 0;
+  // Count of abilities per school (from full snapshot, ignoring current filters)
+  const schoolCounts = useMemo(() => {
+    const all = snapshot?.abilities ?? [];
+    const counts: Record<string, number> = { unset: 0 };
+    for (const s of SCHOOL_TAGS) counts[s] = 0;
+    for (const a of all) {
+      const sc = (a.tags as any)?.school;
+      if (sc && sc in counts) counts[sc]++;
+      else counts.unset++;
+    }
+    return counts;
+  }, [snapshot]);
 
   return (
     <div className={styles.page}>
@@ -163,7 +221,6 @@ export default function AbilityEditorPage() {
           </p>
           <div className={styles.summaryRow}>
             <span className={styles.summaryPill}>技能 {snapshot?.abilities.length ?? 0}</span>
-            <span className={styles.summaryPill}>已覆盖 {overriddenCount}</span>
           </div>
         </div>
 
@@ -196,16 +253,59 @@ export default function AbilityEditorPage() {
               className={styles.searchInput}
               placeholder="搜索技能名、ID 或属性名"
             />
-
-            <label className={styles.toggleRow}>
-              <input
-                type="checkbox"
-                checked={showOnlyOverrides}
-                onChange={(event) => setShowOnlyOverrides(event.target.checked)}
-              />
-              只看已覆盖技能
-            </label>
           </section>
+
+          <div className={styles.rarityFilterBar}>
+            {/* Rarity row */}
+            <div className={styles.tagFilterRow}>
+              <span className={styles.rarityFilterLabel}>稀有度</span>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <button type="button" className={styles.rarityFilterBtn}
+                  style={!tagFilters.rarity ? { background: "#544c40", color: "#fff", borderColor: "#544c40" } : {}}
+                  onClick={() => setTagFilters((f) => ({ ...f, rarity: "" }))}
+                >全部</button>
+                <button type="button" className={styles.rarityFilterBtn}
+                  style={{ borderColor: "#999", color: tagFilters.rarity === "unset" ? "#fff" : "#888", background: tagFilters.rarity === "unset" ? "#888" : "transparent" }}
+                  onClick={() => setTagFilters((f) => ({ ...f, rarity: f.rarity === "unset" ? "" : "unset" }))}
+                >未设置</button>
+                {ABILITY_RARITIES.map((r) => {
+                  const color = RARITY_COLOR[r as AbilityRarity];
+                  const isActive = tagFilters.rarity === r;
+                  return (
+                    <button key={r} type="button" className={styles.rarityFilterBtn}
+                      style={{ borderColor: color, color: isActive ? "#fff" : color, background: isActive ? color : "transparent" }}
+                      onClick={() => setTagFilters((f) => ({ ...f, rarity: isActive ? "" : r }))}
+                    >{r}</button>
+                  );
+                })}
+              </div>
+            </div>
+            {/* 门派 row — rectangular buttons */}
+            <div className={styles.tagFilterRow}>
+              <span className={styles.rarityFilterLabel}>门派</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                <button type="button" className={styles.rarityFilterBtn}
+                  style={!tagFilters.school ? { background: "#544c40", color: "#fff", borderColor: "#544c40", borderRadius: 3 } : { borderRadius: 3 }}
+                  onClick={() => setTagFilters((f) => ({ ...f, school: "" }))}
+                >全部</button>
+                <button type="button" className={styles.rarityFilterBtn}
+                  style={{ borderRadius: 3, borderColor: "#999", color: tagFilters.school === "unset" ? "#fff" : "#888", background: tagFilters.school === "unset" ? "#888" : "transparent" }}
+                  onClick={() => setTagFilters((f) => ({ ...f, school: f.school === "unset" ? "" : "unset" }))}
+                >未设置 {schoolCounts.unset > 0 ? schoolCounts.unset : ""}</button>
+                {SCHOOL_TAGS.map((s) => {
+                  const c = SCHOOL_COLOR[s as AbilitySchool];
+                  const isActive = tagFilters.school === s;
+                  const cnt = schoolCounts[s] ?? 0;
+                  return (
+                    <button key={s} type="button" className={styles.rarityFilterBtn}
+                      style={{ borderRadius: 3, borderColor: c, color: isActive ? "#111" : c, background: isActive ? c : "transparent", padding: "2px 6px", fontSize: 12 }}
+                      onClick={() => setTagFilters((f) => ({ ...f, school: isActive ? "" : s }))}
+                    >{s}{cnt > 0 ? <span style={{ fontSize: 9, marginLeft: 3, opacity: 0.75 }}>{cnt}</span> : null}</button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
 
           {loading && <div className={styles.statePanel}>正在加载技能属性…</div>}
 
@@ -222,7 +322,7 @@ export default function AbilityEditorPage() {
           {!loading && !errorMessage && abilities.length === 0 && (
             <div className={styles.statePanel}>
               <p className={styles.stateTitle}>没有匹配结果</p>
-              <p className={styles.stateCopy}>换一个关键词，或者取消"只看已覆盖技能"。</p>
+              <p className={styles.stateCopy}>换一个关键词，或者清除筛选条件。</p>
             </div>
           )}
 
@@ -233,7 +333,13 @@ export default function AbilityEditorPage() {
 
                 return (
                   <Link key={ability.id} href={`/ability-editor/${ability.id}`} className={styles.cardLink}>
-                    <article className={styles.card}>
+                    <article
+                      className={styles.card}
+                      style={{
+                        background: ability.tags?.rarity ? RARITY_CARD_BG[ability.tags.rarity] : "#ffffff",
+                        ...(ability.tags?.rarity ? { borderLeft: `3px solid ${RARITY_COLOR[ability.tags.rarity as AbilityRarity]}` } : {}),
+                      }}
+                    >
                       <div className={styles.cardTopRow}>
                         <div className={styles.cardIdentity}>
                           <div className={styles.iconFrame}>
@@ -250,9 +356,19 @@ export default function AbilityEditorPage() {
                         <div className={styles.cardMetaRow}>
                           <span className={styles.typeBadge}>{abilityTypeLabel[ability.type]}</span>
                           <span className={styles.targetBadge}>{targetTypeLabel[ability.target]}</span>
-                          {ability.hasOverrides && (
-                            <span className={styles.overrideBadge}>已覆盖默认值</span>
+                          {ability.tags?.rarity && (
+                            <span style={{ display: "inline-flex", alignItems: "center", minHeight: 22, padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${RARITY_COLOR[ability.tags.rarity as AbilityRarity]}22`, color: RARITY_COLOR[ability.tags.rarity as AbilityRarity], border: `1px solid ${RARITY_COLOR[ability.tags.rarity as AbilityRarity]}88` }}>
+                              {ability.tags.rarity}
+                            </span>
                           )}
+                          {ability.tags?.school && (() => {
+                            const sc = SCHOOL_COLOR[ability.tags.school as AbilitySchool];
+                            return (
+                              <span style={{ display: "inline-flex", alignItems: "center", minHeight: 22, padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${sc}22`, color: sc, border: `1px solid ${sc}88` }}>
+                                {ability.tags.school}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <h2 className={styles.cardTitle}>{ability.name}</h2>
                           </div>
@@ -271,7 +387,40 @@ export default function AbilityEditorPage() {
                         </div>
                       )}
 
-                      <div className={styles.enterHint}>点击进入编辑</div>
+                      <div className={styles.cardFooter}>
+                        <div className={styles.enterHint}>点击进入编辑</div>
+                        <div
+                          className={styles.tagBtnsArea}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        >
+                          {/* Rarity buttons (single row) */}
+                          <div className={styles.rarityBtnsRow}>
+                            {ABILITY_RARITIES.map((r) => {
+                              const color = RARITY_COLOR[r as AbilityRarity];
+                              const isActive = ability.tags?.rarity === r;
+                              return (
+                                <button key={r} type="button" className={styles.rarityBtn}
+                                  style={{ borderColor: color, color: isActive ? "#fff" : color, background: isActive ? color : "transparent" }}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); void updateTag(ability.id, "rarity", isActive ? null : r); }}
+                                >{r}</button>
+                              );
+                            })}
+                          </div>
+                          {/* School buttons (flexible wrap, rectangular) */}
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+                            {SCHOOL_TAGS.map((s) => {
+                              const color = SCHOOL_COLOR[s as AbilitySchool];
+                              const isActive = ability.tags?.school === s;
+                              return (
+                                <button key={s} type="button" className={styles.classBtn}
+                                  style={{ borderColor: color, color: isActive ? "#111" : color, background: isActive ? color : "transparent" }}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); void updateTag(ability.id, "school", isActive ? null : s); }}
+                                >{s}</button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
                     </article>
                   </Link>
                 );

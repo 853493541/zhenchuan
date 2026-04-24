@@ -91,6 +91,26 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DISPEL_BUFF_ATTRIBUTE: "DEBUFF",
   // Cleanse DEBUFF-category buffs from self/friendly by attribute
   CLEANSE_DEBUFF_ATTRIBUTE: "BUFF",
+  // Immediately settle remaining DoT damage from own debuffs on target
+  SETTLE_SOURCE_DOTS: "DEBUFF",
+  // Apply DoT debuffs from caster's ability slots
+  APPLY_SLOT_DOTS: "DEBUFF",
+  // Block all incoming damage (雷霆震怒 stun package)
+  DAMAGE_IMMUNE: "DEBUFF",
+  // 三才化生 self-centered AoE ROOT
+  SAN_CAI_HUA_SHENG_AOE: "DEBUFF",
+  // 银月斩 custom handler
+  YIN_YUE_ZHAN: "DEBUFF",
+  // 烈日斩 custom handler
+  LIE_RI_ZHAN: "DEBUFF",
+  // 横扫六合 AoE handler
+  HENG_SAO_LIU_HE_AOE: "DEBUFF",
+  // 啸如虎: cannot die
+  MIN_HP_1: "BUFF",
+  // 五蕴皆空·聂云缩减: reduce 蹑云逐月 dash
+  NIEYUN_DASH_REDUCTION: "DEBUFF",
+  // 玄水蛊·毒手: redirect marker
+  DAMAGE_REDIRECT_55: "DEBUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

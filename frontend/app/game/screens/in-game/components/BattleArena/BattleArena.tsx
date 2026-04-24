@@ -711,6 +711,18 @@ export default function BattleArena({
   const [showCollisionControlPanel, setShowCollisionControlPanel] = useState(false);
   const [showScreenCoordPanel, setShowScreenCoordPanel] = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
+  const [cheatRarityFilter, setCheatRarityFilter] = useState<string>('all');
+  const [cheatSchoolFilter, setCheatSchoolFilter] = useState<string>('all');
+  const [cheatSchoolOpen,   setCheatSchoolOpen]   = useState(false);
+  const cheatSchoolRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!cheatSchoolOpen) return;
+    const h = (e: MouseEvent) => {
+      if (cheatSchoolRef.current && !cheatSchoolRef.current.contains(e.target as Node)) setCheatSchoolOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [cheatSchoolOpen]);
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
   const [runningCheatAction, setRunningCheatAction] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
@@ -3417,99 +3429,84 @@ export default function BattleArena({
       }));
     }, []);
 
+  const RARITY_ORDER: Record<string, number> = { '稀世': 0, '珍奇': 1, '卓越': 2, '精巧': 3 };
+  const RARITY_COLOR: Record<string, string> = {
+    '稀世': '#ff922b', '珍奇': '#cc5de8', '卓越': '#74c0fc', '精巧': '#69db7c',
+  };
+  const SCHOOL_COLOR: Record<string, string> = {
+    '七秀': '#f9a8d4', '万花': '#b197fc', '五毒': '#60a5fa', '长歌': '#63e6be',
+    '药宗': '#20c997', '天策': '#ff922b', '少林': '#fbbf24', '明教': '#f87171',
+    '苍云': '#b08060', '纯阳': '#a5d8ff', '唐门': '#339af0', '藏剑': '#ffe066',
+    '丐帮': '#ffa94d', '霸刀': '#4dabf7', '蓬莱': '#ced4da', '凌雪': '#e03131',
+    '衍天': '#d0bfff', '刀宗': '#adb5bd', '万灵': '#fab005', '段氏': '#868e96', '通用': '#94a3b8',
+  };
+  const SCHOOL_TAGS_BA = ['少林','万花','天策','纯阳','七秀','藏剑','五毒','唐门','丐帮','明教','苍云','长歌','霸刀','蓬莱','凌雪','衍天','药宗','刀宗','万灵','段氏','通用'];
+
   const cheatAbilities = useMemo(
     () =>
       Object.values(abilities)
         .filter((c: any) => c && !c.isCommon && c.id && c.name)
-        .sort((a: any, b: any) => a.name.localeCompare(b.name)),
+        .sort((a: any, b: any) => {
+          const ra = RARITY_ORDER[a.rarity] ?? 99;
+          const rb = RARITY_ORDER[b.rarity] ?? 99;
+          if (ra !== rb) return ra - rb;
+          return a.name.localeCompare(b.name);
+        }),
     [abilities],
   );
 
-  const testedAbilityIds = useMemo(
-    () =>
-      new Set([
-        'sanhuan_taoyue',
-        'yun_fei_yu_huang',
-        'hua_xue_biao',
-        'qiandie_turui',
-        'xinzheng',
-        'wu_jianyu',
-        'anchen_misan',
-        'xiao_zui_kuang',
-        'zhuiming_jian',
-        'fenglai_wushan',
-        'niao_xiang_bi_kong',
-        'nuwa_butian',
-        'kong_que_ling',
-        'fuguang_lueying',
-        'kuang_long_luan_wu',
-        'ji',
-        'jiru_feng',
-        'zhenshen_xingsi',
-        'sanliu_xia',
-        'baizu',
-        'fengxiu_diang',
-        'jianpo_xukong',
-        'mohe_wuliang',
-        'shengsi_jie',
-        'da_shizi_hou',
-        'chan_xiao',
-        'tiandi_wuji',
-      ]),
-    [],
-  );
+  const filteredCheatAbilities = useMemo(() => {
+    let list = cheatAbilities;
+    if (cheatRarityFilter === 'unset') list = list.filter((a: any) => !a.rarity);
+    else if (cheatRarityFilter !== 'all') list = list.filter((a: any) => a.rarity === cheatRarityFilter);
+    if (cheatSchoolFilter === 'unset') list = list.filter((a: any) => !a.tags?.school);
+    else if (cheatSchoolFilter !== 'all') list = list.filter((a: any) => a.tags?.school === cheatSchoolFilter);
+    return list;
+  }, [cheatAbilities, cheatRarityFilter, cheatSchoolFilter]);
 
-  const testingAbilityIds = useMemo(
-    () => new Set<string>([]),
-    [],
-  );
-
-  const testedCheatAbilities = cheatAbilities.filter((a: any) => testedAbilityIds.has(a.id));
-  const testingCheatAbilities = cheatAbilities.filter(
-    (a: any) => testingAbilityIds.has(a.id) || !testedAbilityIds.has(a.id),
-  );
-  const reworkCheatAbilities: any[] = [];
-
-  const renderCheatIcon = (ability: any) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      key={ability.id}
-      src={`/icons/${ability.name}.png`}
-      alt={ability.name}
-      title={`${ability.name}${ability.description ? '\n' + ability.description : ''}`}
-      style={{
-        width: 32,
-        height: 32,
-        objectFit: 'contain',
-        borderRadius: 4,
-        border: '1px solid #ff6b00',
-        cursor: addingAbility === ability.id ? 'wait' : 'pointer',
-        opacity: addingAbility === ability.id ? 0.4 : 1,
-        background: 'rgba(20,5,5,0.8)',
-      }}
-      onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
-      onClick={async () => {
-        if (addingAbility) return;
-        setAddingAbility(ability.id);
-        try {
-          const res = await fetch('/api/game/cheat/add-ability', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ gameId, abilityId: ability.id }),
-          });
-          if (!res.ok) {
-            const err = await res.json();
-            console.error('[CheatWindow] add-ability failed:', err);
+  const renderCheatIcon = (ability: any) => {
+    const rarityBorderColor = ability.rarity ? RARITY_COLOR[ability.rarity] : '#555';
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        key={ability.id}
+        src={`/icons/${ability.name}.png`}
+        alt={ability.name}
+        title={`${ability.name}${ability.rarity ? ` [${ability.rarity}]` : ''}${ability.description ? '\n' + ability.description : ''}`}
+        style={{
+          width: 32,
+          height: 32,
+          objectFit: 'contain',
+          borderRadius: 4,
+          border: `1.5px solid ${rarityBorderColor}`,
+          cursor: addingAbility === ability.id ? 'wait' : 'pointer',
+          opacity: addingAbility === ability.id ? 0.4 : 1,
+          background: 'rgba(20,5,5,0.8)',
+        }}
+        onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
+        onClick={async () => {
+          if (addingAbility) return;
+          setAddingAbility(ability.id);
+          try {
+            const res = await fetch('/api/game/cheat/add-ability', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ gameId, abilityId: ability.id }),
+            });
+            if (!res.ok) {
+              const err = await res.json();
+              console.error('[CheatWindow] add-ability failed:', err);
+            }
+          } catch (e) {
+            console.error('[CheatWindow] error:', e);
+          } finally {
+            setAddingAbility(null);
           }
-        } catch (e) {
-          console.error('[CheatWindow] error:', e);
-        } finally {
-          setAddingAbility(null);
-        }
-      }}
-    />
-  );
+        }}
+      />
+    );
+  };
 
   const runCheatAction = useCallback(
     async (actionId: string, url: string, successText: string, body?: Record<string, any>) => {
@@ -4635,7 +4632,8 @@ export default function BattleArena({
         <div style={{
           position: 'absolute', bottom: 200, right: 8, zIndex: 200,
           background: 'rgba(10,18,28,0.97)', border: '1px solid #ff6b00',
-          borderRadius: 6, padding: 8, maxHeight: 'calc(100vh - 230px)',
+          borderRadius: 6, padding: 8,
+          height: 'calc(100vh - 230px)',
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
@@ -4721,20 +4719,88 @@ export default function BattleArena({
             >清空技能</button>
           </div>
 
-          <div style={{ fontSize: 11, color: '#69f0ae', fontWeight: 700 }}>已测试</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 32px)', gap: 4 }}>
-            {testedCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
+          <div style={{ fontSize: 11, color: '#69f0ae', fontWeight: 700 }}>全部技能（按稀有度）</div>
+          {/* Rarity filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
+            {['all', '稀世', '珍奇', '卓越', '精巧', 'unset'].map((f) => {
+              const label = f === 'all' ? '全部' : f === 'unset' ? '未设' : f;
+              const color = RARITY_COLOR[f as keyof typeof RARITY_COLOR];
+              const isActive = cheatRarityFilter === f;
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setCheatRarityFilter(isActive && f !== 'all' ? 'all' : f)}
+                  style={{
+                    fontSize: 10, padding: '2px 6px', borderRadius: 4, cursor: 'pointer',
+                    border: `1px solid ${color ?? '#888'}`,
+                    color: isActive ? '#fff' : (color ?? '#888'),
+                    background: isActive ? (color ?? '#888') : 'transparent',
+                    fontWeight: isActive ? 700 : 400,
+                  }}
+                >{label}</button>
+              );
+            })}
+            <span style={{ fontSize: 10, color: '#888' }}>({filteredCheatAbilities.length})</span>
+          </div>
+          {/* School filter dropdown */}
+          <div ref={cheatSchoolRef} style={{ position: 'relative', marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 10, color: '#aaa' }}>Class：</span>
+              <button
+                type="button"
+                onClick={() => setCheatSchoolOpen((o) => !o)}
+                style={{
+                  fontSize: 10, padding: '2px 8px', borderRadius: 4, cursor: 'pointer',
+                  border: `1px solid ${cheatSchoolFilter === 'all' ? '#555' : cheatSchoolFilter === 'unset' ? '#888' : (SCHOOL_COLOR[cheatSchoolFilter] ?? '#888')}`,
+                  color: cheatSchoolFilter === 'all' ? '#aaa' : '#111',
+                  background: cheatSchoolFilter === 'all' ? 'transparent' : cheatSchoolFilter === 'unset' ? '#888' : (SCHOOL_COLOR[cheatSchoolFilter] ?? '#888'),
+                  fontWeight: cheatSchoolFilter !== 'all' ? 700 : 400,
+                  minWidth: 52,
+                }}
+              >
+                {cheatSchoolFilter === 'all' ? '全部 ▼' : cheatSchoolFilter === 'unset' ? '未设 ▼' : `${cheatSchoolFilter} ▼`}
+              </button>
+            </div>
+            {cheatSchoolOpen && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, zIndex: 300,
+                background: 'rgba(10,10,20,0.97)', border: '1px solid #555',
+                borderRadius: 6, padding: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                width: 200,
+              }}>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                  {['all','unset'].map((f) => (
+                    <button key={f} type="button"
+                      onClick={() => { setCheatSchoolFilter(f); setCheatSchoolOpen(false); }}
+                      style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, cursor: 'pointer',
+                        border: '1px solid #666', color: cheatSchoolFilter === f ? '#fff' : '#aaa',
+                        background: cheatSchoolFilter === f ? '#666' : 'transparent', fontWeight: cheatSchoolFilter === f ? 700 : 400 }}
+                    >{f === 'all' ? '全部' : '未设置'}</button>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 3 }}>
+                  {SCHOOL_TAGS_BA.map((s) => {
+                    const c = SCHOOL_COLOR[s] ?? '#888';
+                    const isActive = cheatSchoolFilter === s;
+                    return (
+                      <button key={s} type="button"
+                        onClick={() => { setCheatSchoolFilter(isActive ? 'all' : s); setCheatSchoolOpen(false); }}
+                        style={{ fontSize: 10, padding: '2px 2px', borderRadius: 3, cursor: 'pointer',
+                          border: `1px solid ${c}`, color: isActive ? '#111' : c,
+                          background: isActive ? c : 'transparent', fontWeight: isActive ? 700 : 400,
+                          textAlign: 'center' }}
+                      >{s}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 32px)', gap: 4, alignContent: 'start' }}>
+            {filteredCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
           </div>
 
-          <div style={{ fontSize: 11, color: '#ffd166', fontWeight: 700 }}>测试中</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 32px)', gap: 4 }}>
-            {testingCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
-          </div>
-
-          <div style={{ fontSize: 11, color: '#ff6b6b', fontWeight: 700 }}>待重做</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 32px)', gap: 4 }}>
-            {reworkCheatAbilities.map((ability: any) => renderCheatIcon(ability))}
-          </div>
         </div>
       )}
 

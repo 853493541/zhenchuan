@@ -41,6 +41,8 @@ const ROOT_DR_BUFF_ID = 990100;
 const STUN_DR_BUFF_ID = 990101;
 const LOCKOUT_DR_BUFF_ID = 990102;
 const CONTROL_DR_DURATION_MS = 10_000;
+// 雷霆震怒: stun + damage immunity package
+const LEI_TING_ZHEN_NU_BUFF_ID = 2506;
 
 type ResistanceConfig = {
   buffId: number;
@@ -336,10 +338,18 @@ export function addBuff(params: {
   }
 
   if (sourceUserId !== targetUserId && hasControlImmune(buffTarget)) {
+    const hadCC = runtimeBuff.effects.some(
+      (e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK" || e.type === "ROOT"
+    );
     const filteredEffects = runtimeBuff.effects.filter(
-      (e) => e.type !== "CONTROL" && e.type !== "ATTACK_LOCK" && e.type !== "ROOT"
+      (e) => e.type !== "CONTROL" && e.type !== "ATTACK_LOCK" && e.type !== "ROOT" && e.type !== "DAMAGE_IMMUNE"
     );
     if (filteredEffects.length === 0) {
+      return;
+    }
+    // If the buff was a CC buff and all CC effects were stripped, block it entirely.
+    // This prevents partial application (e.g. 七星拱瑞 applying only its HoT without the freeze).
+    if (hadCC) {
       return;
     }
     if (filteredEffects.length !== runtimeBuff.effects.length) {
@@ -392,6 +402,41 @@ export function addBuff(params: {
             buffName: b.name,
             buffCategory: b.category,
           });
+        }
+      }
+
+      // 雷霆震怒 interaction: knockdown also removes 雷霆震怒 (bypasses stun immunity)
+      const leiTingBuff = buffTarget.buffs.find((b) => b.buffId === LEI_TING_ZHEN_NU_BUFF_ID);
+      if (leiTingBuff) {
+        buffTarget.buffs = buffTarget.buffs.filter((b) => b.buffId !== LEI_TING_ZHEN_NU_BUFF_ID);
+        pushEvent(state, {
+          turn: state.turn,
+          type: "BUFF_EXPIRED",
+          actorUserId: targetUserId,
+          targetUserId,
+          abilityId: leiTingBuff.sourceAbilityId,
+          abilityName: leiTingBuff.sourceAbilityName,
+          buffId: leiTingBuff.buffId,
+          buffName: leiTingBuff.name,
+          buffCategory: leiTingBuff.category,
+        });
+      }
+    }
+
+    // 雷霆震怒: while target has this buff, immune to other CONTROL effects (knockdown bypasses)
+    if (!incomingMoheKnockdown) {
+      const targetHasLeiTing = buffTarget.buffs.some(
+        (b) => b.buffId === LEI_TING_ZHEN_NU_BUFF_ID && b.expiresAt > now
+      );
+      if (targetHasLeiTing) {
+        const filteredEffects = runtimeBuff.effects.filter(
+          (e) => e.type !== "CONTROL" && e.type !== "ATTACK_LOCK" && e.type !== "ROOT"
+        );
+        if (filteredEffects.length === 0) {
+          return;
+        }
+        if (filteredEffects.length !== runtimeBuff.effects.length) {
+          runtimeBuff = { ...runtimeBuff, effects: filteredEffects };
         }
       }
     }

@@ -1,7 +1,7 @@
 // engine/flow/applyImmediateEffects.ts
 import { randomUUID } from "crypto";
 import { resolveEffectTargetIndex } from "../../utils/targeting";
-import { blocksEnemyTargeting, isEnemyEffect, shouldSkipDueToDodge, hasKnockbackImmune } from "../../rules/guards";
+import { blocksEnemyTargeting, isEnemyEffect, shouldSkipDueToDodge, hasKnockbackImmune, hasDamageImmune } from "../../rules/guards";
 import {
   handleDamage,
   handleBonusDamageIfHpGt,
@@ -23,6 +23,7 @@ import {
 } from "../../effects/definitions/ZhenShanHe";
 import { getGroundHeightForMap, type MapContext } from "../../loop/movement";
 import { loadBuffEditorOverrides } from "../../../abilities/buffEditorOverrides";
+import { ABILITIES } from "../../../abilities/abilities";
 
 const WUFANG_ROOT_BUFF_ID = 1330;
 const WUFANG_HIT_PROTECT_BUFF_ID = 1331;
@@ -33,6 +34,13 @@ const BANG_DA_GOU_TOU_XINCHU_YI_BUFF_ID = 1332;
 const BANG_DA_GOU_TOU_XINCHU_ER_BUFF_ID = 1333;
 const BANG_DA_GOU_TOU_ROOT_BUFF_ID = 1334;
 const BANG_DA_GOU_TOU_CONTROL_BUFF_ID = 1335;
+
+const SAN_CAI_ROOT_BUFF_ID = 2509;
+const SAN_CAI_PROTECT_BUFF_ID = 2510;
+const SAN_CAI_HIT_PROTECT_RATIO = 0.5;
+const YIN_YUE_ZAN_DOT_BUFF_ID = 2511;
+const LIE_RI_ZHAN_DEBUFF_ID = 2512;
+const HENG_SAO_DOT_BUFF_ID = 2513;
 
 export function applyImmediateEffects(params: {
   state: any;
@@ -63,6 +71,36 @@ export function applyImmediateEffects(params: {
     mapCtx,
     castContext,
   } = params;
+
+  // ── 雷霆震怒 pre-strip: knockdown / pushback / pull bypass DAMAGE_IMMUNE and strip the buff first ──
+  const LEI_TING_BUFF_ID = 2506;
+  const DISPLACEMENT_EFFECT_TYPES = new Set(["KNOCKED_BACK", "KNOCKBACK_DASH"]);
+  const hasDisplacementEffect = ability.effects.some(
+    (e: any) => DISPLACEMENT_EFFECT_TYPES.has(e.type)
+  );
+  if (hasDisplacementEffect) {
+    const oppTarget = state.players[targetIndex];
+    if (oppTarget && oppTarget.userId !== source.userId) {
+      const leiTingBuff = oppTarget.buffs?.find((b: any) => b.buffId === LEI_TING_BUFF_ID);
+      if (leiTingBuff) {
+        oppTarget.buffs = oppTarget.buffs.filter((b: any) => b.buffId !== LEI_TING_BUFF_ID);
+        // Emit BUFF_EXPIRED event
+        (state.events as any[]).push({
+          id: randomUUID(),
+          timestamp: Date.now(),
+          turn: state.turn,
+          type: "BUFF_EXPIRED",
+          actorUserId: oppTarget.userId,
+          targetUserId: oppTarget.userId,
+          abilityId: leiTingBuff.sourceAbilityId,
+          abilityName: leiTingBuff.sourceAbilityName,
+          buffId: leiTingBuff.buffId,
+          buffName: leiTingBuff.name,
+          buffCategory: leiTingBuff.category,
+        });
+      }
+    }
+  }
 
   for (const effect of ability.effects) {
     const effTargetIndex = resolveEffectTargetIndex(
@@ -278,6 +316,7 @@ export function applyImmediateEffects(params: {
           const dy = (victim.position?.y ?? 0) - center.y;
           if (Math.hypot(dx, dy) > radius) continue;
           if (blocksEnemyTargeting(victim)) continue;
+          if (hasDamageImmune(victim as any)) continue;
 
           const dmg = resolveScheduledDamage({
             source,
@@ -362,6 +401,7 @@ export function applyImmediateEffects(params: {
           const dy = (victim.position?.y ?? 0) - center.y;
           if (Math.hypot(dx, dy) > radius) continue;
           if (blocksEnemyTargeting(victim)) continue;
+          if (hasDamageImmune(victim as any)) continue;
           hitAtLeastOneEnemy = true;
 
           const dmg = resolveScheduledDamage({
@@ -568,7 +608,7 @@ export function applyImmediateEffects(params: {
           source.activeDash.hitTargetUserId = victim.userId;
           source.activeDash.hitDamageOnComplete = reachDamage;
           source.activeDash.hitEffectTypeOnComplete = "DAMAGE";
-        } else {
+        } else if (!hasDamageImmune(victim as any)) {
           const dmg = resolveScheduledDamage({
             source,
             target: victim,
@@ -723,6 +763,287 @@ export function applyImmediateEffects(params: {
               sourceAbilityName: removedBuff.sourceAbilityName,
             });
             removed++;
+          }
+        }
+        break;
+      }
+
+      case "SETTLE_SOURCE_DOTS": {
+        // Immediately settle remaining periodic-damage from own debuffs on the target.
+        // For each matching active DEBUFF with PERIODIC_DAMAGE on effTarget:
+        //   damage = remaining_ticks * damage_per_tick, then remove the buff.
+        if (!enemyApplied) break;
+        const settleSrcIds: string[] = (effect as any).sourceAbilityIds ?? [];
+        const settleNow = Date.now();
+        const buffsToSettle = effTarget.buffs.filter((b: any) =>
+          b.category === "DEBUFF" &&
+          b.sourceUserId === source.userId &&
+          settleSrcIds.includes(b.sourceAbilityId ?? "") &&
+          b.periodicMs !== undefined &&
+          b.effects?.some((e: any) => e.type === "PERIODIC_DAMAGE")
+        );
+        for (const settleBuff of buffsToSettle) {
+          const remainingMs = Math.max(0, settleBuff.expiresAt - settleNow);
+          const remainingTicks = Math.max(0, Math.ceil(remainingMs / settleBuff.periodicMs));
+          const dmgPerTick = settleBuff.effects.find((e: any) => e.type === "PERIODIC_DAMAGE")?.value ?? 0;
+          const totalDmg = remainingTicks * dmgPerTick;
+          // Remove the buff first
+          const idx = effTarget.buffs.indexOf(settleBuff);
+          if (idx !== -1) effTarget.buffs.splice(idx, 1);
+          pushBuffExpired(state, {
+            targetUserId: effTarget.userId,
+            buffId: settleBuff.buffId,
+            buffName: settleBuff.name,
+            buffCategory: settleBuff.category,
+            sourceAbilityId: settleBuff.sourceAbilityId,
+            sourceAbilityName: settleBuff.sourceAbilityName,
+          });
+          // Deal the remaining damage as a single hit, attributed to the source DoT ability
+          if (totalDmg > 0 && !hasDamageImmune(effTarget as any)) {
+            const dmg = resolveScheduledDamage({ source, target: effTarget, base: totalDmg });
+            applyDamageToTarget(effTarget as any, dmg);
+            if (dmg > 0) {
+              state.events.push({
+                id: randomUUID(),
+                timestamp: settleNow,
+                turn: state.turn,
+                type: "DAMAGE",
+                actorUserId: source.userId,
+                targetUserId: effTarget.userId,
+                abilityId: settleBuff.sourceAbilityId ?? ability.id,
+                abilityName: settleBuff.sourceAbilityName ?? settleBuff.name,
+                effectType: "SETTLE_DOT",
+                value: dmg,
+              });
+            }
+          }
+        }
+        break;
+      }
+
+      case "APPLY_SLOT_DOTS": {
+        // Apply DoT debuffs from the caster's equipped ability slots.
+        if (!enemyApplied) break;
+        const slotIds: string[] = (effect as any).slotAbilityIds ?? [];
+        const sourceHand: any[] = (source as any).hand ?? [];
+        for (const slotAbilityId of slotIds) {
+          const hasInSlot = sourceHand.some(
+            (inst: any) => (inst.abilityId || inst.id) === slotAbilityId
+          );
+          if (!hasInSlot) continue;
+          const slotAbility = (ABILITIES as any)[slotAbilityId] as any;
+          if (!slotAbility?.buffs?.length) continue;
+          const dotBuff = slotAbility.buffs.find((b: any) =>
+            b.effects?.some((e: any) => e.type === "PERIODIC_DAMAGE")
+          );
+          if (!dotBuff) continue;
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: effTarget.userId,
+            ability: slotAbility,
+            buffTarget: effTarget,
+            buff: dotBuff,
+          });
+        }
+        break;
+      }
+
+      case "SAN_CAI_HUA_SHENG_AOE": {
+        // Self-centered AoE ROOT: up to maxTargets (6) enemies within range (8 units)
+        const now = Date.now();
+        const center = source.position;
+        const radius = gameplayUnitsToWorldUnits(effect.range ?? 8, state.unitScale);
+        const rootBuffDef = Array.isArray(ability.buffs)
+          ? ability.buffs.find((b: any) => b.buffId === SAN_CAI_ROOT_BUFF_ID)
+          : null;
+        const protectBuffDef = Array.isArray(ability.buffs)
+          ? ability.buffs.find((b: any) => b.buffId === SAN_CAI_PROTECT_BUFF_ID)
+          : null;
+
+        const nearby: any[] = [];
+        for (const victim of state.players) {
+          if (victim.userId === source.userId) continue;
+          if ((victim.hp ?? 0) <= 0) continue;
+          const dx = (victim.position?.x ?? 0) - center.x;
+          const dy = (victim.position?.y ?? 0) - center.y;
+          if (Math.hypot(dx, dy) > radius) continue;
+          if (blocksEnemyTargeting(victim)) continue;
+          nearby.push({ victim, dist: Math.hypot(dx, dy) });
+        }
+        nearby.sort((a, b) => a.dist - b.dist);
+        const maxT = effect.maxTargets ?? 6;
+        const targets = nearby.slice(0, maxT).map((x) => x.victim);
+
+        for (const victim of targets) {
+          if (!rootBuffDef) continue;
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: victim.userId,
+            ability,
+            buffTarget: victim,
+            buff: rootBuffDef,
+          });
+
+          const appliedRoot = victim.buffs.find(
+            (b: any) =>
+              b.buffId === SAN_CAI_ROOT_BUFF_ID &&
+              b.expiresAt > now &&
+              (b.appliedAt ?? 0) >= now - 250
+          );
+          if (appliedRoot && protectBuffDef) {
+            const appliedDurationMs = Math.max(1, appliedRoot.expiresAt - (appliedRoot.appliedAt ?? now));
+            const protectDurationMs = Math.round(appliedDurationMs * SAN_CAI_HIT_PROTECT_RATIO);
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: victim.userId,
+              ability,
+              buffTarget: victim,
+              buff: { ...protectBuffDef, durationMs: protectDurationMs },
+            });
+          }
+        }
+        break;
+      }
+
+      case "YIN_YUE_ZHAN": {
+        // 银月斩: deal damage + apply DoT. If target has 烈日斩, all damage doubled.
+        if (!enemyApplied) break;
+        const now = Date.now();
+        const hasLieRi = effTarget.buffs.some((b: any) => b.buffId === LIE_RI_ZHAN_DEBUFF_ID);
+        const mult = hasLieRi ? 2 : 1;
+
+        const baseDmg = (effect.value ?? 2) * mult;
+        const dmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg });
+        applyDamageToTarget(effTarget as any, dmg);
+        if (dmg > 0) {
+          state.events.push({
+            id: randomUUID(), timestamp: now, turn: state.turn,
+            type: "DAMAGE",
+            actorUserId: source.userId,
+            targetUserId: effTarget.userId,
+            abilityId: ability.id,
+            abilityName: ability.name,
+            effectType: "DAMAGE",
+            value: dmg,
+          });
+        }
+
+        const dotBuff = Array.isArray(ability.buffs)
+          ? ability.buffs.find((b: any) => b.buffId === YIN_YUE_ZAN_DOT_BUFF_ID)
+          : null;
+        if (dotBuff) {
+          const effectiveDot = hasLieRi
+            ? {
+                ...dotBuff,
+                effects: (dotBuff.effects as any[]).map((e: any) =>
+                  e.type === "PERIODIC_DAMAGE" ? { ...e, value: (e.value ?? 0) * 2 } : e
+                ),
+              }
+            : dotBuff;
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: effTarget.userId,
+            ability,
+            buffTarget: effTarget,
+            buff: effectiveDot,
+          });
+        }
+        break;
+      }
+
+      case "LIE_RI_ZHAN": {
+        // 烈日斩: deal damage + apply 15% extra damage debuff. If target has 银月斩, damage doubled.
+        if (!enemyApplied) break;
+        const now = Date.now();
+        const hasYinYue = effTarget.buffs.some((b: any) => b.buffId === YIN_YUE_ZAN_DOT_BUFF_ID);
+        const mult = hasYinYue ? 2 : 1;
+
+        const baseDmg = (effect.value ?? 4) * mult;
+        const dmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg });
+        applyDamageToTarget(effTarget as any, dmg);
+        if (dmg > 0) {
+          state.events.push({
+            id: randomUUID(), timestamp: now, turn: state.turn,
+            type: "DAMAGE",
+            actorUserId: source.userId,
+            targetUserId: effTarget.userId,
+            abilityId: ability.id,
+            abilityName: ability.name,
+            effectType: "DAMAGE",
+            value: dmg,
+          });
+        }
+
+        const debuff = Array.isArray(ability.buffs)
+          ? ability.buffs.find((b: any) => b.buffId === LIE_RI_ZHAN_DEBUFF_ID)
+          : null;
+        if (debuff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: effTarget.userId,
+            ability,
+            buffTarget: effTarget,
+            buff: debuff,
+          });
+        }
+        break;
+      }
+
+      case "HENG_SAO_LIU_HE_AOE": {
+        // 横扫六合: AoE 5 units sphere. Deal 2 damage each. If only 1 enemy hit, initial damage doubled (4).
+        if (!enemyApplied) break;
+        const now = Date.now();
+        const center = source.position;
+        const radius = gameplayUnitsToWorldUnits(effect.range ?? 5, state.unitScale);
+        const dotBuff = Array.isArray(ability.buffs)
+          ? ability.buffs.find((b: any) => b.buffId === HENG_SAO_DOT_BUFF_ID)
+          : null;
+
+        const victims: any[] = [];
+        for (const victim of state.players) {
+          if (victim.userId === source.userId) continue;
+          if ((victim.hp ?? 0) <= 0) continue;
+          const dx = (victim.position?.x ?? 0) - center.x;
+          const dy = (victim.position?.y ?? 0) - center.y;
+          if (Math.hypot(dx, dy) > radius) continue;
+          if (blocksEnemyTargeting(victim)) continue;
+          if (hasDamageImmune(victim as any)) continue;
+          victims.push(victim);
+        }
+
+        const singleHitBonus = victims.length === 1;
+
+        for (const victim of victims) {
+          const baseDmg = singleHitBonus ? (effect.value ?? 2) * 2 : (effect.value ?? 2);
+          const dmg = resolveScheduledDamage({ source, target: victim, base: baseDmg });
+          applyDamageToTarget(victim as any, dmg);
+          if (dmg > 0) {
+            state.events.push({
+              id: randomUUID(), timestamp: now, turn: state.turn,
+              type: "DAMAGE",
+              actorUserId: source.userId,
+              targetUserId: victim.userId,
+              abilityId: ability.id,
+              abilityName: ability.name,
+              effectType: "DAMAGE",
+              value: dmg,
+            });
+          }
+
+          if (dotBuff) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: victim.userId,
+              ability,
+              buffTarget: victim,
+              buff: dotBuff,
+            });
           }
         }
         break;

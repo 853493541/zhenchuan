@@ -5,8 +5,9 @@ import {
   setAbilityEditorDamageValue,
   setAbilityEditorNumericValue,
   setAbilityEditorProperty,
+  setAbilityTag,
 } from "../abilities/abilities";
-import { AbilityPropertyId } from "../abilities/abilityPropertySystem";
+import { AbilityPropertyId, TAG_GROUP_DEFINITIONS, TagGroupId } from "../abilities/abilityPropertySystem";
 import {
   BUFF_ATTRIBUTES,
   BuffAttribute,
@@ -47,7 +48,9 @@ function handleAbilityEditorError(res: express.Response, error: unknown) {
     message === "ERR_INVALID_BUFF_DESCRIPTION" ||
     message === "ERR_INVALID_BUFF_NAME" ||
     message === "ERR_INVALID_BUFF_PROPERTIES" ||
-    message === "ERR_HIDDEN_BUFF_CANNOT_HAVE_ATTRIBUTE"
+    message === "ERR_HIDDEN_BUFF_CANNOT_HAVE_ATTRIBUTE" ||
+    message === "ERR_INVALID_TAG_GROUP" ||
+    message === "ERR_INVALID_TAG_VALUE"
   ) {
     return res.status(400).json({ error: message });
   }
@@ -114,6 +117,24 @@ router.put("/ability-editor/:abilityId/numeric", (req, res) => {
 
     setAbilityEditorNumericValue(req.params.abilityId, fieldId, value);
 
+    return res.json(buildAbilityEditorSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/:abilityId/tag", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { tagGroup, value } = req.body ?? {};
+    if (typeof tagGroup !== "string" || !TAG_GROUP_DEFINITIONS[tagGroup as TagGroupId]) {
+      return res.status(400).json({ error: "ERR_INVALID_TAG_GROUP" });
+    }
+    const groupDef = TAG_GROUP_DEFINITIONS[tagGroup as TagGroupId];
+    if (value !== null && (typeof value !== "string" || !(groupDef.values as readonly string[]).includes(value))) {
+      return res.status(400).json({ error: "ERR_INVALID_TAG_VALUE" });
+    }
+    setAbilityTag(req.params.abilityId, tagGroup as TagGroupId, value as string | null);
     return res.json(buildAbilityEditorSnapshot());
   } catch (error) {
     return handleAbilityEditorError(res, error);

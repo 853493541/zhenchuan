@@ -233,7 +233,10 @@ async function playCastAbility(
   const target = state.players[targetIndex];
 
   // Pure channels are driven by activeChannel in GameLoop and apply cooldown on completion.
-  const isPureChannel = ability.type === "CHANNEL" && (!ability.buffs || ability.buffs.length === 0);
+  // applyBuffsOnComplete:true marks channel abilities whose buffs[] apply on finish, not on cast.
+  const isPureChannel = ability.type === "CHANNEL" && (
+    !ability.buffs || ability.buffs.length === 0 || (ability as any).applyBuffsOnComplete === true
+  );
   if (isPureChannel) {
     player.activeChannel = {
       abilityId,

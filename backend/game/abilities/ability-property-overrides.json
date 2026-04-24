@@ -1,5 +1,477 @@
 {
   "version": 1,
-  "updatedAt": "2026-04-17T07:46:29.656Z",
-  "abilities": {}
+  "updatedAt": "2026-04-24T06:09:55.936Z",
+  "abilities": {
+    "baizu": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "五毒"
+      }
+    },
+    "heng_sao_liu_he": {
+      "tags": {
+        "rarity": "精巧",
+        "school": "少林"
+      }
+    },
+    "menghu_xiasha": {
+      "tags": {
+        "rarity": "精巧",
+        "school": "通用"
+      }
+    },
+    "jianpo_xukong": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "七秀"
+      }
+    },
+    "jieyang": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "段氏"
+      }
+    },
+    "jing_shi_po_mo_ji": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "明教"
+      }
+    },
+    "ting_lei": {
+      "tags": {
+        "rarity": "精巧",
+        "school": "藏剑"
+      }
+    },
+    "anchen_misan": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "明教"
+      }
+    },
+    "fengxiu_diang": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "七秀"
+      }
+    },
+    "fuyao_zhishang": {
+      "tags": {
+        "rarity": "精巧",
+        "school": "通用"
+      }
+    },
+    "fuguang_lueying": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "唐门"
+      }
+    },
+    "guchong_xianji": {
+      "tags": {
+        "rarity": "珍奇",
+        "school": "五毒"
+      }
+    },
+    "xiao_zui_kuang": {
+      "tags": {
+        "rarity": "珍奇"
+      }
+    },
+    "nuwa_butian": {
+      "tags": {
+        "rarity": "珍奇",
+        "school": "五毒"
+      }
+    },
+    "sanliu_xia": {
+      "tags": {
+        "rarity": "稀世",
+        "school": "霸刀"
+      }
+    },
+    "fu_rong_bing_di": {
+      "tags": {
+        "school": "万花",
+        "rarity": "珍奇"
+      }
+    },
+    "hua_xue_biao": {
+      "tags": {
+        "school": "唐门"
+      }
+    },
+    "jian_zhuan_liu_yun": {
+      "tags": {
+        "school": "七秀"
+      }
+    },
+    "kong_que_ling": {
+      "tags": {
+        "school": "唐门"
+      }
+    },
+    "lie_ri_zhan": {
+      "tags": {
+        "school": "明教"
+      }
+    },
+    "sanhuan_taoyue": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "shang_yang_zhi": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧"
+      }
+    },
+    "she_ying": {
+      "tags": {
+        "school": "五毒"
+      }
+    },
+    "tiandi_wuji": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "weituo_xianchu": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越"
+      }
+    },
+    "wu_wo_wu_jian": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "yin_yue_zhan": {
+      "tags": {
+        "school": "明教"
+      }
+    },
+    "yu_shi_ju_fen": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧"
+      }
+    },
+    "yue_chao_zhan_bo": {
+      "tags": {
+        "school": "蓬莱"
+      }
+    },
+    "bang_da_gou_tou": {
+      "tags": {
+        "school": "丐帮"
+      }
+    },
+    "chan_xiao": {
+      "tags": {
+        "school": "五毒"
+      }
+    },
+    "da_shizi_hou": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越"
+      }
+    },
+    "dican_longxiang": {
+      "tags": {
+        "school": "七秀"
+      }
+    },
+    "han_di": {
+      "tags": {
+        "school": "苍云"
+      }
+    },
+    "he_gui_gu_shan": {
+      "tags": {
+        "school": "藏剑"
+      }
+    },
+    "jiang_chun_zhu_xiu": {
+      "tags": {
+        "school": "七秀"
+      }
+    },
+    "jiu_zhuan_gui_yi": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "lei_ting_zhen_nu": {
+      "tags": {
+        "school": "七秀"
+      }
+    },
+    "leizhenzi": {
+      "tags": {
+        "school": "唐门"
+      }
+    },
+    "zhenshen_xingsi": {
+      "tags": {
+        "school": "天策"
+      }
+    },
+    "mohe_wuliang": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越"
+      }
+    },
+    "san_cai_hua_sheng": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "shengsi_jie": {
+      "tags": {
+        "school": "明教"
+      }
+    },
+    "xuanshui_gu": {
+      "tags": {
+        "school": "五毒"
+      }
+    },
+    "chuan": {
+      "tags": {
+        "school": "天策"
+      }
+    },
+    "wan_jian_gui_zong": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "wufang_xingjin": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "wuyun_jiekong": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越"
+      }
+    },
+    "chun_ni_hu_hua": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧"
+      }
+    },
+    "dienong_zu": {
+      "tags": {
+        "school": "七秀"
+      }
+    },
+    "duangu_jue": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越"
+      }
+    },
+    "duoming_gu": {
+      "tags": {
+        "school": "五毒"
+      }
+    },
+    "gu_feng_sa_ta": {
+      "tags": {
+        "school": "凌雪"
+      }
+    },
+    "houyao": {
+      "tags": {
+        "school": "通用"
+      }
+    },
+    "huayu_suxin": {
+      "tags": {
+        "school": "万花",
+        "rarity": "卓越"
+      }
+    },
+    "ji": {
+      "tags": {
+        "school": "天策"
+      }
+    },
+    "jiru_feng": {
+      "tags": {
+        "school": "天策"
+      }
+    },
+    "lingxiao_lansheng": {
+      "tags": {
+        "school": "通用"
+      }
+    },
+    "niao_xiang_bi_kong": {
+      "tags": {
+        "school": "唐门"
+      }
+    },
+    "nieyun_zhuyue": {
+      "tags": {
+        "school": "通用"
+      }
+    },
+    "qionglong_huasheng": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "que_ta_zhi": {
+      "tags": {
+        "school": "七秀"
+      }
+    },
+    "sheng_ming_you": {
+      "tags": {
+        "school": "明教"
+      }
+    },
+    "shou_ru_shan": {
+      "tags": {
+        "school": "天策"
+      }
+    },
+    "taxingxing": {
+      "tags": {
+        "school": "衍天"
+      }
+    },
+    "tai_yin_zhi": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧"
+      }
+    },
+    "tian_di_di_ang": {
+      "tags": {
+        "school": "七秀"
+      }
+    },
+    "wu_jianyu": {
+      "tags": {
+        "school": "凌雪"
+      }
+    },
+    "xiao_ru_hu": {
+      "tags": {
+        "school": "天策"
+      }
+    },
+    "xinglou_yueying": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧"
+      }
+    },
+    "yaotai_zhenhe": {
+      "tags": {
+        "school": "通用"
+      }
+    },
+    "yingfeng_huilang": {
+      "tags": {
+        "school": "通用"
+      }
+    },
+    "yuqi": {
+      "tags": {
+        "school": "通用"
+      }
+    },
+    "yun_qi_song": {
+      "tags": {
+        "school": "藏剑"
+      }
+    },
+    "zhen_shan_he": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "zhuan_qiankun": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "zuowang_wuwo": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "chuan_xin_nu": {
+      "tags": {
+        "school": "唐门"
+      }
+    },
+    "fenglai_wushan": {
+      "tags": {
+        "school": "藏剑"
+      }
+    },
+    "lan_cui_yu_zhe": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧"
+      }
+    },
+    "qixing_gongrui": {
+      "tags": {
+        "school": "纯阳"
+      }
+    },
+    "qiandie_turui": {
+      "tags": {
+        "school": "五毒"
+      }
+    },
+    "xinzheng": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越"
+      }
+    },
+    "yun_fei_yu_huang": {
+      "tags": {
+        "school": "藏剑"
+      }
+    },
+    "changzhen": {
+      "tags": {
+        "school": "万花",
+        "rarity": "珍奇"
+      }
+    },
+    "zhong_lin_yu_xiu": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧"
+      }
+    },
+    "zhuiming_jian": {
+      "tags": {
+        "school": "唐门"
+      }
+    },
+    "zhuo_ying_shi": {
+      "tags": {
+        "school": "少林",
+        "rarity": "珍奇"
+      }
+    }
+  }
 }

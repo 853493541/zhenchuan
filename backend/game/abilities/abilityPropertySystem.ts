@@ -23,9 +23,33 @@ export type AbilityPropertyId =
   | "channelCanMove"
   | "channelCanJump";
 
+export const ABILITY_RARITIES = ["精巧", "卓越", "珍奇", "稀世"] as const;
+export type AbilityRarity = (typeof ABILITY_RARITIES)[number];
+
+export const SCHOOL_TAGS = [
+  "七秀", "万花", "五毒", "长歌", "药宗", "天策", "少林", "明教",
+  "苍云", "纯阳", "唐门", "藏剑", "丐帮", "霸刀", "蓬莱", "凌雪",
+  "衍天", "刀宗", "万灵", "段氏", "通用",
+] as const;
+export type AbilitySchool = (typeof SCHOOL_TAGS)[number];
+
+export type TagGroupId = "rarity" | "school";
+
+export interface TagGroupDefinition {
+  label: string;
+  values: readonly string[];
+}
+
+export const TAG_GROUP_DEFINITIONS: Record<TagGroupId, TagGroupDefinition> = {
+  rarity: { label: "稀有度", values: ABILITY_RARITIES },
+  school: { label: "门派", values: SCHOOL_TAGS },
+};
+
 export interface AbilityEditorOverrideEntry {
   properties?: Partial<Record<AbilityPropertyId, boolean>>;
   numeric?: Record<string, number>;
+  /** tag group → tag value (e.g. { rarity: "稀世", school: "少林" }) */
+  tags?: Record<string, string>;
 }
 
 export type AbilityEditorOverrideMap = Record<string, AbilityEditorOverrideEntry>;
@@ -76,6 +100,7 @@ export interface AbilityEditorAbilityEntry {
   type: Ability["type"];
   target: Ability["target"];
   hasOverrides: boolean;
+  tags: Record<string, string>;
   stats: AbilityEditorStat[];
   activePropertyIds: AbilityPropertyId[];
   availablePropertyIds: AbilityPropertyId[];
@@ -624,13 +649,37 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
     }
   }
 
-  if (Object.keys(properties).length === 0 && Object.keys(numeric).length === 0) {
+  // Parse new tags map
+  const rawTagsField =
+    "tags" in entryRecord && entryRecord.tags && typeof entryRecord.tags === "object"
+      ? (entryRecord.tags as Record<string, unknown>)
+      : {};
+  const parsedTags: Record<string, string> = {};
+  for (const [groupId, val] of Object.entries(rawTagsField)) {
+    const groupDef = TAG_GROUP_DEFINITIONS[groupId as TagGroupId];
+    if (groupDef && typeof val === "string" && (groupDef.values as readonly string[]).includes(val)) {
+      parsedTags[groupId] = val;
+    }
+  }
+
+  // Migrate legacy top-level rarity → tags.rarity
+  if ("rarity" in entryRecord && typeof entryRecord.rarity === "string" && !parsedTags.rarity) {
+    const legacyRarity = entryRecord.rarity as string;
+    if ((ABILITY_RARITIES as readonly string[]).includes(legacyRarity)) {
+      parsedTags.rarity = legacyRarity;
+    }
+  }
+
+  const tags = Object.keys(parsedTags).length > 0 ? parsedTags : undefined;
+
+  if (Object.keys(properties).length === 0 && Object.keys(numeric).length === 0 && !tags) {
     return null;
   }
 
   return {
     properties: Object.keys(properties).length > 0 ? properties : undefined,
     numeric: Object.keys(numeric).length > 0 ? numeric : undefined,
+    tags,
   };
 }
 
@@ -1035,7 +1084,8 @@ export function buildAbilityEditorEntry(params: {
     properties.some((property) => property.overridden) ||
     coreSettings.some((setting) => setting.overridden) ||
     damageSettings.some((setting) => setting.overridden) ||
-    channelTimingSettings.some((setting) => setting.overridden);
+    channelTimingSettings.some((setting) => setting.overridden) ||
+    (overrides?.tags ? Object.keys(overrides.tags).length > 0 : false);
 
   return {
     id: ability.id,
@@ -1044,6 +1094,7 @@ export function buildAbilityEditorEntry(params: {
     type: ability.type,
     target: ability.target,
     hasOverrides,
+    tags: overrides?.tags ?? {},
     stats: buildAbilityEditorStats(ability),
     activePropertyIds: properties.filter((property) => property.enabled).map((property) => property.id),
     availablePropertyIds: properties.filter((property) => !property.enabled).map((property) => property.id),

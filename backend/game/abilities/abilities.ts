@@ -6,6 +6,8 @@ import {
   AbilityEditorOverrideMap,
   AbilityPropertyId,
   AbilityRecord,
+  TagGroupId,
+  TAG_GROUP_DEFINITIONS,
   buildAbilityEditorEntry,
   buildResolvedAbilities,
   getAbilityNumericFieldDefinition,
@@ -1717,11 +1719,11 @@ export const BASE_ABILITIES: AbilityRecord = {
   wan_jian_gui_zong: {
     id: "wan_jian_gui_zong",
     name: "万剑归宗",
-    description: "瞬发，可在空中或移动中施放\n锁足6尺范围内的敌人3秒\n附加【玄一】5层（30秒）：每层使治疗效果降低10%\n不触发GCD",
+    description: "瞬发，可在空中或移动中施放\n锁足6尺范围内的敌人3秒\n附加【玄一】5层（30秒）：每层使治疗效果降低10%",
     type: "CONTROL",
     target: "SELF",
     cooldownTicks: 300,
-    gcd: false,
+    gcd: true,
     effects: [
       { type: "AOE_APPLY_BUFFS", range: 6 },
     ],
@@ -2050,6 +2052,507 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
     buffs: [],
   },
+
+  // ── DoT 系技能组 ──────────────────────────────────────────────────────────
+
+  lan_cui_yu_zhe: {
+    id: "lan_cui_yu_zhe",
+    name: "兰摧玉折",
+    description: "正读条1秒，面向目标，可在空中或移动中施放\n读条完成后附加【兰摧玉折】18秒：每3秒受到1点伤害\n射程20",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: false,
+    faceDirection: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2500,
+        name: "兰摧玉折",
+        category: "DEBUFF",
+        durationMs: 18_000,
+        periodicMs: 3_000,
+        description: "每3秒受到1点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+      },
+    ],
+    channelDurationMs: 1_000,
+    channelCancelOnMove: false,
+    channelCancelOnJump: false,
+    channelCancelOnOutOfRange: 20,
+    channelForward: true,
+    applyBuffsOnComplete: true,
+    channelEffects: [],
+  } as any,
+
+  shang_yang_zhi: {
+    id: "shang_yang_zhi",
+    name: "商阳指",
+    description: "瞬发，附加【商阳指】18秒：每3秒受到1点伤害\n可在空中或移动中施放，射程20",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: false,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2501,
+        name: "商阳指",
+        category: "DEBUFF",
+        durationMs: 18_000,
+        periodicMs: 3_000,
+        description: "每3秒受到1点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+      },
+    ],
+  },
+
+  zhong_lin_yu_xiu: {
+    id: "zhong_lin_yu_xiu",
+    name: "钟林毓秀",
+    description: "正读条1秒，必须站立施放，移动或跳跃会中断读条\n读条完成后附加【钟林毓秀】18秒：每3秒受到1点伤害\n射程20",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: true,
+    requiresStanding: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2502,
+        name: "钟林毓秀",
+        category: "DEBUFF",
+        durationMs: 18_000,
+        periodicMs: 3_000,
+        description: "每3秒受到1点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+      },
+    ],
+    channelDurationMs: 1_000,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelCancelOnOutOfRange: 20,
+    channelForward: true,
+    applyBuffsOnComplete: true,
+    channelEffects: [],
+  } as any,
+
+  she_ying: {
+    id: "she_ying",
+    name: "蛇影",
+    description: "瞬发，附加【蛇影】12秒：每2秒受到1点伤害\n可在空中或移动中施放，射程20",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: false,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2503,
+        name: "蛇影",
+        category: "DEBUFF",
+        durationMs: 12_000,
+        periodicMs: 2_000,
+        description: "每2秒受到1点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+      },
+    ],
+  },
+
+  yu_shi_ju_fen: {
+    id: "yu_shi_ju_fen",
+    name: "玉石俱焚",
+    description: "瞬发，立即造成2点伤害\n若目标正受到来自自身【商阳指】【兰摧玉折】【钟林毓秀】【蛇影】【蟾啸】的持续伤害，立即结算所有剩余伤害并解除对应效果\n射程20",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: false,
+    effects: [
+      { type: "DAMAGE", value: 2 },
+      {
+        type: "SETTLE_SOURCE_DOTS",
+        sourceAbilityIds: ["shang_yang_zhi", "lan_cui_yu_zhe", "zhong_lin_yu_xiu", "she_ying", "chan_xiao"],
+      } as any,
+    ],
+    buffs: [],
+  },
+
+  fu_rong_bing_di: {
+    id: "fu_rong_bing_di",
+    name: "芙蓉并蒂",
+    description: "瞬发，定身目标1秒并附加【芙蓉并蒂】6秒：受到伤害增加10%\n若技能栏内有【商阳指】【兰摧玉折】或【钟林毓秀】，额外施放对应持续伤害效果\n射程20",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: false,
+    effects: [
+      {
+        type: "APPLY_SLOT_DOTS",
+        slotAbilityIds: ["shang_yang_zhi", "lan_cui_yu_zhe", "zhong_lin_yu_xiu"],
+      } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2504,
+        name: "芙蓉并蒂",
+        category: "DEBUFF",
+        durationMs: 1_000,
+        description: "定身1秒，受到伤害增加10%",
+        effects: [
+          { type: "CONTROL" },
+          { type: "DAMAGE_TAKEN_INCREASE", value: 0.1 },
+        ],
+      },
+    ],
+  },
+  // ─── 雷霆震怒: stun + damage immunity (knockdown overrides) ───
+  lei_ting_zhen_nu: {
+    id: "lei_ting_zhen_nu",
+    name: "雷霆震怒",
+    description: "瞬发，对目标附加【雷霆震怒】15秒：眩晕，且免疫一切伤害。\n眩晕递减适用，倒地中无法被施加。被摩诃无量倒地可解除此效果。\n免疫其他控制/锁足效果；解控招式可解除。\n射程17",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 17,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2506,
+        name: "雷霆震怒",
+        category: "DEBUFF",
+        durationMs: 15_000,
+        description: "眩晕15秒，免疫所有伤害",
+        effects: [{ type: "CONTROL" }, { type: "DAMAGE_IMMUNE" }],
+      },
+    ],
+  },
+
+  // ─── 穿心弩: 2-charge channel, apply DoT + heal reduction on finish ───
+  chuan_xin_nu: {
+    id: "chuan_xin_nu",
+    name: "穿心弩",
+    description: "读条1.5秒（可移动/跳跃），完成后对目标附加：\n【穿心弩】18秒：每3秒造成1点伤害\n【穿心弩·减疗】18秒：治疗效果降低50%\n2层充能，每层12秒恢复。射程27",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    range: 27,
+    cooldownTicks: 0,
+    maxCharges: 2,
+    chargeRecoveryTicks: 360,
+    gcd: true,
+    channelDurationMs: 1_500,
+    channelCancelOnMove: false,
+    channelCancelOnJump: false,
+    applyBuffsOnComplete: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2507,
+        name: "穿心弩",
+        category: "DEBUFF",
+        durationMs: 18_000,
+        periodicMs: 3_000,
+        description: "每3秒受到1点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+      },
+      {
+        buffId: 2508,
+        name: "穿心弩·减疗",
+        category: "DEBUFF",
+        durationMs: 18_000,
+        description: "治疗效果降低50%",
+        effects: [{ type: "HEAL_REDUCTION", value: 0.5 }],
+      },
+    ],
+  } as any,
+
+  // ─── 三才化生: self-centered AoE ROOT 8 units, up to 6 targets, no GCD ───
+  san_cai_hua_sheng: {
+    id: "san_cai_hua_sheng",
+    name: "三才化生",
+    description: "无GCD，瞬发，对自身周围8尺内最多6个目标施加【三才化生】9秒：锁足。\n锁足后半段被伤害招式命中有50%概率解除。\n范围：自身半径8尺",
+    type: "CONTROL",
+    target: "SELF",
+    range: 0,
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      {
+        type: "SAN_CAI_HUA_SHENG_AOE",
+        range: 8,
+        maxTargets: 6,
+      } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2509,
+        name: "三才化生",
+        category: "DEBUFF",
+        durationMs: 9_000,
+        description: "锁足9秒；后半段被击时有50%概率解除",
+        effects: [{ type: "ROOT" }],
+      },
+      {
+        buffId: 2510,
+        name: "三才化生·前半保护",
+        category: "DEBUFF",
+        durationMs: 4_500,
+        description: "前半段：锁足不因受击解除",
+        effects: [],
+      },
+    ],
+  },
+
+  // ─── 银月斩: damage + DoT; doubled if target has 烈日斩 ───
+  yin_yue_zhan: {
+    id: "yin_yue_zhan",
+    name: "银月斩",
+    description: "瞬发，对目标造成2点伤害，并附加【银月斩】6秒：每2秒造成1点伤害。\n若目标已有【烈日斩】，所有伤害翻倍。\n射程6",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 6,
+    cooldownTicks: 150,
+    gcd: true,
+    effects: [
+      {
+        type: "YIN_YUE_ZHAN",
+        value: 2,
+      } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2511,
+        name: "银月斩",
+        category: "DEBUFF",
+        durationMs: 6_000,
+        periodicMs: 2_000,
+        description: "每2秒受到1点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+      },
+    ],
+  },
+
+  // ─── 烈日斩: damage + 15% extra damage debuff; doubled if target has 银月斩 ───
+  lie_ri_zhan: {
+    id: "lie_ri_zhan",
+    name: "烈日斩",
+    description: "瞬发，对目标造成4点伤害，并附加【烈日斩】12秒：受到伤害增加15%。\n若目标已有【银月斩】，伤害翻倍（8点）。\n射程6",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 6,
+    cooldownTicks: 150,
+    gcd: true,
+    effects: [
+      {
+        type: "LIE_RI_ZHAN",
+        value: 4,
+      } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2512,
+        name: "烈日斩",
+        category: "DEBUFF",
+        durationMs: 12_000,
+        description: "受到伤害增加15%",
+        effects: [{ type: "DAMAGE_TAKEN_INCREASE", value: 0.15 }],
+      },
+    ],
+  },
+
+  // ─── 横扫六合: AoE 5 units, 4 damage each + DoT; single-target doubles initial damage ───
+  heng_sao_liu_he: {
+    id: "heng_sao_liu_he",
+    name: "横扫六合",
+    description: "瞬发，对自身周围5尺内所有敌方目标造成4点伤害，并附加【横扫六合】12秒：每2秒受到1点伤害。\n若本次只命中1名敌人，初始伤害翻倍（8点），持续伤害不变。\n范围：自身半径5尺",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 5,
+    cooldownTicks: 200,
+    gcd: true,
+    effects: [
+      {
+        type: "HENG_SAO_LIU_HE_AOE",
+        value: 2,
+        range: 5,
+      } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2513,
+        name: "横扫六合",
+        category: "DEBUFF",
+        durationMs: 12_000,
+        periodicMs: 2_000,
+        description: "每2秒受到1点伤害",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+      },
+    ],
+  },
+
+  // ─── 七星拱瑞: channel 1.5s freeze + 贯体 15s HoT; damage breaks into stun ───
+  qixing_gongrui: {
+    id: "qixing_gongrui",
+    name: "七星拱瑞",
+    description: "需要目标，面向目标，需要站立，运功1.5秒（正读条）\n运功完成后：对目标施加【七星拱瑞】15秒——冻结（无法移动/施放技能）且每秒回复5点气血（贯体）\n【七星拱瑞】存在时受到伤害立即解除并附加【七星拱瑞·眩晕】4秒\n触发GCD；移动或跳跃打断运功",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    requiresStanding: true,
+    requiresGrounded: true,
+    faceDirection: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2600,
+        name: "七星拱瑞",
+        category: "DEBUFF",
+        durationMs: 15_000,
+        periodicMs: 1_000,
+        description: "冻结：无法移动和施放技能；每秒回复5点气血（贯体）；受到伤害立即解除并附加眩晕",
+        effects: [
+          { type: "CONTROL" },
+          { type: "ROOT" },
+          { type: "PERIODIC_GUAN_TI_HEAL", value: 5 },
+        ],
+      },
+      // Buff 2601 (北斗, 4s CONTROL) is NOT applied here — it is only applied via
+      // processOnDamageTaken (onDamageHooks.ts) when buff 2600 is broken by damage.
+    ],
+    channelDurationMs: 1_500,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelForward: true,
+    applyBuffsOnComplete: true,
+  } as any,
+
+  // ─── 啸如虎: instant self, 12s: cannot die + 30% dmg boost ───
+  xiao_ru_hu: {
+    id: "xiao_ru_hu",
+    name: "啸如虎",
+    description: "瞬发，触发GCD\n获得【啸如虎】12秒：气血不会降至1以下（无法被击杀）；造成伤害提高30%",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2602,
+        name: "啸如虎",
+        category: "BUFF",
+        durationMs: 12_000,
+        description: "气血不会降至1以下；伤害提高30%",
+        effects: [
+          { type: "MIN_HP_1" },
+          { type: "DAMAGE_MULTIPLIER", value: 1.30 },
+          { type: "CONTROL_IMMUNE" },
+        ],
+      },
+    ],
+  },
+
+  // ─── 穿: instant, range 4, deals 1 dmg + uncleansable 65% slow ───
+  chuan: {
+    id: "chuan",
+    name: "穿",
+    description: "瞬发，可在移动或跳跃中施放，射程4\n对目标造成1点伤害\n附加【穿】8秒：移动速度降低65%（无法被解控移除）\n触发GCD",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: false,
+    effects: [{ type: "DAMAGE", value: 1 }],
+    buffs: [
+      {
+        buffId: 2603,
+        name: "穿",
+        category: "DEBUFF",
+        durationMs: 8_000,
+        description: "移动速度降低65%；无法被解控移除",
+        effects: [{ type: "SLOW", value: 0.65 }],
+      },
+    ],
+  },
+
+  // ─── 五蕴皆空: instant, range 4, 1 dmg + stun 5s + 蹑云 dash -70% 8s ───
+  wuyun_jiekong: {
+    id: "wuyun_jiekong",
+    name: "五蕴皆空",
+    description: "瞬发，射程4\n对目标造成1点伤害\n附加【五蕴皆空】5秒：眩晕\n附加【五蕴皆空·聂云缩减】8秒：施放蹑云逐月时冲刺距离和时间降低70%\n触发GCD",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "DAMAGE", value: 1 }],
+    buffs: [
+      {
+        buffId: 2604,
+        name: "五蕴皆空",
+        category: "DEBUFF",
+        durationMs: 5_000,
+        description: "眩晕5秒",
+        effects: [{ type: "CONTROL" }],
+      },
+      {
+        buffId: 2605,
+        name: "五蕴皆空·聂云缩减",
+        category: "DEBUFF",
+        durationMs: 8_000,
+        description: "蹑云逐月冲刺距离和时间降低70%",
+        effects: [{ type: "NIEYUN_DASH_REDUCTION" }],
+      },
+    ],
+  },
+
+  // ─── 玄水蛊: instant, 1 dmg, damage redirect 55% to opponent for 8s ───
+  xuanshui_gu: {
+    id: "xuanshui_gu",
+    name: "玄水蛊",
+    description: "瞬发，射程10\n对目标造成1点伤害\n目标获得【毒手】8秒：承受施放者55%的受击伤害（伤害转移）\n施放者获得【玄水蛊】8秒：携带毒手的目标为我承受55%的伤害\n触发GCD",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 10,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "DAMAGE", value: 1 }],
+    buffs: [
+      {
+        buffId: 2606,
+        name: "毒手",
+        category: "DEBUFF",
+        durationMs: 8_000,
+        description: "承受施放者55%的受击伤害",
+        effects: [{ type: "DAMAGE_REDIRECT_55" }],
+        applyTo: "OPPONENT",
+      },
+      {
+        buffId: 2607,
+        name: "玄水蛊",
+        category: "BUFF",
+        durationMs: 8_000,
+        description: "携带毒手的目标为我承受55%的伤害",
+        effects: [],
+        applyTo: "SELF",
+      },
+    ],
+  },
 };
 
 let abilityPropertyOverrides: AbilityEditorOverrideMap = {};
@@ -2127,7 +2630,6 @@ export function setAbilityEditorProperty(
     throw new Error("ERR_PROPERTY_NOT_APPLICABLE");
   }
 
-  const baseEnabled = definition.getValue(baseAbility);
   const nextPropertyOverrides = {
     ...(abilityPropertyOverrides[abilityId]?.properties ?? {}),
   };
@@ -2136,21 +2638,10 @@ export function setAbilityEditorProperty(
     properties: nextPropertyOverrides,
   };
 
-  if (enabled === baseEnabled) {
-    delete nextPropertyOverrides[propertyId];
-  } else {
-    nextPropertyOverrides[propertyId] = enabled;
-  }
+  // Always store the value — no auto-revert to base
+  nextPropertyOverrides[propertyId] = enabled;
 
-  if (Object.keys(nextPropertyOverrides).length === 0) {
-    delete nextAbilityOverrides.properties;
-  }
-
-  if (!nextAbilityOverrides.properties && !nextAbilityOverrides.numeric) {
-    delete abilityPropertyOverrides[abilityId];
-  } else {
-    abilityPropertyOverrides[abilityId] = nextAbilityOverrides;
-  }
+  abilityPropertyOverrides[abilityId] = nextAbilityOverrides;
 
   abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
   rebuildAbilities();
@@ -2181,7 +2672,6 @@ export function setAbilityEditorNumericValue(
     throw new Error("ERR_INVALID_ABILITY_NUMERIC_FIELD");
   }
 
-  const baseValue = definition.getValue(baseAbility);
   const nextNumericOverrides = {
     ...(abilityPropertyOverrides[abilityId]?.numeric ?? {}),
   };
@@ -2190,21 +2680,10 @@ export function setAbilityEditorNumericValue(
     numeric: nextNumericOverrides,
   };
 
-  if (value === baseValue) {
-    delete nextNumericOverrides[fieldId];
-  } else {
-    nextNumericOverrides[fieldId] = value;
-  }
+  // Always store the value — no auto-revert to base
+  nextNumericOverrides[fieldId] = value;
 
-  if (Object.keys(nextNumericOverrides).length === 0) {
-    delete nextAbilityOverrides.numeric;
-  }
-
-  if (!nextAbilityOverrides.properties && !nextAbilityOverrides.numeric) {
-    delete abilityPropertyOverrides[abilityId];
-  } else {
-    abilityPropertyOverrides[abilityId] = nextAbilityOverrides;
-  }
+  abilityPropertyOverrides[abilityId] = nextAbilityOverrides;
 
   abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
   rebuildAbilities();
@@ -2222,4 +2701,43 @@ export function setAbilityEditorDamageValue(
   value: number
 ) {
   return setAbilityEditorNumericValue(abilityId, damageId, value);
+}
+
+export function setAbilityTag(abilityId: string, tagGroup: TagGroupId, value: string | null) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) throw new Error("ERR_ABILITY_NOT_FOUND");
+
+  const groupDef = TAG_GROUP_DEFINITIONS[tagGroup];
+  if (!groupDef) throw new Error("ERR_INVALID_TAG_GROUP");
+  if (value !== null && !(groupDef.values as readonly string[]).includes(value)) {
+    throw new Error("ERR_INVALID_TAG_VALUE");
+  }
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+  };
+
+  if (value) {
+    nextEntry.tags = { ...(nextEntry.tags ?? {}), [tagGroup]: value };
+  } else {
+    const nextTags = { ...(nextEntry.tags ?? {}) };
+    delete nextTags[tagGroup];
+    nextEntry.tags = Object.keys(nextTags).length > 0 ? nextTags : undefined;
+  }
+
+  const isEmpty = !nextEntry.tags && !nextEntry.properties && !nextEntry.numeric;
+  if (isEmpty) {
+    delete abilityPropertyOverrides[abilityId];
+  } else {
+    abilityPropertyOverrides[abilityId] = nextEntry;
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+
+  return buildAbilityEditorEntry({
+    ability: ABILITIES[abilityId],
+    baseAbility,
+    overrides: abilityPropertyOverrides[abilityId],
+  });
 }

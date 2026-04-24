@@ -175,6 +175,19 @@ The BVH collision triangles in the GLBs do NOT change — only the coordinate ma
 
 ## Abilities / Editor
 
+### DAMAGE_IMMUNE must be checked in every damage code path (2026-04-29)
+- **Bug**: `hasDamageImmune` existed in `guards.ts` and was checked in `Damage.ts` (handleDamage) and `GameLoop.ts` PERIODIC_DAMAGE, but multiple custom ability handlers in `immediateEffects.ts` called `applyDamageToTarget` directly without checking it first.
+- **Affected paths**: `BAIZU_AOE`, `WUFANG_XINGJIN_AOE`, `HENG_SAO_LIU_HE_AOE` victim loops; `BANG_DA_GOU_TOU` fallback damage branch; `SETTLE_SOURCE_DOTS` DoT flush; `YIN_YUE_ZHAN` and `LIE_RI_ZHAN` damage cases; dash reach damage in `GameLoop.ts`.
+- **Symptom**: 雷霆震怒's `DAMAGE_IMMUNE` buff effect did not block damage from these paths.
+- **Fix**: Added `if (hasDamageImmune(victim)) continue/break;` before every `applyDamageToTarget` call in custom handlers. For `SETTLE_SOURCE_DOTS`, wrapped the DoT apply in `if (!hasDamageImmune(...))`. For `BANG_DA_GOU_TOU` fallback, changed `} else {` to `} else if (!hasDamageImmune(victim)) {`.
+- **Lesson**: Any new ability with a custom damage path MUST add `hasDamageImmune` check. `handleDamage` in `Damage.ts` is NOT guaranteed to be the only code path that deals damage.
+
+### Ability rarity system (2026-04-29)
+- **Design**: Rarity is stored as an optional override in `ability-property-overrides.json` per ability, alongside other editor overrides. Values: `精巧` (green), `卓越` (blue), `珍奇` (purple), `稀世` (orange).
+- **Backend**: `ABILITY_RARITIES` + `AbilityRarity` type in `abilityPropertySystem.ts`. `setAbilityRarity()` in `abilities.ts`. PUT route `/api/game/ability-editor/:abilityId/rarity`. Rarity included in `abilityPreload.ts` `cardPayload`.
+- **Frontend editor**: Rarity selector buttons in `/ability-editor/[abilityId]/page.tsx`. `updateRarity()` calls PUT route, clicking the currently-active rarity deselects it (sets to null).
+- **Frontend cheat panel**: `RARITY_ORDER` sort + `RARITY_COLOR` border in `BattleArena.tsx`. Single flat grid replacing the old 已测试/持续伤害/测试中/待重做 tab sections. Icon border color reflects rarity (gray for unset).
+
 ### New abilities added 2026-04-20: 春泥护花, 圣明佑, 烟雨行, 太阴指
 - **春泥护花** (chun_ni_hu_hua): buffId 2316. Self-cast, 8 stacks. New effect type `STACK_ON_HIT_GUAN_TI_HEAL` (贯体 heal on hit, stack consumed). 40% DR from DAMAGE_REDUCTION effect. Implemented in GameLoop.ts stack proc section (same loop as STACK_ON_HIT_DAMAGE). Uses GCD.
 - **圣明佑** (sheng_ming_you): buffId 2317. New effect type `INSTANT_GUAN_TI_HEAL` handled in immediateEffects.ts (direct `applyHealToTarget`, bypasses HEAL_REDUCTION). Buff: 20% DODGE_NEXT. No GCD.
@@ -768,3 +781,56 @@ When the old imports block was replaced (only the top few lines), the rest of th
 - Added `ignoreDodge?: boolean` to the `Ability` interface in `types/abilities.ts`.
 - `computeAbilityDodge` in `dodge.ts` now checks `if (ability.ignoreDodge) return false;` before calling `shouldDodge`.
 - This is the cleanest approach — no change needed in PlayAbility.ts, the dodge result flows through automatically.
+
+### Canonical Class (School) Ordering
+
+Always use this order for any list, filter, or display of schools:
+少林 万花 天策 纯阳 七秀 藏剑 唐门 明教 丐帮 苍云 长歌 霸刀 蓬莱 凌雪 衍天 药宗 刀宗 万灵 段氏 五毒 通用
+
+Code arrays (20 schools + 通用):
+["少林","万花","天策","纯阳","七秀","藏剑","唐门","明教","丐帮","苍云","长歌","霸刀","蓬莱","凌雪","衍天","药宗","刀宗","万灵","段氏","五毒","通用"]
+
+Locations to update when adding new schools: editorShared.ts SCHOOL_TAGS, BattleArena.tsx SCHOOL_TAGS_BA.
+
+### New Effect Types (April 2026 batch)
+
+- `MIN_HP_1`: prevents HP going below 1 (cannot-die). Implemented in `applyDamageToTarget` in health.ts.
+- `NIEYUN_DASH_REDUCTION`: reduces 蹑云逐月 dash distance and duration by 70%. Implemented in DirectionalDash.ts.
+- `DAMAGE_REDIRECT_55`: semantic marker on 毒手 debuff. Actual redirect logic lives in Damage.ts handleDamage.
+
+### 玄水蛊 Damage Redirect Design
+
+- Buff 2607 (玄水蛊) on CASTER = redirect is active
+- Buff 2606 (毒手) on TARGET = they absorb the redirect
+- When caster takes enemy HP damage, 55% is restored to them and dealt directly (bypassing DR) to the target with 毒手
+- Logic in Damage.ts handleDamage, after applyDamageToTarget, checks isEnemyEffect + actualHpDamage > 0
+
+### 七星拱瑞 On-Damage Break Design
+
+- Buff 2600 (七星拱瑞): CONTROL + ROOT + PERIODIC_GUAN_TI_HEAL 5/s, 15s. Applied via applyBuffsOnComplete.
+- On any enemy damage to the holder, buff is removed (via splice + BUFF_EXPIRED event) and buff 2601 (七星拱瑞·眩晕) is applied via addBuff for 4s.
+- Logic in Damage.ts handleDamage, triggered when isEnemyEffect and target has buffId 2600.
+
+### On-Damage Hooks Refactor (七星拱瑞 break + 玄水蛊 redirect)
+
+Created `backend/game/engine/effects/onDamageHooks.ts` — a shared utility that
+must be called after any `applyDamageToTarget` call that could affect a player
+who has buff 2600 (七星拱瑞 freeze) or buff 2607 (玄水蛊 redirect).
+
+`processOnDamageTaken(state, damagedPlayer, hpDamage, attackerUserId?)`:
+- 七星拱瑞 break: removes buff 2600, calls pushBuffExpired, then addBuff(2601 北斗, 4s CONTROL)
+- 玄水蛊 redirect: if damagedPlayer has buff 2607 and opponent has buff 2606,
+  heals 55% back to damagedPlayer and deals it to opponent
+- NO isEnemyEffect restriction — fires for any damage source (enemy, self, env)
+- Checks `b.expiresAt > now` to skip already-expired buffs not yet cleaned up
+
+Damage.ts now calls processOnDamageTaken instead of inline logic.
+GameLoop.ts added calls at: PERIODIC_DAMAGE buff ticks, TIMED_AOE_DAMAGE,
+CHANNEL_AOE_TICK, ground zone damage, reach/dash damage-on-complete.
+
+Buff 2601 renamed from "七星拱瑞·眩晕" → "北斗".
+Buff 2601 added to qixing_gongrui.buffs[] in abilities.ts (for editor visibility).
+啸如虎 buff 2602: added { type: "CONTROL_IMMUNE" } effect.
+
+Note: DAMAGE_REDIRECT_55 effect type comment in EXPERIENCES.md was outdated —
+the actual redirect logic now lives in onDamageHooks.ts, not Damage.ts.

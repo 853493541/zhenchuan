@@ -1,10 +1,11 @@
 // backend/game/engine/effects/handlers/handleDamage.ts
 
 import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
-import { blocksEnemyTargeting } from "../../rules/guards";
+import { blocksEnemyTargeting, hasDamageImmune } from "../../rules/guards";
 import { resolveScheduledDamage } from "../../utils/combatMath";
 import { applyDamageToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
+import { processOnDamageTaken } from "../onDamageHooks";
 
 /**
  * Handle immediate DAMAGE effects.
@@ -37,6 +38,11 @@ export function handleDamage(
     return;
   }
 
+  // 雷霆震怒 damage immunity: block all incoming enemy damage
+  if (isEnemyEffect && hasDamageImmune(target)) {
+    return;
+  }
+
   const base = effect.value ?? 0;
 
   const final = resolveScheduledDamage({
@@ -47,7 +53,13 @@ export function handleDamage(
   });
 
   if (final > 0) {
-    applyDamageToTarget(target as any, final);
+    const { hpDamage: actualHpDamage } = applyDamageToTarget(target as any, final);
+
+    // Trigger on-damage effects (七星拱瑞 break, 玄水蛊 redirect) for ALL
+    // damage sources — no isEnemyEffect restriction.
+    processOnDamageTaken(state, target as any, actualHpDamage, source.userId);
+  } else {
+    // final === 0: still run applyDamageToTarget for event consistency
   }
 
   pushEvent(state, {

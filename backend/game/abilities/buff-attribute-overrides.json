@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updatedAt": "2026-04-23T05:41:04.854Z",
+  "updatedAt": "2026-04-24T07:22:41.368Z",
   "buffs": {
     "1007": {
       "attribute": "无"
@@ -148,18 +148,6 @@
     },
     "9002": {
       "attribute": "无"
-    },
-    "990100": {
-      "attribute": "未选择",
-      "hidden": true
-    },
-    "990101": {
-      "attribute": "未选择",
-      "hidden": true
-    },
-    "990102": {
-      "attribute": "未选择",
-      "hidden": true
     },
     "999900": {
       "attribute": "未选择",

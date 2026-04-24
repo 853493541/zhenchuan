@@ -35,6 +35,8 @@ export function applyAbilityBuffs(params: {
   // 九转归一 buffs are applied manually in immediateEffects (KNOCKED_BACK) and GameLoop (羽化 wall stun).
   // 鹤归孤山 stun is applied by the post-dash GameLoop handler; only its own buffs[0] stun is excluded.
   // 绛唇珠袖: only buff 2323 (debuff) is applied at cast time; buff 2324 (silence) is trigger-only.
+  // 银月斩/烈日斩/横扫六合: buff application handled in custom effect handlers (synergy logic).
+  // 三才化生: buff application handled in SAN_CAI_HUA_SHENG_AOE handler.
   if (
     ability.id === "baizu" ||
     ability.id === "han_di" ||
@@ -42,6 +44,10 @@ export function applyAbilityBuffs(params: {
     ability.id === "he_gui_gu_shan" ||
     ability.id === "jiang_chun_zhu_xiu" ||
     ability.id === "wufang_xingjin" ||
+    ability.id === "yin_yue_zhan" ||
+    ability.id === "lie_ri_zhan" ||
+    ability.id === "heng_sao_liu_he" ||
+    ability.id === "san_cai_hua_sheng" ||
     (Array.isArray(ability.effects) &&
       ability.effects.some((e: any) =>
         e.type === "AOE_APPLY_BUFFS" ||

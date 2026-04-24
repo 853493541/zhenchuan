@@ -73,7 +73,27 @@ export type EffectType =
   // Dispel one BUFF-category buff per listed attribute from the target
   | "DISPEL_BUFF_ATTRIBUTE"
   // Cleanse DEBUFF-category buffs from self/friendly by attribute
-  | "CLEANSE_DEBUFF_ATTRIBUTE";
+  | "CLEANSE_DEBUFF_ATTRIBUTE"
+  // Immediately settle remaining DoT damage from own debuffs on target (玉石俱焚)
+  | "SETTLE_SOURCE_DOTS"
+  // Apply DoT debuffs from the caster's equipped ability slots (芙蓉并蒂)
+  | "APPLY_SLOT_DOTS"
+  // Block all incoming damage while active (雷霆震怒 stun)
+  | "DAMAGE_IMMUNE"
+  // Self-centered AoE ROOT (三才化生)
+  | "SAN_CAI_HUA_SHENG_AOE"
+  // 银月斩: damage + DoT with 烈日斩 synergy
+  | "YIN_YUE_ZHAN"
+  // 烈日斩: damage with 银月斩 synergy + apply debuff
+  | "LIE_RI_ZHAN"
+  // 横扫六合: AoE damage + DoT with single-hit bonus
+  | "HENG_SAO_LIU_HE_AOE"
+  // 啸如虎: while this buff is active, HP cannot drop below 1 (cannot be killed)
+  | "MIN_HP_1"
+  // 五蕴皆空·聂云缩减: reduces the caster's 蹑云逐月 dash distance and duration by 70%
+  | "NIEYUN_DASH_REDUCTION"
+  // 玄水蛊·毒手: redirects 55% of incoming HP damage to the opponent (source of 毒手)
+  | "DAMAGE_REDIRECT_55";
 
 /**
  * Immediate ability effects
@@ -176,6 +196,16 @@ export interface AbilityEffect {
    * For CLEANSE_DEBUFF_ATTRIBUTE: how many buffs per attribute to remove. Defaults to 1.
    */
   count?: number;
+
+  /**
+   * For SETTLE_SOURCE_DOTS: the ability IDs whose DoT debuffs should be settled.
+   */
+  sourceAbilityIds?: string[];
+
+  /**
+   * For APPLY_SLOT_DOTS: the ability IDs to check in the caster's ability slot.
+   */
+  slotAbilityIds?: string[];
 }
 
 // Fields only used on BuffEffect (not AbilityEffect) are declared below.

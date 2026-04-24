@@ -103,7 +103,19 @@ export function handleDirectionalDash(
 ) {
   const distance = effect.value ?? 10;
   const storedUnitScale = state.unitScale;
-  const worldDistance = gameplayUnitsToWorldUnits(distance, storedUnitScale);
+
+  // 五蕴皆空·聂云缩减: reduce 蹑云逐月 distance and duration by 70%
+  const rawDistance = (() => {
+    if (ability.id === "nieyun_zhuyue") {
+      const hasReduction = (source.buffs as any[]).some((b: any) =>
+        b.effects?.some((e: any) => e.type === "NIEYUN_DASH_REDUCTION")
+      );
+      if (hasReduction) return distance * 0.30;
+    }
+    return distance;
+  })();
+
+  const worldDistance = gameplayUnitsToWorldUnits(rawDistance, storedUnitScale);
   const dashUnitsPerTick = gameplayUnitsToWorldUnits(20, storedUnitScale) / 30;
 
   const rawFacing = source.facing;
@@ -139,7 +151,16 @@ export function handleDirectionalDash(
       break;
   }
 
-  const durationTicks = effect.durationTicks ?? Math.round(worldDistance / dashUnitsPerTick);
+  const baseDurationTicks = effect.durationTicks ?? Math.round(worldDistance / dashUnitsPerTick);
+  const durationTicks = (() => {
+    if (ability.id === "nieyun_zhuyue") {
+      const hasReduction = (source.buffs as any[]).some((b: any) =>
+        b.effects?.some((e: any) => e.type === "NIEYUN_DASH_REDUCTION")
+      );
+      if (hasReduction) return Math.max(1, Math.round(baseDurationTicks * 0.30));
+    }
+    return baseDurationTicks;
+  })();
 
   // Pre-compute per-tick vz caps from the angle limits.
   // Actual vz capture happens on the first game-loop tick in movement.ts.
