@@ -26,11 +26,31 @@ function sumChances(target: { buffs: ActiveBuff[] }, type: EffectType) {
 
 /**
  * Dodge check (stacking)
- * - stacks chance from multiple DODGE_NEXT effects
+ * - stacks chance from multiple DODGE effects
  * - probabilistic
  */
 export function shouldDodge(target: { buffs: ActiveBuff[] }) {
-  const chance = sumChances(target, "DODGE_NEXT");
+  const chance = sumChances(target, "DODGE");
+  if (chance <= 0) return false;
+  return Math.random() < chance;
+}
+
+/**
+ * Dodge check that also includes PHYSICAL_DODGE for 外功-typed attacks.
+ * 外功闪避 (PHYSICAL_DODGE) applies only when damageType is explicitly "外功".
+ * Regular 闪避 (DODGE) always applies regardless of damageType.
+ * @param target - the player being targeted
+ * @param damageType - the attacking ability's damageType (from tags). undefined = untagged.
+ */
+export function shouldDodgeForAbility(
+  target: { buffs: ActiveBuff[] },
+  damageType: string | undefined
+) {
+  let chance = sumChances(target, "DODGE");
+  // PHYSICAL_DODGE only applies when the ability is explicitly tagged 外功
+  if (damageType === "外功") {
+    chance += sumChances(target, "PHYSICAL_DODGE");
+  }
   if (chance <= 0) return false;
   return Math.random() < chance;
 }

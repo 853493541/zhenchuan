@@ -365,7 +365,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     breakOnPlay: false,
     description: "闪避率提高65%，受到伤害降低45%",
     effects: [
-      { type: "DODGE_NEXT", chance: 0.65 },
+      { type: "DODGE", chance: 0.65 },
       { type: "DAMAGE_REDUCTION", value: 0.45 },
     ],
     sourceAbilityId: "jing_hong_you_long",

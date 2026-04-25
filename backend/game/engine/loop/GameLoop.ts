@@ -25,7 +25,7 @@ import { exportedMap } from "../../map/exportedMap";
 import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
 import { ABILITIES } from "../../abilities/abilities";
 import { loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
-import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasUntargetable, hasDamageImmune, shouldDodge } from "../rules/guards";
+import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasUntargetable, hasDamageImmune, shouldDodge, shouldDodgeForAbility } from "../rules/guards";
 import type { MapObject } from "../state/types/map";
 import { applyTriggeredFollowUpPlayRules, breakOnPlay } from "../flow/play/breakOnPlay";
 import { applyDashRuntimeBuff } from "../effects/definitions/DirectionalDash";
@@ -134,11 +134,12 @@ function tryApplyDodgeForHit(params: {
   abilityId?: string;
   abilityName?: string;
   enabled: boolean;
+  damageType?: string;
 }): boolean {
-  const { state, source, target, abilityId, abilityName, enabled } = params;
+  const { state, source, target, abilityId, abilityName, enabled, damageType } = params;
   if (!enabled) return false;
   if (source.userId === target.userId) return false;
-  if (!shouldDodge(target as any)) return false;
+  if (!shouldDodgeForAbility(target as any, damageType)) return false;
 
   state.events.push({
     id: randomUUID(),
@@ -1132,8 +1133,8 @@ export class GameLoop {
                   channelEffectDodged = true;
                   continue;
                 }
-                // Dodge check: if target has DODGE_NEXT, the whole channel completion misses
-                if (player.userId !== target.userId && shouldDodge(target as any)) {
+                // Dodge check: if target has DODGE (or PHYSICAL_DODGE for 外功), the whole channel completion misses
+                if (player.userId !== target.userId && shouldDodgeForAbility(target as any, (ABILITIES[ch.abilityId] as any)?.damageType)) {
                   channelEffectDodged = true;
                   this.state.events.push({
                     id: randomUUID(), timestamp: chNow, turn: this.state.turn,
@@ -1716,6 +1717,7 @@ export class GameLoop {
                       abilityId: buff.sourceAbilityId,
                       abilityName: buff.sourceAbilityName ?? buff.name,
                       enabled: buff.sourceAbilityId === "fenglai_wushan",
+                      damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
                     })
                   ) {
                     buffsChanged = true;
@@ -1890,6 +1892,7 @@ export class GameLoop {
                 abilityId: buff.sourceAbilityId,
                 abilityName: buff.sourceAbilityName ?? buff.name,
                 enabled: buff.sourceAbilityId === "wu_jianyu",
+                damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
               })
             ) {
               buffsChanged = true;
@@ -2220,6 +2223,7 @@ export class GameLoop {
                 abilityId: zone.abilityId,
                 abilityName: zone.abilityName,
                 enabled: zone.abilityId === "kuang_long_luan_wu",
+                damageType: (ABILITIES[zone.abilityId ?? ""] as any)?.damageType,
               })
             ) {
               targetsHit++;

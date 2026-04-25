@@ -54,7 +54,7 @@ function normalizeDescription(value: unknown) {
  * Derive base display properties from a buff's effects array.
  * DAMAGE_REDUCTION → 减伤 (value * 100, rounded)
  * INVULNERABLE    → 无敌
- * DODGE_NEXT      → 闪避 (value = count)
+ * DODGE           → 闪避 (value = count)
  */
 function extractBaseProperties(effects: Array<{ type: string; value?: number }> | undefined): BuffProperty[] {
   if (!Array.isArray(effects)) return [];
@@ -73,9 +73,9 @@ function extractBaseProperties(effects: Array<{ type: string; value?: number }> 
     result.push({ type: "无敌" });
   }
 
-  const dodge = effects.find((e) => e.type === "DODGE_NEXT");
+  const dodge = effects.find((e) => e.type === "DODGE");
   if (dodge) {
-    // DODGE_NEXT stores probability in 'chance' (0.0–1.0), not 'value'
+    // DODGE stores probability in 'chance' (0.0–1.0), not 'value'
     const chanceVal = (dodge as unknown as { chance?: number }).chance;
     result.push({
       type: "闪避",

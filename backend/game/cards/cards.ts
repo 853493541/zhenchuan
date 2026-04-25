@@ -360,7 +360,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         category: "BUFF",
         durationMs: 5_000, // 5 seconds
         description: "被命中几率降低70%",
-        effects: [{ type: "DODGE_NEXT", chance: 0.7 }],
+        effects: [{ type: "DODGE", chance: 0.7 }],
       },
       {
         buffId: 1031,
@@ -728,7 +728,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         durationMs: 5_000, // 5 seconds
         description: "被命中几率降低65%，免疫控制，沉默",
         effects: [
-          { type: "DODGE_NEXT", chance: 0.65 },
+          { type: "DODGE", chance: 0.65 },
           { type: "CONTROL_IMMUNE" },
           { type: "DASH_TURN_OVERRIDE" },
           { type: "SILENCE" },

@@ -24,7 +24,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DISPLACEMENT: "BUFF",
   INTERRUPT_IMMUNE: "BUFF",
   ROOT_SLOW_IMMUNE: "BUFF",
-  DODGE_NEXT: "BUFF",
+  DODGE: "BUFF",
   PERIODIC_HEAL: "BUFF",
 
   HEAL_REDUCTION: "DEBUFF",
@@ -123,6 +123,8 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   JIAN_ZHU_TIAN_DI_STRIKE: "DEBUFF",
   // 破风: strike handler
   PO_FENG_STRIKE: "DEBUFF",
+  // 外功闪避: dodge only physical / untyped attacks
+  PHYSICAL_DODGE: "BUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

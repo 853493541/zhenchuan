@@ -5,9 +5,9 @@ export type BuffAttribute = "未选择" | "无" | "阴性" | "阳性" | "毒性"
 
 export const BUFF_ATTRIBUTES: BuffAttribute[] = ["未选择", "无", "阴性", "阳性", "毒性", "外功", "持续伤害", "混元", "蛊", "点穴"];
 
-export type BuffPropertyType = "减伤" | "无敌" | "闪避";
+export type BuffPropertyType = "减伤" | "无敌" | "闪避" | "外功闪避";
 
-export const BUFF_PROPERTY_TYPES: BuffPropertyType[] = ["减伤", "无敌", "闪避"];
+export const BUFF_PROPERTY_TYPES: BuffPropertyType[] = ["减伤", "无敌", "闪避", "外功闪避"];
 
 export interface BuffProperty {
   type: BuffPropertyType;
@@ -79,7 +79,7 @@ function normalizeProperties(value: unknown): BuffProperty[] | undefined {
   for (const item of value) {
     if (!item || typeof item !== "object") continue;
     const type = (item as Record<string, unknown>).type;
-    if (type !== "减伤" && type !== "无敌" && type !== "闪避") continue;
+    if (type !== "减伤" && type !== "无敌" && type !== "闪避" && type !== "外功闪避") continue;
     const prop: BuffProperty = { type: type as BuffPropertyType };
     if (type === "减伤") {
       const rawValue = (item as Record<string, unknown>).value;
@@ -91,7 +91,7 @@ function normalizeProperties(value: unknown): BuffProperty[] | undefined {
         prop.noOverride = rawNoOverride;
       }
     }
-    if (type === "闪避") {
+    if (type === "闪避" || type === "外功闪避") {
       const rawValue = (item as Record<string, unknown>).value;
       if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
         prop.value = Math.max(0, Math.min(100, Math.round(rawValue)));
@@ -219,7 +219,7 @@ export function saveBuffEditorOverrides(overrides: Record<string, BuffEditorOver
  * Mapping:
  *   减伤  → DAMAGE_REDUCTION  (value 0-100 → 0-1.0)
  *   无敌  → INVULNERABLE      (boolean presence)
- *   闪避  → DODGE_NEXT        (value 0-100% → chance 0-1.0)
+ *   闪避  → DODGE             (value 0-100% → chance 0-1.0)
  */
 export function applyPropertyOverridesToEffects(
   buff: { effects?: Array<{ type: string; value?: number; chance?: number }> },
@@ -254,9 +254,9 @@ export function applyPropertyOverridesToEffects(
     effects.splice(invIdx, 1);
   }
 
-  // 闪避 ↔ DODGE_NEXT (uses 'chance' field, 0.0–1.0)
+  // 闪避 ↔ DODGE (uses 'chance' field, 0.0–1.0)
   const shanbiProp = properties.find((p) => p.type === "闪避");
-  const dodgeIdx = effects.findIndex((e) => e.type === "DODGE_NEXT");
+  const dodgeIdx = effects.findIndex((e) => e.type === "DODGE");
   if (shanbiProp) {
     const chance = (shanbiProp.value !== undefined ? shanbiProp.value : 60) / 100;
     if (dodgeIdx >= 0) {
@@ -264,10 +264,25 @@ export function applyPropertyOverridesToEffects(
       const { value: _v, ...rest } = effects[dodgeIdx] as Record<string, unknown>;
       effects[dodgeIdx] = { ...rest, chance } as typeof effects[number];
     } else {
-      effects.push({ type: "DODGE_NEXT", chance });
+      effects.push({ type: "DODGE", chance });
     }
   } else if (dodgeIdx >= 0) {
     effects.splice(dodgeIdx, 1);
+  }
+
+  // 外功闪避 ↔ PHYSICAL_DODGE (uses 'chance' field, 0.0–1.0)
+  const physDodgeProp = properties.find((p) => p.type === "外功闪避");
+  const physDodgeIdx = effects.findIndex((e) => e.type === "PHYSICAL_DODGE");
+  if (physDodgeProp) {
+    const chance = (physDodgeProp.value !== undefined ? physDodgeProp.value : 60) / 100;
+    if (physDodgeIdx >= 0) {
+      const { value: _v, ...rest } = effects[physDodgeIdx] as Record<string, unknown>;
+      effects[physDodgeIdx] = { ...rest, chance } as typeof effects[number];
+    } else {
+      effects.push({ type: "PHYSICAL_DODGE", chance });
+    }
+  } else if (physDodgeIdx >= 0) {
+    effects.splice(physDodgeIdx, 1);
   }
 
   return effects;

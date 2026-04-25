@@ -25,6 +25,7 @@ const PROPERTY_VALUE_CONFIG: Partial<
 > = {
   减伤: { label: "减伤值", unit: "%", min: 0, max: 100 },
   闪避: { label: "闪避率", unit: "%", min: 0, max: 100 },
+  外功闪避: { label: "外功闪避率", unit: "%", min: 0, max: 100 },
 };
 
 export default function BuffDetailPage() {

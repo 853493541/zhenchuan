@@ -260,7 +260,7 @@ export function handleDirectionalDash(
     { type: "DASH_TURN_LOCK" },
   ];
   if (ability.id === "taxingxing") {
-    dashRuntimeEffects.push({ type: "DODGE_NEXT", chance: 0.65 } as any);
+    dashRuntimeEffects.push({ type: "DODGE", chance: 0.65 } as any);
   }
   const dashRuntimeAppliedAt = Date.now();
   applyDashRuntimeBuff({

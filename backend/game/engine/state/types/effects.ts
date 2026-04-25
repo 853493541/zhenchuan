@@ -28,7 +28,7 @@ export type EffectType =
   | "DISPLACEMENT"
   | "INTERRUPT_IMMUNE"
   | "ROOT_SLOW_IMMUNE"
-  | "DODGE_NEXT"
+  | "DODGE"
   | "DELAYED_DAMAGE"
   | "CLEANSE"
   | "FENGLAI_CHANNEL"
@@ -105,7 +105,9 @@ export type EffectType =
   // 剑主天地: 1 damage + stacking dot, detonates at 3 stacks
   | "JIAN_ZHU_TIAN_DI_STRIKE"
   // 破风: 1 damage + 破风 debuff + 流血, extra stack if CONTROL_IMMUNE
-  | "PO_FENG_STRIKE";
+  | "PO_FENG_STRIKE"
+  // 外功闪避: dodge chance that only applies to non-内功 (physical / untyped) attacks
+  | "PHYSICAL_DODGE";
 
 /**
  * Immediate ability effects

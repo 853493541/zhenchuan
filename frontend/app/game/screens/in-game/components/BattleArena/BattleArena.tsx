@@ -3376,7 +3376,7 @@ export default function BattleArena({
     Math.min(
       100,
       meEffects
-        .filter((e: any) => e?.type === 'DODGE_NEXT')
+        .filter((e: any) => e?.type === 'DODGE')
         .reduce((sum: number, e: any) => sum + Number(e?.chance ?? 0), 0) * 100,
     ),
   );

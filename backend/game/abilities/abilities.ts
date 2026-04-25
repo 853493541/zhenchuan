@@ -579,7 +579,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "BUFF",
         durationMs: 5_000, // 5 seconds
         description: "被命中几率降低70%",
-        effects: [{ type: "DODGE_NEXT", chance: 0.7 }],
+        effects: [{ type: "DODGE", chance: 0.7 }],
       },
       {
         buffId: 1031,
@@ -595,7 +595,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   yun_qi_song: {
     id: "yun_qi_song",
     name: "云栖松",
-    description: "自身获得【云栖松】12秒：闪避率提高60%\n同时获得【栖松】5秒：每秒回复1点气血\n并驱散自身阳性、混元、阴性、毒性不利效果各两个",
+    description: "自身获得【云栖松】12秒：外功闪避率提高60%\n同时获得【栖松】5秒：每秒回复1点气血\n并驱散自身阳性、混元、阴性、毒性不利效果各两个",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -613,8 +613,8 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "云栖松",
         category: "BUFF",
         durationMs: 12_000,
-        description: "闪避率提高60%",
-        effects: [{ type: "DODGE_NEXT", chance: 0.6 }],
+        description: "外功闪避率提高60%",
+        effects: [{ type: "PHYSICAL_DODGE", chance: 0.6 }],
       },
       {
         buffId: 2402,
@@ -1640,7 +1640,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         breakOnPlay: false,
         description: "闪避率提高20%",
         effects: [
-          { type: "DODGE_NEXT", chance: 0.2 },
+          { type: "DODGE", chance: 0.2 },
         ],
       },
     ],
@@ -1707,7 +1707,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         breakOnPlay: false,
         description: "冲刺期间100%闪避",
         effects: [
-          { type: "DODGE_NEXT", chance: 1.0 },
+          { type: "DODGE", chance: 1.0 },
         ],
       },
     ],
@@ -2605,7 +2605,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   jing_hong_you_long: {
     id: "jing_hong_you_long",
     name: "惊鸿游龙",
-    description: "瞬发，自身施放。获得【惊鸿游龙】10秒：闪避率提高65%，受到内功伤害降低45%",
+    description: "瞬发，自身施放。获得【惊鸿游龙】10秒：外功闪避率提高65%，受到内功伤害降低45%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -2618,9 +2618,9 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "BUFF",
         durationMs: 10_000,
         breakOnPlay: false,
-        description: "闪避率提高65%，受到内功伤害降低45%",
+        description: "外功闪避率提高65%，受到内功伤害降低45%",
         effects: [
-          { type: "DODGE_NEXT", chance: 0.65 },
+          { type: "PHYSICAL_DODGE", chance: 0.65 },
           { type: "DAMAGE_REDUCTION", value: 0.45, damageType: "内功" },
         ],
       },
