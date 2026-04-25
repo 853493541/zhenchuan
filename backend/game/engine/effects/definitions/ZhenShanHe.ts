@@ -85,8 +85,9 @@ export function pulseZhenShanHeTarget(params: {
   target: PlayerState;
   sourceUserId: string;
   now: number;
+  zoneExpiresAt?: number;
 }) {
-  const { state, ability, target, sourceUserId, now } = params;
+  const { state, ability, target, sourceUserId, now, zoneExpiresAt } = params;
 
   if ((target.hp ?? 0) <= 0) {
     return false;
@@ -97,17 +98,26 @@ export function pulseZhenShanHeTarget(params: {
   }
 
   let changed = false;
-  if (!getActiveBuff(target, ZHEN_SHAN_HE_INVULNERABLE_BUFF_ID, now)) {
-    changed = refreshInvulnerableBuff({
+  // Apply zone invulnerable once on entry; lasts until zone expires (enter/exit model)
+  if (!getActiveBuff(target, ZHEN_SHAN_HE_INVULNERABLE_BUFF_ID, now) && !getActiveBuff(target, ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID, now)) {
+    const durationMs = zoneExpiresAt ? Math.max(500, zoneExpiresAt - now) : 10_000;
+    addBuff({
       state,
-      ability,
-      target,
       sourceUserId,
-      now,
-      buffId: ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID,
-      durationMs: ZHEN_SHAN_HE_ZONE_INVULNERABLE_DURATION_MS,
-      description: "位于镇山河区域内时每0.1秒刷新0.1秒无敌效果。",
+      targetUserId: target.userId,
+      ability,
+      buffTarget: target,
+      buff: {
+        buffId: ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID,
+        name: "镇山河",
+        category: "BUFF",
+        durationMs,
+        breakOnPlay: false,
+        description: "位于镇山河区域内时获得无敌，离开区域时消除。",
+        effects: [{ type: "INVULNERABLE" }],
+      },
     });
+    changed = true;
   }
 
   if (!getActiveBuff(target, ZHEN_SHAN_HE_XUANJIAN_BUFF_ID, now)) {

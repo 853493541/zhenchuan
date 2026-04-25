@@ -330,6 +330,19 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     sourceAbilityName: "捉影式",
   });
 
+  // ── 极乐引 pull state ──────────────────────────────────────────────────────
+  buffs.push({
+    buffId: 9203,
+    name: "被拉",
+    category: "DEBUFF",
+    durationMs: 700,
+    breakOnPlay: false,
+    description: "被极乐引拉拽中",
+    effects: [{ type: "PULLED" }],
+    sourceAbilityId: "ji_le_yin",
+    sourceAbilityName: "极乐引",
+  });
+
   // ── 极乐引 post-pull stun ──────────────────────────────────────────────────
   buffs.push({
     buffId: 2608,

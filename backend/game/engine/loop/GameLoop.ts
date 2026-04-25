@@ -35,6 +35,7 @@ import {
   transformExpiredXuanjian,
   ZHEN_SHAN_HE_ABILITY_ID,
   ZHEN_SHAN_HE_XUANJIAN_BUFF_ID,
+  ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID,
 } from "../effects/definitions/ZhenShanHe";
 
 /** 2D segment vs AABB intersection test (for LOS checks). */
@@ -2085,91 +2086,262 @@ export class GameLoop {
       for (const zone of this.state.groundZones) {
         if (now >= zone.expiresAt) continue; // expired — drop it
         activeZones.push(zone);
-        if (now - zone.lastTickAt >= zone.intervalMs) {
-          zone.lastTickAt = now;
+        // Enter/exit zones: check every frame — no interval gate needed
+        if (zone.abilityId === SHENGTAIJI_ZONE_ID || zone.abilityId === "sheng_tai_ji") {
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+          const zoneZ = zone.z ?? 0;
+          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          const isInsideZone = (p: any) => {
+            const dx = p.position.x - zone.x;
+            const dy = p.position.y - zone.y;
+            const inRadius = Math.sqrt(dx * dx + dy * dy) <= zone.radius;
+            const pz = p.position.z ?? 0;
+            const inHeight = Math.abs(pz - zoneZ) <= zoneHeight;
+            return inRadius && inHeight;
+          };
+          const zoneSourceAbilityId = zone.abilityId === SHENGTAIJI_ZONE_ID ? "qionglong_huasheng" : zone.abilityId;
+          const zoneSourceAbilityName = zone.abilityId === SHENGTAIJI_ZONE_ID ? "穹隆化生" : zone.abilityName ?? "生太极";
+          const zoneAbility = (ABILITIES[zoneSourceAbilityId] ?? { id: zoneSourceAbilityId, name: zoneSourceAbilityName }) as any;
 
-          if (zone.abilityId === SHENGTAIJI_ZONE_ID || zone.abilityId === "sheng_tai_ji") {
-            const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
-            const zoneZ = zone.z ?? 0;
-            const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
-            const isInsideZone = (p: any) => {
-              const dx = p.position.x - zone.x;
-              const dy = p.position.y - zone.y;
-              const inRadius = Math.sqrt(dx * dx + dy * dy) <= zone.radius;
-              const pz = p.position.z ?? 0;
-              const inHeight = Math.abs(pz - zoneZ) <= zoneHeight;
-              return inRadius && inHeight;
-            };
-            const zoneSourceAbilityId = zone.abilityId === SHENGTAIJI_ZONE_ID ? "qionglong_huasheng" : zone.abilityId;
-            const zoneSourceAbilityName = zone.abilityId === SHENGTAIJI_ZONE_ID ? "穹隆化生" : zone.abilityName ?? "生太极";
-
-            if (owner && owner.hp > 0 && isInsideZone(owner)) {
-              owner.buffs = owner.buffs.filter(
-                (b: any) =>
-                  !b.effects?.some(
-                    (e: any) => e.type === "CONTROL" || e.type === "ATTACK_LOCK"
-                  )
+          if (owner && owner.hp > 0) {
+            const ownerInside = isInsideZone(owner);
+            const ownerHasBuff = owner.buffs.some((b: any) => b.buffId === SHENGTAIJI_PULSE_BUFF_ID && b.expiresAt > now);
+            if (ownerInside && !ownerHasBuff) {
+              // Cleanse CC on enter
+              const ccRemoved = owner.buffs.filter((b: any) =>
+                b.effects?.some((e: any) => e.type === "CONTROL" || e.type === "ATTACK_LOCK")
               );
-
-              const pulseExpiresAt = now + 3_000;
-              const pulse = owner.buffs.find(
-                (b: any) => b.buffId === SHENGTAIJI_PULSE_BUFF_ID
+              owner.buffs = owner.buffs.filter((b: any) =>
+                !b.effects?.some((e: any) => e.type === "CONTROL" || e.type === "ATTACK_LOCK")
               );
-              if (pulse) {
-                pulse.expiresAt = pulseExpiresAt;
-                pulse.appliedAt = now;
-              } else {
-                owner.buffs.push({
+              for (const removed of ccRemoved) {
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+              }
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: owner.userId,
+                ability: zoneAbility,
+                buffTarget: owner as any,
+                buff: {
                   buffId: SHENGTAIJI_PULSE_BUFF_ID,
                   name: "生太极",
                   category: "BUFF",
-                  effects: [{ type: "CONTROL_IMMUNE" }],
-                  expiresAt: pulseExpiresAt,
-                  appliedAt: now,
+                  durationMs: zone.expiresAt - now,
                   breakOnPlay: false,
-                  sourceUserId: zone.ownerUserId,
-                  sourceAbilityId: zoneSourceAbilityId,
-                  sourceAbilityName: zoneSourceAbilityName,
-                } as any);
+                  effects: [{ type: "CONTROL_IMMUNE" }],
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!ownerInside && ownerHasBuff) {
+              const removed = owner.buffs.find((b: any) => b.buffId === SHENGTAIJI_PULSE_BUFF_ID);
+              owner.buffs = owner.buffs.filter((b: any) => b.buffId !== SHENGTAIJI_PULSE_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
               }
               buffsChanged = true;
             }
+          }
 
-            for (const target of this.state.players) {
-              if (target.userId === zone.ownerUserId) continue;
-              if (target.hp <= 0) continue;
-              if (!isInsideZone(target)) continue;
-
+          for (const target of this.state.players) {
+            if (target.userId === zone.ownerUserId) continue;
+            if (target.hp <= 0) continue;
+            const targetInside = isInsideZone(target);
+            const targetHasBuff = target.buffs.some((b: any) => b.buffId === SHENGTAIJI_ENEMY_SLOW_BUFF_ID && b.expiresAt > now);
+            if (targetInside && !targetHasBuff) {
               const hasRootSlowImmune = target.buffs.some((b: any) =>
                 b.effects?.some((e: any) => e.type === "ROOT_SLOW_IMMUNE")
               );
-              if (hasRootSlowImmune) continue;
-
-              const slowExpiresAt = now + 3_000;
-              const slow = target.buffs.find(
-                (b: any) => b.buffId === SHENGTAIJI_ENEMY_SLOW_BUFF_ID
-              );
-              if (slow) {
-                slow.expiresAt = slowExpiresAt;
-                slow.appliedAt = now;
-              } else {
-                target.buffs.push({
-                  buffId: SHENGTAIJI_ENEMY_SLOW_BUFF_ID,
-                  name: "生太极·迟滞",
-                  category: "DEBUFF",
-                  effects: [{ type: "SLOW", value: 0.4 }],
-                  expiresAt: slowExpiresAt,
-                  appliedAt: now,
-                  breakOnPlay: false,
+              if (!hasRootSlowImmune) {
+                addBuff({
+                  state: this.state,
                   sourceUserId: zone.ownerUserId,
-                  sourceAbilityId: zoneSourceAbilityId,
-                  sourceAbilityName: zoneSourceAbilityName,
-                } as any);
+                  targetUserId: target.userId,
+                  ability: zoneAbility,
+                  buffTarget: target as any,
+                  buff: {
+                    buffId: SHENGTAIJI_ENEMY_SLOW_BUFF_ID,
+                    name: "生太极·迟滞",
+                    category: "DEBUFF",
+                    durationMs: zone.expiresAt - now,
+                    breakOnPlay: false,
+                    effects: [{ type: "SLOW", value: 0.4 }],
+                  } as any,
+                });
+                buffsChanged = true;
+              }
+            } else if (!targetInside && targetHasBuff) {
+              const removed = target.buffs.find((b: any) => b.buffId === SHENGTAIJI_ENEMY_SLOW_BUFF_ID);
+              target.buffs = target.buffs.filter((b: any) => b.buffId !== SHENGTAIJI_ENEMY_SLOW_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: target.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
               }
               buffsChanged = true;
             }
-            continue;
           }
+          continue;
+        }
+
+        // 冲阴阳: owner inside → 内功减伤30%; outside → remove
+        if (zone.abilityId === "chong_yin_yang") {
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+          const zoneZ = zone.z ?? 0;
+          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          if (owner && owner.hp > 0) {
+            const dx = owner.position.x - zone.x;
+            const dy = owner.position.y - zone.y;
+            const inZone = Math.sqrt(dx * dx + dy * dy) <= zone.radius && Math.abs((owner.position.z ?? 0) - zoneZ) <= zoneHeight;
+            const hasBuff = owner.buffs.some((b: any) => b.buffId === CHONG_YIN_YANG_ZONE_BUFF_ID && b.expiresAt > now);
+            if (inZone && !hasBuff) {
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: owner.userId,
+                ability: (ABILITIES["chong_yin_yang"] ?? { id: "chong_yin_yang", name: "冲阴阳" }) as any,
+                buffTarget: owner as any,
+                buff: {
+                  buffId: CHONG_YIN_YANG_ZONE_BUFF_ID,
+                  name: "冲阴阳",
+                  category: "BUFF",
+                  durationMs: zone.expiresAt - now,
+                  effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "内功" }],
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!inZone && hasBuff) {
+              const removed = owner.buffs.find((b: any) => b.buffId === CHONG_YIN_YANG_ZONE_BUFF_ID);
+              owner.buffs = owner.buffs.filter((b: any) => b.buffId !== CHONG_YIN_YANG_ZONE_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+              }
+              buffsChanged = true;
+            }
+          }
+          continue;
+        }
+
+        // 凌太虚: owner inside → 外功减伤30%; outside → remove
+        if (zone.abilityId === "ling_tai_xu") {
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+          const zoneZ = zone.z ?? 0;
+          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          if (owner && owner.hp > 0) {
+            const dx = owner.position.x - zone.x;
+            const dy = owner.position.y - zone.y;
+            const inZone = Math.sqrt(dx * dx + dy * dy) <= zone.radius && Math.abs((owner.position.z ?? 0) - zoneZ) <= zoneHeight;
+            const hasBuff = owner.buffs.some((b: any) => b.buffId === LING_TAI_XU_ZONE_BUFF_ID && b.expiresAt > now);
+            if (inZone && !hasBuff) {
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: owner.userId,
+                ability: (ABILITIES["ling_tai_xu"] ?? { id: "ling_tai_xu", name: "凌太虚" }) as any,
+                buffTarget: owner as any,
+                buff: {
+                  buffId: LING_TAI_XU_ZONE_BUFF_ID,
+                  name: "凌太虚",
+                  category: "BUFF",
+                  durationMs: zone.expiresAt - now,
+                  effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "外功" }],
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!inZone && hasBuff) {
+              const removed = owner.buffs.find((b: any) => b.buffId === LING_TAI_XU_ZONE_BUFF_ID);
+              owner.buffs = owner.buffs.filter((b: any) => b.buffId !== LING_TAI_XU_ZONE_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+              }
+              buffsChanged = true;
+            }
+          }
+          continue;
+        }
+
+        // 吞日月: enemies inside → 封轻功; outside → remove
+        if (zone.abilityId === "tun_ri_yue") {
+          const zoneZ = zone.z ?? 0;
+          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          for (const target of this.state.players) {
+            if (target.userId === zone.ownerUserId) continue;
+            if (target.hp <= 0) continue;
+            const dx = target.position.x - zone.x;
+            const dy = target.position.y - zone.y;
+            const inZone = Math.sqrt(dx * dx + dy * dy) <= zone.radius && Math.abs((target.position.z ?? 0) - zoneZ) <= zoneHeight;
+            const hasBuff = target.buffs.some((b: any) => b.buffId === TUN_RI_YUE_ZONE_BUFF_ID && b.expiresAt > now);
+            if (inZone && !hasBuff) {
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: target.userId,
+                ability: (ABILITIES["tun_ri_yue"] ?? { id: "tun_ri_yue", name: "吞日月" }) as any,
+                buffTarget: target as any,
+                buff: {
+                  buffId: TUN_RI_YUE_ZONE_BUFF_ID,
+                  name: "吞日月",
+                  category: "DEBUFF",
+                  durationMs: zone.expiresAt - now,
+                  effects: [{ type: "QINGGONG_SEAL" }],
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!inZone && hasBuff) {
+              const removed = target.buffs.find((b: any) => b.buffId === TUN_RI_YUE_ZONE_BUFF_ID);
+              target.buffs = target.buffs.filter((b: any) => b.buffId !== TUN_RI_YUE_ZONE_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: target.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+              }
+              buffsChanged = true;
+            }
+          }
+          continue;
+        }
+
+        // Interval-based zones (镇山河 100ms pulse, damage zones)
+        if (now - zone.lastTickAt >= zone.intervalMs) {
+          zone.lastTickAt = now;
 
           if (zone.abilityId === ZHEN_SHAN_HE_ABILITY_ID) {
             const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
@@ -2192,107 +2364,27 @@ export class GameLoop {
                     target: owner as any,
                     sourceUserId: zone.ownerUserId,
                     now,
+                    zoneExpiresAt: zone.expiresAt,
                   })
                 ) {
                   buffsChanged = true;
                 }
-              }
-            }
-            continue;
-          }
-
-          // 冲阴阳 zone: owner in zone → 内功减伤30% buff (buffId 2701)
-          if (zone.abilityId === "chong_yin_yang") {
-            const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
-            const zoneZ = zone.z ?? 0;
-            const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
-            if (owner && owner.hp > 0) {
-              const dx = owner.position.x - zone.x;
-              const dy = owner.position.y - zone.y;
-              const inRadius = Math.sqrt(dx * dx + dy * dy) <= zone.radius;
-              const ownerZ = owner.position.z ?? 0;
-              const inHeight = Math.abs(ownerZ - zoneZ) <= zoneHeight;
-              if (inRadius && inHeight) {
-                addBuff({
-                  state: this.state,
-                  sourceUserId: zone.ownerUserId,
-                  targetUserId: owner.userId,
-                  ability: (ABILITIES["chong_yin_yang"] ?? { id: "chong_yin_yang", name: "冲阴阳" }) as any,
-                  buffTarget: owner as any,
-                  buff: {
-                    buffId: CHONG_YIN_YANG_ZONE_BUFF_ID,
-                    name: "冲阴阳",
-                    category: "BUFF",
-                    durationMs: 2000,
-                    effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "内功" }],
-                  } as any,
-                });
-                buffsChanged = true;
-              }
-            }
-            continue;
-          }
-
-          // 凌太虚 zone: owner in zone → 外功减伤30% buff (buffId 2702)
-          if (zone.abilityId === "ling_tai_xu") {
-            const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
-            const zoneZ = zone.z ?? 0;
-            const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
-            if (owner && owner.hp > 0) {
-              const dx = owner.position.x - zone.x;
-              const dy = owner.position.y - zone.y;
-              const inRadius = Math.sqrt(dx * dx + dy * dy) <= zone.radius;
-              const ownerZ = owner.position.z ?? 0;
-              const inHeight = Math.abs(ownerZ - zoneZ) <= zoneHeight;
-              if (inRadius && inHeight) {
-                addBuff({
-                  state: this.state,
-                  sourceUserId: zone.ownerUserId,
-                  targetUserId: owner.userId,
-                  ability: (ABILITIES["ling_tai_xu"] ?? { id: "ling_tai_xu", name: "凌太虚" }) as any,
-                  buffTarget: owner as any,
-                  buff: {
-                    buffId: LING_TAI_XU_ZONE_BUFF_ID,
-                    name: "凌太虚",
-                    category: "BUFF",
-                    durationMs: 2000,
-                    effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "外功" }],
-                  } as any,
-                });
-                buffsChanged = true;
-              }
-            }
-            continue;
-          }
-
-          // 吞日月 zone: enemies in zone → 封轻功 debuff (buffId 2703)
-          if (zone.abilityId === "tun_ri_yue") {
-            const zoneZ = zone.z ?? 0;
-            const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
-            for (const target of this.state.players) {
-              if (target.userId === zone.ownerUserId) continue;
-              if (target.hp <= 0) continue;
-              const dx = target.position.x - zone.x;
-              const dy = target.position.y - zone.y;
-              const inRadius = Math.sqrt(dx * dx + dy * dy) <= zone.radius;
-              const targetZ = target.position.z ?? 0;
-              const inHeight = Math.abs(targetZ - zoneZ) <= zoneHeight;
-              if (inRadius && inHeight) {
-                addBuff({
-                  state: this.state,
-                  sourceUserId: zone.ownerUserId,
-                  targetUserId: target.userId,
-                  ability: (ABILITIES["tun_ri_yue"] ?? { id: "tun_ri_yue", name: "吞日月" }) as any,
-                  buffTarget: target as any,
-                  buff: {
-                    buffId: TUN_RI_YUE_ZONE_BUFF_ID,
-                    name: "吞日月",
-                    category: "DEBUFF",
-                    durationMs: 2000,
-                    effects: [{ type: "QINGGONG_SEAL" }],
-                  } as any,
-                });
-                buffsChanged = true;
+              } else {
+                // Player left zone: remove zone invulnerable buff if present
+                const idx = owner.buffs.findIndex((b: any) => b.buffId === ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID && b.expiresAt > now);
+                if (idx !== -1) {
+                  const removed = owner.buffs[idx];
+                  owner.buffs.splice(idx, 1);
+                  pushBuffExpired(this.state, {
+                    targetUserId: owner.userId,
+                    buffId: removed.buffId,
+                    buffName: removed.name,
+                    buffCategory: removed.category,
+                    sourceAbilityId: removed.sourceAbilityId,
+                    sourceAbilityName: removed.sourceAbilityName,
+                  });
+                  buffsChanged = true;
+                }
               }
             }
             continue;

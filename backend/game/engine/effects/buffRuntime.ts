@@ -175,6 +175,7 @@ const CONTROL_TYPES_BLOCKED_WHILE_KNOCKED_DOWN = new Set([
   "CONTROL",
   "ATTACK_LOCK",
   "KNOCKED_BACK",
+  "PULLED",
 ]);
 
 function hasRootSlowImmune(target: { buffs: ActiveBuff[] }): boolean {
@@ -236,8 +237,8 @@ function removeStealthOnIncomingControl(params: {
   const { state, targetUserId, target, controlTypes } = params;
   if (controlTypes.length === 0) return;
 
-  const tiandiBreakTypes = ["CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "SILENCE"];
-  const fuguangBreakTypes = ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "SILENCE"];
+  const tiandiBreakTypes = ["CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE"];
+  const fuguangBreakTypes = ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE"];
 
   const removed: ActiveBuff[] = [];
   target.buffs = target.buffs.filter((b) => {
@@ -345,7 +346,7 @@ export function addBuff(params: {
 
   if (
     sourceUserId !== targetUserId &&
-    runtimeBuff.effects.some((e) => e.type === "KNOCKED_BACK") &&
+    runtimeBuff.effects.some((e) => e.type === "KNOCKED_BACK" || e.type === "PULLED") &&
     hasKnockbackImmune(buffTarget)
   ) {
     return;
@@ -471,7 +472,7 @@ export function addBuff(params: {
     }
 
     const incomingHardControl = runtimeBuff.effects.some(
-      (e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK" || e.type === "KNOCKED_BACK"
+      (e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK" || e.type === "KNOCKED_BACK" || e.type === "PULLED"
     );
     if (incomingHardControl) {
       const removedMoheStuns = buffTarget.buffs.filter(isMoheStun);
@@ -628,7 +629,7 @@ export function addBuff(params: {
   // CC that hits a channeling player (with no INTERRUPT_IMMUNE) cancels their channel.
   if ((buffTarget as any).activeChannel) {
     const isCC = runtimeBuff.effects.some((e) =>
-      e.type === "CONTROL" || e.type === "KNOCKED_BACK" || e.type === "ATTACK_LOCK"
+      e.type === "CONTROL" || e.type === "KNOCKED_BACK" || e.type === "PULLED" || e.type === "ATTACK_LOCK"
     );
     const isImmune = buffTarget.buffs.some((b) =>
       b.effects.some((e) => e.type === "INTERRUPT_IMMUNE" || e.type === "CONTROL_IMMUNE")
@@ -642,7 +643,7 @@ export function addBuff(params: {
   if (sourceUserId !== targetUserId) {
     const controlTypes = runtimeBuff.effects
       .map((e) => e.type)
-      .filter((t) => ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "SILENCE"].includes(t));
+      .filter((t) => ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE"].includes(t));
     removeStealthOnIncomingControl({
       state,
       targetUserId,

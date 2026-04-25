@@ -369,7 +369,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   zhuo_ying_shi: {
     id: "zhuo_ying_shi",
     name: "捉影式",
-    description: "需要目标，射程35，运功0.5秒（正读条）\n读条完成后以20单位/秒将目标拉拽最多1秒（最多20单位），并附加【滞影】5秒（封轻功）",
+    description: "需要目标，射程35，运功0.5秒（正读条）\n读条完成后以20单位/秒将目标拉拽至身前1尺（最多35单位），并附加【滞影】5秒（封轻功）",
     type: "CHANNEL",
     target: "OPPONENT",
     range: 35,
@@ -383,7 +383,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelCancelOnOutOfRange: 35,
     channelForward: true,
     channelEffects: [
-      { type: "TIMED_PULL_TARGET_TO_FRONT", value: 20, durationTicks: 30 },
+      { type: "TIMED_PULL_TARGET_TO_FRONT", value: 35, durationTicks: 30 },
     ],
   } as any,
 
@@ -1156,6 +1156,9 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: false,
     allowWhileControlled: true,
+    allowWhileKnockedBack: true,
+    allowWhilePulled: true,
+    allowWhileDisplaced: true,
     effects: [
       {
         type: "PLACE_GROUND_ZONE",
@@ -2569,6 +2572,14 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
     // buffs declared here for editor visibility only — applied manually in JILE_YIN_AOE_PULL handler
     buffs: [
+      {
+        buffId: 9203,
+        name: "被拉",
+        category: "DEBUFF",
+        durationMs: 700,
+        description: "被拉拽中，正向对方飞行",
+        effects: [{ type: "PULLED" }],
+      },
       {
         buffId: 2608,
         name: "极乐引",

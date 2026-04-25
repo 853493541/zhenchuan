@@ -3,6 +3,26 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## DISPLACEMENT Bypass for 镇山河 (2026-05 session)
+
+**Problem**: 镇山河 (`zhen_shan_he`) failed with `ERR_DISPLACEMENT` when cast while being pulled by 捉影式.
+
+**Root cause**: 捉影式's channel completion triggers `TIMED_PULL_TARGET_TO_FRONT` in GameLoop.ts, which calls `applyDashRuntimeBuff` on the *target* with effects `[CONTROL_IMMUNE, KNOCKBACK_IMMUNE, DISPLACEMENT, DASH_TURN_LOCK]`. The `DISPLACEMENT` buff blocks all casting via `validateCastAbility` / `validatePlayAbility` with no bypass mechanism. 镇山河 already had `allowWhileKnockedBack` and `allowWhilePulled` flags, but those are checked *after* DISPLACEMENT.
+
+**Fix**:
+- Added `allowWhileDisplaced?: boolean` to `Ability` interface in `abilities.ts` type.
+- Added `allowWhileDisplaced?: boolean` to `AbilityEffect` interface in `effects.ts`.
+- Replaced the unconditional `throw new Error("ERR_DISPLACEMENT")` in both `validateCastAbility` and `validatePlayAbility` in `validateAction.ts` with a bypass check (same pattern as allowWhileKnockedBack/allowWhilePulled).
+- Added `allowWhileDisplaced: true` to 镇山河 in `abilities.ts`.
+
+**Key lesson**: The `DISPLACEMENT` check in `validateAction.ts` was hardcoded with no bypass — any future ability that should be castable during dashes/pulls needs `allowWhileDisplaced: true`.
+
+## 捉影式 Pull Distance Fix (2026-05 session)
+
+**Problem**: 捉影式 had `range: 35` (cast range) but `value: 20` in `TIMED_PULL_TARGET_TO_FRONT`, meaning a target at 35u away would only be pulled 20u (reaching 15u from caster). Description said "最多20单位" which was inconsistent with the 35u cast range.
+
+**Fix**: Changed `value: 20` → `value: 35` (pull travels full cast range). Updated description accordingly.
+
 ## Ability DamageType Tag System (2026-04-25)
 
 **What was built**: Added a new `damageType` tag group (values: 外功 / 内功 / 无) to the ability editor.
@@ -928,3 +948,21 @@ A typed reduction (`e.damageType === "内功"`) only applies when `params.damage
 2. `kill -9 <pid>` to kill it.
 3. `pm2 reset <name>` to reset restart counter.
 4. `pm2 start <name>` to start fresh.
+
+### Zone buff enter/exit architecture (2026-04-25)
+
+**Problem**: Pulsing a short-duration buff every tick (e.g., `durationMs: 2000` refreshed each 1s) is fragile — there is always a 1s window where the buff appears live but the zone has expired, or the buff stacks unexpectedly with the addBuff refresh path. It also fires addBuff every second for every player in every zone.
+
+**Solution**: Move the 4 new zone ability handlers (生太极, 冲阴阳, 凌太虚, 吞日月) BEFORE the `intervalMs` gate so they run every game loop frame (~33ms). Use pure enter/exit logic:
+- **Enter** (`inZone && !hasBuff`): call `addBuff()` with `durationMs: zone.expiresAt - now` — buff naturally expires when zone does.
+- **Exit** (`!inZone && hasBuff`): filter buff from array + call `pushBuffExpired()`.
+
+For 镇山河 (100ms interval tick — needed for debuff cleanse):
+- Keep inside the 100ms gate.
+- Modified `pulseZhenShanHeTarget` to accept `zoneExpiresAt?: number`.
+- Apply zone invulnerable (buffId 1323) once on entry with `durationMs = zoneExpiresAt - now` instead of refreshing 100ms every tick.
+- Added `else` branch in GameLoop for when player is outside the zone: removes buff 1323 if present.
+
+**CC cleanse on 生太极 entry**: Changed to only run when buff is FIRST applied (the `ownerInside && !ownerHasBuff` branch), not every tick. Proper `pushBuffExpired` events are emitted for each cleansed CC buff.
+
+**生太极 now uses `addBuff()`** instead of direct `owner.buffs.push()` — ensures BUFF_APPLIED event, immunity checks, and status bar visibility.

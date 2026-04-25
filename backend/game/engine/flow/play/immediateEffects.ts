@@ -1061,10 +1061,14 @@ export function applyImmediateEffects(params: {
         break;
       }
 
-      // ─── 极乐引: instant self-cast AOE pull all enemies within range to 1 unit in front ──
+      // ─── 极乐引: AOE pull all enemies within range toward caster using activeDash ───────
       case "JILE_YIN_AOE_PULL": {
         const jileRange = gameplayUnitsToWorldUnits(effect.value ?? 10, state.unitScale);
         const jileStunBuffDef = ability.buffs?.find((b: any) => b.buffId === 2608);
+        const jilePulledBuffDef = ability.buffs?.find((b: any) => b.buffId === 9203);
+        // Pull speed: 20 gameplay units/sec (same as DASH)
+        const PULL_SPEED_WORLD_PER_TICK = gameplayUnitsToWorldUnits(20, state.unitScale) / 30;
+        const STOP_DISTANCE = gameplayUnitsToWorldUnits(1, state.unitScale);
         for (const candidate of state.players as any[]) {
           if (candidate.userId === source.userId) continue;
           if ((candidate.hp ?? 0) <= 0) continue;
@@ -1073,17 +1077,34 @@ export function applyImmediateEffects(params: {
           const cdy = candidate.position.y - source.position.y;
           const cdist = Math.hypot(cdx, cdy);
           if (cdist > jileRange) continue;
-          // Pull to 1 unit away from caster in the direction of the enemy
-          // (so if enemy is behind, they land 1u behind; if in front, 1u in front)
-          const pullDist = gameplayUnitsToWorldUnits(1, state.unitScale);
-          if (cdist > 0.001) {
-            const dirX = cdx / cdist;
-            const dirY = cdy / cdist;
-            candidate.position.x = source.position.x + dirX * pullDist;
-            candidate.position.y = source.position.y + dirY * pullDist;
+          if (cdist <= STOP_DISTANCE) continue; // already close enough
+          // Check knockback immunity (pull = forced movement)
+          if (candidate.buffs?.some((b: any) => b.effects?.some((e: any) => e.type === "KNOCKBACK_IMMUNE"))) continue;
+          const dirX = cdx / cdist;
+          const dirY = cdy / cdist;
+          // Pull toward caster: velocity is negative of direction (toward caster)
+          const travelDist = cdist - STOP_DISTANCE;
+          const ticksNeeded = Math.max(1, Math.ceil(travelDist / PULL_SPEED_WORLD_PER_TICK));
+          const durationMs = Math.ceil(ticksNeeded * (1000 / 30));
+          // Set activeDash on the target flying toward caster
+          candidate.activeDash = {
+            abilityId: "ji_le_yin",
+            vxPerTick: -dirX * PULL_SPEED_WORLD_PER_TICK,
+            vyPerTick: -dirY * PULL_SPEED_WORLD_PER_TICK,
+            ticksRemaining: ticksNeeded,
+          } as any;
+          // Apply PULLED buff (blocks casting during pull; expires naturally)
+          if (jilePulledBuffDef) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: candidate.userId,
+              ability,
+              buffTarget: candidate,
+              buff: { ...jilePulledBuffDef, durationMs },
+            });
           }
-          candidate.position.z = source.position.z ?? 0;
-          // Apply stun buff to enemy (NOT to self — applyAbilityBuffs is excluded for ji_le_yin)
+          // Apply stun immediately — it will still be active after pull ends
           if (jileStunBuffDef) {
             addBuff({
               state,

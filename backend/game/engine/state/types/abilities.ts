@@ -85,9 +85,19 @@ export interface Ability {
   allowWhileControlled?: boolean;
 
   /**
-   * If true, this ability can still be cast while under level-2 knockback / pull control.
+   * If true, this ability can still be cast while under level-2 knockback / push control.
    */
   allowWhileKnockedBack?: boolean;
+
+  /**
+   * If true, this ability can still be cast while being pulled (PULLED effect from enemy).
+   */
+  allowWhilePulled?: boolean;
+
+  /**
+   * If true, this ability can still be cast while being displaced (DISPLACEMENT effect — dashes, pulls).
+   */
+  allowWhileDisplaced?: boolean;
 
   /**
    * If true, this ability's cleanse effect may also remove root and slow.

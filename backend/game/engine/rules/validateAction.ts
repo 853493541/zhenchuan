@@ -240,7 +240,13 @@ export function validateCastAbility(
   }
 
   if (hasEffect(player, "DISPLACEMENT")) {
-    throw new Error("ERR_DISPLACEMENT");
+    const allowsDisplacement =
+      (ability as any).allowWhileDisplaced === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e: any) => e.allowWhileDisplaced === true));
+    if (!allowsDisplacement) {
+      throw new Error("ERR_DISPLACEMENT");
+    }
   }
 
   /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
@@ -251,6 +257,17 @@ export function validateCastAbility(
         ability.effects.some((e: any) => e.allowWhileKnockedBack === true));
     if (!allowsKnockback) {
       throw new Error("ERR_KNOCKED_BACK");
+    }
+  }
+
+  /* ================= PULLED (Level 2 — not removable) ================= */
+  if (hasEffect(player, "PULLED")) {
+    const allowsPulled =
+      (ability as any).allowWhilePulled === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e: any) => e.allowWhilePulled === true));
+    if (!allowsPulled) {
+      throw new Error("ERR_PULLED");
     }
   }
 
@@ -432,7 +449,13 @@ export function validatePlayAbility(
   }
 
   if (hasEffect(player, "DISPLACEMENT")) {
-    throw new Error("ERR_DISPLACEMENT");
+    const allowsDisplacement =
+      (ability as any).allowWhileDisplaced === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e) => (e as any).allowWhileDisplaced === true));
+    if (!allowsDisplacement) {
+      throw new Error("ERR_DISPLACEMENT");
+    }
   }
 
   /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
@@ -444,6 +467,18 @@ export function validatePlayAbility(
         ability.effects.some((e) => (e as any).allowWhileKnockedBack === true));
     if (!allowsKnockback) {
       throw new Error("ERR_KNOCKED_BACK");
+    }
+  }
+
+  /* ================= PULLED (Level 2 — not removable) ================= */
+
+  if (hasEffect(player, "PULLED")) {
+    const allowsPulled =
+      (ability as any).allowWhilePulled === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e) => (e as any).allowWhilePulled === true));
+    if (!allowsPulled) {
+      throw new Error("ERR_PULLED");
     }
   }
 

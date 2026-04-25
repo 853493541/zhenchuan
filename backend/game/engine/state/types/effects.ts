@@ -62,6 +62,7 @@ export type EffectType =
   | "STACK_ON_HIT_GUAN_TI_HEAL"
   | "INSTANT_GUAN_TI_HEAL"
   | "KNOCKED_BACK"
+  | "PULLED"
   | "SPEED_BOOST"
   // Level 0 control (removable by cleanse)
   | "ROOT"
@@ -121,6 +122,8 @@ export interface AbilityEffect {
 
   allowWhileControlled?: boolean;
   allowWhileKnockedBack?: boolean;
+  allowWhilePulled?: boolean;
+  allowWhileDisplaced?: boolean;
   cleanseRootSlow?: boolean;
   applyTo?: TargetType;
 

@@ -64,6 +64,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
 
   /* ================= CONTROL LEVELS ================= */
   KNOCKED_BACK: "DEBUFF",  // Level 2 — NOT removable by cleanse
+  PULLED: "DEBUFF",         // Level 2 — NOT removable by cleanse (being pulled by enemy)
   SPEED_BOOST: "BUFF",
   // Level 0 — removable by cleanse
   ROOT: "DEBUFF",
