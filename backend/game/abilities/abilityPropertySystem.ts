@@ -33,7 +33,10 @@ export const SCHOOL_TAGS = [
 ] as const;
 export type AbilitySchool = (typeof SCHOOL_TAGS)[number];
 
-export type TagGroupId = "rarity" | "school";
+export const DAMAGE_TYPES = ["外功", "内功", "无"] as const;
+export type DamageType = (typeof DAMAGE_TYPES)[number];
+
+export type TagGroupId = "rarity" | "school" | "damageType";
 
 export interface TagGroupDefinition {
   label: string;
@@ -43,6 +46,7 @@ export interface TagGroupDefinition {
 export const TAG_GROUP_DEFINITIONS: Record<TagGroupId, TagGroupDefinition> = {
   rarity: { label: "稀有度", values: ABILITY_RARITIES },
   school: { label: "门派", values: SCHOOL_TAGS },
+  damageType: { label: "伤害类型", values: DAMAGE_TYPES },
 };
 
 export interface AbilityEditorOverrideEntry {
@@ -1003,6 +1007,11 @@ export function buildResolvedAbilities(baseAbilities: AbilityRecord, overrides: 
         if (typeof value !== "number" || !Number.isFinite(value)) continue;
         definition.setValue(nextAbility, value);
       }
+    }
+
+    // Apply damageType tag to the resolved ability object so it is available at runtime
+    if (abilityOverrides?.tags?.damageType) {
+      (nextAbility as any).damageType = abilityOverrides.tags.damageType;
     }
 
     resolvedAbilities[abilityId] = nextAbility;

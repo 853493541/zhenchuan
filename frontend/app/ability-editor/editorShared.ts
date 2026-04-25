@@ -80,7 +80,16 @@ export const SCHOOL_COLOR: Record<AbilitySchool, string> = {
   "通用": "#94a3b8",  // medium gray (visible on both dark/light)
 };
 
-export type TagGroupId = "rarity" | "school";
+export const DAMAGE_TYPES = ["外功", "内功", "无"] as const;
+export type DamageType = (typeof DAMAGE_TYPES)[number];
+
+export const DAMAGE_TYPE_COLOR: Record<DamageType, string> = {
+  "外功": "#ffa94d",  // orange — physical
+  "内功": "#74c0fc",  // blue — magical
+  "无":   "#868e96",  // gray — none
+};
+
+export type TagGroupId = "rarity" | "school" | "damageType";
 
 export interface TagGroupDefinition {
   label: string;
@@ -98,6 +107,11 @@ export const TAG_GROUP_DEFINITIONS: Record<TagGroupId, TagGroupDefinition> = {
     label: "门派",
     values: SCHOOL_TAGS,
     getColor: (v) => SCHOOL_COLOR[v as AbilitySchool],
+  },
+  damageType: {
+    label: "伤害类型",
+    values: DAMAGE_TYPES,
+    getColor: (v) => DAMAGE_TYPE_COLOR[v as DamageType],
   },
 };
 

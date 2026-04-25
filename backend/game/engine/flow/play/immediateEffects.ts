@@ -323,6 +323,7 @@ export function applyImmediateEffects(params: {
             source,
             target: victim,
             base: effect.value ?? 0,
+            damageType: (ability as any).damageType,
           });
           applyDamageToTarget(victim as any, dmg);
 
@@ -409,6 +410,7 @@ export function applyImmediateEffects(params: {
             source,
             target: victim,
             base: effect.value ?? 0,
+            damageType: (ability as any).damageType,
           });
           applyDamageToTarget(victim as any, dmg);
 
@@ -614,6 +616,7 @@ export function applyImmediateEffects(params: {
             source,
             target: victim,
             base: reachDamage,
+            damageType: (ability as any).damageType,
           });
           applyDamageToTarget(victim as any, dmg);
           if (dmg > 0) {
@@ -809,7 +812,7 @@ export function applyImmediateEffects(params: {
           });
           // Deal the remaining damage as a single hit, attributed to the source DoT ability
           if (totalDmg > 0 && !hasDamageImmune(effTarget as any)) {
-            const dmg = resolveScheduledDamage({ source, target: effTarget, base: totalDmg });
+            const dmg = resolveScheduledDamage({ source, target: effTarget, base: totalDmg, damageType: (ability as any).damageType });
             applyDamageToTarget(effTarget as any, dmg);
             if (dmg > 0) {
               state.events.push({
@@ -925,7 +928,7 @@ export function applyImmediateEffects(params: {
         const mult = hasLieRi ? 2 : 1;
 
         const baseDmg = (effect.value ?? 2) * mult;
-        const dmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg });
+        const dmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg, damageType: (ability as any).damageType });
         applyDamageToTarget(effTarget as any, dmg);
         if (dmg > 0) {
           state.events.push({
@@ -972,7 +975,7 @@ export function applyImmediateEffects(params: {
         const mult = hasYinYue ? 2 : 1;
 
         const baseDmg = (effect.value ?? 4) * mult;
-        const dmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg });
+        const dmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg, damageType: (ability as any).damageType });
         applyDamageToTarget(effTarget as any, dmg);
         if (dmg > 0) {
           state.events.push({
@@ -1029,7 +1032,7 @@ export function applyImmediateEffects(params: {
 
         for (const victim of victims) {
           const baseDmg = singleHitBonus ? (effect.value ?? 2) * 2 : (effect.value ?? 2);
-          const dmg = resolveScheduledDamage({ source, target: victim, base: baseDmg });
+          const dmg = resolveScheduledDamage({ source, target: victim, base: baseDmg, damageType: (ability as any).damageType });
           applyDamageToTarget(victim as any, dmg);
           if (dmg > 0) {
             state.events.push({
@@ -1214,7 +1217,7 @@ export function applyImmediateEffects(params: {
             sourceAbilityId: ability.id,
             sourceAbilityName: ability.name,
           });
-          const finalBurst = resolveScheduledDamage({ source, target: effTarget, base: burstDmg });
+          const finalBurst = resolveScheduledDamage({ source, target: effTarget, base: burstDmg, damageType: (ability as any).damageType });
           if (finalBurst > 0 && !hasDamageImmune(effTarget as any)) {
             applyDamageToTarget(effTarget as any, finalBurst);
             state.events.push({
@@ -1241,7 +1244,7 @@ export function applyImmediateEffects(params: {
           }
         } else {
           // Normal hit: 1 damage + apply/stack buff 2614
-          const dmg1 = resolveScheduledDamage({ source, target: effTarget, base: 1 });
+          const dmg1 = resolveScheduledDamage({ source, target: effTarget, base: 1, damageType: (ability as any).damageType });
           if (dmg1 > 0 && !hasDamageImmune(effTarget as any)) {
             applyDamageToTarget(effTarget as any, dmg1);
             state.events.push({
@@ -1272,7 +1275,7 @@ export function applyImmediateEffects(params: {
       // ─── 破风: 2 damage + 破风 debuff + 流血, extra 流血 if CONTROL_IMMUNE ──
       case "PO_FENG_STRIKE": {
         if (!enemyApplied) break;
-        const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: 2 });
+        const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: 2, damageType: (ability as any).damageType });
         if (pfDmg > 0 && !hasDamageImmune(effTarget as any)) {
           applyDamageToTarget(effTarget as any, pfDmg);
           state.events.push({

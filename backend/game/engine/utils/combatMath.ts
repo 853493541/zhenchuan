@@ -12,6 +12,8 @@ export function resolveScheduledDamage(params: {
   base: number;
   /** When provided, DAMAGE_MULTIPLIER effects with restrictToAbilityId are only applied if they match. */
   abilityId?: string;
+  /** When provided, DAMAGE_REDUCTION effects with a damageType filter only apply if they match. */
+  damageType?: string;
 }) {
   let dmg = params.base;
 
@@ -30,8 +32,15 @@ export function resolveScheduledDamage(params: {
     dmg *= Math.max(0, 1 + dmgMultiBonus);
   }
 
-  // DAMAGE REDUCTION (e.g. 风袖低昂)
-  const dr = allEffects(params.target).find((e) => e.type === "DAMAGE_REDUCTION");
+  // DAMAGE REDUCTION (e.g. 惊鸿游龙)
+  // If the effect has a damageType restriction, only apply when incoming damageType matches.
+  const dr = allEffects(params.target).find((e) => {
+    if (e.type !== "DAMAGE_REDUCTION") return false;
+    if ((e as any).damageType) {
+      return (e as any).damageType === params.damageType;
+    }
+    return true;
+  });
   if (dr) dmg *= 1 - (dr.value ?? 0);
 
   // DAMAGE TAKEN INCREASE (e.g. 易伤)

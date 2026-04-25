@@ -11,6 +11,9 @@ import {
   AbilityRarity,
   AbilitySchool,
   BuffEditorSnapshot,
+  DAMAGE_TYPE_COLOR,
+  DAMAGE_TYPES,
+  DamageType,
   RARITY_COLOR,
   SCHOOL_COLOR,
   SCHOOL_TAGS,
@@ -72,14 +75,14 @@ export default function AbilityEditorPage() {
   const [loading, setLoading] = useState(true);
 
   // ── Filter persistence via sessionStorage ────────────────────────────────
-  const FILTER_KEY = "abilityEditorFilters_v1";
+  const FILTER_KEY = "abilityEditorFilters_v2";
   const savedFilters = typeof window !== "undefined"
     ? (() => { try { return JSON.parse(sessionStorage.getItem(FILTER_KEY) ?? "null"); } catch { return null; } })()
     : null;
   const [search, setSearch] = useState<string>(savedFilters?.search ?? "");
   // tagFilters: groupId → "" (all) | "unset" | actual value
   const [tagFilters, setTagFilters] = useState<Record<TagGroupId, string>>(
-    savedFilters?.tagFilters ?? { rarity: "", school: "" }
+    savedFilters?.tagFilters ?? { rarity: "", school: "", damageType: "" }
   );
   // Persist to sessionStorage whenever filters change
   useEffect(() => {
@@ -203,6 +206,19 @@ export default function AbilityEditorPage() {
     return counts;
   }, [snapshot]);
 
+  // Count of abilities per damageType
+  const damageTypeCounts = useMemo(() => {
+    const all = snapshot?.abilities ?? [];
+    const counts: Record<string, number> = { unset: 0 };
+    for (const dt of DAMAGE_TYPES) counts[dt] = 0;
+    for (const a of all) {
+      const dt = (a.tags as any)?.damageType;
+      if (dt && dt in counts) counts[dt]++;
+      else counts.unset++;
+    }
+    return counts;
+  }, [snapshot]);
+
   return (
     <div className={styles.page}>
       <section className={styles.shell}>
@@ -305,6 +321,31 @@ export default function AbilityEditorPage() {
                 })}
               </div>
             </div>
+            {/* 伤害类型 row */}
+            <div className={styles.tagFilterRow}>
+              <span className={styles.rarityFilterLabel}>伤害类型</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                <button type="button" className={styles.rarityFilterBtn}
+                  style={!tagFilters.damageType ? { background: "#544c40", color: "#fff", borderColor: "#544c40", borderRadius: 3 } : { borderRadius: 3 }}
+                  onClick={() => setTagFilters((f) => ({ ...f, damageType: "" }))}
+                >全部</button>
+                <button type="button" className={styles.rarityFilterBtn}
+                  style={{ borderRadius: 3, borderColor: "#999", color: tagFilters.damageType === "unset" ? "#fff" : "#888", background: tagFilters.damageType === "unset" ? "#888" : "transparent" }}
+                  onClick={() => setTagFilters((f) => ({ ...f, damageType: f.damageType === "unset" ? "" : "unset" }))}
+                >未设置 {damageTypeCounts.unset > 0 ? damageTypeCounts.unset : ""}</button>
+                {DAMAGE_TYPES.map((dt) => {
+                  const c = DAMAGE_TYPE_COLOR[dt as DamageType];
+                  const isActive = tagFilters.damageType === dt;
+                  const cnt = damageTypeCounts[dt] ?? 0;
+                  return (
+                    <button key={dt} type="button" className={styles.rarityFilterBtn}
+                      style={{ borderRadius: 3, borderColor: c, color: isActive ? "#111" : c, background: isActive ? c : "transparent", padding: "2px 6px", fontSize: 12 }}
+                      onClick={() => setTagFilters((f) => ({ ...f, damageType: isActive ? "" : dt }))}
+                    >{dt}{cnt > 0 ? <span style={{ fontSize: 9, marginLeft: 3, opacity: 0.75 }}>{cnt}</span> : null}</button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {loading && <div className={styles.statePanel}>正在加载技能属性…</div>}
@@ -393,6 +434,19 @@ export default function AbilityEditorPage() {
                           className={styles.tagBtnsArea}
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                         >
+                          {/* Damage type buttons (single row) */}
+                          <div style={{ display: "flex", gap: 2, marginTop: 2 }}>
+                            {DAMAGE_TYPES.map((dt) => {
+                              const color = DAMAGE_TYPE_COLOR[dt as DamageType];
+                              const isActive = ability.tags?.damageType === dt;
+                              return (
+                                <button key={dt} type="button" className={styles.rarityBtn}
+                                  style={{ borderColor: color, color: isActive ? "#111" : color, background: isActive ? color : "transparent", borderRadius: 3, padding: "1px 5px", fontSize: 11 }}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); void updateTag(ability.id, "damageType", isActive ? null : dt); }}
+                                >{dt}</button>
+                              );
+                            })}
+                          </div>
                           {/* Rarity buttons (single row) */}
                           <div className={styles.rarityBtnsRow}>
                             {ABILITY_RARITIES.map((r) => {

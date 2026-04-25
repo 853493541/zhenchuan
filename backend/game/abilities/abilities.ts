@@ -2605,7 +2605,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   jing_hong_you_long: {
     id: "jing_hong_you_long",
     name: "惊鸿游龙",
-    description: "瞬发，自身施放。获得【惊鸿游龙】10秒：闪避率提高65%，受到伤害降低45%",
+    description: "瞬发，自身施放。获得【惊鸿游龙】10秒：闪避率提高65%，受到内功伤害降低45%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -2618,10 +2618,10 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "BUFF",
         durationMs: 10_000,
         breakOnPlay: false,
-        description: "闪避率提高65%，受到伤害降低45%",
+        description: "闪避率提高65%，受到内功伤害降低45%",
         effects: [
           { type: "DODGE_NEXT", chance: 0.65 },
-          { type: "DAMAGE_REDUCTION", value: 0.45 },
+          { type: "DAMAGE_REDUCTION", value: 0.45, damageType: "内功" },
         ],
       },
     ],

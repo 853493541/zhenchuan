@@ -218,6 +218,12 @@ export interface AbilityEffect {
    * For APPLY_SLOT_DOTS: the ability IDs to check in the caster's ability slot.
    */
   slotAbilityIds?: string[];
+
+  /**
+   * For DAMAGE_REDUCTION: when set, only applies to incoming damage of this type.
+   * Values: "外功" | "内功" | "无"
+   */
+  damageType?: string;
 }
 
 // Fields only used on BuffEffect (not AbilityEffect) are declared below.

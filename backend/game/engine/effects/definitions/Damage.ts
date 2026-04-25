@@ -50,6 +50,7 @@ export function handleDamage(
     target,
     base,
     abilityId: ability.id,
+    damageType: (ability as any).damageType,
   });
 
   if (final > 0) {
