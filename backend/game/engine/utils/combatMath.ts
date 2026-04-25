@@ -32,16 +32,19 @@ export function resolveScheduledDamage(params: {
     dmg *= Math.max(0, 1 + dmgMultiBonus);
   }
 
-  // DAMAGE REDUCTION (e.g. 惊鸿游龙)
-  // If the effect has a damageType restriction, only apply when incoming damageType matches.
-  const dr = allEffects(params.target).find((e) => {
+  // DAMAGE REDUCTION — apply all matching effects (typed or untyped).
+  // A typed effect (e.g. damageType:"内功") only applies when params.damageType matches exactly.
+  // An untyped effect applies to all damage.
+  const matchingReductions = allEffects(params.target).filter((e) => {
     if (e.type !== "DAMAGE_REDUCTION") return false;
     if ((e as any).damageType) {
       return (e as any).damageType === params.damageType;
     }
     return true;
   });
-  if (dr) dmg *= 1 - (dr.value ?? 0);
+  for (const dr of matchingReductions) {
+    dmg *= 1 - (dr.value ?? 0);
+  }
 
   // DAMAGE TAKEN INCREASE (e.g. 易伤)
   const takenInc = allEffects(params.target).find((e) => e.type === "DAMAGE_TAKEN_INCREASE");

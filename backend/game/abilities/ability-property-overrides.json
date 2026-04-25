@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-04-25T01:13:37.389Z",
+  "updatedAt": "2026-04-25T02:17:19.714Z",
   "abilities": {
     "baizu": {
       "tags": {
@@ -685,6 +685,9 @@
       }
     },
     "lin_shi_fei_zhua": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "卓越",
         "school": "通用",

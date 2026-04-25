@@ -886,3 +886,45 @@ the actual redirect logic now lives in onDamageHooks.ts, not Damage.ts.
 - `blocksControlByImmunity(effectType, target)` takes 2 arguments.
 - New EffectTypes must be added to BOTH `effects.ts` (union) AND `categories.ts` (Record<EffectType, string>) or tsc fails with a missing key error.
 - 化蝶 Phase 2 uses `_huaDieP2Done` flag on the player object to prevent retriggering every tick.
+
+## Typed Damage Reduction + Zone Channel Abilities (2026-04-25)
+
+### Architecture: damageType propagation gap
+
+**Problem**: `resolveScheduledDamage` accepts `damageType?: string`, and DAMAGE_REDUCTION buff effects can have a `damageType` field to make them type-specific. However, ALL 13 call sites in `GameLoop.ts` (periodic damage, channel AOE ticks, TIMED_AOE_DAMAGE, dash-on-hit, zone damage, etc.) did NOT pass `damageType`. This meant typed reductions (e.g., 30% 内功减伤 from 冲阴阳) never activated — only damage from `immediateEffects.ts` (instant-cast effects) was type-filtered correctly.
+
+**Fix**: For each `resolveScheduledDamage` call in GameLoop.ts, pass the source ability's damageType:
+- Buff-sourced damage: `damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType`
+- Channel-completion damage: `damageType: (ABILITIES[ch.abilityId] as any)?.damageType`
+- Specific ability landing damage: `damageType: (ABILITIES["ability_id"] as any)?.damageType`
+- Zone damage: `damageType: (ABILITIES[zone.abilityId ?? ""] as any)?.damageType`
+- Dash-on-reach damage: `damageType: (reachAbility as any)?.damageType`
+
+**Same root cause existed before**: 外功闪避 (PHYSICAL_DODGE) had the same gap and was fixed in a prior session for GameLoop damage paths.
+
+### Architecture: DAMAGE_REDUCTION stacking
+
+**Problem**: `combatMath.ts` used `.find()` to get ONE DAMAGE_REDUCTION effect, then `dmg *= 1 - value`. This means only the FIRST matching reduction applied; stacked reductions were silently ignored.
+
+**Fix**: Changed to `.filter()` + loop — all matching reductions apply multiplicatively:
+```typescript
+const matchingReductions = allEffects(params.target).filter(...);
+for (const dr of matchingReductions) { dmg *= 1 - (dr.value ?? 0); }
+```
+A typed reduction (`e.damageType === "内功"`) only applies when `params.damageType` matches exactly. An untyped reduction applies to all damage.
+
+### Zone channel buffs: use addBuff()
+
+**Problem**: 冲阴阳/凌太虚/吞日月 zone pulse handlers pushed buffs directly to `player.buffs` (bypassing `addBuff()`), so BUFF_APPLIED events weren't emitted and status bar didn't show them.
+
+**Fix**: Replaced `owner.buffs.push({...})` with `addBuff({state, sourceUserId, targetUserId, ability: ABILITIES["chong_yin_yang"], buffTarget: owner, buff: { buffId, name, category, durationMs: 2000, effects }})`. The `addBuff` function handles refresh (same buffId → old removed, new added), immunity checks, and BUFF_APPLIED event emission. Zone pulsed every 1s with `durationMs: 2000` keeps the buff active as long as owner stays in zone.
+
+### PM2 restart loop deadlock
+
+**Problem**: After many rapid restarts (>15 in a short window), PM2 enters "errored" state and stops retrying. Even after killing port-occupying processes, PM2 won't restart. `lsof -ti:PORT` may miss processes that only show in `ss -tlnp`.
+
+**Fix**: 
+1. Use `ss -tlnp | grep PORT` to find hidden listening processes (lsof missed a `next-server` process).
+2. `kill -9 <pid>` to kill it.
+3. `pm2 reset <name>` to reset restart counter.
+4. `pm2 start <name>` to start fresh.

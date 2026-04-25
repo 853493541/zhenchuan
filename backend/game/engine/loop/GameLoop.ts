@@ -368,6 +368,9 @@ function applyType3KnockbackControl(params: {
 const SHENGTAIJI_ZONE_ID = "qionglong_huasheng_zone";
 const SHENGTAIJI_PULSE_BUFF_ID = 1310;
 const SHENGTAIJI_ENEMY_SLOW_BUFF_ID = 1311;
+const CHONG_YIN_YANG_ZONE_BUFF_ID = 2701;
+const LING_TAI_XU_ZONE_BUFF_ID = 2702;
+const TUN_RI_YUE_ZONE_BUFF_ID = 2703;
 
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
@@ -651,6 +654,7 @@ export class GameLoop {
               source: player,
               target: reachTarget,
               base: reachDamage,
+              damageType: (reachAbility as any)?.damageType,
             });
             if (finalDamage > 0) {
               const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(
@@ -774,7 +778,7 @@ export class GameLoop {
                 buff: stunBuff,
               });
               // 1 impact damage on landing
-              const hdDmg = resolveScheduledDamage({ source: player, target: opp, base: 1 });
+              const hdDmg = resolveScheduledDamage({ source: player, target: opp, base: 1, damageType: (ABILITIES["han_di"] as any)?.damageType });
               if (hdDmg > 0) applyDamageToTarget(opp, hdDmg);
             }
             movementStateChanged = true;
@@ -794,7 +798,7 @@ export class GameLoop {
             const ydx = opp.position.x - player.position.x;
             const ydy = opp.position.y - player.position.y;
             if (Math.hypot(ydx, ydy) > landRadius) continue;
-            const dmg = resolveScheduledDamage({ source: player, target: opp, base: 15 });
+            const dmg = resolveScheduledDamage({ source: player, target: opp, base: 15, damageType: (ABILITIES["yue_chao_zhan_bo"] as any)?.damageType });
             applyDamageToTarget(opp, dmg);
             if (dmg > 0) {
               this.state.events.push({
@@ -855,7 +859,7 @@ export class GameLoop {
             const dist = Math.hypot(hdx, hdy);
             if (dist > outerRadius) continue;
             // Base 2 damage for all within 10u
-            const baseDmg = resolveScheduledDamage({ source: player, target: opp, base: 2 });
+            const baseDmg = resolveScheduledDamage({ source: player, target: opp, base: 2, damageType: (ABILITIES["he_gui_gu_shan"] as any)?.damageType });
             if (baseDmg > 0) {
               applyDamageToTarget(opp, baseDmg);
               this.state.events.push({
@@ -867,7 +871,7 @@ export class GameLoop {
             }
             // Extra 2 damage for within 4u
             if (dist <= innerRadius) {
-              const extraDmg = resolveScheduledDamage({ source: player, target: opp, base: 2 });
+              const extraDmg = resolveScheduledDamage({ source: player, target: opp, base: 2, damageType: (ABILITIES["he_gui_gu_shan"] as any)?.damageType });
               if (extraDmg > 0) {
                 applyDamageToTarget(opp, extraDmg);
                 this.state.events.push({
@@ -1146,7 +1150,7 @@ export class GameLoop {
                   } as any);
                   continue;
                 }
-                const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
+                const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0, damageType: (ABILITIES[ch.abilityId] as any)?.damageType });
                 if (dmg > 0) {
                   const { adjustedDamage: adjTimed, redirectPlayer: rtTimed, redirectAmt: raTimed } =
                     preCheckRedirect(this.state, target as any, dmg);
@@ -1181,7 +1185,7 @@ export class GameLoop {
               const dist = calculateDistance(player.position, target.position, storedUnitScale);
               if (dist > range || target.hp <= 0) continue;
               if (player.userId !== target.userId && blocksEnemyTargeting(target as any)) continue;
-              const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
+              const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0, damageType: (ABILITIES[ch.abilityId] as any)?.damageType });
               applyDamageToTarget(target as any, dmg);
               if (dmg > 0) {
                 this.state.events.push({
@@ -1605,6 +1609,7 @@ export class GameLoop {
                   source: opp,
                   target: player,
                   base: (e.value ?? 0) * stackMult,
+                  damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
                 });
                 if (dmg > 0) {
                   const { adjustedDamage: adjPeri, redirectPlayer: rtPeri, redirectAmt: raPeri } =
@@ -1727,6 +1732,7 @@ export class GameLoop {
                     source: player,
                     target: opp,
                     base: e.value ?? 0,
+                    damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
                   });
                   if (dmg > 0) {
                     const { adjustedDamage: adjAoe, redirectPlayer: rtAoe, redirectAmt: raAoe } =
@@ -1843,6 +1849,7 @@ export class GameLoop {
                 source: sourcePlayer,
                 target: player,
                 base: e.value ?? 0,
+                damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
               });
               applyDamageToTarget(player as any, dmg);
               if (dmg > 0) {
@@ -1904,6 +1911,7 @@ export class GameLoop {
               source: player,
               target: opp,
               base: e.value ?? 0,
+              damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
             });
             applyDamageToTarget(opp as any, dmg);
 
@@ -2080,7 +2088,7 @@ export class GameLoop {
         if (now - zone.lastTickAt >= zone.intervalMs) {
           zone.lastTickAt = now;
 
-          if (zone.abilityId === SHENGTAIJI_ZONE_ID) {
+          if (zone.abilityId === SHENGTAIJI_ZONE_ID || zone.abilityId === "sheng_tai_ji") {
             const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
             const zoneZ = zone.z ?? 0;
             const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
@@ -2092,6 +2100,8 @@ export class GameLoop {
               const inHeight = Math.abs(pz - zoneZ) <= zoneHeight;
               return inRadius && inHeight;
             };
+            const zoneSourceAbilityId = zone.abilityId === SHENGTAIJI_ZONE_ID ? "qionglong_huasheng" : zone.abilityId;
+            const zoneSourceAbilityName = zone.abilityId === SHENGTAIJI_ZONE_ID ? "穹隆化生" : zone.abilityName ?? "生太极";
 
             if (owner && owner.hp > 0 && isInsideZone(owner)) {
               owner.buffs = owner.buffs.filter(
@@ -2103,9 +2113,7 @@ export class GameLoop {
 
               const pulseExpiresAt = now + 3_000;
               const pulse = owner.buffs.find(
-                (b: any) =>
-                  b.buffId === SHENGTAIJI_PULSE_BUFF_ID &&
-                  b.sourceAbilityId === "qionglong_huasheng"
+                (b: any) => b.buffId === SHENGTAIJI_PULSE_BUFF_ID
               );
               if (pulse) {
                 pulse.expiresAt = pulseExpiresAt;
@@ -2113,15 +2121,15 @@ export class GameLoop {
               } else {
                 owner.buffs.push({
                   buffId: SHENGTAIJI_PULSE_BUFF_ID,
-                  name: "生太极·护体",
+                  name: "生太极",
                   category: "BUFF",
                   effects: [{ type: "CONTROL_IMMUNE" }],
                   expiresAt: pulseExpiresAt,
                   appliedAt: now,
                   breakOnPlay: false,
                   sourceUserId: zone.ownerUserId,
-                  sourceAbilityId: "qionglong_huasheng",
-                  sourceAbilityName: "穹隆化生",
+                  sourceAbilityId: zoneSourceAbilityId,
+                  sourceAbilityName: zoneSourceAbilityName,
                 } as any);
               }
               buffsChanged = true;
@@ -2139,9 +2147,7 @@ export class GameLoop {
 
               const slowExpiresAt = now + 3_000;
               const slow = target.buffs.find(
-                (b: any) =>
-                  b.buffId === SHENGTAIJI_ENEMY_SLOW_BUFF_ID &&
-                  b.sourceAbilityId === "qionglong_huasheng"
+                (b: any) => b.buffId === SHENGTAIJI_ENEMY_SLOW_BUFF_ID
               );
               if (slow) {
                 slow.expiresAt = slowExpiresAt;
@@ -2156,8 +2162,8 @@ export class GameLoop {
                   appliedAt: now,
                   breakOnPlay: false,
                   sourceUserId: zone.ownerUserId,
-                  sourceAbilityId: "qionglong_huasheng",
-                  sourceAbilityName: "穹隆化生",
+                  sourceAbilityId: zoneSourceAbilityId,
+                  sourceAbilityName: zoneSourceAbilityName,
                 } as any);
               }
               buffsChanged = true;
@@ -2190,6 +2196,103 @@ export class GameLoop {
                 ) {
                   buffsChanged = true;
                 }
+              }
+            }
+            continue;
+          }
+
+          // 冲阴阳 zone: owner in zone → 内功减伤30% buff (buffId 2701)
+          if (zone.abilityId === "chong_yin_yang") {
+            const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+            const zoneZ = zone.z ?? 0;
+            const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+            if (owner && owner.hp > 0) {
+              const dx = owner.position.x - zone.x;
+              const dy = owner.position.y - zone.y;
+              const inRadius = Math.sqrt(dx * dx + dy * dy) <= zone.radius;
+              const ownerZ = owner.position.z ?? 0;
+              const inHeight = Math.abs(ownerZ - zoneZ) <= zoneHeight;
+              if (inRadius && inHeight) {
+                addBuff({
+                  state: this.state,
+                  sourceUserId: zone.ownerUserId,
+                  targetUserId: owner.userId,
+                  ability: (ABILITIES["chong_yin_yang"] ?? { id: "chong_yin_yang", name: "冲阴阳" }) as any,
+                  buffTarget: owner as any,
+                  buff: {
+                    buffId: CHONG_YIN_YANG_ZONE_BUFF_ID,
+                    name: "冲阴阳",
+                    category: "BUFF",
+                    durationMs: 2000,
+                    effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "内功" }],
+                  } as any,
+                });
+                buffsChanged = true;
+              }
+            }
+            continue;
+          }
+
+          // 凌太虚 zone: owner in zone → 外功减伤30% buff (buffId 2702)
+          if (zone.abilityId === "ling_tai_xu") {
+            const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+            const zoneZ = zone.z ?? 0;
+            const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+            if (owner && owner.hp > 0) {
+              const dx = owner.position.x - zone.x;
+              const dy = owner.position.y - zone.y;
+              const inRadius = Math.sqrt(dx * dx + dy * dy) <= zone.radius;
+              const ownerZ = owner.position.z ?? 0;
+              const inHeight = Math.abs(ownerZ - zoneZ) <= zoneHeight;
+              if (inRadius && inHeight) {
+                addBuff({
+                  state: this.state,
+                  sourceUserId: zone.ownerUserId,
+                  targetUserId: owner.userId,
+                  ability: (ABILITIES["ling_tai_xu"] ?? { id: "ling_tai_xu", name: "凌太虚" }) as any,
+                  buffTarget: owner as any,
+                  buff: {
+                    buffId: LING_TAI_XU_ZONE_BUFF_ID,
+                    name: "凌太虚",
+                    category: "BUFF",
+                    durationMs: 2000,
+                    effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "外功" }],
+                  } as any,
+                });
+                buffsChanged = true;
+              }
+            }
+            continue;
+          }
+
+          // 吞日月 zone: enemies in zone → 封轻功 debuff (buffId 2703)
+          if (zone.abilityId === "tun_ri_yue") {
+            const zoneZ = zone.z ?? 0;
+            const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+            for (const target of this.state.players) {
+              if (target.userId === zone.ownerUserId) continue;
+              if (target.hp <= 0) continue;
+              const dx = target.position.x - zone.x;
+              const dy = target.position.y - zone.y;
+              const inRadius = Math.sqrt(dx * dx + dy * dy) <= zone.radius;
+              const targetZ = target.position.z ?? 0;
+              const inHeight = Math.abs(targetZ - zoneZ) <= zoneHeight;
+              if (inRadius && inHeight) {
+                addBuff({
+                  state: this.state,
+                  sourceUserId: zone.ownerUserId,
+                  targetUserId: target.userId,
+                  ability: (ABILITIES["tun_ri_yue"] ?? { id: "tun_ri_yue", name: "吞日月" }) as any,
+                  buffTarget: target as any,
+                  buff: {
+                    buffId: TUN_RI_YUE_ZONE_BUFF_ID,
+                    name: "吞日月",
+                    category: "DEBUFF",
+                    durationMs: 2000,
+                    effects: [{ type: "QINGGONG_SEAL" }],
+                  } as any,
+                });
+                buffsChanged = true;
               }
             }
             continue;
@@ -2234,6 +2337,7 @@ export class GameLoop {
               source: owner ?? target,
               target,
               base: zone.damagePerInterval,
+              damageType: (ABILITIES[zone.abilityId ?? ""] as any)?.damageType,
             });
             if (dmg > 0) {
               const { adjustedDamage: adjZone, redirectPlayer: rtZone, redirectAmt: raZone } =

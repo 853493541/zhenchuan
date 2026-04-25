@@ -231,7 +231,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
 
   buffs.push({
     buffId: 1310,
-    name: "生太极·护体",
+    name: "生太极",
     category: "BUFF",
     durationMs: 3_000,
     breakOnPlay: false,
@@ -451,6 +451,45 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
     sourceAbilityId: "po_feng",
     sourceAbilityName: "破风",
+  });
+
+  // ── 冲阴阳 zone buff (owner inside zone → 内功减伤30%) ─────────────────────
+  buffs.push({
+    buffId: 2701,
+    name: "冲阴阳",
+    category: "BUFF",
+    durationMs: 2_000,
+    breakOnPlay: false,
+    description: "内功伤害减少30%",
+    effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "内功" } as any],
+    sourceAbilityId: "chong_yin_yang",
+    sourceAbilityName: "冲阴阳",
+  });
+
+  // ── 凌太虚 zone buff (owner inside zone → 外功减伤30%) ─────────────────────
+  buffs.push({
+    buffId: 2702,
+    name: "凌太虚",
+    category: "BUFF",
+    durationMs: 2_000,
+    breakOnPlay: false,
+    description: "外功伤害减少30%",
+    effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "外功" } as any],
+    sourceAbilityId: "ling_tai_xu",
+    sourceAbilityName: "凌太虚",
+  });
+
+  // ── 吞日月 zone debuff (enemies inside zone → 封轻功) ─────────────────────
+  buffs.push({
+    buffId: 2703,
+    name: "吞日月",
+    category: "DEBUFF",
+    durationMs: 2_000,
+    breakOnPlay: false,
+    description: "封印轻功，无法跳跃或腾空",
+    effects: [{ type: "QINGGONG_SEAL" }],
+    sourceAbilityId: "tun_ri_yue",
+    sourceAbilityName: "吞日月",
   });
 
   for (const buff of buffs) {

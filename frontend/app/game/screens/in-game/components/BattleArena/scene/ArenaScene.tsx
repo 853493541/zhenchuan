@@ -550,23 +550,28 @@ export default function ArenaScene({
       {/* Ground damage zones (e.g. 狂龙乱舞 雷云) */}
       {(groundZones ?? []).map(zone => {
         const isBaizuMarker = zone.abilityId === 'baizu_marker';
-        const isShengTaiji = zone.abilityId === 'qionglong_huasheng_zone';
+        const isShengTaiji = zone.abilityId === 'qionglong_huasheng_zone' || zone.abilityId === 'sheng_tai_ji';
         const isKuanglong = zone.abilityId === 'kuang_long_luan_wu';
         const isZhenShanHe = zone.abilityId === 'zhen_shan_he';
+        const isChongYinYang = zone.abilityId === 'chong_yin_yang';
+        const isLingTaiXu = zone.abilityId === 'ling_tai_xu';
+        const isTunRiYue = zone.abilityId === 'tun_ri_yue';
         const isOwn = zone.ownerUserId === me.userId;
         const color = isBaizuMarker
           ? (isOwn ? '#b06cff' : '#ff3333')
-          : isShengTaiji
-          ? (isOwn ? '#4488ff' : '#ff3333')
-          : isZhenShanHe
-          ? (isOwn ? '#f0c44f' : '#ff8a4b')
           : (isOwn ? '#4488ff' : '#ff3333');
         const baseLabel = isBaizuMarker
           ? '百足'
           : isZhenShanHe
           ? '镇山河'
+          : isChongYinYang
+          ? '冲阴阳'
+          : isLingTaiXu
+          ? '凌太虚'
+          : isTunRiYue
+          ? '吞日月'
           : (zone.abilityName ?? '雷云');
-        const showOwnTimer = isOwn && (isShengTaiji || isKuanglong || isZhenShanHe);
+        const showOwnTimer = isOwn && (isShengTaiji || isKuanglong || isZhenShanHe || isChongYinYang || isLingTaiXu || isTunRiYue);
         const secondsLeft = Math.max(1, Math.ceil((zone.expiresAt - nowMs) / 1000));
         const label = showOwnTimer ? `${baseLabel} · ${secondsLeft}` : baseLabel;
         return (
