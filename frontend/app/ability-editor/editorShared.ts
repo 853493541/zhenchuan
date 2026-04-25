@@ -123,6 +123,7 @@ export type AbilityEditorAbility = {
   target: "SELF" | "OPPONENT";
   hasOverrides: boolean;
   tags: Record<string, string>;
+  isProjectile: boolean;
   stats: AbilityEditorStat[];
   activePropertyIds: string[];
   availablePropertyIds: string[];

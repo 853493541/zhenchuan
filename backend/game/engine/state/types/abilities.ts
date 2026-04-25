@@ -132,6 +132,12 @@ export interface Ability {
   };
 
   /**
+   * If true, this ability fires a physical projectile that travels to the target.
+   * Players with PROJECTILE_IMMUNE buff will not take damage from such abilities.
+   */
+  isProjectile?: boolean;
+
+  /**
    * If true this ability is a common movement ability given to every player
    * automatically. It will NOT appear in the draft shop.
    */

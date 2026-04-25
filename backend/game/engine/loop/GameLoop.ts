@@ -1138,6 +1138,19 @@ export class GameLoop {
                   channelEffectDodged = true;
                   continue;
                 }
+                // PROJECTILE_IMMUNE: block channel-completion damage from projectile abilities
+                if (
+                  player.userId !== target.userId &&
+                  (ABILITIES[ch.abilityId] as any)?.isProjectile === true &&
+                  (target.buffs as any[]).some(
+                    (b: any) =>
+                      b.effects.some((ef: any) => ef.type === "PROJECTILE_IMMUNE") &&
+                      b.expiresAt > chNow
+                  )
+                ) {
+                  channelEffectDodged = true;
+                  continue;
+                }
                 // Dodge check: if target has DODGE (or PHYSICAL_DODGE for 外功), the whole channel completion misses
                 if (player.userId !== target.userId && shouldDodgeForAbility(target as any, (ABILITIES[ch.abilityId] as any)?.damageType)) {
                   channelEffectDodged = true;
@@ -1186,6 +1199,16 @@ export class GameLoop {
               const dist = calculateDistance(player.position, target.position, storedUnitScale);
               if (dist > range || target.hp <= 0) continue;
               if (player.userId !== target.userId && blocksEnemyTargeting(target as any)) continue;
+              // PROJECTILE_IMMUNE: block bonus channel-completion damage from projectile abilities
+              if (
+                player.userId !== target.userId &&
+                (ABILITIES[ch.abilityId] as any)?.isProjectile === true &&
+                (target.buffs as any[]).some(
+                  (b: any) =>
+                    b.effects.some((ef: any) => ef.type === "PROJECTILE_IMMUNE") &&
+                    b.expiresAt > chNow
+                )
+              ) continue;
               const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0, damageType: (ABILITIES[ch.abilityId] as any)?.damageType });
               applyDamageToTarget(target as any, dmg);
               if (dmg > 0) {
@@ -1761,6 +1784,52 @@ export class GameLoop {
                   }
                   buffsChanged = true;
                 }
+              } else if (e.type === "CHANNEL_AOE_TICK_DAMAGE") {
+                // 斩无常: AOE damage to enemies within range every tick
+                const dmgRange = e.range ?? 4;
+                const dmgVal = e.value ?? 1;
+                const dist = calculateDistance(player.position, opp.position, storedUnitScale);
+                if (dist <= gameplayUnitsToWorldUnits(dmgRange, storedUnitScale) && opp.hp > 0) {
+                  const dmgResult = applyDamageToTarget(opp as any, dmgVal);
+                  const dmgDealt = dmgResult.hpDamage + dmgResult.shieldAbsorbed;
+                  this.state.events.push({
+                    id: randomUUID(), timestamp: now, turn: this.state.turn,
+                    type: "DAMAGE",
+                    actorUserId: player.userId,
+                    targetUserId: opp.userId,
+                    abilityId: buff.sourceAbilityId,
+                    abilityName: buff.sourceAbilityName ?? buff.name,
+                    effectType: "CHANNEL_AOE_TICK_DAMAGE",
+                    value: dmgDealt,
+                  });
+                }
+                buffsChanged = true;
+              } else if (e.type === "YING_TIAN_SHIELD") {
+                // 应天授命: every 1s, settle accumulated shield-absorbed damage (capped at 20% maxHp) as true damage
+                const yMaxHp = player.maxHp ?? 100;
+                const accum: number = (buff as any).yingTianAccum ?? 0;
+                const cap = yMaxHp * 0.2;
+                const settle = Math.min(accum, cap);
+                (buff as any).yingTianAccum = 0;
+                if (settle > 0) {
+                  // True damage — bypass DR and shields
+                  const preHp = player.hp;
+                  player.hp = Math.max(0, player.hp - settle);
+                  const settledHpDmg = preHp - player.hp;
+                  if (settledHpDmg > 0) {
+                    this.state.events.push({
+                      id: randomUUID(), timestamp: now, turn: this.state.turn,
+                      type: "DAMAGE",
+                      actorUserId: buff.sourceUserId ?? player.userId,
+                      targetUserId: player.userId,
+                      abilityId: buff.sourceAbilityId,
+                      abilityName: buff.sourceAbilityName ?? buff.name,
+                      effectType: "YING_TIAN_SHIELD",
+                      value: settledHpDmg,
+                    });
+                  }
+                  buffsChanged = true;
+                }
               }
             }
           }
@@ -2044,6 +2113,29 @@ export class GameLoop {
       }
       player.buffs = player.buffs.filter((b) => now < b.expiresAt);
       if (player.buffs.length !== before) buffsChanged = true;
+
+      // 无相诀 natural-expire check: if buff 2710 expired naturally AND player hp < 10%, 贯体 heal 50%
+      const wuxiangExpired = naturallyExpired.filter((b) => b.buffId === 2710);
+      for (const _b of wuxiangExpired) {
+        const wxMaxHp = player.maxHp ?? 100;
+        if (player.hp < wxMaxHp * 0.1) {
+          const wxHeal = Math.floor(wxMaxHp * 0.5);
+          const wxApplied = applyHealToTarget(player as any, wxHeal);
+          if (wxApplied > 0) {
+            this.state.events.push({
+              id: randomUUID(), timestamp: now, turn: this.state.turn,
+              type: "HEAL",
+              actorUserId: player.userId,
+              targetUserId: player.userId,
+              abilityId: "wu_xiang_jue",
+              abilityName: "无相诀（贯体）",
+              effectType: "DAMAGE_REDUCTION_HP_SCALING",
+              value: wxApplied,
+            });
+            buffsChanged = true;
+          }
+        }
+      }
     });
 
     // 1d. 毒圈 — poison zone damage (arena mode only, 1x per second)
@@ -2570,6 +2662,45 @@ export class GameLoop {
               break; // one stack proc per hit per buff
             }
           }
+        }
+
+        // 应天授命 (YING_TIAN_SHIELD): on each hit, accumulate damage and heal 6% of lost HP
+        for (const ytBuff of targetPlayer.buffs) {
+          const ytEffect = ytBuff.effects.find((e) => e.type === "YING_TIAN_SHIELD");
+          if (!ytEffect) continue;
+          // Accumulate this tick's damage for the periodic settle
+          let tickDmg = 0;
+          for (const evt of thisTickEvents) {
+            if (evt.type === "DAMAGE" && evt.targetUserId === targetId && (evt.value ?? 0) > 0 &&
+                evt.effectType !== "YING_TIAN_SHIELD") {
+              tickDmg += evt.value ?? 0;
+            }
+          }
+          if (tickDmg > 0) {
+            (ytBuff as any).yingTianAccum = ((ytBuff as any).yingTianAccum ?? 0) + tickDmg;
+          }
+          // Heal 6% of lost HP (贯体)
+          const ytMaxHp = targetPlayer.maxHp ?? 100;
+          const ytLostHp = ytMaxHp - targetPlayer.hp;
+          if (ytLostHp > 0) {
+            const ytHealPct = ytEffect.value ?? 0.06;
+            const ytHealAmt = Math.floor(ytLostHp * ytHealPct);
+            const ytApplied = applyHealToTarget(targetPlayer as any, ytHealAmt);
+            if (ytApplied > 0) {
+              this.state.events.push({
+                id: randomUUID(), timestamp: now, turn: this.state.turn,
+                type: "HEAL",
+                actorUserId: targetId,
+                targetUserId: targetId,
+                abilityId: ytBuff.sourceAbilityId,
+                abilityName: `${ytBuff.sourceAbilityName ?? ytBuff.name}（贯体）`,
+                effectType: "YING_TIAN_SHIELD",
+                value: ytApplied,
+              });
+              buffsChanged = true;
+            }
+          }
+          break; // only proc once per hit event (one 应天授命 buff)
         }
       }
       this.stackProcScanIndex = this.state.events.length;

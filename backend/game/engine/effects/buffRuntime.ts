@@ -584,6 +584,10 @@ export function addBuff(params: {
     .filter((e) => e.type === "SHIELD")
     .reduce((sum, e) => sum + (e.value ?? 0), 0);
 
+  // 应天授命: YING_TIAN_SHIELD provides a massive internal shield for damage absorption
+  const hasYingTianShield = runtimeBuff.effects.some((e) => e.type === "YING_TIAN_SHIELD");
+  const effectiveShield = hasYingTianShield ? 999_999_999 : linkedShield;
+
   const active: ActiveBuff = {
     buffId: runtimeBuff.buffId,
     name: runtimeBuff.name,
@@ -614,7 +618,7 @@ export function addBuff(params: {
     stacks: runtimeBuff.initialStacks,
     maxStacks: runtimeBuff.maxStacks,
     procCooldownMs: runtimeBuff.procCooldownMs,
-    shieldAmount: linkedShield > 0 ? linkedShield : undefined,
+    shieldAmount: effectiveShield > 0 ? effectiveShield : undefined,
 
     sourceAbilityId: ability.id,
     sourceAbilityName: ability.name,
@@ -622,8 +626,8 @@ export function addBuff(params: {
 
   buffTarget.buffs.push(active);
 
-  if (linkedShield > 0) {
-    addShieldToTarget(buffTarget as any, linkedShield);
+  if (effectiveShield > 0) {
+    addShieldToTarget(buffTarget as any, effectiveShield);
   }
 
   // CC that hits a channeling player (with no INTERRUPT_IMMUNE) cancels their channel.

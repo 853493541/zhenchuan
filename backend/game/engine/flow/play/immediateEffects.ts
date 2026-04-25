@@ -25,6 +25,7 @@ import { getGroundHeightForMap, type MapContext } from "../../loop/movement";
 import { loadBuffEditorOverrides } from "../../../abilities/buffEditorOverrides";
 import { ABILITIES } from "../../../abilities/abilities";
 import { applyDashRuntimeBuff, DASH_CC_IMMUNE_BUFF_ID } from "../../effects/definitions/DirectionalDash";
+import { processOnDamageTaken, preCheckRedirect } from "../../effects/onDamageHooks";
 
 const WUFANG_ROOT_BUFF_ID = 1330;
 const WUFANG_HIT_PROTECT_BUFF_ID = 1331;
@@ -113,6 +114,19 @@ export function applyImmediateEffects(params: {
     const enemyApplied = isEnemyEffect(source, effTarget, effect);
 
     if (shouldSkipDueToDodge(abilityDodged, enemyApplied)) continue;
+
+    // PROJECTILE_IMMUNE: skip all enemy-targeted effects from projectile abilities
+    if (
+      enemyApplied &&
+      (ability as any).isProjectile === true &&
+      effTarget.buffs.some(
+        (b: any) =>
+          b.effects.some((e: any) => e.type === "PROJECTILE_IMMUNE") &&
+          b.expiresAt > Date.now()
+      )
+    ) {
+      continue;
+    }
 
     switch (effect.type) {
       case "DAMAGE":
@@ -1342,6 +1356,55 @@ export function applyImmediateEffects(params: {
               ability,
               buffTarget: effTarget,
               buff: pfBleedBuffDef,
+            });
+          }
+        }
+        break;
+      }
+
+      case "MIE_STRIKE": {
+        // 灭: deal 2 dmg normally; if caster hp < 10% maxHp → deal 12 dmg + apply 灭 buff (MIN_HP_1, 3s)
+        if (!effTarget || (effTarget.hp ?? 0) <= 0 || blocksEnemyTargeting(effTarget)) break;
+        if (hasDamageImmune(effTarget as any)) break;
+        const mieMaxHp = source.maxHp ?? 100;
+        const mieIsLowHp = source.hp < mieMaxHp * 0.1;
+        const mieBase = mieIsLowHp ? 12 : (effect.value ?? 2);
+        const mieDmg = resolveScheduledDamage({
+          source,
+          target: effTarget,
+          base: mieBase,
+          damageType: (ability as any).damageType,
+        });
+        if (mieDmg > 0) {
+          const { adjustedDamage: mieAdj, redirectPlayer: mieRt } = preCheckRedirect(state, effTarget as any, mieDmg);
+          const mieApply = mieRt ? mieAdj : mieDmg;
+          const mieResult = applyDamageToTarget(effTarget as any, mieApply);
+          state.events.push({
+            id: randomUUID(),
+            timestamp: Date.now(),
+            turn: state.turn,
+            type: "DAMAGE",
+            actorUserId: source.userId,
+            targetUserId: effTarget.userId,
+            abilityId: ability.id,
+            abilityName: ability.name,
+            effectType: "MIE_STRIKE",
+            value: mieApply,
+          });
+          if (mieResult.hpDamage > 0) {
+            processOnDamageTaken(state, effTarget as any, mieResult.hpDamage, source.userId);
+          }
+        }
+        if (mieIsLowHp) {
+          const mieBuff = Array.isArray(ability.buffs) ? ability.buffs.find((b: any) => b.buffId === 2713) : null;
+          if (mieBuff) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: source.userId,
+              ability,
+              buffTarget: source,
+              buff: mieBuff,
             });
           }
         }

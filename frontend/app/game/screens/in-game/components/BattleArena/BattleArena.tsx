@@ -1134,6 +1134,8 @@ export default function BattleArena({
   /* --- Channel AOE refs (used in render loop, updated via useEffect) --- */
   const meChannelingRef  = useRef(false);
   const oppChannelingRef = useRef(false);
+  const meChannelRadiusRef  = useRef(10);
+  const oppChannelRadiusRef = useRef(10);
 
   // Ref-based cast wrapper — updated every render, so it always captures the
   // latest onCastAbility without causing keyboard/mouse useEffect re-runs.
@@ -1524,7 +1526,7 @@ export default function BattleArena({
       };
     }
     const buff = me?.buffs?.find((b: any) =>
-      b.buffId === 1014 || b.buffId === 1017 || b.buffId === 2001 || b.buffId === 2003
+      b.buffId === 1014 || b.buffId === 1017 || b.buffId === 2001 || b.buffId === 2003 || b.buffId === 2712
     );
     if (buff) {
       // Buffs 2001 (笑醉狂) and 2003 (千蝶吐瑞) cancel on jump — hide bar immediately
@@ -1582,10 +1584,16 @@ export default function BattleArena({
 
   // Keep render-loop refs up to date for channel AOE circles
   useEffect(() => {
-    meChannelingRef.current = !!(me?.buffs?.some((b: any) => b.buffId === 1014));
+    const hasFengLai = me?.buffs?.some((b: any) => b.buffId === 1014);
+    const hasZhanWu  = me?.buffs?.some((b: any) => b.buffId === 2712);
+    meChannelingRef.current = !!(hasFengLai || hasZhanWu);
+    meChannelRadiusRef.current = hasZhanWu ? 4 : 10;
   }, [me?.buffs]);
   useEffect(() => {
-    oppChannelingRef.current = !!(opponent?.buffs?.some((b: any) => b.buffId === 1014));
+    const hasFengLai = opponent?.buffs?.some((b: any) => b.buffId === 1014);
+    const hasZhanWu  = opponent?.buffs?.some((b: any) => b.buffId === 2712);
+    oppChannelingRef.current = !!(hasFengLai || hasZhanWu);
+    oppChannelRadiusRef.current = hasZhanWu ? 4 : 10;
   }, [opponent?.buffs]);
 
   // Keep selected target valid as opponent list changes (N-player support)
@@ -3682,7 +3690,9 @@ export default function BattleArena({
             }}
             pickups={modePickups}
             meChanneling={meChannelingRef.current}
-            channelingOpponentId={visibleOpponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014))?.userId ?? null}
+            meChannelRadius={meChannelRadiusRef.current}
+            channelingOpponentId={visibleOpponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014 || b.buffId === 2712))?.userId ?? null}
+            channelingOpponentRadius={(() => { const opp = visibleOpponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014 || b.buffId === 2712)); return opp?.buffs?.some((b: any) => b.buffId === 2712) ? 4 : 10; })()}
             selectedSelf={selectedSelf}
             localRenderPosRef={localRenderPosRef}
             camYawRef={camYawRef}

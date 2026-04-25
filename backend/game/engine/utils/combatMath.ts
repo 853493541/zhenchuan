@@ -8,7 +8,7 @@ function allEffects(target: { buffs: ActiveBuff[] }) {
 
 export function resolveScheduledDamage(params: {
   source: { buffs: ActiveBuff[] };
-  target: { buffs: ActiveBuff[] };
+  target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
   base: number;
   /** When provided, DAMAGE_MULTIPLIER effects with restrictToAbilityId are only applied if they match. */
   abilityId?: string;
@@ -44,6 +44,16 @@ export function resolveScheduledDamage(params: {
   });
   for (const dr of matchingReductions) {
     dmg *= 1 - (dr.value ?? 0);
+  }
+
+  // DAMAGE_REDUCTION_HP_SCALING (无相诀): dynamic DR based on target HP%
+  const hpScalingDR = allEffects(params.target).find((e) => e.type === "DAMAGE_REDUCTION_HP_SCALING");
+  if (hpScalingDR) {
+    const hp = params.target.hp ?? 100;
+    const maxHp = params.target.maxHp ?? 100;
+    const hpPct = maxHp > 0 ? hp / maxHp : 1;
+    const dynamicDR = hpPct > 0.75 ? 0.5 : hpPct > 0.5 ? 0.6 : hpPct > 0.25 ? 0.7 : 0.8;
+    dmg *= 1 - dynamicDR;
   }
 
   // DAMAGE TAKEN INCREASE (e.g. 易伤)

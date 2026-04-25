@@ -54,6 +54,8 @@ export interface AbilityEditorOverrideEntry {
   numeric?: Record<string, number>;
   /** tag group → tag value (e.g. { rarity: "稀世", school: "少林" }) */
   tags?: Record<string, string>;
+  /** Whether this ability is a ranged projectile (blocked by PROJECTILE_IMMUNE) */
+  isProjectile?: boolean;
 }
 
 export type AbilityEditorOverrideMap = Record<string, AbilityEditorOverrideEntry>;
@@ -105,6 +107,7 @@ export interface AbilityEditorAbilityEntry {
   target: Ability["target"];
   hasOverrides: boolean;
   tags: Record<string, string>;
+  isProjectile: boolean;
   stats: AbilityEditorStat[];
   activePropertyIds: AbilityPropertyId[];
   availablePropertyIds: AbilityPropertyId[];
@@ -676,7 +679,13 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
 
   const tags = Object.keys(parsedTags).length > 0 ? parsedTags : undefined;
 
-  if (Object.keys(properties).length === 0 && Object.keys(numeric).length === 0 && !tags) {
+  // Parse top-level isProjectile field
+  const isProjectile =
+    "isProjectile" in entryRecord && typeof entryRecord.isProjectile === "boolean"
+      ? entryRecord.isProjectile
+      : undefined;
+
+  if (Object.keys(properties).length === 0 && Object.keys(numeric).length === 0 && !tags && isProjectile === undefined) {
     return null;
   }
 
@@ -684,6 +693,7 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
     properties: Object.keys(properties).length > 0 ? properties : undefined,
     numeric: Object.keys(numeric).length > 0 ? numeric : undefined,
     tags,
+    isProjectile,
   };
 }
 
@@ -1014,6 +1024,13 @@ export function buildResolvedAbilities(baseAbilities: AbilityRecord, overrides: 
       (nextAbility as any).damageType = abilityOverrides.tags.damageType;
     }
 
+    // Apply isProjectile flag so the game engine can check it at runtime
+    if (abilityOverrides?.isProjectile === true) {
+      (nextAbility as any).isProjectile = true;
+    } else if (abilityOverrides && "isProjectile" in abilityOverrides && !abilityOverrides.isProjectile) {
+      (nextAbility as any).isProjectile = false;
+    }
+
     resolvedAbilities[abilityId] = nextAbility;
   }
 
@@ -1104,6 +1121,7 @@ export function buildAbilityEditorEntry(params: {
     target: ability.target,
     hasOverrides,
     tags: overrides?.tags ?? {},
+    isProjectile: overrides?.isProjectile === true,
     stats: buildAbilityEditorStats(ability),
     activePropertyIds: properties.filter((property) => property.enabled).map((property) => property.id),
     availablePropertyIds: properties.filter((property) => !property.enabled).map((property) => property.id),

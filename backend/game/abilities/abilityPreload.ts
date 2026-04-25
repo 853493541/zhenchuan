@@ -505,6 +505,67 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     sourceAbilityName: "吞日月",
   });
 
+  // ── 无相诀 scaling DR buff ─────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2710,
+    name: "无相",
+    category: "BUFF",
+    durationMs: 10_000,
+    breakOnPlay: false,
+    description: "受到伤害降低50-80%（随血量降低增加）",
+    effects: [{ type: "DAMAGE_REDUCTION_HP_SCALING", value: 0.5 }],
+    sourceAbilityId: "wu_xiang_jue",
+    sourceAbilityName: "无相诀",
+  });
+
+  // ── 应天授命 shield + settle buff ─────────────────────────────────────────
+  buffs.push({
+    buffId: 2711,
+    name: "应天授命",
+    category: "BUFF",
+    durationMs: 8_000,
+    periodicMs: 1_000,
+    breakOnPlay: false,
+    description: "受伤延迟结算（每秒上限20%最大气血）；受击回复6%已损气血（贯体）",
+    effects: [{ type: "YING_TIAN_SHIELD", value: 0.06 }],
+    sourceAbilityId: "ying_tian_shou_ming",
+    sourceAbilityName: "应天授命",
+  });
+
+  // ── 斩无常 channel buff ────────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2712,
+    name: "斩无常",
+    category: "BUFF",
+    durationMs: 4_000,
+    periodicMs: 500,
+    breakOnPlay: false,
+    description: "免控、免远程弹道技能、减伤50%；每0.5秒对周围4尺敌人造成1点伤害",
+    effects: [
+      { type: "CONTROL_IMMUNE" },
+      { type: "KNOCKBACK_IMMUNE" },
+      { type: "INTERRUPT_IMMUNE" },
+      { type: "PROJECTILE_IMMUNE" },
+      { type: "DAMAGE_REDUCTION", value: 0.5 },
+      { type: "CHANNEL_AOE_TICK_DAMAGE", value: 1, range: 4 },
+    ],
+    sourceAbilityId: "zhan_wu_chang",
+    sourceAbilityName: "斩无常",
+  });
+
+  // ── 灭 MIN_HP_1 buff ──────────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2713,
+    name: "灭",
+    category: "BUFF",
+    durationMs: 3_000,
+    breakOnPlay: false,
+    description: "气血不会降至1以下",
+    effects: [{ type: "MIN_HP_1" }],
+    sourceAbilityId: "mie",
+    sourceAbilityName: "灭",
+  });
+
   for (const buff of buffs) {
     const override = buffEditorOverrides[String(buff.buffId)];
     if (!buff.iconPath) {

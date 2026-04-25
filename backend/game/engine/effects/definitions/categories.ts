@@ -126,6 +126,16 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   PO_FENG_STRIKE: "DEBUFF",
   // 外功闪避: dodge only physical / untyped attacks
   PHYSICAL_DODGE: "BUFF",
+  // 无相诀: scaling DR based on current HP%
+  DAMAGE_REDUCTION_HP_SCALING: "BUFF",
+  // 斩无常: immune to isProjectile abilities
+  PROJECTILE_IMMUNE: "BUFF",
+  // 应天授命: unlimited shield + true-damage settle per second
+  YING_TIAN_SHIELD: "BUFF",
+  // 斩无常: periodic 贯体 heal to nearby allies in range
+  CHANNEL_AOE_TICK_DAMAGE: "BUFF",
+  // 灭: conditional damage handler
+  MIE_STRIKE: "DEBUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

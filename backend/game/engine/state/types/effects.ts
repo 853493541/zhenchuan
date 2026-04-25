@@ -108,7 +108,17 @@ export type EffectType =
   // 破风: 1 damage + 破风 debuff + 流血, extra stack if CONTROL_IMMUNE
   | "PO_FENG_STRIKE"
   // 外功闪避: dodge chance that only applies to non-内功 (physical / untyped) attacks
-  | "PHYSICAL_DODGE";
+  | "PHYSICAL_DODGE"
+  // 无相诀: scaling damage reduction based on current HP percentage
+  | "DAMAGE_REDUCTION_HP_SCALING"
+  // 斩无常: immune to abilities with isProjectile:true
+  | "PROJECTILE_IMMUNE"
+  // 应天授命: unlimited shield + periodic true-damage settle mechanic
+  | "YING_TIAN_SHIELD"
+  // 灭: conditional damage (2 or 12) + MIN_HP_1 buff if caster HP < 10%
+  | "MIE_STRIKE"
+  // 斩无常: periodic 贯体 heal to nearby allies within range
+  | "CHANNEL_AOE_TICK_DAMAGE";
 
 /**
  * Immediate ability effects

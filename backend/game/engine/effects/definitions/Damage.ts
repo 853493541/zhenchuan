@@ -43,6 +43,13 @@ export function handleDamage(
     return;
   }
 
+  // PROJECTILE_IMMUNE (斩无常): block damage from projectile abilities
+  if (isEnemyEffect && (ability as any).isProjectile === true &&
+    target.buffs.some((b) => b.effects.some((e) => (e as any).type === "PROJECTILE_IMMUNE") && b.expiresAt > Date.now())
+  ) {
+    return;
+  }
+
   const base = effect.value ?? 0;
 
   const final = resolveScheduledDamage({

@@ -2944,6 +2944,116 @@ export const BASE_ABILITIES: AbilityRecord = {
       },
     ],
   } as any,
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 无相诀 — instant self, 10s: 50-80% DR scaled by missing HP; natural expire → 50% 贯体 heal if hp<10%
+  // ──────────────────────────────────────────────────────────────────────────
+  wu_xiang_jue: {
+    id: "wu_xiang_jue",
+    name: "无相诀",
+    description: "瞬发，自身施放\n获得【无相】10秒：受到伤害降低50%；血量每降低25%，减伤额外提高10%（最高80%）\n【无相】自然结束时若气血低于10%，立刻回复50%最大气血（贯体）",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2710,
+        name: "无相",
+        category: "BUFF",
+        durationMs: 10_000,
+        description: "受到伤害降低50-80%（随血量降低增加）",
+        effects: [{ type: "DAMAGE_REDUCTION_HP_SCALING", value: 0.5 }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 应天授命 — instant self, 8s: massive shield absorbs damage; settles ≤20% maxHp/s; on-hit 贯体 6% lost HP
+  // ──────────────────────────────────────────────────────────────────────────
+  ying_tian_shou_ming: {
+    id: "ying_tian_shou_ming",
+    name: "应天授命",
+    description: "瞬发，自身施放\n获得【应天授命】8秒：受到的伤害不立刻结算，每秒结算一次（上限为自身最大气血20%）；每次受击立即回复6%已损气血（贯体）",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2711,
+        name: "应天授命",
+        category: "BUFF",
+        durationMs: 8_000,
+        periodicMs: 1_000,
+        description: "受伤延迟结算（每秒上限20%最大气血）；受击回复6%已损气血（贯体）",
+        effects: [{ type: "YING_TIAN_SHIELD", value: 0.06 }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 斩无常 — instant, 4s channel: control/projectile immune, 50% DR, 0.5s AOE 贯体 heal 1
+  // ──────────────────────────────────────────────────────────────────────────
+  zhan_wu_chang: {
+    id: "zhan_wu_chang",
+    name: "斩无常",
+    description: "瞬发，可在空中施放，可边运功边移动\n运功4秒：免控、免远程弹道技能、减伤50%\n每0.5秒对附近4尺内敌人造成1点伤害",
+    type: "CHANNEL",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: false,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2712,
+        name: "斩无常",
+        category: "BUFF",
+        durationMs: 4_000,
+        periodicMs: 500,
+        breakOnPlay: false,
+        cancelOnMove: false,
+        cancelOnJump: false,
+        description: "免控、免远程弹道技能、减伤50%；每0.5秒对周围4尺敌人造成1点伤害",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
+          { type: "INTERRUPT_IMMUNE" },
+          { type: "PROJECTILE_IMMUNE" },
+          { type: "DAMAGE_REDUCTION", value: 0.5 },
+          { type: "CHANNEL_AOE_TICK_DAMAGE", value: 1, range: 4 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 灭 — instant, range 4: 2 dmg; if self hp<10%: 12 dmg + MIN_HP_1 buff 3s
+  // ──────────────────────────────────────────────────────────────────────────
+  mie: {
+    id: "mie",
+    name: "灭",
+    description: "瞬发，需要目标，射程4\n立即造成2点伤害\n若自身气血低于10%，改为造成12点伤害并获得【灭】3秒：气血不会降至1以下",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "MIE_STRIKE", value: 2 }],
+    buffs: [
+      {
+        buffId: 2713,
+        name: "灭",
+        category: "BUFF",
+        durationMs: 3_000,
+        description: "气血不会降至1以下",
+        effects: [{ type: "MIN_HP_1" }],
+      },
+    ],
+  },
 };
 
 let abilityPropertyOverrides: AbilityEditorOverrideMap = {};
@@ -3117,6 +3227,37 @@ export function setAbilityTag(abilityId: string, tagGroup: TagGroupId, value: st
   }
 
   const isEmpty = !nextEntry.tags && !nextEntry.properties && !nextEntry.numeric;
+  if (isEmpty) {
+    delete abilityPropertyOverrides[abilityId];
+  } else {
+    abilityPropertyOverrides[abilityId] = nextEntry;
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+
+  return buildAbilityEditorEntry({
+    ability: ABILITIES[abilityId],
+    baseAbility,
+    overrides: abilityPropertyOverrides[abilityId],
+  });
+}
+
+export function setAbilityIsProjectile(abilityId: string, isProjectile: boolean) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) throw new Error("ERR_ABILITY_NOT_FOUND");
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+  };
+
+  if (isProjectile) {
+    nextEntry.isProjectile = true;
+  } else {
+    delete nextEntry.isProjectile;
+  }
+
+  const isEmpty = !nextEntry.tags && !nextEntry.properties && !nextEntry.numeric && !nextEntry.isProjectile;
   if (isEmpty) {
     delete abilityPropertyOverrides[abilityId];
   } else {

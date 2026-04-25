@@ -5,6 +5,7 @@ import {
   setAbilityEditorDamageValue,
   setAbilityEditorNumericValue,
   setAbilityEditorProperty,
+  setAbilityIsProjectile,
   setAbilityTag,
 } from "../abilities/abilities";
 import { AbilityPropertyId, TAG_GROUP_DEFINITIONS, TagGroupId } from "../abilities/abilityPropertySystem";
@@ -135,6 +136,20 @@ router.put("/ability-editor/:abilityId/tag", (req, res) => {
       return res.status(400).json({ error: "ERR_INVALID_TAG_VALUE" });
     }
     setAbilityTag(req.params.abilityId, tagGroup as TagGroupId, value as string | null);
+    return res.json(buildAbilityEditorSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/:abilityId/is-projectile", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { isProjectile } = req.body ?? {};
+    if (typeof isProjectile !== "boolean") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+    setAbilityIsProjectile(req.params.abilityId, isProjectile);
     return res.json(buildAbilityEditorSnapshot());
   } catch (error) {
     return handleAbilityEditorError(res, error);

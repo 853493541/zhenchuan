@@ -96,6 +96,19 @@ export function applyAbilityBuffs(params: {
       continue;
     }
 
+    // PROJECTILE_IMMUNE: skip enemy-applied buffs from projectile abilities
+    if (
+      localEnemyApplied &&
+      (ability as any).isProjectile === true &&
+      localBuffTarget.buffs.some(
+        (b: any) =>
+          b.effects.some((e: any) => e.type === "PROJECTILE_IMMUNE") &&
+          b.expiresAt > Date.now()
+      )
+    ) {
+      continue;
+    }
+
     // Legacy behavior: apply buffs one-by-one
     const originalBuffs: Ability["buffs"] = ability.buffs;
     ability.buffs = [buff];

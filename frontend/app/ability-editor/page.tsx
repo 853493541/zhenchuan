@@ -4,6 +4,7 @@ import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 
 import BuffEditorTab from "./BuffEditorTab";
+import ProjectileEditorTab from "./ProjectileEditorTab";
 import {
   ABILITY_RARITIES,
   AbilityEditorAbility,
@@ -35,7 +36,7 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs";
+type MainTab = "abilities" | "buffs" | "projectiles";
 
 function buildOverviewTags(ability: AbilityEditorAbility) {
   const tags: string[] = [];
@@ -66,6 +67,8 @@ export default function AbilityEditorPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("tab") === "buffs") {
       setMainTab("buffs");
+    } else if (params.get("tab") === "projectiles") {
+      setMainTab("projectiles");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -166,6 +169,19 @@ export default function AbilityEditorPage() {
     } catch { /* silent */ }
   };
 
+  const handleProjectileToggle = async (abilityId: string, isProjectile: boolean) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/${abilityId}/is-projectile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ isProjectile }),
+      });
+      if (!res.ok) return;
+      setSnapshot((await res.json()) as AbilityEditorSnapshot);
+    } catch { /* silent */ }
+  };
+
   const normalizedSearch = search.trim().toLowerCase();
   const abilities = (snapshot?.abilities ?? []).filter((ability) => {
     for (const [groupId, filterVal] of Object.entries(tagFilters)) {
@@ -255,6 +271,13 @@ export default function AbilityEditorPage() {
             onClick={() => setMainTab("buffs")}
           >
             BUFF 编辑
+          </button>
+          <button
+            type="button"
+            className={`${styles.mainTab} ${mainTab === "projectiles" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("projectiles")}
+          >
+            远程弹道技能
           </button>
         </div>
       </section>
@@ -410,6 +433,11 @@ export default function AbilityEditorPage() {
                               </span>
                             );
                           })()}
+                          {ability.isProjectile && (
+                            <span style={{ display: "inline-flex", alignItems: "center", minHeight: 22, padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#ffd24a22", color: "#c8930a", border: "1px solid #ffd24a88" }}>
+                              弹道
+                            </span>
+                          )}
                         </div>
                         <h2 className={styles.cardTitle}>{ability.name}</h2>
                           </div>
@@ -493,6 +521,17 @@ export default function AbilityEditorPage() {
             errorMessage={buffError}
             onSnapshotUpdate={setBuffSnapshot}
             onRetry={loadBuffSnapshot}
+          />
+        </section>
+      )}
+
+      {/* ── Projectile abilities tab ─────────────────────────────────────────── */}
+      {mainTab === "projectiles" && (
+        <section className={styles.buffEditorSection}>
+          <ProjectileEditorTab
+            snapshot={snapshot}
+            loading={loading}
+            onProjectileToggle={handleProjectileToggle}
           />
         </section>
       )}

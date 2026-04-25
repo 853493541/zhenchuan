@@ -70,8 +70,12 @@ interface ArenaSceneProps {
   onSelectTarget?: (userId: string) => void;
   pickups: PickupItem[];
   meChanneling: boolean;
+  /** Radius of the local player's channel ring in game units (default 10) */
+  meChannelRadius?: number;
   /** Which opponent userId is channeling (if any) */
   channelingOpponentId?: string | null;
+  /** Radius of the channeling opponent's ring in game units (default 10) */
+  channelingOpponentRadius?: number;
   /** Whether the local player has selected themselves (shows facing arc) */
   selectedSelf?: boolean;
   // Refs for live updates without re-renders
@@ -363,7 +367,9 @@ export default function ArenaScene({
   onSelectTarget,
   pickups,
   meChanneling,
+  meChannelRadius = 10,
   channelingOpponentId,
+  channelingOpponentRadius = 10,
   selectedSelf = false,
   localRenderPosRef,
   camYawRef,
@@ -622,7 +628,7 @@ export default function ArenaScene({
           worldX={me.position.x}
           worldY={me.position.y}
           worldZ={(me.position.z ?? 0) + CHANNEL_RING_WAIST_Z}
-          radius={10 * storedUnitScale}
+          radius={meChannelRadius * storedUnitScale}
           color="#ffd700"
           worldHalfX={worldHalfX}
           worldHalfY={worldHalfY}
@@ -646,7 +652,7 @@ export default function ArenaScene({
                 worldX={opp.position.x}
                 worldY={opp.position.y}
                 worldZ={(opp.position.z ?? 0) + CHANNEL_RING_WAIST_Z}
-                radius={10 * storedUnitScale}
+                radius={channelingOpponentRadius * storedUnitScale}
                 color="#ff5500"
                 worldHalfX={worldHalfX}
                 worldHalfY={worldHalfY}
