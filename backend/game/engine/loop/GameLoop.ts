@@ -976,9 +976,9 @@ export class GameLoop {
           (input.dx !== undefined && input.dx !== 0) ||
           (input.dy !== undefined && input.dy !== 0);
 
-        // 风来吴山 jump-lock: jump input is ignored while buff 1014 is active,
+        // 风来吴山 / 斩无常 jump-lock: jump input is ignored while buff 1014 or 2712 is active,
         // and must not count as a jump-cancel trigger.
-        const jumpLockedByChannel = player.buffs.some((b) => b.buffId === 1014);
+        const jumpLockedByChannel = player.buffs.some((b) => b.buffId === 1014 || b.buffId === 2712);
         const isJumping = !!input.jump && !jumpLockedByChannel;
 
         if (isMoving) player.buffs = player.buffs.filter((b) => !b.cancelOnMove);
@@ -1171,7 +1171,7 @@ export class GameLoop {
                   const timedApply = rtTimed ? adjTimed : dmg;
                   const timedResult = timedApply > 0
                     ? applyDamageToTarget(target as any, timedApply)
-                    : { hpDamage: 0 };
+                    : { hpDamage: 0, shieldAbsorbed: 0 };
                   this.state.events.push({
                     id: randomUUID(),
                     timestamp: chNow,
@@ -1183,6 +1183,7 @@ export class GameLoop {
                     abilityName: ch.abilityName,
                     effectType: "TIMED_AOE_DAMAGE",
                     value: timedApply,
+                    shieldAbsorbed: (timedResult.shieldAbsorbed ?? 0) > 0 ? timedResult.shieldAbsorbed : undefined,
                   });
                   if (timedResult.hpDamage > 0) {
                     processOnDamageTaken(this.state, target as any, timedResult.hpDamage, player.userId);
@@ -1199,6 +1200,7 @@ export class GameLoop {
               const dist = calculateDistance(player.position, target.position, storedUnitScale);
               if (dist > range || target.hp <= 0) continue;
               if (player.userId !== target.userId && blocksEnemyTargeting(target as any)) continue;
+              if (player.userId !== target.userId && hasDamageImmune(target as any)) continue;
               // PROJECTILE_IMMUNE: block bonus channel-completion damage from projectile abilities
               if (
                 player.userId !== target.userId &&
@@ -1209,9 +1211,27 @@ export class GameLoop {
                     b.expiresAt > chNow
                 )
               ) continue;
-              const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0, damageType: (ABILITIES[ch.abilityId] as any)?.damageType });
-              applyDamageToTarget(target as any, dmg);
-              if (dmg > 0) {
+              // Dodge check
+              if (player.userId !== target.userId && shouldDodgeForAbility(target as any, (ABILITIES[ch.abilityId] as any)?.damageType)) {
+                channelEffectDodged = true;
+                this.state.events.push({
+                  id: randomUUID(), timestamp: chNow, turn: this.state.turn,
+                  type: "DODGE",
+                  actorUserId: target.userId,
+                  targetUserId: player.userId,
+                  abilityId: ch.abilityId,
+                  abilityName: ch.abilityName,
+                } as any);
+                continue;
+              }
+              const bonusDmgBase = resolveScheduledDamage({ source: player, target, base: e.value ?? 0, damageType: (ABILITIES[ch.abilityId] as any)?.damageType });
+              if (bonusDmgBase > 0) {
+                const { adjustedDamage: adjBonus, redirectPlayer: rtBonus, redirectAmt: raBonus } =
+                  preCheckRedirect(this.state, target as any, bonusDmgBase);
+                const bonusApply = rtBonus ? adjBonus : bonusDmgBase;
+                const bonusResult = bonusApply > 0
+                  ? applyDamageToTarget(target as any, bonusApply)
+                  : { hpDamage: 0, shieldAbsorbed: 0 };
                 this.state.events.push({
                   id: randomUUID(), timestamp: chNow, turn: this.state.turn,
                   type: "DAMAGE",
@@ -1220,8 +1240,15 @@ export class GameLoop {
                   abilityId: ch.abilityId,
                   abilityName: ch.abilityName,
                   effectType: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
-                  value: dmg,
+                  value: bonusApply,
+                  shieldAbsorbed: (bonusResult.shieldAbsorbed ?? 0) > 0 ? bonusResult.shieldAbsorbed : undefined,
                 });
+                if (bonusResult.hpDamage > 0) {
+                  processOnDamageTaken(this.state, target as any, bonusResult.hpDamage, player.userId);
+                }
+                if (rtBonus && raBonus > 0) {
+                  applyRedirectToOpponent(this.state, rtBonus, raBonus);
+                }
               }
             } else if (e.type === "TIMED_PULL_TARGET_TO_FRONT") {
               if (player.userId === target.userId || target.hp <= 0) continue;
@@ -1641,7 +1668,7 @@ export class GameLoop {
                   const periApply = rtPeri ? adjPeri : dmg;
                   const periResult = periApply > 0
                     ? applyDamageToTarget(player as any, periApply)
-                    : { hpDamage: 0 };
+                    : { hpDamage: 0, shieldAbsorbed: 0 };
                   this.state.events.push({
                     id: randomUUID(), timestamp: now, turn: this.state.turn,
                     type: "DAMAGE",
@@ -1651,6 +1678,7 @@ export class GameLoop {
                     abilityName: buff.sourceAbilityName ?? buff.name,
                     effectType: "PERIODIC_DAMAGE",
                     value: periApply,
+                    shieldAbsorbed: (periResult.shieldAbsorbed ?? 0) > 0 ? periResult.shieldAbsorbed : undefined,
                   });
                   if (periResult.hpDamage > 0) {
                     processOnDamageTaken(this.state, player as any, periResult.hpDamage, opp.userId);
@@ -1764,7 +1792,7 @@ export class GameLoop {
                     const aoeApply = rtAoe ? adjAoe : dmg;
                     const aoeResult = aoeApply > 0
                       ? applyDamageToTarget(opp as any, aoeApply)
-                      : { hpDamage: 0 };
+                      : { hpDamage: 0, shieldAbsorbed: 0 };
                     this.state.events.push({
                       id: randomUUID(), timestamp: now, turn: this.state.turn,
                       type: "DAMAGE",
@@ -1774,6 +1802,7 @@ export class GameLoop {
                       abilityName: buff.sourceAbilityName ?? buff.name,
                       effectType: "CHANNEL_AOE_TICK",
                       value: aoeApply,
+                      shieldAbsorbed: (aoeResult.shieldAbsorbed ?? 0) > 0 ? aoeResult.shieldAbsorbed : undefined,
                     });
                     if (aoeResult.hpDamage > 0) {
                       processOnDamageTaken(this.state, opp as any, aoeResult.hpDamage, player.userId);
@@ -1785,23 +1814,49 @@ export class GameLoop {
                   buffsChanged = true;
                 }
               } else if (e.type === "CHANNEL_AOE_TICK_DAMAGE") {
-                // 斩无常: AOE damage to enemies within range every tick
+                // 斩无常: AOE damage to enemies within range every tick (periodicMs=500, 0.5s)
                 const dmgRange = e.range ?? 4;
-                const dmgVal = e.value ?? 1;
                 const dist = calculateDistance(player.position, opp.position, storedUnitScale);
-                if (dist <= gameplayUnitsToWorldUnits(dmgRange, storedUnitScale) && opp.hp > 0) {
-                  const dmgResult = applyDamageToTarget(opp as any, dmgVal);
-                  const dmgDealt = dmgResult.hpDamage + dmgResult.shieldAbsorbed;
-                  this.state.events.push({
-                    id: randomUUID(), timestamp: now, turn: this.state.turn,
-                    type: "DAMAGE",
-                    actorUserId: player.userId,
-                    targetUserId: opp.userId,
-                    abilityId: buff.sourceAbilityId,
-                    abilityName: buff.sourceAbilityName ?? buff.name,
-                    effectType: "CHANNEL_AOE_TICK_DAMAGE",
-                    value: dmgDealt,
+                if (dist <= dmgRange && opp.hp > 0) {
+                  if (player.userId !== opp.userId && blocksEnemyTargeting(opp as any)) {
+                    buffsChanged = true;
+                    continue;
+                  }
+                  if (hasDamageImmune(opp as any)) {
+                    buffsChanged = true;
+                    continue;
+                  }
+                  const zwcDmg = resolveScheduledDamage({
+                    source: player,
+                    target: opp,
+                    base: e.value ?? 1,
+                    damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
                   });
+                  if (zwcDmg > 0) {
+                    const { adjustedDamage: adjZwc, redirectPlayer: rtZwc, redirectAmt: raZwc } =
+                      preCheckRedirect(this.state, opp as any, zwcDmg);
+                    const zwcApply = rtZwc ? adjZwc : zwcDmg;
+                    const zwcResult = zwcApply > 0
+                      ? applyDamageToTarget(opp as any, zwcApply)
+                      : { hpDamage: 0, shieldAbsorbed: 0 };
+                    this.state.events.push({
+                      id: randomUUID(), timestamp: now, turn: this.state.turn,
+                      type: "DAMAGE",
+                      actorUserId: player.userId,
+                      targetUserId: opp.userId,
+                      abilityId: buff.sourceAbilityId,
+                      abilityName: buff.sourceAbilityName ?? buff.name,
+                      effectType: "CHANNEL_AOE_TICK_DAMAGE",
+                      value: zwcApply,
+                      shieldAbsorbed: (zwcResult.shieldAbsorbed ?? 0) > 0 ? zwcResult.shieldAbsorbed : undefined,
+                    });
+                    if (zwcResult.hpDamage > 0) {
+                      processOnDamageTaken(this.state, opp as any, zwcResult.hpDamage, player.userId);
+                    }
+                    if (rtZwc && raZwc > 0) {
+                      applyRedirectToOpponent(this.state, rtZwc, raZwc);
+                    }
+                  }
                 }
                 buffsChanged = true;
               } else if (e.type === "YING_TIAN_SHIELD") {
@@ -1983,7 +2038,12 @@ export class GameLoop {
               base: e.value ?? 0,
               damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
             });
-            applyDamageToTarget(opp as any, dmg);
+            const { adjustedDamage: adjTa, redirectPlayer: rtTa, redirectAmt: raTa } =
+              preCheckRedirect(this.state, opp as any, dmg);
+            const taApply = rtTa ? adjTa : dmg;
+            const taResult = taApply > 0
+              ? applyDamageToTarget(opp as any, taApply)
+              : { hpDamage: 0, shieldAbsorbed: 0 };
 
             if (dmg > 0) {
               this.state.events.push({
@@ -1994,13 +2054,20 @@ export class GameLoop {
                 abilityId: buff.sourceAbilityId,
                 abilityName: buff.sourceAbilityName ?? buff.name,
                 effectType: "TIMED_AOE_DAMAGE",
-                value: dmg,
+                value: taApply,
+                shieldAbsorbed: (taResult.shieldAbsorbed ?? 0) > 0 ? taResult.shieldAbsorbed : undefined,
               });
+              if (taResult.hpDamage > 0) {
+                processOnDamageTaken(this.state, opp as any, taResult.hpDamage, player.userId);
+              }
+              if (rtTa && raTa > 0) {
+                applyRedirectToOpponent(this.state, rtTa, raTa);
+              }
             }
 
             // Lifesteal
             if (e.lifestealPct && e.lifestealPct > 0 && dmg > 0) {
-              const healAmt = Math.floor(dmg * e.lifestealPct);
+              const healAmt = Math.floor(taApply * e.lifestealPct);
               const applied = applyHealToTarget(player as any, healAmt);
               if (applied > 0) {
                 this.state.events.push({
@@ -2156,7 +2223,7 @@ export class GameLoop {
         for (const player of this.state.players) {
           if (player.hp <= 0) continue;
           if (this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf)) {
-            applyDamageToTarget(player as any, dps);
+            const szResult = applyDamageToTarget(player as any, dps);
             this.state.events.push({
               id: randomUUID(), timestamp: now, turn: this.state.turn,
               type: "DAMAGE",
@@ -2165,6 +2232,7 @@ export class GameLoop {
               abilityName: "毒圈",
               effectType: "PERIODIC_DAMAGE",
               value: dps,
+              shieldAbsorbed: szResult.shieldAbsorbed > 0 ? szResult.shieldAbsorbed : undefined,
             });
             buffsChanged = true; // triggers HP + event broadcast
           }
@@ -2529,7 +2597,7 @@ export class GameLoop {
               const zoneApply = rtZone ? adjZone : dmg;
               const zoneResult = zoneApply > 0
                 ? applyDamageToTarget(target as any, zoneApply)
-                : { hpDamage: 0 };
+                : { hpDamage: 0, shieldAbsorbed: 0 };
               this.state.events.push({
                 id: randomUUID(), timestamp: now, turn: this.state.turn,
                 type: "DAMAGE",
@@ -2539,6 +2607,7 @@ export class GameLoop {
                 abilityName: zone.abilityName,
                 effectType: "PERIODIC_DAMAGE",
                 value: zoneApply,
+                shieldAbsorbed: (zoneResult.shieldAbsorbed ?? 0) > 0 ? zoneResult.shieldAbsorbed : undefined,
               });
               if (zoneResult.hpDamage > 0) {
                 processOnDamageTaken(this.state, target as any, zoneResult.hpDamage, zone.ownerUserId);

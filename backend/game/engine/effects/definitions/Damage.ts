@@ -69,10 +69,12 @@ export function handleDamage(
     );
     const damageToApply = redirectPlayer ? adjustedDamage : final;
 
+    let shieldAbsorbed = 0;
     if (damageToApply > 0) {
-      const { hpDamage: actualHpDamage } = applyDamageToTarget(target as any, damageToApply);
+      const result = applyDamageToTarget(target as any, damageToApply);
+      shieldAbsorbed = result.shieldAbsorbed;
       // Post-damage hooks (七星拱瑞 freeze-break, etc.)
-      processOnDamageTaken(state, target as any, actualHpDamage, source.userId);
+      processOnDamageTaken(state, target as any, result.hpDamage, source.userId);
     }
 
     // Apply the 55% redirect to the opponent (B) directly.
@@ -90,6 +92,7 @@ export function handleDamage(
       abilityName: ability.name,
       effectType: "DAMAGE",
       value: redirectPlayer ? adjustedDamage : final,
+      shieldAbsorbed: shieldAbsorbed > 0 ? shieldAbsorbed : undefined,
     });
   } else {
     // final === 0 (dodge / immune): still emit the zero-damage event.

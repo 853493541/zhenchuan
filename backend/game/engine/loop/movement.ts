@@ -514,9 +514,9 @@ export function applyMovement(
     };
   }
 
-  // 风来吴山 (buffId=1014): lock jump input while channeling.
+  // 风来吴山 (buffId=1014) and 斩无常 (buffId=2712): lock jump input while channeling.
   // This is a hard jump-disable, not a jump-cancel mechanic.
-  const jumpLockedByFenglai = player.buffs.some((b: any) => b.buffId === 1014);
+  const jumpLockedByFenglai = player.buffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712);
   if (jumpLockedByFenglai && input?.jump) {
     input = {
       ...input,

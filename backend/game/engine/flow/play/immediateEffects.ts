@@ -25,7 +25,7 @@ import { getGroundHeightForMap, type MapContext } from "../../loop/movement";
 import { loadBuffEditorOverrides } from "../../../abilities/buffEditorOverrides";
 import { ABILITIES } from "../../../abilities/abilities";
 import { applyDashRuntimeBuff, DASH_CC_IMMUNE_BUFF_ID } from "../../effects/definitions/DirectionalDash";
-import { processOnDamageTaken, preCheckRedirect } from "../../effects/onDamageHooks";
+import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../../effects/onDamageHooks";
 
 const WUFANG_ROOT_BUFF_ID = 1330;
 const WUFANG_HIT_PROTECT_BUFF_ID = 1331;
@@ -339,9 +339,12 @@ export function applyImmediateEffects(params: {
             base: effect.value ?? 0,
             damageType: (ability as any).damageType,
           });
-          applyDamageToTarget(victim as any, dmg);
-
           if (dmg > 0) {
+            const { adjustedDamage: adjDmg, redirectPlayer: rtDmg, redirectAmt: raDmg } = preCheckRedirect(state, victim as any, dmg);
+            const applyDmg = rtDmg ? adjDmg : dmg;
+            const resultDmg = applyDmg > 0
+              ? applyDamageToTarget(victim as any, applyDmg)
+              : { hpDamage: 0, shieldAbsorbed: 0 };
             state.events.push({
               id: randomUUID(),
               timestamp: now,
@@ -352,8 +355,15 @@ export function applyImmediateEffects(params: {
               abilityId: ability.id,
               abilityName: ability.name,
               effectType: "DAMAGE",
-              value: dmg,
+              value: applyDmg,
+              shieldAbsorbed: (resultDmg.shieldAbsorbed ?? 0) > 0 ? resultDmg.shieldAbsorbed : undefined,
             });
+            if (resultDmg.hpDamage > 0) {
+              processOnDamageTaken(state, victim as any, resultDmg.hpDamage, source.userId);
+            }
+            if (rtDmg && raDmg > 0) {
+              applyRedirectToOpponent(state, rtDmg, raDmg);
+            }
           }
 
           if (baizuBuff) {
@@ -426,9 +436,12 @@ export function applyImmediateEffects(params: {
             base: effect.value ?? 0,
             damageType: (ability as any).damageType,
           });
-          applyDamageToTarget(victim as any, dmg);
-
           if (dmg > 0) {
+            const { adjustedDamage: adjWf, redirectPlayer: rtWf, redirectAmt: raWf } = preCheckRedirect(state, victim as any, dmg);
+            const applyWf = rtWf ? adjWf : dmg;
+            const resultWf = applyWf > 0
+              ? applyDamageToTarget(victim as any, applyWf)
+              : { hpDamage: 0, shieldAbsorbed: 0 };
             state.events.push({
               id: randomUUID(),
               timestamp: now,
@@ -439,10 +452,16 @@ export function applyImmediateEffects(params: {
               abilityId: ability.id,
               abilityName: ability.name,
               effectType: "DAMAGE",
-              value: dmg,
+              value: applyWf,
+              shieldAbsorbed: (resultWf.shieldAbsorbed ?? 0) > 0 ? resultWf.shieldAbsorbed : undefined,
             });
+            if (resultWf.hpDamage > 0) {
+              processOnDamageTaken(state, victim as any, resultWf.hpDamage, source.userId);
+            }
+            if (rtWf && raWf > 0) {
+              applyRedirectToOpponent(state, rtWf, raWf);
+            }
           }
-
           if (rootBuff) {
             addBuff({
               state,
@@ -632,8 +651,12 @@ export function applyImmediateEffects(params: {
             base: reachDamage,
             damageType: (ability as any).damageType,
           });
-          applyDamageToTarget(victim as any, dmg);
           if (dmg > 0) {
+            const { adjustedDamage: adjBg, redirectPlayer: rtBg, redirectAmt: raBg } = preCheckRedirect(state, victim as any, dmg);
+            const applyBg = rtBg ? adjBg : dmg;
+            const resultBg = applyBg > 0
+              ? applyDamageToTarget(victim as any, applyBg)
+              : { hpDamage: 0, shieldAbsorbed: 0 };
             state.events.push({
               id: randomUUID(),
               timestamp: now,
@@ -644,8 +667,15 @@ export function applyImmediateEffects(params: {
               abilityId: ability.id,
               abilityName: ability.name,
               effectType: "DAMAGE",
-              value: dmg,
+              value: applyBg,
+              shieldAbsorbed: (resultBg.shieldAbsorbed ?? 0) > 0 ? resultBg.shieldAbsorbed : undefined,
             });
+            if (resultBg.hpDamage > 0) {
+              processOnDamageTaken(state, victim as any, resultBg.hpDamage, source.userId);
+            }
+            if (rtBg && raBg > 0) {
+              applyRedirectToOpponent(state, rtBg, raBg);
+            }
           }
         }
 
@@ -826,9 +856,13 @@ export function applyImmediateEffects(params: {
           });
           // Deal the remaining damage as a single hit, attributed to the source DoT ability
           if (totalDmg > 0 && !hasDamageImmune(effTarget as any)) {
-            const dmg = resolveScheduledDamage({ source, target: effTarget, base: totalDmg, damageType: (ability as any).damageType });
-            applyDamageToTarget(effTarget as any, dmg);
-            if (dmg > 0) {
+            const settDmg = resolveScheduledDamage({ source, target: effTarget, base: totalDmg, damageType: (ability as any).damageType });
+            if (settDmg > 0) {
+              const { adjustedDamage: adjSett, redirectPlayer: rtSett, redirectAmt: raSett } = preCheckRedirect(state, effTarget as any, settDmg);
+              const applySett = rtSett ? adjSett : settDmg;
+              const resultSett = applySett > 0
+                ? applyDamageToTarget(effTarget as any, applySett)
+                : { hpDamage: 0, shieldAbsorbed: 0 };
               state.events.push({
                 id: randomUUID(),
                 timestamp: settleNow,
@@ -839,8 +873,15 @@ export function applyImmediateEffects(params: {
                 abilityId: settleBuff.sourceAbilityId ?? ability.id,
                 abilityName: settleBuff.sourceAbilityName ?? settleBuff.name,
                 effectType: "SETTLE_DOT",
-                value: dmg,
+                value: applySett,
+                shieldAbsorbed: (resultSett.shieldAbsorbed ?? 0) > 0 ? resultSett.shieldAbsorbed : undefined,
               });
+              if (resultSett.hpDamage > 0) {
+                processOnDamageTaken(state, effTarget as any, resultSett.hpDamage, source.userId);
+              }
+              if (rtSett && raSett > 0) {
+                applyRedirectToOpponent(state, rtSett, raSett);
+              }
             }
           }
         }
@@ -942,9 +983,13 @@ export function applyImmediateEffects(params: {
         const mult = hasLieRi ? 2 : 1;
 
         const baseDmg = (effect.value ?? 2) * mult;
-        const dmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg, damageType: (ability as any).damageType });
-        applyDamageToTarget(effTarget as any, dmg);
-        if (dmg > 0) {
+        const yyzDmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg, damageType: (ability as any).damageType });
+        if (yyzDmg > 0) {
+          const { adjustedDamage: adjYyz, redirectPlayer: rtYyz, redirectAmt: raYyz } = preCheckRedirect(state, effTarget as any, yyzDmg);
+          const applyYyz = rtYyz ? adjYyz : yyzDmg;
+          const resultYyz = applyYyz > 0
+            ? applyDamageToTarget(effTarget as any, applyYyz)
+            : { hpDamage: 0, shieldAbsorbed: 0 };
           state.events.push({
             id: randomUUID(), timestamp: now, turn: state.turn,
             type: "DAMAGE",
@@ -953,10 +998,16 @@ export function applyImmediateEffects(params: {
             abilityId: ability.id,
             abilityName: ability.name,
             effectType: "DAMAGE",
-            value: dmg,
+            value: applyYyz,
+            shieldAbsorbed: (resultYyz.shieldAbsorbed ?? 0) > 0 ? resultYyz.shieldAbsorbed : undefined,
           });
+          if (resultYyz.hpDamage > 0) {
+            processOnDamageTaken(state, effTarget as any, resultYyz.hpDamage, source.userId);
+          }
+          if (rtYyz && raYyz > 0) {
+            applyRedirectToOpponent(state, rtYyz, raYyz);
+          }
         }
-
         const dotBuff = Array.isArray(ability.buffs)
           ? ability.buffs.find((b: any) => b.buffId === YIN_YUE_ZAN_DOT_BUFF_ID)
           : null;
@@ -989,9 +1040,13 @@ export function applyImmediateEffects(params: {
         const mult = hasYinYue ? 2 : 1;
 
         const baseDmg = (effect.value ?? 4) * mult;
-        const dmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg, damageType: (ability as any).damageType });
-        applyDamageToTarget(effTarget as any, dmg);
-        if (dmg > 0) {
+        const lrzDmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg, damageType: (ability as any).damageType });
+        if (lrzDmg > 0) {
+          const { adjustedDamage: adjLrz, redirectPlayer: rtLrz, redirectAmt: raLrz } = preCheckRedirect(state, effTarget as any, lrzDmg);
+          const applyLrz = rtLrz ? adjLrz : lrzDmg;
+          const resultLrz = applyLrz > 0
+            ? applyDamageToTarget(effTarget as any, applyLrz)
+            : { hpDamage: 0, shieldAbsorbed: 0 };
           state.events.push({
             id: randomUUID(), timestamp: now, turn: state.turn,
             type: "DAMAGE",
@@ -1000,10 +1055,16 @@ export function applyImmediateEffects(params: {
             abilityId: ability.id,
             abilityName: ability.name,
             effectType: "DAMAGE",
-            value: dmg,
+            value: applyLrz,
+            shieldAbsorbed: (resultLrz.shieldAbsorbed ?? 0) > 0 ? resultLrz.shieldAbsorbed : undefined,
           });
+          if (resultLrz.hpDamage > 0) {
+            processOnDamageTaken(state, effTarget as any, resultLrz.hpDamage, source.userId);
+          }
+          if (rtLrz && raLrz > 0) {
+            applyRedirectToOpponent(state, rtLrz, raLrz);
+          }
         }
-
         const debuff = Array.isArray(ability.buffs)
           ? ability.buffs.find((b: any) => b.buffId === LIE_RI_ZHAN_DEBUFF_ID)
           : null;
@@ -1046,9 +1107,13 @@ export function applyImmediateEffects(params: {
 
         for (const victim of victims) {
           const baseDmg = singleHitBonus ? (effect.value ?? 2) * 2 : (effect.value ?? 2);
-          const dmg = resolveScheduledDamage({ source, target: victim, base: baseDmg, damageType: (ability as any).damageType });
-          applyDamageToTarget(victim as any, dmg);
-          if (dmg > 0) {
+          const hsDmg = resolveScheduledDamage({ source, target: victim, base: baseDmg, damageType: (ability as any).damageType });
+          if (hsDmg > 0) {
+            const { adjustedDamage: adjHs, redirectPlayer: rtHs, redirectAmt: raHs } = preCheckRedirect(state, victim as any, hsDmg);
+            const applyHs = rtHs ? adjHs : hsDmg;
+            const resultHs = applyHs > 0
+              ? applyDamageToTarget(victim as any, applyHs)
+              : { hpDamage: 0, shieldAbsorbed: 0 };
             state.events.push({
               id: randomUUID(), timestamp: now, turn: state.turn,
               type: "DAMAGE",
@@ -1057,8 +1122,15 @@ export function applyImmediateEffects(params: {
               abilityId: ability.id,
               abilityName: ability.name,
               effectType: "DAMAGE",
-              value: dmg,
+              value: applyHs,
+              shieldAbsorbed: (resultHs.shieldAbsorbed ?? 0) > 0 ? resultHs.shieldAbsorbed : undefined,
             });
+            if (resultHs.hpDamage > 0) {
+              processOnDamageTaken(state, victim as any, resultHs.hpDamage, source.userId);
+            }
+            if (rtHs && raHs > 0) {
+              applyRedirectToOpponent(state, rtHs, raHs);
+            }
           }
 
           if (dotBuff) {
@@ -1254,7 +1326,11 @@ export function applyImmediateEffects(params: {
           });
           const finalBurst = resolveScheduledDamage({ source, target: effTarget, base: burstDmg, damageType: (ability as any).damageType });
           if (finalBurst > 0 && !hasDamageImmune(effTarget as any)) {
-            applyDamageToTarget(effTarget as any, finalBurst);
+            const { adjustedDamage: adjBurst, redirectPlayer: rtBurst, redirectAmt: raBurst } = preCheckRedirect(state, effTarget as any, finalBurst);
+            const applyBurst = rtBurst ? adjBurst : finalBurst;
+            const resultBurst = applyBurst > 0
+              ? applyDamageToTarget(effTarget as any, applyBurst)
+              : { hpDamage: 0, shieldAbsorbed: 0 };
             state.events.push({
               id: randomUUID(), timestamp: Date.now(), turn: state.turn,
               type: "DAMAGE",
@@ -1263,8 +1339,15 @@ export function applyImmediateEffects(params: {
               abilityId: ability.id,
               abilityName: ability.name,
               effectType: "DAMAGE",
-              value: finalBurst,
+              value: applyBurst,
+              shieldAbsorbed: (resultBurst.shieldAbsorbed ?? 0) > 0 ? resultBurst.shieldAbsorbed : undefined,
             } as any);
+            if (resultBurst.hpDamage > 0) {
+              processOnDamageTaken(state, effTarget as any, resultBurst.hpDamage, source.userId);
+            }
+            if (rtBurst && raBurst > 0) {
+              applyRedirectToOpponent(state, rtBurst, raBurst);
+            }
           }
           // After detonation, apply one fresh stack of the DoT buff
           if (jztdBuffDef) {
@@ -1281,7 +1364,11 @@ export function applyImmediateEffects(params: {
           // Normal hit: 1 damage + apply/stack buff 2614
           const dmg1 = resolveScheduledDamage({ source, target: effTarget, base: 1, damageType: (ability as any).damageType });
           if (dmg1 > 0 && !hasDamageImmune(effTarget as any)) {
-            applyDamageToTarget(effTarget as any, dmg1);
+            const { adjustedDamage: adjJ1, redirectPlayer: rtJ1, redirectAmt: raJ1 } = preCheckRedirect(state, effTarget as any, dmg1);
+            const applyJ1 = rtJ1 ? adjJ1 : dmg1;
+            const resultJ1 = applyJ1 > 0
+              ? applyDamageToTarget(effTarget as any, applyJ1)
+              : { hpDamage: 0, shieldAbsorbed: 0 };
             state.events.push({
               id: randomUUID(), timestamp: Date.now(), turn: state.turn,
               type: "DAMAGE",
@@ -1290,8 +1377,15 @@ export function applyImmediateEffects(params: {
               abilityId: ability.id,
               abilityName: ability.name,
               effectType: "DAMAGE",
-              value: dmg1,
+              value: applyJ1,
+              shieldAbsorbed: (resultJ1.shieldAbsorbed ?? 0) > 0 ? resultJ1.shieldAbsorbed : undefined,
             } as any);
+            if (resultJ1.hpDamage > 0) {
+              processOnDamageTaken(state, effTarget as any, resultJ1.hpDamage, source.userId);
+            }
+            if (rtJ1 && raJ1 > 0) {
+              applyRedirectToOpponent(state, rtJ1, raJ1);
+            }
           }
           if (jztdBuffDef) {
             addBuff({
@@ -1312,7 +1406,11 @@ export function applyImmediateEffects(params: {
         if (!enemyApplied) break;
         const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: 2, damageType: (ability as any).damageType });
         if (pfDmg > 0 && !hasDamageImmune(effTarget as any)) {
-          applyDamageToTarget(effTarget as any, pfDmg);
+          const { adjustedDamage: adjPf, redirectPlayer: rtPf, redirectAmt: raPf } = preCheckRedirect(state, effTarget as any, pfDmg);
+          const applyPf = rtPf ? adjPf : pfDmg;
+          const resultPf = applyPf > 0
+            ? applyDamageToTarget(effTarget as any, applyPf)
+            : { hpDamage: 0, shieldAbsorbed: 0 };
           state.events.push({
             id: randomUUID(), timestamp: Date.now(), turn: state.turn,
             type: "DAMAGE",
@@ -1321,8 +1419,15 @@ export function applyImmediateEffects(params: {
             abilityId: ability.id,
             abilityName: ability.name,
             effectType: "DAMAGE",
-            value: pfDmg,
+            value: applyPf,
+            shieldAbsorbed: (resultPf.shieldAbsorbed ?? 0) > 0 ? resultPf.shieldAbsorbed : undefined,
           } as any);
+          if (resultPf.hpDamage > 0) {
+            processOnDamageTaken(state, effTarget as any, resultPf.hpDamage, source.userId);
+          }
+          if (rtPf && raPf > 0) {
+            applyRedirectToOpponent(state, rtPf, raPf);
+          }
         }
         // Apply 破风 (flat damage-taken debuff)
         const pfWindBuffDef = ability.buffs?.find((b: any) => b.buffId === 2615);
@@ -1376,7 +1481,7 @@ export function applyImmediateEffects(params: {
           damageType: (ability as any).damageType,
         });
         if (mieDmg > 0) {
-          const { adjustedDamage: mieAdj, redirectPlayer: mieRt } = preCheckRedirect(state, effTarget as any, mieDmg);
+          const { adjustedDamage: mieAdj, redirectPlayer: mieRt, redirectAmt: mieRa } = preCheckRedirect(state, effTarget as any, mieDmg);
           const mieApply = mieRt ? mieAdj : mieDmg;
           const mieResult = applyDamageToTarget(effTarget as any, mieApply);
           state.events.push({
@@ -1390,9 +1495,13 @@ export function applyImmediateEffects(params: {
             abilityName: ability.name,
             effectType: "MIE_STRIKE",
             value: mieApply,
+            shieldAbsorbed: (mieResult.shieldAbsorbed ?? 0) > 0 ? mieResult.shieldAbsorbed : undefined,
           });
           if (mieResult.hpDamage > 0) {
             processOnDamageTaken(state, effTarget as any, mieResult.hpDamage, source.userId);
+          }
+          if (mieRt && mieRa > 0) {
+            applyRedirectToOpponent(state, mieRt, mieRa);
           }
         }
         if (mieIsLowHp) {

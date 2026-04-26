@@ -911,6 +911,23 @@
 .floatDealt { color: #ffffff; }
 .floatTaken { color: #ff2222; }
 .floatHeal  { color: #44ff66; }
+.floatHuajie {
+  color: #ffd24a;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  text-shadow:
+    0 0 8px rgba(255, 210, 74, 0.6),
+    1px 1px 0 rgba(0,0,0,0.9), -1px -1px 0 rgba(0,0,0,0.9),
+    1px -1px 0 rgba(0,0,0,0.9), -1px 1px 0 rgba(0,0,0,0.9);
+}
+
+.floatXishou {
+  color: #66aaff;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  text-shadow:
+    0 0 8px rgba(102, 170, 255, 0.6),
+    1px 1px 0 rgba(0,0,0,0.9), -1px -1px 0 rgba(0,0,0,0.9),
+    1px -1px 0 rgba(0,0,0,0.9), -1px 1px 0 rgba(0,0,0,0.9);
+}
 
 /* ============================================================
    ABILITY BUTTONS — icon only

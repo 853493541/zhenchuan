@@ -960,8 +960,9 @@ export default function BattleArena({
   const peakHeightRef  = useRef<number>(0);   // max jump height above takeoff floor (world units)
 
   /* --- Floating damage/heal numbers --- */
-  type FloatType = 'dmg_dealt' | 'dmg_taken' | 'heal';
-  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number }; yOffset: number };
+  type FloatType = 'dmg_dealt' | 'dmg_taken' | 'heal' | 'huajie' | 'xishou';
+  /** text: overrides the auto-generated display (used for 化解 which shows no number) */
+  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number }; yOffset: number; text?: string };
   const [floats, setFloats] = useState<FloatEntry[]>([]);
   const floatIdRef = useRef(0);
   const lastCastNameRef = useRef<string | null>(null);
@@ -970,8 +971,8 @@ export default function BattleArena({
   const floatTypeCountRef = useRef<Record<string, number>>({});
   // Track how many events we've already processed to avoid re-processing on re-render
   const prevEventsLenRef = useRef<number>(-1);
-  const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number } }) => {
-    if (value <= 0) return;
+  const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number }; text?: string }) => {
+    if (value <= 0 && type !== 'huajie' && type !== 'xishou') return;
     const id = ++floatIdRef.current;
     const safeScreenPct =
       opts?.screenPct && Number.isFinite(opts.screenPct.x) && Number.isFinite(opts.screenPct.y)
@@ -984,7 +985,7 @@ export default function BattleArena({
     const stagger = floatTypeCountRef.current[type] ?? 0;
     floatTypeCountRef.current[type] = stagger + 1;
     const yOffset = stagger * 28; // 28px per simultaneous float of the same type
-    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: safeScreenPct, yOffset }]);
+    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: safeScreenPct, yOffset, text: opts?.text }]);
     setTimeout(() => {
       setFloats(f => f.filter(e => e.id !== id));
       floatTypeCountRef.current[type] = Math.max(0, (floatTypeCountRef.current[type] ?? 1) - 1);
@@ -1711,7 +1712,7 @@ export default function BattleArena({
       // WS array patches can momentarily produce sparse event slices.
       // Ignore empty/malformed entries instead of crashing the whole arena.
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
-      if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0) {
+      if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0 && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
         if (evt.targetUserId === myId) {
           if (!selectedTargetRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
             const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
@@ -1722,18 +1723,42 @@ export default function BattleArena({
               selectedSelfRef.current = false;
             }
           }
-          // I took damage — fixed position (x=40%, y=60%)
-          addFloat(evt.value, 'dmg_taken', { label: evt.abilityName });
+          // I took damage — determine 化解 (shield absorption) display
+          const shieldAbs = evt.shieldAbsorbed ?? 0;
+          const totalDmg = evt.value ?? 0;
+          if (shieldAbs >= totalDmg) {
+            // Fully blocked by shield — show 化解 only
+            addFloat(1, 'huajie', { text: '化解' });
+          } else if (shieldAbs > 0) {
+            // Partially blocked — show 化解 and the HP damage that got through
+            addFloat(1, 'huajie', { text: '化解' });
+            addFloat(totalDmg - shieldAbs, 'dmg_taken', { label: evt.abilityName });
+          } else {
+            // No shield involved — normal damage float
+            addFloat(evt.value, 'dmg_taken', { label: evt.abilityName });
+          }
         } else if (evt.actorUserId === myId) {
-          // I dealt damage to opponent
+          // I dealt damage to opponent — account for shield absorption
+          const shieldAbsAtk = evt.shieldAbsorbed ?? 0;
+          const totalDmgAtk = evt.value ?? 0;
           const bounds = oppScreenBoundsRef.current;
           const { w, h } = canvasSizeRef.current;
           const screenPct = bounds
             ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 55) / h) }
             : undefined;
-          addFloat(evt.value, 'dmg_dealt', { label: evt.abilityName, screenPct });
+          if (shieldAbsAtk >= totalDmgAtk) {
+            // Fully absorbed by opponent's shield
+            addFloat(1, 'huajie', { text: '化解', screenPct });
+          } else if (shieldAbsAtk > 0) {
+            // Partially absorbed — show net HP damage + 化解
+            addFloat(totalDmgAtk - shieldAbsAtk, 'dmg_dealt', { label: evt.abilityName, screenPct });
+            addFloat(1, 'huajie', { text: '化解', screenPct });
+          } else {
+            addFloat(evt.value, 'dmg_dealt', { label: evt.abilityName, screenPct });
+          }
         }
-      } else if (evt.type === 'HEAL' && (evt.value ?? 0) > 0 && evt.targetUserId === myId) {
+      } else if (evt.type === 'HEAL' && (evt.value ?? 0) > 0 && evt.targetUserId === myId
+               && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
         // Heal — fixed position (x=60%, y=60%)
         addFloat(evt.value, 'heal', { label: evt.abilityName });
       } else if (evt.type === 'DODGE' && evt.targetUserId === myId) {
@@ -4625,7 +4650,7 @@ export default function BattleArena({
       {/* ===== CHEAT: Ability picker (bottom-right, toggleable) ===== */}
       <button
         style={{
-          position: 'absolute', bottom: 170, right: 8, zIndex: 200,
+          position: 'absolute', bottom: 80, right: 8, zIndex: 200,
           background: showCheatWindow ? '#ff6b00' : 'rgba(20,20,30,0.92)',
           color: showCheatWindow ? '#fff' : '#ff6b00',
           border: '1px solid #ff6b00', borderRadius: 4,
@@ -4640,10 +4665,10 @@ export default function BattleArena({
       </button>
       {showCheatWindow && (
         <div style={{
-          position: 'absolute', bottom: 200, right: 8, zIndex: 200,
+          position: 'absolute', bottom: 110, right: 8, zIndex: 200,
           background: 'rgba(10,18,28,0.97)', border: '1px solid #ff6b00',
           borderRadius: 6, padding: 8,
-          height: 'calc(100vh - 230px)',
+          height: 'calc(100vh - 130px)',
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
@@ -5143,11 +5168,15 @@ export default function BattleArena({
           ? '#ffffff'
           : entry.type === 'heal'
           ? '#44ff66'
+          : entry.type === 'huajie'
+          ? '#ffd24a'
+          : entry.type === 'xishou'
+          ? '#66aaff'
           : '#ff2222';
         const pctX = entry.screenPct && Number.isFinite(entry.screenPct.x) ? entry.screenPct.x * 100 : undefined;
         const pctY = entry.screenPct && Number.isFinite(entry.screenPct.y) ? entry.screenPct.y * 100 : undefined;
         let posStyle: React.CSSProperties;
-        if (entry.type === 'dmg_dealt') {
+        if (entry.type === 'dmg_dealt' || entry.type === 'xishou') {
           // Float above enemy — fixed-size text in screen space (not distance-scaled)
           posStyle = {
             top: `calc(${pctY ?? 12}% + ${travelUp - entry.yOffset}px)`,
@@ -5161,6 +5190,7 @@ export default function BattleArena({
               transform: 'translateX(-50%)',
             };
         } else {
+            // heal + huajie both appear on the right side
             posStyle = {
               top: `calc(${pctY ?? 65}% + ${travelUp - entry.yOffset}px)`,
               left: `${pctX ?? 60}%`,
@@ -5168,13 +5198,15 @@ export default function BattleArena({
             };
         }
         const sign = entry.type === 'heal' ? '+' : '-';
-        const displayText = entry.label
+        const displayText = entry.text
+          ? entry.text
+          : entry.label
           ? `${entry.label}: ${sign}${entry.value}`
           : `${sign}${entry.value}`;
         return (
           <div
             key={entry.id}
-            className={`${styles.floatNumber} ${entry.type === 'dmg_dealt' ? styles.floatDealt : entry.type === 'heal' ? styles.floatHeal : styles.floatTaken}`}
+            className={`${styles.floatNumber} ${entry.type === 'dmg_dealt' ? styles.floatDealt : entry.type === 'heal' ? styles.floatHeal : entry.type === 'huajie' ? styles.floatHuajie : entry.type === 'xishou' ? styles.floatXishou : styles.floatTaken}`}
             style={{ ...posStyle, opacity, color }}
           >
             {displayText}
