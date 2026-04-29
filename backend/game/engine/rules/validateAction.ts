@@ -137,6 +137,7 @@ export function validateCastAbility(
   options?: {
     pendingJump?: boolean;
     targetUserId?: string;
+    entityTargetId?: string;
     groundTarget?: { x: number; y: number; z?: number };
     /** Map objects to use for LOS checks. Defaults to worldMap.objects if omitted. */
     mapObjects?: MapObject[];
@@ -208,6 +209,13 @@ export function validateCastAbility(
     if (explicitTarget >= 0) targetIndex = explicitTarget;
   }
   const targetPlayer = state.players[targetIndex];
+  const explicitEntity = ability.target === "OPPONENT" && options?.entityTargetId
+    ? (state.entities ?? []).find((entity: any) => entity.id === options.entityTargetId) ?? null
+    : null;
+  if (ability.target === "OPPONENT" && options?.entityTargetId && !explicitEntity) {
+    throw new Error("ERR_TARGET_UNAVAILABLE");
+  }
+  const targetPosition = explicitEntity?.position ?? targetPlayer.position;
 
   /* ================= COOLDOWN ================= */
   if (hasChargeSystem(ability)) {
@@ -335,7 +343,7 @@ export function validateCastAbility(
         ), storedUnitScale)
       : calculateDistance(
           state.players[playerIndex].position,
-          targetPlayer.position,
+          targetPosition,
           storedUnitScale,
         );
 
@@ -350,15 +358,20 @@ export function validateCastAbility(
 
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
   if (ability.target === "OPPONENT" && !allowGroundCastWithoutTarget) {
-    const enemy = targetPlayer;
-
-    if (blocksCardTargeting(enemy)) {
-      throw new Error("ERR_TARGET_UNAVAILABLE");
+    if (explicitEntity) {
+      if (explicitEntity.hp <= 0 || explicitEntity.ownerUserId === player.userId) {
+        throw new Error("ERR_TARGET_UNAVAILABLE");
+      }
+    } else {
+      const enemy = targetPlayer;
+      if (blocksCardTargeting(enemy)) {
+        throw new Error("ERR_TARGET_UNAVAILABLE");
+      }
     }
 
     /* ================= FACE DIRECTION (180°) ================= */
     if (requiresFacing(ability as any)) {
-      if (!isInFacingHemisphere(player, enemy)) {
+      if (!isInFacingHemisphere(player, { position: targetPosition })) {
         throw new Error("ERR_NOT_FACING_TARGET");
       }
     }
@@ -366,11 +379,11 @@ export function validateCastAbility(
     /* ================= LINE OF SIGHT (structure blocking) ================= */
     const losBlocked = (() => {
       const pz = (player.position as any).z ?? 0;
-      const ez = (enemy.position as any).z ?? 0;
+      const ez = (targetPosition as any).z ?? 0;
       if (options?.collisionSystem) {
         return options.collisionSystem.checkLOS(
           player.position.x, player.position.y, pz,
-          enemy.position.x, enemy.position.y, ez,
+          targetPosition.x, targetPosition.y, ez,
           EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT,
         );
       }
@@ -378,12 +391,12 @@ export function validateCastAbility(
       const minLOSBlockH = options?.minLOSBlockH ?? 0;
       return !!isLOSBlocked(
         player.position.x, player.position.y,
-        enemy.position.x, enemy.position.y,
+        targetPosition.x, targetPosition.y,
         mapObjects, minLOSBlockH, pz, ez,
       );
     })();
     if (losBlocked) {
-      console.log(`[LOS] blocked (casterZ=${((player.position as any).z ?? 0).toFixed(2)} targetZ=${((enemy.position as any).z ?? 0).toFixed(2)})`);
+      console.log(`[LOS] blocked (casterZ=${((player.position as any).z ?? 0).toFixed(2)} targetZ=${((targetPosition as any).z ?? 0).toFixed(2)})`);
       throw new Error("ERR_NO_LINE_OF_SIGHT");
     }
   }

@@ -120,7 +120,9 @@ export type EffectType =
   // 斩无常: periodic 贯体 heal to nearby allies within range
   | "CHANNEL_AOE_TICK_DAMAGE"
   // 孤影化双: snapshot HP+cooldowns and apply buff; GameLoop restores on expiry
-  | "GU_YING_HUA_SHUANG";
+  | "GU_YING_HUA_SHUANG"
+  // 逐云寒蕊: place targetable HP-bearing zone entity below caster + grant control immunity
+  | "PLACE_ZHU_YUN_HAN_RUI";
 
 /**
  * Immediate ability effects

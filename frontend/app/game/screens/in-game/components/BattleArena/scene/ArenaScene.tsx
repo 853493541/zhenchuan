@@ -9,8 +9,9 @@ import MapObjects from './MapObjects';
 import Character from './Character';
 import PickupBooks from './PickupBooks';
 import AoeZone from './AoeZone';
+import TargetEntityVisual from './TargetEntityVisual';
 import CameraRig from './CameraRig';
-import type { PickupItem, GroundZone } from '../../../types';
+import type { PickupItem, GroundZone, TargetEntity } from '../../../types';
 import { getMapForMode } from '../worldMap';
 import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF } from './ExportedMapScene';
 import type { MapCollisionSystem } from './MapCollisionSystem';
@@ -29,6 +30,7 @@ function getStoredUnitScale(mode?: string): number {
 
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
+const ZHU_YUN_HIDE_BUFF_IDS = new Set([2716]);
 
 function hasStealthBuff(buffs?: any[]): boolean {
   if (!Array.isArray(buffs)) return false;
@@ -43,8 +45,14 @@ function hasSanliuXiaBuff(buffs?: any[]): boolean {
   if (!Array.isArray(buffs)) return false;
   return buffs.some((b: any) =>
     SANLIU_XIA_BUFF_IDS.has(b?.buffId) ||
+    ZHU_YUN_HIDE_BUFF_IDS.has(b?.buffId) ||
     (typeof b?.name === 'string' && b.name.includes('散流霞'))
   );
+}
+
+function hasZhuYunHideBuff(buffs?: any[]): boolean {
+  if (!Array.isArray(buffs)) return false;
+  return buffs.some((b: any) => ZHU_YUN_HIDE_BUFF_IDS.has(b?.buffId));
 }
 
 function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
@@ -53,6 +61,7 @@ function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
 
 interface PlayerInfo {
   userId: string;
+  username?: string;
   position: { x: number; y: number; z?: number };
   hp: number;
   shield?: number;
@@ -64,6 +73,8 @@ interface PlayerInfo {
 
 interface ArenaSceneProps {
   me: PlayerInfo;
+  /** All non-me players, including hidden ones, for entity owner-name lookup. */
+  allOpponents?: PlayerInfo[];
   /** All non-me players */
   opponents: PlayerInfo[];
   selectedTargetId: string | null;
@@ -129,9 +140,15 @@ interface ArenaSceneProps {
   maxHp: number;
   meScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
   oppScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
+  entityScreenBoundsRef?: MutableRefObject<Record<string, { cx: number; topY: number; baseY: number; rs: number }>>;
   mode?: string;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
   groundZones?: GroundZone[];
+  /** HP-bearing targetable entities (e.g. 逐云寒蕊) */
+  entities?: TargetEntity[];
+  selectedEntityId?: string | null;
+  onSelectEntity?: (entityId: string) => void;
+  myUserId?: string;
   groundCastPreview?: { x: number; y: number; z?: number; radius: number; label?: string; isValid?: boolean } | null;
   onGroundPointerMove?: (x: number, y: number, worldZ?: number, isHorizontal?: boolean) => void;
   onGroundPointerDown?: (x: number, y: number, worldZ?: number) => void;
@@ -362,6 +379,7 @@ function EnvProbe({ onEnvDebug }: { onEnvDebug: (info: EnvDebugInfo) => void }) 
 
 export default function ArenaScene({
   me,
+  allOpponents,
   opponents,
   selectedTargetId,
   onSelectTarget,
@@ -383,9 +401,14 @@ export default function ArenaScene({
   maxHp,
   meScreenBoundsRef,
   oppScreenBoundsRef,
+  entityScreenBoundsRef,
   mode,
   safeZone,
   groundZones,
+  entities,
+  selectedEntityId,
+  onSelectEntity,
+  myUserId,
   groundCastPreview,
   onGroundPointerMove,
   onGroundPointerDown,
@@ -417,9 +440,18 @@ export default function ArenaScene({
   const selectedTarget = selectedTargetId
     ? opponents.find((o) => o.userId === selectedTargetId && !shouldHideByStealthFromEnemyView(o.buffs))
     : null;
+  const selectedEntity = selectedEntityId
+    ? (entities ?? []).find((entity) => entity.id === selectedEntityId) ?? null
+    : null;
   const meSemiTransparent = hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs);
 
-  const targetLinePoints = selectedTarget
+  const targetAnchor = selectedTarget
+    ? selectedTarget.position
+    : selectedEntity
+    ? selectedEntity.position
+    : null;
+
+  const targetLinePoints = targetAnchor
     ? [
         [
           localRenderPosRef.current.x - worldHalfX,
@@ -427,9 +459,9 @@ export default function ArenaScene({
           worldHalfY - localRenderPosRef.current.y,
         ],
         [
-          selectedTarget.position.x - worldHalfX,
-          (selectedTarget.position.z ?? 0) + 1,
-          worldHalfY - selectedTarget.position.y,
+          targetAnchor.x - worldHalfX,
+          (targetAnchor.z ?? 0) + 1,
+          worldHalfY - targetAnchor.y,
         ],
       ] as [number, number, number][]
     : null;
@@ -596,6 +628,44 @@ export default function ArenaScene({
         );
       })}
 
+      {/* HP-bearing targetable entities (e.g. 逐云寒蕊) */}
+      {(entities ?? []).map((entity) => {
+        const isOwn = entity.ownerUserId === myUserId;
+        const isSelected = selectedEntityId === entity.id;
+        const z = getZoneVisualZ(entity.position.x, entity.position.y, entity.position.z ?? 0);
+        const owner = isOwn
+          ? me
+          : (allOpponents ?? opponents).find((opp) => opp.userId === entity.ownerUserId);
+        const ownerName = owner?.username ?? owner?.userId ?? '玩家';
+        const dx = entity.position.x - me.position.x;
+        const dy = entity.position.y - me.position.y;
+        const dz = (entity.position.z ?? 0) - (me.position.z ?? 0);
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) / storedUnitScale;
+        return (
+          <TargetEntityVisual
+            key={entity.id}
+            worldX={entity.position.x}
+            worldY={entity.position.y}
+            worldZ={z}
+            radius={entity.radius}
+            hp={entity.hp}
+            maxHp={entity.maxHp}
+            isOwn={isOwn}
+            isSelected={isSelected}
+            username={`${ownerName}的逐云寒蕊`}
+            distance={dist}
+            color={isOwn ? '#33aa55' : '#ff3333'}
+            worldHalfX={worldHalfX}
+            worldHalfY={worldHalfY}
+            onClick={isOwn ? undefined : () => onSelectEntity?.(entity.id)}
+            onScreenBounds={(bounds) => {
+              if (!entityScreenBoundsRef) return;
+              entityScreenBoundsRef.current[entity.id] = bounds;
+            }}
+          />
+        );
+      })}
+
       {groundCastPreview && (
         <AoeZone
           worldX={groundCastPreview.x}
@@ -670,13 +740,14 @@ export default function ArenaScene({
               isMe={false}
               isSelected={selectedTargetId === opp.userId}
               facing={opp.facing}
-              username="恐怖花萝"
+              username={opp.username ?? opp.userId}
               distance={dist}
               onSelect={() => onSelectTarget?.(opp.userId)}
               onScreenBounds={i === 0 && oppScreenBoundsRef ? (b) => { oppScreenBoundsRef.current = b; } : undefined}
               worldHalfX={worldHalfX}
               worldHalfY={worldHalfY}
               isStealthed={hasSanliuXiaBuff(opp.buffs)}
+              hideHpBar={hasZhuYunHideBuff(opp.buffs)}
             />
           </group>
         );

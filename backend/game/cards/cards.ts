@@ -797,4 +797,42 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
       },
     ],
   },
+
+  // ─── 逐云寒蕊 ─────────────────────────────────────────────────────────────
+  zhu_yun_han_rui: {
+    id: "zhu_yun_han_rui",
+    name: "逐云寒蕊",
+    description:
+      "瞬发，解除控制，可空中施放与控制中施放\n在自身下方放置【逐云寒蕊】(气血200，半径10码，持续12秒)\n友方进入区域1秒后获得【隐藏】，离开或攻击时破隐\n自身获得3秒免控（所有控制等级）",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "CLEANSE", allowWhileControlled: true, cleanseRootSlow: true },
+      { type: "PLACE_ZHU_YUN_HAN_RUI", allowWhileControlled: true },
+    ],
+    buffs: [
+      {
+        buffId: 2715,
+        name: "逐云寒蕊·清越",
+        category: "BUFF",
+        durationMs: 3_000,
+        description: "免疫所有等级的控制",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
+        ],
+      },
+      {
+        buffId: 2716,
+        name: "逐云寒蕊·隐藏",
+        category: "BUFF",
+        durationMs: 500,
+        breakOnPlay: true,
+        description: "无法被敌方技能选中",
+        effects: [{ type: "UNTARGETABLE" }],
+      },
+    ],
+  },
 };

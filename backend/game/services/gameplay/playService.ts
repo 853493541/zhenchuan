@@ -132,7 +132,8 @@ export async function playAbility(
   userId: string,
   abilityInstanceId: string,
   targetUserId?: string,
-  groundTarget?: { x: number; y: number; z?: number }
+  groundTarget?: { x: number; y: number; z?: number },
+  entityTargetId?: string
 ) {
   const startTime = performance.now();
   globalTimer.start(`play_card_${gameId}`);
@@ -142,7 +143,7 @@ export async function playAbility(
 
   if (loop) {
     // ✅ REAL-TIME BATTLE LOGIC
-    return await playCastAbility(loop, gameId, userId, abilityInstanceId, targetUserId, groundTarget);
+    return await playCastAbility(loop, gameId, userId, abilityInstanceId, targetUserId, groundTarget, entityTargetId);
   } else {
     // ✅ TURN-BASED BATTLE LOGIC (legacy draft phase)
     return await playAbilityTurnBased(gameId, userId, abilityInstanceId);
@@ -158,7 +159,8 @@ async function playCastAbility(
   userId: string,
   abilityInstanceId: string,
   targetUserId?: string,
-  groundTarget?: { x: number; y: number; z?: number }
+  groundTarget?: { x: number; y: number; z?: number },
+  entityTargetId?: string
 ) {
   const state = loop.getState();
   const playerIndex = state.players.findIndex((p) => p.userId === userId);
@@ -172,6 +174,7 @@ async function playCastAbility(
   validateCastAbility(state, playerIndex, abilityInstanceId, {
     pendingJump: loop.hasPendingJump(playerIndex),
     targetUserId,
+    entityTargetId,
     groundTarget,
     mapObjects: mapCtx.objects,
     // Use BVH-based LOS for collision-test mode (accurate geometry vs entity AABBs)
@@ -231,6 +234,9 @@ async function playCastAbility(
     }
   }
   const target = state.players[targetIndex];
+  const targetEntity = entityTargetId
+    ? (state.entities ?? []).find((entity: any) => entity.id === entityTargetId) ?? null
+    : null;
 
   // Pure channels are driven by activeChannel in GameLoop and apply cooldown on completion.
   // applyBuffsOnComplete:true marks channel abilities whose buffs[] apply on finish, not on cast.
@@ -242,7 +248,8 @@ async function playCastAbility(
       abilityId,
       abilityName: ability.name,
       instanceId: played.instanceId,
-      targetUserId: target.userId,
+      targetUserId: targetEntity ? undefined : target.userId,
+      entityTargetId: targetEntity?.id,
       startedAt: Date.now(),
       durationMs: (ability as any).channelDurationMs ?? 2_000,
       cancelOnMove: (ability as any).channelCancelOnMove ?? true,
@@ -257,7 +264,9 @@ async function playCastAbility(
       turn: state.turn,
       type: "PLAY_ABILITY",
       actorUserId: player.userId,
-      targetUserId: target.userId,
+      targetUserId: targetEntity ? undefined : target.userId,
+      entityId: targetEntity?.id,
+      entityName: targetEntity?.abilityName,
       abilityId,
       abilityName: ability.name,
     });
@@ -325,6 +334,7 @@ async function playCastAbility(
     applyEffects(state, ability, playerIndex, targetIndex, mapCtx, {
       targetUserId,
       groundTarget,
+      entityTargetId,
     });
     applyOnPlayBuffEffects(state, playerIndex);
 

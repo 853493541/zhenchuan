@@ -8,7 +8,7 @@ import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, type ChannelBarData } from './ChannelBar';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
-import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone } from '../../types';
+import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
@@ -602,15 +602,16 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; position: Position; hp: number; maxHp?: number; shield?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
-  opponent: { userId: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing };
+  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
+  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing };
   /** All other players (opponents) — supports 1v1 and N-player modes */
-  opponents?: { userId: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing }[];
+  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing }[];
   gameId: string;
   onCastAbility: (
     abilityInstanceId: string,
     targetUserId?: string,
     groundTarget?: { x: number; y: number; z?: number },
+    entityTargetId?: string,
   ) => Promise<void>;
   distance: number;
   maxHp: number;
@@ -624,6 +625,8 @@ interface BattleArenaProps {
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
   /** Persistent ground damage zones */
   groundZones?: GroundZone[];
+  /** HP-bearing targetable entities (e.g. 逐云寒蕊) */
+  entities?: TargetEntity[];
   /** Game mode: 'arena' (100×100) or 'pubg' (2000×2000) */
   mode?: string;
 }
@@ -645,6 +648,7 @@ export default function BattleArena({
   pickups = [],
   safeZone,
   groundZones,
+  entities,
   mode,
 }: BattleArenaProps) {
   const mapData = useMemo(() => getMapForMode(mode), [mode]);
@@ -700,6 +704,12 @@ export default function BattleArena({
     () => opponentsList.filter((o) => !blocksTargetingClient(o?.buffs)),
     [opponentsList],
   );
+  const targetableEntityList = useMemo(
+    () => (entities ?? []).filter(
+      (entity) => entity.ownerUserId !== me.userId && entity.hp > 0 && !blocksTargetingClient(entity.buffs)
+    ),
+    [entities, me.userId],
+  );
 
   /* --- React state (UI only) --- */
   const [handAbilities,    setHandAbilities]    = useState<AbilityInfo[]>([]);
@@ -726,6 +736,7 @@ export default function BattleArena({
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
   const [runningCheatAction, setRunningCheatAction] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedSelf,     setSelectedSelf]     = useState(false);
   const [pendingGroundCastAbilityId, setPendingGroundCastAbilityId] = useState<string | null>(null);
   const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number; z?: number; isValid?: boolean } | null>(null);
@@ -1076,15 +1087,22 @@ export default function BattleArena({
 
   /* --- Target selection refs --- */
   const selectedTargetRef   = useRef<string | null>(null);
+  const selectedEntityRef   = useRef<string | null>(null);
   const selectedSelfRef     = useRef(false);
   const pendingGroundCastAbilityRef = useRef<string | null>(null);
   const mouseWorldPosRef = useRef<{ x: number; y: number; z?: number } | null>(null);
   const oppScreenBoundsRef  = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
   const meScreenBoundsRef   = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
+  const entityScreenBoundsRef = useRef<Record<string, { cx: number; topY: number; baseY: number; rs: number }>>({});
   const opponentIdsRef      = useRef<string[]>([]);
+  const targetableThingRef  = useRef<Array<{ kind: 'player' | 'entity'; id: string; position: Position }>>([]);
   // Always reflects current primary opponent userId
   const opponentUserIdRef   = useRef<string>(targetableOpponentsList[0]?.userId ?? '');
   opponentUserIdRef.current = targetableOpponentsList[0]?.userId ?? '';
+  targetableThingRef.current = [
+    ...targetableOpponentsList.map((opp) => ({ kind: 'player' as const, id: opp.userId, position: opp.position })),
+    ...targetableEntityList.map((entity) => ({ kind: 'entity' as const, id: entity.id, position: entity.position })),
+  ];
 
   /* --- Dash animation refs --- */
   const localDashAnimRef = useRef<{ start: V3; startTime: number } | null>(null);
@@ -1157,13 +1175,18 @@ export default function BattleArena({
       localJumpCountRef.current = getEffectiveMaxJumps();
     }
     const selectedTargetIdNow = selectedTargetRef.current;
+    const selectedEntityIdNow = selectedEntityRef.current;
+    const selectedEntity = selectedEntityIdNow
+      ? (entities ?? []).find((e) => e.id === selectedEntityIdNow)
+      : null;
     const selectedTarget = selectedTargetIdNow
       ? opponentsList.find((o) => o.userId === selectedTargetIdNow)
       : null;
-    const targetPos = selectedTarget?.position;
+    const targetPos = selectedTarget?.position
+      ?? (selectedEntity ? { x: selectedEntity.position.x, y: selectedEntity.position.y, z: selectedEntity.position.z } : undefined);
 
-    // Abilities targeting the opponent require a target to be selected first
-    if (ability?.target === 'OPPONENT' && !selectedTargetIdNow) {
+    // Abilities targeting the opponent require a target (player or entity) to be selected first
+    if (ability?.target === 'OPPONENT' && !selectedTargetIdNow && !selectedEntityIdNow) {
       if (ability?.allowGroundCastWithoutTarget) {
         setPendingGroundCastAbilityId(id);
         setGroundCastPreview(null);
@@ -1262,7 +1285,14 @@ export default function BattleArena({
     lastCastNameRef.current = ability?.name ?? null;
     setPendingGroundCastAbilityId(null);
     setGroundCastPreview(null);
-    onCastAbility(id, selectedTargetIdNow ?? undefined);
+    // If an entity is selected and ability targets OPPONENT, route as entity attack.
+    const useEntityTarget = ability?.target === 'OPPONENT' && selectedEntityIdNow && !selectedTargetIdNow;
+    onCastAbility(
+      id,
+      selectedTargetIdNow ?? undefined,
+      undefined,
+      useEntityTarget ? selectedEntityIdNow : undefined,
+    );
   };
 
   const castGroundAbilityRef = useRef<(x: number, y: number, worldZ?: number) => void>(() => {});
@@ -1618,6 +1648,20 @@ export default function BattleArena({
   }, [selectedTargetId]);
 
   useEffect(() => {
+    selectedEntityRef.current = selectedEntityId;
+  }, [selectedEntityId]);
+
+  // Drop selectedEntityId if it disappears (HP=0 / expired) from the entities list.
+  useEffect(() => {
+    if (!selectedEntityId) return;
+    const stillExists = (entities ?? []).some((e) => e.id === selectedEntityId && e.hp > 0);
+    if (!stillExists) {
+      setSelectedEntityId(null);
+      selectedEntityRef.current = null;
+    }
+  }, [entities, selectedEntityId]);
+
+  useEffect(() => {
     pendingGroundCastAbilityRef.current = pendingGroundCastAbilityId;
   }, [pendingGroundCastAbilityId]);
 
@@ -1714,7 +1758,7 @@ export default function BattleArena({
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
       if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0 && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
         if (evt.targetUserId === myId) {
-          if (!selectedTargetRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
+          if (!selectedTargetRef.current && !selectedEntityRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
             const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
             if (attackerStillPresent) {
               setSelectedTargetId(evt.actorUserId);
@@ -1741,7 +1785,9 @@ export default function BattleArena({
           // I dealt damage to opponent — account for shield absorption
           const shieldAbsAtk = evt.shieldAbsorbed ?? 0;
           const totalDmgAtk = evt.value ?? 0;
-          const bounds = oppScreenBoundsRef.current;
+          const bounds = evt.entityId
+            ? entityScreenBoundsRef.current[evt.entityId] ?? oppScreenBoundsRef.current
+            : oppScreenBoundsRef.current;
           const { w, h } = canvasSizeRef.current;
           const screenPct = bounds
             ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 55) / h) }
@@ -2064,8 +2110,11 @@ export default function BattleArena({
     const selectedTarget = selectedTargetId
       ? targetableOpponentsList.find((o) => o.userId === selectedTargetId) ?? null
       : null;
-    const hasSelectedTarget = !!selectedTarget;
-    const targetForChecks = selectedTarget ?? targetableOpponentsList[0] ?? null;
+    const selectedEntity = selectedEntityId
+      ? targetableEntityList.find((entity) => entity.id === selectedEntityId) ?? null
+      : null;
+    const hasSelectedTarget = !!selectedTarget || !!selectedEntity;
+    const targetForChecks = selectedTarget ?? selectedEntity ?? targetableOpponentsList[0] ?? targetableEntityList[0] ?? null;
     const myPos = me.position ?? localPositionRef.current;
     const myFacing = me.facing ?? meFacingRef.current;
     const targetPos = targetForChecks?.position;
@@ -2427,10 +2476,12 @@ export default function BattleArena({
     const onDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (selectedTargetRef.current || selectedSelfRef.current) {
+        if (selectedTargetRef.current || selectedEntityRef.current || selectedSelfRef.current) {
           selectedTargetRef.current = null;
+          selectedEntityRef.current = null;
           selectedSelfRef.current = false;
           setSelectedTargetId(null);
+          setSelectedEntityId(null);
           setSelectedSelf(false);
           return;
         }
@@ -2493,16 +2544,36 @@ export default function BattleArena({
         }
         return;
       }
-      // Tab / F1 — select primary opponent target (old 1v1 behavior)
+      // Tab / F1 — select the nearest currently targetable enemy player or entity.
       if (e.key === 'Tab' || e.key === 'F1') {
         e.preventDefault();
-        const primary = opponentIdsRef.current[0] ?? opponentUserIdRef.current;
-        if (!primary) {
+        const myPos = localPositionRef.current ?? me.position;
+        const nearest = targetableThingRef.current.reduce<null | { kind: 'player' | 'entity'; id: string; position: Position; distSq: number }>((best, candidate) => {
+          if (!myPos) return best;
+          const dx = candidate.position.x - myPos.x;
+          const dy = candidate.position.y - myPos.y;
+          const dz = (candidate.position.z ?? 0) - ((myPos as any).z ?? 0);
+          const distSq = dx * dx + dy * dy + dz * dz;
+          if (!best || distSq < best.distSq) {
+            return { ...candidate, distSq };
+          }
+          return best;
+        }, null);
+        if (!nearest) {
           toastError('当前没有可选目标');
           return;
         }
-        setSelectedTargetId(primary);
-        selectedTargetRef.current = primary;
+        if (nearest.kind === 'player') {
+          setSelectedTargetId(nearest.id);
+          selectedTargetRef.current = nearest.id;
+          setSelectedEntityId(null);
+          selectedEntityRef.current = null;
+        } else {
+          setSelectedEntityId(nearest.id);
+          selectedEntityRef.current = nearest.id;
+          setSelectedTargetId(null);
+          selectedTargetRef.current = null;
+        }
         setSelectedSelf(false);
         selectedSelfRef.current = false;
         return;
@@ -3413,6 +3484,22 @@ export default function BattleArena({
         .reduce((sum: number, e: any) => sum + Number(e?.chance ?? 0), 0) * 100,
     ),
   );
+  const selectedTargetForHud = selectedTargetId
+    ? opponentsList.find((o) => o.userId === selectedTargetId) ?? null
+    : null;
+  const selectedEntityForHud = selectedEntityId
+    ? (entities ?? []).find((entity) => entity.id === selectedEntityId) ?? null
+    : null;
+  const selectedTargetAnchor = selectedTargetForHud?.position ?? selectedEntityForHud?.position ?? null;
+  const selectedTargetDistance = selectedSelf
+    ? 0
+    : (selectedTargetAnchor && me.position)
+    ? worldUnitsToNewUnits(Math.sqrt(
+        Math.pow(selectedTargetAnchor.x - me.position.x, 2) +
+        Math.pow(selectedTargetAnchor.y - me.position.y, 2) +
+        Math.pow(((selectedTargetAnchor as any)?.z ?? 0) - (((me.position as any)?.z) ?? 0), 2)
+      ), mode)
+    : null;
 
     const startSpeedTest = useCallback(() => {
       const pos = localPositionRef.current;
@@ -3698,6 +3785,7 @@ export default function BattleArena({
         >
           <ArenaScene
             me={me}
+            allOpponents={opponentsList}
             opponents={visibleOpponentsList}
             selectedTargetId={selectedTargetId}
             onSelectTarget={(userId) => {
@@ -3710,6 +3798,21 @@ export default function BattleArena({
               setGroundCastPreview(null);
               setSelectedTargetId(userId);
               selectedTargetRef.current = userId;
+              setSelectedEntityId(null);
+              selectedEntityRef.current = null;
+              setSelectedSelf(false);
+              selectedSelfRef.current = false;
+            }}
+            entities={entities}
+            selectedEntityId={selectedEntityId}
+            myUserId={me.userId}
+            onSelectEntity={(entityId) => {
+              setPendingGroundCastAbilityId(null);
+              setGroundCastPreview(null);
+              setSelectedEntityId(entityId);
+              selectedEntityRef.current = entityId;
+              setSelectedTargetId(null);
+              selectedTargetRef.current = null;
               setSelectedSelf(false);
               selectedSelfRef.current = false;
             }}
@@ -3730,6 +3833,7 @@ export default function BattleArena({
             maxHp={maxHp}
             meScreenBoundsRef={meScreenBoundsRef}
             oppScreenBoundsRef={oppScreenBoundsRef}
+            entityScreenBoundsRef={entityScreenBoundsRef}
             mode={mode}
             safeZone={safeZone}
             groundZones={groundZones}
@@ -4242,22 +4346,33 @@ export default function BattleArena({
 
       {/* ===== TOP-CENTER: Target info panel — health → buffs → abilities (self or enemy) ===== */}
       <div className={styles.enemyBossGroup}>
-        {(selectedTargetId || selectedSelf) && (() => {
+        {(selectedTargetId || selectedEntityId || selectedSelf) && (() => {
           const selectedTarget = selectedTargetId
             ? opponentsList.find((o) => o.userId === selectedTargetId) ?? null
             : null;
-          const isSelf       = selectedSelf && !selectedTargetId;
-          const targetHp     = isSelf ? (me?.hp ?? 0) : (selectedTarget?.hp ?? 0);
-          const targetShield = Math.max(0, isSelf ? (me?.shield ?? 0) : (selectedTarget?.shield ?? 0));
+          const selectedEntity = selectedEntityId
+            ? (entities ?? []).find((entity) => entity.id === selectedEntityId) ?? null
+            : null;
+          const entityOwner = selectedEntity
+            ? opponentsList.find((o) => o.userId === selectedEntity.ownerUserId) ?? null
+            : null;
+          const isSelf       = selectedSelf && !selectedTargetId && !selectedEntityId;
+          const isEntityTarget = !isSelf && !!selectedEntity;
+          const targetHp     = isSelf ? (me?.hp ?? 0) : isEntityTarget ? (selectedEntity?.hp ?? 0) : (selectedTarget?.hp ?? 0);
+          const targetShield = Math.max(0, isSelf ? (me?.shield ?? 0) : isEntityTarget ? (selectedEntity?.shield ?? 0) : (selectedTarget?.shield ?? 0));
           const targetMaxHp  = isSelf
             ? (me?.maxHp ?? maxHp)
-            : (selectedTarget?.maxHp ?? maxHp);
+            : isEntityTarget ? (selectedEntity?.maxHp ?? 1) : (selectedTarget?.maxHp ?? maxHp);
           const targetBarSegments = computeHpShieldSegments(targetHp, targetShield, targetMaxHp);
           const targetHpPct = targetBarSegments.hpPct;
           const targetShieldPct = targetBarSegments.shieldPct;
-          const targetName   = isSelf ? '玩家' : '恐怖花萝';
-          const targetBuffs  = isSelf ? (me?.buffs ?? []) : (selectedTarget?.buffs ?? []);
-          const targetHand   = isSelf ? me.hand : (selectedTarget?.hand ?? []);
+          const targetName   = isSelf
+            ? (me?.username ?? '玩家')
+            : isEntityTarget
+            ? `${entityOwner?.username ?? entityOwner?.userId ?? '玩家'}的逐云寒蕊`
+            : (selectedTarget?.username ?? selectedTarget?.userId ?? '目标');
+          const targetBuffs  = isSelf ? (me?.buffs ?? []) : isEntityTarget ? (selectedEntity?.buffs ?? []) : (selectedTarget?.buffs ?? []);
+          const targetHand   = isSelf ? me.hand : isEntityTarget ? [] : (selectedTarget?.hand ?? []);
           const hpGradient   = 'linear-gradient(90deg, #991111, #cc2222)';
           const barBg        = isSelf
             ? { background: 'rgba(210, 215, 220, 0.18)', border: '1px solid rgba(200, 210, 220, 0.35)' }
@@ -4435,7 +4550,7 @@ export default function BattleArena({
       {/* ===== CENTER: Distance floating label ===== */}
       <div className={styles.distIndicator}>
         <span className={styles.distVal}>
-          {selectedSelf ? '0.0尺' : selectedTargetId ? `${distance.toFixed(1)}尺` : '没有目标'}
+          {selectedTargetDistance !== null ? `${selectedTargetDistance.toFixed(1)}尺` : '没有目标'}
         </span>
       </div>
 

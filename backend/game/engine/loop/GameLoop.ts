@@ -9,7 +9,7 @@
  * - Win condition checks
  */
 
-import { GameState, MovementInput, GroundZone, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
+import { GameState, MovementInput, GroundZone, TargetEntity, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
 import { checkGameOver } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
 import { diffState } from "../../services/flow/stateDiff";
@@ -118,6 +118,129 @@ function isInFacingHemisphere(
 function requiresFacing(ability: { target?: string; faceDirection?: boolean }): boolean {
   if (ability.target === "OPPONENT") return ability.faceDirection !== false;
   return ability.faceDirection === true;
+}
+
+type HostileDamageTarget =
+  | { kind: "player"; target: any }
+  | { kind: "entity"; target: TargetEntity };
+
+function getHostileDamageTargets(state: GameState, sourceUserId: string): HostileDamageTarget[] {
+  const targets: HostileDamageTarget[] = [];
+
+  for (const target of state.players) {
+    if (target.userId === sourceUserId) continue;
+    if ((target.hp ?? 0) <= 0) continue;
+    targets.push({ kind: "player", target });
+  }
+
+  for (const entity of state.entities ?? []) {
+    if ((entity.hp ?? 0) <= 0) continue;
+    if (entity.ownerUserId === sourceUserId) continue;
+    targets.push({ kind: "entity", target: entity });
+  }
+
+  return targets;
+}
+
+function getHostileDamageTargetPosition(target: HostileDamageTarget) {
+  return target.target.position;
+}
+
+function getHostileDamageTargetRangeDistance(
+  sourcePosition: { x: number; y: number; z?: number },
+  target: HostileDamageTarget,
+  storedUnitScale: number
+) {
+  const rawDistance = calculateDistance(sourcePosition, getHostileDamageTargetPosition(target), storedUnitScale);
+  if (target.kind !== "entity") return rawDistance;
+  return Math.max(0, rawDistance - ((target.target.radius ?? 0) / Math.max(0.0001, storedUnitScale)));
+}
+
+function applyDamageToHostileTarget(params: {
+  state: GameState;
+  source: { userId: string; buffs: any[] };
+  target: HostileDamageTarget;
+  baseDamage: number;
+  abilityId?: string;
+  abilityName?: string;
+  effectType: string;
+  damageType?: string;
+  timestamp: number;
+}) {
+  const {
+    state,
+    source,
+    target,
+    baseDamage,
+    abilityId,
+    abilityName,
+    effectType,
+    damageType,
+    timestamp,
+  } = params;
+
+  const damageTarget = target.kind === "player"
+    ? target.target
+    : target.target;
+  const resolvedDamage = resolveScheduledDamage({
+    source: source as any,
+    target: damageTarget,
+    base: baseDamage,
+    damageType,
+  });
+  if (resolvedDamage <= 0) return 0;
+
+  if (target.kind === "player") {
+    const victim = target.target;
+    const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(state, victim as any, resolvedDamage);
+    const appliedDamage = redirectPlayer ? adjustedDamage : resolvedDamage;
+    const result = appliedDamage > 0
+      ? applyDamageToTarget(victim as any, appliedDamage)
+      : { hpDamage: 0, shieldAbsorbed: 0 };
+    state.events.push({
+      id: randomUUID(),
+      timestamp,
+      turn: state.turn,
+      type: "DAMAGE",
+      actorUserId: source.userId,
+      targetUserId: victim.userId,
+      abilityId,
+      abilityName,
+      effectType,
+      value: appliedDamage,
+      shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
+    } as any);
+    if (result.hpDamage > 0) {
+      processOnDamageTaken(state, victim as any, result.hpDamage, source.userId);
+    }
+    if (redirectPlayer && redirectAmt > 0) {
+      applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
+    }
+    return appliedDamage;
+  }
+
+  const entity = target.target;
+  const result = resolvedDamage > 0
+    ? applyDamageToTarget(entity as any, resolvedDamage)
+    : { hpDamage: 0, shieldAbsorbed: 0 };
+  state.events.push({
+    id: randomUUID(),
+    timestamp,
+    turn: state.turn,
+    type: "DAMAGE",
+    actorUserId: source.userId,
+    entityId: entity.id,
+    entityName: entity.abilityName,
+    abilityId,
+    abilityName,
+    effectType,
+    value: resolvedDamage,
+    shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
+  } as any);
+  if (result.hpDamage > 0) {
+    processOnDamageTaken(state, entity as any, result.hpDamage, source.userId);
+  }
+  return resolvedDamage;
 }
 
 function isDunyingCompanion(buff: { buffId: number; name?: string; sourceAbilityId?: string }): boolean {
@@ -762,25 +885,30 @@ export class GameLoop {
         if (hanDiAbility) {
           const stunBuff = hanDiAbility.buffs?.[0];
           if (stunBuff) {
-            const stunRadius = gameplayUnitsToWorldUnits(5, storedUnitScale);
-            for (const opp of this.state.players as any[]) {
-              if (opp.userId === player.userId) continue;
-              if ((opp.hp ?? 0) <= 0) continue;
-              if (blocksEnemyTargeting(opp)) continue;
-              const hdx = opp.position.x - player.position.x;
-              const hdy = opp.position.y - player.position.y;
-              if (Math.hypot(hdx, hdy) > stunRadius) continue;
-              addBuff({
+            for (const opp of getHostileDamageTargets(this.state, player.userId)) {
+              if (blocksEnemyTargeting(opp.target as any)) continue;
+              if (getHostileDamageTargetRangeDistance(player.position, opp, storedUnitScale) > 5) continue;
+              if (stunBuff) {
+                addBuff({
+                  state: this.state,
+                  sourceUserId: player.userId,
+                  targetUserId: opp.target.userId,
+                  ability: hanDiAbility,
+                  buffTarget: opp.target,
+                  buff: stunBuff,
+                });
+              }
+              applyDamageToHostileTarget({
                 state: this.state,
-                sourceUserId: player.userId,
-                targetUserId: opp.userId,
-                ability: hanDiAbility,
-                buffTarget: opp,
-                buff: stunBuff,
+                source: player as any,
+                target: opp,
+                baseDamage: 1,
+                abilityId: "han_di",
+                abilityName: hanDiAbility.name,
+                effectType: "DAMAGE",
+                damageType: (ABILITIES["han_di"] as any)?.damageType,
+                timestamp: Date.now(),
               });
-              // 1 impact damage on landing
-              const hdDmg = resolveScheduledDamage({ source: player, target: opp, base: 1, damageType: (ABILITIES["han_di"] as any)?.damageType });
-              if (hdDmg > 0) applyDamageToTarget(opp, hdDmg);
             }
             movementStateChanged = true;
           }
@@ -791,28 +919,20 @@ export class GameLoop {
       if (dashAbilityIdBefore === "yue_chao_zhan_bo" && !player.activeDash) {
         const yczbAbility = ABILITIES["yue_chao_zhan_bo"] as any;
         if (yczbAbility) {
-          const landRadius = gameplayUnitsToWorldUnits(8, storedUnitScale);
-          for (const opp of this.state.players as any[]) {
-            if (opp.userId === player.userId) continue;
-            if ((opp.hp ?? 0) <= 0) continue;
-            if (blocksEnemyTargeting(opp)) continue;
-            const ydx = opp.position.x - player.position.x;
-            const ydy = opp.position.y - player.position.y;
-            if (Math.hypot(ydx, ydy) > landRadius) continue;
-            const dmg = resolveScheduledDamage({ source: player, target: opp, base: 15, damageType: (ABILITIES["yue_chao_zhan_bo"] as any)?.damageType });
-            applyDamageToTarget(opp, dmg);
-            if (dmg > 0) {
-              this.state.events.push({
-                id: randomUUID(), timestamp: Date.now(), turn: this.state.turn,
-                type: "DAMAGE",
-                actorUserId: player.userId,
-                targetUserId: opp.userId,
-                abilityId: "yue_chao_zhan_bo",
-                abilityName: yczbAbility.name,
-                effectType: "DAMAGE",
-                value: dmg,
-              } as any);
-            }
+          for (const opp of getHostileDamageTargets(this.state, player.userId)) {
+            if (blocksEnemyTargeting(opp.target as any)) continue;
+            if (getHostileDamageTargetRangeDistance(player.position, opp, storedUnitScale) > 8) continue;
+            applyDamageToHostileTarget({
+              state: this.state,
+              source: player as any,
+              target: opp,
+              baseDamage: 15,
+              abilityId: "yue_chao_zhan_bo",
+              abilityName: yczbAbility.name,
+              effectType: "DAMAGE",
+              damageType: (ABILITIES["yue_chao_zhan_bo"] as any)?.damageType,
+              timestamp: Date.now(),
+            });
           }
           movementStateChanged = true;
         }
@@ -849,48 +969,41 @@ export class GameLoop {
         const heAbility = ABILITIES["he_gui_gu_shan"] as any;
         if (heAbility) {
           const stunBuff = heAbility.buffs?.find((b: any) => b.buffId === 2325);
-          const outerRadius = gameplayUnitsToWorldUnits(10, storedUnitScale);
-          const innerRadius = gameplayUnitsToWorldUnits(4, storedUnitScale);
-          for (const opp of this.state.players as any[]) {
-            if (opp.userId === player.userId) continue;
-            if ((opp.hp ?? 0) <= 0) continue;
-            if (blocksEnemyTargeting(opp)) continue;
-            const hdx = opp.position.x - player.position.x;
-            const hdy = opp.position.y - player.position.y;
-            const dist = Math.hypot(hdx, hdy);
-            if (dist > outerRadius) continue;
-            // Base 2 damage for all within 10u
-            const baseDmg = resolveScheduledDamage({ source: player, target: opp, base: 2, damageType: (ABILITIES["he_gui_gu_shan"] as any)?.damageType });
-            if (baseDmg > 0) {
-              applyDamageToTarget(opp, baseDmg);
-              this.state.events.push({
-                id: randomUUID(), timestamp: Date.now(), turn: this.state.turn,
-                type: "DAMAGE", actorUserId: player.userId, targetUserId: opp.userId,
-                abilityId: "he_gui_gu_shan", abilityName: heAbility.name,
-                effectType: "DAMAGE", value: baseDmg,
-              } as any);
+          for (const opp of getHostileDamageTargets(this.state, player.userId)) {
+            if (blocksEnemyTargeting(opp.target as any)) continue;
+            const dist = getHostileDamageTargetRangeDistance(player.position, opp, storedUnitScale);
+            if (dist > 10) continue;
+            applyDamageToHostileTarget({
+              state: this.state,
+              source: player as any,
+              target: opp,
+              baseDamage: 2,
+              abilityId: "he_gui_gu_shan",
+              abilityName: heAbility.name,
+              effectType: "DAMAGE",
+              damageType: (ABILITIES["he_gui_gu_shan"] as any)?.damageType,
+              timestamp: Date.now(),
+            });
+            if (dist <= 4) {
+              applyDamageToHostileTarget({
+                state: this.state,
+                source: player as any,
+                target: opp,
+                baseDamage: 2,
+                abilityId: "he_gui_gu_shan",
+                abilityName: heAbility.name,
+                effectType: "DAMAGE",
+                damageType: (ABILITIES["he_gui_gu_shan"] as any)?.damageType,
+                timestamp: Date.now(),
+              });
             }
-            // Extra 2 damage for within 4u
-            if (dist <= innerRadius) {
-              const extraDmg = resolveScheduledDamage({ source: player, target: opp, base: 2, damageType: (ABILITIES["he_gui_gu_shan"] as any)?.damageType });
-              if (extraDmg > 0) {
-                applyDamageToTarget(opp, extraDmg);
-                this.state.events.push({
-                  id: randomUUID(), timestamp: Date.now(), turn: this.state.turn,
-                  type: "DAMAGE", actorUserId: player.userId, targetUserId: opp.userId,
-                  abilityId: "he_gui_gu_shan", abilityName: heAbility.name,
-                  effectType: "DAMAGE", value: extraDmg,
-                } as any);
-              }
-            }
-            // Stun via addBuff (handles 递减, CONTROL_IMMUNE, status bar)
             if (stunBuff) {
               addBuff({
                 state: this.state,
                 sourceUserId: player.userId,
-                targetUserId: opp.userId,
+                targetUserId: opp.target.userId,
                 ability: heAbility,
-                buffTarget: opp,
+                buffTarget: opp.target,
                 buff: stunBuff,
               });
             }
@@ -1047,7 +1160,13 @@ export class GameLoop {
 
         const ch = player.activeChannel;
         const opp = this.state.players[idx === 0 ? 1 : 0];
-        const target = this.state.players.find((p) => p.userId === ch.targetUserId) ?? opp;
+        const targetEntity = ch.entityTargetId
+          ? (this.state.entities ?? []).find((entity) => entity.id === ch.entityTargetId) ?? null
+          : null;
+        const targetPlayer = targetEntity
+          ? null
+          : this.state.players.find((p) => p.userId === ch.targetUserId) ?? opp;
+        const targetPosition = targetEntity?.position ?? targetPlayer?.position;
         const channelAbility = (ABILITIES as any)[ch.abilityId] as any;
 
         // Silence interrupts pure active channels.
@@ -1057,9 +1176,19 @@ export class GameLoop {
           continue;
         }
 
+        if (!targetPosition || ((targetEntity?.hp ?? targetPlayer?.hp ?? 0) <= 0)) {
+          player.activeChannel = undefined;
+          channelStateChanged = true;
+          continue;
+        }
+
         // cancelOnOutOfRange check
         if (ch.cancelOnOutOfRange !== undefined) {
-          const dist = calculateDistance(player.position, target.position, storedUnitScale);
+          const dist = Math.max(
+            0,
+            calculateDistance(player.position, targetPosition, storedUnitScale) -
+              (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
+          );
           if (dist > ch.cancelOnOutOfRange) {
             player.activeChannel = undefined;
             channelStateChanged = true;
@@ -1068,14 +1197,14 @@ export class GameLoop {
         }
 
         // Target lost (stealth / untargetable) cancels opponent-targeted channels.
-        if (channelAbility?.target === "OPPONENT" && blocksCardTargeting(target as any)) {
+        if (channelAbility?.target === "OPPONENT" && targetPlayer && blocksCardTargeting(targetPlayer as any)) {
           player.activeChannel = undefined;
           channelStateChanged = true;
           continue;
         }
 
         // Task 8: cancel forward-facing channels if target leaves 180° front arc
-        if (channelAbility && requiresFacing(channelAbility) && !isInFacingHemisphere(player as any, target as any)) {
+        if (channelAbility && requiresFacing(channelAbility) && !isInFacingHemisphere(player as any, { position: targetPosition } as any)) {
           player.activeChannel = undefined;
           channelStateChanged = true;
           continue;
@@ -1084,17 +1213,17 @@ export class GameLoop {
         // Task 7: cancel opponent-targeted channels if LOS is blocked by structures.
         const _losBlockedChannel = channelAbility?.target === "OPPONENT" && (() => {
           const pz = (player.position as any).z ?? 0;
-          const tz = (target.position as any).z ?? 0;
+          const tz = (targetPosition as any).z ?? 0;
           if (this.mapCtx.collisionSystem) {
             return this.mapCtx.collisionSystem.checkLOS(
               player.position.x, player.position.y, pz,
-              target.position.x, target.position.y, tz,
+              targetPosition.x, targetPosition.y, tz,
               this.mapCtx.width, this.mapCtx.height,
             );
           }
           return !!isLOSBlocked(
             player.position.x, player.position.y,
-            target.position.x, target.position.y,
+            targetPosition.x, targetPosition.y,
             this.mapCtx.objects, 0, pz, tz,
           );
         })();
@@ -1128,21 +1257,25 @@ export class GameLoop {
               }
             } else if (e.type === "TIMED_AOE_DAMAGE") {
               const range = e.range ?? 50;
-              const dist = calculateDistance(player.position, target.position, storedUnitScale);
-              if (dist <= range && target.hp > 0) {
-                if (player.userId !== target.userId && blocksEnemyTargeting(target as any)) {
+              const dist = Math.max(
+                0,
+                calculateDistance(player.position, targetPosition, storedUnitScale) -
+                  (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
+              );
+              if (dist <= range && (targetEntity?.hp ?? targetPlayer?.hp ?? 0) > 0) {
+                if (targetPlayer && blocksEnemyTargeting(targetPlayer as any)) {
                   channelEffectDodged = true;
                   continue;
                 }
-                if (player.userId !== target.userId && hasDamageImmune(target as any)) {
+                if (targetPlayer && hasDamageImmune(targetPlayer as any)) {
                   channelEffectDodged = true;
                   continue;
                 }
                 // PROJECTILE_IMMUNE: block channel-completion damage from projectile abilities
                 if (
-                  player.userId !== target.userId &&
+                  targetPlayer &&
                   (ABILITIES[ch.abilityId] as any)?.isProjectile === true &&
-                  (target.buffs as any[]).some(
+                  (targetPlayer.buffs as any[]).some(
                     (b: any) =>
                       b.effects.some((ef: any) => ef.type === "PROJECTILE_IMMUNE") &&
                       b.expiresAt > chNow
@@ -1152,116 +1285,93 @@ export class GameLoop {
                   continue;
                 }
                 // Dodge check: if target has DODGE (or PHYSICAL_DODGE for 外功), the whole channel completion misses
-                if (player.userId !== target.userId && shouldDodgeForAbility(target as any, (ABILITIES[ch.abilityId] as any)?.damageType)) {
+                if (targetPlayer && shouldDodgeForAbility(targetPlayer as any, (ABILITIES[ch.abilityId] as any)?.damageType)) {
                   channelEffectDodged = true;
                   this.state.events.push({
                     id: randomUUID(), timestamp: chNow, turn: this.state.turn,
                     type: "DODGE",
-                    actorUserId: target.userId,
+                    actorUserId: targetPlayer.userId,
                     targetUserId: player.userId,
                     abilityId: ch.abilityId,
                     abilityName: ch.abilityName,
                   } as any);
                   continue;
                 }
-                const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0, damageType: (ABILITIES[ch.abilityId] as any)?.damageType });
-                if (dmg > 0) {
-                  const { adjustedDamage: adjTimed, redirectPlayer: rtTimed, redirectAmt: raTimed } =
-                    preCheckRedirect(this.state, target as any, dmg);
-                  const timedApply = rtTimed ? adjTimed : dmg;
-                  const timedResult = timedApply > 0
-                    ? applyDamageToTarget(target as any, timedApply)
-                    : { hpDamage: 0, shieldAbsorbed: 0 };
-                  this.state.events.push({
-                    id: randomUUID(),
-                    timestamp: chNow,
-                    turn: this.state.turn,
-                    type: "DAMAGE",
-                    actorUserId: player.userId,
-                    targetUserId: target.userId,
-                    abilityId: ch.abilityId,
-                    abilityName: ch.abilityName,
-                    effectType: "TIMED_AOE_DAMAGE",
-                    value: timedApply,
-                    shieldAbsorbed: (timedResult.shieldAbsorbed ?? 0) > 0 ? timedResult.shieldAbsorbed : undefined,
-                  });
-                  if (timedResult.hpDamage > 0) {
-                    processOnDamageTaken(this.state, target as any, timedResult.hpDamage, player.userId);
-                  }
-                  if (rtTimed && raTimed > 0) {
-                    applyRedirectToOpponent(this.state, rtTimed, raTimed);
-                  }
-                }
+                applyDamageToHostileTarget({
+                  state: this.state,
+                  source: player,
+                  target: targetEntity
+                    ? { kind: "entity", target: targetEntity }
+                    : { kind: "player", target: targetPlayer! },
+                  baseDamage: e.value ?? 0,
+                  abilityId: ch.abilityId,
+                  abilityName: ch.abilityName,
+                  effectType: "TIMED_AOE_DAMAGE",
+                  damageType: (ABILITIES[ch.abilityId] as any)?.damageType,
+                  timestamp: chNow,
+                });
               }
             } else if (e.type === "TIMED_AOE_DAMAGE_IF_SELF_HP_GT") {
               const threshold = (e as any).threshold ?? 0;
               const range = e.range ?? 50;
               if (player.hp <= threshold) continue;
-              const dist = calculateDistance(player.position, target.position, storedUnitScale);
-              if (dist > range || target.hp <= 0) continue;
-              if (player.userId !== target.userId && blocksEnemyTargeting(target as any)) continue;
-              if (player.userId !== target.userId && hasDamageImmune(target as any)) continue;
+              const dist = Math.max(
+                0,
+                calculateDistance(player.position, targetPosition, storedUnitScale) -
+                  (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
+              );
+              if (dist > range || (targetEntity?.hp ?? targetPlayer?.hp ?? 0) <= 0) continue;
+              if (targetPlayer && blocksEnemyTargeting(targetPlayer as any)) continue;
+              if (targetPlayer && hasDamageImmune(targetPlayer as any)) continue;
               // PROJECTILE_IMMUNE: block bonus channel-completion damage from projectile abilities
               if (
-                player.userId !== target.userId &&
+                targetPlayer &&
                 (ABILITIES[ch.abilityId] as any)?.isProjectile === true &&
-                (target.buffs as any[]).some(
+                (targetPlayer.buffs as any[]).some(
                   (b: any) =>
                     b.effects.some((ef: any) => ef.type === "PROJECTILE_IMMUNE") &&
                     b.expiresAt > chNow
                 )
               ) continue;
               // Dodge check
-              if (player.userId !== target.userId && shouldDodgeForAbility(target as any, (ABILITIES[ch.abilityId] as any)?.damageType)) {
+              if (targetPlayer && shouldDodgeForAbility(targetPlayer as any, (ABILITIES[ch.abilityId] as any)?.damageType)) {
                 channelEffectDodged = true;
                 this.state.events.push({
                   id: randomUUID(), timestamp: chNow, turn: this.state.turn,
                   type: "DODGE",
-                  actorUserId: target.userId,
+                  actorUserId: targetPlayer.userId,
                   targetUserId: player.userId,
                   abilityId: ch.abilityId,
                   abilityName: ch.abilityName,
                 } as any);
                 continue;
               }
-              const bonusDmgBase = resolveScheduledDamage({ source: player, target, base: e.value ?? 0, damageType: (ABILITIES[ch.abilityId] as any)?.damageType });
-              if (bonusDmgBase > 0) {
-                const { adjustedDamage: adjBonus, redirectPlayer: rtBonus, redirectAmt: raBonus } =
-                  preCheckRedirect(this.state, target as any, bonusDmgBase);
-                const bonusApply = rtBonus ? adjBonus : bonusDmgBase;
-                const bonusResult = bonusApply > 0
-                  ? applyDamageToTarget(target as any, bonusApply)
-                  : { hpDamage: 0, shieldAbsorbed: 0 };
-                this.state.events.push({
-                  id: randomUUID(), timestamp: chNow, turn: this.state.turn,
-                  type: "DAMAGE",
-                  actorUserId: player.userId,
-                  targetUserId: target.userId,
-                  abilityId: ch.abilityId,
-                  abilityName: ch.abilityName,
-                  effectType: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
-                  value: bonusApply,
-                  shieldAbsorbed: (bonusResult.shieldAbsorbed ?? 0) > 0 ? bonusResult.shieldAbsorbed : undefined,
-                });
-                if (bonusResult.hpDamage > 0) {
-                  processOnDamageTaken(this.state, target as any, bonusResult.hpDamage, player.userId);
-                }
-                if (rtBonus && raBonus > 0) {
-                  applyRedirectToOpponent(this.state, rtBonus, raBonus);
-                }
-              }
+              applyDamageToHostileTarget({
+                state: this.state,
+                source: player,
+                target: targetEntity
+                  ? { kind: "entity", target: targetEntity }
+                  : { kind: "player", target: targetPlayer! },
+                baseDamage: e.value ?? 0,
+                abilityId: ch.abilityId,
+                abilityName: ch.abilityName,
+                effectType: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
+                damageType: (ABILITIES[ch.abilityId] as any)?.damageType,
+                timestamp: chNow,
+              });
             } else if (e.type === "TIMED_PULL_TARGET_TO_FRONT") {
-              if (player.userId === target.userId || target.hp <= 0) continue;
-              if (blocksEnemyTargeting(target as any)) continue;
-              if (hasKnockbackImmune(target as any)) continue;
+              if (!targetPlayer) continue;
+              if (player.userId === targetPlayer.userId || targetPlayer.hp <= 0) continue;
+              if (blocksEnemyTargeting(targetPlayer as any)) continue;
+              if (hasKnockbackImmune(targetPlayer as any)) continue;
 
               // 雷霆震怒 interaction: pull also strips the buff first
-              const leiTingIdx = (target.buffs as any[]).findIndex((b: any) => b.buffId === 2506);
+              const leiTingIdx = (targetPlayer.buffs as any[]).findIndex((b: any) => b.buffId === 2506);
               if (leiTingIdx !== -1) {
-                const leiTingBuff = (target.buffs as any[])[leiTingIdx];
-                (target.buffs as any[]).splice(leiTingIdx, 1);
+                const leiTingBuff = (targetPlayer.buffs as any[])[leiTingIdx];
+                (targetPlayer.buffs as any[]).splice(leiTingIdx, 1);
                 pushBuffExpired(this.state, {
-                  targetUserId: target.userId,
+                  targetUserId: targetPlayer.userId,
                   buffId: leiTingBuff.buffId,
                   buffName: leiTingBuff.name,
                   buffCategory: leiTingBuff.category,
@@ -1288,14 +1398,14 @@ export class GameLoop {
               const anchorGroundZ = getGroundHeightForMap(
                 anchorX,
                 anchorY,
-                target.position.z ?? 0,
+                targetPlayer.position.z ?? 0,
                 this.mapCtx
               );
               const casterZ = player.position.z ?? anchorGroundZ;
               const anchorZ = Math.max(anchorGroundZ, casterZ);
 
-              const toAnchorX = anchorX - target.position.x;
-              const toAnchorY = anchorY - target.position.y;
+              const toAnchorX = anchorX - targetPlayer.position.x;
+              const toAnchorY = anchorY - targetPlayer.position.y;
               const distanceToAnchor = Math.hypot(toAnchorX, toAnchorY);
               const maxPullDistance = gameplayUnitsToWorldUnits(maxPullUnits, storedUnitScale);
               const pullDistance = Math.min(distanceToAnchor, maxPullDistance);
@@ -1311,12 +1421,12 @@ export class GameLoop {
               const dirY = distanceToAnchor > 0.0001 ? toAnchorY / distanceToAnchor : ny;
 
               const targetGroundZ = getGroundHeightForMap(
-                target.position.x,
-                target.position.y,
-                target.position.z ?? 0,
+                targetPlayer.position.x,
+                targetPlayer.position.y,
+                targetPlayer.position.z ?? 0,
                 this.mapCtx
               );
-              const currentZ = target.position.z ?? targetGroundZ;
+              const currentZ = targetPlayer.position.z ?? targetGroundZ;
               const pullRatio = distanceToAnchor > 0.0001
                 ? pullDistance / distanceToAnchor
                 : 1;
@@ -1324,7 +1434,7 @@ export class GameLoop {
               const verticalDelta = targetZ - currentZ;
 
               if (pullDistance > 0.0001 || Math.abs(verticalDelta) > 0.0001) {
-                target.activeDash = {
+                targetPlayer.activeDash = {
                   abilityId: ch.abilityId,
                   vxPerTick: (dirX * pullDistance) / pullDurationTicks,
                   vyPerTick: (dirY * pullDistance) / pullDurationTicks,
@@ -1334,18 +1444,18 @@ export class GameLoop {
                   ticksRemaining: pullDurationTicks,
                 } as any;
 
-                target.velocity = {
-                  ...target.velocity,
+                targetPlayer.velocity = {
+                  ...targetPlayer.velocity,
                   vx: 0,
                   vy: 0,
                   vz: 0,
                 };
-                target.isPowerJump = false;
-                target.isPowerJumpCombined = false;
+                targetPlayer.isPowerJump = false;
+                targetPlayer.isPowerJumpCombined = false;
 
                 applyDashRuntimeBuff({
                   state: this.state,
-                  target: target as any,
+                  target: targetPlayer as any,
                   durationMs: pullDurationMs + 100,
                   effects: [
                     { type: "CONTROL_IMMUNE" },
@@ -1360,7 +1470,7 @@ export class GameLoop {
 
                 // Register post-pull stun if configured for this ability.
                 if (PULL_CHANNEL_POST_STUN_CONFIG[ch.abilityId]) {
-                  this.pendingPostPullStuns.set(target.userId, {
+                  this.pendingPostPullStuns.set(targetPlayer.userId, {
                     sourceUserId: player.userId,
                     abilityId: ch.abilityId,
                     abilityName: ch.abilityName,
@@ -1368,16 +1478,16 @@ export class GameLoop {
                 }
               }
 
-              resolveMapCollisions(target as any, this.mapCtx);
+              resolveMapCollisions(targetPlayer as any, this.mapCtx);
 
               const sealConfig = PULL_CHANNEL_QINGGONG_SEAL_CONFIG[ch.abilityId];
               if (sealConfig) {
                 addBuff({
                   state: this.state,
                   sourceUserId: player.userId,
-                  targetUserId: target.userId,
+                  targetUserId: targetPlayer.userId,
                   ability: (channelAbility ?? { id: ch.abilityId, name: ch.abilityName }) as any,
-                  buffTarget: target as any,
+                  buffTarget: targetPlayer as any,
                   buff: {
                     buffId: sealConfig.buffId,
                     name: sealConfig.buffName,
@@ -1392,24 +1502,24 @@ export class GameLoop {
               // Dispel BUFF-category buffs from target by attribute (used by channel abilities like 少明指)
               // Skip if the preceding TIMED_AOE_DAMAGE was dodged/blocked
               if (channelEffectDodged) continue;
-              if (target && target.hp > 0 && !blocksEnemyTargeting(target as any)) {
+              if (targetPlayer && targetPlayer.hp > 0 && !blocksEnemyTargeting(targetPlayer as any)) {
                 const { overrides: chDispelOvr } = loadBuffEditorOverrides();
                 const chAttrs: string[] = (e as any).attributes ?? [];
                 const chDispelCount: number = (e as any).count ?? 1;
                 for (const attr of chAttrs) {
                   let dispelled = 0;
                   while (dispelled < chDispelCount) {
-                    const idx = (target.buffs as any[]).findIndex((b: any) => {
+                    const idx = (targetPlayer.buffs as any[]).findIndex((b: any) => {
                       if (b.category !== "BUFF") return false;
                       const entry = chDispelOvr[String(b.buffId)];
                       return entry?.attribute === attr;
                     });
                     if (idx === -1) break;
-                    const removed = (target.buffs as any[])[idx];
-                    removeLinkedShield(target as any, removed);
-                    (target.buffs as any[]).splice(idx, 1);
+                    const removed = (targetPlayer.buffs as any[])[idx];
+                    removeLinkedShield(targetPlayer as any, removed);
+                    (targetPlayer.buffs as any[]).splice(idx, 1);
                     pushBuffExpired(this.state, {
-                      targetUserId: target.userId,
+                      targetUserId: targetPlayer.userId,
                       buffId: removed.buffId,
                       buffName: removed.name,
                       buffCategory: removed.category,
@@ -1455,10 +1565,11 @@ export class GameLoop {
           // applyBuffsOnComplete: apply buffs[] to opponent on channel finish (not on cast)
           if ((channelAbility as any)?.applyBuffsOnComplete === true) {
             const buffDefs = (channelAbility as any)?.buffs ?? [];
-            const oppAlive = target && (target.hp ?? 0) > 0;
+            const oppAlive = targetPlayer && (targetPlayer.hp ?? 0) > 0;
             for (const buffDef of buffDefs) {
-              const applyTarget = buffDef.applyTo === "SELF" ? player : target;
-              if (applyTarget !== player && (!oppAlive || blocksEnemyTargeting(target as any))) continue;
+              const applyTarget = buffDef.applyTo === "SELF" ? player : targetPlayer;
+              if (!applyTarget) continue;
+              if (applyTarget !== player && (!oppAlive || blocksEnemyTargeting(targetPlayer as any))) continue;
               addBuff({
                 state: this.state,
                 sourceUserId: player.userId,
@@ -1727,16 +1838,15 @@ export class GameLoop {
               } else if (e.type === "CHANNEL_AOE_TICK") {
                 // Channel AOE: deal damage to opponent if within range
                 const range = e.range ?? 10;
-                const dist = calculateDistance(player.position, opp.position, storedUnitScale);
-                if (dist <= range && opp.hp > 0) {
-                  if (player.userId !== opp.userId && blocksEnemyTargeting(opp as any)) {
-                    continue;
-                  }
+                for (const target of getHostileDamageTargets(this.state, player.userId)) {
+                  const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
+                  if (dist > range) continue;
+                  if (blocksEnemyTargeting(target.target as any)) continue;
                   const angle = (e as any).aoeAngle ?? 360;
                   if (angle < 360 && dist > 0) {
                     const facing = player.facing ?? { x: 0, y: 1 };
-                    const dx = opp.position.x - player.position.x;
-                    const dy = opp.position.y - player.position.y;
+                    const dx = getHostileDamageTargetPosition(target).x - player.position.x;
+                    const dy = getHostileDamageTargetPosition(target).y - player.position.y;
                     const planarDist = Math.sqrt(dx * dx + dy * dy);
                     const dot = planarDist > 0.0001 ? (facing.x * dx + facing.y * dy) / planarDist : 1;
                     const halfAngleRad = (angle / 2) * (Math.PI / 180);
@@ -1744,20 +1854,19 @@ export class GameLoop {
                       continue;
                     }
                   }
-                  // Task 7: channel ticks stop applying through structures
                   const _losBlockedTick = (() => {
                     const pz = (player.position as any).z ?? 0;
-                    const oz = (opp.position as any).z ?? 0;
+                    const oz = (getHostileDamageTargetPosition(target) as any).z ?? 0;
                     if (this.mapCtx.collisionSystem) {
                       return this.mapCtx.collisionSystem.checkLOS(
                         player.position.x, player.position.y, pz,
-                        opp.position.x, opp.position.y, oz,
+                        getHostileDamageTargetPosition(target).x, getHostileDamageTargetPosition(target).y, oz,
                         this.mapCtx.width, this.mapCtx.height,
                       );
                     }
                     return !!isLOSBlocked(
                       player.position.x, player.position.y,
-                      opp.position.x, opp.position.y,
+                      getHostileDamageTargetPosition(target).x, getHostileDamageTargetPosition(target).y,
                       this.mapCtx.objects, 0, pz, oz,
                     );
                   })();
@@ -1767,10 +1876,11 @@ export class GameLoop {
                     continue;
                   }
                   if (
+                    target.kind === "player" &&
                     tryApplyDodgeForHit({
                       state: this.state,
                       source: player,
-                      target: opp as any,
+                      target: target.target as any,
                       abilityId: buff.sourceAbilityId,
                       abilityName: buff.sourceAbilityName ?? buff.name,
                       enabled: buff.sourceAbilityId === "fenglai_wushan",
@@ -1780,83 +1890,44 @@ export class GameLoop {
                     buffsChanged = true;
                     continue;
                   }
-                  const dmg = resolveScheduledDamage({
+                  applyDamageToHostileTarget({
+                    state: this.state,
                     source: player,
-                    target: opp,
-                    base: e.value ?? 0,
+                    target,
+                    baseDamage: e.value ?? 0,
+                    abilityId: buff.sourceAbilityId,
+                    abilityName: buff.sourceAbilityName ?? buff.name,
+                    effectType: "CHANNEL_AOE_TICK",
                     damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
+                    timestamp: now,
                   });
-                  if (dmg > 0) {
-                    const { adjustedDamage: adjAoe, redirectPlayer: rtAoe, redirectAmt: raAoe } =
-                      preCheckRedirect(this.state, opp as any, dmg);
-                    const aoeApply = rtAoe ? adjAoe : dmg;
-                    const aoeResult = aoeApply > 0
-                      ? applyDamageToTarget(opp as any, aoeApply)
-                      : { hpDamage: 0, shieldAbsorbed: 0 };
-                    this.state.events.push({
-                      id: randomUUID(), timestamp: now, turn: this.state.turn,
-                      type: "DAMAGE",
-                      actorUserId: player.userId,
-                      targetUserId: opp.userId,
-                      abilityId: buff.sourceAbilityId,
-                      abilityName: buff.sourceAbilityName ?? buff.name,
-                      effectType: "CHANNEL_AOE_TICK",
-                      value: aoeApply,
-                      shieldAbsorbed: (aoeResult.shieldAbsorbed ?? 0) > 0 ? aoeResult.shieldAbsorbed : undefined,
-                    });
-                    if (aoeResult.hpDamage > 0) {
-                      processOnDamageTaken(this.state, opp as any, aoeResult.hpDamage, player.userId);
-                    }
-                    if (rtAoe && raAoe > 0) {
-                      applyRedirectToOpponent(this.state, rtAoe, raAoe);
-                    }
-                  }
                   buffsChanged = true;
                 }
               } else if (e.type === "CHANNEL_AOE_TICK_DAMAGE") {
                 // 斩无常: AOE damage to enemies within range every tick (periodicMs=500, 0.5s)
                 const dmgRange = e.range ?? 4;
-                const dist = calculateDistance(player.position, opp.position, storedUnitScale);
-                if (dist <= dmgRange && opp.hp > 0) {
-                  if (player.userId !== opp.userId && blocksEnemyTargeting(opp as any)) {
+                for (const target of getHostileDamageTargets(this.state, player.userId)) {
+                  const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
+                  if (dist > dmgRange) continue;
+                  if (blocksEnemyTargeting(target.target as any)) {
                     buffsChanged = true;
                     continue;
                   }
-                  if (hasDamageImmune(opp as any)) {
+                  if (hasDamageImmune(target.target as any)) {
                     buffsChanged = true;
                     continue;
                   }
-                  const zwcDmg = resolveScheduledDamage({
+                  applyDamageToHostileTarget({
+                    state: this.state,
                     source: player,
-                    target: opp,
-                    base: e.value ?? 1,
+                    target,
+                    baseDamage: e.value ?? 1,
+                    abilityId: buff.sourceAbilityId,
+                    abilityName: buff.sourceAbilityName ?? buff.name,
+                    effectType: "CHANNEL_AOE_TICK_DAMAGE",
                     damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
+                    timestamp: now,
                   });
-                  if (zwcDmg > 0) {
-                    const { adjustedDamage: adjZwc, redirectPlayer: rtZwc, redirectAmt: raZwc } =
-                      preCheckRedirect(this.state, opp as any, zwcDmg);
-                    const zwcApply = rtZwc ? adjZwc : zwcDmg;
-                    const zwcResult = zwcApply > 0
-                      ? applyDamageToTarget(opp as any, zwcApply)
-                      : { hpDamage: 0, shieldAbsorbed: 0 };
-                    this.state.events.push({
-                      id: randomUUID(), timestamp: now, turn: this.state.turn,
-                      type: "DAMAGE",
-                      actorUserId: player.userId,
-                      targetUserId: opp.userId,
-                      abilityId: buff.sourceAbilityId,
-                      abilityName: buff.sourceAbilityName ?? buff.name,
-                      effectType: "CHANNEL_AOE_TICK_DAMAGE",
-                      value: zwcApply,
-                      shieldAbsorbed: (zwcResult.shieldAbsorbed ?? 0) > 0 ? zwcResult.shieldAbsorbed : undefined,
-                    });
-                    if (zwcResult.hpDamage > 0) {
-                      processOnDamageTaken(this.state, opp as any, zwcResult.hpDamage, player.userId);
-                    }
-                    if (rtZwc && raZwc > 0) {
-                      applyRedirectToOpponent(this.state, rtZwc, raZwc);
-                    }
-                  }
                 }
                 buffsChanged = true;
               } else if (e.type === "YING_TIAN_SHIELD") {
@@ -1993,139 +2064,112 @@ export class GameLoop {
               continue;
             }
 
-            if (opp.hp <= 0) continue;
+            for (const target of getHostileDamageTargets(this.state, player.userId)) {
+              const range = e.range ?? 10;
+              const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
+              if (dist > range) continue;
 
-            // Range check (using gameplay units via calculateDistance)
-            const range = e.range ?? 10;
-            const dist = calculateDistance(player.position, opp.position, storedUnitScale);
-            if (dist > range) continue;
+              const angle = e.aoeAngle ?? 360;
+              if (angle < 360 && dist > 0) {
+                const facing = player.facing ?? { x: 0, y: 1 };
+                const rawDx = getHostileDamageTargetPosition(target).x - player.position.x;
+                const rawDy = getHostileDamageTargetPosition(target).y - player.position.y;
+                const rawDist2d = Math.sqrt(rawDx * rawDx + rawDy * rawDy);
+                const dot = rawDist2d > 0 ? (facing.x * rawDx + facing.y * rawDy) / rawDist2d : 0;
+                const halfAngleRad = (angle / 2) * (Math.PI / 180);
+                if (dot < Math.cos(halfAngleRad)) continue;
+              }
 
-            // Cone angle check (skip for full-circle 360°)
-            const angle = e.aoeAngle ?? 360;
-            if (angle < 360 && dist > 0) {
-              const facing = player.facing ?? { x: 0, y: 1 };
-              const rawDx = opp.position.x - player.position.x;
-              const rawDy = opp.position.y - player.position.y;
-              const rawDist2d = Math.sqrt(rawDx * rawDx + rawDy * rawDy);
-              const dot = rawDist2d > 0 ? (facing.x * rawDx + facing.y * rawDy) / rawDist2d : 0;
-              const halfAngleRad = (angle / 2) * (Math.PI / 180);
-              if (dot < Math.cos(halfAngleRad)) continue;
-            }
+              if (blocksEnemyTargeting(target.target as any)) {
+                continue;
+              }
 
-            if (player.userId !== opp.userId && blocksEnemyTargeting(opp as any)) {
-              continue;
-            }
+              if (
+                target.kind === "player" &&
+                tryApplyDodgeForHit({
+                  state: this.state,
+                  source: player,
+                  target: target.target as any,
+                  abilityId: buff.sourceAbilityId,
+                  abilityName: buff.sourceAbilityName ?? buff.name,
+                  enabled: buff.sourceAbilityId === "wu_jianyu",
+                  damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
+                })
+              ) {
+                buffsChanged = true;
+                continue;
+              }
 
-            if (
-              tryApplyDodgeForHit({
+              const appliedDamage = applyDamageToHostileTarget({
                 state: this.state,
-                source: player,
-                target: opp as any,
-                abilityId: buff.sourceAbilityId,
-                abilityName: buff.sourceAbilityName ?? buff.name,
-                enabled: buff.sourceAbilityId === "wu_jianyu",
-                damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
-              })
-            ) {
-              buffsChanged = true;
-              continue;
-            }
-
-            // Apply damage
-            const dmg = resolveScheduledDamage({
-              source: player,
-              target: opp,
-              base: e.value ?? 0,
-              damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
-            });
-            const { adjustedDamage: adjTa, redirectPlayer: rtTa, redirectAmt: raTa } =
-              preCheckRedirect(this.state, opp as any, dmg);
-            const taApply = rtTa ? adjTa : dmg;
-            const taResult = taApply > 0
-              ? applyDamageToTarget(opp as any, taApply)
-              : { hpDamage: 0, shieldAbsorbed: 0 };
-
-            if (dmg > 0) {
-              this.state.events.push({
-                id: randomUUID(), timestamp: now, turn: this.state.turn,
-                type: "DAMAGE",
-                actorUserId: player.userId,
-                targetUserId: opp.userId,
+                source: player as any,
+                target,
+                baseDamage: e.value ?? 0,
                 abilityId: buff.sourceAbilityId,
                 abilityName: buff.sourceAbilityName ?? buff.name,
                 effectType: "TIMED_AOE_DAMAGE",
-                value: taApply,
-                shieldAbsorbed: (taResult.shieldAbsorbed ?? 0) > 0 ? taResult.shieldAbsorbed : undefined,
+                damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
+                timestamp: now,
               });
-              if (taResult.hpDamage > 0) {
-                processOnDamageTaken(this.state, opp as any, taResult.hpDamage, player.userId);
-              }
-              if (rtTa && raTa > 0) {
-                applyRedirectToOpponent(this.state, rtTa, raTa);
-              }
-            }
 
-            // Lifesteal
-            if (e.lifestealPct && e.lifestealPct > 0 && dmg > 0) {
-              const healAmt = Math.floor(taApply * e.lifestealPct);
-              const applied = applyHealToTarget(player as any, healAmt);
-              if (applied > 0) {
-                this.state.events.push({
-                  id: randomUUID(), timestamp: now, turn: this.state.turn,
-                  type: "HEAL",
-                  actorUserId: player.userId,
-                  targetUserId: player.userId,
+              if (e.lifestealPct && e.lifestealPct > 0 && appliedDamage > 0) {
+                const healAmt = Math.floor(appliedDamage * e.lifestealPct);
+                const applied = applyHealToTarget(player as any, healAmt);
+                if (applied > 0) {
+                  this.state.events.push({
+                    id: randomUUID(), timestamp: now, turn: this.state.turn,
+                    type: "HEAL",
+                    actorUserId: player.userId,
+                    targetUserId: player.userId,
+                    abilityId: buff.sourceAbilityId,
+                    abilityName: buff.sourceAbilityName ?? buff.name,
+                    effectType: "TIMED_AOE_DAMAGE",
+                    value: applied,
+                  });
+                }
+              }
+
+              if (target.kind === "player" && e.knockbackUnits && e.knockbackUnits > 0 && dist > 0) {
+                const opp = target.target;
+                const knockbackResult = applyType3KnockbackControl({
+                  state: this.state,
+                  source: player,
+                  target: opp,
                   abilityId: buff.sourceAbilityId,
-                  abilityName: buff.sourceAbilityName ?? buff.name,
-                  effectType: "TIMED_AOE_DAMAGE",
-                  value: applied,
+                  abilityName: buff.sourceAbilityName,
+                  knockbackUnits: e.knockbackUnits,
+                  controlDurationMs: Math.max(0, e.knockbackSilenceMs ?? 0),
+                  mapCtx: this.mapCtx,
+                  now,
                 });
-              }
-            }
 
-            // Type-3 knockback control.
-            if (e.knockbackUnits && e.knockbackUnits > 0 && dist > 0) {
-              const knockbackResult = applyType3KnockbackControl({
-                state: this.state,
-                source: player,
-                target: opp,
-                abilityId: buff.sourceAbilityId,
-                abilityName: buff.sourceAbilityName,
-                knockbackUnits: e.knockbackUnits,
-                controlDurationMs: Math.max(0, e.knockbackSilenceMs ?? 0),
-                mapCtx: this.mapCtx,
-                now,
-              });
+                if (knockbackResult.applied) {
+                  const hadFuguang = opp.buffs.some((b: any) => b.buffId === 1012);
+                  const brokenStealth = opp.buffs.filter(
+                    (b: any) => b.buffId === 1012 || b.buffId === 1013 || (hadFuguang && isDunyingCompanion(b))
+                  );
+                  if (brokenStealth.length > 0) {
+                    opp.buffs = opp.buffs.filter((b: any) => !brokenStealth.includes(b));
+                    for (const b of brokenStealth) {
+                      pushBuffExpired(this.state, {
+                        targetUserId: opp.userId,
+                        buffId: b.buffId,
+                        buffName: b.name,
+                        buffCategory: b.category,
+                        sourceAbilityId: b.sourceAbilityId,
+                        sourceAbilityName: b.sourceAbilityName,
+                      });
+                    }
+                  }
 
-              if (knockbackResult.applied) {
-
-                // Knockback breaks 浮光掠影(1012) and 天地无极(1013) stealth;
-                // 暗尘弥散(1011) is immune to control-based stealth break.
-                const hadFuguang = opp.buffs.some((b) => b.buffId === 1012);
-                const brokenStealth = opp.buffs.filter(
-                  (b) => b.buffId === 1012 || b.buffId === 1013 || (hadFuguang && isDunyingCompanion(b))
-                );
-                if (brokenStealth.length > 0) {
-                  opp.buffs = opp.buffs.filter((b) => !brokenStealth.includes(b));
-                  for (const b of brokenStealth) {
-                    pushBuffExpired(this.state, {
-                      targetUserId: opp.userId,
-                      buffId: b.buffId,
-                      buffName: b.name,
-                      buffCategory: b.category,
-                      sourceAbilityId: b.sourceAbilityId,
-                      sourceAbilityName: b.sourceAbilityName,
-                    });
+                  if (knockbackResult.removedStuns) {
+                    buffsChanged = true;
                   }
                 }
-
-                if (knockbackResult.removedStuns) {
-                  buffsChanged = true;
-                }
               }
-            }
 
-            buffsChanged = true;
+              buffsChanged = true;
+            }
           }
         }
       }
@@ -2239,6 +2283,81 @@ export class GameLoop {
         buffsChanged = true;
       }
     });
+
+    for (const entity of this.state.entities ?? []) {
+      for (const buff of entity.buffs ?? []) {
+        if (now >= buff.expiresAt) continue;
+        if (buff.periodicMs === undefined || buff.lastTickAt === undefined) continue;
+        if (now - buff.lastTickAt < buff.periodicMs) continue;
+
+        buff.lastTickAt = now;
+        const sourcePlayer = this.state.players.find((p) => p.userId === (buff.sourceUserId ?? entity.ownerUserId));
+        for (const e of buff.effects) {
+          if (e.type === "PERIODIC_DAMAGE") {
+            if (blocksEnemyTargeting(entity as any) || hasDamageImmune(entity as any)) {
+              buffsChanged = true;
+              continue;
+            }
+            const dmg = resolveScheduledDamage({
+              source: sourcePlayer ?? ({ userId: buff.sourceUserId ?? entity.ownerUserId, buffs: [] } as any),
+              target: entity as any,
+              base: (e.value ?? 0) * (buff.stacks ?? 1),
+              damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
+            });
+            if (dmg > 0) {
+              const result = applyDamageToTarget(entity as any, dmg);
+              this.state.events.push({
+                id: randomUUID(),
+                timestamp: now,
+                turn: this.state.turn,
+                type: "DAMAGE",
+                actorUserId: sourcePlayer?.userId ?? buff.sourceUserId ?? entity.ownerUserId,
+                entityId: entity.id,
+                entityName: entity.abilityName,
+                abilityId: buff.sourceAbilityId,
+                abilityName: buff.sourceAbilityName ?? buff.name,
+                effectType: "PERIODIC_DAMAGE",
+                value: dmg,
+                shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
+              } as any);
+              if (result.hpDamage > 0) {
+                processOnDamageTaken(this.state, entity as any, result.hpDamage, sourcePlayer?.userId ?? buff.sourceUserId ?? entity.ownerUserId);
+              }
+            }
+            buffsChanged = true;
+          } else if (e.type === "PERIODIC_HEAL") {
+            const heal = resolveHealAmount({ target: entity as any, base: e.value ?? 0 });
+            const applied = applyHealToTarget(entity as any, heal);
+            if (applied > 0) {
+              this.state.events.push({
+                id: randomUUID(),
+                timestamp: now,
+                turn: this.state.turn,
+                type: "HEAL",
+                actorUserId: sourcePlayer?.userId ?? buff.sourceUserId ?? entity.ownerUserId,
+                entityId: entity.id,
+                entityName: entity.abilityName,
+                abilityId: buff.sourceAbilityId,
+                abilityName: buff.sourceAbilityName ?? buff.name,
+                effectType: "PERIODIC_HEAL",
+                value: applied,
+              } as any);
+            }
+            buffsChanged = true;
+          }
+        }
+      }
+
+      const before = entity.buffs?.length ?? 0;
+      const naturallyExpired = (entity.buffs ?? []).filter((b) => now >= b.expiresAt);
+      for (const expired of naturallyExpired) {
+        removeLinkedShield(entity as any, expired as any);
+      }
+      entity.buffs = (entity.buffs ?? []).filter((b) => now < b.expiresAt);
+      if ((entity.buffs?.length ?? 0) !== before) {
+        buffsChanged = true;
+      }
+    }
 
     // 1d. 毒圈 — poison zone damage (arena mode only, 1x per second)
     if (this.isArenaMode && this.state.safeZone) {
@@ -2591,25 +2710,26 @@ export class GameLoop {
 
           const owner = this.state.players.find(p => p.userId === zone.ownerUserId);
           let targetsHit = 0;
-          for (const target of this.state.players) {
-            if (target.userId === zone.ownerUserId) continue;
-            if (target.hp <= 0) continue;
+          for (const target of getHostileDamageTargets(this.state, zone.ownerUserId)) {
             if (zone.maxTargets !== undefined && targetsHit >= zone.maxTargets) break;
-            if (blocksEnemyTargeting(target as any)) continue;
-            if (hasDamageImmune(target as any)) continue;
-            const dx = target.position.x - zone.x;
-            const dy = target.position.y - zone.y;
-            if (Math.sqrt(dx * dx + dy * dy) > zone.radius) continue;
+            if (blocksEnemyTargeting(target.target as any)) continue;
+            if (hasDamageImmune(target.target as any)) continue;
+            const targetPosition = getHostileDamageTargetPosition(target);
+            const dx = targetPosition.x - zone.x;
+            const dy = targetPosition.y - zone.y;
+            const hitRadius = zone.radius + (target.kind === "entity" ? Math.max(0, Number(target.target.radius ?? 0)) : 0);
+            if (Math.sqrt(dx * dx + dy * dy) > hitRadius) continue;
             if (zone.height !== undefined) {
               const zoneZ = zone.z ?? 0;
-              const targetZ = target.position.z ?? 0;
+              const targetZ = targetPosition.z ?? 0;
               if (Math.abs(targetZ - zoneZ) > zone.height) continue;
             }
             if (
+              target.kind === "player" &&
               tryApplyDodgeForHit({
                 state: this.state,
-                source: owner ?? target,
-                target: target as any,
+                source: owner ?? ({ userId: zone.ownerUserId } as any),
+                target: target.target as any,
                 abilityId: zone.abilityId,
                 abilityName: zone.abilityName,
                 enabled: zone.abilityId === "kuang_long_luan_wu",
@@ -2620,37 +2740,17 @@ export class GameLoop {
               buffsChanged = true;
               continue;
             }
-            const dmg = resolveScheduledDamage({
-              source: owner ?? target,
+            applyDamageToHostileTarget({
+              state: this.state,
+              source: (owner ?? ({ userId: zone.ownerUserId, buffs: [] } as any)) as any,
               target,
-              base: zone.damagePerInterval,
+              baseDamage: zone.damagePerInterval,
+              abilityId: zone.abilityId,
+              abilityName: zone.abilityName,
+              effectType: "PERIODIC_DAMAGE",
               damageType: (ABILITIES[zone.abilityId ?? ""] as any)?.damageType,
+              timestamp: now,
             });
-            if (dmg > 0) {
-              const { adjustedDamage: adjZone, redirectPlayer: rtZone, redirectAmt: raZone } =
-                preCheckRedirect(this.state, target as any, dmg);
-              const zoneApply = rtZone ? adjZone : dmg;
-              const zoneResult = zoneApply > 0
-                ? applyDamageToTarget(target as any, zoneApply)
-                : { hpDamage: 0, shieldAbsorbed: 0 };
-              this.state.events.push({
-                id: randomUUID(), timestamp: now, turn: this.state.turn,
-                type: "DAMAGE",
-                actorUserId: zone.ownerUserId,
-                targetUserId: target.userId,
-                abilityId: zone.abilityId,
-                abilityName: zone.abilityName,
-                effectType: "PERIODIC_DAMAGE",
-                value: zoneApply,
-                shieldAbsorbed: (zoneResult.shieldAbsorbed ?? 0) > 0 ? zoneResult.shieldAbsorbed : undefined,
-              });
-              if (zoneResult.hpDamage > 0) {
-                processOnDamageTaken(this.state, target as any, zoneResult.hpDamage, zone.ownerUserId);
-              }
-              if (rtZone && raZone > 0) {
-                applyRedirectToOpponent(this.state, rtZone, raZone);
-              }
-            }
             targetsHit++;
             buffsChanged = true;
           }
@@ -2659,6 +2759,149 @@ export class GameLoop {
       const hadZones = this.state.groundZones.length;
       this.state.groundZones = activeZones;
       if (activeZones.length !== hadZones) buffsChanged = true;
+    }
+
+    // 1e2. Targetable entities (e.g. 逐云寒蕊): lifecycle + per-friendly stealth tracking.
+    if (this.state.entities && this.state.entities.length > 0) {
+      const ZHU_YUN_STEALTH_BUFF_ID = 2716;
+      const ZHU_YUN_STEALTH_DURATION_MS = 500; // refreshed each tick while in zone
+      const STEALTH_GRANT_DELAY_MS = 1_000;
+      const ATTACK_REARM_MS = 1_000;
+      const ZHU_YUN_ABILITY_ID = "zhu_yun_han_rui";
+      const zhuYunAbility = ABILITIES[ZHU_YUN_ABILITY_ID];
+
+      // Helper: cascade-remove stealth buff from all players owned by this entity.
+      const cascadeRemoveStealth = (entity: TargetEntity) => {
+        for (const player of this.state.players) {
+          const idx = player.buffs.findIndex(
+            (b: any) =>
+              b.buffId === ZHU_YUN_STEALTH_BUFF_ID &&
+              b.sourceAbilityId === ZHU_YUN_ABILITY_ID &&
+              b.sourceUserId === entity.ownerUserId
+          );
+          if (idx !== -1) {
+            const removed = player.buffs[idx];
+            player.buffs.splice(idx, 1);
+            pushBuffExpired(this.state, {
+              targetUserId: player.userId,
+              buffId: removed.buffId,
+              buffName: removed.name,
+              buffCategory: removed.category,
+              sourceAbilityId: removed.sourceAbilityId,
+              sourceAbilityName: removed.sourceAbilityName,
+            });
+            buffsChanged = true;
+          }
+        }
+      };
+
+      const aliveEntities: TargetEntity[] = [];
+      for (const entity of this.state.entities) {
+        const isExpired = now >= entity.expiresAt;
+        const isDead = entity.hp <= 0;
+        if (isExpired || isDead) {
+          cascadeRemoveStealth(entity);
+          buffsChanged = true;
+          continue;
+        }
+
+        if (entity.kind === "zhu_yun_han_rui") {
+          const owner = this.state.players.find((p) => p.userId === entity.ownerUserId);
+          // 1v1 today: friendlies = owner only. Loop on all players for forward compat.
+          for (const player of this.state.players) {
+            if (player.userId !== entity.ownerUserId) continue; // friendly check
+            if (player.hp <= 0) continue;
+
+            const dx = (player.position?.x ?? 0) - entity.position.x;
+            const dy = (player.position?.y ?? 0) - entity.position.y;
+            const inZone = Math.hypot(dx, dy) <= entity.radius;
+
+            if (!entity.enteredAtByUser) entity.enteredAtByUser = {};
+            if (!entity.rearmAtByUser) entity.rearmAtByUser = {};
+
+            const hasStealth = player.buffs.some(
+              (b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
+            );
+
+            if (!inZone) {
+              // Left the zone (or never entered) — remove stealth, reset timers.
+              entity.enteredAtByUser[player.userId] = 0;
+              entity.rearmAtByUser[player.userId] = 0;
+              if (hasStealth) {
+                const idx = player.buffs.findIndex(
+                  (b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
+                );
+                if (idx !== -1) {
+                  const removed = player.buffs[idx];
+                  player.buffs.splice(idx, 1);
+                  pushBuffExpired(this.state, {
+                    targetUserId: player.userId,
+                    buffId: removed.buffId,
+                    buffName: removed.name,
+                    buffCategory: removed.category,
+                    sourceAbilityId: removed.sourceAbilityId,
+                    sourceAbilityName: removed.sourceAbilityName,
+                  });
+                  buffsChanged = true;
+                }
+              }
+              continue;
+            }
+
+            // In zone.
+            const enteredAt = entity.enteredAtByUser[player.userId] ?? 0;
+            if (enteredAt === 0) {
+              entity.enteredAtByUser[player.userId] = now;
+            }
+
+            if (hasStealth) {
+              // Refresh duration so it doesn't expire mid-tick.
+              const buff = player.buffs.find(
+                (b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
+              ) as any;
+              if (buff) {
+                buff.expiresAt = Math.min(entity.expiresAt, now + ZHU_YUN_STEALTH_DURATION_MS);
+              }
+            } else {
+              // Detect attack-break: if we previously had stealth this tick session, set rearm.
+              const wasStealthed = (entity as any)._lastHadStealth?.[player.userId] === true;
+              if (wasStealthed) {
+                entity.rearmAtByUser[player.userId] = now + ATTACK_REARM_MS;
+              }
+              const rearmAt = entity.rearmAtByUser[player.userId] ?? 0;
+              const enteredAtNow = entity.enteredAtByUser[player.userId] ?? now;
+              const earliestGrantAt = Math.max(enteredAtNow + STEALTH_GRANT_DELAY_MS, rearmAt);
+              if (now >= earliestGrantAt && zhuYunAbility) {
+                const stealthBuff = (zhuYunAbility.buffs ?? []).find((b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID);
+                if (stealthBuff) {
+                  addBuff({
+                    state: this.state,
+                    sourceUserId: entity.ownerUserId,
+                    targetUserId: player.userId,
+                    ability: zhuYunAbility,
+                    buffTarget: player as any,
+                    buff: { ...stealthBuff, durationMs: Math.min(entity.expiresAt - now, ZHU_YUN_STEALTH_DURATION_MS) } as any,
+                  });
+                  buffsChanged = true;
+                }
+              }
+            }
+
+            // Track stealth presence for next-tick break detection.
+            if (!(entity as any)._lastHadStealth) (entity as any)._lastHadStealth = {};
+            (entity as any)._lastHadStealth[player.userId] = player.buffs.some(
+              (b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
+            );
+          }
+          // Suppress unused-var lint (owner var helps debugging context).
+          void owner;
+        }
+
+        aliveEntities.push(entity);
+      }
+      const hadEntities = this.state.entities.length;
+      this.state.entities = aliveEntities;
+      if (aliveEntities.length !== hadEntities) buffsChanged = true;
     }
 
     // 1f. Process STACK_ON_HIT_DAMAGE procs for all damage events this tick
@@ -2901,6 +3144,12 @@ export class GameLoop {
       // Append ground zones so frontend can render persistent damage areas
       if (this.state.groundZones !== undefined) {
         diff.push({ path: "/groundZones", value: this.state.groundZones });
+      }
+
+      // Append targetable entities so frontend stays in sync on creation,
+      // HP loss, natural expiry (12s), and destruction.
+      if (this.state.entities !== undefined) {
+        diff.push({ path: "/entities", value: this.state.entities });
       }
 
       // Append buff arrays whenever they changed (expiry or periodic effects)

@@ -14,10 +14,10 @@ const router = express.Router();
 router.post("/play", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, abilityInstanceId, targetUserId, groundTarget } = req.body;
+    const { gameId, abilityInstanceId, targetUserId, groundTarget, entityTargetId } = req.body;
     console.log(`[PLAY] Starting - userId: ${userId}, gameId: ${gameId}`);
 
-    const patch = await playAbility(gameId, userId, abilityInstanceId, targetUserId, groundTarget);
+    const patch = await playAbility(gameId, userId, abilityInstanceId, targetUserId, groundTarget, entityTargetId);
     console.log(`[PLAY] ✅ Complete - version: ${patch.version}`);
     res.json(patch);
   } catch (err: any) {

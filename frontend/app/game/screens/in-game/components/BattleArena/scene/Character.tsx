@@ -67,6 +67,8 @@ interface CharacterProps {
   worldHalfY: number;
   /** Visual-only stealth state: model becomes semi-transparent (HP UI unchanged). */
   isStealthed?: boolean;
+  /** Hide the HP/name billboard for enemy-view special cases. */
+  hideHpBar?: boolean;
   cameraFadeEnabled?: boolean;
 }
 
@@ -91,6 +93,7 @@ export default function Character({
   worldHalfX,
   worldHalfY,
   isStealthed = false,
+  hideHpBar = false,
   cameraFadeEnabled = false,
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
@@ -105,8 +108,8 @@ export default function Character({
   const arcDisplayYawRef = useRef(0);
   const { camera, size } = useThree();
 
-  // Show HP bar: always for self, within 60 units for others
-  const showHpBar = isMe || (distance !== undefined && distance <= 60);
+  // Show HP bar: always for self, within 60 units for others, unless hidden by a special state.
+  const showHpBar = !hideHpBar && (isMe || (distance !== undefined && distance <= 60));
 
   const handleSelect = (e: any) => {
     if (!onSelect) return;

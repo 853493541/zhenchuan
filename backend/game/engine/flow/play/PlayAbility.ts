@@ -22,6 +22,7 @@ export function applyAbility(
   castContext?: {
     targetUserId?: string;
     groundTarget?: { x: number; y: number; z?: number };
+    entityTargetId?: string;
   }
 ) {
   if (state.gameOver) return;
@@ -29,6 +30,9 @@ export function applyAbility(
   const source = state.players[playerIndex];
   const target = state.players[targetIndex];
   const enemy = getEnemy(state, playerIndex);
+  const entityTarget = castContext?.entityTargetId
+    ? (state.entities ?? []).find((entity) => entity.id === castContext.entityTargetId) ?? null
+    : null;
 
   /**
    * ================= GCD SPEND =================
@@ -47,7 +51,7 @@ export function applyAbility(
   breakOnPlay(source, ability);
 
   const opponentHpAtStart = target.hp;
-  const abilityDodged = computeAbilityDodge(ability, target);
+  const abilityDodged = entityTarget ? false : computeAbilityDodge(ability, target);
 
   if (abilityDodged) {
     pushEvent(state, {
@@ -79,6 +83,7 @@ export function applyAbility(
     ability,
     source,
     target,
+    entityTarget,
     abilityDodged,
   });
 

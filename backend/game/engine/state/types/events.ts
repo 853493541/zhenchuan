@@ -23,6 +23,8 @@ export interface GameEvent {
 
   actorUserId: PlayerID;
   targetUserId?: PlayerID;
+  entityId?: string;
+  entityName?: string;
 
   abilityId?: string;
   abilityName?: string;

@@ -35,7 +35,8 @@ export interface ActiveChannel {
   abilityId: string;
   abilityName: string;
   instanceId: string;
-  targetUserId: string;
+  targetUserId?: string;
+  entityTargetId?: string;
   /** Date.now() ms when channel started */
   startedAt: number;
   /** Total channel duration in ms */
@@ -168,6 +169,7 @@ export interface PlayerState {
     maxUpVz:   number;    // per-tick upward vz cap (positive)
     maxDownVz: number;    // per-tick downward vz cap (negative)
     hitTargetUserId?: string;
+    hitTargetEntityId?: string;
     hitDamageOnComplete?: number;
     hitEffectTypeOnComplete?: string;
     ticksRemaining: number;
@@ -200,6 +202,40 @@ export interface GroundZone {
   maxTargets?: number;
 }
 
+/**
+ * A targetable, HP-bearing entity placed by an ability.
+ * Unlike GroundZone (procedural area), TargetEntity can be selected and
+ * attacked by enemies. First example: 逐云寒蕊 (zhu_yun_han_rui).
+ */
+export interface TargetEntity {
+  id: string;
+  /** Synthetic combat id so entities can reuse shared buff/combat helpers. */
+  userId: PlayerID;
+  /** Entity kind discriminator (e.g. "zhu_yun_han_rui"). */
+  kind: string;
+  /** Player who created it; usually allies of this user benefit, enemies attack it. */
+  ownerUserId: string;
+  /** World-unit position. */
+  position: Position;
+  /** Effect/zone radius in world units (also serves as click hit-area). */
+  radius: number;
+  /** Current hit points. Reaches 0 → entity is destroyed. */
+  hp: number;
+  maxHp: number;
+  shield?: number;
+  /** Runtime buffs/debuffs currently affecting the entity. */
+  buffs: ActiveBuff[];
+  /** Wall-clock ms timestamp at which entity expires naturally. */
+  expiresAt: number;
+  /** Source ability metadata (for display + buff cleanup). */
+  abilityId?: string;
+  abilityName?: string;
+  /** Per-tick runtime: when each player entered the zone (ms timestamp; 0 = not in zone). */
+  enteredAtByUser?: Record<string, number>;
+  /** Per-tick runtime: earliest ms timestamp the player can be re-stealthed after attack-break. */
+  rearmAtByUser?: Record<string, number>;
+}
+
 export interface GameState {
   /** increments on every authoritative state mutation */
   version: number;
@@ -229,6 +265,9 @@ export interface GameState {
 
   /** persistent ground damage zones (e.g. 狂龙乱舞) */
   groundZones?: GroundZone[];
+
+  /** HP-bearing targetable entities placed by abilities (e.g. 逐云寒蕊). */
+  entities?: TargetEntity[];
 
   /** legacy deck support (unused in arena mode) */
   deck?: AbilityInstance[];

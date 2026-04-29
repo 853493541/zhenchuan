@@ -138,6 +138,8 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   MIE_STRIKE: "DEBUFF",
   // 孤影化双: snapshot + buff application
   GU_YING_HUA_SHUANG: "BUFF",
+  // 逐云寒蕊: places targetable HP-bearing zone entity
+  PLACE_ZHU_YUN_HAN_RUI: "BUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

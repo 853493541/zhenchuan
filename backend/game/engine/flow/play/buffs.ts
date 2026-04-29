@@ -26,9 +26,10 @@ export function applyAbilityBuffs(params: {
   ability: Ability;
   source: { userId: string; buffs: ActiveBuff[] };
   target: { userId: string; buffs: ActiveBuff[] };
+  entityTarget?: { userId: string; buffs: ActiveBuff[] } | null;
   abilityDodged: boolean;
 }) {
-  const { state, ability, source, target, abilityDodged } = params;
+  const { state, ability, source, target, entityTarget, abilityDodged } = params;
 
   // 百足/五方行尽/棒打狗头/大狮子吼 buff application is handled via custom immediate effect logic.
   // 撼地 stun is applied by the post-dash GameLoop handler (only when enemy is within AOE range on landing).
@@ -57,6 +58,7 @@ export function applyAbilityBuffs(params: {
     ability.id === "jian_zhu_tian_di" ||
     ability.id === "po_feng" ||
     ability.id === "gu_ying_hua_shuang" ||
+    ability.id === "zhu_yun_han_rui" ||
     (Array.isArray(ability.effects) &&
       ability.effects.some((e: any) =>
         e.type === "AOE_APPLY_BUFFS" ||
@@ -70,7 +72,7 @@ export function applyAbilityBuffs(params: {
   if (!Array.isArray(ability.buffs) || ability.buffs.length === 0) return;
 
   // Ability-level target (used as fallback when buff has no applyTo override)
-  const abilityBuffTarget = ability.target === "SELF" ? source : target;
+  const abilityBuffTarget = ability.target === "SELF" ? source : (entityTarget ?? target);
   const abilityEnemyApplied = abilityBuffTarget.userId !== source.userId;
 
   // Dodge cancels enemy-applied buffs only (ability-level check)
@@ -84,7 +86,7 @@ export function applyAbilityBuffs(params: {
     // of the ability's target field (e.g. 云飞玉皇 channels a self-buff while targeting an enemy)
     const localBuffTarget =
       buff.applyTo === "SELF" ? source
-      : buff.applyTo === "OPPONENT" ? target
+      : buff.applyTo === "OPPONENT" ? (entityTarget ?? target)
       : abilityBuffTarget;
     const localEnemyApplied = localBuffTarget.userId !== source.userId;
 

@@ -3079,6 +3079,57 @@ export const BASE_ABILITIES: AbilityRecord = {
       },
     ],
   },
+
+  // ─── 逐云寒蕊: instant, cleanse, place HP-bearing zone entity below self, control-immune 3s ──
+  zhu_yun_han_rui: {
+    id: "zhu_yun_han_rui",
+    name: "逐云寒蕊",
+    description:
+      "瞬发，解除控制，可空中施放与控制中施放\n在自身下方放置【逐云寒蕊】(气血50，半径10码，持续12秒)\n友方进入区域1秒后获得【隐藏】，离开或攻击时破隐\n自身获得3秒免控（所有控制等级）",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    allowWhileControlled: true,
+    allowWhileKnockedBack: true,
+    effects: [
+      { type: "CLEANSE", allowWhileControlled: true, cleanseRootSlow: true },
+      { type: "PLACE_ZHU_YUN_HAN_RUI", allowWhileControlled: true },
+    ],
+    buffs: [
+      {
+        buffId: 2715,
+        name: "逐云寒蕊·清越",
+        category: "BUFF",
+        durationMs: 3_000,
+        description: "免疫所有等级的控制（眩晕/定身/锁足/击倒/击退/拉拽）",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
+        ],
+      },
+      {
+        buffId: 2717,
+        name: "逐云寒蕊·不摇",
+        category: "BUFF",
+        durationMs: 12_000,
+        description: "逐云寒蕊本体免疫控制与击退效果",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
+        ],
+      },
+      {
+        buffId: 2716,
+        name: "逐云寒蕊·隐藏",
+        category: "BUFF",
+        durationMs: 500,
+        breakOnPlay: true,
+        description: "无法被敌方技能选中。攻击时破隐，1秒后若仍在区域内重新隐藏",
+        effects: [{ type: "UNTARGETABLE" }],
+      },
+    ],
+  },
 };
 
 let abilityPropertyOverrides: AbilityEditorOverrideMap = {};

@@ -80,7 +80,8 @@ export interface ActiveChannel {
   abilityId: string;
   abilityName: string;
   instanceId: string;
-  targetUserId: string;
+  targetUserId?: string;
+  entityTargetId?: string;
   startedAt: number;
   durationMs: number;
   cancelOnMove?: boolean;
@@ -130,11 +131,14 @@ export interface GameEvent {
   type: GameEventType;
   actorUserId: string;
   targetUserId?: string;
+  entityId?: string;
+  entityName?: string;
 
   abilityId?: string;
   abilityName?: string;
 
   value?: number;
+  shieldAbsorbed?: number;
 
   buffId?: number;
   buffName?: string;
@@ -178,6 +182,22 @@ export interface GroundZone {
   maxTargets?: number;
 }
 
+export interface TargetEntity {
+  id: string;
+  userId: string;
+  kind: string;
+  ownerUserId: string;
+  position: { x: number; y: number; z?: number };
+  radius: number;
+  hp: number;
+  maxHp: number;
+  shield?: number;
+  buffs: ActiveBuff[];
+  expiresAt: number;
+  abilityId?: string;
+  abilityName?: string;
+}
+
 export interface GameState {
   turn: number;
   activePlayerIndex: number;
@@ -191,6 +211,7 @@ export interface GameState {
   pickups?: PickupItem[];
   safeZone?: SafeZone;
   groundZones?: GroundZone[];
+  entities?: TargetEntity[];
 }
 
 /* =========================================================

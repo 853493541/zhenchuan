@@ -519,6 +519,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     ability: AbilityInstance,
     targetUserId?: string,
     groundTarget?: { x: number; y: number; z?: number },
+    entityTargetId?: string,
   ) => {
     // Real-time battles: no turn restrictions (both players act simultaneously)
     // Turn-based (draft): must be your turn
@@ -540,6 +541,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
           abilityInstanceId: ability.instanceId,
           targetUserId,
           groundTarget,
+          entityTargetId,
         }),
       });
 
