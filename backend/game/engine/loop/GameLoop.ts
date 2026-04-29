@@ -2203,6 +2203,41 @@ export class GameLoop {
           }
         }
       }
+
+      // 孤影化双 natural-expire: restore hp and cooldowns from snapshot.
+      const guYingExpired = naturallyExpired.filter((b) => b.buffId === 2714);
+      for (const gyBuff of guYingExpired) {
+        const snapshot = (gyBuff as any).snapshot as {
+          hp: number;
+          shield: number;
+          cooldowns: Array<{
+            instanceId: string;
+            abilityId: string;
+            cooldown: number;
+            chargeCount?: number;
+            chargeRegenTicksRemaining?: number;
+            chargeLockTicks?: number;
+          }>;
+        } | undefined;
+        if (!snapshot) continue;
+
+        // Restore HP (can go up or down, capped at maxHp).
+        const gyMaxHp = player.maxHp ?? 100;
+        player.hp = Math.min(Math.max(0, snapshot.hp), gyMaxHp);
+
+        // Restore ability cooldowns.
+        for (const snap of snapshot.cooldowns) {
+          const inst = (player.hand ?? []).find((a: any) => a.instanceId === snap.instanceId);
+          if (inst) {
+            inst.cooldown = snap.cooldown;
+            if (snap.chargeCount !== undefined) inst.chargeCount = snap.chargeCount;
+            if (snap.chargeRegenTicksRemaining !== undefined) inst.chargeRegenTicksRemaining = snap.chargeRegenTicksRemaining;
+            if (snap.chargeLockTicks !== undefined) inst.chargeLockTicks = snap.chargeLockTicks;
+          }
+        }
+
+        buffsChanged = true;
+      }
     });
 
     // 1d. 毒圈 — poison zone damage (arena mode only, 1x per second)

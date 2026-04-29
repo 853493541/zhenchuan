@@ -118,7 +118,9 @@ export type EffectType =
   // 灭: conditional damage (2 or 12) + MIN_HP_1 buff if caster HP < 10%
   | "MIE_STRIKE"
   // 斩无常: periodic 贯体 heal to nearby allies within range
-  | "CHANNEL_AOE_TICK_DAMAGE";
+  | "CHANNEL_AOE_TICK_DAMAGE"
+  // 孤影化双: snapshot HP+cooldowns and apply buff; GameLoop restores on expiry
+  | "GU_YING_HUA_SHUANG";
 
 /**
  * Immediate ability effects

@@ -772,4 +772,29 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
       { type: "DASH", value: 8 },
     ],
   },
+
+  // ─── 孤影化双 ─────────────────────────────────────────────────────────────
+  gu_ying_hua_shuang: {
+    id: "gu_ying_hua_shuang",
+    name: "孤影化双",
+    description: "瞬发，解除控制\n记录当前气血和所有技能冷却\n7秒后恢复为记录时的气血和冷却",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "CLEANSE", allowWhileControlled: true },
+      { type: "GU_YING_HUA_SHUANG", allowWhileControlled: true },
+    ],
+    buffs: [
+      {
+        buffId: 2714,
+        name: "孤影化双",
+        category: "BUFF",
+        durationMs: 7_000,
+        description: "7秒后恢复记录时的气血和技能冷却",
+        effects: [],
+      },
+    ],
+  },
 };

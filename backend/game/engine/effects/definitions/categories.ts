@@ -136,6 +136,8 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   CHANNEL_AOE_TICK_DAMAGE: "BUFF",
   // 灭: conditional damage handler
   MIE_STRIKE: "DEBUFF",
+  // 孤影化双: snapshot + buff application
+  GU_YING_HUA_SHUANG: "BUFF",
 };
 
 export function getEffectCategory(type: EffectType): string {

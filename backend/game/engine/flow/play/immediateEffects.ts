@@ -1520,6 +1520,42 @@ export function applyImmediateEffects(params: {
         break;
       }
 
+      case "GU_YING_HUA_SHUANG": {
+        // Snapshot current HP and all ability cooldowns, then apply the buff.
+        // On buff expiry in GameLoop, HP and cooldowns will be restored.
+        const guYingBuff = (ability.buffs ?? []).find((b: any) => b.buffId === 2714);
+        if (guYingBuff) {
+          const snapshot = {
+            hp: source.hp,
+            shield: source.shield ?? 0,
+            cooldowns: (source.hand ?? []).map((a: any) => ({
+              instanceId: a.instanceId,
+              abilityId: a.abilityId,
+              cooldown: a.cooldown ?? 0,
+              chargeCount: a.chargeCount,
+              chargeRegenTicksRemaining: a.chargeRegenTicksRemaining,
+              chargeLockTicks: a.chargeLockTicks,
+            })),
+          };
+
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: source.userId,
+            ability,
+            buffTarget: source,
+            buff: guYingBuff,
+          });
+
+          // Attach snapshot to the live buff object so GameLoop can restore on expiry.
+          const liveBuff = source.buffs.find((b: any) => b.buffId === 2714);
+          if (liveBuff) {
+            (liveBuff as any).snapshot = snapshot;
+          }
+        }
+        break;
+      }
+
       default:
         break;
     }
