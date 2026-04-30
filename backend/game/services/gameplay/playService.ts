@@ -241,7 +241,9 @@ async function playCastAbility(
   // Pure channels are driven by activeChannel in GameLoop and apply cooldown on completion.
   // applyBuffsOnComplete:true marks channel abilities whose buffs[] apply on finish, not on cast.
   const isPureChannel = ability.type === "CHANNEL" && (
-    !ability.buffs || ability.buffs.length === 0 || (ability as any).applyBuffsOnComplete === true
+    !ability.buffs || ability.buffs.length === 0 ||
+    (ability as any).applyBuffsOnComplete === true ||
+    (ability as any).applyBuffsOnChannelStart === true
   );
   if (isPureChannel) {
     player.activeChannel = {
@@ -259,6 +261,29 @@ async function playCastAbility(
       effects: (ability as any).channelEffects ?? [],
       cooldownTicks: clampCooldownTicksForTesting(ability.cooldownTicks ?? 150),
     };
+
+    if ((ability as any).applyBuffsOnChannelStart === true) {
+      const startedBuffIds: number[] = [];
+      for (const buffDef of (ability.buffs ?? [])) {
+        const applyTarget =
+          buffDef.applyTo === "SELF" ? player
+          : buffDef.applyTo === "OPPONENT" ? (targetEntity ?? target)
+          : (ability.target === "SELF" ? player : (targetEntity ?? target));
+        if (!applyTarget) continue;
+        addBuff({
+          state,
+          sourceUserId: player.userId,
+          targetUserId: (applyTarget as any).userId,
+          ability,
+          buffTarget: applyTarget as any,
+          buff: buffDef,
+        });
+        startedBuffIds.push(buffDef.buffId);
+      }
+      if (startedBuffIds.length > 0) {
+        player.activeChannel.startedBuffIds = startedBuffIds;
+      }
+    }
 
     pushEvent(state, {
       turn: state.turn,

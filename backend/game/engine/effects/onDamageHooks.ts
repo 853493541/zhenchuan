@@ -26,6 +26,14 @@ const XUANSHUI_SELF_BUFF_ID   = 2607; // carried by the ability caster (A)
 const XUANSHUI_POISON_BUFF_ID = 2606; // carried by the opponent (B) — 毒手
 const XUANSHUI_REDIRECT_PCT   = 0.55;
 
+// ── 疾电叱羽 ──────────────────────────────────────────────────────────────────
+// Redirect ALL incoming damage from any ally with the JI_DIAN_REDIRECT buff to the
+// linked HP-bearing zone. The zone consumes up to its remaining HP; excess damage
+// is discarded (does not fall back to the player). When the zone HP hits 0 the
+// zone expires, and the buff is naturally cleared next tick by GameLoop's zone
+// presence check.
+const JI_DIAN_BUFF_ID = 2620;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PRE-DAMAGE: 玄水蛊 redirect split
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,6 +58,32 @@ export function preCheckRedirect(
   if (rawDamage <= 0) return noRedirect;
 
   const now = Date.now();
+
+  // ── 疾电叱羽 zone redirect (runs first, fully absorbs up to zone HP) ──
+  const jiDianBuff = (target.buffs as any[]).find(
+    (b: any) => b.buffId === JI_DIAN_BUFF_ID && b.expiresAt > now
+  );
+  if (jiDianBuff) {
+    const zoneId: string | undefined = (jiDianBuff as any).linkedZoneId;
+    const zone = (state as any).groundZones?.find((z: any) => z.id === zoneId);
+    if (zone && (zone.hp ?? 0) > 0) {
+      const consume = Math.min(rawDamage, zone.hp);
+      zone.hp = Math.max(0, zone.hp - consume);
+      pushEvent(state, {
+        turn: state.turn,
+        type: "DAMAGE",
+        actorUserId: target.userId,
+        targetUserId: target.userId,
+        abilityId: zone.abilityId ?? "ji_dian_chi_yu",
+        abilityName: zone.abilityName ?? "疾电叱羽",
+        effectType: "JI_DIAN_REDIRECT",
+        value: consume,
+      } as any);
+      // Excess damage is discarded — player takes 0 regardless.
+      return { adjustedDamage: 0, redirectPlayer: null, redirectAmt: 0 };
+    }
+  }
+
   const hasSelfBuff = target.buffs.some(
     (b: any) => b.buffId === XUANSHUI_SELF_BUFF_ID && b.expiresAt > now
   );

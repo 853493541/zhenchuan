@@ -108,6 +108,7 @@ export interface PlayerState {
   velocity?: { vx: number; vy: number; vz?: number };
   moveSpeed?: number;
   jumpCount?: number;
+  tiYunZongPenaltyConsumed?: boolean;
   facing?: { x: number; y: number };
   activeChannel?: ActiveChannel;
 }

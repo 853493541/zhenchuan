@@ -88,7 +88,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   fuyao_zhishang: {
     id: "fuyao_zhishang",
     name: "扶摇直上",
-    description: "获得【弹跳】：下次跳跃高度提升至12单位",
+    description: "获得【弹跳】：下次跳跃高度提升至12单位\n拥有【梯云纵】时不可施放",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
@@ -2613,6 +2613,386 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
   },
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // 沧月 — instant 4u, 1 dmg + 2s knockdown to primary, knock back others within 6u
+  // 30 units (30u/sec) — multi-target test ability.
+  // ──────────────────────────────────────────────────────────────────────────
+  cang_yue: {
+    id: "cang_yue",
+    name: "沧月",
+    description: "瞬发，射程4\n对目标造成1点伤害并击倒2秒\n以目标为中心6尺内的其他敌人被击退30尺（30尺/秒）",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [
+      { type: "CANG_YUE_AOE", value: 30, range: 6, durationTicks: 30 } as any,
+    ],
+    buffs: [
+      {
+        buffId: 1340,
+        name: "沧月·倒地",
+        category: "DEBUFF",
+        durationMs: 2_000,
+        description: "倒地：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+      {
+        buffId: 1341,
+        name: "沧月·击退",
+        category: "DEBUFF",
+        durationMs: 1_000,
+        description: "被击退中，行动受限",
+        breakOnPlay: false,
+        effects: [{ type: "KNOCKED_BACK" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 驱夜断愁 — instant 4u, 2 damage with 50% lifesteal, GCD
+  // ──────────────────────────────────────────────────────────────────────────
+  qu_ye_duan_chou: {
+    id: "qu_ye_duan_chou",
+    name: "驱夜断愁",
+    description: "瞬发，射程4\n造成2点伤害并回复造成伤害的50%",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [
+      { type: "DAMAGE", value: 2, lifestealPct: 0.5 } as any,
+    ],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 捕风式 — instant 20u, 1 damage + 20% slow for 3s
+  // ──────────────────────────────────────────────────────────────────────────
+  bu_feng_shi: {
+    id: "bu_feng_shi",
+    name: "捕风式",
+    description: "瞬发，射程20\n造成1点伤害并附加【捕风式】3秒（减速20%）",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "DAMAGE", value: 1 }],
+    buffs: [
+      {
+        buffId: 1342,
+        name: "捕风式",
+        category: "DEBUFF",
+        durationMs: 3_000,
+        description: "减速20%",
+        effects: [{ type: "SLOW", value: 0.2 }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 幽月轮 — instant 4u, 1 damage
+  // ──────────────────────────────────────────────────────────────────────────
+  you_yue_lun: {
+    id: "you_yue_lun",
+    name: "幽月轮",
+    description: "瞬发，射程4\n造成1点伤害",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 0,
+    gcd: true,
+    effects: [{ type: "DAMAGE", value: 1 }],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 徐如林 — self buff: while active, hits have 50% chance to apply
+  // 徐如林·回复 (1s ICD); when 徐如林·回复 expires, heal 5.
+  // ──────────────────────────────────────────────────────────────────────────
+  xu_ru_lin: {
+    id: "xu_ru_lin",
+    name: "徐如林",
+    description: "瞬发，自身施放\n获得【徐如林】30秒：命中敌人有50%几率获得【徐如林·回复】1秒；【徐如林·回复】结束时回复5点生命；持有【徐如林·回复】期间不会再次获得（1秒内置CD）",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 1343,
+        name: "徐如林",
+        category: "BUFF",
+        durationMs: 20_000,
+        description: "命中敌人有50%几率获得【徐如林·回复】1秒",
+        effects: [{ type: "XU_RU_LIN_PROC" }],
+      },
+      {
+        buffId: 1344,
+        name: "徐如林·回复",
+        category: "BUFF",
+        durationMs: 1_000,
+        description: "结束时回复5点生命；持有期间不会再次获得",
+        effects: [{ type: "XU_RU_LIN_RESTORE", value: 5 }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 亢龙有悔 — instant 6u, 2× 3 damage to target; self CONTROL 1s; DOT 2 stacks
+  // ──────────────────────────────────────────────────────────────────────────
+  kang_long_you_hui: {
+    id: "kang_long_you_hui",
+    name: "亢龙有悔",
+    description: "瞬发，射程6\n对目标造成两次3点伤害；施放后定身自身1秒\n附加【亢龙有悔】每2秒受到1点伤害，持续24秒，最多2层",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 6,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [
+      { type: "DAMAGE", value: 3 },
+      { type: "DAMAGE", value: 3 },
+    ],
+    buffs: [
+      {
+        buffId: 1345,
+        name: "亢龙有悔·定身",
+        category: "DEBUFF",
+        applyTo: "SELF",
+        durationMs: 1_000,
+        description: "施放后定身：无法移动、跳跃、施放技能，且冻结在当前高度（空中不下落）",
+        effects: [{ type: "CONTROL" }, { type: "Z_LOCK" }],
+      },
+      {
+        buffId: 1346,
+        name: "亢龙有悔",
+        category: "DEBUFF",
+        durationMs: 24_000,
+        periodicMs: 2_000,
+        initialStacks: 1,
+        maxStacks: 2,
+        description: "每2秒受到1点伤害（最多2层）",
+        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 抱残式 — instant 8u, 50% jump-height nerf + 48% slow for 8s
+  // ──────────────────────────────────────────────────────────────────────────
+  bao_can_shi: {
+    id: "bao_can_shi",
+    name: "抱残式",
+    description: "瞬发，射程8\n附加【抱残式】8秒：跳跃高度降低50%，移动速度降低48%",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 8,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 1347,
+        name: "抱残式",
+        category: "DEBUFF",
+        durationMs: 8_000,
+        description: "跳跃高度降低50%，移动速度降低48%",
+        effects: [
+          { type: "JUMP_NERF", value: 0.5 },
+          { type: "SLOW", value: 0.48 },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 太极无极 — instant 20u, 2 dmg; if target under STUN/ROOT, apply stacking
+  //   debuff (DAMAGE_TAKEN_INCREASE 0.2, 12s, max 5 stacks)
+  // ──────────────────────────────────────────────────────────────────────────
+  tai_ji_wu_ji: {
+    id: "tai_ji_wu_ji",
+    name: "太极无极",
+    description: "瞬发，射程20\n造成2点伤害\n命中时，若目标处于眩晕/冰冻/锁足状态，附加【太极无极】12秒：受到的伤害增加20%（最多5层）",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "DAMAGE", value: 2 }],
+    buffs: [
+      {
+        buffId: 1348,
+        name: "太极无极",
+        category: "DEBUFF",
+        durationMs: 12_000,
+        maxStacks: 5,
+        initialStacks: 1,
+        description: "受到的伤害增加20%（最多5层）",
+        effects: [{ type: "DAMAGE_TAKEN_INCREASE", value: 0.2 }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 拿云式 — single cast, target HP must be < 30. Deals 5 normal damage
+  // (DR/shield/dodge apply) AND 10 TRUE_DAMAGE (ignores DR/shield/dodge;
+  // blocked only by INVULNERABLE) in the same cast.
+  // ──────────────────────────────────────────────────────────────────────────
+  na_yun_shi: {
+    id: "na_yun_shi",
+    name: "拿云式",
+    description: "瞬发，射程4\n只能对生命低于30的目标施放\n造成5点普通伤害（受减伤、护盾、闪避影响）\n并造成10点真实伤害（无视减伤、护盾与闪避，仅被无敌阻挡）",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [
+      { type: "DAMAGE", value: 5 },
+      { type: "TRUE_DAMAGE", value: 10 } as any,
+    ],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 龙啸九天 — castable while controlled, cleanses self, control immune 3s,
+  //   60% DR for 6s, self-stuck (CONTROL+Z_LOCK) 1s, AOE 6u: 1 dmg + slow
+  //   knockback (10u over 10s)
+  // ──────────────────────────────────────────────────────────────────────────
+  long_xiao_jiu_tian: {
+    id: "long_xiao_jiu_tian",
+    name: "龙啸九天",
+    description: "瞬发，自身施放。\n空中、移动中、被控制时均可施放\n施放后解除自身所有控制\n获得【龙威】3秒：免疫控制\n获得【龙啸九天】6秒：受到的伤害降低60%\n施放后【龙啸九天·定身】1秒：自身定身（含Z轴）\n并对周围6码内敌人造成1点伤害，并将其击退10码（0.5秒）",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    allowWhileControlled: true,
+    effects: [
+      { type: "LONG_XIAO_JIU_TIAN_AOE", range: 6, value: 10, durationTicks: 15 } as any,
+    ],
+    buffs: [
+      {
+        buffId: 1349,
+        name: "龙威",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 3_000,
+        description: "免疫控制",
+        effects: [{ type: "CONTROL_IMMUNE" }],
+      },
+      {
+        buffId: 1350,
+        name: "龙啸九天",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 6_000,
+        description: "受到的伤害降低60%",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.6 }],
+      },
+      {
+        buffId: 1351,
+        name: "龙啸九天·定身",
+        category: "DEBUFF",
+        applyTo: "SELF",
+        durationMs: 1_000,
+        description: "施放后定身：无法移动、跳跃、施放技能，且空中不下落",
+        effects: [{ type: "CONTROL" }, { type: "Z_LOCK" }],
+      },
+      {
+        buffId: 1352,
+        name: "龙啸九天·击退",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 500,
+        description: "被击退中",
+        breakOnPlay: false,
+        effects: [{ type: "KNOCKED_BACK" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 驭羽骋风 — instant SELF cast: cleanse all controls, dash up 12u in 1s,
+  // gain 驭羽骋风 (control/knockback/pull immunity 3s) + 驭羽骋风·减伤 (30% DR 3s)
+  // ──────────────────────────────────────────────────────────────────────────
+  yu_yu_cheng_feng: {
+    id: "yu_yu_cheng_feng",
+    name: "驭羽骋风",
+    description: "瞬发，自身施放\n解除自身所有控制\n向上冲刺12码（1秒）\n获得【驭羽骋风】3秒：免疫所有控制（含击退、拉拽）\n获得【驭羽骋风·减伤】3秒：受到伤害降低30%",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    qinggong: true,
+    allowWhileControlled: true,
+    effects: [
+      { type: "YU_YU_DASH", value: 12, durationTicks: 30 } as any,
+    ],
+    buffs: [
+      {
+        buffId: 1354,
+        name: "驭羽骋风",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 3_000,
+        description: "免疫所有控制（含击退、拉拽）",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
+        ],
+      },
+      {
+        buffId: 1355,
+        name: "驭羽骋风·减伤",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 3_000,
+        description: "受到伤害降低30%",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.3 }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 梯云纵 — 轻功. Instant SELF cast (uses GCD). Refreshes 蹑云逐月 cooldown
+  // and grants 【梯云纵】 12s. While active, every jump becomes a power jump
+  // (+12u peak height, like 扶摇直上) without consuming the buff. With 鸟翔碧空,
+  // jumps become combined power jumps (+24u peak).
+  // Cannot cast in midair, cannot cast while having 【弹跳】.
+  // ──────────────────────────────────────────────────────────────────────────
+  ti_yun_zong: {
+    id: "ti_yun_zong",
+    name: "梯云纵",
+    description: "轻功，瞬发，自身施放\n刷新【蹑云逐月】冷却\n获得【梯云纵】12秒：每次跳跃额外获得12码高度\n（与【鸟翔碧空】可同时存在，叠加为超级跳）\n拥有【弹跳】时不可施放\n不可在空中施放",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    qinggong: true,
+    cannotCastWhileRooted: true,
+    requiresGrounded: true,
+    effects: [
+      { type: "TI_YUN_ZONG_REFRESH" } as any,
+    ],
+    buffs: [
+      {
+        buffId: 9003,
+        name: "梯云纵",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 12_000,
+        description: "跳跃高度额外增加12码",
+        effects: [{ type: "TI_YUN_ZONG_JUMP" }],
+      },
+    ],
+  },
+
   jing_hong_you_long: {
     id: "jing_hong_you_long",
     name: "惊鸿游龙",
@@ -3099,13 +3479,14 @@ export const BASE_ABILITIES: AbilityRecord = {
     buffs: [
       {
         buffId: 2715,
-        name: "逐云寒蕊·清越",
+        name: "逐云寒蕊",
         category: "BUFF",
         durationMs: 3_000,
-        description: "免疫所有等级的控制（眩晕/定身/锁足/击倒/击退/拉拽）",
+        description: "免疫所有等级的控制与锁定（眩晕/定身/锁足/击倒/击退/拉拽/沉默/封招）",
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "KNOCKBACK_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
         ],
       },
       {
@@ -3113,23 +3494,217 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "逐云寒蕊·不摇",
         category: "BUFF",
         durationMs: 12_000,
-        description: "逐云寒蕊本体免疫控制与击退效果",
+        description: "逐云寒蕊本体免疫所有控制与锁定（眩晕/定身/锁足/击倒/击退/拉拽/沉默/封招）",
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "KNOCKBACK_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
         ],
       },
       {
         buffId: 2716,
         name: "逐云寒蕊·隐藏",
         category: "BUFF",
-        durationMs: 500,
+        durationMs: 2_000,
         breakOnPlay: true,
         description: "无法被敌方技能选中。攻击时破隐，1秒后若仍在区域内重新隐藏",
         effects: [{ type: "UNTARGETABLE" }],
       },
     ],
   },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 疾电叱羽 — instant SELF cast. Place an HP-bearing redirect zone below the
+  // caster (radius 8u, lasts 8s, 40 HP). Allies inside gain 【疾电叱羽】 buff
+  // that redirects ALL incoming damage to the zone. When the zone HP hits 0
+  // (or it expires) the buff is removed and damage resumes normally.
+  // The zone itself cannot be targeted by abilities — all damage to it must
+  // come through the redirect path.
+  // ──────────────────────────────────────────────────────────────────────────
+  ji_dian_chi_yu: {
+    id: "ji_dian_chi_yu",
+    name: "疾电叱羽",
+    description: "瞬发，自身施放\n于脚下展开疾电叱羽阵，半径8尺，持续8秒，气血上限40\n阵中我方获得【疾电叱羽】：受到的所有伤害转移到本阵\n本阵气血归零或消失时，护盾解除",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 600,
+    gcd: true,
+    effects: [
+      { type: "PLACE_JI_DIAN_ZONE", value: 40, range: 8, zoneDurationMs: 8_000 } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2620,
+        name: "疾电叱羽",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 8_000,
+        description: "区域内：受到的所有伤害转移至疾电叱羽结界，超出结界剩余承伤的部分直接消失",
+        effects: [{ type: "JI_DIAN_REDIRECT" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 乘黄之威 — instant cast (works mid-air / mid-move). Forward dash 12u over
+  // 0.6s (20u/s). On dash end: flip facing 180° instantly, then silence enemies
+  // within 6u and 120° cone of the new facing. Silenced enemies are 恐惧 (FEARED):
+  // forced to walk away from the caster while silenced.
+  // ──────────────────────────────────────────────────────────────────────────
+  cheng_huang_zhi_wei: {
+    id: "cheng_huang_zhi_wei",
+    name: "乘黄之威",
+    description: "瞬发，可在移动或空中施放\n向前冲刺12尺（20尺/秒），结束后立即转身180°\n并对身后6尺、120°内的敌人施加【恐惧】3秒：沉默并强制远离施法者",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 450,
+    gcd: true,
+    allowWhileControlled: false,
+    effects: [
+      { type: "CHENG_HUANG_DASH", value: 12, durationTicks: 18 } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2625,
+        name: "恐惧",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 3_000,
+        description: "沉默并强制远离施法者，无法自主控制移动",
+        effects: [
+          { type: "SILENCE" },
+          { type: "FEARED" },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 振翅图南 — ground-target or selected-target zone. 5u radius, 1 dmg per 0.5s,
+  // 6s. If a target is selected, zone follows that target at 5u/sec; otherwise
+  // placed statically at the mouse-hover position. No GCD. Cast range 20u.
+  // ──────────────────────────────────────────────────────────────────────────
+  zhen_chi_tu_nan: {
+    id: "zhen_chi_tu_nan",
+    name: "振翅图南",
+    description: "瞬发，不进入公共冷却\n于目标处或鼠标位置展开半径5尺的法阵，持续6秒\n每0.5秒造成1点伤害；若有选中目标，法阵以5尺/秒跟随目标\n施法距离20尺",
+    type: "ATTACK",
+    target: "OPPONENT",
+    cooldownTicks: 240,
+    gcd: false,
+    range: 20,
+    faceDirection: false,
+    effects: [
+      {
+        type: "PLACE_FOLLOW_ZONE",
+        value: 1,
+        range: 5,
+        zoneDurationMs: 6_000,
+        zoneIntervalMs: 500,
+      } as any,
+    ],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 飞刃回转 — requires target. 5u radius, 2 dmg per 0.5s, 6s, follows target
+  // at 5u/sec. Uses GCD. Cast range 15u.
+  // ──────────────────────────────────────────────────────────────────────────
+  fei_ren_hui_zhuan: {
+    id: "fei_ren_hui_zhuan",
+    name: "飞刃回转",
+    description: "瞬发，需选定目标\n于目标处展开半径5尺的法阵，持续6秒\n每0.5秒造成2点伤害；法阵以5尺/秒跟随目标\n施法距离15尺",
+    type: "ATTACK",
+    target: "OPPONENT",
+    cooldownTicks: 300,
+    gcd: true,
+    range: 15,
+    effects: [
+      {
+        type: "PLACE_FOLLOW_ZONE",
+        value: 2,
+        range: 5,
+        zoneDurationMs: 6_000,
+        zoneIntervalMs: 500,
+      } as any,
+    ],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 天绝地灭 — instant ground-target. Place a zone at hover position; lasts 9s.
+  // Initial radius 6u, grows +4u/sec up to 15u total. After 9s the zone explodes:
+  // pulls all enemies inside toward center at 20u/sec, then deals 10 damage.
+  // Cast range 20u.
+  // ──────────────────────────────────────────────────────────────────────────
+  tian_jue_di_mie: {
+    id: "tian_jue_di_mie",
+    name: "天绝地灭",
+    description: "瞬发，于鼠标位置或目标处展开法阵，初始半径6尺\n每秒扩大4尺，最多至15尺，总持续9秒\n9秒后爆炸：以40尺/秒将范围内敌人拉至中心，并造成10点伤害\n施法距离20尺",
+    type: "ATTACK",
+    target: "OPPONENT",
+    cooldownTicks: 600,
+    gcd: true,
+    range: 20,
+    faceDirection: false,
+    allowGroundCastWithoutTarget: true,
+    effects: [
+      {
+        type: "PLACE_GROW_PULL_ZONE",
+        value: 10,
+        range: 6,
+        zoneDurationMs: 9_000,
+      } as any,
+    ],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 连环弩 — channel 3s while standing. Immune to controls (except pull /
+  // knockback) and lockouts (silence). Each second deals 1/2/3 damage to target
+  // (range 25u). If target is within 15u when a damage tick lands, knock them
+  // back 4u over 0.5s (4u/0.5s).
+  // ──────────────────────────────────────────────────────────────────────────
+  lian_huan_nu: {
+    id: "lian_huan_nu",
+    name: "连环弩",
+    description: "运功3秒，运功期间须站定，免疫除击退/拉拽外的控制及沉默\n每1秒对目标造成1/2/3点伤害，施法距离25尺\n命中时若目标在15尺内，将其向后击退8尺（8尺/0.5秒）",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    cooldownTicks: 450,
+    gcd: true,
+    range: 25,
+    requiresGrounded: true,
+    requiresStanding: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2630,
+        name: "连环弩",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 3_000,
+        breakOnPlay: true,
+        cancelOnMove: true,
+        cancelOnJump: true,
+        description: "运功中：免疫控制（拉拽/击退除外）与沉默",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
+          { type: "ROOT_SLOW_IMMUNE" },
+          { type: "INTERRUPT_IMMUNE" },
+        ],
+      },
+    ],
+    channelDurationMs: 3_000,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelForward: true,
+    applyBuffsOnChannelStart: true,
+    channelEffects: [
+      { type: "LIAN_HUAN_NU_TICK", value: 0, range: 25 } as any,
+    ],
+  } as any,
 };
 
 let abilityPropertyOverrides: AbilityEditorOverrideMap = {};

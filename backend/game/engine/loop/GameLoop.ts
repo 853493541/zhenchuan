@@ -14,7 +14,7 @@ import { checkGameOver } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
-import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap } from "./movement";
+import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap, resolveEntityHorizontalCollision } from "./movement";
 import { addBuff, pushBuffExpired } from "../effects/buffRuntime";
 import { resolveScheduledDamage, resolveHealAmount } from "../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../utils/health";
@@ -193,7 +193,7 @@ function applyDamageToHostileTarget(params: {
   if (target.kind === "player") {
     const victim = target.target;
     const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(state, victim as any, resolvedDamage);
-    const appliedDamage = redirectPlayer ? adjustedDamage : resolvedDamage;
+    const appliedDamage = adjustedDamage;
     const result = appliedDamage > 0
       ? applyDamageToTarget(victim as any, appliedDamage)
       : { hpDamage: 0, shieldAbsorbed: 0 };
@@ -241,6 +241,51 @@ function applyDamageToHostileTarget(params: {
     processOnDamageTaken(state, entity as any, result.hpDamage, source.userId);
   }
   return resolvedDamage;
+}
+
+function clearChannelStartBuffs(
+  state: GameState,
+  player: { userId: string; buffs: any[] },
+  channel?: { abilityId?: string; startedBuffIds?: number[] }
+) {
+  const startedBuffIds = channel?.startedBuffIds ?? [];
+  if (startedBuffIds.length === 0) return false;
+
+  let removedAny = false;
+  const remainingBuffs: any[] = [];
+  for (const buff of player.buffs ?? []) {
+    const matchesStartedBuff =
+      startedBuffIds.includes(buff.buffId) &&
+      (buff.sourceAbilityId ?? channel?.abilityId) === channel?.abilityId;
+    if (!matchesStartedBuff) {
+      remainingBuffs.push(buff);
+      continue;
+    }
+
+    removeLinkedShield(player as any, buff as any);
+    pushBuffExpired(state, {
+      targetUserId: player.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+    });
+    removedAny = true;
+  }
+
+  if (removedAny) {
+    player.buffs = remainingBuffs;
+  }
+  return removedAny;
+}
+
+function cancelActiveChannel(state: GameState, player: { activeChannel?: any; buffs: any[]; userId: string }) {
+  const channel = player.activeChannel;
+  if (!channel) return false;
+  const removedBuffs = clearChannelStartBuffs(state, player, channel);
+  player.activeChannel = undefined;
+  return removedBuffs;
 }
 
 function isDunyingCompanion(buff: { buffId: number; name?: string; sourceAbilityId?: string }): boolean {
@@ -759,10 +804,70 @@ export class GameLoop {
     const buffCountsBefore = this.state.players.map((p) => p.buffs?.length ?? 0);
     let movementStateChanged = false;
     this.state.players.forEach((player, idx) => {
-      const input = this.playerInputs.get(idx) ?? null;
+      let input = this.playerInputs.get(idx) ?? null;
+      // ── 恐惧 (FEARED): force walk away from sourceUserId, ignore player input ──
+      const fearedBuff = (player.buffs as any[]).find(
+        (b) => b.expiresAt > Date.now() && b.effects?.some((e: any) => e.type === "FEARED")
+      );
+      if (fearedBuff) {
+        const src = this.state.players.find((p) => p.userId === fearedBuff.sourceUserId);
+        if (src) {
+          const dx = player.position.x - src.position.x;
+          const dy = player.position.y - src.position.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 0.0001) {
+            const ax = dx / len;
+            const ay = dy / len;
+            input = { dx: ax, dy: ay, facing: { x: ax, y: ay }, jump: false } as any;
+          } else {
+            input = { dx: 1, dy: 0, facing: { x: 1, y: 0 }, jump: false } as any;
+          }
+        }
+      }
       const dashStateBefore = player.activeDash ? { ...player.activeDash } : undefined;
       const dashAbilityIdBefore = player.activeDash?.abilityId;
       applyMovement(player, input, this.tickRate, this.mapCtx);
+
+      // ── 乘黄之威: on dash end, flip facing 180° and silence/fear enemies in 6u/120° cone of new facing ──
+      if (dashStateBefore && !player.activeDash && (dashStateBefore as any).chengHuangFlipAndFear) {
+        const oldFx = player.facing?.x ?? 0;
+        const oldFy = player.facing?.y ?? 1;
+        const newFx = -oldFx;
+        const newFy = -oldFy;
+        player.facing = { x: newFx, y: newFy };
+        const chwAbility = ABILITIES["cheng_huang_zhi_wei"] as any;
+        const coneRadiusWorld = gameplayUnitsToWorldUnits(6, this.state.unitScale);
+        const halfAngleCos = Math.cos((120 / 2) * Math.PI / 180); // cos(60°) = 0.5
+        for (const enemyP of this.state.players) {
+          if (enemyP.userId === player.userId) continue;
+          if ((enemyP.hp ?? 0) <= 0) continue;
+          if (blocksEnemyTargeting(enemyP as any)) continue;
+          const dxC = enemyP.position.x - player.position.x;
+          const dyC = enemyP.position.y - player.position.y;
+          const distC = Math.sqrt(dxC * dxC + dyC * dyC);
+          if (distC > coneRadiusWorld || distC < 0.0001) continue;
+          const dot = (newFx * dxC + newFy * dyC) / distC;
+          if (dot < halfAngleCos) continue;
+          addBuff({
+            state: this.state,
+            sourceUserId: player.userId,
+            targetUserId: enemyP.userId,
+            ability: chwAbility ?? { id: "cheng_huang_zhi_wei", name: "乘黄之威" } as any,
+            buffTarget: enemyP as any,
+            buff: {
+              buffId: 2625,
+              name: "恐惧",
+              category: "DEBUFF",
+              durationMs: 3_000,
+              description: "沉默并强制远离施法者，无法控制移动",
+              effects: [
+                { type: "SILENCE" },
+                { type: "FEARED" },
+              ],
+            } as any,
+          });
+        }
+      }
 
       if (dashStateBefore && !player.activeDash && dashStateBefore.hitTargetUserId) {
         const reachAbilityId = dashStateBefore.abilityId;
@@ -784,7 +889,7 @@ export class GameLoop {
               const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(
                 this.state, reachTarget as any, finalDamage
               );
-              const reachApply = redirectPlayer ? adjustedDamage : finalDamage;
+              const reachApply = adjustedDamage;
               const reachResult = reachApply > 0
                 ? applyDamageToTarget(reachTarget as any, reachApply)
                 : { hpDamage: 0 };
@@ -1113,8 +1218,8 @@ export class GameLoop {
 
         // Cancel activeChannel on move/jump
         if (player.activeChannel) {
-          if (player.activeChannel.cancelOnMove && isMoving) player.activeChannel = undefined;
-          else if (player.activeChannel.cancelOnJump && isJumping) player.activeChannel = undefined;
+          if (player.activeChannel.cancelOnMove && isMoving) cancelActiveChannel(this.state, player as any);
+          else if (player.activeChannel.cancelOnJump && isJumping) cancelActiveChannel(this.state, player as any);
         }
       }
 
@@ -1149,6 +1254,59 @@ export class GameLoop {
         this.playerInputs.set(idx, { ...input, jump: false });
       }
     });
+
+    // 1b. Apply entity activeDash movement (pull / knockback for TargetEntity).
+    // Entities have no input or jumping. We sub-step the movement and run the
+    // map collision resolver between sub-steps so dashed/knocked-back entities
+    // collide with walls (just like a player would) and stop instead of
+    // tunneling through geometry. Z is snapped to the ground each tick so they
+    // don't float upward when crossing terrain.
+    for (const entity of this.state.entities ?? []) {
+      const dash = entity.activeDash;
+      if (!dash) continue;
+
+      const prevX = entity.position.x;
+      const prevY = entity.position.y;
+      const intendedStep = Math.hypot(dash.vxPerTick, dash.vyPerTick);
+      const MAX_XY_SUBSTEP = 0.5; // ~half a game unit
+      const numSubSteps = Math.max(1, Math.ceil(intendedStep / MAX_XY_SUBSTEP));
+      const subStepX = dash.vxPerTick / numSubSteps;
+      const subStepY = dash.vyPerTick / numSubSteps;
+      for (let ss = 0; ss < numSubSteps; ss++) {
+        entity.position.x += subStepX;
+        entity.position.y += subStepY;
+        resolveEntityHorizontalCollision(entity as any, this.mapCtx);
+      }
+
+      // Snap z to ground so an entity pushed across raised terrain doesn't
+      // hang in the air, but never go below the ground either.
+      const groundZ = getGroundHeightForMap(
+        entity.position.x,
+        entity.position.y,
+        entity.position.z ?? 0,
+        this.mapCtx,
+      );
+      entity.position.z = groundZ + (dash.forceVzPerTick ?? 0);
+
+      // Wall-stop: if collision swallowed most of the intended step, end dash.
+      if (intendedStep > 0.001) {
+        const actualStep = Math.hypot(
+          entity.position.x - prevX,
+          entity.position.y - prevY,
+        );
+        if (actualStep < intendedStep * 0.35) {
+          delete entity.activeDash;
+          movementStateChanged = true;
+          continue;
+        }
+      }
+
+      dash.ticksRemaining -= 1;
+      if (dash.ticksRemaining <= 0) {
+        delete entity.activeDash;
+      }
+      movementStateChanged = true;
+    }
     const moveTime = performance.now() - moveStart;
 
     // 1a-ch. Process active channels: out-of-range / LOS cancel + completion
@@ -1171,13 +1329,13 @@ export class GameLoop {
 
         // Silence interrupts pure active channels.
         if (hasBuffEffect(player as any, "SILENCE") || hasBuffEffect(player as any, "DISPLACEMENT")) {
-          player.activeChannel = undefined;
+          cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
         }
 
         if (!targetPosition || ((targetEntity?.hp ?? targetPlayer?.hp ?? 0) <= 0)) {
-          player.activeChannel = undefined;
+          cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
         }
@@ -1190,7 +1348,7 @@ export class GameLoop {
               (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
           );
           if (dist > ch.cancelOnOutOfRange) {
-            player.activeChannel = undefined;
+            cancelActiveChannel(this.state, player as any);
             channelStateChanged = true;
             continue;
           }
@@ -1198,14 +1356,14 @@ export class GameLoop {
 
         // Target lost (stealth / untargetable) cancels opponent-targeted channels.
         if (channelAbility?.target === "OPPONENT" && targetPlayer && blocksCardTargeting(targetPlayer as any)) {
-          player.activeChannel = undefined;
+          cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
         }
 
         // Task 8: cancel forward-facing channels if target leaves 180° front arc
         if (channelAbility && requiresFacing(channelAbility) && !isInFacingHemisphere(player as any, { position: targetPosition } as any)) {
-          player.activeChannel = undefined;
+          cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
         }
@@ -1228,13 +1386,77 @@ export class GameLoop {
           );
         })();
         if (_losBlockedChannel) {
-          player.activeChannel = undefined;
+          cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
         }
 
         // Channel completion
         const chNow = Date.now();
+
+        // ── 连环弩 periodic ticks: every 1s deal 1/2/3 damage. Knockback if target ≤15u. ──
+        if (ch.abilityId === "lian_huan_nu" && targetPlayer && (targetPlayer.hp ?? 0) > 0) {
+          const lhnInterval = 1000;
+          const lhnLast = (ch as any).lianHuanNuLastTickAt ?? ch.startedAt;
+          if (chNow - lhnLast >= lhnInterval) {
+            (ch as any).lianHuanNuLastTickAt = chNow;
+            const tickIdx = Math.min(2, Math.max(0, Math.floor((chNow - ch.startedAt) / lhnInterval)));
+            const lhnDmg = tickIdx + 1; // 1, 2, 3
+            if (!blocksEnemyTargeting(targetPlayer as any) && !hasDamageImmune(targetPlayer as any)) {
+              const lhnAbility = (ABILITIES["lian_huan_nu"] ?? { id: "lian_huan_nu", name: "连环弩" }) as any;
+              const finalLhn = resolveScheduledDamage({
+                source: player,
+                target: targetPlayer,
+                base: lhnDmg,
+                damageType: lhnAbility?.damageType,
+              });
+              if (finalLhn > 0) {
+                const { adjustedDamage: adjL, redirectPlayer: rtL, redirectAmt: raL } =
+                  preCheckRedirect(this.state, targetPlayer as any, finalLhn);
+                const apply = adjL;
+                const res = apply > 0 ? applyDamageToTarget(targetPlayer as any, apply) : { hpDamage: 0, shieldAbsorbed: 0 };
+                this.state.events.push({
+                  id: randomUUID(), timestamp: chNow, turn: this.state.turn,
+                  type: "DAMAGE",
+                  actorUserId: player.userId,
+                  targetUserId: targetPlayer.userId,
+                  abilityId: "lian_huan_nu",
+                  abilityName: "连环弩",
+                  effectType: "PERIODIC_DAMAGE",
+                  value: apply,
+                  shieldAbsorbed: (res.shieldAbsorbed ?? 0) > 0 ? res.shieldAbsorbed : undefined,
+                } as any);
+                if (res.hpDamage > 0) {
+                  processOnDamageTaken(this.state, targetPlayer as any, res.hpDamage, player.userId);
+                }
+                if (rtL && raL > 0) applyRedirectToOpponent(this.state, rtL, raL);
+                channelStateChanged = true;
+              }
+              // Knockback if target is within 15u
+              const distLhnGameplay = calculateDistance(player.position, targetPlayer.position, storedUnitScale);
+              if (distLhnGameplay <= 15) {
+                const dxK = targetPlayer.position.x - player.position.x;
+                const dyK = targetPlayer.position.y - player.position.y;
+                const lenK = Math.sqrt(dxK * dxK + dyK * dyK);
+                if (lenK > 0.0001) {
+                  const kbDistWorld = gameplayUnitsToWorldUnits(8, storedUnitScale);
+                  const kbTicks = 15; // 0.5s @ 30Hz
+                  (targetPlayer as any).activeDash = {
+                    abilityId: "lian_huan_nu",
+                    vxPerTick: (dxK / lenK) * (kbDistWorld / kbTicks),
+                    vyPerTick: (dyK / lenK) * (kbDistWorld / kbTicks),
+                    forceVzPerTick: 0,
+                    maxUpVz: 0,
+                    maxDownVz: 0,
+                    ticksRemaining: kbTicks,
+                    vzPerTick: 0,
+                  };
+                }
+              }
+            }
+          }
+        }
+
         if (chNow >= ch.startedAt + ch.durationMs) {
           let channelEffectDodged = false;
           for (const e of ch.effects) {
@@ -1360,6 +1582,41 @@ export class GameLoop {
                 timestamp: chNow,
               });
             } else if (e.type === "TIMED_PULL_TARGET_TO_FRONT") {
+              // Entity-target pull: use activeDash so the entity is pulled at speed
+              if (targetEntity && targetEntity.hp > 0) {
+                const facing = player.facing ?? { x: 0, y: 1 };
+                const facingLen = Math.hypot(facing.x, facing.y);
+                const nx = facingLen > 0.0001 ? facing.x / facingLen : 0;
+                const ny = facingLen > 0.0001 ? facing.y / facingLen : 1;
+                const anchorOffset = gameplayUnitsToWorldUnits(1, storedUnitScale);
+                const anchorX = player.position.x + nx * anchorOffset;
+                const anchorY = player.position.y + ny * anchorOffset;
+                const toAnchorX = anchorX - targetEntity.position.x;
+                const toAnchorY = anchorY - targetEntity.position.y;
+                const distanceToAnchor = Math.hypot(toAnchorX, toAnchorY);
+                const maxPullUnits = Math.max(0, Number(e.value ?? 20));
+                const maxPullDistance = gameplayUnitsToWorldUnits(maxPullUnits, storedUnitScale);
+                const pullDistance = Math.min(distanceToAnchor, maxPullDistance);
+                const basePullDurationTicks = Math.max(
+                  1,
+                  Math.round(Number((e as any).durationTicks ?? this.tickRate))
+                );
+                const pullDurationTicks = maxPullDistance > 0
+                  ? Math.max(1, Math.round(basePullDurationTicks * (pullDistance / maxPullDistance)))
+                  : basePullDurationTicks;
+                const dirX = distanceToAnchor > 0.0001 ? toAnchorX / distanceToAnchor : nx;
+                const dirY = distanceToAnchor > 0.0001 ? toAnchorY / distanceToAnchor : ny;
+                if (pullDistance > 0.0001) {
+                  targetEntity.activeDash = {
+                    abilityId: ch.abilityId,
+                    vxPerTick: (dirX * pullDistance) / pullDurationTicks,
+                    vyPerTick: (dirY * pullDistance) / pullDurationTicks,
+                    forceVzPerTick: 0,
+                    ticksRemaining: pullDurationTicks,
+                  };
+                }
+                continue;
+              }
               if (!targetPlayer) continue;
               if (player.userId === targetPlayer.userId || targetPlayer.hp <= 0) continue;
               if (blocksEnemyTargeting(targetPlayer as any)) continue;
@@ -1589,13 +1846,11 @@ export class GameLoop {
             );
           }
 
-          player.activeChannel = undefined;
+          cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
         }
       }
     }
-
-    // 1b. Decrement ability cooldowns each tick
     this.state.players.forEach((player) => {
       const cooldownSlowSum = player.buffs
         .flatMap((b) => b.effects)
@@ -1871,7 +2126,7 @@ export class GameLoop {
                     );
                   })();
                   if (_losBlockedTick) {
-                    player.activeChannel = undefined;
+                    cancelActiveChannel(this.state, player as any);
                     channelStateChanged = true;
                     continue;
                   }
@@ -2248,6 +2503,28 @@ export class GameLoop {
         }
       }
 
+      // 徐如林·回复 natural-expire: heal caster 5 HP.
+      // Always emit the HEAL event, even at full HP, so the heal float text
+      // shows. (Full HP must never suppress healing visuals.)
+      const xuRuLinExpired = naturallyExpired.filter(
+        (b) => b.effects.some((e) => (e as any).type === "XU_RU_LIN_RESTORE"),
+      );
+      for (const xb of xuRuLinExpired) {
+        const healVal = (xb.effects.find((e) => (e as any).type === "XU_RU_LIN_RESTORE") as any)?.value ?? 5;
+        applyHealToTarget(player as any, healVal);
+        this.state.events.push({
+          id: randomUUID(), timestamp: now, turn: this.state.turn,
+          type: "HEAL",
+          actorUserId: player.userId,
+          targetUserId: player.userId,
+          abilityId: xb.sourceAbilityId,
+          abilityName: xb.sourceAbilityName ?? xb.name,
+          effectType: "XU_RU_LIN_RESTORE",
+          value: healVal,
+        });
+        buffsChanged = true;
+      }
+
       // 孤影化双 natural-expire: restore hp and cooldowns from snapshot.
       const guYingExpired = naturallyExpired.filter((b) => b.buffId === 2714);
       for (const gyBuff of guYingExpired) {
@@ -2398,8 +2675,186 @@ export class GameLoop {
     if (this.state.groundZones && this.state.groundZones.length > 0) {
       const activeZones: GroundZone[] = [];
       for (const zone of this.state.groundZones) {
-        if (now >= zone.expiresAt) continue; // expired — drop it
+        // ── Pre-step: 天绝地灭 grow radius ─────────────────────────────────
+        if (zone.abilityId === "tian_jue_di_mie" && (zone as any).growEndRadius !== undefined) {
+          const startedAt = (zone as any).growStartedAt ?? zone.lastTickAt;
+          const growMs = (zone as any).growDurationMs ?? 1;
+          const t = Math.min(1, Math.max(0, (now - startedAt) / growMs));
+          zone.radius = (zone as any).growStartRadius + ((zone as any).growEndRadius - (zone as any).growStartRadius) * t;
+        }
+        // ── Pre-step: follow-target zones (振翅图南/飞刃回转) ──────────────
+        if ((zone as any).followTargetUserId && (zone as any).followSpeedPerTick !== undefined) {
+          const fp = this.state.players.find((p) => p.userId === (zone as any).followTargetUserId);
+          if (fp && (fp.hp ?? 0) > 0) {
+            const dxF = fp.position.x - zone.x;
+            const dyF = fp.position.y - zone.y;
+            const lenF = Math.sqrt(dxF * dxF + dyF * dyF);
+            const stepF = (zone as any).followSpeedPerTick as number;
+            const followTriggerRadius = Math.max(0, zone.radius - gameplayUnitsToWorldUnits(1, storedUnitScale));
+            if (lenF > zone.radius + 0.0001) {
+              delete (zone as any).followTargetUserId;
+            } else if (lenF > followTriggerRadius + 0.0001) {
+              const moveStep = Math.min(stepF, lenF - followTriggerRadius);
+              if (moveStep >= lenF) {
+                zone.x = fp.position.x;
+                zone.y = fp.position.y;
+              } else if (lenF > 0.0001) {
+                zone.x += (dxF / lenF) * moveStep;
+                zone.y += (dyF / lenF) * moveStep;
+              }
+            }
+            zone.z = fp.position.z ?? zone.z;
+          }
+        }
+        // ── 天绝地灭 expire → pull + explode ─────────────────────────────
+        if (now >= zone.expiresAt && zone.abilityId === "tian_jue_di_mie" && (zone as any).explodeOnExpire) {
+          const explodeDmg = (zone as any).explodeDamage ?? 10;
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId)
+            ?? ({ userId: zone.ownerUserId, buffs: [] } as any);
+          for (const hostile of getHostileDamageTargets(this.state, zone.ownerUserId)) {
+            if (blocksEnemyTargeting(hostile.target as any)) continue;
+            if (hasDamageImmune(hostile.target as any)) continue;
+
+            const targetPos = getHostileDamageTargetPosition(hostile);
+            const dxE = targetPos.x - zone.x;
+            const dyE = targetPos.y - zone.y;
+            const targetRadius = hostile.kind === "entity" ? Math.max(0, Number(hostile.target.radius ?? 0)) : 0;
+            const distE = Math.sqrt(dxE * dxE + dyE * dyE);
+            if (distE > zone.radius + targetRadius) continue;
+
+            if (hostile.kind === "player") {
+              const pullSpeed = (zone as any).pullSpeedPerTick ?? gameplayUnitsToWorldUnits(20, storedUnitScale) / 30;
+              const pullTicks = Math.max(1, Math.ceil(distE / pullSpeed));
+              const dirX = distE > 0.0001 ? -dxE / distE : 0;
+              const dirY = distE > 0.0001 ? -dyE / distE : 0;
+              (hostile.target as any).activeDash = {
+                abilityId: "tian_jue_di_mie",
+                vxPerTick: dirX * Math.min(pullSpeed, distE / pullTicks),
+                vyPerTick: dirY * Math.min(pullSpeed, distE / pullTicks),
+                forceVzPerTick: 0,
+                maxUpVz: 0,
+                maxDownVz: 0,
+                ticksRemaining: pullTicks,
+                vzPerTick: 0,
+              };
+            }
+
+            const dealt = applyDamageToHostileTarget({
+              state: this.state,
+              source: owner as any,
+              target: hostile,
+              baseDamage: explodeDmg,
+              abilityId: "tian_jue_di_mie",
+              abilityName: "天绝地灭",
+              effectType: "DAMAGE",
+              timestamp: now,
+            });
+            if (dealt > 0) {
+              buffsChanged = true;
+            }
+          }
+          continue; // drop the zone
+        }
+        // ── 疾电叱羽 expire by HP or time ──────────────────────────────────
+        if (zone.abilityId === "ji_dian_chi_yu" && (zone.hp !== undefined && zone.hp <= 0)) {
+          // Clear the linked buff from all allies (zone is dropped)
+          const allyBid = (zone as any).allyBuffId ?? 2620;
+          for (const p of this.state.players) {
+            const idx = (p.buffs as any[]).findIndex((b: any) =>
+              b.buffId === allyBid && (b as any).linkedZoneId === zone.id
+            );
+            if (idx >= 0) {
+              const removed = p.buffs[idx];
+              p.buffs.splice(idx, 1);
+              pushBuffExpired(this.state, {
+                targetUserId: p.userId,
+                buffId: removed.buffId,
+                buffName: removed.name,
+                buffCategory: removed.category,
+                sourceAbilityId: removed.sourceAbilityId,
+                sourceAbilityName: removed.sourceAbilityName,
+              });
+              buffsChanged = true;
+            }
+          }
+          continue; // drop the zone
+        }
+        if (now >= zone.expiresAt) {
+          // Natural time expire: clear ji_dian buffs as well
+          if (zone.abilityId === "ji_dian_chi_yu") {
+            const allyBid = (zone as any).allyBuffId ?? 2620;
+            for (const p of this.state.players) {
+              const idx = (p.buffs as any[]).findIndex((b: any) =>
+                b.buffId === allyBid && (b as any).linkedZoneId === zone.id
+              );
+              if (idx >= 0) {
+                const removed = p.buffs[idx];
+                p.buffs.splice(idx, 1);
+                pushBuffExpired(this.state, {
+                  targetUserId: p.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+                buffsChanged = true;
+              }
+            }
+          }
+          continue; // expired — drop it
+        }
         activeZones.push(zone);
+
+        // ── 疾电叱羽 enter/exit (allies only) ──────────────────────────────
+        if (zone.abilityId === "ji_dian_chi_yu") {
+          const allyBid = (zone as any).allyBuffId ?? 2620;
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+          if (owner) {
+            const dxJ = owner.position.x - zone.x;
+            const dyJ = owner.position.y - zone.y;
+            const inside = Math.sqrt(dxJ * dxJ + dyJ * dyJ) <= zone.radius;
+            const hasBuff = owner.buffs.some((b: any) => b.buffId === allyBid && (b as any).linkedZoneId === zone.id && b.expiresAt > now);
+            if (inside && !hasBuff) {
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: owner.userId,
+                ability: (ABILITIES["ji_dian_chi_yu"] ?? { id: "ji_dian_chi_yu", name: "疾电叱羽" }) as any,
+                buffTarget: owner as any,
+                buff: {
+                  buffId: allyBid,
+                  name: "疾电叱羽",
+                  category: "BUFF",
+                  durationMs: zone.expiresAt - now,
+                  description: "受到的所有伤害转移至疾电叱羽阵",
+                  effects: [{ type: "JI_DIAN_REDIRECT" }],
+                  linkedZoneId: zone.id,
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!inside && hasBuff) {
+              const idx = (owner.buffs as any[]).findIndex((b: any) =>
+                b.buffId === allyBid && (b as any).linkedZoneId === zone.id
+              );
+              if (idx >= 0) {
+                const removed = owner.buffs[idx];
+                owner.buffs.splice(idx, 1);
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+                buffsChanged = true;
+              }
+            }
+          }
+          continue; // ji_dian zone does not deal periodic damage
+        }
+
         // Enter/exit zones: check every frame — no interval gate needed
         if (zone.abilityId === SHENGTAIJI_ZONE_ID || zone.abilityId === "sheng_tai_ji") {
           const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
@@ -2764,7 +3219,7 @@ export class GameLoop {
     // 1e2. Targetable entities (e.g. 逐云寒蕊): lifecycle + per-friendly stealth tracking.
     if (this.state.entities && this.state.entities.length > 0) {
       const ZHU_YUN_STEALTH_BUFF_ID = 2716;
-      const ZHU_YUN_STEALTH_DURATION_MS = 500; // refreshed each tick while in zone
+      const ZHU_YUN_STEALTH_DURATION_MS = 2_000; // refreshed each tick while in zone (long enough to display in status bar)
       const STEALTH_GRANT_DELAY_MS = 1_000;
       const ATTACK_REARM_MS = 1_000;
       const ZHU_YUN_ABILITY_ID = "zhu_yun_han_rui";
@@ -3050,6 +3505,47 @@ export class GameLoop {
           break; // only proc once per hit event (one 应天授命 buff)
         }
       }
+
+      // 徐如林 (actor-side proc): for each unique attacker that dealt damage,
+      // if they have the parent XU_RU_LIN_PROC buff and don't already have the
+      // child XU_RU_LIN_RESTORE buff, 50% chance to apply the 1s child buff.
+      const hitActorIds = new Set<string>();
+      for (const evt of thisTickEvents) {
+        if (evt.type === "DAMAGE" && (evt.value ?? 0) > 0 && evt.actorUserId) {
+          // Skip self-inflicted (e.g. STACK_ON_HIT_DAMAGE on the receiver itself).
+          if (evt.targetUserId && evt.actorUserId === evt.targetUserId) continue;
+          hitActorIds.add(evt.actorUserId);
+        }
+      }
+      for (const actorId of hitActorIds) {
+        const actor = this.state.players.find((p) => p.userId === actorId);
+        if (!actor || actor.hp <= 0) continue;
+        const parent = actor.buffs.find(
+          (b) => b.effects.some((e) => (e as any).type === "XU_RU_LIN_PROC") && b.expiresAt > now,
+        );
+        if (!parent) continue;
+        const alreadyHasChild = actor.buffs.some(
+          (b) => b.effects.some((e) => (e as any).type === "XU_RU_LIN_RESTORE") && b.expiresAt > now,
+        );
+        if (alreadyHasChild) continue;
+        if (Math.random() >= 0.5) continue;
+
+        const xulinAbility = ABILITIES["xu_ru_lin"];
+        const childBuffDef = (xulinAbility?.buffs ?? []).find(
+          (b: any) => Array.isArray(b.effects) && b.effects.some((e: any) => e.type === "XU_RU_LIN_RESTORE"),
+        );
+        if (!xulinAbility || !childBuffDef) continue;
+        addBuff({
+          state: this.state,
+          sourceUserId: actor.userId,
+          targetUserId: actor.userId,
+          ability: xulinAbility as any,
+          buffTarget: actor as any,
+          buff: childBuffDef as any,
+        });
+        buffsChanged = true;
+      }
+
       this.stackProcScanIndex = this.state.events.length;
     }
 

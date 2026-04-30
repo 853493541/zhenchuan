@@ -51,6 +51,8 @@ export interface ActiveChannel {
   effects: AbilityEffect[];
   /** Cooldown ticks to set on the ability instance after completion */
   cooldownTicks: number;
+  /** Buffs applied at channel start that should be removed when the channel ends or is canceled. */
+  startedBuffIds?: number[];
 }
 
 export interface PlayerState {
@@ -100,6 +102,12 @@ export interface PlayerState {
    * Cleared on landing.
    */
   isPowerJumpCombined?: boolean;
+  /**
+   * 梯云纵 jump penalty: when 梯云纵 buff is active, the FIRST jump of an
+   * airborne sequence consumes 2 jumps instead of 1 (preventing 梯云纵 + 二段跳).
+   * Reset to false on landing; remains true after a dash that resets jumpCount.
+   */
+  tiYunZongPenaltyConsumed?: boolean;
 
   /**
     * Remaining travel budget for the current jump phase (world units).
@@ -200,6 +208,34 @@ export interface GroundZone {
   abilityId?: string;
   abilityName?: string;
   maxTargets?: number;
+
+  // ── HP-bearing zones (e.g. 疾电叱羽) ──
+  hp?: number;
+  maxHp?: number;
+  /** Buff id granted to allies inside the zone (e.g. 疾电叱羽 redirect buff). */
+  allyBuffId?: number;
+
+  // ── Follow-target zones (振翅图南, 飞刃回转) ──
+  /** When set, zone re-centers each tick toward this player at followSpeedPerTick. */
+  followTargetUserId?: string;
+  /** World units per tick (30Hz tick). */
+  followSpeedPerTick?: number;
+
+  // ── Growing zones (天绝地灭) ──
+  /** Initial radius (world units). When set, radius interpolates to growEndRadius over growDurationMs. */
+  growStartRadius?: number;
+  growEndRadius?: number;
+  growStartedAt?: number;
+  growDurationMs?: number;
+
+  // ── Explode-on-expire (天绝地灭) ──
+  /** When zone expires naturally, pull all enemies inside toward center then deal explodeDamage. */
+  explodeOnExpire?: boolean;
+  explodeDamage?: number;
+  /** Pull speed in world units per tick during the pull phase. */
+  pullSpeedPerTick?: number;
+  /** Tick count during the pull phase, after which the explosion damage is applied. */
+  pullTicksRemaining?: number;
 }
 
 /**
@@ -234,6 +270,14 @@ export interface TargetEntity {
   enteredAtByUser?: Record<string, number>;
   /** Per-tick runtime: earliest ms timestamp the player can be re-stealthed after attack-break. */
   rearmAtByUser?: Record<string, number>;
+  /** Active forced movement (e.g. pull, knockback). Tick-based; cleared on completion. */
+  activeDash?: {
+    abilityId?: string;
+    vxPerTick: number;
+    vyPerTick: number;
+    forceVzPerTick?: number;
+    ticksRemaining: number;
+  };
 }
 
 export interface GameState {

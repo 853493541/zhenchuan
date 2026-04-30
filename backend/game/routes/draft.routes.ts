@@ -1269,4 +1269,234 @@ router.post("/cheat/clear-buffs", async (req, res) => {
   }
 });
 
+/**
+ * POST /cheat/spawn-dummy - Spawn a target dummy entity at a world position.
+ * Body: { gameId, side: "enemy" | "ally", x, y, z }
+ *  - side="enemy": ownerUserId set to opponent's userId (or synthetic), so the
+ *    caller treats it as an enemy and can target/damage it.
+ *  - side="ally":  ownerUserId set to caller's userId; the caller's opponent
+ *    treats it as their enemy.
+ * Dummies have 200 HP, no intrinsic immunities, and persist 10 minutes.
+ */
+router.post("/cheat/spawn-dummy", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, side, x, y, z } = req.body;
+
+    if (side !== "enemy" && side !== "ally") {
+      return res.status(400).json({ error: "side must be 'enemy' or 'ally'" });
+    }
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return res.status(400).json({ error: "x/y must be numbers" });
+    }
+    const zNum = Number.isFinite(z) ? Number(z) : 0;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const opponentUserId = (game.players as string[]).find((id) => id !== userId);
+
+    const ownerUserId = side === "ally"
+      ? userId
+      : (opponentUserId ?? `dummy-opponent:${gameId}`);
+
+    const now = Date.now();
+    const entityId = randomUUID();
+    const entityUserId = `entity:${entityId}`;
+    const kind = side === "ally" ? "test_dummy_ally" : "test_dummy_enemy";
+
+    const gameLoop = GameLoop.get(gameId);
+    const liveState: any = gameLoop ? gameLoop.getState() : game.state;
+    const storedUnitScale = liveState.unitScale ?? 1;
+    // 1.5 yards radius for visibility/click hit-area
+    const radius = 1.5 * storedUnitScale;
+
+    const dummy = {
+      id: entityId,
+      userId: entityUserId,
+      kind,
+      ownerUserId,
+      position: { x: Number(x), y: Number(y), z: zNum },
+      radius,
+      hp: 200,
+      maxHp: 200,
+      shield: 0,
+      buffs: [],
+      expiresAt: now + 600_000,
+      enteredAtByUser: {},
+      rearmAtByUser: {},
+    };
+
+    if (gameLoop) {
+      const loopState: any = gameLoop.getState();
+      const entities = [...(loopState.entities ?? []), dummy];
+      loopState.entities = entities;
+      loopState.version = (loopState.version ?? 0) + 1;
+      gameLoop.updateState(loopState);
+      broadcastGameUpdate({
+        gameId,
+        version: loopState.version,
+        diff: [{ path: "/entities", value: entities }],
+        timestamp: Date.now(),
+      });
+    } else {
+      const entities = [...((game.state as any).entities ?? []), dummy];
+      (game.state as any).entities = entities;
+      game.state.version = (game.state.version ?? 0) + 1;
+      broadcastGameUpdate({
+        gameId,
+        version: game.state.version,
+        diff: [{ path: "/entities", value: entities }],
+        timestamp: Date.now(),
+      });
+    }
+
+    res.json({ ok: true, entityId });
+
+    (game.state as any).entities = [...((game.state as any).entities ?? []).filter((e: any) => e.id !== entityId), dummy];
+    game.markModified("state");
+    void game.save().catch((err: any) => {
+      console.error("[cheat/spawn-dummy] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const DUMMY_KINDS = new Set(["test_dummy_ally", "test_dummy_enemy"]);
+
+/**
+ * POST /cheat/restore-dummies - Restore all target dummies to full HP, reset shields.
+ * Body: { gameId }
+ */
+router.post("/cheat/restore-dummies", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const gameLoop = GameLoop.get(gameId);
+    const target: any = gameLoop ? gameLoop.getState() : game.state;
+    const entities = ((target.entities ?? []) as any[]).map((e: any) => {
+      if (!DUMMY_KINDS.has(e.kind)) return e;
+      return { ...e, hp: e.maxHp, shield: 0 };
+    });
+    target.entities = entities;
+    target.version = (target.version ?? 0) + 1;
+    if (gameLoop) gameLoop.updateState(target);
+
+    broadcastGameUpdate({
+      gameId,
+      version: target.version,
+      diff: [{ path: "/entities", value: entities }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true });
+
+    (game.state as any).entities = entities;
+    game.markModified("state");
+    void game.save().catch((err: any) => {
+      console.error("[cheat/restore-dummies] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/clear-dummy-debuffs - Drop all DEBUFF buffs from target dummies.
+ * Body: { gameId }
+ */
+router.post("/cheat/clear-dummy-debuffs", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const gameLoop = GameLoop.get(gameId);
+    const target: any = gameLoop ? gameLoop.getState() : game.state;
+    const entities = ((target.entities ?? []) as any[]).map((e: any) => {
+      if (!DUMMY_KINDS.has(e.kind)) return e;
+      return { ...e, buffs: (e.buffs ?? []).filter((b: any) => b.category !== "DEBUFF") };
+    });
+    target.entities = entities;
+    target.version = (target.version ?? 0) + 1;
+    if (gameLoop) gameLoop.updateState(target);
+
+    broadcastGameUpdate({
+      gameId,
+      version: target.version,
+      diff: [{ path: "/entities", value: entities }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true });
+
+    (game.state as any).entities = entities;
+    game.markModified("state");
+    void game.save().catch((err: any) => {
+      console.error("[cheat/clear-dummy-debuffs] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/clear-dummies - Remove ALL target dummy entities from the game.
+ * Body: { gameId }
+ */
+router.post("/cheat/clear-dummies", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const gameLoop = GameLoop.get(gameId);
+    const target: any = gameLoop ? gameLoop.getState() : game.state;
+    const entities = ((target.entities ?? []) as any[]).filter(
+      (e: any) => !DUMMY_KINDS.has(e.kind),
+    );
+    target.entities = entities;
+    target.version = (target.version ?? 0) + 1;
+    if (gameLoop) gameLoop.updateState(target);
+
+    broadcastGameUpdate({
+      gameId,
+      version: target.version,
+      diff: [{ path: "/entities", value: entities }],
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true });
+
+    (game.state as any).entities = entities;
+    game.markModified("state");
+    void game.save().catch((err: any) => {
+      console.error("[cheat/clear-dummies] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

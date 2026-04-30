@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-04-25T12:16:20.369Z",
+  "updatedAt": "2026-04-30T04:51:32.070Z",
   "abilities": {
     "baizu": {
       "tags": {
@@ -784,6 +784,138 @@
         "school": "天策",
         "damageType": "外功",
         "rarity": "卓越"
+      }
+    },
+    "gu_ying_hua_shuang": {
+      "tags": {
+        "rarity": "稀世",
+        "school": "长歌",
+        "damageType": "内功"
+      }
+    },
+    "zhu_yun_han_rui": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "药宗",
+        "damageType": "内功"
+      }
+    },
+    "bao_can_shi": {
+      "tags": {
+        "damageType": "内功",
+        "school": "少林",
+        "rarity": "精巧"
+      }
+    },
+    "bu_feng_shi": {
+      "tags": {
+        "damageType": "内功",
+        "school": "少林",
+        "rarity": "精巧"
+      }
+    },
+    "fei_ren_hui_zhuan": {
+      "tags": {
+        "damageType": "外功",
+        "school": "凌雪"
+      }
+    },
+    "kang_long_you_hui": {
+      "tags": {
+        "damageType": "外功",
+        "school": "丐帮",
+        "rarity": "卓越"
+      }
+    },
+    "na_yun_shi": {
+      "tags": {
+        "damageType": "内功",
+        "school": "少林",
+        "rarity": "卓越"
+      }
+    },
+    "qu_ye_duan_chou": {
+      "tags": {
+        "damageType": "内功",
+        "school": "明教",
+        "rarity": "卓越"
+      }
+    },
+    "tai_ji_wu_ji": {
+      "tags": {
+        "damageType": "内功",
+        "school": "纯阳",
+        "rarity": "精巧"
+      }
+    },
+    "tian_jue_di_mie": {
+      "tags": {
+        "damageType": "外功",
+        "school": "唐门",
+        "rarity": "精巧"
+      }
+    },
+    "you_yue_lun": {
+      "tags": {
+        "damageType": "内功",
+        "school": "明教",
+        "rarity": "卓越"
+      }
+    },
+    "zhen_chi_tu_nan": {
+      "tags": {
+        "damageType": "外功",
+        "school": "蓬莱",
+        "rarity": "精巧"
+      }
+    },
+    "cang_yue": {
+      "tags": {
+        "damageType": "外功",
+        "school": "天策",
+        "rarity": "精巧"
+      }
+    },
+    "cheng_huang_zhi_wei": {
+      "tags": {
+        "damageType": "外功",
+        "school": "万灵"
+      }
+    },
+    "ji_dian_chi_yu": {
+      "tags": {
+        "damageType": "外功",
+        "school": "蓬莱"
+      }
+    },
+    "long_xiao_jiu_tian": {
+      "tags": {
+        "damageType": "外功",
+        "school": "丐帮"
+      }
+    },
+    "ti_yun_zong": {
+      "tags": {
+        "damageType": "外功",
+        "school": "纯阳"
+      }
+    },
+    "xu_ru_lin": {
+      "tags": {
+        "damageType": "外功",
+        "school": "天策"
+      }
+    },
+    "yu_yu_cheng_feng": {
+      "tags": {
+        "damageType": "外功",
+        "school": "蓬莱"
+      }
+    },
+    "lian_huan_nu": {
+      "tags": {
+        "damageType": "外功",
+        "school": "唐门"
       }
     }
   }

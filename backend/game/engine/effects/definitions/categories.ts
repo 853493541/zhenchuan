@@ -140,6 +140,32 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   GU_YING_HUA_SHUANG: "BUFF",
   // 逐云寒蕊: places targetable HP-bearing zone entity
   PLACE_ZHU_YUN_HAN_RUI: "BUFF",
+  // 沧月: 1 damage + 2s knockdown on primary, knockback others within 6u
+  CANG_YUE_AOE: "DEBUFF",
+  // 徐如林 (self proc-on-hit + heal-on-expire markers)
+  XU_RU_LIN_PROC: "BUFF",
+  XU_RU_LIN_RESTORE: "BUFF",
+  // Position lock (suspend vertical gravity while active)
+  Z_LOCK: "BUFF",
+  // Jump-height nerf (debuff)
+  JUMP_NERF: "DEBUFF",
+  // 拿云式 true damage / 龙啸九天 AOE — immediate ability effects
+  TRUE_DAMAGE: "ABILITY",
+  LONG_XIAO_JIU_TIAN_AOE: "ABILITY",
+  // 驭羽骋风 / 梯云纵
+  YU_YU_DASH: "ABILITY",
+  TI_YUN_ZONG_REFRESH: "ABILITY",
+  TI_YUN_ZONG_JUMP: "BUFF",
+  // 疾电叱羽
+  PLACE_JI_DIAN_ZONE: "ABILITY",
+  JI_DIAN_REDIRECT: "BUFF",
+  // 乘黄之威 + 恐惧
+  CHENG_HUANG_DASH: "ABILITY",
+  FEARED: "DEBUFF",
+  // 振翅图南 / 飞刃回转 / 天绝地灭 / 连环弩
+  PLACE_FOLLOW_ZONE: "ABILITY",
+  PLACE_GROW_PULL_ZONE: "ABILITY",
+  LIAN_HUAN_NU_TICK: "ABILITY",
 };
 
 export function getEffectCategory(type: EffectType): string {

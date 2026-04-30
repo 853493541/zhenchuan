@@ -589,6 +589,7 @@ export function addBuff(params: {
   const effectiveShield = hasYingTianShield ? 999_999_999 : linkedShield;
 
   const active: ActiveBuff = {
+    ...(runtimeBuff as any),
     buffId: runtimeBuff.buffId,
     name: runtimeBuff.name,
     category: runtimeBuff.category,

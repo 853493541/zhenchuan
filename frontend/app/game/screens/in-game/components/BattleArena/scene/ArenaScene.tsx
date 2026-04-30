@@ -641,6 +641,10 @@ export default function ArenaScene({
         const dy = entity.position.y - me.position.y;
         const dz = (entity.position.z ?? 0) - (me.position.z ?? 0);
         const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) / storedUnitScale;
+        const isDummy = entity.kind === 'test_dummy_ally' || entity.kind === 'test_dummy_enemy';
+        const label = isDummy
+          ? (isOwn ? '友方木桩' : '敌方木桩')
+          : `${ownerName}的逐云寒蕊`;
         return (
           <TargetEntityVisual
             key={entity.id}
@@ -652,12 +656,12 @@ export default function ArenaScene({
             maxHp={entity.maxHp}
             isOwn={isOwn}
             isSelected={isSelected}
-            username={`${ownerName}的逐云寒蕊`}
+            username={label}
             distance={dist}
             color={isOwn ? '#33aa55' : '#ff3333'}
             worldHalfX={worldHalfX}
             worldHalfY={worldHalfY}
-            onClick={isOwn ? undefined : () => onSelectEntity?.(entity.id)}
+            onClick={() => onSelectEntity?.(entity.id)}
             onScreenBounds={(bounds) => {
               if (!entityScreenBoundsRef) return;
               entityScreenBoundsRef.current[entity.id] = bounds;

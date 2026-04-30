@@ -53,7 +53,7 @@ export default function TargetEntityVisual({
   const showHpBar = isOwn || (distance !== undefined && distance <= 60);
   const healthPct = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 1;
   const hpColor = isOwn
-    ? '#3399ff'
+    ? '#44cc55'
     : isSelected
     ? '#ff8888'
     : (healthPct > 0.5 ? '#dd2222' : healthPct > 0.25 ? '#cc1111' : '#991111');
@@ -104,6 +104,11 @@ export default function TargetEntityVisual({
 
   return (
     <group position={[worldX - worldHalfX, worldZ, worldHalfY - worldY]}>
+      {/* Cylinder body — same shape as player avatar */}
+      <mesh position={[0, 0.75, 0]} onPointerDown={handleSelect} castShadow>
+        <cylinderGeometry args={[0.42, 0.42 * 0.9, 1.5, 16]} />
+        <meshStandardMaterial color={color} roughness={0.55} metalness={0.05} />
+      </mesh>
       <mesh ref={fillRef} rotation={[-Math.PI / 2, 0, 0]} onPointerDown={handleSelect}>
         <circleGeometry args={[radius, 48]} />
         <meshBasicMaterial color={color} transparent opacity={0.14} side={THREE.DoubleSide} depthWrite={false} />

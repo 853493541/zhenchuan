@@ -3,7 +3,7 @@
 import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
 import { blocksEnemyTargeting, hasDamageImmune } from "../../rules/guards";
 import { resolveScheduledDamage } from "../../utils/combatMath";
-import { applyDamageToTarget } from "../../utils/health";
+import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../onDamageHooks";
 
@@ -67,7 +67,7 @@ export function handleDamage(
       target,
       final
     );
-    const damageToApply = redirectPlayer ? adjustedDamage : final;
+    const damageToApply = adjustedDamage;
 
     let shieldAbsorbed = 0;
     if (damageToApply > 0) {
@@ -91,9 +91,29 @@ export function handleDamage(
       abilityId: ability.id,
       abilityName: ability.name,
       effectType: "DAMAGE",
-      value: redirectPlayer ? adjustedDamage : final,
+      value: adjustedDamage,
       shieldAbsorbed: shieldAbsorbed > 0 ? shieldAbsorbed : undefined,
     });
+
+    // Lifesteal: heal source for a fraction of damage applied (post-mitigation).
+    // Emit the HEAL event even at full HP so the heal float is always visible.
+    const ls = (effect as any).lifestealPct as number | undefined;
+    if (ls && ls > 0 && damageToApply > 0) {
+      const healAmt = Math.floor(damageToApply * ls);
+      if (healAmt > 0) {
+        applyHealToTarget(source as any, healAmt);
+        pushEvent(state, {
+          turn: state.turn,
+          type: "HEAL",
+          actorUserId: source.userId,
+          targetUserId: source.userId,
+          abilityId: ability.id,
+          abilityName: ability.name,
+          effectType: "DAMAGE",
+          value: healAmt,
+        });
+      }
+    }
   } else {
     // final === 0 (dodge / immune): still emit the zero-damage event.
     pushEvent(state, {

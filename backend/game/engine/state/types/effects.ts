@@ -122,7 +122,42 @@ export type EffectType =
   // 孤影化双: snapshot HP+cooldowns and apply buff; GameLoop restores on expiry
   | "GU_YING_HUA_SHUANG"
   // 逐云寒蕊: place targetable HP-bearing zone entity below caster + grant control immunity
-  | "PLACE_ZHU_YUN_HAN_RUI";
+  | "PLACE_ZHU_YUN_HAN_RUI"
+  // 沧月: 1 damage + 2s knockdown on primary target, knock back others within 6u for 30u
+  | "CANG_YUE_AOE"
+  // 徐如林 (parent self-buff): on dealing damage, 50% chance to apply XU_RU_LIN_RESTORE
+  | "XU_RU_LIN_PROC"
+  // 徐如林·回复 (child self-buff): on natural expire, heal caster 5
+  | "XU_RU_LIN_RESTORE"
+  // Position lock: while active, Z (vertical) position and gravity are suspended.
+  // Used together with CONTROL for an "anchor in mid-air" lock (亢龙·定身, 龙啸九天).
+  | "Z_LOCK"
+  // 抱残式: jump peak-height multiplier (e.g. 0.5 = 50% jump height)
+  | "JUMP_NERF"
+  // 拿云式: true damage that ignores DR/shield/dodge but is blocked by INVULNERABLE
+  | "TRUE_DAMAGE"
+  // 龙啸九天: cleanse self, apply 龙威/龙啸九天/定身 buffs, AOE 6u damage + slow knockback
+  | "LONG_XIAO_JIU_TIAN_AOE"
+  // 驭羽骋风: cleanse self + vertical dash up 12u in 1s
+  | "YU_YU_DASH"
+  // 梯云纵: while active, jumps are 3× high (stacks multiplicatively with MULTI_JUMP)
+  | "TI_YUN_ZONG_JUMP"
+  // 梯云纵: refresh 赑云逐月 cooldown on cast
+  | "TI_YUN_ZONG_REFRESH"
+  // 疾电叱羽: place an HP-bearing redirect zone below caster (allies inside redirect dmg to zone)
+  | "PLACE_JI_DIAN_ZONE"
+  // 疾电叱羽 ally buff: while active, all incoming damage is redirected to the linked zone
+  | "JI_DIAN_REDIRECT"
+  // 乘黄之威: forward dash 12u + flip facing 180° + apply 恐惧 to enemies in 6u/120° cone behind
+  | "CHENG_HUANG_DASH"
+  // 恐惧: silence + forced walk away from sourceUserId
+  | "FEARED"
+  // 振翅图南 / 飞刃回转: place a damage zone that follows a target at fixed speed
+  | "PLACE_FOLLOW_ZONE"
+  // 天绝地灭: place a growing zone that pulls + explodes on expire
+  | "PLACE_GROW_PULL_ZONE"
+  // 连环弩: channel a 3-tick beam (1/2/3 dmg) on target with knockback when target is too close
+  | "LIAN_HUAN_NU_TICK";
 
 /**
  * Immediate ability effects

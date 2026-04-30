@@ -303,6 +303,34 @@ export function validateCastAbility(
     }
   }
 
+  /* ================= 拿云式: target HP must be < 30 ================= */
+  if (ability.id === "na_yun_shi") {
+    const enemy = state.players[targetIndex];
+    if (!enemy || enemy.userId === player.userId || (enemy.hp ?? 0) >= 30) {
+      throw new Error("ERR_TARGET_HP_TOO_HIGH");
+    }
+  }
+
+  /* ================= 梯云纵 / 扶摇直上 mutual exclusion ================= */
+  if (ability.id === "ti_yun_zong") {
+    const now = Date.now();
+    const hasTanTiao = (player.buffs ?? []).some(
+      (b: any) => b.buffId === 9001 && b.expiresAt > now,
+    );
+    if (hasTanTiao) {
+      throw new Error("ERR_BLOCKED_BY_BUFF");
+    }
+  }
+  if (ability.id === "fuyao_zhishang") {
+    const now = Date.now();
+    const hasTiYunZong = (player.buffs ?? []).some(
+      (b: any) => b.buffId === 9003 && b.expiresAt > now,
+    );
+    if (hasTiYunZong) {
+      throw new Error("ERR_BLOCKED_BY_BUFF");
+    }
+  }
+
   /* ================= REQUIRES GROUNDED ================= */
   if ((ability as any).requiresGrounded) {
     const jumpCount = (player as any).jumpCount ?? 0;

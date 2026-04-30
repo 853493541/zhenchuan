@@ -56,9 +56,14 @@ export function resolveScheduledDamage(params: {
     dmg *= 1 - dynamicDR;
   }
 
-  // DAMAGE TAKEN INCREASE (e.g. 易伤)
-  const takenInc = allEffects(params.target).find((e) => e.type === "DAMAGE_TAKEN_INCREASE");
-  if (takenInc) dmg *= 1 + (takenInc.value ?? 0);
+  // DAMAGE TAKEN INCREASE (e.g. 易伤): summed across all buffs, multiplied by stacks.
+  const takenIncSum = params.target.buffs.reduce((sum, buff) => {
+    const e = buff.effects.find((eff) => eff.type === "DAMAGE_TAKEN_INCREASE");
+    if (!e) return sum;
+    const stacks = buff.stacks ?? 1;
+    return sum + (e.value ?? 0) * stacks;
+  }, 0);
+  if (takenIncSum > 0) dmg *= 1 + takenIncSum;
 
   // DAMAGE TAKEN FLAT (e.g. 破风 — fixed bonus added after multipliers)
   const flatBonusList = allEffects(params.target).filter((e) => e.type === "DAMAGE_TAKEN_FLAT");

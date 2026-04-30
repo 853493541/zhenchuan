@@ -366,6 +366,19 @@ function applyForcedControlFall(player: PlayerState, wasAirborne: boolean): void
     return;
   }
 
+  // Z_LOCK: keep player suspended in place (亢龙·定身, 龙啸九天 self-stuck).
+  const zLocked = player.buffs.some((b) =>
+    b.effects.some((e) => (e as any).type === "Z_LOCK"),
+  );
+  if (zLocked) {
+    clearAirShift(player);
+    clearAirborneSpeedCarry(player);
+    player.velocity.vx = 0;
+    player.velocity.vy = 0;
+    player.velocity.vz = 0;
+    return;
+  }
+
   clearAirShift(player);
   clearAirborneSpeedCarry(player);
   player.velocity.vx = 0;
@@ -874,6 +887,10 @@ export function applyMovement(
       const boostIdx = player.buffs.findIndex(
         (b) => b.effects.some((e) => e.type === "JUMP_BOOST")
       );
+      // 梯云纵 TI_YUN_ZONG_JUMP: same effect as 弹跳 (POWER_JUMP_VZ / COMBINED_JUMP_VZ)
+      // but persistent — does NOT consume. If 弹跳 is also present, the consumed
+      // boostIdx path runs (mutually-exclusive cast rules normally prevent this).
+      const tiYunZongActive = allEffects.some((e: any) => e.type === "TI_YUN_ZONG_JUMP");
       if (boostIdx >= 0) {
         if (isMultiJump) {
           // Combined 扶摇直上 + 鸟翔碧空: 24u peak, same timing as power jump
@@ -892,6 +909,23 @@ export function applyMovement(
           player.isPowerJumpCombined = false;
         }
         player.buffs.splice(boostIdx, 1); // consume the buff instantly
+      } else if (tiYunZongActive) {
+        if (isMultiJump) {
+          jumpVz = COMBINED_JUMP_VZ;
+          jumpGravityUp = COMBINED_GRAVITY_UP;
+          jumpGravityDown = COMBINED_GRAVITY_DOWN;
+          player.velocity.vz = jumpVz;
+          player.isPowerJumpCombined = true;
+          player.isPowerJump = false;
+        } else {
+          jumpVz = POWER_JUMP_VZ;
+          jumpGravityUp = POWER_GRAVITY_UP;
+          jumpGravityDown = POWER_GRAVITY_DOWN;
+          player.velocity.vz = jumpVz;
+          player.isPowerJump = true;
+          player.isPowerJumpCombined = false;
+        }
+        // NOT consumed — 梯云纵 buff persists until natural expiry.
       } else if (player.jumpCount === 0) {
         // First jump (鸟翔碧空: 3× height)
         jumpVz = isMultiJump ? JUMP_VZ * MULTI_JUMP_HEIGHT_MULT : JUMP_VZ;
@@ -905,10 +939,27 @@ export function applyMovement(
         player.isPowerJump = false;
         player.isPowerJumpCombined = false;
       }
+      // 抱残式 (and similar) JUMP_NERF: peak-height multiplier (e.g. 0.5 → 50% jump height).
+      // peak-height ∝ vz², so vz scales by sqrt(heightMult).
+      const jumpNerfMult = allEffects
+        .filter((e) => (e as any).type === "JUMP_NERF")
+        .reduce((acc, e: any) => Math.min(acc, Number.isFinite(e.value) ? e.value : 1), 1);
+      if (jumpNerfMult < 1) {
+        const vzScale = Math.sqrt(Math.max(0, jumpNerfMult));
+        jumpVz *= vzScale;
+        player.velocity.vz = (player.velocity.vz ?? 0) * vzScale;
+      }
       const jumpStartPlanarSpeed = getJumpStartPlanarSpeed(player, effectiveMoveSpeed);
       player.velocity.vx = 0;
       player.velocity.vy = 0;
       player.jumpCount += 1;
+      // 梯云纵 penalty: first jump of an airborne sequence consumes 2 jumps.
+      // After a dash that resets jumpCount, the flag stays true so subsequent jumps
+      // do not retrigger the penalty. Reset to false on landing.
+      if (tiYunZongActive && !player.tiYunZongPenaltyConsumed) {
+        player.jumpCount += 1;
+        player.tiYunZongPenaltyConsumed = true;
+      }
 
       clearAirShift(player);
       rememberAirborneSpeedCarry(player, jumpStartPlanarSpeed);
@@ -1008,14 +1059,20 @@ export function applyMovement(
   }
 
   // ── Z axis: asymmetric gravity (combined buff > power jump > regular) ──
+  const zLocked = allEffects.some((e) => (e as any).type === "Z_LOCK");
   const gravUp   = player.isPowerJumpCombined ? COMBINED_GRAVITY_UP
                  : player.isPowerJump         ? POWER_GRAVITY_UP
                  : GRAVITY_UP;
   const gravDown = player.isPowerJumpCombined ? COMBINED_GRAVITY_DOWN
                  : player.isPowerJump         ? POWER_GRAVITY_DOWN
                  : GRAVITY_DOWN;
-  player.velocity.vz! -= (player.velocity.vz! >= 0 ? gravUp : gravDown);
-  player.position.z! += player.velocity.vz!;
+  if (zLocked) {
+    // Suspend vertical motion entirely while Z_LOCK is active.
+    player.velocity.vz = 0;
+  } else {
+    player.velocity.vz! -= (player.velocity.vz! >= 0 ? gravUp : gravDown);
+    player.position.z! += player.velocity.vz!;
+  }
 
   const postMoveGroundH = hasExportedCollision(mapCtx)
     ? resolveExportedVerticalCollision(player, arenaW, arenaH, pr, mapCtx.collisionSystem)
@@ -1032,6 +1089,7 @@ export function applyMovement(
     player.jumpCount   = 0; // restore jumps on landing
     player.isPowerJump = false;
     player.isPowerJumpCombined = false;
+    player.tiYunZongPenaltyConsumed = false; // 梯云纵: penalty re-armed on grounding
     clearAirShift(player);
     clearAirborneSpeedCarry(player);
   }
@@ -1170,4 +1228,28 @@ export function resolveMapCollisions(player: PlayerState, mapCtx?: MapContext): 
   for (const obj of mapObjects) {
     resolveObjectCollision(player, obj, pr);
   }
+}
+
+/**
+ * Horizontal-only collision resolution that does NOT read or write any
+ * `velocity` field. Safe to call on TargetEntity (test dummies) which lack
+ * the player velocity object. Players should still go through
+ * `resolveMapCollisions`.
+ */
+export function resolveEntityHorizontalCollision(
+  ent: { position: { x: number; y: number; z?: number } },
+  mapCtx?: MapContext,
+): void {
+  const arenaW = mapCtx?.width ?? ARENA_WIDTH;
+  const arenaH = mapCtx?.height ?? ARENA_HEIGHT;
+  const pr = mapCtx?.playerRadius ?? DEFAULT_PLAYER_RADIUS;
+  if (hasExportedCollision(mapCtx)) {
+    const center = syncExportCenter(ent.position.x, ent.position.y, ent.position.z ?? 0, arenaW, arenaH, pr);
+    _bvhVelocity.set(0, 0, 0);
+    mapCtx.collisionSystem.resolveSphereCollision(center, EXPORTED_COLLISION_RADIUS, _bvhVelocity);
+    // applyHorizontalFromExportCenter only touches .position.x/.y, no velocity.
+    applyHorizontalFromExportCenter(ent as any, center, arenaW, arenaH, pr);
+    return;
+  }
+  // Non-exported maps: skip — entity dummies are only spawned in collision-test mode.
 }
