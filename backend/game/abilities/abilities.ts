@@ -3809,7 +3809,8 @@ export const BASE_ABILITIES: AbilityRecord = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 十方玄机 — 3s movable channel that can be started/maintained in air. On
+  // 十方玄机 — 3s movable ground-only channel on a selected target within 20u.
+  // The target must still be within 20u when the channel completes. On
   // completion, gain 十方玄机 for 20s: all players see the holder as a friendly
   // target, their HP bar turns green, they become untargetable, skip enemy AOE,
   // and are immune to incoming damage. Casting any non-base skill removes it.
@@ -3817,9 +3818,13 @@ export const BASE_ABILITIES: AbilityRecord = {
   shi_fang_xuan_ji: {
     id: "shi_fang_xuan_ji",
     name: "十方玄机",
-    description: "运功3秒，可在空中运功，可在运功中移动\n运功完成后获得【十方玄机】20秒：所有人视其为友方目标，血条变为绿色\n期间不可被选中，不受范围技能影响，并免疫所有伤害\n施放除6个基础通用技能外的任意招式时失去该效果",
+    description: "选中20尺内目标后在地面运功3秒，可在运功中移动；若目标离开20尺则运功中断\n运功结束时目标仍需在20尺内，完成后获得【十方玄机】20秒：所有人视其为友方目标，血条变为绿色\n期间不可被选中，不受范围技能影响，并免疫所有伤害\n施放除6个基础通用技能外的任意招式时失去该效果",
     type: "CHANNEL",
-    target: "SELF",
+    target: "OPPONENT",
+    range: 20,
+    faceDirection: false,
+    requiresGrounded: true,
+    requireTargetInRangeOnChannelComplete: true,
     cooldownTicks: 450,
     gcd: true,
     effects: [],
@@ -3840,10 +3845,104 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
     channelDurationMs: 3_000,
     channelCancelOnMove: false,
-    channelCancelOnJump: false,
+    channelCancelOnJump: true,
+    channelCancelOnOutOfRange: 20,
     channelForward: true,
     applyBuffsOnComplete: true,
   } as any,
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 蚀心蛊 — target anyone within 20u. Applies 蚀心蛊 for 6s, but self-cast and
+  // repeat casts into 蚀心 both halve the duration. The debuff silences, grants
+  // +50% move speed, grants 50% damage reduction, and removes control by
+  // forcing either a random march or a standstill without granting CC immunity.
+  // ──────────────────────────────────────────────────────────────────────────
+  shi_xin_gu: {
+    id: "shi_xin_gu",
+    name: "蚀心蛊",
+    description: "选中20尺内任意目标施放【蚀心蛊】6秒\n目标被沉默、移速提高50%、受到伤害降低50%，并随机陷入朝固定方向移动或原地不动的失控状态\n若目标为自己，则持续时间减半；若目标已有【蚀心】，则本次持续时间再减半",
+    type: "CONTROL",
+    target: "OPPONENT",
+    canTargetSelf: true,
+    range: 20,
+    faceDirection: false,
+    cooldownTicks: 450,
+    gcd: true,
+    effects: [{ type: "SHI_XIN_GU" }],
+    buffs: [
+      {
+        buffId: 2643,
+        name: "蚀心蛊",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 6_000,
+        description: "沉默，移动速度提高50%，受到伤害降低50%，并随机朝固定方向移动或原地不动；期间无法自行控制角色，但不会获得控制免疫",
+        effects: [
+          { type: "SILENCE" },
+          { type: "SPEED_BOOST", value: 0.5 },
+          { type: "DAMAGE_REDUCTION", value: 0.5 },
+          { type: "SHI_XIN_GU" },
+        ],
+      },
+      {
+        buffId: 2644,
+        name: "蚀心",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 20_000,
+        description: "再次受到【蚀心蛊】时，该效果持续时间减半",
+        effects: [{ type: "SHI_XIN_MARK" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 鸿蒙天禁 — target anyone within 20u. Applies a 6s DEBUFF that makes the
+  // target untargetable, hidden from opponents, and immune to damage while
+  // still allowing normal actions. Self-cast also cleanses 2 debuffs of each
+  // specified attribute. On natural expiry, grant 曙色 for 20s to block future
+  // 鸿蒙天禁 applications.
+  // ──────────────────────────────────────────────────────────────────────────
+  hong_meng_tian_jin: {
+    id: "hong_meng_tian_jin",
+    name: "鸿蒙天禁",
+    description: "选中20尺内任意目标施放【鸿蒙天禁】6秒（减益）\n期间目标不会被任何人选中，不会显示在其他人视野中，不受范围技能影响，并免疫所有伤害，但仍可自由行动\n若目标为自己，则额外驱散“阴性/阳性/混元/毒性/持续伤害”不利效果各2个\n【鸿蒙天禁】结束时获得【曙色】20秒：不会受到【鸿蒙天禁】效果",
+    type: "SUPPORT",
+    target: "OPPONENT",
+    canTargetSelf: true,
+    range: 20,
+    faceDirection: false,
+    cooldownTicks: 450,
+    gcd: true,
+    ignoreDodge: true,
+    effects: [{ type: "HONG_MENG_TIAN_JIN" }],
+    buffs: [
+      {
+        buffId: 2645,
+        name: "鸿蒙天禁",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 6_000,
+        breakOnPlay: false,
+        description: "不会被任何人选中，不会显示在其他人视野中，不受范围技能影响，并免疫所有伤害；期间仍可自由行动",
+        effects: [
+          { type: "UNTARGETABLE" },
+          { type: "INVULNERABLE" },
+          { type: "HONG_MENG_TIAN_JIN" },
+        ],
+      },
+      {
+        buffId: 2646,
+        name: "曙色",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 20_000,
+        breakOnPlay: false,
+        description: "不会受到【鸿蒙天禁】效果",
+        effects: [{ type: "HONG_MENG_TIAN_JIN_IMMUNE" }],
+      },
+    ],
+  },
 
   // ──────────────────────────────────────────────────────────────────────────
   // 连环弩 — channel 3s while standing. Immune to controls (except pull /

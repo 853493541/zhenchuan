@@ -66,6 +66,12 @@ const RU_YI_TARGET_BUFF_IDS: Record<CapturedControlKind, number> = {
   knockdown: 2641,
 };
 
+const SHI_XIN_GU_BUFF_ID = 2643;
+const SHI_XIN_MARK_BUFF_ID = 2644;
+const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
+const SHU_SE_BUFF_ID = 2646;
+const HONG_MENG_CLEANSE_ATTRIBUTES = ["阴性", "阳性", "混元", "毒性", "持续伤害"];
+
 type ImmediateEnemyDamageTarget =
   | { kind: "player"; target: any }
   | { kind: "entity"; target: any };
@@ -127,10 +133,84 @@ function getExplicitEnemyPlayerTarget(state: any, sourceUserId: string, targetUs
   return target;
 }
 
+function getExplicitPlayerTarget(state: any, targetUserId?: string) {
+  if (!targetUserId || !Array.isArray(state.players)) return null;
+  const target = state.players.find((candidate: any) => candidate.userId === targetUserId);
+  if (!target || (target.hp ?? 0) <= 0) return null;
+  return target;
+}
+
+function getRandomUnitDirection() {
+  const angle = Math.random() * Math.PI * 2;
+  return {
+    x: Math.cos(angle),
+    y: Math.sin(angle),
+  };
+}
+
+const SHI_XIN_GU_STANDSTILL_EFFECT_TYPES = new Set([
+  "CONTROL",
+  "ROOT",
+  "ATTACK_LOCK",
+  "FEARED",
+  "KNOCKED_BACK",
+  "PULLED",
+]);
+
+function shouldShiXinGuForceStandstill(target: any, mapCtx?: MapContext, now: number = Date.now()) {
+  const hasLiveControlDebuff = (target?.buffs ?? []).some((buff: any) => {
+    if ((buff.expiresAt ?? 0) <= now) return false;
+    if (buff.category !== "DEBUFF") return false;
+    if (typeof buff.name === "string" && buff.name.includes("倒地")) return true;
+    return Array.isArray(buff.effects) && buff.effects.some((effect: any) =>
+      SHI_XIN_GU_STANDSTILL_EFFECT_TYPES.has(effect?.type)
+    );
+  });
+  if (hasLiveControlDebuff) return true;
+
+  const px = Number(target?.position?.x ?? 0);
+  const py = Number(target?.position?.y ?? 0);
+  const pz = Number(target?.position?.z ?? 0);
+  const groundZ = mapCtx ? getGroundHeightForMap(px, py, pz, mapCtx) : pz;
+  return Number(target?.jumpCount ?? 0) > 0 || pz > groundZ + 0.05;
+}
+
 function getAbilityBuffDefinition(ability: any, buffId: number) {
   return Array.isArray(ability.buffs)
     ? ability.buffs.find((buff: any) => buff.buffId === buffId)
     : undefined;
+}
+
+function cleanseDebuffsByAttributes(params: {
+  state: any;
+  target: any;
+  attributes: string[];
+  count: number;
+}) {
+  const { state, target, attributes, count } = params;
+  const { overrides } = loadBuffEditorOverrides();
+  for (const attribute of attributes) {
+    let removed = 0;
+    while (removed < count) {
+      const idx = target.buffs.findIndex((buff: any) => {
+        if (buff.category !== "DEBUFF") return false;
+        return overrides[String(buff.buffId)]?.attribute === attribute;
+      });
+      if (idx === -1) break;
+      const removedBuff = target.buffs[idx];
+      removeLinkedShield(target as any, removedBuff);
+      target.buffs.splice(idx, 1);
+      pushBuffExpired(state, {
+        targetUserId: target.userId,
+        buffId: removedBuff.buffId,
+        buffName: removedBuff.name,
+        buffCategory: removedBuff.category,
+        sourceAbilityId: removedBuff.sourceAbilityId,
+        sourceAbilityName: removedBuff.sourceAbilityName,
+      });
+      removed++;
+    }
+  }
 }
 
 function applyCapturedControlsToPlayerTarget(params: {
@@ -552,6 +632,100 @@ export function applyImmediateEffects(params: {
             ...markerBuff,
             recordedControls: capturedControls.map((snapshot) => ({ ...snapshot })),
           } as any,
+        });
+        break;
+      }
+
+      case "SHI_XIN_GU": {
+        const selectedTarget =
+          getExplicitPlayerTarget(state, castContext?.targetUserId) ??
+          ((target?.hp ?? 0) > 0 ? target : null);
+        if (!selectedTarget) break;
+        if (abilityDodged && selectedTarget.userId !== source.userId) break;
+
+        const mainBuff = getAbilityBuffDefinition(ability, SHI_XIN_GU_BUFF_ID);
+        if (!mainBuff) break;
+
+        const now = Date.now();
+        const hasRecencyMarker = (selectedTarget.buffs ?? []).some(
+          (buff: any) => buff.buffId === SHI_XIN_MARK_BUFF_ID && (buff.expiresAt ?? 0) > now
+        );
+
+        let durationMs = Number(mainBuff.durationMs ?? 6_000);
+        if (selectedTarget.userId === source.userId) {
+          durationMs *= 0.5;
+        }
+        if (hasRecencyMarker) {
+          durationMs *= 0.5;
+        }
+        durationMs = Math.max(500, Math.round(durationMs));
+
+        const forcedMovementMode = shouldShiXinGuForceStandstill(selectedTarget, mapCtx, now)
+          ? "standstill"
+          : Math.random() < 0.5
+            ? "direction"
+            : "standstill";
+        const forcedMoveDirection =
+          forcedMovementMode === "direction" ? getRandomUnitDirection() : undefined;
+
+        addBuff({
+          state,
+          sourceUserId: source.userId,
+          targetUserId: selectedTarget.userId,
+          ability,
+          buffTarget: selectedTarget,
+          buff: {
+            ...mainBuff,
+            durationMs,
+            forcedMovementMode,
+            forcedMoveDirection,
+          } as any,
+        });
+
+        const recencyBuff = getAbilityBuffDefinition(ability, SHI_XIN_MARK_BUFF_ID);
+        if (recencyBuff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: selectedTarget.userId,
+            ability,
+            buffTarget: selectedTarget,
+            buff: recencyBuff,
+          });
+        }
+        break;
+      }
+
+      case "HONG_MENG_TIAN_JIN": {
+        const selectedTarget =
+          getExplicitPlayerTarget(state, castContext?.targetUserId) ??
+          ((target?.hp ?? 0) > 0 ? target : null);
+        if (!selectedTarget) break;
+
+        if (selectedTarget.userId === source.userId) {
+          cleanseDebuffsByAttributes({
+            state,
+            target: selectedTarget,
+            attributes: HONG_MENG_CLEANSE_ATTRIBUTES,
+            count: 2,
+          });
+        }
+
+        const hasShuSe = (selectedTarget.buffs ?? []).some(
+          (buff: any) => buff.buffId === SHU_SE_BUFF_ID && (buff.expiresAt ?? 0) > Date.now()
+        );
+        if (hasShuSe) break;
+
+        const mainBuff = getAbilityBuffDefinition(ability, HONG_MENG_TIAN_JIN_BUFF_ID);
+        if (!mainBuff) break;
+
+        addBuff({
+          state,
+          sourceUserId: source.userId,
+          targetUserId: selectedTarget.userId,
+          ability,
+          buffTarget: selectedTarget,
+          buff: mainBuff,
         });
         break;
       }

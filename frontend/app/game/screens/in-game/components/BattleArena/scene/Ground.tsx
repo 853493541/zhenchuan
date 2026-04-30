@@ -7,6 +7,7 @@ interface GroundProps {
   isArena?: boolean;
   mode?: string;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number };
+  hideVisuals?: boolean;
   onPointerMove?: (e: any) => void;
   onPointerDown?: (e: any) => void;
 }
@@ -16,6 +17,7 @@ export default function Ground({
   isArena = false,
   mode,
   safeZone,
+  hideVisuals = false,
   onPointerMove,
   onPointerDown,
 }: GroundProps) {
@@ -117,24 +119,28 @@ export default function Ground({
           onPointerDown={onPointerDown}
         >
           <planeGeometry args={[arenaSize, arenaSize]} />
-          <meshLambertMaterial color="#b8a878" />
+          <meshLambertMaterial color="#b8a878" transparent opacity={hideVisuals ? 0 : 1} depthWrite={!hideVisuals} />
         </mesh>
 
         {/* Grid lines every 20 units */}
-        <lineSegments>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[arenaGridPositions, 3]} />
-          </bufferGeometry>
-          <lineBasicMaterial color="#8a7a58" transparent opacity={0.25} />
-        </lineSegments>
+        {!hideVisuals && (
+          <>
+            <lineSegments>
+              <bufferGeometry>
+                <bufferAttribute attach="attributes-position" args={[arenaGridPositions, 3]} />
+              </bufferGeometry>
+              <lineBasicMaterial color="#8a7a58" transparent opacity={0.25} />
+            </lineSegments>
 
-        {/* Boundary */}
-        <lineSegments>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[arenaBorderPositions, 3]} />
-          </bufferGeometry>
-          <lineBasicMaterial color="#ffffff" transparent opacity={0.9} />
-        </lineSegments>
+            {/* Boundary */}
+            <lineSegments>
+              <bufferGeometry>
+                <bufferAttribute attach="attributes-position" args={[arenaBorderPositions, 3]} />
+              </bufferGeometry>
+              <lineBasicMaterial color="#ffffff" transparent opacity={0.9} />
+            </lineSegments>
+          </>
+        )}
       </group>
     );
   }
@@ -153,32 +159,36 @@ export default function Ground({
           onPointerDown={onPointerDown}
         >
           <planeGeometry args={[arenaSize, arenaSize]} />
-          <meshLambertMaterial color="#4e8c5a" />
+          <meshLambertMaterial color="#4e8c5a" transparent opacity={hideVisuals ? 0 : 1} depthWrite={!hideVisuals} />
         </mesh>
 
         {/* Subtle grid lines */}
-        <lineSegments>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[arenaGridPositions, 3]} />
-          </bufferGeometry>
-          <lineBasicMaterial color="#2a5e35" transparent opacity={0.25} />
-        </lineSegments>
+        {!hideVisuals && (
+          <>
+            <lineSegments>
+              <bufferGeometry>
+                <bufferAttribute attach="attributes-position" args={[arenaGridPositions, 3]} />
+              </bufferGeometry>
+              <lineBasicMaterial color="#2a5e35" transparent opacity={0.25} />
+            </lineSegments>
 
-        {/* White glowing border — outer halo */}
-        <lineSegments>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[arenaBorderOuterPositions, 3]} />
-          </bufferGeometry>
-          <lineBasicMaterial color="#ffffff" transparent opacity={0.3} />
-        </lineSegments>
+            {/* White glowing border — outer halo */}
+            <lineSegments>
+              <bufferGeometry>
+                <bufferAttribute attach="attributes-position" args={[arenaBorderOuterPositions, 3]} />
+              </bufferGeometry>
+              <lineBasicMaterial color="#ffffff" transparent opacity={0.3} />
+            </lineSegments>
 
-        {/* White glowing border — bright core */}
-        <lineSegments>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[arenaBorderPositions, 3]} />
-          </bufferGeometry>
-          <lineBasicMaterial color="#ffffff" transparent opacity={0.9} />
-        </lineSegments>
+            {/* White glowing border — bright core */}
+            <lineSegments>
+              <bufferGeometry>
+                <bufferAttribute attach="attributes-position" args={[arenaBorderPositions, 3]} />
+              </bufferGeometry>
+              <lineBasicMaterial color="#ffffff" transparent opacity={0.9} />
+            </lineSegments>
+          </>
+        )}
 
         {/* Safe zone (毒圈) border — bright white core (extra shiny) */}
         {safeZoneBorderPositions.length > 0 && (

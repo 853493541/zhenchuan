@@ -407,6 +407,9 @@ const WUFANG_XINGJIN_REMOVE_ON_HIT_CHANCE = 0.5;
 const SAN_CAI_HUA_SHENG_ROOT_BUFF_ID = 2509;
 const SAN_CAI_HUA_SHENG_PROTECT_BUFF_ID = 2510;
 const SAN_CAI_HUA_SHENG_REMOVE_ON_HIT_CHANCE = 0.5;
+const HONG_MENG_TIAN_JIN_ABILITY_ID = "hong_meng_tian_jin";
+const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
+const SHU_SE_BUFF_ID = 2646;
 const PULL_CHANNEL_QINGGONG_SEAL_CONFIG: Record<string, { buffId: number; buffName: string; durationMs: number }> = {
   zhuo_ying_shi: { buffId: 2403, buffName: "滞影", durationMs: 5_000 },
 };
@@ -878,6 +881,34 @@ export class GameLoop {
             input = { dx: ax, dy: ay, facing: { x: ax, y: ay }, jump: false } as any;
           } else {
             input = { dx: 1, dy: 0, facing: { x: 1, y: 0 }, jump: false } as any;
+          }
+        }
+      } else {
+        const shiXinBuff = (player.buffs as any[]).find(
+          (b) => b.expiresAt > Date.now() && b.effects?.some((e: any) => e.type === "SHI_XIN_GU")
+        );
+        if (shiXinBuff) {
+          if ((shiXinBuff as any).forcedMovementMode === "direction") {
+            const dir = (shiXinBuff as any).forcedMoveDirection;
+            const dx = Number(dir?.x ?? 0);
+            const dy = Number(dir?.y ?? 0);
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len > 0.0001) {
+              const ax = dx / len;
+              const ay = dy / len;
+              input = { dx: ax, dy: ay, facing: { x: ax, y: ay }, jump: false } as any;
+            } else {
+              input = { dx: 1, dy: 0, facing: { x: 1, y: 0 }, jump: false } as any;
+            }
+          } else {
+            player.velocity.vx = 0;
+            player.velocity.vy = 0;
+            input = {
+              dx: 0,
+              dy: 0,
+              facing: player.facing ?? { x: 0, y: 1 },
+              jump: false,
+            } as any;
           }
         }
       }
@@ -1515,6 +1546,23 @@ export class GameLoop {
         }
 
         if (chNow >= ch.startedAt + ch.durationMs) {
+          if (
+            channelAbility?.target === "OPPONENT" &&
+            channelAbility?.requireTargetInRangeOnChannelComplete === true &&
+            typeof channelAbility?.range === "number"
+          ) {
+            const completeDist = Math.max(
+              0,
+              calculateDistance(player.position, targetPosition, storedUnitScale) -
+                (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
+            );
+            if (completeDist > channelAbility.range) {
+              cancelActiveChannel(this.state, player as any);
+              channelStateChanged = true;
+              continue;
+            }
+          }
+
           let channelEffectDodged = false;
           for (const e of ch.effects) {
             if (e.type === "TIMED_SELF_HEAL") {
@@ -2615,6 +2663,27 @@ export class GameLoop {
         }
 
         buffsChanged = true;
+      }
+
+      const hongMengExpired = naturallyExpired.filter(
+        (buff) => buff.buffId === HONG_MENG_TIAN_JIN_BUFF_ID && buff.sourceAbilityId === HONG_MENG_TIAN_JIN_ABILITY_ID
+      );
+      if (hongMengExpired.length > 0) {
+        const hongMengAbility = ABILITIES[HONG_MENG_TIAN_JIN_ABILITY_ID];
+        const shuSeBuff = hongMengAbility?.buffs?.find((buff: any) => buff.buffId === SHU_SE_BUFF_ID);
+        if (hongMengAbility && shuSeBuff) {
+          for (const expired of hongMengExpired) {
+            addBuff({
+              state: this.state,
+              sourceUserId: expired.sourceUserId ?? player.userId,
+              targetUserId: player.userId,
+              ability: hongMengAbility,
+              buffTarget: player as any,
+              buff: shuSeBuff,
+            });
+          }
+          buffsChanged = true;
+        }
       }
     });
 

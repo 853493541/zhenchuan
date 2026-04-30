@@ -53,6 +53,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       type: ability.type,
       gcd: !!(ability as any).gcd,
       target: ability.target,
+      canTargetSelf: !!(ability as any).canTargetSelf,
       effects: ability.effects ?? [],
 
       // Range data for client-side ability readiness check

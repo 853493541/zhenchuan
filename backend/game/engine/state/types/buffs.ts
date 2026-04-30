@@ -126,4 +126,14 @@ export interface ActiveBuff {
    * Damage consumption decrements this together with player.shield.
    */
   shieldAmount?: number;
+
+  /**
+   * Optional forced-movement mode used by custom debuffs like 蚀心蛊.
+   */
+  forcedMovementMode?: "direction" | "standstill";
+
+  /**
+   * Optional normalized planar direction used when forcedMovementMode="direction".
+   */
+  forcedMoveDirection?: { x: number; y: number };
 }

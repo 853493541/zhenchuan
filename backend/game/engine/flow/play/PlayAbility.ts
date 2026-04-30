@@ -51,7 +51,11 @@ export function applyAbility(
   breakOnPlay(source, ability);
 
   const opponentHpAtStart = target.hp;
-  const abilityDodged = entityTarget ? false : computeAbilityDodge(ability, target);
+  const abilityDodged = entityTarget
+    ? false
+    : source.userId === target.userId
+      ? false
+      : computeAbilityDodge(ability, target);
 
   if (abilityDodged) {
     pushEvent(state, {

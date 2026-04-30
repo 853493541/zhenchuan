@@ -41,6 +41,7 @@ const ROOT_DR_BUFF_ID = 990100;
 const STUN_DR_BUFF_ID = 990101;
 const LOCKOUT_DR_BUFF_ID = 990102;
 const FREEZE_DR_BUFF_ID = 990103;
+const SHI_XIN_GU_BUFF_ID = 2643;
 const CONTROL_DR_DURATION_MS = 10_000;
 // 雷霆震怒: stun + damage immunity package
 const LEI_TING_ZHEN_NU_BUFF_ID = 2506;
@@ -85,6 +86,7 @@ function getActiveResistanceBuff(
 function getResistanceConfig(runtimeBuff: BuffDefinition): ResistanceConfig | null {
   if (runtimeBuff.category !== "DEBUFF") return null;
   if (runtimeBuff.buffId === 1002) return null;
+  if (runtimeBuff.buffId === SHI_XIN_GU_BUFF_ID) return null;
 
   if (runtimeBuff.effects.some((e) => SHARED_LOCKOUT_EFFECT_TYPES.has(e.type))) {
     return LOCKOUT_DR_CONFIG;

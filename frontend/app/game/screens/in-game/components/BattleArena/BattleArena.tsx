@@ -398,6 +398,8 @@ function facingArrow(facing: { x: number; y: number } | undefined): string {
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
 const UNTARGETABLE_BUFF_IDS = new Set([1008]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
+const HONG_MENG_TIAN_JIN_BUFF_IDS = new Set([2645]);
+const SHU_SE_BUFF_IDS = new Set([2646]);
 
 function buffHasEffect(buff: ActiveBuff | any, type: string): boolean {
   return Array.isArray(buff?.effects) && buff.effects.some((e: any) => e?.type === type);
@@ -422,8 +424,26 @@ function hasSanliuXiaClient(buffs?: ActiveBuff[]): boolean {
   return buffs.some((b: any) => SANLIU_XIA_BUFF_IDS.has(b.buffId) || buffNameIncludes(b, '散流霞'));
 }
 
+function hasHongMengTianJinClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) =>
+    HONG_MENG_TIAN_JIN_BUFF_IDS.has(b.buffId) ||
+    buffHasEffect(b, 'HONG_MENG_TIAN_JIN') ||
+    buffNameIncludes(b, '鸿蒙天禁')
+  );
+}
+
+function hasShuSeClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) =>
+    SHU_SE_BUFF_IDS.has(b.buffId) ||
+    buffHasEffect(b, 'HONG_MENG_TIAN_JIN_IMMUNE') ||
+    buffNameIncludes(b, '曙色')
+  );
+}
+
 function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
-  return hasStealthClient(buffs) && !hasSanliuXiaClient(buffs);
+  return (hasStealthClient(buffs) && !hasSanliuXiaClient(buffs)) || hasHongMengTianJinClient(buffs);
 }
 
 function blocksTargetingClient(buffs?: ActiveBuff[]): boolean {
@@ -537,6 +557,7 @@ interface AbilityInfo {
   isReady: boolean;
   isCommon: boolean;
   target: 'SELF' | 'OPPONENT';
+  canTargetSelf?: boolean;
   faceDirection?: boolean;
   requiresGrounded?: boolean;
   requiresStanding?: boolean;
@@ -696,19 +717,31 @@ export default function BattleArena({
     () => ((opponents && opponents.length > 0 ? opponents : [opponent]).filter(Boolean)),
     [opponents, opponent],
   );
+  const selfHasHongMengTianJin = useMemo(
+    () => hasHongMengTianJinClient(me?.buffs),
+    [me?.buffs],
+  );
+  const worldVisibleOpponentsList = useMemo(
+    () => (selfHasHongMengTianJin ? [] : opponentsList),
+    [opponentsList, selfHasHongMengTianJin],
+  );
   const visibleOpponentsList = useMemo(
-    () => opponentsList.filter((o) => !shouldHideOpponentByStealth(o?.buffs)),
-    [opponentsList],
+    () => worldVisibleOpponentsList.filter((o) => !shouldHideOpponentByStealth(o?.buffs)),
+    [worldVisibleOpponentsList],
   );
   const targetableOpponentsList = useMemo(
-    () => opponentsList.filter((o) => !blocksTargetingClient(o?.buffs)),
-    [opponentsList],
+    () => worldVisibleOpponentsList.filter((o) => !blocksTargetingClient(o?.buffs)),
+    [worldVisibleOpponentsList],
+  );
+  const visibleEntities = useMemo(
+    () => (selfHasHongMengTianJin ? [] : (entities ?? []).filter((entity) => entity.hp > 0)),
+    [entities, selfHasHongMengTianJin],
   );
   const targetableEntityList = useMemo(
-    () => (entities ?? []).filter(
-      (entity) => entity.ownerUserId !== me.userId && entity.hp > 0 && !blocksTargetingClient(entity.buffs)
+    () => visibleEntities.filter(
+      (entity) => entity.ownerUserId !== me.userId && !blocksTargetingClient(entity.buffs)
     ),
-    [entities, me.userId],
+    [visibleEntities, me.userId],
   );
 
   /* --- React state (UI only) --- */
@@ -795,6 +828,7 @@ export default function BattleArena({
   const [showCollisionShells, setShowCollisionShells] = useState(false);
   const [showCollisionBoxes, setShowCollisionBoxes] = useState(false);
   const [blueprintMode, setBlueprintMode] = useState(false);
+  const hongMengOverlayActive = selfHasHongMengTianJin && !blueprintMode;
   const [showTestingPanel, setShowTestingPanel] = useState(false);
   const [showEnvTestingPanel, setShowEnvTestingPanel] = useState(false);
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
@@ -1175,7 +1209,16 @@ export default function BattleArena({
   const maxJumpsRef              = useRef(2);     // updated from me.buffs MULTI_JUMP effect
   const predictedMultiJumpExpiresAtRef = useRef(0);
   const moveSpeedScaleRef        = useRef(1);     // SPEED_BOOST/SLOW local prediction multiplier
-  const movementControlStateRef  = useRef({ fullyLocked: false, rooted: false, zLocked: false, jumpVzScale: 1, tiYunZongActive: false, fearedSourceUserId: null as string | null });
+  const movementControlStateRef  = useRef({
+    fullyLocked: false,
+    rooted: false,
+    zLocked: false,
+    jumpVzScale: 1,
+    tiYunZongActive: false,
+    fearedSourceUserId: null as string | null,
+    shiXinGuDirection: null as { x: number; y: number } | null,
+    shiXinGuStandstill: false,
+  });
 
   /* --- Channel AOE refs (used in render loop, updated via useEffect) --- */
   const meChannelingRef  = useRef(false);
@@ -1203,17 +1246,24 @@ export default function BattleArena({
     }
     const selectedTargetIdNow = selectedTargetRef.current;
     const selectedEntityIdNow = selectedEntityRef.current;
+    const selectedSelfNow = selectedSelfRef.current;
     const selectedEntity = selectedEntityIdNow
       ? (entities ?? []).find((e) => e.id === selectedEntityIdNow)
       : null;
     const selectedTarget = selectedTargetIdNow
       ? opponentsList.find((o) => o.userId === selectedTargetIdNow)
       : null;
-    const targetPos = selectedTarget?.position
+    const selectedSelfTarget = selectedSelfNow ? me : null;
+    const targetPos = selectedSelfTarget?.position
+      ?? selectedTarget?.position
       ?? (selectedEntity ? { x: selectedEntity.position.x, y: selectedEntity.position.y, z: selectedEntity.position.z } : undefined);
 
     // Abilities targeting the opponent require a target (player or entity) to be selected first
-    if (ability?.target === 'OPPONENT' && !selectedTargetIdNow && !selectedEntityIdNow) {
+    if (ability?.target === 'OPPONENT' && selectedSelfNow && !ability?.canTargetSelf) {
+      toastError('该技能不能以自己为目标');
+      return;
+    }
+    if (ability?.target === 'OPPONENT' && !selectedTargetIdNow && !selectedEntityIdNow && !selectedSelfNow) {
       if (ability?.allowGroundCastWithoutTarget) {
         setPendingGroundCastAbilityId(id);
         setGroundCastPreview(null);
@@ -1224,6 +1274,10 @@ export default function BattleArena({
     }
     if (ability?.target === 'OPPONENT' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
       toastError('目标不可选中');
+      return;
+    }
+    if (ability?.id === 'hong_meng_tian_jin' && hasShuSeClient((selectedSelfTarget ?? selectedTarget)?.buffs)) {
+      toastError('目标已受曙色影响');
       return;
     }
     if (ability?.target === 'OPPONENT' && !targetPos) {
@@ -1270,7 +1324,7 @@ export default function BattleArena({
     }
 
     // Face direction check (180° hemisphere)
-    if (ability?.target === 'OPPONENT' && requiresFacingByDefault(ability)) {
+    if (ability?.target === 'OPPONENT' && !selectedSelfNow && requiresFacingByDefault(ability)) {
       const myPos = localPositionRef.current ?? me.position;
       const myFacing = me.facing ?? meFacingRef.current;
       if (myPos && myFacing && targetPos) {
@@ -1284,7 +1338,7 @@ export default function BattleArena({
       }
     }
     // Line-of-sight check (structure blocking)
-    if (ability?.target === 'OPPONENT') {
+    if (ability?.target === 'OPPONENT' && !selectedSelfNow) {
       const myPos = localPositionRef.current ?? me.position;
       const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
       const tgtZ = (targetPos as any)?.z ?? 0;
@@ -1313,10 +1367,12 @@ export default function BattleArena({
     setPendingGroundCastAbilityId(null);
     setGroundCastPreview(null);
     // If an entity is selected and ability targets OPPONENT, route as entity attack.
-    const useEntityTarget = ability?.target === 'OPPONENT' && selectedEntityIdNow && !selectedTargetIdNow;
+    const useEntityTarget = ability?.target === 'OPPONENT' && selectedEntityIdNow && !selectedTargetIdNow && !selectedSelfNow;
     onCastAbility(
       id,
-      selectedTargetIdNow ?? undefined,
+      ability?.target === 'OPPONENT'
+        ? (selectedSelfNow ? me.userId : selectedTargetIdNow ?? undefined)
+        : undefined,
       undefined,
       useEntityTarget ? selectedEntityIdNow : undefined,
     );
@@ -1623,6 +1679,8 @@ export default function BattleArena({
     // 梯云纵: persistent power-jump (acts like 弹跳 / JUMP_BOOST but does not consume).
     let tiYunZongActive = false;
     let fearedSourceUserId: string | null = null;
+    let shiXinGuDirection: { x: number; y: number } | null = null;
+    let shiXinGuStandstill = false;
     for (const b of buffs ?? []) {
       const now = Date.now();
       if (!b || (b.expiresAt ?? 0) <= now) continue;
@@ -1638,11 +1696,36 @@ export default function BattleArena({
         if (!fearedSourceUserId && (e as any)?.type === 'FEARED') {
           fearedSourceUserId = b.sourceUserId ?? null;
         }
+        if ((e as any)?.type === 'SHI_XIN_GU') {
+          const mode = (b as any)?.forcedMovementMode;
+          if (mode === 'direction') {
+            const dir = (b as any)?.forcedMoveDirection;
+            const dx = Number(dir?.x ?? 0);
+            const dy = Number(dir?.y ?? 0);
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len > 0.0001) {
+              shiXinGuDirection = { x: dx / len, y: dy / len };
+              shiXinGuStandstill = false;
+            }
+          } else {
+            shiXinGuDirection = null;
+            shiXinGuStandstill = true;
+          }
+        }
       }
     }
-    movementControlStateRef.current = { fullyLocked, rooted, zLocked, jumpVzScale, tiYunZongActive, fearedSourceUserId };
-    jumpLockedRef.current = locked || zLocked || !!fearedSourceUserId;
-    if (locked || zLocked || fearedSourceUserId) {
+    movementControlStateRef.current = {
+      fullyLocked,
+      rooted,
+      zLocked,
+      jumpVzScale,
+      tiYunZongActive,
+      fearedSourceUserId,
+      shiXinGuDirection,
+      shiXinGuStandstill,
+    };
+    jumpLockedRef.current = locked || zLocked || !!fearedSourceUserId || !!shiXinGuDirection || shiXinGuStandstill;
+    if (locked || zLocked || fearedSourceUserId || shiXinGuDirection || shiXinGuStandstill) {
       jumpLocalRef.current = false;
       jumpSendRef.current = false;
     }
@@ -1709,12 +1792,12 @@ export default function BattleArena({
   // Drop selectedEntityId if it disappears (HP=0 / expired) from the entities list.
   useEffect(() => {
     if (!selectedEntityId) return;
-    const stillExists = (entities ?? []).some((e) => e.id === selectedEntityId && e.hp > 0);
+    const stillExists = visibleEntities.some((e) => e.id === selectedEntityId);
     if (!stillExists) {
       setSelectedEntityId(null);
       selectedEntityRef.current = null;
     }
-  }, [entities, selectedEntityId]);
+  }, [visibleEntities, selectedEntityId]);
 
   useEffect(() => {
     pendingGroundCastAbilityRef.current = pendingGroundCastAbilityId;
@@ -1920,12 +2003,21 @@ export default function BattleArena({
     const fearedDirection = fearOrigin && fearedSourcePos
       ? normalizePlanar(fearOrigin.x - fearedSourcePos.x, fearOrigin.y - fearedSourcePos.y)
       : null;
+    const shiXinGuDirection = movementControlStateRef.current.shiXinGuDirection;
+    const shiXinGuStandstill = movementControlStateRef.current.shiXinGuStandstill === true;
 
     if (fearedDirection) {
       directionPayload = { dx: fearedDirection.x, dy: fearedDirection.y, jump: false };
       if (!dashFacingLocked) {
         facingPayload = fearedDirection;
       }
+    } else if (shiXinGuDirection) {
+      directionPayload = { dx: shiXinGuDirection.x, dy: shiXinGuDirection.y, jump: false };
+      if (!dashFacingLocked) {
+        facingPayload = shiXinGuDirection;
+      }
+    } else if (shiXinGuStandstill) {
+      directionPayload = { dx: 0, dy: 0, jump: false };
     } else if (controlModeRef.current === 'traditional') {
       const moveIntent = buildTraditionalMoveIntent(
         k,
@@ -2185,8 +2277,9 @@ export default function BattleArena({
     const selectedEntity = selectedEntityId
       ? targetableEntityList.find((entity) => entity.id === selectedEntityId) ?? null
       : null;
-    const hasSelectedTarget = !!selectedTarget || !!selectedEntity;
-    const targetForChecks = selectedTarget ?? selectedEntity ?? targetableOpponentsList[0] ?? targetableEntityList[0] ?? null;
+    const selectedSelfTarget = selectedSelf ? me : null;
+    const hasSelectedTarget = !!selectedTarget || !!selectedEntity || !!selectedSelfTarget;
+    const targetForChecks = selectedSelfTarget ?? selectedTarget ?? selectedEntity ?? targetableOpponentsList[0] ?? targetableEntityList[0] ?? null;
     const myPos = me.position ?? localPositionRef.current;
     const myFacing = me.facing ?? meFacingRef.current;
     const targetPos = targetForChecks?.position;
@@ -2246,7 +2339,11 @@ export default function BattleArena({
       if (ab?.target === 'OPPONENT' && !!ab?.allowGroundCastWithoutTarget) return true;
 
       const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
+      if (needsSelectedTarget && selectedSelfTarget && !ab?.canTargetSelf) return false;
       if (needsSelectedTarget && !targetPos) return false;
+      if ((ab?.id === 'hong_meng_tian_jin' || instance?.abilityId === 'hong_meng_tian_jin') && hasShuSeClient((targetForChecks as any)?.buffs)) {
+        return false;
+      }
 
       const distanceToTarget = (myPos && targetPos)
         ? worldUnitsToNewUnits(Math.sqrt(
@@ -2259,7 +2356,7 @@ export default function BattleArena({
       const inMinRange = !ab?.minRange || distanceToTarget >= ab.minRange;
       if (!inMaxRange || !inMinRange) return false;
 
-      if (ab?.target === 'OPPONENT' && myPos && targetPos) {
+      if (ab?.target === 'OPPONENT' && myPos && targetPos && !selectedSelfTarget) {
         if (requiresFacingByDefault(ab) && myFacing) {
           const dx = targetPos.x - myPos.x;
           const dy = targetPos.y - myPos.y;
@@ -2341,6 +2438,7 @@ export default function BattleArena({
           losBlocked:  losBlockedVal,
           isCommon:    false,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
+          canTargetSelf: !!(ability as any).canTargetSelf,
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           requiresGrounded: !!(ability as any).requiresGrounded,
@@ -2389,6 +2487,7 @@ export default function BattleArena({
           losBlocked:  losBlockedCom,
           isCommon:    true,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
+          canTargetSelf: !!(ability as any).canTargetSelf,
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           requiresGrounded: !!(ability as any).requiresGrounded,
@@ -3154,6 +3253,8 @@ export default function BattleArena({
       const fearedDirection = fearedSourcePos && localPositionRef.current
         ? normalizePlanar(localPositionRef.current.x - fearedSourcePos.x, localPositionRef.current.y - fearedSourcePos.y)
         : null;
+      const shiXinGuDirection = movementControlStateRef.current.shiXinGuDirection;
+      const shiXinGuStandstill = movementControlStateRef.current.shiXinGuStandstill === true;
 
       if (jumpLocalRef.current && localJumpCountRef.current >= effectiveMaxJumps) {
         jumpLocalRef.current = false;
@@ -3173,6 +3274,24 @@ export default function BattleArena({
           localFacingRef.current = fearedDirection;
           charYawRef.current = facingToYaw(fearedDirection);
         }
+      } else if (shiXinGuDirection && !movementLocked) {
+        cameraMoveCommandActiveRef.current = true;
+        moveIntentDx = shiXinGuDirection.x;
+        moveIntentDy = shiXinGuDirection.y;
+
+        if (jumpAirborne) {
+          airNudgeDx = moveIntentDx;
+          airNudgeDy = moveIntentDy;
+        } else {
+          vel.x += (shiXinGuDirection.x * effectiveMaxSpeed - vel.x) * ACCEL;
+          vel.y += (shiXinGuDirection.y * effectiveMaxSpeed - vel.y) * ACCEL;
+          localFacingRef.current = shiXinGuDirection;
+          charYawRef.current = facingToYaw(shiXinGuDirection);
+        }
+      } else if (shiXinGuStandstill && !movementLocked) {
+        cameraMoveCommandActiveRef.current = false;
+        vel.x = 0;
+        vel.y = 0;
       } else if (controlModeRef.current === 'traditional') {
         const mouseLook = ms.isRight;
         const bothMouse = ms.isRight && ms.isLeft;
@@ -3941,17 +4060,17 @@ export default function BattleArena({
       <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
         <Canvas
           camera={{ fov: 72, near: 0.5, far: 2000 }}
-          style={{ background: blueprintMode ? '#000010' : '#888888' }}
+          style={{ background: blueprintMode ? '#000010' : selfHasHongMengTianJin ? '#000000' : '#888888' }}
           gl={{ antialias: true }}
           shadows={mode === 'collision-test' && envToggles.shadows && !blueprintMode ? 'percentage' : false}
         >
           <ArenaScene
             me={me}
-            allOpponents={opponentsList}
+            allOpponents={worldVisibleOpponentsList}
             opponents={visibleOpponentsList}
             selectedTargetId={selectedTargetId}
             onSelectTarget={(userId) => {
-              const clicked = opponentsList.find((o) => o.userId === userId);
+              const clicked = worldVisibleOpponentsList.find((o) => o.userId === userId);
               if (clicked && blocksTargetingClient(clicked.buffs)) {
                 toastError('目标不可选中');
                 return;
@@ -3965,7 +4084,7 @@ export default function BattleArena({
               setSelectedSelf(false);
               selectedSelfRef.current = false;
             }}
-            entities={entities}
+            entities={visibleEntities}
             selectedEntityId={selectedEntityId}
             myUserId={me.userId}
             onSelectEntity={(entityId) => {
@@ -4079,6 +4198,7 @@ export default function BattleArena({
             onEnvDebug={mode === 'collision-test' && showEnvTestingPanel ? setEnvDebugInfo : undefined}
             envToggles={mode === 'collision-test' ? envToggles : undefined}
             dirLightConfig={mode === 'collision-test' ? dirLightConfig : undefined}
+            blindWorldMode={selfHasHongMengTianJin}
           />
           {/* Golden measurement line */}
           <MeasureLine3D
@@ -4086,6 +4206,50 @@ export default function BattleArena({
             pinB={measurePins[1] ?? null}
             halfX={ARENA_WIDTH / 2}
             halfY={ARENA_HEIGHT / 2}
+          />
+        </Canvas>
+      </div>
+      <div className={`${styles.hongMengBlackout} ${hongMengOverlayActive ? styles.hongMengOverlayVisible : ''}`} aria-hidden="true" />
+      <div className={`${styles.hongMengSelfCanvas} ${hongMengOverlayActive ? styles.hongMengOverlayVisible : ''}`} aria-hidden="true">
+        <Canvas
+          camera={{ fov: 72, near: 0.5, far: 2000 }}
+          style={{ background: 'transparent' }}
+          frameloop="always"
+          gl={{ antialias: true, alpha: true }}
+          onCreated={({ gl }) => {
+            gl.setClearColor(0x000000, 0);
+          }}
+        >
+          <ArenaScene
+            me={me}
+            allOpponents={[]}
+            opponents={[]}
+            selectedTargetId={null}
+            onSelectTarget={() => {}}
+            entities={[]}
+            selectedEntityId={null}
+            myUserId={me.userId}
+            onSelectEntity={() => {}}
+            pickups={[]}
+            meChanneling={false}
+            meChannelRadius={0}
+            channelingOpponentId={null}
+            channelingOpponentRadius={0}
+            selectedSelf={selectedSelf}
+            localRenderPosRef={localRenderPosRef}
+            camYawRef={camYawRef}
+            camPitchRef={camPitchRef}
+            camZoomRef={camZoomRef}
+            cameraMoveCommandActiveRef={cameraMoveCommandActiveRef}
+            cameraLookInputVersionRef={cameraLookInputVersionRef}
+            manualCameraLookActiveRef={manualCameraLookActiveRef}
+            meFacingRef={localFacingRef as React.MutableRefObject<{ x: number; y: number }>}
+            maxHp={maxHp}
+            mode={mode}
+            collisionReady={collisionReady}
+            collisionSystemRef={collisionSysRef}
+            blueprintMode={false}
+            selfOnlyMode={true}
           />
         </Canvas>
       </div>

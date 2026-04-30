@@ -39,6 +39,8 @@ interface ExportedMapSceneProps {
   showCollisionShells?: boolean;
   /** Shows only the collision wireframe on a black background — hides all visual mesh/terrain. */
   blueprintMode?: boolean;
+  /** Hides terrain / GLB visuals while keeping pointer hits active. */
+  hideVisuals?: boolean;
   onCollisionSystemReady?: (sys: MapCollisionSystem) => void;
   onPointerMove?: (e: any) => void;
   onPointerDown?: (e: any) => void;
@@ -131,6 +133,7 @@ export default function ExportedMapScene({
   worldHeight,
   showCollisionShells = false,
   blueprintMode = false,
+  hideVisuals = false,
   onCollisionSystemReady,
   onPointerMove,
   onPointerDown,
@@ -156,13 +159,13 @@ export default function ExportedMapScene({
 
   // Blueprint mode: hide content, show wireframe in cyan; restore when off
   useEffect(() => {
-    if (contentGroupRef.current) contentGroupRef.current.visible = !blueprintMode;
+    if (contentGroupRef.current) contentGroupRef.current.visible = !blueprintMode && !hideVisuals;
     if (shellLinesRef.current) {
       const mat = shellLinesRef.current.material as THREE.LineBasicMaterial;
       mat.color.set(blueprintMode ? 0x00ffff : 0x3fd56d);
       mat.opacity = blueprintMode ? 1.0 : 0.65;
     }
-  }, [blueprintMode]);
+  }, [blueprintMode, hideVisuals]);
 
   // Canvas-level pointer events: raycast against GLB group first, fall back to y=0 ground plane
   const worldHalfX = worldWidth / 2;
@@ -306,7 +309,7 @@ export default function ExportedMapScene({
 
   return (
     <>
-      {!blueprintMode && <SkyDome />}
+      {!blueprintMode && !hideVisuals && <SkyDome />}
       {/* Invisible ground plane kept as a visual backdrop — pointer events now handled by canvas raycaster above */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}

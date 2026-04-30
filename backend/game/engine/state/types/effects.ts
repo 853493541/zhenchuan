@@ -152,6 +152,14 @@ export type EffectType =
   | "CHENG_HUANG_DASH"
   // 恐惧: silence + forced walk away from sourceUserId
   | "FEARED"
+  // 蚀心蛊: lose control and either march in a stored direction or stand still
+  | "SHI_XIN_GU"
+  // 蚀心: repeat-hit marker that halves the next 蚀心蛊 duration
+  | "SHI_XIN_MARK"
+  // 鸿蒙天禁: hidden untargetable / invulnerable state that still allows actions
+  | "HONG_MENG_TIAN_JIN"
+  // 曙色: temporarily cannot receive 鸿蒙天禁 again
+  | "HONG_MENG_TIAN_JIN_IMMUNE"
   // 振翅图南 / 飞刃回转: place a damage zone that follows a target at fixed speed
   | "PLACE_FOLLOW_ZONE"
   // 天绝地灭: place a growing zone that pulls + explodes on expire

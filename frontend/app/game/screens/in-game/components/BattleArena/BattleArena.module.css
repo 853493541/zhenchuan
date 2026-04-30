@@ -49,6 +49,30 @@
   height: 100%;
 }
 
+.hongMengBlackout {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  background: #000;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.hongMengSelfCanvas {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.hongMengOverlayVisible {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* ============================================================
    TOP-LEFT: My HP panel
    ============================================================ */

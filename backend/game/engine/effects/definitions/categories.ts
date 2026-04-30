@@ -162,6 +162,10 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   // 乘黄之威 + 恐惧
   CHENG_HUANG_DASH: "ABILITY",
   FEARED: "DEBUFF",
+  SHI_XIN_GU: "DEBUFF",
+  SHI_XIN_MARK: "DEBUFF",
+  HONG_MENG_TIAN_JIN: "DEBUFF",
+  HONG_MENG_TIAN_JIN_IMMUNE: "DEBUFF",
   // 振翅图南 / 飞刃回转 / 天绝地灭 / 连环弩
   PLACE_FOLLOW_ZONE: "ABILITY",
   PLACE_GROW_PULL_ZONE: "ABILITY",

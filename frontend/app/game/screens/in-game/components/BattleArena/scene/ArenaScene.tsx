@@ -32,6 +32,7 @@ const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const ZHU_YUN_HIDE_BUFF_IDS = new Set([2716]);
 const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
+const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
 
 function hasStealthBuff(buffs?: any[]): boolean {
   if (!Array.isArray(buffs)) return false;
@@ -56,8 +57,17 @@ function hasZhuYunHideBuff(buffs?: any[]): boolean {
   return buffs.some((b: any) => ZHU_YUN_HIDE_BUFF_IDS.has(b?.buffId));
 }
 
+function hasHongMengTianJinBuff(buffs?: any[]): boolean {
+  if (!Array.isArray(buffs)) return false;
+  return buffs.some((b: any) =>
+    b?.buffId === HONG_MENG_TIAN_JIN_BUFF_ID ||
+    (b.effects ?? []).some((e: any) => e.type === 'HONG_MENG_TIAN_JIN') ||
+    (typeof b?.name === 'string' && b.name.includes('鸿蒙天禁'))
+  );
+}
+
 function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
-  return hasStealthBuff(buffs) && !hasSanliuXiaBuff(buffs);
+  return (hasStealthBuff(buffs) && !hasSanliuXiaBuff(buffs)) || hasHongMengTianJinBuff(buffs);
 }
 
 function hasShiFangXuanJiBuff(buffs?: any[]): boolean {
@@ -180,6 +190,10 @@ interface ArenaSceneProps {
   onEnvDebug?: (info: EnvDebugInfo) => void;
   envToggles?: EnvToggles;
   dirLightConfig?: DirLightConfig;
+  /** Hides terrain / houses / world meshes while preserving self and HUD-facing overlays. */
+  blindWorldMode?: boolean;
+  /** Renders only the local player with camera/light setup, no world or other actors. */
+  selfOnlyMode?: boolean;
 }
 
 export interface EnvDebugInfo {
@@ -432,6 +446,8 @@ export default function ArenaScene({
   onEnvDebug,
   envToggles,
   dirLightConfig,
+  blindWorldMode = false,
+  selfOnlyMode = false,
 }: ArenaSceneProps) {
   const storedUnitScale = getStoredUnitScale(mode);
   const { objects: mapObjects, width: mapWidth, height: mapHeight } = getMapForMode(mode);
@@ -534,7 +550,12 @@ export default function ArenaScene({
       />
 
       {/* Lighting — mode-specific */}
-      {isCollisionTest ? (
+      {selfOnlyMode ? (
+        <>
+          <ambientLight intensity={1.1} color="#f4f6ff" />
+          <directionalLight position={[300, 500, 100]} intensity={2.6} color="#eef4ff" />
+        </>
+      ) : isCollisionTest ? (
         <>
           <CollisionTestSetup blueprintMode={blueprintMode} t={envToggles ?? DEFAULT_ENV_TOGGLES} />
           <CameraFarSetup far={envToggles?.cameraFar ? 500000 : 2000} />
@@ -554,46 +575,52 @@ export default function ArenaScene({
         </>
       )}
 
-      {/* World */}
-      {isCollisionTest ? (
-        <ExportedMapScene
-          worldWidth={mapWidth}
-          worldHeight={mapHeight}
-          showCollisionShells={showCollisionShells}
-          blueprintMode={blueprintMode}
-          onCollisionSystemReady={onCollisionSystemReady}
-          onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
-          onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
-        />
-      ) : (
+      {!selfOnlyMode && (
         <>
-          <Ground
-            arenaSize={mapWidth}
-            isArena={isArena}
-            mode={mode}
-            safeZone={safeZone}
-            onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
-            onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
-          />
-          <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />
-        </>
-      )}
-      {!blueprintMode && <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
+          {/* World */}
+          {isCollisionTest ? (
+            <ExportedMapScene
+              worldWidth={mapWidth}
+              worldHeight={mapHeight}
+              showCollisionShells={showCollisionShells}
+              blueprintMode={blueprintMode}
+              hideVisuals={blindWorldMode}
+              onCollisionSystemReady={onCollisionSystemReady}
+              onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
+              onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
+            />
+          ) : (
+            <>
+              <Ground
+                arenaSize={mapWidth}
+                isArena={isArena}
+                mode={mode}
+                safeZone={safeZone}
+                hideVisuals={blindWorldMode}
+                onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
+                onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
+              />
+              {!blindWorldMode && <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
+            </>
+          )}
+          {!blueprintMode && <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
 
-      {/* Always-visible target connection line (not blocked by structures). */}
-      {targetLinePoints && (
-        <Line
-          points={targetLinePoints}
-          color={blueprintMode ? (losIsBlocked ? '#ff2222' : '#00ff88') : '#ffd24a'}
-          lineWidth={blueprintMode ? 3 : 2}
-          transparent
-          opacity={0.9}
-          depthTest={false}
-        />
+          {/* Always-visible target connection line (not blocked by structures). */}
+          {targetLinePoints && (
+            <Line
+              points={targetLinePoints}
+              color={blueprintMode ? (losIsBlocked ? '#ff2222' : '#00ff88') : '#ffd24a'}
+              lineWidth={blueprintMode ? 3 : 2}
+              transparent
+              opacity={0.9}
+              depthTest={false}
+            />
+          )}
+        </>
       )}
 
       {/* All game-play visuals hidden in blueprint mode */}
-      {!blueprintMode && <>
+      {!blueprintMode && !selfOnlyMode && <>
       {/* Ground damage zones (e.g. 狂龙乱舞 雷云) */}
       {(groundZones ?? []).map(zone => {
         const isBaizuMarker = zone.abilityId === 'baizu_marker';
@@ -767,8 +794,9 @@ export default function ArenaScene({
         );
       })}
 
-      {/* Local player — rendered last (on top) */}
-      {(!isCollisionTest || collisionReady) && (
+      </>}  {/* end !blueprintMode */}
+
+      {!blueprintMode && (!isCollisionTest || collisionReady) && (
         <Character
           worldX={me.position.x}
           worldY={me.position.y}
@@ -786,18 +814,17 @@ export default function ArenaScene({
           worldHalfX={worldHalfX}
           worldHalfY={worldHalfY}
           isStealthed={meSemiTransparent}
-          cameraFadeEnabled={isCollisionTest}
+          cameraFadeEnabled={isCollisionTest && !selfOnlyMode}
           hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
         />
       )}
-      </>}  {/* end !blueprintMode */}
 
-      {isCollisionTest && collisionDebugRef && showCollisionShells && (
+      {!selfOnlyMode && isCollisionTest && collisionDebugRef && showCollisionShells && (
         <CollisionProbeOverlay debugRef={collisionDebugRef} />
       )}
 
       {/* Player's own collision sphere (visible when Shell/Blueprint is on) */}
-      {isCollisionTest && collisionReady && (showCollisionShells || blueprintMode) && (
+      {!selfOnlyMode && isCollisionTest && collisionReady && (showCollisionShells || blueprintMode) && (
         <PlayerCollisionSphere posRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} playerRadius={COLLISION_TEST_VIS_RADIUS} />
       )}
     </>

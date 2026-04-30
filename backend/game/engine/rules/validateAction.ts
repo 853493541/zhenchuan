@@ -9,6 +9,8 @@ import type { MapObject } from "../state/types/map";
 import type { ExportedMapCollisionSystem } from "../../map/exportedMapCollision";
 import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT } from "../../map/exportedMap";
 
+const SHU_SE_BUFF_ID = 2646;
+
 /* =========================================================
    INTERNAL HELPERS
 ========================================================= */
@@ -202,6 +204,18 @@ export function validateCastAbility(
     ability.target === "OPPONENT" &&
     (ability as any).allowGroundCastWithoutTarget === true &&
     hasGroundTarget;
+  const selfTargetRequested =
+    ability.target === "OPPONENT" &&
+    options?.targetUserId === player.userId &&
+    (ability as any).canTargetSelf === true;
+
+  if (
+    ability.target === "OPPONENT" &&
+    options?.targetUserId === player.userId &&
+    !selfTargetRequested
+  ) {
+    throw new Error("ERR_TARGET_UNAVAILABLE");
+  }
 
   let targetIndex = ability.target === "SELF" ? playerIndex : (playerIndex === 0 ? 1 : 0);
   if (ability.target === "OPPONENT" && options?.targetUserId) {
@@ -330,6 +344,15 @@ export function validateCastAbility(
       throw new Error("ERR_BLOCKED_BY_BUFF");
     }
   }
+  if (ability.id === "hong_meng_tian_jin") {
+    const now = Date.now();
+    const hasShuSe = (targetPlayer?.buffs ?? []).some(
+      (b: any) => b.buffId === SHU_SE_BUFF_ID && b.expiresAt > now,
+    );
+    if (hasShuSe) {
+      throw new Error("ERR_BLOCKED_BY_BUFF");
+    }
+  }
 
   /* ================= REQUIRES GROUNDED ================= */
   if ((ability as any).requiresGrounded) {
@@ -385,7 +408,7 @@ export function validateCastAbility(
   }
 
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
-  if (ability.target === "OPPONENT" && !allowGroundCastWithoutTarget) {
+  if (ability.target === "OPPONENT" && !allowGroundCastWithoutTarget && !selfTargetRequested) {
     if (explicitEntity) {
       if (explicitEntity.hp <= 0 || explicitEntity.ownerUserId === player.userId) {
         throw new Error("ERR_TARGET_UNAVAILABLE");

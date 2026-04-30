@@ -18,6 +18,11 @@ export interface Ability {
   target: TargetType;
 
   /**
+   * If true, an opponent-targeted ability may explicitly select the caster.
+   */
+  canTargetSelf?: boolean;
+
+  /**
    * If true, casting this ability triggers a 1.5-second draft GCD on other
    * draft abilities that also have gcd:true.
    */
@@ -54,6 +59,12 @@ export interface Ability {
    * > 0 = channel time before ability triggers
    */
   castTime?: number;
+
+  /**
+   * If true, an opponent-targeted channel only completes if its target is still
+   * within the ability's range when the channel ends.
+   */
+  requireTargetInRangeOnChannelComplete?: boolean;
 
   /**
    * How this ability targets in real-time
