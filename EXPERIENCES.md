@@ -3,6 +3,20 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## If the effect should feel like another dimension, ease the overlay and tint it to the ability fantasy instead of snapping to flat black (2026-04-30)
+
+**Problem**: The Hong Meng overlay finally had the correct layer order, but it still felt too harsh because it snapped in and out instantly and used a flat black fill.
+
+**Root causes**:
+- Opacity and visibility were toggled without transitions, so the effect read as a hard screen cut.
+- A pure black overlay matched the old blindness implementation more than the new "other dimension" fantasy suggested by the ability icon.
+
+**Fix**:
+- Added eased opacity transitions to both the blackout layer and the self-only layer.
+- Replaced flat black with a dark-purple gradient tint so the screen reads as dimensional rather than simply disabled.
+
+**Key lesson**: Once the layering is correct, presentation matters. If an effect is supposed to feel mystical or dimensional, use the ability's color language and animate opacity instead of hard-cutting to black.
+
 ## In React render scope, do not derive from a state variable before that state is declared (2026-04-30)
 
 **Problem**: BattleArena crashed on load with `ReferenceError: Cannot access '<minified name>' before initialization` immediately after the Hong Meng overlay changes.

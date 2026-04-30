@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updatedAt": "2026-04-29T07:29:20.155Z",
+  "updatedAt": "2026-04-30T09:48:53.844Z",
   "buffs": {
     "1007": {
       "attribute": "无"
@@ -69,6 +69,9 @@
     },
     "2003": {
       "attribute": "无"
+    },
+    "2201": {
+      "attribute": "阴性"
     },
     "2202": {
       "attribute": "阴性"
