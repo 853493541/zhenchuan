@@ -3660,6 +3660,192 @@ export const BASE_ABILITIES: AbilityRecord = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
+  // 游风飘踪 — instant 2-charge anti-control mirror. Cleanses self root /
+  // freeze / stun / knockdown / lockout. If a root / freeze / stun /
+  // knockdown was removed, gain 8s control immunity (except pull/knockback)
+  // and immediately apply the same control type to the current target with the
+  // removed buff's remaining duration. Range 20u.
+  // ──────────────────────────────────────────────────────────────────────────
+  you_feng_piao_zong: {
+    id: "you_feng_piao_zong",
+    name: "游风飘踪",
+    description: "瞬发，自身施放，2层充能，每层5秒恢复，施放间隔1秒\n解除自身锁足/定身/眩晕/倒地/锁招\n获得【游风飘踪】8秒：免疫控制（击退/拉拽除外）\n若有当前目标且成功解除锁足/定身/眩晕/倒地，则立即对其施加对应控制5秒\n反射部分仍受递减影响",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 0,
+    maxCharges: 2,
+    chargeRecoveryTicks: 150,
+    chargeCastLockTicks: 30,
+    gcd: false,
+    range: 20,
+    allowWhileControlled: true,
+    effects: [
+      { type: "YOU_FENG_PIAO_ZONG", allowWhileControlled: true } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2631,
+        name: "游风飘踪",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 8_000,
+        description: "免疫控制（击退/拉拽除外）",
+        effects: [{ type: "CONTROL_IMMUNE" }],
+      },
+      {
+        buffId: 2632,
+        name: "游风飘踪·锁足",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 5_000,
+        description: "锁足：无法移动",
+        effects: [{ type: "ROOT" }],
+      },
+      {
+        buffId: 2633,
+        name: "游风飘踪·定身",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 5_000,
+        description: "定身：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }, { type: "ROOT" }],
+      },
+      {
+        buffId: 2634,
+        name: "游风飘踪·眩晕",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 5_000,
+        description: "眩晕：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+      {
+        buffId: 2635,
+        name: "游风飘踪·倒地",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 5_000,
+        description: "倒地：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 如意法 — instant self anti-control. Cleanses self root / freeze / stun /
+  // knockdown / lockout, gains 3s full control immunity (including pull /
+  // knockback), and if any capturable control was removed stores a next-attack
+  // payload that applies the same control type with the removed buff's full
+  // duration on the next eligible direct hit.
+  // ──────────────────────────────────────────────────────────────────────────
+  ru_yi_fa: {
+    id: "ru_yi_fa",
+    name: "如意法",
+    description: "瞬发，自身施放\n解除自身锁足/定身/眩晕/倒地/锁招\n获得【如意法】3秒：免疫所有控制（含击退、拉拽）\n若成功解除锁足/定身/眩晕/倒地，则获得【如意法·待发】3秒：下次攻击额外附加对应控制，并按原完整持续时间结算",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    allowWhileControlled: true,
+    effects: [
+      { type: "RU_YI_FA", allowWhileControlled: true } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2636,
+        name: "如意法",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 3_000,
+        description: "免疫所有控制（含击退、拉拽）",
+        effects: [{ type: "CONTROL_IMMUNE" }, { type: "KNOCKBACK_IMMUNE" }],
+      },
+      {
+        buffId: 2637,
+        name: "如意法·待发",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 3_000,
+        description: "下次攻击额外附加本次解控记录的控制，并在命中后消耗",
+        effects: [{ type: "APPLY_RECORDED_CONTROL_ON_ATTACK" }],
+      },
+      {
+        buffId: 2638,
+        name: "如意法·锁足",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 3_000,
+        description: "锁足：无法移动",
+        effects: [{ type: "ROOT" }],
+      },
+      {
+        buffId: 2639,
+        name: "如意法·定身",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 3_000,
+        description: "定身：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }, { type: "ROOT" }],
+      },
+      {
+        buffId: 2640,
+        name: "如意法·眩晕",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 3_000,
+        description: "眩晕：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+      {
+        buffId: 2641,
+        name: "如意法·倒地",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 3_000,
+        description: "倒地：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 十方玄机 — 3s movable channel that can be started/maintained in air. On
+  // completion, gain 十方玄机 for 20s: all players see the holder as a friendly
+  // target, their HP bar turns green, they become untargetable, skip enemy AOE,
+  // and are immune to incoming damage. Casting any non-base skill removes it.
+  // ──────────────────────────────────────────────────────────────────────────
+  shi_fang_xuan_ji: {
+    id: "shi_fang_xuan_ji",
+    name: "十方玄机",
+    description: "运功3秒，可在空中运功，可在运功中移动\n运功完成后获得【十方玄机】20秒：所有人视其为友方目标，血条变为绿色\n期间不可被选中，不受范围技能影响，并免疫所有伤害\n施放除6个基础通用技能外的任意招式时失去该效果",
+    type: "CHANNEL",
+    target: "SELF",
+    cooldownTicks: 450,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2642,
+        name: "十方玄机",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 20_000,
+        breakOnPlay: false,
+        description: "所有人视你为友方目标；不可被选中，不受范围技能影响，并免疫所有伤害",
+        effects: [
+          { type: "UNTARGETABLE" },
+          { type: "INVULNERABLE" },
+        ],
+      },
+    ],
+    channelDurationMs: 3_000,
+    channelCancelOnMove: false,
+    channelCancelOnJump: false,
+    channelForward: true,
+    applyBuffsOnComplete: true,
+  } as any,
+
+  // ──────────────────────────────────────────────────────────────────────────
   // 连环弩 — channel 3s while standing. Immune to controls (except pull /
   // knockback) and lockouts (silence). Each second deals 1/2/3 damage to target
   // (range 25u). If target is within 15u when a damage tick lands, knock them
@@ -3668,7 +3854,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   lian_huan_nu: {
     id: "lian_huan_nu",
     name: "连环弩",
-    description: "运功3秒，运功期间须站定，免疫除击退/拉拽外的控制及沉默\n每1秒对目标造成1/2/3点伤害，施法距离25尺\n命中时若目标在15尺内，将其向后击退8尺（8尺/0.5秒）",
+    description: "运功3秒，运功期间须站定，免疫除击退/拉拽外的控制及沉默\n每1秒对目标造成1/2/3点伤害，施法距离25尺\n命中时若目标在15尺内，将其向后击退4尺（20尺/秒）",
     type: "CHANNEL",
     target: "OPPONENT",
     cooldownTicks: 450,

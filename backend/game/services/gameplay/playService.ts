@@ -14,6 +14,7 @@ import { GameLoop } from "../../engine/loop/GameLoop";
 import { pushEvent } from "../flow/events";
 import { diffState } from "../flow/stateDiff";
 import { applyOnPlayBuffEffects } from "../../engine/flow/play/onPlayEffects";
+import { breakShiFangXuanJiOnPlay } from "../../engine/flow/play/breakOnPlay";
 import { broadcastGameUpdate } from "../broadcast";
 import { globalTimer } from "../../../utils/timing";
 import { gameStateCache } from "../gameStateCache";
@@ -246,6 +247,8 @@ async function playCastAbility(
     (ability as any).applyBuffsOnChannelStart === true
   );
   if (isPureChannel) {
+    breakShiFangXuanJiOnPlay(player as any, ability as any);
+
     player.activeChannel = {
       abilityId,
       abilityName: ability.name,

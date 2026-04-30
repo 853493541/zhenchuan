@@ -721,10 +721,30 @@ export default function BattleArena({
   const [showCollisionControlPanel, setShowCollisionControlPanel] = useState(false);
   const [showScreenCoordPanel, setShowScreenCoordPanel] = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
-  const [cheatRarityFilter, setCheatRarityFilter] = useState<string>('all');
-  const [cheatSchoolFilter, setCheatSchoolFilter] = useState<string>('all');
+  const [cheatRarityFilter, setCheatRarityFilter] = useState<string>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('zhenchuan-cheat-filters') ?? '{}')?.rarity ?? 'all';
+    } catch {
+      return 'all';
+    }
+  });
+  const [cheatSchoolFilter, setCheatSchoolFilter] = useState<string>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('zhenchuan-cheat-filters') ?? '{}')?.school ?? 'all';
+    } catch {
+      return 'all';
+    }
+  });
   const [cheatSchoolOpen,   setCheatSchoolOpen]   = useState(false);
   const cheatSchoolRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem('zhenchuan-cheat-filters', JSON.stringify({
+        rarity: cheatRarityFilter,
+        school: cheatSchoolFilter,
+      }));
+    } catch {}
+  }, [cheatRarityFilter, cheatSchoolFilter]);
   useEffect(() => {
     if (!cheatSchoolOpen) return;
     const h = (e: MouseEvent) => {

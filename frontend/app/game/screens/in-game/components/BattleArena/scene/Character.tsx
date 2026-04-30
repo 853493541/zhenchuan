@@ -70,6 +70,7 @@ interface CharacterProps {
   /** Hide the HP/name billboard for enemy-view special cases. */
   hideHpBar?: boolean;
   cameraFadeEnabled?: boolean;
+  hpColorOverride?: string;
 }
 
 export default function Character({
@@ -95,6 +96,7 @@ export default function Character({
   isStealthed = false,
   hideHpBar = false,
   cameraFadeEnabled = false,
+  hpColorOverride,
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -121,11 +123,13 @@ export default function Character({
   const hpShieldSegments = computeHpShieldSegments(hp, shield, maxHp);
   const hpPct = hpShieldSegments.hpPct;
   const shieldPct = hpShieldSegments.shieldPct;
-  const hpColor = isMe
-    ? '#3399ff'
-    : isSelected
-    ? '#ff8888'
-    : (healthPct > 0.5 ? '#dd2222' : healthPct > 0.25 ? '#cc1111' : '#991111');
+  const hpColor = hpColorOverride ?? (
+    isMe
+      ? '#3399ff'
+      : isSelected
+      ? '#ff8888'
+      : (healthPct > 0.5 ? '#dd2222' : healthPct > 0.25 ? '#cc1111' : '#991111')
+  );
 
   const threeX = worldX - worldHalfX;
   const threeY = worldZ;
@@ -343,7 +347,7 @@ export default function Character({
             <Text
               position={[0, 0.32, 0]}
               fontSize={0.28}
-              color={isSelected ? '#ff99bb' : '#ff3333'}
+              color={hpColorOverride ?? (isSelected ? '#ff99bb' : '#ff3333')}
               anchorX="center"
               anchorY="middle"
               outlineWidth={0.025}

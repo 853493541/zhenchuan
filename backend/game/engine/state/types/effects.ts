@@ -157,7 +157,12 @@ export type EffectType =
   // 天绝地灭: place a growing zone that pulls + explodes on expire
   | "PLACE_GROW_PULL_ZONE"
   // 连环弩: channel a 3-tick beam (1/2/3 dmg) on target with knockback when target is too close
-  | "LIAN_HUAN_NU_TICK";
+  | "LIAN_HUAN_NU_TICK"
+  // 如意法: next eligible attack applies the recorded control package
+  | "APPLY_RECORDED_CONTROL_ON_ATTACK"
+  // 游风飘踪 / 如意法 custom cleanse-and-control handlers
+  | "YOU_FENG_PIAO_ZONG"
+  | "RU_YI_FA";
 
 /**
  * Immediate ability effects

@@ -12,6 +12,11 @@ import {
   handleDash,
   handleDirectionalDash,
 } from "../../effects/handlers";
+import {
+  captureAndCleanseControls,
+  type CapturedControlKind,
+  type CapturedControlSnapshot,
+} from "../../effects/definitions/Cleanse";
 import { gameplayUnitsToWorldUnits, worldUnitsToGameplayUnits } from "../../state/types";
 import { resolveScheduledDamage } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../../utils/health";
@@ -43,6 +48,23 @@ const SAN_CAI_HIT_PROTECT_RATIO = 0.5;
 const YIN_YUE_ZAN_DOT_BUFF_ID = 2511;
 const LIE_RI_ZHAN_DEBUFF_ID = 2512;
 const HENG_SAO_DOT_BUFF_ID = 2513;
+
+const YOU_FENG_IMMUNITY_BUFF_ID = 2631;
+const YOU_FENG_TARGET_BUFF_IDS: Record<CapturedControlKind, number> = {
+  root: 2632,
+  freeze: 2633,
+  stun: 2634,
+  knockdown: 2635,
+};
+
+const RU_YI_IMMUNITY_BUFF_ID = 2636;
+const RU_YI_MARKER_BUFF_ID = 2637;
+const RU_YI_TARGET_BUFF_IDS: Record<CapturedControlKind, number> = {
+  root: 2638,
+  freeze: 2639,
+  stun: 2640,
+  knockdown: 2641,
+};
 
 type ImmediateEnemyDamageTarget =
   | { kind: "player"; target: any }
@@ -95,6 +117,65 @@ function getExplicitEnemyEntityTarget(state: any, sourceUserId: string, entityTa
   const entity = state.entities.find((candidate: any) => candidate.id === entityTargetId);
   if (!entity || entity.hp <= 0 || entity.ownerUserId === sourceUserId) return null;
   return entity;
+}
+
+function getExplicitEnemyPlayerTarget(state: any, sourceUserId: string, targetUserId?: string) {
+  if (!targetUserId || !Array.isArray(state.players)) return null;
+  const target = state.players.find((candidate: any) => candidate.userId === targetUserId);
+  if (!target || target.userId === sourceUserId || (target.hp ?? 0) <= 0) return null;
+  if (blocksEnemyTargeting(target)) return null;
+  return target;
+}
+
+function getAbilityBuffDefinition(ability: any, buffId: number) {
+  return Array.isArray(ability.buffs)
+    ? ability.buffs.find((buff: any) => buff.buffId === buffId)
+    : undefined;
+}
+
+function applyCapturedControlsToPlayerTarget(params: {
+  state: any;
+  ability: any;
+  source: any;
+  target: any;
+  snapshots: CapturedControlSnapshot[];
+  buffIdsByKind: Record<CapturedControlKind, number>;
+  durationMode?: "remaining" | "full";
+  forcedDurationMs?: number;
+}) {
+  const { state, ability, source, target, snapshots, buffIdsByKind, durationMode, forcedDurationMs } = params;
+  if (!target || target.userId === source.userId || (target.hp ?? 0) <= 0 || blocksEnemyTargeting(target)) {
+    return;
+  }
+
+  if (typeof ability?.range === "number") {
+    const dx = (target.position?.x ?? 0) - (source.position?.x ?? 0);
+    const dy = (target.position?.y ?? 0) - (source.position?.y ?? 0);
+    const distanceGameplay = worldUnitsToGameplayUnits(Math.hypot(dx, dy), state.unitScale);
+    if (distanceGameplay > ability.range) {
+      return;
+    }
+  }
+
+  for (const snapshot of snapshots) {
+    const buffId = buffIdsByKind[snapshot.kind];
+    const buffDef = getAbilityBuffDefinition(ability, buffId);
+    if (!buffDef) continue;
+    addBuff({
+      state,
+      sourceUserId: source.userId,
+      targetUserId: target.userId,
+      ability,
+      buffTarget: target,
+      buff: {
+        ...buffDef,
+        durationMs: Math.max(
+          1,
+          forcedDurationMs ?? (durationMode === "full" ? snapshot.fullDurationMs : snapshot.remainingMs),
+        ),
+      } as any,
+    });
+  }
 }
 
 function getImmediateEnemyDamageTargets(
@@ -405,6 +486,75 @@ export function applyImmediateEffects(params: {
             (effect as any).cleanseRootSlow === true,
         });
         break;
+
+      case "YOU_FENG_PIAO_ZONG": {
+        const capturedControls = captureAndCleanseControls(source, Date.now());
+
+        const immunityBuff = getAbilityBuffDefinition(ability, YOU_FENG_IMMUNITY_BUFF_ID);
+        if (immunityBuff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: source.userId,
+            ability,
+            buffTarget: source,
+            buff: immunityBuff,
+          });
+        }
+
+        if (capturedControls.length === 0) break;
+
+        const reflectTarget = getExplicitEnemyPlayerTarget(
+          state,
+          source.userId,
+          castContext?.targetUserId,
+        );
+        if (!reflectTarget) break;
+
+        applyCapturedControlsToPlayerTarget({
+          state,
+          ability,
+          source,
+          target: reflectTarget,
+          snapshots: capturedControls,
+          buffIdsByKind: YOU_FENG_TARGET_BUFF_IDS,
+          forcedDurationMs: 5_000,
+        });
+        break;
+      }
+
+      case "RU_YI_FA": {
+        const capturedControls = captureAndCleanseControls(source, Date.now());
+        const immunityBuff = getAbilityBuffDefinition(ability, RU_YI_IMMUNITY_BUFF_ID);
+        if (immunityBuff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: source.userId,
+            ability,
+            buffTarget: source,
+            buff: immunityBuff,
+          });
+        }
+
+        if (capturedControls.length === 0) break;
+
+        const markerBuff = getAbilityBuffDefinition(ability, RU_YI_MARKER_BUFF_ID);
+        if (!markerBuff) break;
+
+        addBuff({
+          state,
+          sourceUserId: source.userId,
+          targetUserId: source.userId,
+          ability,
+          buffTarget: source,
+          buff: {
+            ...markerBuff,
+            recordedControls: capturedControls.map((snapshot) => ({ ...snapshot })),
+          } as any,
+        });
+        break;
+      }
 
       case "DASH":
         handleDash(state, source, effTarget, enemyApplied, ability, effect);

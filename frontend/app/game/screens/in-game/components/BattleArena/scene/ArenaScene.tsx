@@ -31,6 +31,7 @@ function getStoredUnitScale(mode?: string): number {
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const ZHU_YUN_HIDE_BUFF_IDS = new Set([2716]);
+const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 
 function hasStealthBuff(buffs?: any[]): boolean {
   if (!Array.isArray(buffs)) return false;
@@ -57,6 +58,14 @@ function hasZhuYunHideBuff(buffs?: any[]): boolean {
 
 function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
   return hasStealthBuff(buffs) && !hasSanliuXiaBuff(buffs);
+}
+
+function hasShiFangXuanJiBuff(buffs?: any[]): boolean {
+  if (!Array.isArray(buffs)) return false;
+  return buffs.some((b: any) =>
+    b?.buffId === SHI_FANG_XUAN_JI_BUFF_ID ||
+    (typeof b?.name === 'string' && b.name.includes('十方玄机'))
+  );
 }
 
 interface PlayerInfo {
@@ -752,6 +761,7 @@ export default function ArenaScene({
               worldHalfY={worldHalfY}
               isStealthed={hasSanliuXiaBuff(opp.buffs)}
               hideHpBar={hasZhuYunHideBuff(opp.buffs)}
+              hpColorOverride={hasShiFangXuanJiBuff(opp.buffs) ? '#2acb6b' : undefined}
             />
           </group>
         );
@@ -777,6 +787,7 @@ export default function ArenaScene({
           worldHalfY={worldHalfY}
           isStealthed={meSemiTransparent}
           cameraFadeEnabled={isCollisionTest}
+          hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
         />
       )}
       </>}  {/* end !blueprintMode */}

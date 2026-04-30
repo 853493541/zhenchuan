@@ -166,6 +166,9 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   PLACE_FOLLOW_ZONE: "ABILITY",
   PLACE_GROW_PULL_ZONE: "ABILITY",
   LIAN_HUAN_NU_TICK: "ABILITY",
+  APPLY_RECORDED_CONTROL_ON_ATTACK: "BUFF",
+  YOU_FENG_PIAO_ZONG: "ABILITY",
+  RU_YI_FA: "ABILITY",
 };
 
 export function getEffectCategory(type: EffectType): string {

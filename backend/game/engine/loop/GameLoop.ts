@@ -156,6 +156,63 @@ function getHostileDamageTargetRangeDistance(
   return Math.max(0, rawDistance - ((target.target.radius ?? 0) / Math.max(0.0001, storedUnitScale)));
 }
 
+type RuYiRecordedControlKind = "root" | "freeze" | "stun" | "knockdown";
+
+const RU_YI_ATTACK_BUFF_IDS: Record<RuYiRecordedControlKind, number> = {
+  root: 2638,
+  freeze: 2639,
+  stun: 2640,
+  knockdown: 2641,
+};
+
+const RU_YI_ATTACK_TRIGGER_EXCLUDED_EFFECT_TYPES = new Set([
+  "STACK_ON_HIT_DAMAGE",
+  "PERIODIC_DAMAGE",
+  "TIMED_AOE_DAMAGE",
+  "TIMED_SELF_DAMAGE",
+  "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
+]);
+
+function isRuYiAttackTriggerEvent(evt: any) {
+  return (
+    evt?.type === "DAMAGE" &&
+    typeof evt.actorUserId === "string" &&
+    typeof evt.targetUserId === "string" &&
+    evt.actorUserId !== evt.targetUserId &&
+    (evt.value ?? 0) > 0 &&
+    !RU_YI_ATTACK_TRIGGER_EXCLUDED_EFFECT_TYPES.has(String(evt.effectType ?? ""))
+  );
+}
+
+function applyRuYiRecordedControls(params: {
+  state: GameState;
+  source: { userId: string; buffs: any[] };
+  target: { userId: string; buffs: any[]; hp?: number };
+  recordedControls: Array<{ kind?: string; fullDurationMs?: number; remainingMs?: number }>;
+}) {
+  const { state, source, target, recordedControls } = params;
+  const ability = ABILITIES.ru_yi_fa as any;
+  if (!ability || !Array.isArray(ability.buffs) || !target || (target.hp ?? 0) <= 0) return;
+
+  for (const snapshot of recordedControls) {
+    const kind = snapshot.kind as RuYiRecordedControlKind | undefined;
+    if (!kind || !(kind in RU_YI_ATTACK_BUFF_IDS)) continue;
+    const buffDef = ability.buffs.find((buff: any) => buff.buffId === RU_YI_ATTACK_BUFF_IDS[kind]);
+    if (!buffDef) continue;
+    addBuff({
+      state,
+      sourceUserId: source.userId,
+      targetUserId: target.userId,
+      ability,
+      buffTarget: target,
+      buff: {
+        ...buffDef,
+        durationMs: Math.max(1, snapshot.fullDurationMs ?? snapshot.remainingMs ?? buffDef.durationMs),
+      } as any,
+    });
+  }
+}
+
 function applyDamageToHostileTarget(params: {
   state: GameState;
   source: { userId: string; buffs: any[] };
@@ -1439,8 +1496,8 @@ export class GameLoop {
                 const dyK = targetPlayer.position.y - player.position.y;
                 const lenK = Math.sqrt(dxK * dxK + dyK * dyK);
                 if (lenK > 0.0001) {
-                  const kbDistWorld = gameplayUnitsToWorldUnits(8, storedUnitScale);
-                  const kbTicks = 15; // 0.5s @ 30Hz
+                  const kbDistWorld = gameplayUnitsToWorldUnits(4, storedUnitScale);
+                  const kbTicks = 6; // 4u @ 20u/s = 0.2s @ 30Hz
                   (targetPlayer as any).activeDash = {
                     abilityId: "lian_huan_nu",
                     vxPerTick: (dxK / lenK) * (kbDistWorld / kbTicks),
@@ -3367,6 +3424,7 @@ export class GameLoop {
       }
       const thisTickEvents = this.state.events.slice(this.stackProcScanIndex);
       const hitTargetIds = new Set<string>();
+      const outgoingAttackEventsByActor = new Map<string, any[]>();
       for (const evt of thisTickEvents) {
         if (
           evt.type === "DAMAGE" &&
@@ -3375,6 +3433,11 @@ export class GameLoop {
           evt.targetUserId
         ) {
           hitTargetIds.add(evt.targetUserId);
+        }
+        if (isRuYiAttackTriggerEvent(evt)) {
+          const actorEvents = outgoingAttackEventsByActor.get(evt.actorUserId) ?? [];
+          actorEvents.push(evt);
+          outgoingAttackEventsByActor.set(evt.actorUserId, actorEvents);
         }
       }
       for (const targetId of hitTargetIds) {
@@ -3389,13 +3452,11 @@ export class GameLoop {
         }
 
         const actor = this.state.players.find((p) => p.userId !== targetId);
-        // Iterate backwards so splice doesn't shift indices
         for (let bi = targetPlayer.buffs.length - 1; bi >= 0; bi--) {
           const stackBuff = targetPlayer.buffs[bi];
           if ((stackBuff.stacks ?? 0) <= 0) continue;
           for (const e of stackBuff.effects) {
             if (e.type === "STACK_ON_HIT_DAMAGE") {
-              // Rate-limit: skip if within procCooldownMs of last proc
               if (stackBuff.procCooldownMs !== undefined && stackBuff.lastProcAt !== undefined) {
                 if (now - stackBuff.lastProcAt < stackBuff.procCooldownMs) break;
               }
@@ -3425,14 +3486,12 @@ export class GameLoop {
                 });
               }
               buffsChanged = true;
-              break; // one stack proc per hit per buff
+              break;
             } else if (e.type === "STACK_ON_HIT_GUAN_TI_HEAL") {
-              // Rate-limit: skip if within procCooldownMs of last proc
               if (stackBuff.procCooldownMs !== undefined && stackBuff.lastProcAt !== undefined) {
                 if (now - stackBuff.lastProcAt < stackBuff.procCooldownMs) break;
               }
               const healBase = e.value ?? 0;
-              // 贯体 heal: bypass HEAL_REDUCTION, apply directly
               const healApplied = applyHealToTarget(targetPlayer as any, healBase);
               stackBuff.stacks = (stackBuff.stacks ?? 1) - 1;
               stackBuff.lastProcAt = now;
@@ -3461,7 +3520,7 @@ export class GameLoop {
                 });
               }
               buffsChanged = true;
-              break; // one stack proc per hit per buff
+              break;
             }
           }
         }
@@ -3470,18 +3529,20 @@ export class GameLoop {
         for (const ytBuff of targetPlayer.buffs) {
           const ytEffect = ytBuff.effects.find((e) => e.type === "YING_TIAN_SHIELD");
           if (!ytEffect) continue;
-          // Accumulate this tick's damage for the periodic settle
           let tickDmg = 0;
           for (const evt of thisTickEvents) {
-            if (evt.type === "DAMAGE" && evt.targetUserId === targetId && (evt.value ?? 0) > 0 &&
-                evt.effectType !== "YING_TIAN_SHIELD") {
+            if (
+              evt.type === "DAMAGE" &&
+              evt.targetUserId === targetId &&
+              (evt.value ?? 0) > 0 &&
+              evt.effectType !== "YING_TIAN_SHIELD"
+            ) {
               tickDmg += evt.value ?? 0;
             }
           }
           if (tickDmg > 0) {
             (ytBuff as any).yingTianAccum = ((ytBuff as any).yingTianAccum ?? 0) + tickDmg;
           }
-          // Heal 6% of lost HP (贯体)
           const ytMaxHp = targetPlayer.maxHp ?? 100;
           const ytLostHp = ytMaxHp - targetPlayer.hp;
           if (ytLostHp > 0) {
@@ -3502,7 +3563,48 @@ export class GameLoop {
               buffsChanged = true;
             }
           }
-          break; // only proc once per hit event (one 应天授命 buff)
+          break;
+        }
+      }
+
+      for (const [actorUserId, attackEvents] of outgoingAttackEventsByActor.entries()) {
+        const actor = this.state.players.find((p) => p.userId === actorUserId);
+        if (!actor || actor.hp <= 0) continue;
+
+        const targetPlayer = attackEvents
+          .map((evt) => this.state.players.find((p) => p.userId === evt.targetUserId))
+          .find((candidate): candidate is typeof actor => !!candidate && candidate.hp > 0 && !blocksEnemyTargeting(candidate));
+        if (!targetPlayer) continue;
+
+        for (let bi = actor.buffs.length - 1; bi >= 0; bi--) {
+          const triggerBuff = actor.buffs[bi] as any;
+          if (!triggerBuff.effects?.some((e: any) => e.type === "APPLY_RECORDED_CONTROL_ON_ATTACK")) {
+            continue;
+          }
+
+          const recordedControls = Array.isArray(triggerBuff.recordedControls)
+            ? triggerBuff.recordedControls
+            : [];
+          if (recordedControls.length > 0) {
+            applyRuYiRecordedControls({
+              state: this.state,
+              source: actor as any,
+              target: targetPlayer as any,
+              recordedControls,
+            });
+          }
+
+          actor.buffs.splice(bi, 1);
+          pushBuffExpired(this.state, {
+            targetUserId: actor.userId,
+            buffId: triggerBuff.buffId,
+            buffName: triggerBuff.name,
+            buffCategory: triggerBuff.category,
+            sourceAbilityId: triggerBuff.sourceAbilityId,
+            sourceAbilityName: triggerBuff.sourceAbilityName,
+          });
+          buffsChanged = true;
+          break;
         }
       }
 
