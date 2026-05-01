@@ -11,6 +11,7 @@ import {
 import { resolveScheduledDamage } from "../utils/combatMath";
 import { addShieldToTarget, applyDamageToTarget, removeLinkedShield } from "../utils/health";
 import { applyPropertyOverridesToEffects, loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
+import { hasDunLiReflectFlag, isAbilityDunLiWhitelisted } from "./dunLiReflect";
 
 /* ================= Utilities ================= */
 
@@ -329,6 +330,29 @@ export function addBuff(params: {
 
   if (sourceUserId !== targetUserId && hasInvulnerable(buffTarget)) {
     return;
+  }
+
+  // 盾立 reflect: any debuff applied to a 盾立 holder is redirected at the
+  // original caster (unless the ability is whitelisted).
+  if (
+    sourceUserId !== targetUserId &&
+    hasDunLiReflectFlag(buffTarget) &&
+    !isAbilityDunLiWhitelisted(ability)
+  ) {
+    const reflectedTarget = (state.players as any[])?.find(
+      (p) => p.userId === sourceUserId,
+    );
+    if (reflectedTarget && !hasDunLiReflectFlag(reflectedTarget)) {
+      addBuff({
+        state,
+        sourceUserId: targetUserId,
+        targetUserId: sourceUserId,
+        ability,
+        buffTarget: reflectedTarget,
+        buff,
+      });
+      return;
+    }
   }
 
   if (sourceUserId !== targetUserId && hasRootSlowImmune(buffTarget)) {

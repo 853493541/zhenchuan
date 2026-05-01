@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import BuffEditorTab from "./BuffEditorTab";
 import ProjectileEditorTab from "./ProjectileEditorTab";
+import DunLiWhitelistTab from "./DunLiWhitelistTab";
 import {
   ABILITY_RARITIES,
   AbilityEditorAbility,
@@ -36,7 +37,7 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "projectiles";
+type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist";
 
 function buildOverviewTags(ability: AbilityEditorAbility) {
   const tags: string[] = [];
@@ -69,6 +70,8 @@ export default function AbilityEditorPage() {
       setMainTab("buffs");
     } else if (params.get("tab") === "projectiles") {
       setMainTab("projectiles");
+    } else if (params.get("tab") === "dunLiWhitelist") {
+      setMainTab("dunLiWhitelist");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -182,6 +185,19 @@ export default function AbilityEditorPage() {
     } catch { /* silent */ }
   };
 
+  const handleDunLiWhitelistToggle = async (abilityId: string, dunLiWhitelisted: boolean) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/${abilityId}/dun-li-whitelist`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ dunLiWhitelisted }),
+      });
+      if (!res.ok) return;
+      setSnapshot((await res.json()) as AbilityEditorSnapshot);
+    } catch { /* silent */ }
+  };
+
   const normalizedSearch = search.trim().toLowerCase();
   const abilities = (snapshot?.abilities ?? []).filter((ability) => {
     for (const [groupId, filterVal] of Object.entries(tagFilters)) {
@@ -278,6 +294,13 @@ export default function AbilityEditorPage() {
             onClick={() => setMainTab("projectiles")}
           >
             远程弹道技能
+          </button>
+          <button
+            type="button"
+            className={`${styles.mainTab} ${mainTab === "dunLiWhitelist" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("dunLiWhitelist")}
+          >
+            盾立白名单
           </button>
         </div>
       </section>
@@ -535,6 +558,15 @@ export default function AbilityEditorPage() {
           />
         </section>
       )}
-    </div>
+      {/* ── 盾立白名单 tab ──────────────────────────── */}
+      {mainTab === "dunLiWhitelist" && (
+        <section className={styles.buffEditorSection}>
+          <DunLiWhitelistTab
+            snapshot={snapshot}
+            loading={loading}
+            onToggle={handleDunLiWhitelistToggle}
+          />
+        </section>
+      )}    </div>
   );
 }

@@ -160,6 +160,8 @@ export type EffectType =
   | "HONG_MENG_TIAN_JIN"
   // 曙色: temporarily cannot receive 鸿蒙天禁 again
   | "HONG_MENG_TIAN_JIN_IMMUNE"
+  // 盾立: reflect explicit player-targeted enemy casts back to the original caster
+  | "DUN_LI_REFLECT"
   // 振翅图南 / 飞刃回转: place a damage zone that follows a target at fixed speed
   | "PLACE_FOLLOW_ZONE"
   // 天绝地灭: place a growing zone that pulls + explodes on expire

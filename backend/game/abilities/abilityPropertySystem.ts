@@ -56,6 +56,8 @@ export interface AbilityEditorOverrideEntry {
   tags?: Record<string, string>;
   /** Whether this ability is a ranged projectile (blocked by PROJECTILE_IMMUNE) */
   isProjectile?: boolean;
+  /** Whether this ability is whitelisted from 盾立 reflect (damage immunity still applies) */
+  dunLiWhitelisted?: boolean;
 }
 
 export type AbilityEditorOverrideMap = Record<string, AbilityEditorOverrideEntry>;
@@ -108,6 +110,7 @@ export interface AbilityEditorAbilityEntry {
   hasOverrides: boolean;
   tags: Record<string, string>;
   isProjectile: boolean;
+  dunLiWhitelisted: boolean;
   stats: AbilityEditorStat[];
   activePropertyIds: AbilityPropertyId[];
   availablePropertyIds: AbilityPropertyId[];
@@ -685,7 +688,19 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
       ? entryRecord.isProjectile
       : undefined;
 
-  if (Object.keys(properties).length === 0 && Object.keys(numeric).length === 0 && !tags && isProjectile === undefined) {
+  // Parse top-level dunLiWhitelisted field
+  const dunLiWhitelisted =
+    "dunLiWhitelisted" in entryRecord && typeof entryRecord.dunLiWhitelisted === "boolean"
+      ? entryRecord.dunLiWhitelisted
+      : undefined;
+
+  if (
+    Object.keys(properties).length === 0 &&
+    Object.keys(numeric).length === 0 &&
+    !tags &&
+    isProjectile === undefined &&
+    dunLiWhitelisted === undefined
+  ) {
     return null;
   }
 
@@ -694,6 +709,7 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
     numeric: Object.keys(numeric).length > 0 ? numeric : undefined,
     tags,
     isProjectile,
+    dunLiWhitelisted,
   };
 }
 
@@ -1031,6 +1047,13 @@ export function buildResolvedAbilities(baseAbilities: AbilityRecord, overrides: 
       (nextAbility as any).isProjectile = false;
     }
 
+    // Apply dunLiWhitelisted flag — abilities flagged here will not be reflected by 盾立
+    if (abilityOverrides?.dunLiWhitelisted === true) {
+      (nextAbility as any).dunLiWhitelisted = true;
+    } else if (abilityOverrides && "dunLiWhitelisted" in abilityOverrides && !abilityOverrides.dunLiWhitelisted) {
+      (nextAbility as any).dunLiWhitelisted = false;
+    }
+
     resolvedAbilities[abilityId] = nextAbility;
   }
 
@@ -1122,6 +1145,7 @@ export function buildAbilityEditorEntry(params: {
     hasOverrides,
     tags: overrides?.tags ?? {},
     isProjectile: overrides?.isProjectile === true,
+    dunLiWhitelisted: overrides?.dunLiWhitelisted === true,
     stats: buildAbilityEditorStats(ability),
     activePropertyIds: properties.filter((property) => property.enabled).map((property) => property.id),
     availablePropertyIds: properties.filter((property) => !property.enabled).map((property) => property.id),

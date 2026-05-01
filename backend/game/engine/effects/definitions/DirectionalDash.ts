@@ -21,7 +21,8 @@ import { Position, gameplayUnitsToWorldUnits } from "../../state/types/position"
 import { pushEvent } from "../events";
 import { resolveScheduledDamage } from "../../utils/combatMath";
 import { applyDamageToTarget } from "../../utils/health";
-import { blocksEnemyTargeting } from "../../rules/guards";
+import { blocksEnemyTargeting, hasDamageImmune } from "../../rules/guards";
+import { getDunLiReflectVictim } from "../dunLiReflect";
 
 /** Stable buffId for the CC-immunity granted while dashing */
 export const DASH_CC_IMMUNE_BUFF_ID = 999900;
@@ -231,13 +232,28 @@ export function handleDirectionalDash(
         target: targetPlayer,
         base: effect.routeDamage ?? 0,
       });
-      applyDamageToTarget(targetPlayer as any, dmg);
+
+      // Damage immunity + 盾立 reflect
+      let damageVictim: any = targetPlayer;
+      let damageActorUserId = source.userId;
+      let damageTargetUserId = targetPlayer.userId;
+      if (hasDamageImmune(targetPlayer)) {
+        const reflectVictim = getDunLiReflectVictim(state, source.userId, targetPlayer, ability);
+        if (!reflectVictim) {
+          continue;
+        }
+        damageVictim = reflectVictim;
+        damageActorUserId = targetPlayer.userId;
+        damageTargetUserId = reflectVictim.userId;
+      }
+
+      applyDamageToTarget(damageVictim, dmg);
 
       pushEvent(state, {
         turn: state.turn,
         type: "DAMAGE",
-        actorUserId: source.userId,
-        targetUserId: targetPlayer.userId,
+        actorUserId: damageActorUserId,
+        targetUserId: damageTargetUserId,
         abilityId: ability.id,
         abilityName: ability.name,
         effectType: "DAMAGE",

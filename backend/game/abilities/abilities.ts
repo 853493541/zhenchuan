@@ -3945,6 +3945,41 @@ export const BASE_ABILITIES: AbilityRecord = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
+  // 盾立 — instant self defense. 2 charges, 5s per-charge recovery, 1s lock
+  // between casts. For 2s, reflects explicit player-targeted enemy casts back
+  // to the original caster and remains immune to all damage.
+  // ──────────────────────────────────────────────────────────────────────────
+  dun_li: {
+    id: "dun_li",
+    name: "盾立",
+    description: "瞬发，自身施放，2层充能，每层5秒恢复，施放间隔1秒\n获得【盾立】2秒：免疫所有伤害；期间若受到敌方直接指定你的技能，则改为由你对原施法者施放该技能",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 0,
+    maxCharges: 2,
+    chargeRecoveryTicks: 150,
+    chargeCastLockTicks: 30,
+    gcd: false,
+    ignoreDodge: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2647,
+        name: "盾立",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 2_000,
+        breakOnPlay: false,
+        description: "免疫所有伤害；期间若受到敌方直接指定你的技能，则改为由你对原施法者施放该技能",
+        effects: [
+          { type: "DAMAGE_IMMUNE" },
+          { type: "DUN_LI_REFLECT" },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
   // 连环弩 — channel 3s while standing. Immune to controls (except pull /
   // knockback) and lockouts (silence). Each second deals 1/2/3 damage to target
   // (range 25u). If target is within 15u when a damage tick lands, knock them
@@ -4193,7 +4228,48 @@ export function setAbilityIsProjectile(abilityId: string, isProjectile: boolean)
     delete nextEntry.isProjectile;
   }
 
-  const isEmpty = !nextEntry.tags && !nextEntry.properties && !nextEntry.numeric && !nextEntry.isProjectile;
+  const isEmpty =
+    !nextEntry.tags &&
+    !nextEntry.properties &&
+    !nextEntry.numeric &&
+    !nextEntry.isProjectile &&
+    !nextEntry.dunLiWhitelisted;
+  if (isEmpty) {
+    delete abilityPropertyOverrides[abilityId];
+  } else {
+    abilityPropertyOverrides[abilityId] = nextEntry;
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+
+  return buildAbilityEditorEntry({
+    ability: ABILITIES[abilityId],
+    baseAbility,
+    overrides: abilityPropertyOverrides[abilityId],
+  });
+}
+
+export function setAbilityDunLiWhitelisted(abilityId: string, dunLiWhitelisted: boolean) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) throw new Error("ERR_ABILITY_NOT_FOUND");
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+  };
+
+  if (dunLiWhitelisted) {
+    nextEntry.dunLiWhitelisted = true;
+  } else {
+    delete nextEntry.dunLiWhitelisted;
+  }
+
+  const isEmpty =
+    !nextEntry.tags &&
+    !nextEntry.properties &&
+    !nextEntry.numeric &&
+    !nextEntry.isProjectile &&
+    !nextEntry.dunLiWhitelisted;
   if (isEmpty) {
     delete abilityPropertyOverrides[abilityId];
   } else {

@@ -31,6 +31,7 @@ import { loadBuffEditorOverrides } from "../../../abilities/buffEditorOverrides"
 import { ABILITIES } from "../../../abilities/abilities";
 import { applyDashRuntimeBuff, DASH_CC_IMMUNE_BUFF_ID } from "../../effects/definitions/DirectionalDash";
 import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../../effects/onDamageHooks";
+import { getDunLiReflectVictim } from "../../effects/dunLiReflect";
 
 const WUFANG_ROOT_BUFF_ID = 1330;
 const WUFANG_HIT_PROTECT_BUFF_ID = 1331;
@@ -270,7 +271,6 @@ function getImmediateEnemyDamageTargets(
     if (victim.userId === sourceUserId) continue;
     if ((victim.hp ?? 0) <= 0) continue;
     if (blocksEnemyTargeting(victim)) continue;
-    if (hasDamageImmune(victim as any)) continue;
 
     const dx = (victim.position?.x ?? 0) - center.x;
     const dy = (victim.position?.y ?? 0) - center.y;
@@ -282,7 +282,6 @@ function getImmediateEnemyDamageTargets(
     if ((entity.hp ?? 0) <= 0) continue;
     if (entity.ownerUserId === sourceUserId) continue;
     if (blocksEnemyTargeting(entity as any)) continue;
-    if (hasDamageImmune(entity as any)) continue;
 
     const dx = (entity.position?.x ?? 0) - center.x;
     const dy = (entity.position?.y ?? 0) - center.y;
@@ -304,7 +303,29 @@ function applyImmediateDamageToEnemyTarget(params: {
 }) {
   const { state, source, ability, target, baseDamage, effectType, now } = params;
   if (blocksEnemyTargeting(target.target as any)) return 0;
-  if (hasDamageImmune(target.target as any)) return 0;
+  if (hasDamageImmune(target.target as any)) {
+    // 盾立 reflect: redirect this damage to the original caster.
+    if (target.kind === "player") {
+      const reflectVictim = getDunLiReflectVictim(
+        state,
+        source.userId,
+        target.target,
+        ability,
+      );
+      if (reflectVictim) {
+        return applyImmediateDamageToEnemyTarget({
+          state,
+          source: target.target as any,
+          ability,
+          target: { kind: "player", target: reflectVictim },
+          baseDamage,
+          effectType,
+          now,
+        });
+      }
+    }
+    return 0;
+  }
 
   const damageTarget = target.target;
   const resolvedDamage = resolveScheduledDamage({
@@ -1252,23 +1273,24 @@ export function applyImmediateEffects(params: {
         // count (default 1) controls how many per attribute to remove.
         // Respects dodge via the shouldSkipDueToDodge check above (which runs before switch).
         if (!enemyApplied) break;
+        const dispelTarget = getDunLiReflectVictim(state, source.userId, effTarget as any, ability) ?? effTarget;
         const { overrides: buffOverrides } = loadBuffEditorOverrides();
         const attrs: string[] = (effect as any).attributes ?? [];
         const dispelCount: number = (effect as any).count ?? 1;
         for (const attr of attrs) {
           let dispelled = 0;
           while (dispelled < dispelCount) {
-            const idx = effTarget.buffs.findIndex((b: any) => {
+            const idx = dispelTarget.buffs.findIndex((b: any) => {
               if (b.category !== "BUFF") return false;
               const entry = buffOverrides[String(b.buffId)];
               return entry?.attribute === attr;
             });
             if (idx === -1) break;
-            const removed = effTarget.buffs[idx];
-            removeLinkedShield(effTarget as any, removed);
-            effTarget.buffs.splice(idx, 1);
+            const removed = dispelTarget.buffs[idx];
+            removeLinkedShield(dispelTarget as any, removed);
+            dispelTarget.buffs.splice(idx, 1);
             pushBuffExpired(state, {
-              targetUserId: effTarget.userId,
+              targetUserId: dispelTarget.userId,
               buffId: removed.buffId,
               buffName: removed.name,
               buffCategory: removed.category,
@@ -1617,21 +1639,26 @@ export function applyImmediateEffects(params: {
         const STOP_DISTANCE = gameplayUnitsToWorldUnits(1, state.unitScale);
         for (const candidate of getImmediateEnemyBuffTargets(state, source.userId, source.position, jileRange)) {
           const target = candidate.target as any;
-          const cdx = target.position.x - source.position.x;
-          const cdy = target.position.y - source.position.y;
+          const jileReflectVictim = candidate.kind === "player"
+            ? getDunLiReflectVictim(state, source.userId, target, ability)
+            : null;
+          const pullSource = jileReflectVictim ? target : source;
+          const pullTarget = jileReflectVictim ?? target;
+          const cdx = pullTarget.position.x - pullSource.position.x;
+          const cdy = pullTarget.position.y - pullSource.position.y;
           const cdist = Math.hypot(cdx, cdy);
           if (cdist <= STOP_DISTANCE) continue; // already close enough
           // Check knockback immunity (pull = forced movement)
-          if (target.buffs?.some((b: any) => b.effects?.some((e: any) => e.type === "KNOCKBACK_IMMUNE"))) continue;
+          if (pullTarget.buffs?.some((b: any) => b.effects?.some((e: any) => e.type === "KNOCKBACK_IMMUNE"))) continue;
           const dirX = cdx / cdist;
           const dirY = cdy / cdist;
           // Pull toward caster: velocity is negative of direction (toward caster)
           const travelDist = cdist - STOP_DISTANCE;
           const ticksNeeded = Math.max(1, Math.ceil(travelDist / PULL_SPEED_WORLD_PER_TICK));
           const durationMs = Math.ceil(ticksNeeded * (1000 / 30));
-          if (candidate.kind === "player") {
-            // Set activeDash on the target flying toward caster
-            target.activeDash = {
+          if (candidate.kind === "player" || jileReflectVictim) {
+            // Set activeDash on the target flying toward the pull source.
+            pullTarget.activeDash = {
               abilityId: "ji_le_yin",
               vxPerTick: -dirX * PULL_SPEED_WORLD_PER_TICK,
               vyPerTick: -dirY * PULL_SPEED_WORLD_PER_TICK,
@@ -1639,7 +1666,7 @@ export function applyImmediateEffects(params: {
             } as any;
           } else if (candidate.kind === "entity") {
             // Entities use their own simple activeDash (no input/jump/collision).
-            target.activeDash = {
+            pullTarget.activeDash = {
               abilityId: "ji_le_yin",
               vxPerTick: -dirX * PULL_SPEED_WORLD_PER_TICK,
               vyPerTick: -dirY * PULL_SPEED_WORLD_PER_TICK,
@@ -1650,10 +1677,10 @@ export function applyImmediateEffects(params: {
           if (jilePulledBuffDef) {
             addBuff({
               state,
-              sourceUserId: source.userId,
-              targetUserId: target.userId,
+              sourceUserId: pullSource.userId,
+              targetUserId: pullTarget.userId,
               ability,
-              buffTarget: target,
+              buffTarget: pullTarget,
               buff: { ...jilePulledBuffDef, durationMs },
             });
           }
@@ -1661,10 +1688,10 @@ export function applyImmediateEffects(params: {
           if (jileStunBuffDef) {
             addBuff({
               state,
-              sourceUserId: source.userId,
-              targetUserId: target.userId,
+              sourceUserId: pullSource.userId,
+              targetUserId: pullTarget.userId,
               ability,
-              buffTarget: target,
+              buffTarget: pullTarget,
               buff: jileStunBuffDef,
             });
           }
@@ -1955,11 +1982,14 @@ export function applyImmediateEffects(params: {
         let cz: number;
         let followUid: string | undefined;
         const enemyTarget = (enemy && enemy.userId !== source.userId) ? enemy : null;
-        if (enemyTarget) {
-          cx = enemyTarget.position.x;
-          cy = enemyTarget.position.y;
-          cz = enemyTarget.position.z ?? 0;
-          followUid = enemyTarget.userId;
+        const followTarget = enemyTarget
+          ? (getDunLiReflectVictim(state, source.userId, enemyTarget as any, ability) ?? enemyTarget)
+          : null;
+        if (followTarget) {
+          cx = followTarget.position.x;
+          cy = followTarget.position.y;
+          cz = followTarget.position.z ?? 0;
+          followUid = followTarget.userId;
         } else if (castContext?.groundTarget) {
           cx = castContext.groundTarget.x;
           cy = castContext.groundTarget.y;
@@ -2108,8 +2138,14 @@ export function applyImmediateEffects(params: {
 
           // Slow knockback away from caster
           if (hasKnockbackImmune(t)) continue;
-          const dx = t.position.x - source.position.x;
-          const dy = t.position.y - source.position.y;
+
+          // 盾立 reflect: redirect knockback back to caster.
+          const kbReflectVictim = getDunLiReflectVictim(state, source.userId, t, ability);
+          const kbVictim: any = kbReflectVictim ?? t;
+          // Compute direction so the victim is pushed AWAY from the other player.
+          const otherPos = kbReflectVictim ? t.position : source.position;
+          const dx = kbVictim.position.x - otherPos.x;
+          const dy = kbVictim.position.y - otherPos.y;
           let dist = Math.hypot(dx, dy);
           let dirX: number; let dirY: number;
           if (dist < 0.0001) {
@@ -2123,12 +2159,12 @@ export function applyImmediateEffects(params: {
             dirY = dy / dist;
           }
 
-          delete (t as any).activeDash;
-          if ((t as any).velocity) {
-            (t as any).velocity.vx = 0;
-            (t as any).velocity.vy = 0;
+          delete (kbVictim as any).activeDash;
+          if ((kbVictim as any).velocity) {
+            (kbVictim as any).velocity.vx = 0;
+            (kbVictim as any).velocity.vy = 0;
           }
-          (t as any).activeDash = {
+          (kbVictim as any).activeDash = {
             abilityId: ability.id,
             vxPerTick: (dirX * kbDistance) / kbTicks,
             vyPerTick: (dirY * kbDistance) / kbTicks,
@@ -2143,9 +2179,9 @@ export function applyImmediateEffects(params: {
             addBuff({
               state,
               sourceUserId: source.userId,
-              targetUserId: t.userId,
+              targetUserId: kbVictim.userId,
               ability,
-              buffTarget: t,
+              buffTarget: kbVictim,
               buff: { ...knockedBackBuff, durationMs: Math.max(1_000, Math.ceil((kbTicks * 1000) / 30)) },
             });
           }

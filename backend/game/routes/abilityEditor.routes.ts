@@ -6,6 +6,7 @@ import {
   setAbilityEditorNumericValue,
   setAbilityEditorProperty,
   setAbilityIsProjectile,
+  setAbilityDunLiWhitelisted,
   setAbilityTag,
 } from "../abilities/abilities";
 import { AbilityPropertyId, TAG_GROUP_DEFINITIONS, TagGroupId } from "../abilities/abilityPropertySystem";
@@ -150,6 +151,20 @@ router.put("/ability-editor/:abilityId/is-projectile", (req, res) => {
       return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
     }
     setAbilityIsProjectile(req.params.abilityId, isProjectile);
+    return res.json(buildAbilityEditorSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/:abilityId/dun-li-whitelist", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { dunLiWhitelisted } = req.body ?? {};
+    if (typeof dunLiWhitelisted !== "boolean") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+    setAbilityDunLiWhitelisted(req.params.abilityId, dunLiWhitelisted);
     return res.json(buildAbilityEditorSnapshot());
   } catch (error) {
     return handleAbilityEditorError(res, error);

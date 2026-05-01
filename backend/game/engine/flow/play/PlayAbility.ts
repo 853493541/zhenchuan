@@ -12,6 +12,11 @@ import { applyImmediateEffects } from "./immediateEffects";
 import { applyAbilityBuffs } from "./buffs";
 import { checkGameOver } from "../turn/checkGameOver";
 import type { MapContext } from "../../loop/movement";
+import { hasDunLiReflectFlag, isAbilityDunLiWhitelisted } from "../../effects/dunLiReflect";
+
+function hasDunLiReflect(target: { buffs?: any[] }) {
+  return hasDunLiReflectFlag(target);
+}
 
 export function applyAbility(
   state: GameState,
@@ -49,6 +54,47 @@ export function applyAbility(
   });
 
   breakOnPlay(source, ability);
+
+  const isDirectPlayerTargetCast =
+    castContext?.targetUserId === target.userId ||
+    (
+      !castContext?.groundTarget &&
+      !entityTarget &&
+      !(ability as any).allowGroundCastWithoutTarget
+    );
+
+  const shouldReflectPayloadOnly = Array.isArray(ability.effects)
+    && ability.effects.some(
+      (effect: any) => effect?.type === "BAIZU_AOE" || effect?.type === "WUFANG_XINGJIN_AOE",
+    );
+
+  const shouldReflectToCaster =
+    ability.target === "OPPONENT" &&
+    source.userId !== target.userId &&
+    !entityTarget &&
+    isDirectPlayerTargetCast &&
+    !shouldReflectPayloadOnly &&
+    !isAbilityDunLiWhitelisted(ability) &&
+    hasDunLiReflect(target as any) &&
+    (castContext as any)?.disableDunLiReflect !== true;
+
+  if (shouldReflectToCaster) {
+    applyAbility(
+      state,
+      ability,
+      targetIndex,
+      playerIndex,
+      mapCtx,
+      {
+        ...(castContext ?? {}),
+        targetUserId: source.userId,
+        entityTargetId: undefined,
+        groundTarget: undefined,
+        disableDunLiReflect: true,
+      } as any,
+    );
+    return;
+  }
 
   const opponentHpAtStart = target.hp;
   const abilityDodged = entityTarget

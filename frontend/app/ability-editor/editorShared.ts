@@ -124,6 +124,7 @@ export type AbilityEditorAbility = {
   hasOverrides: boolean;
   tags: Record<string, string>;
   isProjectile: boolean;
+  dunLiWhitelisted: boolean;
   stats: AbilityEditorStat[];
   activePropertyIds: string[];
   availablePropertyIds: string[];

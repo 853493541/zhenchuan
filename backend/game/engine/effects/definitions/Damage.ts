@@ -6,6 +6,7 @@ import { resolveScheduledDamage } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../onDamageHooks";
+import { getDunLiReflectVictim } from "../dunLiReflect";
 
 /**
  * Handle immediate DAMAGE effects.
@@ -38,8 +39,13 @@ export function handleDamage(
     return;
   }
 
-  // 雷霆震怒 damage immunity: block all incoming enemy damage
+  // 雷霆震怒 damage immunity: block all incoming enemy damage.
+  // 盾立 reflect: if victim is a 盾立 holder, redirect this damage to the source.
   if (isEnemyEffect && hasDamageImmune(target)) {
+    const reflectVictim = getDunLiReflectVictim(state, source.userId, target as any, ability);
+    if (reflectVictim) {
+      handleDamage(state, target as any, reflectVictim as any, true, ability, effect);
+    }
     return;
   }
 

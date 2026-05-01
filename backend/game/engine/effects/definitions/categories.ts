@@ -166,6 +166,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   SHI_XIN_MARK: "DEBUFF",
   HONG_MENG_TIAN_JIN: "DEBUFF",
   HONG_MENG_TIAN_JIN_IMMUNE: "DEBUFF",
+  DUN_LI_REFLECT: "BUFF",
   // 振翅图南 / 飞刃回转 / 天绝地灭 / 连环弩
   PLACE_FOLLOW_ZONE: "ABILITY",
   PLACE_GROW_PULL_ZONE: "ABILITY",
