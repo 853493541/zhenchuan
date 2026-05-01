@@ -370,6 +370,14 @@ export function validateCastAbility(
       throw new Error("ERR_BLOCKED_BY_BUFF");
     }
   }
+  if (ability.id === "qin_yin_gong_ming") {
+    if (explicitEntity) {
+      throw new Error("ERR_TARGET_UNAVAILABLE");
+    }
+    if (!targetPlayer || targetPlayer.userId === player.userId || (targetPlayer.hp ?? 0) <= 0) {
+      throw new Error("ERR_TARGET_UNAVAILABLE");
+    }
+  }
 
   /* ================= REQUIRES GROUNDED ================= */
   if ((ability as any).requiresGrounded) {

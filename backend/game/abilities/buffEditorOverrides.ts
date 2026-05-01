@@ -22,6 +22,8 @@ export interface BuffEditorOverrideEntry {
   description?: string;
   properties?: BuffProperty[];
   durationMs?: number;
+  qinYinGongMingStealable?: boolean;
+  qinYinGongMingUnstealable?: boolean;
 }
 
 interface StoredBuffEditorOverrideEntry {
@@ -30,6 +32,8 @@ interface StoredBuffEditorOverrideEntry {
   name?: string;
   description?: string;
   durationMs?: number;
+  qinYinGongMingStealable?: boolean;
+  qinYinGongMingUnstealable?: boolean;
 }
 
 interface StoredBuffEditorOverrides {
@@ -38,7 +42,7 @@ interface StoredBuffEditorOverrides {
   buffs: Record<string, BuffAttribute | StoredBuffEditorOverrideEntry>;
 }
 
-const OVERRIDE_FILE_VERSION = 3;
+const OVERRIDE_FILE_VERSION = 5;
 
 function resolveOverrideFilePath() {
   const candidates = [
@@ -75,10 +79,17 @@ function normalizeDurationMs(value: unknown): number | undefined {
 
 function normalizeProperties(value: unknown): BuffProperty[] | undefined {
   if (!Array.isArray(value)) return undefined;
+  if (value.length === 0) return [];
+
   const result: BuffProperty[] = [];
+  let sawLegacyQinYinGongMingProperty = false;
   for (const item of value) {
     if (!item || typeof item !== "object") continue;
     const type = (item as Record<string, unknown>).type;
+    if (type === "可以被驱散") {
+      sawLegacyQinYinGongMingProperty = true;
+      continue;
+    }
     if (type !== "减伤" && type !== "无敌" && type !== "闪避" && type !== "外功闪避") continue;
     const prop: BuffProperty = { type: type as BuffPropertyType };
     if (type === "减伤") {
@@ -98,6 +109,9 @@ function normalizeProperties(value: unknown): BuffProperty[] | undefined {
       }
     }
     result.push(prop);
+  }
+  if (result.length === 0 && sawLegacyQinYinGongMingProperty) {
+    return undefined;
   }
   // Return [] for explicitly-empty arrays (sentinel: user cleared all properties)
   return result;
@@ -138,8 +152,25 @@ function normalizeOverrideEntry(
   const description = normalizeDescription(value.description);
   const properties = normalizeProperties((value as Record<string, unknown>).properties);
   const durationMs = normalizeDurationMs((value as Record<string, unknown>).durationMs);
+  const qinYinGongMingStealable =
+    typeof (value as Record<string, unknown>).qinYinGongMingStealable === "boolean"
+      ? (value as Record<string, unknown>).qinYinGongMingStealable as boolean
+      : undefined;
+  const qinYinGongMingUnstealable =
+    typeof (value as Record<string, unknown>).qinYinGongMingUnstealable === "boolean"
+      ? (value as Record<string, unknown>).qinYinGongMingUnstealable as boolean
+      : undefined;
 
-  if (attribute === "\u672a\u9009\u62e9" && hidden === undefined && !name && !description && properties === undefined && durationMs === undefined) {
+  if (
+    attribute === "\u672a\u9009\u62e9" &&
+    hidden === undefined &&
+    !name &&
+    !description &&
+    properties === undefined &&
+    durationMs === undefined &&
+    qinYinGongMingStealable !== true &&
+    qinYinGongMingUnstealable !== true
+  ) {
     return null;
   }
 
@@ -151,6 +182,8 @@ function normalizeOverrideEntry(
     // Save even if empty [] \u2014 empty array is a valid sentinel meaning "user cleared all properties"
     ...(properties !== undefined ? { properties } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
+    ...(qinYinGongMingStealable === true ? { qinYinGongMingStealable: true } : {}),
+    ...(qinYinGongMingUnstealable === true ? { qinYinGongMingUnstealable: true } : {}),
   };
 }
 

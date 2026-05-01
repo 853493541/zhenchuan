@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import BuffEditorTab from "./BuffEditorTab";
 import ProjectileEditorTab from "./ProjectileEditorTab";
 import DunLiWhitelistTab from "./DunLiWhitelistTab";
+import QinYinGongMingTab from "./QinYinGongMingTab";
 import {
   ABILITY_RARITIES,
   AbilityEditorAbility,
@@ -13,6 +14,7 @@ import {
   AbilityRarity,
   AbilitySchool,
   BuffEditorSnapshot,
+  QinYinGongMingSnapshot,
   DAMAGE_TYPE_COLOR,
   DAMAGE_TYPES,
   DamageType,
@@ -37,7 +39,7 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist";
+type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "qinYinGongMing";
 
 function buildOverviewTags(ability: AbilityEditorAbility) {
   const tags: string[] = [];
@@ -72,6 +74,8 @@ export default function AbilityEditorPage() {
       setMainTab("projectiles");
     } else if (params.get("tab") === "dunLiWhitelist") {
       setMainTab("dunLiWhitelist");
+    } else if (params.get("tab") === "qinYinGongMing") {
+      setMainTab("qinYinGongMing");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -124,6 +128,9 @@ export default function AbilityEditorPage() {
   const [buffSnapshot, setBuffSnapshot] = useState<BuffEditorSnapshot | null>(null);
   const [buffLoading, setBuffLoading] = useState(false);
   const [buffError, setBuffError] = useState("");
+  const [qinYinGongMingSnapshot, setQinYinGongMingSnapshot] = useState<QinYinGongMingSnapshot | null>(null);
+  const [qinYinGongMingLoading, setQinYinGongMingLoading] = useState(false);
+  const [qinYinGongMingError, setQinYinGongMingError] = useState("");
 
   const loadBuffSnapshot = async () => {
     setBuffLoading(true);
@@ -147,6 +154,28 @@ export default function AbilityEditorPage() {
     }
   };
 
+  const loadQinYinGongMingSnapshot = async () => {
+    setQinYinGongMingLoading(true);
+    setQinYinGongMingError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/qin-yin-gong-ming", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setQinYinGongMingSnapshot((await response.json()) as QinYinGongMingSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setQinYinGongMingError(message);
+    } finally {
+      setQinYinGongMingLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSnapshot();
   }, []);
@@ -155,6 +184,13 @@ export default function AbilityEditorPage() {
   useEffect(() => {
     if (mainTab === "buffs" && !buffSnapshot && !buffLoading) {
       loadBuffSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "qinYinGongMing") {
+      loadQinYinGongMingSnapshot();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab]);
@@ -195,6 +231,19 @@ export default function AbilityEditorPage() {
       });
       if (!res.ok) return;
       setSnapshot((await res.json()) as AbilityEditorSnapshot);
+    } catch { /* silent */ }
+  };
+
+  const handleQinYinGongMingToggle = async (buffId: number, mode: "manual-include" | "manual-exclude" | "clear") => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/qin-yin-gong-ming/${buffId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      setQinYinGongMingSnapshot((await res.json()) as QinYinGongMingSnapshot);
     } catch { /* silent */ }
   };
 
@@ -301,6 +350,13 @@ export default function AbilityEditorPage() {
             onClick={() => setMainTab("dunLiWhitelist")}
           >
             盾立白名单
+          </button>
+          <button
+            type="button"
+            className={`${styles.mainTab} ${mainTab === "qinYinGongMing" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("qinYinGongMing")}
+          >
+            琴音共鸣
           </button>
         </div>
       </section>
@@ -567,6 +623,19 @@ export default function AbilityEditorPage() {
             onToggle={handleDunLiWhitelistToggle}
           />
         </section>
-      )}    </div>
+      )}
+
+      {mainTab === "qinYinGongMing" && (
+        <section className={styles.buffEditorSection}>
+          <QinYinGongMingTab
+            snapshot={qinYinGongMingSnapshot}
+            loading={qinYinGongMingLoading}
+            errorMessage={qinYinGongMingError}
+            onRetry={loadQinYinGongMingSnapshot}
+            onToggle={handleQinYinGongMingToggle}
+          />
+        </section>
+      )}
+    </div>
   );
 }

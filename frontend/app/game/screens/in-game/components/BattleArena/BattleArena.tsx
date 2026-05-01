@@ -1551,6 +1551,10 @@ export default function BattleArena({
       toastError('该技能只能对敌方玩家施放');
       return;
     }
+    if (abilityKey === 'qin_yin_gong_ming' && selectedEntityIdNow) {
+      toastError('该技能只能对敌方玩家施放');
+      return;
+    }
     if (abilityKey === 'dou_zhuan_xing_yi' && selectedTarget && hasMianLaClient(selectedTarget.buffs)) {
       toastError('目标处于免拉状态');
       return;
@@ -2694,6 +2698,9 @@ export default function BattleArena({
       if (ab?.id === 'dou_zhuan_xing_yi' || instance?.abilityId === 'dou_zhuan_xing_yi') {
         if (selectedEntity) return false;
         if (hasMianLaClient((targetForChecks as any)?.buffs)) return false;
+      }
+      if (ab?.id === 'qin_yin_gong_ming' || instance?.abilityId === 'qin_yin_gong_ming') {
+        if (selectedEntity) return false;
       }
 
       const distanceToTarget = (myPos && targetPos)

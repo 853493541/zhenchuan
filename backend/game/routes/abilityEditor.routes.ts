@@ -23,6 +23,10 @@ import {
   setBuffProperties,
   setBuffDurationMs,
 } from "../abilities/buffTagSystem";
+import {
+  buildQinYinGongMingSnapshot,
+  setQinYinGongMingBuffOverride,
+} from "../abilities/qinYinGongMing";
 import { getUserIdFromCookie } from "./auth";
 
 const router = express.Router();
@@ -177,6 +181,37 @@ router.get("/ability-editor/buffs", (req, res) => {
   try {
     getUserIdFromCookie(req);
     return res.json(buildBuffEditorSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/qin-yin-gong-ming", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildQinYinGongMingSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/qin-yin-gong-ming/:buffId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+
+    const buffId = parseInt(req.params.buffId, 10);
+    if (!Number.isFinite(buffId)) {
+      return res.status(400).json({ error: "ERR_INVALID_BUFF_ID" });
+    }
+
+    const { mode } = req.body ?? {};
+    if (mode !== "manual-include" && mode !== "manual-exclude" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+
+    setQinYinGongMingBuffOverride(buffId, mode);
+
+    return res.json(buildQinYinGongMingSnapshot());
   } catch (error) {
     return handleAbilityEditorError(res, error);
   }

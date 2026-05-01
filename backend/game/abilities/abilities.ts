@@ -3252,6 +3252,21 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
   } as any,
 
+  qin_yin_gong_ming: {
+    id: "qin_yin_gong_ming",
+    name: "琴音共鸣",
+    description: "瞬发，射程20。偷取目标身上最多2个可偷取增益气劲，持续时间与原气劲剩余时间相同",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [
+      { type: "QIN_YIN_GONG_MING", count: 2 } as any,
+    ],
+    buffs: [],
+  },
+
   // ─── 临时飞爪 — ground-target dash 40u, no dash buff, CC stops it ────────
   lin_shi_fei_zhua: {
     id: "lin_shi_fei_zhua",

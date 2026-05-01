@@ -119,8 +119,17 @@ function sanitizeOverrideEntry(
   const normalizedDurationMs = typeof entry.durationMs === "number" && Number.isFinite(entry.durationMs)
     ? Math.max(100, Math.min(300_000, Math.round(entry.durationMs)))
     : undefined;
+  const normalizedQinYinGongMingStealable = entry.qinYinGongMingStealable === true ? true : undefined;
 
-  if (normalizedAttribute === "\u672a\u9009\u62e9" && normalizedHidden === undefined && !normalizedName && !normalizedDescription && normalizedProperties === undefined && normalizedDurationMs === undefined) {
+  if (
+    normalizedAttribute === "\u672a\u9009\u62e9" &&
+    normalizedHidden === undefined &&
+    !normalizedName &&
+    !normalizedDescription &&
+    normalizedProperties === undefined &&
+    normalizedDurationMs === undefined &&
+    normalizedQinYinGongMingStealable === undefined
+  ) {
     return null;
   }
 
@@ -131,6 +140,7 @@ function sanitizeOverrideEntry(
     ...(normalizedDescription ? { description: normalizedDescription } : {}),
     ...(normalizedProperties !== undefined ? { properties: normalizedProperties } : {}),
     ...(normalizedDurationMs !== undefined ? { durationMs: normalizedDurationMs } : {}),
+    ...(normalizedQinYinGongMingStealable === true ? { qinYinGongMingStealable: true } : {}),
   };
 }
 

@@ -164,6 +164,8 @@ export type EffectType =
   | "DOU_ZHUAN_XING_YI"
   // 守缺式: 2 damage; if 守缺式 is active, +30% damage and 2u knockback over 0.2s
   | "SHOU_QUE_SHI"
+  // 琴音共鸣: steal up to N eligible BUFFs from the target with remaining duration preserved
+  | "QIN_YIN_GONG_MING"
   // 恐惧: silence + forced walk away from sourceUserId
   | "FEARED"
   // 蚀心蛊: lose control and either march in a stored direction or stand still

@@ -180,6 +180,18 @@ export type BuffEditorSnapshot = {
   buffs: BuffEditorEntry[];
 };
 
+export type QinYinGongMingEntry = BuffEditorEntry & {
+  defaultStealable: boolean;
+  manualStealable: boolean;
+  manuallyExcluded: boolean;
+  stealable: boolean;
+};
+
+export type QinYinGongMingSnapshot = {
+  updatedAt: string | null;
+  buffs: QinYinGongMingEntry[];
+};
+
 export function getBuffSubtitle(entry: Pick<BuffEditorEntry, "category" | "attribute">): string {
   // No valid attribute → no tag at all
   const validAttr = entry.attribute !== "未选择" && entry.attribute !== "无";

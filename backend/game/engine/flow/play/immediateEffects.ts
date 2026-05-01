@@ -43,6 +43,7 @@ import {
   resolveEnemyChuHeHanJieWallCollision,
 } from "../../utils/chuHeHanJieWall";
 import { triggerYunSanBlink } from "../../utils/yunSan";
+import { buildStolenBuffDefinition, isQinYinGongMingBuffStealable } from "../../../abilities/qinYinGongMing";
 
 const WUFANG_ROOT_BUFF_ID = 1330;
 const WUFANG_HIT_PROTECT_BUFF_ID = 1331;
@@ -85,6 +86,42 @@ const SHU_SE_BUFF_ID = 2646;
 const HONG_MENG_CLEANSE_ATTRIBUTES = ["阴性", "阳性", "混元", "毒性", "持续伤害"];
 const SHOU_QUE_BUFF_ID = 2652;
 const SHOU_QUE_KNOCKBACK_BUFF_ID = 2653;
+
+function syncStolenBuffRuntime(params: {
+  sourcePlayer: any;
+  stolenBuff: any;
+  appliedBuff: any;
+}) {
+  const { sourcePlayer, stolenBuff, appliedBuff } = params;
+
+  appliedBuff.expiresAt = stolenBuff.expiresAt;
+  if (stolenBuff.periodicMs !== undefined) appliedBuff.periodicMs = stolenBuff.periodicMs;
+  if (stolenBuff.periodicStartImmediate !== undefined) appliedBuff.periodicStartImmediate = stolenBuff.periodicStartImmediate;
+  if (stolenBuff.lastTickAt !== undefined) appliedBuff.lastTickAt = stolenBuff.lastTickAt;
+  if (stolenBuff.stageIndex !== undefined) appliedBuff.stageIndex = stolenBuff.stageIndex;
+  if (stolenBuff.appliedAt !== undefined) appliedBuff.appliedAt = stolenBuff.appliedAt;
+  if (stolenBuff.firedDelayIndices) appliedBuff.firedDelayIndices = [...stolenBuff.firedDelayIndices];
+  if (stolenBuff.stacks !== undefined) appliedBuff.stacks = stolenBuff.stacks;
+  if (stolenBuff.maxStacks !== undefined) appliedBuff.maxStacks = stolenBuff.maxStacks;
+  if (stolenBuff.procCooldownMs !== undefined) appliedBuff.procCooldownMs = stolenBuff.procCooldownMs;
+  if (stolenBuff.lastProcAt !== undefined) appliedBuff.lastProcAt = stolenBuff.lastProcAt;
+  if (stolenBuff.forcedMovementMode !== undefined) appliedBuff.forcedMovementMode = stolenBuff.forcedMovementMode;
+  if (stolenBuff.forcedMoveDirection) {
+    appliedBuff.forcedMoveDirection = { ...stolenBuff.forcedMoveDirection };
+  }
+  if (stolenBuff.sourceAbilityId) appliedBuff.sourceAbilityId = stolenBuff.sourceAbilityId;
+  if (stolenBuff.sourceAbilityName) appliedBuff.sourceAbilityName = stolenBuff.sourceAbilityName;
+
+  if (typeof stolenBuff.shieldAmount === "number") {
+    const previousShield = appliedBuff.shieldAmount ?? 0;
+    const nextShield = stolenBuff.shieldAmount;
+    const shieldDelta = nextShield - previousShield;
+    if (shieldDelta !== 0) {
+      sourcePlayer.shield = Math.max(0, (sourcePlayer.shield ?? 0) + shieldDelta);
+    }
+    appliedBuff.shieldAmount = nextShield;
+  }
+}
 
 type ImmediateEnemyDamageTarget =
   | { kind: "player"; target: any }
@@ -2255,6 +2292,60 @@ export function applyImmediateEffects(params: {
           target: swapTarget,
           mapCtx,
         });
+        break;
+      }
+
+      case "QIN_YIN_GONG_MING": {
+        if (!enemyApplied || !effTarget || isImmediateEntityTarget(effTarget)) {
+          break;
+        }
+
+        const stealTarget = getDunLiReflectVictim(state, source.userId, effTarget as any, ability) ?? effTarget;
+        if (!stealTarget || stealTarget.userId === source.userId || (stealTarget.hp ?? 0) <= 0 || blocksEnemyTargeting(stealTarget as any)) {
+          break;
+        }
+
+        const stealCount = Math.max(0, Number((effect as any).count ?? 2));
+        const stealableBuffs = (stealTarget.buffs ?? [])
+          .filter((buff: any) => buff.category === "BUFF" && isQinYinGongMingBuffStealable(Number(buff.buffId)))
+          .slice(0, stealCount);
+
+        for (const stolenBuff of stealableBuffs) {
+          const idx = (stealTarget.buffs ?? []).indexOf(stolenBuff);
+          if (idx === -1) continue;
+
+          const buffDefinition = buildStolenBuffDefinition(stolenBuff);
+
+          removeLinkedShield(stealTarget as any, stolenBuff);
+          stealTarget.buffs.splice(idx, 1);
+          pushBuffExpired(state, {
+            targetUserId: stealTarget.userId,
+            buffId: stolenBuff.buffId,
+            buffName: stolenBuff.name,
+            buffCategory: stolenBuff.category,
+            sourceAbilityId: stolenBuff.sourceAbilityId,
+            sourceAbilityName: stolenBuff.sourceAbilityName,
+          });
+
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: source.userId,
+            ability,
+            buffTarget: source,
+            buff: buffDefinition,
+          });
+
+          const appliedBuff = [...(source.buffs ?? [])].reverse().find((buff: any) => buff.buffId === stolenBuff.buffId);
+          if (appliedBuff) {
+            syncStolenBuffRuntime({
+              sourcePlayer: source,
+              stolenBuff,
+              appliedBuff,
+            });
+          }
+        }
+
         break;
       }
 

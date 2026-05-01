@@ -3,6 +3,31 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Auto-derived editor lists should treat default metadata and manual decisions as separate buckets (2026-05-01)
+
+**Problem**: 琴音共鸣 should automatically include every non-hidden 属性气劲 each time the tab is opened, so newly added attribute buffs reappear without manual maintenance. The remaining non-attribute buffs are the only ones that should need a manual decision. The first UI pass incorrectly let the active 可偷取 list write an explicit exclude state, which conflicted with the rule that attribute buffs should always stay in the stealable list.
+
+**Fix**:
+- Kept the default inclusion rule derived live from the buff attribute each time the 琴音共鸣 tab is loaded.
+- Filtered hidden buffs out of the 琴音共鸣 snapshot entirely, so they never appear in the editor and never count as stealable at runtime.
+- Kept a persisted `qinYinGongMingUnstealable` override, but only as a destination for undecided non-attribute buffs that the user marks NO.
+- Split the tab UI into three buckets: `NO`, `未决定`, and `可偷取`. Only the `未决定` list exposes `✓` and `X`; the `可偷取` list is non-destructive.
+- Removed per-row ID text from the lists and split the `可偷取` column into `默认列表` and `特殊列表`, so default 属性气劲 and manually added entries can be reviewed separately.
+
+**Lesson**: When an editor has live auto-included defaults plus manually triaged leftovers, model them as separate buckets and separate views. Default-included items should remain driven by metadata, while only undecided items should branch into explicit YES/NO states.
+
+## Ability-specific buff stealing should reuse addBuff for ownership transfer, then patch runtime timing from the stolen instance (2026-05-01)
+
+**Problem**: 琴音共鸣 needed to steal up to 2 target BUFFs, preserve the exact remaining duration the victim still had, and remain editable from the buff editor. Raw `ActiveBuff` cloning would bypass immunity checks, DR hooks, linked-shield cleanup, `BUFF_APPLIED` events, and status-bar integration; reapplying only the preload template would lose the runtime timer/state the player actually saw.
+
+**Fix**:
+- Built the stealable list from the existing buff-editor override system: BUFF-only entries, default-selected by the existing buff attribute classification (`阴性` / `阳性` / `毒性` / `外功` / `混元` / `蛊` / `点穴` etc.), plus a manual per-buff opt-in flag exposed in a dedicated 琴音共鸣 editor tab.
+- Implemented `QIN_YIN_GONG_MING` as a custom immediate effect that removes up to 2 eligible target buffs with linked-shield cleanup and `BUFF_EXPIRED` emission, then reapplies them to the caster through `addBuff()`.
+- After `addBuff()` creates the new owner-side runtime buff, copied over the stolen buff's remaining `expiresAt`, periodic timing, stack count, and related runtime fields so the transferred buff keeps the same remaining life instead of resetting.
+- Mirrored the player-only targeting rule in both `validateAction.ts` and `BattleArena.tsx` so 琴音共鸣 cannot be cast on entities.
+
+**Lesson**: When a mechanic transfers an existing buff instance rather than creating a fresh template buff, let `addBuff()` own the authoritative apply path and then sync the runtime fields that represent the live state. Direct array/object copying skips core systems; template-only reapply loses the remaining-time state the player expects to keep.
+
 ## Observer-side instant-snap visuals need a server-shared trigger, not only the casting client's local timestamp (2026-05-01)
 
 **Problem**: After fixing the caster-side and local-player snap paths for 斗转星移, the target client could still see the other player fast-walk into place. The target's own model snapped correctly, but the enemy model still lerped.
