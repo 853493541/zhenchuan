@@ -19,6 +19,7 @@ export type EffectType =
   | "ATTACK_LOCK"
   | "CONTROL"
   | "SILENCE"
+  | "LOCKOUT_IMMUNE"
   | "SILENCE_IMMUNE"
   | "QINGGONG_SEAL"
   | "KNOCKBACK_IMMUNE"
@@ -67,6 +68,7 @@ export type EffectType =
   // Level 0 control (removable by cleanse)
   | "ROOT"
   | "SLOW"
+  | "RANGE_BOOST"
   // Jump enhancements
   | "MULTI_JUMP"
   // Knockback: force a dash on the target away from the caster
@@ -123,6 +125,10 @@ export type EffectType =
   | "GU_YING_HUA_SHUANG"
   // 逐云寒蕊: place targetable HP-bearing zone entity below caster + grant control immunity
   | "PLACE_ZHU_YUN_HAN_RUI"
+  // 楚河汉界: place an HP-bearing wall that blocks enemy movement and LOS
+  | "PLACE_CHU_HE_HAN_JIE_WALL"
+  // 绿野蔓生: place a self-following field that repels attackers and intercepts dashes
+  | "PLACE_LV_YE_MAN_SHENG_FIELD"
   // 沧月: 1 damage + 2s knockdown on primary target, knock back others within 6u for 30u
   | "CANG_YUE_AOE"
   // 徐如林 (parent self-buff): on dealing damage, 50% chance to apply XU_RU_LIN_RESTORE

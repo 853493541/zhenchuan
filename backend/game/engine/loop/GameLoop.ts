@@ -38,6 +38,17 @@ import {
   ZHEN_SHAN_HE_XUANJIAN_BUFF_ID,
   ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID,
 } from "../effects/definitions/ZhenShanHe";
+import {
+  isLineBlockedByEnemyChuHeHanJieWall,
+  resolveEnemyChuHeHanJieWallCollision,
+} from "../utils/chuHeHanJieWall";
+import { getEffectiveAbilityRange } from "../utils/abilityRange";
+
+const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
+const LV_YE_MAN_SHENG_BUFF_ID = 2718;
+const LV_YE_MAN_SHENG_RADIUS_UNITS = 6;
+const LV_YE_MAN_SHENG_RETAL_DAMAGE = 3;
+const LV_YE_MAN_SHENG_KNOCKBACK_SPEED_UNITS_PER_SEC = 20;
 
 /** 2D segment vs AABB intersection test (for LOS checks). */
 function segmentIntersectsAABB(
@@ -95,6 +106,93 @@ function isLOSBlocked(
     }
   }
   return null;
+}
+
+function resolveChuHeHanJieCollisionForPlayer(
+  state: GameState,
+  player: any,
+  playerRadius: number,
+  previousPosition?: { x: number; y: number },
+): boolean {
+  const collided = resolveEnemyChuHeHanJieWallCollision({
+    state,
+    actorUserId: player.userId,
+    position: player.position,
+    radius: playerRadius,
+    previousPosition,
+    actorBaseZ: player.position.z ?? 0,
+    actorHeight: 1.5,
+  });
+  if (collided) {
+    player.velocity.vx = 0;
+    player.velocity.vy = 0;
+    if (player.activeDash) {
+      player.activeDash = undefined;
+    }
+  }
+  return collided;
+}
+
+function hasLvYeManShengBuff(player: any, now: number): boolean {
+  return (player?.buffs ?? []).some(
+    (buff: any) =>
+      buff.buffId === LV_YE_MAN_SHENG_BUFF_ID &&
+      (buff.expiresAt ?? 0) > now,
+  );
+}
+
+function clampPlayerToLvYeManShengEdge(params: {
+  state: GameState;
+  player: any;
+  playerRadius: number;
+  storedUnitScale: number;
+  mapCtx: MapContext;
+}): boolean {
+  const { state, player, playerRadius, storedUnitScale, mapCtx } = params;
+  const now = Date.now();
+  const radiusWorld = gameplayUnitsToWorldUnits(LV_YE_MAN_SHENG_RADIUS_UNITS, storedUnitScale);
+
+  for (const protector of state.players) {
+    if (protector.userId === player.userId) continue;
+    if ((protector.hp ?? 0) <= 0) continue;
+    if (!hasLvYeManShengBuff(protector as any, now)) continue;
+
+    const dx = player.position.x - protector.position.x;
+    const dy = player.position.y - protector.position.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist >= radiusWorld - 0.0001) continue;
+
+    let awayX = dx;
+    let awayY = dy;
+    if (dist <= 0.0001) {
+      const dash = player.activeDash;
+      const fallbackX = -Number(dash?.vxPerTick ?? protector.facing?.x ?? 1);
+      const fallbackY = -Number(dash?.vyPerTick ?? protector.facing?.y ?? 0);
+      const fallbackLen = Math.hypot(fallbackX, fallbackY);
+      awayX = fallbackLen > 0.0001 ? fallbackX / fallbackLen : 1;
+      awayY = fallbackLen > 0.0001 ? fallbackY / fallbackLen : 0;
+    } else {
+      awayX /= dist;
+      awayY /= dist;
+    }
+
+    player.position.x = protector.position.x + awayX * radiusWorld;
+    player.position.y = protector.position.y + awayY * radiusWorld;
+    resolveMapCollisions(player as any, mapCtx);
+    resolveChuHeHanJieCollisionForPlayer(state, player as any, playerRadius);
+    player.position.z = getGroundHeightForMap(
+      player.position.x,
+      player.position.y,
+      player.position.z ?? 0,
+      mapCtx,
+    );
+    player.velocity.vx = 0;
+    player.velocity.vy = 0;
+    delete player.activeDash;
+    return true;
+  }
+
+  return false;
 }
 
 /** Check if target is within the caster's forward 180-degree hemisphere. */
@@ -576,6 +674,14 @@ function applyType3KnockbackControl(params: {
     y: target.position.y + (dy / dist) * knockbackUnits,
   };
   resolveMapCollisions(target, mapCtx);
+  resolveEnemyChuHeHanJieWallCollision({
+    state,
+    actorUserId: target.userId,
+    position: target.position,
+    radius: mapCtx?.playerRadius ?? 2,
+    actorBaseZ: target.position.z ?? 0,
+    actorHeight: 1.5,
+  });
 
   if (controlDurationMs > 0) {
     const knockbackBuff = {
@@ -940,7 +1046,20 @@ export class GameLoop {
       }
       const dashStateBefore = player.activeDash ? { ...player.activeDash } : undefined;
       const dashAbilityIdBefore = player.activeDash?.abilityId;
+      const previousPosition = { x: player.position.x, y: player.position.y };
       applyMovement(player, input, this.tickRate, this.mapCtx);
+      if (resolveChuHeHanJieCollisionForPlayer(this.state, player, this.mapCtx.playerRadius ?? 2, previousPosition)) {
+        movementStateChanged = true;
+      }
+      if (player.activeDash && clampPlayerToLvYeManShengEdge({
+        state: this.state,
+        player,
+        playerRadius: this.mapCtx.playerRadius ?? 2,
+        storedUnitScale,
+        mapCtx: this.mapCtx,
+      })) {
+        movementStateChanged = true;
+      }
 
       // ── 乘黄之威: on dash end, flip facing 180° and silence/fear enemies in 6u/120° cone of new facing ──
       if (dashStateBefore && !player.activeDash && (dashStateBefore as any).chengHuangFlipAndFear) {
@@ -1487,17 +1606,35 @@ export class GameLoop {
           const pz = (player.position as any).z ?? 0;
           const tz = (targetPosition as any).z ?? 0;
           if (this.mapCtx.collisionSystem) {
-            return this.mapCtx.collisionSystem.checkLOS(
+            const blockedByMap = this.mapCtx.collisionSystem.checkLOS(
               player.position.x, player.position.y, pz,
               targetPosition.x, targetPosition.y, tz,
               this.mapCtx.width, this.mapCtx.height,
             );
+            if (blockedByMap) return true;
+            return isLineBlockedByEnemyChuHeHanJieWall({
+              state: this.state,
+              actorUserId: player.userId,
+              from: player.position,
+              to: targetPosition,
+              casterZ: pz,
+              targetZ: tz,
+            });
           }
-          return !!isLOSBlocked(
+          const blockedByMap = !!isLOSBlocked(
             player.position.x, player.position.y,
             targetPosition.x, targetPosition.y,
             this.mapCtx.objects, 0, pz, tz,
           );
+          if (blockedByMap) return true;
+          return isLineBlockedByEnemyChuHeHanJieWall({
+            state: this.state,
+            actorUserId: player.userId,
+            from: player.position,
+            to: targetPosition,
+            casterZ: pz,
+            targetZ: tz,
+          });
         })();
         if (_losBlockedChannel) {
           cancelActiveChannel(this.state, player as any);
@@ -1584,17 +1721,18 @@ export class GameLoop {
         }
 
         if (chNow >= ch.startedAt + ch.durationMs) {
+          const completeRange = getEffectiveAbilityRange(channelAbility as any, player.buffs);
           if (
             channelAbility?.target === "OPPONENT" &&
             channelAbility?.requireTargetInRangeOnChannelComplete === true &&
-            typeof channelAbility?.range === "number"
+            typeof completeRange === "number"
           ) {
             const completeDist = Math.max(
               0,
               calculateDistance(player.position, targetPosition, storedUnitScale) -
                 (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
             );
-            if (completeDist > channelAbility.range) {
+            if (completeDist > completeRange) {
               cancelActiveChannel(this.state, player as any);
               channelStateChanged = true;
               continue;
@@ -2271,17 +2409,37 @@ export class GameLoop {
                     const pz = (player.position as any).z ?? 0;
                     const oz = (getHostileDamageTargetPosition(target) as any).z ?? 0;
                     if (this.mapCtx.collisionSystem) {
-                      return this.mapCtx.collisionSystem.checkLOS(
+                      const blockedByMap = this.mapCtx.collisionSystem.checkLOS(
                         player.position.x, player.position.y, pz,
                         getHostileDamageTargetPosition(target).x, getHostileDamageTargetPosition(target).y, oz,
                         this.mapCtx.width, this.mapCtx.height,
                       );
+                      if (blockedByMap) return true;
+                      return isLineBlockedByEnemyChuHeHanJieWall({
+                        state: this.state,
+                        actorUserId: player.userId,
+                        from: player.position,
+                        to: getHostileDamageTargetPosition(target),
+                        casterZ: pz,
+                        targetZ: oz,
+                        ignoreEntityId: target.kind === "entity" ? target.target.id : undefined,
+                      });
                     }
-                    return !!isLOSBlocked(
+                    const blockedByMap = !!isLOSBlocked(
                       player.position.x, player.position.y,
                       getHostileDamageTargetPosition(target).x, getHostileDamageTargetPosition(target).y,
                       this.mapCtx.objects, 0, pz, oz,
                     );
+                    if (blockedByMap) return true;
+                    return isLineBlockedByEnemyChuHeHanJieWall({
+                      state: this.state,
+                      actorUserId: player.userId,
+                      from: player.position,
+                      to: getHostileDamageTargetPosition(target),
+                      casterZ: pz,
+                      targetZ: oz,
+                      ignoreEntityId: target.kind === "entity" ? target.target.id : undefined,
+                    });
                   })();
                   if (_losBlockedTick) {
                     cancelActiveChannel(this.state, player as any);
@@ -2864,7 +3022,14 @@ export class GameLoop {
           zone.radius = (zone as any).growStartRadius + ((zone as any).growEndRadius - (zone as any).growStartRadius) * t;
         }
         // ── Pre-step: follow-target zones (振翅图南/飞刃回转) ──────────────
-        if ((zone as any).followTargetUserId && (zone as any).followSpeedPerTick !== undefined) {
+        if (zone.abilityId === LV_YE_MAN_SHENG_ABILITY_ID && (zone as any).followTargetUserId) {
+          const fp = this.state.players.find((p) => p.userId === (zone as any).followTargetUserId);
+          if (fp && (fp.hp ?? 0) > 0) {
+            zone.x = fp.position.x;
+            zone.y = fp.position.y;
+            zone.z = fp.position.z ?? zone.z;
+          }
+        } else if ((zone as any).followTargetUserId && (zone as any).followSpeedPerTick !== undefined) {
           const fp = this.state.players.find((p) => p.userId === (zone as any).followTargetUserId);
           if (fp && (fp.hp ?? 0) > 0) {
             const dxF = fp.position.x - zone.x;
@@ -3552,6 +3717,7 @@ export class GameLoop {
       const thisTickEvents = this.state.events.slice(this.stackProcScanIndex);
       const hitTargetIds = new Set<string>();
       const outgoingAttackEventsByActor = new Map<string, any[]>();
+      const lvYeRetaliatedPairs = new Set<string>();
       for (const evt of thisTickEvents) {
         if (
           evt.type === "DAMAGE" &&
@@ -3565,6 +3731,86 @@ export class GameLoop {
           const actorEvents = outgoingAttackEventsByActor.get(evt.actorUserId) ?? [];
           actorEvents.push(evt);
           outgoingAttackEventsByActor.set(evt.actorUserId, actorEvents);
+        }
+
+        if (
+          evt.type === "DAMAGE" &&
+          (evt.value ?? 0) > 0 &&
+          evt.actorUserId &&
+          evt.targetUserId &&
+          evt.actorUserId !== evt.targetUserId
+        ) {
+          const protector = this.state.players.find((p) => p.userId === evt.targetUserId);
+          const attacker = this.state.players.find((p) => p.userId === evt.actorUserId);
+          if (!protector || !attacker) continue;
+          if ((protector.hp ?? 0) <= 0 || (attacker.hp ?? 0) <= 0) continue;
+          if (!hasLvYeManShengBuff(protector as any, now)) continue;
+
+          const radiusWorld = gameplayUnitsToWorldUnits(LV_YE_MAN_SHENG_RADIUS_UNITS, storedUnitScale);
+          const dx = attacker.position.x - protector.position.x;
+          const dy = attacker.position.y - protector.position.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist >= radiusWorld - 0.0001) continue;
+
+          const pairKey = `${evt.actorUserId}:${evt.targetUserId}`;
+          if (lvYeRetaliatedPairs.has(pairKey)) continue;
+          lvYeRetaliatedPairs.add(pairKey);
+
+          let awayX = dx;
+          let awayY = dy;
+          let knockbackSource = protector as any;
+          if (dist <= 0.0001) {
+            const dash = attacker.activeDash;
+            const fallbackX = -Number(dash?.vxPerTick ?? protector.facing?.x ?? 1);
+            const fallbackY = -Number(dash?.vyPerTick ?? protector.facing?.y ?? 0);
+            const fallbackLen = Math.hypot(fallbackX, fallbackY);
+            awayX = fallbackLen > 0.0001 ? fallbackX / fallbackLen : 1;
+            awayY = fallbackLen > 0.0001 ? fallbackY / fallbackLen : 0;
+            knockbackSource = {
+              ...protector,
+              position: {
+                ...protector.position,
+                x: protector.position.x - awayX,
+                y: protector.position.y - awayY,
+              },
+            };
+          } else {
+            awayX /= dist;
+            awayY /= dist;
+          }
+
+          const knockbackDistance = Math.max(0, radiusWorld - dist);
+          const controlDurationMs = knockbackDistance > 0
+            ? Math.max(100, Math.ceil((knockbackDistance / gameplayUnitsToWorldUnits(LV_YE_MAN_SHENG_KNOCKBACK_SPEED_UNITS_PER_SEC, storedUnitScale)) * 1000))
+            : 100;
+          const knockbackResult = applyType3KnockbackControl({
+            state: this.state,
+            source: knockbackSource,
+            target: attacker as any,
+            abilityId: LV_YE_MAN_SHENG_ABILITY_ID,
+            abilityName: "绿野蔓生",
+            knockbackUnits: knockbackDistance,
+            controlDurationMs,
+            mapCtx: this.mapCtx,
+            now,
+          });
+          if (knockbackResult.applied) {
+            buffsChanged = true;
+          }
+
+          const retaliateDamage = applyDamageToHostileTarget({
+            state: this.state,
+            source: protector as any,
+            target: { kind: "player", target: attacker } as any,
+            baseDamage: LV_YE_MAN_SHENG_RETAL_DAMAGE,
+            abilityId: LV_YE_MAN_SHENG_ABILITY_ID,
+            abilityName: "绿野蔓生",
+            effectType: "DAMAGE",
+            timestamp: now,
+          });
+          if (retaliateDamage > 0) {
+            buffsChanged = true;
+          }
         }
       }
       for (const targetId of hitTargetIds) {

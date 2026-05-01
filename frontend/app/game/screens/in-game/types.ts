@@ -194,9 +194,15 @@ export interface TargetEntity {
   maxHp: number;
   shield?: number;
   buffs: ActiveBuff[];
+  spawnedAt?: number;
   expiresAt: number;
   abilityId?: string;
   abilityName?: string;
+  wallHalfLength?: number;
+  wallHalfThickness?: number;
+  wallHeight?: number;
+  wallTangent?: { x: number; y: number };
+  wallNormal?: { x: number; y: number };
 }
 
 export interface GameState {

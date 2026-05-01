@@ -261,11 +261,19 @@ export interface TargetEntity {
   shield?: number;
   /** Runtime buffs/debuffs currently affecting the entity. */
   buffs: ActiveBuff[];
+  /** Wall-clock ms when the entity was created. */
+  spawnedAt?: number;
   /** Wall-clock ms timestamp at which entity expires naturally. */
   expiresAt: number;
   /** Source ability metadata (for display + buff cleanup). */
   abilityId?: string;
   abilityName?: string;
+  /** Optional oriented-wall geometry (used by 楚河汉界). All values are world units. */
+  wallHalfLength?: number;
+  wallHalfThickness?: number;
+  wallHeight?: number;
+  wallTangent?: { x: number; y: number };
+  wallNormal?: { x: number; y: number };
   /** Per-tick runtime: when each player entered the zone (ms timestamp; 0 = not in zone). */
   enteredAtByUser?: Record<string, number>;
   /** Per-tick runtime: earliest ms timestamp the player can be re-stealthed after attack-break. */

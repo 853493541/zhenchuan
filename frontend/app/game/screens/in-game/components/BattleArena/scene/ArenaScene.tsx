@@ -678,12 +678,16 @@ export default function ArenaScene({
         const dz = (entity.position.z ?? 0) - (me.position.z ?? 0);
         const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) / storedUnitScale;
         const isDummy = entity.kind === 'test_dummy_ally' || entity.kind === 'test_dummy_enemy';
+        const isWall = entity.kind === 'chu_he_han_jie_wall';
         const label = isDummy
           ? (isOwn ? '友方木桩' : '敌方木桩')
+          : isWall
+          ? `${ownerName}的楚河汉界`
           : `${ownerName}的逐云寒蕊`;
         return (
           <TargetEntityVisual
             key={entity.id}
+            kind={entity.kind}
             worldX={entity.position.x}
             worldY={entity.position.y}
             worldZ={z}
@@ -694,9 +698,14 @@ export default function ArenaScene({
             isSelected={isSelected}
             username={label}
             distance={dist}
-            color={isOwn ? '#33aa55' : '#ff3333'}
+            color={isWall ? (isOwn ? '#1a66cc' : '#cc3333') : (isOwn ? '#33aa55' : '#ff3333')}
             worldHalfX={worldHalfX}
             worldHalfY={worldHalfY}
+            wallHalfLength={entity.wallHalfLength}
+            wallHalfThickness={entity.wallHalfThickness}
+            wallHeight={entity.wallHeight}
+            wallTangent={entity.wallTangent}
+            spawnedAt={entity.spawnedAt}
             onClick={() => onSelectEntity?.(entity.id)}
             onScreenBounds={(bounds) => {
               if (!entityScreenBoundsRef) return;

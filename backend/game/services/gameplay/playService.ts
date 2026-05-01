@@ -21,6 +21,7 @@ import { gameStateCache } from "../gameStateCache";
 import { addBuff } from "../../engine/effects/buffRuntime";
 import { applyDamageToTarget } from "../../engine/utils/health";
 import { resolveScheduledDamage } from "../../engine/utils/combatMath";
+import { getAbilityRangeBonusFromBuffs } from "../../engine/utils/abilityRange";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -248,6 +249,10 @@ async function playCastAbility(
   );
   if (isPureChannel) {
     breakShiFangXuanJiOnPlay(player as any, ability as any);
+    const channelRangeBonus = getAbilityRangeBonusFromBuffs(player.buffs);
+    const channelCancelOnOutOfRange = typeof (ability as any).channelCancelOnOutOfRange === "number"
+      ? (ability as any).channelCancelOnOutOfRange + channelRangeBonus
+      : (ability as any).channelCancelOnOutOfRange;
 
     player.activeChannel = {
       abilityId,
@@ -259,7 +264,7 @@ async function playCastAbility(
       durationMs: (ability as any).channelDurationMs ?? 2_000,
       cancelOnMove: (ability as any).channelCancelOnMove ?? true,
       cancelOnJump: (ability as any).channelCancelOnJump ?? true,
-      cancelOnOutOfRange: (ability as any).channelCancelOnOutOfRange,
+      cancelOnOutOfRange: channelCancelOnOutOfRange,
       forwardChannel: (ability as any).channelForward ?? true,
       effects: (ability as any).channelEffects ?? [],
       cooldownTicks: clampCooldownTicksForTesting(ability.cooldownTicks ?? 150),

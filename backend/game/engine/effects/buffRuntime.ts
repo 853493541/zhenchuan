@@ -193,6 +193,10 @@ function hasControlImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "CONTROL_IMMUNE"));
 }
 
+function hasLockoutImmune(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "LOCKOUT_IMMUNE"));
+}
+
 function hasSilenceImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "SILENCE_IMMUNE"));
 }
@@ -399,6 +403,27 @@ export function addBuff(params: {
         effects: filteredEffects,
       };
     }
+  }
+
+  if (sourceUserId !== targetUserId && hasLockoutImmune(buffTarget)) {
+    const filteredEffects = runtimeBuff.effects.filter((e) => !SHARED_LOCKOUT_EFFECT_TYPES.has(e.type));
+    if (filteredEffects.length === 0) {
+      return;
+    }
+    if (filteredEffects.length !== runtimeBuff.effects.length) {
+      runtimeBuff = {
+        ...runtimeBuff,
+        effects: filteredEffects,
+      };
+    }
+  }
+
+  if (runtimeBuff.effects.some((e) => e.type === "LOCKOUT_IMMUNE")) {
+    removeSharedLockoutDebuffs({
+      state,
+      targetUserId,
+      target: buffTarget,
+    });
   }
 
   if (sourceUserId !== targetUserId && hasSilenceImmune(buffTarget)) {

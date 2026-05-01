@@ -3980,6 +3980,121 @@ export const BASE_ABILITIES: AbilityRecord = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
+  // 迷心蛊 — instant self-cast. Gain a 12s self debuff: sealed qinggong, but
+  // immune only to lockouts (attack-lock and silence), not hard control.
+  // ──────────────────────────────────────────────────────────────────────────
+  mi_xin_gu: {
+    id: "mi_xin_gu",
+    name: "迷心蛊",
+    description: "瞬发，自身施放\n获得【迷心蛊】12秒（减益）：封轻功，但免疫所有锁招与沉默",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 450,
+    gcd: true,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2648,
+        name: "迷心蛊",
+        category: "DEBUFF",
+        applyTo: "SELF",
+        durationMs: 12_000,
+        breakOnPlay: false,
+        description: "封轻功，但免疫所有锁招与沉默",
+        effects: [
+          { type: "QINGGONG_SEAL" },
+          { type: "LOCKOUT_IMMUNE" },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 枯残蛊 — instant self-cast. Gain a 12s self debuff: -90% move speed, but
+  // all ability ranges are increased by 12u.
+  // ──────────────────────────────────────────────────────────────────────────
+  ku_can_gu: {
+    id: "ku_can_gu",
+    name: "枯残蛊",
+    description: "瞬发，自身施放\n获得【枯残蛊】12秒（减益）：自身移动速度降低90%，所有招式射程提高12尺",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 450,
+    gcd: false,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2649,
+        name: "枯残蛊",
+        category: "DEBUFF",
+        applyTo: "SELF",
+        durationMs: 12_000,
+        breakOnPlay: false,
+        description: "移动速度降低90%，所有招式射程提高12尺",
+        effects: [
+          { type: "SLOW", value: 0.9 },
+          { type: "RANGE_BOOST", value: 12 },
+        ],
+      },
+    ],
+  },
+  // ──────────────────────────────────────────────────────────────────────────
+  // 楚河汉界 — instant self-cast. 3 charges, 12s per-charge recovery, 1s lock
+  // between casts. Creates a 20u wall in front of the caster for 4s. The wall
+  // blocks enemy movement, line-of-sight casts, and ground-targeted AoEs while
+  // remaining pass-through for allies. The wall is a targetable 100 HP entity.
+  // ──────────────────────────────────────────────────────────────────────────
+  chu_he_han_jie: {
+    id: "chu_he_han_jie",
+    name: "楚河汉界",
+    description: "瞬发，无公共调息，3层充能，每层12秒恢复，施放间隔0.5秒\n在面向前方立起一道高3.5尺、长20尺的墙，持续4秒；墙可被攻击（100气血），只阻挡敌方穿行、施法与穿墙范围技能，友方可自由穿过",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 0,
+    maxCharges: 3,
+    chargeRecoveryTicks: 360,
+    chargeCastLockTicks: 15,
+    gcd: false,
+    effects: [{ type: "PLACE_CHU_HE_HAN_JIE_WALL" }],
+    buffs: [],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 绿野蔓生 — instant self anti-control field. Cleanse controls, gain 6s buff
+  // that grants control immunity (except pull/knockback), and create a 6u
+  // self-following field that stops enemy dashes at the boundary and knocks
+  // attackers back out to the edge for 3 damage.
+  // ──────────────────────────────────────────────────────────────────────────
+  lv_ye_man_sheng: {
+    id: "lv_ye_man_sheng",
+    name: "绿野蔓生",
+    description: "瞬发，自身施放，解除控制\n获得【绿野蔓生】6秒：免疫控制（击退/拉拽除外）\n期间自身周围6尺范围生成跟随自身移动的领域；敌方突进至领域时会被拦停在边缘，领域内敌方攻击你时会被击退至6尺边缘并受到3点伤害",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    allowWhileControlled: true,
+    effects: [
+      { type: "CLEANSE", allowWhileControlled: true, cleanseRootSlow: true },
+      { type: "PLACE_LV_YE_MAN_SHENG_FIELD", allowWhileControlled: true },
+    ],
+    buffs: [
+      {
+        buffId: 2718,
+        name: "绿野蔓生",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 6_000,
+        description: "免疫控制（击退/拉拽除外），并在自身周围维持6尺领域",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "ROOT_SLOW_IMMUNE" },
+        ],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
   // 连环弩 — channel 3s while standing. Immune to controls (except pull /
   // knockback) and lockouts (silence). Each second deals 1/2/3 damage to target
   // (range 25u). If target is within 15u when a damage tick lands, knock them

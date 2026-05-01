@@ -8,6 +8,8 @@ import { worldMap } from "../../map/worldMap";
 import type { MapObject } from "../state/types/map";
 import type { ExportedMapCollisionSystem } from "../../map/exportedMapCollision";
 import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT } from "../../map/exportedMap";
+import { isLineBlockedByEnemyChuHeHanJieWall } from "../utils/chuHeHanJieWall";
+import { getEffectiveAbilityRange } from "../utils/abilityRange";
 
 const SHU_SE_BUFF_ID = 2646;
 
@@ -385,7 +387,8 @@ export function validateCastAbility(
   }
 
   /* ================= RANGE CHECK ================= */
-  if (ability.range !== undefined) {
+  const effectiveRange = getEffectiveAbilityRange(ability as any, player.buffs);
+  if (effectiveRange !== undefined) {
     const storedUnitScale = state.unitScale;
     const distance = allowGroundCastWithoutTarget
       ? worldUnitsToGameplayUnits(Math.hypot(
@@ -398,7 +401,7 @@ export function validateCastAbility(
           storedUnitScale,
         );
 
-    if (distance > ability.range) {
+    if (distance > effectiveRange) {
       throw new Error("ERR_OUT_OF_RANGE");
     }
 
@@ -428,26 +431,49 @@ export function validateCastAbility(
     }
 
     /* ================= LINE OF SIGHT (structure blocking) ================= */
+  }
+
+  if (ability.target === "OPPONENT" && !selfTargetRequested) {
+    const losTargetPosition = allowGroundCastWithoutTarget
+      ? {
+          x: options?.groundTarget?.x ?? targetPosition.x,
+          y: options?.groundTarget?.y ?? targetPosition.y,
+          z: options?.groundTarget?.z ?? targetPosition.z,
+        }
+      : targetPosition;
+
     const losBlocked = (() => {
       const pz = (player.position as any).z ?? 0;
-      const ez = (targetPosition as any).z ?? 0;
-      if (options?.collisionSystem) {
-        return options.collisionSystem.checkLOS(
+      const ez = (losTargetPosition as any).z ?? 0;
+      const blockedByMap = options?.collisionSystem
+        ? options.collisionSystem.checkLOS(
           player.position.x, player.position.y, pz,
-          targetPosition.x, targetPosition.y, ez,
+          losTargetPosition.x, losTargetPosition.y, ez,
           EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT,
-        );
-      }
-      const mapObjects = options?.mapObjects ?? worldMap.objects;
-      const minLOSBlockH = options?.minLOSBlockH ?? 0;
-      return !!isLOSBlocked(
-        player.position.x, player.position.y,
-        targetPosition.x, targetPosition.y,
-        mapObjects, minLOSBlockH, pz, ez,
-      );
+        )
+        : !!isLOSBlocked(
+            player.position.x,
+            player.position.y,
+            losTargetPosition.x,
+            losTargetPosition.y,
+            options?.mapObjects ?? worldMap.objects,
+            options?.minLOSBlockH ?? 0,
+            pz,
+            ez,
+          );
+      if (blockedByMap) return true;
+      return isLineBlockedByEnemyChuHeHanJieWall({
+        state,
+        actorUserId: player.userId,
+        from: player.position,
+        to: losTargetPosition,
+        casterZ: pz,
+        targetZ: ez,
+        ignoreEntityId: explicitEntity?.id,
+      });
     })();
     if (losBlocked) {
-      console.log(`[LOS] blocked (casterZ=${((player.position as any).z ?? 0).toFixed(2)} targetZ=${((targetPosition as any).z ?? 0).toFixed(2)})`);
+      console.log(`[LOS] blocked (casterZ=${((player.position as any).z ?? 0).toFixed(2)} targetZ=${((losTargetPosition as any).z ?? 0).toFixed(2)})`);
       throw new Error("ERR_NO_LINE_OF_SIGHT");
     }
   }

@@ -32,6 +32,15 @@ import { ABILITIES } from "../../../abilities/abilities";
 import { applyDashRuntimeBuff, DASH_CC_IMMUNE_BUFF_ID } from "../../effects/definitions/DirectionalDash";
 import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../../effects/onDamageHooks";
 import { getDunLiReflectVictim } from "../../effects/dunLiReflect";
+import { getAbilityRangeBonusFromBuffs, getEffectiveAbilityRange } from "../../utils/abilityRange";
+import {
+  CHU_HE_HAN_JIE_WALL_DURATION_MS,
+  CHU_HE_HAN_JIE_WALL_HEIGHT_UNITS,
+  CHU_HE_HAN_JIE_WALL_HP,
+  CHU_HE_HAN_JIE_WALL_KIND,
+  CHU_HE_HAN_JIE_WALL_LENGTH_UNITS,
+  CHU_HE_HAN_JIE_WALL_THICKNESS_UNITS,
+} from "../../utils/chuHeHanJieWall";
 
 const WUFANG_ROOT_BUFF_ID = 1330;
 const WUFANG_HIT_PROTECT_BUFF_ID = 1331;
@@ -229,11 +238,12 @@ function applyCapturedControlsToPlayerTarget(params: {
     return;
   }
 
-  if (typeof ability?.range === "number") {
+  const effectiveRange = getEffectiveAbilityRange(ability as any, source?.buffs);
+  if (typeof effectiveRange === "number") {
     const dx = (target.position?.x ?? 0) - (source.position?.x ?? 0);
     const dy = (target.position?.y ?? 0) - (source.position?.y ?? 0);
     const distanceGameplay = worldUnitsToGameplayUnits(Math.hypot(dx, dy), state.unitScale);
-    if (distanceGameplay > ability.range) {
+    if (distanceGameplay > effectiveRange) {
       return;
     }
   }
@@ -781,9 +791,11 @@ export function applyImmediateEffects(params: {
         if (gLen > 0.01) {
           source.facing = { x: gDx / gLen, y: gDy / gLen };
         }
+        const dashRangeBonus = getAbilityRangeBonusFromBuffs(source.buffs);
+        const maxDashDistance = Math.max(0, Number(effect.value ?? 20)) + dashRangeBonus;
         // Cap dash distance: if click is closer than max range, only dash that far
         const clickDistGpu = worldUnitsToGameplayUnits(gLen, state.unitScale);
-        const cappedValue = gLen > 0.01 ? Math.min(effect.value ?? 20, clickDistGpu) : (effect.value ?? 20);
+        const cappedValue = gLen > 0.01 ? Math.min(maxDashDistance, clickDistGpu) : maxDashDistance;
         // Proportional durationTicks at 40 u/sec so short dashes aren't slowed down
         const cappedDurationTicks = Math.max(1, Math.round((cappedValue / 40) * 30));
         const gtdEffect = { ...effect, type: "DIRECTIONAL_DASH" as const, dirMode: "TOWARD" as const, value: cappedValue, durationTicks: cappedDurationTicks };
@@ -2195,12 +2207,14 @@ export function applyImmediateEffects(params: {
         const gTargetX2 = castContext?.groundTarget?.x;
         const gTargetY2 = castContext?.groundTarget?.y;
         const hasGroundTarget = gTargetX2 !== undefined && gTargetY2 !== undefined;
-        const tX = hasGroundTarget ? gTargetX2! : source.position.x + (source.facing?.x ?? 0) * gameplayUnitsToWorldUnits(effect.value ?? 40, state.unitScale);
-        const tY = hasGroundTarget ? gTargetY2! : source.position.y + (source.facing?.y ?? 1) * gameplayUnitsToWorldUnits(effect.value ?? 40, state.unitScale);
+        const dashRangeBonus2 = getAbilityRangeBonusFromBuffs(source.buffs);
+        const maxDashDistance2 = Math.max(0, Number(effect.value ?? 40)) + dashRangeBonus2;
+        const tX = hasGroundTarget ? gTargetX2! : source.position.x + (source.facing?.x ?? 0) * gameplayUnitsToWorldUnits(maxDashDistance2, state.unitScale);
+        const tY = hasGroundTarget ? gTargetY2! : source.position.y + (source.facing?.y ?? 1) * gameplayUnitsToWorldUnits(maxDashDistance2, state.unitScale);
         const gDx2 = tX - source.position.x;
         const gDy2 = tY - source.position.y;
         const gLen2 = Math.sqrt(gDx2 * gDx2 + gDy2 * gDy2);
-        const linMaxDistWorld = gameplayUnitsToWorldUnits(effect.value ?? 40, state.unitScale);
+        const linMaxDistWorld = gameplayUnitsToWorldUnits(maxDashDistance2, state.unitScale);
         const linActualWorld = Math.min(linMaxDistWorld, gLen2 > 0.01 ? gLen2 : linMaxDistWorld);
         if (gLen2 > 0.01) {
           source.facing = { x: gDx2 / gLen2, y: gDy2 / gLen2 };
@@ -2596,6 +2610,78 @@ export function applyImmediateEffects(params: {
             buff: immuneBuff,
           });
         }
+        break;
+      }
+
+      case "PLACE_CHU_HE_HAN_JIE_WALL": {
+        const now = Date.now();
+        const storedUnitScale = state.unitScale;
+        const halfLength = gameplayUnitsToWorldUnits(CHU_HE_HAN_JIE_WALL_LENGTH_UNITS / 2, storedUnitScale);
+        const halfThickness = gameplayUnitsToWorldUnits(CHU_HE_HAN_JIE_WALL_THICKNESS_UNITS / 2, storedUnitScale);
+        const wallHeight = gameplayUnitsToWorldUnits(CHU_HE_HAN_JIE_WALL_HEIGHT_UNITS, storedUnitScale);
+        const facing = source.facing ?? { x: 0, y: 1 };
+        const facingLen = Math.hypot(facing.x, facing.y);
+        const tangentX = facingLen > 1e-6 ? facing.x / facingLen : 0;
+        const tangentY = facingLen > 1e-6 ? facing.y / facingLen : 1;
+        const normalX = -tangentY;
+        const normalY = tangentX;
+        const px = source.position?.x ?? 0;
+        const py = source.position?.y ?? 0;
+        const pz = source.position?.z ?? 0;
+        const groundZ = getGroundHeightForMap(px, py, pz, mapCtx);
+        const wallStartDistance = gameplayUnitsToWorldUnits(1, storedUnitScale);
+
+        if (!state.entities) state.entities = [];
+        const entityId = randomUUID();
+        state.entities.push({
+          id: entityId,
+          userId: `entity:${entityId}`,
+          kind: CHU_HE_HAN_JIE_WALL_KIND,
+          ownerUserId: source.userId,
+          position: {
+            x: px + tangentX * (wallStartDistance + halfLength),
+            y: py + tangentY * (wallStartDistance + halfLength),
+            z: groundZ,
+          },
+          radius: halfLength,
+          hp: CHU_HE_HAN_JIE_WALL_HP,
+          maxHp: CHU_HE_HAN_JIE_WALL_HP,
+          shield: 0,
+          buffs: [],
+          spawnedAt: now,
+          expiresAt: now + CHU_HE_HAN_JIE_WALL_DURATION_MS,
+          abilityId: ability.id,
+          abilityName: ability.name,
+          wallHalfLength: halfLength,
+          wallHalfThickness: halfThickness,
+          wallHeight,
+          wallTangent: { x: tangentX, y: tangentY },
+          wallNormal: { x: normalX, y: normalY },
+        } as any);
+        break;
+      }
+
+      case "PLACE_LV_YE_MAN_SHENG_FIELD": {
+        const now = Date.now();
+        const storedUnitScale = state.unitScale;
+        if (!state.groundZones) state.groundZones = [];
+        state.groundZones.push({
+          id: randomUUID(),
+          ownerUserId: source.userId,
+          x: source.position.x,
+          y: source.position.y,
+          z: source.position.z ?? 0,
+          height: gameplayUnitsToWorldUnits(10, storedUnitScale),
+          radius: gameplayUnitsToWorldUnits(6, storedUnitScale),
+          expiresAt: now + 6_000,
+          damagePerInterval: 0,
+          intervalMs: 250,
+          lastTickAt: now,
+          abilityId: ability.id,
+          abilityName: ability.name,
+          followTargetUserId: source.userId,
+          followSpeedPerTick: gameplayUnitsToWorldUnits(60, storedUnitScale) / 30,
+        } as any);
         break;
       }
 

@@ -18,6 +18,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   INVULNERABLE: "BUFF",
   STEALTH: "BUFF",
   CONTROL_IMMUNE: "BUFF",
+  LOCKOUT_IMMUNE: "BUFF",
   KNOCKBACK_IMMUNE: "BUFF",
   DASH_TURN_LOCK: "BUFF",
   DASH_TURN_OVERRIDE: "BUFF",
@@ -69,6 +70,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   // Level 0 — removable by cleanse
   ROOT: "DEBUFF",
   SLOW: "DEBUFF",
+  RANGE_BOOST: "BUFF",
   // Jump enhancements
   MULTI_JUMP: "BUFF",
   // 贯体 healing
@@ -140,6 +142,10 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   GU_YING_HUA_SHUANG: "BUFF",
   // 逐云寒蕊: places targetable HP-bearing zone entity
   PLACE_ZHU_YUN_HAN_RUI: "BUFF",
+  // 楚河汉界: places targetable HP-bearing wall
+  PLACE_CHU_HE_HAN_JIE_WALL: "BUFF",
+  // 绿野蔓生: places a self-following field
+  PLACE_LV_YE_MAN_SHENG_FIELD: "ABILITY",
   // 沧月: 1 damage + 2s knockdown on primary, knockback others within 6u
   CANG_YUE_AOE: "DEBUFF",
   // 徐如林 (self proc-on-hit + heal-on-expire markers)

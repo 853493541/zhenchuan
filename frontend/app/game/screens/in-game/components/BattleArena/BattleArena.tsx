@@ -362,6 +362,24 @@ function segmentIntersectsAABB(
  *  casterZ / targetZ: feet heights; EYE_HEIGHT is added for eye-level check.
  */
 const LOS_EYE_HEIGHT = 1.5; // game units above player feet
+const CHU_HE_HAN_JIE_COLLIDER_HEIGHT = 1.5;
+const CHU_HE_HAN_JIE_WALL_KIND = 'chu_he_han_jie_wall';
+
+function getAbilityRangeBonusClient(buffs?: ActiveBuff[]): number {
+  return (buffs ?? []).reduce((sum, buff) => {
+    const bonus = (buff.effects ?? []).reduce((effectSum, effect) => {
+      if (effect.type !== 'RANGE_BOOST') return effectSum;
+      return effectSum + Math.max(0, Number((effect as any).value ?? 0));
+    }, 0);
+    return sum + bonus;
+  }, 0);
+}
+
+function getEffectiveAbilityRangeClient(ability: any, buffs?: ActiveBuff[]): number | undefined {
+  if (typeof ability?.range !== 'number') return ability?.range;
+  return ability.range + getAbilityRangeBonusClient(buffs);
+}
+
 function isLOSBlockedClient(
   ax: number, ay: number, bx: number, by: number, objects: MapObject[],
   minBlockH: number = 0,
@@ -376,6 +394,176 @@ function isLOSBlockedClient(
     if (segmentIntersectsAABB(ax, ay, bx, by, obj.x - 0.5, obj.y - 0.5, obj.x + obj.w + 0.5, obj.y + obj.d + 0.5)) return obj;
   }
   return null;
+}
+
+function isChuHeHanJieWallEntityClient(entity: TargetEntity | null | undefined): boolean {
+  return !!entity && entity.kind === CHU_HE_HAN_JIE_WALL_KIND;
+}
+
+function getChuHeHanJieWallGeometryClient(entity: TargetEntity) {
+  if (!isChuHeHanJieWallEntityClient(entity)) return null;
+  const halfLength = Number(entity.wallHalfLength ?? 0);
+  const halfThickness = Number(entity.wallHalfThickness ?? 0);
+  const wallHeight = Number(entity.wallHeight ?? 0);
+  const tangentX = Number(entity.wallTangent?.x ?? 0);
+  const tangentY = Number(entity.wallTangent?.y ?? 0);
+  const normalX = Number(entity.wallNormal?.x ?? 0);
+  const normalY = Number(entity.wallNormal?.y ?? 0);
+  const tangentLen = Math.hypot(tangentX, tangentY);
+  const normalLen = Math.hypot(normalX, normalY);
+  if (halfLength <= 0 || halfThickness <= 0 || wallHeight <= 0 || tangentLen < 1e-6 || normalLen < 1e-6) {
+    return null;
+  }
+  return {
+    centerX: entity.position.x,
+    centerY: entity.position.y,
+    halfLength,
+    halfThickness,
+    baseZ: entity.position.z ?? 0,
+    wallHeight,
+    tangentX: tangentX / tangentLen,
+    tangentY: tangentY / tangentLen,
+    normalX: normalX / normalLen,
+    normalY: normalY / normalLen,
+  };
+}
+
+function toChuHeHanJieWallLocalPoint(
+  geometry: NonNullable<ReturnType<typeof getChuHeHanJieWallGeometryClient>>,
+  point: { x: number; y: number },
+) {
+  const dx = point.x - geometry.centerX;
+  const dy = point.y - geometry.centerY;
+  return {
+    u: dx * geometry.tangentX + dy * geometry.tangentY,
+    v: dx * geometry.normalX + dy * geometry.normalY,
+  };
+}
+
+function fromChuHeHanJieWallLocalPoint(
+  geometry: NonNullable<ReturnType<typeof getChuHeHanJieWallGeometryClient>>,
+  point: { u: number; v: number },
+) {
+  return {
+    x: geometry.centerX + point.u * geometry.tangentX + point.v * geometry.normalX,
+    y: geometry.centerY + point.u * geometry.tangentY + point.v * geometry.normalY,
+  };
+}
+
+function doesClientActorOverlapChuHeHanJieWallHeight(
+  geometry: NonNullable<ReturnType<typeof getChuHeHanJieWallGeometryClient>>,
+  actorBaseZ: number,
+  actorHeight: number,
+) {
+  const actorTopZ = actorBaseZ + actorHeight;
+  const wallTopZ = geometry.baseZ + geometry.wallHeight;
+  return actorTopZ > geometry.baseZ + 1e-4 && actorBaseZ < wallTopZ - 1e-4;
+}
+
+function isLineBlockedByEnemyChuHeHanJieWallClient(
+  entities: TargetEntity[] | undefined,
+  actorUserId: string,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  casterZ: number = 0,
+  targetZ: number = 0,
+  ignoreEntityId?: string,
+): boolean {
+  const casterEye = casterZ + LOS_EYE_HEIGHT;
+  const targetEye = targetZ + LOS_EYE_HEIGHT;
+  const now = Date.now();
+  for (const entity of entities ?? []) {
+    if (!isChuHeHanJieWallEntityClient(entity)) continue;
+    if (entity.ownerUserId === actorUserId) continue;
+    if (entity.id === ignoreEntityId) continue;
+    if ((entity.hp ?? 0) <= 0) continue;
+    if ((entity.expiresAt ?? 0) <= now) continue;
+    const geometry = getChuHeHanJieWallGeometryClient(entity);
+    if (!geometry) continue;
+    if (geometry.baseZ + geometry.wallHeight <= Math.min(casterEye, targetEye)) continue;
+    const start = toChuHeHanJieWallLocalPoint(geometry, from);
+    const end = toChuHeHanJieWallLocalPoint(geometry, to);
+    if (
+      segmentIntersectsAABB(
+        start.u,
+        start.v,
+        end.u,
+        end.v,
+        -geometry.halfLength,
+        -geometry.halfThickness,
+        geometry.halfLength,
+        geometry.halfThickness,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function resolveEnemyChuHeHanJieWallCollisionClient(
+  px: number,
+  py: number,
+  actorBaseZ: number,
+  vel: { x: number; y: number },
+  entities: TargetEntity[] | undefined,
+  actorUserId: string,
+  playerRadius = DEFAULT_PLAYER_RADIUS,
+): { x: number; y: number } {
+  let outX = px;
+  let outY = py;
+  let collided = false;
+  const now = Date.now();
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    let passCollided = false;
+    for (const entity of entities ?? []) {
+      if (!isChuHeHanJieWallEntityClient(entity)) continue;
+      if (entity.ownerUserId === actorUserId) continue;
+      if ((entity.hp ?? 0) <= 0) continue;
+      if ((entity.expiresAt ?? 0) <= now) continue;
+      const geometry = getChuHeHanJieWallGeometryClient(entity);
+      if (!geometry) continue;
+      if (!doesClientActorOverlapChuHeHanJieWallHeight(geometry, actorBaseZ, CHU_HE_HAN_JIE_COLLIDER_HEIGHT)) continue;
+      const local = toChuHeHanJieWallLocalPoint(geometry, { x: outX, y: outY });
+      const closestU = Math.max(-geometry.halfLength, Math.min(local.u, geometry.halfLength));
+      const closestV = Math.max(-geometry.halfThickness, Math.min(local.v, geometry.halfThickness));
+      const deltaU = local.u - closestU;
+      const deltaV = local.v - closestV;
+      const distanceSq = deltaU * deltaU + deltaV * deltaV;
+      const targetRadius = playerRadius + 1e-4;
+      if (distanceSq >= targetRadius * targetRadius) continue;
+
+      const resolved = { ...local };
+      if (distanceSq > 1e-8) {
+        const distance = Math.sqrt(distanceSq);
+        const push = targetRadius - distance;
+        resolved.u += (deltaU / distance) * push;
+        resolved.v += (deltaV / distance) * push;
+      } else {
+        const overlapU = geometry.halfLength + targetRadius - Math.abs(local.u);
+        const overlapV = geometry.halfThickness + targetRadius - Math.abs(local.v);
+        if (overlapV <= overlapU) {
+          resolved.v = (local.v >= 0 ? 1 : -1) * (geometry.halfThickness + targetRadius);
+        } else {
+          resolved.u = (local.u >= 0 ? 1 : -1) * (geometry.halfLength + targetRadius);
+        }
+      }
+
+      const worldResolved = fromChuHeHanJieWallLocalPoint(geometry, resolved);
+      outX = worldResolved.x;
+      outY = worldResolved.y;
+      passCollided = true;
+      collided = true;
+    }
+    if (!passCollided) break;
+  }
+
+  if (collided) {
+    vel.x = 0;
+    vel.y = 0;
+  }
+  return { x: outX, y: outY };
 }
 
 function normalizeAngle(rad: number): number {
@@ -679,9 +867,13 @@ export default function BattleArena({
   const storedUnitScale = getStoredUnitScale(mode);
   const modePickups = useMemo(() => (mode === 'collision-test' ? [] : pickups), [mode, pickups]);
   const mapObjectsRef = useRef(mapData.objects);
+  const entitiesRef = useRef<TargetEntity[]>(entities ?? []);
   useEffect(() => {
     mapObjectsRef.current = mapData.objects;
   }, [mapData]);
+  useEffect(() => {
+    entitiesRef.current = entities ?? [];
+  }, [entities]);
   // CODE FRESHNESS MARKER — if you see this in console, the new code IS running
   useEffect(() => { console.log('[BA-FRESH] BattleArena v2 loaded — activeDash support active'); }, []);
   // Prevent page scroll while the game is mounted (critical for touch devices)
@@ -976,6 +1168,39 @@ export default function BattleArena({
     setCollisionReady(true);
     console.log('[BVH] Collision system ready');
   }, [mapData.height, mapData.width]);
+  const isClientLineBlocked = useCallback((
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    casterZ: number,
+    targetZ: number,
+    ignoreEntityId?: string,
+  ) => {
+    const blockedByMap = mode === 'collision-test' && collisionSysRef.current
+      ? clientCheckLOS(
+          collisionSysRef.current,
+          from.x,
+          from.y,
+          casterZ,
+          to.x,
+          to.y,
+          targetZ,
+          ARENA_WIDTH / 2,
+          ARENA_HEIGHT / 2,
+        )
+      : mode !== 'collision-test'
+        ? !!isLOSBlockedClient(from.x, from.y, to.x, to.y, mapObjectsRef.current, 0, casterZ, targetZ)
+        : false;
+    if (blockedByMap) return true;
+    return isLineBlockedByEnemyChuHeHanJieWallClient(
+      entitiesRef.current,
+      me.userId,
+      from,
+      to,
+      casterZ,
+      targetZ,
+      ignoreEntityId,
+    );
+  }, [ARENA_HEIGHT, ARENA_WIDTH, me.userId, mode]);
   const [debugCursor,   setDebugCursor]   = useState<{ x: number; y: number } | null>(null);
   const [debugBounds,   setDebugBounds]   = useState<{
     me:  { cx: number; topY: number; hpBarY: number } | null;
@@ -1171,6 +1396,7 @@ export default function BattleArena({
 
   /* --- Server-authoritative dash tracking --- */
   const meActiveDashRef  = useRef<any>(null);  // mirrors me.activeDash from server
+  const forcedDisplacementRef = useRef(false);
   const dashTurnOverrideRef = useRef(false);
   // *** SYNCHRONOUS ref update during render — NOT in useEffect ***
   // useEffect fires AFTER requestAnimationFrame, so if we set the ref there,
@@ -1193,6 +1419,10 @@ export default function BattleArena({
     }
     _prevDashRef.current = isDashing;
   }
+
+  useEffect(() => {
+    forcedDisplacementRef.current = buffsHaveAnyEffect(me?.buffs, ['KNOCKED_BACK', 'PULLED']);
+  }, [me?.buffs]);
 
   /* --- Render-loop refs (avoid stale closures) --- */
   const abilitiesRef  = useRef<AbilityInfo[]>([]);
@@ -1343,20 +1573,9 @@ export default function BattleArena({
       const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
       const tgtZ = (targetPos as any)?.z ?? 0;
       if (myPos && targetPos) {
-        const halfW = ARENA_WIDTH / 2;
-        const halfH = ARENA_HEIGHT / 2;
-        let losBlocked = false;
-        if (mode === 'collision-test' && collisionSysRef.current) {
-          losBlocked = clientCheckLOS(collisionSysRef.current, myPos.x, myPos.y, myZ, targetPos.x, targetPos.y, tgtZ, halfW, halfH);
-        } else if (mode !== 'collision-test') {
-          const aabbBlocker = isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, myZ, tgtZ);
-          if (aabbBlocker) {
-            losBlocked = true;
-            showLOSBlocker(`视线被 ${aabbBlocker.id} 遮挡`);
-          }
-        }
+        const losBlocked = isClientLineBlocked(myPos, targetPos, myZ, tgtZ, selectedEntityIdNow ?? undefined);
         if (losBlocked) {
-          if (mode === 'collision-test') showLOSBlocker('视线被遮挡');
+          showLOSBlocker('视线被遮挡');
           toastError('视线被遮挡');
           return;
         }
@@ -1384,6 +1603,16 @@ export default function BattleArena({
     if (!abilityId) return;
     const ability = abilitiesRef.current.find((a) => a.id === abilityId);
     if (!ability) return;
+    if (ability.target === 'OPPONENT') {
+      const myPos = localPositionRef.current ?? me.position;
+      const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
+      const targetZ = worldZ ?? 0;
+      if (myPos && isClientLineBlocked(myPos, { x, y }, myZ, targetZ)) {
+        showLOSBlocker('视线被遮挡');
+        toastError('视线被遮挡');
+        return;
+      }
+    }
 
     lastCastNameRef.current = ability.name ?? null;
     setPendingGroundCastAbilityId(null);
@@ -1418,6 +1647,7 @@ export default function BattleArena({
         const r  = localRenderPosRef.current;
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
         const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
+        const forcedRenderDisplacement = forcedDisplacementRef.current;
         const airborneRender =
           localJumpCountRef.current > 0 ||
           Math.abs(localVzRef.current) > 0.01 ||
@@ -1427,7 +1657,7 @@ export default function BattleArena({
         // During server-authoritative dash: HARD SNAP to server position.
         // Do NOT lerp — any lerp causes the visual to lag behind the server,
         // extending the perceived dash duration beyond the actual 1-second window.
-        if (meActiveDashRef.current) {
+        if (meActiveDashRef.current || forcedRenderDisplacement) {
           localDashAnimRef.current = null;
           localRenderPosRef.current = { x: tx, y: ty, z: tz };
         } else if (dist2d > SNAP_THRESH) {
@@ -1436,7 +1666,7 @@ export default function BattleArena({
         } else if (!localDashAnimRef.current && dist2d > DASH_THRESH) {
           localDashAnimRef.current = { start: { ...r }, startTime: frameNow };
         }
-        if (!meActiveDashRef.current) {
+        if (!meActiveDashRef.current && !forcedRenderDisplacement) {
           if (localDashAnimRef.current) {
             const elapsed = frameNow - localDashAnimRef.current.startTime;
             const t = Math.min(1, elapsed / DASH_ANIM_MS);
@@ -2107,6 +2337,7 @@ export default function BattleArena({
     const dx = me.position.x - local.x;
     const dy = me.position.y - local.y;
     const activeDash = (me as any)?.activeDash;
+    const forcedDisplacement = buffsHaveAnyEffect(me?.buffs, ['KNOCKED_BACK', 'PULLED']);
 
     // Collision-test mode: both client and backend now use BVH collision, so we can
     // reconcile position normally. Only skip reconciliation on dash (server owns dash).
@@ -2149,6 +2380,20 @@ export default function BattleArena({
       localPositionRef.current = { ...me.position };
       localZRef.current  = (me.position as any).z ?? 0;
       localVzRef.current = 0;
+      return;
+    }
+
+    if (forcedDisplacement && dx * dx + dy * dy > 0.01) {
+      const serverZ = (me.position as any).z ?? 0;
+      localPositionRef.current = { ...me.position };
+      localZRef.current = serverZ;
+      localVzRef.current = 0;
+      localDashAnimRef.current = null;
+      localRenderPosRef.current = {
+        x: me.position.x,
+        y: me.position.y,
+        z: serverZ,
+      };
       return;
     }
 
@@ -2352,7 +2597,8 @@ export default function BattleArena({
             Math.pow(((targetPos as any)?.z ?? 0) - ((myPos as any)?.z ?? 0), 2)
           ), mode)
         : distance;
-      const inMaxRange = !ab?.range || distanceToTarget <= ab.range;
+      const effectiveRange = getEffectiveAbilityRangeClient(ab, me?.buffs);
+      const inMaxRange = !effectiveRange || distanceToTarget <= effectiveRange;
       const inMinRange = !ab?.minRange || distanceToTarget >= ab.minRange;
       if (!inMaxRange || !inMinRange) return false;
 
@@ -2364,15 +2610,8 @@ export default function BattleArena({
         }
           const myZ2 = (myPos as any)?.z ?? localZRef.current ?? 0;
           const tgtZ2 = (targetPos as any)?.z ?? 0;
-          if (mode === 'collision-test' && collisionSysRef.current) {
-            // BVH-based LOS: same accurate geometry as backend + blueprint wireframe
-            if (clientCheckLOS(collisionSysRef.current, myPos.x, myPos.y, myZ2, targetPos.x, targetPos.y, tgtZ2, ARENA_WIDTH / 2, ARENA_HEIGHT / 2)) {
-              return false;
-            }
-          } else if (mode !== 'collision-test') {
-            if (isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, myZ2, tgtZ2)) {
-              return false;
-            }
+          if (isClientLineBlocked(myPos, targetPos, myZ2, tgtZ2, selectedEntity?.id)) {
+            return false;
           }
       }
       return true;
@@ -2412,18 +2651,21 @@ export default function BattleArena({
         }
         const chargeDisplay = getChargeDisplay(ability, instance);
         const isReadyVal = isAbilityReady(ability, instance);
+        const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         const losBlockedVal = !isReadyVal && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
-          ? (mode === 'collision-test' && collisionSysRef.current
-              ? clientCheckLOS(collisionSysRef.current, myPos.x, myPos.y, (myPos as any)?.z ?? localZRef.current ?? 0, targetPos.x, targetPos.y, (targetPos as any)?.z ?? 0, ARENA_WIDTH / 2, ARENA_HEIGHT / 2)
-              : mode !== 'collision-test'
-                ? !!isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, (myPos as any)?.z ?? localZRef.current ?? 0, (targetPos as any)?.z ?? 0)
-                : false)
+          ? isClientLineBlocked(
+              myPos,
+              targetPos,
+              (myPos as any)?.z ?? localZRef.current ?? 0,
+              (targetPos as any)?.z ?? 0,
+              selectedEntity?.id,
+            )
           : false;
         return {
           id:          instanceId,
           abilityId:      ability.id,
           name:        ability.name,
-          range:       ability.range,
+          range:       effectiveRange,
           minRange:    ability.minRange,
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
@@ -2461,18 +2703,21 @@ export default function BattleArena({
         );
         const chargeDisplay = getChargeDisplay(ability, instance ?? {});
         const isReadyCom = isAbilityReady(ability, instance);
+        const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         const losBlockedCom = !isReadyCom && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
-          ? (mode === 'collision-test' && collisionSysRef.current
-              ? clientCheckLOS(collisionSysRef.current, myPos.x, myPos.y, (myPos as any)?.z ?? localZRef.current ?? 0, targetPos.x, targetPos.y, (targetPos as any)?.z ?? 0, ARENA_WIDTH / 2, ARENA_HEIGHT / 2)
-              : mode !== 'collision-test'
-                ? !!isLOSBlockedClient(myPos.x, myPos.y, targetPos.x, targetPos.y, mapObjectsRef.current, 0, (myPos as any)?.z ?? localZRef.current ?? 0, (targetPos as any)?.z ?? 0)
-                : false)
+          ? isClientLineBlocked(
+              myPos,
+              targetPos,
+              (myPos as any)?.z ?? localZRef.current ?? 0,
+              (targetPos as any)?.z ?? 0,
+              selectedEntity?.id,
+            )
           : false;
         return {
           id:          ability.id,
           abilityId:      ability.id,
           name:        ability.name,
-          range:       ability.range,
+          range:       effectiveRange,
           minRange:    ability.minRange,
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
@@ -3478,6 +3723,17 @@ export default function BattleArena({
           newPy = resolved.y;
         }
       }
+      const wallResolved = resolveEnemyChuHeHanJieWallCollisionClient(
+        newPx,
+        newPy,
+        localZRef.current,
+        vel,
+        entitiesRef.current,
+        me.userId,
+        playerRadius,
+      );
+      newPx = wallResolved.x;
+      newPy = wallResolved.y;
 
       localPositionRef.current = { x: newPx, y: newPy };
 
@@ -3715,7 +3971,7 @@ export default function BattleArena({
     };
     const id = setInterval(tick, CLIENT_TICK_MS);
     return () => clearInterval(id);
-  }, [ARENA_HEIGHT, ARENA_WIDTH, getEffectiveMaxJumps, mode, playerRadius]);
+  }, [ARENA_HEIGHT, ARENA_WIDTH, getEffectiveMaxJumps, me.userId, mode, playerRadius]);
 
   useEffect(() => {
     const id = setInterval(sendMovement, 1000 / 30);
