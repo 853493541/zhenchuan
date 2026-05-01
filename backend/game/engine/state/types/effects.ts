@@ -156,6 +156,14 @@ export type EffectType =
   | "JI_DIAN_REDIRECT"
   // 乘黄之威: forward dash 12u + flip facing 180° + apply 恐惧 to enemies in 6u/120° cone behind
   | "CHENG_HUANG_DASH"
+  // 龙战于野: front 10u / 60° cone pull to caster front at 20u/s
+  | "LONG_ZHAN_YU_YE"
+  // 潜龙勿用: front 8u / 60° cone 2-damage strike
+  | "QIAN_LONG_WU_YONG"
+  // 斗转星移: instant position swap with target player; cast is only blocked by 免拉
+  | "DOU_ZHUAN_XING_YI"
+  // 守缺式: 2 damage; if 守缺式 is active, +30% damage and 2u knockback over 0.2s
+  | "SHOU_QUE_SHI"
   // 恐惧: silence + forced walk away from sourceUserId
   | "FEARED"
   // 蚀心蛊: lose control and either march in a stored direction or stand still

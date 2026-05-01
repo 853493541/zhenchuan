@@ -2,7 +2,7 @@
 
 import { GameState } from "../state/types";
 import { ABILITIES } from "../../abilities/abilities";
-import { blocksCardTargeting } from "./guards";
+import { blocksCardTargeting, hasKnockbackImmune } from "./guards";
 import { calculateDistance, worldUnitsToGameplayUnits } from "../state/types";
 import { worldMap } from "../../map/worldMap";
 import type { MapObject } from "../state/types/map";
@@ -211,6 +211,10 @@ export function validateCastAbility(
     options?.targetUserId === player.userId &&
     (ability as any).canTargetSelf === true;
 
+  if (ability.id === "feng_liu_yun_san" && !hasGroundTarget) {
+    throw new Error("ERR_TARGET_UNAVAILABLE");
+  }
+
   if (
     ability.target === "OPPONENT" &&
     options?.targetUserId === player.userId &&
@@ -352,6 +356,17 @@ export function validateCastAbility(
       (b: any) => b.buffId === SHU_SE_BUFF_ID && b.expiresAt > now,
     );
     if (hasShuSe) {
+      throw new Error("ERR_BLOCKED_BY_BUFF");
+    }
+  }
+  if (ability.id === "dou_zhuan_xing_yi") {
+    if (explicitEntity) {
+      throw new Error("ERR_TARGET_UNAVAILABLE");
+    }
+    if (!targetPlayer || targetPlayer.userId === player.userId || (targetPlayer.hp ?? 0) <= 0) {
+      throw new Error("ERR_TARGET_UNAVAILABLE");
+    }
+    if (hasKnockbackImmune(targetPlayer as any)) {
       throw new Error("ERR_BLOCKED_BY_BUFF");
     }
   }

@@ -71,6 +71,8 @@ interface CharacterProps {
   hideHpBar?: boolean;
   cameraFadeEnabled?: boolean;
   hpColorOverride?: string;
+  instantSnapAtRef?: MutableRefObject<number>;
+  instantSnapWindowMs?: number;
 }
 
 export default function Character({
@@ -97,6 +99,8 @@ export default function Character({
   hideHpBar = false,
   cameraFadeEnabled = false,
   hpColorOverride,
+  instantSnapAtRef,
+  instantSnapWindowMs = 0,
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -152,7 +156,15 @@ export default function Character({
       const tx = worldX - worldHalfX;
       const ty = worldZ;
       const tz = worldHalfY - worldY;
-      currentPos.current.lerp(new THREE.Vector3(tx, ty, tz), 0.18);
+      const shouldInstantSnap =
+        !!instantSnapAtRef &&
+        instantSnapWindowMs > 0 &&
+        performance.now() - instantSnapAtRef.current < instantSnapWindowMs;
+      if (shouldInstantSnap) {
+        currentPos.current.set(tx, ty, tz);
+      } else {
+        currentPos.current.lerp(new THREE.Vector3(tx, ty, tz), 0.18);
+      }
       groupRef.current.position.copy(currentPos.current);
     }
 

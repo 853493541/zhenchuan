@@ -43,12 +43,15 @@ import {
   resolveEnemyChuHeHanJieWallCollision,
 } from "../utils/chuHeHanJieWall";
 import { getEffectiveAbilityRange } from "../utils/abilityRange";
+import { triggerYunSanBlink } from "../utils/yunSan";
 
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
 const LV_YE_MAN_SHENG_RADIUS_UNITS = 6;
 const LV_YE_MAN_SHENG_RETAL_DAMAGE = 3;
 const LV_YE_MAN_SHENG_KNOCKBACK_SPEED_UNITS_PER_SEC = 20;
+const YIN_QIAO_ABILITY_ID = "yin_qiao";
+const JUE_MAI_BUFF_ID = 1337;
 
 /** 2D segment vs AABB intersection test (for LOS checks). */
 function segmentIntersectsAABB(
@@ -2107,6 +2110,53 @@ export class GameLoop {
                 maxTargets: e.maxTargets,
               } as GroundZone);
             }
+          }
+
+          if (ch.abilityId === YIN_QIAO_ABILITY_ID && targetPlayer && !channelEffectDodged) {
+            const jueMaiIndex = (targetPlayer.buffs as any[]).findIndex(
+              (buff: any) =>
+                buff.buffId === JUE_MAI_BUFF_ID &&
+                (buff.expiresAt ?? 0) > chNow,
+            );
+            if (jueMaiIndex !== -1) {
+              const jueMaiBuff = (targetPlayer.buffs as any[])[jueMaiIndex];
+              const extraDamage = Math.max(0, Number(jueMaiBuff.stacks ?? 0));
+              if (extraDamage > 0) {
+                const appliedExtraDamage = applyDamageToHostileTarget({
+                  state: this.state,
+                  source: player,
+                  target: { kind: "player", target: targetPlayer },
+                  baseDamage: extraDamage,
+                  abilityId: ch.abilityId,
+                  abilityName: ch.abilityName,
+                  effectType: "YIN_QIAO_EXTRA_DAMAGE",
+                  damageType: (ABILITIES[ch.abilityId] as any)?.damageType,
+                  timestamp: chNow,
+                });
+                if (appliedExtraDamage > 0) {
+                  (targetPlayer.buffs as any[]).splice(jueMaiIndex, 1);
+                  pushBuffExpired(this.state, {
+                    targetUserId: targetPlayer.userId,
+                    buffId: jueMaiBuff.buffId,
+                    buffName: jueMaiBuff.name,
+                    buffCategory: jueMaiBuff.category,
+                    sourceAbilityId: jueMaiBuff.sourceAbilityId,
+                    sourceAbilityName: jueMaiBuff.sourceAbilityName,
+                  });
+                }
+              }
+            }
+          }
+
+          if (ch.abilityId === YIN_QIAO_ABILITY_ID) {
+            triggerYunSanBlink({
+              state: this.state,
+              source: player as any,
+              targetPosition,
+              triggerAbilityId: ch.abilityId,
+              mapCtx: this.mapCtx,
+              now: chNow,
+            });
           }
 
           // Set cooldown on the consumed ability instance (still in hand)

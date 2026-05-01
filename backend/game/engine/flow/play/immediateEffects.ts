@@ -26,7 +26,7 @@ import {
   pulseZhenShanHeTarget,
   ZHEN_SHAN_HE_ABILITY_ID,
 } from "../../effects/definitions/ZhenShanHe";
-import { getGroundHeightForMap, type MapContext } from "../../loop/movement";
+import { getGroundHeightForMap, resolveMapCollisions, type MapContext } from "../../loop/movement";
 import { loadBuffEditorOverrides } from "../../../abilities/buffEditorOverrides";
 import { ABILITIES } from "../../../abilities/abilities";
 import { applyDashRuntimeBuff, DASH_CC_IMMUNE_BUFF_ID } from "../../effects/definitions/DirectionalDash";
@@ -40,7 +40,9 @@ import {
   CHU_HE_HAN_JIE_WALL_KIND,
   CHU_HE_HAN_JIE_WALL_LENGTH_UNITS,
   CHU_HE_HAN_JIE_WALL_THICKNESS_UNITS,
+  resolveEnemyChuHeHanJieWallCollision,
 } from "../../utils/chuHeHanJieWall";
+import { triggerYunSanBlink } from "../../utils/yunSan";
 
 const WUFANG_ROOT_BUFF_ID = 1330;
 const WUFANG_HIT_PROTECT_BUFF_ID = 1331;
@@ -81,6 +83,8 @@ const SHI_XIN_MARK_BUFF_ID = 2644;
 const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
 const SHU_SE_BUFF_ID = 2646;
 const HONG_MENG_CLEANSE_ATTRIBUTES = ["阴性", "阳性", "混元", "毒性", "持续伤害"];
+const SHOU_QUE_BUFF_ID = 2652;
+const SHOU_QUE_KNOCKBACK_BUFF_ID = 2653;
 
 type ImmediateEnemyDamageTarget =
   | { kind: "player"; target: any }
@@ -148,6 +152,219 @@ function getExplicitPlayerTarget(state: any, targetUserId?: string) {
   const target = state.players.find((candidate: any) => candidate.userId === targetUserId);
   if (!target || (target.hp ?? 0) <= 0) return null;
   return target;
+}
+
+function getSourceFacingUnit(source: any) {
+  const rawX = Number(source?.facing?.x ?? 0);
+  const rawY = Number(source?.facing?.y ?? 1);
+  const length = Math.hypot(rawX, rawY) || 1;
+  return {
+    x: rawX / length,
+    y: rawY / length,
+  };
+}
+
+function getForwardConeEnemyTargets(params: {
+  state: any;
+  source: any;
+  rangeUnits: number;
+  coneAngleDeg: number;
+}) {
+  const { state, source, rangeUnits, coneAngleDeg } = params;
+  const radius = gameplayUnitsToWorldUnits(rangeUnits, state.unitScale);
+  const facing = getSourceFacingUnit(source);
+  const halfAngleCos = Math.cos((coneAngleDeg / 2) * Math.PI / 180);
+
+  return getImmediateEnemyBuffTargets(state, source.userId, source.position, radius).filter((candidate) => {
+    const dx = (candidate.target.position?.x ?? 0) - source.position.x;
+    const dy = (candidate.target.position?.y ?? 0) - source.position.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 0.0001) return true;
+    const dot = (facing.x * dx + facing.y * dy) / distance;
+    return dot >= halfAngleCos;
+  });
+}
+
+function pullImmediateTargetTowardAnchor(params: {
+  state: any;
+  ability: any;
+  source: any;
+  target: ImmediateEnemyDamageTarget;
+  anchor: { x: number; y: number; z: number };
+  mapCtx?: MapContext;
+}) {
+  const {
+    state,
+    ability,
+    source,
+    target,
+    anchor,
+    mapCtx,
+  } = params;
+  const pullTarget = target.target as any;
+  if (target.kind === "player" && hasKnockbackImmune(pullTarget as any)) {
+    return false;
+  }
+
+  const dx = anchor.x - pullTarget.position.x;
+  const dy = anchor.y - pullTarget.position.y;
+  const distance = Math.hypot(dx, dy);
+  const pullSpeedPerTick = gameplayUnitsToWorldUnits(20, state.unitScale) / 30;
+  const ticksNeeded = Math.max(
+    1,
+    distance > 0.0001 ? Math.ceil(distance / pullSpeedPerTick) : 1,
+  );
+  const stepDistance = distance > 0.0001 ? Math.min(pullSpeedPerTick, distance / ticksNeeded) : 0;
+  const dirX = distance > 0.0001 ? dx / distance : 0;
+  const dirY = distance > 0.0001 ? dy / distance : 0;
+  const targetGroundZ = getGroundHeightForMap(
+    pullTarget.position.x,
+    pullTarget.position.y,
+    pullTarget.position.z ?? 0,
+    mapCtx,
+  );
+  const currentZ = pullTarget.position.z ?? targetGroundZ;
+  const verticalDelta = anchor.z - currentZ;
+  const durationMs = Math.max(1, Math.ceil(ticksNeeded * (1000 / 30)));
+
+  if (distance <= 0.0001 && Math.abs(verticalDelta) <= 0.0001) {
+    return false;
+  }
+
+  pullTarget.activeDash = {
+    abilityId: ability.id,
+    vxPerTick: dirX * stepDistance,
+    vyPerTick: dirY * stepDistance,
+    forceVzPerTick: verticalDelta / ticksNeeded,
+    maxUpVz: 999,
+    maxDownVz: -999,
+    ticksRemaining: ticksNeeded,
+  } as any;
+
+  if (target.kind === "player") {
+    pullTarget.velocity = {
+      ...pullTarget.velocity,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+    };
+    pullTarget.isPowerJump = false;
+    pullTarget.isPowerJumpCombined = false;
+    applyDashRuntimeBuff({
+      state,
+      target: pullTarget,
+      durationMs: durationMs + 100,
+      effects: [
+        { type: "CONTROL_IMMUNE" },
+        { type: "KNOCKBACK_IMMUNE" },
+        { type: "DISPLACEMENT" },
+        { type: "DASH_TURN_LOCK" },
+      ] as any,
+      sourceAbilityId: ability.id,
+      sourceAbilityName: ability.name,
+    });
+  }
+
+  return true;
+}
+
+function swapImmediatePlayerPositions(params: {
+  state: any;
+  source: any;
+  target: any;
+  mapCtx?: MapContext;
+}) {
+  const { state, source, target, mapCtx } = params;
+  const sourcePosition = { ...source.position };
+  const targetPosition = { ...target.position };
+
+  source.position = { ...targetPosition };
+  target.position = { ...sourcePosition };
+  source.velocity = { ...source.velocity, vx: 0, vy: 0, vz: 0 };
+  target.velocity = { ...target.velocity, vx: 0, vy: 0, vz: 0 };
+  source.activeDash = undefined;
+  target.activeDash = undefined;
+
+  resolveMapCollisions(source as any, mapCtx);
+  resolveMapCollisions(target as any, mapCtx);
+
+  const playerRadius = mapCtx?.playerRadius ?? 2;
+  resolveEnemyChuHeHanJieWallCollision({
+    state,
+    actorUserId: source.userId,
+    position: source.position,
+    radius: playerRadius,
+    actorBaseZ: source.position.z ?? 0,
+    actorHeight: 1.5,
+  });
+  resolveEnemyChuHeHanJieWallCollision({
+    state,
+    actorUserId: target.userId,
+    position: target.position,
+    radius: playerRadius,
+    actorBaseZ: target.position.z ?? 0,
+    actorHeight: 1.5,
+  });
+}
+
+function applyImmediateKnockback(params: {
+  state: any;
+  ability: any;
+  source: any;
+  target: ImmediateEnemyDamageTarget;
+  distanceUnits: number;
+  durationTicks: number;
+  knockedBackBuffId?: number;
+}) {
+  const { state, ability, source, target, distanceUnits, durationTicks, knockedBackBuffId } = params;
+  const kbTarget = target.target as any;
+  const dx = kbTarget.position.x - source.position.x;
+  const dy = kbTarget.position.y - source.position.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 0.001) return false;
+  if (target.kind === "player" && hasKnockbackImmune(kbTarget)) return false;
+
+  const dirX = dx / distance;
+  const dirY = dy / distance;
+  const knockbackDistance = gameplayUnitsToWorldUnits(distanceUnits, state.unitScale);
+  const moveTicks = Math.max(1, durationTicks);
+
+  delete kbTarget.activeDash;
+  if (kbTarget.velocity) {
+    kbTarget.velocity.vx = 0;
+    kbTarget.velocity.vy = 0;
+    kbTarget.velocity.vz = 0;
+  }
+
+  kbTarget.activeDash = {
+    abilityId: ability.id,
+    vxPerTick: (dirX * knockbackDistance) / moveTicks,
+    vyPerTick: (dirY * knockbackDistance) / moveTicks,
+    forceVzPerTick: 0,
+    maxUpVz: 0,
+    maxDownVz: 0,
+    ticksRemaining: moveTicks,
+    vzPerTick: 0,
+  } as any;
+
+  if (target.kind === "player" && typeof knockedBackBuffId === "number") {
+    const knockedBackBuff = getAbilityBuffDefinition(ability, knockedBackBuffId);
+    if (knockedBackBuff) {
+      addBuff({
+        state,
+        sourceUserId: source.userId,
+        targetUserId: kbTarget.userId,
+        ability,
+        buffTarget: kbTarget,
+        buff: {
+          ...knockedBackBuff,
+          durationMs: Math.max(1, Math.ceil((moveTicks * 1000) / 30)),
+        },
+      });
+    }
+  }
+
+  return true;
 }
 
 function getRandomUnitDirection() {
@@ -781,10 +998,11 @@ export function applyImmediateEffects(params: {
         const oppPos2 = (explicitEntityTarget && enemyApplied)
           ? explicitEntityTarget.position
           : state.players[oppIdx2].position;
+        const requiresExplicitGroundTarget = ability.id === "feng_liu_yun_san";
         const fallbackTargetX = effTarget?.position?.x ?? oppPos2.x ?? source.position.x;
         const fallbackTargetY = effTarget?.position?.y ?? oppPos2.y ?? source.position.y;
-        const gTargetX = castContext?.groundTarget?.x ?? fallbackTargetX;
-        const gTargetY = castContext?.groundTarget?.y ?? fallbackTargetY;
+        const gTargetX = castContext?.groundTarget?.x ?? (requiresExplicitGroundTarget ? source.position.x : fallbackTargetX);
+        const gTargetY = castContext?.groundTarget?.y ?? (requiresExplicitGroundTarget ? source.position.y : fallbackTargetY);
         const gDx = gTargetX - source.position.x;
         const gDy = gTargetY - source.position.y;
         const gLen = Math.sqrt(gDx * gDx + gDy * gDy);
@@ -1977,6 +2195,122 @@ export function applyImmediateEffects(params: {
         break;
       }
 
+      case "LONG_ZHAN_YU_YE": {
+        const coneTargets = getForwardConeEnemyTargets({
+          state,
+          source,
+          rangeUnits: Math.max(0, Number(effect.value ?? 10)),
+          coneAngleDeg: Number((effect as any).coneAngleDeg ?? 60),
+        });
+        const facing = getSourceFacingUnit(source);
+        const anchorOffset = gameplayUnitsToWorldUnits(1, state.unitScale);
+        const anchorX = source.position.x + facing.x * anchorOffset;
+        const anchorY = source.position.y + facing.y * anchorOffset;
+        const anchorGroundZ = getGroundHeightForMap(anchorX, anchorY, source.position.z ?? 0, mapCtx);
+        const anchorZ = Math.max(anchorGroundZ, source.position.z ?? anchorGroundZ);
+        for (const candidate of coneTargets) {
+          pullImmediateTargetTowardAnchor({
+            state,
+            ability,
+            source,
+            target: candidate,
+            anchor: { x: anchorX, y: anchorY, z: anchorZ },
+            mapCtx,
+          });
+        }
+        break;
+      }
+
+      case "QIAN_LONG_WU_YONG": {
+        const now = Date.now();
+        const coneTargets = getForwardConeEnemyTargets({
+          state,
+          source,
+          rangeUnits: Math.max(0, Number(effect.value ?? 8)),
+          coneAngleDeg: Number((effect as any).coneAngleDeg ?? 60),
+        });
+        for (const candidate of coneTargets) {
+          applyImmediateDamageToEnemyTarget({
+            state,
+            source,
+            ability,
+            target: candidate,
+            baseDamage: 2,
+            effectType: "QIAN_LONG_WU_YONG",
+            now,
+          });
+        }
+        break;
+      }
+
+      case "DOU_ZHUAN_XING_YI": {
+        const swapTarget = getExplicitEnemyPlayerTarget(state, source.userId, castContext?.targetUserId)
+          ?? ((enemy && enemy.userId !== source.userId) ? enemy : null);
+        if (!swapTarget || hasKnockbackImmune(swapTarget as any)) {
+          break;
+        }
+        swapImmediatePlayerPositions({
+          state,
+          source,
+          target: swapTarget,
+          mapCtx,
+        });
+        break;
+      }
+
+      case "SHOU_QUE_SHI": {
+        const shouQueTarget: ImmediateEnemyDamageTarget | null = enemyApplied
+          ? (explicitEntityTarget
+            ? { kind: "entity", target: explicitEntityTarget }
+            : effTarget
+              ? { kind: "player", target: effTarget }
+              : null)
+          : null;
+        const now = Date.now();
+        const empowered = (source.buffs ?? []).some(
+          (buff: any) => buff.buffId === SHOU_QUE_BUFF_ID && (buff.expiresAt ?? 0) > now,
+        );
+        const baseDamage = Math.max(0, Number(effect.value ?? 2));
+        const damage = empowered ? baseDamage * 1.3 : baseDamage;
+
+        if (shouQueTarget && !(abilityDodged && shouQueTarget.kind === "player")) {
+          applyImmediateDamageToEnemyTarget({
+            state,
+            source,
+            ability,
+            target: shouQueTarget,
+            baseDamage: damage,
+            effectType: "SHOU_QUE_SHI",
+            now,
+          });
+
+          if (empowered) {
+            applyImmediateKnockback({
+              state,
+              ability,
+              source,
+              target: shouQueTarget,
+              distanceUnits: 2,
+              durationTicks: 6,
+              knockedBackBuffId: SHOU_QUE_KNOCKBACK_BUFF_ID,
+            });
+          }
+        }
+
+        const selfBuff = getAbilityBuffDefinition(ability, SHOU_QUE_BUFF_ID);
+        if (selfBuff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: source.userId,
+            ability,
+            buffTarget: source,
+            buff: selfBuff,
+          });
+        }
+        break;
+      }
+
       // ─── 振翅图南 / 飞刃回转: place follow-target damage zone. ──────────
       case "PLACE_FOLLOW_ZONE": {
         const now = Date.now();
@@ -2722,5 +3056,15 @@ export function applyImmediateEffects(params: {
         });
       }
     }
+  }
+
+  if (ability.id === "jieyang" && enemy?.position) {
+    triggerYunSanBlink({
+      state,
+      source,
+      targetPosition: enemy.position,
+      triggerAbilityId: ability.id,
+      mapCtx,
+    });
   }
 }

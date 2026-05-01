@@ -194,6 +194,7 @@ interface ArenaSceneProps {
   blindWorldMode?: boolean;
   /** Renders only the local player with camera/light setup, no world or other actors. */
   selfOnlyMode?: boolean;
+  opponentInstantSnapAtRef?: MutableRefObject<number>;
 }
 
 export interface EnvDebugInfo {
@@ -448,6 +449,7 @@ export default function ArenaScene({
   dirLightConfig,
   blindWorldMode = false,
   selfOnlyMode = false,
+  opponentInstantSnapAtRef,
 }: ArenaSceneProps) {
   const storedUnitScale = getStoredUnitScale(mode);
   const { objects: mapObjects, width: mapWidth, height: mapHeight } = getMapForMode(mode);
@@ -798,6 +800,8 @@ export default function ArenaScene({
               isStealthed={hasSanliuXiaBuff(opp.buffs)}
               hideHpBar={hasZhuYunHideBuff(opp.buffs)}
               hpColorOverride={hasShiFangXuanJiBuff(opp.buffs) ? '#2acb6b' : undefined}
+              instantSnapAtRef={opponentInstantSnapAtRef}
+              instantSnapWindowMs={600}
             />
           </group>
         );

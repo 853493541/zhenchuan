@@ -630,6 +630,11 @@ function hasShuSeClient(buffs?: ActiveBuff[]): boolean {
   );
 }
 
+function hasMianLaClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => buffHasEffect(b, 'KNOCKBACK_IMMUNE'));
+}
+
 function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
   return (hasStealthClient(buffs) && !hasSanliuXiaClient(buffs)) || hasHongMengTianJinClient(buffs);
 }
@@ -1373,6 +1378,9 @@ export default function BattleArena({
   const selectedTargetRef   = useRef<string | null>(null);
   const selectedEntityRef   = useRef<string | null>(null);
   const selectedSelfRef     = useRef(false);
+  const lastInstantSwapCastAtRef = useRef(0);
+  const lastFengLiuYunSanCastAtRef = useRef(0);
+  const lastObservedServerDashAtRef = useRef(0);
   const pendingGroundCastAbilityRef = useRef<string | null>(null);
   const mouseWorldPosRef = useRef<{ x: number; y: number; z?: number } | null>(null);
   const oppScreenBoundsRef  = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
@@ -1407,6 +1415,9 @@ export default function BattleArena({
     const ad = (me as any)?.activeDash;
     const isDashing = !!ad && ad.ticksRemaining > 0;
     meActiveDashRef.current = isDashing ? ad : null;
+    if (isDashing) {
+      lastObservedServerDashAtRef.current = performance.now();
+    }
     dashTurnOverrideRef.current = hasDashTurnOverrideClient(me?.buffs);
     // Transition logging (synchronous, fine for refs)
     if (isDashing && !_prevDashRef.current) {
@@ -1461,18 +1472,44 @@ export default function BattleArena({
   const castAbilityRef = useRef<(id: string) => void>(() => {});
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
+    const abilityKey = ability?.abilityId ?? ability?.id;
     // 孤风飒踏 and 撼地: enter pending ground-cast mode (shows hover circle, click to confirm)
-    if (ability?.abilityId === 'gu_feng_sa_ta' || ability?.abilityId === 'han_di') {
+    if (abilityKey === 'feng_liu_yun_san') {
+      const hoverTarget = mouseWorldPosRef.current;
+      if (!hoverTarget) {
+        setPendingGroundCastAbilityId(id);
+        setGroundCastPreview(null);
+        return;
+      }
+      const myPos = localPositionRef.current ?? me.position;
+      const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
+      const targetZ = hoverTarget.z ?? 0;
+      if (myPos && isClientLineBlocked(myPos, hoverTarget, myZ, targetZ)) {
+        showLOSBlocker('视线被遮挡');
+        toastError('视线被遮挡');
+        return;
+      }
+      lastFengLiuYunSanCastAtRef.current = performance.now();
+      lastCastNameRef.current = ability?.name ?? null;
+      setPendingGroundCastAbilityId(null);
+      setGroundCastPreview(null);
+      onCastAbility(id, undefined, { x: hoverTarget.x, y: hoverTarget.y, z: hoverTarget.z });
+      return;
+    }
+    if (abilityKey === 'gu_feng_sa_ta' || abilityKey === 'han_di') {
       setPendingGroundCastAbilityId(id);
       return;
     }
-    if (ability?.abilityId === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
-    if (ability?.abilityId === 'niao_xiang_bi_kong') {
+    if (abilityKey === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
+    if (abilityKey === 'niao_xiang_bi_kong') {
       predictedMultiJumpExpiresAtRef.current = performance.now() + 15_000;
     }
-    if (ability?.abilityId === 'yan_yu_xing') {
+    if (abilityKey === 'yan_yu_xing') {
       // 烟雨行 consumes ALL remaining air jumps (interaction with 鸟翔碧空's 6 jumps)
       localJumpCountRef.current = getEffectiveMaxJumps();
+    }
+    if (abilityKey === 'dou_zhuan_xing_yi') {
+      lastInstantSwapCastAtRef.current = performance.now();
     }
     const selectedTargetIdNow = selectedTargetRef.current;
     const selectedEntityIdNow = selectedEntityRef.current;
@@ -1506,8 +1543,16 @@ export default function BattleArena({
       toastError('目标不可选中');
       return;
     }
-    if (ability?.id === 'hong_meng_tian_jin' && hasShuSeClient((selectedSelfTarget ?? selectedTarget)?.buffs)) {
+    if (abilityKey === 'hong_meng_tian_jin' && hasShuSeClient((selectedSelfTarget ?? selectedTarget)?.buffs)) {
       toastError('目标已受曙色影响');
+      return;
+    }
+    if (abilityKey === 'dou_zhuan_xing_yi' && selectedEntityIdNow) {
+      toastError('该技能只能对敌方玩家施放');
+      return;
+    }
+    if (abilityKey === 'dou_zhuan_xing_yi' && selectedTarget && hasMianLaClient(selectedTarget.buffs)) {
+      toastError('目标处于免拉状态');
       return;
     }
     if (ability?.target === 'OPPONENT' && !targetPos) {
@@ -1603,6 +1648,7 @@ export default function BattleArena({
     if (!abilityId) return;
     const ability = abilitiesRef.current.find((a) => a.id === abilityId);
     if (!ability) return;
+    const abilityKey = ability.abilityId ?? ability.id;
     if (ability.target === 'OPPONENT') {
       const myPos = localPositionRef.current ?? me.position;
       const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
@@ -1615,6 +1661,12 @@ export default function BattleArena({
     }
 
     lastCastNameRef.current = ability.name ?? null;
+    if (abilityKey === 'dou_zhuan_xing_yi') {
+      lastInstantSwapCastAtRef.current = performance.now();
+    }
+    if (abilityKey === 'feng_liu_yun_san') {
+      lastFengLiuYunSanCastAtRef.current = performance.now();
+    }
     setPendingGroundCastAbilityId(null);
     setGroundCastPreview(null);
     onCastAbility(abilityId, undefined, { x, y, z: worldZ });
@@ -1648,6 +1700,9 @@ export default function BattleArena({
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
         const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
         const forcedRenderDisplacement = forcedDisplacementRef.current;
+        const recentDashSnap =
+          frameNow - lastObservedServerDashAtRef.current < 400 ||
+          frameNow - lastFengLiuYunSanCastAtRef.current < 700;
         const airborneRender =
           localJumpCountRef.current > 0 ||
           Math.abs(localVzRef.current) > 0.01 ||
@@ -1657,7 +1712,7 @@ export default function BattleArena({
         // During server-authoritative dash: HARD SNAP to server position.
         // Do NOT lerp — any lerp causes the visual to lag behind the server,
         // extending the perceived dash duration beyond the actual 1-second window.
-        if (meActiveDashRef.current || forcedRenderDisplacement) {
+        if (meActiveDashRef.current || forcedRenderDisplacement || recentDashSnap) {
           localDashAnimRef.current = null;
           localRenderPosRef.current = { x: tx, y: ty, z: tz };
         } else if (dist2d > SNAP_THRESH) {
@@ -1666,7 +1721,7 @@ export default function BattleArena({
         } else if (!localDashAnimRef.current && dist2d > DASH_THRESH) {
           localDashAnimRef.current = { start: { ...r }, startTime: frameNow };
         }
-        if (!meActiveDashRef.current && !forcedRenderDisplacement) {
+        if (!meActiveDashRef.current && !forcedRenderDisplacement && !recentDashSnap) {
           if (localDashAnimRef.current) {
             const elapsed = frameNow - localDashAnimRef.current.startTime;
             const t = Math.min(1, elapsed / DASH_ANIM_MS);
@@ -2129,7 +2184,9 @@ export default function BattleArena({
       // WS array patches can momentarily produce sparse event slices.
       // Ignore empty/malformed entries instead of crashing the whole arena.
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
-      if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0 && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
+      if (evt.type === 'PLAY_ABILITY' && evt.abilityId === 'dou_zhuan_xing_yi') {
+        lastInstantSwapCastAtRef.current = performance.now();
+      } else if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0 && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
         if (evt.targetUserId === myId) {
           if (!selectedTargetRef.current && !selectedEntityRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
             const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
@@ -2366,11 +2423,42 @@ export default function BattleArena({
       // client prediction and server-authoritative BVH result).
     }
 
-    // Hard-snap if server position is far away (e.g. new battle start)
-    if (dx * dx + dy * dy > 25) {
+    const justCastInstantSwap =
+      performance.now() - lastInstantSwapCastAtRef.current < 600;
+    if (justCastInstantSwap && dx * dx + dy * dy > 0.01) {
+      const serverZ = (me.position as any).z ?? 0;
       localPositionRef.current = { ...me.position };
+      localZRef.current = serverZ;
+      localVzRef.current = 0;
+      localDashAnimRef.current = null;
+      localRenderPosRef.current = {
+        x: me.position.x,
+        y: me.position.y,
+        z: serverZ,
+      };
       return;
     }
+
+    // Hard-snap if server position is far away (e.g. new battle start).
+    // This must also snap the render ref; otherwise the local character can
+    // still fall into the old cosmetic dash easing for 5-20u corrections.
+    if (dx * dx + dy * dy > 25) {
+      const serverZ = (me.position as any).z ?? 0;
+      localPositionRef.current = { ...me.position };
+      localZRef.current = serverZ;
+      localVzRef.current = 0;
+      localDashAnimRef.current = null;
+      localRenderPosRef.current = {
+        x: me.position.x,
+        y: me.position.y,
+        z: serverZ,
+      };
+      return;
+    }
+
+    const recentDashSnap =
+      performance.now() - lastObservedServerDashAtRef.current < 400 ||
+      performance.now() - lastFengLiuYunSanCastAtRef.current < 700;
 
     // During active dash: server owns position — hard-snap XY + Z
     // Check me.activeDash directly (not ref) so this works even before React
@@ -2380,6 +2468,20 @@ export default function BattleArena({
       localPositionRef.current = { ...me.position };
       localZRef.current  = (me.position as any).z ?? 0;
       localVzRef.current = 0;
+      return;
+    }
+
+    if (recentDashSnap && dx * dx + dy * dy > 0.01) {
+      const serverZ = (me.position as any).z ?? 0;
+      localPositionRef.current = { ...me.position };
+      localZRef.current = serverZ;
+      localVzRef.current = 0;
+      localDashAnimRef.current = null;
+      localRenderPosRef.current = {
+        x: me.position.x,
+        y: me.position.y,
+        z: serverZ,
+      };
       return;
     }
 
@@ -2588,6 +2690,10 @@ export default function BattleArena({
       if (needsSelectedTarget && !targetPos) return false;
       if ((ab?.id === 'hong_meng_tian_jin' || instance?.abilityId === 'hong_meng_tian_jin') && hasShuSeClient((targetForChecks as any)?.buffs)) {
         return false;
+      }
+      if (ab?.id === 'dou_zhuan_xing_yi' || instance?.abilityId === 'dou_zhuan_xing_yi') {
+        if (selectedEntity) return false;
+        if (hasMianLaClient((targetForChecks as any)?.buffs)) return false;
       }
 
       const distanceToTarget = (myPos && targetPos)
@@ -4455,6 +4561,7 @@ export default function BattleArena({
             envToggles={mode === 'collision-test' ? envToggles : undefined}
             dirLightConfig={mode === 'collision-test' ? dirLightConfig : undefined}
             blindWorldMode={selfHasHongMengTianJin}
+            opponentInstantSnapAtRef={lastInstantSwapCastAtRef}
           />
           {/* Golden measurement line */}
           <MeasureLine3D
