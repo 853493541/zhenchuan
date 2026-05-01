@@ -1,5 +1,990 @@
 {
   "version": 1,
-  "updatedAt": "2026-04-17T07:46:29.656Z",
-  "abilities": {}
+  "updatedAt": "2026-05-01T01:45:40.093Z",
+  "abilities": {
+    "baizu": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "五毒",
+        "damageType": "内功"
+      }
+    },
+    "heng_sao_liu_he": {
+      "tags": {
+        "rarity": "精巧",
+        "school": "少林",
+        "damageType": "内功"
+      }
+    },
+    "menghu_xiasha": {
+      "tags": {
+        "rarity": "精巧",
+        "school": "通用",
+        "damageType": "外功"
+      }
+    },
+    "jianpo_xukong": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "七秀",
+        "damageType": "内功"
+      }
+    },
+    "jieyang": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "段氏",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "jing_shi_po_mo_ji": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "明教",
+        "damageType": "内功"
+      }
+    },
+    "ting_lei": {
+      "tags": {
+        "rarity": "精巧",
+        "school": "藏剑",
+        "damageType": "外功"
+      }
+    },
+    "anchen_misan": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "明教",
+        "damageType": "内功"
+      }
+    },
+    "fengxiu_diang": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "七秀",
+        "damageType": "内功"
+      }
+    },
+    "fuyao_zhishang": {
+      "tags": {
+        "rarity": "精巧",
+        "school": "通用",
+        "damageType": "外功"
+      }
+    },
+    "fuguang_lueying": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "唐门",
+        "damageType": "外功"
+      }
+    },
+    "guchong_xianji": {
+      "tags": {
+        "rarity": "珍奇",
+        "school": "五毒",
+        "damageType": "内功"
+      }
+    },
+    "xiao_zui_kuang": {
+      "tags": {
+        "rarity": "珍奇",
+        "school": "丐帮",
+        "damageType": "外功"
+      }
+    },
+    "nuwa_butian": {
+      "tags": {
+        "rarity": "珍奇",
+        "school": "五毒",
+        "damageType": "内功"
+      }
+    },
+    "sanliu_xia": {
+      "tags": {
+        "rarity": "稀世",
+        "school": "霸刀",
+        "damageType": "外功"
+      }
+    },
+    "fu_rong_bing_di": {
+      "tags": {
+        "school": "万花",
+        "rarity": "珍奇",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "hua_xue_biao": {
+      "tags": {
+        "school": "唐门",
+        "rarity": "卓越",
+        "damageType": "外功"
+      },
+      "isProjectile": true
+    },
+    "jian_zhuan_liu_yun": {
+      "tags": {
+        "school": "七秀",
+        "rarity": "精巧",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "kong_que_ling": {
+      "tags": {
+        "school": "唐门",
+        "rarity": "珍奇",
+        "damageType": "外功"
+      },
+      "isProjectile": true
+    },
+    "lie_ri_zhan": {
+      "tags": {
+        "school": "明教",
+        "rarity": "精巧",
+        "damageType": "内功"
+      }
+    },
+    "sanhuan_taoyue": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "shang_yang_zhi": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "she_ying": {
+      "tags": {
+        "school": "五毒",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "tiandi_wuji": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "珍奇",
+        "damageType": "外功"
+      }
+    },
+    "weituo_xianchu": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "wu_wo_wu_jian": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "卓越",
+        "damageType": "外功"
+      }
+    },
+    "yin_yue_zhan": {
+      "tags": {
+        "school": "明教",
+        "rarity": "精巧",
+        "damageType": "内功"
+      }
+    },
+    "yu_shi_ju_fen": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "yue_chao_zhan_bo": {
+      "tags": {
+        "school": "蓬莱",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "bang_da_gou_tou": {
+      "tags": {
+        "school": "丐帮",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "chan_xiao": {
+      "tags": {
+        "school": "五毒",
+        "rarity": "卓越",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "da_shizi_hou": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "dican_longxiang": {
+      "tags": {
+        "school": "七秀",
+        "rarity": "精巧",
+        "damageType": "内功"
+      }
+    },
+    "han_di": {
+      "tags": {
+        "school": "苍云",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "he_gui_gu_shan": {
+      "properties": {
+        "qinggong": false
+      },
+      "tags": {
+        "school": "藏剑",
+        "rarity": "卓越",
+        "damageType": "外功"
+      }
+    },
+    "jiang_chun_zhu_xiu": {
+      "tags": {
+        "school": "七秀",
+        "rarity": "卓越",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "jiu_zhuan_gui_yi": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "精巧",
+        "damageType": "内功"
+      }
+    },
+    "lei_ting_zhen_nu": {
+      "tags": {
+        "school": "七秀",
+        "rarity": "珍奇",
+        "damageType": "内功"
+      }
+    },
+    "leizhenzi": {
+      "tags": {
+        "school": "唐门",
+        "rarity": "精巧",
+        "damageType": "外功"
+      },
+      "isProjectile": true
+    },
+    "zhenshen_xingsi": {
+      "tags": {
+        "school": "天策",
+        "rarity": "珍奇",
+        "damageType": "外功"
+      }
+    },
+    "mohe_wuliang": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "san_cai_hua_sheng": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "shengsi_jie": {
+      "tags": {
+        "school": "明教",
+        "rarity": "卓越",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "xuanshui_gu": {
+      "tags": {
+        "school": "五毒",
+        "rarity": "卓越",
+        "damageType": "内功"
+      },
+      "dunLiWhitelisted": true
+    },
+    "chuan": {
+      "tags": {
+        "school": "天策",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "wan_jian_gui_zong": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "卓越",
+        "damageType": "外功"
+      }
+    },
+    "wufang_xingjin": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "wuyun_jiekong": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "chun_ni_hu_hua": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧",
+        "damageType": "内功"
+      }
+    },
+    "dienong_zu": {
+      "tags": {
+        "school": "七秀",
+        "rarity": "精巧",
+        "damageType": "内功"
+      }
+    },
+    "duangu_jue": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "duoming_gu": {
+      "tags": {
+        "school": "五毒",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "gu_feng_sa_ta": {
+      "tags": {
+        "school": "凌雪",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "houyao": {
+      "tags": {
+        "school": "通用",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "huayu_suxin": {
+      "tags": {
+        "school": "万花",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "ji": {
+      "tags": {
+        "school": "天策",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "jiru_feng": {
+      "tags": {
+        "school": "天策",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "lingxiao_lansheng": {
+      "tags": {
+        "school": "通用",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "niao_xiang_bi_kong": {
+      "tags": {
+        "school": "唐门",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "nieyun_zhuyue": {
+      "tags": {
+        "school": "通用",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "qionglong_huasheng": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "精巧",
+        "damageType": "内功"
+      }
+    },
+    "que_ta_zhi": {
+      "tags": {
+        "school": "七秀",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "sheng_ming_you": {
+      "tags": {
+        "school": "明教",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "shou_ru_shan": {
+      "tags": {
+        "school": "天策",
+        "rarity": "珍奇",
+        "damageType": "外功"
+      }
+    },
+    "taxingxing": {
+      "tags": {
+        "school": "衍天",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "tai_yin_zhi": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧",
+        "damageType": "内功"
+      }
+    },
+    "tian_di_di_ang": {
+      "tags": {
+        "school": "七秀",
+        "rarity": "精巧",
+        "damageType": "内功"
+      }
+    },
+    "wu_jianyu": {
+      "tags": {
+        "school": "凌雪",
+        "rarity": "卓越",
+        "damageType": "外功"
+      }
+    },
+    "xiao_ru_hu": {
+      "tags": {
+        "school": "天策",
+        "rarity": "珍奇",
+        "damageType": "外功"
+      }
+    },
+    "xinglou_yueying": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧",
+        "damageType": "内功"
+      }
+    },
+    "yaotai_zhenhe": {
+      "tags": {
+        "school": "通用",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "yingfeng_huilang": {
+      "tags": {
+        "school": "通用",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "yuqi": {
+      "tags": {
+        "school": "通用",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "yun_qi_song": {
+      "tags": {
+        "school": "藏剑",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "zhen_shan_he": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "珍奇",
+        "damageType": "内功"
+      }
+    },
+    "zhuan_qiankun": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "卓越",
+        "damageType": "外功"
+      }
+    },
+    "zuowang_wuwo": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "精巧",
+        "damageType": "内功"
+      }
+    },
+    "chuan_xin_nu": {
+      "tags": {
+        "school": "唐门",
+        "rarity": "精巧",
+        "damageType": "外功"
+      },
+      "isProjectile": true
+    },
+    "fenglai_wushan": {
+      "tags": {
+        "school": "藏剑",
+        "rarity": "卓越",
+        "damageType": "外功"
+      }
+    },
+    "lan_cui_yu_zhe": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "qixing_gongrui": {
+      "tags": {
+        "school": "纯阳",
+        "rarity": "卓越",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "qiandie_turui": {
+      "tags": {
+        "school": "五毒",
+        "rarity": "珍奇",
+        "damageType": "内功"
+      }
+    },
+    "xinzheng": {
+      "tags": {
+        "school": "少林",
+        "rarity": "卓越",
+        "damageType": "内功"
+      }
+    },
+    "yun_fei_yu_huang": {
+      "tags": {
+        "school": "藏剑",
+        "rarity": "卓越",
+        "damageType": "外功"
+      }
+    },
+    "changzhen": {
+      "tags": {
+        "school": "万花",
+        "rarity": "珍奇",
+        "damageType": "内功"
+      }
+    },
+    "zhong_lin_yu_xiu": {
+      "tags": {
+        "school": "万花",
+        "rarity": "精巧",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "zhuiming_jian": {
+      "tags": {
+        "school": "唐门",
+        "rarity": "珍奇",
+        "damageType": "外功"
+      },
+      "isProjectile": true
+    },
+    "zhuo_ying_shi": {
+      "tags": {
+        "school": "少林",
+        "rarity": "珍奇",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "yan_yu_xing": {
+      "tags": {
+        "school": "丐帮",
+        "rarity": "精巧",
+        "damageType": "外功"
+      }
+    },
+    "kuang_long_luan_wu": {
+      "tags": {
+        "school": "丐帮",
+        "rarity": "珍奇",
+        "damageType": "外功"
+      }
+    },
+    "jian_zhu_tian_di": {
+      "tags": {
+        "school": "七秀",
+        "damageType": "内功",
+        "rarity": "卓越"
+      },
+      "isProjectile": true
+    },
+    "liang_yi_hua_xing": {
+      "tags": {
+        "school": "纯阳",
+        "damageType": "内功",
+        "rarity": "卓越"
+      },
+      "isProjectile": true
+    },
+    "po_feng": {
+      "tags": {
+        "school": "天策",
+        "damageType": "外功",
+        "rarity": "精巧"
+      }
+    },
+    "da_dao_wu_shu": {
+      "tags": {
+        "school": "纯阳",
+        "damageType": "外功",
+        "rarity": "精巧"
+      }
+    },
+    "hua_die": {
+      "tags": {
+        "school": "五毒",
+        "damageType": "内功",
+        "rarity": "精巧"
+      }
+    },
+    "ji_le_yin": {
+      "tags": {
+        "school": "明教",
+        "damageType": "内功",
+        "rarity": "精巧"
+      }
+    },
+    "jing_hong_you_long": {
+      "tags": {
+        "school": "唐门",
+        "damageType": "外功",
+        "rarity": "卓越"
+      }
+    },
+    "lin_shi_fei_zhua": {
+      "properties": {
+        "qinggong": false
+      },
+      "tags": {
+        "rarity": "卓越",
+        "school": "通用",
+        "damageType": "外功"
+      }
+    },
+    "bang_hua_sui_liu": {
+      "tags": {
+        "rarity": "珍奇",
+        "school": "万花",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "shao_ming_zhi": {
+      "tags": {
+        "rarity": "精巧",
+        "school": "万花",
+        "damageType": "内功"
+      },
+      "isProjectile": true
+    },
+    "ling_tai_xu": {
+      "tags": {
+        "school": "纯阳",
+        "damageType": "外功",
+        "rarity": "精巧"
+      }
+    },
+    "sheng_tai_ji": {
+      "tags": {
+        "school": "纯阳",
+        "damageType": "内功",
+        "rarity": "卓越"
+      }
+    },
+    "tun_ri_yue": {
+      "tags": {
+        "school": "纯阳",
+        "damageType": "外功",
+        "rarity": "卓越"
+      }
+    },
+    "chong_yin_yang": {
+      "tags": {
+        "school": "纯阳",
+        "damageType": "内功",
+        "rarity": "精巧"
+      }
+    },
+    "zhan_wu_chang": {
+      "tags": {
+        "school": "凌雪",
+        "damageType": "外功",
+        "rarity": "卓越"
+      }
+    },
+    "ying_tian_shou_ming": {
+      "tags": {
+        "school": "万灵",
+        "damageType": "外功",
+        "rarity": "卓越"
+      }
+    },
+    "wu_xiang_jue": {
+      "tags": {
+        "school": "少林",
+        "damageType": "内功",
+        "rarity": "卓越"
+      }
+    },
+    "mie": {
+      "tags": {
+        "school": "天策",
+        "damageType": "外功",
+        "rarity": "卓越"
+      }
+    },
+    "gu_ying_hua_shuang": {
+      "tags": {
+        "rarity": "稀世",
+        "school": "长歌",
+        "damageType": "内功"
+      }
+    },
+    "zhu_yun_han_rui": {
+      "tags": {
+        "rarity": "卓越",
+        "school": "药宗",
+        "damageType": "内功"
+      }
+    },
+    "bao_can_shi": {
+      "tags": {
+        "damageType": "内功",
+        "school": "少林",
+        "rarity": "精巧"
+      }
+    },
+    "bu_feng_shi": {
+      "tags": {
+        "damageType": "内功",
+        "school": "少林",
+        "rarity": "精巧"
+      }
+    },
+    "fei_ren_hui_zhuan": {
+      "tags": {
+        "damageType": "外功",
+        "school": "凌雪",
+        "rarity": "精巧"
+      }
+    },
+    "kang_long_you_hui": {
+      "tags": {
+        "damageType": "外功",
+        "school": "丐帮",
+        "rarity": "卓越"
+      }
+    },
+    "na_yun_shi": {
+      "tags": {
+        "damageType": "内功",
+        "school": "少林",
+        "rarity": "卓越"
+      }
+    },
+    "qu_ye_duan_chou": {
+      "tags": {
+        "damageType": "内功",
+        "school": "明教",
+        "rarity": "卓越"
+      }
+    },
+    "tai_ji_wu_ji": {
+      "tags": {
+        "damageType": "内功",
+        "school": "纯阳",
+        "rarity": "精巧"
+      }
+    },
+    "tian_jue_di_mie": {
+      "tags": {
+        "damageType": "外功",
+        "school": "唐门",
+        "rarity": "精巧"
+      }
+    },
+    "you_yue_lun": {
+      "tags": {
+        "damageType": "内功",
+        "school": "明教",
+        "rarity": "卓越"
+      }
+    },
+    "zhen_chi_tu_nan": {
+      "tags": {
+        "damageType": "外功",
+        "school": "蓬莱",
+        "rarity": "精巧"
+      }
+    },
+    "cang_yue": {
+      "tags": {
+        "damageType": "外功",
+        "school": "天策",
+        "rarity": "精巧"
+      }
+    },
+    "cheng_huang_zhi_wei": {
+      "tags": {
+        "damageType": "外功",
+        "school": "万灵",
+        "rarity": "卓越"
+      }
+    },
+    "ji_dian_chi_yu": {
+      "tags": {
+        "damageType": "外功",
+        "school": "蓬莱",
+        "rarity": "卓越"
+      }
+    },
+    "long_xiao_jiu_tian": {
+      "tags": {
+        "damageType": "外功",
+        "school": "丐帮",
+        "rarity": "珍奇"
+      }
+    },
+    "ti_yun_zong": {
+      "tags": {
+        "damageType": "外功",
+        "school": "纯阳",
+        "rarity": "精巧"
+      }
+    },
+    "xu_ru_lin": {
+      "tags": {
+        "damageType": "外功",
+        "school": "天策",
+        "rarity": "卓越"
+      }
+    },
+    "yu_yu_cheng_feng": {
+      "tags": {
+        "damageType": "外功",
+        "school": "蓬莱",
+        "rarity": "卓越"
+      }
+    },
+    "lian_huan_nu": {
+      "tags": {
+        "damageType": "外功",
+        "school": "唐门",
+        "rarity": "卓越"
+      }
+    },
+    "shi_xin_gu": {
+      "tags": {
+        "school": "五毒",
+        "rarity": "精巧",
+        "damageType": "内功"
+      },
+      "dunLiWhitelisted": true
+    },
+    "hong_meng_tian_jin": {
+      "tags": {
+        "school": "衍天",
+        "damageType": "内功",
+        "rarity": "精巧"
+      },
+      "dunLiWhitelisted": true
+    },
+    "shi_fang_xuan_ji": {
+      "tags": {
+        "school": "凌雪",
+        "damageType": "外功",
+        "rarity": "珍奇"
+      },
+      "dunLiWhitelisted": true
+    },
+    "chu_he_han_jie": {
+      "tags": {
+        "school": "霸刀",
+        "damageType": "外功",
+        "rarity": "精巧"
+      }
+    },
+    "dun_li": {
+      "tags": {
+        "school": "苍云",
+        "damageType": "外功",
+        "rarity": "精巧"
+      }
+    },
+    "lv_ye_man_sheng": {
+      "tags": {
+        "school": "药宗",
+        "damageType": "内功",
+        "rarity": "卓越"
+      }
+    },
+    "ru_yi_fa": {
+      "tags": {
+        "school": "明教",
+        "damageType": "内功",
+        "rarity": "精巧"
+      }
+    },
+    "you_feng_piao_zong": {
+      "tags": {
+        "school": "刀宗",
+        "damageType": "外功",
+        "rarity": "精巧"
+      }
+    }
+  }
 }

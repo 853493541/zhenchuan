@@ -23,6 +23,8 @@ export interface GameEvent {
 
   actorUserId: PlayerID;
   targetUserId?: PlayerID;
+  entityId?: string;
+  entityName?: string;
 
   abilityId?: string;
   abilityName?: string;
@@ -30,6 +32,8 @@ export interface GameEvent {
 
   effectType?: EffectType;
   value?: number;
+  /** Amount of damage absorbed by the target's shield (化解). */
+  shieldAbsorbed?: number;
 
   buffId?: number;
   buffName?: string;

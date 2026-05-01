@@ -1,0 +1,157 @@
+{
+  "version": 5,
+  "updatedAt": "2026-05-01T10:31:35.144Z",
+  "buffs": {
+    "1009": {
+      "attribute": "阴性"
+    },
+    "1011": {
+      "attribute": "未选择",
+      "properties": [
+        {
+          "type": "减伤",
+          "value": 20
+        }
+      ],
+      "qinYinGongMingUnstealable": true
+    },
+    "1012": {
+      "attribute": "未选择",
+      "qinYinGongMingUnstealable": true
+    },
+    "1014": {
+      "attribute": "未选择",
+      "qinYinGongMingUnstealable": true
+    },
+    "1021": {
+      "attribute": "未选择",
+      "qinYinGongMingUnstealable": true
+    },
+    "1030": {
+      "attribute": "阴性"
+    },
+    "1033": {
+      "attribute": "未选择",
+      "qinYinGongMingUnstealable": true
+    },
+    "1310": {
+      "attribute": "未选择",
+      "name": "生太极"
+    },
+    "1331": {
+      "attribute": "未选择",
+      "hidden": true
+    },
+    "1336": {
+      "attribute": "混元"
+    },
+    "2201": {
+      "attribute": "阴性"
+    },
+    "2202": {
+      "attribute": "阴性"
+    },
+    "2301": {
+      "attribute": "未选择",
+      "name": "韦陀献杵·易伤"
+    },
+    "2302": {
+      "attribute": "未选择",
+      "name": "韦陀献杵·防御"
+    },
+    "2308": {
+      "attribute": "混元"
+    },
+    "2309": {
+      "attribute": "阴性"
+    },
+    "2313": {
+      "attribute": "混元"
+    },
+    "2314": {
+      "attribute": "毒性"
+    },
+    "2315": {
+      "attribute": "蛊"
+    },
+    "2316": {
+      "attribute": "混元"
+    },
+    "2317": {
+      "attribute": "阴性"
+    },
+    "2326": {
+      "attribute": "阴性"
+    },
+    "2402": {
+      "attribute": "外功"
+    },
+    "2404": {
+      "attribute": "未选择",
+      "properties": [
+        {
+          "type": "减伤",
+          "value": 80
+        }
+      ],
+      "durationMs": 8000,
+      "qinYinGongMingStealable": true
+    },
+    "2610": {
+      "attribute": "未选择",
+      "qinYinGongMingStealable": true
+    },
+    "2613": {
+      "attribute": "未选择",
+      "qinYinGongMingUnstealable": true
+    },
+    "2620": {
+      "attribute": "未选择",
+      "qinYinGongMingUnstealable": true
+    },
+    "2630": {
+      "attribute": "未选择",
+      "qinYinGongMingUnstealable": true
+    },
+    "2647": {
+      "attribute": "未选择",
+      "qinYinGongMingUnstealable": true
+    },
+    "2701": {
+      "attribute": "未选择",
+      "qinYinGongMingUnstealable": true
+    },
+    "2702": {
+      "attribute": "未选择",
+      "qinYinGongMingUnstealable": true
+    },
+    "2714": {
+      "attribute": "未选择",
+      "qinYinGongMingUnstealable": true
+    },
+    "9001": {
+      "attribute": "外功",
+      "description": "下一次跳跃将跳得更高"
+    },
+    "990100": {
+      "attribute": "未选择",
+      "hidden": true
+    },
+    "990101": {
+      "attribute": "未选择",
+      "hidden": true
+    },
+    "990102": {
+      "attribute": "未选择",
+      "hidden": true
+    },
+    "990103": {
+      "attribute": "未选择",
+      "hidden": true
+    },
+    "999900": {
+      "attribute": "未选择",
+      "hidden": true
+    }
+  }
+}

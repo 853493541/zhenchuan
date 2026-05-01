@@ -9,8 +9,9 @@ import MapObjects from './MapObjects';
 import Character from './Character';
 import PickupBooks from './PickupBooks';
 import AoeZone from './AoeZone';
+import TargetEntityVisual from './TargetEntityVisual';
 import CameraRig from './CameraRig';
-import type { PickupItem, GroundZone } from '../../../types';
+import type { PickupItem, GroundZone, TargetEntity } from '../../../types';
 import { getMapForMode } from '../worldMap';
 import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF } from './ExportedMapScene';
 import type { MapCollisionSystem } from './MapCollisionSystem';
@@ -29,6 +30,9 @@ function getStoredUnitScale(mode?: string): number {
 
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
+const ZHU_YUN_HIDE_BUFF_IDS = new Set([2716]);
+const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
+const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
 
 function hasStealthBuff(buffs?: any[]): boolean {
   if (!Array.isArray(buffs)) return false;
@@ -43,16 +47,40 @@ function hasSanliuXiaBuff(buffs?: any[]): boolean {
   if (!Array.isArray(buffs)) return false;
   return buffs.some((b: any) =>
     SANLIU_XIA_BUFF_IDS.has(b?.buffId) ||
+    ZHU_YUN_HIDE_BUFF_IDS.has(b?.buffId) ||
     (typeof b?.name === 'string' && b.name.includes('散流霞'))
   );
 }
 
+function hasZhuYunHideBuff(buffs?: any[]): boolean {
+  if (!Array.isArray(buffs)) return false;
+  return buffs.some((b: any) => ZHU_YUN_HIDE_BUFF_IDS.has(b?.buffId));
+}
+
+function hasHongMengTianJinBuff(buffs?: any[]): boolean {
+  if (!Array.isArray(buffs)) return false;
+  return buffs.some((b: any) =>
+    b?.buffId === HONG_MENG_TIAN_JIN_BUFF_ID ||
+    (b.effects ?? []).some((e: any) => e.type === 'HONG_MENG_TIAN_JIN') ||
+    (typeof b?.name === 'string' && b.name.includes('鸿蒙天禁'))
+  );
+}
+
 function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
-  return hasStealthBuff(buffs) && !hasSanliuXiaBuff(buffs);
+  return (hasStealthBuff(buffs) && !hasSanliuXiaBuff(buffs)) || hasHongMengTianJinBuff(buffs);
+}
+
+function hasShiFangXuanJiBuff(buffs?: any[]): boolean {
+  if (!Array.isArray(buffs)) return false;
+  return buffs.some((b: any) =>
+    b?.buffId === SHI_FANG_XUAN_JI_BUFF_ID ||
+    (typeof b?.name === 'string' && b.name.includes('十方玄机'))
+  );
 }
 
 interface PlayerInfo {
   userId: string;
+  username?: string;
   position: { x: number; y: number; z?: number };
   hp: number;
   shield?: number;
@@ -64,14 +92,20 @@ interface PlayerInfo {
 
 interface ArenaSceneProps {
   me: PlayerInfo;
+  /** All non-me players, including hidden ones, for entity owner-name lookup. */
+  allOpponents?: PlayerInfo[];
   /** All non-me players */
   opponents: PlayerInfo[];
   selectedTargetId: string | null;
   onSelectTarget?: (userId: string) => void;
   pickups: PickupItem[];
   meChanneling: boolean;
+  /** Radius of the local player's channel ring in game units (default 10) */
+  meChannelRadius?: number;
   /** Which opponent userId is channeling (if any) */
   channelingOpponentId?: string | null;
+  /** Radius of the channeling opponent's ring in game units (default 10) */
+  channelingOpponentRadius?: number;
   /** Whether the local player has selected themselves (shows facing arc) */
   selectedSelf?: boolean;
   // Refs for live updates without re-renders
@@ -125,9 +159,15 @@ interface ArenaSceneProps {
   maxHp: number;
   meScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
   oppScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
+  entityScreenBoundsRef?: MutableRefObject<Record<string, { cx: number; topY: number; baseY: number; rs: number }>>;
   mode?: string;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
   groundZones?: GroundZone[];
+  /** HP-bearing targetable entities (e.g. 逐云寒蕊) */
+  entities?: TargetEntity[];
+  selectedEntityId?: string | null;
+  onSelectEntity?: (entityId: string) => void;
+  myUserId?: string;
   groundCastPreview?: { x: number; y: number; z?: number; radius: number; label?: string; isValid?: boolean } | null;
   onGroundPointerMove?: (x: number, y: number, worldZ?: number, isHorizontal?: boolean) => void;
   onGroundPointerDown?: (x: number, y: number, worldZ?: number) => void;
@@ -150,6 +190,11 @@ interface ArenaSceneProps {
   onEnvDebug?: (info: EnvDebugInfo) => void;
   envToggles?: EnvToggles;
   dirLightConfig?: DirLightConfig;
+  /** Hides terrain / houses / world meshes while preserving self and HUD-facing overlays. */
+  blindWorldMode?: boolean;
+  /** Renders only the local player with camera/light setup, no world or other actors. */
+  selfOnlyMode?: boolean;
+  opponentInstantSnapAtRef?: MutableRefObject<number>;
 }
 
 export interface EnvDebugInfo {
@@ -358,12 +403,15 @@ function EnvProbe({ onEnvDebug }: { onEnvDebug: (info: EnvDebugInfo) => void }) 
 
 export default function ArenaScene({
   me,
+  allOpponents,
   opponents,
   selectedTargetId,
   onSelectTarget,
   pickups,
   meChanneling,
+  meChannelRadius = 10,
   channelingOpponentId,
+  channelingOpponentRadius = 10,
   selectedSelf = false,
   localRenderPosRef,
   camYawRef,
@@ -377,9 +425,14 @@ export default function ArenaScene({
   maxHp,
   meScreenBoundsRef,
   oppScreenBoundsRef,
+  entityScreenBoundsRef,
   mode,
   safeZone,
   groundZones,
+  entities,
+  selectedEntityId,
+  onSelectEntity,
+  myUserId,
   groundCastPreview,
   onGroundPointerMove,
   onGroundPointerDown,
@@ -394,6 +447,9 @@ export default function ArenaScene({
   onEnvDebug,
   envToggles,
   dirLightConfig,
+  blindWorldMode = false,
+  selfOnlyMode = false,
+  opponentInstantSnapAtRef,
 }: ArenaSceneProps) {
   const storedUnitScale = getStoredUnitScale(mode);
   const { objects: mapObjects, width: mapWidth, height: mapHeight } = getMapForMode(mode);
@@ -411,9 +467,18 @@ export default function ArenaScene({
   const selectedTarget = selectedTargetId
     ? opponents.find((o) => o.userId === selectedTargetId && !shouldHideByStealthFromEnemyView(o.buffs))
     : null;
+  const selectedEntity = selectedEntityId
+    ? (entities ?? []).find((entity) => entity.id === selectedEntityId) ?? null
+    : null;
   const meSemiTransparent = hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs);
 
-  const targetLinePoints = selectedTarget
+  const targetAnchor = selectedTarget
+    ? selectedTarget.position
+    : selectedEntity
+    ? selectedEntity.position
+    : null;
+
+  const targetLinePoints = targetAnchor
     ? [
         [
           localRenderPosRef.current.x - worldHalfX,
@@ -421,9 +486,9 @@ export default function ArenaScene({
           worldHalfY - localRenderPosRef.current.y,
         ],
         [
-          selectedTarget.position.x - worldHalfX,
-          (selectedTarget.position.z ?? 0) + 1,
-          worldHalfY - selectedTarget.position.y,
+          targetAnchor.x - worldHalfX,
+          (targetAnchor.z ?? 0) + 1,
+          worldHalfY - targetAnchor.y,
         ],
       ] as [number, number, number][]
     : null;
@@ -487,7 +552,12 @@ export default function ArenaScene({
       />
 
       {/* Lighting — mode-specific */}
-      {isCollisionTest ? (
+      {selfOnlyMode ? (
+        <>
+          <ambientLight intensity={1.1} color="#f4f6ff" />
+          <directionalLight position={[300, 500, 100]} intensity={2.6} color="#eef4ff" />
+        </>
+      ) : isCollisionTest ? (
         <>
           <CollisionTestSetup blueprintMode={blueprintMode} t={envToggles ?? DEFAULT_ENV_TOGGLES} />
           <CameraFarSetup far={envToggles?.cameraFar ? 500000 : 2000} />
@@ -507,66 +577,77 @@ export default function ArenaScene({
         </>
       )}
 
-      {/* World */}
-      {isCollisionTest ? (
-        <ExportedMapScene
-          worldWidth={mapWidth}
-          worldHeight={mapHeight}
-          showCollisionShells={showCollisionShells}
-          blueprintMode={blueprintMode}
-          onCollisionSystemReady={onCollisionSystemReady}
-          onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
-          onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
-        />
-      ) : (
+      {!selfOnlyMode && (
         <>
-          <Ground
-            arenaSize={mapWidth}
-            isArena={isArena}
-            mode={mode}
-            safeZone={safeZone}
-            onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
-            onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
-          />
-          <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />
-        </>
-      )}
-      {!blueprintMode && <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
+          {/* World */}
+          {isCollisionTest ? (
+            <ExportedMapScene
+              worldWidth={mapWidth}
+              worldHeight={mapHeight}
+              showCollisionShells={showCollisionShells}
+              blueprintMode={blueprintMode}
+              hideVisuals={blindWorldMode}
+              onCollisionSystemReady={onCollisionSystemReady}
+              onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
+              onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
+            />
+          ) : (
+            <>
+              <Ground
+                arenaSize={mapWidth}
+                isArena={isArena}
+                mode={mode}
+                safeZone={safeZone}
+                hideVisuals={blindWorldMode}
+                onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
+                onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
+              />
+              {!blindWorldMode && <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
+            </>
+          )}
+          {!blueprintMode && <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
 
-      {/* Always-visible target connection line (not blocked by structures). */}
-      {targetLinePoints && (
-        <Line
-          points={targetLinePoints}
-          color={blueprintMode ? (losIsBlocked ? '#ff2222' : '#00ff88') : '#ffd24a'}
-          lineWidth={blueprintMode ? 3 : 2}
-          transparent
-          opacity={0.9}
-          depthTest={false}
-        />
+          {/* Always-visible target connection line (not blocked by structures). */}
+          {targetLinePoints && (
+            <Line
+              points={targetLinePoints}
+              color={blueprintMode ? (losIsBlocked ? '#ff2222' : '#00ff88') : '#ffd24a'}
+              lineWidth={blueprintMode ? 3 : 2}
+              transparent
+              opacity={0.9}
+              depthTest={false}
+            />
+          )}
+        </>
       )}
 
       {/* All game-play visuals hidden in blueprint mode */}
-      {!blueprintMode && <>
+      {!blueprintMode && !selfOnlyMode && <>
       {/* Ground damage zones (e.g. 狂龙乱舞 雷云) */}
       {(groundZones ?? []).map(zone => {
         const isBaizuMarker = zone.abilityId === 'baizu_marker';
-        const isShengTaiji = zone.abilityId === 'qionglong_huasheng_zone';
+        const isShengTaiji = zone.abilityId === 'qionglong_huasheng_zone' || zone.abilityId === 'sheng_tai_ji';
         const isKuanglong = zone.abilityId === 'kuang_long_luan_wu';
         const isZhenShanHe = zone.abilityId === 'zhen_shan_he';
+        const isChongYinYang = zone.abilityId === 'chong_yin_yang';
+        const isLingTaiXu = zone.abilityId === 'ling_tai_xu';
+        const isTunRiYue = zone.abilityId === 'tun_ri_yue';
         const isOwn = zone.ownerUserId === me.userId;
         const color = isBaizuMarker
           ? (isOwn ? '#b06cff' : '#ff3333')
-          : isShengTaiji
-          ? (isOwn ? '#4488ff' : '#ff3333')
-          : isZhenShanHe
-          ? (isOwn ? '#f0c44f' : '#ff8a4b')
           : (isOwn ? '#4488ff' : '#ff3333');
         const baseLabel = isBaizuMarker
           ? '百足'
           : isZhenShanHe
           ? '镇山河'
+          : isChongYinYang
+          ? '冲阴阳'
+          : isLingTaiXu
+          ? '凌太虚'
+          : isTunRiYue
+          ? '吞日月'
           : (zone.abilityName ?? '雷云');
-        const showOwnTimer = isOwn && (isShengTaiji || isKuanglong || isZhenShanHe);
+        const showOwnTimer = isOwn && (isShengTaiji || isKuanglong || isZhenShanHe || isChongYinYang || isLingTaiXu || isTunRiYue);
         const secondsLeft = Math.max(1, Math.ceil((zone.expiresAt - nowMs) / 1000));
         const label = showOwnTimer ? `${baseLabel} · ${secondsLeft}` : baseLabel;
         return (
@@ -581,6 +662,57 @@ export default function ArenaScene({
             label={label}
             worldHalfX={worldHalfX}
             worldHalfY={worldHalfY}
+          />
+        );
+      })}
+
+      {/* HP-bearing targetable entities (e.g. 逐云寒蕊) */}
+      {(entities ?? []).map((entity) => {
+        const isOwn = entity.ownerUserId === myUserId;
+        const isSelected = selectedEntityId === entity.id;
+        const z = getZoneVisualZ(entity.position.x, entity.position.y, entity.position.z ?? 0);
+        const owner = isOwn
+          ? me
+          : (allOpponents ?? opponents).find((opp) => opp.userId === entity.ownerUserId);
+        const ownerName = owner?.username ?? owner?.userId ?? '玩家';
+        const dx = entity.position.x - me.position.x;
+        const dy = entity.position.y - me.position.y;
+        const dz = (entity.position.z ?? 0) - (me.position.z ?? 0);
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) / storedUnitScale;
+        const isDummy = entity.kind === 'test_dummy_ally' || entity.kind === 'test_dummy_enemy';
+        const isWall = entity.kind === 'chu_he_han_jie_wall';
+        const label = isDummy
+          ? (isOwn ? '友方木桩' : '敌方木桩')
+          : isWall
+          ? `${ownerName}的楚河汉界`
+          : `${ownerName}的逐云寒蕊`;
+        return (
+          <TargetEntityVisual
+            key={entity.id}
+            kind={entity.kind}
+            worldX={entity.position.x}
+            worldY={entity.position.y}
+            worldZ={z}
+            radius={entity.radius}
+            hp={entity.hp}
+            maxHp={entity.maxHp}
+            isOwn={isOwn}
+            isSelected={isSelected}
+            username={label}
+            distance={dist}
+            color={isWall ? (isOwn ? '#1a66cc' : '#cc3333') : (isOwn ? '#33aa55' : '#ff3333')}
+            worldHalfX={worldHalfX}
+            worldHalfY={worldHalfY}
+            wallHalfLength={entity.wallHalfLength}
+            wallHalfThickness={entity.wallHalfThickness}
+            wallHeight={entity.wallHeight}
+            wallTangent={entity.wallTangent}
+            spawnedAt={entity.spawnedAt}
+            onClick={() => onSelectEntity?.(entity.id)}
+            onScreenBounds={(bounds) => {
+              if (!entityScreenBoundsRef) return;
+              entityScreenBoundsRef.current[entity.id] = bounds;
+            }}
           />
         );
       })}
@@ -617,7 +749,7 @@ export default function ArenaScene({
           worldX={me.position.x}
           worldY={me.position.y}
           worldZ={(me.position.z ?? 0) + CHANNEL_RING_WAIST_Z}
-          radius={10 * storedUnitScale}
+          radius={meChannelRadius * storedUnitScale}
           color="#ffd700"
           worldHalfX={worldHalfX}
           worldHalfY={worldHalfY}
@@ -641,7 +773,7 @@ export default function ArenaScene({
                 worldX={opp.position.x}
                 worldY={opp.position.y}
                 worldZ={(opp.position.z ?? 0) + CHANNEL_RING_WAIST_Z}
-                radius={10 * storedUnitScale}
+                radius={channelingOpponentRadius * storedUnitScale}
                 color="#ff5500"
                 worldHalfX={worldHalfX}
                 worldHalfY={worldHalfY}
@@ -659,20 +791,25 @@ export default function ArenaScene({
               isMe={false}
               isSelected={selectedTargetId === opp.userId}
               facing={opp.facing}
-              username="恐怖花萝"
+              username={opp.username ?? opp.userId}
               distance={dist}
               onSelect={() => onSelectTarget?.(opp.userId)}
               onScreenBounds={i === 0 && oppScreenBoundsRef ? (b) => { oppScreenBoundsRef.current = b; } : undefined}
               worldHalfX={worldHalfX}
               worldHalfY={worldHalfY}
               isStealthed={hasSanliuXiaBuff(opp.buffs)}
+              hideHpBar={hasZhuYunHideBuff(opp.buffs)}
+              hpColorOverride={hasShiFangXuanJiBuff(opp.buffs) ? '#2acb6b' : undefined}
+              instantSnapAtRef={opponentInstantSnapAtRef}
+              instantSnapWindowMs={600}
             />
           </group>
         );
       })}
 
-      {/* Local player — rendered last (on top) */}
-      {(!isCollisionTest || collisionReady) && (
+      </>}  {/* end !blueprintMode */}
+
+      {!blueprintMode && (!isCollisionTest || collisionReady) && (
         <Character
           worldX={me.position.x}
           worldY={me.position.y}
@@ -690,17 +827,17 @@ export default function ArenaScene({
           worldHalfX={worldHalfX}
           worldHalfY={worldHalfY}
           isStealthed={meSemiTransparent}
-          cameraFadeEnabled={isCollisionTest}
+          cameraFadeEnabled={isCollisionTest && !selfOnlyMode}
+          hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
         />
       )}
-      </>}  {/* end !blueprintMode */}
 
-      {isCollisionTest && collisionDebugRef && showCollisionShells && (
+      {!selfOnlyMode && isCollisionTest && collisionDebugRef && showCollisionShells && (
         <CollisionProbeOverlay debugRef={collisionDebugRef} />
       )}
 
       {/* Player's own collision sphere (visible when Shell/Blueprint is on) */}
-      {isCollisionTest && collisionReady && (showCollisionShells || blueprintMode) && (
+      {!selfOnlyMode && isCollisionTest && collisionReady && (showCollisionShells || blueprintMode) && (
         <PlayerCollisionSphere posRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} playerRadius={COLLISION_TEST_VIS_RADIUS} />
       )}
     </>

@@ -379,15 +379,16 @@ export default function InGameClient({
         pickups={state?.pickups ?? []}
         safeZone={state?.safeZone}
         groundZones={state?.groundZones}
+        entities={state?.entities}
         opponentPositionBufferRef={opponentPositionBufferRef}
         mode={gameMode ?? 'arena'}
-        onCastAbility={async (abilityInstanceId, targetUserId, groundTarget) => {
+        onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId) => {
           // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
           const cardInstance =
             me.hand.find((c) => c.instanceId === abilityInstanceId) ??
             me.hand.find((c) => ((c as any).abilityId ?? (c as any).id) === abilityInstanceId) ??
             ({ instanceId: abilityInstanceId } as any); // synthetic stub — backend validates
-          const res = await playAbility(cardInstance, targetUserId, groundTarget);
+          const res = await playAbility(cardInstance, targetUserId, groundTarget, entityTargetId);
           if (!res.ok && res.error) {
             console.error("[CastAbility] Error response:", res.error);
             showGameError(res.error);

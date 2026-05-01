@@ -2,12 +2,16 @@
 
 import { GameState } from "../state/types";
 import { ABILITIES } from "../../abilities/abilities";
-import { blocksCardTargeting } from "./guards";
+import { blocksCardTargeting, hasKnockbackImmune } from "./guards";
 import { calculateDistance, worldUnitsToGameplayUnits } from "../state/types";
 import { worldMap } from "../../map/worldMap";
 import type { MapObject } from "../state/types/map";
 import type { ExportedMapCollisionSystem } from "../../map/exportedMapCollision";
 import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT } from "../../map/exportedMap";
+import { isLineBlockedByEnemyChuHeHanJieWall } from "../utils/chuHeHanJieWall";
+import { getEffectiveAbilityRange } from "../utils/abilityRange";
+
+const SHU_SE_BUFF_ID = 2646;
 
 /* =========================================================
    INTERNAL HELPERS
@@ -137,6 +141,7 @@ export function validateCastAbility(
   options?: {
     pendingJump?: boolean;
     targetUserId?: string;
+    entityTargetId?: string;
     groundTarget?: { x: number; y: number; z?: number };
     /** Map objects to use for LOS checks. Defaults to worldMap.objects if omitted. */
     mapObjects?: MapObject[];
@@ -201,6 +206,22 @@ export function validateCastAbility(
     ability.target === "OPPONENT" &&
     (ability as any).allowGroundCastWithoutTarget === true &&
     hasGroundTarget;
+  const selfTargetRequested =
+    ability.target === "OPPONENT" &&
+    options?.targetUserId === player.userId &&
+    (ability as any).canTargetSelf === true;
+
+  if (ability.id === "feng_liu_yun_san" && !hasGroundTarget) {
+    throw new Error("ERR_TARGET_UNAVAILABLE");
+  }
+
+  if (
+    ability.target === "OPPONENT" &&
+    options?.targetUserId === player.userId &&
+    !selfTargetRequested
+  ) {
+    throw new Error("ERR_TARGET_UNAVAILABLE");
+  }
 
   let targetIndex = ability.target === "SELF" ? playerIndex : (playerIndex === 0 ? 1 : 0);
   if (ability.target === "OPPONENT" && options?.targetUserId) {
@@ -208,6 +229,13 @@ export function validateCastAbility(
     if (explicitTarget >= 0) targetIndex = explicitTarget;
   }
   const targetPlayer = state.players[targetIndex];
+  const explicitEntity = ability.target === "OPPONENT" && options?.entityTargetId
+    ? (state.entities ?? []).find((entity: any) => entity.id === options.entityTargetId) ?? null
+    : null;
+  if (ability.target === "OPPONENT" && options?.entityTargetId && !explicitEntity) {
+    throw new Error("ERR_TARGET_UNAVAILABLE");
+  }
+  const targetPosition = explicitEntity?.position ?? targetPlayer.position;
 
   /* ================= COOLDOWN ================= */
   if (hasChargeSystem(ability)) {
@@ -240,7 +268,13 @@ export function validateCastAbility(
   }
 
   if (hasEffect(player, "DISPLACEMENT")) {
-    throw new Error("ERR_DISPLACEMENT");
+    const allowsDisplacement =
+      (ability as any).allowWhileDisplaced === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e: any) => e.allowWhileDisplaced === true));
+    if (!allowsDisplacement) {
+      throw new Error("ERR_DISPLACEMENT");
+    }
   }
 
   /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
@@ -251,6 +285,17 @@ export function validateCastAbility(
         ability.effects.some((e: any) => e.allowWhileKnockedBack === true));
     if (!allowsKnockback) {
       throw new Error("ERR_KNOCKED_BACK");
+    }
+  }
+
+  /* ================= PULLED (Level 2 — not removable) ================= */
+  if (hasEffect(player, "PULLED")) {
+    const allowsPulled =
+      (ability as any).allowWhilePulled === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e: any) => e.allowWhilePulled === true));
+    if (!allowsPulled) {
+      throw new Error("ERR_PULLED");
     }
   }
 
@@ -275,6 +320,62 @@ export function validateCastAbility(
   if (typeof (ability as any).minSelfHpExclusive === "number") {
     if (player.hp <= (ability as any).minSelfHpExclusive) {
       throw new Error("ERR_HP_TOO_LOW");
+    }
+  }
+
+  /* ================= 拿云式: target HP must be < 30 ================= */
+  if (ability.id === "na_yun_shi") {
+    const enemy = state.players[targetIndex];
+    if (!enemy || enemy.userId === player.userId || (enemy.hp ?? 0) >= 30) {
+      throw new Error("ERR_TARGET_HP_TOO_HIGH");
+    }
+  }
+
+  /* ================= 梯云纵 / 扶摇直上 mutual exclusion ================= */
+  if (ability.id === "ti_yun_zong") {
+    const now = Date.now();
+    const hasTanTiao = (player.buffs ?? []).some(
+      (b: any) => b.buffId === 9001 && b.expiresAt > now,
+    );
+    if (hasTanTiao) {
+      throw new Error("ERR_BLOCKED_BY_BUFF");
+    }
+  }
+  if (ability.id === "fuyao_zhishang") {
+    const now = Date.now();
+    const hasTiYunZong = (player.buffs ?? []).some(
+      (b: any) => b.buffId === 9003 && b.expiresAt > now,
+    );
+    if (hasTiYunZong) {
+      throw new Error("ERR_BLOCKED_BY_BUFF");
+    }
+  }
+  if (ability.id === "hong_meng_tian_jin") {
+    const now = Date.now();
+    const hasShuSe = (targetPlayer?.buffs ?? []).some(
+      (b: any) => b.buffId === SHU_SE_BUFF_ID && b.expiresAt > now,
+    );
+    if (hasShuSe) {
+      throw new Error("ERR_BLOCKED_BY_BUFF");
+    }
+  }
+  if (ability.id === "dou_zhuan_xing_yi") {
+    if (explicitEntity) {
+      throw new Error("ERR_TARGET_UNAVAILABLE");
+    }
+    if (!targetPlayer || targetPlayer.userId === player.userId || (targetPlayer.hp ?? 0) <= 0) {
+      throw new Error("ERR_TARGET_UNAVAILABLE");
+    }
+    if (hasKnockbackImmune(targetPlayer as any)) {
+      throw new Error("ERR_BLOCKED_BY_BUFF");
+    }
+  }
+  if (ability.id === "qin_yin_gong_ming") {
+    if (explicitEntity) {
+      throw new Error("ERR_TARGET_UNAVAILABLE");
+    }
+    if (!targetPlayer || targetPlayer.userId === player.userId || (targetPlayer.hp ?? 0) <= 0) {
+      throw new Error("ERR_TARGET_UNAVAILABLE");
     }
   }
 
@@ -309,7 +410,8 @@ export function validateCastAbility(
   }
 
   /* ================= RANGE CHECK ================= */
-  if (ability.range !== undefined) {
+  const effectiveRange = getEffectiveAbilityRange(ability as any, player.buffs);
+  if (effectiveRange !== undefined) {
     const storedUnitScale = state.unitScale;
     const distance = allowGroundCastWithoutTarget
       ? worldUnitsToGameplayUnits(Math.hypot(
@@ -318,11 +420,11 @@ export function validateCastAbility(
         ), storedUnitScale)
       : calculateDistance(
           state.players[playerIndex].position,
-          targetPlayer.position,
+          targetPosition,
           storedUnitScale,
         );
 
-    if (distance > ability.range) {
+    if (distance > effectiveRange) {
       throw new Error("ERR_OUT_OF_RANGE");
     }
 
@@ -332,41 +434,69 @@ export function validateCastAbility(
   }
 
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
-  if (ability.target === "OPPONENT" && !allowGroundCastWithoutTarget) {
-    const enemy = targetPlayer;
-
-    if (blocksCardTargeting(enemy)) {
-      throw new Error("ERR_TARGET_UNAVAILABLE");
+  if (ability.target === "OPPONENT" && !allowGroundCastWithoutTarget && !selfTargetRequested) {
+    if (explicitEntity) {
+      if (explicitEntity.hp <= 0 || explicitEntity.ownerUserId === player.userId) {
+        throw new Error("ERR_TARGET_UNAVAILABLE");
+      }
+    } else {
+      const enemy = targetPlayer;
+      if (blocksCardTargeting(enemy)) {
+        throw new Error("ERR_TARGET_UNAVAILABLE");
+      }
     }
 
     /* ================= FACE DIRECTION (180°) ================= */
     if (requiresFacing(ability as any)) {
-      if (!isInFacingHemisphere(player, enemy)) {
+      if (!isInFacingHemisphere(player, { position: targetPosition })) {
         throw new Error("ERR_NOT_FACING_TARGET");
       }
     }
 
     /* ================= LINE OF SIGHT (structure blocking) ================= */
+  }
+
+  if (ability.target === "OPPONENT" && !selfTargetRequested) {
+    const losTargetPosition = allowGroundCastWithoutTarget
+      ? {
+          x: options?.groundTarget?.x ?? targetPosition.x,
+          y: options?.groundTarget?.y ?? targetPosition.y,
+          z: options?.groundTarget?.z ?? targetPosition.z,
+        }
+      : targetPosition;
+
     const losBlocked = (() => {
       const pz = (player.position as any).z ?? 0;
-      const ez = (enemy.position as any).z ?? 0;
-      if (options?.collisionSystem) {
-        return options.collisionSystem.checkLOS(
+      const ez = (losTargetPosition as any).z ?? 0;
+      const blockedByMap = options?.collisionSystem
+        ? options.collisionSystem.checkLOS(
           player.position.x, player.position.y, pz,
-          enemy.position.x, enemy.position.y, ez,
+          losTargetPosition.x, losTargetPosition.y, ez,
           EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT,
-        );
-      }
-      const mapObjects = options?.mapObjects ?? worldMap.objects;
-      const minLOSBlockH = options?.minLOSBlockH ?? 0;
-      return !!isLOSBlocked(
-        player.position.x, player.position.y,
-        enemy.position.x, enemy.position.y,
-        mapObjects, minLOSBlockH, pz, ez,
-      );
+        )
+        : !!isLOSBlocked(
+            player.position.x,
+            player.position.y,
+            losTargetPosition.x,
+            losTargetPosition.y,
+            options?.mapObjects ?? worldMap.objects,
+            options?.minLOSBlockH ?? 0,
+            pz,
+            ez,
+          );
+      if (blockedByMap) return true;
+      return isLineBlockedByEnemyChuHeHanJieWall({
+        state,
+        actorUserId: player.userId,
+        from: player.position,
+        to: losTargetPosition,
+        casterZ: pz,
+        targetZ: ez,
+        ignoreEntityId: explicitEntity?.id,
+      });
     })();
     if (losBlocked) {
-      console.log(`[LOS] blocked (casterZ=${((player.position as any).z ?? 0).toFixed(2)} targetZ=${((enemy.position as any).z ?? 0).toFixed(2)})`);
+      console.log(`[LOS] blocked (casterZ=${((player.position as any).z ?? 0).toFixed(2)} targetZ=${((losTargetPosition as any).z ?? 0).toFixed(2)})`);
       throw new Error("ERR_NO_LINE_OF_SIGHT");
     }
   }
@@ -432,7 +562,13 @@ export function validatePlayAbility(
   }
 
   if (hasEffect(player, "DISPLACEMENT")) {
-    throw new Error("ERR_DISPLACEMENT");
+    const allowsDisplacement =
+      (ability as any).allowWhileDisplaced === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e) => (e as any).allowWhileDisplaced === true));
+    if (!allowsDisplacement) {
+      throw new Error("ERR_DISPLACEMENT");
+    }
   }
 
   /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
@@ -444,6 +580,18 @@ export function validatePlayAbility(
         ability.effects.some((e) => (e as any).allowWhileKnockedBack === true));
     if (!allowsKnockback) {
       throw new Error("ERR_KNOCKED_BACK");
+    }
+  }
+
+  /* ================= PULLED (Level 2 — not removable) ================= */
+
+  if (hasEffect(player, "PULLED")) {
+    const allowsPulled =
+      (ability as any).allowWhilePulled === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e) => (e as any).allowWhilePulled === true));
+    if (!allowsPulled) {
+      throw new Error("ERR_PULLED");
     }
   }
 

@@ -35,7 +35,8 @@ export interface ActiveChannel {
   abilityId: string;
   abilityName: string;
   instanceId: string;
-  targetUserId: string;
+  targetUserId?: string;
+  entityTargetId?: string;
   /** Date.now() ms when channel started */
   startedAt: number;
   /** Total channel duration in ms */
@@ -50,6 +51,8 @@ export interface ActiveChannel {
   effects: AbilityEffect[];
   /** Cooldown ticks to set on the ability instance after completion */
   cooldownTicks: number;
+  /** Buffs applied at channel start that should be removed when the channel ends or is canceled. */
+  startedBuffIds?: number[];
 }
 
 export interface PlayerState {
@@ -99,6 +102,12 @@ export interface PlayerState {
    * Cleared on landing.
    */
   isPowerJumpCombined?: boolean;
+  /**
+   * 梯云纵 jump penalty: when 梯云纵 buff is active, the FIRST jump of an
+   * airborne sequence consumes 2 jumps instead of 1 (preventing 梯云纵 + 二段跳).
+   * Reset to false on landing; remains true after a dash that resets jumpCount.
+   */
+  tiYunZongPenaltyConsumed?: boolean;
 
   /**
     * Remaining travel budget for the current jump phase (world units).
@@ -168,6 +177,7 @@ export interface PlayerState {
     maxUpVz:   number;    // per-tick upward vz cap (positive)
     maxDownVz: number;    // per-tick downward vz cap (negative)
     hitTargetUserId?: string;
+    hitTargetEntityId?: string;
     hitDamageOnComplete?: number;
     hitEffectTypeOnComplete?: string;
     ticksRemaining: number;
@@ -198,6 +208,84 @@ export interface GroundZone {
   abilityId?: string;
   abilityName?: string;
   maxTargets?: number;
+
+  // ── HP-bearing zones (e.g. 疾电叱羽) ──
+  hp?: number;
+  maxHp?: number;
+  /** Buff id granted to allies inside the zone (e.g. 疾电叱羽 redirect buff). */
+  allyBuffId?: number;
+
+  // ── Follow-target zones (振翅图南, 飞刃回转) ──
+  /** When set, zone re-centers each tick toward this player at followSpeedPerTick. */
+  followTargetUserId?: string;
+  /** World units per tick (30Hz tick). */
+  followSpeedPerTick?: number;
+
+  // ── Growing zones (天绝地灭) ──
+  /** Initial radius (world units). When set, radius interpolates to growEndRadius over growDurationMs. */
+  growStartRadius?: number;
+  growEndRadius?: number;
+  growStartedAt?: number;
+  growDurationMs?: number;
+
+  // ── Explode-on-expire (天绝地灭) ──
+  /** When zone expires naturally, pull all enemies inside toward center then deal explodeDamage. */
+  explodeOnExpire?: boolean;
+  explodeDamage?: number;
+  /** Pull speed in world units per tick during the pull phase. */
+  pullSpeedPerTick?: number;
+  /** Tick count during the pull phase, after which the explosion damage is applied. */
+  pullTicksRemaining?: number;
+}
+
+/**
+ * A targetable, HP-bearing entity placed by an ability.
+ * Unlike GroundZone (procedural area), TargetEntity can be selected and
+ * attacked by enemies. First example: 逐云寒蕊 (zhu_yun_han_rui).
+ */
+export interface TargetEntity {
+  id: string;
+  /** Synthetic combat id so entities can reuse shared buff/combat helpers. */
+  userId: PlayerID;
+  /** Entity kind discriminator (e.g. "zhu_yun_han_rui"). */
+  kind: string;
+  /** Player who created it; usually allies of this user benefit, enemies attack it. */
+  ownerUserId: string;
+  /** World-unit position. */
+  position: Position;
+  /** Effect/zone radius in world units (also serves as click hit-area). */
+  radius: number;
+  /** Current hit points. Reaches 0 → entity is destroyed. */
+  hp: number;
+  maxHp: number;
+  shield?: number;
+  /** Runtime buffs/debuffs currently affecting the entity. */
+  buffs: ActiveBuff[];
+  /** Wall-clock ms when the entity was created. */
+  spawnedAt?: number;
+  /** Wall-clock ms timestamp at which entity expires naturally. */
+  expiresAt: number;
+  /** Source ability metadata (for display + buff cleanup). */
+  abilityId?: string;
+  abilityName?: string;
+  /** Optional oriented-wall geometry (used by 楚河汉界). All values are world units. */
+  wallHalfLength?: number;
+  wallHalfThickness?: number;
+  wallHeight?: number;
+  wallTangent?: { x: number; y: number };
+  wallNormal?: { x: number; y: number };
+  /** Per-tick runtime: when each player entered the zone (ms timestamp; 0 = not in zone). */
+  enteredAtByUser?: Record<string, number>;
+  /** Per-tick runtime: earliest ms timestamp the player can be re-stealthed after attack-break. */
+  rearmAtByUser?: Record<string, number>;
+  /** Active forced movement (e.g. pull, knockback). Tick-based; cleared on completion. */
+  activeDash?: {
+    abilityId?: string;
+    vxPerTick: number;
+    vyPerTick: number;
+    forceVzPerTick?: number;
+    ticksRemaining: number;
+  };
 }
 
 export interface GameState {
@@ -229,6 +317,9 @@ export interface GameState {
 
   /** persistent ground damage zones (e.g. 狂龙乱舞) */
   groundZones?: GroundZone[];
+
+  /** HP-bearing targetable entities placed by abilities (e.g. 逐云寒蕊). */
+  entities?: TargetEntity[];
 
   /** legacy deck support (unused in arena mode) */
   deck?: AbilityInstance[];

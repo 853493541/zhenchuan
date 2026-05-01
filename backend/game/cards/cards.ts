@@ -143,6 +143,19 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     ],
   },
 
+  qin_yin_gong_ming: {
+    id: "qin_yin_gong_ming",
+    name: "琴音共鸣",
+    description: "瞬发，偷取目标身上最多2个可偷取增益气劲，持续时间与原气劲剩余时间相同",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "QIN_YIN_GONG_MING", count: 2 } as any],
+    buffs: [],
+  },
+
   baizu: {
     id: "baizu",
     name: "百足",
@@ -360,7 +373,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         category: "BUFF",
         durationMs: 5_000, // 5 seconds
         description: "被命中几率降低70%",
-        effects: [{ type: "DODGE_NEXT", chance: 0.7 }],
+        effects: [{ type: "DODGE", chance: 0.7 }],
       },
       {
         buffId: 1031,
@@ -728,7 +741,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         durationMs: 5_000, // 5 seconds
         description: "被命中几率降低65%，免疫控制，沉默",
         effects: [
-          { type: "DODGE_NEXT", chance: 0.65 },
+          { type: "DODGE", chance: 0.65 },
           { type: "CONTROL_IMMUNE" },
           { type: "DASH_TURN_OVERRIDE" },
           { type: "SILENCE" },
@@ -770,6 +783,69 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     range: 20,
     effects: [
       { type: "DASH", value: 8 },
+    ],
+  },
+
+  // ─── 孤影化双 ─────────────────────────────────────────────────────────────
+  gu_ying_hua_shuang: {
+    id: "gu_ying_hua_shuang",
+    name: "孤影化双",
+    description: "瞬发，解除控制\n记录当前气血和所有技能冷却\n7秒后恢复为记录时的气血和冷却",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "CLEANSE", allowWhileControlled: true },
+      { type: "GU_YING_HUA_SHUANG", allowWhileControlled: true },
+    ],
+    buffs: [
+      {
+        buffId: 2714,
+        name: "孤影化双",
+        category: "BUFF",
+        durationMs: 7_000,
+        description: "7秒后恢复记录时的气血和技能冷却",
+        effects: [],
+      },
+    ],
+  },
+
+  // ─── 逐云寒蕊 ─────────────────────────────────────────────────────────────
+  zhu_yun_han_rui: {
+    id: "zhu_yun_han_rui",
+    name: "逐云寒蕊",
+    description:
+      "瞬发，解除控制，可空中施放与控制中施放\n在自身下方放置【逐云寒蕊】(气血200，半径10码，持续12秒)\n友方进入区域1秒后获得【隐藏】，离开或攻击时破隐\n自身获得3秒免控（所有控制等级）",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "CLEANSE", allowWhileControlled: true, cleanseRootSlow: true },
+      { type: "PLACE_ZHU_YUN_HAN_RUI", allowWhileControlled: true },
+    ],
+    buffs: [
+      {
+        buffId: 2715,
+        name: "逐云寒蕊·清越",
+        category: "BUFF",
+        durationMs: 3_000,
+        description: "免疫所有等级的控制",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKBACK_IMMUNE" },
+        ],
+      },
+      {
+        buffId: 2716,
+        name: "逐云寒蕊·隐藏",
+        category: "BUFF",
+        durationMs: 500,
+        breakOnPlay: true,
+        description: "无法被敌方技能选中",
+        effects: [{ type: "UNTARGETABLE" }],
+      },
     ],
   },
 };

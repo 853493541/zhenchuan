@@ -80,7 +80,8 @@ export interface ActiveChannel {
   abilityId: string;
   abilityName: string;
   instanceId: string;
-  targetUserId: string;
+  targetUserId?: string;
+  entityTargetId?: string;
   startedAt: number;
   durationMs: number;
   cancelOnMove?: boolean;
@@ -107,6 +108,7 @@ export interface PlayerState {
   velocity?: { vx: number; vy: number; vz?: number };
   moveSpeed?: number;
   jumpCount?: number;
+  tiYunZongPenaltyConsumed?: boolean;
   facing?: { x: number; y: number };
   activeChannel?: ActiveChannel;
 }
@@ -130,11 +132,14 @@ export interface GameEvent {
   type: GameEventType;
   actorUserId: string;
   targetUserId?: string;
+  entityId?: string;
+  entityName?: string;
 
   abilityId?: string;
   abilityName?: string;
 
   value?: number;
+  shieldAbsorbed?: number;
 
   buffId?: number;
   buffName?: string;
@@ -178,6 +183,28 @@ export interface GroundZone {
   maxTargets?: number;
 }
 
+export interface TargetEntity {
+  id: string;
+  userId: string;
+  kind: string;
+  ownerUserId: string;
+  position: { x: number; y: number; z?: number };
+  radius: number;
+  hp: number;
+  maxHp: number;
+  shield?: number;
+  buffs: ActiveBuff[];
+  spawnedAt?: number;
+  expiresAt: number;
+  abilityId?: string;
+  abilityName?: string;
+  wallHalfLength?: number;
+  wallHalfThickness?: number;
+  wallHeight?: number;
+  wallTangent?: { x: number; y: number };
+  wallNormal?: { x: number; y: number };
+}
+
 export interface GameState {
   turn: number;
   activePlayerIndex: number;
@@ -191,6 +218,7 @@ export interface GameState {
   pickups?: PickupItem[];
   safeZone?: SafeZone;
   groundZones?: GroundZone[];
+  entities?: TargetEntity[];
 }
 
 /* =========================================================

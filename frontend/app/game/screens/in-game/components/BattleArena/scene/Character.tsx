@@ -67,7 +67,12 @@ interface CharacterProps {
   worldHalfY: number;
   /** Visual-only stealth state: model becomes semi-transparent (HP UI unchanged). */
   isStealthed?: boolean;
+  /** Hide the HP/name billboard for enemy-view special cases. */
+  hideHpBar?: boolean;
   cameraFadeEnabled?: boolean;
+  hpColorOverride?: string;
+  instantSnapAtRef?: MutableRefObject<number>;
+  instantSnapWindowMs?: number;
 }
 
 export default function Character({
@@ -91,7 +96,11 @@ export default function Character({
   worldHalfX,
   worldHalfY,
   isStealthed = false,
+  hideHpBar = false,
   cameraFadeEnabled = false,
+  hpColorOverride,
+  instantSnapAtRef,
+  instantSnapWindowMs = 0,
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -105,8 +114,8 @@ export default function Character({
   const arcDisplayYawRef = useRef(0);
   const { camera, size } = useThree();
 
-  // Show HP bar: always for self, within 60 units for others
-  const showHpBar = isMe || (distance !== undefined && distance <= 60);
+  // Show HP bar: always for self, within 60 units for others, unless hidden by a special state.
+  const showHpBar = !hideHpBar && (isMe || (distance !== undefined && distance <= 60));
 
   const handleSelect = (e: any) => {
     if (!onSelect) return;
@@ -118,11 +127,13 @@ export default function Character({
   const hpShieldSegments = computeHpShieldSegments(hp, shield, maxHp);
   const hpPct = hpShieldSegments.hpPct;
   const shieldPct = hpShieldSegments.shieldPct;
-  const hpColor = isMe
-    ? '#3399ff'
-    : isSelected
-    ? '#ff8888'
-    : (healthPct > 0.5 ? '#dd2222' : healthPct > 0.25 ? '#cc1111' : '#991111');
+  const hpColor = hpColorOverride ?? (
+    isMe
+      ? '#3399ff'
+      : isSelected
+      ? '#ff8888'
+      : (healthPct > 0.5 ? '#dd2222' : healthPct > 0.25 ? '#cc1111' : '#991111')
+  );
 
   const threeX = worldX - worldHalfX;
   const threeY = worldZ;
@@ -145,7 +156,15 @@ export default function Character({
       const tx = worldX - worldHalfX;
       const ty = worldZ;
       const tz = worldHalfY - worldY;
-      currentPos.current.lerp(new THREE.Vector3(tx, ty, tz), 0.18);
+      const shouldInstantSnap =
+        !!instantSnapAtRef &&
+        instantSnapWindowMs > 0 &&
+        performance.now() - instantSnapAtRef.current < instantSnapWindowMs;
+      if (shouldInstantSnap) {
+        currentPos.current.set(tx, ty, tz);
+      } else {
+        currentPos.current.lerp(new THREE.Vector3(tx, ty, tz), 0.18);
+      }
       groupRef.current.position.copy(currentPos.current);
     }
 
@@ -340,7 +359,7 @@ export default function Character({
             <Text
               position={[0, 0.32, 0]}
               fontSize={0.28}
-              color={isSelected ? '#ff99bb' : '#ff3333'}
+              color={hpColorOverride ?? (isSelected ? '#ff99bb' : '#ff3333')}
               anchorX="center"
               anchorY="middle"
               outlineWidth={0.025}

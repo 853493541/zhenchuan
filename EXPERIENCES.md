@@ -3,6 +3,610 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Auto-derived editor lists should treat default metadata and manual decisions as separate buckets (2026-05-01)
+
+**Problem**: 琴音共鸣 should automatically include every non-hidden 属性气劲 each time the tab is opened, so newly added attribute buffs reappear without manual maintenance. The remaining non-attribute buffs are the only ones that should need a manual decision. The first UI pass incorrectly let the active 可偷取 list write an explicit exclude state, which conflicted with the rule that attribute buffs should always stay in the stealable list.
+
+**Fix**:
+- Kept the default inclusion rule derived live from the buff attribute each time the 琴音共鸣 tab is loaded.
+- Filtered hidden buffs out of the 琴音共鸣 snapshot entirely, so they never appear in the editor and never count as stealable at runtime.
+- Kept a persisted `qinYinGongMingUnstealable` override, but only as a destination for undecided non-attribute buffs that the user marks NO.
+- Split the tab UI into three buckets: `NO`, `未决定`, and `可偷取`. Only the `未决定` list exposes `✓` and `X`; the `可偷取` list is non-destructive.
+- Removed per-row ID text from the lists and split the `可偷取` column into `默认列表` and `特殊列表`, so default 属性气劲 and manually added entries can be reviewed separately.
+
+**Lesson**: When an editor has live auto-included defaults plus manually triaged leftovers, model them as separate buckets and separate views. Default-included items should remain driven by metadata, while only undecided items should branch into explicit YES/NO states.
+
+## Ability-specific buff stealing should reuse addBuff for ownership transfer, then patch runtime timing from the stolen instance (2026-05-01)
+
+**Problem**: 琴音共鸣 needed to steal up to 2 target BUFFs, preserve the exact remaining duration the victim still had, and remain editable from the buff editor. Raw `ActiveBuff` cloning would bypass immunity checks, DR hooks, linked-shield cleanup, `BUFF_APPLIED` events, and status-bar integration; reapplying only the preload template would lose the runtime timer/state the player actually saw.
+
+**Fix**:
+- Built the stealable list from the existing buff-editor override system: BUFF-only entries, default-selected by the existing buff attribute classification (`阴性` / `阳性` / `毒性` / `外功` / `混元` / `蛊` / `点穴` etc.), plus a manual per-buff opt-in flag exposed in a dedicated 琴音共鸣 editor tab.
+- Implemented `QIN_YIN_GONG_MING` as a custom immediate effect that removes up to 2 eligible target buffs with linked-shield cleanup and `BUFF_EXPIRED` emission, then reapplies them to the caster through `addBuff()`.
+- After `addBuff()` creates the new owner-side runtime buff, copied over the stolen buff's remaining `expiresAt`, periodic timing, stack count, and related runtime fields so the transferred buff keeps the same remaining life instead of resetting.
+- Mirrored the player-only targeting rule in both `validateAction.ts` and `BattleArena.tsx` so 琴音共鸣 cannot be cast on entities.
+
+**Lesson**: When a mechanic transfers an existing buff instance rather than creating a fresh template buff, let `addBuff()` own the authoritative apply path and then sync the runtime fields that represent the live state. Direct array/object copying skips core systems; template-only reapply loses the remaining-time state the player expects to keep.
+
+## Observer-side instant-snap visuals need a server-shared trigger, not only the casting client's local timestamp (2026-05-01)
+
+**Problem**: After fixing the caster-side and local-player snap paths for 斗转星移, the target client could still see the other player fast-walk into place. The target's own model snapped correctly, but the enemy model still lerped.
+
+**Fix**:
+- The opponent snap path in `Character.tsx` was keyed off `lastInstantSwapCastAtRef`, but that ref had only been armed inside the local cast wrapper.
+- Updated BattleArena's event-processing effect to arm the same ref when a shared `PLAY_ABILITY` event arrives for `dou_zhuan_xing_yi`, so both the casting client and the target client enter the same snap window.
+
+**Lesson**: Any visual rule that must happen on both sides of a PvP interaction should key off an authoritative shared signal like a game event or snapshot change, not only local input/cast state on the acting client.
+
+## A local hard-snap branch must update both localPositionRef and localRenderPosRef, or instant swaps still look like movement (2026-05-01)
+
+**Problem**: 斗转星移 still looked like the local player sliding to the swapped position even after the cast-specific snap marker was fixed. The opponent already snapped, but the local player could still fall into the old 1500ms cosmetic dash easing.
+
+**Fix**:
+- In BattleArena reconciliation, the `dx * dx + dy * dy > 25` "hard-snap" branch was running before the 斗转 instant-swap branch, but it only updated `localPositionRef`.
+- Updated that branch to also snap `localRenderPosRef`, clear `localDashAnimRef`, and reset local Z velocity so large authoritative corrections no longer visually animate.
+
+**Lesson**: In this frontend, `localPositionRef` is only prediction state. If a branch is supposed to be a real visual snap, it must also update `localRenderPosRef`; otherwise the render loop can still animate stale-to-new movement even though the logic path says "hard-snap".
+
+## Instant backend swaps can still look like travel if opponent character rendering keeps an unconditional lerp (2026-05-01)
+
+**Problem**: 斗转星移 was already an instant authoritative position swap on the backend and the local player had a snap window, but the swap could still look like a pull because enemy models in `Character.tsx` always lerped toward their new prop position.
+
+**Fix**:
+- Added a short instant-snap window for opponent `Character` instances and passed the existing 斗转 cast timestamp through `ArenaScene` so the swapped target model stops lerping during that window.
+
+**Lesson**: For instant movement skills, do not only patch the local-player reconciler. Any separate opponent/observer render path with unconditional smoothing can reintroduce fake travel even when the authoritative state already snapped.
+
+## If a hover-targeted dash already has a live world point, cast it immediately instead of routing through generic target validation (2026-05-01)
+
+**Problem**: 风流云散 had been converted to hover-ground targeting, but BattleArena still entered generic opponent-target validation first. With a selected target, that left room for stale target checks and unnecessary `ERR_TARGET_UNAVAILABLE` failures instead of simply casting to the current hover point.
+
+**Fix**:
+- Switched 风流云散's cast wrapper to use `mouseWorldPosRef.current` directly when available, applying the normal LOS check and sending `groundTarget` immediately.
+- Kept pending ground-cast mode only as a fallback when no hover world point is available yet.
+- Added a short recent-dash snap window in BattleArena so 风流云散 and other short server dashes do not fall back into the old 1500ms cosmetic dash easing right after `activeDash` drops.
+
+**Lesson**: For hover-driven movement skills, the best frontend path is: use the current hover world point immediately, and only fall back to pending ground selection when there is no live hover point. Otherwise the skill gets entangled with generic target-selection rules that it no longer semantically uses.
+
+## Ground-target-only abilities need both a pending-ground cast on the client and an explicit ground-target requirement on the server (2026-05-01)
+
+**Problem**: 风流云散 was authored as a hover-point dash, but as long as a target was selected the client could still send a normal opponent-target cast, and the backend `GROUND_TARGET_DASH` effect would quietly fall back to the target's position.
+
+**Fix**:
+- Forced 风流云散 into the pending ground-cast flow in BattleArena even when a target is currently selected.
+- Added authoritative validation that rejects 风流云散 when no `groundTarget` is supplied.
+- Kept a defensive backend fallback in `GROUND_TARGET_DASH` so 风流云散 no longer reuses target coordinates even if some caller forgets the hover point.
+
+**Lesson**: If an ability is supposed to always use mouse-hover placement, enforce that at both seams. Client-side pending ground cast prevents accidental wrong payloads, but server-side validation is still needed because generic ground-target effects often have a target-position fallback.
+
+## Repositioning from one distance band to the same distance band should use circle intersections, not perpendicular shortcuts (2026-05-01)
+
+**Problem**: 云散's first side-step implementation worked when the caster needed to move outward to the 17-18尺 band, but it broke when already at that band because the perpendicular-offset math collapsed to zero movement and could select the current position.
+
+**Fix**:
+- Replaced the side-step branch with a circle-intersection solver: destination must be 17-18尺 from the target and 10-12尺 from the current caster position.
+- Tried left/right intersections in priority order and then reused the existing collision, arena-bounds, and target-LOS validation on the resulting candidate.
+
+**Lesson**: When movement has two simultaneous geometric constraints like "end on this ring" and "travel this far," solve the actual geometry. Ad hoc perpendicular offsets are brittle at the boundary cases and can easily degenerate to zero-distance moves.
+
+## BattleArena cast-time ability hooks must key off AbilityInfo.abilityId, not AbilityInfo.id (2026-05-01)
+
+**Problem**: 斗转星移 still felt like a slow movement and 风流云散 still produced `ERR_TARGET_UNAVAILABLE` even after targeted frontend patches, because the controlling cast wrapper never entered those ability-specific branches at all.
+
+**Fix**:
+- In `BattleArena.tsx`, `AbilityInfo.id` is the instance id and `AbilityInfo.abilityId` is the canonical spell id.
+- The cast wrapper had been comparing special cases like 斗转星移 and 风流云散 against `id`, so those checks silently never matched during normal gameplay.
+- Switched the wrapper and pending-ground-cast confirmation path to key off `ability.abilityId ?? ability.id`, and fixed the nearby stray `selectedEntityNow` typo in the same seam.
+
+**Lesson**: In BattleArena ability handling, `id` and `abilityId` are not interchangeable. If an ability-specific client rule never seems to fire, first check whether the code is comparing against the instance id instead of the canonical ability id.
+
+## If a proc dash must stop on walls, let activeDash own the travel and only validate the destination band (2026-05-01)
+
+**Problem**: 云散 originally used a random 1-tick blink-style dash with source-to-destination LOS gating. That was fine for safe teleports, but it could not satisfy the updated rule set of "retreat or sidestep to 17-18尺, move fast like a blink, and still stop if the dash path hits a wall."
+
+**Fix**:
+- Replaced the random-around-target sampling with a deterministic destination selector: retreat straight back to 17-18尺 if too close, otherwise sidestep left or right to another 17-18尺 point.
+- Kept destination stability plus candidate-to-target LOS checks, but removed source-to-destination LOS rejection so the proc can legitimately start a fast activeDash even when a wall may cut it short.
+- Converted the proc movement from a 1-tick blink to a multi-tick activeDash with the requested 20尺/0.2秒 speed so exported-map collision can stop it naturally.
+
+**Lesson**: When a follow-up movement needs both a preferred destination band and real wall interruption, do not over-validate the path up front. Validate the intended landing spot, then let the normal activeDash collision loop own the actual travel.
+
+## Instant swaps and forced pulls should use different client/runtime signals even if they share pull-immunity checks (2026-05-01)
+
+**Problem**: 龙战于野 and 斗转星移 both touch displacement rules, but they broke in opposite ways: 龙战于野 reused a declared debuff on a `SELF` ability and leaked that debuff onto the caster through generic buff application, while 斗转星移 already swapped positions instantly on the backend but still looked like a pull because the local player reconciler smoothed short teleports.
+
+**Fix**:
+- Excluded 龙战于野 from `applyAbilityBuffs` and moved its victim movement onto `applyDashRuntimeBuff()` so forced pull uses the standard displacement runtime state instead of a custom self-leaking debuff.
+- Kept 斗转星移 as an instant authoritative position swap with the same `KNOCKBACK_IMMUNE` cast gate, but added a short local snap window in BattleArena so the caster does not cosmetically lerp through the swap.
+- Added 守缺式 as a custom-effect charge ability because it needs one self-buff declared in `buffs[]` plus a separate manually-applied knockback buff that only exists on the empowered follow-up cast.
+
+**Lesson**: In this repo, `KNOCKBACK_IMMUNE` is the shared cast gate for pull-like mechanics, but the movement presentation still needs to match the mechanic. Forced pulls should use Dash Runtime / displacement state; instant swaps should not, and the frontend must be told to snap instead of smoothing them.
+
+## Pull-immunity cast gates should key off the exact pull-immunity effect, not generic control immunity (2026-05-01)
+
+**Problem**: 斗转星移 needed to gray out and fail cast only when the target is actually immune to pull-like displacement. Some buffs bundle that with broader immunity, but some `CONTROL_IMMUNE` states do not protect against pull at all.
+
+**Fix**:
+- Implemented 斗转星移 as a player-only target swap with authoritative validation against `hasKnockbackImmune(target)`.
+- Mirrored the same rule in BattleArena with a small `hasPullImmuneClient()` helper that reads `KNOCKBACK_IMMUNE` directly from the target's live buff effects before enabling the skill.
+- Implemented 龙战于野 / 潜龙勿用 with a shared forward-cone targeting rule (`dot >= cos(angle / 2)`) so cone-only behavior lives in one local runtime seam instead of being recomputed differently per skill.
+
+**Lesson**: When a cast ban is about one specific displacement immunity, key it off that exact runtime effect on both server and client. Do not infer it from broad `CONTROL_IMMUNE`, because this codebase intentionally separates pull/knockback immunity from ordinary control immunity.
+
+## Blink-like follow-up movement is safest here as a prevalidated 1-tick dash, not a raw teleport (2026-05-01)
+
+**Problem**: 风流云散 needed a blink-like follow-up after 截阳 / 引窍, but a direct position teleport risked owner-side interpolation artifacts and unsafe destinations inside blocked exported-map geometry.
+
+**Fix**:
+- Added a shared `triggerYunSanBlink()` helper that samples random points within 20u of the target, rejects any point that resolves out of collision, rejects any caster→candidate or candidate→target line blocked by the exported collision shell or 楚河汉界, then applies a 1-tick authoritative dash and consumes one 云散 stack.
+- Hooked that helper from `jieyang` immediate cast and from `yin_qiao` channel completion so both triggers use the same movement rule.
+- Let 引窍 keep its base 2 damage on the normal channel-completion path, then separately consume 绝脉 for extra damage only when the completion hit actually lands.
+
+**Lesson**: In this repo, a 1-tick server-authoritative dash is a better "blink" primitive than mutating position directly. The local player already hard-snaps during `activeDash`, while destination sampling can still enforce LOS and collision safety before movement begins.
+
+## 盾立 reflect whitelist plumbed through ability override system (2026-04-30)
+
+**Problem**: Some abilities should be blocked by 盾立's damage immunity but should NOT be reflected (e.g. 毒手's 1 damage is irrelevant; the player wants the 毒手 buff to land on the shielded defender, not bounce back).
+
+**Fix**:
+- Added `dunLiWhitelisted?: boolean` to `AbilityEditorOverrideEntry` so it persists in `ability-property-overrides.json` exactly like `isProjectile`.
+- `buildResolvedAbilities` copies the flag onto the runtime ability object as `(ability as any).dunLiWhitelisted`.
+- `PlayAbility.shouldReflectToCaster` ANDs `&& !(ability as any).dunLiWhitelisted` — gate trips before recursive reflect, but DAMAGE_IMMUNE in `handleDamage` is untouched.
+- New `setAbilityDunLiWhitelisted` mirror of `setAbilityIsProjectile`, exposed via `PUT /ability-editor/:abilityId/dun-li-whitelist`.
+- Frontend: `DunLiWhitelistTab.tsx` clones `ProjectileEditorTab.tsx` (two-column undecided/whitelist lists). Tab registered in `page.tsx` as `mainTab === "dunLiWhitelist"`.
+
+**Lesson**: When a runtime gate needs a per-ability boolean editable from the UI, the cheapest path is to mirror the existing `isProjectile` plumbing — same override file, same buildResolvedAbilities seam, same route shape, same tab template — instead of inventing a parallel persistence layer.
+
+## Whole-cast reflection belongs in PlayAbility, not inside damage math, and it should only trigger on direct player-targeted casts (2026-04-30)
+
+**Problem**: 盾立 needs to turn "A casts ability on B" into "B casts that same ability on A" so source-side damage buffs, target-side damage reduction, and normal buff application all recalculate from the reflected caster/target pair.
+
+**Root causes**:
+- Reflecting only the damage number is too shallow; it would keep A's offensive modifiers and would not correctly flip ability-applied buffs.
+- Hooking reflection too late also misses custom immediate-effect handlers that do manual damage or buff work.
+- Untargeted ground-cast abilities can still flow through `targetIndex`, so a reflect gate based only on the default target player is too broad.
+
+**Fix**:
+- Added a dedicated 盾立 reflect marker buff effect and intercepted casts in `PlayAbility` before dodge / immediate effects / ability buffs.
+- When the defender has 盾立, explicit player-targeted enemy casts are re-run with swapped source and target, while damage/buff math naturally uses the reflected caster's buffs and the reflected target's mitigation.
+- Limited the reflect gate to direct player-targeted casts so untargeted ground casts do not reflect just because the other player is the fallback target index.
+
+**Key lesson**: If a mechanic says "the defender becomes the caster," implement it at the whole-ability execution boundary. That keeps custom handlers, damage math, buffs, and mitigation aligned without duplicating combat logic.
+
+## If the effect should feel like another dimension, ease the overlay and tint it to the ability fantasy instead of snapping to flat black (2026-04-30)
+
+**Problem**: The Hong Meng overlay finally had the correct layer order, but it still felt too harsh because it snapped in and out instantly and used a flat black fill.
+
+**Root causes**:
+- Opacity and visibility were toggled without transitions, so the effect read as a hard screen cut.
+- A pure black overlay matched the old blindness implementation more than the new "other dimension" fantasy suggested by the ability icon.
+
+**Fix**:
+- Added eased opacity transitions to both the blackout layer and the self-only layer.
+- Replaced flat black with a dark-purple gradient tint so the screen reads as dimensional rather than simply disabled.
+
+**Key lesson**: Once the layering is correct, presentation matters. If an effect is supposed to feel mystical or dimensional, use the ability's color language and animate opacity instead of hard-cutting to black.
+
+## In React render scope, do not derive from a state variable before that state is declared (2026-04-30)
+
+**Problem**: BattleArena crashed on load with `ReferenceError: Cannot access '<minified name>' before initialization` immediately after the Hong Meng overlay changes.
+
+**Root causes**:
+- A derived constant for the overlay visibility was declared before the `blueprintMode` state that it referenced.
+- `const` bindings in component render scope still obey temporal dead zone rules, so the entire render crashed before WebSocket or Three.js could stabilize.
+
+**Fix**:
+- Moved the derived `hongMengOverlayActive` flag below the `blueprintMode` state declaration.
+
+**Key lesson**: In large React components, treat render-scope derived flags like ordinary `const` variables. If they read from a state variable or later `const`, they must be declared after that dependency or the runtime will hard-crash in production.
+
+## For blackout effects, keep the blackout and self-only layers mounted so activation does not flash or hide self (2026-04-30)
+
+**Problem**: The initial solid-black plus self-only overlay still behaved poorly on activation: the blackout could appear before the self layer was ready, and the self-only layer could inherit local camera fade behavior.
+
+**Root causes**:
+- Conditionally mounting the blackout/self overlay layers on buff activation introduces timing artifacts because the blackout becomes visible before the second canvas has rendered the avatar.
+- Reusing the local character renderer without disabling camera fade lets the self-only layer fade the avatar out, which defeats the point of keeping self visible above blackout.
+
+**Fix**:
+- Kept both Hong Meng overlay layers mounted at all times and toggled them with visibility/opacity instead of mounting them on demand.
+- Forced the self-only overlay canvas to clear with alpha 0 and disabled camera-fade behavior for the self-only render path.
+
+**Key lesson**: For "black screen but still see self," treat blackout and self-render as persistent layers. Do not mount them lazily at effect start, and do not let the self-only layer reuse fade rules meant for the normal camera-clipping case.
+
+## A blackout hole reads like a spotlight; if only self should remain, render self above a solid blackout instead (2026-04-30)
+
+**Problem**: A tracked transparent hole around the player technically preserved self during 鸿蒙天禁, but visually it looked like a spotlight cutout in the middle of the screen, which was not the intended effect.
+
+**Root causes**:
+- A hole in the blackout exposes everything inside that region, including leftover ground color and surrounding scene context, so the effect reads as "looking through a tunnel" instead of "the screen is black except self."
+- The requirement was not to reveal an area around the player; it was to keep only the player visible.
+
+**Fix**:
+- Removed the tracked hole from the blackout overlay.
+- Kept the blackout fully opaque and added a separate transparent overlay canvas that renders only the local character above the blackout and below HUD/UI.
+
+**Key lesson**: If the effect should keep only the avatar visible, do not punch a hole through the blackout. Use a solid blackout and re-render the avatar in a higher visual layer.
+
+## If off-map space is still visible, scene hiding is not enough; add a viewport blackout layer (2026-04-30)
+
+**Problem**: Hiding terrain, GLBs, and other actors was not enough for 鸿蒙天禁 because the player could still see the yellow off-map background outside the exported map. The requirement was to cover the screen, not just remove world meshes.
+
+**Root causes**:
+- Scene-layer hiding only affects known world render layers; it does not cover empty or off-map canvas space.
+- A plain fullscreen blackout would cover the local character too, which conflicts with the requirement to keep self and HUD visible.
+
+**Fix**:
+- Kept the scene-layer hiding for world content, but added a fullscreen blackout overlay above the canvas and below HUD/UI.
+- Preserved self with a separately rendered self-only layer above the blackout rather than trying to reveal a window through the blackout.
+
+**Key lesson**: When the requirement is "cover the screen except self and UI," scene hiding alone is insufficient. Cover the viewport explicitly, then solve self visibility in a separate higher layer.
+
+## Backend-only target-buff cast bans should usually be mirrored in frontend readiness too (2026-04-30)
+
+**Problem**: After moving 鸿蒙天禁's 曙色 restriction into backend validation, the skill was still shown as castable on the frontend. The user wanted the frontend to gray it out as well.
+
+**Root causes**:
+- The authoritative rule was fixed on the backend, but BattleArena's local readiness logic and click-time guard still treated 曙色 targets as valid.
+- That mismatch leaves the user with a cast button that looks usable until the server rejects it.
+
+**Fix**:
+- Added a local `hasShuSeClient()` helper and used it in both BattleArena's `isAbilityReady()` path and the direct cast wrapper for `hong_meng_tian_jin`.
+
+**Key lesson**: When a cast ban depends on a visible target buff, mirror it in frontend readiness whenever possible. The backend remains authoritative, but the client should still gray out obviously invalid casts instead of waiting for a round-trip rejection.
+
+## If the player should still see self and HUD, blind the world at the scene layer instead of painting over the viewport (2026-04-30)
+
+**Problem**: The fullscreen blackout solved "hide everything" too literally. The user only wanted terrain / house GLBs / other players-NPCs gone, while still seeing their own character and all UI.
+
+**Root causes**:
+- A viewport-wide black overlay has no notion of self-vs-world separation, so it inevitably hides the local character along with the terrain.
+- In collision-test, the exported map renderer also owns pointer raycasts, so simply removing the whole map component would risk breaking ground targeting.
+
+**Fix**:
+- Removed the fullscreen blackout overlay from `BattleArena.tsx`.
+- Added a local blind-world mode that blacks the canvas background, keeps self rendering, filters out other actors as before, and tells `ArenaScene` / `ExportedMapScene` / `Ground` to hide only world visuals while keeping pointer-hit surfaces active.
+
+**Key lesson**: When an effect should hide the world but not the player avatar or HUD, solve it where the world layers are composed. A scene-layer visual gate is the right abstraction; a fullscreen overlay is too blunt.
+
+## If a buff should make a target ineligible for a cast, reject it in validateAction instead of silently no-oping the effect (2026-04-30)
+
+**Problem**: 鸿蒙天禁 was supposed to be unusable on targets that already had 曙色, but the only guard lived inside the custom `HONG_MENG_TIAN_JIN` immediate-effect handler. That meant the action could still pass validation and begin execution before the effect quietly aborted.
+
+**Root causes**:
+- The 曙色 check was happening too late in the cast pipeline, after normal validation had already accepted the target.
+- A late `break` inside custom effect execution does not behave like a true cast rejection; it only skips the manual buff application.
+
+**Fix**:
+- Added a narrow `hong_meng_tian_jin` target-buff check in `validateAction.ts` that throws `ERR_BLOCKED_BY_BUFF` when the selected target already has active 曙色.
+
+**Key lesson**: If a target buff should make an ability uncastable, enforce it in the authoritative validation phase. Effect-layer early exits are only safe as fallback guards, not as the primary gameplay rule.
+
+## A JSX overlay inside an event callback is dead code even if the file still compiles (2026-04-30)
+
+**Problem**: The 鸿蒙天禁 blackout effect was authored, but the user still could not see any blackout at runtime.
+
+**Root causes**:
+- The blackout JSX block had accidentally been inserted inside the `onSelectTarget` callback body on `ArenaScene` instead of as part of the returned render tree.
+- React happily compiled that as an unused expression statement inside a function body, so the build stayed green while the overlay never rendered.
+
+**Fix**:
+- Moved the blackout `<div>` out of the callback and into the actual `BattleArena` render tree as a sibling above the canvas wrapper.
+
+**Key lesson**: When a visual effect "does nothing" despite clean builds, inspect the exact JSX location before debugging state. A rendered element inside an event handler body is just dead code unless it is returned or otherwise mounted into the tree.
+
+## Some custom debuffs should bypass the shared diminishing-returns pipeline entirely (2026-04-30)
+
+**Problem**: 蚀心蛊 was still interacting with the shared 递减 system because its debuff includes `SILENCE`, so the generic buff runtime treated it like any other lockout debuff: existing resistance stacks shortened it, and applying it refreshed lockout resistance afterward. The user wanted 蚀心蛊 to use only its own built-in duration-halving rule and never respect or apply 递减.
+
+**Root causes**:
+- Shared diminishing returns are derived centrally in `buffRuntime.ts` from buff category/effect shape, not from the ability's custom cast logic.
+- Because 蚀心蛊 includes `SILENCE`, the generic `getResistanceConfig()` path classified it as a shared lockout debuff even though this skill already has its own separate repeat-cast duration rule via 蚀心.
+
+**Fix**:
+- Added a narrow exclusion for buff `2643` in `getResistanceConfig()` so 蚀心蛊 never receives duration reduction from existing resistance stacks and never grants new resistance stacks when applied.
+
+**Key lesson**: If a debuff has a bespoke repeat-hit mechanic, exclude it at the resistance classification hook instead of trying to undo diminishing returns later. That removes both halves of the interaction at the single authoritative source.
+
+## When a status should blind the player, a canvas blackout layer is cheaper and safer than hiding every scene mesh (2026-04-30)
+
+**Problem**: After hiding opponents/entities for 鸿蒙天禁, the user wanted to go further and prevent the affected player from seeing the ground, meshes, and other scene content as well. Doing that by individually hiding terrain, collision/debug meshes, effects, and world props would be broad and fragile.
+
+**Root causes**:
+- The 3D scene is composed from many different visual systems, so a per-mesh/per-feature hide pass would spread the rule across a large part of `ArenaScene` and related render helpers.
+- The gameplay requirement was fundamentally perceptual (blind the player while keeping UI usable), which does not require the world simulation to disappear one object type at a time.
+
+**Fix**:
+- Added a full-screen black overlay in `BattleArena.tsx` above the 3D canvas and below the HUD/UI whenever the local player has 鸿蒙天禁.
+- Kept the existing local world filtering in place as the gameplay layer, while the blackout overlay handles the visual "cannot see the scene" requirement in one place.
+
+**Key lesson**: If the intended effect is "the player should see nothing but UI," prefer a render-layer blackout over selectively disabling every world mesh. It is smaller, easier to reason about, and less likely to miss one rendering path.
+
+## If a player should become unable to see others, filter their local scene inputs once at BattleArena entry (2026-04-30)
+
+**Problem**: 鸿蒙天禁 already hid the affected target from everyone else, but the user also wanted the affected player to be unable to see anyone except self while the buff is active. In the same adjustment, 曙色 needed to be treated as a DEBUFF instead of a BUFF.
+
+**Root causes**:
+- The previous frontend logic only handled the "hide this target from enemies" direction. It did not have a symmetric rule for "when I have 鸿蒙天禁, remove everyone else from my own world view."
+- `ArenaScene` already renders from the arrays it is handed, so the clean control point is the BattleArena list derivation layer, not the individual mesh components.
+- 曙色's authored buff category and effect category both still said BUFF, so the runtime/state metadata did not match the updated gameplay request.
+
+**Fix**:
+- Added a local `selfHasHongMengTianJin` gate in `BattleArena.tsx` that feeds empty opponent/entity arrays to the scene and target-selection lists while the local player has 鸿蒙天禁.
+- Reused that filtered entity list to clear stale selected entities when they disappear from the player's allowed view.
+- Changed 曙色 to `category: "DEBUFF"` in the ability definition and aligned `HONG_MENG_TIAN_JIN_IMMUNE` to the DEBUFF effect category map.
+
+**Key lesson**: If an effect changes what the affected player can see, do the filtering at the top of the local render/selection pipeline so one rule controls the scene, click targets, and stale-selection cleanup together.
+
+## Forced-loss-of-control rolls can still depend on the target's current control state at cast time (2026-04-30)
+
+**Problem**: 蚀心蛊 originally picked its forced-movement mode with a pure random roll, but the user wanted a stricter rule: if the target is already controlled (except simple slows) or is currently airborne, 蚀心蛊 should always choose the standstill result instead of the fixed-direction march.
+
+**Root causes**:
+- The random mode was being decided in one place inside `immediateEffects.ts`, but it had no awareness of the target's live CC/debuff state or whether the target was off the ground.
+- Because the chosen mode is stored on the runtime buff and then mirrored by both backend movement and frontend prediction, the right place to add this rule is the cast-time roll itself, not the movement loop.
+
+**Fix**:
+- Added a small `shouldShiXinGuForceStandstill()` helper in `immediateEffects.ts` that checks live debuff controls (stun/root/fear/knockback/pull/knockdown-style states, excluding simple slows) and current airborne state using the existing map ground-height helper.
+- 蚀心蛊 now forces `forcedMovementMode: "standstill"` whenever that helper returns true; otherwise it keeps the existing random direction-vs-standstill roll.
+
+**Key lesson**: When a debuff stores a one-time random outcome on the runtime buff, any conditional override to that randomness should happen exactly where the buff is created. That keeps backend authority and frontend prediction aligned without adding extra movement-side special cases.
+
+## If a targeted channel should break on target range, use the standard channelCancelOnOutOfRange path (2026-04-30)
+
+**Problem**: 十方玄机 already required its selected target to still be within 20尺 at channel completion, but the user also wanted it to break immediately during the channel once the target moved beyond 20尺, just like the repo's other targeted channels.
+
+**Root causes**:
+- The prior implementation only used a completion-time range gate (`requireTargetInRangeOnChannelComplete`), so the channel could continue ticking even after the target had already escaped the allowed range.
+- GameLoop already has a generic active-channel cancellation path driven by `activeChannel.cancelOnOutOfRange`; this ability simply was not authored onto that existing rule.
+
+**Fix**:
+- Added `channelCancelOnOutOfRange: 20` to 十方玄机 so its active channel now uses the same mid-channel range-break logic as other targeted channels.
+- Kept the completion-time 20尺 recheck in place, so both behaviors now hold: leaving range mid-channel breaks immediately, and the end-of-channel validation still protects completion.
+
+**Key lesson**: When a channel should fail as soon as the target leaves range, do not invent a custom per-ability GameLoop branch. Use the existing `channelCancelOnOutOfRange` authoring hook, then keep any end-of-channel validation only for completion-time guarantees.
+
+## Hidden untargetable states need a view-layer hide rule plus a natural-expiry follow-up buff (2026-04-30)
+
+**Problem**: 鸿蒙天禁 needed to target anyone within 20尺, apply a 6-second DEBUFF that makes the target impossible to target, impossible to damage, and invisible to everyone else while still allowing free movement/casting, then grant 曙色 for 20 seconds when the effect ends. Self-cast also had to cleanse 2 debuffs each of 阴性 / 阳性 / 混元 / 毒性 / 持续伤害.
+
+**Root causes**:
+- `UNTARGETABLE + INVULNERABLE` is enough for backend protection, but it does not remove the actor from enemy rendering by itself. The frontend must also treat that buff as a hide-from-enemy-view state, not only as a targetability block.
+- The follow-up anti-repeat window (`曙色`) belongs on the natural-expiry path of 鸿蒙天禁, not in the cast handler. Otherwise canceled/overwritten states and end-of-duration states can drift.
+- Self-cleanse and target-side immunity (`曙色`) need a manual custom effect path, so the ability can cleanse self first, then selectively skip applying 鸿蒙天禁 if the immunity marker is already present.
+
+**Fix**:
+- Implemented 鸿蒙天禁 as a manual custom effect that applies DEBUFF 2645 for 6 seconds, uses `UNTARGETABLE + INVULNERABLE` for backend immunity, and cleanses the specified debuff attributes when self-cast.
+- Added 曙色 buff 2646 and attached its application to Hong Meng Tian Jin's natural-expiry hook in `GameLoop.ts`, so the 20-second immunity window is granted exactly when the main buff ends.
+- Extended both `BattleArena.tsx` and `ArenaScene.tsx` hide helpers so opponents with 鸿蒙天禁 are filtered out of enemy view entirely instead of only becoming untargetable.
+
+**Key lesson**: For effects that say "cannot be targeted and also should not be seen", backend targeting guards are only half the implementation. You need a separate frontend visibility rule, and if the effect grants an anti-repeat marker afterward, attach that marker to the natural-expiry path of the main buff rather than the cast path.
+
+## Forced-movement debuffs should store their chosen mode on the runtime buff, and "target anyone" can be modeled as opponent-target + self opt-in (2026-04-30)
+
+**Problem**: 蚀心蛊 needed to target anyone within 20尺, including self, apply a 6-second silence / +50% move-speed / 50% damage-reduction debuff, then randomly force either fixed-direction walking or complete standstill without granting CC immunity. Friendly/self targets halve the duration, and a separate 20-second 蚀心 marker halves the next 蚀心蛊 again.
+
+**Root causes**:
+- The existing target model is `SELF` or `OPPONENT`; "cast on anyone" in this codebase is best treated as an opponent-targeted skill with an explicit `canTargetSelf` escape hatch instead of a third broad target mode.
+- The existing `FEARED` path already proves the correct architecture for "ignore player input but still let root / knockdown / displacement win": override movement intent in GameLoop and BattleArena prediction, do not fake it with `CONTROL` or a forced dash.
+- Random forced-movement behavior has to be stored on the runtime buff itself (`forcedMovementMode` + optional direction). If you leave the randomness only in the ability cast handler, the frontend cannot predict movement consistently across snapshots.
+
+**Fix**:
+- Added `canTargetSelf` to ability metadata and wired validate/cast/client selection so opponent-targeted abilities can explicitly choose self without triggering enemy-only dodge/facing/LOS rules.
+- Implemented 蚀心蛊 as a manual custom effect that applies buff 2643 with a computed duration (self target and existing 蚀心 each halve it) and refreshes buff 2644 as the repeat-hit marker.
+- The 蚀心蛊 runtime buff now carries its forced mode on the live buff object, and both GameLoop and BattleArena read that metadata to force fixed-direction walking or standstill while still yielding to root, knockback, and other control states.
+
+**Key lesson**: For debuffs that remove control without providing control immunity, do not model them as standard `CONTROL`. Treat them as input-override states layered on top of the normal movement lock pipeline, and store any random choice on the runtime buff so backend authority and frontend prediction stay in sync.
+
+## Fixed-distance knockbacks must be tuned by dash duration, and cast-breaking buffs on pure channels need a pure-channel hook too (2026-04-30)
+
+**Problem**: 连环弩 was mistakenly changed by doubling knockback distance when the real spec was "still 4尺, but at 20尺/秒". In the same round, 十方玄机 needed a 20-second post-channel disguise buff that should fall off when casting any non-base skill, but stay for the exact whitelist `蹑云逐月 / 迎风回浪 / 凌霄揽胜 / 瑶台枕鹤 / 扶摇直上 / 后撤`. Allowed casts were still removing the buff.
+
+**Root causes**:
+- For forced dashes, speed is derived from `distance / ticks`. If the gameplay spec fixes both distance and speed, the thing to change is `ticksRemaining`, not the distance itself.
+- `breakOnPlay()` only runs on the normal `PlayAbility` path. Pure channels are started directly in `playService.ts`, so any special "remove this buff when casting" rule that exists only in `breakOnPlay()` will silently fail for future pure-channel casts.
+- A custom keep/remove helper is not enough by itself if the buff is still authored with `breakOnPlay: true`; the later generic break filter will still delete it even when the helper said to keep it.
+
+**Fix**:
+- 连环弩 knockback now stays at 4尺 and reaches 20尺/秒 by shortening the forced-dash duration to 6 ticks instead of increasing the distance.
+- 十方玄机 is implemented as a pure channel with `applyBuffsOnComplete: true`, and its 20-second disguise buff uses `UNTARGETABLE + INVULNERABLE` for backend protection while the frontend scene paints that player's HP bar and name green.
+- 十方玄机 now requires a selected 20尺 target, can only start on the ground, cancels if the player jumps into the air during the channel, and only completes if that selected target is still within 20尺 when the channel ends.
+- The 十方玄机 removal rule is centralized in a narrow helper (`breakShiFangXuanJiOnPlay`) and invoked from both `breakOnPlay()` and the pure-channel start branch in `playService.ts`, so non-common normal casts and non-common pure channels both strip the buff consistently.
+- The actual allowlist is `蹑云逐月 / 迎风回浪 / 凌霄揽胜 / 瑶台枕鹤 / 扶摇直上 / 后撤`, and the buff itself must have `breakOnPlay: false` so those allowed casts can survive the generic break pass.
+
+**Key lesson**: When a dash spec says "same distance, faster speed", do the math on duration first. And if a buff must break on *some* casts but not others, verify every cast entry path and the authored buff flags: normal play and pure-channel start are separate control surfaces, and `breakOnPlay: true` can override a helper-level whitelist if left in place. For movable channels that are supposed to stay ground-only, you need both a grounded cast gate and a jump-cancel rule; otherwise the player can still start grounded and then continue channeling in the air.
+
+## Control-copy cleanse skills need a dedicated capture path, and BattleArena filter state can safely persist via localStorage (2026-04-30)
+
+**Problem**: New skills like 游风飘踪 / 如意法 need to do more than generic `CLEANSE`: they must remove knockdown, know exactly which control kind was removed, and later re-apply that control through `addBuff()` so 递减 still works. 游风飘踪 also needed to become self-cast with optional target reflection instead of hard-requiring a target, and 如意法's visible next-attack marker still failed to fire on real attacks because its trigger loop was placed in the wrong GameLoop scope. Separately, the in-game ability cheat panel kept forgetting the user's rarity/school filters on every reload.
+
+**Root causes**:
+- `handleCleanse()` is intentionally simple. It removes normal CONTROL / ATTACK_LOCK (and optional ROOT/SLOW), but it does not preserve any metadata about what was removed, and it deliberately leaves 摩诃无量-style knockdown alone.
+- Re-applying copied control by pushing raw runtime buff objects would bypass immunity checks, status-bar metadata, BUFF_APPLIED events, and 递减.
+- For one-shot on-hit mechanics like 如意法, putting the trigger scan inside an unrelated stack-expire branch can make the buff appear in UI while never firing during normal outgoing attacks.
+- The cheat-panel filters in `BattleArena.tsx` were plain `useState('all')` values with no persistence path, so reloads always reset them.
+
+**Fix**:
+- Added a dedicated `captureAndCleanseControls()` helper in `Cleanse.ts` that removes root / freeze / stun / knockdown / attack-lock style controls from self, classifies the removed control kind, and records duration metadata for later re-application.
+- 游风飘踪 now casts as a self skill, always grants its 8-second anti-control buff, and only mirrors control when an explicit target exists. Its mirrored control now uses a fixed 5-second duration instead of the cleansed buff's remaining time.
+- 如意法 now uses the same capture helper, stores the captured control package on a real runtime buff (`如意法·待发`), and consumes that buff from the authoritative GameLoop damage-event scan on the next eligible outgoing attack. The copied control is still applied through `addBuff()`, so DR/immunity/status-bar behavior stays correct.
+- Cheat-panel rarity/school filters now load from and save to `localStorage` under `zhenchuan-cheat-filters`.
+
+**Key lesson**: Any skill that "cleanses and then copies/echoes the removed control" should not be built on top of bare `handleCleanse()`. Treat it as a two-step system: capture authoritative control snapshots first, then re-apply via `addBuff()` later. For one-shot follow-up mechanics like 如意法, attach the trigger scan to the normal outgoing damage-event pass itself, not to a neighboring proc branch that only runs on a subset of hits. For BattleArena UI preferences, small floating-panel filters are fine to persist directly in localStorage when there is already a client-only state pattern nearby.
+
+## New custom buffs must be declared for preload/status bar, and redirect callers must always trust `adjustedDamage` (2026-04-30)
+
+**Problem**: Round-5 custom buffs looked like they existed in the raw runtime debug list, but did not appear in the real status bar; 疾电叱羽 also showed its runtime buff while still letting full damage through. 连环弩 also lost its channel bar/effect entirely after a self-buff was added directly to the channel ability.
+
+**Root causes**:
+- StatusBar does **not** render from live runtime buff fields alone. It resolves metadata from `abilityPreload -> buffMap`, which is built from static `ability.buffs`. If a buff is only created manually in GameLoop/custom handlers and is not declared in `ability.buffs`, the debug panel can still show it, but the real status bar has no metadata and will hide it.
+- `preCheckRedirect()` returns the **actual damage to apply to the primary target** in `adjustedDamage`. Callers must always apply `adjustedDamage`, even when `redirectPlayer` is null. 疾电叱羽 is the counterexample: it absorbs damage into a zone and deliberately returns `{ adjustedDamage: 0, redirectPlayer: null }`. Any caller that uses `redirectPlayer ? adjustedDamage : rawDamage` will silently bypass the redirect and deal full damage.
+- The pure channel system (`player.activeChannel`) only starts for channel abilities that have no normal cast-time buffs, or that are explicitly marked for a special channel path. Adding a normal self buff to a channel ability can accidentally downgrade it out of the pure-channel path, which removes the forward channel bar and all channel tick handling.
+
+**Fix**:
+- Declare every custom runtime buff in `ability.buffs` so preload/status-bar metadata exists.
+- If the buff is applied manually by custom logic, exclude that ability from `applyAbilityBuffs()` so the metadata declaration does not also auto-apply on cast.
+- Treat `adjustedDamage` as authoritative at every `preCheckRedirect()` call site.
+- Preserve custom runtime buff fields when `addBuff()` materializes `ActiveBuff` instances. If the static buff definition carries extra runtime linkage like `linkedZoneId`, dropping that field makes the buff appear correctly in UI while the dependent engine behavior silently fails.
+- For channels that need a self buff during the channel, keep them on the pure-channel path and use an explicit channel-start buff path with cleanup on channel cancel/end.
+
+**Key lesson**: There are three separate systems that must all line up for a “new buffed ability” to work: preload/status-bar metadata (`ability.buffs`), runtime application (`addBuff` / custom handler), and the owning behavior system (pure channel vs normal cast). Missing any one of those produces the exact kind of half-working state seen here.
+
+## Full HP must never suppress HEAL events (system rule, 2026-05 session)
+HEAL events drive the floating-text visuals. Even when the player is already at
+max HP, the float should still show. Therefore: **always emit a HEAL event with
+the intended heal amount** (e.g. the value defined on the effect / buff). Do
+NOT gate on the actual hp delta (`applied > 0`). The actual hp clamping happens
+inside `applyHealToTarget`; the event uses the *intended* value.
+- Lifesteal entity path (`Damage.ts`): emits with `healAmt`.
+- 徐如林·回复 expire (`GameLoop.ts`): emits with `healVal`.
+- Apply this to any new heal source.
+
+## Test-only target dummies (cheat) belong in their own panel and reuse `TargetEntity` (2026-04-29)
+
+**Problem**: Combat-helper cheat buttons (双方满血 etc.) lived inside the ability-picker cheat window, and there was no way to place arbitrary practice dummies for testing damage/CC/heal flows.
+
+**Fix**:
+- Split the existing cheat window: combat helpers + new dummy controls now live in a separate `控制面板` floating panel beside the ability list. The ability cheat window now only contains the ability picker.
+- Reuse `TargetEntity` for ally / enemy dummies (`kind: "test_dummy_ally" | "test_dummy_enemy"`). Owner is the caller (ally) or the opponent / synthetic id (enemy), so existing friendly/enemy logic naturally applies.
+- Click-to-place flow mirrors `pendingGroundCastAbilityId`: a `pendingDummySpawn` ref + ground hover preview + `onGroundPointerDown` posts to `/api/game/cheat/spawn-dummy`. No range limit since this is a debugging tool.
+- Added `/cheat/restore-dummies` and `/cheat/clear-dummy-debuffs` endpoints. They iterate `state.entities` and only mutate entries whose `kind` is in the `DUMMY_KINDS` set.
+
+**Key lesson**: When testing tools need to interact with combat systems, build them on the same primitives the real systems use (`TargetEntity` + `addBuff`) — that way controls, damage, healing, and HUDs all "just work" without parallel code paths.
+
+## Very-short refreshed buffs need duration headroom or `hiddenInStatusBar` (2026-04-29)
+
+**Problem**: 逐云寒蕊·隐藏 (buffId 2716) had `durationMs: 500`, refreshed every tick by `GameLoop`. The frontend `StatusBar` filters `getRemainingSeconds(b) > 0` and renders `secsLeft.toFixed(1)`, so the buff often displayed as `0.0` between refreshes and was filtered out.
+
+**Fix**: Raise `durationMs` to 2000 ms (and `ZHU_YUN_STEALTH_DURATION_MS` in `GameLoop` to match). Per-tick refresh keeps `expiresAt` always ~2s in the future, giving the client headroom to render a stable countdown without ever flickering to 0.
+
+**Key lesson**: For periodically-refreshed buffs, the authored `durationMs` must comfortably exceed the worst-case client lag between refreshes. 500 ms is too tight for a status-bar display; either bump duration or hide via `hiddenInStatusBar`.
+
+## Entity targets need first-class buff runtime, not damage-only support (2026-04-29)
+
+**Problem**: 逐云寒蕊 could be damaged, but it still could not reliably receive buffs, debuffs, or controls, and the frontend target HUD always showed an empty status row for selected entities.
+
+**Root cause**: The previous entity work only widened damage paths. `TargetEntity` still had no runtime `buffs` storage, generic `ability.buffs` application still targeted the opposing player object, and the selected-target UI hardcoded entity buffs to `[]`.
+
+**Fix**:
+- Extend `TargetEntity` with first-class runtime combat fields (`userId`, `shield`, `buffs`) so it can reuse shared buff/combat helpers.
+- Route generic `applyAbilityBuffs(...)` through `entityTarget` when a cast explicitly targets an entity instead of always falling back to the opposing player.
+- Widen shared immediate/GameLoop buff-control surfaces (`AOE_APPLY_BUFFS`, `SAN_CAI_HUA_SHENG_AOE`, `JILE_YIN_AOE_PULL`, dash-end CC, periodic entity buff ticking/expiry) so entities participate in the same authoritative buff runtime.
+- Mirror entity `buffs`/`shield` in frontend in-game types and feed selected entity buffs into the existing `StatusBar` target HUD.
+
+**Key lesson**: Once an object is a real combat target, the clean design is to make it a buff-bearing runtime target and reuse the shared buff engine. Damage-only entity support leads to one-off fixes and misses debuff/control behavior immediately.
+
+## Entity-targeted casts must not consult the opposing player's dodge state (2026-04-29)
+
+**Problem**: After wiring entity buff support, explicit entity-targeted casts could still inherit dodge behavior from the opposing player, because `applyAbility()` computed `abilityDodged` before it knew the real target class.
+
+**Fix**:
+- When `entityTargetId` resolves to a live entity target, force `abilityDodged = false` for that cast path.
+- Let entity-side immunity buffs be handled by the shared target guard checks on the entity itself, instead of accidentally borrowing player dodge/avoidance state.
+
+**Key lesson**: When an ability can target different target classes, any early shared decision like dodge or avoidance must be computed against the actual resolved target, not a placeholder player target chosen only for indexing convenience.
+
+## Entity targets must flow through cast validation (2026-04-29)
+
+**Problem**: Attacking 逐云寒蕊 could be selected in the client, but backend cast validation still failed with `ERR_TARGET_UNAVAILABLE` / `目标丢失或者不可选中`.
+
+**Root cause**: `playCastAbility(...)` already accepted `entityTargetId`, but did not pass it into `validateCastAbility(...)`. The validator therefore fell back to the opposing player target, then ran the normal `blocksCardTargeting(enemy)` stealth/untargetable check against that player instead of the intended entity.
+
+**Fix**:
+- Pass `entityTargetId` from `backend/game/services/gameplay/playService.ts` into `validateCastAbility(...)`.
+- Extend `validateCastAbility(...)` in `backend/game/engine/rules/validateAction.ts` to resolve entity targets from `state.entities`.
+- For entity targets, validate existence, living HP, and enemy ownership, then use the entity position for range, facing, and LOS checks.
+- Keep the old `blocksCardTargeting(enemy)` path only for real player targets.
+
+**Key lesson**: Adding entity targeting to the frontend and effect-resolution path is not enough. Every cast-time validation gate must receive and understand `entityTargetId`, or the server will silently validate against the wrong target class.
+
+## Entity targets need every shared damage loop, not just direct DAMAGE (2026-04-29)
+
+**Problem**: After direct targeted attacks could hit 逐云寒蕊, several other damage paths still ignored it: pure channel completion (`云飞玉皇`), channel AOE ticks (`风来吴山`), timed AOE buff damage, dash-end AOE damage, ground-zone periodic damage, and immediate AOE effect branches like `百足 / 五方行尽 / 横扫六合`.
+
+**Root cause**: The first entity fix only covered the direct `DAMAGE` effect branch. Many other backend damage paths still hardcoded either the opposing player (`opp`) or loops over `state.players`, so the entity never entered those hit-resolution paths.
+
+**Fix**:
+- Preserve `entityTargetId` on pure channels so channel completion can still resolve the entity target.
+- Extend shared GameLoop damage branches to include hostile `state.entities` alongside players for channel completion, channel AOE ticks, timed AOE buff damage, dash-end AOE damage, and ground-zone periodic damage.
+- Extend immediate AOE effect branches in `immediateEffects.ts` to damage hostile entities and emit normal DAMAGE events with `entityId/entityName`.
+- Keep player-only secondary effects such as dodge, knockback, and buff application on the player path only.
+
+**Key lesson**: For targetable entities, “can be selected” and “can take direct single-target damage” are only the first layer. Any shared damage surface that enumerates enemies must be audited for `state.entities`, or abilities will fail one category at a time.
+
+## 化解 (Shield Absorption) Display System (2026-04-26)
+
+**Feature**: When a shield absorbs incoming damage, show "化解" floating text instead of (or alongside) the damage number.
+
+**Implementation**:
+- Added `shieldAbsorbed?: number` to `GameEvent` in `events.ts`.
+- In `Damage.ts` (`handleDamage`), captured `shieldAbsorbed` from `applyDamageToTarget` result and included it in the DAMAGE event.
+- In `GameLoop.ts`, updated 3 DAMAGE event pushes (periodic buff DoT, safe zone, ground zone) to capture and emit `shieldAbsorbed`.
+- Frontend `BattleArena.tsx`: added `'huajie'` to `FloatType`, added `text?` field to `FloatEntry` for display override, modified DAMAGE event handler to check `evt.shieldAbsorbed`:
+  - Fully blocked (shieldAbsorbed >= value): only show "化解" float
+  - Partially blocked: show "化解" + reduced dmg_taken float
+  - No shield: normal damage float
+- "化解" floats appear on the right column (same 60% left as heals), yellow (#ffd24a), Chinese font, with glow text-shadow.
+
+**Key lesson**: `addFloat` had a `value <= 0` guard — bypass it for the `'huajie'` type since it carries no meaningful numeric value (always pass value=1).
+
+## DISPLACEMENT Bypass for 镇山河 (2026-05 session)
+
+**Problem**: 镇山河 (`zhen_shan_he`) failed with `ERR_DISPLACEMENT` when cast while being pulled by 捉影式.
+
+**Root cause**: 捉影式's channel completion triggers `TIMED_PULL_TARGET_TO_FRONT` in GameLoop.ts, which calls `applyDashRuntimeBuff` on the *target* with effects `[CONTROL_IMMUNE, KNOCKBACK_IMMUNE, DISPLACEMENT, DASH_TURN_LOCK]`. The `DISPLACEMENT` buff blocks all casting via `validateCastAbility` / `validatePlayAbility` with no bypass mechanism. 镇山河 already had `allowWhileKnockedBack` and `allowWhilePulled` flags, but those are checked *after* DISPLACEMENT.
+
+**Fix**:
+- Added `allowWhileDisplaced?: boolean` to `Ability` interface in `abilities.ts` type.
+- Added `allowWhileDisplaced?: boolean` to `AbilityEffect` interface in `effects.ts`.
+- Replaced the unconditional `throw new Error("ERR_DISPLACEMENT")` in both `validateCastAbility` and `validatePlayAbility` in `validateAction.ts` with a bypass check (same pattern as allowWhileKnockedBack/allowWhilePulled).
+- Added `allowWhileDisplaced: true` to 镇山河 in `abilities.ts`.
+
+**Key lesson**: The `DISPLACEMENT` check in `validateAction.ts` was hardcoded with no bypass — any future ability that should be castable during dashes/pulls needs `allowWhileDisplaced: true`.
+
+## 捉影式 Pull Distance Fix (2026-05 session)
+
+**Problem**: 捉影式 had `range: 35` (cast range) but `value: 20` in `TIMED_PULL_TARGET_TO_FRONT`, meaning a target at 35u away would only be pulled 20u (reaching 15u from caster). Description said "最多20单位" which was inconsistent with the 35u cast range.
+
+**Fix**: Changed `value: 20` → `value: 35` (pull travels full cast range). Updated description accordingly.
+
+## Ability DamageType Tag System (2026-04-25)
+
+**What was built**: Added a new `damageType` tag group (values: 外功 / 内功 / 无) to the ability editor.
+
+**Architecture**:
+- Tag stored in `ability-property-overrides.json` under `tags.damageType` (same pattern as `rarity`/`school`).
+- `buildResolvedAbilities` now copies `tags.damageType` to `(nextAbility as any).damageType` so it's available at runtime (game engine reads it from the resolved ability object).
+- `resolveScheduledDamage` now accepts `damageType?: string`. When a `DAMAGE_REDUCTION` buff effect has a `damageType` filter, the reduction only applies when the incoming attack's `damageType` matches.
+- All `resolveScheduledDamage` call sites in `immediateEffects.ts` and `Damage.ts` now pass `(ability as any).damageType`.
+- Periodic/scheduled damage (from `resolveScheduled.ts`, `onPlayEffects.ts`, etc.) does NOT pass a `damageType` — these are buff-based DoT/self-damage where source ability type is unavailable. Typed `DAMAGE_REDUCTION` effects will not apply to such damage.
+
+**Frontend**: Added filter bar row (伤害类型) below school filter, and inline `外功/内功/无` buttons on each ability card, consistent with existing rarity/school patterns.
+
+**Ability update**: 惊鸿游龙 `DAMAGE_REDUCTION` effect now has `damageType: "内功"`, limiting its 45% reduction to magical incoming damage only.
+
+**Key lesson**: `damageType` is a runtime-accessible field on the resolved ability; the tag system only stores it in the JSON editor overrides. `buildResolvedAbilities` bridges the two.
+
+## Buff Duration Override Not Taking Effect (2026-04-23)
+
+**Root cause**: `addBuff()` in `buffRuntime.ts` applied property overrides from the live editor file at runtime, but `durationMs` was only applied at preload time (server startup). Changing duration via the editor saved to the overrides JSON, but the game kept using the preload-cached value until PM2 was restarted.
+
+**Fix**: Added a second live-override block in `addBuff` right after the properties block:
+```typescript
+if (typeof propEntry?.durationMs === "number") {
+  runtimeBuff = { ...runtimeBuff, durationMs: propEntry.durationMs };
+}
+```
+Now both properties and duration are read live from the overrides file, so changes take effect immediately without a server restart.
+
+**Lesson**: Any editor override that needs to work during a running game session must be applied in `addBuff` at runtime, not just at preload. Preload is for initial state and snapshot building only.
+
+## Icon Asset Reorganization
+
+- **Flattening `public/game/icons` and `public/icons/class_icons` into `public/icons`**: Completed successfully. All 114 game icons preserved. Source paths updated from `/game/icons/` to `/icons/` across 8 files: `abilityPreload.ts`, `buffIcons.ts`, `editorShared.ts`, `Card/index.tsx`, `SelectedAbilities.tsx`, `DraftShop.tsx`, `BenchArea.tsx`, `BattleArena.tsx`. Do NOT touch `layout.tsx` or `TopBar/index.tsx` — they correctly use `/icons/app_icon*` already.
+- **Pitfall**: When two identical img tags exist in the same file, multi-replace fails with "multiple matches". Use surrounding context lines (title attribute, class names) to uniquely identify each occurrence.
+- **Order matters**: Do point 0 (clean legacy icons from `public/icons`) BEFORE moving `game/icons` into it, to avoid accidentally cleaning the real game icons.
+
 ---
 
 ## Coordinate System
@@ -155,11 +759,74 @@ The BVH collision triangles in the GLBs do NOT change — only the coordinate ma
 
 ## Abilities / Editor
 
+### Range bonuses must extend channel cancel thresholds and actual ground-target dash travel, and lockout immunity must stay narrower than control immunity (2026-05-01)
+- **Problem**: After 枯残蛊 was added, three separate follow-on mismatches remained: pure channels still seeded `activeChannel.cancelOnOutOfRange` from raw authored values, ground-target dash executors still capped real travel to the base effect distance even when the cast range had been boosted, and 迷心蛊 had been authored with `CONTROL_IMMUNE`, which incorrectly granted stun/root immunity instead of only lockout immunity.
+- **Fix**: Applied the active range bonus when creating pure-channel runtime state in `playService.ts`, applied the same `+12` bonus to actual travel distance in both `GROUND_TARGET_DASH` and `LIN_SHI_FEI_ZHUA_DASH` inside `immediateEffects.ts`, and added a dedicated `LOCKOUT_IMMUNE` effect in `buffRuntime.ts` that strips/purges only shared lockouts (`SILENCE` and `ATTACK_LOCK`). 迷心蛊 now uses `LOCKOUT_IMMUNE` instead of `CONTROL_IMMUNE`, while 枯残蛊 was switched to `gcd: false` as requested.
+- **Lesson**: When a buff changes range, check not just validation and tooltips but every runtime that caches or converts range into some other control value, such as channel cancel distances and dash travel caps. And if a skill spec says "lockout immunity," do not reuse `CONTROL_IMMUNE` as a shortcut — introduce the narrower semantic so roots/stuns do not accidentally become immune too.
+
+### Buff-driven range bonuses must go through one shared effective-range helper on both backend and frontend (2026-05-01)
+- **Problem**: 枯残蛊 increases all ability ranges by 12尺 for 12 seconds, but the repo had multiple independent places still reading raw `ability.range`: authoritative cast validation, a custom follow-up target recheck, targeted channel completion, and BattleArena's local readiness/range display.
+- **Fix**: Added a shared `RANGE_BOOST` effect type plus backend `getEffectiveAbilityRange()` helper that sums active buff bonuses, then replaced the backend range checks in `validateAction.ts`, `immediateEffects.ts`, and `GameLoop.ts`. Mirrored the same calculation in `BattleArena.tsx` so local cast gating and displayed range values match the server while 枯残蛊 is active.
+- **Lesson**: If a buff modifies a core authored stat like cast range, do not patch one validation site at a time. Centralize the derived stat and route every authoritative and predicted check through that same helper, or the buff will desync between server rules, client readiness, and tooltip numbers.
+
+### Dynamic wall abilities need shared geometry helpers across backend validation, GameLoop, and BattleArena (2026-05-01)
+- **Problem**: 楚河汉界 is not just a targetable entity. It must block enemy movement, line-of-sight casts, and ground-target AoEs while still letting the owner walk through it, and the frontend must not locally predict the player through the wall.
+- **Fix**: Stored oriented wall metadata (`wallHalfLength`, `wallHalfThickness`, `wallHeight`, tangent/normal) directly on the spawned `TargetEntity`, then used that same geometry in shared helper functions for backend LOS checks (`validateAction.ts`, channel/tick LOS in `GameLoop.ts`) and enemy collision resolution (`GameLoop.ts`). On the frontend, mirrored the same rule in `BattleArena.tsx` for local LOS readiness/ground-cast checks and local movement prediction, and rendered the entity as a real wall mesh in `TargetEntityVisual.tsx` instead of a generic cylinder.
+- **Lesson**: If a summoned structure changes both movement and visibility rules, do not approximate it as "just a big radius" or only render it visually. Give it explicit geometry once, then reuse that geometry everywhere the game decides movement or LOS.
+
+### Follow-self protection fields are easier as visual zones plus buff-keyed runtime rules than as pure damage zones (2026-05-01)
+- **Problem**: 绿野蔓生 needed a 6尺 area that follows the caster, grants anti-control through a buff, stops incoming dashes at the boundary, and knocks attackers back out to the edge while dealing retaliation damage.
+- **Fix**: Implemented the visible field as a self-following `GroundZone`, but kept the real gameplay logic keyed off the owner buff and authoritative runtime loops: dash interception is handled in the player `activeDash` path by clamping enemy dash endpoints to the 6尺 boundary, while retaliation is driven from same-tick damage events by applying a short knockback `activeDash`, adding `KNOCKED_BACK`, and dealing 3 damage from the protected player.
+- **Lesson**: When a field's behavior depends on who attacked whom or whether a dash crossed the boundary, use the zone for ownership/visualization and keep the actual rules in the movement/event pipeline. That is much simpler than trying to force all of the behavior through periodic zone ticks.
+
+### Forward strip walls and instant knockback follow-ups should reuse the existing geometry/knockback rules instead of inventing a parallel feel (2026-05-01)
+- **Problem**: 楚河汉界 initially felt wrong because it was authored as a perpendicular barrier centered in front of the caster, while the reference wanted a very thin strip that starts 1尺 ahead and extends forward along facing. 绿野蔓生 retaliation also felt off because it used a custom short `activeDash`, so wall-stop and frontend display did not match the game's normal knockbacks.
+- **Fix**: Re-authored 楚河汉界 so the wall tangent follows the caster facing and the entity center is placed at `1尺 + halfLength` ahead of the caster. On the frontend, changed the wall to a thin semi-transparent viewer-colored strip. For 绿野蔓生 retaliation, replaced the custom push dash with `applyType3KnockbackControl()` and added a BattleArena hard snap when the local player is under `KNOCKED_BACK`/`PULLED`, so the shown endpoint matches the authoritative knockback immediately.
+- **Lesson**: If a new movement result is supposed to "feel like the rest of the game," reuse the shared knockback path and client reconciliation behavior. Custom micro-dashes are easy to author but they drift visually and collide differently from the established control system.
+
+### Wall visuals must use the same world-to-Three facing basis as characters, and forced displacement must bypass cosmetic easing in the render loop (2026-05-01)
+- **Problem**: Even after the wall geometry was made forward-facing on the backend, the rendered 楚河汉界 wall could still look angled away from the caster because the wall mesh yaw used a mirrored sign compared with the character-facing conversion. The wall also showed an extra bright line because multiple translucent wall overlays were stacked. Separately, 绿野蔓生 knockback could still feel inconsistently slow on the client because the render loop only hard-snapped some reconciliation paths, but still eased other forced-movement frames cosmetically.
+- **Fix**: Changed the wall mesh yaw to use the same world basis as other forward-facing visuals, removed the extra overlay planes, and reduced the shared wall thickness constant so both the rendered strip and collision body are thinner together. In `BattleArena.tsx`, added a dedicated forced-displacement ref and made the local render loop skip dash-style easing entirely while `KNOCKED_BACK` or `PULLED` is active.
+- **Lesson**: When a gameplay object is supposed to project straight out from the player's facing, match the exact world-to-render orientation math already used by characters instead of inventing a nearby formula. And if the server owns displacement, every client render path for that state must opt out of cosmetic interpolation, not just one reconciliation effect.
+
+### Thin translucent walls need unlit color-preserving materials, and fast movement against newly spawned walls needs sweep-based near-side resolution (2026-05-01)
+- **Problem**: After thinning 楚河汉界, the wall color could wash out to nearly white under the scene lighting because the translucent wall body was still using a lit material setup. Also, when a wall appeared during a dash, the later overlap-only collision resolution could clamp the player to the far side of the wall because it only saw the already-moved position.
+- **Fix**: Switched the wall body to a transparent `meshBasicMaterial` with stronger light-blue/light-red palette values so the rendered color stays stable instead of bleaching out. In `chuHeHanJieWall.ts`, added sweep-based wall collision using the actor's pre-move position and the earliest expanded-rectangle entry time; `GameLoop.ts` now passes the player's previous XY into the wall resolver after movement so dashes stop on the near side of newly spawned walls.
+- **Lesson**: For intentionally stylized translucent gameplay geometry, preserve authored color first and avoid lighting setups that can whiten the whole mesh. And for thin blockers that can appear while a high-speed movement is already in progress, overlap resolution alone is not enough; you need a sweep test from the previous position to prevent tunneling-to-far-side corrections.
+
+### Charge-based rapid-cast abilities should keep tooltip timing and `chargeCastLockTicks` in sync (2026-05-01)
+- **Problem**: 楚河汉界's intended between-cast lock was reduced to 0.5s, but the authored runtime lock and the player-facing description both still said 1.0s.
+- **Fix**: Reduced `chargeCastLockTicks` from 30 to 15 in `abilities.ts` and updated the ability description text to match the new 0.5s lock.
+- **Lesson**: For charge-based abilities, cast cadence is controlled by `chargeCastLockTicks`, not just by description text or cooldown fields. Any timing tweak has to update both the runtime lock and the displayed tooltip together.
+
+### If a wall should visually extend outward, animate only the mesh, but if it should stop airborne players only when it reaches them, both server and client collision must respect vertical overlap (2026-05-01)
+- **Problem**: After the color and near-side stop fixes, 楚河汉界 still felt wrong in two ways: the wall looked like a single full slab popping in instantly instead of shooting outward, and airborne players could still be blocked even when they appeared high enough above the wall body.
+- **Fix**: Added `spawnedAt` to the wall entity and used it only on the frontend to animate the wall mesh over 0.5s from the near edge toward the far edge, keeping gameplay collision unchanged. Separately, added a vertical-overlap gate to wall collision on both backend and frontend prediction so movement is blocked only when the actor's feet/body actually overlap the wall height range.
+- **Lesson**: Presentation timing and collision timing are different problems. Use render-only scale/offset animation for the "shoot out" fantasy, but make sure both authoritative and predicted collision share the same vertical overlap rule or the wall will feel taller than it looks.
+
+### If a spawn animation should read clearly, the mesh must mount in its animated state on frame 1, not pop in full-size and only shrink on the next `useFrame` tick (2026-05-01)
+- **Problem**: The first version of 楚河汉界's shoot-out animation still looked instant because the wall mesh mounted at full length on initial render, then only started scaling in `useFrame`, so the player could still perceive a full-wall pop-in.
+- **Fix**: Moved the extension animation to a near-edge-anchored inner group with an initial render-time progress value derived from `spawnedAt`, then continued animating that same group in `useFrame`. Added a solid bottom strip in the same team color to make the wall footprint easier to read during the extension.
+- **Lesson**: For short spawn animations, first-frame state matters. If the initial JSX mounts the final geometry, the effect will still feel like a pop even if later frames animate correctly. Anchor from the intended origin edge and mount the object already partway through the animation timeline.
+
+### DAMAGE_IMMUNE must be checked in every damage code path (2026-04-29)
+- **Bug**: `hasDamageImmune` existed in `guards.ts` and was checked in `Damage.ts` (handleDamage) and `GameLoop.ts` PERIODIC_DAMAGE, but multiple custom ability handlers in `immediateEffects.ts` called `applyDamageToTarget` directly without checking it first.
+- **Affected paths**: `BAIZU_AOE`, `WUFANG_XINGJIN_AOE`, `HENG_SAO_LIU_HE_AOE` victim loops; `BANG_DA_GOU_TOU` fallback damage branch; `SETTLE_SOURCE_DOTS` DoT flush; `YIN_YUE_ZHAN` and `LIE_RI_ZHAN` damage cases; dash reach damage in `GameLoop.ts`.
+- **Symptom**: 雷霆震怒's `DAMAGE_IMMUNE` buff effect did not block damage from these paths.
+- **Fix**: Added `if (hasDamageImmune(victim)) continue/break;` before every `applyDamageToTarget` call in custom handlers. For `SETTLE_SOURCE_DOTS`, wrapped the DoT apply in `if (!hasDamageImmune(...))`. For `BANG_DA_GOU_TOU` fallback, changed `} else {` to `} else if (!hasDamageImmune(victim)) {`.
+- **Lesson**: Any new ability with a custom damage path MUST add `hasDamageImmune` check. `handleDamage` in `Damage.ts` is NOT guaranteed to be the only code path that deals damage.
+
+### Ability rarity system (2026-04-29)
+- **Design**: Rarity is stored as an optional override in `ability-property-overrides.json` per ability, alongside other editor overrides. Values: `精巧` (green), `卓越` (blue), `珍奇` (purple), `稀世` (orange).
+- **Backend**: `ABILITY_RARITIES` + `AbilityRarity` type in `abilityPropertySystem.ts`. `setAbilityRarity()` in `abilities.ts`. PUT route `/api/game/ability-editor/:abilityId/rarity`. Rarity included in `abilityPreload.ts` `cardPayload`.
+- **Frontend editor**: Rarity selector buttons in `/ability-editor/[abilityId]/page.tsx`. `updateRarity()` calls PUT route, clicking the currently-active rarity deselects it (sets to null).
+- **Frontend cheat panel**: `RARITY_ORDER` sort + `RARITY_COLOR` border in `BattleArena.tsx`. Single flat grid replacing the old 已测试/持续伤害/测试中/待重做 tab sections. Icon border color reflects rarity (gray for unset).
+
 ### New abilities added 2026-04-20: 春泥护花, 圣明佑, 烟雨行, 太阴指
 - **春泥护花** (chun_ni_hu_hua): buffId 2316. Self-cast, 8 stacks. New effect type `STACK_ON_HIT_GUAN_TI_HEAL` (贯体 heal on hit, stack consumed). 40% DR from DAMAGE_REDUCTION effect. Implemented in GameLoop.ts stack proc section (same loop as STACK_ON_HIT_DAMAGE). Uses GCD.
-- **圣明佑** (sheng_ming_you): buffId 2317. New effect type `INSTANT_GUAN_TI_HEAL` handled in immediateEffects.ts (direct `applyHealToTarget`, bypasses HEAL_REDUCTION). Buff: 20% DODGE_NEXT. No GCD.
+- **圣明佑** (sheng_ming_you): buffId 2317. New effect type `INSTANT_GUAN_TI_HEAL` handled in immediateEffects.ts (direct `applyHealToTarget`, bypasses HEAL_REDUCTION). Buff: 20% DODGE. No GCD.
 - **烟雨行** (yan_yu_xing): DIRECTIONAL_DASH forward 20u, 2 charges (chargeRecoveryTicks 300), CLEANSE root/slow. No GCD, 轻功.
-- **太阴指** (tai_yin_zhi): buffId 2318. DIRECTIONAL_DASH backward 30u, `durationTicks: 21` (0.7s). Buff "太阴指" 100% DODGE_NEXT 800ms. Uses GCD, 轻功.
+- **太阴指** (tai_yin_zhi): buffId 2318. DIRECTIONAL_DASH backward 30u, `durationTicks: 21` (0.7s). Buff "太阴指" 100% DODGE 800ms. Uses GCD, 轻功.
 
 ### STACK_ON_HIT_GUAN_TI_HEAL effect type pattern (2026-04-20)
 - Added to effects.ts, categories.ts (BUFF category), and GameLoop.ts stack-proc scan section.
@@ -218,6 +885,25 @@ The BVH collision triangles in the GLBs do NOT change — only the coordinate ma
   - Added `minBlockH` parameter to `isLOSBlocked` (backend) and `isLOSBlockedClient` (frontend). Objects with h < 5.5 game units are now ignored as LOS blockers.
   - Added `casterZ` / `targetZ` parameters: if both players' feet are at or above the object's top, the object doesn't block (handles elevated terrain).
   - In collision-test mode, `minLOSBlockH = 5.5` is passed at all call sites.
+
+---
+
+## Buff Editor (2026-04-22)
+
+- Buff editor filtering works best as a two-step slice: first `有利 / 不利`, then an attribute sub-filter over the already-sliced list. Counting the attribute buckets against the full list makes the second row misleading.
+- If the buff card attribute is editable and the allowed values can grow, use a dropdown instead of per-card chips. Chips scale badly once the attribute list grows past a handful of options.
+- Buff editor overrides are no longer just attributes. Store both `attribute` and `description` in one shared override file and keep backward compatibility with the older string-only attribute shape so existing override JSON still loads.
+- Buff description overrides should be applied in `buildAbilityPreload()` as well as the editor snapshot. Otherwise the editor shows the new text while preload-driven runtime UI such as the status bar still shows the old description.
+- Missing buff icons need one shared fallback rule, not separate ad hoc behavior. A shared helper plus a real `fallback` asset keeps the editor `<img>` path and the in-game status-bar background path aligned.
+- `隐藏` should not live in the attribute enum. Treat it as a separate persisted boolean flag, or attribute filters and dispel-oriented tagging both become semantically wrong.
+- If buff names become editable, freeze icon lookup to the original icon path before applying the name override. Using the edited display name as the icon filename immediately turns most renamed buffs into fallback icons.
+- Hidden-state filtering needs its own dropdown separate from the attribute filter, and the default slice should be `显示`. Defaulting the editor to `全部状态` makes hidden buffs leak back into the main working list.
+- If the name action is meant to feel attached to the title, do not let the title text flex across the whole row. Otherwise the pen icon drifts toward the card edge instead of staying visually next to the name.
+- Once `无` becomes a real dispel attribute and `未选择` becomes the workflow placeholder, the override loader needs a versioned migration rule. Old files used `无` to mean “not set yet”, so only pre-migration versions should remap stored `无` to `未选择`.
+- The hidden-buff rule has to be enforced in the backend snapshot/update layer, not just by disabling the dropdown in the UI. Otherwise old overrides or direct API calls can still leave a hidden buff carrying a stale attribute.
+- Flattening `Skills/` and `buffs/` into one `/game/icons/` root is only safe after checking filename collisions. Most duplicate names were byte-identical, but `心诤`, `散流霞`, `长针`, and `风袖低昂` used different art and needed explicit buff-specific filenames plus explicit `iconPath` overrides.
+- After an icon-folder merge, update both the source path builders and the stored preload `iconPath` defaults together. Changing only frontend helpers leaves backend-authored buff metadata pointing at dead asset paths.
+- If the project is still expected to serve icons from `public/game/icons`, preserve that folder and its full inventory. Moving those files into `public/icons` may look harmless, but it breaks the agreed asset root and forces every render/preload caller to change with it.
   - `validateCastAbility` now receives `mapObjects` and `minLOSBlockH` via options (set by `playService.ts` from `loop.getMapCtx()`).
   - Added `GameLoop.getMapCtx()` public method.
 - **Files**: `backend/game/engine/loop/GameLoop.ts`, `backend/game/engine/rules/validateAction.ts`, `backend/game/services/gameplay/playService.ts`, `frontend/app/game/screens/in-game/components/BattleArena/BattleArena.tsx`
@@ -677,3 +1363,460 @@ All game-design values (move speed, jump heights, dash distances, ranges, knockb
 - **天地低昂** (tian_di_di_ang): SELF, instant, DAMAGE_REDUCTION 40% 10s (buffId 2326), allowWhileControlled: true. Normal buff via applyAbilityBuffs.
 - **九转归一** (jiu_zhuan_gui_yi): OPPONENT, range 8, GCD. New effect type `KNOCKBACK_DASH` (value 12, durationTicks 18 = 12u ÷ 20u/sec × 30tick/sec, wallStunMs 4000). In immediateEffects.ts: checks `hasKnockbackImmune` first; sets `activeDash` on target with 18 ticks at 20u/sec; stores `_wallKnockSourceUserId` on target; applies KNOCKED_BACK buff (buffId 9201 "九转击退", 1000ms) via `addBuff`. After 18 ticks of movement, KNOCKED_BACK buff holds target locked for the remaining ~12 ticks = 1 second total CC. Wall hit: movement.ts sets `_wallKnockStunMs` + `_wallKnockAbilityId` on player; GameLoop removes buffId 9201 then calls `addBuff` for buffId 9202 "羽化" (CONTROL 4000ms) — triggers 眩晕递减 automatically.
 - **Buff direct-push anti-pattern** (2026-04-22): Never use `buffs.push({...})` directly — bypasses status bar, immunity checks, 递减 system, and BUFF_APPLIED events. Always use `addBuff()`. For forced dashes on opponents, store caster's userId as `(target as any)._wallKnockSourceUserId` so GameLoop can use it as `sourceUserId` in the addBuff call.
+
+---
+
+## Buff Attribute Tag System (2025)
+
+### Feature: Buff editor tab in ability editor
+
+- Added `buffTagSystem.ts` (backend) for loading/saving buff attribute overrides to `buff-attribute-overrides.json`.
+- Added two new API routes: `GET /ability-editor/buffs` and `PUT /ability-editor/buffs/:buffId/attribute`.
+- Added buff types (`BuffAttribute`, `BuffEditorEntry`, `BuffEditorSnapshot`, `getBuffSubtitle`, `getBuffIconPath`) to `editorShared.ts`.
+- Created `BuffEditorTab.tsx` component with 有利/不利 sub-tabs, search, and attribute chip selector.
+- Added `mainTabBar` / `mainTab` CSS and all buff-related CSS classes to `page.module.css`.
+- Added `mainTab` tab bar to `page.tsx` (技能列表 | BUFF编辑), with lazy-loading buff snapshot on first tab open.
+
+### Pitfall: replace_string_in_file only replaces the matched segment
+
+When the old imports block was replaced (only the top few lines), the rest of the old file content was NOT removed. This caused duplicate function/export declarations (`buildOverviewTags`, `export default AbilityEditorPage`, `abilityTypeLabel`).  
+**Fix:** Use `head -N` to truncate the file at the correct line after identifying the start of the duplicate section with `grep -n`.
+
+
+### Buff property editor architecture — engine override path
+
+- The buff editor UI saves overrides to `buff-attribute-overrides.json` via `saveBuffEditorOverrides`.
+- **abilityPreload.ts** builds the frontend-facing snapshot (UI display only) — modifying effects here changes what the editor shows.
+- **Engine path**: `addBuff()` in `buffRuntime.ts` receives the buff definition directly from `ABILITIES`. It does NOT go through `buildAbilityPreload`. To make the editor values actually affect gameplay, property overrides must also be applied inside `addBuff()`.
+- Fix: Added `applyPropertyOverridesToEffects()` in `buffEditorOverrides.ts` called from both `abilityPreload.ts` (UI) and `addBuff()` (engine). Now changes to 减伤/无敌/闪避 values in the editor actually affect combat calculations.
+- Property mapping: 减伤 → DAMAGE_REDUCTION (value 0–100 → 0–1.0), 无敌 → INVULNERABLE, 闪避 → DODGE (count).
+- `properties: []` is now a valid override sentinel meaning "user explicitly cleared all code-defined properties". This required changing `normalizeProperties` to return `[]` instead of `undefined` for empty arrays.
+
+### Buff detail page pattern
+
+- Buff list tab (`BuffEditorTab.tsx`) is now read-only — shows name, desc, attribute, property tags, and an "编辑 →" link.
+- Edit page lives at `/ability-editor/buff/[buffId]` — fetches the full buff snapshot, finds buff by ID, renders the full edit form.
+- Initialize local properties from `entry.properties` if non-empty (user has already set overrides), else copy from `entry.baseProperties` (first-time edit). This lets 守如山's 80% DR show up for editing without requiring prior manual input.
+- The `prevEntryBuffId` pattern prevents re-initialization when the snapshot refreshes after a save.
+
+
+### Dispel system (DISPEL_BUFF_ATTRIBUTE effect type)
+
+- New effect type `DISPEL_BUFF_ATTRIBUTE` added to remove BUFF-category buffs from a target by attribute.
+- Attribute data lives in `buff-attribute-overrides.json`; must call `loadBuffEditorOverrides()` at runtime to look up each buff's attribute.
+- Effect format: `{ type: "DISPEL_BUFF_ATTRIBUTE", attributes: ["阴性", "混元", "阳性", "毒性"] }` — one buff per attribute is removed per effect execution.
+- The `attributes` field was added to `AbilityEffect` interface; since the ability file uses `as any`, TS casts are needed only in ability definitions.
+- After adding a new `EffectType` member, must also add it to `EFFECT_CATEGORY_MAP` in `categories.ts` (Record<EffectType, string>) — otherwise tsc fails.
+- The dispel handler calls `effTarget.buffs.splice(idx, 1)` + `pushBuffExpired(...)` to properly remove and emit events; do NOT use `victim.buffs = victim.buffs.filter(...)` as that replaces the array reference.
+- Dodge interaction for dispel abilities is automatic: the `shouldSkipDueToDodge` check before the switch already skips enemy-targeted effects when `abilityDodged=true`.
+
+### ignoreDodge ability property
+
+- Added `ignoreDodge?: boolean` to the `Ability` interface in `types/abilities.ts`.
+- `computeAbilityDodge` in `dodge.ts` now checks `if (ability.ignoreDodge) return false;` before calling `shouldDodge`.
+- This is the cleanest approach — no change needed in PlayAbility.ts, the dodge result flows through automatically.
+
+### Canonical Class (School) Ordering
+
+Always use this order for any list, filter, or display of schools:
+少林 万花 天策 纯阳 七秀 藏剑 唐门 明教 丐帮 苍云 长歌 霸刀 蓬莱 凌雪 衍天 药宗 刀宗 万灵 段氏 五毒 通用
+
+Code arrays (20 schools + 通用):
+["少林","万花","天策","纯阳","七秀","藏剑","唐门","明教","丐帮","苍云","长歌","霸刀","蓬莱","凌雪","衍天","药宗","刀宗","万灵","段氏","五毒","通用"]
+
+Locations to update when adding new schools: editorShared.ts SCHOOL_TAGS, BattleArena.tsx SCHOOL_TAGS_BA.
+
+### New Effect Types (April 2026 batch)
+
+- `MIN_HP_1`: prevents HP going below 1 (cannot-die). Implemented in `applyDamageToTarget` in health.ts.
+- `NIEYUN_DASH_REDUCTION`: reduces 蹑云逐月 dash distance and duration by 70%. Implemented in DirectionalDash.ts.
+- `DAMAGE_REDIRECT_55`: semantic marker on 毒手 debuff. Actual redirect logic lives in Damage.ts handleDamage.
+
+### 玄水蛊 Damage Redirect Design
+
+- Buff 2607 (玄水蛊) on CASTER = redirect is active
+- Buff 2606 (毒手) on TARGET = they absorb the redirect
+- When caster takes enemy HP damage, 55% is restored to them and dealt directly (bypassing DR) to the target with 毒手
+- Logic in Damage.ts handleDamage, after applyDamageToTarget, checks isEnemyEffect + actualHpDamage > 0
+
+### 七星拱瑞 On-Damage Break Design
+
+- Buff 2600 (七星拱瑞): CONTROL + ROOT + PERIODIC_GUAN_TI_HEAL 5/s, 15s. Applied via applyBuffsOnComplete.
+- On any enemy damage to the holder, buff is removed (via splice + BUFF_EXPIRED event) and buff 2601 (七星拱瑞·眩晕) is applied via addBuff for 4s.
+- Logic in Damage.ts handleDamage, triggered when isEnemyEffect and target has buffId 2600.
+
+### On-Damage Hooks Refactor (七星拱瑞 break + 玄水蛊 redirect)
+
+Created `backend/game/engine/effects/onDamageHooks.ts` — a shared utility that
+must be called after any `applyDamageToTarget` call that could affect a player
+who has buff 2600 (七星拱瑞 freeze) or buff 2607 (玄水蛊 redirect).
+
+`processOnDamageTaken(state, damagedPlayer, hpDamage, attackerUserId?)`:
+- 七星拱瑞 break: removes buff 2600, calls pushBuffExpired, then addBuff(2601 北斗, 4s CONTROL)
+- 玄水蛊 redirect: if damagedPlayer has buff 2607 and opponent has buff 2606,
+  heals 55% back to damagedPlayer and deals it to opponent
+- NO isEnemyEffect restriction — fires for any damage source (enemy, self, env)
+- Checks `b.expiresAt > now` to skip already-expired buffs not yet cleaned up
+
+Damage.ts now calls processOnDamageTaken instead of inline logic.
+GameLoop.ts added calls at: PERIODIC_DAMAGE buff ticks, TIMED_AOE_DAMAGE,
+CHANNEL_AOE_TICK, ground zone damage, reach/dash damage-on-complete.
+
+Buff 2601 renamed from "七星拱瑞·眩晕" → "北斗".
+Buff 2601 added to qixing_gongrui.buffs[] in abilities.ts (for editor visibility).
+啸如虎 buff 2602: added { type: "CONTROL_IMMUNE" } effect.
+
+Note: DAMAGE_REDIRECT_55 effect type comment in EXPERIENCES.md was outdated —
+the actual redirect logic now lives in onDamageHooks.ts, not Damage.ts.
+
+## Pre-Damage Redirect Pattern (玄水蛊 Fix)
+- **Problem**: Post-damage HP-restore redirect was correct for HP bar but the DAMAGE event still emitted the full `final` value, so A's damage float showed `-10` while HP only dropped 4.
+- **Solution**: Changed to pre-damage split via `preCheckRedirect()` in `onDamageHooks.ts`. Export `preCheckRedirect` + `applyRedirectToOpponent`; call before `applyDamageToTarget` in all 6 damage paths (Damage.ts + 5 GameLoop paths). The DAMAGE event naturally carries the reduced value.
+
+## Post-Pull Stun Pattern (极乐引)
+- CONTROL buffs are blocked by CONTROL_IMMUNE which is applied at pull start alongside `activeDash`.
+- Solution: `PULL_CHANNEL_POST_STUN_CONFIG` constant + `pendingPostPullStuns Map<targetUserId, ...>` class field in GameLoop. When pull activeDash clears (`dashStateBefore && !player.activeDash`), apply the stun via `addBuff` (which now passes since CONTROL_IMMUNE expired with the dash buff).
+
+## On-Play Trigger Hook (傍花随柳)
+- Implemented directly in `PlayAbility.ts` at the end of `applyAbility()`. Check by `buffId === 2611`; decrement stacks; last stack → `ATTACK_LOCK` silence via `addBuff`; earlier stacks → direct `applyDamageToTarget` + DAMAGE event.
+- `applyDamageToTarget` called directly (not via handleDamage) to bypass redirect/shields for this trigger damage, as intended.
+
+## Round 3: Ability Fixes + New Abilities (Session 3 Cont.)
+
+### Fixes Applied
+- **极乐引 (ji_le_yin)**: Converted from CHANNEL targeted to instant SELF-cast AOE pull. Custom effect `JILE_YIN_AOE_PULL` in immediateEffects.ts teleports all enemies within 10u to 1u in front of caster, then applies buff 2608 stun 4s. Removed from `PULL_CHANNEL_POST_STUN_CONFIG` in GameLoop.ts.
+- **傍花随柳 (bang_hua_sui_liu)**: Changed `channelCancelOnMove: true` → `false`. Removed silence logic from PlayAbility.ts trigger; ALL 3 stacks now deal 1 damage only. Removed buff 2612 (束发) from abilityPreload.ts.
+- **化蝶 (hua_die)**: Replaced simple DIRECTIONAL_DASH with 2-phase system. Phase 1: custom `HUA_DIE_PHASE1` effect (diagonal: 2u forward + 4u up over 30 ticks, CC immune). Phase 2: triggered in GameLoop when Phase 1 ends (forward 27u, stealth+damage_immune buff 2613). `_huaDieP2Done` flag prevents double-trigger.
+
+### New Abilities
+- **少明指 (shao_ming_zhi)**: CHANNEL 1s, can move, cannot jump. DAMAGE:1 + `DISPEL_BUFF_ATTRIBUTE` with `count: 2` per attribute. Required adding `count` loop to DISPEL_BUFF_ATTRIBUTE handler (previously removed 1 per attribute, now loops `count` times).
+- **临时飞爪 (lin_shi_fei_zhua)**: Ground-target dash 40u. Custom `LIN_SHI_FEI_ZHUA_DASH` effect — sets `activeDash.ccStopsMe = true` and does NOT call applyDashRuntimeBuff. movement.ts checks `ccStopsMe` and cancels dash if CONTROL/ROOT/ATTACK_LOCK active.
+- **剑主天地 (jian_zhu_tian_di)**: Custom `JIAN_ZHU_TIAN_DI_STRIKE`. At 3 stacks → detonate (settle remaining ticks + this hit damage). Otherwise: 1 damage + addBuff 2614 (stacks up to 3). Similar to 三环套月 in buffRuntime.ts but done in immediateEffects.ts.
+- **破风 (po_feng)**: Custom `PO_FENG_STRIKE`. 1 damage + buff 2615 (DAMAGE_TAKEN_FLAT +5) + buff 2616 流血 (bleed stack). Extra stack of 流血 if target has CONTROL_IMMUNE (check via `blocksControlByImmunity("CONTROL", target)`).
+
+### New Effect Types Added
+- `JILE_YIN_AOE_PULL`, `LIN_SHI_FEI_ZHUA_DASH`, `HUA_DIE_PHASE1`, `DAMAGE_TAKEN_FLAT`, `JIAN_ZHU_TIAN_DI_STRIKE`, `PO_FENG_STRIKE` — added to `effects.ts` EffectType union and `categories.ts` EFFECT_CATEGORY_MAP.
+- `DAMAGE_TAKEN_FLAT`: Added to `combatMath.ts` — applied after multiplicative modifiers as a flat addition.
+
+### Lessons Learned
+- `pushEvent` is NOT available in immediateEffects.ts — use `state.events.push({ id: randomUUID(), timestamp: Date.now(), ... })` directly.
+- `blocksControlByImmunity(effectType, target)` takes 2 arguments.
+- New EffectTypes must be added to BOTH `effects.ts` (union) AND `categories.ts` (Record<EffectType, string>) or tsc fails with a missing key error.
+- 化蝶 Phase 2 uses `_huaDieP2Done` flag on the player object to prevent retriggering every tick.
+
+## Typed Damage Reduction + Zone Channel Abilities (2026-04-25)
+
+### Architecture: damageType propagation gap
+
+**Problem**: `resolveScheduledDamage` accepts `damageType?: string`, and DAMAGE_REDUCTION buff effects can have a `damageType` field to make them type-specific. However, ALL 13 call sites in `GameLoop.ts` (periodic damage, channel AOE ticks, TIMED_AOE_DAMAGE, dash-on-hit, zone damage, etc.) did NOT pass `damageType`. This meant typed reductions (e.g., 30% 内功减伤 from 冲阴阳) never activated — only damage from `immediateEffects.ts` (instant-cast effects) was type-filtered correctly.
+
+**Fix**: For each `resolveScheduledDamage` call in GameLoop.ts, pass the source ability's damageType:
+- Buff-sourced damage: `damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType`
+- Channel-completion damage: `damageType: (ABILITIES[ch.abilityId] as any)?.damageType`
+- Specific ability landing damage: `damageType: (ABILITIES["ability_id"] as any)?.damageType`
+- Zone damage: `damageType: (ABILITIES[zone.abilityId ?? ""] as any)?.damageType`
+- Dash-on-reach damage: `damageType: (reachAbility as any)?.damageType`
+
+**Same root cause existed before**: 外功闪避 (PHYSICAL_DODGE) had the same gap and was fixed in a prior session for GameLoop damage paths.
+
+### Architecture: DAMAGE_REDUCTION stacking
+
+**Problem**: `combatMath.ts` used `.find()` to get ONE DAMAGE_REDUCTION effect, then `dmg *= 1 - value`. This means only the FIRST matching reduction applied; stacked reductions were silently ignored.
+
+**Fix**: Changed to `.filter()` + loop — all matching reductions apply multiplicatively:
+```typescript
+const matchingReductions = allEffects(params.target).filter(...);
+for (const dr of matchingReductions) { dmg *= 1 - (dr.value ?? 0); }
+```
+A typed reduction (`e.damageType === "内功"`) only applies when `params.damageType` matches exactly. An untyped reduction applies to all damage.
+
+### Zone channel buffs: use addBuff()
+
+**Problem**: 冲阴阳/凌太虚/吞日月 zone pulse handlers pushed buffs directly to `player.buffs` (bypassing `addBuff()`), so BUFF_APPLIED events weren't emitted and status bar didn't show them.
+
+**Fix**: Replaced `owner.buffs.push({...})` with `addBuff({state, sourceUserId, targetUserId, ability: ABILITIES["chong_yin_yang"], buffTarget: owner, buff: { buffId, name, category, durationMs: 2000, effects }})`. The `addBuff` function handles refresh (same buffId → old removed, new added), immunity checks, and BUFF_APPLIED event emission. Zone pulsed every 1s with `durationMs: 2000` keeps the buff active as long as owner stays in zone.
+
+### PM2 restart loop deadlock
+
+**Problem**: After many rapid restarts (>15 in a short window), PM2 enters "errored" state and stops retrying. Even after killing port-occupying processes, PM2 won't restart. `lsof -ti:PORT` may miss processes that only show in `ss -tlnp`.
+
+**Fix**: 
+1. Use `ss -tlnp | grep PORT` to find hidden listening processes (lsof missed a `next-server` process).
+2. `kill -9 <pid>` to kill it.
+3. `pm2 reset <name>` to reset restart counter.
+4. `pm2 start <name>` to start fresh.
+
+### Zone buff enter/exit architecture (2026-04-25)
+
+**Problem**: Pulsing a short-duration buff every tick (e.g., `durationMs: 2000` refreshed each 1s) is fragile — there is always a 1s window where the buff appears live but the zone has expired, or the buff stacks unexpectedly with the addBuff refresh path. It also fires addBuff every second for every player in every zone.
+
+**Solution**: Move the 4 new zone ability handlers (生太极, 冲阴阳, 凌太虚, 吞日月) BEFORE the `intervalMs` gate so they run every game loop frame (~33ms). Use pure enter/exit logic:
+- **Enter** (`inZone && !hasBuff`): call `addBuff()` with `durationMs: zone.expiresAt - now` — buff naturally expires when zone does.
+- **Exit** (`!inZone && hasBuff`): filter buff from array + call `pushBuffExpired()`.
+
+For 镇山河 (100ms interval tick — needed for debuff cleanse):
+- Keep inside the 100ms gate.
+- Modified `pulseZhenShanHeTarget` to accept `zoneExpiresAt?: number`.
+- Apply zone invulnerable (buffId 1323) once on entry with `durationMs = zoneExpiresAt - now` instead of refreshing 100ms every tick.
+- Added `else` branch in GameLoop for when player is outside the zone: removes buff 1323 if present.
+
+**CC cleanse on 生太极 entry**: Changed to only run when buff is FIRST applied (the `ownerInside && !ownerHasBuff` branch), not every tick. Proper `pushBuffExpired` events are emitted for each cleansed CC buff.
+
+**生太极 now uses `addBuff()`** instead of direct `owner.buffs.push()` — ensures BUFF_APPLIED event, immunity checks, and status bar visibility.
+
+### 4 new abilities: 无相诀, 应天授命, 斩无常, 灭 (2026-04-xx)
+
+**New effect types added** (effects.ts + categories.ts):
+- `DAMAGE_REDUCTION_HP_SCALING` — DR scaling with target HP% (for 无相诀)
+- `PROJECTILE_IMMUNE` — blocks `isProjectile: true` abilities (for 斩无常)
+- `YING_TIAN_SHIELD` — huge shield + periodic settle + on-hit heal (for 应天授命)
+- `MIE_STRIKE` — conditional 2/12 dmg + MIN_HP_1 buff (for 灭)
+- `CHANNEL_AOE_TICK_HEAL` — like CHANNEL_AOE_TICK but heals nearby targets (贯体)
+
+**isProjectile flag on Ability** — abilities with `isProjectile: true` are blocked by PROJECTILE_IMMUNE buff (checked in Damage.ts handleDamage).
+
+**DAMAGE_REDUCTION_HP_SCALING logic** (combatMath.ts `resolveScheduledDamage`):
+- Base DR = buff effect value (0.5 = 50%)
+- +10% per 25% HP below 100%: `bonus = floor((1 - hpPct) / 0.25) * 0.1`
+- Capped at 0.8 (80%)
+
+**应天授命 (YING_TIAN_SHIELD) mechanic**:
+- `buffRuntime.ts`: when buff has YING_TIAN_SHIELD effect, sets `effectiveShield = 999_999_999` and calls `addShieldToTarget`; otherwise uses normal SHIELD effects sum
+- GameLoop STACK_ON_HIT scan: finds YING_TIAN_SHIELD buff on hit target, accumulates `buff.yingTianAccum += tickDmg`; heals 6% of lost HP (贯体)
+- GameLoop periodic tick (periodicMs: 1000): settles `Math.min(accum, maxHp * 0.2)` as true damage (direct `player.hp` subtract), resets accumulator
+
+**无相诀 natural expire** — After `player.buffs.filter(expired)`, check for buff 2710: if `player.hp < maxHp * 0.1`, apply `applyHealToTarget(player, maxHp * 0.5)` (贯体).
+
+**斩无常 CHANNEL_AOE_TICK_HEAL** — new periodic effect type, heals `e.value` to all players within `gameplayUnitsToWorldUnits(e.range)`. Heals self + nearby opponents (贯体).
+
+**Buff IDs**: 2710 = 无相, 2711 = 应天授命, 2712 = 斩无常, 2713 = 灭
+
+## 远程弹道技能 Editor Tab (2026-05 session)
+
+**What was built**: Third tab "远程弹道技能" in the ability editor to manage which abilities are ranged projectiles blocked by 斩无常's PROJECTILE_IMMUNE buff.
+
+**Architecture**:
+- `isProjectile?: boolean` added to `AbilityEditorOverrideEntry` in `abilityPropertySystem.ts` — persisted in `ability-property-overrides.json`.
+- `buildResolvedAbilities` applies override to `(nextAbility as any).isProjectile` so the game engine sees it at runtime.
+- `buildAbilityEditorEntry` exposes `isProjectile: boolean` in the snapshot.
+- `setAbilityIsProjectile(abilityId, bool)` in `abilities.ts` — same pattern as `setAbilityTag`.
+- Route: `PUT /api/game/ability-editor/:abilityId/is-projectile` with body `{ isProjectile: boolean }`.
+- Frontend: `ProjectileEditorTab.tsx` — rarity filter + left/right two-column layout (undecided | decided).
+- Frontend: Third tab "远程弹道技能" added to `page.tsx`, `MainTab` type extended, URL `?tab=projectiles` supported.
+
+**Blocking**: `Damage.ts` checks `(ability as any).isProjectile === true` + target has buff with `PROJECTILE_IMMUNE` effect. 斩无常 (buff 2712) has PROJECTILE_IMMUNE. The override system feeds isProjectile into the runtime ability object, completing the chain.
+
+## isProjectile Blocking Bug Fix (2026-05 session)
+
+**Bug**: Abilities marked `isProjectile: true` in `ability-property-overrides.json` still dealt damage through 斩无常's PROJECTILE_IMMUNE. The check in `Damage.ts` was present and correct, and `buildResolvedAbilities()` applied the flag correctly. The bug was in `normalizeAbilityOverrideEntry()` in `abilityPropertySystem.ts` — it stripped `isProjectile` from the JSON on load. The function parsed `properties`, `numeric`, `tags` but never read `isProjectile`, so `abilityOverrides?.isProjectile` was always `undefined` at rebuild time.
+
+**Fix**: Added `isProjectile` parsing in `normalizeAbilityOverrideEntry`: read `entryRecord.isProjectile` (boolean), include it in the return object, and updated the empty-check guard to also consider `isProjectile`.
+
+**Root cause pattern**: When a new field is added to `AbilityEditorOverrideEntry` and `saveAbilityEditorOverrides`, the `normalizeAbilityOverrideEntry` function must also be updated to parse and pass through that field — it doesn't do a generic passthrough.
+
+## 斩无常 Channel Range Display (2026-05 session)
+
+**Feature**: Added 4-unit AOE ring for 斩无常 (buffId 2712) just like 风来吴山 (buffId 1014) has.
+
+**Implementation**:
+- `ArenaScene.tsx`: Added `meChannelRadius?: number` and `channelingOpponentRadius?: number` props (default 10). The AOE zone `radius` now uses these instead of the hardcoded `10 * storedUnitScale`.
+- `BattleArena.tsx`: Added `meChannelRadiusRef` and `oppChannelRadiusRef` (default 10). The `useEffect` watching `me?.buffs` now checks both buffId 1014 and 2712, setting radius to 4 for 2712. Same for opponent buffs. `ArenaScene` receives `meChannelRadius` and `channelingOpponentRadius` derived from the refs.
+
+### isProjectile Display Fix verification (2026-04 session)
+After the `normalizeAbilityOverrideEntry` fix was compiled, verified via:
+```node -e "const {loadAbilityEditorOverrides}=require('./backend/dist/game/abilities/abilityPropertySystem.js'); const r=loadAbilityEditorOverrides(); console.log(Object.entries(r.overrides).filter(([,v])=>v.isProjectile===true).length);"```
+→ Returns 21, confirming the JSON's `isProjectile: true` entries are now read.
+
+### PROJECTILE_IMMUNE: Buff bypass fix (2026-04 session)
+**Bug**: When PROJECTILE_IMMUNE blocked damage, enemy-targeted buffs from the same projectile ability still applied (e.g. slows, stuns from ranged attacks).
+
+**Fix 1 - immediateEffects.ts**: Added PROJECTILE_IMMUNE check in the main effect loop BEFORE the switch statement. If `enemyApplied && ability.isProjectile === true && target has PROJECTILE_IMMUNE buff` → `continue` (skip ALL enemy effects: damage, controls, knockbacks, etc.).
+
+**Fix 2 - buffs.ts**: Added same check in the per-buff loop of `applyAbilityBuffs`. If `localEnemyApplied && ability.isProjectile === true && localBuffTarget has PROJECTILE_IMMUNE` → `continue`.
+
+**Pattern**: PROJECTILE_IMMUNE must be checked in BOTH `immediateEffects.ts` (for effects[]) AND `buffs.ts` (for buffs[]) because the ability pipeline handles effects and buffs in separate passes.
+
+## Legacy Damage Route Audit (2026-04-26 session)
+
+**Background**: An audit was triggered when 追命箭's `TIMED_AOE_DAMAGE_IF_SELF_HP_GT` handler was found to skip dodge, damage immunity, redirect, processOnDamageTaken, and shieldAbsorbed.
+
+**Modern damage pattern** (must be applied everywhere in immediateEffects.ts and GameLoop.ts):
+```
+const adjXxx = resolveScheduledDamage({...});
+if (adjXxx > 0 && !hasDamageImmune(target)) {
+  const { adjustedDamage: adXxx, redirectPlayer: rtXxx, redirectAmt: raXxx } = preCheckRedirect(state, target, adjXxx);
+  const applyXxx = rtXxx ? adXxx : adjXxx;
+  const resultXxx = applyXxx > 0 ? applyDamageToTarget(target, applyXxx) : { hpDamage: 0, shieldAbsorbed: 0 };
+  state.events.push({ type: "DAMAGE", value: applyXxx, shieldAbsorbed: (resultXxx.shieldAbsorbed ?? 0) > 0 ? resultXxx.shieldAbsorbed : undefined, ... });
+  if (resultXxx.hpDamage > 0) processOnDamageTaken(state, target, resultXxx.hpDamage, source.userId);
+  if (rtXxx && raXxx > 0) applyRedirectToOpponent(state, rtXxx, raXxx);
+}
+```
+
+**Fixes applied** (all in immediateEffects.ts and GameLoop.ts):
+- GameLoop.ts: TIMED_AOE_DAMAGE → added shieldAbsorbed (fix fallback `{ hpDamage: 0 }` must also include `shieldAbsorbed: 0`)
+- GameLoop.ts: TIMED_AOE_DAMAGE_IF_SELF_HP_GT → fully rewritten with modern pattern
+- immediateEffects.ts: 百足 (RANGED_MULTI_TARGET_AOE_DAMAGE), 五方行尽 (WUFANG_XINGJIN_AOE), BANG_DA_GOU_TOU fallback, SETTLE_DOT, YIN_YUE_ZHAN, LIE_RI_ZHAN, HENG_SAO_LIU_HE_AOE, JIAN_ZHU_TIAN_DI_STRIKE (burst + normal), PO_FENG_STRIKE, MIE_STRIKE
+
+**Pitfalls encountered**:
+1. **Removing const declarations**: When the old replace-string ends with `const dotBuff = ...` or `const debuff = ...`, that line gets consumed. Always include that line in the new string too.
+2. **Removing `if (rootBuff) {` guard in 五方行尽**: The old replace-string ended with `if (rootBuff) {` so the guard opening was consumed. The closing `}` was still there. Fixed by replacing `hitAtLeastOneEnemy = true;` (the duplicate) with `if (rootBuff) {`.
+3. **Fallback `{ hpDamage: 0 }` TypeScript error**: When the ternary fallback object is `{ hpDamage: 0 }` but the success branch returns an object with `shieldAbsorbed`, TypeScript infers a union type and `.shieldAbsorbed` access fails. Always use `{ hpDamage: 0, shieldAbsorbed: 0 }` as fallback.
+4. **Variable name conflicts**: Use unique prefix per handler (adjBurst, rtBurst, etc.) to avoid shadowing.
+
+## 孤影化双 ability implementation (2025)
+
+### Pattern: snapshot + deferred restore via buff expiry
+- Added `GU_YING_HUA_SHUANG` to `EffectType` union in `effects.ts` and `EFFECT_CATEGORY_MAP` in `categories.ts` — every new custom effect type needs both updates.
+- Snapshot is stored as `(liveBuff as any).snapshot = { hp, shield, cooldowns }` AFTER calling `addBuff()`, by finding the buff in `source.buffs` by buffId.
+- `addBuff()` does NOT support custom extra fields — attach custom data to the returned live buff object post-call.
+- Restore happens in `GameLoop.ts` in the `naturallyExpired` section, same pattern as `wuxiangExpired` and `xuanjianNaturallyExpired`.
+- Buff declared in `ability.buffs[]` is auto-included in abilityPreload — no manual `buffs.push()` needed.
+- The CLEANSE effect (declared separately in `effects[]`) handles control removal; the custom effect only handles snapshot + buff application.
+
+## 逐云寒蕊 (zhu_yun_han_rui) — first targetable HP-bearing entity
+
+- Introduced new top-level `state.entities: TargetEntity[]` (separate from `groundZones`).
+  Diffed/published like other state arrays. Defined in `backend/game/engine/state/types/state.ts` and re-exported via `state/types.ts` barrel.
+- Cast pipeline plumbed `entityTargetId?` through:
+  `gameplay.routes.ts` → `playService.playAbility` → `applyEffects` → `applyAbility` (PlayAbility.ts/executeAbility.ts) → `applyImmediateEffects` (`castContext.entityTargetId`).
+- DAMAGE effect routes to entity HP when `castContext.entityTargetId` is set and effect is enemy-applied (skip player damage path entirely).
+- Custom effect `PLACE_ZHU_YUN_HAN_RUI` creates the entity at caster's snapped ground Z and applies caster control-immune buff via `addBuff`.
+- Buff 2715 covers ALL control levels: must include both `CONTROL_IMMUNE` and `KNOCKBACK_IMMUNE` effects (CONTROL_IMMUNE filter does not strip KNOCKED_BACK / PULLED — those are handled by `hasKnockbackImmune`).
+- Per-tick stealth granting: GameLoop iterates entities → in-zone friendlies → entry timestamp + 1 s grant delay → `addBuff(2716)` with `breakOnPlay`. Buff 2716 has short `durationMs` (500 ms) refreshed every tick; out-of-zone immediately removes it. Death/expiry cascades via emit `BUFF_EXPIRED` for all stealth buffs sourced from the dying entity.
+- Frontend: separate `selectedEntityId` state in BattleArena; mutually exclusive with `selectedTargetId`. OPPONENT-target abilities prefer player target if both set. Entity rendered via new `TargetEntityVisual` (clickable orb + ground ring + HP bar billboard).
+- Gotcha: Custom effect type names must be added in 3 places: `effects.ts` EffectType union, `categories.ts` EFFECT_CATEGORY_MAP, AND `applyAbilityBuffs` exclusion list in `buffs.ts` if the handler manages buffs manually.
+- GameLoop movement broadcasts must include `/entities` once targetable ability-created objects exist; otherwise entity HP/expiry/destruction changes never reach the client and zones appear stuck after their server-side expiry.
+- For 逐云寒蕊-style hidden states, reuse the 散流霞 visual path only for transparency, but add a separate `hideHpBar` switch on the character renderer so enemy HP/name billboards can be suppressed without making the unit fully invisible.
+- Tab targeting should use a live ref of all current targetable enemies (players + ability-created entities), not a stale opponent-only list captured by the keyboard effect.
+- If PM2 restart races port 3000 and leaves stale `EADDRINUSE` lines, use a clean frontend-only restart: `pm2 stop frontend` -> kill `lsof -ti:3000` -> `pm2 flush frontend` -> `pm2 restart frontend`.
+- Entity selection must feed the SAME top-center target HUD path as player selection. If `selectedEntityId` is handled only in cast checks, the object can technically be targetable but still feels unselectable to the player.
+- Arena target feedback has 3 separate surfaces to keep in sync for non-player targets: top-center target panel, center distance label, and the 3D target line. Missing any one of them makes selection feel broken.
+- Entity damage events should not reuse the owner player's `targetUserId`; otherwise frontend hit feedback attaches to the owner player instead of the entity. Emit `entityId`/`entityName` on DAMAGE events for targetable objects.
+- For entity floating damage numbers, track per-entity projected screen bounds in the scene layer and use them when processing DAMAGE events from the local attacker.
+- In large React arena components, never compute values for JSX inside an effect-local helper if the JSX reads them later. `selectedTargetDistance` was added inside a `useEffect` draft-ability block, so production build succeeded but runtime render crashed with `ReferenceError`. Put render-consumed target values in top-level render scope.
+
+### Entity-target combat surfaces (2026-04-22)
+- **Custom effect handlers must consult `explicitEntityTarget`**: `applyImmediateEffects` previously set `effTarget = state.players[effTargetIndex]` for every effect in the loop. Custom handlers (BANG_DA_GOU_TOU, dash effects, AoE pulls) used that `effTarget` and ignored entity targeting, so casting a dash on a dummy actually flew toward the opposing player and damaged both.
+  - Fix: when `explicitEntityTarget && enemyApplied`, override `effTarget` with the entity. Entities expose `userId / position / hp / buffs / shield` which is enough for `handleDash`, `addBuff`, and the existing damage helpers. Also patched `DIRECTIONAL_DASH` and `GROUND_TARGET_DASH` to take entity position when an entity is targeted.
+- **Static dummies and pull**: dummies have no movement loop, so `JILE_YIN_AOE_PULL` and `TIMED_PULL_TARGET_TO_FRONT` previously silently no-op'd on entity targets. Workaround: teleport the entity to the pull endpoint (1u in front of caster for single-target pull, STOP_DISTANCE from caster for AoE pull) and still apply the PULLED buff for status visibility.
+- **`getImmediateEnemyDamageTargets` already includes entities**, so `BAIZU_AOE` / `WUFANG_XINGJIN_AOE` / channel AoE damage paths require no change for Point 7.
+- **Frontend selection of own dummies**: `TargetEntityVisual` previously gated `onClick` behind `!isOwn` which prevented inspecting friendly dummies. Removed the gate — users may always click any entity for selection / inspection. The cast layer still rejects entity targets owned by the caster (`getExplicitEnemyEntityTarget`), so this only affects HUD selection.
+- **Target HUD label**: the top-center target panel hard-coded `${owner}的逐云寒蕊`. Added dummy-aware branch (`敌方木桩` / `友方木桩`) and made `entityOwner` lookup also include the local player so own-dummy ownership resolves correctly.
+- **Dummy 3D model**: added a player-style cylinder body to `TargetEntityVisual` (radius 0.42, height 1.5, matching `Character.tsx`) so dummies are visible as upright cylinders rather than just a ring on the ground.
+- **Layout**: cheat ability grid widened to `repeat(7, 32px)` (7 icons per row instead of 6) to use the previously empty horizontal space; control panel button + panel relocated to `right: 290` so the open cheat panel never covers them.
+
+## TargetEntity 综合战斗作业 (Round 2)
+
+### Pull on entities was a teleport
+- TIMED_PULL_TARGET_TO_FRONT and JILE_YIN_AOE_PULL set entity position directly because there was no entity movement loop. Replaced with `entity.activeDash = { vxPerTick, vyPerTick, ticksRemaining }` plus a new entity integrator in `GameLoop.tickGame` (parallel to the player movement section). Use proportional duration based on `pullDistance / maxPullDistance` to keep speed consistent.
+
+### Ground-AOE on entity targeted player position
+- 百足/无方·星辰 pulled `groundTarget ?? target.position` for AOE center. When the user has an entity selected (no mouse-ground), `target` is the opposing player. Fix: prefer `explicitEntityTarget.position` over `target.position` whenever no `groundTarget` is provided.
+
+### Tab cycling needed exclusion + front cone
+- New rule: Tab/F1 must (a) exclude `currentSelectedId` so re-pressing always advances and (b) only consider candidates in the 180° front cone (`dot(facing, dir) > 0`). Implemented in `BattleArena.tsx` Tab handler. When no candidate found, silently keep current selection.
+
+### Knockback didn't push dummies
+- Dummies have `buffs: []`; the bug was missing entity movement integrator (same root cause as Pull). After adding the entity activeDash tick, dummies are pushed correctly. **Never** whitelist entities — treat them like an unbuffed player; rely on `hasKnockbackImmune`/`blocksControlByImmunity` instead.
+
+### 沧月 (multi-target test ability)
+- Added EffectType `CANG_YUE_AOE` (3 registration sites: types/effects.ts, definitions/categories.ts, flow/play/buffs.ts exclusion list) plus ability `cang_yue` and a custom handler that:
+  1. Damage 1 to primary (entity or player)
+  2. addBuff knockdown 1340 (CONTROL 2s)
+  3. Iterate `getImmediateEnemyBuffTargets` within 6u of primary (excluding primary by reference); for each non-immune target set `activeDash` (30u over 30 ticks) + addBuff KNOCKED_BACK 1341 1s.
+- Used `t === primary` for dedupe (entities have no userId).
+- Buff IDs collide easily — checked with grep `buffId: 1[3-4][0-9][0-9]` before picking 1340/1341 (1336/1337 already used by 无方/棒打 series).
+
+## TargetEntity Round 3 — wall stops, knockback angle, clear-all
+
+### Entity knockback ignored walls/terrain
+- Round-2 entity dash integrator just added `vxPerTick`/`vyPerTick` to position with no collision pass, so dummies tunneled through walls and floated up onto raised floors. Fixed in `GameLoop` entity dash loop: sub-step the move (≤0.5u per sub-step), call `resolveMapCollisions(entity as any, this.mapCtx)` per sub-step, then snap `entity.position.z` to `getGroundHeightForMap(...)` so they walk over terrain naturally and stop at walls. If actual step < 35% of intended, the dash is canceled (matches the player wall-block heuristic).
+
+### 沧月 knockback direction must originate from the caster
+- Original handler used `target − primary` for the outward direction. That made the side targets fan around the *primary* dummy regardless of where the caster was — which looked wrong when the caster stood off-axis. Fixed to use `target − source` (caster → victim) so all secondary targets get pushed away from the caster. Fallback uses caster facing if a victim sits on top of the caster.
+
+### Clear-all-dummies button
+- Added `POST /cheat/clear-dummies` (mirrors restore-dummies / clear-dummy-debuffs) which `filter()`s out any entity whose `kind` is in `DUMMY_KINDS`. Wired a red "清除木桩" button next to "清木桩Buff" in the dummy control panel.
+
+## TargetEntity Round 3 hotfix — entity collision crash + revert 沧月 angle
+
+### `resolveMapCollisions` is player-only (reads `velocity`)
+- Calling `resolveMapCollisions(entity as any, mapCtx)` on a TargetEntity from the GameLoop entity-dash loop crashed with `TypeError: Cannot read properties of undefined (reading 'vz')` because both `resolveExportedRecovery` and `resolveObjectCollision` write/read `player.velocity.{vx,vy,vz}`. The crash threw mid-tick, so the cang_yue secondary knockback never executed (knockdown ran before the crash, hence "knockdown works, knockback doesn't") and clients were disconnected by the broken loop.
+- Added `resolveEntityHorizontalCollision(ent, mapCtx)` in `movement.ts` which only does the BVH horizontal sphere resolve and never reads/writes velocity. Use this for any non-player object dashed by an ability.
+
+### 沧月 angle reverted to primary-relative
+- User confirmed primary-relative outward direction looks correct in practice. Reverted from caster-relative back to `victim − primary` outward (caster-relative fallback retained for the same-spot case).
+
+## Round: 5 new test abilities + 沧月 polish
+
+- Renamed buff 1340 沧月·击倒 → 沧月·倒地.
+- Reverted 沧月 knockback direction to caster-relative (safe now: entity dash uses velocity-free `resolveEntityHorizontalCollision` from prior round).
+- Made `lifestealPct` work for immediate DAMAGE effects (player→player in `Damage.ts`, player→entity in `immediateEffects.ts`). Previously only TIMED_AOE_DAMAGE/scheduled supported it.
+- Added EffectTypes `XU_RU_LIN_PROC` (parent self-buff marker) and `XU_RU_LIN_RESTORE` (child buff marker) — registered in `effects.ts` union and `categories.ts` map (both BUFF).
+- Added 5 new abilities: `qu_ye_duan_chou` (驱夜断愁, 50% lifesteal), `bu_feng_shi` (捕风式, 20% slow 3s), `you_yue_lun` (幽月轮, 1 damage), `xu_ru_lin` (徐如林, 50%-on-hit-proc → heal 5 on expire), `kang_long_you_hui` (亢龙有悔, 2×3 damage + self-CONTROL 1s + DOT 24s/2-stack/2s tick).
+- Pattern for self-target debuff on opponent-targeted ability: set `applyTo: "SELF"` per-buff (亢龙有悔·定身).
+- Pattern for dynamic on-hit proc buff: declare both parent + child buffs in `ability.buffs[]` for editor visibility, exclude ability from `applyAbilityBuffs`, apply parent on cast via custom hook in `immediateEffects.ts`, apply child via attacker-side proc loop in `GameLoop.ts` (placed just before `stackProcScanIndex` update). Heal-on-expire handled by filtering `naturallyExpired` near other expire handlers.
+
+## Round: lifesteal-at-full-HP, ability tweaks, 4 new abilities
+
+- Lifesteal now emits HEAL event with the *intended* heal amount (not capped by available HP), so the heal float text appears even at full HP. Both `Damage.ts` and the entity-target lifesteal path in `immediateEffects.ts`.
+- 幽月轮 cooldown 300 → 0 (still uses GCD).
+- 徐如林 buff (1343) duration 30s → 20s.
+- Added `Z_LOCK` effect type: when active on a player, suspends gravity and Z-integration in `movement.ts`. Combined with `CONTROL` produces an "anchor in mid-air" lock. Wired into both the gravity step and `applyForcedControlFall`. 亢龙·定身 (1345) and 龙啸九天·定身 (1351) both use `[CONTROL, Z_LOCK]`.
+- Added `JUMP_NERF` effect type: `value` = peak-height multiplier (0.5 = 50% jump height). Implemented as `vzScale = sqrt(value)` because peak-height ∝ vz². Used by 抱残式.
+- DAMAGE_TAKEN_INCREASE in `combatMath.ts` now sums across all buffs and multiplies by stack count (was: only first matching effect). Required for stacking 太极无极.
+- New ability **抱残式** `bao_can_shi`: 8u, applies debuff 1347 (JUMP_NERF 0.5 + SLOW 0.48, 8s).
+- New ability **太极无极** `tai_ji_wu_ji`: 20u, 2 dmg + GCD; if target had CONTROL/ROOT/FREEZE at cast, apply stacking debuff 1348 (DAMAGE_TAKEN_INCREASE 0.2, 12s, max 5 stacks). Pre-damage CC state captured into `taiJiCcOnTarget` since damage may strip control buffs. Custom buff application excluded from `applyAbilityBuffs`.
+- New ability **拿云式** `na_yun_shi`: 4u, target HP < 30 precondition (early-return in `applyImmediateEffects`); deals 5 normal damage + 10 `TRUE_DAMAGE`. New `TRUE_DAMAGE` effect bypasses DR/shield/dodge but still respects INVULNERABLE/UNTARGETABLE/DAMAGE_IMMUNE.
+- New ability **龙啸九天** `long_xiao_jiu_tian`: SELF, `allowWhileControlled: true`. Custom `LONG_XIAO_JIU_TIAN_AOE` effect handler: cleanses self, applies buffs 1349 (CONTROL_IMMUNE 3s) + 1350 (DAMAGE_REDUCTION 0.6, 6s) + 1351 (CONTROL+Z_LOCK 1s self-stuck), AOE 6u: 1 damage + slow knockback (10u over 300 ticks = 10s) with KNOCKED_BACK buff 1352. Excluded from `applyAbilityBuffs` (custom application).
+
+## 盾立 Reflect — Universal Coverage (round 2)
+Issue: PlayAbility-level reflect was too narrow. AoE / channel-tick / zone-tick / dash-route / knockback / control-buff paths bypassed it. Many call sites pre-skipped via `if (hasDamageImmune) continue;` which blocked damage but never reflected.
+
+Fix:
+- Centralized reflect helper `backend/game/engine/effects/dunLiReflect.ts` already in place.
+- Damage chokepoints now reflect: `handleDamage` (Damage.ts), `applyImmediateDamageToEnemyTarget` (immediateEffects.ts), `applyDamageToHostileTarget` (GameLoop.ts).
+- Removed pre-immunity skips at GameLoop.ts (TIMED_AOE_DAMAGE, channel completion, CHANNEL_AOE_TICK_DAMAGE, 天绝地灭 explode) so the reflect-aware helper actually receives the call.
+- Added 盾立 reflect for buffs in `addBuff()` (buffRuntime.ts) — any debuff applied to a 盾立 holder is redirected to caster (covers 帝骖龙翔, 极乐引 stun, etc).
+- DirectionalDash route damage (疾) now checks immunity + reflects.
+- 龙啸九天 knockback: redirects activeDash to caster when victim has 盾立.
+- 极乐引 pull: skipped on 盾立 holder (buffs reflect via addBuff hook).
+
+Lesson: damage/buff/movement reflection MUST hook at every chokepoint. Pre-immunity skips block reflection — remove them where the helper now handles immunity.
+
+## 盾立 Reflect — regression fixes after round 2
+
+### 捉影式 reflected only the debuff, not the pull movement
+- `TIMED_PULL_TARGET_TO_FRONT` in `GameLoop.ts` applied `activeDash` directly to the original target, then applied the qinggong-seal debuff via `addBuff()`. Result: 盾立 correctly reflected the debuff, but the 盾立 holder still got pulled.
+- Fix: resolve `getDunLiReflectVictim(...)` inside the timed-pull branch and switch the actual movement recipient, post-pull stun recipient, 雷霆震怒 strip target, and qinggong-seal target to the reflected victim. For reflected pulls, anchor/facing now come from the 盾立 holder, so the original caster is pulled to the 盾立 holder’s front.
+
+### Ground-zone tick loops still had one raw `hasDamageImmune()` bypass
+- The generic ground-zone damage loop (used by 狂龙乱舞 and similar persistent zones) still did `if (hasDamageImmune(target)) continue;` before calling `applyDamageToHostileTarget()`. That made the earlier reflect work look correct in helper code but unreachable in live zone ticks.
+- Fix: remove the raw skip and let `applyDamageToHostileTarget()` handle both immunity and reflect.
+
+### 百足 / 五方 need payload-only reflect, not cast-entry reflect
+- `PlayAbility.ts` reflects any direct opponent-target cast before `applyImmediateEffects()`. For targetable area spells like 百足 and 五方行尽, that bounces the whole cast back to the caster, which is wrong because the zone/impact point should stay where the player aimed it. Only the emitted damage/root/DoT payload should reflect.
+- Fix: skip cast-entry reflect for `BAIZU_AOE` and `WUFANG_XINGJIN_AOE`, and rely on downstream reflect-aware damage/buff handlers to redirect the payload only.
+
+## 盾立 Reflect — six-point follow-up round
+
+### 百足 / 五方 still skipped 盾立 before the shared helper
+- `getImmediateEnemyDamageTargets()` in `immediateEffects.ts` still filtered out `hasDamageImmune()` players/entities before BAIZU_AOE and WUFANG_XINGJIN_AOE reached `applyImmediateDamageToEnemyTarget()` / `addBuff()`. Result: the cast-entry reflect was gone, the zone place stayed correct, but the actual damage/root payload never saw the 盾立 target at all.
+- Fix: remove the early damage-immune filter from `getImmediateEnemyDamageTargets()` and let the downstream damage/buff handlers handle immunity + reflect.
+
+### 少明指 dispel payload had no reflect path of its own
+- Both `DISPEL_BUFF_ATTRIBUTE` handlers (channel-completion in `GameLoop.ts` and immediate in `immediateEffects.ts`) directly stripped buffs from the current target with no `getDunLiReflectVictim()` step. For the channel case, dispel was also skipped if the prior damage leg set `channelEffectDodged`.
+- Fix: resolve the dispel target through `getDunLiReflectVictim()` in both handlers. In the channel version, only skip dispel on `channelEffectDodged` when there was no 盾立 redirect.
+
+### 振翅图南 / 飞刃回转 follow-zones must resolve 盾立 before choosing the follow target
+- `PLACE_FOLLOW_ZONE` always attached the zone to the selected enemy target. If that target had 盾立, the zone still spawned on and followed them, which bypassed the intended direct-target reflect behavior for the follow lock-on itself.
+- Fix: in `PLACE_FOLLOW_ZONE`, resolve the selected target through `getDunLiReflectVictim()` before setting the zone center / `followTargetUserId`.
+
+### 极乐引 reflected only the CC buffs, not the pull movement
+- The earlier hotfix explicitly `continue`d after reflecting the pull/stun buffs, so the activeDash pull never switched to the caster.
+- Fix: resolve `pullSource` / `pullTarget` through `getDunLiReflectVictim()` and assign both the activeDash movement and the pull/stun buffs to the reflected target.
+
+### 连环弩 used a fully custom tick path outside the shared damage helper
+- The `lian_huan_nu` tick branch in `GameLoop.ts` did all of its own work: raw `!hasDamageImmune()` gating, manual `resolveScheduledDamage()`, direct `applyDamageToTarget()`, and direct `activeDash` knockback. That bypassed 盾立 reflect entirely. It also applied no actual `KNOCKED_BACK` CC state, so reflected knockback did not reliably break the caster’s channel.
+- Fix: route damage through `applyDamageToHostileTarget()`, resolve the actual knockback victim through `getDunLiReflectVictim()`, add a short `KNOCKED_BACK` debuff when knockback lands, and explicitly clear `activeChannel` on the knockback victim so reflected self-knockback breaks 连环弩 immediately.

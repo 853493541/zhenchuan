@@ -1,4 +1,13 @@
 import { ABILITIES } from "./abilities";
+import { applyPropertyOverridesToEffects, BuffEditorOverrideEntry, loadBuffEditorOverrides } from "./buffEditorOverrides";
+import { loadAbilityEditorOverrides } from "./abilityPropertySystem";
+
+const BUFF_ICON_PATH_OVERRIDES: Record<string, string> = {
+  "心诤": "/icons/心诤-buff.png",
+  "散流霞": "/icons/散流霞-buff.png",
+  "长针": "/icons/长针-buff.png",
+  "风袖低昂": "/icons/风袖低昂-buff.png",
+};
 
 function hasEffectFlag(
   ability: { effects?: Array<Record<string, unknown>> },
@@ -20,9 +29,14 @@ function hasEffectFlag(
  * - O(1) lookup friendly
  * - Backend is the single source of truth for ALL text
  */
-export function buildAbilityPreload() {
+export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boolean }) {
   const abilities: any[] = [];
   const buffs: any[] = [];
+  const applyBuffEditorOverrides = options?.applyBuffEditorOverrides !== false;
+  const { overrides: buffEditorOverrides } = applyBuffEditorOverrides
+    ? loadBuffEditorOverrides()
+    : { overrides: {} as Record<string, BuffEditorOverrideEntry> };
+  const { overrides: abilityEditorOverrides } = loadAbilityEditorOverrides();
 
   const TEST_COOLDOWN_CAP_TICKS = 150; // 5 seconds at 30Hz
   const clampCooldownTicksForTesting = (ticks: number | undefined) => {
@@ -39,6 +53,7 @@ export function buildAbilityPreload() {
       type: ability.type,
       gcd: !!(ability as any).gcd,
       target: ability.target,
+      canTargetSelf: !!(ability as any).canTargetSelf,
       effects: ability.effects ?? [],
 
       // Range data for client-side ability readiness check
@@ -95,6 +110,9 @@ export function buildAbilityPreload() {
       cleanseRootSlow:
         (ability as any).cleanseRootSlow === true ||
         hasEffectFlag(ability as any, "cleanseRootSlow", "CLEANSE"),
+
+      rarity: abilityEditorOverrides[ability.id]?.tags?.rarity,  // backward compat for BattleArena
+      tags: abilityEditorOverrides[ability.id]?.tags ?? {},
     };
 
     abilities.push(cardPayload);
@@ -157,7 +175,7 @@ export function buildAbilityPreload() {
       { type: "DISPLACEMENT" },
       { type: "DASH_TURN_LOCK" },
     ],
-    iconPath: "/game/icons/Skills/蹑云逐月.png",
+    iconPath: "/icons/蹑云逐月.png",
   });
 
   buffs.push({
@@ -193,6 +211,16 @@ export function buildAbilityPreload() {
   });
 
   buffs.push({
+    buffId: 990103,
+    name: "定身抗性",
+    category: "BUFF",
+    durationMs: 10_000,
+    breakOnPlay: false,
+    description: "10秒内定身递减。每次定身成功后层数+1并刷新计时，下一次定身持续时间按0.5^层数递减。",
+    effects: [],
+  });
+
+  buffs.push({
     buffId: 990102,
     name: "锁招抗性",
     category: "BUFF",
@@ -204,7 +232,7 @@ export function buildAbilityPreload() {
 
   buffs.push({
     buffId: 1310,
-    name: "生太极·护体",
+    name: "生太极",
     category: "BUFF",
     durationMs: 3_000,
     breakOnPlay: false,
@@ -280,6 +308,18 @@ export function buildAbilityPreload() {
 
   // 2403 滞影 — dynamically applied by GameLoop on 捉影式 channel completion
   buffs.push({
+    buffId: 2601,
+    name: "北斗",
+    category: "DEBUFF",
+    durationMs: 4_000,
+    breakOnPlay: false,
+    description: "眩晕4秒（七星拱瑞被破时触发）",
+    effects: [{ type: "CONTROL" }],
+    sourceAbilityId: "qixing_gongrui",
+    sourceAbilityName: "七星拱瑞",
+  });
+
+  buffs.push({
     buffId: 2403,
     name: "滞影",
     category: "DEBUFF",
@@ -290,6 +330,266 @@ export function buildAbilityPreload() {
     sourceAbilityId: "zhuo_ying_shi",
     sourceAbilityName: "捉影式",
   });
+
+  // ── 极乐引 pull state ──────────────────────────────────────────────────────
+  buffs.push({
+    buffId: 9203,
+    name: "被拉",
+    category: "DEBUFF",
+    durationMs: 700,
+    breakOnPlay: false,
+    description: "被极乐引拉拽中",
+    effects: [{ type: "PULLED" }],
+    sourceAbilityId: "ji_le_yin",
+    sourceAbilityName: "极乐引",
+  });
+
+  // ── 极乐引 post-pull stun ──────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2608,
+    name: "极乐引",
+    category: "DEBUFF",
+    durationMs: 4_000,
+    breakOnPlay: false,
+    description: "眩晕4秒（极乐引拉拽完成时触发）",
+    effects: [{ type: "CONTROL" }],
+    sourceAbilityId: "ji_le_yin",
+    sourceAbilityName: "极乐引",
+  });
+
+  // ── 大道无术 freeze ────────────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2609,
+    name: "大道无术",
+    category: "DEBUFF",
+    durationMs: 6_000,
+    breakOnPlay: false,
+    description: "定身6秒",
+    effects: [{ type: "CONTROL" }, { type: "ROOT" }],
+    sourceAbilityId: "da_dao_wu_shu",
+    sourceAbilityName: "大道无术",
+  });
+
+  // ── 惊鸿游龙 dodge+dmg-reduce buff ────────────────────────────────────────
+  buffs.push({
+    buffId: 2610,
+    name: "惊鸿游龙",
+    category: "BUFF",
+    durationMs: 10_000,
+    breakOnPlay: false,
+    description: "闪避率提高65%，受到伤害降低45%",
+    effects: [
+      { type: "DODGE", chance: 0.65 },
+      { type: "DAMAGE_REDUCTION", value: 0.45 },
+    ],
+    sourceAbilityId: "jing_hong_you_long",
+    sourceAbilityName: "惊鸿游龙",
+  });
+
+  // ── 傍花随柳 debuff stack ──────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2611,
+    name: "傍花随柳",
+    category: "DEBUFF",
+    durationMs: 30_000,
+    breakOnPlay: false,
+    description: "每次出招消耗1层：前2层造成1点伤害，最后1层沉默4秒",
+    effects: [],
+    sourceAbilityId: "bang_hua_sui_liu",
+    sourceAbilityName: "傍花随柳",
+  });
+
+  // ── 束发 silence (applied by 傍花随柳 last stack) ─────────────────────────
+  buffs.push({
+    buffId: 2612,
+    name: "束发",
+    category: "DEBUFF",
+    durationMs: 4_000,
+    breakOnPlay: false,
+    description: "沉默4秒",
+    effects: [{ type: "SILENCE" }],
+    sourceAbilityId: "bang_hua_sui_liu",
+    sourceAbilityName: "傍花随柳",
+  });
+
+  // ── 化蝶 stealth + damage-immune dash buff (Phase 2)
+  buffs.push({
+    buffId: 2613,
+    name: "化蝶",
+    category: "BUFF",
+    durationMs: 1_200,
+    breakOnPlay: false,
+    description: "隐身，免疫伤害",
+    effects: [
+      { type: "STEALTH" },
+      { type: "DAMAGE_IMMUNE" },
+    ],
+    sourceAbilityId: "hua_die",
+    sourceAbilityName: "化蝶",
+  });
+
+  // ── 剑主天地·急曲 periodic damage dot ────────────────────────────────────────────
+  buffs.push({
+    buffId: 2614,
+    name: "剑主天地·急曲",
+    category: "DEBUFF",
+    durationMs: 18_000,
+    breakOnPlay: false,
+    description: "每3秒受到1点伤害（最多3层）",
+    effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+    sourceAbilityId: "jian_zhu_tian_di",
+    sourceAbilityName: "剑主天地",
+  });
+
+  // ── 破风 flat extra damage debuff ────────────────────────────────────────────
+  buffs.push({
+    buffId: 2615,
+    name: "破风",
+    category: "DEBUFF",
+    durationMs: 12_000,
+    breakOnPlay: false,
+    description: "额外受到5%伤害",
+    effects: [{ type: "DAMAGE_TAKEN_INCREASE", value: 0.05 }],
+    sourceAbilityId: "po_feng",
+    sourceAbilityName: "破风",
+  });
+
+  // ── 流血 periodic bleed dot ────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2616,
+    name: "流血",
+    category: "DEBUFF",
+    durationMs: 12_000,
+    breakOnPlay: false,
+    description: "每2秒受到1点伤害（最多2层）",
+    effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+    sourceAbilityId: "po_feng",
+    sourceAbilityName: "破风",
+  });
+
+  // ── 冲阴阳 zone buff (owner inside zone → 内功减伤30%) ─────────────────────
+  buffs.push({
+    buffId: 2701,
+    name: "冲阴阳",
+    category: "BUFF",
+    durationMs: 2_000,
+    breakOnPlay: false,
+    description: "内功伤害减少30%",
+    effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "内功" } as any],
+    sourceAbilityId: "chong_yin_yang",
+    sourceAbilityName: "冲阴阳",
+  });
+
+  // ── 凌太虚 zone buff (owner inside zone → 外功减伤30%) ─────────────────────
+  buffs.push({
+    buffId: 2702,
+    name: "凌太虚",
+    category: "BUFF",
+    durationMs: 2_000,
+    breakOnPlay: false,
+    description: "外功伤害减少30%",
+    effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "外功" } as any],
+    sourceAbilityId: "ling_tai_xu",
+    sourceAbilityName: "凌太虚",
+  });
+
+  // ── 吞日月 zone debuff (enemies inside zone → 封轻功) ─────────────────────
+  buffs.push({
+    buffId: 2703,
+    name: "吞日月",
+    category: "DEBUFF",
+    durationMs: 2_000,
+    breakOnPlay: false,
+    description: "封印轻功，无法跳跃或腾空",
+    effects: [{ type: "QINGGONG_SEAL" }],
+    sourceAbilityId: "tun_ri_yue",
+    sourceAbilityName: "吞日月",
+  });
+
+  // ── 无相诀 scaling DR buff ─────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2710,
+    name: "无相",
+    category: "BUFF",
+    durationMs: 10_000,
+    breakOnPlay: false,
+    description: "受到伤害降低50-80%（随血量降低增加）",
+    effects: [{ type: "DAMAGE_REDUCTION_HP_SCALING", value: 0.5 }],
+    sourceAbilityId: "wu_xiang_jue",
+    sourceAbilityName: "无相诀",
+  });
+
+  // ── 应天授命 shield + settle buff ─────────────────────────────────────────
+  buffs.push({
+    buffId: 2711,
+    name: "应天授命",
+    category: "BUFF",
+    durationMs: 8_000,
+    periodicMs: 1_000,
+    breakOnPlay: false,
+    description: "受伤延迟结算（每秒上限20%最大气血）；受击回复6%已损气血（贯体）",
+    effects: [{ type: "YING_TIAN_SHIELD", value: 0.06 }],
+    sourceAbilityId: "ying_tian_shou_ming",
+    sourceAbilityName: "应天授命",
+  });
+
+  // ── 斩无常 channel buff ────────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2712,
+    name: "斩无常",
+    category: "BUFF",
+    durationMs: 4_000,
+    periodicMs: 500,
+    breakOnPlay: false,
+    description: "免控、免远程弹道技能、减伤50%；每0.5秒对周围4尺敌人造成1点伤害",
+    effects: [
+      { type: "CONTROL_IMMUNE" },
+      { type: "KNOCKBACK_IMMUNE" },
+      { type: "INTERRUPT_IMMUNE" },
+      { type: "PROJECTILE_IMMUNE" },
+      { type: "DAMAGE_REDUCTION", value: 0.5 },
+      { type: "CHANNEL_AOE_TICK_DAMAGE", value: 1, range: 4 },
+    ],
+    sourceAbilityId: "zhan_wu_chang",
+    sourceAbilityName: "斩无常",
+  });
+
+  // ── 灭 MIN_HP_1 buff ──────────────────────────────────────────────────────
+  buffs.push({
+    buffId: 2713,
+    name: "灭",
+    category: "BUFF",
+    durationMs: 3_000,
+    breakOnPlay: false,
+    description: "气血不会降至1以下",
+    effects: [{ type: "MIN_HP_1" }],
+    sourceAbilityId: "mie",
+    sourceAbilityName: "灭",
+  });
+
+  for (const buff of buffs) {
+    const override = buffEditorOverrides[String(buff.buffId)];
+    if (!buff.iconPath) {
+      buff.iconPath = BUFF_ICON_PATH_OVERRIDES[buff.name] ?? `/icons/${buff.name}.png`;
+    }
+    if (override?.name) {
+      buff.name = override.name;
+    }
+    if (override?.description) {
+      buff.description = override.description;
+    }
+    if (typeof override?.hidden === "boolean") {
+      buff.hiddenInStatusBar = override.hidden;
+    }
+    // Apply duration override so the engine uses the editor-set duration
+    if (typeof override?.durationMs === "number") {
+      buff.durationMs = override.durationMs;
+    }
+    // Apply property overrides to effects (so UI snapshot reflects actual engine values)
+    if (override?.properties !== undefined) {
+      buff.effects = applyPropertyOverridesToEffects(buff, override.properties);
+    }
+  }
 
   const abilityMap = Object.fromEntries(
     abilities.map((c) => [c.id, c])

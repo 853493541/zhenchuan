@@ -47,6 +47,7 @@ export type {
   PickupItem,
   SafeZone,
   GroundZone,
+  TargetEntity,
   ActiveChannel,
 } from "./types/state";
 

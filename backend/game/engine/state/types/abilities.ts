@@ -18,6 +18,11 @@ export interface Ability {
   target: TargetType;
 
   /**
+   * If true, an opponent-targeted ability may explicitly select the caster.
+   */
+  canTargetSelf?: boolean;
+
+  /**
    * If true, casting this ability triggers a 1.5-second draft GCD on other
    * draft abilities that also have gcd:true.
    */
@@ -56,6 +61,12 @@ export interface Ability {
   castTime?: number;
 
   /**
+   * If true, an opponent-targeted channel only completes if its target is still
+   * within the ability's range when the channel ends.
+   */
+  requireTargetInRangeOnChannelComplete?: boolean;
+
+  /**
    * How this ability targets in real-time
    * - INSTANT: affects enemy at cast time (no aiming)
    * - POINT_CLICK: player clicks a coordinate on arena
@@ -85,9 +96,19 @@ export interface Ability {
   allowWhileControlled?: boolean;
 
   /**
-   * If true, this ability can still be cast while under level-2 knockback / pull control.
+   * If true, this ability can still be cast while under level-2 knockback / push control.
    */
   allowWhileKnockedBack?: boolean;
+
+  /**
+   * If true, this ability can still be cast while being pulled (PULLED effect from enemy).
+   */
+  allowWhilePulled?: boolean;
+
+  /**
+   * If true, this ability can still be cast while being displaced (DISPLACEMENT effect — dashes, pulls).
+   */
+  allowWhileDisplaced?: boolean;
 
   /**
    * If true, this ability's cleanse effect may also remove root and slow.
@@ -122,6 +143,12 @@ export interface Ability {
   };
 
   /**
+   * If true, this ability fires a physical projectile that travels to the target.
+   * Players with PROJECTILE_IMMUNE buff will not take damage from such abilities.
+   */
+  isProjectile?: boolean;
+
+  /**
    * If true this ability is a common movement ability given to every player
    * automatically. It will NOT appear in the draft shop.
    */
@@ -153,6 +180,12 @@ export interface Ability {
    * Minimal delay (ticks) between two consecutive casts when charges remain.
    */
   chargeCastLockTicks?: number;
+
+  /**
+   * If true, this ability ignores the target's dodge chance entirely.
+   * 无视闪避.
+   */
+  ignoreDodge?: boolean;
 }
 
 export interface AbilityInstance {

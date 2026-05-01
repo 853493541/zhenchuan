@@ -18,13 +18,14 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   INVULNERABLE: "BUFF",
   STEALTH: "BUFF",
   CONTROL_IMMUNE: "BUFF",
+  LOCKOUT_IMMUNE: "BUFF",
   KNOCKBACK_IMMUNE: "BUFF",
   DASH_TURN_LOCK: "BUFF",
   DASH_TURN_OVERRIDE: "BUFF",
   DISPLACEMENT: "BUFF",
   INTERRUPT_IMMUNE: "BUFF",
   ROOT_SLOW_IMMUNE: "BUFF",
-  DODGE_NEXT: "BUFF",
+  DODGE: "BUFF",
   PERIODIC_HEAL: "BUFF",
 
   HEAL_REDUCTION: "DEBUFF",
@@ -64,10 +65,12 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
 
   /* ================= CONTROL LEVELS ================= */
   KNOCKED_BACK: "DEBUFF",  // Level 2 — NOT removable by cleanse
+  PULLED: "DEBUFF",         // Level 2 — NOT removable by cleanse (being pulled by enemy)
   SPEED_BOOST: "BUFF",
   // Level 0 — removable by cleanse
   ROOT: "DEBUFF",
   SLOW: "DEBUFF",
+  RANGE_BOOST: "BUFF",
   // Jump enhancements
   MULTI_JUMP: "BUFF",
   // 贯体 healing
@@ -87,6 +90,101 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   INSTANT_GUAN_TI_HEAL: "BUFF",
   // Knockback dash (九转归一): force target away, stun if wall hit
   KNOCKBACK_DASH: "DEBUFF",
+  // Dispel one BUFF-category buff per listed attribute from the target
+  DISPEL_BUFF_ATTRIBUTE: "DEBUFF",
+  // Cleanse DEBUFF-category buffs from self/friendly by attribute
+  CLEANSE_DEBUFF_ATTRIBUTE: "BUFF",
+  // Immediately settle remaining DoT damage from own debuffs on target
+  SETTLE_SOURCE_DOTS: "DEBUFF",
+  // Apply DoT debuffs from caster's ability slots
+  APPLY_SLOT_DOTS: "DEBUFF",
+  // Block all incoming damage (雷霆震怒 stun package)
+  DAMAGE_IMMUNE: "DEBUFF",
+  // 三才化生 self-centered AoE ROOT
+  SAN_CAI_HUA_SHENG_AOE: "DEBUFF",
+  // 银月斩 custom handler
+  YIN_YUE_ZHAN: "DEBUFF",
+  // 烈日斩 custom handler
+  LIE_RI_ZHAN: "DEBUFF",
+  // 横扫六合 AoE handler
+  HENG_SAO_LIU_HE_AOE: "DEBUFF",
+  // 啸如虎: cannot die
+  MIN_HP_1: "BUFF",
+  // 五蕴皆空·聂云缩减: reduce 蹑云逐月 dash
+  NIEYUN_DASH_REDUCTION: "DEBUFF",
+  // 玄水蛊·毒手: redirect marker
+  DAMAGE_REDIRECT_55: "DEBUFF",
+  // 极乐引: instant AOE pull
+  JILE_YIN_AOE_PULL: "DEBUFF",
+  // 临时飞爪: no-buff ground dash
+  LIN_SHI_FEI_ZHUA_DASH: "BUFF",
+  // 化蝶 Phase 1: diagonal dash
+  HUA_DIE_PHASE1: "BUFF",
+  // 破风: flat damage taken bonus
+  DAMAGE_TAKEN_FLAT: "DEBUFF",
+  // 剑主天地: stacking dot strike
+  JIAN_ZHU_TIAN_DI_STRIKE: "DEBUFF",
+  // 破风: strike handler
+  PO_FENG_STRIKE: "DEBUFF",
+  // 外功闪避: dodge only physical / untyped attacks
+  PHYSICAL_DODGE: "BUFF",
+  // 无相诀: scaling DR based on current HP%
+  DAMAGE_REDUCTION_HP_SCALING: "BUFF",
+  // 斩无常: immune to isProjectile abilities
+  PROJECTILE_IMMUNE: "BUFF",
+  // 应天授命: unlimited shield + true-damage settle per second
+  YING_TIAN_SHIELD: "BUFF",
+  // 斩无常: periodic 贯体 heal to nearby allies in range
+  CHANNEL_AOE_TICK_DAMAGE: "BUFF",
+  // 灭: conditional damage handler
+  MIE_STRIKE: "DEBUFF",
+  // 孤影化双: snapshot + buff application
+  GU_YING_HUA_SHUANG: "BUFF",
+  // 逐云寒蕊: places targetable HP-bearing zone entity
+  PLACE_ZHU_YUN_HAN_RUI: "BUFF",
+  // 楚河汉界: places targetable HP-bearing wall
+  PLACE_CHU_HE_HAN_JIE_WALL: "BUFF",
+  // 绿野蔓生: places a self-following field
+  PLACE_LV_YE_MAN_SHENG_FIELD: "ABILITY",
+  // 沧月: 1 damage + 2s knockdown on primary, knockback others within 6u
+  CANG_YUE_AOE: "DEBUFF",
+  // 徐如林 (self proc-on-hit + heal-on-expire markers)
+  XU_RU_LIN_PROC: "BUFF",
+  XU_RU_LIN_RESTORE: "BUFF",
+  // Position lock (suspend vertical gravity while active)
+  Z_LOCK: "BUFF",
+  // Jump-height nerf (debuff)
+  JUMP_NERF: "DEBUFF",
+  // 拿云式 true damage / 龙啸九天 AOE — immediate ability effects
+  TRUE_DAMAGE: "ABILITY",
+  LONG_XIAO_JIU_TIAN_AOE: "ABILITY",
+  // 驭羽骋风 / 梯云纵
+  YU_YU_DASH: "ABILITY",
+  TI_YUN_ZONG_REFRESH: "ABILITY",
+  TI_YUN_ZONG_JUMP: "BUFF",
+  // 疾电叱羽
+  PLACE_JI_DIAN_ZONE: "ABILITY",
+  JI_DIAN_REDIRECT: "BUFF",
+  // 乘黄之威 + 恐惧
+  CHENG_HUANG_DASH: "ABILITY",
+  LONG_ZHAN_YU_YE: "ABILITY",
+  QIAN_LONG_WU_YONG: "ABILITY",
+  DOU_ZHUAN_XING_YI: "ABILITY",
+  SHOU_QUE_SHI: "ABILITY",
+  QIN_YIN_GONG_MING: "ABILITY",
+  FEARED: "DEBUFF",
+  SHI_XIN_GU: "DEBUFF",
+  SHI_XIN_MARK: "DEBUFF",
+  HONG_MENG_TIAN_JIN: "DEBUFF",
+  HONG_MENG_TIAN_JIN_IMMUNE: "DEBUFF",
+  DUN_LI_REFLECT: "BUFF",
+  // 振翅图南 / 飞刃回转 / 天绝地灭 / 连环弩
+  PLACE_FOLLOW_ZONE: "ABILITY",
+  PLACE_GROW_PULL_ZONE: "ABILITY",
+  LIAN_HUAN_NU_TICK: "ABILITY",
+  APPLY_RECORDED_CONTROL_ON_ATTACK: "BUFF",
+  YOU_FENG_PIAO_ZONG: "ABILITY",
+  RU_YI_FA: "ABILITY",
 };
 
 export function getEffectCategory(type: EffectType): string {

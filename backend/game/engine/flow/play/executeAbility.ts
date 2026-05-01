@@ -23,6 +23,7 @@ export function applyEffects(
   castContext?: {
     targetUserId?: string;
     groundTarget?: { x: number; y: number; z?: number };
+    entityTargetId?: string;
   }
 ) {
   applyAbility(state, ability, playerIndex, targetIndex, mapCtx, castContext);

@@ -14,12 +14,14 @@ import { GameLoop } from "../../engine/loop/GameLoop";
 import { pushEvent } from "../flow/events";
 import { diffState } from "../flow/stateDiff";
 import { applyOnPlayBuffEffects } from "../../engine/flow/play/onPlayEffects";
+import { breakShiFangXuanJiOnPlay } from "../../engine/flow/play/breakOnPlay";
 import { broadcastGameUpdate } from "../broadcast";
 import { globalTimer } from "../../../utils/timing";
 import { gameStateCache } from "../gameStateCache";
 import { addBuff } from "../../engine/effects/buffRuntime";
 import { applyDamageToTarget } from "../../engine/utils/health";
 import { resolveScheduledDamage } from "../../engine/utils/combatMath";
+import { getAbilityRangeBonusFromBuffs } from "../../engine/utils/abilityRange";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -132,7 +134,8 @@ export async function playAbility(
   userId: string,
   abilityInstanceId: string,
   targetUserId?: string,
-  groundTarget?: { x: number; y: number; z?: number }
+  groundTarget?: { x: number; y: number; z?: number },
+  entityTargetId?: string
 ) {
   const startTime = performance.now();
   globalTimer.start(`play_card_${gameId}`);
@@ -142,7 +145,7 @@ export async function playAbility(
 
   if (loop) {
     // ✅ REAL-TIME BATTLE LOGIC
-    return await playCastAbility(loop, gameId, userId, abilityInstanceId, targetUserId, groundTarget);
+    return await playCastAbility(loop, gameId, userId, abilityInstanceId, targetUserId, groundTarget, entityTargetId);
   } else {
     // ✅ TURN-BASED BATTLE LOGIC (legacy draft phase)
     return await playAbilityTurnBased(gameId, userId, abilityInstanceId);
@@ -158,7 +161,8 @@ async function playCastAbility(
   userId: string,
   abilityInstanceId: string,
   targetUserId?: string,
-  groundTarget?: { x: number; y: number; z?: number }
+  groundTarget?: { x: number; y: number; z?: number },
+  entityTargetId?: string
 ) {
   const state = loop.getState();
   const playerIndex = state.players.findIndex((p) => p.userId === userId);
@@ -172,6 +176,7 @@ async function playCastAbility(
   validateCastAbility(state, playerIndex, abilityInstanceId, {
     pendingJump: loop.hasPendingJump(playerIndex),
     targetUserId,
+    entityTargetId,
     groundTarget,
     mapObjects: mapCtx.objects,
     // Use BVH-based LOS for collision-test mode (accurate geometry vs entity AABBs)
@@ -231,30 +236,70 @@ async function playCastAbility(
     }
   }
   const target = state.players[targetIndex];
+  const targetEntity = entityTargetId
+    ? (state.entities ?? []).find((entity: any) => entity.id === entityTargetId) ?? null
+    : null;
 
   // Pure channels are driven by activeChannel in GameLoop and apply cooldown on completion.
-  const isPureChannel = ability.type === "CHANNEL" && (!ability.buffs || ability.buffs.length === 0);
+  // applyBuffsOnComplete:true marks channel abilities whose buffs[] apply on finish, not on cast.
+  const isPureChannel = ability.type === "CHANNEL" && (
+    !ability.buffs || ability.buffs.length === 0 ||
+    (ability as any).applyBuffsOnComplete === true ||
+    (ability as any).applyBuffsOnChannelStart === true
+  );
   if (isPureChannel) {
+    breakShiFangXuanJiOnPlay(player as any, ability as any);
+    const channelRangeBonus = getAbilityRangeBonusFromBuffs(player.buffs);
+    const channelCancelOnOutOfRange = typeof (ability as any).channelCancelOnOutOfRange === "number"
+      ? (ability as any).channelCancelOnOutOfRange + channelRangeBonus
+      : (ability as any).channelCancelOnOutOfRange;
+
     player.activeChannel = {
       abilityId,
       abilityName: ability.name,
       instanceId: played.instanceId,
-      targetUserId: target.userId,
+      targetUserId: targetEntity ? undefined : target.userId,
+      entityTargetId: targetEntity?.id,
       startedAt: Date.now(),
       durationMs: (ability as any).channelDurationMs ?? 2_000,
       cancelOnMove: (ability as any).channelCancelOnMove ?? true,
       cancelOnJump: (ability as any).channelCancelOnJump ?? true,
-      cancelOnOutOfRange: (ability as any).channelCancelOnOutOfRange,
+      cancelOnOutOfRange: channelCancelOnOutOfRange,
       forwardChannel: (ability as any).channelForward ?? true,
       effects: (ability as any).channelEffects ?? [],
       cooldownTicks: clampCooldownTicksForTesting(ability.cooldownTicks ?? 150),
     };
 
+    if ((ability as any).applyBuffsOnChannelStart === true) {
+      const startedBuffIds: number[] = [];
+      for (const buffDef of (ability.buffs ?? [])) {
+        const applyTarget =
+          buffDef.applyTo === "SELF" ? player
+          : buffDef.applyTo === "OPPONENT" ? (targetEntity ?? target)
+          : (ability.target === "SELF" ? player : (targetEntity ?? target));
+        if (!applyTarget) continue;
+        addBuff({
+          state,
+          sourceUserId: player.userId,
+          targetUserId: (applyTarget as any).userId,
+          ability,
+          buffTarget: applyTarget as any,
+          buff: buffDef,
+        });
+        startedBuffIds.push(buffDef.buffId);
+      }
+      if (startedBuffIds.length > 0) {
+        player.activeChannel.startedBuffIds = startedBuffIds;
+      }
+    }
+
     pushEvent(state, {
       turn: state.turn,
       type: "PLAY_ABILITY",
       actorUserId: player.userId,
-      targetUserId: target.userId,
+      targetUserId: targetEntity ? undefined : target.userId,
+      entityId: targetEntity?.id,
+      entityName: targetEntity?.abilityName,
       abilityId,
       abilityName: ability.name,
     });
@@ -263,6 +308,58 @@ async function playCastAbility(
     if (hasChargeSystem(ability)) {
       consumeAbilityUseRuntime(played, ability, false);
     }
+
+    // ── 傍花随柳 on-play trigger (channel cast counts as "出招") ─────────────
+    {
+      const BANG_HUA_BUFF_ID = 2611;
+      const bangHuaNow = Date.now();
+      const bangHuaIdx = (player.buffs as any[]).findIndex(
+        (b: any) => b.buffId === BANG_HUA_BUFF_ID && b.expiresAt > bangHuaNow
+      );
+      if (bangHuaIdx >= 0) {
+        const bangHuaBuff = (player.buffs as any[])[bangHuaIdx];
+        const currentStacks = bangHuaBuff.stacks ?? 1;
+        const opp = state.players.find((p) => p.userId !== player.userId);
+        const isLastStack = currentStacks <= 1;
+        if (opp) {
+          // Always: consume 1 stack and deal 2 damage
+          if (isLastStack) {
+            (player.buffs as any[]).splice(bangHuaIdx, 1);
+          } else {
+            bangHuaBuff.stacks = currentStacks - 1;
+          }
+          applyDamageToTarget(player as any, 2);
+          pushEvent(state, {
+            turn: state.turn,
+            type: "DAMAGE",
+            actorUserId: opp.userId,
+            targetUserId: player.userId,
+            abilityId: "bang_hua_sui_liu",
+            abilityName: "傍花随柳",
+            effectType: "BANG_HUA_TRIGGER",
+            value: 2,
+          } as any);
+          // Last stack: also apply 束发 silence 4s
+          if (isLastStack) {
+            addBuff({
+              state,
+              sourceUserId: opp.userId,
+              targetUserId: player.userId,
+              ability: ABILITIES["bang_hua_sui_liu"] as any ?? { id: "bang_hua_sui_liu", name: "傍花随柳" },
+              buffTarget: player as any,
+              buff: {
+                buffId: 2612,
+                name: "束发",
+                category: "DEBUFF",
+                durationMs: 4_000,
+                description: "沉默4秒",
+                effects: [{ type: "SILENCE" }],
+              } as any,
+            });
+          }
+        }
+      }
+    }
   } else {
     const castStartedAt = Date.now();
 
@@ -270,6 +367,7 @@ async function playCastAbility(
     applyEffects(state, ability, playerIndex, targetIndex, mapCtx, {
       targetUserId,
       groundTarget,
+      entityTargetId,
     });
     applyOnPlayBuffEffects(state, playerIndex);
 

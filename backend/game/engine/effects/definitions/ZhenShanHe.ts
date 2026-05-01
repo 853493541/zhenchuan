@@ -1,5 +1,6 @@
 import { Ability, ActiveBuff, GameState, PlayerState } from "../../state/types";
-import { addBuff } from "../buffRuntime";
+import { addBuff, pushBuffExpired } from "../buffRuntime";
+import { loadBuffEditorOverrides } from "../../../abilities/buffEditorOverrides";
 
 export const ZHEN_SHAN_HE_ABILITY_ID = "zhen_shan_he";
 export const ZHEN_SHAN_HE_INVULNERABLE_BUFF_ID = 1320;
@@ -84,8 +85,9 @@ export function pulseZhenShanHeTarget(params: {
   target: PlayerState;
   sourceUserId: string;
   now: number;
+  zoneExpiresAt?: number;
 }) {
-  const { state, ability, target, sourceUserId, now } = params;
+  const { state, ability, target, sourceUserId, now, zoneExpiresAt } = params;
 
   if ((target.hp ?? 0) <= 0) {
     return false;
@@ -96,17 +98,26 @@ export function pulseZhenShanHeTarget(params: {
   }
 
   let changed = false;
-  if (!getActiveBuff(target, ZHEN_SHAN_HE_INVULNERABLE_BUFF_ID, now)) {
-    changed = refreshInvulnerableBuff({
+  // Apply zone invulnerable once on entry; lasts until zone expires (enter/exit model)
+  if (!getActiveBuff(target, ZHEN_SHAN_HE_INVULNERABLE_BUFF_ID, now) && !getActiveBuff(target, ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID, now)) {
+    const durationMs = zoneExpiresAt ? Math.max(500, zoneExpiresAt - now) : 10_000;
+    addBuff({
       state,
-      ability,
-      target,
       sourceUserId,
-      now,
-      buffId: ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID,
-      durationMs: ZHEN_SHAN_HE_ZONE_INVULNERABLE_DURATION_MS,
-      description: "位于镇山河区域内时每0.1秒刷新0.1秒无敌效果。",
+      targetUserId: target.userId,
+      ability,
+      buffTarget: target,
+      buff: {
+        buffId: ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID,
+        name: "镇山河",
+        category: "BUFF",
+        durationMs,
+        breakOnPlay: false,
+        description: "位于镇山河区域内时获得无敌，离开区域时消除。",
+        effects: [{ type: "INVULNERABLE" }],
+      },
     });
+    changed = true;
   }
 
   if (!getActiveBuff(target, ZHEN_SHAN_HE_XUANJIAN_BUFF_ID, now)) {
@@ -127,6 +138,29 @@ export function pulseZhenShanHeTarget(params: {
       },
     });
     changed = true;
+  }
+
+  // Cleanse DEBUFF-category buffs with these attributes from the target each pulse.
+  const CLEANSE_ATTRS = ["外功", "阴性", "混元", "阳性", "毒性", "点穴"];
+  const { overrides: buffOverrides } = loadBuffEditorOverrides();
+  for (const attr of CLEANSE_ATTRS) {
+    let idx: number;
+    while ((idx = target.buffs.findIndex((b: any) => {
+      if (b.category !== "DEBUFF") return false;
+      const entry = buffOverrides[String(b.buffId)];
+      return entry?.attribute === attr;
+    })) !== -1) {
+      const removed = target.buffs[idx];
+      target.buffs.splice(idx, 1);
+      pushBuffExpired(state, {
+        targetUserId: target.userId,
+        buffId: removed.buffId,
+        buffName: removed.name,
+        buffCategory: removed.category,
+        sourceAbilityId: removed.sourceAbilityId,
+        sourceAbilityName: removed.sourceAbilityName,
+      });
+    }
   }
 
   return changed;

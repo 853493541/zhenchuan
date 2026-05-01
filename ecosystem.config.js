@@ -6,6 +6,7 @@ module.exports = {
       script: "node_modules/next/dist/bin/next",
       args: "start -p 3000",
       interpreter: "node",
+      kill_timeout: 10000,
       env: {
         PORT: 3000,
         NODE_ENV: "production"

@@ -72,6 +72,14 @@ export function applyDamageToTarget(target: ShieldedTarget, rawDamage: number): 
   const hpDamage = damage - shieldAbsorbed;
   if (hpDamage > 0) {
     target.hp = Math.max(0, target.hp - hpDamage);
+    // 啸如虎 MIN_HP_1: if any buff prevents death, clamp hp to at least 1
+    if (
+      target.hp <= 0 &&
+      Array.isArray(target.buffs) &&
+      target.buffs.some((b) => b.effects.some((e) => (e as any).type === "MIN_HP_1"))
+    ) {
+      target.hp = 1;
+    }
   }
 
   return {

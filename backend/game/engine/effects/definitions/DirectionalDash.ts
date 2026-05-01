@@ -21,7 +21,8 @@ import { Position, gameplayUnitsToWorldUnits } from "../../state/types/position"
 import { pushEvent } from "../events";
 import { resolveScheduledDamage } from "../../utils/combatMath";
 import { applyDamageToTarget } from "../../utils/health";
-import { blocksEnemyTargeting } from "../../rules/guards";
+import { blocksEnemyTargeting, hasDamageImmune } from "../../rules/guards";
+import { getDunLiReflectVictim } from "../dunLiReflect";
 
 /** Stable buffId for the CC-immunity granted while dashing */
 export const DASH_CC_IMMUNE_BUFF_ID = 999900;
@@ -103,7 +104,19 @@ export function handleDirectionalDash(
 ) {
   const distance = effect.value ?? 10;
   const storedUnitScale = state.unitScale;
-  const worldDistance = gameplayUnitsToWorldUnits(distance, storedUnitScale);
+
+  // 五蕴皆空·聂云缩减: reduce 蹑云逐月 distance and duration by 70%
+  const rawDistance = (() => {
+    if (ability.id === "nieyun_zhuyue") {
+      const hasReduction = (source.buffs as any[]).some((b: any) =>
+        b.effects?.some((e: any) => e.type === "NIEYUN_DASH_REDUCTION")
+      );
+      if (hasReduction) return distance * 0.30;
+    }
+    return distance;
+  })();
+
+  const worldDistance = gameplayUnitsToWorldUnits(rawDistance, storedUnitScale);
   const dashUnitsPerTick = gameplayUnitsToWorldUnits(20, storedUnitScale) / 30;
 
   const rawFacing = source.facing;
@@ -139,7 +152,16 @@ export function handleDirectionalDash(
       break;
   }
 
-  const durationTicks = effect.durationTicks ?? Math.round(worldDistance / dashUnitsPerTick);
+  const baseDurationTicks = effect.durationTicks ?? Math.round(worldDistance / dashUnitsPerTick);
+  const durationTicks = (() => {
+    if (ability.id === "nieyun_zhuyue") {
+      const hasReduction = (source.buffs as any[]).some((b: any) =>
+        b.effects?.some((e: any) => e.type === "NIEYUN_DASH_REDUCTION")
+      );
+      if (hasReduction) return Math.max(1, Math.round(baseDurationTicks * 0.30));
+    }
+    return baseDurationTicks;
+  })();
 
   // Pre-compute per-tick vz caps from the angle limits.
   // Actual vz capture happens on the first game-loop tick in movement.ts.
@@ -210,13 +232,28 @@ export function handleDirectionalDash(
         target: targetPlayer,
         base: effect.routeDamage ?? 0,
       });
-      applyDamageToTarget(targetPlayer as any, dmg);
+
+      // Damage immunity + 盾立 reflect
+      let damageVictim: any = targetPlayer;
+      let damageActorUserId = source.userId;
+      let damageTargetUserId = targetPlayer.userId;
+      if (hasDamageImmune(targetPlayer)) {
+        const reflectVictim = getDunLiReflectVictim(state, source.userId, targetPlayer, ability);
+        if (!reflectVictim) {
+          continue;
+        }
+        damageVictim = reflectVictim;
+        damageActorUserId = targetPlayer.userId;
+        damageTargetUserId = reflectVictim.userId;
+      }
+
+      applyDamageToTarget(damageVictim, dmg);
 
       pushEvent(state, {
         turn: state.turn,
         type: "DAMAGE",
-        actorUserId: source.userId,
-        targetUserId: targetPlayer.userId,
+        actorUserId: damageActorUserId,
+        targetUserId: damageTargetUserId,
         abilityId: ability.id,
         abilityName: ability.name,
         effectType: "DAMAGE",
@@ -239,7 +276,7 @@ export function handleDirectionalDash(
     { type: "DASH_TURN_LOCK" },
   ];
   if (ability.id === "taxingxing") {
-    dashRuntimeEffects.push({ type: "DODGE_NEXT", chance: 0.65 } as any);
+    dashRuntimeEffects.push({ type: "DODGE", chance: 0.65 } as any);
   }
   const dashRuntimeAppliedAt = Date.now();
   applyDashRuntimeBuff({

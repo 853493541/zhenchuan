@@ -1,6 +1,16 @@
 // engine/flow/breakOnPlay.ts
 import { ActiveBuff, Ability } from "../../state/types";
 
+const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
+const SHI_FANG_XUAN_JI_KEEP_ABILITIES = new Set([
+  "nieyun_zhuyue",
+  "yingfeng_huilang",
+  "lingxiao_lansheng",
+  "yaotai_zhenhe",
+  "fuyao_zhishang",
+  "houyao",
+]);
+
 function isForwardChannel(ability: Ability): boolean {
   if (ability.type !== "CHANNEL") return false;
   return (ability as any).channelForward === true;
@@ -60,8 +70,17 @@ function shouldKeepStealthOnPlay(buff: ActiveBuff, ability: Ability, now: number
   }
 }
 
+export function breakShiFangXuanJiOnPlay(source: { buffs?: ActiveBuff[] }, playedAbility: Ability) {
+  if (!Array.isArray(source.buffs)) return;
+  source.buffs = source.buffs.filter((buff) => {
+    if (buff.buffId !== SHI_FANG_XUAN_JI_BUFF_ID) return true;
+    return SHI_FANG_XUAN_JI_KEEP_ABILITIES.has(playedAbility.id);
+  });
+}
+
 export function breakOnPlay(source: { buffs?: ActiveBuff[] }, playedAbility: Ability) {
   if (!Array.isArray(source.buffs)) return;
+  breakShiFangXuanJiOnPlay(source, playedAbility);
   const now = Date.now();
   const hadFuguangBefore = source.buffs.some((b) => b.buffId === 1012);
   source.buffs = source.buffs.filter((b) => {

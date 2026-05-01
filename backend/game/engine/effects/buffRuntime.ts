@@ -10,6 +10,8 @@ import {
 } from "../state/types";
 import { resolveScheduledDamage } from "../utils/combatMath";
 import { addShieldToTarget, applyDamageToTarget, removeLinkedShield } from "../utils/health";
+import { applyPropertyOverridesToEffects, loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
+import { hasDunLiReflectFlag, isAbilityDunLiWhitelisted } from "./dunLiReflect";
 
 /* ================= Utilities ================= */
 
@@ -39,7 +41,11 @@ function isMoheStun(buff: ActiveBuff): boolean {
 const ROOT_DR_BUFF_ID = 990100;
 const STUN_DR_BUFF_ID = 990101;
 const LOCKOUT_DR_BUFF_ID = 990102;
+const FREEZE_DR_BUFF_ID = 990103;
+const SHI_XIN_GU_BUFF_ID = 2643;
 const CONTROL_DR_DURATION_MS = 10_000;
+// 雷霆震怒: stun + damage immunity package
+const LEI_TING_ZHEN_NU_BUFF_ID = 2506;
 
 type ResistanceConfig = {
   buffId: number;
@@ -54,6 +60,11 @@ const ROOT_DR_CONFIG: ResistanceConfig = {
 const STUN_DR_CONFIG: ResistanceConfig = {
   buffId: STUN_DR_BUFF_ID,
   name: "眩晕抗性",
+};
+
+const FREEZE_DR_CONFIG: ResistanceConfig = {
+  buffId: FREEZE_DR_BUFF_ID,
+  name: "定身抗性",
 };
 
 const LOCKOUT_DR_CONFIG: ResistanceConfig = {
@@ -76,16 +87,25 @@ function getActiveResistanceBuff(
 function getResistanceConfig(runtimeBuff: BuffDefinition): ResistanceConfig | null {
   if (runtimeBuff.category !== "DEBUFF") return null;
   if (runtimeBuff.buffId === 1002) return null;
+  if (runtimeBuff.buffId === SHI_XIN_GU_BUFF_ID) return null;
 
   if (runtimeBuff.effects.some((e) => SHARED_LOCKOUT_EFFECT_TYPES.has(e.type))) {
     return LOCKOUT_DR_CONFIG;
   }
 
-  if (runtimeBuff.effects.some((e) => e.type === "CONTROL")) {
+  const hasControl = runtimeBuff.effects.some((e) => e.type === "CONTROL");
+  const hasRoot    = runtimeBuff.effects.some((e) => e.type === "ROOT");
+
+  // Freeze (定身) = CONTROL + ROOT on the same buff → separate DR from pure stun
+  if (hasControl && hasRoot) {
+    return FREEZE_DR_CONFIG;
+  }
+
+  if (hasControl) {
     return STUN_DR_CONFIG;
   }
 
-  if (runtimeBuff.effects.some((e) => e.type === "ROOT")) {
+  if (hasRoot) {
     return ROOT_DR_CONFIG;
   }
 
@@ -158,6 +178,7 @@ const CONTROL_TYPES_BLOCKED_WHILE_KNOCKED_DOWN = new Set([
   "CONTROL",
   "ATTACK_LOCK",
   "KNOCKED_BACK",
+  "PULLED",
 ]);
 
 function hasRootSlowImmune(target: { buffs: ActiveBuff[] }): boolean {
@@ -170,6 +191,10 @@ function hasKnockbackImmune(target: { buffs: ActiveBuff[] }): boolean {
 
 function hasControlImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "CONTROL_IMMUNE"));
+}
+
+function hasLockoutImmune(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "LOCKOUT_IMMUNE"));
 }
 
 function hasSilenceImmune(target: { buffs: ActiveBuff[] }): boolean {
@@ -219,8 +244,8 @@ function removeStealthOnIncomingControl(params: {
   const { state, targetUserId, target, controlTypes } = params;
   if (controlTypes.length === 0) return;
 
-  const tiandiBreakTypes = ["CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "SILENCE"];
-  const fuguangBreakTypes = ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "SILENCE"];
+  const tiandiBreakTypes = ["CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE"];
+  const fuguangBreakTypes = ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE"];
 
   const removed: ActiveBuff[] = [];
   target.buffs = target.buffs.filter((b) => {
@@ -291,6 +316,16 @@ export function addBuff(params: {
   } = params;
 
   let runtimeBuff: BuffDefinition = buff;
+  // Apply property overrides from the editor (so game engine uses edited values)
+  const { overrides: editorOverrides } = loadBuffEditorOverrides();
+  const propEntry = editorOverrides[String(buff.buffId)];
+  if (propEntry?.properties !== undefined) {
+    runtimeBuff = { ...runtimeBuff, effects: applyPropertyOverridesToEffects(runtimeBuff, propEntry.properties) as typeof runtimeBuff.effects };
+  }
+  // Apply duration override live so changes take effect without a server restart
+  if (typeof propEntry?.durationMs === "number") {
+    runtimeBuff = { ...runtimeBuff, durationMs: propEntry.durationMs };
+  }
   const now = Date.now();
   const incomingMoheKnockdown =
     sourceUserId !== targetUserId &&
@@ -299,6 +334,29 @@ export function addBuff(params: {
 
   if (sourceUserId !== targetUserId && hasInvulnerable(buffTarget)) {
     return;
+  }
+
+  // 盾立 reflect: any debuff applied to a 盾立 holder is redirected at the
+  // original caster (unless the ability is whitelisted).
+  if (
+    sourceUserId !== targetUserId &&
+    hasDunLiReflectFlag(buffTarget) &&
+    !isAbilityDunLiWhitelisted(ability)
+  ) {
+    const reflectedTarget = (state.players as any[])?.find(
+      (p) => p.userId === sourceUserId,
+    );
+    if (reflectedTarget && !hasDunLiReflectFlag(reflectedTarget)) {
+      addBuff({
+        state,
+        sourceUserId: targetUserId,
+        targetUserId: sourceUserId,
+        ability,
+        buffTarget: reflectedTarget,
+        buff,
+      });
+      return;
+    }
   }
 
   if (sourceUserId !== targetUserId && hasRootSlowImmune(buffTarget)) {
@@ -318,16 +376,37 @@ export function addBuff(params: {
 
   if (
     sourceUserId !== targetUserId &&
-    runtimeBuff.effects.some((e) => e.type === "KNOCKED_BACK") &&
+    runtimeBuff.effects.some((e) => e.type === "KNOCKED_BACK" || e.type === "PULLED") &&
     hasKnockbackImmune(buffTarget)
   ) {
     return;
   }
 
   if (sourceUserId !== targetUserId && hasControlImmune(buffTarget)) {
-    const filteredEffects = runtimeBuff.effects.filter(
-      (e) => e.type !== "CONTROL" && e.type !== "ATTACK_LOCK" && e.type !== "ROOT"
+    const hadCC = runtimeBuff.effects.some(
+      (e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK" || e.type === "ROOT"
     );
+    const filteredEffects = runtimeBuff.effects.filter(
+      (e) => e.type !== "CONTROL" && e.type !== "ATTACK_LOCK" && e.type !== "ROOT" && e.type !== "DAMAGE_IMMUNE"
+    );
+    if (filteredEffects.length === 0) {
+      return;
+    }
+    // If the buff was a CC buff and all CC effects were stripped, block it entirely.
+    // This prevents partial application (e.g. 七星拱瑞 applying only its HoT without the freeze).
+    if (hadCC) {
+      return;
+    }
+    if (filteredEffects.length !== runtimeBuff.effects.length) {
+      runtimeBuff = {
+        ...runtimeBuff,
+        effects: filteredEffects,
+      };
+    }
+  }
+
+  if (sourceUserId !== targetUserId && hasLockoutImmune(buffTarget)) {
+    const filteredEffects = runtimeBuff.effects.filter((e) => !SHARED_LOCKOUT_EFFECT_TYPES.has(e.type));
     if (filteredEffects.length === 0) {
       return;
     }
@@ -337,6 +416,14 @@ export function addBuff(params: {
         effects: filteredEffects,
       };
     }
+  }
+
+  if (runtimeBuff.effects.some((e) => e.type === "LOCKOUT_IMMUNE")) {
+    removeSharedLockoutDebuffs({
+      state,
+      targetUserId,
+      target: buffTarget,
+    });
   }
 
   if (sourceUserId !== targetUserId && hasSilenceImmune(buffTarget)) {
@@ -383,6 +470,41 @@ export function addBuff(params: {
           });
         }
       }
+
+      // 雷霆震怒 interaction: knockdown also removes 雷霆震怒 (bypasses stun immunity)
+      const leiTingBuff = buffTarget.buffs.find((b) => b.buffId === LEI_TING_ZHEN_NU_BUFF_ID);
+      if (leiTingBuff) {
+        buffTarget.buffs = buffTarget.buffs.filter((b) => b.buffId !== LEI_TING_ZHEN_NU_BUFF_ID);
+        pushEvent(state, {
+          turn: state.turn,
+          type: "BUFF_EXPIRED",
+          actorUserId: targetUserId,
+          targetUserId,
+          abilityId: leiTingBuff.sourceAbilityId,
+          abilityName: leiTingBuff.sourceAbilityName,
+          buffId: leiTingBuff.buffId,
+          buffName: leiTingBuff.name,
+          buffCategory: leiTingBuff.category,
+        });
+      }
+    }
+
+    // 雷霆震怒: while target has this buff, immune to other CONTROL effects (knockdown bypasses)
+    if (!incomingMoheKnockdown) {
+      const targetHasLeiTing = buffTarget.buffs.some(
+        (b) => b.buffId === LEI_TING_ZHEN_NU_BUFF_ID && b.expiresAt > now
+      );
+      if (targetHasLeiTing) {
+        const filteredEffects = runtimeBuff.effects.filter(
+          (e) => e.type !== "CONTROL" && e.type !== "ATTACK_LOCK" && e.type !== "ROOT"
+        );
+        if (filteredEffects.length === 0) {
+          return;
+        }
+        if (filteredEffects.length !== runtimeBuff.effects.length) {
+          runtimeBuff = { ...runtimeBuff, effects: filteredEffects };
+        }
+      }
     }
 
     if (buffTarget.buffs.some((b) => isMoheKnockdown(b) && b.expiresAt > now)) {
@@ -401,7 +523,7 @@ export function addBuff(params: {
     }
 
     const incomingHardControl = runtimeBuff.effects.some(
-      (e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK" || e.type === "KNOCKED_BACK"
+      (e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK" || e.type === "KNOCKED_BACK" || e.type === "PULLED"
     );
     if (incomingHardControl) {
       const removedMoheStuns = buffTarget.buffs.filter(isMoheStun);
@@ -513,7 +635,12 @@ export function addBuff(params: {
     .filter((e) => e.type === "SHIELD")
     .reduce((sum, e) => sum + (e.value ?? 0), 0);
 
+  // 应天授命: YING_TIAN_SHIELD provides a massive internal shield for damage absorption
+  const hasYingTianShield = runtimeBuff.effects.some((e) => e.type === "YING_TIAN_SHIELD");
+  const effectiveShield = hasYingTianShield ? 999_999_999 : linkedShield;
+
   const active: ActiveBuff = {
+    ...(runtimeBuff as any),
     buffId: runtimeBuff.buffId,
     name: runtimeBuff.name,
     category: runtimeBuff.category,
@@ -543,7 +670,7 @@ export function addBuff(params: {
     stacks: runtimeBuff.initialStacks,
     maxStacks: runtimeBuff.maxStacks,
     procCooldownMs: runtimeBuff.procCooldownMs,
-    shieldAmount: linkedShield > 0 ? linkedShield : undefined,
+    shieldAmount: effectiveShield > 0 ? effectiveShield : undefined,
 
     sourceAbilityId: ability.id,
     sourceAbilityName: ability.name,
@@ -551,14 +678,14 @@ export function addBuff(params: {
 
   buffTarget.buffs.push(active);
 
-  if (linkedShield > 0) {
-    addShieldToTarget(buffTarget as any, linkedShield);
+  if (effectiveShield > 0) {
+    addShieldToTarget(buffTarget as any, effectiveShield);
   }
 
   // CC that hits a channeling player (with no INTERRUPT_IMMUNE) cancels their channel.
   if ((buffTarget as any).activeChannel) {
     const isCC = runtimeBuff.effects.some((e) =>
-      e.type === "CONTROL" || e.type === "KNOCKED_BACK" || e.type === "ATTACK_LOCK"
+      e.type === "CONTROL" || e.type === "KNOCKED_BACK" || e.type === "PULLED" || e.type === "ATTACK_LOCK"
     );
     const isImmune = buffTarget.buffs.some((b) =>
       b.effects.some((e) => e.type === "INTERRUPT_IMMUNE" || e.type === "CONTROL_IMMUNE")
@@ -572,7 +699,7 @@ export function addBuff(params: {
   if (sourceUserId !== targetUserId) {
     const controlTypes = runtimeBuff.effects
       .map((e) => e.type)
-      .filter((t) => ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "SILENCE"].includes(t));
+      .filter((t) => ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE"].includes(t));
     removeStealthOnIncomingControl({
       state,
       targetUserId,

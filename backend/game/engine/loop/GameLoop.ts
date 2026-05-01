@@ -9,12 +9,12 @@
  * - Win condition checks
  */
 
-import { GameState, MovementInput, GroundZone, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
+import { GameState, MovementInput, GroundZone, TargetEntity, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
 import { checkGameOver } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
-import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap } from "./movement";
+import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap, resolveEntityHorizontalCollision } from "./movement";
 import { addBuff, pushBuffExpired } from "../effects/buffRuntime";
 import { resolveScheduledDamage, resolveHealAmount } from "../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../utils/health";
@@ -24,16 +24,34 @@ import { arenaMap } from "../../map/arenaMap";
 import { exportedMap } from "../../map/exportedMap";
 import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
 import { ABILITIES } from "../../abilities/abilities";
-import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasUntargetable, shouldDodge } from "../rules/guards";
+import { loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
+import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasUntargetable, hasDamageImmune, shouldDodge, shouldDodgeForAbility } from "../rules/guards";
 import type { MapObject } from "../state/types/map";
 import { applyTriggeredFollowUpPlayRules, breakOnPlay } from "../flow/play/breakOnPlay";
 import { applyDashRuntimeBuff } from "../effects/definitions/DirectionalDash";
+import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../effects/onDamageHooks";
+import { getDunLiReflectVictim } from "../effects/dunLiReflect";
 import {
   pulseZhenShanHeTarget,
   transformExpiredXuanjian,
   ZHEN_SHAN_HE_ABILITY_ID,
   ZHEN_SHAN_HE_XUANJIAN_BUFF_ID,
+  ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID,
 } from "../effects/definitions/ZhenShanHe";
+import {
+  isLineBlockedByEnemyChuHeHanJieWall,
+  resolveEnemyChuHeHanJieWallCollision,
+} from "../utils/chuHeHanJieWall";
+import { getEffectiveAbilityRange } from "../utils/abilityRange";
+import { triggerYunSanBlink } from "../utils/yunSan";
+
+const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
+const LV_YE_MAN_SHENG_BUFF_ID = 2718;
+const LV_YE_MAN_SHENG_RADIUS_UNITS = 6;
+const LV_YE_MAN_SHENG_RETAL_DAMAGE = 3;
+const LV_YE_MAN_SHENG_KNOCKBACK_SPEED_UNITS_PER_SEC = 20;
+const YIN_QIAO_ABILITY_ID = "yin_qiao";
+const JUE_MAI_BUFF_ID = 1337;
 
 /** 2D segment vs AABB intersection test (for LOS checks). */
 function segmentIntersectsAABB(
@@ -93,6 +111,93 @@ function isLOSBlocked(
   return null;
 }
 
+function resolveChuHeHanJieCollisionForPlayer(
+  state: GameState,
+  player: any,
+  playerRadius: number,
+  previousPosition?: { x: number; y: number },
+): boolean {
+  const collided = resolveEnemyChuHeHanJieWallCollision({
+    state,
+    actorUserId: player.userId,
+    position: player.position,
+    radius: playerRadius,
+    previousPosition,
+    actorBaseZ: player.position.z ?? 0,
+    actorHeight: 1.5,
+  });
+  if (collided) {
+    player.velocity.vx = 0;
+    player.velocity.vy = 0;
+    if (player.activeDash) {
+      player.activeDash = undefined;
+    }
+  }
+  return collided;
+}
+
+function hasLvYeManShengBuff(player: any, now: number): boolean {
+  return (player?.buffs ?? []).some(
+    (buff: any) =>
+      buff.buffId === LV_YE_MAN_SHENG_BUFF_ID &&
+      (buff.expiresAt ?? 0) > now,
+  );
+}
+
+function clampPlayerToLvYeManShengEdge(params: {
+  state: GameState;
+  player: any;
+  playerRadius: number;
+  storedUnitScale: number;
+  mapCtx: MapContext;
+}): boolean {
+  const { state, player, playerRadius, storedUnitScale, mapCtx } = params;
+  const now = Date.now();
+  const radiusWorld = gameplayUnitsToWorldUnits(LV_YE_MAN_SHENG_RADIUS_UNITS, storedUnitScale);
+
+  for (const protector of state.players) {
+    if (protector.userId === player.userId) continue;
+    if ((protector.hp ?? 0) <= 0) continue;
+    if (!hasLvYeManShengBuff(protector as any, now)) continue;
+
+    const dx = player.position.x - protector.position.x;
+    const dy = player.position.y - protector.position.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist >= radiusWorld - 0.0001) continue;
+
+    let awayX = dx;
+    let awayY = dy;
+    if (dist <= 0.0001) {
+      const dash = player.activeDash;
+      const fallbackX = -Number(dash?.vxPerTick ?? protector.facing?.x ?? 1);
+      const fallbackY = -Number(dash?.vyPerTick ?? protector.facing?.y ?? 0);
+      const fallbackLen = Math.hypot(fallbackX, fallbackY);
+      awayX = fallbackLen > 0.0001 ? fallbackX / fallbackLen : 1;
+      awayY = fallbackLen > 0.0001 ? fallbackY / fallbackLen : 0;
+    } else {
+      awayX /= dist;
+      awayY /= dist;
+    }
+
+    player.position.x = protector.position.x + awayX * radiusWorld;
+    player.position.y = protector.position.y + awayY * radiusWorld;
+    resolveMapCollisions(player as any, mapCtx);
+    resolveChuHeHanJieCollisionForPlayer(state, player as any, playerRadius);
+    player.position.z = getGroundHeightForMap(
+      player.position.x,
+      player.position.y,
+      player.position.z ?? 0,
+      mapCtx,
+    );
+    player.velocity.vx = 0;
+    player.velocity.vy = 0;
+    delete player.activeDash;
+    return true;
+  }
+
+  return false;
+}
+
 /** Check if target is within the caster's forward 180-degree hemisphere. */
 function isInFacingHemisphere(
   player: { position: { x: number; y: number }; facing?: { x: number; y: number } },
@@ -117,6 +222,256 @@ function requiresFacing(ability: { target?: string; faceDirection?: boolean }): 
   return ability.faceDirection === true;
 }
 
+type HostileDamageTarget =
+  | { kind: "player"; target: any }
+  | { kind: "entity"; target: TargetEntity };
+
+function getHostileDamageTargets(state: GameState, sourceUserId: string): HostileDamageTarget[] {
+  const targets: HostileDamageTarget[] = [];
+
+  for (const target of state.players) {
+    if (target.userId === sourceUserId) continue;
+    if ((target.hp ?? 0) <= 0) continue;
+    targets.push({ kind: "player", target });
+  }
+
+  for (const entity of state.entities ?? []) {
+    if ((entity.hp ?? 0) <= 0) continue;
+    if (entity.ownerUserId === sourceUserId) continue;
+    targets.push({ kind: "entity", target: entity });
+  }
+
+  return targets;
+}
+
+function getHostileDamageTargetPosition(target: HostileDamageTarget) {
+  return target.target.position;
+}
+
+function getHostileDamageTargetRangeDistance(
+  sourcePosition: { x: number; y: number; z?: number },
+  target: HostileDamageTarget,
+  storedUnitScale: number
+) {
+  const rawDistance = calculateDistance(sourcePosition, getHostileDamageTargetPosition(target), storedUnitScale);
+  if (target.kind !== "entity") return rawDistance;
+  return Math.max(0, rawDistance - ((target.target.radius ?? 0) / Math.max(0.0001, storedUnitScale)));
+}
+
+type RuYiRecordedControlKind = "root" | "freeze" | "stun" | "knockdown";
+
+const RU_YI_ATTACK_BUFF_IDS: Record<RuYiRecordedControlKind, number> = {
+  root: 2638,
+  freeze: 2639,
+  stun: 2640,
+  knockdown: 2641,
+};
+
+const RU_YI_ATTACK_TRIGGER_EXCLUDED_EFFECT_TYPES = new Set([
+  "STACK_ON_HIT_DAMAGE",
+  "PERIODIC_DAMAGE",
+  "TIMED_AOE_DAMAGE",
+  "TIMED_SELF_DAMAGE",
+  "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
+]);
+
+function isRuYiAttackTriggerEvent(evt: any) {
+  return (
+    evt?.type === "DAMAGE" &&
+    typeof evt.actorUserId === "string" &&
+    typeof evt.targetUserId === "string" &&
+    evt.actorUserId !== evt.targetUserId &&
+    (evt.value ?? 0) > 0 &&
+    !RU_YI_ATTACK_TRIGGER_EXCLUDED_EFFECT_TYPES.has(String(evt.effectType ?? ""))
+  );
+}
+
+function applyRuYiRecordedControls(params: {
+  state: GameState;
+  source: { userId: string; buffs: any[] };
+  target: { userId: string; buffs: any[]; hp?: number };
+  recordedControls: Array<{ kind?: string; fullDurationMs?: number; remainingMs?: number }>;
+}) {
+  const { state, source, target, recordedControls } = params;
+  const ability = ABILITIES.ru_yi_fa as any;
+  if (!ability || !Array.isArray(ability.buffs) || !target || (target.hp ?? 0) <= 0) return;
+
+  for (const snapshot of recordedControls) {
+    const kind = snapshot.kind as RuYiRecordedControlKind | undefined;
+    if (!kind || !(kind in RU_YI_ATTACK_BUFF_IDS)) continue;
+    const buffDef = ability.buffs.find((buff: any) => buff.buffId === RU_YI_ATTACK_BUFF_IDS[kind]);
+    if (!buffDef) continue;
+    addBuff({
+      state,
+      sourceUserId: source.userId,
+      targetUserId: target.userId,
+      ability,
+      buffTarget: target,
+      buff: {
+        ...buffDef,
+        durationMs: Math.max(1, snapshot.fullDurationMs ?? snapshot.remainingMs ?? buffDef.durationMs),
+      } as any,
+    });
+  }
+}
+
+function applyDamageToHostileTarget(params: {
+  state: GameState;
+  source: { userId: string; buffs: any[] };
+  target: HostileDamageTarget;
+  baseDamage: number;
+  abilityId?: string;
+  abilityName?: string;
+  effectType: string;
+  damageType?: string;
+  timestamp: number;
+}) {
+  const {
+    state,
+    source,
+    target,
+    baseDamage,
+    abilityId,
+    abilityName,
+    effectType,
+    damageType,
+    timestamp,
+  } = params;
+
+  const damageTarget = target.kind === "player"
+    ? target.target
+    : target.target;
+  const resolvedDamage = resolveScheduledDamage({
+    source: source as any,
+    target: damageTarget,
+    base: baseDamage,
+    damageType,
+  });
+  if (resolvedDamage <= 0) return 0;
+
+  // Damage immunity + 盾立 reflect for player victims.
+  if (target.kind === "player" && hasDamageImmune(target.target as any)) {
+    const reflectAbility = abilityId ? ABILITIES[abilityId] : undefined;
+    const reflectVictim = getDunLiReflectVictim(
+      state,
+      source.userId,
+      target.target,
+      reflectAbility ?? { id: abilityId, name: abilityName },
+    );
+    if (reflectVictim) {
+      return applyDamageToHostileTarget({
+        state,
+        source: target.target as any,
+        target: { kind: "player", target: reflectVictim },
+        baseDamage,
+        abilityId,
+        abilityName,
+        effectType,
+        damageType,
+        timestamp,
+      });
+    }
+    return 0;
+  }
+
+  if (target.kind === "player") {
+    const victim = target.target;
+    const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(state, victim as any, resolvedDamage);
+    const appliedDamage = adjustedDamage;
+    const result = appliedDamage > 0
+      ? applyDamageToTarget(victim as any, appliedDamage)
+      : { hpDamage: 0, shieldAbsorbed: 0 };
+    state.events.push({
+      id: randomUUID(),
+      timestamp,
+      turn: state.turn,
+      type: "DAMAGE",
+      actorUserId: source.userId,
+      targetUserId: victim.userId,
+      abilityId,
+      abilityName,
+      effectType,
+      value: appliedDamage,
+      shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
+    } as any);
+    if (result.hpDamage > 0) {
+      processOnDamageTaken(state, victim as any, result.hpDamage, source.userId);
+    }
+    if (redirectPlayer && redirectAmt > 0) {
+      applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
+    }
+    return appliedDamage;
+  }
+
+  const entity = target.target;
+  const result = resolvedDamage > 0
+    ? applyDamageToTarget(entity as any, resolvedDamage)
+    : { hpDamage: 0, shieldAbsorbed: 0 };
+  state.events.push({
+    id: randomUUID(),
+    timestamp,
+    turn: state.turn,
+    type: "DAMAGE",
+    actorUserId: source.userId,
+    entityId: entity.id,
+    entityName: entity.abilityName,
+    abilityId,
+    abilityName,
+    effectType,
+    value: resolvedDamage,
+    shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
+  } as any);
+  if (result.hpDamage > 0) {
+    processOnDamageTaken(state, entity as any, result.hpDamage, source.userId);
+  }
+  return resolvedDamage;
+}
+
+function clearChannelStartBuffs(
+  state: GameState,
+  player: { userId: string; buffs: any[] },
+  channel?: { abilityId?: string; startedBuffIds?: number[] }
+) {
+  const startedBuffIds = channel?.startedBuffIds ?? [];
+  if (startedBuffIds.length === 0) return false;
+
+  let removedAny = false;
+  const remainingBuffs: any[] = [];
+  for (const buff of player.buffs ?? []) {
+    const matchesStartedBuff =
+      startedBuffIds.includes(buff.buffId) &&
+      (buff.sourceAbilityId ?? channel?.abilityId) === channel?.abilityId;
+    if (!matchesStartedBuff) {
+      remainingBuffs.push(buff);
+      continue;
+    }
+
+    removeLinkedShield(player as any, buff as any);
+    pushBuffExpired(state, {
+      targetUserId: player.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+    });
+    removedAny = true;
+  }
+
+  if (removedAny) {
+    player.buffs = remainingBuffs;
+  }
+  return removedAny;
+}
+
+function cancelActiveChannel(state: GameState, player: { activeChannel?: any; buffs: any[]; userId: string }) {
+  const channel = player.activeChannel;
+  if (!channel) return false;
+  const removedBuffs = clearChannelStartBuffs(state, player, channel);
+  player.activeChannel = undefined;
+  return removedBuffs;
+}
+
 function isDunyingCompanion(buff: { buffId: number; name?: string; sourceAbilityId?: string }): boolean {
   return buff.buffId === 1021 && (buff.name === "遁影" || buff.sourceAbilityId === "fuguang_lueying");
 }
@@ -132,11 +487,12 @@ function tryApplyDodgeForHit(params: {
   abilityId?: string;
   abilityName?: string;
   enabled: boolean;
+  damageType?: string;
 }): boolean {
-  const { state, source, target, abilityId, abilityName, enabled } = params;
+  const { state, source, target, abilityId, abilityName, enabled, damageType } = params;
   if (!enabled) return false;
   if (source.userId === target.userId) return false;
-  if (!shouldDodge(target as any)) return false;
+  if (!shouldDodgeForAbility(target as any, damageType)) return false;
 
   state.events.push({
     id: randomUUID(),
@@ -175,8 +531,20 @@ function isStunDebuff(buff: {
 const WUFANG_XINGJIN_ROOT_BUFF_ID = 1330;
 const WUFANG_XINGJIN_HIT_PROTECT_BUFF_ID = 1331;
 const WUFANG_XINGJIN_REMOVE_ON_HIT_CHANCE = 0.5;
+const SAN_CAI_HUA_SHENG_ROOT_BUFF_ID = 2509;
+const SAN_CAI_HUA_SHENG_PROTECT_BUFF_ID = 2510;
+const SAN_CAI_HUA_SHENG_REMOVE_ON_HIT_CHANCE = 0.5;
+const HONG_MENG_TIAN_JIN_ABILITY_ID = "hong_meng_tian_jin";
+const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
+const SHU_SE_BUFF_ID = 2646;
 const PULL_CHANNEL_QINGGONG_SEAL_CONFIG: Record<string, { buffId: number; buffName: string; durationMs: number }> = {
   zhuo_ying_shi: { buffId: 2403, buffName: "滞影", durationMs: 5_000 },
+};
+
+// After the pull completes (activeDash cleared), apply a stun to the target.
+// NOTE: 极乐引 is now an instant AOE and no longer uses this channel-pull mechanism.
+// The config is kept but empty; the code below won't fire for any current ability.
+const PULL_CHANNEL_POST_STUN_CONFIG: Record<string, { buffId: number; buffName: string; durationMs: number }> = {
 };
 
 function tryRemoveWufangRootOnHit(state: GameState, target: any, now: number): boolean {
@@ -193,6 +561,33 @@ function tryRemoveWufangRootOnHit(state: GameState, target: any, now: number): b
   if (!rootBuff) return false;
 
   if (Math.random() > WUFANG_XINGJIN_REMOVE_ON_HIT_CHANCE) return false;
+
+  target.buffs = target.buffs.filter((b: any) => b !== rootBuff);
+  pushBuffExpired(state, {
+    targetUserId: target.userId,
+    buffId: rootBuff.buffId,
+    buffName: rootBuff.name,
+    buffCategory: rootBuff.category,
+    sourceAbilityId: rootBuff.sourceAbilityId,
+    sourceAbilityName: rootBuff.sourceAbilityName,
+  });
+  return true;
+}
+
+function tryRemoveSanCaiRootOnHit(state: GameState, target: any, now: number): boolean {
+  if (!Array.isArray(target?.buffs) || target.buffs.length === 0) return false;
+
+  const hasProtect = target.buffs.some(
+    (b: any) => b.buffId === SAN_CAI_HUA_SHENG_PROTECT_BUFF_ID && b.expiresAt > now
+  );
+  if (hasProtect) return false;
+
+  const rootBuff = target.buffs.find(
+    (b: any) => b.buffId === SAN_CAI_HUA_SHENG_ROOT_BUFF_ID && b.expiresAt > now
+  );
+  if (!rootBuff) return false;
+
+  if (Math.random() > SAN_CAI_HUA_SHENG_REMOVE_ON_HIT_CHANCE) return false;
 
   target.buffs = target.buffs.filter((b: any) => b !== rootBuff);
   pushBuffExpired(state, {
@@ -282,6 +677,14 @@ function applyType3KnockbackControl(params: {
     y: target.position.y + (dy / dist) * knockbackUnits,
   };
   resolveMapCollisions(target, mapCtx);
+  resolveEnemyChuHeHanJieWallCollision({
+    state,
+    actorUserId: target.userId,
+    position: target.position,
+    radius: mapCtx?.playerRadius ?? 2,
+    actorBaseZ: target.position.z ?? 0,
+    actorHeight: 1.5,
+  });
 
   if (controlDurationMs > 0) {
     const knockbackBuff = {
@@ -329,6 +732,9 @@ function applyType3KnockbackControl(params: {
 const SHENGTAIJI_ZONE_ID = "qionglong_huasheng_zone";
 const SHENGTAIJI_PULSE_BUFF_ID = 1310;
 const SHENGTAIJI_ENEMY_SLOW_BUFF_ID = 1311;
+const CHONG_YIN_YANG_ZONE_BUFF_ID = 2701;
+const LING_TAI_XU_ZONE_BUFF_ID = 2702;
+const TUN_RI_YUE_ZONE_BUFF_ID = 2703;
 
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
@@ -360,6 +766,11 @@ export class GameLoop {
   // Index into state.events for STACK_ON_HIT_DAMAGE scanning.
   // Prevents missing immediate cast damage that lands between loop ticks.
   private stackProcScanIndex = 0;
+  // Pending post-pull stuns: keyed by targetUserId; fires when activeDash clears.
+  private readonly pendingPostPullStuns = new Map<
+    string,
+    { sourceUserId: string; abilityId: string; abilityName: string }
+  >();
 
   // Phase table: each phase defines a time window, zone size transition, and DPS.
   static ZONE_PHASES = [
@@ -588,10 +999,111 @@ export class GameLoop {
     const buffCountsBefore = this.state.players.map((p) => p.buffs?.length ?? 0);
     let movementStateChanged = false;
     this.state.players.forEach((player, idx) => {
-      const input = this.playerInputs.get(idx) ?? null;
+      let input = this.playerInputs.get(idx) ?? null;
+      // ── 恐惧 (FEARED): force walk away from sourceUserId, ignore player input ──
+      const fearedBuff = (player.buffs as any[]).find(
+        (b) => b.expiresAt > Date.now() && b.effects?.some((e: any) => e.type === "FEARED")
+      );
+      if (fearedBuff) {
+        const src = this.state.players.find((p) => p.userId === fearedBuff.sourceUserId);
+        if (src) {
+          const dx = player.position.x - src.position.x;
+          const dy = player.position.y - src.position.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 0.0001) {
+            const ax = dx / len;
+            const ay = dy / len;
+            input = { dx: ax, dy: ay, facing: { x: ax, y: ay }, jump: false } as any;
+          } else {
+            input = { dx: 1, dy: 0, facing: { x: 1, y: 0 }, jump: false } as any;
+          }
+        }
+      } else {
+        const shiXinBuff = (player.buffs as any[]).find(
+          (b) => b.expiresAt > Date.now() && b.effects?.some((e: any) => e.type === "SHI_XIN_GU")
+        );
+        if (shiXinBuff) {
+          if ((shiXinBuff as any).forcedMovementMode === "direction") {
+            const dir = (shiXinBuff as any).forcedMoveDirection;
+            const dx = Number(dir?.x ?? 0);
+            const dy = Number(dir?.y ?? 0);
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len > 0.0001) {
+              const ax = dx / len;
+              const ay = dy / len;
+              input = { dx: ax, dy: ay, facing: { x: ax, y: ay }, jump: false } as any;
+            } else {
+              input = { dx: 1, dy: 0, facing: { x: 1, y: 0 }, jump: false } as any;
+            }
+          } else {
+            player.velocity.vx = 0;
+            player.velocity.vy = 0;
+            input = {
+              dx: 0,
+              dy: 0,
+              facing: player.facing ?? { x: 0, y: 1 },
+              jump: false,
+            } as any;
+          }
+        }
+      }
       const dashStateBefore = player.activeDash ? { ...player.activeDash } : undefined;
       const dashAbilityIdBefore = player.activeDash?.abilityId;
+      const previousPosition = { x: player.position.x, y: player.position.y };
       applyMovement(player, input, this.tickRate, this.mapCtx);
+      if (resolveChuHeHanJieCollisionForPlayer(this.state, player, this.mapCtx.playerRadius ?? 2, previousPosition)) {
+        movementStateChanged = true;
+      }
+      if (player.activeDash && clampPlayerToLvYeManShengEdge({
+        state: this.state,
+        player,
+        playerRadius: this.mapCtx.playerRadius ?? 2,
+        storedUnitScale,
+        mapCtx: this.mapCtx,
+      })) {
+        movementStateChanged = true;
+      }
+
+      // ── 乘黄之威: on dash end, flip facing 180° and silence/fear enemies in 6u/120° cone of new facing ──
+      if (dashStateBefore && !player.activeDash && (dashStateBefore as any).chengHuangFlipAndFear) {
+        const oldFx = player.facing?.x ?? 0;
+        const oldFy = player.facing?.y ?? 1;
+        const newFx = -oldFx;
+        const newFy = -oldFy;
+        player.facing = { x: newFx, y: newFy };
+        const chwAbility = ABILITIES["cheng_huang_zhi_wei"] as any;
+        const coneRadiusWorld = gameplayUnitsToWorldUnits(6, this.state.unitScale);
+        const halfAngleCos = Math.cos((120 / 2) * Math.PI / 180); // cos(60°) = 0.5
+        for (const enemyP of this.state.players) {
+          if (enemyP.userId === player.userId) continue;
+          if ((enemyP.hp ?? 0) <= 0) continue;
+          if (blocksEnemyTargeting(enemyP as any)) continue;
+          const dxC = enemyP.position.x - player.position.x;
+          const dyC = enemyP.position.y - player.position.y;
+          const distC = Math.sqrt(dxC * dxC + dyC * dyC);
+          if (distC > coneRadiusWorld || distC < 0.0001) continue;
+          const dot = (newFx * dxC + newFy * dyC) / distC;
+          if (dot < halfAngleCos) continue;
+          addBuff({
+            state: this.state,
+            sourceUserId: player.userId,
+            targetUserId: enemyP.userId,
+            ability: chwAbility ?? { id: "cheng_huang_zhi_wei", name: "乘黄之威" } as any,
+            buffTarget: enemyP as any,
+            buff: {
+              buffId: 2625,
+              name: "恐惧",
+              category: "DEBUFF",
+              durationMs: 3_000,
+              description: "沉默并强制远离施法者，无法控制移动",
+              effects: [
+                { type: "SILENCE" },
+                { type: "FEARED" },
+              ],
+            } as any,
+          });
+        }
+      }
 
       if (dashStateBefore && !player.activeDash && dashStateBefore.hitTargetUserId) {
         const reachAbilityId = dashStateBefore.abilityId;
@@ -600,16 +1112,23 @@ export class GameLoop {
           (p) => p.userId === dashStateBefore.hitTargetUserId
         );
 
-        if (reachAbility && reachTarget && (reachTarget.hp ?? 0) > 0 && !blocksEnemyTargeting(reachTarget)) {
+        if (reachAbility && reachTarget && (reachTarget.hp ?? 0) > 0 && !blocksEnemyTargeting(reachTarget) && !hasDamageImmune(reachTarget as any)) {
           const reachDamage = Math.max(0, Number(dashStateBefore.hitDamageOnComplete ?? 0));
           if (reachDamage > 0) {
             const finalDamage = resolveScheduledDamage({
               source: player,
               target: reachTarget,
               base: reachDamage,
+              damageType: (reachAbility as any)?.damageType,
             });
-            applyDamageToTarget(reachTarget as any, finalDamage);
             if (finalDamage > 0) {
+              const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(
+                this.state, reachTarget as any, finalDamage
+              );
+              const reachApply = adjustedDamage;
+              const reachResult = reachApply > 0
+                ? applyDamageToTarget(reachTarget as any, reachApply)
+                : { hpDamage: 0 };
               this.state.events.push({
                 id: randomUUID(),
                 timestamp: Date.now(),
@@ -620,8 +1139,14 @@ export class GameLoop {
                 abilityId: reachAbility.id,
                 abilityName: reachAbility.name,
                 effectType: dashStateBefore.hitEffectTypeOnComplete ?? "DAMAGE",
-                value: finalDamage,
+                value: reachApply,
               } as any);
+              if (reachResult.hpDamage > 0) {
+                processOnDamageTaken(this.state, reachTarget as any, reachResult.hpDamage, player.userId);
+              }
+              if (redirectPlayer && redirectAmt > 0) {
+                applyRedirectToOpponent(this.state, redirectPlayer, redirectAmt);
+              }
             }
           }
         }
@@ -701,25 +1226,30 @@ export class GameLoop {
         if (hanDiAbility) {
           const stunBuff = hanDiAbility.buffs?.[0];
           if (stunBuff) {
-            const stunRadius = gameplayUnitsToWorldUnits(5, storedUnitScale);
-            for (const opp of this.state.players as any[]) {
-              if (opp.userId === player.userId) continue;
-              if ((opp.hp ?? 0) <= 0) continue;
-              if (blocksEnemyTargeting(opp)) continue;
-              const hdx = opp.position.x - player.position.x;
-              const hdy = opp.position.y - player.position.y;
-              if (Math.hypot(hdx, hdy) > stunRadius) continue;
-              addBuff({
+            for (const opp of getHostileDamageTargets(this.state, player.userId)) {
+              if (blocksEnemyTargeting(opp.target as any)) continue;
+              if (getHostileDamageTargetRangeDistance(player.position, opp, storedUnitScale) > 5) continue;
+              if (stunBuff) {
+                addBuff({
+                  state: this.state,
+                  sourceUserId: player.userId,
+                  targetUserId: opp.target.userId,
+                  ability: hanDiAbility,
+                  buffTarget: opp.target,
+                  buff: stunBuff,
+                });
+              }
+              applyDamageToHostileTarget({
                 state: this.state,
-                sourceUserId: player.userId,
-                targetUserId: opp.userId,
-                ability: hanDiAbility,
-                buffTarget: opp,
-                buff: stunBuff,
+                source: player as any,
+                target: opp,
+                baseDamage: 1,
+                abilityId: "han_di",
+                abilityName: hanDiAbility.name,
+                effectType: "DAMAGE",
+                damageType: (ABILITIES["han_di"] as any)?.damageType,
+                timestamp: Date.now(),
               });
-              // 1 impact damage on landing
-              const hdDmg = resolveScheduledDamage({ source: player, target: opp, base: 1 });
-              if (hdDmg > 0) applyDamageToTarget(opp, hdDmg);
             }
             movementStateChanged = true;
           }
@@ -730,28 +1260,20 @@ export class GameLoop {
       if (dashAbilityIdBefore === "yue_chao_zhan_bo" && !player.activeDash) {
         const yczbAbility = ABILITIES["yue_chao_zhan_bo"] as any;
         if (yczbAbility) {
-          const landRadius = gameplayUnitsToWorldUnits(8, storedUnitScale);
-          for (const opp of this.state.players as any[]) {
-            if (opp.userId === player.userId) continue;
-            if ((opp.hp ?? 0) <= 0) continue;
-            if (blocksEnemyTargeting(opp)) continue;
-            const ydx = opp.position.x - player.position.x;
-            const ydy = opp.position.y - player.position.y;
-            if (Math.hypot(ydx, ydy) > landRadius) continue;
-            const dmg = resolveScheduledDamage({ source: player, target: opp, base: 15 });
-            applyDamageToTarget(opp, dmg);
-            if (dmg > 0) {
-              this.state.events.push({
-                id: randomUUID(), timestamp: Date.now(), turn: this.state.turn,
-                type: "DAMAGE",
-                actorUserId: player.userId,
-                targetUserId: opp.userId,
-                abilityId: "yue_chao_zhan_bo",
-                abilityName: yczbAbility.name,
-                effectType: "DAMAGE",
-                value: dmg,
-              } as any);
-            }
+          for (const opp of getHostileDamageTargets(this.state, player.userId)) {
+            if (blocksEnemyTargeting(opp.target as any)) continue;
+            if (getHostileDamageTargetRangeDistance(player.position, opp, storedUnitScale) > 8) continue;
+            applyDamageToHostileTarget({
+              state: this.state,
+              source: player as any,
+              target: opp,
+              baseDamage: 15,
+              abilityId: "yue_chao_zhan_bo",
+              abilityName: yczbAbility.name,
+              effectType: "DAMAGE",
+              damageType: (ABILITIES["yue_chao_zhan_bo"] as any)?.damageType,
+              timestamp: Date.now(),
+            });
           }
           movementStateChanged = true;
         }
@@ -788,48 +1310,41 @@ export class GameLoop {
         const heAbility = ABILITIES["he_gui_gu_shan"] as any;
         if (heAbility) {
           const stunBuff = heAbility.buffs?.find((b: any) => b.buffId === 2325);
-          const outerRadius = gameplayUnitsToWorldUnits(10, storedUnitScale);
-          const innerRadius = gameplayUnitsToWorldUnits(4, storedUnitScale);
-          for (const opp of this.state.players as any[]) {
-            if (opp.userId === player.userId) continue;
-            if ((opp.hp ?? 0) <= 0) continue;
-            if (blocksEnemyTargeting(opp)) continue;
-            const hdx = opp.position.x - player.position.x;
-            const hdy = opp.position.y - player.position.y;
-            const dist = Math.hypot(hdx, hdy);
-            if (dist > outerRadius) continue;
-            // Base 2 damage for all within 10u
-            const baseDmg = resolveScheduledDamage({ source: player, target: opp, base: 2 });
-            if (baseDmg > 0) {
-              applyDamageToTarget(opp, baseDmg);
-              this.state.events.push({
-                id: randomUUID(), timestamp: Date.now(), turn: this.state.turn,
-                type: "DAMAGE", actorUserId: player.userId, targetUserId: opp.userId,
-                abilityId: "he_gui_gu_shan", abilityName: heAbility.name,
-                effectType: "DAMAGE", value: baseDmg,
-              } as any);
+          for (const opp of getHostileDamageTargets(this.state, player.userId)) {
+            if (blocksEnemyTargeting(opp.target as any)) continue;
+            const dist = getHostileDamageTargetRangeDistance(player.position, opp, storedUnitScale);
+            if (dist > 10) continue;
+            applyDamageToHostileTarget({
+              state: this.state,
+              source: player as any,
+              target: opp,
+              baseDamage: 2,
+              abilityId: "he_gui_gu_shan",
+              abilityName: heAbility.name,
+              effectType: "DAMAGE",
+              damageType: (ABILITIES["he_gui_gu_shan"] as any)?.damageType,
+              timestamp: Date.now(),
+            });
+            if (dist <= 4) {
+              applyDamageToHostileTarget({
+                state: this.state,
+                source: player as any,
+                target: opp,
+                baseDamage: 2,
+                abilityId: "he_gui_gu_shan",
+                abilityName: heAbility.name,
+                effectType: "DAMAGE",
+                damageType: (ABILITIES["he_gui_gu_shan"] as any)?.damageType,
+                timestamp: Date.now(),
+              });
             }
-            // Extra 2 damage for within 4u
-            if (dist <= innerRadius) {
-              const extraDmg = resolveScheduledDamage({ source: player, target: opp, base: 2 });
-              if (extraDmg > 0) {
-                applyDamageToTarget(opp, extraDmg);
-                this.state.events.push({
-                  id: randomUUID(), timestamp: Date.now(), turn: this.state.turn,
-                  type: "DAMAGE", actorUserId: player.userId, targetUserId: opp.userId,
-                  abilityId: "he_gui_gu_shan", abilityName: heAbility.name,
-                  effectType: "DAMAGE", value: extraDmg,
-                } as any);
-              }
-            }
-            // Stun via addBuff (handles 递减, CONTROL_IMMUNE, status bar)
             if (stunBuff) {
               addBuff({
                 state: this.state,
                 sourceUserId: player.userId,
-                targetUserId: opp.userId,
+                targetUserId: opp.target.userId,
                 ability: heAbility,
-                buffTarget: opp,
+                buffTarget: opp.target,
                 buff: stunBuff,
               });
             }
@@ -850,6 +1365,61 @@ export class GameLoop {
         }
       }
 
+      // 化蝶 Phase 2: when Phase 1 dash ends, start the forward 27u dash + apply stealth/immune buff
+      if (dashAbilityIdBefore === "hua_die" && !player.activeDash && !(player as any)._huaDieP2Done) {
+        (player as any)._huaDieP2Done = true;
+        const huaDieAbility = ABILITIES["hua_die"] as any;
+        const huaDieBuffDef = huaDieAbility?.buffs?.find((b: any) => b.buffId === 2613);
+        if (huaDieBuffDef) {
+          addBuff({
+            state: this.state,
+            sourceUserId: player.userId,
+            targetUserId: player.userId,
+            ability: huaDieAbility ?? { id: "hua_die", name: "化蝶" },
+            buffTarget: player as any,
+            buff: huaDieBuffDef,
+          });
+        }
+        // Phase 2: forward 27 units over 30 ticks
+        const fLen4 = player.facing
+          ? Math.sqrt(player.facing.x * player.facing.x + player.facing.y * player.facing.y)
+          : 0;
+        const fX4 = fLen4 > 0.01 ? player.facing!.x / fLen4 : 0;
+        const fY4 = fLen4 > 0.01 ? player.facing!.y / fLen4 : 1;
+        const p2Ticks = 30;
+        const p2ForwardWorld = gameplayUnitsToWorldUnits(27, storedUnitScale);
+        player.velocity.vx = 0;
+        player.velocity.vy = 0;
+        player.activeDash = {
+          abilityId: "hua_die_p2",
+          vxPerTick: fX4 * p2ForwardWorld / p2Ticks,
+          vyPerTick: fY4 * p2ForwardWorld / p2Ticks,
+          forceVzPerTick: 0,
+          maxUpVz: 0.05,
+          maxDownVz: -0.3,
+          ticksRemaining: p2Ticks,
+        } as any;
+        applyDashRuntimeBuff({
+          state: this.state,
+          target: player as any,
+          durationMs: Math.ceil(p2Ticks * (1000 / 30)) + 300,
+          effects: [
+            { type: "CONTROL_IMMUNE" },
+            { type: "KNOCKBACK_IMMUNE" },
+            { type: "DISPLACEMENT" },
+            { type: "DASH_TURN_LOCK" },
+          ],
+          sourceAbilityId: "hua_die_p2",
+          sourceAbilityName: "化蝶",
+        });
+        movementStateChanged = true;
+      }
+
+      // 化蝶 Phase 2 cleanup
+      if (dashAbilityIdBefore === "hua_die_p2" && !player.activeDash) {
+        (player as any)._huaDieP2Done = false;
+      }
+
       // Cancel channel buffs based on input — read BEFORE clearing the one-shot jump flag
       if (input) {
         const isMoving =
@@ -860,9 +1430,9 @@ export class GameLoop {
           (input.dx !== undefined && input.dx !== 0) ||
           (input.dy !== undefined && input.dy !== 0);
 
-        // 风来吴山 jump-lock: jump input is ignored while buff 1014 is active,
+        // 风来吴山 / 斩无常 jump-lock: jump input is ignored while buff 1014 or 2712 is active,
         // and must not count as a jump-cancel trigger.
-        const jumpLockedByChannel = player.buffs.some((b) => b.buffId === 1014);
+        const jumpLockedByChannel = player.buffs.some((b) => b.buffId === 1014 || b.buffId === 2712);
         const isJumping = !!input.jump && !jumpLockedByChannel;
 
         if (isMoving) player.buffs = player.buffs.filter((b) => !b.cancelOnMove);
@@ -884,8 +1454,34 @@ export class GameLoop {
 
         // Cancel activeChannel on move/jump
         if (player.activeChannel) {
-          if (player.activeChannel.cancelOnMove && isMoving) player.activeChannel = undefined;
-          else if (player.activeChannel.cancelOnJump && isJumping) player.activeChannel = undefined;
+          if (player.activeChannel.cancelOnMove && isMoving) cancelActiveChannel(this.state, player as any);
+          else if (player.activeChannel.cancelOnJump && isJumping) cancelActiveChannel(this.state, player as any);
+        }
+      }
+
+      // Post-pull stun (极乐引): when the pull's activeDash ends, apply 眩晕.
+      // NOTE: 极乐引 is now instant AOE, so this block will never fire — kept for safety.
+      if (dashStateBefore && !player.activeDash && this.pendingPostPullStuns.has(player.userId)) {
+        const pendingStun = this.pendingPostPullStuns.get(player.userId)!;
+        this.pendingPostPullStuns.delete(player.userId);
+        const stunCfg = PULL_CHANNEL_POST_STUN_CONFIG[pendingStun.abilityId];
+        if (stunCfg && (player.hp ?? 0) > 0) {
+          const abilityRef = ABILITIES[pendingStun.abilityId] as any ?? { id: pendingStun.abilityId, name: pendingStun.abilityName };
+          addBuff({
+            state: this.state,
+            sourceUserId: pendingStun.sourceUserId,
+            targetUserId: player.userId,
+            ability: abilityRef,
+            buffTarget: player as any,
+            buff: {
+              buffId: stunCfg.buffId,
+              name: stunCfg.buffName,
+              category: "DEBUFF",
+              durationMs: stunCfg.durationMs,
+              effects: [{ type: "CONTROL" }],
+            } as any,
+          });
+          movementStateChanged = true;
         }
       }
 
@@ -894,6 +1490,59 @@ export class GameLoop {
         this.playerInputs.set(idx, { ...input, jump: false });
       }
     });
+
+    // 1b. Apply entity activeDash movement (pull / knockback for TargetEntity).
+    // Entities have no input or jumping. We sub-step the movement and run the
+    // map collision resolver between sub-steps so dashed/knocked-back entities
+    // collide with walls (just like a player would) and stop instead of
+    // tunneling through geometry. Z is snapped to the ground each tick so they
+    // don't float upward when crossing terrain.
+    for (const entity of this.state.entities ?? []) {
+      const dash = entity.activeDash;
+      if (!dash) continue;
+
+      const prevX = entity.position.x;
+      const prevY = entity.position.y;
+      const intendedStep = Math.hypot(dash.vxPerTick, dash.vyPerTick);
+      const MAX_XY_SUBSTEP = 0.5; // ~half a game unit
+      const numSubSteps = Math.max(1, Math.ceil(intendedStep / MAX_XY_SUBSTEP));
+      const subStepX = dash.vxPerTick / numSubSteps;
+      const subStepY = dash.vyPerTick / numSubSteps;
+      for (let ss = 0; ss < numSubSteps; ss++) {
+        entity.position.x += subStepX;
+        entity.position.y += subStepY;
+        resolveEntityHorizontalCollision(entity as any, this.mapCtx);
+      }
+
+      // Snap z to ground so an entity pushed across raised terrain doesn't
+      // hang in the air, but never go below the ground either.
+      const groundZ = getGroundHeightForMap(
+        entity.position.x,
+        entity.position.y,
+        entity.position.z ?? 0,
+        this.mapCtx,
+      );
+      entity.position.z = groundZ + (dash.forceVzPerTick ?? 0);
+
+      // Wall-stop: if collision swallowed most of the intended step, end dash.
+      if (intendedStep > 0.001) {
+        const actualStep = Math.hypot(
+          entity.position.x - prevX,
+          entity.position.y - prevY,
+        );
+        if (actualStep < intendedStep * 0.35) {
+          delete entity.activeDash;
+          movementStateChanged = true;
+          continue;
+        }
+      }
+
+      dash.ticksRemaining -= 1;
+      if (dash.ticksRemaining <= 0) {
+        delete entity.activeDash;
+      }
+      movementStateChanged = true;
+    }
     const moveTime = performance.now() - moveStart;
 
     // 1a-ch. Process active channels: out-of-range / LOS cancel + completion
@@ -905,36 +1554,52 @@ export class GameLoop {
 
         const ch = player.activeChannel;
         const opp = this.state.players[idx === 0 ? 1 : 0];
-        const target = this.state.players.find((p) => p.userId === ch.targetUserId) ?? opp;
+        const targetEntity = ch.entityTargetId
+          ? (this.state.entities ?? []).find((entity) => entity.id === ch.entityTargetId) ?? null
+          : null;
+        const targetPlayer = targetEntity
+          ? null
+          : this.state.players.find((p) => p.userId === ch.targetUserId) ?? opp;
+        const targetPosition = targetEntity?.position ?? targetPlayer?.position;
         const channelAbility = (ABILITIES as any)[ch.abilityId] as any;
 
         // Silence interrupts pure active channels.
         if (hasBuffEffect(player as any, "SILENCE") || hasBuffEffect(player as any, "DISPLACEMENT")) {
-          player.activeChannel = undefined;
+          cancelActiveChannel(this.state, player as any);
+          channelStateChanged = true;
+          continue;
+        }
+
+        if (!targetPosition || ((targetEntity?.hp ?? targetPlayer?.hp ?? 0) <= 0)) {
+          cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
         }
 
         // cancelOnOutOfRange check
         if (ch.cancelOnOutOfRange !== undefined) {
-          const dist = calculateDistance(player.position, target.position, storedUnitScale);
+          const dist = Math.max(
+            0,
+            calculateDistance(player.position, targetPosition, storedUnitScale) -
+              (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
+          );
           if (dist > ch.cancelOnOutOfRange) {
-            player.activeChannel = undefined;
+            cancelActiveChannel(this.state, player as any);
             channelStateChanged = true;
             continue;
           }
         }
 
         // Target lost (stealth / untargetable) cancels opponent-targeted channels.
-        if (channelAbility?.target === "OPPONENT" && blocksCardTargeting(target as any)) {
-          player.activeChannel = undefined;
+        if (channelAbility?.target === "OPPONENT" && targetPlayer && blocksCardTargeting(targetPlayer as any)) {
+          cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
         }
 
         // Task 8: cancel forward-facing channels if target leaves 180° front arc
-        if (channelAbility && requiresFacing(channelAbility) && !isInFacingHemisphere(player as any, target as any)) {
-          player.activeChannel = undefined;
+        if (channelAbility && requiresFacing(channelAbility) && !isInFacingHemisphere(player as any, { position: targetPosition } as any)) {
+          cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
         }
@@ -942,29 +1607,142 @@ export class GameLoop {
         // Task 7: cancel opponent-targeted channels if LOS is blocked by structures.
         const _losBlockedChannel = channelAbility?.target === "OPPONENT" && (() => {
           const pz = (player.position as any).z ?? 0;
-          const tz = (target.position as any).z ?? 0;
+          const tz = (targetPosition as any).z ?? 0;
           if (this.mapCtx.collisionSystem) {
-            return this.mapCtx.collisionSystem.checkLOS(
+            const blockedByMap = this.mapCtx.collisionSystem.checkLOS(
               player.position.x, player.position.y, pz,
-              target.position.x, target.position.y, tz,
+              targetPosition.x, targetPosition.y, tz,
               this.mapCtx.width, this.mapCtx.height,
             );
+            if (blockedByMap) return true;
+            return isLineBlockedByEnemyChuHeHanJieWall({
+              state: this.state,
+              actorUserId: player.userId,
+              from: player.position,
+              to: targetPosition,
+              casterZ: pz,
+              targetZ: tz,
+            });
           }
-          return !!isLOSBlocked(
+          const blockedByMap = !!isLOSBlocked(
             player.position.x, player.position.y,
-            target.position.x, target.position.y,
+            targetPosition.x, targetPosition.y,
             this.mapCtx.objects, 0, pz, tz,
           );
+          if (blockedByMap) return true;
+          return isLineBlockedByEnemyChuHeHanJieWall({
+            state: this.state,
+            actorUserId: player.userId,
+            from: player.position,
+            to: targetPosition,
+            casterZ: pz,
+            targetZ: tz,
+          });
         })();
         if (_losBlockedChannel) {
-          player.activeChannel = undefined;
+          cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
         }
 
         // Channel completion
         const chNow = Date.now();
+
+        // ── 连环弩 periodic ticks: every 1s deal 1/2/3 damage. Knockback if target ≤15u. ──
+        if (ch.abilityId === "lian_huan_nu" && targetPlayer && (targetPlayer.hp ?? 0) > 0) {
+          const lhnInterval = 1000;
+          const lhnLast = (ch as any).lianHuanNuLastTickAt ?? ch.startedAt;
+          if (chNow - lhnLast >= lhnInterval) {
+            (ch as any).lianHuanNuLastTickAt = chNow;
+            const tickIdx = Math.min(2, Math.max(0, Math.floor((chNow - ch.startedAt) / lhnInterval)));
+            const lhnDmg = tickIdx + 1; // 1, 2, 3
+            if (!blocksEnemyTargeting(targetPlayer as any)) {
+              const lhnAbility = (ABILITIES["lian_huan_nu"] ?? { id: "lian_huan_nu", name: "连环弩" }) as any;
+              const reflectVictim = getDunLiReflectVictim(this.state, player.userId, targetPlayer as any, lhnAbility);
+              const lhnSource = (reflectVictim ? targetPlayer : player) as any;
+              const lhnVictim = (reflectVictim ?? targetPlayer) as any;
+              if (!blocksEnemyTargeting(lhnVictim as any)) {
+                const applied = applyDamageToHostileTarget({
+                  state: this.state,
+                  source: lhnSource,
+                  target: { kind: "player", target: lhnVictim },
+                  baseDamage: lhnDmg,
+                  abilityId: "lian_huan_nu",
+                  abilityName: "连环弩",
+                  effectType: "PERIODIC_DAMAGE",
+                  damageType: lhnAbility?.damageType,
+                  timestamp: chNow,
+                });
+                if (applied > 0) {
+                  channelStateChanged = true;
+                }
+
+                // Knockback if the actual victim is within 15u of the actual source.
+                const distLhnGameplay = calculateDistance(lhnSource.position, lhnVictim.position, storedUnitScale);
+                if (distLhnGameplay <= 15 && !hasKnockbackImmune(lhnVictim as any)) {
+                  const dxK = lhnVictim.position.x - lhnSource.position.x;
+                  const dyK = lhnVictim.position.y - lhnSource.position.y;
+                  const lenK = Math.sqrt(dxK * dxK + dyK * dyK);
+                  if (lenK > 0.0001) {
+                    const kbDistWorld = gameplayUnitsToWorldUnits(4, storedUnitScale);
+                    const kbTicks = 6; // 4u @ 20u/s = 0.2s @ 30Hz
+                    (lhnVictim as any).activeDash = {
+                      abilityId: "lian_huan_nu",
+                      vxPerTick: (dxK / lenK) * (kbDistWorld / kbTicks),
+                      vyPerTick: (dyK / lenK) * (kbDistWorld / kbTicks),
+                      forceVzPerTick: 0,
+                      maxUpVz: 0,
+                      maxDownVz: 0,
+                      ticksRemaining: kbTicks,
+                      vzPerTick: 0,
+                    };
+                    addBuff({
+                      state: this.state,
+                      sourceUserId: lhnSource.userId,
+                      targetUserId: lhnVictim.userId,
+                      ability: lhnAbility,
+                      buffTarget: lhnVictim,
+                      buff: {
+                        buffId: 9101,
+                        name: "击退",
+                        category: "DEBUFF",
+                        durationMs: Math.max(1, Math.ceil((kbTicks * 1000) / 30)),
+                        breakOnPlay: false,
+                        description: "被击退中，行动受限",
+                        effects: [{ type: "KNOCKED_BACK" }],
+                      } as any,
+                    });
+                    // 连环弩自身不提供击退免疫；被反弹的击退必须立刻打断当前运功。
+                    if ((lhnVictim as any).activeChannel) {
+                      (lhnVictim as any).activeChannel = undefined;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
         if (chNow >= ch.startedAt + ch.durationMs) {
+          const completeRange = getEffectiveAbilityRange(channelAbility as any, player.buffs);
+          if (
+            channelAbility?.target === "OPPONENT" &&
+            channelAbility?.requireTargetInRangeOnChannelComplete === true &&
+            typeof completeRange === "number"
+          ) {
+            const completeDist = Math.max(
+              0,
+              calculateDistance(player.position, targetPosition, storedUnitScale) -
+                (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
+            );
+            if (completeDist > completeRange) {
+              cancelActiveChannel(this.state, player as any);
+              channelStateChanged = true;
+              continue;
+            }
+          }
+
+          let channelEffectDodged = false;
           for (const e of ch.effects) {
             if (e.type === "TIMED_SELF_HEAL") {
               const heal = resolveHealAmount({ target: player, base: e.value ?? 0 });
@@ -985,55 +1763,173 @@ export class GameLoop {
               }
             } else if (e.type === "TIMED_AOE_DAMAGE") {
               const range = e.range ?? 50;
-              const dist = calculateDistance(player.position, target.position, storedUnitScale);
-              if (dist <= range && target.hp > 0) {
-                if (player.userId !== target.userId && blocksEnemyTargeting(target as any)) {
+              const dist = Math.max(
+                0,
+                calculateDistance(player.position, targetPosition, storedUnitScale) -
+                  (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
+              );
+              if (dist <= range && (targetEntity?.hp ?? targetPlayer?.hp ?? 0) > 0) {
+                if (targetPlayer && blocksEnemyTargeting(targetPlayer as any)) {
+                  channelEffectDodged = true;
                   continue;
                 }
-                const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
-                applyDamageToTarget(target as any, dmg);
-                if (dmg > 0) {
+                // NOTE: DAMAGE_IMMUNE + 盾立 reflect handled inside applyDamageToHostileTarget.
+                // PROJECTILE_IMMUNE: block channel-completion damage from projectile abilities
+                if (
+                  targetPlayer &&
+                  (ABILITIES[ch.abilityId] as any)?.isProjectile === true &&
+                  (targetPlayer.buffs as any[]).some(
+                    (b: any) =>
+                      b.effects.some((ef: any) => ef.type === "PROJECTILE_IMMUNE") &&
+                      b.expiresAt > chNow
+                  )
+                ) {
+                  channelEffectDodged = true;
+                  continue;
+                }
+                // Dodge check: if target has DODGE (or PHYSICAL_DODGE for 外功), the whole channel completion misses
+                if (targetPlayer && shouldDodgeForAbility(targetPlayer as any, (ABILITIES[ch.abilityId] as any)?.damageType)) {
+                  channelEffectDodged = true;
                   this.state.events.push({
-                    id: randomUUID(),
-                    timestamp: chNow,
-                    turn: this.state.turn,
-                    type: "DAMAGE",
-                    actorUserId: player.userId,
-                    targetUserId: target.userId,
+                    id: randomUUID(), timestamp: chNow, turn: this.state.turn,
+                    type: "DODGE",
+                    actorUserId: targetPlayer.userId,
+                    targetUserId: player.userId,
                     abilityId: ch.abilityId,
                     abilityName: ch.abilityName,
-                    effectType: "TIMED_AOE_DAMAGE",
-                    value: dmg,
-                  });
+                  } as any);
+                  continue;
                 }
+                applyDamageToHostileTarget({
+                  state: this.state,
+                  source: player,
+                  target: targetEntity
+                    ? { kind: "entity", target: targetEntity }
+                    : { kind: "player", target: targetPlayer! },
+                  baseDamage: e.value ?? 0,
+                  abilityId: ch.abilityId,
+                  abilityName: ch.abilityName,
+                  effectType: "TIMED_AOE_DAMAGE",
+                  damageType: (ABILITIES[ch.abilityId] as any)?.damageType,
+                  timestamp: chNow,
+                });
               }
             } else if (e.type === "TIMED_AOE_DAMAGE_IF_SELF_HP_GT") {
               const threshold = (e as any).threshold ?? 0;
               const range = e.range ?? 50;
               if (player.hp <= threshold) continue;
-              const dist = calculateDistance(player.position, target.position, storedUnitScale);
-              if (dist > range || target.hp <= 0) continue;
-              if (player.userId !== target.userId && blocksEnemyTargeting(target as any)) continue;
-              const dmg = resolveScheduledDamage({ source: player, target, base: e.value ?? 0 });
-              applyDamageToTarget(target as any, dmg);
-              if (dmg > 0) {
+              const dist = Math.max(
+                0,
+                calculateDistance(player.position, targetPosition, storedUnitScale) -
+                  (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
+              );
+              if (dist > range || (targetEntity?.hp ?? targetPlayer?.hp ?? 0) <= 0) continue;
+              if (targetPlayer && blocksEnemyTargeting(targetPlayer as any)) continue;
+              // NOTE: DAMAGE_IMMUNE + 盾立 reflect handled inside applyDamageToHostileTarget.
+              // PROJECTILE_IMMUNE: block bonus channel-completion damage from projectile abilities
+              if (
+                targetPlayer &&
+                (ABILITIES[ch.abilityId] as any)?.isProjectile === true &&
+                (targetPlayer.buffs as any[]).some(
+                  (b: any) =>
+                    b.effects.some((ef: any) => ef.type === "PROJECTILE_IMMUNE") &&
+                    b.expiresAt > chNow
+                )
+              ) continue;
+              // Dodge check
+              if (targetPlayer && shouldDodgeForAbility(targetPlayer as any, (ABILITIES[ch.abilityId] as any)?.damageType)) {
+                channelEffectDodged = true;
                 this.state.events.push({
                   id: randomUUID(), timestamp: chNow, turn: this.state.turn,
-                  type: "DAMAGE",
-                  actorUserId: player.userId,
-                  targetUserId: target.userId,
+                  type: "DODGE",
+                  actorUserId: targetPlayer.userId,
+                  targetUserId: player.userId,
                   abilityId: ch.abilityId,
                   abilityName: ch.abilityName,
-                  effectType: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
-                  value: dmg,
+                } as any);
+                continue;
+              }
+              applyDamageToHostileTarget({
+                state: this.state,
+                source: player,
+                target: targetEntity
+                  ? { kind: "entity", target: targetEntity }
+                  : { kind: "player", target: targetPlayer! },
+                baseDamage: e.value ?? 0,
+                abilityId: ch.abilityId,
+                abilityName: ch.abilityName,
+                effectType: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
+                damageType: (ABILITIES[ch.abilityId] as any)?.damageType,
+                timestamp: chNow,
+              });
+            } else if (e.type === "TIMED_PULL_TARGET_TO_FRONT") {
+              // Entity-target pull: use activeDash so the entity is pulled at speed
+              if (targetEntity && targetEntity.hp > 0) {
+                const facing = player.facing ?? { x: 0, y: 1 };
+                const facingLen = Math.hypot(facing.x, facing.y);
+                const nx = facingLen > 0.0001 ? facing.x / facingLen : 0;
+                const ny = facingLen > 0.0001 ? facing.y / facingLen : 1;
+                const anchorOffset = gameplayUnitsToWorldUnits(1, storedUnitScale);
+                const anchorX = player.position.x + nx * anchorOffset;
+                const anchorY = player.position.y + ny * anchorOffset;
+                const toAnchorX = anchorX - targetEntity.position.x;
+                const toAnchorY = anchorY - targetEntity.position.y;
+                const distanceToAnchor = Math.hypot(toAnchorX, toAnchorY);
+                const maxPullUnits = Math.max(0, Number(e.value ?? 20));
+                const maxPullDistance = gameplayUnitsToWorldUnits(maxPullUnits, storedUnitScale);
+                const pullDistance = Math.min(distanceToAnchor, maxPullDistance);
+                const basePullDurationTicks = Math.max(
+                  1,
+                  Math.round(Number((e as any).durationTicks ?? this.tickRate))
+                );
+                const pullDurationTicks = maxPullDistance > 0
+                  ? Math.max(1, Math.round(basePullDurationTicks * (pullDistance / maxPullDistance)))
+                  : basePullDurationTicks;
+                const dirX = distanceToAnchor > 0.0001 ? toAnchorX / distanceToAnchor : nx;
+                const dirY = distanceToAnchor > 0.0001 ? toAnchorY / distanceToAnchor : ny;
+                if (pullDistance > 0.0001) {
+                  targetEntity.activeDash = {
+                    abilityId: ch.abilityId,
+                    vxPerTick: (dirX * pullDistance) / pullDurationTicks,
+                    vyPerTick: (dirY * pullDistance) / pullDurationTicks,
+                    forceVzPerTick: 0,
+                    ticksRemaining: pullDurationTicks,
+                  };
+                }
+                continue;
+              }
+              if (!targetPlayer) continue;
+              if (player.userId === targetPlayer.userId || targetPlayer.hp <= 0) continue;
+              if (blocksEnemyTargeting(targetPlayer as any)) continue;
+              if (hasKnockbackImmune(targetPlayer as any)) continue;
+
+              const timedPullAbility = ABILITIES[ch.abilityId] as any;
+              const reflectedPullTarget = getDunLiReflectVictim(
+                this.state,
+                player.userId,
+                targetPlayer as any,
+                timedPullAbility ?? { id: ch.abilityId, name: ch.abilityName },
+              );
+              const pullSourcePlayer = reflectedPullTarget ? targetPlayer : player;
+              const pullTargetPlayer = reflectedPullTarget ?? targetPlayer;
+              if (hasKnockbackImmune(pullTargetPlayer as any)) continue;
+
+              // 雷霆震怒 interaction: pull also strips the buff first
+              const leiTingIdx = (pullTargetPlayer.buffs as any[]).findIndex((b: any) => b.buffId === 2506);
+              if (leiTingIdx !== -1) {
+                const leiTingBuff = (pullTargetPlayer.buffs as any[])[leiTingIdx];
+                (pullTargetPlayer.buffs as any[]).splice(leiTingIdx, 1);
+                pushBuffExpired(this.state, {
+                  targetUserId: pullTargetPlayer.userId,
+                  buffId: leiTingBuff.buffId,
+                  buffName: leiTingBuff.name,
+                  buffCategory: leiTingBuff.category,
+                  sourceAbilityId: leiTingBuff.sourceAbilityId,
+                  sourceAbilityName: leiTingBuff.sourceAbilityName,
                 });
               }
-            } else if (e.type === "TIMED_PULL_TARGET_TO_FRONT") {
-              if (player.userId === target.userId || target.hp <= 0) continue;
-              if (blocksEnemyTargeting(target as any)) continue;
-              if (hasKnockbackImmune(target as any)) continue;
 
-              const facing = player.facing ?? { x: 0, y: 1 };
+              const facing = pullSourcePlayer.facing ?? { x: 0, y: 1 };
               const facingLen = Math.hypot(facing.x, facing.y);
               const nx = facingLen > 0.0001 ? facing.x / facingLen : 0;
               const ny = facingLen > 0.0001 ? facing.y / facingLen : 1;
@@ -1045,20 +1941,20 @@ export class GameLoop {
 
               // Pull toward a point 1 unit in front of the caster, but move with timed speed.
               const anchorOffset = gameplayUnitsToWorldUnits(1, storedUnitScale);
-              const anchorX = player.position.x + nx * anchorOffset;
-              const anchorY = player.position.y + ny * anchorOffset;
+              const anchorX = pullSourcePlayer.position.x + nx * anchorOffset;
+              const anchorY = pullSourcePlayer.position.y + ny * anchorOffset;
 
               const anchorGroundZ = getGroundHeightForMap(
                 anchorX,
                 anchorY,
-                target.position.z ?? 0,
+                pullTargetPlayer.position.z ?? 0,
                 this.mapCtx
               );
-              const casterZ = player.position.z ?? anchorGroundZ;
+              const casterZ = pullSourcePlayer.position.z ?? anchorGroundZ;
               const anchorZ = Math.max(anchorGroundZ, casterZ);
 
-              const toAnchorX = anchorX - target.position.x;
-              const toAnchorY = anchorY - target.position.y;
+              const toAnchorX = anchorX - pullTargetPlayer.position.x;
+              const toAnchorY = anchorY - pullTargetPlayer.position.y;
               const distanceToAnchor = Math.hypot(toAnchorX, toAnchorY);
               const maxPullDistance = gameplayUnitsToWorldUnits(maxPullUnits, storedUnitScale);
               const pullDistance = Math.min(distanceToAnchor, maxPullDistance);
@@ -1074,12 +1970,12 @@ export class GameLoop {
               const dirY = distanceToAnchor > 0.0001 ? toAnchorY / distanceToAnchor : ny;
 
               const targetGroundZ = getGroundHeightForMap(
-                target.position.x,
-                target.position.y,
-                target.position.z ?? 0,
+                pullTargetPlayer.position.x,
+                pullTargetPlayer.position.y,
+                pullTargetPlayer.position.z ?? 0,
                 this.mapCtx
               );
-              const currentZ = target.position.z ?? targetGroundZ;
+              const currentZ = pullTargetPlayer.position.z ?? targetGroundZ;
               const pullRatio = distanceToAnchor > 0.0001
                 ? pullDistance / distanceToAnchor
                 : 1;
@@ -1087,7 +1983,7 @@ export class GameLoop {
               const verticalDelta = targetZ - currentZ;
 
               if (pullDistance > 0.0001 || Math.abs(verticalDelta) > 0.0001) {
-                target.activeDash = {
+                pullTargetPlayer.activeDash = {
                   abilityId: ch.abilityId,
                   vxPerTick: (dirX * pullDistance) / pullDurationTicks,
                   vyPerTick: (dirY * pullDistance) / pullDurationTicks,
@@ -1097,18 +1993,18 @@ export class GameLoop {
                   ticksRemaining: pullDurationTicks,
                 } as any;
 
-                target.velocity = {
-                  ...target.velocity,
+                pullTargetPlayer.velocity = {
+                  ...pullTargetPlayer.velocity,
                   vx: 0,
                   vy: 0,
                   vz: 0,
                 };
-                target.isPowerJump = false;
-                target.isPowerJumpCombined = false;
+                pullTargetPlayer.isPowerJump = false;
+                pullTargetPlayer.isPowerJumpCombined = false;
 
                 applyDashRuntimeBuff({
                   state: this.state,
-                  target: target as any,
+                  target: pullTargetPlayer as any,
                   durationMs: pullDurationMs + 100,
                   effects: [
                     { type: "CONTROL_IMMUNE" },
@@ -1120,18 +2016,27 @@ export class GameLoop {
                   sourceAbilityName: ch.abilityName,
                   appliedAt: chNow,
                 });
+
+                // Register post-pull stun if configured for this ability.
+                if (PULL_CHANNEL_POST_STUN_CONFIG[ch.abilityId]) {
+                  this.pendingPostPullStuns.set(pullTargetPlayer.userId, {
+                    sourceUserId: pullSourcePlayer.userId,
+                    abilityId: ch.abilityId,
+                    abilityName: ch.abilityName,
+                  });
+                }
               }
 
-              resolveMapCollisions(target as any, this.mapCtx);
+              resolveMapCollisions(pullTargetPlayer as any, this.mapCtx);
 
               const sealConfig = PULL_CHANNEL_QINGGONG_SEAL_CONFIG[ch.abilityId];
               if (sealConfig) {
                 addBuff({
                   state: this.state,
-                  sourceUserId: player.userId,
-                  targetUserId: target.userId,
+                  sourceUserId: pullSourcePlayer.userId,
+                  targetUserId: pullTargetPlayer.userId,
                   ability: (channelAbility ?? { id: ch.abilityId, name: ch.abilityName }) as any,
-                  buffTarget: target as any,
+                  buffTarget: pullTargetPlayer as any,
                   buff: {
                     buffId: sealConfig.buffId,
                     name: sealConfig.buffName,
@@ -1141,6 +2046,45 @@ export class GameLoop {
                     effects: [{ type: "QINGGONG_SEAL" }],
                   } as any,
                 });
+              }
+            } else if (e.type === "DISPEL_BUFF_ATTRIBUTE") {
+              // Dispel BUFF-category buffs from target by attribute (used by channel abilities like 少明指)
+              const dispelAbility = (ABILITIES[ch.abilityId] as any)
+                ?? ({ id: ch.abilityId, name: ch.abilityName } as any);
+              const reflectedDispelTarget = targetPlayer
+                ? getDunLiReflectVictim(this.state, player.userId, targetPlayer as any, dispelAbility)
+                : null;
+              const dispelTarget = reflectedDispelTarget ?? targetPlayer;
+              // Skip if the preceding TIMED_AOE_DAMAGE was dodged/blocked, unless 盾立 has already
+              // redirected the dispel payload to the caster.
+              if (channelEffectDodged && !reflectedDispelTarget) continue;
+              if (dispelTarget && dispelTarget.hp > 0 && !blocksEnemyTargeting(dispelTarget as any)) {
+                const { overrides: chDispelOvr } = loadBuffEditorOverrides();
+                const chAttrs: string[] = (e as any).attributes ?? [];
+                const chDispelCount: number = (e as any).count ?? 1;
+                for (const attr of chAttrs) {
+                  let dispelled = 0;
+                  while (dispelled < chDispelCount) {
+                    const idx = (dispelTarget.buffs as any[]).findIndex((b: any) => {
+                      if (b.category !== "BUFF") return false;
+                      const entry = chDispelOvr[String(b.buffId)];
+                      return entry?.attribute === attr;
+                    });
+                    if (idx === -1) break;
+                    const removed = (dispelTarget.buffs as any[])[idx];
+                    removeLinkedShield(dispelTarget as any, removed);
+                    (dispelTarget.buffs as any[]).splice(idx, 1);
+                    pushBuffExpired(this.state, {
+                      targetUserId: dispelTarget.userId,
+                      buffId: removed.buffId,
+                      buffName: removed.name,
+                      buffCategory: removed.category,
+                      sourceAbilityId: removed.sourceAbilityId,
+                      sourceAbilityName: removed.sourceAbilityName,
+                    });
+                    dispelled++;
+                  }
+                }
               }
             } else if (e.type === "PLACE_GROUND_ZONE") {
               const facing = player.facing ?? { x: 0, y: 1 };
@@ -1168,10 +2112,76 @@ export class GameLoop {
             }
           }
 
+          if (ch.abilityId === YIN_QIAO_ABILITY_ID && targetPlayer && !channelEffectDodged) {
+            const jueMaiIndex = (targetPlayer.buffs as any[]).findIndex(
+              (buff: any) =>
+                buff.buffId === JUE_MAI_BUFF_ID &&
+                (buff.expiresAt ?? 0) > chNow,
+            );
+            if (jueMaiIndex !== -1) {
+              const jueMaiBuff = (targetPlayer.buffs as any[])[jueMaiIndex];
+              const extraDamage = Math.max(0, Number(jueMaiBuff.stacks ?? 0));
+              if (extraDamage > 0) {
+                const appliedExtraDamage = applyDamageToHostileTarget({
+                  state: this.state,
+                  source: player,
+                  target: { kind: "player", target: targetPlayer },
+                  baseDamage: extraDamage,
+                  abilityId: ch.abilityId,
+                  abilityName: ch.abilityName,
+                  effectType: "YIN_QIAO_EXTRA_DAMAGE",
+                  damageType: (ABILITIES[ch.abilityId] as any)?.damageType,
+                  timestamp: chNow,
+                });
+                if (appliedExtraDamage > 0) {
+                  (targetPlayer.buffs as any[]).splice(jueMaiIndex, 1);
+                  pushBuffExpired(this.state, {
+                    targetUserId: targetPlayer.userId,
+                    buffId: jueMaiBuff.buffId,
+                    buffName: jueMaiBuff.name,
+                    buffCategory: jueMaiBuff.category,
+                    sourceAbilityId: jueMaiBuff.sourceAbilityId,
+                    sourceAbilityName: jueMaiBuff.sourceAbilityName,
+                  });
+                }
+              }
+            }
+          }
+
+          if (ch.abilityId === YIN_QIAO_ABILITY_ID) {
+            triggerYunSanBlink({
+              state: this.state,
+              source: player as any,
+              targetPosition,
+              triggerAbilityId: ch.abilityId,
+              mapCtx: this.mapCtx,
+              now: chNow,
+            });
+          }
+
           // Set cooldown on the consumed ability instance (still in hand)
           const ability = player.hand.find((a) => a.instanceId === ch.instanceId);
           if (ability) {
             ability.cooldown = Math.max(ability.cooldown ?? 0, ch.cooldownTicks ?? 0);
+          }
+
+          // applyBuffsOnComplete: apply buffs[] to opponent on channel finish (not on cast)
+          if ((channelAbility as any)?.applyBuffsOnComplete === true) {
+            const buffDefs = (channelAbility as any)?.buffs ?? [];
+            const oppAlive = targetPlayer && (targetPlayer.hp ?? 0) > 0;
+            for (const buffDef of buffDefs) {
+              const applyTarget = buffDef.applyTo === "SELF" ? player : targetPlayer;
+              if (!applyTarget) continue;
+              if (applyTarget !== player && (!oppAlive || blocksEnemyTargeting(targetPlayer as any))) continue;
+              addBuff({
+                state: this.state,
+                sourceUserId: player.userId,
+                targetUserId: (applyTarget as any).userId,
+                ability: channelAbility as any,
+                buffTarget: applyTarget as any,
+                buff: buffDef,
+              });
+            }
           }
 
           // Forward channel completion counts as the cast "taking effect" and breaks stealth.
@@ -1182,13 +2192,11 @@ export class GameLoop {
             );
           }
 
-          player.activeChannel = undefined;
+          cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
         }
       }
     }
-
-    // 1b. Decrement ability cooldowns each tick
     this.state.players.forEach((player) => {
       const cooldownSlowSum = player.buffs
         .flatMap((b) => b.effects)
@@ -1355,7 +2363,7 @@ export class GameLoop {
             buff.lastTickAt = now;
             for (const e of buff.effects) {
               if (e.type === "PERIODIC_DAMAGE") {
-                if (opp.userId !== player.userId && blocksEnemyTargeting(player as any)) {
+                if (opp.userId !== player.userId && (blocksEnemyTargeting(player as any) || hasDamageImmune(player as any))) {
                   buffsChanged = true;
                   continue;
                 }
@@ -1364,9 +2372,15 @@ export class GameLoop {
                   source: opp,
                   target: player,
                   base: (e.value ?? 0) * stackMult,
+                  damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
                 });
-                applyDamageToTarget(player as any, dmg);
                 if (dmg > 0) {
+                  const { adjustedDamage: adjPeri, redirectPlayer: rtPeri, redirectAmt: raPeri } =
+                    preCheckRedirect(this.state, player as any, dmg);
+                  const periApply = rtPeri ? adjPeri : dmg;
+                  const periResult = periApply > 0
+                    ? applyDamageToTarget(player as any, periApply)
+                    : { hpDamage: 0, shieldAbsorbed: 0 };
                   this.state.events.push({
                     id: randomUUID(), timestamp: now, turn: this.state.turn,
                     type: "DAMAGE",
@@ -1375,8 +2389,15 @@ export class GameLoop {
                     abilityId: buff.sourceAbilityId,
                     abilityName: buff.sourceAbilityName ?? buff.name,
                     effectType: "PERIODIC_DAMAGE",
-                    value: dmg,
+                    value: periApply,
+                    shieldAbsorbed: (periResult.shieldAbsorbed ?? 0) > 0 ? periResult.shieldAbsorbed : undefined,
                   });
+                  if (periResult.hpDamage > 0) {
+                    processOnDamageTaken(this.state, player as any, periResult.hpDamage, opp.userId);
+                  }
+                  if (rtPeri && raPeri > 0) {
+                    applyRedirectToOpponent(this.state, rtPeri, raPeri);
+                  }
                 }
                 buffsChanged = true;
               } else if (e.type === "PERIODIC_HEAL") {
@@ -1418,16 +2439,15 @@ export class GameLoop {
               } else if (e.type === "CHANNEL_AOE_TICK") {
                 // Channel AOE: deal damage to opponent if within range
                 const range = e.range ?? 10;
-                const dist = calculateDistance(player.position, opp.position, storedUnitScale);
-                if (dist <= range && opp.hp > 0) {
-                  if (player.userId !== opp.userId && blocksEnemyTargeting(opp as any)) {
-                    continue;
-                  }
+                for (const target of getHostileDamageTargets(this.state, player.userId)) {
+                  const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
+                  if (dist > range) continue;
+                  if (blocksEnemyTargeting(target.target as any)) continue;
                   const angle = (e as any).aoeAngle ?? 360;
                   if (angle < 360 && dist > 0) {
                     const facing = player.facing ?? { x: 0, y: 1 };
-                    const dx = opp.position.x - player.position.x;
-                    const dy = opp.position.y - player.position.y;
+                    const dx = getHostileDamageTargetPosition(target).x - player.position.x;
+                    const dy = getHostileDamageTargetPosition(target).y - player.position.y;
                     const planarDist = Math.sqrt(dx * dx + dy * dy);
                     const dot = planarDist > 0.0001 ? (facing.x * dx + facing.y * dy) / planarDist : 1;
                     const halfAngleRad = (angle / 2) * (Math.PI / 180);
@@ -1435,57 +2455,126 @@ export class GameLoop {
                       continue;
                     }
                   }
-                  // Task 7: channel ticks stop applying through structures
                   const _losBlockedTick = (() => {
                     const pz = (player.position as any).z ?? 0;
-                    const oz = (opp.position as any).z ?? 0;
+                    const oz = (getHostileDamageTargetPosition(target) as any).z ?? 0;
                     if (this.mapCtx.collisionSystem) {
-                      return this.mapCtx.collisionSystem.checkLOS(
+                      const blockedByMap = this.mapCtx.collisionSystem.checkLOS(
                         player.position.x, player.position.y, pz,
-                        opp.position.x, opp.position.y, oz,
+                        getHostileDamageTargetPosition(target).x, getHostileDamageTargetPosition(target).y, oz,
                         this.mapCtx.width, this.mapCtx.height,
                       );
+                      if (blockedByMap) return true;
+                      return isLineBlockedByEnemyChuHeHanJieWall({
+                        state: this.state,
+                        actorUserId: player.userId,
+                        from: player.position,
+                        to: getHostileDamageTargetPosition(target),
+                        casterZ: pz,
+                        targetZ: oz,
+                        ignoreEntityId: target.kind === "entity" ? target.target.id : undefined,
+                      });
                     }
-                    return !!isLOSBlocked(
+                    const blockedByMap = !!isLOSBlocked(
                       player.position.x, player.position.y,
-                      opp.position.x, opp.position.y,
+                      getHostileDamageTargetPosition(target).x, getHostileDamageTargetPosition(target).y,
                       this.mapCtx.objects, 0, pz, oz,
                     );
+                    if (blockedByMap) return true;
+                    return isLineBlockedByEnemyChuHeHanJieWall({
+                      state: this.state,
+                      actorUserId: player.userId,
+                      from: player.position,
+                      to: getHostileDamageTargetPosition(target),
+                      casterZ: pz,
+                      targetZ: oz,
+                      ignoreEntityId: target.kind === "entity" ? target.target.id : undefined,
+                    });
                   })();
                   if (_losBlockedTick) {
-                    player.activeChannel = undefined;
+                    cancelActiveChannel(this.state, player as any);
                     channelStateChanged = true;
                     continue;
                   }
                   if (
+                    target.kind === "player" &&
                     tryApplyDodgeForHit({
                       state: this.state,
                       source: player,
-                      target: opp as any,
+                      target: target.target as any,
                       abilityId: buff.sourceAbilityId,
                       abilityName: buff.sourceAbilityName ?? buff.name,
                       enabled: buff.sourceAbilityId === "fenglai_wushan",
+                      damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
                     })
                   ) {
                     buffsChanged = true;
                     continue;
                   }
-                  const dmg = resolveScheduledDamage({
+                  applyDamageToHostileTarget({
+                    state: this.state,
                     source: player,
-                    target: opp,
-                    base: e.value ?? 0,
+                    target,
+                    baseDamage: e.value ?? 0,
+                    abilityId: buff.sourceAbilityId,
+                    abilityName: buff.sourceAbilityName ?? buff.name,
+                    effectType: "CHANNEL_AOE_TICK",
+                    damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
+                    timestamp: now,
                   });
-                  applyDamageToTarget(opp as any, dmg);
-                  if (dmg > 0) {
+                  buffsChanged = true;
+                }
+              } else if (e.type === "CHANNEL_AOE_TICK_DAMAGE") {
+                // 斩无常: AOE damage to enemies within range every tick (periodicMs=500, 0.5s)
+                const dmgRange = e.range ?? 4;
+                const tickAbility = (ABILITIES[buff.sourceAbilityId ?? ""] as any)
+                  ?? ({ id: buff.sourceAbilityId, name: buff.sourceAbilityName ?? buff.name } as any);
+                for (const target of getHostileDamageTargets(this.state, player.userId)) {
+                  const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
+                  if (dist > dmgRange) continue;
+                  if (blocksEnemyTargeting(target.target as any)) {
+                    buffsChanged = true;
+                    continue;
+                  }
+                  const reflectVictim = target.kind === "player"
+                    ? getDunLiReflectVictim(this.state, player.userId, target.target, tickAbility)
+                    : null;
+                  // NOTE: DAMAGE_IMMUNE + 盾立 reflect handled inside applyDamageToHostileTarget.
+                  applyDamageToHostileTarget({
+                    state: this.state,
+                    source: (reflectVictim ? target.target : player) as any,
+                    target: reflectVictim ? { kind: "player", target: reflectVictim } : target,
+                    baseDamage: e.value ?? 1,
+                    abilityId: buff.sourceAbilityId,
+                    abilityName: buff.sourceAbilityName ?? buff.name,
+                    effectType: "CHANNEL_AOE_TICK_DAMAGE",
+                    damageType: tickAbility?.damageType,
+                    timestamp: now,
+                  });
+                }
+                buffsChanged = true;
+              } else if (e.type === "YING_TIAN_SHIELD") {
+                // 应天授命: every 1s, settle accumulated shield-absorbed damage (capped at 20% maxHp) as true damage
+                const yMaxHp = player.maxHp ?? 100;
+                const accum: number = (buff as any).yingTianAccum ?? 0;
+                const cap = yMaxHp * 0.2;
+                const settle = Math.min(accum, cap);
+                (buff as any).yingTianAccum = 0;
+                if (settle > 0) {
+                  // True damage — bypass DR and shields
+                  const preHp = player.hp;
+                  player.hp = Math.max(0, player.hp - settle);
+                  const settledHpDmg = preHp - player.hp;
+                  if (settledHpDmg > 0) {
                     this.state.events.push({
                       id: randomUUID(), timestamp: now, turn: this.state.turn,
                       type: "DAMAGE",
-                      actorUserId: player.userId,
-                      targetUserId: opp.userId,
+                      actorUserId: buff.sourceUserId ?? player.userId,
+                      targetUserId: player.userId,
                       abilityId: buff.sourceAbilityId,
                       abilityName: buff.sourceAbilityName ?? buff.name,
-                      effectType: "CHANNEL_AOE_TICK",
-                      value: dmg,
+                      effectType: "YING_TIAN_SHIELD",
+                      value: settledHpDmg,
                     });
                   }
                   buffsChanged = true;
@@ -1579,6 +2668,7 @@ export class GameLoop {
                 source: sourcePlayer,
                 target: player,
                 base: e.value ?? 0,
+                damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
               });
               applyDamageToTarget(player as any, dmg);
               if (dmg > 0) {
@@ -1597,125 +2687,112 @@ export class GameLoop {
               continue;
             }
 
-            if (opp.hp <= 0) continue;
+            for (const target of getHostileDamageTargets(this.state, player.userId)) {
+              const range = e.range ?? 10;
+              const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
+              if (dist > range) continue;
 
-            // Range check (using gameplay units via calculateDistance)
-            const range = e.range ?? 10;
-            const dist = calculateDistance(player.position, opp.position, storedUnitScale);
-            if (dist > range) continue;
+              const angle = e.aoeAngle ?? 360;
+              if (angle < 360 && dist > 0) {
+                const facing = player.facing ?? { x: 0, y: 1 };
+                const rawDx = getHostileDamageTargetPosition(target).x - player.position.x;
+                const rawDy = getHostileDamageTargetPosition(target).y - player.position.y;
+                const rawDist2d = Math.sqrt(rawDx * rawDx + rawDy * rawDy);
+                const dot = rawDist2d > 0 ? (facing.x * rawDx + facing.y * rawDy) / rawDist2d : 0;
+                const halfAngleRad = (angle / 2) * (Math.PI / 180);
+                if (dot < Math.cos(halfAngleRad)) continue;
+              }
 
-            // Cone angle check (skip for full-circle 360°)
-            const angle = e.aoeAngle ?? 360;
-            if (angle < 360 && dist > 0) {
-              const facing = player.facing ?? { x: 0, y: 1 };
-              const rawDx = opp.position.x - player.position.x;
-              const rawDy = opp.position.y - player.position.y;
-              const rawDist2d = Math.sqrt(rawDx * rawDx + rawDy * rawDy);
-              const dot = rawDist2d > 0 ? (facing.x * rawDx + facing.y * rawDy) / rawDist2d : 0;
-              const halfAngleRad = (angle / 2) * (Math.PI / 180);
-              if (dot < Math.cos(halfAngleRad)) continue;
-            }
+              if (blocksEnemyTargeting(target.target as any)) {
+                continue;
+              }
 
-            if (player.userId !== opp.userId && blocksEnemyTargeting(opp as any)) {
-              continue;
-            }
+              if (
+                target.kind === "player" &&
+                tryApplyDodgeForHit({
+                  state: this.state,
+                  source: player,
+                  target: target.target as any,
+                  abilityId: buff.sourceAbilityId,
+                  abilityName: buff.sourceAbilityName ?? buff.name,
+                  enabled: buff.sourceAbilityId === "wu_jianyu",
+                  damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
+                })
+              ) {
+                buffsChanged = true;
+                continue;
+              }
 
-            if (
-              tryApplyDodgeForHit({
+              const appliedDamage = applyDamageToHostileTarget({
                 state: this.state,
-                source: player,
-                target: opp as any,
-                abilityId: buff.sourceAbilityId,
-                abilityName: buff.sourceAbilityName ?? buff.name,
-                enabled: buff.sourceAbilityId === "wu_jianyu",
-              })
-            ) {
-              buffsChanged = true;
-              continue;
-            }
-
-            // Apply damage
-            const dmg = resolveScheduledDamage({
-              source: player,
-              target: opp,
-              base: e.value ?? 0,
-            });
-            applyDamageToTarget(opp as any, dmg);
-
-            if (dmg > 0) {
-              this.state.events.push({
-                id: randomUUID(), timestamp: now, turn: this.state.turn,
-                type: "DAMAGE",
-                actorUserId: player.userId,
-                targetUserId: opp.userId,
+                source: player as any,
+                target,
+                baseDamage: e.value ?? 0,
                 abilityId: buff.sourceAbilityId,
                 abilityName: buff.sourceAbilityName ?? buff.name,
                 effectType: "TIMED_AOE_DAMAGE",
-                value: dmg,
+                damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
+                timestamp: now,
               });
-            }
 
-            // Lifesteal
-            if (e.lifestealPct && e.lifestealPct > 0 && dmg > 0) {
-              const healAmt = Math.floor(dmg * e.lifestealPct);
-              const applied = applyHealToTarget(player as any, healAmt);
-              if (applied > 0) {
-                this.state.events.push({
-                  id: randomUUID(), timestamp: now, turn: this.state.turn,
-                  type: "HEAL",
-                  actorUserId: player.userId,
-                  targetUserId: player.userId,
-                  abilityId: buff.sourceAbilityId,
-                  abilityName: buff.sourceAbilityName ?? buff.name,
-                  effectType: "TIMED_AOE_DAMAGE",
-                  value: applied,
-                });
+              if (e.lifestealPct && e.lifestealPct > 0 && appliedDamage > 0) {
+                const healAmt = Math.floor(appliedDamage * e.lifestealPct);
+                const applied = applyHealToTarget(player as any, healAmt);
+                if (applied > 0) {
+                  this.state.events.push({
+                    id: randomUUID(), timestamp: now, turn: this.state.turn,
+                    type: "HEAL",
+                    actorUserId: player.userId,
+                    targetUserId: player.userId,
+                    abilityId: buff.sourceAbilityId,
+                    abilityName: buff.sourceAbilityName ?? buff.name,
+                    effectType: "TIMED_AOE_DAMAGE",
+                    value: applied,
+                  });
+                }
               }
-            }
 
-            // Type-3 knockback control.
-            if (e.knockbackUnits && e.knockbackUnits > 0 && dist > 0) {
-              const knockbackResult = applyType3KnockbackControl({
-                state: this.state,
-                source: player,
-                target: opp,
-                abilityId: buff.sourceAbilityId,
-                abilityName: buff.sourceAbilityName,
-                knockbackUnits: e.knockbackUnits,
-                controlDurationMs: Math.max(0, e.knockbackSilenceMs ?? 0),
-                mapCtx: this.mapCtx,
-                now,
-              });
+              if (target.kind === "player" && e.knockbackUnits && e.knockbackUnits > 0 && dist > 0) {
+                const opp = target.target;
+                const knockbackResult = applyType3KnockbackControl({
+                  state: this.state,
+                  source: player,
+                  target: opp,
+                  abilityId: buff.sourceAbilityId,
+                  abilityName: buff.sourceAbilityName,
+                  knockbackUnits: e.knockbackUnits,
+                  controlDurationMs: Math.max(0, e.knockbackSilenceMs ?? 0),
+                  mapCtx: this.mapCtx,
+                  now,
+                });
 
-              if (knockbackResult.applied) {
+                if (knockbackResult.applied) {
+                  const hadFuguang = opp.buffs.some((b: any) => b.buffId === 1012);
+                  const brokenStealth = opp.buffs.filter(
+                    (b: any) => b.buffId === 1012 || b.buffId === 1013 || (hadFuguang && isDunyingCompanion(b))
+                  );
+                  if (brokenStealth.length > 0) {
+                    opp.buffs = opp.buffs.filter((b: any) => !brokenStealth.includes(b));
+                    for (const b of brokenStealth) {
+                      pushBuffExpired(this.state, {
+                        targetUserId: opp.userId,
+                        buffId: b.buffId,
+                        buffName: b.name,
+                        buffCategory: b.category,
+                        sourceAbilityId: b.sourceAbilityId,
+                        sourceAbilityName: b.sourceAbilityName,
+                      });
+                    }
+                  }
 
-                // Knockback breaks 浮光掠影(1012) and 天地无极(1013) stealth;
-                // 暗尘弥散(1011) is immune to control-based stealth break.
-                const hadFuguang = opp.buffs.some((b) => b.buffId === 1012);
-                const brokenStealth = opp.buffs.filter(
-                  (b) => b.buffId === 1012 || b.buffId === 1013 || (hadFuguang && isDunyingCompanion(b))
-                );
-                if (brokenStealth.length > 0) {
-                  opp.buffs = opp.buffs.filter((b) => !brokenStealth.includes(b));
-                  for (const b of brokenStealth) {
-                    pushBuffExpired(this.state, {
-                      targetUserId: opp.userId,
-                      buffId: b.buffId,
-                      buffName: b.name,
-                      buffCategory: b.category,
-                      sourceAbilityId: b.sourceAbilityId,
-                      sourceAbilityName: b.sourceAbilityName,
-                    });
+                  if (knockbackResult.removedStuns) {
+                    buffsChanged = true;
                   }
                 }
-
-                if (knockbackResult.removedStuns) {
-                  buffsChanged = true;
-                }
               }
-            }
 
-            buffsChanged = true;
+              buffsChanged = true;
+            }
           }
         }
       }
@@ -1770,7 +2847,183 @@ export class GameLoop {
       }
       player.buffs = player.buffs.filter((b) => now < b.expiresAt);
       if (player.buffs.length !== before) buffsChanged = true;
+
+      // 无相诀 natural-expire check: if buff 2710 expired naturally AND player hp < 10%, 贯体 heal 50%
+      const wuxiangExpired = naturallyExpired.filter((b) => b.buffId === 2710);
+      for (const _b of wuxiangExpired) {
+        const wxMaxHp = player.maxHp ?? 100;
+        if (player.hp < wxMaxHp * 0.1) {
+          const wxHeal = Math.floor(wxMaxHp * 0.5);
+          const wxApplied = applyHealToTarget(player as any, wxHeal);
+          if (wxApplied > 0) {
+            this.state.events.push({
+              id: randomUUID(), timestamp: now, turn: this.state.turn,
+              type: "HEAL",
+              actorUserId: player.userId,
+              targetUserId: player.userId,
+              abilityId: "wu_xiang_jue",
+              abilityName: "无相诀（贯体）",
+              effectType: "DAMAGE_REDUCTION_HP_SCALING",
+              value: wxApplied,
+            });
+            buffsChanged = true;
+          }
+        }
+      }
+
+      // 徐如林·回复 natural-expire: heal caster 5 HP.
+      // Always emit the HEAL event, even at full HP, so the heal float text
+      // shows. (Full HP must never suppress healing visuals.)
+      const xuRuLinExpired = naturallyExpired.filter(
+        (b) => b.effects.some((e) => (e as any).type === "XU_RU_LIN_RESTORE"),
+      );
+      for (const xb of xuRuLinExpired) {
+        const healVal = (xb.effects.find((e) => (e as any).type === "XU_RU_LIN_RESTORE") as any)?.value ?? 5;
+        applyHealToTarget(player as any, healVal);
+        this.state.events.push({
+          id: randomUUID(), timestamp: now, turn: this.state.turn,
+          type: "HEAL",
+          actorUserId: player.userId,
+          targetUserId: player.userId,
+          abilityId: xb.sourceAbilityId,
+          abilityName: xb.sourceAbilityName ?? xb.name,
+          effectType: "XU_RU_LIN_RESTORE",
+          value: healVal,
+        });
+        buffsChanged = true;
+      }
+
+      // 孤影化双 natural-expire: restore hp and cooldowns from snapshot.
+      const guYingExpired = naturallyExpired.filter((b) => b.buffId === 2714);
+      for (const gyBuff of guYingExpired) {
+        const snapshot = (gyBuff as any).snapshot as {
+          hp: number;
+          shield: number;
+          cooldowns: Array<{
+            instanceId: string;
+            abilityId: string;
+            cooldown: number;
+            chargeCount?: number;
+            chargeRegenTicksRemaining?: number;
+            chargeLockTicks?: number;
+          }>;
+        } | undefined;
+        if (!snapshot) continue;
+
+        // Restore HP (can go up or down, capped at maxHp).
+        const gyMaxHp = player.maxHp ?? 100;
+        player.hp = Math.min(Math.max(0, snapshot.hp), gyMaxHp);
+
+        // Restore ability cooldowns.
+        for (const snap of snapshot.cooldowns) {
+          const inst = (player.hand ?? []).find((a: any) => a.instanceId === snap.instanceId);
+          if (inst) {
+            inst.cooldown = snap.cooldown;
+            if (snap.chargeCount !== undefined) inst.chargeCount = snap.chargeCount;
+            if (snap.chargeRegenTicksRemaining !== undefined) inst.chargeRegenTicksRemaining = snap.chargeRegenTicksRemaining;
+            if (snap.chargeLockTicks !== undefined) inst.chargeLockTicks = snap.chargeLockTicks;
+          }
+        }
+
+        buffsChanged = true;
+      }
+
+      const hongMengExpired = naturallyExpired.filter(
+        (buff) => buff.buffId === HONG_MENG_TIAN_JIN_BUFF_ID && buff.sourceAbilityId === HONG_MENG_TIAN_JIN_ABILITY_ID
+      );
+      if (hongMengExpired.length > 0) {
+        const hongMengAbility = ABILITIES[HONG_MENG_TIAN_JIN_ABILITY_ID];
+        const shuSeBuff = hongMengAbility?.buffs?.find((buff: any) => buff.buffId === SHU_SE_BUFF_ID);
+        if (hongMengAbility && shuSeBuff) {
+          for (const expired of hongMengExpired) {
+            addBuff({
+              state: this.state,
+              sourceUserId: expired.sourceUserId ?? player.userId,
+              targetUserId: player.userId,
+              ability: hongMengAbility,
+              buffTarget: player as any,
+              buff: shuSeBuff,
+            });
+          }
+          buffsChanged = true;
+        }
+      }
     });
+
+    for (const entity of this.state.entities ?? []) {
+      for (const buff of entity.buffs ?? []) {
+        if (now >= buff.expiresAt) continue;
+        if (buff.periodicMs === undefined || buff.lastTickAt === undefined) continue;
+        if (now - buff.lastTickAt < buff.periodicMs) continue;
+
+        buff.lastTickAt = now;
+        const sourcePlayer = this.state.players.find((p) => p.userId === (buff.sourceUserId ?? entity.ownerUserId));
+        for (const e of buff.effects) {
+          if (e.type === "PERIODIC_DAMAGE") {
+            if (blocksEnemyTargeting(entity as any) || hasDamageImmune(entity as any)) {
+              buffsChanged = true;
+              continue;
+            }
+            const dmg = resolveScheduledDamage({
+              source: sourcePlayer ?? ({ userId: buff.sourceUserId ?? entity.ownerUserId, buffs: [] } as any),
+              target: entity as any,
+              base: (e.value ?? 0) * (buff.stacks ?? 1),
+              damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
+            });
+            if (dmg > 0) {
+              const result = applyDamageToTarget(entity as any, dmg);
+              this.state.events.push({
+                id: randomUUID(),
+                timestamp: now,
+                turn: this.state.turn,
+                type: "DAMAGE",
+                actorUserId: sourcePlayer?.userId ?? buff.sourceUserId ?? entity.ownerUserId,
+                entityId: entity.id,
+                entityName: entity.abilityName,
+                abilityId: buff.sourceAbilityId,
+                abilityName: buff.sourceAbilityName ?? buff.name,
+                effectType: "PERIODIC_DAMAGE",
+                value: dmg,
+                shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
+              } as any);
+              if (result.hpDamage > 0) {
+                processOnDamageTaken(this.state, entity as any, result.hpDamage, sourcePlayer?.userId ?? buff.sourceUserId ?? entity.ownerUserId);
+              }
+            }
+            buffsChanged = true;
+          } else if (e.type === "PERIODIC_HEAL") {
+            const heal = resolveHealAmount({ target: entity as any, base: e.value ?? 0 });
+            const applied = applyHealToTarget(entity as any, heal);
+            if (applied > 0) {
+              this.state.events.push({
+                id: randomUUID(),
+                timestamp: now,
+                turn: this.state.turn,
+                type: "HEAL",
+                actorUserId: sourcePlayer?.userId ?? buff.sourceUserId ?? entity.ownerUserId,
+                entityId: entity.id,
+                entityName: entity.abilityName,
+                abilityId: buff.sourceAbilityId,
+                abilityName: buff.sourceAbilityName ?? buff.name,
+                effectType: "PERIODIC_HEAL",
+                value: applied,
+              } as any);
+            }
+            buffsChanged = true;
+          }
+        }
+      }
+
+      const before = entity.buffs?.length ?? 0;
+      const naturallyExpired = (entity.buffs ?? []).filter((b) => now >= b.expiresAt);
+      for (const expired of naturallyExpired) {
+        removeLinkedShield(entity as any, expired as any);
+      }
+      entity.buffs = (entity.buffs ?? []).filter((b) => now < b.expiresAt);
+      if ((entity.buffs?.length ?? 0) !== before) {
+        buffsChanged = true;
+      }
+    }
 
     // 1d. 毒圈 — poison zone damage (arena mode only, 1x per second)
     if (this.isArenaMode && this.state.safeZone) {
@@ -1790,7 +3043,7 @@ export class GameLoop {
         for (const player of this.state.players) {
           if (player.hp <= 0) continue;
           if (this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf)) {
-            applyDamageToTarget(player as any, dps);
+            const szResult = applyDamageToTarget(player as any, dps);
             this.state.events.push({
               id: randomUUID(), timestamp: now, turn: this.state.turn,
               type: "DAMAGE",
@@ -1799,6 +3052,7 @@ export class GameLoop {
               abilityName: "毒圈",
               effectType: "PERIODIC_DAMAGE",
               value: dps,
+              shieldAbsorbed: szResult.shieldAbsorbed > 0 ? szResult.shieldAbsorbed : undefined,
             });
             buffsChanged = true; // triggers HP + event broadcast
           }
@@ -1810,95 +3064,453 @@ export class GameLoop {
     if (this.state.groundZones && this.state.groundZones.length > 0) {
       const activeZones: GroundZone[] = [];
       for (const zone of this.state.groundZones) {
-        if (now >= zone.expiresAt) continue; // expired — drop it
+        // ── Pre-step: 天绝地灭 grow radius ─────────────────────────────────
+        if (zone.abilityId === "tian_jue_di_mie" && (zone as any).growEndRadius !== undefined) {
+          const startedAt = (zone as any).growStartedAt ?? zone.lastTickAt;
+          const growMs = (zone as any).growDurationMs ?? 1;
+          const t = Math.min(1, Math.max(0, (now - startedAt) / growMs));
+          zone.radius = (zone as any).growStartRadius + ((zone as any).growEndRadius - (zone as any).growStartRadius) * t;
+        }
+        // ── Pre-step: follow-target zones (振翅图南/飞刃回转) ──────────────
+        if (zone.abilityId === LV_YE_MAN_SHENG_ABILITY_ID && (zone as any).followTargetUserId) {
+          const fp = this.state.players.find((p) => p.userId === (zone as any).followTargetUserId);
+          if (fp && (fp.hp ?? 0) > 0) {
+            zone.x = fp.position.x;
+            zone.y = fp.position.y;
+            zone.z = fp.position.z ?? zone.z;
+          }
+        } else if ((zone as any).followTargetUserId && (zone as any).followSpeedPerTick !== undefined) {
+          const fp = this.state.players.find((p) => p.userId === (zone as any).followTargetUserId);
+          if (fp && (fp.hp ?? 0) > 0) {
+            const dxF = fp.position.x - zone.x;
+            const dyF = fp.position.y - zone.y;
+            const lenF = Math.sqrt(dxF * dxF + dyF * dyF);
+            const stepF = (zone as any).followSpeedPerTick as number;
+            const followTriggerRadius = Math.max(0, zone.radius - gameplayUnitsToWorldUnits(1, storedUnitScale));
+            if (lenF > zone.radius + 0.0001) {
+              delete (zone as any).followTargetUserId;
+            } else if (lenF > followTriggerRadius + 0.0001) {
+              const moveStep = Math.min(stepF, lenF - followTriggerRadius);
+              if (moveStep >= lenF) {
+                zone.x = fp.position.x;
+                zone.y = fp.position.y;
+              } else if (lenF > 0.0001) {
+                zone.x += (dxF / lenF) * moveStep;
+                zone.y += (dyF / lenF) * moveStep;
+              }
+            }
+            zone.z = fp.position.z ?? zone.z;
+          }
+        }
+        // ── 天绝地灭 expire → pull + explode ─────────────────────────────
+        if (now >= zone.expiresAt && zone.abilityId === "tian_jue_di_mie" && (zone as any).explodeOnExpire) {
+          const explodeDmg = (zone as any).explodeDamage ?? 10;
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId)
+            ?? ({ userId: zone.ownerUserId, buffs: [] } as any);
+          for (const hostile of getHostileDamageTargets(this.state, zone.ownerUserId)) {
+            if (blocksEnemyTargeting(hostile.target as any)) continue;
+            // NOTE: damage immunity + 盾立 reflect is handled inside applyDamageToHostileTarget.
+
+            const targetPos = getHostileDamageTargetPosition(hostile);
+            const dxE = targetPos.x - zone.x;
+            const dyE = targetPos.y - zone.y;
+            const targetRadius = hostile.kind === "entity" ? Math.max(0, Number(hostile.target.radius ?? 0)) : 0;
+            const distE = Math.sqrt(dxE * dxE + dyE * dyE);
+            if (distE > zone.radius + targetRadius) continue;
+
+            // Skip pull when the host is damage-immune (盾立) so we don't move them.
+            const skipPullForImmune =
+              hostile.kind === "player" && hasDamageImmune(hostile.target as any);
+
+            if (hostile.kind === "player" && !skipPullForImmune) {
+              const pullSpeed = (zone as any).pullSpeedPerTick ?? gameplayUnitsToWorldUnits(20, storedUnitScale) / 30;
+              const pullTicks = Math.max(1, Math.ceil(distE / pullSpeed));
+              const dirX = distE > 0.0001 ? -dxE / distE : 0;
+              const dirY = distE > 0.0001 ? -dyE / distE : 0;
+              (hostile.target as any).activeDash = {
+                abilityId: "tian_jue_di_mie",
+                vxPerTick: dirX * Math.min(pullSpeed, distE / pullTicks),
+                vyPerTick: dirY * Math.min(pullSpeed, distE / pullTicks),
+                forceVzPerTick: 0,
+                maxUpVz: 0,
+                maxDownVz: 0,
+                ticksRemaining: pullTicks,
+                vzPerTick: 0,
+              };
+            }
+
+            const dealt = applyDamageToHostileTarget({
+              state: this.state,
+              source: owner as any,
+              target: hostile,
+              baseDamage: explodeDmg,
+              abilityId: "tian_jue_di_mie",
+              abilityName: "天绝地灭",
+              effectType: "DAMAGE",
+              timestamp: now,
+            });
+            if (dealt > 0) {
+              buffsChanged = true;
+            }
+          }
+          continue; // drop the zone
+        }
+        // ── 疾电叱羽 expire by HP or time ──────────────────────────────────
+        if (zone.abilityId === "ji_dian_chi_yu" && (zone.hp !== undefined && zone.hp <= 0)) {
+          // Clear the linked buff from all allies (zone is dropped)
+          const allyBid = (zone as any).allyBuffId ?? 2620;
+          for (const p of this.state.players) {
+            const idx = (p.buffs as any[]).findIndex((b: any) =>
+              b.buffId === allyBid && (b as any).linkedZoneId === zone.id
+            );
+            if (idx >= 0) {
+              const removed = p.buffs[idx];
+              p.buffs.splice(idx, 1);
+              pushBuffExpired(this.state, {
+                targetUserId: p.userId,
+                buffId: removed.buffId,
+                buffName: removed.name,
+                buffCategory: removed.category,
+                sourceAbilityId: removed.sourceAbilityId,
+                sourceAbilityName: removed.sourceAbilityName,
+              });
+              buffsChanged = true;
+            }
+          }
+          continue; // drop the zone
+        }
+        if (now >= zone.expiresAt) {
+          // Natural time expire: clear ji_dian buffs as well
+          if (zone.abilityId === "ji_dian_chi_yu") {
+            const allyBid = (zone as any).allyBuffId ?? 2620;
+            for (const p of this.state.players) {
+              const idx = (p.buffs as any[]).findIndex((b: any) =>
+                b.buffId === allyBid && (b as any).linkedZoneId === zone.id
+              );
+              if (idx >= 0) {
+                const removed = p.buffs[idx];
+                p.buffs.splice(idx, 1);
+                pushBuffExpired(this.state, {
+                  targetUserId: p.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+                buffsChanged = true;
+              }
+            }
+          }
+          continue; // expired — drop it
+        }
         activeZones.push(zone);
-        if (now - zone.lastTickAt >= zone.intervalMs) {
-          zone.lastTickAt = now;
 
-          if (zone.abilityId === SHENGTAIJI_ZONE_ID) {
-            const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
-            const zoneZ = zone.z ?? 0;
-            const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
-            const isInsideZone = (p: any) => {
-              const dx = p.position.x - zone.x;
-              const dy = p.position.y - zone.y;
-              const inRadius = Math.sqrt(dx * dx + dy * dy) <= zone.radius;
-              const pz = p.position.z ?? 0;
-              const inHeight = Math.abs(pz - zoneZ) <= zoneHeight;
-              return inRadius && inHeight;
-            };
-
-            if (owner && owner.hp > 0 && isInsideZone(owner)) {
-              owner.buffs = owner.buffs.filter(
-                (b: any) =>
-                  !b.effects?.some(
-                    (e: any) => e.type === "CONTROL" || e.type === "ATTACK_LOCK"
-                  )
-              );
-
-              const pulseExpiresAt = now + 3_000;
-              const pulse = owner.buffs.find(
-                (b: any) =>
-                  b.buffId === SHENGTAIJI_PULSE_BUFF_ID &&
-                  b.sourceAbilityId === "qionglong_huasheng"
-              );
-              if (pulse) {
-                pulse.expiresAt = pulseExpiresAt;
-                pulse.appliedAt = now;
-              } else {
-                owner.buffs.push({
-                  buffId: SHENGTAIJI_PULSE_BUFF_ID,
-                  name: "生太极·护体",
+        // ── 疾电叱羽 enter/exit (allies only) ──────────────────────────────
+        if (zone.abilityId === "ji_dian_chi_yu") {
+          const allyBid = (zone as any).allyBuffId ?? 2620;
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+          if (owner) {
+            const dxJ = owner.position.x - zone.x;
+            const dyJ = owner.position.y - zone.y;
+            const inside = Math.sqrt(dxJ * dxJ + dyJ * dyJ) <= zone.radius;
+            const hasBuff = owner.buffs.some((b: any) => b.buffId === allyBid && (b as any).linkedZoneId === zone.id && b.expiresAt > now);
+            if (inside && !hasBuff) {
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: owner.userId,
+                ability: (ABILITIES["ji_dian_chi_yu"] ?? { id: "ji_dian_chi_yu", name: "疾电叱羽" }) as any,
+                buffTarget: owner as any,
+                buff: {
+                  buffId: allyBid,
+                  name: "疾电叱羽",
                   category: "BUFF",
-                  effects: [{ type: "CONTROL_IMMUNE" }],
-                  expiresAt: pulseExpiresAt,
-                  appliedAt: now,
+                  durationMs: zone.expiresAt - now,
+                  description: "受到的所有伤害转移至疾电叱羽阵",
+                  effects: [{ type: "JI_DIAN_REDIRECT" }],
+                  linkedZoneId: zone.id,
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!inside && hasBuff) {
+              const idx = (owner.buffs as any[]).findIndex((b: any) =>
+                b.buffId === allyBid && (b as any).linkedZoneId === zone.id
+              );
+              if (idx >= 0) {
+                const removed = owner.buffs[idx];
+                owner.buffs.splice(idx, 1);
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+                buffsChanged = true;
+              }
+            }
+          }
+          continue; // ji_dian zone does not deal periodic damage
+        }
+
+        // Enter/exit zones: check every frame — no interval gate needed
+        if (zone.abilityId === SHENGTAIJI_ZONE_ID || zone.abilityId === "sheng_tai_ji") {
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+          const zoneZ = zone.z ?? 0;
+          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          const isInsideZone = (p: any) => {
+            const dx = p.position.x - zone.x;
+            const dy = p.position.y - zone.y;
+            const inRadius = Math.sqrt(dx * dx + dy * dy) <= zone.radius;
+            const pz = p.position.z ?? 0;
+            const inHeight = Math.abs(pz - zoneZ) <= zoneHeight;
+            return inRadius && inHeight;
+          };
+          const zoneSourceAbilityId = zone.abilityId === SHENGTAIJI_ZONE_ID ? "qionglong_huasheng" : zone.abilityId;
+          const zoneSourceAbilityName = zone.abilityId === SHENGTAIJI_ZONE_ID ? "穹隆化生" : zone.abilityName ?? "生太极";
+          const zoneAbility = (ABILITIES[zoneSourceAbilityId] ?? { id: zoneSourceAbilityId, name: zoneSourceAbilityName }) as any;
+
+          if (owner && owner.hp > 0) {
+            const ownerInside = isInsideZone(owner);
+            const ownerHasBuff = owner.buffs.some((b: any) => b.buffId === SHENGTAIJI_PULSE_BUFF_ID && b.expiresAt > now);
+            if (ownerInside && !ownerHasBuff) {
+              // Cleanse CC on enter
+              const ccRemoved = owner.buffs.filter((b: any) =>
+                b.effects?.some((e: any) => e.type === "CONTROL" || e.type === "ATTACK_LOCK")
+              );
+              owner.buffs = owner.buffs.filter((b: any) =>
+                !b.effects?.some((e: any) => e.type === "CONTROL" || e.type === "ATTACK_LOCK")
+              );
+              for (const removed of ccRemoved) {
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+              }
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: owner.userId,
+                ability: zoneAbility,
+                buffTarget: owner as any,
+                buff: {
+                  buffId: SHENGTAIJI_PULSE_BUFF_ID,
+                  name: "生太极",
+                  category: "BUFF",
+                  durationMs: zone.expiresAt - now,
                   breakOnPlay: false,
-                  sourceUserId: zone.ownerUserId,
-                  sourceAbilityId: "qionglong_huasheng",
-                  sourceAbilityName: "穹隆化生",
-                } as any);
+                  effects: [{ type: "CONTROL_IMMUNE" }],
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!ownerInside && ownerHasBuff) {
+              const removed = owner.buffs.find((b: any) => b.buffId === SHENGTAIJI_PULSE_BUFF_ID);
+              owner.buffs = owner.buffs.filter((b: any) => b.buffId !== SHENGTAIJI_PULSE_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
               }
               buffsChanged = true;
             }
+          }
 
-            for (const target of this.state.players) {
-              if (target.userId === zone.ownerUserId) continue;
-              if (target.hp <= 0) continue;
-              if (!isInsideZone(target)) continue;
-
+          for (const target of this.state.players) {
+            if (target.userId === zone.ownerUserId) continue;
+            if (target.hp <= 0) continue;
+            const targetInside = isInsideZone(target);
+            const targetHasBuff = target.buffs.some((b: any) => b.buffId === SHENGTAIJI_ENEMY_SLOW_BUFF_ID && b.expiresAt > now);
+            if (targetInside && !targetHasBuff) {
               const hasRootSlowImmune = target.buffs.some((b: any) =>
                 b.effects?.some((e: any) => e.type === "ROOT_SLOW_IMMUNE")
               );
-              if (hasRootSlowImmune) continue;
-
-              const slowExpiresAt = now + 3_000;
-              const slow = target.buffs.find(
-                (b: any) =>
-                  b.buffId === SHENGTAIJI_ENEMY_SLOW_BUFF_ID &&
-                  b.sourceAbilityId === "qionglong_huasheng"
-              );
-              if (slow) {
-                slow.expiresAt = slowExpiresAt;
-                slow.appliedAt = now;
-              } else {
-                target.buffs.push({
-                  buffId: SHENGTAIJI_ENEMY_SLOW_BUFF_ID,
-                  name: "生太极·迟滞",
-                  category: "DEBUFF",
-                  effects: [{ type: "SLOW", value: 0.4 }],
-                  expiresAt: slowExpiresAt,
-                  appliedAt: now,
-                  breakOnPlay: false,
+              if (!hasRootSlowImmune) {
+                addBuff({
+                  state: this.state,
                   sourceUserId: zone.ownerUserId,
-                  sourceAbilityId: "qionglong_huasheng",
-                  sourceAbilityName: "穹隆化生",
-                } as any);
+                  targetUserId: target.userId,
+                  ability: zoneAbility,
+                  buffTarget: target as any,
+                  buff: {
+                    buffId: SHENGTAIJI_ENEMY_SLOW_BUFF_ID,
+                    name: "生太极·迟滞",
+                    category: "DEBUFF",
+                    durationMs: zone.expiresAt - now,
+                    breakOnPlay: false,
+                    effects: [{ type: "SLOW", value: 0.4 }],
+                  } as any,
+                });
+                buffsChanged = true;
+              }
+            } else if (!targetInside && targetHasBuff) {
+              const removed = target.buffs.find((b: any) => b.buffId === SHENGTAIJI_ENEMY_SLOW_BUFF_ID);
+              target.buffs = target.buffs.filter((b: any) => b.buffId !== SHENGTAIJI_ENEMY_SLOW_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: target.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
               }
               buffsChanged = true;
             }
-            continue;
           }
+          continue;
+        }
+
+        // 冲阴阳: owner inside → 内功减伤30%; outside → remove
+        if (zone.abilityId === "chong_yin_yang") {
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+          const zoneZ = zone.z ?? 0;
+          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          if (owner && owner.hp > 0) {
+            const dx = owner.position.x - zone.x;
+            const dy = owner.position.y - zone.y;
+            const inZone = Math.sqrt(dx * dx + dy * dy) <= zone.radius && Math.abs((owner.position.z ?? 0) - zoneZ) <= zoneHeight;
+            const hasBuff = owner.buffs.some((b: any) => b.buffId === CHONG_YIN_YANG_ZONE_BUFF_ID && b.expiresAt > now);
+            if (inZone && !hasBuff) {
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: owner.userId,
+                ability: (ABILITIES["chong_yin_yang"] ?? { id: "chong_yin_yang", name: "冲阴阳" }) as any,
+                buffTarget: owner as any,
+                buff: {
+                  buffId: CHONG_YIN_YANG_ZONE_BUFF_ID,
+                  name: "冲阴阳",
+                  category: "BUFF",
+                  durationMs: zone.expiresAt - now,
+                  effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "内功" }],
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!inZone && hasBuff) {
+              const removed = owner.buffs.find((b: any) => b.buffId === CHONG_YIN_YANG_ZONE_BUFF_ID);
+              owner.buffs = owner.buffs.filter((b: any) => b.buffId !== CHONG_YIN_YANG_ZONE_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+              }
+              buffsChanged = true;
+            }
+          }
+          continue;
+        }
+
+        // 凌太虚: owner inside → 外功减伤30%; outside → remove
+        if (zone.abilityId === "ling_tai_xu") {
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+          const zoneZ = zone.z ?? 0;
+          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          if (owner && owner.hp > 0) {
+            const dx = owner.position.x - zone.x;
+            const dy = owner.position.y - zone.y;
+            const inZone = Math.sqrt(dx * dx + dy * dy) <= zone.radius && Math.abs((owner.position.z ?? 0) - zoneZ) <= zoneHeight;
+            const hasBuff = owner.buffs.some((b: any) => b.buffId === LING_TAI_XU_ZONE_BUFF_ID && b.expiresAt > now);
+            if (inZone && !hasBuff) {
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: owner.userId,
+                ability: (ABILITIES["ling_tai_xu"] ?? { id: "ling_tai_xu", name: "凌太虚" }) as any,
+                buffTarget: owner as any,
+                buff: {
+                  buffId: LING_TAI_XU_ZONE_BUFF_ID,
+                  name: "凌太虚",
+                  category: "BUFF",
+                  durationMs: zone.expiresAt - now,
+                  effects: [{ type: "DAMAGE_REDUCTION", value: 0.3, damageType: "外功" }],
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!inZone && hasBuff) {
+              const removed = owner.buffs.find((b: any) => b.buffId === LING_TAI_XU_ZONE_BUFF_ID);
+              owner.buffs = owner.buffs.filter((b: any) => b.buffId !== LING_TAI_XU_ZONE_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+              }
+              buffsChanged = true;
+            }
+          }
+          continue;
+        }
+
+        // 吞日月: enemies inside → 封轻功; outside → remove
+        if (zone.abilityId === "tun_ri_yue") {
+          const zoneZ = zone.z ?? 0;
+          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          for (const target of this.state.players) {
+            if (target.userId === zone.ownerUserId) continue;
+            if (target.hp <= 0) continue;
+            const dx = target.position.x - zone.x;
+            const dy = target.position.y - zone.y;
+            const inZone = Math.sqrt(dx * dx + dy * dy) <= zone.radius && Math.abs((target.position.z ?? 0) - zoneZ) <= zoneHeight;
+            const hasBuff = target.buffs.some((b: any) => b.buffId === TUN_RI_YUE_ZONE_BUFF_ID && b.expiresAt > now);
+            if (inZone && !hasBuff) {
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: target.userId,
+                ability: (ABILITIES["tun_ri_yue"] ?? { id: "tun_ri_yue", name: "吞日月" }) as any,
+                buffTarget: target as any,
+                buff: {
+                  buffId: TUN_RI_YUE_ZONE_BUFF_ID,
+                  name: "吞日月",
+                  category: "DEBUFF",
+                  durationMs: zone.expiresAt - now,
+                  effects: [{ type: "QINGGONG_SEAL" }],
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!inZone && hasBuff) {
+              const removed = target.buffs.find((b: any) => b.buffId === TUN_RI_YUE_ZONE_BUFF_ID);
+              target.buffs = target.buffs.filter((b: any) => b.buffId !== TUN_RI_YUE_ZONE_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: target.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+              }
+              buffsChanged = true;
+            }
+          }
+          continue;
+        }
+
+        // Interval-based zones (镇山河 100ms pulse, damage zones)
+        if (now - zone.lastTickAt >= zone.intervalMs) {
+          zone.lastTickAt = now;
 
           if (zone.abilityId === ZHEN_SHAN_HE_ABILITY_ID) {
             const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
@@ -1921,8 +3533,25 @@ export class GameLoop {
                     target: owner as any,
                     sourceUserId: zone.ownerUserId,
                     now,
+                    zoneExpiresAt: zone.expiresAt,
                   })
                 ) {
+                  buffsChanged = true;
+                }
+              } else {
+                // Player left zone: remove zone invulnerable buff if present
+                const idx = owner.buffs.findIndex((b: any) => b.buffId === ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID && b.expiresAt > now);
+                if (idx !== -1) {
+                  const removed = owner.buffs[idx];
+                  owner.buffs.splice(idx, 1);
+                  pushBuffExpired(this.state, {
+                    targetUserId: owner.userId,
+                    buffId: removed.buffId,
+                    buffName: removed.name,
+                    buffCategory: removed.category,
+                    sourceAbilityId: removed.sourceAbilityId,
+                    sourceAbilityName: removed.sourceAbilityName,
+                  });
                   buffsChanged = true;
                 }
               }
@@ -1936,51 +3565,46 @@ export class GameLoop {
 
           const owner = this.state.players.find(p => p.userId === zone.ownerUserId);
           let targetsHit = 0;
-          for (const target of this.state.players) {
-            if (target.userId === zone.ownerUserId) continue;
-            if (target.hp <= 0) continue;
+          for (const target of getHostileDamageTargets(this.state, zone.ownerUserId)) {
             if (zone.maxTargets !== undefined && targetsHit >= zone.maxTargets) break;
-            if (blocksEnemyTargeting(target as any)) continue;
-            const dx = target.position.x - zone.x;
-            const dy = target.position.y - zone.y;
-            if (Math.sqrt(dx * dx + dy * dy) > zone.radius) continue;
+            if (blocksEnemyTargeting(target.target as any)) continue;
+            const targetPosition = getHostileDamageTargetPosition(target);
+            const dx = targetPosition.x - zone.x;
+            const dy = targetPosition.y - zone.y;
+            const hitRadius = zone.radius + (target.kind === "entity" ? Math.max(0, Number(target.target.radius ?? 0)) : 0);
+            if (Math.sqrt(dx * dx + dy * dy) > hitRadius) continue;
             if (zone.height !== undefined) {
               const zoneZ = zone.z ?? 0;
-              const targetZ = target.position.z ?? 0;
+              const targetZ = targetPosition.z ?? 0;
               if (Math.abs(targetZ - zoneZ) > zone.height) continue;
             }
             if (
+              target.kind === "player" &&
               tryApplyDodgeForHit({
                 state: this.state,
-                source: owner ?? target,
-                target: target as any,
+                source: owner ?? ({ userId: zone.ownerUserId } as any),
+                target: target.target as any,
                 abilityId: zone.abilityId,
                 abilityName: zone.abilityName,
                 enabled: zone.abilityId === "kuang_long_luan_wu",
+                damageType: (ABILITIES[zone.abilityId ?? ""] as any)?.damageType,
               })
             ) {
               targetsHit++;
               buffsChanged = true;
               continue;
             }
-            const dmg = resolveScheduledDamage({
-              source: owner ?? target,
+            applyDamageToHostileTarget({
+              state: this.state,
+              source: (owner ?? ({ userId: zone.ownerUserId, buffs: [] } as any)) as any,
               target,
-              base: zone.damagePerInterval,
+              baseDamage: zone.damagePerInterval,
+              abilityId: zone.abilityId,
+              abilityName: zone.abilityName,
+              effectType: "PERIODIC_DAMAGE",
+              damageType: (ABILITIES[zone.abilityId ?? ""] as any)?.damageType,
+              timestamp: now,
             });
-            applyDamageToTarget(target as any, dmg);
-            if (dmg > 0) {
-              this.state.events.push({
-                id: randomUUID(), timestamp: now, turn: this.state.turn,
-                type: "DAMAGE",
-                actorUserId: zone.ownerUserId,
-                targetUserId: target.userId,
-                abilityId: zone.abilityId,
-                abilityName: zone.abilityName,
-                effectType: "PERIODIC_DAMAGE",
-                value: dmg,
-              });
-            }
             targetsHit++;
             buffsChanged = true;
           }
@@ -1991,6 +3615,149 @@ export class GameLoop {
       if (activeZones.length !== hadZones) buffsChanged = true;
     }
 
+    // 1e2. Targetable entities (e.g. 逐云寒蕊): lifecycle + per-friendly stealth tracking.
+    if (this.state.entities && this.state.entities.length > 0) {
+      const ZHU_YUN_STEALTH_BUFF_ID = 2716;
+      const ZHU_YUN_STEALTH_DURATION_MS = 2_000; // refreshed each tick while in zone (long enough to display in status bar)
+      const STEALTH_GRANT_DELAY_MS = 1_000;
+      const ATTACK_REARM_MS = 1_000;
+      const ZHU_YUN_ABILITY_ID = "zhu_yun_han_rui";
+      const zhuYunAbility = ABILITIES[ZHU_YUN_ABILITY_ID];
+
+      // Helper: cascade-remove stealth buff from all players owned by this entity.
+      const cascadeRemoveStealth = (entity: TargetEntity) => {
+        for (const player of this.state.players) {
+          const idx = player.buffs.findIndex(
+            (b: any) =>
+              b.buffId === ZHU_YUN_STEALTH_BUFF_ID &&
+              b.sourceAbilityId === ZHU_YUN_ABILITY_ID &&
+              b.sourceUserId === entity.ownerUserId
+          );
+          if (idx !== -1) {
+            const removed = player.buffs[idx];
+            player.buffs.splice(idx, 1);
+            pushBuffExpired(this.state, {
+              targetUserId: player.userId,
+              buffId: removed.buffId,
+              buffName: removed.name,
+              buffCategory: removed.category,
+              sourceAbilityId: removed.sourceAbilityId,
+              sourceAbilityName: removed.sourceAbilityName,
+            });
+            buffsChanged = true;
+          }
+        }
+      };
+
+      const aliveEntities: TargetEntity[] = [];
+      for (const entity of this.state.entities) {
+        const isExpired = now >= entity.expiresAt;
+        const isDead = entity.hp <= 0;
+        if (isExpired || isDead) {
+          cascadeRemoveStealth(entity);
+          buffsChanged = true;
+          continue;
+        }
+
+        if (entity.kind === "zhu_yun_han_rui") {
+          const owner = this.state.players.find((p) => p.userId === entity.ownerUserId);
+          // 1v1 today: friendlies = owner only. Loop on all players for forward compat.
+          for (const player of this.state.players) {
+            if (player.userId !== entity.ownerUserId) continue; // friendly check
+            if (player.hp <= 0) continue;
+
+            const dx = (player.position?.x ?? 0) - entity.position.x;
+            const dy = (player.position?.y ?? 0) - entity.position.y;
+            const inZone = Math.hypot(dx, dy) <= entity.radius;
+
+            if (!entity.enteredAtByUser) entity.enteredAtByUser = {};
+            if (!entity.rearmAtByUser) entity.rearmAtByUser = {};
+
+            const hasStealth = player.buffs.some(
+              (b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
+            );
+
+            if (!inZone) {
+              // Left the zone (or never entered) — remove stealth, reset timers.
+              entity.enteredAtByUser[player.userId] = 0;
+              entity.rearmAtByUser[player.userId] = 0;
+              if (hasStealth) {
+                const idx = player.buffs.findIndex(
+                  (b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
+                );
+                if (idx !== -1) {
+                  const removed = player.buffs[idx];
+                  player.buffs.splice(idx, 1);
+                  pushBuffExpired(this.state, {
+                    targetUserId: player.userId,
+                    buffId: removed.buffId,
+                    buffName: removed.name,
+                    buffCategory: removed.category,
+                    sourceAbilityId: removed.sourceAbilityId,
+                    sourceAbilityName: removed.sourceAbilityName,
+                  });
+                  buffsChanged = true;
+                }
+              }
+              continue;
+            }
+
+            // In zone.
+            const enteredAt = entity.enteredAtByUser[player.userId] ?? 0;
+            if (enteredAt === 0) {
+              entity.enteredAtByUser[player.userId] = now;
+            }
+
+            if (hasStealth) {
+              // Refresh duration so it doesn't expire mid-tick.
+              const buff = player.buffs.find(
+                (b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
+              ) as any;
+              if (buff) {
+                buff.expiresAt = Math.min(entity.expiresAt, now + ZHU_YUN_STEALTH_DURATION_MS);
+              }
+            } else {
+              // Detect attack-break: if we previously had stealth this tick session, set rearm.
+              const wasStealthed = (entity as any)._lastHadStealth?.[player.userId] === true;
+              if (wasStealthed) {
+                entity.rearmAtByUser[player.userId] = now + ATTACK_REARM_MS;
+              }
+              const rearmAt = entity.rearmAtByUser[player.userId] ?? 0;
+              const enteredAtNow = entity.enteredAtByUser[player.userId] ?? now;
+              const earliestGrantAt = Math.max(enteredAtNow + STEALTH_GRANT_DELAY_MS, rearmAt);
+              if (now >= earliestGrantAt && zhuYunAbility) {
+                const stealthBuff = (zhuYunAbility.buffs ?? []).find((b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID);
+                if (stealthBuff) {
+                  addBuff({
+                    state: this.state,
+                    sourceUserId: entity.ownerUserId,
+                    targetUserId: player.userId,
+                    ability: zhuYunAbility,
+                    buffTarget: player as any,
+                    buff: { ...stealthBuff, durationMs: Math.min(entity.expiresAt - now, ZHU_YUN_STEALTH_DURATION_MS) } as any,
+                  });
+                  buffsChanged = true;
+                }
+              }
+            }
+
+            // Track stealth presence for next-tick break detection.
+            if (!(entity as any)._lastHadStealth) (entity as any)._lastHadStealth = {};
+            (entity as any)._lastHadStealth[player.userId] = player.buffs.some(
+              (b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
+            );
+          }
+          // Suppress unused-var lint (owner var helps debugging context).
+          void owner;
+        }
+
+        aliveEntities.push(entity);
+      }
+      const hadEntities = this.state.entities.length;
+      this.state.entities = aliveEntities;
+      if (aliveEntities.length !== hadEntities) buffsChanged = true;
+    }
+
     // 1f. Process STACK_ON_HIT_DAMAGE procs for all damage events this tick
     // Collect unique targets that were hit (excluding stack-proc damage itself)
     {
@@ -1999,6 +3766,8 @@ export class GameLoop {
       }
       const thisTickEvents = this.state.events.slice(this.stackProcScanIndex);
       const hitTargetIds = new Set<string>();
+      const outgoingAttackEventsByActor = new Map<string, any[]>();
+      const lvYeRetaliatedPairs = new Set<string>();
       for (const evt of thisTickEvents) {
         if (
           evt.type === "DAMAGE" &&
@@ -2008,6 +3777,91 @@ export class GameLoop {
         ) {
           hitTargetIds.add(evt.targetUserId);
         }
+        if (isRuYiAttackTriggerEvent(evt)) {
+          const actorEvents = outgoingAttackEventsByActor.get(evt.actorUserId) ?? [];
+          actorEvents.push(evt);
+          outgoingAttackEventsByActor.set(evt.actorUserId, actorEvents);
+        }
+
+        if (
+          evt.type === "DAMAGE" &&
+          (evt.value ?? 0) > 0 &&
+          evt.actorUserId &&
+          evt.targetUserId &&
+          evt.actorUserId !== evt.targetUserId
+        ) {
+          const protector = this.state.players.find((p) => p.userId === evt.targetUserId);
+          const attacker = this.state.players.find((p) => p.userId === evt.actorUserId);
+          if (!protector || !attacker) continue;
+          if ((protector.hp ?? 0) <= 0 || (attacker.hp ?? 0) <= 0) continue;
+          if (!hasLvYeManShengBuff(protector as any, now)) continue;
+
+          const radiusWorld = gameplayUnitsToWorldUnits(LV_YE_MAN_SHENG_RADIUS_UNITS, storedUnitScale);
+          const dx = attacker.position.x - protector.position.x;
+          const dy = attacker.position.y - protector.position.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist >= radiusWorld - 0.0001) continue;
+
+          const pairKey = `${evt.actorUserId}:${evt.targetUserId}`;
+          if (lvYeRetaliatedPairs.has(pairKey)) continue;
+          lvYeRetaliatedPairs.add(pairKey);
+
+          let awayX = dx;
+          let awayY = dy;
+          let knockbackSource = protector as any;
+          if (dist <= 0.0001) {
+            const dash = attacker.activeDash;
+            const fallbackX = -Number(dash?.vxPerTick ?? protector.facing?.x ?? 1);
+            const fallbackY = -Number(dash?.vyPerTick ?? protector.facing?.y ?? 0);
+            const fallbackLen = Math.hypot(fallbackX, fallbackY);
+            awayX = fallbackLen > 0.0001 ? fallbackX / fallbackLen : 1;
+            awayY = fallbackLen > 0.0001 ? fallbackY / fallbackLen : 0;
+            knockbackSource = {
+              ...protector,
+              position: {
+                ...protector.position,
+                x: protector.position.x - awayX,
+                y: protector.position.y - awayY,
+              },
+            };
+          } else {
+            awayX /= dist;
+            awayY /= dist;
+          }
+
+          const knockbackDistance = Math.max(0, radiusWorld - dist);
+          const controlDurationMs = knockbackDistance > 0
+            ? Math.max(100, Math.ceil((knockbackDistance / gameplayUnitsToWorldUnits(LV_YE_MAN_SHENG_KNOCKBACK_SPEED_UNITS_PER_SEC, storedUnitScale)) * 1000))
+            : 100;
+          const knockbackResult = applyType3KnockbackControl({
+            state: this.state,
+            source: knockbackSource,
+            target: attacker as any,
+            abilityId: LV_YE_MAN_SHENG_ABILITY_ID,
+            abilityName: "绿野蔓生",
+            knockbackUnits: knockbackDistance,
+            controlDurationMs,
+            mapCtx: this.mapCtx,
+            now,
+          });
+          if (knockbackResult.applied) {
+            buffsChanged = true;
+          }
+
+          const retaliateDamage = applyDamageToHostileTarget({
+            state: this.state,
+            source: protector as any,
+            target: { kind: "player", target: attacker } as any,
+            baseDamage: LV_YE_MAN_SHENG_RETAL_DAMAGE,
+            abilityId: LV_YE_MAN_SHENG_ABILITY_ID,
+            abilityName: "绿野蔓生",
+            effectType: "DAMAGE",
+            timestamp: now,
+          });
+          if (retaliateDamage > 0) {
+            buffsChanged = true;
+          }
+        }
       }
       for (const targetId of hitTargetIds) {
         const targetPlayer = this.state.players.find((p) => p.userId === targetId);
@@ -2016,15 +3870,16 @@ export class GameLoop {
         if (tryRemoveWufangRootOnHit(this.state, targetPlayer as any, now)) {
           buffsChanged = true;
         }
+        if (tryRemoveSanCaiRootOnHit(this.state, targetPlayer as any, now)) {
+          buffsChanged = true;
+        }
 
         const actor = this.state.players.find((p) => p.userId !== targetId);
-        // Iterate backwards so splice doesn't shift indices
         for (let bi = targetPlayer.buffs.length - 1; bi >= 0; bi--) {
           const stackBuff = targetPlayer.buffs[bi];
           if ((stackBuff.stacks ?? 0) <= 0) continue;
           for (const e of stackBuff.effects) {
             if (e.type === "STACK_ON_HIT_DAMAGE") {
-              // Rate-limit: skip if within procCooldownMs of last proc
               if (stackBuff.procCooldownMs !== undefined && stackBuff.lastProcAt !== undefined) {
                 if (now - stackBuff.lastProcAt < stackBuff.procCooldownMs) break;
               }
@@ -2054,14 +3909,12 @@ export class GameLoop {
                 });
               }
               buffsChanged = true;
-              break; // one stack proc per hit per buff
+              break;
             } else if (e.type === "STACK_ON_HIT_GUAN_TI_HEAL") {
-              // Rate-limit: skip if within procCooldownMs of last proc
               if (stackBuff.procCooldownMs !== undefined && stackBuff.lastProcAt !== undefined) {
                 if (now - stackBuff.lastProcAt < stackBuff.procCooldownMs) break;
               }
               const healBase = e.value ?? 0;
-              // 贯体 heal: bypass HEAL_REDUCTION, apply directly
               const healApplied = applyHealToTarget(targetPlayer as any, healBase);
               stackBuff.stacks = (stackBuff.stacks ?? 1) - 1;
               stackBuff.lastProcAt = now;
@@ -2090,11 +3943,134 @@ export class GameLoop {
                 });
               }
               buffsChanged = true;
-              break; // one stack proc per hit per buff
+              break;
             }
           }
         }
+
+        // 应天授命 (YING_TIAN_SHIELD): on each hit, accumulate damage and heal 6% of lost HP
+        for (const ytBuff of targetPlayer.buffs) {
+          const ytEffect = ytBuff.effects.find((e) => e.type === "YING_TIAN_SHIELD");
+          if (!ytEffect) continue;
+          let tickDmg = 0;
+          for (const evt of thisTickEvents) {
+            if (
+              evt.type === "DAMAGE" &&
+              evt.targetUserId === targetId &&
+              (evt.value ?? 0) > 0 &&
+              evt.effectType !== "YING_TIAN_SHIELD"
+            ) {
+              tickDmg += evt.value ?? 0;
+            }
+          }
+          if (tickDmg > 0) {
+            (ytBuff as any).yingTianAccum = ((ytBuff as any).yingTianAccum ?? 0) + tickDmg;
+          }
+          const ytMaxHp = targetPlayer.maxHp ?? 100;
+          const ytLostHp = ytMaxHp - targetPlayer.hp;
+          if (ytLostHp > 0) {
+            const ytHealPct = ytEffect.value ?? 0.06;
+            const ytHealAmt = Math.floor(ytLostHp * ytHealPct);
+            const ytApplied = applyHealToTarget(targetPlayer as any, ytHealAmt);
+            if (ytApplied > 0) {
+              this.state.events.push({
+                id: randomUUID(), timestamp: now, turn: this.state.turn,
+                type: "HEAL",
+                actorUserId: targetId,
+                targetUserId: targetId,
+                abilityId: ytBuff.sourceAbilityId,
+                abilityName: `${ytBuff.sourceAbilityName ?? ytBuff.name}（贯体）`,
+                effectType: "YING_TIAN_SHIELD",
+                value: ytApplied,
+              });
+              buffsChanged = true;
+            }
+          }
+          break;
+        }
       }
+
+      for (const [actorUserId, attackEvents] of outgoingAttackEventsByActor.entries()) {
+        const actor = this.state.players.find((p) => p.userId === actorUserId);
+        if (!actor || actor.hp <= 0) continue;
+
+        const targetPlayer = attackEvents
+          .map((evt) => this.state.players.find((p) => p.userId === evt.targetUserId))
+          .find((candidate): candidate is typeof actor => !!candidate && candidate.hp > 0 && !blocksEnemyTargeting(candidate));
+        if (!targetPlayer) continue;
+
+        for (let bi = actor.buffs.length - 1; bi >= 0; bi--) {
+          const triggerBuff = actor.buffs[bi] as any;
+          if (!triggerBuff.effects?.some((e: any) => e.type === "APPLY_RECORDED_CONTROL_ON_ATTACK")) {
+            continue;
+          }
+
+          const recordedControls = Array.isArray(triggerBuff.recordedControls)
+            ? triggerBuff.recordedControls
+            : [];
+          if (recordedControls.length > 0) {
+            applyRuYiRecordedControls({
+              state: this.state,
+              source: actor as any,
+              target: targetPlayer as any,
+              recordedControls,
+            });
+          }
+
+          actor.buffs.splice(bi, 1);
+          pushBuffExpired(this.state, {
+            targetUserId: actor.userId,
+            buffId: triggerBuff.buffId,
+            buffName: triggerBuff.name,
+            buffCategory: triggerBuff.category,
+            sourceAbilityId: triggerBuff.sourceAbilityId,
+            sourceAbilityName: triggerBuff.sourceAbilityName,
+          });
+          buffsChanged = true;
+          break;
+        }
+      }
+
+      // 徐如林 (actor-side proc): for each unique attacker that dealt damage,
+      // if they have the parent XU_RU_LIN_PROC buff and don't already have the
+      // child XU_RU_LIN_RESTORE buff, 50% chance to apply the 1s child buff.
+      const hitActorIds = new Set<string>();
+      for (const evt of thisTickEvents) {
+        if (evt.type === "DAMAGE" && (evt.value ?? 0) > 0 && evt.actorUserId) {
+          // Skip self-inflicted (e.g. STACK_ON_HIT_DAMAGE on the receiver itself).
+          if (evt.targetUserId && evt.actorUserId === evt.targetUserId) continue;
+          hitActorIds.add(evt.actorUserId);
+        }
+      }
+      for (const actorId of hitActorIds) {
+        const actor = this.state.players.find((p) => p.userId === actorId);
+        if (!actor || actor.hp <= 0) continue;
+        const parent = actor.buffs.find(
+          (b) => b.effects.some((e) => (e as any).type === "XU_RU_LIN_PROC") && b.expiresAt > now,
+        );
+        if (!parent) continue;
+        const alreadyHasChild = actor.buffs.some(
+          (b) => b.effects.some((e) => (e as any).type === "XU_RU_LIN_RESTORE") && b.expiresAt > now,
+        );
+        if (alreadyHasChild) continue;
+        if (Math.random() >= 0.5) continue;
+
+        const xulinAbility = ABILITIES["xu_ru_lin"];
+        const childBuffDef = (xulinAbility?.buffs ?? []).find(
+          (b: any) => Array.isArray(b.effects) && b.effects.some((e: any) => e.type === "XU_RU_LIN_RESTORE"),
+        );
+        if (!xulinAbility || !childBuffDef) continue;
+        addBuff({
+          state: this.state,
+          sourceUserId: actor.userId,
+          targetUserId: actor.userId,
+          ability: xulinAbility as any,
+          buffTarget: actor as any,
+          buff: childBuffDef as any,
+        });
+        buffsChanged = true;
+      }
+
       this.stackProcScanIndex = this.state.events.length;
     }
 
@@ -2189,6 +4165,12 @@ export class GameLoop {
       // Append ground zones so frontend can render persistent damage areas
       if (this.state.groundZones !== undefined) {
         diff.push({ path: "/groundZones", value: this.state.groundZones });
+      }
+
+      // Append targetable entities so frontend stays in sync on creation,
+      // HP loss, natural expiry (12s), and destruction.
+      if (this.state.entities !== undefined) {
+        diff.push({ path: "/entities", value: this.state.entities });
       }
 
       // Append buff arrays whenever they changed (expiry or periodic effects)
