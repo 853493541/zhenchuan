@@ -2,7 +2,7 @@
 
 import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
 import { blocksEnemyTargeting, hasDamageImmune } from "../../rules/guards";
-import { resolveScheduledDamage } from "../../utils/combatMath";
+import { resolveScheduledDamageRoll } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../onDamageHooks";
@@ -58,13 +58,14 @@ export function handleDamage(
 
   const base = effect.value ?? 0;
 
-  const final = resolveScheduledDamage({
+  const damageRoll = resolveScheduledDamageRoll({
     source,
     target,
     base,
     abilityId: ability.id,
     damageType: (ability as any).damageType,
   });
+  const final = damageRoll.damage;
 
   if (final > 0) {
     // Pre-damage: split redirect so A's DAMAGE event shows net (45%) value.
@@ -98,6 +99,7 @@ export function handleDamage(
       abilityName: ability.name,
       effectType: "DAMAGE",
       value: adjustedDamage,
+      isCrit: damageRoll.isCrit,
       shieldAbsorbed: shieldAbsorbed > 0 ? shieldAbsorbed : undefined,
     });
 

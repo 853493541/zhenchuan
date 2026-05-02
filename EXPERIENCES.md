@@ -3,6 +3,86 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 会心 float polish + 龙吟 crit-reset follow-up (2026-05-02)
+
+## High-damage pass retune (2026-05-02)
+
+**Problem set**:
+1. The requested high-damage balance pass lowered multiple burst profiles at once: 百足, 云飞玉皇, 孔雀翎, 追命箭, 龙牙, 破风, 三环套月.
+2. Two of these abilities are not fully data-only: `破风` base hit is hardcoded in a custom immediate-effect handler, and 三环套月 3-stack explosion damage is hardcoded in buff stacking runtime.
+
+**Fix**:
+- Updated authored values/descriptions in `abilities.ts`:
+  - 百足: upfront `3`, periodic `4/3s`, expiry `3`.
+  - 云飞玉皇: `10` + `5` within 4.
+  - 孔雀翎: upfront `4`, on-hit proc `1` each.
+  - 追命箭: `10` + `6` bonus.
+  - 龙牙: `15`.
+  - 破风: upfront description updated to `1` (bleed remains `1/2s`).
+  - 三环套月: base hit `1`, explosion text `1`.
+  - 拿云式 left unchanged as requested.
+- Updated `immediateEffects.ts` custom `PO_FENG_STRIKE` handler base damage from `2` to `1`.
+- Updated `buffRuntime.ts` 三环套月 stack-consume bonus from `3` to `1`.
+
+**Lessons**:
+- For balance rounds, ability metadata alone is not enough; always grep custom effect handlers and buff runtime hooks for hardcoded damage numbers tied to the same ability.
+- Updating descriptions together with runtime values avoids immediate player-facing mismatch during tuning verification.
+
+**Problem set**:
+1. The dealt-damage float still rendered normal hits as `技能名 5` instead of the requested `技能名：5`.
+2. The dealt-crit yellow needed to be shifted to the brighter screenshot-matching color.
+3. A new melee ability `龙吟` was requested: 4 range, 2 damage, and if that hit crits it should reset only its own cooldown while still respecting shared GCD.
+
+**Fix**:
+- Updated `BattleArena.tsx` dealt-float formatting so both normal and crit dealt hits use the Chinese colon form: `技能名：5` and `技能名：会心 5`.
+- Shifted dealt-crit float color to a brighter yellow (`#ffe600`) while leaving taken-damage colors unchanged.
+- Added `long_yin` to `abilities.ts` as a standard target-required 4-range attack with 2 damage and a normal authored cooldown (`300` ticks), so the reset has meaningful runtime effect.
+- In `playService.ts`, reused the post-cast ability-specific hook seam: after `applyEffects(...)` but before shared GCD application finishes, detect whether `龙吟` emitted a crit DAMAGE event for the caster during that cast window; if yes, zero out only that ability instance's cooldown and `_cooldownProgress`. The later shared-GCD pass still reapplies GCD, matching the requested behavior.
+
+**Lessons**:
+- For “reset cooldown but keep GCD”, the correct seam is after the cast has already produced events and consumed runtime charges/cooldown, but before the generic GCD pass is fully done. Resetting earlier can be overwritten by `consumeAbilityUseRuntime`; resetting later risks bypassing shared GCD.
+- Small combat-text punctuation differences are user-visible gameplay feedback, not cosmetic trivia. Treat them like behavior fixes and validate them with the same care as backend combat changes.
+
+## 会心 panel toggle + damage float wording/layout follow-up (2026-05-02)
+
+**Problem set**:
+1. The prior implementation showed crit chance inline on the left HP panel, but the requested UI was a separate `C`-toggle attribute panel using 会心 / 会心效果 wording.
+2. Crit preset buttons belonged on the left, below the mode indicator, not top-center.
+3. Damage float wording/sign rules differed for dealt vs taken damage, and dealt crits needed a yellow highlight.
+
+**Fix**:
+- Removed the inline left-panel `暴击率` row from `BattleArena.tsx`.
+- Added `C` hotkey toggle state for a new attribute panel rendered below the player HP block, styled after the provided screenshot and showing `会心` plus fixed `会心效果 175%`.
+- Moved the crit preset buttons under the mode indicator and updated labels/toasts to 会心 wording.
+- Reworked float formatting: dealt damage now shows `技能名 5` or `技能名: 会心 5` with no minus sign; taken damage shows `技能名： -5` or `技能名： 会心 -10`.
+- Dealt crit floats now render yellow; taken damage remains red whether crit or not.
+- Added backend `isCrit` metadata to shared DAMAGE events for the main scheduled/immediate helper paths, with a fractional-value fallback on the frontend for older/unpatched event shapes.
+
+**Lessons**:
+- Combat-float phrasing should be treated as a UX contract, not incidental formatting. Dealt and taken damage want different punctuation/sign conventions even when sourced from the same DAMAGE event type.
+- When a UI needs “panel, not inline row”, it is better to delete the old inline readout entirely instead of duplicating the same stat in two places.
+
+## Crit chance presets + global crit damage pipeline (2026-05-02)
+
+**Problem set**:
+1. Needed a fast in-battle way to set BOTH players' crit chance presets (0 / 36 / 40 / 46) from top-screen buttons.
+2. Needed the local player's crit chance shown on the left HUD.
+3. Required crit damage base = 175% and to apply across the damage pipeline, without mutating 会心 / 会心效果 editor/runtime attributes.
+4. During implementation, a misplaced insertion in `BattleArena.tsx` landed inside `buildChannelBarDataForPlayer()`, causing Next/SWC parse failure (`'import'/'export' cannot be used outside of module code`).
+
+**Fix**:
+- Added backend cheat route `POST /api/game/cheat/set-crit-chance` in `draft.routes.ts`, updating both players' `critChancePct` in live loop state + persisted state, broadcasting diffs.
+- Added `critChancePct?: number` to backend/frontend player state types.
+- Added top-screen preset buttons in `BattleArena.tsx` (`No Crit`, `绿`, `蓝`, `紫`) wired to the new cheat route, and left-panel crit chance readout (`暴击率 xx.x%`).
+- In combat math, added shared raw crit resolver with base multiplier `1.75`; `resolveScheduledDamage()` now flows through crit resolution.
+- Updated direct raw-damage branches (e.g. trigger/true-damage paths in `playService.ts`, `PlayAbility.ts`, `immediateEffects.ts`, and selected `GameLoop.ts` branches) to use crit-aware raw damage resolution.
+- Updated damage application to support fractional values so crit examples like `10 -> 17.5` are representable.
+- Fixed the malformed frontend edit by restoring the missing function brace and re-applying crit UI code at the correct JSX locations.
+
+**Lessons / disproved approach**:
+- A large-file patch on `BattleArena.tsx` can silently match the wrong region; always re-check `git diff` immediately when touching repeated patterns. The parse error surfaced far away from the actual mistake.
+- For “all damage can crit”, centralizing at `resolveScheduledDamage()` covers most ability damage; remaining direct raw-damage branches should be explicitly converted to the shared crit resolver instead of ad-hoc per-file formulas.
+
 ## Special-bar GCD display, persistent per-ability cooldown, and silence bypass (2026-05-02)
 
 **Problem set**:

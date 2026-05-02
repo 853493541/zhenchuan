@@ -1184,6 +1184,7 @@ export default function BattleArena({
   const [pendingGroundCastAbilityId, setPendingGroundCastAbilityId] = useState<string | null>(null);
   const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number; z?: number; isValid?: boolean } | null>(null);
   const [showControlPanel, setShowControlPanel] = useState(false);
+  const [showHeartDetailsPanel, setShowHeartDetailsPanel] = useState(false);
   const [pendingDummySpawn, setPendingDummySpawn] = useState<'enemy' | 'ally' | null>(null);
   const [dummySpawnPreview, setDummySpawnPreview] = useState<{ x: number; y: number; z?: number } | null>(null);
   const pendingDummySpawnRef = useRef<'enemy' | 'ally' | null>(null);
@@ -1454,7 +1455,7 @@ export default function BattleArena({
   /* --- Floating damage/heal numbers --- */
   type FloatType = 'dmg_dealt' | 'dmg_taken' | 'heal' | 'huajie' | 'xishou';
   /** text: overrides the auto-generated display (used for 化解 which shows no number) */
-  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number }; yOffset: number; text?: string };
+  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number }; yOffset: number; text?: string; isCrit?: boolean };
   const [floats, setFloats] = useState<FloatEntry[]>([]);
   const floatIdRef = useRef(0);
   const lastCastNameRef = useRef<string | null>(null);
@@ -1463,7 +1464,7 @@ export default function BattleArena({
   const floatTypeCountRef = useRef<Record<string, number>>({});
   // Track how many events we've already processed to avoid re-processing on re-render
   const prevEventsLenRef = useRef<number>(-1);
-  const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number }; text?: string }) => {
+  const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number }; text?: string; isCrit?: boolean }) => {
     if (value <= 0 && type !== 'huajie' && type !== 'xishou') return;
     const id = ++floatIdRef.current;
     const safeScreenPct =
@@ -1477,11 +1478,22 @@ export default function BattleArena({
     const stagger = floatTypeCountRef.current[type] ?? 0;
     floatTypeCountRef.current[type] = stagger + 1;
     const yOffset = stagger * 28; // 28px per simultaneous float of the same type
-    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: safeScreenPct, yOffset, text: opts?.text }]);
+    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: safeScreenPct, yOffset, text: opts?.text, isCrit: opts?.isCrit }]);
     setTimeout(() => {
       setFloats(f => f.filter(e => e.id !== id));
       floatTypeCountRef.current[type] = Math.max(0, (floatTypeCountRef.current[type] ?? 1) - 1);
     }, 1400);
+  };
+
+  const formatFloatValue = (value: number) => {
+    if (!Number.isFinite(value)) return '0';
+    return Number(value.toFixed(2)).toString();
+  };
+
+  const isCritDamageEvent = (evt: any) => {
+    if ((evt as any)?.isCrit === true) return true;
+    const rawValue = Number(evt?.value ?? 0);
+    return Math.abs(rawValue - Math.round(rawValue)) > 0.0001;
   };
 
   // Split abilities into two rows for rendering
@@ -2383,6 +2395,7 @@ export default function BattleArena({
       if (evt.type === 'PLAY_ABILITY' && evt.abilityId === 'dou_zhuan_xing_yi') {
         lastInstantSwapCastAtRef.current = performance.now();
       } else if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0 && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
+        const damageWasCrit = isCritDamageEvent(evt);
         if (evt.targetUserId === myId) {
           if (!selectedTargetRef.current && !selectedEntityRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
             const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
@@ -2402,10 +2415,10 @@ export default function BattleArena({
           } else if (shieldAbs > 0) {
             // Partially blocked — show 化解 and the HP damage that got through
             addFloat(1, 'huajie', { text: '化解' });
-            addFloat(totalDmg - shieldAbs, 'dmg_taken', { label: evt.abilityName });
+            addFloat(totalDmg - shieldAbs, 'dmg_taken', { label: evt.abilityName, isCrit: damageWasCrit });
           } else {
             // No shield involved — normal damage float
-            addFloat(evt.value, 'dmg_taken', { label: evt.abilityName });
+            addFloat(evt.value, 'dmg_taken', { label: evt.abilityName, isCrit: damageWasCrit });
           }
         } else if (evt.actorUserId === myId) {
           // I dealt damage to opponent — account for shield absorption
@@ -2423,10 +2436,10 @@ export default function BattleArena({
             addFloat(1, 'huajie', { text: '化解', screenPct });
           } else if (shieldAbsAtk > 0) {
             // Partially absorbed — show net HP damage + 化解
-            addFloat(totalDmgAtk - shieldAbsAtk, 'dmg_dealt', { label: evt.abilityName, screenPct });
+            addFloat(totalDmgAtk - shieldAbsAtk, 'dmg_dealt', { label: evt.abilityName, screenPct, isCrit: damageWasCrit });
             addFloat(1, 'huajie', { text: '化解', screenPct });
           } else {
-            addFloat(evt.value, 'dmg_dealt', { label: evt.abilityName, screenPct });
+            addFloat(evt.value, 'dmg_dealt', { label: evt.abilityName, screenPct, isCrit: damageWasCrit });
           }
         }
       } else if (evt.type === 'HEAL' && (evt.value ?? 0) > 0 && evt.targetUserId === myId
@@ -3338,6 +3351,11 @@ export default function BattleArena({
           setWasdKeys(prev => ({ ...prev, w: true }));
           toastSuccess('自动前行已开启（按 S 停止）');
         }
+        return;
+      }
+      if (k === 'c' && !e.altKey) {
+        e.preventDefault();
+        if (!e.repeat) setShowHeartDetailsPanel(v => !v);
         return;
       }
       // Tab / F1 — select the nearest currently targetable enemy player or entity.
@@ -4373,6 +4391,7 @@ export default function BattleArena({
   const myBarSegments = computeHpShieldSegments(me?.hp ?? 0, myShield, myMaxHp);
   const myHpPct = myBarSegments.hpPct;
   const myShieldPct = myBarSegments.shieldPct;
+  const myCritChancePct = Math.max(0, Math.min(100, Number((me as any)?.critChancePct ?? 0)));
   const myFacingArrow = facingArrow(localFacingRef.current);
   const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
   const moveSpeedBoostSum = meEffects
@@ -4693,6 +4712,39 @@ export default function BattleArena({
         }}>
           {mode === 'arena' ? '竞技场' : mode === 'collision-test' ? '玉门关' : '吃鸡'}
         </span>
+      </div>
+      <div className={styles.critPresetBar}>
+        {[
+          { id: 'no-crit', label: '无会心', value: 0, color: '#96a0aa' },
+          { id: 'green-crit', label: '绿', value: 36, color: '#42b663' },
+          { id: 'blue-crit', label: '蓝', value: 40, color: '#3a8dff' },
+          { id: 'purple-crit', label: '紫', value: 46, color: '#9f5fd9' },
+        ].map((preset) => {
+          const active = Math.abs(myCritChancePct - preset.value) < 0.001;
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              disabled={!!runningCheatAction}
+              className={styles.critPresetButton}
+              style={{
+                borderColor: preset.color,
+                color: active ? '#ffffff' : preset.color,
+                background: active ? preset.color : 'rgba(12,18,30,0.88)',
+                opacity: runningCheatAction ? 0.6 : 1,
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+              }}
+              onClick={() => void runCheatAction(
+                `set-crit-${preset.value}`,
+                '/api/game/cheat/set-crit-chance',
+                `双方会心已设为 ${preset.value}%`,
+                { critChancePct: preset.value },
+              )}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
       </div>
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
       {/* ===== R3F 3D CANVAS ===== */}
@@ -5340,6 +5392,24 @@ export default function BattleArena({
           )}
         </div>
       </div>
+      {showHeartDetailsPanel && (
+        <div className={styles.heartDetailsPanel}>
+          <div className={styles.heartDetailsHeader}>
+            <span className={styles.heartDetailsTitle}>属性</span>
+            <span className={styles.heartDetailsTab}>详细</span>
+          </div>
+          <div className={styles.heartDetailsBody}>
+            <div className={styles.heartDetailsRow}>
+              <span className={styles.heartDetailsLabel}>会心</span>
+              <span className={styles.heartDetailsValue}>{myCritChancePct.toFixed(2)}%</span>
+            </div>
+            <div className={styles.heartDetailsRow}>
+              <span className={styles.heartDetailsLabel}>会心效果</span>
+              <span className={styles.heartDetailsValue}>175%</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== TOP-CENTER: Target info panel — health → buffs → abilities (self or enemy) ===== */}
       <div className={styles.enemyBossGroup}>
@@ -6406,7 +6476,7 @@ export default function BattleArena({
         const opacity  = age < 0.08 ? age / 0.08 : Math.max(0, 1 - Math.max(0, age - 0.75) / 0.25);
         const travelUp = -80 * age; // floats upward
         const color = entry.type === 'dmg_dealt'
-          ? '#ffffff'
+          ? (entry.isCrit ? '#ffe600' : '#ffffff')
           : entry.type === 'heal'
           ? '#44ff66'
           : entry.type === 'huajie'
@@ -6438,12 +6508,25 @@ export default function BattleArena({
               transform: 'translateX(-50%)',
             };
         }
-        const sign = entry.type === 'heal' ? '+' : '-';
         const displayText = entry.text
           ? entry.text
+          : entry.type === 'dmg_dealt'
+          ? entry.label
+            ? (entry.isCrit
+                ? `${entry.label}：会心 ${formatFloatValue(entry.value)}`
+                : `${entry.label}：${formatFloatValue(entry.value)}`)
+            : (entry.isCrit ? `会心 ${formatFloatValue(entry.value)}` : formatFloatValue(entry.value))
+          : entry.type === 'dmg_taken'
+          ? entry.label
+            ? `${entry.label}： ${entry.isCrit ? '会心 ' : ''}-${formatFloatValue(entry.value)}`
+            : `${entry.isCrit ? '会心 ' : ''}-${formatFloatValue(entry.value)}`
+          : entry.type === 'heal'
+          ? entry.label
+            ? `${entry.label}: +${formatFloatValue(entry.value)}`
+            : `+${formatFloatValue(entry.value)}`
           : entry.label
-          ? `${entry.label}: ${sign}${entry.value}`
-          : `${sign}${entry.value}`;
+          ? `${entry.label}: -${formatFloatValue(entry.value)}`
+          : `-${formatFloatValue(entry.value)}`;
         return (
           <div
             key={entry.id}

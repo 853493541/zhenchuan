@@ -16,7 +16,7 @@ import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
 import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap, resolveEntityHorizontalCollision } from "./movement";
 import { addBuff, pushBuffExpired } from "../effects/buffRuntime";
-import { resolveScheduledDamage, resolveHealAmount } from "../utils/combatMath";
+import { resolveRawDamageWithCrit, resolveScheduledDamage, resolveScheduledDamageRoll, resolveHealAmount } from "../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../utils/health";
 import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
@@ -343,12 +343,13 @@ function applyDamageToHostileTarget(params: {
   const damageTarget = target.kind === "player"
     ? target.target
     : target.target;
-  const resolvedDamage = resolveScheduledDamage({
+  const damageRoll = resolveScheduledDamageRoll({
     source: source as any,
     target: damageTarget,
     base: baseDamage,
     damageType,
   });
+  const resolvedDamage = damageRoll.damage;
   if (resolvedDamage <= 0) return 0;
 
   // Damage immunity + 盾立 reflect for player victims.
@@ -394,6 +395,7 @@ function applyDamageToHostileTarget(params: {
       abilityName,
       effectType,
       value: appliedDamage,
+      isCrit: damageRoll.isCrit,
       shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
     } as any);
     if (result.hpDamage > 0) {
@@ -421,6 +423,7 @@ function applyDamageToHostileTarget(params: {
     abilityName,
     effectType,
     value: resolvedDamage,
+    isCrit: damageRoll.isCrit,
     shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
   } as any);
   if (result.hpDamage > 0) {
@@ -2628,8 +2631,10 @@ export class GameLoop {
                 (buff as any).yingTianAccum = 0;
                 if (settle > 0) {
                   // True damage — bypass DR and shields
+                  const sourcePlayer = this.state.players.find((p) => p.userId === (buff.sourceUserId ?? ""));
+                  const settleDamage = resolveRawDamageWithCrit({ source: sourcePlayer as any, base: settle });
                   const preHp = player.hp;
-                  player.hp = Math.max(0, player.hp - settle);
+                  player.hp = Math.max(0, player.hp - settleDamage);
                   const settledHpDmg = preHp - player.hp;
                   if (settledHpDmg > 0) {
                     this.state.events.push({
@@ -4003,7 +4008,8 @@ export class GameLoop {
               if (stackBuff.procCooldownMs !== undefined && stackBuff.lastProcAt !== undefined) {
                 if (now - stackBuff.lastProcAt < stackBuff.procCooldownMs) break;
               }
-              const dmg = e.value ?? 0;
+              const stackSource = this.state.players.find((p) => p.userId === (stackBuff.sourceUserId ?? "")) ?? actor;
+              const dmg = resolveRawDamageWithCrit({ source: stackSource as any, base: e.value ?? 0 });
               applyDamageToTarget(targetPlayer as any, dmg);
               stackBuff.stacks = (stackBuff.stacks ?? 1) - 1;
               stackBuff.lastProcAt = now;

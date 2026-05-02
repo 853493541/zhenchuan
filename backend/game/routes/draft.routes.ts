@@ -1273,6 +1273,79 @@ router.post("/cheat/clear-buffs", async (req, res) => {
 });
 
 /**
+ * POST /cheat/set-crit-chance - Set both players' crit chance (%).
+ * Body: { gameId, critChancePct }
+ */
+router.post("/cheat/set-crit-chance", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, critChancePct } = req.body;
+    const crit = Number(critChancePct);
+
+    if (!Number.isFinite(crit)) {
+      return res.status(400).json({ error: "critChancePct must be a number" });
+    }
+    const boundedCrit = Math.max(0, Math.min(100, crit));
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let liveVersion = game.state.version ?? 0;
+    const diff: Array<{ path: string; value: any }> = [];
+    const gameLoop = GameLoop.get(gameId);
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      loopState.players = loopState.players.map((p: any, idx: number) => {
+        diff.push({ path: `/players/${idx}/critChancePct`, value: boundedCrit });
+        return {
+          ...p,
+          critChancePct: boundedCrit,
+        };
+      });
+      loopState.version = (loopState.version ?? 0) + 1;
+      liveVersion = loopState.version;
+      gameLoop.updateState(loopState);
+    } else {
+      game.state.players = game.state.players.map((p: any, idx: number) => {
+        diff.push({ path: `/players/${idx}/critChancePct`, value: boundedCrit });
+        return {
+          ...p,
+          critChancePct: boundedCrit,
+        };
+      });
+      game.state.version = (game.state.version ?? 0) + 1;
+      liveVersion = game.state.version;
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true, critChancePct: boundedCrit });
+
+    game.state.players = game.state.players.map((p: any) => ({
+      ...p,
+      critChancePct: boundedCrit,
+    }));
+    game.markModified("state");
+    game.markModified("state.players");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/set-crit-chance] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * POST /cheat/spawn-dummy - Spawn a target dummy entity at a world position.
  * Body: { gameId, side: "enemy" | "ally", x, y, z }
  *  - side="enemy": ownerUserId set to opponent's userId (or synthetic), so the

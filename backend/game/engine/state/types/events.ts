@@ -34,6 +34,7 @@ export interface GameEvent {
   value?: number;
   /** Amount of damage absorbed by the target's shield (化解). */
   shieldAbsorbed?: number;
+  isCrit?: boolean;
 
   buffId?: number;
   buffName?: string;

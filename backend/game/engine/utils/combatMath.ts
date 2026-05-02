@@ -2,19 +2,59 @@
 
 import { ActiveBuff } from "../state/types";
 
+const BASE_CRIT_DAMAGE_MULTIPLIER = 1.75;
+
+export type DamageRoll = {
+  damage: number;
+  isCrit: boolean;
+};
+
+function roundDamage(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function getSourceCritChancePct(source: { critChancePct?: number } | undefined): number {
+  const raw = Number(source?.critChancePct ?? 0);
+  if (!Number.isFinite(raw)) return 0;
+  return Math.max(0, Math.min(100, raw));
+}
+
+export function resolveRawDamageWithCritRoll(params: {
+  source?: { critChancePct?: number };
+  base: number;
+}): DamageRoll {
+  const base = Math.max(0, Number(params.base ?? 0));
+  if (base <= 0) return { damage: 0, isCrit: false };
+
+  const critChancePct = getSourceCritChancePct(params.source);
+  const isCrit = Math.random() < (critChancePct / 100);
+  const critMultiplier = isCrit ? BASE_CRIT_DAMAGE_MULTIPLIER : 1;
+  return {
+    damage: roundDamage(base * critMultiplier),
+    isCrit,
+  };
+}
+
+export function resolveRawDamageWithCrit(params: {
+  source?: { critChancePct?: number };
+  base: number;
+}) {
+  return resolveRawDamageWithCritRoll(params).damage;
+}
+
 function allEffects(target: { buffs: ActiveBuff[] }) {
   return target.buffs.flatMap((b) => b.effects);
 }
 
-export function resolveScheduledDamage(params: {
-  source: { buffs: ActiveBuff[] };
+export function resolveScheduledDamageRoll(params: {
+  source: { buffs: ActiveBuff[]; critChancePct?: number };
   target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
   base: number;
   /** When provided, DAMAGE_MULTIPLIER effects with restrictToAbilityId are only applied if they match. */
   abilityId?: string;
   /** When provided, DAMAGE_REDUCTION effects with a damageType filter only apply if they match. */
   damageType?: string;
-}) {
+}): DamageRoll {
   let dmg = params.base;
 
   // DAMAGE MULTIPLIER (e.g. 女娲补天, 夺命蛊, 听雷·伤)
@@ -71,7 +111,17 @@ export function resolveScheduledDamage(params: {
     dmg += (fb.value ?? 0);
   }
 
-  return Math.max(0, Math.floor(dmg));
+  return resolveRawDamageWithCritRoll({ source: params.source, base: dmg });
+}
+
+export function resolveScheduledDamage(params: {
+  source: { buffs: ActiveBuff[]; critChancePct?: number };
+  target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
+  base: number;
+  abilityId?: string;
+  damageType?: string;
+}) {
+  return resolveScheduledDamageRoll(params).damage;
 }
 
 export function resolveHealAmount(params: {

@@ -687,8 +687,8 @@ export function addBuff(params: {
         const target = state.players.find((p: any) => p.userId === targetUserId);
         if (target && target.hp > 0) {
           const bonus = source
-            ? resolveScheduledDamage({ source, target, base: 3 })
-            : 3;
+            ? resolveScheduledDamage({ source, target, base: 1 })
+            : 1;
           applyDamageToTarget(target as any, bonus);
           if (bonus > 0) {
             pushEvent(state, {

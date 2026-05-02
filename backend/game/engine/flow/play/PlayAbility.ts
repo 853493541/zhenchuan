@@ -5,6 +5,7 @@ import { getEnemy } from "../../utils/targeting";
 import { pushEvent } from "../../../services/flow/events";
 import { addBuff } from "../../effects/buffRuntime";
 import { applyDamageToTarget } from "../../utils/health";
+import { resolveRawDamageWithCrit } from "../../utils/combatMath";
 
 import { breakOnPlay } from "./breakOnPlay";
 import { computeAbilityDodge } from "../../rules/dodge";
@@ -175,7 +176,8 @@ export function applyAbility(
     } else {
       bangHuaBuff.stacks = currentStacks - 1;
     }
-    applyDamageToTarget(source as any, 2);
+    const triggerDamage = resolveRawDamageWithCrit({ source: enemy as any, base: 2 });
+    applyDamageToTarget(source as any, triggerDamage);
     pushEvent(state, {
       turn: state.turn,
       type: "DAMAGE",
@@ -184,7 +186,7 @@ export function applyAbility(
       abilityId: "bang_hua_sui_liu",
       abilityName: "傍花随柳",
       effectType: "BANG_HUA_TRIGGER",
-      value: 2,
+      value: triggerDamage,
     } as any);
 
     // Last stack: also apply 束发 silence 4s

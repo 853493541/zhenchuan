@@ -65,6 +65,8 @@ export interface PlayerState {
   hp: number;
   maxHp?: number;
   shield?: number;
+  /** Runtime crit chance percentage used by combat resolution (0-100). */
+  critChancePct?: number;
 
   /** abilities in hand */
   hand: AbilityInstance[];

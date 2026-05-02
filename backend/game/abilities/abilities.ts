@@ -199,14 +199,14 @@ export const BASE_ABILITIES: AbilityRecord = {
   sanhuan_taoyue: {
     id: "sanhuan_taoyue",
     name: "三环套月",
-    description: "造成3点伤害，并叠加【三环套月】；叠满3层时引爆并额外造成3点伤害（持续10秒）",
+    description: "造成1点伤害，并叠加【三环套月】；叠满3层时引爆并额外造成1点伤害（持续10秒）",
     type: "ATTACK",
     target: "OPPONENT",
     cooldownTicks: 0,
     gcd: true,
     range: 4,
     effects: [
-      { type: "DAMAGE", value: 3 },
+      { type: "DAMAGE", value: 1 },
     ],
     buffs: [
       {
@@ -222,10 +222,23 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
   },
 
+  long_yin: {
+    id: "long_yin",
+    name: "龙吟",
+    description: "需要目标，射程4\n造成2点伤害\n若本次造成会心，则重置自身冷却（仍触发GCD）",
+    type: "ATTACK",
+    target: "OPPONENT",
+    cooldownTicks: 300,
+    gcd: true,
+    range: 4,
+    effects: [{ type: "DAMAGE", value: 2 }],
+    buffs: [],
+  },
+
   baizu: {
     id: "baizu",
     name: "百足",
-    description: "可选目标或地面施放（范围6）\n命中后立刻造成5点伤害\n附加【百足】18秒：每3秒造成6点伤害，结束时额外造成5点伤害",
+    description: "可选目标或地面施放（范围6）\n命中后立刻造成3点伤害\n附加【百足】18秒：每3秒造成4点伤害，结束时额外造成3点伤害",
     type: "ATTACK",
     target: "OPPONENT",
     range: 25,
@@ -233,7 +246,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     faceDirection: false,
     allowGroundCastWithoutTarget: true,
-    effects: [{ type: "BAIZU_AOE", value: 5, range: 6 }],
+    effects: [{ type: "BAIZU_AOE", value: 3, range: 6 }],
     buffs: [
       {
         buffId: 1001,
@@ -241,10 +254,10 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "DEBUFF",
         durationMs: 18_000,
         periodicMs: 3_000,  // fires every 3 seconds
-        description: "每3秒受到6点伤害，结束时额外受到5点伤害",
+        description: "每3秒受到4点伤害，结束时额外受到3点伤害",
         effects: [
-          { type: "PERIODIC_DAMAGE", value: 6 },
-          { type: "TIMED_SELF_DAMAGE", value: 5, delayMs: 18_000 },
+          { type: "PERIODIC_DAMAGE", value: 4 },
+          { type: "TIMED_SELF_DAMAGE", value: 3, delayMs: 18_000 },
         ],
       },
     ],
@@ -1125,7 +1138,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   zhuiming_jian: {
     id: "zhuiming_jian",
     name: "追命箭",
-    description: "需要目标，运功2秒（正读条）\n需要站立施放，移动或跳跃会中断\n完成时造成15点伤害；若自身气血高于60，额外造成9点伤害",
+    description: "需要目标，运功2秒（正读条）\n需要站立施放，移动或跳跃会中断\n完成时造成10点伤害；若自身气血高于60，额外造成6点伤害",
     type: "CHANNEL",
     target: "OPPONENT",
     cooldownTicks: 300,
@@ -1141,8 +1154,8 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelCancelOnOutOfRange: 25,
     channelForward: true,
     channelEffects: [
-      { type: "TIMED_AOE_DAMAGE", value: 15, range: 50 },
-      { type: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT", value: 9, threshold: 60, range: 50 },
+      { type: "TIMED_AOE_DAMAGE", value: 10, range: 50 },
+      { type: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT", value: 6, threshold: 60, range: 50 },
     ],
   } as any,
 
@@ -1151,14 +1164,14 @@ export const BASE_ABILITIES: AbilityRecord = {
   zhenshen_xingsi: {
     id: "zhenshen_xingsi",
     name: "龙牙",
-    description: "需要目标，冲向敌人（最远20码）\n施放时造成20点伤害",
+    description: "需要目标，冲向敌人（最远20码）\n施放时造成15点伤害",
     type: "CONTROL",
     target: "OPPONENT",
     cooldownTicks: 300,
     gcd: true,
     range: 20,
     effects: [
-      { type: "DAMAGE", value: 20 },
+      { type: "DAMAGE", value: 15 },
       { type: "DASH", value: 8 },
     ],
   },
@@ -1315,12 +1328,12 @@ export const BASE_ABILITIES: AbilityRecord = {
   } as any,
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 云飞玉皇 — 2s channel (pure: no buffs), 20dmg on completion + 10 bonus if in 4u
+  // 云飞玉皇 — 2s channel (pure: no buffs), 10dmg on completion + 5 bonus if in 4u
   // ──────────────────────────────────────────────────────────────────────────
   yun_fei_yu_huang: {
     id: "yun_fei_yu_huang",
     name: "云飞玉皇",
-    description: "需要目标，运功2秒（不可移动），对目标造成20点伤害；运功完成时目标在4码内额外造成10点伤害",
+    description: "需要目标，运功2秒（不可移动），对目标造成10点伤害；运功完成时目标在4码内额外造成5点伤害",
     type: "CHANNEL",
     target: "OPPONENT",
     cooldownTicks: 150,
@@ -1336,8 +1349,8 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelCancelOnOutOfRange: 8,
     channelForward: true,
     channelEffects: [
-      { type: "TIMED_AOE_DAMAGE", value: 20, range: 50 },
-      { type: "TIMED_AOE_DAMAGE", value: 10, range: 4 },
+      { type: "TIMED_AOE_DAMAGE", value: 10, range: 50 },
+      { type: "TIMED_AOE_DAMAGE", value: 5, range: 4 },
     ],
   } as any,
 
@@ -1347,14 +1360,14 @@ export const BASE_ABILITIES: AbilityRecord = {
   kong_que_ling: {
     id: "kong_que_ling",
     name: "孔雀翎",
-    description: "范围25，即刻对目标造成3点伤害，并附加【孔雀翎受击】（8层，每次受攻击触发额外3点伤害）和【孔雀翎】（减速50%），各持续6秒",
+    description: "范围25，即刻对目标造成4点伤害，并附加【孔雀翎受击】（8层，每次受攻击触发额外1点伤害）和【孔雀翎】（减速50%），各持续6秒",
     type: "ATTACK",
     target: "OPPONENT",
     cooldownTicks: 600,
     gcd: true,
     range: 25,
     effects: [
-      { type: "DAMAGE", value: 3 },
+      { type: "DAMAGE", value: 4 },
     ],
     buffs: [
       {
@@ -1366,9 +1379,9 @@ export const BASE_ABILITIES: AbilityRecord = {
         initialStacks: 8,
         maxStacks: 8,
         procCooldownMs: 500,
-        description: "每次受攻击触发3点额外伤害（每0.5秒至多触发一次），剩余层数见图标",
+        description: "每次受攻击触发1点额外伤害（每0.5秒至多触发一次），剩余层数见图标",
         effects: [
-          { type: "STACK_ON_HIT_DAMAGE", value: 3 },
+          { type: "STACK_ON_HIT_DAMAGE", value: 1 },
         ],
       },
       {
@@ -3325,7 +3338,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   po_feng: {
     id: "po_feng",
     name: "破风",
-    description: "瞬发，射程4。造成2点伤害，附加【破风】（额外受到5%伤害，持续12秒）和【流血】（每2秒1点伤害，持续12秒，最多2层）。若目标拥有控制免疫，额外附加一层【流血】",
+    description: "瞬发，射程4。造成1点伤害，附加【破风】（额外受到5%伤害，持续12秒）和【流血】（每2秒1点伤害，持续12秒，最多2层）。若目标拥有控制免疫，额外附加一层【流血】",
     type: "ATTACK",
     target: "OPPONENT",
     range: 4,

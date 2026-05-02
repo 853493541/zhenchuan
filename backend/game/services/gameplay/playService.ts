@@ -20,7 +20,7 @@ import { globalTimer } from "../../../utils/timing";
 import { gameStateCache } from "../gameStateCache";
 import { addBuff, pushBuffExpired } from "../../engine/effects/buffRuntime";
 import { applyDamageToTarget, removeLinkedShield } from "../../engine/utils/health";
-import { resolveScheduledDamage } from "../../engine/utils/combatMath";
+import { resolveRawDamageWithCrit, resolveScheduledDamage } from "../../engine/utils/combatMath";
 import { getAbilityRangeBonusFromBuffs } from "../../engine/utils/abilityRange";
 import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../../engine/utils/specialAbilityBar";
 
@@ -127,6 +127,7 @@ function consumeAbilityUseRuntime(instance: any, ability: any, applyBaseCooldown
 const BANG_DA_GOU_TOU_ABILITY_ID = "bang_da_gou_tou";
 const BANG_DA_GOU_TOU_XINCHU_ER_BUFF_ID = 1333;
 const BANG_DA_GOU_TOU_COOLDOWN_TICKS = 16 * 30;
+const LONG_YIN_ABILITY_ID = "long_yin";
 
 function clearChannelStartBuffs(
   state: GameState,
@@ -395,7 +396,8 @@ async function playCastAbility(
           } else {
             bangHuaBuff.stacks = currentStacks - 1;
           }
-          applyDamageToTarget(player as any, 2);
+          const triggerDamage = resolveRawDamageWithCrit({ source: opp as any, base: 2 });
+          applyDamageToTarget(player as any, triggerDamage);
           pushEvent(state, {
             turn: state.turn,
             type: "DAMAGE",
@@ -404,7 +406,7 @@ async function playCastAbility(
             abilityId: "bang_hua_sui_liu",
             abilityName: "傍花随柳",
             effectType: "BANG_HUA_TRIGGER",
-            value: 2,
+            value: triggerDamage,
           } as any);
           // Last stack: also apply 束发 silence 4s
           if (isLastStack) {
@@ -446,12 +448,26 @@ async function playCastAbility(
           b.sourceAbilityId === BANG_DA_GOU_TOU_ABILITY_ID &&
           (b.appliedAt ?? 0) >= castStartedAt - 250
       );
+    const longYinCritTriggered =
+      ability.id === LONG_YIN_ABILITY_ID &&
+      state.events.some(
+        (evt: any) =>
+          evt?.type === "DAMAGE" &&
+          evt.actorUserId === player.userId &&
+          evt.abilityId === LONG_YIN_ABILITY_ID &&
+          evt.isCrit === true &&
+          (evt.timestamp ?? 0) >= castStartedAt - 250
+      );
 
     // Set runtime cooldown/charges after ability is consumed.
     consumeAbilityUseRuntime(played, ability, true);
 
     if (upgradedBangDaGouTouCast) {
       played.cooldown = Math.max(played.cooldown ?? 0, BANG_DA_GOU_TOU_COOLDOWN_TICKS);
+    }
+    if (longYinCritTriggered) {
+      played.cooldown = 0;
+      (played as any)._cooldownProgress = 0;
     }
   }
 

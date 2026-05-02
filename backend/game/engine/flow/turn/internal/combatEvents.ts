@@ -10,6 +10,7 @@ export function pushDamageEvent(params: {
   abilityId: string | undefined;
   abilityName: string | undefined;
   value: number;
+  isCrit?: boolean;
   effectType?: "DAMAGE" | "SCHEDULED_DAMAGE";
 }) {
   const {
@@ -19,6 +20,7 @@ export function pushDamageEvent(params: {
     abilityId,
     abilityName,
     value,
+    isCrit,
     effectType = "DAMAGE",
   } = params;
 
@@ -33,6 +35,7 @@ export function pushDamageEvent(params: {
     abilityName,
     effectType,
     value,
+    isCrit,
   });
 }
 

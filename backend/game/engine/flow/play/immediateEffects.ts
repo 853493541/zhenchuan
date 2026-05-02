@@ -18,7 +18,7 @@ import {
   type CapturedControlSnapshot,
 } from "../../effects/definitions/Cleanse";
 import { gameplayUnitsToWorldUnits, worldUnitsToGameplayUnits } from "../../state/types";
-import { resolveScheduledDamage } from "../../utils/combatMath";
+import { resolveRawDamageWithCrit, resolveScheduledDamage, resolveScheduledDamageRoll } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../../utils/health";
 import { addBuff, pushBuffExpired } from "../../effects/buffRuntime";
 import {
@@ -592,12 +592,13 @@ function applyImmediateDamageToEnemyTarget(params: {
   }
 
   const damageTarget = target.target;
-  const resolvedDamage = resolveScheduledDamage({
+  const damageRoll = resolveScheduledDamageRoll({
     source,
     target: damageTarget,
     base: baseDamage,
     damageType: (ability as any).damageType,
   });
+  const resolvedDamage = damageRoll.damage;
   if (resolvedDamage <= 0) return 0;
 
   if (target.kind === "player") {
@@ -618,6 +619,7 @@ function applyImmediateDamageToEnemyTarget(params: {
       abilityName: ability.name,
       effectType,
       value: appliedDamage,
+      isCrit: damageRoll.isCrit,
       shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
     });
     if (result.hpDamage > 0) {
@@ -645,6 +647,7 @@ function applyImmediateDamageToEnemyTarget(params: {
     abilityName: ability.name,
     effectType,
     value: resolvedDamage,
+    isCrit: damageRoll.isCrit,
     shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
   });
   if (result.hpDamage > 0) {
@@ -2177,7 +2180,7 @@ export function applyImmediateEffects(params: {
           });
           break;
         }
-        const td = Math.max(0, Math.floor(effect.value ?? 0));
+        const td = resolveRawDamageWithCrit({ source, base: Number(effect.value ?? 0) });
         if (td <= 0) break;
         // Bypass shield: subtract directly from hp.
         const before = tdTarget.hp;
@@ -2915,10 +2918,10 @@ export function applyImmediateEffects(params: {
         break;
       }
 
-      // ─── 破风: 2 damage + 破风 debuff + 流血, extra 流血 if CONTROL_IMMUNE ──
+      // ─── 破风: 1 damage + 破风 debuff + 流血, extra 流血 if CONTROL_IMMUNE ──
       case "PO_FENG_STRIKE": {
         if (!enemyApplied) break;
-        const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: 2, damageType: (ability as any).damageType });
+        const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: 1, damageType: (ability as any).damageType });
         if (pfDmg > 0 && !hasDamageImmune(effTarget as any)) {
           const { adjustedDamage: adjPf, redirectPlayer: rtPf, redirectAmt: raPf } = preCheckRedirect(state, effTarget as any, pfDmg);
           const applyPf = adjPf;

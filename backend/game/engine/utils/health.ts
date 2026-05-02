@@ -2,6 +2,10 @@
 
 import { ActiveBuff } from "../state/types";
 
+function roundNumber(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 type ShieldedTarget = {
   hp: number;
   maxHp?: number;
@@ -35,7 +39,7 @@ export function applyDamageToTarget(target: ShieldedTarget, rawDamage: number): 
   shieldAbsorbed: number;
   hpDamage: number;
 } {
-  const damage = Math.max(0, Math.floor(rawDamage));
+  const damage = roundNumber(Math.max(0, Number(rawDamage ?? 0)));
   if (damage <= 0) {
     return { totalDamage: 0, shieldAbsorbed: 0, hpDamage: 0 };
   }
@@ -69,9 +73,9 @@ export function applyDamageToTarget(target: ShieldedTarget, rawDamage: number): 
     }
   }
 
-  const hpDamage = damage - shieldAbsorbed;
+  const hpDamage = roundNumber(Math.max(0, damage - shieldAbsorbed));
   if (hpDamage > 0) {
-    target.hp = Math.max(0, target.hp - hpDamage);
+    target.hp = roundNumber(Math.max(0, target.hp - hpDamage));
     // 啸如虎 MIN_HP_1: if any buff prevents death, clamp hp to at least 1
     if (
       target.hp <= 0 &&

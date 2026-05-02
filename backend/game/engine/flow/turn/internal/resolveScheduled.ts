@@ -2,7 +2,7 @@
 
 import { GameState, ActiveBuff } from "../../../state/types";
 import { shouldDodge, hasUntargetable } from "../../../rules/guards";
-import { resolveScheduledDamage, resolveHealAmount } from "../../../utils/combatMath";
+import { resolveScheduledDamageRoll, resolveHealAmount } from "../../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget } from "../../../utils/health";
 import { pushDamageEvent, pushHealEvent } from "./combatEvents";
 import {
@@ -49,11 +49,12 @@ export function applyScheduledDamage(
       }
     }
 
-    const dmg = resolveScheduledDamage({
+    const damageRoll = resolveScheduledDamageRoll({
       source: owner,
       target,
       base: stage.value ?? 0,
     });
+    const dmg = damageRoll.damage;
 
     applyDamageToTarget(target as any, dmg);
 
@@ -64,6 +65,7 @@ export function applyScheduledDamage(
       abilityId: getBuffSourceAbilityId(buff),
       abilityName: getBuffSourceAbilityNameWithDebug(buff, stage.debug),
       value: dmg,
+      isCrit: damageRoll.isCrit,
       effectType: "SCHEDULED_DAMAGE",
     });
 
