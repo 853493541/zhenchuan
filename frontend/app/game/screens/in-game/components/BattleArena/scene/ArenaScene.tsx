@@ -90,6 +90,8 @@ interface PlayerInfo {
   hand?: any[];
 }
 
+type ScreenBounds = { cx: number; topY: number; baseY: number; rs: number };
+
 interface ArenaSceneProps {
   me: PlayerInfo;
   /** All non-me players, including hidden ones, for entity owner-name lookup. */
@@ -157,9 +159,10 @@ interface ArenaSceneProps {
   }) => void;
   meFacingRef: MutableRefObject<{ x: number; y: number }>;
   maxHp: number;
-  meScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
-  oppScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
-  entityScreenBoundsRef?: MutableRefObject<Record<string, { cx: number; topY: number; baseY: number; rs: number }>>;
+  meScreenBoundsRef?: MutableRefObject<ScreenBounds | null>;
+  oppScreenBoundsRef?: MutableRefObject<ScreenBounds | null>;
+  opponentScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
+  entityScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
   mode?: string;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
   groundZones?: GroundZone[];
@@ -425,6 +428,7 @@ export default function ArenaScene({
   maxHp,
   meScreenBoundsRef,
   oppScreenBoundsRef,
+  opponentScreenBoundsRef,
   entityScreenBoundsRef,
   mode,
   safeZone,
@@ -794,7 +798,18 @@ export default function ArenaScene({
               username={opp.username ?? opp.userId}
               distance={dist}
               onSelect={() => onSelectTarget?.(opp.userId)}
-              onScreenBounds={i === 0 && oppScreenBoundsRef ? (b) => { oppScreenBoundsRef.current = b; } : undefined}
+              onScreenBounds={
+                i === 0 || opponentScreenBoundsRef
+                  ? (bounds) => {
+                      if (i === 0 && oppScreenBoundsRef) {
+                        oppScreenBoundsRef.current = bounds;
+                      }
+                      if (opponentScreenBoundsRef) {
+                        opponentScreenBoundsRef.current[opp.userId] = bounds;
+                      }
+                    }
+                  : undefined
+              }
               worldHalfX={worldHalfX}
               worldHalfY={worldHalfY}
               isStealthed={hasSanliuXiaBuff(opp.buffs)}

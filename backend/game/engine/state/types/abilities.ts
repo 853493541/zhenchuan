@@ -11,6 +11,19 @@ export type AbilityType =
 
 export type TargetType = "SELF" | "OPPONENT";
 
+export type AbilityChannelSource = "ACTIVE" | "BUFF";
+export type AbilityChannelMode = "FORWARD" | "REVERSE";
+
+export interface AbilityChannel {
+  source: AbilityChannelSource;
+  mode: AbilityChannelMode;
+  durationMs: number;
+  cancelOnMove: boolean;
+  cancelOnJump: boolean;
+  tickIntervalMs?: number;
+  buffId?: number;
+}
+
 export interface Ability {
   id: string;
   name: string;
@@ -186,6 +199,11 @@ export interface Ability {
    * 无视闪避.
    */
   ignoreDodge?: boolean;
+
+  /**
+   * Normalized runtime channel metadata used by preload/UI systems.
+   */
+  channel?: AbilityChannel;
 }
 
 export interface AbilityInstance {

@@ -6,7 +6,7 @@ import styles from './BattleArena.module.css';
 import WASDButtons from './WASDButtons';
 import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
-import { ChannelBar, type ChannelBarData } from './ChannelBar';
+import { ChannelBarHost, type ChannelBarData } from './ChannelBar';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles } from './scene/ArenaScene';
@@ -40,6 +40,24 @@ const LEGACY_STORED_UNIT_SCALE = 2.2;
 const SERVER_TICK_RATE = 30;
 const BASE_MOVE_SPEED_PER_TICK = 0.1666667;
 const AIR_SHIFT_DURATION_TICKS = SERVER_TICK_RATE;
+const LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS = new Set([1014, 1017, 2001, 2003, 2712]);
+
+type ScreenBounds = { cx: number; topY: number; baseY: number; rs: number };
+
+type RuntimeAbilityChannel = {
+  source: 'ACTIVE' | 'BUFF';
+  mode: 'FORWARD' | 'REVERSE';
+  durationMs: number;
+  cancelOnMove: boolean;
+  cancelOnJump: boolean;
+  tickIntervalMs?: number;
+  buffId?: number;
+};
+
+type ChannelingPlayer = {
+  activeChannel?: ActiveChannel;
+  buffs?: ActiveBuff[];
+};
 
 function getStoredUnitScale(mode?: string): number {
   return mode === 'collision-test' ? 1 : LEGACY_STORED_UNIT_SCALE;
@@ -55,6 +73,131 @@ function getUpwardJumpAirShiftDistance(mode?: string): number {
 
 function getDirectionalJumpDistance(mode?: string): number {
   return 6 * getStoredUnitScale(mode);
+}
+
+function hasLegacyChannelJumpLock(buffs?: ActiveBuff[]): boolean {
+  return Array.isArray(buffs) && buffs.some((buff) => LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS.has(buff.buffId));
+}
+
+function getRuntimeAbilityChannel(ability: any): RuntimeAbilityChannel | null {
+  const channel = ability?.channel;
+  if (!channel || typeof channel !== 'object') {
+    return null;
+  }
+
+  const source = channel.source === 'BUFF' ? 'BUFF' : channel.source === 'ACTIVE' ? 'ACTIVE' : null;
+  const mode = channel.mode === 'REVERSE' ? 'REVERSE' : channel.mode === 'FORWARD' ? 'FORWARD' : null;
+  if (!source || !mode) {
+    return null;
+  }
+
+  const durationMs = Number(channel.durationMs ?? 0);
+  const tickIntervalMs = Number(channel.tickIntervalMs ?? 0);
+
+  return {
+    source,
+    mode,
+    durationMs: Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0,
+    cancelOnMove: channel.cancelOnMove === true,
+    cancelOnJump: channel.cancelOnJump === true,
+    ...(Number.isFinite(tickIntervalMs) && tickIntervalMs > 0 ? { tickIntervalMs } : {}),
+    ...(typeof channel.buffId === 'number' ? { buffId: channel.buffId } : {}),
+  };
+}
+
+function buildChannelBarDataForPlayer(
+  player: ChannelingPlayer | null | undefined,
+  channelAbilityByBuffId: Map<number, any>,
+  options?: { suppressJumpBar?: boolean },
+): ChannelBarData | null {
+  const result = buildChannelBarResultForPlayer(player, channelAbilityByBuffId, options);
+  return result ? result.data : null;
+}
+
+function buildChannelBarResultForPlayer(
+  player: ChannelingPlayer | null | undefined,
+  channelAbilityByBuffId: Map<number, any>,
+  options?: { suppressJumpBar?: boolean },
+  abilitiesById?: Record<string, any>,
+): { data: ChannelBarData; abilityId?: string; ability?: any } | null {
+  const buffs = player?.buffs ?? [];
+  const suppressJumpBar = options?.suppressJumpBar === true;
+
+  const hasBlockingCC = buffsHaveAnyEffect(buffs, ['CONTROL', 'KNOCKED_BACK', 'ATTACK_LOCK']);
+  const hasInterruptImmune = buffsHaveAnyEffect(buffs, ['INTERRUPT_IMMUNE', 'CONTROL_IMMUNE']);
+  if (hasBlockingCC && !hasInterruptImmune) {
+    return null;
+  }
+
+  if (player?.activeChannel) {
+    const channel = player.activeChannel;
+    if (suppressJumpBar && channel.cancelOnJump) {
+      return null;
+    }
+
+    const ability = abilitiesById?.[channel.abilityId];
+    const data: ChannelBarData = channel.forwardChannel === false
+      ? {
+          kind: 'reverse',
+          name: channel.abilityName,
+          appliedAt: channel.startedAt,
+          durationMs: Math.max(1, channel.durationMs),
+        }
+      : {
+          kind: 'forward',
+          name: channel.abilityName,
+          startedAt: channel.startedAt,
+          durationMs: Math.max(1, channel.durationMs),
+          cancelOnMove: !!channel.cancelOnMove,
+          cancelOnJump: !!channel.cancelOnJump,
+        };
+    return { data, abilityId: channel.abilityId, ability };
+  }
+
+  for (const buff of buffs) {
+    const ability = channelAbilityByBuffId.get(buff.buffId);
+    const channel = getRuntimeAbilityChannel(ability);
+    if (!ability || !channel || channel.source !== 'BUFF' || channel.buffId !== buff.buffId) {
+      continue;
+    }
+
+    if (suppressJumpBar && channel.cancelOnJump) {
+      return null;
+    }
+
+    const rawAppliedAt = Number((buff as any).appliedAt ?? 0);
+    const rawExpiresAt = Number((buff as any).expiresAt ?? 0);
+    const durationMs = rawExpiresAt > rawAppliedAt
+      ? rawExpiresAt - rawAppliedAt
+      : Math.max(1, channel.durationMs || 5_000);
+    const startedAt = rawAppliedAt > 0
+      ? rawAppliedAt
+      : rawExpiresAt > 0
+      ? rawExpiresAt - durationMs
+      : Date.now() - durationMs;
+    const tickIntervalMs = Number((buff as any).periodicMs ?? channel.tickIntervalMs ?? 0);
+    const name = ability.name ?? (buff as any).name ?? '运功';
+
+    const data: ChannelBarData = channel.mode === 'FORWARD'
+      ? {
+          kind: 'forward',
+          name,
+          startedAt,
+          durationMs,
+          cancelOnMove: channel.cancelOnMove,
+          cancelOnJump: channel.cancelOnJump,
+        }
+      : {
+          kind: 'reverse',
+          name,
+          appliedAt: startedAt,
+          durationMs,
+          ...(Number.isFinite(tickIntervalMs) && tickIntervalMs > 0 ? { tickIntervalMs } : {}),
+        };
+    return { data, abilityId: ability.id, ability };
+  }
+
+  return null;
 }
 
 function normalizePlanar(x: number, y: number): { x: number; y: number } | null {
@@ -736,6 +879,7 @@ interface AbilityInfo {
   id: string;        // instanceId (or abilityId fallback for common)
   abilityId: string;    // always the plain ability id (e.g. 'fuyao_zhishang')
   name: string;
+  channel?: RuntimeAbilityChannel;
   range?: number;
   minRange?: number;
   cooldown: number;
@@ -817,9 +961,9 @@ const COMMON_ABILITY_ORDER = [
 
 interface BattleArenaProps {
   me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
-  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing };
+  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
   /** All other players (opponents) — supports 1v1 and N-player modes */
-  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing }[];
+  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel }[];
   gameId: string;
   onCastAbility: (
     abilityInstanceId: string,
@@ -871,6 +1015,16 @@ export default function BattleArena({
   const playerRadius = mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : DEFAULT_PLAYER_RADIUS;
   const storedUnitScale = getStoredUnitScale(mode);
   const modePickups = useMemo(() => (mode === 'collision-test' ? [] : pickups), [mode, pickups]);
+  const channelAbilityByBuffId = useMemo(() => {
+    const next = new Map<number, any>();
+    for (const ability of Object.values(abilities)) {
+      const channel = getRuntimeAbilityChannel(ability);
+      if (channel?.source === 'BUFF' && typeof channel.buffId === 'number') {
+        next.set(channel.buffId, ability);
+      }
+    }
+    return next;
+  }, [abilities]);
   const mapObjectsRef = useRef(mapData.objects);
   const entitiesRef = useRef<TargetEntity[]>(entities ?? []);
   useEffect(() => {
@@ -1383,9 +1537,10 @@ export default function BattleArena({
   const lastObservedServerDashAtRef = useRef(0);
   const pendingGroundCastAbilityRef = useRef<string | null>(null);
   const mouseWorldPosRef = useRef<{ x: number; y: number; z?: number } | null>(null);
-  const oppScreenBoundsRef  = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
-  const meScreenBoundsRef   = useRef<{ cx: number; topY: number; baseY: number; rs: number } | null>(null);
-  const entityScreenBoundsRef = useRef<Record<string, { cx: number; topY: number; baseY: number; rs: number }>>({});
+  const oppScreenBoundsRef  = useRef<ScreenBounds | null>(null);
+  const meScreenBoundsRef   = useRef<ScreenBounds | null>(null);
+  const opponentScreenBoundsRef = useRef<Record<string, ScreenBounds>>({});
+  const entityScreenBoundsRef = useRef<Record<string, ScreenBounds>>({});
   const opponentIdsRef      = useRef<string[]>([]);
   const targetableThingRef  = useRef<Array<{ kind: 'player' | 'entity'; id: string; position: Position }>>([]);
   const opponentPositionsRef = useRef<Record<string, Position>>({});
@@ -1774,7 +1929,7 @@ export default function BattleArena({
   }, []);
 
   const tryQueueLocalJump = useCallback(() => {
-    if (jumpLockedRef.current) return;
+    if (jumpLockedRef.current || !!me?.activeChannel || hasLegacyChannelJumpLock(me?.buffs)) return;
     const maxJumps = getEffectiveMaxJumps();
     if (localJumpCountRef.current >= maxJumps) {
       jumpLocalRef.current = false;
@@ -1784,7 +1939,7 @@ export default function BattleArena({
     lastJumpInputAtRef.current = performance.now();
     jumpLocalRef.current = true;
     jumpSendRef.current = true;
-  }, [getEffectiveMaxJumps]);
+  }, [getEffectiveMaxJumps, me?.activeChannel, me?.buffs]);
 
   // Keep local movement-speed prediction aligned with backend movement.ts
   useEffect(() => {
@@ -1907,51 +2062,22 @@ export default function BattleArena({
     controlModeRef.current = mode;
   }, []);
 
-  // Channel bar: now uses CSS animation — no JS polling needed.
-  // Keep channelBuff computed so the bar mounts/unmounts correctly.
-  // Prefer activeChannel (pure channel system) over legacy buff-based channels.
-  // -- Forward channel (正读条): from player.activeChannel (e.g. 云飞玉皇)
-  // -- Reverse channel (倒读条): from buff buffId 1014/1017/2001/2003
-  //    (e.g. 风来吴山, 心诤, 笑醉狂, 千蝶吐瑞)
-  const channelBarData: ChannelBarData | null = (() => {
-    const locallyAirborne = localJumpCountRef.current > 0 || Math.abs(localVzRef.current) > 0.01;
-    // CC (stun/freeze/knockdown) cancels channels that have no INTERRUPT_IMMUNE protection
-    const hasBlockingCC = buffsHaveAnyEffect(me?.buffs, ['CONTROL', 'KNOCKED_BACK', 'ATTACK_LOCK']);
-    const hasInterruptImmune = buffsHaveAnyEffect(me?.buffs, ['INTERRUPT_IMMUNE', 'CONTROL_IMMUNE']);
-    if (hasBlockingCC && !hasInterruptImmune) return null;
-    if (me?.activeChannel) {
-      const ch = me.activeChannel;
-      // Hide immediately on local jump if this channel cancels on jump
-      if (locallyAirborne && ch.cancelOnJump) return null;
-      return {
-        kind: 'forward' as const,
-        name: ch.abilityName,
-        startedAt: ch.startedAt,
-        durationMs: ch.durationMs,
-        cancelOnMove: !!ch.cancelOnMove,
-        cancelOnJump: !!ch.cancelOnJump,
-      };
+  const channelBarResult = buildChannelBarResultForPlayer(
+    me,
+    channelAbilityByBuffId,
+    { suppressJumpBar: localJumpCountRef.current > 0 || Math.abs(localVzRef.current) > 0.01 },
+    abilities,
+  );
+  const channelBarData: ChannelBarData | null = channelBarResult ? channelBarResult.data : null;
+
+  const opponentChannelDataById = useMemo(() => {
+    const map = new Map<string, ChannelBarData>();
+    for (const opp of visibleOpponentsList) {
+      const result = buildChannelBarResultForPlayer(opp, channelAbilityByBuffId, undefined, abilities);
+      if (result) map.set(opp.userId, result.data);
     }
-    const buff = me?.buffs?.find((b: any) =>
-      b.buffId === 1014 || b.buffId === 1017 || b.buffId === 2001 || b.buffId === 2003 || b.buffId === 2712
-    );
-    if (buff) {
-      // Buffs 2001 (笑醉狂) and 2003 (千蝶吐瑞) cancel on jump — hide bar immediately
-      const cancelOnJump = (buff as any).buffId === 2001 || (buff as any).buffId === 2003;
-      if (locallyAirborne && cancelOnJump) return null;
-      const appliedAt: number = (buff as any).appliedAt ?? 0;
-      const expiresAt: number = (buff as any).expiresAt ?? 0;
-      const durationMs = expiresAt - appliedAt > 0 ? expiresAt - appliedAt : 5_000;
-      return {
-        kind: 'reverse' as const,
-        name: (buff as any).name ?? '运功',
-        appliedAt: appliedAt > 0 ? appliedAt : expiresAt - durationMs,
-        durationMs,
-        tickIntervalMs: (buff as any).periodicMs,
-      };
-    }
-    return null;
-  })();
+    return map;
+  }, [visibleOpponentsList, channelAbilityByBuffId, abilities]);
 
   const jumpRecordNextRef = useRef<JumpRecord | null>(null);
   const jumpLockedRef = useRef(false);
@@ -1960,7 +2086,7 @@ export default function BattleArena({
     const buffs = me?.buffs ?? [];
     const fullyLocked = buffsHaveAnyEffect(buffs, ['KNOCKED_BACK', 'CONTROL', 'ATTACK_LOCK']);
     const rooted = !fullyLocked && buffsHaveAnyEffect(buffs, ['ROOT']);
-    const locked = buffs.some((b: any) => b.buffId === 1014) || fullyLocked || rooted;
+    const jumpSuppressedByChannel = !!me?.activeChannel || hasLegacyChannelJumpLock(buffs);
     // Z_LOCK: full vertical lock (亢龙有悔). Pin vz=0 and skip Z integration.
     const zLocked = buffsHaveAnyEffect(buffs, ['Z_LOCK']);
     // JUMP_NERF: scales jump take-off velocity by sqrt(value). Use min across stacks.
@@ -2013,12 +2139,20 @@ export default function BattleArena({
       shiXinGuDirection,
       shiXinGuStandstill,
     };
-    jumpLockedRef.current = locked || zLocked || !!fearedSourceUserId || !!shiXinGuDirection || shiXinGuStandstill;
-    if (locked || zLocked || fearedSourceUserId || shiXinGuDirection || shiXinGuStandstill) {
+    const jumpLocked =
+      jumpSuppressedByChannel ||
+      fullyLocked ||
+      rooted ||
+      zLocked ||
+      !!fearedSourceUserId ||
+      !!shiXinGuDirection ||
+      shiXinGuStandstill;
+    jumpLockedRef.current = jumpLocked;
+    if (jumpLocked) {
       jumpLocalRef.current = false;
       jumpSendRef.current = false;
     }
-  }, [me?.buffs]);
+  }, [me?.activeChannel, me?.buffs]);
 
   // Poll height + consume any finished jump record every 50 ms
   useEffect(() => {
@@ -2053,6 +2187,17 @@ export default function BattleArena({
     oppChannelingRef.current = !!(hasFengLai || hasZhanWu);
     oppChannelRadiusRef.current = hasZhanWu ? 4 : 10;
   }, [opponent?.buffs]);
+
+  useEffect(() => {
+    const nextBounds: Record<string, ScreenBounds> = {};
+    for (const opp of visibleOpponentsList) {
+      const existing = opponentScreenBoundsRef.current[opp.userId];
+      if (existing) {
+        nextBounds[opp.userId] = existing;
+      }
+    }
+    opponentScreenBoundsRef.current = nextBounds;
+  }, [visibleOpponentsList]);
 
   // Keep selected target valid as opponent list changes (N-player support)
   useEffect(() => {
@@ -2747,6 +2892,7 @@ export default function BattleArena({
             id:          instanceId,
             abilityId:      instance.abilityId || instance.id || instanceId,
             name:        instance.name || instance.abilityId || instance.id || '?',
+            channel:     undefined,
             range:       undefined as number | undefined,
             minRange:    undefined as number | undefined,
             cooldown:    instance.cooldown || 0,
@@ -2778,6 +2924,7 @@ export default function BattleArena({
           id:          instanceId,
           abilityId:      ability.id,
           name:        ability.name,
+          channel:     getRuntimeAbilityChannel(ability),
           range:       effectiveRange,
           minRange:    ability.minRange,
           cooldown:    chargeDisplay.cooldown,
@@ -2830,6 +2977,7 @@ export default function BattleArena({
           id:          ability.id,
           abilityId:      ability.id,
           name:        ability.name,
+          channel:     getRuntimeAbilityChannel(ability),
           range:       effectiveRange,
           minRange:    ability.minRange,
           cooldown:    chargeDisplay.cooldown,
@@ -4483,6 +4631,7 @@ export default function BattleArena({
             maxHp={maxHp}
             meScreenBoundsRef={meScreenBoundsRef}
             oppScreenBoundsRef={oppScreenBoundsRef}
+            opponentScreenBoundsRef={opponentScreenBoundsRef}
             entityScreenBoundsRef={entityScreenBoundsRef}
             mode={mode}
             safeZone={safeZone}
@@ -4579,6 +4728,9 @@ export default function BattleArena({
           />
         </Canvas>
       </div>
+      {/* per-opponent floating channel overlay removed:
+         enemy channel bar is now rendered inside .enemyBossGroup
+         (below the boss HP bar, above the status bar). */}
       <div className={`${styles.hongMengBlackout} ${hongMengOverlayActive ? styles.hongMengOverlayVisible : ''}`} aria-hidden="true" />
       <div className={`${styles.hongMengSelfCanvas} ${hongMengOverlayActive ? styles.hongMengOverlayVisible : ''}`} aria-hidden="true">
         <Canvas
@@ -5146,6 +5298,25 @@ export default function BattleArena({
                   )}
                 </div>
               </div>
+              {/* Channel bar — yellow bar with name centered over the bar, no 段落.
+                 Shown for the selected target (enemy/self/entity-owner). Always
+                 mounted so success/interrupt + fade-out animations can play. */}
+              {(() => {
+                const channelTargetUserId = isSelf
+                  ? me?.userId
+                  : isEntityTarget
+                  ? entityOwner?.userId
+                  : selectedTarget?.userId;
+                if (!channelTargetUserId) return null;
+                const enemyChannelData = channelTargetUserId === me?.userId
+                  ? channelBarData
+                  : opponentChannelDataById.get(channelTargetUserId) ?? null;
+                return (
+                  <div className={styles.enemyBossChannelSlot}>
+                    <ChannelBarHost data={enemyChannelData} variant="enemy" />
+                  </div>
+                );
+              })()}
               {/* Buffs row — fixed-height wrapper so ability row never shifts up */}
               <div style={{ minHeight: 72, width: '100%' }}>
                 <StatusBar buffs={targetBuffs} debugLabel={isSelf ? 'me-target' : 'opp'} />
@@ -5793,8 +5964,9 @@ export default function BattleArena({
             </div>
           )}
 
-          {/* ── Channel bar (正读条 / 倒读条) ── */}
-          {channelBarData && <ChannelBar data={channelBarData} />}
+          {/* ── Channel bar (正读条 / 倒读条) ──
+             Always mounted so success/interrupt + fade-out animations can play. */}
+          <ChannelBarHost data={channelBarData} showTimer />
 
           {/* ── Top row: draft abilities (6 fixed slots) ── */}
           <div className={styles.hotbar}>

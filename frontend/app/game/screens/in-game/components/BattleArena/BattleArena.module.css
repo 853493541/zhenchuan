@@ -49,6 +49,21 @@
   height: 100%;
 }
 
+.enemyChannelOverlayLayer {
+  /* deprecated — channel bar now lives inside .enemyBossGroup */
+  display: none;
+}
+
+.enemyChannelOverlayItem {
+  display: none;
+}
+
+.enemyBossChannelSlot {
+  width: 100%;
+  margin-top: -2px;
+  pointer-events: none;
+}
+
 .hongMengBlackout {
   position: absolute;
   inset: 0;

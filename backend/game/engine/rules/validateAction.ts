@@ -139,6 +139,7 @@ export function validateCastAbility(
   playerIndex: number,
   abilityInstanceId: string,
   options?: {
+    ignoreActiveChannel?: boolean;
     pendingJump?: boolean;
     targetUserId?: string;
     entityTargetId?: string;
@@ -258,7 +259,7 @@ export function validateCastAbility(
   }
 
   /* ================= CHANNELING ================= */
-  if ((player as any).activeChannel) {
+  if (!options?.ignoreActiveChannel && (player as any).activeChannel) {
     throw new Error("ERR_CHANNELING");
   }
 

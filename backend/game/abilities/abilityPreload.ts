@@ -51,6 +51,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       name: ability.name,
       description: ability.description,
       type: ability.type,
+      channel: (ability as any).channel,
       gcd: !!(ability as any).gcd,
       target: ability.target,
       canTargetSelf: !!(ability as any).canTargetSelf,

@@ -14,12 +14,12 @@ import { GameLoop } from "../../engine/loop/GameLoop";
 import { pushEvent } from "../flow/events";
 import { diffState } from "../flow/stateDiff";
 import { applyOnPlayBuffEffects } from "../../engine/flow/play/onPlayEffects";
-import { breakShiFangXuanJiOnPlay } from "../../engine/flow/play/breakOnPlay";
+import { breakOnPlay } from "../../engine/flow/play/breakOnPlay";
 import { broadcastGameUpdate } from "../broadcast";
 import { globalTimer } from "../../../utils/timing";
 import { gameStateCache } from "../gameStateCache";
-import { addBuff } from "../../engine/effects/buffRuntime";
-import { applyDamageToTarget } from "../../engine/utils/health";
+import { addBuff, pushBuffExpired } from "../../engine/effects/buffRuntime";
+import { applyDamageToTarget, removeLinkedShield } from "../../engine/utils/health";
 import { resolveScheduledDamage } from "../../engine/utils/combatMath";
 import { getAbilityRangeBonusFromBuffs } from "../../engine/utils/abilityRange";
 
@@ -127,6 +127,54 @@ const BANG_DA_GOU_TOU_ABILITY_ID = "bang_da_gou_tou";
 const BANG_DA_GOU_TOU_XINCHU_ER_BUFF_ID = 1333;
 const BANG_DA_GOU_TOU_COOLDOWN_TICKS = 16 * 30;
 
+function clearChannelStartBuffs(
+  state: GameState,
+  player: { userId: string; buffs: any[] },
+  channel?: { abilityId?: string; startedBuffIds?: number[] }
+) {
+  const startedBuffIds = channel?.startedBuffIds ?? [];
+  if (startedBuffIds.length === 0) return false;
+
+  let removedAny = false;
+  const remainingBuffs: any[] = [];
+  for (const buff of player.buffs ?? []) {
+    const matchesStartedBuff =
+      startedBuffIds.includes(buff.buffId) &&
+      (buff.sourceAbilityId ?? channel?.abilityId) === channel?.abilityId;
+    if (!matchesStartedBuff) {
+      remainingBuffs.push(buff);
+      continue;
+    }
+
+    removeLinkedShield(player as any, buff as any);
+    pushBuffExpired(state, {
+      targetUserId: player.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+    });
+    removedAny = true;
+  }
+
+  if (removedAny) {
+    player.buffs = remainingBuffs;
+  }
+  return removedAny;
+}
+
+function cancelActiveChannel(
+  state: GameState,
+  player: { activeChannel?: any; buffs: any[]; userId: string }
+) {
+  const channel = player.activeChannel;
+  if (!channel) return false;
+  const removedBuffs = clearChannelStartBuffs(state, player, channel);
+  player.activeChannel = undefined;
+  return removedBuffs;
+}
+
 /* ================= PLAY CARD ================= */
 
 export async function playAbility(
@@ -174,6 +222,7 @@ async function playCastAbility(
   // Validate ability can be cast (cooldown, range, silence, grounded lock)
   const mapCtx = loop.getMapCtx();
   validateCastAbility(state, playerIndex, abilityInstanceId, {
+    ignoreActiveChannel: true,
     pendingJump: loop.hasPendingJump(playerIndex),
     targetUserId,
     entityTargetId,
@@ -228,6 +277,10 @@ async function playCastAbility(
 
   ensureChargeRuntime(played, ability);
 
+  if (player.activeChannel) {
+    cancelActiveChannel(state, player as any);
+  }
+
   let targetIndex = ability.target === 'SELF' ? playerIndex : (playerIndex === 0 ? 1 : 0);
   if (ability.target === "OPPONENT" && targetUserId) {
     const explicitTargetIdx = state.players.findIndex((p) => p.userId === targetUserId);
@@ -248,7 +301,7 @@ async function playCastAbility(
     (ability as any).applyBuffsOnChannelStart === true
   );
   if (isPureChannel) {
-    breakShiFangXuanJiOnPlay(player as any, ability as any);
+    breakOnPlay(player as any, ability as any);
     const channelRangeBonus = getAbilityRangeBonusFromBuffs(player.buffs);
     const channelCancelOnOutOfRange = typeof (ability as any).channelCancelOnOutOfRange === "number"
       ? (ability as any).channelCancelOnOutOfRange + channelRangeBonus

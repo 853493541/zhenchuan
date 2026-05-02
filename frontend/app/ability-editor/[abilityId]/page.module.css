@@ -175,6 +175,37 @@
   color: #1e1a14;
 }
 
+.channelSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.channelSummaryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid #e2daf1;
+  background: linear-gradient(180deg, #f8f5ff 0%, #f2ecff 100%);
+}
+
+.channelSummaryLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #73658c;
+}
+
+.channelSummaryValue {
+  font-size: 14px;
+  font-weight: 800;
+  color: #2f2342;
+  line-height: 1.35;
+}
+
 /* ── Description ─────────────────────────────────────────────────────────── */
 .descText {
   flex: 1;

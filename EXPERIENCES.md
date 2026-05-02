@@ -3,6 +3,109 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Channel bar polish round 2: blue border, instant fade, larger enemy text, success-green only on enemy (2026-05-02)
+
+**Problem**: Follow-ups on the channel-bar lifecycle: (1) the teal border wanted to be more blue; (2) both bars appeared to "wait" before disappearing — root cause turned out to be the interrupt path's 1s hold AND a tight 80ms success threshold that misclassified some buff-driven reverse channels as interrupts (clock skew between client `Date.now()` and the server-stamped `appliedAt`/`expiresAt`); (3) the enemy bar text was fully inside the 7px-tall track and hard to read; (4) the green completion flash was leaking onto the self bar.
+
+**Fix**:
+- Border tone shifted from `rgba(99, 230, 190, 0.5)` (青色 / teal) to `rgba(99, 170, 230, 0.5)` (blue-leaning 青色) on both `.channelBarTrack` and `.enemyChannelBarTrack`, with matching shadow.
+- Removed the 1s interrupt hold from `ChannelBarHost`. Both success and interrupt now fade immediately on data→null; the only remaining timer is the 0.5s fade unmount.
+- Bumped success detection threshold from 80ms to 300ms so reverse buff channels whose `appliedAt`/`expiresAt` come from server-stamped time still register as success when they expire naturally despite client/server clock skew.
+- Enlarged `.enemyChannelBarLabel` font-size from 8px → 10px (+25%, but visually the +20% the design asked for since 8px-on-7px-track was visually flush). Combined with `overflow: visible` on the wrapper, the text now extends slightly above and below the track and is far more legible.
+- Self HUD bar success/interrupt path: removed all phase visuals. On data→null we snapshot the current progress, freeze it via `progressOverride`, set `fading=true` in the same render, and let the bar fade away. No green, no orange, no snap. The enemy bar still gets the green-on-success / orange-on-interrupt visuals.
+- Added `fading`-aware `useNowMs` gating: the rAF clock is paused once a `progressOverride` is supplied so the bar does not keep ticking during the fade.
+
+**Lesson**: Visual feedback for a "channel ended" event must be local to the surface it belongs to — green-flash-on-success is a boss-bar idiom and should never touch the self HUD bar even when both surfaces share a component. Also: any "did this buff/channel finish naturally?" check that relies on client-side elapsed time vs. server-stamped duration MUST budget for clock skew (≥ a few hundred ms) — an 80ms threshold is too tight on real networks and will silently classify legitimate completions as interrupts. Lastly: a "perceived wait before fade" almost always traces back to either an unintended hold timer or a same-render setState where the prior committed DOM never had a chance to paint the start of the transition; pause the clock and freeze the progress so the only thing animating is opacity.
+
+## Channel bar polish: per-variant completion semantics, teal border, label centered over enemy bar (2026-05-01)
+
+**Problem**: Several follow-up issues with the channel bar lifecycle work: (1) the school-color fill was unwanted — bars should keep the original yellow/gold gradient; (2) borders were yellow on every variant — should always be teal/青色 at half opacity; (3) the opponent bar was not horizontally centered under the boss HP bar; (4) the opponent label sat above the bar instead of vertically centered over it; (5) the success animation held the green flash for 1s before fading — should fade immediately over 0.5s; (6) self-bar success showed the green flash and a snap, but the green flash is supposed to be a boss-bar visual only — self bar should just snap (or stay) at 100% then fade.
+
+**Fix**:
+- Removed the school-color path entirely from `BattleArena.tsx` (deleted `CHANNEL_SCHOOL_COLOR` and `getChannelColorForAbility`) and dropped the `color` prop from `ChannelBarHost`. Default fill is now the original yellow/gold gradient via `.channelBarFill` CSS.
+- Replaced the yellow border on `.channelBarTrack` and `.enemyChannelBarTrack` with `rgba(99, 230, 190, 0.5)` (青色 half-transparent), and matched the box-shadow to the new tone.
+- Enemy variant `.enemyChannelBarWrap` now uses `margin: 0 auto; align-self: center; display: block` so the 70%-wide bar is reliably centered under the boss HP bar group.
+- Enemy label is now `position: absolute; left:0; right:0; top:50%; transform: translateY(-50%)`, vertically centered over the track instead of sitting above with a negative margin.
+- Reworked `ChannelBarHost` completion behavior:
+  - **Success**: no hold — sets `phase='success'` and `fading=true` in the same render so the 0.5s fade starts immediately. Enemy variant additionally flips fill to green (`#43d977`); HUD variant keeps the yellow/gold fill (no color change) but still snaps to 100% so reverse channels visually fill on completion (matches "instantly fill the bar like at the moment it starts" for self reverse, and is a no-op for self forward which already finishes at 100%).
+  - **Interrupt**: unchanged — orange freeze + darker orange trailing, hold 1s, then 0.5s fade.
+- Switched `ChannelBar` color override mechanism: replaced `color` prop with explicit `fillColorOverride`, `progressOverride`, `trailingColor` props. Default active fill comes from CSS gradient when no override is provided.
+
+**Lesson**: Different surfaces want different completion visuals even when they share a component — the boss HP bar is a "raid feedback" surface (green flash on success, orange on interrupt), while the self HUD bar is a "did my own action land" surface (snap to full + fade is enough, no extra color noise). Encode that as `variant`-aware behavior in the host, not as visual props at the call site. Also: when the design wants "instant" feedback, do the state change and the fade in the same render; do not schedule a 1-tick gap or use a hold delay.
+
+## Channel bar lifecycle: success/interrupt phases, fade-out, school-colored fill, timer label (2026-05-01)
+
+**Problem**: The channel bar previously rendered only the active channel and disappeared instantly on completion or cancel. There was no visual feedback for "the channel finished cleanly" vs "the channel was interrupted", no time-remaining readout on the self bar, and the fill color was always the same yellow regardless of the ability's school. The opponent bar also rendered the name centered inside the bar instead of above it like the original reference.
+
+**Fix**:
+- Added a `ChannelBarHost` wrapper that owns the channel-bar lifecycle. It tracks the previous active channel via a ref, and when the active channel disappears it transitions to either `success` (if elapsed ≥ duration − 80ms) or `interrupted`, holds for 1s, then fades the bar opacity to 0 over 0.5s before unmounting.
+- During `success` the bar is forced to 100% with a green fill (`#43d977`). During `interrupted` the bar is frozen at the snapshot progress with an orange fill (`#f08a2a`) and the unfilled remainder gets a darker orange shadow (`#a85a18` @ 55% opacity) — matches the reference picture for a stopped channel under the boss HP bar.
+- Self channel bar now appends `(elapsed.xx/total.xx)` to the ability name when `showTimer` is enabled.
+- Added a top-level `CHANNEL_SCHOOL_COLOR` map and `getChannelColorForAbility()` helper. The active-fill color now comes from the originating ability's `tags.school`; abilities without a school fall back to a pale green-blue (`#8de5c4`) matching the reference. The opponent bar still defaults to yellow.
+- Reworked `buildChannelBarResultForPlayer()` to also return the originating ability so the color can be derived at the call site.
+- Both the self bar (in the hotbar stack) and the per-target enemy bar (inside `.enemyBossGroup`) are now always mounted so the host can run its post-channel animations even after the channel ends.
+- Restyled the enemy variant: width 70%, height 7px (was 18px), label sits above with negative bottom margin so the label slightly overlaps the bar (matches the original reference). Removed the deprecated "label inside the bar" path.
+
+**Lesson**: Channel feedback is part of the channel — completing or being interrupted is a meaningful gameplay event and the bar should outlive the underlying state by a short hold + fade window. The cleanest way to do this is keep the host component mounted across the active→ended transition and snapshot the previous data plus elapsed time at the moment the channel disappears. Also: tying visual color to gameplay metadata (school) is best done with a tiny top-level lookup helper that operates on the preloaded card payload, not by reaching into per-component state.
+
+## Channel bar visuals: enemy is a yellow bar with name inside, forward channels show no middle 段落 (2026-05-01)
+
+**Problem**: The enemy channel bar was a small floating overlay anchored above each opponent's head with a separate name pill, which did not match the design (a wide yellow bar with the name centered inside, sitting under the boss HP bar). Forward channels also rendered 1-second tick segments, but a forward channel's effect always lands at the very end, so middle segments are misleading. Reverse channel ticks were correct.
+
+**Fix**:
+- Reworked the `enemy` variant in `ChannelBar.tsx` to render a single yellow track with the ability name absolutely centered inside (no top label, no tick segments, regardless of forward/reverse).
+- Removed the 1-second forward tick segments from `ForwardBar` for the regular HUD variant. Reverse bars still render `tickIntervalMs`-based 段落 marking the next periodic effect (heal/damage).
+- Moved the enemy channel bar from the per-opponent floating overlay (`enemyChannelOverlays` + screen-bounds positioning) to a fixed slot inside `.enemyBossGroup`, immediately under the boss HP bar and above the status bar. The bar now follows the selected target (self / enemy / entity owner) and reuses `channelBarData` / `opponentChannelDataById`.
+- Marked `.enemyChannelOverlayLayer` and `.enemyChannelOverlayItem` as `display: none` (kept as deprecated shims so any stray references stay valid until removed).
+
+**Lesson**: When the design anchors an enemy UI element to a specific HUD landmark (the boss HP bar), prefer rendering it as a child of that landmark's container instead of recomputing screen-space coords from world-space. Also: forward and reverse channels have fundamentally different tick semantics — forward = single end-of-channel event, reverse = periodic effects — so a shared "always show ticks at 1s" path is wrong for forward.
+
+## Channel detail pages should show forward/reverse type first, then the concrete maintain/timing answers (2026-05-01)
+
+**Problem**: The ability detail page already exposed `channelInfo`, but it presented channel settings as generic chips and numeric rows. That made it hard to answer the basic gameplay questions the editor user actually needs first: is this a normal channel or reverse channel, does it keep while moving, does it keep while airborne, how long is the total channel, and for reverse channels what is the tick interval.
+
+**Fix**:
+- Kept the existing editable channel controls, but added a read-first summary block at the top of the detail-page channel section.
+- The summary now shows the channel type (`正读条 / Channeling` or `逆读条 / Reverse Channeling`), whether it maintains while moving, whether it maintains while airborne, the total channel duration, and the reverse-channel tick interval when one exists.
+- Left the lower editable chip/numeric controls in place so the page answers the gameplay question first and the editing workflow second.
+
+**Lesson**: For editor detail pages, the first UI layer should answer the player's or designer's semantic question directly. Raw property chips are fine as controls, but they are not a good primary representation of gameplay meaning.
+
+## Enemy channel UI needs normalized runtime channel metadata, and pure channels cannot be inferred from buffs[] alone (2026-05-01)
+
+**Problem**: The runtime/frontend path had no canonical `ability.channel` model, so enemy channel UI had no reliable way to show both progress and spell name. At the same time, the existing editor-side channel accessor treated any `type: "CHANNEL"` ability with `buffs[]` as a buff-backed channel, which is wrong for pure channels that merely apply buffs on channel start or completion.
+
+**Fix**:
+- Added normalized runtime `ability.channel` metadata (`source`, `mode`, `durationMs`, cancel flags, optional `buffId` / `tickIntervalMs`) during `buildResolvedAbilities()`, then passed it through `/preload` so BattleArena can consume one channel model for both self and enemies.
+- Changed the channel accessor classification so `applyBuffsOnComplete` / `applyBuffsOnChannelStart` abilities stay on the pure `activeChannel` path even when they also declare `buffs[]` for later application.
+- Reworked BattleArena channel UI to derive bars from either `activeChannel` or a buff matched through normalized `ability.channel`, which also fixes reverse pure-channel bars that were previously rendered as forward.
+- Added per-opponent screen-bound tracking in `ArenaScene` and rendered compact enemy channel bars above each visible opponent with the channel progress and ability name.
+
+**Lesson**: In this codebase, `type: "CHANNEL"` and `buffs[]` are not enough to tell you how a channel runs. Normalize the channel runtime shape once, then let UI and tooling consume that canonical model instead of re-deriving channel behavior from partial fields.
+
+## Channeling should suppress jump pulses before movement consumes them, not cancel after jumpCount changes (2026-05-01)
+
+**Problem**: Several channel states could already exist in mid-air or continue while airborne, but pressing Space during the channel still reached the normal jump path. That meant a channeling player could trigger fresh jump input, and the backend / frontend could both spend air-jump budget even though the intended rule was "while channeling, Space does nothing."
+
+**Fix**:
+- Treated channel jump suppression as an input rule, not a post-jump cleanup rule.
+- Backend `GameLoop.ts` now suppresses jump for both `activeChannel` and the legacy runtime channel buffs (`1014 / 1017 / 2001 / 2003 / 2712`) before `applyMovement()` sees the pulse, and `setPlayerInput()` also strips the jump bit immediately so it does not linger as pending input.
+- Frontend `BattleArena.tsx` now uses the same channel-state rule to block `tryQueueLocalJump()` and clear any queued local jump when a channel state arrives, so prediction stays aligned and jump counts are not locally consumed either.
+
+**Lesson**: If a gameplay rule is "this input is disabled in state X," enforce it at the input seam. Letting the pulse through and trying to repair state later is how jump counts, airborne prediction, and cancel-on-jump side effects drift out of sync.
+
+## Replacement casts must validate through the new ability first, then cancel activeChannel and still run breakOnPlay for pure-channel starts (2026-05-01)
+
+**Problem**: 读条 replacement casting had split behavior. If the player already had `player.activeChannel`, `validateCastAbility()` threw `ERR_CHANNELING` before the new cast could take over. Separately, pure channels started directly in `playService.ts` and only ran the narrow 十方玄机 helper, so starting a new pure channel did not necessarily break existing buff-backed channels even when those channel buffs were authored with `breakOnPlay: true`.
+
+**Fix**:
+- Audited every `type: "CHANNEL"` ability in `abilities.ts` and confirmed the system is mixed: some channels are pure `activeChannel`, some are reverse or buff-backed, and `cards.ts` still has legacy duplicates for 风来吴山 / 心诤.
+- Added an `ignoreActiveChannel` validation option for the real-time cast path only, so the new cast can pass normal cooldown / silence / range / LOS checks without auto-failing on the old channel.
+- After the new cast validates, `playService.ts` now cancels the existing `activeChannel` cleanly before continuing, including cleanup of `startedBuffIds`, linked shields, and `BUFF_EXPIRED` events.
+- Pure-channel start now uses `breakOnPlay(...)` instead of only the 十方玄机-specific helper, so buff-backed channels with `breakOnPlay: true` also end correctly when a new pure channel begins.
+
+**Lesson**: In this repo, "读条" is not one runtime. Replacement-cast behavior must cover both control surfaces: `activeChannel` and authored channel buffs. The safe order is: validate the new cast first, then cancel the old pure channel, and still run the standard `breakOnPlay()` path so reverse/buff channels keep the same break semantics.
+
 ## Auto-derived editor lists should treat default metadata and manual decisions as separate buckets (2026-05-01)
 
 **Problem**: 琴音共鸣 should automatically include every non-hidden 属性气劲 each time the tab is opened, so newly added attribute buffs reappear without manual maintenance. The remaining non-attribute buffs are the only ones that should need a manual decision. The first UI pass incorrectly let the active 可偷取 list write an explicit exclude state, which conflicted with the rule that attribute buffs should always stay in the stealable list.

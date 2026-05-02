@@ -157,6 +157,19 @@ interface ChannelAccessor {
   getIntervalMs: (ability: AbilityWithDescription) => number | null;
 }
 
+function isPureChannelAbility(ability: AbilityWithDescription) {
+  if (ability.type !== "CHANNEL") {
+    return false;
+  }
+
+  return (
+    !Array.isArray(ability.buffs) ||
+    ability.buffs.length === 0 ||
+    (ability as any).applyBuffsOnComplete === true ||
+    (ability as any).applyBuffsOnChannelStart === true
+  );
+}
+
 const OVERRIDE_FILE_VERSION = 1;
 const LEGACY_GCD_PROPERTY_ID = "gcd";
 const MS_PER_GAME_TICK = 1000 / 30;
@@ -336,7 +349,7 @@ function getChannelAccessor(ability: AbilityWithDescription): ChannelAccessor | 
     return null;
   }
 
-  if (Array.isArray(ability.buffs) && ability.buffs.length > 0) {
+  if (!isPureChannelAbility(ability) && Array.isArray(ability.buffs) && ability.buffs.length > 0) {
     const buffIndex = 0;
     return {
       kind: "buff",
@@ -406,6 +419,29 @@ function getChannelAccessor(ability: AbilityWithDescription): ChannelAccessor | 
       throw new Error("ERR_INVALID_ABILITY_NUMERIC_FIELD");
     },
     getIntervalMs: () => null,
+  };
+}
+
+function buildRuntimeChannelInfo(ability: AbilityWithDescription): Ability["channel"] | undefined {
+  const channelAccessor = getChannelAccessor(ability);
+  if (!channelAccessor) {
+    return undefined;
+  }
+
+  const tickIntervalMs = channelAccessor.getIntervalMs(ability);
+  const buffId =
+    channelAccessor.kind === "buff" && Array.isArray(ability.buffs) && ability.buffs.length > 0
+      ? ability.buffs[0]?.buffId
+      : undefined;
+
+  return {
+    source: channelAccessor.kind === "buff" ? "BUFF" : "ACTIVE",
+    mode: channelAccessor.getMode(ability),
+    durationMs: channelAccessor.getDurationMs(ability),
+    cancelOnMove: channelAccessor.getCancelOnMove(ability),
+    cancelOnJump: channelAccessor.getCancelOnJump(ability),
+    ...(typeof tickIntervalMs === "number" && tickIntervalMs > 0 ? { tickIntervalMs } : {}),
+    ...(typeof buffId === "number" ? { buffId } : {}),
   };
 }
 
@@ -1052,6 +1088,13 @@ export function buildResolvedAbilities(baseAbilities: AbilityRecord, overrides: 
       (nextAbility as any).dunLiWhitelisted = true;
     } else if (abilityOverrides && "dunLiWhitelisted" in abilityOverrides && !abilityOverrides.dunLiWhitelisted) {
       (nextAbility as any).dunLiWhitelisted = false;
+    }
+
+    const runtimeChannelInfo = buildRuntimeChannelInfo(nextAbility);
+    if (runtimeChannelInfo) {
+      nextAbility.channel = runtimeChannelInfo;
+    } else {
+      delete nextAbility.channel;
     }
 
     resolvedAbilities[abilityId] = nextAbility;
