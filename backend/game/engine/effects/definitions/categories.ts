@@ -23,7 +23,6 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DASH_TURN_LOCK: "BUFF",
   DASH_TURN_OVERRIDE: "BUFF",
   DISPLACEMENT: "BUFF",
-  INTERRUPT_IMMUNE: "BUFF",
   ROOT_SLOW_IMMUNE: "BUFF",
   DODGE: "BUFF",
   PERIODIC_HEAL: "BUFF",
@@ -172,6 +171,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DOU_ZHUAN_XING_YI: "ABILITY",
   SHOU_QUE_SHI: "ABILITY",
   QIN_YIN_GONG_MING: "ABILITY",
+  FEAR_IMMUNE: "BUFF",
   FEARED: "DEBUFF",
   SHI_XIN_GU: "DEBUFF",
   SHI_XIN_MARK: "DEBUFF",
@@ -185,6 +185,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   APPLY_RECORDED_CONTROL_ON_ATTACK: "BUFF",
   YOU_FENG_PIAO_ZONG: "ABILITY",
   RU_YI_FA: "ABILITY",
+  XIANG_JI_BI_LUO: "ABILITY",
 };
 
 export function getEffectCategory(type: EffectType): string {

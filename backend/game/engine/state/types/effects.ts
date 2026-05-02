@@ -21,13 +21,13 @@ export type EffectType =
   | "SILENCE"
   | "LOCKOUT_IMMUNE"
   | "SILENCE_IMMUNE"
+  | "FEAR_IMMUNE"
   | "QINGGONG_SEAL"
   | "KNOCKBACK_IMMUNE"
   | "CONTROL_IMMUNE"
   | "DASH_TURN_LOCK"
   | "DASH_TURN_OVERRIDE"
   | "DISPLACEMENT"
-  | "INTERRUPT_IMMUNE"
   | "ROOT_SLOW_IMMUNE"
   | "DODGE"
   | "DELAYED_DAMAGE"
@@ -188,7 +188,9 @@ export type EffectType =
   | "APPLY_RECORDED_CONTROL_ON_ATTACK"
   // 游风飘踪 / 如意法 custom cleanse-and-control handlers
   | "YOU_FENG_PIAO_ZONG"
-  | "RU_YI_FA";
+  | "RU_YI_FA"
+  // 翔极碧落: interrupt the target's channel and apply silence if successful
+  | "XIANG_JI_BI_LUO";
 
 /**
  * Immediate ability effects

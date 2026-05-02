@@ -90,6 +90,8 @@ interface PlayerInfo {
   hand?: any[];
 }
 
+type ScreenBounds = { cx: number; topY: number; baseY: number; rs: number };
+
 interface ArenaSceneProps {
   me: PlayerInfo;
   /** All non-me players, including hidden ones, for entity owner-name lookup. */
@@ -157,9 +159,10 @@ interface ArenaSceneProps {
   }) => void;
   meFacingRef: MutableRefObject<{ x: number; y: number }>;
   maxHp: number;
-  meScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
-  oppScreenBoundsRef?: MutableRefObject<{ cx: number; topY: number; baseY: number; rs: number } | null>;
-  entityScreenBoundsRef?: MutableRefObject<Record<string, { cx: number; topY: number; baseY: number; rs: number }>>;
+  meScreenBoundsRef?: MutableRefObject<ScreenBounds | null>;
+  oppScreenBoundsRef?: MutableRefObject<ScreenBounds | null>;
+  opponentScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
+  entityScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
   mode?: string;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
   groundZones?: GroundZone[];
@@ -425,6 +428,7 @@ export default function ArenaScene({
   maxHp,
   meScreenBoundsRef,
   oppScreenBoundsRef,
+  opponentScreenBoundsRef,
   entityScreenBoundsRef,
   mode,
   safeZone,
@@ -632,8 +636,12 @@ export default function ArenaScene({
         const isChongYinYang = zone.abilityId === 'chong_yin_yang';
         const isLingTaiXu = zone.abilityId === 'ling_tai_xu';
         const isTunRiYue = zone.abilityId === 'tun_ri_yue';
+        const isXiBingYu = zone.abilityId === 'xi_bing_yu';
         const isOwn = zone.ownerUserId === me.userId;
-        const color = isBaizuMarker
+        const isXiBingYuTarget = zone.pickupTargetUserId === me.userId;
+        const color = isXiBingYu
+          ? (isXiBingYuTarget ? '#4488ff' : '#ff3333')
+          : isBaizuMarker
           ? (isOwn ? '#b06cff' : '#ff3333')
           : (isOwn ? '#4488ff' : '#ff3333');
         const baseLabel = isBaizuMarker
@@ -658,6 +666,8 @@ export default function ArenaScene({
             worldZ={getZoneVisualZ(zone.x, zone.y, zone.z ?? 0)}
             radius={zone.radius}
             color={color}
+            ringThickness={isXiBingYu ? 0.1 : undefined}
+            labelSize={isXiBingYu ? 0.34 : undefined}
             labelColor={color}
             label={label}
             worldHalfX={worldHalfX}
@@ -794,7 +804,18 @@ export default function ArenaScene({
               username={opp.username ?? opp.userId}
               distance={dist}
               onSelect={() => onSelectTarget?.(opp.userId)}
-              onScreenBounds={i === 0 && oppScreenBoundsRef ? (b) => { oppScreenBoundsRef.current = b; } : undefined}
+              onScreenBounds={
+                i === 0 || opponentScreenBoundsRef
+                  ? (bounds) => {
+                      if (i === 0 && oppScreenBoundsRef) {
+                        oppScreenBoundsRef.current = bounds;
+                      }
+                      if (opponentScreenBoundsRef) {
+                        opponentScreenBoundsRef.current[opp.userId] = bounds;
+                      }
+                    }
+                  : undefined
+              }
               worldHalfX={worldHalfX}
               worldHalfY={worldHalfY}
               isStealthed={hasSanliuXiaBuff(opp.buffs)}

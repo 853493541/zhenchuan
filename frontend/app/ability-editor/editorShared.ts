@@ -146,9 +146,9 @@ export type BuffAttribute = "未选择" | "无" | "阴性" | "阳性" | "毒性"
 
 export const BUFF_ATTRIBUTES: BuffAttribute[] = ["未选择", "无", "阴性", "阳性", "毒性", "外功", "持续伤害", "混元", "蛊", "点穴"];
 
-export type BuffPropertyType = "减伤" | "无敌" | "闪避" | "外功闪避";
+export type BuffPropertyType = "减伤" | "无敌" | "闪避" | "外功闪避" | "沉默免疫" | "恐惧免疫";
 
-export const BUFF_PROPERTY_TYPES: BuffPropertyType[] = ["减伤", "无敌", "闪避", "外功闪避"];
+export const BUFF_PROPERTY_TYPES: BuffPropertyType[] = ["减伤", "无敌", "闪避", "外功闪避", "沉默免疫", "恐惧免疫"];
 
 export interface BuffProperty {
   type: BuffPropertyType;
@@ -190,6 +190,23 @@ export type QinYinGongMingEntry = BuffEditorEntry & {
 export type QinYinGongMingSnapshot = {
   updatedAt: string | null;
   buffs: QinYinGongMingEntry[];
+};
+
+export type NoWeaponRequiredEntry = {
+  id: string;
+  name: string;
+  description: string;
+  type: AbilityEditorAbility["type"];
+  target: AbilityEditorAbility["target"];
+  baseNoWeaponRequired: boolean;
+  manualNoWeaponRequired: boolean;
+  manuallyExcluded: boolean;
+  noWeaponRequired: boolean;
+};
+
+export type NoWeaponRequiredSnapshot = {
+  updatedAt: string | null;
+  abilities: NoWeaponRequiredEntry[];
 };
 
 export function getBuffSubtitle(entry: Pick<BuffEditorEntry, "category" | "attribute">): string {

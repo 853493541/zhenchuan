@@ -30,6 +30,8 @@ export type BuffCategory = "BUFF" | "DEBUFF";
 export type BuffEffect = {
   type: string;
   value?: number;
+  abilityIds?: string[];
+  buffIds?: number[];
   chance?: number;
   repeatTurns?: number;
   durationTurns?: number;
@@ -88,6 +90,7 @@ export interface ActiveChannel {
   cancelOnJump?: boolean;
   cancelOnOutOfRange?: number;
   forwardChannel?: boolean;
+  lockMovement?: boolean;
   effects: Array<{ type: string; value?: number; range?: number; threshold?: number }>;
   cooldownTicks: number;
 }
@@ -103,6 +106,8 @@ export interface PlayerState {
   maxHp?: number;
   shield?: number;
   hand: AbilityInstance[];
+  specialAbilityStates?: Record<string, AbilityInstance>;
+  globalGcdTicks?: number;
   buffs: ActiveBuff[];
   position?: { x: number; y: number; z?: number };
   velocity?: { vx: number; vy: number; vz?: number };
@@ -181,6 +186,7 @@ export interface GroundZone {
   abilityId?: string;
   abilityName?: string;
   maxTargets?: number;
+  pickupTargetUserId?: string;
 }
 
 export interface TargetEntity {

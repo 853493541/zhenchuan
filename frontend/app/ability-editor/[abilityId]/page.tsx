@@ -38,6 +38,25 @@ function isNonChannelProperty(property: AbilityEditorPropertyState) {
   return property.group !== "读条";
 }
 
+function findChannelProperty(channelInfo: AbilityEditorChannelInfo | null, propertyId: string) {
+  return channelInfo?.properties.find((property) => property.id === propertyId) ?? null;
+}
+
+function findChannelDerivedStat(channelInfo: AbilityEditorChannelInfo | null, statId: string) {
+  return channelInfo?.derivedStats.find((stat) => stat.id === statId) ?? null;
+}
+
+function getChannelModeLabel(channelInfo: AbilityEditorChannelInfo | null) {
+  if (!channelInfo) return "";
+  return channelInfo.mode === "REVERSE"
+    ? "逆读条 / Reverse Channeling"
+    : "正读条 / Channeling";
+}
+
+function formatChannelBoolean(value: boolean) {
+  return value ? "是" : "否";
+}
+
 export default function AbilityDetailPage() {
   const params = useParams<{ abilityId: string }>();
   const abilityId = Array.isArray(params.abilityId) ? params.abilityId[0] : params.abilityId;
@@ -76,6 +95,13 @@ export default function AbilityDetailPage() {
   const channelInfo: AbilityEditorChannelInfo | null = ability?.channelInfo ?? null;
   const activeChannelProperties = channelInfo?.properties.filter((p) => p.enabled) ?? [];
   const availableChannelProperties = channelInfo?.properties.filter((p) => !p.enabled) ?? [];
+  const channelCanMove = findChannelProperty(channelInfo, "channelCanMove")?.enabled === true;
+  const channelCanJump = findChannelProperty(channelInfo, "channelCanJump")?.enabled === true;
+  const channelDurationStat = findChannelDerivedStat(channelInfo, "channel.durationSeconds");
+  const channelTickIntervalStat = findChannelDerivedStat(channelInfo, "channel.intervalMs");
+  const channelExtraStats = (channelInfo?.derivedStats ?? []).filter(
+    (stat) => stat.id !== "channel.durationSeconds" && stat.id !== "channel.intervalMs"
+  );
 
   const getDraftKey = (fieldId: string) => `${abilityId}::${fieldId}`;
 
@@ -383,10 +409,35 @@ export default function AbilityDetailPage() {
         <section className={styles.detailCard}>
           <h2 className={styles.detailCardTitle}>读条设置</h2>
 
+          <div className={styles.channelSummaryGrid}>
+            <div className={styles.channelSummaryCard}>
+              <span className={styles.channelSummaryLabel}>读条类型</span>
+              <strong className={styles.channelSummaryValue}>{getChannelModeLabel(channelInfo)}</strong>
+            </div>
+            <div className={styles.channelSummaryCard}>
+              <span className={styles.channelSummaryLabel}>移动时保持</span>
+              <strong className={styles.channelSummaryValue}>{formatChannelBoolean(channelCanMove)}</strong>
+            </div>
+            <div className={styles.channelSummaryCard}>
+              <span className={styles.channelSummaryLabel}>腾空时保持</span>
+              <strong className={styles.channelSummaryValue}>{formatChannelBoolean(channelCanJump)}</strong>
+            </div>
+            <div className={styles.channelSummaryCard}>
+              <span className={styles.channelSummaryLabel}>总读条时间</span>
+              <strong className={styles.channelSummaryValue}>{channelDurationStat?.value ?? "--"}</strong>
+            </div>
+            {channelInfo.mode === "REVERSE" && (
+              <div className={styles.channelSummaryCard}>
+                <span className={styles.channelSummaryLabel}>每跳间隔</span>
+                <strong className={styles.channelSummaryValue}>{channelTickIntervalStat?.value ?? "无"}</strong>
+              </div>
+            )}
+          </div>
+
           {/* Channel derived stats */}
-          {channelInfo.derivedStats.length > 0 && (
+          {channelExtraStats.length > 0 && (
             <div className={styles.statsRow} style={{ marginBottom: 16 }}>
-              {channelInfo.derivedStats.map((stat) => (
+              {channelExtraStats.map((stat) => (
                 <div key={stat.id} className={styles.statPill}>
                   <span className={styles.statLabel}>{stat.label}</span>
                   <strong className={styles.statValue}>{stat.value}</strong>

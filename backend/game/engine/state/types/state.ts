@@ -53,6 +53,8 @@ export interface ActiveChannel {
   cooldownTicks: number;
   /** Buffs applied at channel start that should be removed when the channel ends or is canceled. */
   startedBuffIds?: number[];
+  /** If false, this channel cannot be interrupted by interrupt abilities. */
+  interruptible?: boolean;
 }
 
 export interface PlayerState {

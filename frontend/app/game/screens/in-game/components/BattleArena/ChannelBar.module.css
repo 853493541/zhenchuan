@@ -1,4 +1,5 @@
-/* ---- Channel bar (倒读条 / 正读条 — reverse / forward channeling bar) ---- */
+/* ---- Channel bar (倒读条 / 正读条 — reverse / forward channeling bar) ----
+   Border is always 青色 (teal) at half opacity for both HUD and enemy variants. */
 
 .channelBarWrap {
   width: 50%;
@@ -14,13 +15,13 @@
   width: 100%;
   height: 14px;
   background: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(220, 170, 30, 0.6);
+  border: 1px solid rgba(99, 170, 230, 0.5); /* blue-leaning 青色, half-transparent */
   border-radius: 3px;
   overflow: hidden;
-  box-shadow: 0 0 6px rgba(220, 170, 30, 0.25);
+  box-shadow: 0 0 6px rgba(99, 170, 230, 0.18);
 }
 
-/* ── 倒读条: bar drains 100 → 0% over the channel duration ── */
+/* Default fill — yellow / gold gradient. Color overrides come via inline style. */
 .channelBarFill {
   position: absolute;
   top: 0;
@@ -29,17 +30,7 @@
   background: linear-gradient(90deg, #c8960c, #f0c030, #f5e080);
   border-radius: 2px 0 0 2px;
   will-change: width;
-}
-
-/* ── 正读条: bar fills 0 → 100% as the channel charges ── */
-.channelBarFillForward {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, #c8960c, #f0c030, #f5e080);
-  border-radius: 2px 0 0 2px;
-  will-change: width;
+  z-index: 2;
 }
 
 /* Tick marks — vertical dividers showing periodic intervals */
@@ -49,7 +40,7 @@
   bottom: 2px;
   width: 1px;
   background: rgba(255, 255, 255, 0.45);
-  z-index: 2;
+  z-index: 3;
   transform: translateX(-50%);
 }
 
@@ -63,4 +54,81 @@
   pointer-events: none;
   line-height: 1.2;
   margin-bottom: 1px;
+}
+
+/* ============================================================
+   Enemy variant (rendered under the boss HP bar):
+   - 70% width, centered horizontally under the boss HP bar
+   - thin track (~half height of HUD bar)
+   - label is absolutely positioned and vertically centered
+     over the track (so the text overlays the bar centered).
+   ============================================================ */
+.enemyChannelBarWrap {
+  width: 70%;
+  min-width: 0;
+  margin: 0 auto;
+  align-self: center;
+  display: block;
+  position: relative;
+  gap: 0;
+}
+
+.enemyChannelBarTrack {
+  height: 7px;
+  border-radius: 3px;
+  background: rgba(8, 12, 20, 0.78);
+  border-color: rgba(99, 170, 230, 0.5); /* blue-leaning 青色, half-transparent */
+  box-shadow: 0 0 6px rgba(99, 170, 230, 0.18);
+}
+
+.enemyChannelBarTick {
+  display: none;
+}
+
+.enemyChannelBarLabel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  /* +20% over previous 8px so the text slightly overflows the 7px-tall bar
+     top & bottom — makes it readable per the design. */
+  font-size: 10px;
+  font-weight: 700;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  letter-spacing: 0.4px;
+  color: #fff3d0;
+  text-shadow:
+    1px 1px 0 #000, -1px -1px 0 #000,
+    1px -1px 0 #000, -1px 1px 0 #000;
+  line-height: 1;
+  margin: 0;
+  z-index: 5;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+/* Small shield rendered to the left of an enemy channel bar when the
+   channel is uninterruptible (不可被打断). Sits just outside the wrap. */
+.uninterruptibleShield {
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 6;
+  filter: drop-shadow(0 0 2px rgba(99, 170, 230, 0.7));
+}
+
+.uninterruptibleShield svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }

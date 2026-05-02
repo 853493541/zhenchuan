@@ -51,6 +51,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       name: ability.name,
       description: ability.description,
       type: ability.type,
+      channel: (ability as any).channel,
       gcd: !!(ability as any).gcd,
       target: ability.target,
       canTargetSelf: !!(ability as any).canTargetSelf,
@@ -545,7 +546,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     effects: [
       { type: "CONTROL_IMMUNE" },
       { type: "KNOCKBACK_IMMUNE" },
-      { type: "INTERRUPT_IMMUNE" },
+      { type: "SILENCE_IMMUNE" },
       { type: "PROJECTILE_IMMUNE" },
       { type: "DAMAGE_REDUCTION", value: 0.5 },
       { type: "CHANNEL_AOE_TICK_DAMAGE", value: 1, range: 4 },

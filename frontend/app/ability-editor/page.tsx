@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import BuffEditorTab from "./BuffEditorTab";
 import ProjectileEditorTab from "./ProjectileEditorTab";
 import DunLiWhitelistTab from "./DunLiWhitelistTab";
+import NoWeaponRequiredTab from "./NoWeaponRequiredTab";
 import QinYinGongMingTab from "./QinYinGongMingTab";
 import {
   ABILITY_RARITIES,
@@ -14,6 +15,7 @@ import {
   AbilityRarity,
   AbilitySchool,
   BuffEditorSnapshot,
+  NoWeaponRequiredSnapshot,
   QinYinGongMingSnapshot,
   DAMAGE_TYPE_COLOR,
   DAMAGE_TYPES,
@@ -39,7 +41,7 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "qinYinGongMing";
+type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "qinYinGongMing";
 
 function buildOverviewTags(ability: AbilityEditorAbility) {
   const tags: string[] = [];
@@ -74,6 +76,8 @@ export default function AbilityEditorPage() {
       setMainTab("projectiles");
     } else if (params.get("tab") === "dunLiWhitelist") {
       setMainTab("dunLiWhitelist");
+    } else if (params.get("tab") === "noWeaponRequired") {
+      setMainTab("noWeaponRequired");
     } else if (params.get("tab") === "qinYinGongMing") {
       setMainTab("qinYinGongMing");
     }
@@ -94,10 +98,12 @@ export default function AbilityEditorPage() {
   const [tagFilters, setTagFilters] = useState<Record<TagGroupId, string>>(
     savedFilters?.tagFilters ?? { rarity: "", school: "", damageType: "" }
   );
+  // channelFilter: "" (all) | "none" (no channel) | "FORWARD" (正读条) | "REVERSE" (逆读条) | "any" (any channel)
+  const [channelFilter, setChannelFilter] = useState<string>(savedFilters?.channelFilter ?? "");
   // Persist to sessionStorage whenever filters change
   useEffect(() => {
-    try { sessionStorage.setItem(FILTER_KEY, JSON.stringify({ search, tagFilters })); } catch { /* ignore */ }
-  }, [search, tagFilters]);
+    try { sessionStorage.setItem(FILTER_KEY, JSON.stringify({ search, tagFilters, channelFilter })); } catch { /* ignore */ }
+  }, [search, tagFilters, channelFilter]);
 
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -128,6 +134,9 @@ export default function AbilityEditorPage() {
   const [buffSnapshot, setBuffSnapshot] = useState<BuffEditorSnapshot | null>(null);
   const [buffLoading, setBuffLoading] = useState(false);
   const [buffError, setBuffError] = useState("");
+  const [noWeaponRequiredSnapshot, setNoWeaponRequiredSnapshot] = useState<NoWeaponRequiredSnapshot | null>(null);
+  const [noWeaponRequiredLoading, setNoWeaponRequiredLoading] = useState(false);
+  const [noWeaponRequiredError, setNoWeaponRequiredError] = useState("");
   const [qinYinGongMingSnapshot, setQinYinGongMingSnapshot] = useState<QinYinGongMingSnapshot | null>(null);
   const [qinYinGongMingLoading, setQinYinGongMingLoading] = useState(false);
   const [qinYinGongMingError, setQinYinGongMingError] = useState("");
@@ -176,6 +185,28 @@ export default function AbilityEditorPage() {
     }
   };
 
+  const loadNoWeaponRequiredSnapshot = async () => {
+    setNoWeaponRequiredLoading(true);
+    setNoWeaponRequiredError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/no-weapon-required", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setNoWeaponRequiredSnapshot((await response.json()) as NoWeaponRequiredSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setNoWeaponRequiredError(message);
+    } finally {
+      setNoWeaponRequiredLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSnapshot();
   }, []);
@@ -191,6 +222,13 @@ export default function AbilityEditorPage() {
   useEffect(() => {
     if (mainTab === "qinYinGongMing") {
       loadQinYinGongMingSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "noWeaponRequired" && !noWeaponRequiredSnapshot && !noWeaponRequiredLoading) {
+      loadNoWeaponRequiredSnapshot();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab]);
@@ -234,6 +272,24 @@ export default function AbilityEditorPage() {
     } catch { /* silent */ }
   };
 
+  const handleNoWeaponRequiredToggle = async (
+    abilityId: string,
+    mode: "manual-include" | "manual-exclude" | "clear"
+  ) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/no-weapon-required/${abilityId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as NoWeaponRequiredSnapshot;
+      setNoWeaponRequiredSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
   const handleQinYinGongMingToggle = async (buffId: number, mode: "manual-include" | "manual-exclude" | "clear") => {
     try {
       const res = await fetch(`/api/game/ability-editor/qin-yin-gong-ming/${buffId}`, {
@@ -256,6 +312,14 @@ export default function AbilityEditorPage() {
       } else {
         if (ability.tags?.[groupId] !== filterVal) return false;
       }
+    }
+
+    if (channelFilter) {
+      const chMode = ability.channelInfo?.mode;
+      if (channelFilter === "none" && chMode) return false;
+      if (channelFilter === "any" && !chMode) return false;
+      if (channelFilter === "FORWARD" && chMode !== "FORWARD") return false;
+      if (channelFilter === "REVERSE" && chMode !== "REVERSE") return false;
     }
 
     if (!normalizedSearch) {
@@ -353,6 +417,13 @@ export default function AbilityEditorPage() {
           </button>
           <button
             type="button"
+            className={`${styles.mainTab} ${mainTab === "noWeaponRequired" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("noWeaponRequired")}
+          >
+            无需武器
+          </button>
+          <button
+            type="button"
             className={`${styles.mainTab} ${mainTab === "qinYinGongMing" ? styles.mainTabActive : ""}`}
             onClick={() => setMainTab("qinYinGongMing")}
           >
@@ -444,6 +515,35 @@ export default function AbilityEditorPage() {
                       style={{ borderRadius: 3, borderColor: c, color: isActive ? "#111" : c, background: isActive ? c : "transparent", padding: "2px 6px", fontSize: 12 }}
                       onClick={() => setTagFilters((f) => ({ ...f, damageType: isActive ? "" : dt }))}
                     >{dt}{cnt > 0 ? <span style={{ fontSize: 9, marginLeft: 3, opacity: 0.75 }}>{cnt}</span> : null}</button>
+                  );
+                })}
+              </div>
+            </div>
+            {/* 读条 row */}
+            <div className={styles.tagFilterRow}>
+              <span className={styles.rarityFilterLabel}>读条</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {([
+                  { value: "", label: "全部" },
+                  { value: "none", label: "无读条" },
+                  { value: "any", label: "任意读条" },
+                  { value: "FORWARD", label: "正读条" },
+                  { value: "REVERSE", label: "逆读条" },
+                ] as const).map((opt) => {
+                  const isActive = channelFilter === opt.value;
+                  const isDefault = opt.value === "";
+                  return (
+                    <button key={opt.value || "all"} type="button" className={styles.rarityFilterBtn}
+                      style={{
+                        borderRadius: 3,
+                        borderColor: "#6aaee6",
+                        color: isActive ? "#fff" : (isDefault ? "#888" : "#6aaee6"),
+                        background: isActive ? "#6aaee6" : (isDefault && !channelFilter ? "#544c40" : "transparent"),
+                        padding: "2px 6px",
+                        fontSize: 12,
+                      }}
+                      onClick={() => setChannelFilter(opt.value)}
+                    >{opt.label}</button>
                   );
                 })}
               </div>
@@ -621,6 +721,18 @@ export default function AbilityEditorPage() {
             snapshot={snapshot}
             loading={loading}
             onToggle={handleDunLiWhitelistToggle}
+          />
+        </section>
+      )}
+
+      {mainTab === "noWeaponRequired" && (
+        <section className={styles.buffEditorSection}>
+          <NoWeaponRequiredTab
+            snapshot={noWeaponRequiredSnapshot}
+            loading={noWeaponRequiredLoading}
+            errorMessage={noWeaponRequiredError}
+            onRetry={loadNoWeaponRequiredSnapshot}
+            onToggle={handleNoWeaponRequiredToggle}
           />
         </section>
       )}

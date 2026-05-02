@@ -83,6 +83,18 @@ function extractBaseProperties(effects: Array<{ type: string; value?: number }> 
     });
   }
 
+  // SILENCE_IMMUNE → 沉默免疫.
+  const silenceImmune = effects.some((e) => e.type === "SILENCE_IMMUNE");
+  if (silenceImmune) {
+    result.push({ type: "沉默免疫" });
+  }
+
+  // FEAR_IMMUNE → 恐惧免疫.
+  const fearImmune = effects.some((e) => e.type === "FEAR_IMMUNE");
+  if (fearImmune) {
+    result.push({ type: "恐惧免疫" });
+  }
+
   return result;
 }
 

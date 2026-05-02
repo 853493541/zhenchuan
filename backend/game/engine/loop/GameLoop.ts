@@ -507,10 +507,18 @@ function tryApplyDodgeForHit(params: {
   return true;
 }
 
-const CHANNEL_BUFF_IDS = new Set([1014, 1017, 2001, 2003]);
+const CHANNEL_BUFF_IDS = new Set([1014, 1017, 2001, 2003, 2712]);
 
 function isChannelBuffRuntime(buff: { buffId: number }): boolean {
   return CHANNEL_BUFF_IDS.has(buff.buffId);
+}
+
+function shouldSuppressJumpWhileChanneling(player: {
+  activeChannel?: any;
+  buffs?: Array<{ buffId: number }>;
+}): boolean {
+  if (player.activeChannel) return true;
+  return Array.isArray(player.buffs) && player.buffs.some((buff) => isChannelBuffRuntime(buff));
 }
 
 function isMoheKnockdown(buff: { buffId: number; sourceAbilityId?: string }): boolean {
@@ -920,8 +928,12 @@ export class GameLoop {
     if (nextInput?.jump) {
       const player = this.state.players[playerIndex];
       if (player) {
-        // Short lock window for requiresGrounded casts to close jump/cast race.
-        player.groundedCastLockUntil = Date.now() + 250;
+        if (shouldSuppressJumpWhileChanneling(player as any)) {
+          nextInput = { ...nextInput, jump: false };
+        } else {
+          // Short lock window for requiresGrounded casts to close jump/cast race.
+          player.groundedCastLockUntil = Date.now() + 250;
+        }
       }
     }
     this.playerInputs.set(playerIndex, nextInput);
@@ -1047,6 +1059,11 @@ export class GameLoop {
           }
         }
       }
+      if (input?.jump && shouldSuppressJumpWhileChanneling(player as any)) {
+        input = { ...input, jump: false };
+        this.playerInputs.set(idx, input);
+      }
+
       const dashStateBefore = player.activeDash ? { ...player.activeDash } : undefined;
       const dashAbilityIdBefore = player.activeDash?.abilityId;
       const previousPosition = { x: player.position.x, y: player.position.y };
@@ -1430,10 +1447,9 @@ export class GameLoop {
           (input.dx !== undefined && input.dx !== 0) ||
           (input.dy !== undefined && input.dy !== 0);
 
-        // 风来吴山 / 斩无常 jump-lock: jump input is ignored while buff 1014 or 2712 is active,
-        // and must not count as a jump-cancel trigger.
-        const jumpLockedByChannel = player.buffs.some((b) => b.buffId === 1014 || b.buffId === 2712);
-        const isJumping = !!input.jump && !jumpLockedByChannel;
+        // Jump pulses are suppressed while channeling, so channel cancel-on-jump only
+        // reacts to real jump state changes from non-channel contexts.
+        const isJumping = !!input.jump;
 
         if (isMoving) player.buffs = player.buffs.filter((b) => !b.cancelOnMove);
         if (isJumping) player.buffs = player.buffs.filter((b) => !b.cancelOnJump);
@@ -2334,7 +2350,7 @@ export class GameLoop {
       // Silence interrupts runtime channel buffs unless the buff itself is interrupt-immune.
       if (hasBuffEffect(player as any, "SILENCE") || hasBuffEffect(player as any, "DISPLACEMENT")) {
         const removedBySilence = player.buffs.filter(
-          (b) => isChannelBuffRuntime(b as any) && !b.effects.some((e: any) => e.type === "INTERRUPT_IMMUNE")
+          (b) => isChannelBuffRuntime(b as any) && !b.effects.some((e: any) => e.type === "SILENCE_IMMUNE")
         );
         if (removedBySilence.length > 0) {
           for (const removed of removedBySilence) {
