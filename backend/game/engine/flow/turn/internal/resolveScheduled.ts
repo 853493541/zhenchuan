@@ -2,7 +2,7 @@
 
 import { GameState, ActiveBuff } from "../../../state/types";
 import { shouldDodge, hasUntargetable } from "../../../rules/guards";
-import { resolveScheduledDamageRoll, resolveHealAmount } from "../../../utils/combatMath";
+import { resolveScheduledDamageRoll, resolveHealAmountRoll, resolveNonCritHealAmountRoll } from "../../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget } from "../../../utils/health";
 import { pushDamageEvent, pushHealEvent } from "./combatEvents";
 import {
@@ -71,8 +71,12 @@ export function applyScheduledDamage(
 
     // OPTIONAL LIFESTEAL
     if (stage.lifestealPct && dmg > 0) {
-      const heal = Math.floor(dmg * stage.lifestealPct);
-      const applied = applyHealToTarget(owner as any, heal);
+      const healRoll = resolveNonCritHealAmountRoll({
+        source: owner,
+        target: owner,
+        base: Math.floor(dmg * stage.lifestealPct),
+      });
+      const applied = applyHealToTarget(owner as any, healRoll.heal);
 
       if (applied > 0) {
         pushHealEvent({
@@ -82,6 +86,7 @@ export function applyScheduledDamage(
           abilityId: getBuffSourceAbilityId(buff),
           abilityName: getBuffSourceAbilityNameWithDebug(buff, "吸血"),
           value: applied,
+          isCrit: healRoll.isCrit,
         });
       }
     }
@@ -102,8 +107,8 @@ export function applyLegacyHeal(params: {
 }) {
   const { state, owner, buff, base } = params;
 
-  const heal = resolveHealAmount({ target: owner, base });
-  const applied = applyHealToTarget(owner as any, heal);
+  const healRoll = resolveHealAmountRoll({ source: owner, target: owner, base });
+  const applied = applyHealToTarget(owner as any, healRoll.heal);
 
   if (applied > 0) {
     pushHealEvent({
@@ -113,6 +118,7 @@ export function applyLegacyHeal(params: {
       abilityId: getBuffSourceAbilityId(buff),
       abilityName: getBuffSourceAbilityNameWithDebug(buff, "吸血"),
       value: applied,
+      isCrit: healRoll.isCrit,
     });
   }
 }

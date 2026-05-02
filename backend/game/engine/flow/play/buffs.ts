@@ -39,6 +39,8 @@ export function applyAbilityBuffs(params: {
   // 银月斩/烈日斩/横扫六合: buff application handled in custom effect handlers (synergy logic).
   // 三才化生: buff application handled in SAN_CAI_HUA_SHENG_AOE handler.
   // 极乐引: SELF-cast AOE; buffs applied manually in JILE_YIN_AOE_PULL handler to enemies only.
+  // 撼如雷: self buff + reveal + anti-stealth debuff are applied together in HAN_RU_LEI_AOE.
+  // 无相诀: cast-time HP snapshot selects exactly one fixed DR buff in immediateEffects.
   // 化蝶: buff 2613 (stealth/immune) applied in GameLoop when Phase 2 starts, NOT on cast.
   // 剑主天地: buff 2614 applied/managed in JIAN_ZHU_TIAN_DI_STRIKE handler (detonation logic).
   // 破风: buffs 2615/2616 applied in PO_FENG_STRIKE handler (conditional extra bleed stack).
@@ -54,6 +56,8 @@ export function applyAbilityBuffs(params: {
     ability.id === "heng_sao_liu_he" ||
     ability.id === "san_cai_hua_sheng" ||
     ability.id === "ji_le_yin" ||
+    ability.id === "han_ru_lei" ||
+    ability.id === "wu_xiang_jue" ||
     ability.id === "long_zhan_yu_ye" ||
     ability.id === "shou_que_shi" ||
     ability.id === "hua_die" ||

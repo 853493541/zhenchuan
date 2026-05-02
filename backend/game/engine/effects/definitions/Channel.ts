@@ -7,7 +7,7 @@ import {
   ActiveBuff,
 } from "../../state/types";
 import { blocksEnemyTargeting } from "../../rules/guards";
-import { resolveScheduledDamage, resolveHealAmount } from "../../utils/combatMath";
+import { resolveScheduledDamage, resolveHealAmountRoll } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 
@@ -66,8 +66,8 @@ export function handleChannelEffect(
   }
 
   // 无间狱 immediate self-heal
-  const heal = resolveHealAmount({ target: source, base: 3 });
-  const applied = applyHealToTarget(source as any, heal);
+  const healRoll = resolveHealAmountRoll({ source, target: source, base: 3 });
+  const applied = applyHealToTarget(source as any, healRoll.heal);
 
   if (applied > 0) {
     pushEvent(state, {
@@ -79,6 +79,7 @@ export function handleChannelEffect(
       abilityName: ability.name,
       effectType: "HEAL",
       value: applied,
+      isCrit: healRoll.isCrit,
     });
   }
 }

@@ -65,6 +65,10 @@ export interface PlayerState {
   hp: number;
   maxHp?: number;
   shield?: number;
+  /** Runtime 外功会心 percentage (0-100). */
+  waiGongCritChancePct?: number;
+  /** Runtime 内功会心 percentage (0-100). */
+  neiGongCritChancePct?: number;
   /** Runtime crit chance percentage used by combat resolution (0-100). */
   critChancePct?: number;
 

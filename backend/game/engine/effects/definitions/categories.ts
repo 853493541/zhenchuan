@@ -13,10 +13,13 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DAMAGE_REDUCTION: "BUFF",
   DAMAGE_TAKEN_INCREASE: "DEBUFF",
   DAMAGE_MULTIPLIER: "BUFF",
+  CRIT_CHANCE_BONUS: "BUFF",
+  CRIT_EFFECT_BONUS: "BUFF",
 
   UNTARGETABLE: "BUFF",
   INVULNERABLE: "BUFF",
   STEALTH: "BUFF",
+  ANTI_STEALTH: "DEBUFF",
   CONTROL_IMMUNE: "BUFF",
   LOCKOUT_IMMUNE: "BUFF",
   KNOCKBACK_IMMUNE: "BUFF",
@@ -62,6 +65,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DIRECTIONAL_DASH: "BUFF",
   GROUND_TARGET_DASH: "BUFF",
   AOE_APPLY_BUFFS: "DEBUFF",
+  HAN_RU_LEI_AOE: "DEBUFF",
   JUMP_BOOST: "BUFF",
 
   /* ================= CONTROL LEVELS ================= */
@@ -129,8 +133,6 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   PO_FENG_STRIKE: "DEBUFF",
   // 外功闪避: dodge only physical / untyped attacks
   PHYSICAL_DODGE: "BUFF",
-  // 无相诀: scaling DR based on current HP%
-  DAMAGE_REDUCTION_HP_SCALING: "BUFF",
   // 斩无常: immune to isProjectile abilities
   PROJECTILE_IMMUNE: "BUFF",
   // 应天授命: unlimited shield + true-damage settle per second

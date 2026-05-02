@@ -1273,19 +1273,26 @@ router.post("/cheat/clear-buffs", async (req, res) => {
 });
 
 /**
- * POST /cheat/set-crit-chance - Set both players' crit chance (%).
- * Body: { gameId, critChancePct }
+ * POST /cheat/set-crit-chance - Set both players' 外功会心/内功会心 (%).
+ * Body: { gameId, critChancePct? , waiGongCritChancePct?, neiGongCritChancePct? }
+ * - If critChancePct is provided, both split values are set to that value.
  */
 router.post("/cheat/set-crit-chance", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, critChancePct } = req.body;
-    const crit = Number(critChancePct);
+    const { gameId, critChancePct, waiGongCritChancePct, neiGongCritChancePct } = req.body;
 
-    if (!Number.isFinite(crit)) {
-      return res.status(400).json({ error: "critChancePct must be a number" });
+    const hasLegacy = critChancePct !== undefined;
+    const legacy = Number(critChancePct);
+    const waiRaw = waiGongCritChancePct !== undefined ? Number(waiGongCritChancePct) : legacy;
+    const neiRaw = neiGongCritChancePct !== undefined ? Number(neiGongCritChancePct) : legacy;
+
+    if (!Number.isFinite(waiRaw) || !Number.isFinite(neiRaw) || (!hasLegacy && waiGongCritChancePct === undefined && neiGongCritChancePct === undefined)) {
+      return res.status(400).json({ error: "Provide critChancePct or waiGongCritChancePct/neiGongCritChancePct as numbers" });
     }
-    const boundedCrit = Math.max(0, Math.min(100, crit));
+
+    const boundedWaiCrit = Math.max(0, Math.min(100, waiRaw));
+    const boundedNeiCrit = Math.max(0, Math.min(100, neiRaw));
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -1300,10 +1307,15 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
     if (gameLoop) {
       const loopState = gameLoop.getState();
       loopState.players = loopState.players.map((p: any, idx: number) => {
-        diff.push({ path: `/players/${idx}/critChancePct`, value: boundedCrit });
+        diff.push({ path: `/players/${idx}/waiGongCritChancePct`, value: boundedWaiCrit });
+        diff.push({ path: `/players/${idx}/neiGongCritChancePct`, value: boundedNeiCrit });
+        diff.push({ path: `/players/${idx}/critChancePct`, value: boundedWaiCrit });
         return {
           ...p,
-          critChancePct: boundedCrit,
+          waiGongCritChancePct: boundedWaiCrit,
+          neiGongCritChancePct: boundedNeiCrit,
+          // Keep legacy field for compatibility with old clients.
+          critChancePct: boundedWaiCrit,
         };
       });
       loopState.version = (loopState.version ?? 0) + 1;
@@ -1311,10 +1323,14 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
       gameLoop.updateState(loopState);
     } else {
       game.state.players = game.state.players.map((p: any, idx: number) => {
-        diff.push({ path: `/players/${idx}/critChancePct`, value: boundedCrit });
+        diff.push({ path: `/players/${idx}/waiGongCritChancePct`, value: boundedWaiCrit });
+        diff.push({ path: `/players/${idx}/neiGongCritChancePct`, value: boundedNeiCrit });
+        diff.push({ path: `/players/${idx}/critChancePct`, value: boundedWaiCrit });
         return {
           ...p,
-          critChancePct: boundedCrit,
+          waiGongCritChancePct: boundedWaiCrit,
+          neiGongCritChancePct: boundedNeiCrit,
+          critChancePct: boundedWaiCrit,
         };
       });
       game.state.version = (game.state.version ?? 0) + 1;
@@ -1328,11 +1344,17 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
       timestamp: Date.now(),
     });
 
-    res.json({ ok: true, critChancePct: boundedCrit });
+    res.json({
+      ok: true,
+      waiGongCritChancePct: boundedWaiCrit,
+      neiGongCritChancePct: boundedNeiCrit,
+    });
 
     game.state.players = game.state.players.map((p: any) => ({
       ...p,
-      critChancePct: boundedCrit,
+      waiGongCritChancePct: boundedWaiCrit,
+      neiGongCritChancePct: boundedNeiCrit,
+      critChancePct: boundedWaiCrit,
     }));
     game.markModified("state");
     game.markModified("state.players");

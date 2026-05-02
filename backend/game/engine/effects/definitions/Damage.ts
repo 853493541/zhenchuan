@@ -2,7 +2,7 @@
 
 import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
 import { blocksEnemyTargeting, hasDamageImmune } from "../../rules/guards";
-import { resolveScheduledDamageRoll } from "../../utils/combatMath";
+import { resolveScheduledDamageRoll, resolveNonCritHealAmountRoll } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../onDamageHooks";
@@ -107,9 +107,13 @@ export function handleDamage(
     // Emit the HEAL event even at full HP so the heal float is always visible.
     const ls = (effect as any).lifestealPct as number | undefined;
     if (ls && ls > 0 && damageToApply > 0) {
-      const healAmt = Math.floor(damageToApply * ls);
-      if (healAmt > 0) {
-        applyHealToTarget(source as any, healAmt);
+      const healRoll = resolveNonCritHealAmountRoll({
+        source,
+        target: source,
+        base: Math.floor(damageToApply * ls),
+      });
+      if (healRoll.heal > 0) {
+        applyHealToTarget(source as any, healRoll.heal);
         pushEvent(state, {
           turn: state.turn,
           type: "HEAL",
@@ -118,7 +122,8 @@ export function handleDamage(
           abilityId: ability.id,
           abilityName: ability.name,
           effectType: "DAMAGE",
-          value: healAmt,
+          value: healRoll.heal,
+          isCrit: healRoll.isCrit,
         });
       }
     }

@@ -46,8 +46,9 @@ export function pushHealEvent(params: {
   abilityId: string | undefined;
   abilityName: string | undefined;
   value: number;
+  isCrit?: boolean;
 }) {
-  const { state, actorUserId, targetUserId, abilityId, abilityName, value } = params;
+  const { state, actorUserId, targetUserId, abilityId, abilityName, value, isCrit } = params;
 
   state.events.push({
     id: randomUUID(),
@@ -60,5 +61,6 @@ export function pushHealEvent(params: {
     abilityName,
     effectType: "HEAL",
     value,
+    isCrit,
   });
 }

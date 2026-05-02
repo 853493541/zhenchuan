@@ -737,6 +737,7 @@ function facingArrow(facing: { x: number; y: number } | undefined): string {
 }
 
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
+const STEALTH_ABILITY_IDS = new Set(['anchen_misan', 'fuguang_lueying', 'tiandi_wuji', 'hua_die']);
 const UNTARGETABLE_BUFF_IDS = new Set([1008]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const HONG_MENG_TIAN_JIN_BUFF_IDS = new Set([2645]);
@@ -757,6 +758,30 @@ function hasStealthClient(buffs?: ActiveBuff[]): boolean {
     STEALTH_BUFF_IDS.has(b.buffId) ||
     buffNameIncludes(b, '隐身') ||
     buffNameIncludes(b, '遁影')
+  );
+}
+
+function hasAntiStealthClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) =>
+    buffHasEffect(b, 'ANTI_STEALTH') ||
+    buffNameIncludes(b, '反隐')
+  );
+}
+
+function abilityUsesStealthClient(ability?: any): boolean {
+  if (!ability) return false;
+  if (typeof ability.id === 'string' && STEALTH_ABILITY_IDS.has(ability.id)) return true;
+  const directEffects = Array.isArray(ability.effects) ? ability.effects : [];
+  const channelEffects = Array.isArray(ability.channelEffects) ? ability.channelEffects : [];
+  const buffs = Array.isArray(ability.buffs) ? ability.buffs : [];
+
+  if (directEffects.some((effect: any) => effect?.type === 'STEALTH')) return true;
+  if (channelEffects.some((effect: any) => effect?.type === 'STEALTH')) return true;
+  return buffs.some((buff: any) =>
+    buffHasEffect(buff, 'STEALTH') ||
+    buffNameIncludes(buff, '隐身') ||
+    buffNameIncludes(buff, '遁影')
   );
 }
 
@@ -941,6 +966,7 @@ interface AbilityInfo {
   cannotCastWhileRooted?: boolean;
   allowGroundCastWithoutTarget?: boolean;
   losBlocked?: boolean;
+  blockedByAntiStealth?: boolean;
   isSpecialBarAbility?: boolean;
 }
 
@@ -1683,6 +1709,10 @@ export default function BattleArena({
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
     const abilityKey = ability?.abilityId ?? ability?.id;
+    if (ability?.blockedByAntiStealth) {
+      toastError('反隐期间无法施展隐身招式');
+      return;
+    }
     // 孤风飒踏 and 撼地: enter pending ground-cast mode (shows hover circle, click to confirm)
     if (abilityKey === 'feng_liu_yun_san') {
       const hoverTarget = mouseWorldPosRef.current;
@@ -2445,7 +2475,7 @@ export default function BattleArena({
       } else if (evt.type === 'HEAL' && (evt.value ?? 0) > 0 && evt.targetUserId === myId
                && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
         // Heal — fixed position (x=60%, y=60%)
-        addFloat(evt.value, 'heal', { label: evt.abilityName });
+        addFloat(evt.value, 'heal', { label: evt.abilityName, isCrit: (evt as any).isCrit === true });
       } else if (evt.type === 'DODGE' && evt.targetUserId === myId) {
         toastError(`警告：${evt.abilityName ?? '技能'}被闪避`);
       }
@@ -2947,6 +2977,8 @@ export default function BattleArena({
       return true;
     };
 
+    const antiStealthActive = hasAntiStealthClient(me?.buffs);
+
     const draftUpdated: AbilityInfo[] = me.hand
       .map((instance: any) => {
         const ability =
@@ -2982,6 +3014,7 @@ export default function BattleArena({
         }
         const chargeDisplay = getChargeDisplay(ability, instance);
         const isReadyVal = isAbilityReady(ability, instance);
+        const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         const losBlockedVal = !isReadyVal && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
           ? isClientLineBlocked(
@@ -3021,6 +3054,7 @@ export default function BattleArena({
           qinggong: !!(ability as any).qinggong,
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
+          blockedByAntiStealth: antiStealthBlocked,
         };
       })
       .filter(Boolean) as AbilityInfo[];
@@ -3033,6 +3067,7 @@ export default function BattleArena({
         const instance = me?.specialAbilityStates?.[ability.id] ?? { instanceId: ability.id, abilityId: ability.id, cooldown: 0 };
         const chargeDisplay = getChargeDisplay(ability, instance);
         const isReadyVal = isAbilityReady(ability, instance);
+        const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         return {
           id: ability.id,
@@ -3064,6 +3099,7 @@ export default function BattleArena({
           qinggong: !!(ability as any).qinggong,
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
+          blockedByAntiStealth: antiStealthBlocked,
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
@@ -3079,6 +3115,7 @@ export default function BattleArena({
         );
         const chargeDisplay = getChargeDisplay(ability, instance ?? {});
         const isReadyCom = isAbilityReady(ability, instance);
+        const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         const losBlockedCom = !isReadyCom && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
           ? isClientLineBlocked(
@@ -3118,6 +3155,7 @@ export default function BattleArena({
           qinggong: !!(ability as any).qinggong,
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
+          blockedByAntiStealth: antiStealthBlocked,
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
@@ -4391,9 +4429,36 @@ export default function BattleArena({
   const myBarSegments = computeHpShieldSegments(me?.hp ?? 0, myShield, myMaxHp);
   const myHpPct = myBarSegments.hpPct;
   const myShieldPct = myBarSegments.shieldPct;
-  const myCritChancePct = Math.max(0, Math.min(100, Number((me as any)?.critChancePct ?? 0)));
+  const BASE_CRIT_EFFECT_MULTIPLIER = 1.75;
+  const myBaseWaiGongCritChancePct = Math.max(
+    0,
+    Math.min(100, Number((me as any)?.waiGongCritChancePct ?? (me as any)?.critChancePct ?? 0)),
+  );
+  const myBaseNeiGongCritChancePct = Math.max(
+    0,
+    Math.min(100, Number((me as any)?.neiGongCritChancePct ?? (me as any)?.critChancePct ?? 0)),
+  );
   const myFacingArrow = facingArrow(localFacingRef.current);
   const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
+  const getTypedEffectTotal = (effectType: string, damageType: '外功' | '内功') => meEffects
+    .filter((e: any) => e?.type === effectType && (!e?.damageType || e?.damageType === damageType))
+    .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
+  const myWaiGongCritChancePct = Math.max(
+    0,
+    Math.min(100, myBaseWaiGongCritChancePct + getTypedEffectTotal('CRIT_CHANCE_BONUS', '外功')),
+  );
+  const myNeiGongCritChancePct = Math.max(
+    0,
+    Math.min(100, myBaseNeiGongCritChancePct + getTypedEffectTotal('CRIT_CHANCE_BONUS', '内功')),
+  );
+  const myWaiGongCritEffectPct = Math.max(
+    0,
+    (BASE_CRIT_EFFECT_MULTIPLIER + getTypedEffectTotal('CRIT_EFFECT_BONUS', '外功')) * 100,
+  );
+  const myNeiGongCritEffectPct = Math.max(
+    0,
+    (BASE_CRIT_EFFECT_MULTIPLIER + getTypedEffectTotal('CRIT_EFFECT_BONUS', '内功')) * 100,
+  );
   const moveSpeedBoostSum = meEffects
     .filter((e: any) => e?.type === 'SPEED_BOOST')
     .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
@@ -4720,7 +4785,9 @@ export default function BattleArena({
           { id: 'blue-crit', label: '蓝', value: 40, color: '#3a8dff' },
           { id: 'purple-crit', label: '紫', value: 46, color: '#9f5fd9' },
         ].map((preset) => {
-          const active = Math.abs(myCritChancePct - preset.value) < 0.001;
+          const active =
+            Math.abs(myBaseWaiGongCritChancePct - preset.value) < 0.001 &&
+            Math.abs(myBaseNeiGongCritChancePct - preset.value) < 0.001;
           return (
             <button
               key={preset.id}
@@ -4737,8 +4804,11 @@ export default function BattleArena({
               onClick={() => void runCheatAction(
                 `set-crit-${preset.value}`,
                 '/api/game/cheat/set-crit-chance',
-                `双方会心已设为 ${preset.value}%`,
-                { critChancePct: preset.value },
+                `双方外功会心/内功会心已设为 ${preset.value}%`,
+                {
+                  waiGongCritChancePct: preset.value,
+                  neiGongCritChancePct: preset.value,
+                },
               )}
             >
               {preset.label}
@@ -5400,12 +5470,20 @@ export default function BattleArena({
           </div>
           <div className={styles.heartDetailsBody}>
             <div className={styles.heartDetailsRow}>
-              <span className={styles.heartDetailsLabel}>会心</span>
-              <span className={styles.heartDetailsValue}>{myCritChancePct.toFixed(2)}%</span>
+              <span className={styles.heartDetailsLabel}>外功会心</span>
+              <span className={styles.heartDetailsValue}>{myWaiGongCritChancePct.toFixed(2)}%</span>
             </div>
             <div className={styles.heartDetailsRow}>
-              <span className={styles.heartDetailsLabel}>会心效果</span>
-              <span className={styles.heartDetailsValue}>175%</span>
+              <span className={styles.heartDetailsLabel}>内功会心</span>
+              <span className={styles.heartDetailsValue}>{myNeiGongCritChancePct.toFixed(2)}%</span>
+            </div>
+            <div className={styles.heartDetailsRow}>
+              <span className={styles.heartDetailsLabel}>外功会心效果</span>
+              <span className={styles.heartDetailsValue}>{myWaiGongCritEffectPct.toFixed(2)}%</span>
+            </div>
+            <div className={styles.heartDetailsRow}>
+              <span className={styles.heartDetailsLabel}>内功会心效果</span>
+              <span className={styles.heartDetailsValue}>{myNeiGongCritEffectPct.toFixed(2)}%</span>
             </div>
           </div>
         </div>
@@ -6201,7 +6279,8 @@ export default function BattleArena({
                     const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
                     return (
                       <button
-                        className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
+                        className={`${styles.abilityBtn} ${ability.isReady && !ability.blockedByAntiStealth ? styles.ready : styles.notReady}`}
+                        disabled={!ability.isReady || !!ability.blockedByAntiStealth}
                         style={ability.losBlocked ? { boxShadow: '0 0 0 2px #ff3333, 0 0 10px 3px rgba(255,50,50,0.45)', outline: 'none' } : undefined}
                         draggable={!specialBarActive}
                         onDragStart={(e) => {
@@ -6214,15 +6293,18 @@ export default function BattleArena({
                         onDragEnd={handleDraftDragEnd}
                         onClick={() => {
                           if (dragJustEndedRef.current) return;
-                          if (!ability.isReady) {
+                          if (!ability.isReady || ability.blockedByAntiStealth) {
                             if (ability.losBlocked) {
                               showLOSBlocker('视线被遮挡');
+                            }
+                            if (ability.blockedByAntiStealth) {
+                              toastError('反隐期间无法施展隐身招式');
                             }
                             return;
                           }
                           castAbilityRef.current(ability.id);
                         }}
-                        title={`${ability.name}${ability.range ? ` | 范围: ${ability.range}` : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
+                        title={`${ability.name}${ability.blockedByAntiStealth ? ' | 反隐期间不可施展' : ''}${ability.range ? ` | 范围: ${ability.range}` : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={`/icons/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
@@ -6308,10 +6390,10 @@ export default function BattleArena({
                     {/* gap between 后撤 and 御骑 */}
                     {idx === 7 && <div className={styles.commonGap} />}
                     <button
-                      className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
-                      disabled={!ability.isReady}
+                      className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady && !ability.blockedByAntiStealth ? styles.ready : styles.notReady}`}
+                      disabled={!ability.isReady || !!ability.blockedByAntiStealth}
                       onClick={() => castAbilityRef.current(ability.id)}
-                      title={`${ability.name}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
+                      title={`${ability.name}${ability.blockedByAntiStealth ? ' | 反隐期间不可施展' : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={`/icons/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
@@ -6522,8 +6604,8 @@ export default function BattleArena({
             : `${entry.isCrit ? '会心 ' : ''}-${formatFloatValue(entry.value)}`
           : entry.type === 'heal'
           ? entry.label
-            ? `${entry.label}: +${formatFloatValue(entry.value)}`
-            : `+${formatFloatValue(entry.value)}`
+            ? `${entry.label}: ${entry.isCrit ? '会心 ' : ''}+${formatFloatValue(entry.value)}`
+            : `${entry.isCrit ? '会心 ' : ''}+${formatFloatValue(entry.value)}`
           : entry.label
           ? `${entry.label}: -${formatFloatValue(entry.value)}`
           : `-${formatFloatValue(entry.value)}`;

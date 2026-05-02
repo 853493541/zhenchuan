@@ -7,6 +7,11 @@ const BUFF_ICON_PATH_OVERRIDES: Record<string, string> = {
   "散流霞": "/icons/散流霞-buff.png",
   "长针": "/icons/长针-buff.png",
   "风袖低昂": "/icons/风袖低昂-buff.png",
+  "无相诀·五十": "/icons/无相.png",
+  "无相诀·六十": "/icons/无相.png",
+  "无相诀·七十": "/icons/无相.png",
+  "无相诀·八十": "/icons/无相.png",
+  "无相诀·九十": "/icons/无相.png",
 };
 
 function hasEffectFlag(
@@ -514,17 +519,36 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     sourceAbilityName: "吞日月",
   });
 
-  // ── 无相诀 scaling DR buff ─────────────────────────────────────────────────
+  // ── 碎星辰 zone buff (owner inside zone → 外功会心+60%, 外功会心效果+15%) ──
   buffs.push({
-    buffId: 2710,
-    name: "无相",
+    buffId: 2704,
+    name: "碎星辰",
     category: "BUFF",
-    durationMs: 10_000,
+    durationMs: 2_000,
     breakOnPlay: false,
-    description: "受到伤害降低50-80%（随血量降低增加）",
-    effects: [{ type: "DAMAGE_REDUCTION_HP_SCALING", value: 0.5 }],
-    sourceAbilityId: "wu_xiang_jue",
-    sourceAbilityName: "无相诀",
+    description: "外功会心提高10%，外功会心效果提高15%",
+    effects: [
+      { type: "CRIT_CHANCE_BONUS", value: 10, damageType: "外功" } as any,
+      { type: "CRIT_EFFECT_BONUS", value: 0.15, damageType: "外功" } as any,
+    ],
+    sourceAbilityId: "sui_xing_chen",
+    sourceAbilityName: "碎星辰",
+  });
+
+  // ── 破苍穹 zone buff (owner inside zone → 内功会心+10%, 内功会心效果+15%) ──
+  buffs.push({
+    buffId: 2705,
+    name: "破苍穹",
+    category: "BUFF",
+    durationMs: 2_000,
+    breakOnPlay: false,
+    description: "内功会心提高10%，内功会心效果提高15%",
+    effects: [
+      { type: "CRIT_CHANCE_BONUS", value: 10, damageType: "内功" } as any,
+      { type: "CRIT_EFFECT_BONUS", value: 0.15, damageType: "内功" } as any,
+    ],
+    sourceAbilityId: "po_cang_qiong",
+    sourceAbilityName: "破苍穹",
   });
 
   // ── 应天授命 shield + settle buff ─────────────────────────────────────────

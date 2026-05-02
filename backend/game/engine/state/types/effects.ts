@@ -12,10 +12,13 @@ export type EffectType =
   | "DAMAGE_REDUCTION"
   | "DAMAGE_TAKEN_INCREASE"
   | "DAMAGE_MULTIPLIER"
+  | "CRIT_CHANCE_BONUS"
+  | "CRIT_EFFECT_BONUS"
   | "HEAL_REDUCTION"
   | "UNTARGETABLE"
   | "INVULNERABLE"
   | "STEALTH"
+  | "ANTI_STEALTH"
   | "ATTACK_LOCK"
   | "NON_QINGGONG_LOCK"
   | "CONTROL"
@@ -44,6 +47,7 @@ export type EffectType =
   | "DASH"
   | "DIRECTIONAL_DASH"
   | "AOE_APPLY_BUFFS"
+  | "HAN_RU_LEI_AOE"
   | "JUMP_BOOST"
   | "GROUND_TARGET_DASH"
   | "PERIODIC_DAMAGE"
@@ -113,8 +117,6 @@ export type EffectType =
   | "PO_FENG_STRIKE"
   // 外功闪避: dodge chance that only applies to non-内功 (physical / untyped) attacks
   | "PHYSICAL_DODGE"
-  // 无相诀: scaling damage reduction based on current HP percentage
-  | "DAMAGE_REDUCTION_HP_SCALING"
   // 斩无常: immune to abilities with isProjectile:true
   | "PROJECTILE_IMMUNE"
   // 应天授命: unlimited shield + periodic true-damage settle mechanic

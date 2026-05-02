@@ -18,7 +18,7 @@ import {
   type CapturedControlSnapshot,
 } from "../../effects/definitions/Cleanse";
 import { gameplayUnitsToWorldUnits, worldUnitsToGameplayUnits } from "../../state/types";
-import { resolveRawDamageWithCrit, resolveScheduledDamage, resolveScheduledDamageRoll } from "../../utils/combatMath";
+import { resolveHealAmountRoll, resolveNonCritHealAmountRoll, resolveRawDamageWithCrit, resolveScheduledDamage, resolveScheduledDamageRoll } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../../utils/health";
 import { addBuff, pushBuffExpired } from "../../effects/buffRuntime";
 import {
@@ -86,6 +86,23 @@ const SHU_SE_BUFF_ID = 2646;
 const HONG_MENG_CLEANSE_ATTRIBUTES = ["阴性", "阳性", "混元", "毒性", "持续伤害"];
 const SHOU_QUE_BUFF_ID = 2652;
 const SHOU_QUE_KNOCKBACK_BUFF_ID = 2653;
+const WU_XIANG_JUE_FIFTY_BUFF_ID = 2710;
+const WU_XIANG_JUE_SIXTY_BUFF_ID = 2731;
+const WU_XIANG_JUE_SEVENTY_BUFF_ID = 2732;
+const WU_XIANG_JUE_EIGHTY_BUFF_ID = 2733;
+const WU_XIANG_JUE_NINETY_BUFF_ID = 2734;
+
+function getWuXiangJueSnapshotBuffId(player: { hp?: number; maxHp?: number }) {
+  const maxHp = player.maxHp ?? 100;
+  if (maxHp <= 0) return WU_XIANG_JUE_FIFTY_BUFF_ID;
+  const hp = Math.max(0, player.hp ?? maxHp);
+  const hpPct = hp / maxHp;
+  if (hpPct <= 0.1) return WU_XIANG_JUE_NINETY_BUFF_ID;
+  if (hpPct <= 0.25) return WU_XIANG_JUE_EIGHTY_BUFF_ID;
+  if (hpPct <= 0.5) return WU_XIANG_JUE_SEVENTY_BUFF_ID;
+  if (hpPct <= 0.75) return WU_XIANG_JUE_SIXTY_BUFF_ID;
+  return WU_XIANG_JUE_FIFTY_BUFF_ID;
+}
 
 function syncStolenBuffRuntime(params: {
   sourcePlayer: any;
@@ -167,6 +184,46 @@ function getImmediateEnemyBuffTargets(
   }
 
   return targets;
+}
+
+function isImmediateStealthBuff(buff: any) {
+  return Array.isArray(buff?.effects) && buff.effects.some((effect: any) => effect?.type === "STEALTH");
+}
+
+function isImmediateDunyingCompanion(buff: any) {
+  return buff?.buffId === 1021;
+}
+
+function removeImmediateStealthBuffs(state: any, target: any) {
+  const removed: any[] = [];
+
+  target.buffs = (target.buffs ?? []).filter((buff: any) => {
+    if (!isImmediateStealthBuff(buff)) return true;
+    removed.push(buff);
+    return false;
+  });
+
+  if (removed.some((buff) => buff?.buffId === 1012 || buff?.sourceAbilityId === "fuguang_lueying")) {
+    const companionRemoved = (target.buffs ?? []).filter((buff: any) => isImmediateDunyingCompanion(buff));
+    if (companionRemoved.length > 0) {
+      target.buffs = target.buffs.filter((buff: any) => !isImmediateDunyingCompanion(buff));
+      removed.push(...companionRemoved);
+    }
+  }
+
+  for (const buff of removed) {
+    removeLinkedShield(target as any, buff as any);
+    pushBuffExpired(state, {
+      targetUserId: target.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+    });
+  }
+
+  return removed.length > 0;
 }
 
 function getExplicitEnemyEntityTarget(state: any, sourceUserId: string, entityTargetId?: string) {
@@ -783,9 +840,13 @@ export function applyImmediateEffects(params: {
             });
             const ls = (effect as any).lifestealPct as number | undefined;
             if (ls && ls > 0 && appliedDmg && appliedDmg > 0) {
-              const healAmt = Math.floor(appliedDmg * ls);
-              if (healAmt > 0) {
-                applyHealToTarget(source as any, healAmt);
+              const healRoll = resolveNonCritHealAmountRoll({
+                source,
+                target: source,
+                base: Math.floor(appliedDmg * ls),
+              });
+              if (healRoll.heal > 0) {
+                applyHealToTarget(source as any, healRoll.heal);
                 state.events.push({
                   id: randomUUID(),
                   timestamp: Date.now(),
@@ -796,7 +857,8 @@ export function applyImmediateEffects(params: {
                   abilityId: ability.id,
                   abilityName: ability.name,
                   effectType: "DAMAGE",
-                  value: healAmt,
+                  value: healRoll.heal,
+                  isCrit: healRoll.isCrit,
                 });
               }
             }
@@ -1610,6 +1672,40 @@ export function applyImmediateEffects(params: {
         break;
       }
 
+      case "HAN_RU_LEI_AOE": {
+        const abilityBuffs = Array.isArray(ability.buffs) ? ability.buffs : [];
+        const selfBuffs = abilityBuffs.filter((buffDef: any) => buffDef.applyTo !== "OPPONENT");
+        const enemyBuffs = abilityBuffs.filter((buffDef: any) => buffDef.applyTo === "OPPONENT");
+
+        for (const buffDef of selfBuffs) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: source.userId,
+            ability,
+            buffTarget: source as any,
+            buff: buffDef,
+          });
+        }
+
+        const radius = gameplayUnitsToWorldUnits(effect.range ?? 15, state.unitScale);
+        for (const victim of getImmediateEnemyBuffTargets(state, source.userId, source.position, radius)) {
+          if (victim.kind !== "player") continue;
+          removeImmediateStealthBuffs(state, victim.target);
+          for (const buffDef of enemyBuffs) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: victim.target.userId,
+              ability,
+              buffTarget: victim.target,
+              buff: buffDef,
+            });
+          }
+        }
+        break;
+      }
+
       case "DISPEL_BUFF_ATTRIBUTE": {
         // Remove BUFF-category buffs per listed attribute from the target.
         // count (default 1) controls how many per attribute to remove.
@@ -2180,7 +2276,11 @@ export function applyImmediateEffects(params: {
           });
           break;
         }
-        const td = resolveRawDamageWithCrit({ source, base: Number(effect.value ?? 0) });
+        const td = resolveRawDamageWithCrit({
+          source,
+          base: Number(effect.value ?? 0),
+          damageType: (ability as any).damageType,
+        });
         if (td <= 0) break;
         // Bypass shield: subtract directly from hp.
         const before = tdTarget.hp;
@@ -3351,6 +3451,21 @@ export function applyImmediateEffects(params: {
         ability,
         buffTarget: source,
         buff: parent,
+      });
+    }
+  }
+
+  if (ability.id === "wu_xiang_jue") {
+    const snapshotBuffId = getWuXiangJueSnapshotBuffId(source);
+    const snapshotBuff = (ability.buffs ?? []).find((b: any) => b.buffId === snapshotBuffId);
+    if (snapshotBuff) {
+      addBuff({
+        state,
+        sourceUserId: source.userId,
+        targetUserId: source.userId,
+        ability,
+        buffTarget: source,
+        buff: snapshotBuff,
       });
     }
   }

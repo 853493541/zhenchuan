@@ -28,7 +28,7 @@ function pushEvent(
 }
 
 function isDunyingCompanion(buff: ActiveBuff): boolean {
-  return buff.buffId === 1021 && (buff.name === "遁影" || buff.sourceAbilityId === "fuguang_lueying");
+  return buff.buffId === 1021;
 }
 
 function isMoheKnockdown(buff: ActiveBuff): boolean {
@@ -209,6 +209,35 @@ function hasFearImmune(target: { buffs: ActiveBuff[] }): boolean {
 
 function hasInvulnerable(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "INVULNERABLE"));
+}
+
+function hasAntiStealth(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "ANTI_STEALTH"));
+}
+
+function removeDunyingCompanions(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  const { state, targetUserId, target } = params;
+  const removed = target.buffs.filter((b) => isDunyingCompanion(b));
+  if (removed.length === 0) return;
+
+  target.buffs = target.buffs.filter((b) => !isDunyingCompanion(b));
+  for (const buff of removed) {
+    pushEvent(state, {
+      turn: state.turn,
+      type: "BUFF_EXPIRED",
+      actorUserId: targetUserId,
+      targetUserId,
+      abilityId: buff.sourceAbilityId,
+      abilityName: buff.sourceAbilityName,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+    });
+  }
 }
 
 function isSharedLockoutDebuff(buff: ActiveBuff): boolean {
@@ -423,6 +452,20 @@ export function addBuff(params: {
     sourceUserId !== targetUserId &&
     runtimeBuff.buffId === 1002 &&
     runtimeBuff.effects.some((e) => e.type === "CONTROL");
+
+  if (hasAntiStealth(buffTarget)) {
+    const blockedByAntiStealth =
+      runtimeBuff.effects.some((e) => e.type === "STEALTH") ||
+      runtimeBuff.buffId === 1021;
+    if (blockedByAntiStealth) {
+      removeDunyingCompanions({
+        state,
+        targetUserId,
+        target: buffTarget,
+      });
+      return;
+    }
+  }
 
   if (sourceUserId !== targetUserId && hasInvulnerable(buffTarget)) {
     return;

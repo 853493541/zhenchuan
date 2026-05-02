@@ -3,6 +3,172 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 无相诀改为施放时快照减伤档位 (2026-05-02)
+
+**Problem set**:
+1. `无相诀` still used a dynamic `DAMAGE_REDUCTION_HP_SCALING` path in `combatMath.ts`, so its damage reduction kept recalculating from the holder's current HP every time they were hit.
+2. The intended rule was snapshot-at-cast behavior: cast once, lock in one fixed减伤档位 for the whole buff duration, and keep the natural-expire 贯体 heal.
+3. The requested named tiers were `无相诀·五十 / 六十 / 七十 / 八十 / 九十`, with the explicit rule example that `10%` HP at cast should snapshot to `90%` DR.
+
+**Fix**:
+- Reworked `wu_xiang_jue` in `abilities.ts` from one dynamic buff into five declared fixed `DAMAGE_REDUCTION` buffs: `2710` (`50%`), `2731` (`60%`), `2732` (`70%`), `2733` (`80%`), `2734` (`90%`).
+- Excluded `wu_xiang_jue` from generic `applyAbilityBuffs(...)` and applied its buff manually in `immediateEffects.ts`, choosing the tier from the caster's HP at cast time.
+- Implemented the snapshot thresholds to match the requested five named tiers and the explicit low-HP example: `>75% -> 50`, `>50% -> 60`, `>25% -> 70`, `>10% -> 80`, `<=10% -> 90`.
+- Removed the old dynamic DR branch from `combatMath.ts` and deleted the now-unused `DAMAGE_REDUCTION_HP_SCALING` effect type/category entries.
+- Updated `GameLoop.ts` so the natural-expire 贯体 heal triggers off any of the five snapshot buff ids, not only the old `2710` buff.
+- Removed the stale preload-only dynamic metadata block in `abilityPreload.ts` and pinned all five renamed buffs to the existing `/icons/无相.png` icon so the status bar/editor stay stable after the rename.
+
+**Lessons**:
+- If a combat rule is described as “based on HP when cast”, the controlling seam should be buff application, not per-hit damage math. Leaving the decision in damage math guarantees drift the moment HP changes after cast.
+- When a single buff becomes multiple named runtime variants, update all three surfaces together: cast-time application seam, natural-expire hooks keyed by buff id, and preload/status metadata. Fixing only one or two of them leaves the engine and UI out of sync.
+
+## 反隐灰置兜底 + 碎星辰/破苍穹回调 (2026-05-02)
+
+**Problem set**:
+1. The first client gray-out pass for `撼如雷·反隐` was still too soft/fragile: it depended on ability metadata arriving perfectly and the draft bar buttons were not actually disabled.
+2. `碎星辰` and `破苍穹` needed their zone crit chance bonus reduced from `60%` to `10%`, and their channel time reduced from `1s` to `0.5s`.
+
+**Fix**:
+- In `BattleArena.tsx`, added a stable `STEALTH_ABILITY_IDS` fallback (`anchen_misan`, `fuguang_lueying`, `tiandi_wuji`, `hua_die`) on top of the metadata-based stealth detector, and set the draft/special bar buttons to real `disabled` state when anti-stealth blocks them. This makes the gray-out independent of preload drift and visually matches the common bar behavior.
+- Updated `碎星辰` / `破苍穹` in `abilities.ts` to `channelDurationMs: 500` with synced descriptions.
+- Updated both preload metadata and runtime zone application (`abilityPreload.ts`, `GameLoop.ts`) so the granted `CRIT_CHANCE_BONUS` is now `10` instead of `60`, while the `+15%` crit-effect bonus stays unchanged.
+
+**Lessons**:
+- When the user asks for a client gray-out rule, make the button state authoritative (`disabled`) rather than relying only on class styling and click guards.
+- For zone buffs, tune all three surfaces together: canonical ability text, preload/status-bar metadata, and the runtime buff application in `GameLoop`. If one is left behind, the game and UI immediately drift.
+
+## 反隐灰置 + 云栖松/徐如林贯体化 + Buff 列表快速属性按钮 (2026-05-02)
+
+**Problem set**:
+1. Heal crit floats should keep the normal green heal color instead of switching to a brighter crit-only green.
+2. While carrying `撼如雷·反隐`, stealth-casting abilities should be visibly grayed out on the client instead of only failing at runtime.
+3. `云栖松` and `徐如林·回复` needed to count as 贯体 heals rather than ordinary 非贯体 heals.
+4. Lifesteal needed an explicit follow-up audit to confirm no branch still crits after the non-crit helper split.
+5. The Buff list page needed a faster batch-edit workflow for 属性 tags, similar to the quick tag buttons already used elsewhere in the editor.
+
+**Fix**:
+- In `BattleArena.tsx`, removed the crit-only heal color override. Heal crits still show `会心`, but they keep the same green color as ordinary heals.
+- Added client helpers in `BattleArena.tsx` for `ANTI_STEALTH` and for detecting abilities that actually apply `STEALTH`. While anti-stealth is active, those abilities are marked blocked in the ability model, grayed out in both the draft/special and common bars, and rejected by the shared cast wrapper with a toast.
+- Converted `云栖松` to `PERIODIC_GUAN_TI_HEAL` with matching `(贯体)` descriptions, so it now uses the existing periodic 贯体 path.
+- Kept `徐如林·回复` on its custom natural-expire trigger, but changed that loop branch to apply direct 贯体 healing and emit the heal event as `（贯体）` without heal crit metadata.
+- Re-audited all lifesteal callers and confirmed they now all use `resolveNonCritHealAmountRoll(...)`: immediate damage, explicit entity-target damage, scheduled damage, and timed-AOE damage.
+- In `BuffEditorTab.tsx`, reused the existing `/ability-editor/buffs/:buffId/attribute` endpoint to add a per-card quick attribute row for all attributes plus `无`. Successful writes refresh the shared snapshot immediately, and hidden buffs remain non-editable from the list.
+
+**Lessons**:
+- If the user reads crit information mainly from text, not color, do not spend a separate color channel on heal crits; keeping the semantic heal color stable makes the combat UI easier to parse.
+- Client gray-out rules should key off the same mechanical metadata the server uses (`STEALTH` on ability buffs/effects), not raw description text, or unrelated abilities that merely mention stealth in text will get blocked incorrectly.
+- When converting a heal to 贯体, changing the combat path matters more than changing the label. The authoritative distinction is whether the heal bypasses ordinary heal-reduction/crit handling, not whether its tooltip text says `贯体`.
+
+## 风袖/千蝶数值调整 + 反隐 companion cleanup + 非贯体清单审计 (2026-05-02)
+
+**Problem set**:
+1. `风袖低昂` needed its direct heal reduced to `30`, and `千蝶吐瑞` needed its per-tick heal increased to `5`.
+2. `撼如雷·反隐` blocked `浮光掠影` itself but could still leave or reapply the companion `遁影(1021)`, which several runtime/client paths still treat as part of hidden state.
+3. While auditing all 非贯体 heals, one remaining timed-AOE lifesteal path was still healing directly instead of using the shared heal-crit roll.
+4. Lifesteal itself should not crit, because the triggering damage already had its own crit roll.
+
+**Fix**:
+- Updated canonical ability values in `abilities.ts`: `风袖低昂` heal `30`, `千蝶吐瑞` periodic heal `5`, with descriptions kept in sync.
+- Updated the legacy `cards.ts` mirror for `风袖低昂` to the same `30` heal so old duplicate data does not drift further from runtime.
+- In `buffRuntime.ts`, widened the anti-stealth gate so it treats `遁影(1021)` as part of the blocked stealth attempt, and added a small helper that removes any already-present `遁影` companion buff when `ANTI_STEALTH` rejects stealth entry.
+- Added shared `resolveNonCritHealAmountRoll(...)` in `combatMath.ts` for lifesteal-style healing that should still respect `HEAL_REDUCTION` but must never roll a second crit.
+- Switched all lifesteal branches (`Damage.ts`, `immediateEffects.ts`, `resolveScheduled.ts`, `GameLoop.ts` timed-AOE branch) onto that non-crit helper. This closed the remaining timed-AOE bypass found during the audit and aligned all lifesteal paths with the intended rule.
+
+**Lessons**:
+- For stealth bundles like `浮光掠影 + 遁影`, blocking only the visible `STEALTH` effect is insufficient if the companion buff is also interpreted as hidden-state elsewhere. The anti-stealth seam has to block and clean up the companion id too.
+- After introducing a shared combat-math helper, audit every direct `applyHealToTarget(...)` branch in the engine. Timed or scheduled side paths are the common misses, especially lifesteal branches living outside the generic HEAL handler.
+- “非贯体 heals can crit” still needs one carve-out: lifesteal inherits the damage result and should not get a second independent heal crit on top.
+
+## 撼如雷 companion reveal fix + non-贯体 heal crits (2026-05-02)
+
+**Problem set**:
+1. `撼如雷` removed `浮光掠影` but could leave `遁影` behind, and several client/runtime paths still treat `1021` as part of the hidden state.
+2. Non-贯体 healing needed to crit, using the healer's 内功会心 chance and 内功会心效果 multiplier.
+
+**Fix**:
+- Simplified `遁影` companion detection in the stealth-break helpers (`immediateEffects.ts`, `buffRuntime.ts`, `breakOnPlay.ts`, `GameLoop.ts`) to the authoritative identity `buffId === 1021`. This makes reveal/cleanup logic robust even if buff names or copied-source metadata differ.
+- Added shared `resolveHealAmountRoll(...)` in `combatMath.ts` for non-贯体 heals. It applies target-side `HEAL_REDUCTION`, then rolls crit using healer-side 内功会心 / 会心效果.
+- Moved ordinary HEAL paths onto that shared roll: direct HEAL effects, periodic heals, timed self-heals, scheduled legacy heals, and 徐如林·回复. Lifesteal now uses a separate non-crit heal helper, while dedicated 贯体 branches (`INSTANT_GUAN_TI_HEAL`, periodic/timed 贯体 heal, 无相诀贯体, 应天授命贯体, etc.) remain unchanged.
+- HEAL events now carry `isCrit` metadata, and the existing heal float in `BattleArena.tsx` shows `会心` plus a brighter crit-heal color for easier validation.
+
+**Lessons**:
+- When a buff is mechanically identified by a stable runtime id, matching on name/source metadata is weaker than necessary and can fail under copies, editor renames, or synthesized applications.
+- "All non-贯体 heals can crit" belongs in one shared heal roll, not scattered per ability. The real cleanup work is the bypass list: lifesteal and natural-expire heals are easy to miss if you only patch the obvious HEAL handler.
+
+## Live 会心 panel + split 会心效果 + 紫气东来/撼如雷 (2026-05-02)
+
+**Problem set**:
+1. The 会心 detail panel did not update when buffs changed crit stats because it only read persisted base crit fields and a hardcoded `175%` 会心效果.
+2. 会心效果 now needed to be split by damage type, just like 外功会心 / 内功会心.
+3. New self-buff `紫气东来` was requested: 12s, +25% damage, +25 外/内功会心, +25% 外/内功会心效果, no GCD.
+4. `碎星辰` / `破苍穹` needed an extra +15% typed 会心效果 while inside the zone.
+5. New skill `撼如雷` was requested: instant self buff (+10 外/内功会心, +20% 外/内功会心效果), 15u reveal, and a 20s anti-stealth debuff that breaks future stealth entries.
+
+**Fix**:
+- Added shared `CRIT_EFFECT_BONUS` support to effect types, category mapping, and `combatMath.ts`; crit multiplier is no longer fixed at `1.75` once buffs are involved.
+- Updated `BattleArena.tsx` to derive displayed 外功会心 / 内功会心 and 外功会心效果 / 内功会心效果 from active buff effects instead of base-only player state. The preset buttons still key off base cheat values, so temporary buffs do not make the preset highlight misleading.
+- Added `紫气东来` in `abilities.ts` as a standard declared self buff (`2706`), so preload/status-bar metadata is automatic.
+- Extended `碎星辰` / `破苍穹` runtime zone buffs and preload metadata with typed `CRIT_EFFECT_BONUS` `0.15`.
+- Added `ANTI_STEALTH` and custom immediate effect `HAN_RU_LEI_AOE` for `撼如雷`. The custom handler applies the self buff, removes existing stealth buffs in radius, and applies `撼如雷·反隐` (`2708`) to enemy players. `addBuff()` now centrally rejects any incoming buff carrying `STEALTH` while the target has `ANTI_STEALTH`, so future stealth sources break consistently.
+
+**Lessons**:
+- If the UI shows combat-derived stats, derive them from the same buff/effect model the server uses. Reading only stored base fields guarantees drift the moment a zone or temporary buff is involved.
+- “Reveal now and block future stealth” is two different mechanics: one immediate removal pass plus one central stealth-application gate. Doing only one of them leaves either existing stealth or future stealth incorrect.
+
+## 碎星辰/破苍穹 channel-zone crit buffs (2026-05-02)
+
+**Problem set**:
+1. Add `碎星辰`: 1s forward channel (movable + air-cast), then drop a 15u radius zone for 30s that grants +60% 外功会心 while inside.
+2. Add `破苍穹`: same channel/zone shell, but grant +60% 内功会心 while inside.
+3. These zone buffs must be standard runtime buffs (status bar visible with metadata), not hidden state.
+
+**Fix**:
+- Added new channel abilities in `abilities.ts`:
+  - `sui_xing_chen` and `po_cang_qiong`
+  - `channelDurationMs: 1000`, `channelForward: true`, `requiresGrounded: false`, `channelCancelOnMove: false`, `channelCancelOnJump: false`
+  - `PLACE_GROUND_ZONE` with `range: 15`, `zoneDurationMs: 30000`.
+- Added new buff effect type `CRIT_CHANCE_BONUS` in shared effect unions and category map.
+- Extended `combatMath.ts` crit resolution to include additive `CRIT_CHANCE_BONUS` effects from active buffs, filtered by `damageType` (`外功` / `内功`) and stack-aware.
+- Added GameLoop zone enter/leave handlers:
+  - `sui_xing_chen` applies/removes buff `2704` with `CRIT_CHANCE_BONUS +60 (外功)`.
+  - `po_cang_qiong` applies/removes buff `2705` with `CRIT_CHANCE_BONUS +60 (内功)`.
+- Added buff preload entries (`2704`, `2705`) in `abilityPreload.ts`, so status bar and tooltip metadata are available.
+- Frontend scene updated to render both new zones as red circles with timers, matching the requested visual direction.
+
+**Lessons**:
+- Zone-granted combat stats should be modeled as ordinary buffs and consumed by central math helpers; this keeps status UI, combat logic, and expiry/removal behavior in sync.
+- For typed stat bonuses, it is cleaner to add a generic effect (`CRIT_CHANCE_BONUS` + `damageType`) than to hardcode per-buff-id branches in combat math.
+
+## 外功会心/内功会心 split + 风来吴山/狂龙乱舞 retune (2026-05-02)
+
+**Problem set**:
+1. 风来吴山 needed its per-hit damage reduced to 5.
+2. 狂龙乱舞 needed ground-zone tick damage reduced to 3.
+3. Crit had to be split into 外功会心 and 内功会心, with runtime selection based on ability damage type (`外功` / `内功`) rather than one global crit rate.
+
+**Fix**:
+- `abilities.ts`:
+  - 风来吴山 `CHANNEL_AOE_TICK` value changed to `5` and description synced.
+  - 狂龙乱舞 `PLACE_GROUND_ZONE` value changed to `3` and description synced.
+- `cards.ts` legacy mirror: 风来吴山 scheduled damage values updated from `8` to `5` to avoid historical data drift.
+- `combatMath.ts`:
+  - Added split source fields `waiGongCritChancePct` / `neiGongCritChancePct` support.
+  - Crit chance selection now keys off incoming `damageType`:
+    - `外功` -> 外功会心
+    - `内功` -> 内功会心
+    - otherwise -> legacy fallback (`critChancePct`).
+  - `resolveScheduledDamageRoll(...)` now forwards `damageType` into raw crit resolution.
+- `draft.routes.ts` cheat API upgraded:
+  - `POST /cheat/set-crit-chance` now accepts either legacy `critChancePct` or split `waiGongCritChancePct` / `neiGongCritChancePct`.
+  - Broadcasts and saves both split fields, while still writing legacy `critChancePct` for compatibility with older clients.
+- Backend/frontend player state types now include split crit fields.
+- `BattleArena.tsx` panel now displays 外功会心 and 内功会心 separately; preset buttons still set both together for fast testing.
+- Additional raw-damage paths that bypass scheduled damage now pass `damageType` where known (TRUE_DAMAGE, STACK_ON_HIT_DAMAGE, and related trigger paths) so split crit logic applies consistently.
+
+**Lessons**:
+- For mechanic splits (one field -> two typed fields), preserve a compatibility write path for old clients first, then migrate UI/readers incrementally.
+- Damage-type keyed systems only work if every non-scheduled raw-damage path also forwards `damageType`; scheduled-only migration leaves hidden inconsistency.
+
 ## 会心 float polish + 龙吟 crit-reset follow-up (2026-05-02)
 
 ## High-damage pass retune (2026-05-02)

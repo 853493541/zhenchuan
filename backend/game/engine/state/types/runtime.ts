@@ -8,6 +8,8 @@ import { GameEvent } from "./events";
 export interface PlayerState {
   userId: PlayerID;
   hp: number;
+  waiGongCritChancePct?: number;
+  neiGongCritChancePct?: number;
   critChancePct?: number;
   hand: AbilityInstance[];
   specialAbilityStates?: Record<string, AbilityInstance>;

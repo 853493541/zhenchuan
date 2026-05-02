@@ -9,26 +9,112 @@ export type DamageRoll = {
   isCrit: boolean;
 };
 
+export type HealRoll = {
+  heal: number;
+  isCrit: boolean;
+};
+
 function roundDamage(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function getSourceCritChancePct(source: { critChancePct?: number } | undefined): number {
-  const raw = Number(source?.critChancePct ?? 0);
+function getCritBonusPctFromBuffs(
+  source:
+    | {
+        buffs?: ActiveBuff[];
+      }
+    | undefined,
+  damageType?: string,
+): number {
+  let total = 0;
+  const buffs = source?.buffs ?? [];
+  for (const buff of buffs) {
+    const stacks = Math.max(1, Number(buff.stacks ?? 1));
+    for (const eff of buff.effects ?? []) {
+      if (eff.type !== "CRIT_CHANCE_BONUS") continue;
+      const effDamageType = (eff as any).damageType as string | undefined;
+      if (effDamageType && effDamageType !== damageType) continue;
+      total += Number(eff.value ?? 0) * stacks;
+    }
+  }
+  if (!Number.isFinite(total)) return 0;
+  return total;
+}
+
+function getCritEffectBonusFromBuffs(
+  source:
+    | {
+        buffs?: ActiveBuff[];
+      }
+    | undefined,
+  damageType?: string,
+): number {
+  let total = 0;
+  const buffs = source?.buffs ?? [];
+  for (const buff of buffs) {
+    const stacks = Math.max(1, Number(buff.stacks ?? 1));
+    for (const eff of buff.effects ?? []) {
+      if (eff.type !== "CRIT_EFFECT_BONUS") continue;
+      const effDamageType = (eff as any).damageType as string | undefined;
+      if (effDamageType && effDamageType !== damageType) continue;
+      total += Number(eff.value ?? 0) * stacks;
+    }
+  }
+  if (!Number.isFinite(total)) return 0;
+  return total;
+}
+
+function getSourceCritChancePct(
+  source:
+    | {
+        critChancePct?: number;
+        waiGongCritChancePct?: number;
+        neiGongCritChancePct?: number;
+        buffs?: ActiveBuff[];
+      }
+    | undefined,
+  damageType?: string,
+): number {
+  let raw = Number(source?.critChancePct ?? 0);
+  if (damageType === "外功") {
+    raw = Number(source?.waiGongCritChancePct ?? source?.critChancePct ?? 0);
+  } else if (damageType === "内功") {
+    raw = Number(source?.neiGongCritChancePct ?? source?.critChancePct ?? 0);
+  }
+  raw += getCritBonusPctFromBuffs(source, damageType);
   if (!Number.isFinite(raw)) return 0;
   return Math.max(0, Math.min(100, raw));
 }
 
+function getSourceCritDamageMultiplier(
+  source:
+    | {
+        buffs?: ActiveBuff[];
+      }
+    | undefined,
+  damageType?: string,
+): number {
+  const raw = BASE_CRIT_DAMAGE_MULTIPLIER + getCritEffectBonusFromBuffs(source, damageType);
+  if (!Number.isFinite(raw)) return BASE_CRIT_DAMAGE_MULTIPLIER;
+  return Math.max(0, raw);
+}
+
 export function resolveRawDamageWithCritRoll(params: {
-  source?: { critChancePct?: number };
+  source?: {
+    critChancePct?: number;
+    waiGongCritChancePct?: number;
+    neiGongCritChancePct?: number;
+    buffs?: ActiveBuff[];
+  };
   base: number;
+  damageType?: string;
 }): DamageRoll {
   const base = Math.max(0, Number(params.base ?? 0));
   if (base <= 0) return { damage: 0, isCrit: false };
 
-  const critChancePct = getSourceCritChancePct(params.source);
+  const critChancePct = getSourceCritChancePct(params.source, params.damageType);
   const isCrit = Math.random() < (critChancePct / 100);
-  const critMultiplier = isCrit ? BASE_CRIT_DAMAGE_MULTIPLIER : 1;
+  const critMultiplier = isCrit ? getSourceCritDamageMultiplier(params.source, params.damageType) : 1;
   return {
     damage: roundDamage(base * critMultiplier),
     isCrit,
@@ -36,8 +122,14 @@ export function resolveRawDamageWithCritRoll(params: {
 }
 
 export function resolveRawDamageWithCrit(params: {
-  source?: { critChancePct?: number };
+  source?: {
+    critChancePct?: number;
+    waiGongCritChancePct?: number;
+    neiGongCritChancePct?: number;
+    buffs?: ActiveBuff[];
+  };
   base: number;
+  damageType?: string;
 }) {
   return resolveRawDamageWithCritRoll(params).damage;
 }
@@ -47,7 +139,12 @@ function allEffects(target: { buffs: ActiveBuff[] }) {
 }
 
 export function resolveScheduledDamageRoll(params: {
-  source: { buffs: ActiveBuff[]; critChancePct?: number };
+  source: {
+    buffs: ActiveBuff[];
+    critChancePct?: number;
+    waiGongCritChancePct?: number;
+    neiGongCritChancePct?: number;
+  };
   target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
   base: number;
   /** When provided, DAMAGE_MULTIPLIER effects with restrictToAbilityId are only applied if they match. */
@@ -86,16 +183,6 @@ export function resolveScheduledDamageRoll(params: {
     dmg *= 1 - (dr.value ?? 0);
   }
 
-  // DAMAGE_REDUCTION_HP_SCALING (无相诀): dynamic DR based on target HP%
-  const hpScalingDR = allEffects(params.target).find((e) => e.type === "DAMAGE_REDUCTION_HP_SCALING");
-  if (hpScalingDR) {
-    const hp = params.target.hp ?? 100;
-    const maxHp = params.target.maxHp ?? 100;
-    const hpPct = maxHp > 0 ? hp / maxHp : 1;
-    const dynamicDR = hpPct > 0.75 ? 0.5 : hpPct > 0.5 ? 0.6 : hpPct > 0.25 ? 0.7 : 0.8;
-    dmg *= 1 - dynamicDR;
-  }
-
   // DAMAGE TAKEN INCREASE (e.g. 易伤): summed across all buffs, multiplied by stacks.
   const takenIncSum = params.target.buffs.reduce((sum, buff) => {
     const e = buff.effects.find((eff) => eff.type === "DAMAGE_TAKEN_INCREASE");
@@ -111,11 +198,20 @@ export function resolveScheduledDamageRoll(params: {
     dmg += (fb.value ?? 0);
   }
 
-  return resolveRawDamageWithCritRoll({ source: params.source, base: dmg });
+  return resolveRawDamageWithCritRoll({
+    source: params.source,
+    base: dmg,
+    damageType: params.damageType,
+  });
 }
 
 export function resolveScheduledDamage(params: {
-  source: { buffs: ActiveBuff[]; critChancePct?: number };
+  source: {
+    buffs: ActiveBuff[];
+    critChancePct?: number;
+    waiGongCritChancePct?: number;
+    neiGongCritChancePct?: number;
+  };
   target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
   base: number;
   abilityId?: string;
@@ -125,9 +221,28 @@ export function resolveScheduledDamage(params: {
 }
 
 export function resolveHealAmount(params: {
+  source?: {
+    critChancePct?: number;
+    waiGongCritChancePct?: number;
+    neiGongCritChancePct?: number;
+    buffs?: ActiveBuff[];
+  };
   target: { buffs: ActiveBuff[] };
   base: number;
 }) {
+  return resolveHealAmountRoll(params).heal;
+}
+
+export function resolveNonCritHealAmountRoll(params: {
+  source?: {
+    critChancePct?: number;
+    waiGongCritChancePct?: number;
+    neiGongCritChancePct?: number;
+    buffs?: ActiveBuff[];
+  };
+  target: { buffs: ActiveBuff[] };
+  base: number;
+}): HealRoll {
   let heal = params.base;
 
   // Sum HEAL_REDUCTION across all buffs, multiplied by stack count for stackable debuffs.
@@ -139,5 +254,33 @@ export function resolveHealAmount(params: {
   }, 0);
   if (totalHealReduction > 0) heal *= Math.max(0, 1 - totalHealReduction);
 
-  return Math.max(0, Math.floor(heal));
+  return {
+    heal: Math.max(0, Math.floor(heal)),
+    isCrit: false,
+  };
+}
+
+export function resolveHealAmountRoll(params: {
+  source?: {
+    critChancePct?: number;
+    waiGongCritChancePct?: number;
+    neiGongCritChancePct?: number;
+    buffs?: ActiveBuff[];
+  };
+  target: { buffs: ActiveBuff[] };
+  base: number;
+}): HealRoll {
+  const baseHeal = resolveNonCritHealAmountRoll(params).heal;
+  if (baseHeal <= 0) {
+    return { heal: 0, isCrit: false };
+  }
+
+  const critChancePct = getSourceCritChancePct(params.source, "内功");
+  const isCrit = Math.random() < (critChancePct / 100);
+  const critMultiplier = isCrit ? getSourceCritDamageMultiplier(params.source, "内功") : 1;
+
+  return {
+    heal: Math.max(0, Math.floor(baseHeal * critMultiplier)),
+    isCrit,
+  };
 }

@@ -396,7 +396,11 @@ async function playCastAbility(
           } else {
             bangHuaBuff.stacks = currentStacks - 1;
           }
-          const triggerDamage = resolveRawDamageWithCrit({ source: opp as any, base: 2 });
+          const triggerDamage = resolveRawDamageWithCrit({
+            source: opp as any,
+            base: 2,
+            damageType: (ABILITIES["bang_hua_sui_liu"] as any)?.damageType,
+          });
           applyDamageToTarget(player as any, triggerDamage);
           pushEvent(state, {
             turn: state.turn,

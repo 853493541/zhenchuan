@@ -26,7 +26,7 @@ function stealthAgeMs(buff: ActiveBuff, now: number): number {
 }
 
 function isDunyingCompanion(buff: ActiveBuff): boolean {
-  return buff.buffId === 1021 && (buff.name === "遁影" || buff.sourceAbilityId === "fuguang_lueying");
+  return buff.buffId === 1021;
 }
 
 const TRIGGERED_STEALTH_BREAK_ABILITIES = new Set(["wu_jianyu"]);

@@ -6,6 +6,7 @@ import { pushEvent } from "../../../services/flow/events";
 import { addBuff } from "../../effects/buffRuntime";
 import { applyDamageToTarget } from "../../utils/health";
 import { resolveRawDamageWithCrit } from "../../utils/combatMath";
+import { ABILITIES } from "../../../abilities/abilities";
 
 import { breakOnPlay } from "./breakOnPlay";
 import { computeAbilityDodge } from "../../rules/dodge";
@@ -176,7 +177,11 @@ export function applyAbility(
     } else {
       bangHuaBuff.stacks = currentStacks - 1;
     }
-    const triggerDamage = resolveRawDamageWithCrit({ source: enemy as any, base: 2 });
+    const triggerDamage = resolveRawDamageWithCrit({
+      source: enemy as any,
+      base: 2,
+      damageType: (ABILITIES["bang_hua_sui_liu"] as any)?.damageType,
+    });
     applyDamageToTarget(source as any, triggerDamage);
     pushEvent(state, {
       turn: state.turn,

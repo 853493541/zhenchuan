@@ -16,7 +16,7 @@ import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
 import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap, resolveEntityHorizontalCollision } from "./movement";
 import { addBuff, pushBuffExpired } from "../effects/buffRuntime";
-import { resolveRawDamageWithCrit, resolveScheduledDamage, resolveScheduledDamageRoll, resolveHealAmount } from "../utils/combatMath";
+import { resolveHealAmountRoll, resolveNonCritHealAmountRoll, resolveRawDamageWithCrit, resolveScheduledDamage, resolveScheduledDamageRoll } from "../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../utils/health";
 import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
@@ -54,6 +54,7 @@ const XI_BING_YU_ABILITY_ID = "xi_bing_yu";
 const XI_BING_YU_BUFF_ID = 2724;
 const YIN_QIAO_ABILITY_ID = "yin_qiao";
 const JUE_MAI_BUFF_ID = 1337;
+const WU_XIANG_JUE_SNAPSHOT_BUFF_IDS = new Set([2710, 2731, 2732, 2733, 2734]);
 
 /** 2D segment vs AABB intersection test (for LOS checks). */
 function segmentIntersectsAABB(
@@ -478,7 +479,7 @@ function cancelActiveChannel(state: GameState, player: { activeChannel?: any; bu
 }
 
 function isDunyingCompanion(buff: { buffId: number; name?: string; sourceAbilityId?: string }): boolean {
-  return buff.buffId === 1021 && (buff.name === "遁影" || buff.sourceAbilityId === "fuguang_lueying");
+  return buff.buffId === 1021;
 }
 
 function hasBuffEffect(player: { buffs: Array<{ effects: Array<{ type: string }> }> }, type: string): boolean {
@@ -750,6 +751,8 @@ const SHENGTAIJI_ENEMY_SLOW_BUFF_ID = 1311;
 const CHONG_YIN_YANG_ZONE_BUFF_ID = 2701;
 const LING_TAI_XU_ZONE_BUFF_ID = 2702;
 const TUN_RI_YUE_ZONE_BUFF_ID = 2703;
+const SUI_XING_CHEN_ZONE_BUFF_ID = 2704;
+const PO_CANG_QIONG_ZONE_BUFF_ID = 2705;
 
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
@@ -1794,8 +1797,8 @@ export class GameLoop {
           let channelEffectDodged = false;
           for (const e of ch.effects) {
             if (e.type === "TIMED_SELF_HEAL") {
-              const heal = resolveHealAmount({ target: player, base: e.value ?? 0 });
-              const applied = applyHealToTarget(player as any, heal);
+              const healRoll = resolveHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0 });
+              const applied = applyHealToTarget(player as any, healRoll.heal);
               if (applied > 0) {
                 this.state.events.push({
                   id: randomUUID(),
@@ -1808,6 +1811,7 @@ export class GameLoop {
                   abilityName: ch.abilityName,
                   effectType: "TIMED_SELF_HEAL",
                   value: applied,
+                  isCrit: healRoll.isCrit,
                 });
               }
             } else if (e.type === "TIMED_AOE_DAMAGE") {
@@ -2470,8 +2474,8 @@ export class GameLoop {
                 }
                 buffsChanged = true;
               } else if (e.type === "PERIODIC_HEAL") {
-                const heal = resolveHealAmount({ target: player, base: e.value ?? 0 });
-                const applied = applyHealToTarget(player as any, heal);
+                const healRoll = resolveHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0 });
+                const applied = applyHealToTarget(player as any, healRoll.heal);
                 if (applied > 0) {
                   this.state.events.push({
                     id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -2482,6 +2486,7 @@ export class GameLoop {
                     abilityName: buff.sourceAbilityName ?? buff.name,
                     effectType: "PERIODIC_HEAL",
                     value: applied,
+                    isCrit: healRoll.isCrit,
                   });
                 }
                 buffsChanged = true;
@@ -2632,7 +2637,11 @@ export class GameLoop {
                 if (settle > 0) {
                   // True damage — bypass DR and shields
                   const sourcePlayer = this.state.players.find((p) => p.userId === (buff.sourceUserId ?? ""));
-                  const settleDamage = resolveRawDamageWithCrit({ source: sourcePlayer as any, base: settle });
+                  const settleDamage = resolveRawDamageWithCrit({
+                    source: sourcePlayer as any,
+                    base: settle,
+                    damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
+                  });
                   const preHp = player.hp;
                   player.hp = Math.max(0, player.hp - settleDamage);
                   const settledHpDmg = preHp - player.hp;
@@ -2807,8 +2816,12 @@ export class GameLoop {
               });
 
               if (e.lifestealPct && e.lifestealPct > 0 && appliedDamage > 0) {
-                const healAmt = Math.floor(appliedDamage * e.lifestealPct);
-                const applied = applyHealToTarget(player as any, healAmt);
+                const healRoll = resolveNonCritHealAmountRoll({
+                  source: player as any,
+                  target: player,
+                  base: Math.floor(appliedDamage * e.lifestealPct),
+                });
+                const applied = applyHealToTarget(player as any, healRoll.heal);
                 if (applied > 0) {
                   this.state.events.push({
                     id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -2819,6 +2832,7 @@ export class GameLoop {
                     abilityName: buff.sourceAbilityName ?? buff.name,
                     effectType: "TIMED_AOE_DAMAGE",
                     value: applied,
+                    isCrit: healRoll.isCrit,
                   });
                 }
               }
@@ -2919,8 +2933,8 @@ export class GameLoop {
       player.buffs = player.buffs.filter((b) => now < b.expiresAt);
       if (player.buffs.length !== before) buffsChanged = true;
 
-      // 无相诀 natural-expire check: if buff 2710 expired naturally AND player hp < 10%, 贯体 heal 50%
-      const wuxiangExpired = naturallyExpired.filter((b) => b.buffId === 2710);
+      // 无相诀 natural-expire check: if any snapshot DR tier expires naturally AND player hp < 10%, 贯体 heal 50%
+      const wuxiangExpired = naturallyExpired.filter((b) => WU_XIANG_JUE_SNAPSHOT_BUFF_IDS.has(b.buffId));
       for (const _b of wuxiangExpired) {
         const wxMaxHp = player.maxHp ?? 100;
         if (player.hp < wxMaxHp * 0.1) {
@@ -2934,7 +2948,7 @@ export class GameLoop {
               targetUserId: player.userId,
               abilityId: "wu_xiang_jue",
               abilityName: "无相诀（贯体）",
-              effectType: "DAMAGE_REDUCTION_HP_SCALING",
+              effectType: "DAMAGE_REDUCTION",
               value: wxApplied,
             });
             buffsChanged = true;
@@ -2942,7 +2956,7 @@ export class GameLoop {
         }
       }
 
-      // 徐如林·回复 natural-expire: heal caster 5 HP.
+      // 徐如林·回复 natural-expire: 贯体 heal caster 5 HP.
       // Always emit the HEAL event, even at full HP, so the heal float text
       // shows. (Full HP must never suppress healing visuals.)
       const xuRuLinExpired = naturallyExpired.filter(
@@ -2950,16 +2964,18 @@ export class GameLoop {
       );
       for (const xb of xuRuLinExpired) {
         const healVal = (xb.effects.find((e) => (e as any).type === "XU_RU_LIN_RESTORE") as any)?.value ?? 5;
-        applyHealToTarget(player as any, healVal);
+        const applied = applyHealToTarget(player as any, healVal);
+        const baseName = xb.sourceAbilityName ?? xb.name ?? "贯体";
+        const guanTiName = baseName.includes("（贯体）") ? baseName : `${baseName}（贯体）`;
         this.state.events.push({
           id: randomUUID(), timestamp: now, turn: this.state.turn,
           type: "HEAL",
           actorUserId: player.userId,
           targetUserId: player.userId,
           abilityId: xb.sourceAbilityId,
-          abilityName: xb.sourceAbilityName ?? xb.name,
+          abilityName: guanTiName,
           effectType: "XU_RU_LIN_RESTORE",
-          value: healVal,
+          value: applied > 0 ? applied : healVal,
         });
         buffsChanged = true;
       }
@@ -3073,8 +3089,8 @@ export class GameLoop {
             }
             buffsChanged = true;
           } else if (e.type === "PERIODIC_HEAL") {
-            const heal = resolveHealAmount({ target: entity as any, base: e.value ?? 0 });
-            const applied = applyHealToTarget(entity as any, heal);
+            const healRoll = resolveHealAmountRoll({ source: sourcePlayer as any, target: entity as any, base: e.value ?? 0 });
+            const applied = applyHealToTarget(entity as any, healRoll.heal);
             if (applied > 0) {
               this.state.events.push({
                 id: randomUUID(),
@@ -3088,6 +3104,7 @@ export class GameLoop {
                 abilityName: buff.sourceAbilityName ?? buff.name,
                 effectType: "PERIODIC_HEAL",
                 value: applied,
+                isCrit: healRoll.isCrit,
               } as any);
             }
             buffsChanged = true;
@@ -3587,6 +3604,102 @@ export class GameLoop {
           continue;
         }
 
+        // 碎星辰: owner inside → 外功会心提高10%、外功会心效果提高15%; outside → remove
+        if (zone.abilityId === "sui_xing_chen") {
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+          const zoneZ = zone.z ?? 0;
+          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          if (owner && owner.hp > 0) {
+            const dx = owner.position.x - zone.x;
+            const dy = owner.position.y - zone.y;
+            const inZone = Math.sqrt(dx * dx + dy * dy) <= zone.radius && Math.abs((owner.position.z ?? 0) - zoneZ) <= zoneHeight;
+            const hasBuff = owner.buffs.some((b: any) => b.buffId === SUI_XING_CHEN_ZONE_BUFF_ID && b.expiresAt > now);
+            if (inZone && !hasBuff) {
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: owner.userId,
+                ability: (ABILITIES["sui_xing_chen"] ?? { id: "sui_xing_chen", name: "碎星辰" }) as any,
+                buffTarget: owner as any,
+                buff: {
+                  buffId: SUI_XING_CHEN_ZONE_BUFF_ID,
+                  name: "碎星辰",
+                  category: "BUFF",
+                  durationMs: zone.expiresAt - now,
+                  effects: [
+                    { type: "CRIT_CHANCE_BONUS", value: 10, damageType: "外功" } as any,
+                    { type: "CRIT_EFFECT_BONUS", value: 0.15, damageType: "外功" } as any,
+                  ],
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!inZone && hasBuff) {
+              const removed = owner.buffs.find((b: any) => b.buffId === SUI_XING_CHEN_ZONE_BUFF_ID);
+              owner.buffs = owner.buffs.filter((b: any) => b.buffId !== SUI_XING_CHEN_ZONE_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+              }
+              buffsChanged = true;
+            }
+          }
+          continue;
+        }
+
+        // 破苍穹: owner inside → 内功会心提高10%、内功会心效果提高15%; outside → remove
+        if (zone.abilityId === "po_cang_qiong") {
+          const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
+          const zoneZ = zone.z ?? 0;
+          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          if (owner && owner.hp > 0) {
+            const dx = owner.position.x - zone.x;
+            const dy = owner.position.y - zone.y;
+            const inZone = Math.sqrt(dx * dx + dy * dy) <= zone.radius && Math.abs((owner.position.z ?? 0) - zoneZ) <= zoneHeight;
+            const hasBuff = owner.buffs.some((b: any) => b.buffId === PO_CANG_QIONG_ZONE_BUFF_ID && b.expiresAt > now);
+            if (inZone && !hasBuff) {
+              addBuff({
+                state: this.state,
+                sourceUserId: zone.ownerUserId,
+                targetUserId: owner.userId,
+                ability: (ABILITIES["po_cang_qiong"] ?? { id: "po_cang_qiong", name: "破苍穹" }) as any,
+                buffTarget: owner as any,
+                buff: {
+                  buffId: PO_CANG_QIONG_ZONE_BUFF_ID,
+                  name: "破苍穹",
+                  category: "BUFF",
+                  durationMs: zone.expiresAt - now,
+                  effects: [
+                    { type: "CRIT_CHANCE_BONUS", value: 10, damageType: "内功" } as any,
+                    { type: "CRIT_EFFECT_BONUS", value: 0.15, damageType: "内功" } as any,
+                  ],
+                } as any,
+              });
+              buffsChanged = true;
+            } else if (!inZone && hasBuff) {
+              const removed = owner.buffs.find((b: any) => b.buffId === PO_CANG_QIONG_ZONE_BUFF_ID);
+              owner.buffs = owner.buffs.filter((b: any) => b.buffId !== PO_CANG_QIONG_ZONE_BUFF_ID);
+              if (removed) {
+                pushBuffExpired(this.state, {
+                  targetUserId: owner.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+              }
+              buffsChanged = true;
+            }
+          }
+          continue;
+        }
+
         // 吞日月: enemies inside → 封轻功; outside → remove
         if (zone.abilityId === "tun_ri_yue") {
           const zoneZ = zone.z ?? 0;
@@ -4009,7 +4122,11 @@ export class GameLoop {
                 if (now - stackBuff.lastProcAt < stackBuff.procCooldownMs) break;
               }
               const stackSource = this.state.players.find((p) => p.userId === (stackBuff.sourceUserId ?? "")) ?? actor;
-              const dmg = resolveRawDamageWithCrit({ source: stackSource as any, base: e.value ?? 0 });
+              const dmg = resolveRawDamageWithCrit({
+                source: stackSource as any,
+                base: e.value ?? 0,
+                damageType: (ABILITIES[stackBuff.sourceAbilityId ?? ""] as any)?.damageType,
+              });
               applyDamageToTarget(targetPlayer as any, dmg);
               stackBuff.stacks = (stackBuff.stacks ?? 1) - 1;
               stackBuff.lastProcAt = now;

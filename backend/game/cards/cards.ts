@@ -391,12 +391,12 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   fengxiu_diang: {
     id: "fengxiu_diang",
     name: "风袖低昂",
-    description: "恢复60点生命值\n减伤40%，持续10秒",
+    description: "恢复30点生命值\n减伤40%，持续10秒",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "HEAL", value: 60 }],
+    effects: [{ type: "HEAL", value: 30 }],
     buffs: [
       {
         buffId: 1009,
@@ -541,7 +541,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   fenglai_wushan: {
     id: "fenglai_wushan",
     name: "风来吴山",
-    description: "持续5秒运功，每次轮换时对敌人造成8点伤害",
+    description: "持续5秒运功，每次轮换时对敌人造成5点伤害",
     originalDescription:
       "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计8次伤害。在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
     type: "CHANNEL",
@@ -561,28 +561,28 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
           { type: "CONTROL_IMMUNE" },
           {
             type: "SCHEDULED_DAMAGE",
-            value: 8,
+            value: 5,
             when: "TURN_END",
             turnOf: "OWNER",
             target: "ENEMY",
           },
           {
             type: "SCHEDULED_DAMAGE",
-            value: 8,
+            value: 5,
             when: "TURN_START",
             turnOf: "ENEMY",
             target: "ENEMY",
           },
           {
             type: "SCHEDULED_DAMAGE",
-            value: 8,
+            value: 5,
             when: "TURN_END",
             turnOf: "ENEMY",
             target: "ENEMY",
           },
           {
             type: "SCHEDULED_DAMAGE",
-            value: 8,
+            value: 5,
             when: "TURN_START",
             turnOf: "OWNER",
             target: "ENEMY",
