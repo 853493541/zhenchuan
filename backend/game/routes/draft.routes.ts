@@ -710,6 +710,9 @@ router.post("/cheat/add-ability", async (req, res) => {
     const abilityDef = ABILITIES[abilityId];
     if (!abilityDef) return res.status(400).json({ error: `Ability '${abilityId}' not found` });
     if (abilityDef.isCommon) return res.status(400).json({ error: "Common abilities are already in every hand" });
+    if ((abilityDef as any).specialBarAbility === true || (abilityDef as any).hiddenFromDraft === true) {
+      return res.status(400).json({ error: "Hidden sub-abilities cannot be added from cheat panel" });
+    }
 
     const playerIndex = game.players.indexOf(userId);
 

@@ -10,6 +10,7 @@ import type { ExportedMapCollisionSystem } from "../../map/exportedMapCollision"
 import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT } from "../../map/exportedMap";
 import { isLineBlockedByEnemyChuHeHanJieWall } from "../utils/chuHeHanJieWall";
 import { getEffectiveAbilityRange } from "../utils/abilityRange";
+import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../utils/specialAbilityBar";
 
 const SHU_SE_BUFF_ID = 2646;
 
@@ -180,6 +181,17 @@ export function validateCastAbility(
   }
 
   if (!instance) {
+    const maybeSpecial = ABILITIES[abilityInstanceId];
+    if (
+      maybeSpecial &&
+      (maybeSpecial as any).specialBarAbility === true &&
+      isSpecialAbilityBarAbility(player as any, abilityInstanceId)
+    ) {
+      instance = getOrCreateSpecialAbilityState(player as any, abilityInstanceId) as any;
+    }
+  }
+
+  if (!instance) {
     throw new Error("ERR_ABILITY_NOT_IN_HAND");
   }
 
@@ -198,6 +210,10 @@ export function validateCastAbility(
   }
 
   ensureChargeRuntime(instance, ability);
+
+  if ((ability as any).gcd === true && Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
+    throw new Error("ERR_ON_COOLDOWN");
+  }
 
   const hasGroundTarget =
     options?.groundTarget !== undefined &&
@@ -265,7 +281,21 @@ export function validateCastAbility(
 
   /* ================= SILENCE (Level 3 — not removable) ================= */
   if (hasEffect(player, "SILENCE")) {
-    throw new Error("ERR_SILENCED");
+    const allowsSilence =
+      (ability as any).allowWhileSilenced === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e: any) => e.allowWhileSilenced === true));
+    if (!allowsSilence) {
+      throw new Error("ERR_SILENCED");
+    }
+  }
+
+  if (hasEffect(player, "DISARM") && (ability as any).noWeaponRequired !== true) {
+    throw new Error("ERR_DISARMED");
+  }
+
+  if (hasEffect(player, "NON_QINGGONG_LOCK") && (ability as any).qinggong !== true) {
+    throw new Error("ERR_NON_QINGGONG_LOCKED");
   }
 
   if (hasEffect(player, "DISPLACEMENT")) {
@@ -525,18 +555,25 @@ export function validatePlayAbility(
   const player = state.players[playerIndex];
 
   const instance = player.hand.find((c) => c.instanceId === abilityInstanceId);
-  if (!instance) {
+  const specialInstance = !instance &&
+    ABILITIES[abilityInstanceId] &&
+    (ABILITIES[abilityInstanceId] as any).specialBarAbility === true &&
+    isSpecialAbilityBarAbility(player as any, abilityInstanceId)
+      ? (getOrCreateSpecialAbilityState(player as any, abilityInstanceId) as any)
+      : null;
+  const resolvedInstance = instance ?? specialInstance;
+  if (!resolvedInstance) {
     throw new Error("ERR_ABILITY_NOT_IN_HAND");
   }
 
   // Ability can be referenced by either .abilityId or .id (depending on how it was populated)
-  const abilityId = instance.abilityId || (instance as any).id;
+  const abilityId = resolvedInstance.abilityId || (resolvedInstance as any).id;
   const ability = ABILITIES[abilityId];
   if (!ability) {
     throw new Error("ERR_ABILITY_NOT_FOUND");
   }
 
-  ensureChargeRuntime(instance, ability);
+  ensureChargeRuntime(resolvedInstance, ability);
 
   /* ================= QINGGONG SEAL ================= */
   if (
@@ -549,17 +586,31 @@ export function validatePlayAbility(
   /* ================= COOLDOWN ================= */
 
   if (hasChargeSystem(ability)) {
-    if ((instance.chargeLockTicks ?? 0) > 0 || (instance.chargeCount ?? 0) <= 0) {
+    if ((resolvedInstance.chargeLockTicks ?? 0) > 0 || (resolvedInstance.chargeCount ?? 0) <= 0) {
       throw new Error("ERR_ON_COOLDOWN");
     }
-  } else if (instance.cooldown > 0) {
+  } else if (resolvedInstance.cooldown > 0) {
     throw new Error("ERR_ON_COOLDOWN");
   }
 
   /* ================= SILENCE (Level 3 — not removable) ================= */
 
   if (hasEffect(player, "SILENCE")) {
-    throw new Error("ERR_SILENCED");
+    const allowsSilence =
+      (ability as any).allowWhileSilenced === true ||
+      (Array.isArray(ability.effects) &&
+        ability.effects.some((e) => (e as any).allowWhileSilenced === true));
+    if (!allowsSilence) {
+      throw new Error("ERR_SILENCED");
+    }
+  }
+
+  if (hasEffect(player, "DISARM") && (ability as any).noWeaponRequired !== true) {
+    throw new Error("ERR_DISARMED");
+  }
+
+  if (hasEffect(player, "NON_QINGGONG_LOCK") && (ability as any).qinggong !== true) {
+    throw new Error("ERR_NON_QINGGONG_LOCKED");
   }
 
   if (hasEffect(player, "DISPLACEMENT")) {

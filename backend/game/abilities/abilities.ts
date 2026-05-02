@@ -3639,11 +3639,10 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "逐云寒蕊",
         category: "BUFF",
         durationMs: 3_000,
-        description: "免疫所有等级的控制与锁定（眩晕/定身/锁足/击倒/击退/拉拽/沉默/封招）",
+        description: "免疫所有等级的控制（眩晕/定身/锁足/击倒/击退/拉拽）",
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "KNOCKBACK_IMMUNE" },
-          { type: "SILENCE_IMMUNE" },
         ],
       },
       {
@@ -4355,6 +4354,216 @@ export const BASE_ABILITIES: AbilityRecord = {
       },
     ],
   },
+
+  bu_wei_an_xing: {
+    id: "bu_wei_an_xing",
+    name: "怖畏暗刑",
+    description: "4尺，瞬发，不进入公共冷却\n使目标获得【怖畏暗刑】4秒：缴械，无法施展需要武器的招式",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2722,
+        name: "怖畏暗刑",
+        category: "DEBUFF",
+        durationMs: 4_000,
+        description: "缴械：无法施展需要武器的招式",
+        effects: [{ type: "DISARM" }],
+      },
+    ],
+  },
+
+  xia_liu_bao_shi: {
+    id: "xia_liu_bao_shi",
+    name: "霞流宝石",
+    description: "6尺，瞬发，可空中施放，不进入公共冷却\n造成1点伤害，驱散目标身上的阳性、混元、阴性、毒性有利气劲各一个，并使其获得【霞流宝石】4秒：缴械，无法施展需要武器的招式",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 6,
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "DAMAGE", value: 1 },
+      { type: "DISPEL_BUFF_ATTRIBUTE", attributes: ["阳性", "混元", "阴性", "毒性"], count: 1 } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2723,
+        name: "霞流宝石",
+        category: "DEBUFF",
+        durationMs: 4_000,
+        description: "缴械：无法施展需要武器的招式",
+        effects: [{ type: "DISARM" }],
+      },
+    ],
+  },
+
+  xi_bing_yu: {
+    id: "xi_bing_yu",
+    name: "洗兵雨",
+    description: "4尺，瞬发，可空中施放，不进入公共冷却\n使目标获得【洗兵雨】5秒：缴械，无法施展需要武器的招式，并在距目标6尺处生成1尺拾武区域；目标走入后立刻解除该效果",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 4,
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "PLACE_XI_BING_YU_ZONE", range: 1, zoneOffsetUnits: 6, zoneDurationMs: 5_000, zoneHeight: 2 } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2724,
+        name: "洗兵雨",
+        category: "DEBUFF",
+        durationMs: 5_000,
+        description: "缴械：无法施展需要武器的招式。走入拾武区域后解除",
+        effects: [{ type: "DISARM" }],
+      },
+    ],
+  },
+
+  qiang_zhu_shi: {
+    id: "qiang_zhu_shi",
+    name: "抢珠式",
+    description: "8尺，瞬发，可空中施放，不进入公共冷却\n使目标获得【抢珠式】4秒：无法使用轻功以外招式",
+    type: "CONTROL",
+    target: "OPPONENT",
+    range: 8,
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2725,
+        name: "抢珠式",
+        category: "DEBUFF",
+        durationMs: 4_000,
+        description: "无法使用轻功以外招式",
+        effects: [{ type: "NON_QINGGONG_LOCK" }],
+      },
+    ],
+  },
+
+  jiu_xiao_feng_lei: {
+    id: "jiu_xiao_feng_lei",
+    name: "九霄风雷",
+    description: "瞬发，可空中施放，进入公共冷却\n开始3秒运功，运功期间无法移动并获得【九霄风雷·无敌】\n运功完成后获得【九霄风雷】20秒：技能栏临时替换为洞烛机微、魂压怒涛、真·下车，期间无法跳跃",
+    type: "CHANNEL",
+    target: "SELF",
+    cooldownTicks: 0,
+    gcd: true,
+    channelDurationMs: 3_000,
+    channelCancelOnMove: false,
+    channelCancelOnJump: false,
+    channelLockMovement: true,
+    channelForward: false,
+    applyBuffsOnChannelStart: true,
+    channelStartBuffIds: [2726],
+    applyBuffsOnComplete: true,
+    channelCompleteBuffIds: [2727],
+    effects: [],
+    buffs: [
+      {
+        buffId: 2726,
+        name: "九霄风雷·无敌",
+        category: "BUFF",
+        durationMs: 3_000,
+        description: "无敌",
+        effects: [{ type: "INVULNERABLE" }],
+        applyTo: "SELF",
+      },
+      {
+        buffId: 2727,
+        name: "九霄风雷",
+        category: "BUFF",
+        durationMs: 20_000,
+        description: "技能栏临时替换为洞烛机微、魂压怒涛、真·下车，期间无法跳跃",
+        effects: [
+          { type: "SPECIAL_ABILITY_BAR", abilityIds: ["dong_zhu_ji_wei", "hun_ya_nu_tao", "zhen_xia_che"] } as any,
+          { type: "NO_JUMP" } as any,
+        ],
+        applyTo: "SELF",
+      },
+    ],
+  },
+
+  dong_zhu_ji_wei: {
+    id: "dong_zhu_ji_wei",
+    name: "洞烛机微",
+    description: "九霄风雷期间可用\n解除自身控制，并获得【洞烛机微】8秒：移动速度提高100%，免疫控制\n无冷却，进入公共冷却",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 0,
+    gcd: true,
+    noWeaponRequired: true,
+    specialBarAbility: true,
+    hiddenFromDraft: true,
+    allowWhileControlled: true,
+    allowWhileKnockedBack: true,
+    allowWhilePulled: true,
+    allowWhileDisplaced: true,
+    cleanseRootSlow: true,
+    effects: [{ type: "CLEANSE", cleanseRootSlow: true }],
+    buffs: [
+      {
+        buffId: 2728,
+        name: "洞烛机微",
+        category: "BUFF",
+        durationMs: 8_000,
+        description: "移动速度提高100%，免疫控制",
+        effects: [{ type: "SPEED_BOOST", value: 1 }, { type: "CONTROL_IMMUNE" }],
+        applyTo: "SELF",
+      },
+    ],
+  },
+
+  hun_ya_nu_tao: {
+    id: "hun_ya_nu_tao",
+    name: "魂压怒涛",
+    description: "九霄风雷期间可用\n击退10尺内敌方目标10尺，击退在0.5秒内完成，结束后附加【冲撞】眩晕4秒\n8秒冷却，不进入公共冷却",
+    type: "CONTROL",
+    target: "SELF",
+    cooldownTicks: 240,
+    gcd: false,
+    noWeaponRequired: true,
+    specialBarAbility: true,
+    hiddenFromDraft: true,
+    effects: [{ type: "HUN_YA_NU_TAO", range: 10, value: 10, durationTicks: 15 } as any],
+    buffs: [
+      {
+        buffId: 2730,
+        name: "冲撞",
+        category: "DEBUFF",
+        durationMs: 4_000,
+        description: "眩晕，无法行动",
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  zhen_xia_che: {
+    id: "zhen_xia_che",
+    name: "真·下车",
+    description: "九霄风雷期间可用\n结束九霄风雷，恢复原技能栏，并移除洞烛机微\n可在受控、被击退、被拉拽、位移或沉默中施放",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 0,
+    gcd: false,
+    noWeaponRequired: true,
+    specialBarAbility: true,
+    hiddenFromDraft: true,
+    allowWhileControlled: true,
+    allowWhileKnockedBack: true,
+    allowWhilePulled: true,
+    allowWhileDisplaced: true,
+    allowWhileSilenced: true,
+    effects: [{ type: "REMOVE_SELF_BUFFS", buffIds: [2727, 2728] } as any],
+    buffs: [],
+  },
 };
 
 let abilityPropertyOverrides: AbilityEditorOverrideMap = {};
@@ -4391,8 +4600,39 @@ const ABILITY_TYPE_ORDER: Record<Ability["type"], number> = {
   CHANNEL: 5,
 };
 
+export interface NoWeaponRequiredAbilityEntry {
+  id: string;
+  name: string;
+  description: string;
+  type: Ability["type"];
+  target: Ability["target"];
+  baseNoWeaponRequired: boolean;
+  manualNoWeaponRequired: boolean;
+  manuallyExcluded: boolean;
+  noWeaponRequired: boolean;
+}
+
+export interface NoWeaponRequiredSnapshot {
+  updatedAt: string | null;
+  abilities: NoWeaponRequiredAbilityEntry[];
+}
+
+export type NoWeaponRequiredOverrideMode = "manual-include" | "manual-exclude" | "clear";
+
+function hasAbilityOverrideContent(entry: AbilityEditorOverrideEntry) {
+  return Boolean(
+    entry.tags ||
+      entry.properties ||
+      entry.numeric ||
+      entry.isProjectile !== undefined ||
+      entry.dunLiWhitelisted !== undefined ||
+      entry.noWeaponRequired !== undefined
+  );
+}
+
 export function buildAbilityEditorSnapshot() {
   const abilities = Object.values(ABILITIES)
+    .filter((ability) => (ability as any).specialBarAbility !== true)
     .map((ability) =>
       buildAbilityEditorEntry({
         ability,
@@ -4409,6 +4649,45 @@ export function buildAbilityEditorSnapshot() {
   return {
     updatedAt: abilityPropertyOverridesUpdatedAt,
     propertyCatalog: listAbilityPropertyDefinitions(),
+    abilities,
+  };
+}
+
+export function buildNoWeaponRequiredSnapshot(): NoWeaponRequiredSnapshot {
+  const resolvedAbilities = buildResolvedAbilities(BASE_ABILITIES, abilityPropertyOverrides);
+
+  const abilities = Object.values(resolvedAbilities)
+    .filter((ability) => (ability as any).specialBarAbility !== true)
+    .map((ability) => {
+      const override = abilityPropertyOverrides[ability.id];
+      const baseNoWeaponRequired = BASE_ABILITIES[ability.id]?.noWeaponRequired === true;
+      const manualNoWeaponRequired = override?.noWeaponRequired === true;
+      const manuallyExcluded = override?.noWeaponRequired === false;
+
+      return {
+        id: ability.id,
+        name: ability.name,
+        description: ability.description,
+        type: ability.type,
+        target: ability.target,
+        baseNoWeaponRequired,
+        manualNoWeaponRequired,
+        manuallyExcluded,
+        noWeaponRequired: (ability as any).noWeaponRequired === true,
+      } satisfies NoWeaponRequiredAbilityEntry;
+    })
+    .sort((left, right) => {
+      const selectedDelta = Number(right.noWeaponRequired) - Number(left.noWeaponRequired);
+      if (selectedDelta !== 0) return selectedDelta;
+      const excludedDelta = Number(right.manuallyExcluded) - Number(left.manuallyExcluded);
+      if (excludedDelta !== 0) return excludedDelta;
+      const typeDelta = ABILITY_TYPE_ORDER[left.type] - ABILITY_TYPE_ORDER[right.type];
+      if (typeDelta !== 0) return typeDelta;
+      return left.name.localeCompare(right.name, "zh-Hans-CN");
+    });
+
+  return {
+    updatedAt: abilityPropertyOverridesUpdatedAt,
     abilities,
   };
 }
@@ -4527,7 +4806,13 @@ export function setAbilityTag(abilityId: string, tagGroup: TagGroupId, value: st
     nextEntry.tags = Object.keys(nextTags).length > 0 ? nextTags : undefined;
   }
 
-  const isEmpty = !nextEntry.tags && !nextEntry.properties && !nextEntry.numeric;
+  const isEmpty =
+    !nextEntry.tags &&
+    !nextEntry.properties &&
+    !nextEntry.numeric &&
+    nextEntry.isProjectile === undefined &&
+    nextEntry.dunLiWhitelisted === undefined &&
+    nextEntry.noWeaponRequired === undefined;
   if (isEmpty) {
     delete abilityPropertyOverrides[abilityId];
   } else {
@@ -4563,7 +4848,8 @@ export function setAbilityIsProjectile(abilityId: string, isProjectile: boolean)
     !nextEntry.properties &&
     !nextEntry.numeric &&
     !nextEntry.isProjectile &&
-    !nextEntry.dunLiWhitelisted;
+    !nextEntry.dunLiWhitelisted &&
+    nextEntry.noWeaponRequired === undefined;
   if (isEmpty) {
     delete abilityPropertyOverrides[abilityId];
   } else {
@@ -4599,7 +4885,8 @@ export function setAbilityDunLiWhitelisted(abilityId: string, dunLiWhitelisted: 
     !nextEntry.properties &&
     !nextEntry.numeric &&
     !nextEntry.isProjectile &&
-    !nextEntry.dunLiWhitelisted;
+    !nextEntry.dunLiWhitelisted &&
+    nextEntry.noWeaponRequired === undefined;
   if (isEmpty) {
     delete abilityPropertyOverrides[abilityId];
   } else {
@@ -4614,4 +4901,34 @@ export function setAbilityDunLiWhitelisted(abilityId: string, dunLiWhitelisted: 
     baseAbility,
     overrides: abilityPropertyOverrides[abilityId],
   });
+}
+
+export function setAbilityNoWeaponRequiredOverride(abilityId: string, mode: NoWeaponRequiredOverrideMode) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
+  }
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+  };
+
+  if (mode === "manual-include") {
+    nextEntry.noWeaponRequired = true;
+  } else if (mode === "manual-exclude") {
+    nextEntry.noWeaponRequired = false;
+  } else {
+    delete nextEntry.noWeaponRequired;
+  }
+
+  if (hasAbilityOverrideContent(nextEntry)) {
+    abilityPropertyOverrides[abilityId] = nextEntry;
+  } else {
+    delete abilityPropertyOverrides[abilityId];
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+
+  return buildNoWeaponRequiredSnapshot();
 }

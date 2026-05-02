@@ -58,7 +58,7 @@ function getRandomRarities(level: number): number[] {
  */
 function getAbilitiesByRarity(rarity: number): string[] {
   return Object.values(ABILITIES)
-    .filter((ability: any) => (ability.rarity ?? 1) === rarity && !ability.isCommon)
+    .filter((ability: any) => (ability.rarity ?? 1) === rarity && !ability.isCommon && !ability.hiddenFromDraft && !ability.specialBarAbility)
     .map((ability: any) => ability.id);
 }
 

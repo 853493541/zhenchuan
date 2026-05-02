@@ -72,6 +72,10 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       // Common movement abilities are always shown regardless of draft
       isCommon: !!(ability as any).isCommon,
 
+      // Hidden / temporary special-bar skills should stay out of draft-like pickers.
+      specialBarAbility: !!(ability as any).specialBarAbility,
+      hiddenFromDraft: !!(ability as any).hiddenFromDraft,
+
       // Opponent-target abilities require facing by default unless explicitly disabled.
       faceDirection:
         ability.target === "OPPONENT"
@@ -98,6 +102,9 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
 
       // Some mobility skills are explicitly blocked while rooted.
       cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
+
+      // 可在缴械时施放的特殊技能。
+      noWeaponRequired: !!(ability as any).noWeaponRequired,
 
       // Editor/runtime cast exception flags.
       allowWhileControlled:
@@ -227,7 +234,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     category: "BUFF",
     durationMs: 10_000,
     breakOnPlay: false,
-    description: "10秒内锁招递减。每次沉默或同类锁招成功后层数+1并刷新计时，下一次持续时间按0.5^层数递减。封轻功不参与这一递减。",
+    description: "10秒内锁招递减。每次沉默、缴械或同类锁招成功后层数+1并刷新计时，下一次持续时间按0.5^层数递减。封轻功不参与这一递减。",
     effects: [],
   });
 

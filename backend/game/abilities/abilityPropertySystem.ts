@@ -59,6 +59,8 @@ export interface AbilityEditorOverrideEntry {
   isProjectile?: boolean;
   /** Whether this ability is whitelisted from 盾立 reflect (damage immunity still applies) */
   dunLiWhitelisted?: boolean;
+  /** Whether this ability can be cast while disarmed. False is a meaningful manual exclusion. */
+  noWeaponRequired?: boolean;
 }
 
 export type AbilityEditorOverrideMap = Record<string, AbilityEditorOverrideEntry>;
@@ -732,12 +734,19 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
       ? entryRecord.dunLiWhitelisted
       : undefined;
 
+  // Parse top-level noWeaponRequired field
+  const noWeaponRequired =
+    "noWeaponRequired" in entryRecord && typeof entryRecord.noWeaponRequired === "boolean"
+      ? entryRecord.noWeaponRequired
+      : undefined;
+
   if (
     Object.keys(properties).length === 0 &&
     Object.keys(numeric).length === 0 &&
     !tags &&
     isProjectile === undefined &&
-    dunLiWhitelisted === undefined
+    dunLiWhitelisted === undefined &&
+    noWeaponRequired === undefined
   ) {
     return null;
   }
@@ -748,6 +757,7 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
     tags,
     isProjectile,
     dunLiWhitelisted,
+    noWeaponRequired,
   };
 }
 
@@ -1105,6 +1115,13 @@ export function buildResolvedAbilities(baseAbilities: AbilityRecord, overrides: 
       (nextAbility as any).dunLiWhitelisted = true;
     } else if (abilityOverrides && "dunLiWhitelisted" in abilityOverrides && !abilityOverrides.dunLiWhitelisted) {
       (nextAbility as any).dunLiWhitelisted = false;
+    }
+
+    // Apply noWeaponRequired so disarm validation and preload can see editor overrides.
+    if (abilityOverrides?.noWeaponRequired === true) {
+      (nextAbility as any).noWeaponRequired = true;
+    } else if (abilityOverrides && "noWeaponRequired" in abilityOverrides && abilityOverrides.noWeaponRequired === false) {
+      delete (nextAbility as any).noWeaponRequired;
     }
 
     const runtimeChannelInfo = buildRuntimeChannelInfo(nextAbility);

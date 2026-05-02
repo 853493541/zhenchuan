@@ -47,6 +47,8 @@ export interface ActiveChannel {
   cancelOnOutOfRange?: number;
   /** true = forward-fill bar (0→100%), false = drain bar (100→0%) */
   forwardChannel?: boolean;
+  /** If true, movement input is ignored while this active channel is running. */
+  lockMovement?: boolean;
   /** Effects to fire on channel completion */
   effects: AbilityEffect[];
   /** Cooldown ticks to set on the ability instance after completion */
@@ -66,6 +68,12 @@ export interface PlayerState {
 
   /** abilities in hand */
   hand: AbilityInstance[];
+
+  /** Runtime state for temporary special-bar abilities that must keep cooldown/GCD without living in hand. */
+  specialAbilityStates?: Record<string, AbilityInstance>;
+
+  /** Shared GCD lock for abilities that trigger public cooldown, including temporary special-bar skills. */
+  globalGcdTicks?: number;
 
   /** active buffs on player */
   buffs: ActiveBuff[];
