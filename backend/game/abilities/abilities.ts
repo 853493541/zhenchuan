@@ -940,6 +940,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
+    channelNotInterruptible: true,
     effects: [],
     buffs: [
       {
@@ -953,7 +954,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         cancelOnJump: false,
         effects: [
           { type: "CONTROL_IMMUNE" },
-          { type: "INTERRUPT_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
           { type: "CHANNEL_AOE_TICK", value: 8, range: 10 },
         ],
       },
@@ -1028,6 +1029,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
+    channelNotInterruptible: true,
     effects: [],
     buffs: [
       {
@@ -1043,7 +1045,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "KNOCKBACK_IMMUNE" },
-          { type: "INTERRUPT_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
           { type: "CHANNEL_AOE_TICK", value: 2, range: 6, aoeAngle: 180 },
           { type: "TIMED_AOE_DAMAGE", delayMs: 3_000, value: 10, range: 12, aoeAngle: 180 },
         ],
@@ -1196,6 +1198,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
+    channelNotInterruptible: true,
     requiresGrounded: true,
     effects: [],
     buffs: [
@@ -1212,7 +1215,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "KNOCKBACK_IMMUNE" },
-          { type: "INTERRUPT_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
           { type: "PERIODIC_HEAL", value: 3 },
         ],
       },
@@ -1230,6 +1233,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: false,
+    channelNotInterruptible: true,
     requiresGrounded: true,
     effects: [
       { type: "CLEANSE", allowWhileControlled: true },
@@ -1249,7 +1253,8 @@ export const BASE_ABILITIES: AbilityRecord = {
           { type: "DAMAGE_REDUCTION", value: 0.5 },
           { type: "CONTROL_IMMUNE" },
           { type: "KNOCKBACK_IMMUNE" },
-          { type: "INTERRUPT_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
+          { type: "FEAR_IMMUNE" },
           { type: "PERIODIC_GUAN_TI_HEAL", value: 5 },
           { type: "TIMED_GUAN_TI_HEAL", delayMs: 9_000, value: 30 },
         ],
@@ -3182,7 +3187,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelCancelOnMove: false,
     channelCancelOnJump: false,
     channelCancelOnOutOfRange: 20,
-    channelForward: false,
+    channelForward: true,
     applyBuffsOnComplete: true,
     channelEffects: [],
   } as any,
@@ -3245,7 +3250,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelCancelOnMove: false,
     channelCancelOnJump: true,
     channelCancelOnOutOfRange: 20,
-    channelForward: false,
+    channelForward: true,
     channelEffects: [
       { type: "TIMED_AOE_DAMAGE", value: 1, range: 20 },
       { type: "DISPEL_BUFF_ATTRIBUTE", attributes: ["混元", "阳性", "阴性", "毒性"], count: 2 } as any,
@@ -3536,6 +3541,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
+    channelNotInterruptible: true,
     requiresGrounded: false,
     effects: [],
     buffs: [
@@ -3552,7 +3558,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "KNOCKBACK_IMMUNE" },
-          { type: "INTERRUPT_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
           { type: "PROJECTILE_IMMUNE" },
           { type: "DAMAGE_REDUCTION", value: 0.5 },
           { type: "CHANNEL_AOE_TICK_DAMAGE", value: 1, range: 4 },
@@ -4259,6 +4265,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "OPPONENT",
     cooldownTicks: 450,
     gcd: true,
+    channelNotInterruptible: true,
     range: 25,
     requiresGrounded: true,
     requiresStanding: true,
@@ -4278,14 +4285,13 @@ export const BASE_ABILITIES: AbilityRecord = {
           { type: "CONTROL_IMMUNE" },
           { type: "SILENCE_IMMUNE" },
           { type: "ROOT_SLOW_IMMUNE" },
-          { type: "INTERRUPT_IMMUNE" },
         ],
       },
     ],
     channelDurationMs: 3_000,
     channelCancelOnMove: true,
     channelCancelOnJump: true,
-    channelForward: true,
+    channelForward: false,
     applyBuffsOnChannelStart: true,
     channelEffects: [
       { type: "LIAN_HUAN_NU_TICK", value: 0, range: 25 } as any,
@@ -4320,7 +4326,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   jian_fei_jing_tian: {
     id: "jian_fei_jing_tian",
     name: "剑飞惊天",
-    description: "20尺，瞬发对目标造成1点伤害\n附加【惊惧】50%减速5秒\n若目标正在读条且该读条可被打断，则打断读条并附加【剑飞惊天】沉默5秒\n若目标拥有【沉默免疫】则不会触发打断与沉默效果",
+    description: "20尺，瞬发对目标造成1点伤害\n若目标正在读条且该读条可被打断，则打断读条并附加【剑飞惊天】沉默5秒\n若打断未生效（目标拥有【沉默免疫】或不在读条中），改为附加【惊惧】50%减速5秒",
     type: "ATTACK",
     target: "OPPONENT",
     range: 20,

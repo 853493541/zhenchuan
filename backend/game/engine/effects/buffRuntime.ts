@@ -201,6 +201,10 @@ function hasSilenceImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "SILENCE_IMMUNE"));
 }
 
+function hasFearImmune(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "FEAR_IMMUNE"));
+}
+
 function hasInvulnerable(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "INVULNERABLE"));
 }
@@ -436,6 +440,24 @@ export function addBuff(params: {
         ...runtimeBuff,
         effects: filteredEffects,
       };
+    }
+  }
+
+  if (sourceUserId !== targetUserId && hasFearImmune(buffTarget)) {
+    const hasFear = runtimeBuff.effects.some((e) => e.type === "FEARED");
+    if (hasFear) {
+      const filteredEffects = runtimeBuff.effects.filter(
+        (e) => e.type !== "FEARED" && e.type !== "SILENCE"
+      );
+      if (filteredEffects.length === 0) {
+        return;
+      }
+      if (filteredEffects.length !== runtimeBuff.effects.length) {
+        runtimeBuff = {
+          ...runtimeBuff,
+          effects: filteredEffects,
+        };
+      }
     }
   }
 
@@ -682,13 +704,13 @@ export function addBuff(params: {
     addShieldToTarget(buffTarget as any, effectiveShield);
   }
 
-  // CC that hits a channeling player (with no INTERRUPT_IMMUNE) cancels their channel.
+  // CC that hits a channeling player (with no SILENCE_IMMUNE) cancels their channel.
   if ((buffTarget as any).activeChannel) {
     const isCC = runtimeBuff.effects.some((e) =>
       e.type === "CONTROL" || e.type === "KNOCKED_BACK" || e.type === "PULLED" || e.type === "ATTACK_LOCK"
     );
     const isImmune = buffTarget.buffs.some((b) =>
-      b.effects.some((e) => e.type === "INTERRUPT_IMMUNE" || e.type === "CONTROL_IMMUNE" || e.type === "SILENCE_IMMUNE")
+      b.effects.some((e) => e.type === "CONTROL_IMMUNE" || e.type === "SILENCE_IMMUNE")
     );
     if (isCC && !isImmune) {
       (buffTarget as any).activeChannel = undefined;

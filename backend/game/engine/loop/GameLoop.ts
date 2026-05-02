@@ -2350,7 +2350,7 @@ export class GameLoop {
       // Silence interrupts runtime channel buffs unless the buff itself is interrupt-immune.
       if (hasBuffEffect(player as any, "SILENCE") || hasBuffEffect(player as any, "DISPLACEMENT")) {
         const removedBySilence = player.buffs.filter(
-          (b) => isChannelBuffRuntime(b as any) && !b.effects.some((e: any) => e.type === "INTERRUPT_IMMUNE" || e.type === "SILENCE_IMMUNE")
+          (b) => isChannelBuffRuntime(b as any) && !b.effects.some((e: any) => e.type === "SILENCE_IMMUNE")
         );
         if (removedBySilence.length > 0) {
           for (const removed of removedBySilence) {

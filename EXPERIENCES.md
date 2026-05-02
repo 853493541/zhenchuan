@@ -3,6 +3,42 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Buff-channel shield fix + FEAR_IMMUNE addition (2026-05-02 round 12)
+
+**Problem set**:
+1. Only 连环弩 showed the enemy-side "不可被打断" shield even though other buff-driven channels (风来吴山 / 千蝶吐瑞 / 笑醉狂 / 心诤 / 斩无常) were marked `channelNotInterruptible: true`.
+2. Needed an authoritative audit of every buff carrying `SILENCE_IMMUNE` and to confirm they all still count as interrupt-immune after removing `INTERRUPT_IMMUNE`.
+3. Needed a new `恐惧免疫` property/effect and to add it to 笑醉狂.
+
+**Fix**:
+- Root cause of the missing shield: the frontend helper `getRuntimeAbilityChannel()` dropped `channel.interruptible` when converting `ability.channel` into the local `RuntimeAbilityChannel`. Direct `activeChannel` bars (like 连环弩) still worked because the backend sends `activeChannel.interruptible`; buff-driven channels always fell back to `true`. Fix was to preserve `interruptible` in the helper return shape.
+- Verified with built preload data that the unique `SILENCE_IMMUNE` buffs are: 1014 不工, 1017 心诤, 2003 千蝶吐瑞, 2001 笑醉狂, 2304 转乾坤减伤, 2312 折骨, 2712 斩无常, 2715 逐云寒蕊, 2717 逐云寒蕊·不摇, 2630 连环弩. Runtime still treats `SILENCE_IMMUNE` as interrupt immunity in `immediateEffects.ts` (interrupt abilities), `buffRuntime.ts` (CC-cancels-activeChannel guard), `GameLoop.ts` (silence-removes-channel-buffs guard), and `BattleArena.tsx` (client-side interrupt-immune detection).
+- Added new effect type `FEAR_IMMUNE`, categorized as a BUFF effect. Implemented it in `addBuff()` so any incoming buff containing `FEARED` has both `FEARED` and its companion `SILENCE` stripped when the target already has `FEAR_IMMUNE`. Exposed the property in both backend/frontend buff editor property catalogs and base-property extraction, then added `{ type: "FEAR_IMMUNE" }` to 笑醉狂 (buff 2001).
+
+**Lesson**:
+- If a behavior differs between pure channels and buff-driven channels, compare the shared normalization helper before touching engine logic. Here the backend/channel flag was correct; the frontend projection silently discarded one field.
+- New immunity concepts belong in `addBuff()` if they gate debuff application. That keeps all current and future abilities consistent automatically and avoids scattering per-ability special cases.
+
+## Channel direction fixes + INTERRUPT_IMMUNE removal + 剑飞 dual-mode (2026-05-02 round 11)
+
+**Problem set**:
+1. Channel direction was wrong: 连环弩 was forward (should be reverse); 傍花随柳 + 少明指 were reverse (should be forward).
+2. Uninterruptible shield never appeared — no channel actually had `channelNotInterruptible: true` yet.
+3. 剑飞 needed mutually exclusive buffs: success → silence only, failure → 惊惧 only (previously 惊惧 always applied).
+4. Standalone INTERRUPT_IMMUNE buff effect was redundant with SILENCE_IMMUNE; should be removed and represented purely as a *channel* property (channelNotInterruptible).
+5. The five canonical uninterruptible channels (风来吴山, 千蝶吐瑞, 笑醉狂, 心诤, 斩无常, 连环弩) needed both 沉默免疫 on their buff and channelNotInterruptible on their ability.
+
+**Fix**:
+- Flipped `channelForward` on 3 abilities (lian_huan_nu→false, bang_hua_sui_liu→true, shao_ming_zhi→true). Channel direction is purely a UI flag — tick/effect timing is wall-clock based, so flipping it does not change game effects.
+- Reworked the `XIANG_JI_BI_LUO` handler in `immediateEffects.ts`: pre-classify ability buffs into silence/non-silence; on FAILURE (immune or no interruptible channel) apply only non-silence buffs; on SUCCESS apply only silence buffs. Both branches are now mutually exclusive.
+- Removed `INTERRUPT_IMMUNE` from the `EffectType` union, `categories.ts`, all runtime checks (`buffRuntime.ts`, `GameLoop.ts`, `immediateEffects.ts`, `BattleArena.tsx`), and `extractBaseProperties` in `buffTagSystem.ts`. Replaced 5 `INTERRUPT_IMMUNE` buff entries with `SILENCE_IMMUNE` (buffs 1014, 1017, 2003, 2001, 2712 in both abilities.ts and abilityPreload.ts); deleted the now-redundant entry from buff 2630.
+- Added `channelNotInterruptible?: boolean` to the canonical `Ability` type. Set it to `true` on 6 abilities: fenglai_wushan, xinzheng, qiandie_turui, xiao_zui_kuang, zhan_wu_chang, lian_huan_nu.
+- Effects of these two changes: any silence-immune buff also confers interrupt immunity; only the channel itself (via channelNotInterruptible) decides if a 翔极碧落/剑飞惊天 strike succeeds. Buff-side immunity (新 SILENCE_IMMUNE alone) and channel-side immunity (channelNotInterruptible) are now non-overlapping.
+
+**Lesson**:
+- When a feature flag exists in two places (effect on a buff vs property on a channel), pick one canonical home and remove the other. The split caused: (1) 风来吴山·不工 redundantly carrying CONTROL_IMMUNE+INTERRUPT_IMMUNE on the buff while the channel had no opt-out, (2) editors couldn't display channel-level immunity, (3) handlers had to OR-check both. Consolidating cuts every site cleanly.
+- Buff-driven channels (风来吴山, 千蝶吐瑞, etc.) read channelNotInterruptible from the *ability*, not the buff — `buildRuntimeChannelInfo` casts `(ability as any).channelNotInterruptible`. Adding the flag to `Ability` type avoids `as any` casts at every call site.
+
 ## 不可被打断 flip + 沉默免疫 unification + 剑飞惊天 + uninterruptible shield (2026-05-02)
 
 **Problem set** (round 10):

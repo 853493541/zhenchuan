@@ -209,6 +209,12 @@ export interface Ability {
    * Normalized runtime channel metadata used by preload/UI systems.
    */
   channel?: AbilityChannel;
+
+  /**
+   * If true, this ability's channel cannot be interrupted by abilities such as
+   * 翔极碧落 / 剑飞惊天. Default (undefined / false) = interruptible.
+   */
+  channelNotInterruptible?: boolean;
 }
 
 export interface AbilityInstance {

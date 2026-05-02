@@ -3115,8 +3115,11 @@ export function applyImmediateEffects(params: {
         if (blocksEnemyTargeting(effTarget as any)) break;
 
         // Pre-classify the ability's declared buffs:
-        //   - silence buffs are conditional on a successful interrupt
-        //   - non-silence buffs (e.g. 惊惧 slow on 剑飞惊天) apply unconditionally
+        //   - silence buffs apply ONLY on a successful interrupt
+        //   - non-silence buffs (e.g. 惊惧 slow on 剑飞惊天) apply ONLY on FAILURE
+        //     (i.e. when interrupt does not land — target was immune or had no
+        //      interruptible channel). This makes 剑飞 mutually exclusive between
+        //      惊惧 (fail) and 沉默 (success).
         const allBuffs = (ability.buffs ?? []) as any[];
         const silenceBuffs = allBuffs.filter(
           (b) => b.effects?.some((e: any) => e.type === "SILENCE")
@@ -3125,23 +3128,28 @@ export function applyImmediateEffects(params: {
           (b) => !b.effects?.some((e: any) => e.type === "SILENCE")
         );
 
-        for (const buff of nonSilenceBuffs) {
-          addBuff({
-            state,
-            sourceUserId: source.userId,
-            targetUserId: effTarget.userId,
-            ability,
-            buffTarget: effTarget as any,
-            buff,
-          });
-        }
+        const applyFailureBuffs = () => {
+          for (const buff of nonSilenceBuffs) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: effTarget.userId,
+              ability,
+              buffTarget: effTarget as any,
+              buff,
+            });
+          }
+        };
 
         // 1. Interrupt immunity gates the interrupt + silence chain.
         //    SILENCE_IMMUNE also confers interrupt immunity by design.
         const hasInterruptImmune = (effTarget.buffs ?? []).some((b: any) =>
-          b.effects?.some((e: any) => e.type === "INTERRUPT_IMMUNE" || e.type === "SILENCE_IMMUNE")
+          b.effects?.some((e: any) => e.type === "SILENCE_IMMUNE")
         );
-        if (hasInterruptImmune) break;
+        if (hasInterruptImmune) {
+          applyFailureBuffs();
+          break;
+        }
 
         // 2. Find the target's current channel (active or buff-source) and
         //    its interruptible flag.
@@ -3174,7 +3182,10 @@ export function applyImmediateEffects(params: {
           }
         }
 
-        if (!channelInterruptible) break;
+        if (!channelInterruptible) {
+          applyFailureBuffs();
+          break;
+        }
 
         // 3. Successful interrupt — cancel channel.
         if (cancelActive) {

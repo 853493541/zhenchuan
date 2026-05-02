@@ -50,6 +50,7 @@ type RuntimeAbilityChannel = {
   durationMs: number;
   cancelOnMove: boolean;
   cancelOnJump: boolean;
+  interruptible?: boolean;
   tickIntervalMs?: number;
   buffId?: number;
 };
@@ -100,6 +101,7 @@ function getRuntimeAbilityChannel(ability: any): RuntimeAbilityChannel | null {
     durationMs: Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0,
     cancelOnMove: channel.cancelOnMove === true,
     cancelOnJump: channel.cancelOnJump === true,
+    interruptible: channel.interruptible !== false,
     ...(Number.isFinite(tickIntervalMs) && tickIntervalMs > 0 ? { tickIntervalMs } : {}),
     ...(typeof channel.buffId === 'number' ? { buffId: channel.buffId } : {}),
   };
@@ -124,7 +126,7 @@ function buildChannelBarResultForPlayer(
   const suppressJumpBar = options?.suppressJumpBar === true;
 
   const hasBlockingCC = buffsHaveAnyEffect(buffs, ['CONTROL', 'KNOCKED_BACK', 'ATTACK_LOCK']);
-  const hasInterruptImmune = buffsHaveAnyEffect(buffs, ['INTERRUPT_IMMUNE', 'CONTROL_IMMUNE', 'SILENCE_IMMUNE']);
+  const hasInterruptImmune = buffsHaveAnyEffect(buffs, ['CONTROL_IMMUNE', 'SILENCE_IMMUNE']);
   if (hasBlockingCC && !hasInterruptImmune) {
     return null;
   }

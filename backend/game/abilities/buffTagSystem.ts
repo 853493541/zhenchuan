@@ -83,15 +83,16 @@ function extractBaseProperties(effects: Array<{ type: string; value?: number }> 
     });
   }
 
-  // SILENCE_IMMUNE OR INTERRUPT_IMMUNE → 沉默免疫.
-  // INTERRUPT_IMMUNE is treated as an alias of SILENCE_IMMUNE in the editor view
-  // (point 5: any silence-immune buff is also interrupt-immune; there is no
-  // reason to expose them as two separate properties).
-  const silenceImmune = effects.some(
-    (e) => e.type === "SILENCE_IMMUNE" || e.type === "INTERRUPT_IMMUNE"
-  );
+  // SILENCE_IMMUNE → 沉默免疫.
+  const silenceImmune = effects.some((e) => e.type === "SILENCE_IMMUNE");
   if (silenceImmune) {
     result.push({ type: "沉默免疫" });
+  }
+
+  // FEAR_IMMUNE → 恐惧免疫.
+  const fearImmune = effects.some((e) => e.type === "FEAR_IMMUNE");
+  if (fearImmune) {
+    result.push({ type: "恐惧免疫" });
   }
 
   return result;
