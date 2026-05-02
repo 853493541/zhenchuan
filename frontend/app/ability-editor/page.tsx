@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import BuffEditorTab from "./BuffEditorTab";
 import ProjectileEditorTab from "./ProjectileEditorTab";
 import DunLiWhitelistTab from "./DunLiWhitelistTab";
+import NoWeaponRequiredTab from "./NoWeaponRequiredTab";
 import QinYinGongMingTab from "./QinYinGongMingTab";
 import {
   ABILITY_RARITIES,
@@ -14,6 +15,7 @@ import {
   AbilityRarity,
   AbilitySchool,
   BuffEditorSnapshot,
+  NoWeaponRequiredSnapshot,
   QinYinGongMingSnapshot,
   DAMAGE_TYPE_COLOR,
   DAMAGE_TYPES,
@@ -39,7 +41,7 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "qinYinGongMing";
+type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "qinYinGongMing";
 
 function buildOverviewTags(ability: AbilityEditorAbility) {
   const tags: string[] = [];
@@ -74,6 +76,8 @@ export default function AbilityEditorPage() {
       setMainTab("projectiles");
     } else if (params.get("tab") === "dunLiWhitelist") {
       setMainTab("dunLiWhitelist");
+    } else if (params.get("tab") === "noWeaponRequired") {
+      setMainTab("noWeaponRequired");
     } else if (params.get("tab") === "qinYinGongMing") {
       setMainTab("qinYinGongMing");
     }
@@ -130,6 +134,9 @@ export default function AbilityEditorPage() {
   const [buffSnapshot, setBuffSnapshot] = useState<BuffEditorSnapshot | null>(null);
   const [buffLoading, setBuffLoading] = useState(false);
   const [buffError, setBuffError] = useState("");
+  const [noWeaponRequiredSnapshot, setNoWeaponRequiredSnapshot] = useState<NoWeaponRequiredSnapshot | null>(null);
+  const [noWeaponRequiredLoading, setNoWeaponRequiredLoading] = useState(false);
+  const [noWeaponRequiredError, setNoWeaponRequiredError] = useState("");
   const [qinYinGongMingSnapshot, setQinYinGongMingSnapshot] = useState<QinYinGongMingSnapshot | null>(null);
   const [qinYinGongMingLoading, setQinYinGongMingLoading] = useState(false);
   const [qinYinGongMingError, setQinYinGongMingError] = useState("");
@@ -178,6 +185,28 @@ export default function AbilityEditorPage() {
     }
   };
 
+  const loadNoWeaponRequiredSnapshot = async () => {
+    setNoWeaponRequiredLoading(true);
+    setNoWeaponRequiredError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/no-weapon-required", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setNoWeaponRequiredSnapshot((await response.json()) as NoWeaponRequiredSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setNoWeaponRequiredError(message);
+    } finally {
+      setNoWeaponRequiredLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSnapshot();
   }, []);
@@ -193,6 +222,13 @@ export default function AbilityEditorPage() {
   useEffect(() => {
     if (mainTab === "qinYinGongMing") {
       loadQinYinGongMingSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "noWeaponRequired" && !noWeaponRequiredSnapshot && !noWeaponRequiredLoading) {
+      loadNoWeaponRequiredSnapshot();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab]);
@@ -233,6 +269,24 @@ export default function AbilityEditorPage() {
       });
       if (!res.ok) return;
       setSnapshot((await res.json()) as AbilityEditorSnapshot);
+    } catch { /* silent */ }
+  };
+
+  const handleNoWeaponRequiredToggle = async (
+    abilityId: string,
+    mode: "manual-include" | "manual-exclude" | "clear"
+  ) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/no-weapon-required/${abilityId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as NoWeaponRequiredSnapshot;
+      setNoWeaponRequiredSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
     } catch { /* silent */ }
   };
 
@@ -360,6 +414,13 @@ export default function AbilityEditorPage() {
             onClick={() => setMainTab("dunLiWhitelist")}
           >
             盾立白名单
+          </button>
+          <button
+            type="button"
+            className={`${styles.mainTab} ${mainTab === "noWeaponRequired" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("noWeaponRequired")}
+          >
+            无需武器
           </button>
           <button
             type="button"
@@ -660,6 +721,18 @@ export default function AbilityEditorPage() {
             snapshot={snapshot}
             loading={loading}
             onToggle={handleDunLiWhitelistToggle}
+          />
+        </section>
+      )}
+
+      {mainTab === "noWeaponRequired" && (
+        <section className={styles.buffEditorSection}>
+          <NoWeaponRequiredTab
+            snapshot={noWeaponRequiredSnapshot}
+            loading={noWeaponRequiredLoading}
+            errorMessage={noWeaponRequiredError}
+            onRetry={loadNoWeaponRequiredSnapshot}
+            onToggle={handleNoWeaponRequiredToggle}
           />
         </section>
       )}

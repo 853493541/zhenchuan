@@ -819,6 +819,16 @@ function hasSilenceClient(buffs?: ActiveBuff[]): boolean {
   return buffs.some((b: any) => buffHasEffect(b, 'SILENCE') || buffNameIncludes(b, '沉默'));
 }
 
+function hasDisarmClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => buffHasEffect(b, 'DISARM') || buffNameIncludes(b, '缴械'));
+}
+
+function hasNonQinggongLockClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => buffHasEffect(b, 'NON_QINGGONG_LOCK') || buffNameIncludes(b, '轻功以外'));
+}
+
 function hasDisplacementClient(buffs?: ActiveBuff[]): boolean {
   if (!Array.isArray(buffs) || buffs.length === 0) return false;
   return buffs.some((b: any) => buffHasEffect(b, 'DISPLACEMENT'));
@@ -832,6 +842,23 @@ function hasDashTurnOverrideClient(buffs?: ActiveBuff[]): boolean {
 function buffsHaveAnyEffect(buffs: ActiveBuff[] | undefined, effectTypes: string[]): boolean {
   if (!Array.isArray(buffs) || buffs.length === 0) return false;
   return buffs.some((b: any) => effectTypes.some((effectType) => buffHasEffect(b, effectType)));
+}
+
+function getSpecialAbilityBarIdsClient(buffs: ActiveBuff[] | undefined): string[] {
+  const ids: string[] = [];
+  const now = Date.now();
+  for (const buff of buffs ?? []) {
+    if (!buff || (buff.expiresAt ?? 0) <= now) continue;
+    for (const effect of buff.effects ?? []) {
+      if ((effect as any)?.type !== 'SPECIAL_ABILITY_BAR' || !Array.isArray((effect as any).abilityIds)) continue;
+      for (const abilityId of (effect as any).abilityIds) {
+        if (typeof abilityId === 'string' && abilityId && !ids.includes(abilityId)) {
+          ids.push(abilityId);
+        }
+      }
+    }
+  }
+  return ids;
 }
 
 function requiresFacingByDefault(ability?: { target?: 'SELF' | 'OPPONENT'; faceDirection?: boolean } | null): boolean {
@@ -909,10 +936,12 @@ interface AbilityInfo {
   requiresGrounded?: boolean;
   requiresStanding?: boolean;
   minSelfHpExclusive?: number;
+  noWeaponRequired?: boolean;
   qinggong?: boolean;
   cannotCastWhileRooted?: boolean;
   allowGroundCastWithoutTarget?: boolean;
   losBlocked?: boolean;
+  isSpecialBarAbility?: boolean;
 }
 
 type CameraDebugEntry = {
@@ -1456,8 +1485,11 @@ export default function BattleArena({
   };
 
   // Split abilities into two rows for rendering
+  const specialBarActive = handAbilities.some(a => a.isSpecialBarAbility);
   const commonAbilities = handAbilities.filter(a => a.isCommon);
-  const draftAbilities  = handAbilities.filter(a => !a.isCommon);
+  const draftAbilities  = specialBarActive
+    ? handAbilities.filter(a => a.isSpecialBarAbility)
+    : handAbilities.filter(a => !a.isCommon && !a.isSpecialBarAbility);
 
   /* --- Game logic refs --- */
   const keysRef          = useRef({ w: false, a: false, s: false, d: false });
@@ -1619,6 +1651,7 @@ export default function BattleArena({
     fullyLocked: false,
     rooted: false,
     zLocked: false,
+    channelMovementLocked: false,
     jumpVzScale: 1,
     tiYunZongActive: false,
     fearedSourceUserId: null as string | null,
@@ -1939,7 +1972,7 @@ export default function BattleArena({
   }, []);
 
   const tryQueueLocalJump = useCallback(() => {
-    if (jumpLockedRef.current || !!me?.activeChannel || hasLegacyChannelJumpLock(me?.buffs)) return;
+    if (jumpLockedRef.current || !!me?.activeChannel || hasLegacyChannelJumpLock(me?.buffs) || buffsHaveAnyEffect(me?.buffs, ['NO_JUMP'])) return;
     const maxJumps = getEffectiveMaxJumps();
     if (localJumpCountRef.current >= maxJumps) {
       jumpLocalRef.current = false;
@@ -2097,6 +2130,8 @@ export default function BattleArena({
     const fullyLocked = buffsHaveAnyEffect(buffs, ['KNOCKED_BACK', 'CONTROL', 'ATTACK_LOCK']);
     const rooted = !fullyLocked && buffsHaveAnyEffect(buffs, ['ROOT']);
     const jumpSuppressedByChannel = !!me?.activeChannel || hasLegacyChannelJumpLock(buffs);
+    const noJumpLocked = buffsHaveAnyEffect(buffs, ['NO_JUMP']);
+    const channelMovementLocked = (me?.activeChannel as any)?.lockMovement === true;
     // Z_LOCK: full vertical lock (亢龙有悔). Pin vz=0 and skip Z integration.
     const zLocked = buffsHaveAnyEffect(buffs, ['Z_LOCK']);
     // JUMP_NERF: scales jump take-off velocity by sqrt(value). Use min across stacks.
@@ -2143,6 +2178,7 @@ export default function BattleArena({
       fullyLocked,
       rooted,
       zLocked,
+      channelMovementLocked,
       jumpVzScale,
       tiYunZongActive,
       fearedSourceUserId,
@@ -2151,6 +2187,7 @@ export default function BattleArena({
     };
     const jumpLocked =
       jumpSuppressedByChannel ||
+      noJumpLocked ||
       fullyLocked ||
       rooted ||
       zLocked ||
@@ -2434,8 +2471,8 @@ export default function BattleArena({
     const mouseLook = controlModeRef.current === 'traditional' && mouseStateRef.current.isRight;
     const bothMouse = mouseStateRef.current.isRight && mouseStateRef.current.isLeft;
     // Capture & clear jump flag atomically before the async POST
-    const shouldJump = jumpSendRef.current;
-    if (shouldJump) jumpSendRef.current = false;
+    const shouldJump = jumpSendRef.current && !jumpLockedRef.current;
+    if (jumpSendRef.current) jumpSendRef.current = false;
     const dashFacingLocked = !!meActiveDashRef.current && !dashTurnOverrideRef.current;
     let facingPayload = { ...meFacingRef.current };
     let directionPayload:
@@ -2451,8 +2488,11 @@ export default function BattleArena({
       : null;
     const shiXinGuDirection = movementControlStateRef.current.shiXinGuDirection;
     const shiXinGuStandstill = movementControlStateRef.current.shiXinGuStandstill === true;
+    const channelMovementLocked = movementControlStateRef.current.channelMovementLocked === true;
 
-    if (fearedDirection) {
+    if (channelMovementLocked) {
+      directionPayload = { dx: 0, dy: 0, jump: false };
+    } else if (fearedDirection) {
       directionPayload = { dx: fearedDirection.x, dy: fearedDirection.y, jump: false };
       if (!dashFacingLocked) {
         facingPayload = fearedDirection;
@@ -2711,10 +2751,14 @@ export default function BattleArena({
       const gcdWindow = ab?.gcd === true ? GCD_WINDOW_TICKS : 0;
       return Math.max(base, gcdWindow);
     };
+    const getSharedGcdTicks = (ab: any): number => (
+      ab?.gcd === true ? Math.max(0, Number(me?.globalGcdTicks ?? 0)) : 0
+    );
     const getChargeDisplay = (ab: any, instance: any) => {
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
+      const sharedGcdTicks = getSharedGcdTicks(ab);
       if (maxCharges <= 1) {
-        const currentCooldown = Math.max(0, Number(instance?.cooldown ?? 0));
+        const currentCooldown = Math.max(0, Number(instance?.cooldown ?? 0), sharedGcdTicks);
         return {
           maxCharges: undefined,
           chargeCount: undefined,
@@ -2735,7 +2779,7 @@ export default function BattleArena({
         ? Math.max(0, Math.min(1, 1 - (chargeRegenTicksRemaining / chargeRecoveryTicks)))
         : undefined;
       const chargeCastLockTicks = Math.max(0, Number(ab?.chargeCastLockTicks ?? 0));
-      const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0));
+      const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0), sharedGcdTicks);
 
       if (chargeCount <= 0) {
         return {
@@ -2790,16 +2834,19 @@ export default function BattleArena({
     const myFacing = me.facing ?? meFacingRef.current;
     const targetPos = targetForChecks?.position;
     const qinggongSealed = hasQinggongSealClient(me.buffs);
+    const disarmed = hasDisarmClient(me.buffs);
+    const nonQinggongLocked = hasNonQinggongLockClient(me.buffs);
     const rootedByDebuff = buffsHaveAnyEffect(me.buffs, ['ROOT']);
 
     const isAbilityReady = (ab: any, instance: any): boolean => {
+      const sharedGcdTicks = getSharedGcdTicks(ab);
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       if (maxCharges > 1) {
         const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
-        const chargeLockTicks = Number(instance?.chargeLockTicks ?? 0);
+        const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0), sharedGcdTicks);
         if (chargeLockTicks > 0) return false;
         if (chargeCount <= 0) return false;
-      } else if ((instance?.cooldown ?? 0) > 0) {
+      } else if (Math.max(0, Number(instance?.cooldown ?? 0), sharedGcdTicks) > 0) {
         return false;
       }
       const airborneLockedLocal =
@@ -2823,6 +2870,8 @@ export default function BattleArena({
       if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
         return false;
       }
+      if (disarmed && ab?.noWeaponRequired !== true) return false;
+      if (nonQinggongLocked && ab?.qinggong !== true) return false;
       if (ab?.qinggong && qinggongSealed) return false;
       if (ab?.cannotCastWhileRooted && rootedByDebuff) return false;
 
@@ -2953,12 +3002,56 @@ export default function BattleArena({
           canTargetSelf: !!(ability as any).canTargetSelf,
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
+          noWeaponRequired: !!(ability as any).noWeaponRequired,
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
         };
+      })
+      .filter(Boolean) as AbilityInfo[];
+
+    const specialUpdated: AbilityInfo[] = getSpecialAbilityBarIdsClient(me.buffs)
+      .slice(0, 6)
+      .map((abilityId) => {
+        const ability = abilities[abilityId];
+        if (!ability) return null;
+        const instance = me?.specialAbilityStates?.[ability.id] ?? { instanceId: ability.id, abilityId: ability.id, cooldown: 0 };
+        const chargeDisplay = getChargeDisplay(ability, instance);
+        const isReadyVal = isAbilityReady(ability, instance);
+        const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
+        return {
+          id: ability.id,
+          abilityId: ability.id,
+          name: ability.name,
+          channel: getRuntimeAbilityChannel(ability),
+          range: effectiveRange,
+          minRange: ability.minRange,
+          cooldown: chargeDisplay.cooldown,
+          maxCooldown: chargeDisplay.maxCooldown,
+          maxCharges: chargeDisplay.maxCharges,
+          chargeCount: chargeDisplay.chargeCount,
+          chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
+          chargeRegenTicksRemaining: chargeDisplay.chargeRegenTicksRemaining,
+          chargeRegenProgress: chargeDisplay.chargeRegenProgress,
+          chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
+          chargeLockTicks: chargeDisplay.chargeLockTicks,
+          isReady: isReadyVal,
+          losBlocked: false,
+          isCommon: false,
+          isSpecialBarAbility: true,
+          target: (ability.target as 'SELF' | 'OPPONENT') ?? 'SELF',
+          canTargetSelf: !!(ability as any).canTargetSelf,
+          faceDirection: requiresFacingByDefault(ability as any),
+          minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
+          noWeaponRequired: !!(ability as any).noWeaponRequired,
+          requiresGrounded: !!(ability as any).requiresGrounded,
+          requiresStanding: !!(ability as any).requiresStanding,
+          qinggong: !!(ability as any).qinggong,
+          cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
+          allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
+        } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
 
@@ -3006,6 +3099,7 @@ export default function BattleArena({
           canTargetSelf: !!(ability as any).canTargetSelf,
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
+          noWeaponRequired: !!(ability as any).noWeaponRequired,
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
@@ -3015,7 +3109,7 @@ export default function BattleArena({
       })
       .filter(Boolean) as AbilityInfo[];
 
-    const updated = [...commonUpdated, ...draftUpdated];
+    const updated = [...commonUpdated, ...(specialUpdated.length > 0 ? specialUpdated : draftUpdated)];
     setHandAbilities(updated);
     abilitiesRef.current = updated;
   }, [
@@ -3312,8 +3406,9 @@ export default function BattleArena({
       if (e.key === '2' && drafts[1]?.isReady) { castAbilityRef.current(drafts[1].id); return; }
       if (e.key === '3' && drafts[2]?.isReady) { castAbilityRef.current(drafts[2].id); return; }
       if (k === 'q' && !e.altKey && drafts[3]?.isReady) { castAbilityRef.current(drafts[3].id); return; }
+      const specialBarHotkeysActive = abilitiesRef.current.some(a => a.isSpecialBarAbility);
       // ── Common abilities: X  Alt+A  Alt+D  Alt+S  `  T ──
-      const commons = abilitiesRef.current.filter(a => a.isCommon);
+      const commons = specialBarHotkeysActive ? [] : abilitiesRef.current.filter(a => a.isCommon);
       if (k === 'x' && !e.altKey) {
         // index 0 = 猛虎下山
         if (commons[0]?.isReady) castAbilityRef.current(commons[0].id);
@@ -3738,7 +3833,9 @@ export default function BattleArena({
         airborneSpeedCarryRef.current = 0;
       }
       const { fullyLocked, rooted } = movementControlStateRef.current;
-      const movementLocked = fullyLocked || rooted;
+      const channelMovementLocked = movementControlStateRef.current.channelMovementLocked === true;
+      const hardMovementLocked = fullyLocked || rooted;
+      const movementLocked = hardMovementLocked || channelMovementLocked;
       const preserveUpwardJumpRise =
         airborne &&
         localJumpCountRef.current > 0 &&
@@ -3746,7 +3843,7 @@ export default function BattleArena({
         !airDirectionLockedRef.current &&
         !airNudgeDirRef.current;
 
-      if (movementLocked && !preserveUpwardJumpRise) {
+      if (hardMovementLocked && !preserveUpwardJumpRise) {
         airNudgeRemainingRef.current = 0;
         airNudgeTicksRemainingRef.current = 0;
         airNudgeDirRef.current = null;
@@ -3757,6 +3854,13 @@ export default function BattleArena({
         if (airborne) {
           localVzRef.current = Math.min(localVzRef.current, -0.0001);
         }
+      }
+
+      if (channelMovementLocked && !hardMovementLocked) {
+        // Match backend: lock-movement channels stop new planar input, but do not
+        // cancel already-started jump air-shift carry.
+        vel.x = 0;
+        vel.y = 0;
       }
 
       let airNudgeDx = 0;
@@ -4373,7 +4477,15 @@ export default function BattleArena({
   const cheatAbilities = useMemo(
     () =>
       Object.values(abilities)
-        .filter((c: any) => c && !c.isCommon && c.id && c.name)
+        .filter(
+          (c: any) =>
+            c &&
+            !c.isCommon &&
+            c.specialBarAbility !== true &&
+            c.hiddenFromDraft !== true &&
+            c.id &&
+            c.name,
+        )
         .sort((a: any, b: any) => {
           const ra = RARITY_ORDER[a.rarity] ?? 99;
           const rb = RARITY_ORDER[b.rarity] ?? 99;
@@ -5978,16 +6090,16 @@ export default function BattleArena({
              Always mounted so success/interrupt + fade-out animations can play. */}
           <ChannelBarHost data={channelBarData} showTimer />
 
-          {/* ── Top row: draft abilities (6 fixed slots) ── */}
+          {/* ── Top row: draft abilities or temporary form bar ── */}
           <div className={styles.hotbar}>
-            {Array.from({ length: 6 }, (_, idx) => {
-              const ability = draftAbilities[idx];
+            {(specialBarActive ? draftAbilities : Array.from({ length: 6 }, (_, idx) => draftAbilities[idx])).map((ability, idx) => {
               const keyHint = ['1','2','3','Q','XB2','XB1'][idx];
               return (
                 <div
                   key={ability ? `slot-${ability.id}` : `empty-${idx}`}
-                  className={`${styles.draftSlot} ${dragHoverIndex === idx ? styles.draftSlotHover : ''}`}
+                  className={`${styles.draftSlot} ${!specialBarActive && dragHoverIndex === idx ? styles.draftSlotHover : ''}`}
                   onDragOver={(e) => {
+                    if (specialBarActive) return;
                     if (!draggingDraftInstanceId) return;
                     e.preventDefault();
                     setDragHoverIndex(idx);
@@ -5995,7 +6107,10 @@ export default function BattleArena({
                   onDragLeave={() => {
                     if (dragHoverIndex === idx) setDragHoverIndex(null);
                   }}
-                  onDrop={(e) => void handleDraftSlotDrop(e, idx)}
+                  onDrop={(e) => {
+                    if (specialBarActive) return;
+                    void handleDraftSlotDrop(e, idx);
+                  }}
                 >
                   {!ability ? (
                     <div className={`${styles.abilityBtn} ${styles.emptySlot}`}>
@@ -6018,8 +6133,14 @@ export default function BattleArena({
                       <button
                         className={`${styles.abilityBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
                         style={ability.losBlocked ? { boxShadow: '0 0 0 2px #ff3333, 0 0 10px 3px rgba(255,50,50,0.45)', outline: 'none' } : undefined}
-                        draggable
-                        onDragStart={(e) => handleDraftDragStart(e, ability.id, idx)}
+                        draggable={!specialBarActive}
+                        onDragStart={(e) => {
+                          if (specialBarActive) {
+                            e.preventDefault();
+                            return;
+                          }
+                          handleDraftDragStart(e, ability.id, idx);
+                        }}
                         onDragEnd={handleDraftDragEnd}
                         onClick={() => {
                           if (dragJustEndedRef.current) return;
@@ -6078,7 +6199,7 @@ export default function BattleArena({
               );
             })}
           </div>
-          {draggingDraftInstanceId && (
+          {draggingDraftInstanceId && !specialBarActive && (
             <div
               className={`${styles.discardDropZone} ${discardZoneHover ? styles.discardDropZoneActive : ''}`}
               onDragOver={(e) => {
@@ -6093,8 +6214,9 @@ export default function BattleArena({
           )}
 
           {/* ── Bottom row: 8 common abilities (with visual gaps) ── */}
-          <div className={styles.commonBar}>
-            {commonAbilities.map((ability, idx) => {
+          {!specialBarActive && (
+            <div className={styles.commonBar}>
+              {commonAbilities.map((ability, idx) => {
               const COMMON_KEY_HINTS = ['X','MD','MU','A+A','A+D','A+S','`','T'] as const;
               const keyHint = COMMON_KEY_HINTS[idx] ?? '';
               const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
@@ -6109,61 +6231,62 @@ export default function BattleArena({
               const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
               const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
               const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
-              return (
-                <React.Fragment key={ability.id}>
-                  {/* gap between 猛虎下山 and 扶摇 */}
-                  {idx === 1 && <div className={styles.commonGap} />}
-                  {/* gap between 后撤 and 御骑 */}
-                  {idx === 7 && <div className={styles.commonGap} />}
-                  <button
-                    className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
-                    disabled={!ability.isReady}
-                    onClick={() => castAbilityRef.current(ability.id)}
-                    title={`${ability.name}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`/icons/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
-                    {ability.cooldown > 0 && ability.maxCooldown > 0 && (
-                      <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
-                        <span className={styles.cdNum}>{cdSeconds}</span>
-                      </div>
-                    )}
-                    {hasCharges && (
-                      <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
-                        <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-                          <rect
-                            className={styles.chargeFrameTrack}
-                            x="5"
-                            y="5"
-                            width="90"
-                            height="90"
-                            rx="8"
-                            ry="8"
-                            pathLength={100}
-                          />
-                          <rect
-                            className={styles.chargeFrameProgress}
-                            x="5"
-                            y="5"
-                            width="90"
-                            height="90"
-                            rx="8"
-                            ry="8"
-                            pathLength={100}
-                            strokeDasharray={`${chargePathLength} 100`}
-                          />
-                        </svg>
-                        <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
-                          {Math.max(0, chargeCount)}
-                        </span>
-                      </div>
-                    )}
-                    <span className={styles.abilityKey}>{keyHint}</span>
-                  </button>
-                </React.Fragment>
-              );
-            })}
-          </div>
+                return (
+                  <React.Fragment key={ability.id}>
+                    {/* gap between 猛虎下山 and 扶摇 */}
+                    {idx === 1 && <div className={styles.commonGap} />}
+                    {/* gap between 后撤 and 御骑 */}
+                    {idx === 7 && <div className={styles.commonGap} />}
+                    <button
+                      className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady ? styles.ready : styles.notReady}`}
+                      disabled={!ability.isReady}
+                      onClick={() => castAbilityRef.current(ability.id)}
+                      title={`${ability.name}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`/icons/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                      {ability.cooldown > 0 && ability.maxCooldown > 0 && (
+                        <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
+                          <span className={styles.cdNum}>{cdSeconds}</span>
+                        </div>
+                      )}
+                      {hasCharges && (
+                        <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
+                          <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
+                            <rect
+                              className={styles.chargeFrameTrack}
+                              x="5"
+                              y="5"
+                              width="90"
+                              height="90"
+                              rx="8"
+                              ry="8"
+                              pathLength={100}
+                            />
+                            <rect
+                              className={styles.chargeFrameProgress}
+                              x="5"
+                              y="5"
+                              width="90"
+                              height="90"
+                              rx="8"
+                              ry="8"
+                              pathLength={100}
+                              strokeDasharray={`${chargePathLength} 100`}
+                            />
+                          </svg>
+                          <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
+                            {Math.max(0, chargeCount)}
+                          </span>
+                        </div>
+                      )}
+                      <span className={styles.abilityKey}>{keyHint}</span>
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {!isMobileDevice && <div className={styles.wasdSpacer} />}

@@ -192,6 +192,23 @@ export type QinYinGongMingSnapshot = {
   buffs: QinYinGongMingEntry[];
 };
 
+export type NoWeaponRequiredEntry = {
+  id: string;
+  name: string;
+  description: string;
+  type: AbilityEditorAbility["type"];
+  target: AbilityEditorAbility["target"];
+  baseNoWeaponRequired: boolean;
+  manualNoWeaponRequired: boolean;
+  manuallyExcluded: boolean;
+  noWeaponRequired: boolean;
+};
+
+export type NoWeaponRequiredSnapshot = {
+  updatedAt: string | null;
+  abilities: NoWeaponRequiredEntry[];
+};
+
 export function getBuffSubtitle(entry: Pick<BuffEditorEntry, "category" | "attribute">): string {
   // No valid attribute → no tag at all
   const validAttr = entry.attribute !== "未选择" && entry.attribute !== "无";

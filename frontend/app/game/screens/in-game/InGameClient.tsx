@@ -29,6 +29,12 @@ function showGameError(rawCode: string) {
     case "ERR_SILENCED":
       toastError("经脉受损，无法运功");
       break;
+    case "ERR_DISARMED":
+      toastError("你被缴械，无法施展需要武器的招式");
+      break;
+    case "ERR_NON_QINGGONG_LOCKED":
+      toastError("你当前只能施展轻功招式");
+      break;
     case "ERR_DISPLACEMENT":
       toastError("该招式无法在位移时施展");
       break;

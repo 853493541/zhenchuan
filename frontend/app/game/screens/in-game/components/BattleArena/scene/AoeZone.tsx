@@ -11,6 +11,8 @@ interface AoeZoneProps {
   worldZ?: number;
   radius: number;
   color: string;
+  ringThickness?: number;
+  labelSize?: number;
   worldHalfX: number;
   worldHalfY: number;
   /** Optional text label displayed in the centre of the zone, always facing the camera */
@@ -20,7 +22,7 @@ interface AoeZoneProps {
 }
 
 export default function AoeZone({
-  worldX, worldY, worldZ = 0, radius, color, worldHalfX, worldHalfY,
+  worldX, worldY, worldZ = 0, radius, color, ringThickness, labelSize, worldHalfX, worldHalfY,
   label, labelColor,
 }: AoeZoneProps) {
   const ringRef   = useRef<THREE.Mesh>(null);
@@ -41,6 +43,8 @@ export default function AoeZone({
   const x = worldX - worldHalfX;
   const z = worldHalfY - worldY;
   const textColor = labelColor ?? color;
+  const resolvedRingThickness = Math.max(0.02, Math.min(ringThickness ?? 0.3, Math.max(0.02, radius - 0.02)));
+  const resolvedLabelSize = Math.max(0.2, labelSize ?? 0.72);
 
   return (
     <group position={[x, worldZ + 0.04, z]}>
@@ -51,14 +55,14 @@ export default function AoeZone({
       </mesh>
       {/* Ground ring */}
       <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[radius - 0.3, radius, 48]} />
+        <ringGeometry args={[Math.max(0, radius - resolvedRingThickness), radius, 48]} />
         <meshBasicMaterial color={color} transparent opacity={0.7} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       {/* Label — always faces camera via Billboard, centred just above the ground */}
       {label && (
         <Billboard position={[0, 0.8, 0]}>
           <Text
-            fontSize={0.72}
+            fontSize={resolvedLabelSize}
             color={textColor}
             anchorX="center"
             anchorY="middle"

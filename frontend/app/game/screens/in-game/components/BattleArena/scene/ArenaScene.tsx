@@ -636,8 +636,12 @@ export default function ArenaScene({
         const isChongYinYang = zone.abilityId === 'chong_yin_yang';
         const isLingTaiXu = zone.abilityId === 'ling_tai_xu';
         const isTunRiYue = zone.abilityId === 'tun_ri_yue';
+        const isXiBingYu = zone.abilityId === 'xi_bing_yu';
         const isOwn = zone.ownerUserId === me.userId;
-        const color = isBaizuMarker
+        const isXiBingYuTarget = zone.pickupTargetUserId === me.userId;
+        const color = isXiBingYu
+          ? (isXiBingYuTarget ? '#4488ff' : '#ff3333')
+          : isBaizuMarker
           ? (isOwn ? '#b06cff' : '#ff3333')
           : (isOwn ? '#4488ff' : '#ff3333');
         const baseLabel = isBaizuMarker
@@ -662,6 +666,8 @@ export default function ArenaScene({
             worldZ={getZoneVisualZ(zone.x, zone.y, zone.z ?? 0)}
             radius={zone.radius}
             color={color}
+            ringThickness={isXiBingYu ? 0.1 : undefined}
+            labelSize={isXiBingYu ? 0.34 : undefined}
             labelColor={color}
             label={label}
             worldHalfX={worldHalfX}
