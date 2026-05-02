@@ -148,6 +148,8 @@ export type EffectType =
   | "TRUE_DAMAGE"
   // 龙啸九天: cleanse self, apply 龙威/龙啸九天/定身 buffs, AOE 6u damage + slow knockback
   | "LONG_XIAO_JIU_TIAN_AOE"
+  // 人剑合一: destroy nearby 气场; if any friendly 气场 were destroyed, apply 破势 to nearby enemy players
+  | "REN_JIAN_HE_YI_AOE"
   // 驭羽骋风: cleanse self + vertical dash up 12u in 1s
   | "YU_YU_DASH"
   // 梯云纵: while active, jumps are 3× high (stacks multiplicatively with MULTI_JUMP)

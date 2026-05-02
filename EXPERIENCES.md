@@ -3,6 +3,26 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 龙啸九天气场/机关摧毁 + 人剑合一气场联动 (2026-05-02)
+
+**Problem set**:
+1. `龙啸九天` needed a new effect on top of its current self-cleanse / self-buffs / AOE knockback package: destroy enemy `气场` and `机关` within `6尺`.
+2. In the current zone model, the relevant `气场` are the ground zones from `生太极 / 吞日月 / 镇山河 / 破苍穹 / 碎星辰 / 凌太虚 / 冲阴阳`; the only current `机关` zone is `天绝地灭`.
+3. Destroying a zone early must stop all future zone effects immediately, including `天绝地灭`'s explode-on-expire behavior, and must also clear any zone-granted runtime buff that would otherwise linger forever after the zone disappears.
+4. A new ability `人剑合一` was requested: destroy `13尺`内气场; if any destroyed气场 belonged to the caster, then enemy players within `13尺` gain `【破势】5秒：定身`.
+
+**Fix**:
+- Added shared immediate-effect helpers in `immediateEffects.ts` to classify current `气场/机关` ground zones, destroy them by range/ownership, and clear the specific zone-tied runtime buffs that otherwise would not self-clean if the source zone vanished early.
+- Extended `龙啸九天` so its existing `LONG_XIAO_JIU_TIAN_AOE` handler now destroys enemy-owned `气场` and `天绝地灭` within `6尺` before applying the old AOE damage + knockback. Tooltip text in `abilities.ts` was updated to match.
+- Added new ability `人剑合一` in `abilities.ts` as a self-cast control skill with custom effect `REN_JIAN_HE_YI_AOE`, plus buff `2735` `【破势】`.
+- Implemented `REN_JIAN_HE_YI_AOE` in `immediateEffects.ts` by destroying all nearby `气场`, counting whether any destroyed one was friendly, and only then applying `【破势】` to nearby enemy players. `人剑合一` was excluded from generic `applyAbilityBuffs(...)` so the debuff is only applied conditionally.
+- Registered the new effect type in `state/types/effects.ts` and `effects/definitions/categories.ts`, and added a `纯阳 / 外功 / 卓越` editor tag entry in `ability-property-overrides.json`.
+
+**Lessons**:
+- Ground-zone destruction is not just `state.groundZones = filter(...)`. Several current zones grant persistent buffs in `GameLoop` that only clean up on leave/zone tick; if the zone is removed out-of-band, those buffs must be explicitly expired too.
+- Reusing one destruction helper for both enemy-only (`龙啸九天`) and mixed-ownership (`人剑合一`) cases keeps ownership semantics local and avoids duplicating the qi-field list in multiple handlers.
+- New abilities and buffs also need art plumbing. No icon assets currently exist for `人剑合一` or `破势` under `frontend/public/icons`, so the mechanic is live but the ability icon still needs art to avoid a missing-image button in the frontend.
+
 ## 无相诀改为施放时快照减伤档位 (2026-05-02)
 
 **Problem set**:

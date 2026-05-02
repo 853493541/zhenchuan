@@ -3074,13 +3074,13 @@ export const BASE_ABILITIES: AbilityRecord = {
 
   // ──────────────────────────────────────────────────────────────────────────
   // 龙啸九天 — castable while controlled, cleanses self, control immune 3s,
-  //   60% DR for 6s, self-stuck (CONTROL+Z_LOCK) 1s, AOE 6u: 1 dmg + slow
-  //   knockback (10u over 10s)
+  //   60% DR for 6s, self-stuck (CONTROL+Z_LOCK) 1s, destroys enemy 气场/机关
+  //   within 6u, then AOE 6u: 1 dmg + slow knockback (10u over 10s)
   // ──────────────────────────────────────────────────────────────────────────
   long_xiao_jiu_tian: {
     id: "long_xiao_jiu_tian",
     name: "龙啸九天",
-    description: "瞬发，自身施放。\n空中、移动中、被控制时均可施放\n施放后解除自身所有控制\n获得【龙威】3秒：免疫控制\n获得【龙啸九天】6秒：受到的伤害降低60%\n施放后【龙啸九天·定身】1秒：自身定身（含Z轴）\n并对周围6码内敌人造成1点伤害，并将其击退10码（0.5秒）",
+    description: "瞬发，自身施放。\n空中、移动中、被控制时均可施放\n施放后解除自身所有控制\n获得【龙威】3秒：免疫控制\n获得【龙啸九天】6秒：受到的伤害降低60%\n施放后【龙啸九天·定身】1秒：自身定身（含Z轴）\n摧毁周围6码内敌方气场和机关\n并对周围6码内敌人造成1点伤害，并将其击退10码（0.5秒）",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -3552,6 +3552,32 @@ export const BASE_ABILITIES: AbilityRecord = {
       },
     ],
   } as any,
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 人剑合一 — instant self cast. Destroy all qichang within 13u; if any
+  // friendly qichang were destroyed, apply 破势 (定身 5s) to nearby enemies.
+  // ──────────────────────────────────────────────────────────────────────────
+  ren_jian_he_yi: {
+    id: "ren_jian_he_yi",
+    name: "人剑合一",
+    description: "瞬发，自身施放\n摧毁周围13码内所有气场\n若其中包含己方气场，则周围13码内敌方玩家获得【破势】5秒：定身",
+    type: "CONTROL",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "REN_JIAN_HE_YI_AOE", range: 13 } as any],
+    buffs: [
+      {
+        buffId: 2735,
+        name: "破势",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 5_000,
+        description: "定身：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
 
   // ─── 碎星辰 — channel 0.5s (forward), movable/air, self zone 15u 30s: +10% 外功会心, +15% 外功会心效果 ───
   sui_xing_chen: {

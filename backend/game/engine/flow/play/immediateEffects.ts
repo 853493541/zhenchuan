@@ -91,6 +91,28 @@ const WU_XIANG_JUE_SIXTY_BUFF_ID = 2731;
 const WU_XIANG_JUE_SEVENTY_BUFF_ID = 2732;
 const WU_XIANG_JUE_EIGHTY_BUFF_ID = 2733;
 const WU_XIANG_JUE_NINETY_BUFF_ID = 2734;
+const SHENGTAIJI_ZONE_ABILITY_ID = "qionglong_huasheng_zone";
+const SHENGTAIJI_PULSE_BUFF_ID = 1310;
+const SHENGTAIJI_ENEMY_SLOW_BUFF_ID = 1311;
+const ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID = 1323;
+const CHONG_YIN_YANG_ZONE_BUFF_ID = 2701;
+const LING_TAI_XU_ZONE_BUFF_ID = 2702;
+const TUN_RI_YUE_ZONE_BUFF_ID = 2703;
+const SUI_XING_CHEN_ZONE_BUFF_ID = 2704;
+const PO_CANG_QIONG_ZONE_BUFF_ID = 2705;
+
+const QI_FIELD_ZONE_ABILITY_IDS = new Set([
+  SHENGTAIJI_ZONE_ABILITY_ID,
+  "sheng_tai_ji",
+  "tun_ri_yue",
+  ZHEN_SHAN_HE_ABILITY_ID,
+  "po_cang_qiong",
+  "sui_xing_chen",
+  "ling_tai_xu",
+  "chong_yin_yang",
+]);
+
+const MECHANISM_ZONE_ABILITY_IDS = new Set(["tian_jue_di_mie"]);
 
 function getWuXiangJueSnapshotBuffId(player: { hp?: number; maxHp?: number }) {
   const maxHp = player.maxHp ?? 100;
@@ -102,6 +124,133 @@ function getWuXiangJueSnapshotBuffId(player: { hp?: number; maxHp?: number }) {
   if (hpPct <= 0.5) return WU_XIANG_JUE_SEVENTY_BUFF_ID;
   if (hpPct <= 0.75) return WU_XIANG_JUE_SIXTY_BUFF_ID;
   return WU_XIANG_JUE_FIFTY_BUFF_ID;
+}
+
+function expireImmediateBuffById(state: any, target: any, buffId: number) {
+  let removedAny = false;
+  while (true) {
+    const idx = (target.buffs ?? []).findIndex((buff: any) => buff?.buffId === buffId);
+    if (idx === -1) break;
+    const [removed] = target.buffs.splice(idx, 1);
+    pushBuffExpired(state, {
+      targetUserId: target.userId,
+      buffId: removed.buffId,
+      buffName: removed.name,
+      buffCategory: removed.category,
+      sourceAbilityId: removed.sourceAbilityId,
+      sourceAbilityName: removed.sourceAbilityName,
+    });
+    removedAny = true;
+  }
+  return removedAny;
+}
+
+function clearDestroyedGroundZoneBuffs(state: any, zone: any) {
+  const players = state.players ?? [];
+  const owner = players.find((player: any) => player.userId === zone.ownerUserId);
+
+  if (zone.abilityId === SHENGTAIJI_ZONE_ABILITY_ID || zone.abilityId === "sheng_tai_ji") {
+    for (const player of players) {
+      expireImmediateBuffById(state, player, SHENGTAIJI_PULSE_BUFF_ID);
+      expireImmediateBuffById(state, player, SHENGTAIJI_ENEMY_SLOW_BUFF_ID);
+    }
+    return;
+  }
+
+  if (zone.abilityId === ZHEN_SHAN_HE_ABILITY_ID) {
+    if (owner) {
+      expireImmediateBuffById(state, owner, ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID);
+    }
+    return;
+  }
+
+  if (zone.abilityId === "chong_yin_yang") {
+    if (owner) expireImmediateBuffById(state, owner, CHONG_YIN_YANG_ZONE_BUFF_ID);
+    return;
+  }
+
+  if (zone.abilityId === "ling_tai_xu") {
+    if (owner) expireImmediateBuffById(state, owner, LING_TAI_XU_ZONE_BUFF_ID);
+    return;
+  }
+
+  if (zone.abilityId === "sui_xing_chen") {
+    if (owner) expireImmediateBuffById(state, owner, SUI_XING_CHEN_ZONE_BUFF_ID);
+    return;
+  }
+
+  if (zone.abilityId === "po_cang_qiong") {
+    if (owner) expireImmediateBuffById(state, owner, PO_CANG_QIONG_ZONE_BUFF_ID);
+    return;
+  }
+
+  if (zone.abilityId === "tun_ri_yue") {
+    for (const player of players) {
+      if (player.userId === zone.ownerUserId) continue;
+      expireImmediateBuffById(state, player, TUN_RI_YUE_ZONE_BUFF_ID);
+    }
+  }
+}
+
+function destroyGroundZonesInRange(params: {
+  state: any;
+  sourceUserId: string;
+  center: { x: number; y: number };
+  radius: number;
+  ownerMode: "enemy-only" | "ally-only" | "any";
+  destroyQiFields: boolean;
+  destroyMechanisms: boolean;
+}) {
+  const { state, sourceUserId, center, radius, ownerMode, destroyQiFields, destroyMechanisms } = params;
+  const zones = Array.isArray(state.groundZones) ? state.groundZones : [];
+  if (zones.length === 0) {
+    return { destroyedZones: [] as any[], destroyedFriendlyQiFields: 0 };
+  }
+
+  const keptZones: any[] = [];
+  const destroyedZones: any[] = [];
+  let destroyedFriendlyQiFields = 0;
+
+  for (const zone of zones) {
+    const isFriendly = zone.ownerUserId === sourceUserId;
+    if (ownerMode === "enemy-only" && isFriendly) {
+      keptZones.push(zone);
+      continue;
+    }
+    if (ownerMode === "ally-only" && !isFriendly) {
+      keptZones.push(zone);
+      continue;
+    }
+
+    const abilityId = String(zone.abilityId ?? "");
+    const isQiField = destroyQiFields && QI_FIELD_ZONE_ABILITY_IDS.has(abilityId);
+    const isMechanism = destroyMechanisms && MECHANISM_ZONE_ABILITY_IDS.has(abilityId);
+    if (!isQiField && !isMechanism) {
+      keptZones.push(zone);
+      continue;
+    }
+
+    const dx = (zone.x ?? 0) - center.x;
+    const dy = (zone.y ?? 0) - center.y;
+    if (Math.hypot(dx, dy) > radius) {
+      keptZones.push(zone);
+      continue;
+    }
+
+    destroyedZones.push(zone);
+    if (isQiField && isFriendly) {
+      destroyedFriendlyQiFields += 1;
+    }
+  }
+
+  if (destroyedZones.length > 0) {
+    state.groundZones = keptZones;
+    for (const zone of destroyedZones) {
+      clearDestroyedGroundZoneBuffs(state, zone);
+    }
+  }
+
+  return { destroyedZones, destroyedFriendlyQiFields };
 }
 
 function syncStolenBuffRuntime(params: {
@@ -2709,7 +2858,7 @@ export function applyImmediateEffects(params: {
       }
 
       // ─── 龙啸九天: cleanse self, apply 龙威 + 龙啸九天 + 定身 buffs,
-      // AOE 6u: 1 damage + slow knockback (10u over `durationTicks` ticks). ─
+      // destroy enemy 气场/机关 within 6u, then AOE 6u: 1 damage + slow knockback. ─
       case "LONG_XIAO_JIU_TIAN_AOE": {
         const now = Date.now();
         // 1) Cleanse self of CONTROL / ATTACK_LOCK / ROOT (also SLOW via flag).
@@ -2743,6 +2892,16 @@ export function applyImmediateEffects(params: {
         const kbDistance = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.value ?? 10)), state.unitScale);
         const kbTicks = Math.max(1, Number(effect.durationTicks ?? 300));
         const knockedBackBuff = (ability.buffs ?? []).find((b: any) => b.buffId === 1352);
+
+        destroyGroundZonesInRange({
+          state,
+          sourceUserId: source.userId,
+          center: source.position,
+          radius: aoeRadius,
+          ownerMode: "enemy-only",
+          destroyQiFields: true,
+          destroyMechanisms: true,
+        });
 
         for (const candidate of getImmediateEnemyBuffTargets(
           state,
@@ -2816,6 +2975,52 @@ export function applyImmediateEffects(params: {
               buff: { ...knockedBackBuff, durationMs: Math.max(1_000, Math.ceil((kbTicks * 1000) / 30)) },
             });
           }
+        }
+        break;
+      }
+
+      // ─── 人剑合一: destroy all nearby 气场; if any friendly 气场 were
+      // destroyed, apply 破势 (定身 5s) to enemy players within 13u. ───────
+      case "REN_JIAN_HE_YI_AOE": {
+        const aoeRadius = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.range ?? 13)), state.unitScale);
+        const { destroyedFriendlyQiFields } = destroyGroundZonesInRange({
+          state,
+          sourceUserId: source.userId,
+          center: source.position,
+          radius: aoeRadius,
+          ownerMode: "any",
+          destroyQiFields: true,
+          destroyMechanisms: false,
+        });
+
+        if (destroyedFriendlyQiFields <= 0) {
+          break;
+        }
+
+        const poShiBuff = (ability.buffs ?? []).find((b: any) => b.buffId === 2735);
+        if (!poShiBuff) {
+          break;
+        }
+
+        for (const candidate of getImmediateEnemyBuffTargets(
+          state,
+          source.userId,
+          source.position,
+          aoeRadius,
+        )) {
+          if (candidate.kind !== "player") continue;
+          const target: any = candidate.target;
+          if (!target || target.userId === source.userId || (target.hp ?? 0) <= 0) continue;
+          if (blocksEnemyTargeting(target)) continue;
+
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: target.userId,
+            ability,
+            buffTarget: target,
+            buff: poShiBuff,
+          });
         }
         break;
       }

@@ -161,6 +161,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   // 拿云式 true damage / 龙啸九天 AOE — immediate ability effects
   TRUE_DAMAGE: "ABILITY",
   LONG_XIAO_JIU_TIAN_AOE: "ABILITY",
+  REN_JIAN_HE_YI_AOE: "ABILITY",
   // 驭羽骋风 / 梯云纵
   YU_YU_DASH: "ABILITY",
   TI_YUN_ZONG_REFRESH: "ABILITY",
