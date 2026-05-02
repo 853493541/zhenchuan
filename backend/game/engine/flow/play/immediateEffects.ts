@@ -1130,6 +1130,46 @@ export function applyImmediateEffects(params: {
         break;
       }
 
+      case "HUN_YA_NU_TAO": {
+        const radius = gameplayUnitsToWorldUnits(effect.range ?? 6, state.unitScale);
+        const kbDistance = gameplayUnitsToWorldUnits(effect.value ?? 6, state.unitScale);
+        const moveTicks = Math.max(1, Number(effect.durationTicks ?? 15));
+        const fallbackFacing = getSourceFacingUnit(source);
+
+        for (const candidate of getImmediateEnemyBuffTargets(state, source.userId, source.position, radius)) {
+          if (candidate.kind !== "player") continue;
+          const kbTarget = candidate.target as any;
+          if (!kbTarget || hasKnockbackImmune(kbTarget)) continue;
+          const kdx = kbTarget.position.x - source.position.x;
+          const kdy = kbTarget.position.y - source.position.y;
+          const kdist = Math.sqrt(kdx * kdx + kdy * kdy);
+          const kbDirX = kdist > 0.001 ? kdx / kdist : fallbackFacing.x;
+          const kbDirY = kdist > 0.001 ? kdy / kdist : fallbackFacing.y;
+
+          delete kbTarget.activeDash;
+          if (kbTarget.velocity) {
+            kbTarget.velocity.vx = 0;
+            kbTarget.velocity.vy = 0;
+          }
+
+          kbTarget.activeDash = {
+            abilityId: ability.id,
+            vxPerTick: (kbDirX * kbDistance) / moveTicks,
+            vyPerTick: (kbDirY * kbDistance) / moveTicks,
+            forceVzPerTick: 0,
+            maxUpVz: 0,
+            maxDownVz: 0,
+            ticksRemaining: moveTicks,
+            vzPerTick: 0,
+          };
+          kbTarget._hunYaNuTaoSourceUserId = source.userId;
+          if (kbTarget.activeChannel) {
+            kbTarget.activeChannel = undefined;
+          }
+        }
+        break;
+      }
+
       case "WUJIAN_CHANNEL":
       case "XINZHENG_CHANNEL":
         handleChannelEffect(state, source, enemy, ability, effect);
@@ -1479,7 +1519,6 @@ export function applyImmediateEffects(params: {
               y: (source.position?.y ?? 0) + facing.y * zoneOffset,
             };
         const zoneZ = getGroundHeightForMap(center.x, center.y, source.position?.z ?? 0, mapCtx);
-
         if (!state.groundZones) state.groundZones = [];
         state.groundZones.push({
           id: randomUUID(),
@@ -1516,6 +1555,39 @@ export function applyImmediateEffects(params: {
         }
         break;
       }
+
+              case "PLACE_XI_BING_YU_ZONE": {
+                const now = Date.now();
+                const storedUnitScale = state.unitScale;
+                const zoneTarget = explicitEntityTarget ?? target;
+                const offsetDistance = gameplayUnitsToWorldUnits(effect.zoneOffsetUnits ?? 6, storedUnitScale);
+                const randomAngle = Math.random() * Math.PI * 2;
+                const center = {
+                  x: zoneTarget.position.x + Math.cos(randomAngle) * offsetDistance,
+                  y: zoneTarget.position.y + Math.sin(randomAngle) * offsetDistance,
+                };
+                const zoneZ = getGroundHeightForMap(center.x, center.y, zoneTarget.position?.z ?? source.position?.z ?? 0, mapCtx);
+
+                if (!state.groundZones) state.groundZones = [];
+                state.groundZones.push({
+                  id: randomUUID(),
+                  ownerUserId: source.userId,
+                  x: center.x,
+                  y: center.y,
+                  z: zoneZ,
+                  height: gameplayUnitsToWorldUnits(effect.zoneHeight ?? 2, storedUnitScale),
+                  radius: gameplayUnitsToWorldUnits(effect.range ?? 1, storedUnitScale),
+                  expiresAt: now + (effect.zoneDurationMs ?? 5_000),
+                  damagePerInterval: 0,
+                  intervalMs: 1_000,
+                  lastTickAt: now,
+                  abilityId: ability.id,
+                  abilityName: ability.name,
+                  pickupTargetUserId: zoneTarget.userId,
+                } as any);
+
+                break;
+              }
 
       case "AOE_APPLY_BUFFS": {
         if (!Array.isArray(ability.buffs) || ability.buffs.length === 0) break;
@@ -1599,6 +1671,25 @@ export function applyImmediateEffects(params: {
             removed++;
           }
         }
+        break;
+      }
+
+      case "REMOVE_SELF_BUFFS": {
+        const removeIds = new Set((effect as any).buffIds ?? []);
+        if (removeIds.size === 0) break;
+        source.buffs = source.buffs.filter((buff: any) => {
+          if (!removeIds.has(buff.buffId)) return true;
+          removeLinkedShield(source as any, buff);
+          pushBuffExpired(state, {
+            targetUserId: source.userId,
+            buffId: buff.buffId,
+            buffName: buff.name,
+            buffCategory: buff.category,
+            sourceAbilityId: buff.sourceAbilityId,
+            sourceAbilityName: buff.sourceAbilityName,
+          });
+          return false;
+        });
         break;
       }
 

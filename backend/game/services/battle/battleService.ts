@@ -95,7 +95,7 @@ const NEAR_SPAWN_COUNT        = 12; // number of near-spawn positions at the top
 
 function generatePickups(): PickupItem[] {
   const nonCommonIds = Object.values(ABILITIES)
-    .filter((a) => !(a as any).isCommon && a.id)
+    .filter((a) => !(a as any).isCommon && !(a as any).hiddenFromDraft && !(a as any).specialBarAbility && a.id)
     .map((a) => a.id);
 
   if (nonCommonIds.length === 0) return [];
@@ -153,7 +153,7 @@ const ARENA_NEAR_SPAWN_COUNT = 12; // first 12 positions are near-spawn
 
 function generateArenaPickups(): PickupItem[] {
   const nonCommonIds = Object.values(ABILITIES)
-    .filter((a) => !(a as any).isCommon && a.id)
+    .filter((a) => !(a as any).isCommon && !(a as any).hiddenFromDraft && !(a as any).specialBarAbility && a.id)
     .map((a) => a.id);
 
   if (nonCommonIds.length === 0) return [];

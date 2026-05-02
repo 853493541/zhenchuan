@@ -22,6 +22,7 @@ import { addBuff, pushBuffExpired } from "../../engine/effects/buffRuntime";
 import { applyDamageToTarget, removeLinkedShield } from "../../engine/utils/health";
 import { resolveScheduledDamage } from "../../engine/utils/combatMath";
 import { getAbilityRangeBonusFromBuffs } from "../../engine/utils/abilityRange";
+import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../../engine/utils/specialAbilityBar";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -256,11 +257,18 @@ async function playCastAbility(
     }
   }
 
-  if (idx === -1) {
+  const temporarySpecialAbility = idx === -1 &&
+    ABILITIES[abilityInstanceId] &&
+    (ABILITIES[abilityInstanceId] as any).specialBarAbility === true &&
+    isSpecialAbilityBarAbility(player as any, abilityInstanceId);
+
+  if (idx === -1 && !temporarySpecialAbility) {
     throw new Error("ERR_ABILITY_NOT_IN_HAND");
   }
   
-  const played = player.hand[idx];
+  const played = temporarySpecialAbility
+    ? (getOrCreateSpecialAbilityState(player as any, abilityInstanceId) as any)
+    : player.hand[idx];
   console.log("[playCastAbility] DEBUG - played ability:", {
     instanceId: played.instanceId,
     abilityId: played.abilityId,
@@ -319,6 +327,7 @@ async function playCastAbility(
       cancelOnJump: (ability as any).channelCancelOnJump ?? true,
       cancelOnOutOfRange: channelCancelOnOutOfRange,
       forwardChannel: (ability as any).channelForward ?? true,
+      lockMovement: (ability as any).channelLockMovement === true,
       effects: (ability as any).channelEffects ?? [],
       cooldownTicks: clampCooldownTicksForTesting(ability.cooldownTicks ?? 150),
       interruptible: (ability as any).channelNotInterruptible !== true,
@@ -326,7 +335,11 @@ async function playCastAbility(
 
     if ((ability as any).applyBuffsOnChannelStart === true) {
       const startedBuffIds: number[] = [];
+      const startBuffIdSet = Array.isArray((ability as any).channelStartBuffIds)
+        ? new Set((ability as any).channelStartBuffIds)
+        : null;
       for (const buffDef of (ability.buffs ?? [])) {
+        if (startBuffIdSet && !startBuffIdSet.has(buffDef.buffId)) continue;
         const applyTarget =
           buffDef.applyTo === "SELF" ? player
           : buffDef.applyTo === "OPPONENT" ? (targetEntity ?? target)
@@ -483,6 +496,10 @@ async function playCastAbility(
   // Global GCD: casting any gcd:true ability imposes a 1.5-second minimum CD on other gcd:true abilities
   const DRAFT_GCD_TICKS = 45; // 1.5 s × 30 Hz
   if ((ability as any).gcd === true) {
+    (player as any).globalGcdTicks = Math.max(
+      Math.max(0, Number((player as any).globalGcdTicks ?? 0)),
+      DRAFT_GCD_TICKS,
+    );
     for (const inst of player.hand) {
       const instCardId = (inst as any).abilityId || (inst as any).id;
       const instCard = ABILITIES[instCardId];

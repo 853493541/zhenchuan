@@ -129,6 +129,11 @@ export interface Ability {
   allowWhileDisplaced?: boolean;
 
   /**
+   * If true, this ability can still be cast while silenced.
+   */
+  allowWhileSilenced?: boolean;
+
+  /**
    * If true, this ability's cleanse effect may also remove root and slow.
    */
   cleanseRootSlow?: boolean;
@@ -165,6 +170,18 @@ export interface Ability {
    * Players with PROJECTILE_IMMUNE buff will not take damage from such abilities.
    */
   isProjectile?: boolean;
+
+  /**
+   * If true, this ability does not require a weapon and may still be cast while
+   * the player is affected by 缴械.
+   */
+  noWeaponRequired?: boolean;
+
+  /** If true, the ability is only available through a temporary replacement bar. */
+  specialBarAbility?: boolean;
+
+  /** If true, the ability is excluded from shops, draft pools, and pickup books. */
+  hiddenFromDraft?: boolean;
 
   /**
    * If true this ability is a common movement ability given to every player
@@ -210,11 +227,44 @@ export interface Ability {
    */
   channel?: AbilityChannel;
 
+  /** Active-channel duration in milliseconds. */
+  channelDurationMs?: number;
+
+  /** Whether movement input cancels the active channel. */
+  channelCancelOnMove?: boolean;
+
+  /** Whether jump input cancels the active channel. */
+  channelCancelOnJump?: boolean;
+
+  /** Cancel if the opponent exceeds this range while channeling. */
+  channelCancelOnOutOfRange?: number;
+
+  /** true = forward-fill bar, false = reverse/draining bar. */
+  channelForward?: boolean;
+
+  /** Effects fired by GameLoop when the active channel completes. */
+  channelEffects?: AbilityEffect[];
+
+  /** Apply ability.buffs at active-channel start. */
+  applyBuffsOnChannelStart?: boolean;
+
+  /** Apply ability.buffs when the active channel completes. */
+  applyBuffsOnComplete?: boolean;
+
   /**
    * If true, this ability's channel cannot be interrupted by abilities such as
    * 翔极碧落 / 剑飞惊天. Default (undefined / false) = interruptible.
    */
   channelNotInterruptible?: boolean;
+
+  /** If true, the player cannot move while this activeChannel is running. */
+  channelLockMovement?: boolean;
+
+  /** Optional buff-id allowlist for applyBuffsOnChannelStart. */
+  channelStartBuffIds?: number[];
+
+  /** Optional buff-id allowlist for applyBuffsOnComplete. */
+  channelCompleteBuffIds?: number[];
 }
 
 export interface AbilityInstance {

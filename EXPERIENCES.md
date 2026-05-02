@@ -3,6 +3,111 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Special-bar GCD display, persistent per-ability cooldown, and silence bypass (2026-05-02)
+
+**Problem set**:
+1. 洞烛机微 showed in the normal per-ability cooldown display when spammed, but the shared GCD (1.5 s) was not displayed. The frontend had no knowledge of `globalGcdTicks` because the backend never diffed it.
+2. 魂压怒涛 still had no meaningful cooldown because special-bar casts spent cooldown on a throwaway synthetic `{ cooldown: 0 }` instance created fresh each time, not on any persistent state.
+3. 真·下车 was blocked by unconditional `ERR_SILENCED` in backend validation, even though the ability should bypass silence.
+
+**Fix**:
+1. Backend `GameLoop.ts` was extended to diff `/players/${pidx}/globalGcdTicks` every tick. Frontend `types.ts` gained `globalGcdTicks?: number`. Frontend `BattleArena.tsx` `getChargeDisplay()` and `isAbilityReady()` now incorporate the shared GCD so the cooldown arc fills and the button grays out during the 1.5 s window.
+2. Added `specialAbilityStates?: Record<string, AbilityInstance>` to `PlayerState` (both `state.ts` and `runtime.ts`). New `getOrCreateSpecialAbilityState()` helper in `specialAbilityBar.ts` lazy-creates a durable runtime instance per special-bar ability ID. Validation, play, and GameLoop cooldown ticking all use this persistent record instead of a synthetic `{ cooldown: 0 }`. GameLoop diffs `/players/${pidx}/specialAbilityStates` every tick. Frontend `specialUpdated` mapping now reads `me?.specialAbilityStates?.[ability.id]`.
+3. Added `allowWhileSilenced?: boolean` to the shared `Ability` interface. Both silence gates in `validateAction.ts` (`validateCastAbility` and `validatePlayAbility`) now compute an `allowsSilence` flag and only throw `ERR_SILENCED` when it is false. `zhen_xia_che` has `allowWhileSilenced: true` and an updated description.
+
+**Lessons**:
+- A special-bar ability can appear to have correct authored values (e.g. `gcd: true`, non-zero `cooldownTicks`) while still being broken at runtime if the ability instance it mutates is a throwaway object allocated at cast time. Always trace where `consumeAbilityUseRuntime` writes to before assuming an authored value reaches the runtime.
+- If the server does not diff a field, the frontend cannot show it reliably. For any new shared-state field (GCD ticks, persistent special-bar states), diffing must be added explicitly to the GameLoop broadcast block.
+- Silence and similar cast-gate conditions should carry a typed bypass flag (`allowWhileSilenced`) rather than requiring per-condition special-case blocks in the validator. This keeps the gate logic consistent for both `validateCastAbility` and `validatePlayAbility`.
+
+## 九霄风雷 follow-up rule corrections: dependent buff cleanup, reverse channel, special-bar GCD, 真·下车 lockout breadth (2026-05-02)
+
+**Problem set**:
+1. 洞烛机微在某些路径下会比九霄风雷本体活得更久；只在真·下车分支里删 buff 不够，任何方式移除九霄风雷时都必须同时结束洞烛机微。
+2. 九霄风雷起手时长和起手无敌都要改为 3 秒，并且读条方向要改成倒读条。
+3. 魂压怒涛要改成 10 尺击退、0.5 秒完成、8 秒冷却。
+4. 洞烛机微虽然数据上已经写了 `gcd: true`，但运行时仍然可以连续施放，说明问题不在能力定义而在特殊技能栏的 GCD 结算/校验路径。
+5. 真·下车要能在更宽的锁定家族里施放，不只是 `CONTROL`。
+6. 魂压怒涛的击退阶段不应该再给目标挂一个可见的 knockback debuff；它应该只是标准 dash 式击退，保留位移本身和落地后的【冲撞】眩晕。
+
+**Fix**:
+- `GameLoop.ts` 新增服务端不变量：只要玩家身上已经没有 buff `2727`（九霄风雷），就立即把 `2728`（洞烛机微）从身上清掉。这样不依赖“是谁移除的 buff”，自然过期、手动下车、其它效果移除都统一收口。
+- `abilities.ts` 中把 `jiu_xiao_feng_lei.channelDurationMs` 和起手无敌 buff `2726.durationMs` 一起改成 `3_000`，文案同步改成 3 秒；同一个 ability 上把 `channelForward` 设为 `false`，直接复用已有 reverse-channel 管线。
+- `abilities.ts` 中把 `hun_ya_nu_tao.cooldownTicks` 改成 `240`，把 `effect.durationTicks` 改成 `15`，文案同步为 10 尺 / 0.5 秒 / 8 秒冷却。
+- 真正导致洞烛机微“无 GCD”的根因在于：特殊技能栏技能不在真实 hand 里，`validateCastAbility()` / `playService.ts` 为它们临时造了 `{ cooldown: 0 }` 的 synthetic instance；全局 GCD 只会写到 hand 里的卡，下一次校验看 synthetic instance 时自然总是 0。修复方式不是再改 ability 数据，而是给 `PlayerState` 增加 `globalGcdTicks`：`playService.ts` 在任何 `gcd:true` 技能施放时设置它，`GameLoop.ts` 按与普通冷却相同的 `cooldownRate` 递减它，`validateAction.ts` 在校验 `gcd:true` 技能时先检查它。这样 temporary special-bar skills 也会被同一条 GCD 锁住。
+- 真·下车在 `abilities.ts` 上补齐 `allowWhileKnockedBack`, `allowWhilePulled`, `allowWhileDisplaced`，文案同步改为“可在受控、被击退、被拉拽或位移中施放”。
+- 魂压怒涛从 `abilities.ts` 里移除了击退 debuff `2729`，`immediateEffects.ts` 也不再 `addBuff()`；保留 `activeDash` 位移和 `_hunYaNuTaoSourceUserId`，GameLoop 在 dash 结束时继续追加 `2730`【冲撞】眩晕。由于原来的 debuff 还承担了“打断目标当前读条”的副作用，所以在 `HUN_YA_NU_TAO` handler 里显式保留了 `activeChannel = undefined` 的打断逻辑。
+
+**Lessons / disproved approaches**:
+- **“ability 已经写了 `gcd: true`，那就不是后端问题” 这个判断是错的。** 对临时技能栏技能，单纯的 ability 元数据不够，因为它们没有真实 hand runtime；要追到 synthetic instance 的创建点，确认冷却/GCD 状态到底存在哪里。
+- 当一个 buff B 的合法存在前提是 buff A 仍在身上时，最稳的修法不是在某个移除分支里补一刀，而是在 authoritative loop 里写成不变量。这样任何过期/清除路径都会自动收敛到正确状态。
+- 去掉一个控制 debuff 时，要先确认它有没有承担别的副作用。魂压怒涛这里如果只删 `2729` 而不补显式 `activeChannel` 打断，会把“击退会断读条”一起删掉。
+
+## 洗兵雨 visual polarity + random ring placement + 九霄子技能 editor hiding + 魂压怒涛 retune (2026-05-02)
+
+**Problem set**:
+1. 洗兵雨拾武区在前端仍沿用通用地圈配色，导致施法者看到的是“友方蓝圈”，但这个圈对施法者是坏事、对中招目标是好事；同时 1 尺圈沿用默认粗边框，视觉上几乎只剩边框。
+2. 洗兵雨拾武区上一轮虽然已经移出目标脚下，但仍固定生成在施法者→目标的同一侧，不满足“目标周围 6 尺环上随机一点”的设计。
+3. 真·下车 / 洞烛机微 / 魂压怒涛是九霄风雷形态子技能，不应该继续出现在技能编辑面板里。
+4. 魂压怒涛需要加大数值：击退范围改为 10 尺，完成时间改为 1 秒；运行时击退 Debuff 时长也必须同步，不然会出现表现和结算脱节。
+
+**Fix**:
+- `ArenaScene.tsx` 为 `xi_bing_yu` 单独走颜色分支：本地玩家如果是拾武目标则显示蓝圈，否则显示红圈；这样施法者看到危险色，被命中者看到收益色。`GroundZone` 前端类型也补了 `pickupTargetUserId`，不再靠 `any` 读这个字段。
+- `AoeZone.tsx` 新增 `ringThickness`，洗兵雨圈单独传更细的边框，避免 1 尺圈被默认 `0.3` 的粗 ring 吃掉大半面积。其它地圈维持原视觉。
+- `immediateEffects.ts` 的 `PLACE_XI_BING_YU_ZONE` 不再用施法者朝向或 source→target 向量，而是用 `Math.random() * 2π` 在目标中心外侧 6 尺环上取随机点；之前“永远同一方向”的问题本质上是偏移向量被写死了。
+- `buildAbilityEditorSnapshot()` 和 `buildNoWeaponRequiredSnapshot()` 统一过滤 `specialBarAbility === true`，因此九霄风雷子技能会从主技能编辑页和“无需武器”页一起消失，但运行时通过 `SPECIAL_ABILITY_BAR` 仍可正常显示和施放。
+- `hun_ya_nu_tao` 的能力定义改为 `range: 10`, `value: 10`, `durationTicks: 30`，文案同步更新为 10 尺 / 1 秒；`immediateEffects.ts` 不再硬编码 500ms 的击退 buff，而是按 `durationTicks / 30` 推导实际毫秒时长，这样将来再调位移时长时不会漏改 buff 持续时间。
+
+**Lessons**:
+- 有“正负收益相反”的特殊地圈时，不能继续复用“owner=蓝、enemy=红”的通用语义。像洗兵雨这种圈，配色应该按本地玩家进入后的结果来定，而不是只按 owner 来定。
+- 小半径圈不要直接沿用通用 ring 厚度；把边框厚度做成可选参数，比为单个技能复制一份 AOE 组件更稳。
+- 如果一个子技能只通过形态/载具/特殊 buff 临时出现，最好在 editor snapshot 层统一过滤，而不是让前端每个 tab 各自做隐藏判断。
+- 这次把魂压怒涛的“10 尺”同时落实到了作用半径和位移距离，确保文案与运行时一致；如果后续只想改其中一个值，必须在 ability 描述里明确写“范围”还是“位移距离”。
+
+## 九霄风雷 temporary skill bar + disarm channel interruption (2026-05-02)
+
+**Problem set**:
+1. 洗兵雨的拾武区半径应为 1 尺，但位置必须在目标外侧 6 尺处，不能生成在目标脚下。
+2. 缴械成功套用时，如果目标正在运功且该运功来源技能不是“无需武器”，运功必须立刻停止。
+3. 九霄风雷需要一个 1.5 秒起手运功：可空中施放，运功期间不能移动并获得 1.5 秒无敌；完成后获得 20 秒九霄风雷形态，临时技能栏替换为 3 个形态技能，形态中不能跳跃。
+
+**Fix**:
+- 洗兵雨的 `PLACE_XI_BING_YU_ZONE` 现在用施法者到目标的方向，把 zone 中心放到目标外侧 `zoneOffsetUnits: 6` 的位置；半径仍取 `effect.range ?? 1`，所以维持 1 尺圈。
+- `buffRuntime.ts` 在成功加入 `DISARM` buff 后统一取消不具备 `noWeaponRequired` 的 activeChannel / channel buff；这样怖畏暗刑、霞流宝石、洗兵雨都走同一条规则，不需要 per-ability 分支。
+- 新增九霄风雷起手与形态：`jiu_xiao_feng_lei` 是纯 activeChannel，`channelLockMovement` 锁水平移动；`channelStartBuffIds` 只在开始时给【九霄风雷·无敌】，`channelCompleteBuffIds` 只在完成时给【九霄风雷】。形态 buff 携带 `SPECIAL_ABILITY_BAR` 和 `NO_JUMP`，前端据此临时显示洞烛机微、魂压怒涛、真·下车。
+- 特殊技能不进入商店 / 拾取池：用 `specialBarAbility` + `hiddenFromDraft` 标记，并在 economy / pickup 生成处过滤。后端 `validateCastAbility()` / `playService.ts` 只在当前 buff 的 `SPECIAL_ABILITY_BAR.abilityIds` 包含该技能时接受它，不改写玩家真实 hand。
+- 洞烛机微使用 `CLEANSE` + 8 秒 `SPEED_BOOST 1` / `CONTROL_IMMUNE`；魂压怒涛新增 `HUN_YA_NU_TAO` 即时效果，击退 6 尺内敌方玩家 6 尺/0.5 秒，dash 结束后 GameLoop 追加【冲撞】4 秒 `CONTROL`；真·下车用 `REMOVE_SELF_BUFFS` 移除九霄风雷和洞烛机微。
+- 前端 `BattleArena.tsx` 从 active buff 的 `SPECIAL_ABILITY_BAR` 派生临时热键行：1-6 个技能显示几个，不再固定填满 6 格；形态激活时禁用拖拽。`NO_JUMP` 与 `activeChannel.lockMovement` 也同步进本地跳跃 / 移动预测。
+
+**Lessons**:
+- 临时技能栏最好由 buff 暴露“当前可用技能 id 列表”，不要直接改写 `player.hand`。这样形态结束时 UI 自动恢复，原技能的冷却 / 充能状态也不会被临时技能污染。
+- 同一个 channel ability 如果既有起手 buff 又有完成 buff，不能再用旧的“apply all buffs on start/complete”粗粒度开关。用 `channelStartBuffIds` / `channelCompleteBuffIds` 做白名单，既保留 preload/HUD 元数据，又不会把形态 buff 提前套上。
+- 新增 channel 元数据时要同步扩展共享 `Ability` / `ActiveChannel` 类型。构建时暴露了 `channelDurationMs` 未声明的问题；补齐类型比对单个 ability 做 `as any` 更稳。
+
+## Lockout family expansion: 缴械, 无需武器 editor, 洗兵雨 pickup zone, 抢珠式 (2026-05-02)
+
+**Problem set**:
+1. 逐云寒蕊的瞬发自 Buff `2715` 不能再带 `SILENCE_IMMUNE`；用户明确要去掉的是 `2715`，不是隐藏的 2 秒潜行 Buff `2716`。
+2. 需要把“缴械”做成一个新的锁招子类型：会吃锁招递减，受 `LOCKOUT_IMMUNE` 影响，但只禁止没有“无需武器”属性的技能。
+3. 前端要在有缴械时直接灰掉不满足“无需武器”的技能，而不是只等后端报错。
+4. 需要一个类似琴音共鸣的专门编辑页，用来三态判定哪些技能拥有“无需武器”属性，并且改完后要立刻影响运行时判定。
+5. 新技能需求：怖畏暗刑（4s 缴械）、霞流宝石（1 dmg + 按属性驱散 + 4s 缴械）、洗兵雨（5s 缴械 + 目标走回拾武区解除）、抢珠式（只能施展轻功，其余招式锁住），并且这些新技能都不进 GCD。
+
+**Fix**:
+- 按用户明确指定的 buff id 修改了 `abilities.ts` 里的 `2715`：移除 `SILENCE_IMMUNE`，同步修正文案，只保留控制 / 击退相关免疫。没有动 `2716`。
+- 新增效果 `DISARM`，并把 `Ability.noWeaponRequired` 接进完整链路：`buildResolvedAbilities()`、`abilityPreload.ts`、后端 `validateCastAbility()` / `validatePlayAbility()`、前端 `BattleArena.tsx` readiness 灰置逻辑、以及 `InGameClient.tsx` 的 `ERR_DISARMED` 提示。
+- `DISARM` 被加入 `SHARED_LOCKOUT_EFFECT_TYPES`，因此自动获得锁招递减、共享锁招互斥清理、以及 `LOCKOUT_IMMUNE` 过滤；同时它被加入 `SILENCE_FAMILY_EFFECT_TYPES`，所以 `SILENCE_IMMUNE` 也会免疫缴械。
+- 做了专门的“无需武器”编辑页：后端在 `ability-property-overrides.json` 顶层新增 `noWeaponRequired?: boolean` 三态覆盖，提供 `/ability-editor/no-weapon-required` GET/PUT 路由；前端新增 `NoWeaponRequiredTab.tsx`，以“已声明仍需武器 / 未决定 / 无需武器”三列方式做判定。这个页改的是运行时 override，所以会立刻影响缴械可施放判定。
+- 新增 `怖畏暗刑`（buff 2722, 4s `DISARM`）、`霞流宝石`（buff 2723, `DAMAGE 1` + `DISPEL_BUFF_ATTRIBUTE` 各 1 + 4s `DISARM`）、`洗兵雨`（buff 2724, 5s `DISARM` + 新效果 `PLACE_XI_BING_YU_ZONE` 在目标脚下放 1 尺拾武区）、`抢珠式`（buff 2725, 4s `NON_QINGGONG_LOCK`）。这 4 个技能都显式 `gcd: false`。
+- `洗兵雨` 的拾武机制没有另开新系统，而是复用现有 `groundZones`：`immediateEffects.ts` 只负责生成绑定目标 userId 的 zone，`GameLoop.ts` 每帧检查该目标是否走回 zone；命中后移除 `2724` 并发出 `BUFF_EXPIRED`。这样和现有地面圈生命周期、同步、前端渲染全部共用同一套结构。
+- 为 `抢珠式` 新增 `NON_QINGGONG_LOCK` 效果类型，并把它加入共享锁招 DR/互斥集合。后端校验在该效果存在时只允许 `qinggong === true` 的技能；前端也同步灰掉非轻功技能，并添加 `ERR_NON_QINGGONG_LOCKED` toast。
+
+**Disproved approaches / lessons**:
+- **不要复用 `ATTACK_LOCK` 实现缴械。** 这条路是错的：`ATTACK_LOCK` 在这个仓库里被当成可净化的一层控制来处理，还参与站桩/移动限制语义；如果直接拿来做缴械，会把“只能锁需要武器的招式”错误地退化成旧的一层控制。
+- 对这类“锁招家族扩展”，最稳的做法是拆出独立 effect type，然后只把真正共享的行为并到 `SHARED_LOCKOUT_EFFECT_TYPES`。这样 DR、互斥、免疫、前端灰置可以按族共享，但每个子类型自己的施放规则还能单独写清楚。
+- `groundZones` 已经承担了 enter/exit 型逻辑（生太极、吞日月、疾电叱羽等），所以像洗兵雨这种“走回去解除 debuff”的机制应该直接挂到 `GameLoop` 的 zone 分支上，而不是再发明一个 pickup-like 子系统。
+- `抢珠式` 的持续时间这轮用户没有写明，当前先按 4 秒实现，和这轮其它瞬发锁招保持同级；如果后续要改数值，只需要改 `abilities.ts` 里的 buff `2725.durationMs`。
+
 ## Buff-channel shield fix + FEAR_IMMUNE addition (2026-05-02 round 12)
 
 **Problem set**:
@@ -1004,6 +1109,23 @@ The BVH collision triangles in the GLBs do NOT change — only the coordinate ma
 - **Backend**: `ABILITY_RARITIES` + `AbilityRarity` type in `abilityPropertySystem.ts`. `setAbilityRarity()` in `abilities.ts`. PUT route `/api/game/ability-editor/:abilityId/rarity`. Rarity included in `abilityPreload.ts` `cardPayload`.
 - **Frontend editor**: Rarity selector buttons in `/ability-editor/[abilityId]/page.tsx`. `updateRarity()` calls PUT route, clicking the currently-active rarity deselects it (sets to null).
 - **Frontend cheat panel**: `RARITY_ORDER` sort + `RARITY_COLOR` border in `BattleArena.tsx`. Single flat grid replacing the old 已测试/持续伤害/测试中/待重做 tab sections. Icon border color reflects rarity (gray for unset).
+
+### Cheat ability picker must exclude hidden special-bar skills (2026-05-02)
+- **Bug**: The in-battle cheat window in `BattleArena.tsx` was listing every non-common preload ability, so temporary/form sub-skills like 真·下车 / 洞烛机微 / 魂压怒涛 leaked into the manual add-to-hand panel.
+- **Fix**: Expose `specialBarAbility` and `hiddenFromDraft` through `abilityPreload.ts`, filter them out in the BattleArena cheat picker, and reject them again in `/api/game/cheat/add-ability` so direct requests cannot bypass the UI.
+- **Lesson**: Any ability hidden from draft or reserved for a temporary special bar must be blocked at both the preload/UI layer and the cheat API; front-end filtering alone is not enough for debug tools.
+
+### 九霄风雷 form-skill rules must stay split per sub-ability (2026-05-02)
+- `jiu_xiao_feng_lei` now uses GCD.
+- `dong_zhu_ji_wei` uses GCD but keeps `cooldownTicks: 0`.
+- `zhen_xia_che` keeps no cooldown and no GCD, but needs `allowWhileControlled: true` so `validateAction.ts` does not throw `ERR_CONTROLLED`.
+- `hun_ya_nu_tao` keeps `gcd: false` but now has `cooldownTicks: 300` (10 seconds).
+- **Lesson**: These temporary bar skills do not share one blanket rule. Author each one explicitly in `abilities.ts` and update the description text alongside the runtime flag so the UI does not lie about GCD / cooldown behavior.
+
+### Frontend lock-movement channels must not cancel active jump air-shift carry (2026-05-02)
+- **Bug**: On 九霄风雷 startup, the frontend `channelMovementLocked` branch in `BattleArena.tsx` was clearing `airNudge*`, `airDirectionLocked`, and `airborneSpeedCarry`, so a player who started the channel mid-jump stopped in place locally even though the backend kept resolving already-started jump drift.
+- **Fix**: When `channelMovementLocked && !hardMovementLocked`, zero only planar `vel.x/vel.y`. Do not clear existing jump air-shift / carry refs there.
+- **Lesson**: Match the backend distinction exactly: lock-movement channels block new planar input, but they do not retroactively cancel previously-started jump drift. Full control/root locks are a different branch and can still clear movement state.
 
 ### New abilities added 2026-04-20: 春泥护花, 圣明佑, 烟雨行, 太阴指
 - **春泥护花** (chun_ni_hu_hua): buffId 2316. Self-cast, 8 stacks. New effect type `STACK_ON_HIT_GUAN_TI_HEAL` (贯体 heal on hit, stack consumed). 40% DR from DAMAGE_REDUCTION effect. Implemented in GameLoop.ts stack proc section (same loop as STACK_ON_HIT_DAMAGE). Uses GCD.

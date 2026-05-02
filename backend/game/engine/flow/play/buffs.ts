@@ -73,6 +73,7 @@ export function applyAbilityBuffs(params: {
     ability.id === "long_xiao_jiu_tian" ||
     ability.id === "xiang_ji_bi_luo" ||
     ability.id === "jian_fei_jing_tian" ||
+    ability.id === "hun_ya_nu_tao" ||
     (Array.isArray(ability.effects) &&
       ability.effects.some((e: any) =>
         e.type === "AOE_APPLY_BUFFS" ||

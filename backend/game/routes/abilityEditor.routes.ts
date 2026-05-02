@@ -2,9 +2,11 @@ import express from "express";
 
 import {
   buildAbilityEditorSnapshot,
+  buildNoWeaponRequiredSnapshot,
   setAbilityEditorDamageValue,
   setAbilityEditorNumericValue,
   setAbilityEditorProperty,
+  setAbilityNoWeaponRequiredOverride,
   setAbilityIsProjectile,
   setAbilityDunLiWhitelisted,
   setAbilityTag,
@@ -69,6 +71,32 @@ router.get("/ability-editor", (req, res) => {
   try {
     getUserIdFromCookie(req);
     return res.json(buildAbilityEditorSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/no-weapon-required", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildNoWeaponRequiredSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/no-weapon-required/:abilityId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+
+    const { mode } = req.body ?? {};
+    if (mode !== "manual-include" && mode !== "manual-exclude" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+
+    setAbilityNoWeaponRequiredOverride(req.params.abilityId, mode);
+
+    return res.json(buildNoWeaponRequiredSnapshot());
   } catch (error) {
     return handleAbilityEditorError(res, error);
   }

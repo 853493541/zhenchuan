@@ -17,8 +17,10 @@ export type EffectType =
   | "INVULNERABLE"
   | "STEALTH"
   | "ATTACK_LOCK"
+  | "NON_QINGGONG_LOCK"
   | "CONTROL"
   | "SILENCE"
+  | "DISARM"
   | "LOCKOUT_IMMUNE"
   | "SILENCE_IMMUNE"
   | "FEAR_IMMUNE"
@@ -152,6 +154,8 @@ export type EffectType =
   | "TI_YUN_ZONG_REFRESH"
   // 疾电叱羽: place an HP-bearing redirect zone below caster (allies inside redirect dmg to zone)
   | "PLACE_JI_DIAN_ZONE"
+  // 洗兵雨: place a temporary weapon-pickup zone under the target
+  | "PLACE_XI_BING_YU_ZONE"
   // 疾电叱羽 ally buff: while active, all incoming damage is redirected to the linked zone
   | "JI_DIAN_REDIRECT"
   // 乘黄之威: forward dash 12u + flip facing 180° + apply 恐惧 to enemies in 6u/120° cone behind
@@ -166,6 +170,10 @@ export type EffectType =
   | "SHOU_QUE_SHI"
   // 琴音共鸣: steal up to N eligible BUFFs from the target with remaining duration preserved
   | "QIN_YIN_GONG_MING"
+  // 缴械: cannot cast abilities unless they are marked 无需武器
+  | "DISARM"
+  // 只能施展轻功，其他招式全部被锁
+  | "NON_QINGGONG_LOCK"
   // 恐惧: silence + forced walk away from sourceUserId
   | "FEARED"
   // 蚀心蛊: lose control and either march in a stored direction or stand still
@@ -184,6 +192,14 @@ export type EffectType =
   | "PLACE_GROW_PULL_ZONE"
   // 连环弩: channel a 3-tick beam (1/2/3 dmg) on target with knockback when target is too close
   | "LIAN_HUAN_NU_TICK"
+  // 九霄风雷: temporary replacement skill bar while the form buff is active
+  | "SPECIAL_ABILITY_BAR"
+  // 九霄风雷: suppress jump while active
+  | "NO_JUMP"
+  // 魂压怒涛: nearby knockback followed by 冲撞 stun
+  | "HUN_YA_NU_TAO"
+  // 真·下车: remove listed buffs from self
+  | "REMOVE_SELF_BUFFS"
   // 如意法: next eligible attack applies the recorded control package
   | "APPLY_RECORDED_CONTROL_ON_ATTACK"
   // 游风飘踪 / 如意法 custom cleanse-and-control handlers
@@ -311,6 +327,12 @@ export interface AbilityEffect {
    * Values: "外功" | "内功" | "无"
    */
   damageType?: string;
+
+  /** For SPECIAL_ABILITY_BAR: ability ids to display and allow while the buff is active. */
+  abilityIds?: string[];
+
+  /** For REMOVE_SELF_BUFFS: buff ids to remove from the caster. */
+  buffIds?: number[];
 }
 
 // Fields only used on BuffEffect (not AbilityEffect) are declared below.

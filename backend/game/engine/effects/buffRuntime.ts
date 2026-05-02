@@ -10,6 +10,7 @@ import {
 } from "../state/types";
 import { resolveScheduledDamage } from "../utils/combatMath";
 import { addShieldToTarget, applyDamageToTarget, removeLinkedShield } from "../utils/health";
+import { ABILITIES } from "../../abilities/abilities";
 import { applyPropertyOverridesToEffects, loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
 import { hasDunLiReflectFlag, isAbilityDunLiWhitelisted } from "./dunLiReflect";
 
@@ -72,7 +73,8 @@ const LOCKOUT_DR_CONFIG: ResistanceConfig = {
   name: "锁招抗性",
 };
 
-const SHARED_LOCKOUT_EFFECT_TYPES = new Set(["SILENCE", "ATTACK_LOCK"]);
+const SILENCE_FAMILY_EFFECT_TYPES = new Set(["SILENCE", "DISARM"]);
+const SHARED_LOCKOUT_EFFECT_TYPES = new Set(["SILENCE", "ATTACK_LOCK", "DISARM", "NON_QINGGONG_LOCK"]);
 
 function getActiveResistanceBuff(
   target: { buffs: ActiveBuff[] },
@@ -239,6 +241,92 @@ function removeSharedLockoutDebuffs(params: {
   }
 }
 
+function cancelActiveChannelForDisarm(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { activeChannel?: any; buffs: ActiveBuff[] };
+}) {
+  const { state, targetUserId, target } = params;
+  const channel = target.activeChannel;
+  if (!channel) return false;
+
+  const channelAbility = ABILITIES[channel.abilityId];
+  if ((channelAbility as any)?.noWeaponRequired === true) return false;
+
+  const startedBuffIds = channel.startedBuffIds ?? [];
+  if (startedBuffIds.length > 0) {
+    target.buffs = target.buffs.filter((buff) => {
+      const matchesStartedBuff =
+        startedBuffIds.includes(buff.buffId) &&
+        (buff.sourceAbilityId ?? channel.abilityId) === channel.abilityId;
+      if (!matchesStartedBuff) return true;
+
+      removeLinkedShield(target as any, buff as any);
+      pushEvent(state, {
+        turn: state.turn,
+        type: "BUFF_EXPIRED",
+        actorUserId: targetUserId,
+        targetUserId,
+        abilityId: buff.sourceAbilityId,
+        abilityName: buff.sourceAbilityName,
+        buffId: buff.buffId,
+        buffName: buff.name,
+        buffCategory: buff.category,
+      });
+      return false;
+    });
+  }
+
+  target.activeChannel = undefined;
+  return true;
+}
+
+function cancelBuffChannelsForDisarm(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  const { state, targetUserId, target } = params;
+  let removedAny = false;
+
+  target.buffs = target.buffs.filter((buff) => {
+    const sourceAbilityId = buff.sourceAbilityId;
+    if (!sourceAbilityId) return true;
+
+    const sourceAbility = ABILITIES[sourceAbilityId];
+    const channel = sourceAbility?.channel;
+    if (!channel || channel.source !== "BUFF" || channel.buffId !== buff.buffId) return true;
+    if ((sourceAbility as any).noWeaponRequired === true) return true;
+
+    removeLinkedShield(target as any, buff as any);
+    pushEvent(state, {
+      turn: state.turn,
+      type: "BUFF_EXPIRED",
+      actorUserId: targetUserId,
+      targetUserId,
+      abilityId: buff.sourceAbilityId,
+      abilityName: buff.sourceAbilityName,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+    });
+    removedAny = true;
+    return false;
+  });
+
+  return removedAny;
+}
+
+function cancelWeaponRequiredChannelsForDisarm(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { activeChannel?: any; buffs: ActiveBuff[] };
+}) {
+  const activeCanceled = cancelActiveChannelForDisarm(params);
+  const buffCanceled = cancelBuffChannelsForDisarm(params);
+  return activeCanceled || buffCanceled;
+}
+
 function removeStealthOnIncomingControl(params: {
   state: GameState;
   targetUserId: string;
@@ -248,8 +336,8 @@ function removeStealthOnIncomingControl(params: {
   const { state, targetUserId, target, controlTypes } = params;
   if (controlTypes.length === 0) return;
 
-  const tiandiBreakTypes = ["CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE"];
-  const fuguangBreakTypes = ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE"];
+  const tiandiBreakTypes = ["CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE", "NON_QINGGONG_LOCK"];
+  const fuguangBreakTypes = ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE", "NON_QINGGONG_LOCK"];
 
   const removed: ActiveBuff[] = [];
   target.buffs = target.buffs.filter((b) => {
@@ -431,7 +519,7 @@ export function addBuff(params: {
   }
 
   if (sourceUserId !== targetUserId && hasSilenceImmune(buffTarget)) {
-    const filteredEffects = runtimeBuff.effects.filter((e) => e.type !== "SILENCE");
+    const filteredEffects = runtimeBuff.effects.filter((e) => !SILENCE_FAMILY_EFFECT_TYPES.has(e.type));
     if (filteredEffects.length === 0) {
       return;
     }
@@ -704,10 +792,23 @@ export function addBuff(params: {
     addShieldToTarget(buffTarget as any, effectiveShield);
   }
 
+  const appliedDisarm = runtimeBuff.effects.some((effect) => effect.type === "DISARM");
+  if (appliedDisarm) {
+    cancelWeaponRequiredChannelsForDisarm({
+      state,
+      targetUserId,
+      target: buffTarget as any,
+    });
+  }
+
   // CC that hits a channeling player (with no SILENCE_IMMUNE) cancels their channel.
   if ((buffTarget as any).activeChannel) {
     const isCC = runtimeBuff.effects.some((e) =>
-      e.type === "CONTROL" || e.type === "KNOCKED_BACK" || e.type === "PULLED" || e.type === "ATTACK_LOCK"
+      e.type === "CONTROL" ||
+      e.type === "KNOCKED_BACK" ||
+      e.type === "PULLED" ||
+      e.type === "ATTACK_LOCK" ||
+      e.type === "NON_QINGGONG_LOCK"
     );
     const isImmune = buffTarget.buffs.some((b) =>
       b.effects.some((e) => e.type === "CONTROL_IMMUNE" || e.type === "SILENCE_IMMUNE")
@@ -721,7 +822,7 @@ export function addBuff(params: {
   if (sourceUserId !== targetUserId) {
     const controlTypes = runtimeBuff.effects
       .map((e) => e.type)
-      .filter((t) => ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE"].includes(t));
+      .filter((t) => ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE", "NON_QINGGONG_LOCK"].includes(t));
     removeStealthOnIncomingControl({
       state,
       targetUserId,

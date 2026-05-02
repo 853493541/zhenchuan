@@ -50,6 +50,8 @@ const LV_YE_MAN_SHENG_BUFF_ID = 2718;
 const LV_YE_MAN_SHENG_RADIUS_UNITS = 6;
 const LV_YE_MAN_SHENG_RETAL_DAMAGE = 3;
 const LV_YE_MAN_SHENG_KNOCKBACK_SPEED_UNITS_PER_SEC = 20;
+const XI_BING_YU_ABILITY_ID = "xi_bing_yu";
+const XI_BING_YU_BUFF_ID = 2724;
 const YIN_QIAO_ABILITY_ID = "yin_qiao";
 const JUE_MAI_BUFF_ID = 1337;
 
@@ -515,10 +517,12 @@ function isChannelBuffRuntime(buff: { buffId: number }): boolean {
 
 function shouldSuppressJumpWhileChanneling(player: {
   activeChannel?: any;
-  buffs?: Array<{ buffId: number }>;
+  buffs?: Array<{ buffId: number; effects?: Array<{ type?: string }> }>;
 }): boolean {
   if (player.activeChannel) return true;
-  return Array.isArray(player.buffs) && player.buffs.some((buff) => isChannelBuffRuntime(buff));
+  return Array.isArray(player.buffs) && player.buffs.some((buff) =>
+    isChannelBuffRuntime(buff) || buff.effects?.some((effect) => effect.type === "NO_JUMP")
+  );
 }
 
 function isMoheKnockdown(buff: { buffId: number; sourceAbilityId?: string }): boolean {
@@ -1063,6 +1067,14 @@ export class GameLoop {
         input = { ...input, jump: false };
         this.playerInputs.set(idx, input);
       }
+      if ((player as any).activeChannel?.lockMovement === true) {
+        if (input) {
+          input = { ...input, dx: 0, dy: 0, jump: false };
+          this.playerInputs.set(idx, input);
+        }
+        player.velocity.vx = 0;
+        player.velocity.vy = 0;
+      }
 
       const dashStateBefore = player.activeDash ? { ...player.activeDash } : undefined;
       const dashAbilityIdBefore = player.activeDash?.abilityId;
@@ -1320,6 +1332,24 @@ export class GameLoop {
         delete (player as any)._wallKnockStunMs;
         delete (player as any)._wallKnockAbilityId;
         delete (player as any)._wallKnockSourceUserId;
+      }
+
+      if (dashAbilityIdBefore === "hun_ya_nu_tao" && !player.activeDash) {
+        const hunYaAbility = ABILITIES["hun_ya_nu_tao"] as any;
+        const stunBuff = hunYaAbility?.buffs?.find((b: any) => b.buffId === 2730);
+        const sourceUserId = (player as any)._hunYaNuTaoSourceUserId;
+        if (hunYaAbility && stunBuff && sourceUserId) {
+          addBuff({
+            state: this.state,
+            sourceUserId,
+            targetUserId: player.userId,
+            ability: hunYaAbility,
+            buffTarget: player as any,
+            buff: stunBuff,
+          });
+          movementStateChanged = true;
+        }
+        delete (player as any)._hunYaNuTaoSourceUserId;
       }
 
       // 鹤归孤山: on dash end, deal damage + stun to nearby enemies, then give caster 0.5s dash buff
@@ -2184,8 +2214,12 @@ export class GameLoop {
           // applyBuffsOnComplete: apply buffs[] to opponent on channel finish (not on cast)
           if ((channelAbility as any)?.applyBuffsOnComplete === true) {
             const buffDefs = (channelAbility as any)?.buffs ?? [];
+            const completeBuffIdSet = Array.isArray((channelAbility as any)?.channelCompleteBuffIds)
+              ? new Set((channelAbility as any).channelCompleteBuffIds)
+              : null;
             const oppAlive = targetPlayer && (targetPlayer.hp ?? 0) > 0;
             for (const buffDef of buffDefs) {
+              if (completeBuffIdSet && !completeBuffIdSet.has(buffDef.buffId)) continue;
               const applyTarget = buffDef.applyTo === "SELF" ? player : targetPlayer;
               if (!applyTarget) continue;
               if (applyTarget !== player && (!oppAlive || blocksEnemyTargeting(targetPlayer as any))) continue;
@@ -2220,7 +2254,23 @@ export class GameLoop {
         .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
       const cooldownRate = Math.max(0, 1 - cooldownSlowSum);
 
-      player.hand.forEach((ability: any) => {
+      if (Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
+        (player as any)._globalGcdProgress = ((player as any)._globalGcdProgress ?? 0) + cooldownRate;
+        while ((player as any)._globalGcdProgress >= 1 && (player as any).globalGcdTicks > 0) {
+          (player as any).globalGcdTicks--;
+          (player as any)._globalGcdProgress -= 1;
+        }
+      } else {
+        (player as any).globalGcdTicks = 0;
+        (player as any)._globalGcdProgress = 0;
+      }
+
+      const runtimeAbilities = [
+        ...player.hand,
+        ...Object.values((player as any).specialAbilityStates ?? {}),
+      ];
+
+      runtimeAbilities.forEach((ability: any) => {
         const abilityId = ability.abilityId || ability.id;
         const abilityDef = (ABILITIES as any)[abilityId];
         const maxCharges = Math.max(0, Number(abilityDef?.maxCharges ?? 0));
@@ -2964,6 +3014,16 @@ export class GameLoop {
           buffsChanged = true;
         }
       }
+
+      // 洞烛机微 is only valid while 九霄风雷 is still active.
+      const hasJiuXiaoBuff = player.buffs.some((buff) => buff.buffId === 2727);
+      if (!hasJiuXiaoBuff) {
+        const nextBuffs = player.buffs.filter((buff) => buff.buffId !== 2728);
+        if (nextBuffs.length !== player.buffs.length) {
+          player.buffs = nextBuffs;
+          buffsChanged = true;
+        }
+      }
     });
 
     for (const entity of this.state.entities ?? []) {
@@ -3221,6 +3281,50 @@ export class GameLoop {
           continue; // expired — drop it
         }
         activeZones.push(zone);
+
+        if (zone.abilityId === XI_BING_YU_ABILITY_ID) {
+          const pickupTargetUserId = (zone as any).pickupTargetUserId as string | undefined;
+          const pickupTarget = pickupTargetUserId
+            ? this.state.players.find((player) => player.userId === pickupTargetUserId)
+            : undefined;
+          const zoneZ = zone.z ?? 0;
+          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(2, storedUnitScale);
+          let zoneConsumed = false;
+
+          if (pickupTarget && pickupTarget.hp > 0) {
+            const dx = pickupTarget.position.x - zone.x;
+            const dy = pickupTarget.position.y - zone.y;
+            const inZone = Math.sqrt(dx * dx + dy * dy) <= zone.radius && Math.abs((pickupTarget.position.z ?? 0) - zoneZ) <= zoneHeight;
+
+            if (inZone) {
+              zoneConsumed = true;
+              const buffIndex = pickupTarget.buffs.findIndex(
+                (buff: any) => buff.buffId === XI_BING_YU_BUFF_ID && buff.expiresAt > now
+              );
+              if (buffIndex !== -1) {
+                const removed = pickupTarget.buffs[buffIndex];
+                removeLinkedShield(pickupTarget as any, removed as any);
+                pickupTarget.buffs.splice(buffIndex, 1);
+                pushBuffExpired(this.state, {
+                  targetUserId: pickupTarget.userId,
+                  buffId: removed.buffId,
+                  buffName: removed.name,
+                  buffCategory: removed.category,
+                  sourceAbilityId: removed.sourceAbilityId,
+                  sourceAbilityName: removed.sourceAbilityName,
+                });
+                buffsChanged = true;
+              }
+            }
+          }
+
+          if (zoneConsumed) {
+            activeZones.pop();
+            continue;
+          }
+
+          continue;
+        }
 
         // ── 疾电叱羽 enter/exit (allies only) ──────────────────────────────
         if (zone.abilityId === "ji_dian_chi_yu") {
@@ -4147,6 +4251,14 @@ export class GameLoop {
       });
       // Append per-ability cooldown patches so clients stay in sync
       this.state.players.forEach((p, pidx) => {
+        diff.push({
+          path: `/players/${pidx}/globalGcdTicks`,
+          value: (p as any).globalGcdTicks ?? 0,
+        });
+        diff.push({
+          path: `/players/${pidx}/specialAbilityStates`,
+          value: (p as any).specialAbilityStates ?? {},
+        });
         p.hand.forEach((ability, cidx) => {
           diff.push({
             path: `/players/${pidx}/hand/${cidx}/cooldown`,

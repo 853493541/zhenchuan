@@ -9,6 +9,8 @@ export interface PlayerState {
   userId: PlayerID;
   hp: number;
   hand: AbilityInstance[];
+  specialAbilityStates?: Record<string, AbilityInstance>;
+  globalGcdTicks?: number;
   buffs: ActiveBuff[];
 }
 
