@@ -688,7 +688,7 @@ export function addBuff(params: {
       e.type === "CONTROL" || e.type === "KNOCKED_BACK" || e.type === "PULLED" || e.type === "ATTACK_LOCK"
     );
     const isImmune = buffTarget.buffs.some((b) =>
-      b.effects.some((e) => e.type === "INTERRUPT_IMMUNE" || e.type === "CONTROL_IMMUNE")
+      b.effects.some((e) => e.type === "INTERRUPT_IMMUNE" || e.type === "CONTROL_IMMUNE" || e.type === "SILENCE_IMMUNE")
     );
     if (isCC && !isImmune) {
       (buffTarget as any).activeChannel = undefined;

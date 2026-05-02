@@ -3,6 +3,50 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 不可被打断 flip + 沉默免疫 unification + 剑飞惊天 + uninterruptible shield (2026-05-02)
+
+**Problem set** (round 10):
+1. The previous "可以被打断" property defaults to true and most abilities never opt out — invert the semantics so the property is the rare *uninterruptible* opt-in.
+2. The buff editor never surfaced INTERRUPT_IMMUNE / SILENCE_IMMUNE on a buff (e.g. 风来吴山·不工 has INTERRUPT_IMMUNE in code but the UI showed nothing).
+3. User suspected 风来吴山 didn't have 免疫打断 but the code clearly does (line 956 of abilities.ts) — UI gap, not data gap.
+4. Wanted a buff list filter that surfaces all buffs whose effect grants 沉默免疫.
+5. There is no design reason for separate `INTERRUPT_IMMUNE` and `SILENCE_IMMUNE` effects: any silence-immune buff is also interrupt-immune by design. Consolidate.
+6. Implement 剑飞惊天: 1 damage + 惊惧 50% slow 5s always, plus on successful interrupt → 沉默 5s.
+7. 翔极碧落 / 剑飞惊天 should be GCD-free.
+8. Silence buff names should match the ability name ("翔极碧落", "剑飞惊天").
+9. Visual: when a target is channeling an uninterruptible bar, draw a small shield icon to the left of the enemy channel bar.
+
+**Fix**:
+- Renamed property `channelInterruptible` → `channelNotInterruptible`. Default value is `false` (channel is interruptible). Storage flag is set only when opted-out (`channelNotInterruptible: true`). `buildRuntimeChannelInfo` and `playService` both compute `interruptible: (ability as any).channelNotInterruptible !== true`.
+- Added `沉默免疫` to `BuffPropertyType` and `BUFF_PROPERTY_TYPES` (backend `buffEditorOverrides.ts` + frontend `editorShared.ts`). `applyPropertyOverridesToEffects` adds `SILENCE_IMMUNE` (no removal of code-defined immunity). `extractBaseProperties` in `buffTagSystem.ts` surfaces 沉默免疫 if a buff's effects contain *either* SILENCE_IMMUNE or INTERRUPT_IMMUNE — which automatically makes 风来吴山·不工 display 沉默免疫 in the editor.
+- Engine-wide consolidation: `GameLoop.ts` silence-cancels-channel-buffs check, `buffRuntime.ts` CC-cancels-channel guard, `immediateEffects.ts` XIANG_JI_BI_LUO interrupt-immunity gate, and `BattleArena.tsx` `hasInterruptImmune` helper *all* now treat `SILENCE_IMMUNE` as conferring interrupt immunity (alongside the existing `INTERRUPT_IMMUNE` and where applicable `CONTROL_IMMUNE`).
+- Added `BuffEditorTab` filter chip 沉默免疫 (toggle); when active, filters by buffs whose merged `properties + baseProperties` contains 沉默免疫.
+- Added `jian_fei_jing_tian` ability (range 20, ATTACK, OPPONENT, cooldownTicks 300, gcd:false). Effects: DAMAGE 1 + XIANG_JI_BI_LUO. Buffs: 惊惧 (buffId 2720, DEBUFF, 5_000ms, SLOW 0.5) and 剑飞惊天 (buffId 2721, DEBUFF, 5_000ms, SILENCE).
+- Generalised the `XIANG_JI_BI_LUO` effect handler so any non-silence buff in `ability.buffs` is applied unconditionally (so 惊惧 lands every cast) while silence buffs apply only on successful interrupt. Same handler now serves both 翔极碧落 and 剑飞惊天.
+- Added `jian_fei_jing_tian` to `applyAbilityBuffs` exclusion list in `buffs.ts` (its handler manually applies its buffs).
+- Set `gcd: false` on `xiang_ji_bi_luo`. Renamed its silence buff `name` from "翔极碧落·沉默" → "翔极碧落".
+- Channel bar shield: extended `ChannelBarData` with optional `interruptible?: boolean`. `BattleArena.tsx`'s `buildChannelBarResultForPlayer` populates it from `player.activeChannel.interruptible` (or the ability's static channel flag for buff-source channels). `ChannelBar.tsx` renders a small SVG shield (.uninterruptibleShield) absolutely positioned to the left of the enemy variant when `interruptible === false`.
+
+**Lessons**:
+- When a user reports "buff X doesn't have effect Y" and the engine behavior contradicts that, *read the ability source first* before changing logic. The bug was the editor not surfacing INTERRUPT_IMMUNE in `extractBaseProperties`, not missing data.
+- Consolidating two effect types behind a single buff property is best done by (a) adding the new property type, (b) auto-deriving from either underlying effect in `extractBaseProperties`, (c) widening every check site that previously only matched one. This keeps existing data unchanged while merging the user-facing surface.
+- For "always vs on-success" buff semantics on a single ability, partition `ability.buffs[]` by SILENCE-effect presence inside the effect handler — one ability handler can serve multiple abilities (翔极碧落, 剑飞惊天) without per-id branches.
+- Property semantics inversion: when a default-true flag is rarely false in practice, flip the storage so the rare case is the explicit boolean and the default case stores nothing. That matches Bayesian prior of designer intent and keeps JSON small.
+
+## 翔极碧落 + interruptible flag + channel filter (2026-05-02)
+
+**Problem**: Need a new打断-style ability 翔极碧落 (20 unit, instant 1 dmg, interrupts a channel and applies SILENCE 4s) plus a per-ability "可以被打断" flag so designers can mark a channel as uninterruptible. Plus an ability-list filter for channeling abilities.
+
+**Fix**:
+- Added `interruptible?: boolean` to `AbilityChannel` (runtime metadata) and to `ActiveChannel` (live channel state). `buildRuntimeChannelInfo` now copies `(ability as any).channelInterruptible !== false` so the field defaults to true and is only false when explicitly opted out. `playService.ts` copies the same flag onto `player.activeChannel.interruptible` when starting an active channel.
+- Added the editor property `channelInterruptible` (label "可以被打断"). It lives in the 读条 group, so it auto-renders in the ability detail page's "添加读条属性 / 移除" UI without any frontend changes.
+- New effect type `XIANG_JI_BI_LUO` (in `effects.ts`, `categories.ts`). Handler in `immediateEffects.ts` does (in this order): (1) skip if target has `INTERRUPT_IMMUNE`; (2) detect channel — `target.activeChannel` first, fall back to scanning `target.buffs` for a buff whose `sourceAbilityId` resolves to an ability with `channel.source==='BUFF'` and matching `channel.buffId`; (3) check `interruptible !== false`; (4) if interruptible, cancel the channel — for active, mirror `cancelActiveChannel`'s clear-startedBuffIds + remove activeChannel; for buff-source, remove the buff and emit BUFF_EXPIRED; (5) apply the silence buff declared on the ability.
+- Ability `xiang_ji_bi_luo` (range 20, ATTACK, OPPONENT, gcd, cd 300): `effects: [DAMAGE 1, XIANG_JI_BI_LUO]` + `buffs: [{ buffId 2719, name "翔极碧落·沉默", DEBUFF, 4s, [{type:'SILENCE'}] }]`. Excluded from `applyAbilityBuffs` so the silence buff only fires through the custom handler when interrupt succeeds.
+- Verified: the user-requested "免疫打断" effect is exactly the existing `INTERRUPT_IMMUNE` effect. 千蝶吐瑞 (buff 2003) and 笑醉狂 (buff 2001) already include `INTERRUPT_IMMUNE` alongside their other immunities, so they are already protected from 翔极碧落.
+- Frontend ability list page: added a 4th filter row "读条" with options 全部 / 无读条 / 任意读条 / 正读条 / 逆读条. State is `channelFilter`, persisted in the same sessionStorage key `abilityEditorFilters_v2` (already used for search + tagFilters). Filter logic checks `ability.channelInfo?.mode`.
+
+**Lesson**: When extending channel metadata, the right seam is the `AbilityChannel` runtime type plus `buildRuntimeChannelInfo` — that single function feeds the resolved `ABILITIES[id].channel` map that backend code can reliably read at runtime. Storing the flag as a raw boolean on the ability (`channelInterruptible: false` on opt-out) plus surfacing it via the existing 读条 group property auto-wires both backend behavior and editor UI without touching the detail page. For interrupt detection across both ACTIVE and BUFF channel sources, walking `sourceAbilityId → ABILITIES[id].channel` is more robust than maintaining a hardcoded buff-id allowlist (`isChannelBuffRuntime` is the legacy approach and only knows 5 buff IDs).
+
 ## Channel bar polish round 2: blue border, instant fade, larger enemy text, success-green only on enemy (2026-05-02)
 
 **Problem**: Follow-ups on the channel-bar lifecycle: (1) the teal border wanted to be more blue; (2) both bars appeared to "wait" before disappearing — root cause turned out to be the interrupt path's 1s hold AND a tight 80ms success threshold that misclassified some buff-driven reverse channels as interrupts (clock skew between client `Date.now()` and the server-stamped `appliedAt`/`expiresAt`); (3) the enemy bar text was fully inside the 7px-tall track and hard to read; (4) the green completion flash was leaking onto the self bar.

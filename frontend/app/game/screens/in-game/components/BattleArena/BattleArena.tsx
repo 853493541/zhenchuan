@@ -124,7 +124,7 @@ function buildChannelBarResultForPlayer(
   const suppressJumpBar = options?.suppressJumpBar === true;
 
   const hasBlockingCC = buffsHaveAnyEffect(buffs, ['CONTROL', 'KNOCKED_BACK', 'ATTACK_LOCK']);
-  const hasInterruptImmune = buffsHaveAnyEffect(buffs, ['INTERRUPT_IMMUNE', 'CONTROL_IMMUNE']);
+  const hasInterruptImmune = buffsHaveAnyEffect(buffs, ['INTERRUPT_IMMUNE', 'CONTROL_IMMUNE', 'SILENCE_IMMUNE']);
   if (hasBlockingCC && !hasInterruptImmune) {
     return null;
   }
@@ -136,12 +136,16 @@ function buildChannelBarResultForPlayer(
     }
 
     const ability = abilitiesById?.[channel.abilityId];
+    const interruptible = (channel as any).interruptible !== undefined
+      ? (channel as any).interruptible
+      : (ability?.channel?.interruptible !== false);
     const data: ChannelBarData = channel.forwardChannel === false
       ? {
           kind: 'reverse',
           name: channel.abilityName,
           appliedAt: channel.startedAt,
           durationMs: Math.max(1, channel.durationMs),
+          interruptible,
         }
       : {
           kind: 'forward',
@@ -150,6 +154,7 @@ function buildChannelBarResultForPlayer(
           durationMs: Math.max(1, channel.durationMs),
           cancelOnMove: !!channel.cancelOnMove,
           cancelOnJump: !!channel.cancelOnJump,
+          interruptible,
         };
     return { data, abilityId: channel.abilityId, ability };
   }
@@ -177,6 +182,7 @@ function buildChannelBarResultForPlayer(
       : Date.now() - durationMs;
     const tickIntervalMs = Number((buff as any).periodicMs ?? channel.tickIntervalMs ?? 0);
     const name = ability.name ?? (buff as any).name ?? '运功';
+    const interruptible = (channel as any).interruptible !== false;
 
     const data: ChannelBarData = channel.mode === 'FORWARD'
       ? {
@@ -186,6 +192,7 @@ function buildChannelBarResultForPlayer(
           durationMs,
           cancelOnMove: channel.cancelOnMove,
           cancelOnJump: channel.cancelOnJump,
+          interruptible,
         }
       : {
           kind: 'reverse',
@@ -193,6 +200,7 @@ function buildChannelBarResultForPlayer(
           appliedAt: startedAt,
           durationMs,
           ...(Number.isFinite(tickIntervalMs) && tickIntervalMs > 0 ? { tickIntervalMs } : {}),
+          interruptible,
         };
     return { data, abilityId: ability.id, ability };
   }

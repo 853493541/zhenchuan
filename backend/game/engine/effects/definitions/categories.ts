@@ -185,6 +185,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   APPLY_RECORDED_CONTROL_ON_ATTACK: "BUFF",
   YOU_FENG_PIAO_ZONG: "ABILITY",
   RU_YI_FA: "ABILITY",
+  XIANG_JI_BI_LUO: "ABILITY",
 };
 
 export function getEffectCategory(type: EffectType): string {

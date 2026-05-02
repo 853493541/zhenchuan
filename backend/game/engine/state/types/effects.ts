@@ -188,7 +188,9 @@ export type EffectType =
   | "APPLY_RECORDED_CONTROL_ON_ATTACK"
   // 游风飘踪 / 如意法 custom cleanse-and-control handlers
   | "YOU_FENG_PIAO_ZONG"
-  | "RU_YI_FA";
+  | "RU_YI_FA"
+  // 翔极碧落: interrupt the target's channel and apply silence if successful
+  | "XIANG_JI_BI_LUO";
 
 /**
  * Immediate ability effects

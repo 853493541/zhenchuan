@@ -321,6 +321,7 @@ async function playCastAbility(
       forwardChannel: (ability as any).channelForward ?? true,
       effects: (ability as any).channelEffects ?? [],
       cooldownTicks: clampCooldownTicksForTesting(ability.cooldownTicks ?? 150),
+      interruptible: (ability as any).channelNotInterruptible !== true,
     };
 
     if ((ability as any).applyBuffsOnChannelStart === true) {

@@ -40,6 +40,7 @@ export default function BuffEditorTab({
   const [subTab, setSubTab] = useState<SubTab>("有利气劲");
   const [attributeFilter, setAttributeFilter] = useState<AttributeFilter>("全部");
   const [hiddenFilter, setHiddenFilter] = useState<HiddenFilter>("显示");
+  const [silenceImmuneOnly, setSilenceImmuneOnly] = useState<boolean>(false);
   const [search, setSearch] = useState("");
 
   const allBuffs = snapshot?.buffs ?? [];
@@ -54,6 +55,11 @@ export default function BuffEditorTab({
 
   const filtered = visibilityFiltered
     .filter((buff) => attributeFilter === "全部" || buff.attribute === attributeFilter)
+    .filter((buff) => {
+      if (!silenceImmuneOnly) return true;
+      const all = [...buff.properties, ...buff.baseProperties];
+      return all.some((p) => p.type === "沉默免疫");
+    })
     .filter((buff) => {
       if (!normalizedSearch) return true;
       return (
@@ -142,6 +148,15 @@ export default function BuffEditorTab({
             </button>
           );
         })}
+        <button
+          type="button"
+          className={`${styles.buffAttrFilterChip} ${silenceImmuneOnly ? styles.buffAttrFilterChipActive : ""}`}
+          onClick={() => setSilenceImmuneOnly((v) => !v)}
+          style={silenceImmuneOnly ? { borderColor: "#6aaee6" } : undefined}
+          title="仅显示带有《沉默免疫》的 Buff（同时免克被打断）"
+        >
+          沉默免疫
+        </button>
       </div>
 
       {/* Buff grid */}

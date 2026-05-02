@@ -4291,6 +4291,64 @@ export const BASE_ABILITIES: AbilityRecord = {
       { type: "LIAN_HUAN_NU_TICK", value: 0, range: 25 } as any,
     ],
   } as any,
+
+  xiang_ji_bi_luo: {
+    id: "xiang_ji_bi_luo",
+    name: "翔极碧落",
+    description: "20尺，可空中或移动中施放\n瞬发对目标造成1点伤害\n若目标正在读条且该读条可被打断，则打断读条并附加【沉默】4秒\n若目标拥有【沉默免疫】则不会触发打断与沉默效果",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "DAMAGE", value: 1 },
+      { type: "XIANG_JI_BI_LUO" } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2719,
+        name: "翔极碧落",
+        category: "DEBUFF",
+        durationMs: 4_000,
+        description: "无法使用技能",
+        effects: [{ type: "SILENCE" }],
+      },
+    ],
+  },
+
+  jian_fei_jing_tian: {
+    id: "jian_fei_jing_tian",
+    name: "剑飞惊天",
+    description: "20尺，瞬发对目标造成1点伤害\n附加【惊惧】50%减速5秒\n若目标正在读条且该读条可被打断，则打断读条并附加【剑飞惊天】沉默5秒\n若目标拥有【沉默免疫】则不会触发打断与沉默效果",
+    type: "ATTACK",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [
+      { type: "DAMAGE", value: 1 },
+      { type: "XIANG_JI_BI_LUO" } as any,
+    ],
+    buffs: [
+      {
+        buffId: 2720,
+        name: "惊惧",
+        category: "DEBUFF",
+        durationMs: 5_000,
+        description: "受到减速",
+        effects: [{ type: "SLOW", value: 0.5 }],
+      },
+      {
+        buffId: 2721,
+        name: "剑飞惊天",
+        category: "DEBUFF",
+        durationMs: 5_000,
+        description: "无法使用技能",
+        effects: [{ type: "SILENCE" }],
+      },
+    ],
+  },
 };
 
 let abilityPropertyOverrides: AbilityEditorOverrideMap = {};

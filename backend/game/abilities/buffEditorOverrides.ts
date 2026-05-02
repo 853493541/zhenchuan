@@ -5,9 +5,9 @@ export type BuffAttribute = "未选择" | "无" | "阴性" | "阳性" | "毒性"
 
 export const BUFF_ATTRIBUTES: BuffAttribute[] = ["未选择", "无", "阴性", "阳性", "毒性", "外功", "持续伤害", "混元", "蛊", "点穴"];
 
-export type BuffPropertyType = "减伤" | "无敌" | "闪避" | "外功闪避";
+export type BuffPropertyType = "减伤" | "无敌" | "闪避" | "外功闪避" | "沉默免疫";
 
-export const BUFF_PROPERTY_TYPES: BuffPropertyType[] = ["减伤", "无敌", "闪避", "外功闪避"];
+export const BUFF_PROPERTY_TYPES: BuffPropertyType[] = ["减伤", "无敌", "闪避", "外功闪避", "沉默免疫"];
 
 export interface BuffProperty {
   type: BuffPropertyType;
@@ -90,7 +90,7 @@ function normalizeProperties(value: unknown): BuffProperty[] | undefined {
       sawLegacyQinYinGongMingProperty = true;
       continue;
     }
-    if (type !== "减伤" && type !== "无敌" && type !== "闪避" && type !== "外功闪避") continue;
+    if (type !== "减伤" && type !== "无敌" && type !== "闪避" && type !== "外功闪避" && type !== "沉默免疫") continue;
     const prop: BuffProperty = { type: type as BuffPropertyType };
     if (type === "减伤") {
       const rawValue = (item as Record<string, unknown>).value;
@@ -316,6 +316,15 @@ export function applyPropertyOverridesToEffects(
     }
   } else if (physDodgeIdx >= 0) {
     effects.splice(physDodgeIdx, 1);
+  }
+
+  // 沉默免疫 ↔ SILENCE_IMMUNE (also confers interrupt immunity at runtime).
+  // Only add via override; do NOT remove a code-defined SILENCE_IMMUNE if absent
+  // from properties (since base buffs may declare it directly).
+  const silenceImmuneProp = properties.find((p) => p.type === "沉默免疫");
+  const silenceImmuneIdx = effects.findIndex((e) => e.type === "SILENCE_IMMUNE");
+  if (silenceImmuneProp && silenceImmuneIdx < 0) {
+    effects.push({ type: "SILENCE_IMMUNE" });
   }
 
   return effects;

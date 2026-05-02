@@ -109,3 +109,26 @@
   white-space: nowrap;
   overflow: visible;
 }
+
+/* Small shield rendered to the left of an enemy channel bar when the
+   channel is uninterruptible (不可被打断). Sits just outside the wrap. */
+.uninterruptibleShield {
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 6;
+  filter: drop-shadow(0 0 2px rgba(99, 170, 230, 0.7));
+}
+
+.uninterruptibleShield svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

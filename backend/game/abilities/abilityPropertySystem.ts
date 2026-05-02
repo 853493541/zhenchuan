@@ -21,7 +21,8 @@ export type AbilityPropertyId =
   | "isCommon"
   | "reverseChannel"
   | "channelCanMove"
-  | "channelCanJump";
+  | "channelCanJump"
+  | "channelNotInterruptible";
 
 export const ABILITY_RARITIES = ["精巧", "卓越", "珍奇", "稀世"] as const;
 export type AbilityRarity = (typeof ABILITY_RARITIES)[number];
@@ -442,6 +443,7 @@ function buildRuntimeChannelInfo(ability: AbilityWithDescription): Ability["chan
     cancelOnJump: channelAccessor.getCancelOnJump(ability),
     ...(typeof tickIntervalMs === "number" && tickIntervalMs > 0 ? { tickIntervalMs } : {}),
     ...(typeof buffId === "number" ? { buffId } : {}),
+    interruptible: (ability as any).channelNotInterruptible !== true,
   };
 }
 
@@ -973,6 +975,21 @@ const abilityPropertyDefinitions: AbilityPropertyDefinition[] = [
       const channelAccessor = getChannelAccessor(ability);
       if (!channelAccessor) return;
       channelAccessor.setCancelOnJump(ability, !enabled);
+    },
+  },
+  {
+    id: "channelNotInterruptible",
+    label: "不可被打断",
+    description: "启用后本读条免克被打断类技能（如《翔极碧落》，《剑飞惊天》）中断。默认关闭，即读条可被打断。",
+    group: "读条",
+    isApplicable: (ability) => getChannelAccessor(ability) !== null,
+    getValue: (ability) => (ability as any).channelNotInterruptible === true,
+    setValue: (ability, enabled) => {
+      if (enabled) {
+        (ability as any).channelNotInterruptible = true;
+      } else {
+        delete (ability as any).channelNotInterruptible;
+      }
     },
   },
 ];

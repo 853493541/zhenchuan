@@ -22,6 +22,11 @@ export interface AbilityChannel {
   cancelOnJump: boolean;
   tickIntervalMs?: number;
   buffId?: number;
+  /**
+   * If false, this channel cannot be interrupted by abilities like
+   * 翔极碧落 that target a channeling enemy. Defaults to true (interruptible).
+   */
+  interruptible?: boolean;
 }
 
 export interface Ability {

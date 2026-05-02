@@ -13,6 +13,9 @@ export interface ForwardChannelData {
   durationMs: number;
   cancelOnMove: boolean;
   cancelOnJump: boolean;
+  /** When false, this channel cannot be interrupted by abilities such as
+      翔极碧落 / 剑飞惊天. Default (undefined / true) = interruptible. */
+  interruptible?: boolean;
 }
 
 /* ============================================================
@@ -25,6 +28,8 @@ export interface ReverseChannelData {
   durationMs: number;
   /** Tick interval for drawing 段落 (next-effect markers). */
   tickIntervalMs?: number;
+  /** See ForwardChannelData.interruptible. */
+  interruptible?: boolean;
 }
 
 export type ChannelBarData = ForwardChannelData | ReverseChannelData;
@@ -156,6 +161,27 @@ export function ChannelBar({
       className={classNames.wrap}
       style={{ opacity, transition: 'opacity 0.5s ease-out' }}
     >
+      {variant === 'enemy' && data.interruptible === false && (
+        <span
+          className={styles.uninterruptibleShield}
+          title="此读条不可被打断"
+          aria-label="不可被打断"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z"
+              fill="#cfe6ff"
+              stroke="#6aaee6"
+              strokeWidth="1.4"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      )}
       <span className={classNames.label}>{labelText}</span>
       <div className={classNames.track}>
         {trailingStyle && <div style={trailingStyle} />}

@@ -3110,6 +3110,126 @@ export function applyImmediateEffects(params: {
         break;
       }
 
+      case "XIANG_JI_BI_LUO": {
+        if (!enemyApplied || !effTarget || isImmediateEntityTarget(effTarget)) break;
+        if (blocksEnemyTargeting(effTarget as any)) break;
+
+        // Pre-classify the ability's declared buffs:
+        //   - silence buffs are conditional on a successful interrupt
+        //   - non-silence buffs (e.g. 惊惧 slow on 剑飞惊天) apply unconditionally
+        const allBuffs = (ability.buffs ?? []) as any[];
+        const silenceBuffs = allBuffs.filter(
+          (b) => b.effects?.some((e: any) => e.type === "SILENCE")
+        );
+        const nonSilenceBuffs = allBuffs.filter(
+          (b) => !b.effects?.some((e: any) => e.type === "SILENCE")
+        );
+
+        for (const buff of nonSilenceBuffs) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: effTarget.userId,
+            ability,
+            buffTarget: effTarget as any,
+            buff,
+          });
+        }
+
+        // 1. Interrupt immunity gates the interrupt + silence chain.
+        //    SILENCE_IMMUNE also confers interrupt immunity by design.
+        const hasInterruptImmune = (effTarget.buffs ?? []).some((b: any) =>
+          b.effects?.some((e: any) => e.type === "INTERRUPT_IMMUNE" || e.type === "SILENCE_IMMUNE")
+        );
+        if (hasInterruptImmune) break;
+
+        // 2. Find the target's current channel (active or buff-source) and
+        //    its interruptible flag.
+        let channelInterruptible = false;
+        let cancelActive = false;
+        let buffChannelToRemove: any = null;
+
+        if (effTarget.activeChannel) {
+          const ac = effTarget.activeChannel;
+          const acAbility = ABILITIES[ac.abilityId];
+          const flag = ac.interruptible !== undefined
+            ? ac.interruptible
+            : (acAbility?.channel?.interruptible !== false);
+          if (flag) {
+            channelInterruptible = true;
+            cancelActive = true;
+          }
+        } else {
+          for (const b of (effTarget.buffs ?? [])) {
+            const srcAbilityId = (b as any).sourceAbilityId as string | undefined;
+            if (!srcAbilityId) continue;
+            const srcAbility = ABILITIES[srcAbilityId];
+            const ch = srcAbility?.channel;
+            if (!ch || ch.source !== "BUFF" || ch.buffId !== b.buffId) continue;
+            if (ch.interruptible !== false) {
+              channelInterruptible = true;
+              buffChannelToRemove = b;
+            }
+            break;
+          }
+        }
+
+        if (!channelInterruptible) break;
+
+        // 3. Successful interrupt — cancel channel.
+        if (cancelActive) {
+          const ac = effTarget.activeChannel;
+          const startedBuffIds = ac?.startedBuffIds ?? [];
+          if (startedBuffIds.length > 0) {
+            const remaining: any[] = [];
+            for (const buff of (effTarget.buffs ?? [])) {
+              const matchesStarted =
+                startedBuffIds.includes(buff.buffId) &&
+                (buff.sourceAbilityId ?? ac?.abilityId) === ac?.abilityId;
+              if (!matchesStarted) {
+                remaining.push(buff);
+                continue;
+              }
+              removeLinkedShield(effTarget as any, buff as any);
+              pushBuffExpired(state, {
+                targetUserId: effTarget.userId,
+                buffId: buff.buffId,
+                buffName: buff.name,
+                buffCategory: buff.category,
+                sourceAbilityId: buff.sourceAbilityId,
+                sourceAbilityName: buff.sourceAbilityName,
+              });
+            }
+            effTarget.buffs = remaining;
+          }
+          effTarget.activeChannel = undefined;
+        } else if (buffChannelToRemove) {
+          removeLinkedShield(effTarget as any, buffChannelToRemove as any);
+          effTarget.buffs = effTarget.buffs.filter((b: any) => b !== buffChannelToRemove);
+          pushBuffExpired(state, {
+            targetUserId: effTarget.userId,
+            buffId: buffChannelToRemove.buffId,
+            buffName: buffChannelToRemove.name,
+            buffCategory: buffChannelToRemove.category,
+            sourceAbilityId: buffChannelToRemove.sourceAbilityId,
+            sourceAbilityName: buffChannelToRemove.sourceAbilityName,
+          });
+        }
+
+        // 4. Apply silence buff(s) on successful interrupt.
+        for (const sb of silenceBuffs) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: effTarget.userId,
+            ability,
+            buffTarget: effTarget as any,
+            buff: sb,
+          });
+        }
+        break;
+      }
+
       default:
         break;
     }

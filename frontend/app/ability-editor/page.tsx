@@ -94,10 +94,12 @@ export default function AbilityEditorPage() {
   const [tagFilters, setTagFilters] = useState<Record<TagGroupId, string>>(
     savedFilters?.tagFilters ?? { rarity: "", school: "", damageType: "" }
   );
+  // channelFilter: "" (all) | "none" (no channel) | "FORWARD" (正读条) | "REVERSE" (逆读条) | "any" (any channel)
+  const [channelFilter, setChannelFilter] = useState<string>(savedFilters?.channelFilter ?? "");
   // Persist to sessionStorage whenever filters change
   useEffect(() => {
-    try { sessionStorage.setItem(FILTER_KEY, JSON.stringify({ search, tagFilters })); } catch { /* ignore */ }
-  }, [search, tagFilters]);
+    try { sessionStorage.setItem(FILTER_KEY, JSON.stringify({ search, tagFilters, channelFilter })); } catch { /* ignore */ }
+  }, [search, tagFilters, channelFilter]);
 
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -256,6 +258,14 @@ export default function AbilityEditorPage() {
       } else {
         if (ability.tags?.[groupId] !== filterVal) return false;
       }
+    }
+
+    if (channelFilter) {
+      const chMode = ability.channelInfo?.mode;
+      if (channelFilter === "none" && chMode) return false;
+      if (channelFilter === "any" && !chMode) return false;
+      if (channelFilter === "FORWARD" && chMode !== "FORWARD") return false;
+      if (channelFilter === "REVERSE" && chMode !== "REVERSE") return false;
     }
 
     if (!normalizedSearch) {
@@ -444,6 +454,35 @@ export default function AbilityEditorPage() {
                       style={{ borderRadius: 3, borderColor: c, color: isActive ? "#111" : c, background: isActive ? c : "transparent", padding: "2px 6px", fontSize: 12 }}
                       onClick={() => setTagFilters((f) => ({ ...f, damageType: isActive ? "" : dt }))}
                     >{dt}{cnt > 0 ? <span style={{ fontSize: 9, marginLeft: 3, opacity: 0.75 }}>{cnt}</span> : null}</button>
+                  );
+                })}
+              </div>
+            </div>
+            {/* 读条 row */}
+            <div className={styles.tagFilterRow}>
+              <span className={styles.rarityFilterLabel}>读条</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {([
+                  { value: "", label: "全部" },
+                  { value: "none", label: "无读条" },
+                  { value: "any", label: "任意读条" },
+                  { value: "FORWARD", label: "正读条" },
+                  { value: "REVERSE", label: "逆读条" },
+                ] as const).map((opt) => {
+                  const isActive = channelFilter === opt.value;
+                  const isDefault = opt.value === "";
+                  return (
+                    <button key={opt.value || "all"} type="button" className={styles.rarityFilterBtn}
+                      style={{
+                        borderRadius: 3,
+                        borderColor: "#6aaee6",
+                        color: isActive ? "#fff" : (isDefault ? "#888" : "#6aaee6"),
+                        background: isActive ? "#6aaee6" : (isDefault && !channelFilter ? "#544c40" : "transparent"),
+                        padding: "2px 6px",
+                        fontSize: 12,
+                      }}
+                      onClick={() => setChannelFilter(opt.value)}
+                    >{opt.label}</button>
                   );
                 })}
               </div>
