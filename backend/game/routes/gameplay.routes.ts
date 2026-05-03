@@ -89,6 +89,7 @@ router.post("/movement", async (req, res) => {
             jump: direction.jump === true,
             dx: typeof direction.dx === 'number' ? direction.dx : undefined,
             dy: typeof direction.dy === 'number' ? direction.dy : undefined,
+            backpedalOnly: direction.backpedalOnly === true,
           }
         : null;
 

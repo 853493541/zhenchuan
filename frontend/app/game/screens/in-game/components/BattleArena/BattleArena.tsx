@@ -13,6 +13,7 @@ import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles } f
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
 import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z } from './scene/ExportedMapScene';
+import { getAbilityIconPath } from '@/app/lib/iconPaths';
 import * as THREE from 'three';
 
 type V3 = { x: number; y: number; z: number };
@@ -78,6 +79,16 @@ function getDirectionalJumpDistance(mode?: string): number {
 
 function hasLegacyChannelJumpLock(buffs?: ActiveBuff[]): boolean {
   return Array.isArray(buffs) && buffs.some((buff) => LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS.has(buff.buffId));
+}
+
+function hasLingRanTianFengStateClient(buffs?: ActiveBuff[]): boolean {
+  return Array.isArray(buffs) && buffs.some((buff: any) =>
+    (buff.effects ?? []).some((effect: any) => effect?.type === 'LING_RAN_TIAN_FENG_STATE')
+  );
+}
+
+function hasLingRanSpecialJumpRefillBuffClient(buffs?: ActiveBuff[]): boolean {
+  return Array.isArray(buffs) && buffs.some((buff) => buff.buffId === 1014 || buff.buffId === 2712);
 }
 
 function getRuntimeAbilityChannel(ability: any): RuntimeAbilityChannel | null {
@@ -854,6 +865,12 @@ function hasNonQinggongLockClient(buffs?: ActiveBuff[]): boolean {
   return buffs.some((b: any) => buffHasEffect(b, 'NON_QINGGONG_LOCK') || buffNameIncludes(b, '轻功以外'));
 }
 
+function hasYuqiStateClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  const now = Date.now();
+  return buffs.some((b: any) => b.buffId === 2741 && (b.expiresAt ?? 0) > now);
+}
+
 function hasDisplacementClient(buffs?: ActiveBuff[]): boolean {
   if (!Array.isArray(buffs) || buffs.length === 0) return false;
   return buffs.some((b: any) => buffHasEffect(b, 'DISPLACEMENT'));
@@ -956,18 +973,36 @@ interface AbilityInfo {
   isReady: boolean;
   isCommon: boolean;
   target: 'SELF' | 'OPPONENT';
+  friendlyTarget?: boolean;
   canTargetSelf?: boolean;
   faceDirection?: boolean;
   requiresGrounded?: boolean;
   requiresStanding?: boolean;
   minSelfHpExclusive?: number;
   noWeaponRequired?: boolean;
+  canCastWhileMounted?: boolean;
   qinggong?: boolean;
   cannotCastWhileRooted?: boolean;
   allowGroundCastWithoutTarget?: boolean;
   losBlocked?: boolean;
   blockedByAntiStealth?: boolean;
   isSpecialBarAbility?: boolean;
+}
+
+type DummySpawnPreset = 'enemy' | 'ally' | 'ally100';
+
+function getDummySpawnMeta(preset: DummySpawnPreset) {
+  if (preset === 'enemy') {
+    return { side: 'enemy' as const, label: '敌方木桩', successText: '已生成敌方木桩', maxHp: 200 };
+  }
+  if (preset === 'ally100') {
+    return { side: 'ally' as const, label: '友方100血木桩', successText: '已生成友方100血木桩', maxHp: 100 };
+  }
+  return { side: 'ally' as const, label: '友方木桩', successText: '已生成友方木桩', maxHp: 200 };
+}
+
+function getArenaAbilityIconPath(name: string | undefined | null) {
+  return getAbilityIconPath(name) ?? '/icons/fallback.png';
 }
 
 type CameraDebugEntry = {
@@ -1211,9 +1246,9 @@ export default function BattleArena({
   const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number; z?: number; isValid?: boolean } | null>(null);
   const [showControlPanel, setShowControlPanel] = useState(false);
   const [showHeartDetailsPanel, setShowHeartDetailsPanel] = useState(false);
-  const [pendingDummySpawn, setPendingDummySpawn] = useState<'enemy' | 'ally' | null>(null);
+  const [pendingDummySpawn, setPendingDummySpawn] = useState<DummySpawnPreset | null>(null);
   const [dummySpawnPreview, setDummySpawnPreview] = useState<{ x: number; y: number; z?: number } | null>(null);
-  const pendingDummySpawnRef = useRef<'enemy' | 'ally' | null>(null);
+  const pendingDummySpawnRef = useRef<DummySpawnPreset | null>(null);
   const [autoForward, setAutoForward] = useState(false);
   const [draggingDraftInstanceId, setDraggingDraftInstanceId] = useState<string | null>(null);
   const [dragHoverIndex, setDragHoverIndex] = useState<number | null>(null);
@@ -1517,6 +1552,7 @@ export default function BattleArena({
   };
 
   const isCritDamageEvent = (evt: any) => {
+    if ((evt as any)?.suppressCritLabel === true) return false;
     if ((evt as any)?.isCrit === true) return true;
     const rawValue = Number(evt?.value ?? 0);
     return Math.abs(rawValue - Math.round(rawValue)) > 0.0001;
@@ -1683,6 +1719,9 @@ export default function BattleArena({
   const isPowerJumpRef           = useRef(false); // true while airborne from a power jump (different gravity)
   const isPowerJumpCombinedRef   = useRef(false); // true for 扶摇+鸟翔 combined 24u jump
   const maxJumpsRef              = useRef(2);     // updated from me.buffs MULTI_JUMP effect
+  const yuqiMountedRef           = useRef(false);
+  const lingRanTianFengActiveRef = useRef(false);
+  const lingRanTianFengChargeRef = useRef(0);
   const predictedMultiJumpExpiresAtRef = useRef(0);
   const moveSpeedScaleRef        = useRef(1);     // SPEED_BOOST/SLOW local prediction multiplier
   const movementControlStateRef  = useRef({
@@ -1761,12 +1800,13 @@ export default function BattleArena({
       ? opponentsList.find((o) => o.userId === selectedTargetIdNow)
       : null;
     const selectedSelfTarget = selectedSelfNow ? me : null;
+    const isFriendlyTargetAbility = ability?.target === 'OPPONENT' && ability?.friendlyTarget === true;
     const targetPos = selectedSelfTarget?.position
       ?? selectedTarget?.position
       ?? (selectedEntity ? { x: selectedEntity.position.x, y: selectedEntity.position.y, z: selectedEntity.position.z } : undefined);
 
     // Abilities targeting the opponent require a target (player or entity) to be selected first
-    if (ability?.target === 'OPPONENT' && selectedSelfNow && !ability?.canTargetSelf) {
+    if (ability?.target === 'OPPONENT' && selectedSelfNow && !isFriendlyTargetAbility && !ability?.canTargetSelf) {
       toastError('该技能不能以自己为目标');
       return;
     }
@@ -1777,6 +1817,19 @@ export default function BattleArena({
         return;
       }
       toastError('请先选择目标');
+      return;
+    }
+    if (ability?.target === 'OPPONENT' && isFriendlyTargetAbility && selectedTargetIdNow) {
+      toastError('请先选择友方目标');
+      return;
+    }
+    if (
+      ability?.target === 'OPPONENT' &&
+      selectedEntity &&
+      ((isFriendlyTargetAbility && selectedEntity.ownerUserId !== me.userId) ||
+        (!isFriendlyTargetAbility && selectedEntity.ownerUserId === me.userId))
+    ) {
+      toastError(isFriendlyTargetAbility ? '请先选择友方目标' : '请先选择敌方目标');
       return;
     }
     if (ability?.target === 'OPPONENT' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
@@ -1814,11 +1867,12 @@ export default function BattleArena({
       jumpSendRef.current ||
       localJumpCountRef.current > 0 ||
       Math.abs(localVzRef.current) > 0.01;
-    if (ability?.requiresGrounded && airborneLockedLocal) {
+    const mountedYuqiToggle = hasYuqiStateClient(me?.buffs) && abilityKey === 'yuqi';
+    if (ability?.requiresGrounded && airborneLockedLocal && !mountedYuqiToggle) {
       toastError('该技能需要落地后施放');
       return;
     }
-    if (ability?.requiresStanding) {
+    if (ability?.requiresStanding && !mountedYuqiToggle) {
       const movingByInput =
         keysRef.current.w ||
         keysRef.current.a ||
@@ -1843,7 +1897,7 @@ export default function BattleArena({
     }
 
     // Face direction check (180° hemisphere)
-    if (ability?.target === 'OPPONENT' && !selectedSelfNow && requiresFacingByDefault(ability)) {
+    if (ability?.target === 'OPPONENT' && !isFriendlyTargetAbility && !selectedSelfNow && requiresFacingByDefault(ability)) {
       const myPos = localPositionRef.current ?? me.position;
       const myFacing = me.facing ?? meFacingRef.current;
       if (myPos && myFacing && targetPos) {
@@ -1857,7 +1911,7 @@ export default function BattleArena({
       }
     }
     // Line-of-sight check (structure blocking)
-    if (ability?.target === 'OPPONENT' && !selectedSelfNow) {
+    if (ability?.target === 'OPPONENT' && !isFriendlyTargetAbility && !selectedSelfNow) {
       const myPos = localPositionRef.current ?? me.position;
       const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
       const tgtZ = (targetPos as any)?.z ?? 0;
@@ -2000,21 +2054,94 @@ export default function BattleArena({
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
   // Keep max-jumps ref in sync with MULTI_JUMP buff from server state
   useEffect(() => {
-    const multiJump = me?.buffs?.flatMap((b: any) => (b.effects ?? []).filter(Boolean)).find((e: any) => e.type === 'MULTI_JUMP');
+    const effects = me?.buffs?.flatMap((b: any) => (b.effects ?? []).filter(Boolean)) ?? [];
+    const multiJump = effects.find((e: any) => e.type === 'MULTI_JUMP');
     maxJumpsRef.current = multiJump ? (multiJump.value ?? 2) : 2;
-  }, [me?.buffs]);
+    yuqiMountedRef.current = hasYuqiStateClient(me?.buffs);
+    lingRanTianFengActiveRef.current = effects.some((e: any) => e.type === 'LING_RAN_TIAN_FENG_STATE');
+    const nextLingRanCharge = Number((me as any)?.lingRanTianFengCharges ?? 0);
+    lingRanTianFengChargeRef.current = lingRanTianFengActiveRef.current
+      ? Math.max(0, Math.min(1, Number.isFinite(nextLingRanCharge) ? nextLingRanCharge : 0))
+      : 0;
+  }, [me?.buffs, (me as any)?.lingRanTianFengCharges]);
 
   useEffect(() => {
     tiYunZongPenaltyConsumedRef.current = !!me?.tiYunZongPenaltyConsumed;
   }, [me?.tiYunZongPenaltyConsumed]);
 
   const getEffectiveMaxJumps = useCallback(() => {
+    if (yuqiMountedRef.current) return 1;
     const predictedMultiJumpActive = predictedMultiJumpExpiresAtRef.current > performance.now();
     return predictedMultiJumpActive ? Math.max(maxJumpsRef.current, 5) : maxJumpsRef.current;
   }, []);
 
+  const canUseYuqiMountedJumpClient = useCallback((jumpDir: { x: number; y: number } | null) => {
+    if (!yuqiMountedRef.current) return true;
+    if (!jumpDir) return false;
+
+    const keys = keysRef.current;
+    if (keys.s && !keys.w) return false;
+
+    return true;
+  }, []);
+
+  const getQueuedYuqiMountedJumpDirection = useCallback(() => {
+    if (joystickDirRef.current) {
+      return normalizePlanar(joystickDirRef.current.dx, joystickDirRef.current.dy);
+    }
+
+    const keys = keysRef.current;
+    if (controlModeRef.current === 'traditional') {
+      const mouseLook = mouseStateRef.current.isRight;
+      const bothMouse = mouseStateRef.current.isRight && mouseStateRef.current.isLeft;
+      const moveIntent = buildTraditionalMoveIntent(
+        keys,
+        mouseLook,
+        bothMouse,
+        camYawRef.current,
+        charYawRef.current,
+      );
+      return moveIntent.direction ? normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy) : null;
+    }
+
+    return normalizePlanar(
+      (keys.a ? -1 : 0) + (keys.d ? 1 : 0),
+      (keys.w ? 1 : 0) + (keys.s ? -1 : 0),
+    );
+  }, []);
+
   const tryQueueLocalJump = useCallback(() => {
-    if (jumpLockedRef.current || !!me?.activeChannel || hasLegacyChannelJumpLock(me?.buffs) || buffsHaveAnyEffect(me?.buffs, ['NO_JUMP'])) return;
+    if (meActiveDashRef.current) return;
+    const lingRanJumpLockImmune = lingRanTianFengActiveRef.current;
+    if (
+      jumpLockedRef.current ||
+      (!lingRanJumpLockImmune && (
+        !!me?.activeChannel ||
+        hasLegacyChannelJumpLock(me?.buffs) ||
+        buffsHaveAnyEffect(me?.buffs, ['NO_JUMP'])
+      ))
+    ) {
+      return;
+    }
+    if (lingRanTianFengActiveRef.current) {
+      if (lingRanTianFengChargeRef.current <= 0) {
+        jumpLocalRef.current = false;
+        jumpSendRef.current = false;
+        return;
+      }
+      const keepLingRanCharge = hasLingRanSpecialJumpRefillBuffClient(me?.buffs);
+      lastJumpInputAtRef.current = performance.now();
+      jumpLocalRef.current = false;
+      jumpSendRef.current = true;
+      lingRanTianFengChargeRef.current = keepLingRanCharge ? 1 : 0;
+      return;
+    }
+    const queuedYuqiJumpDir = getQueuedYuqiMountedJumpDirection();
+    if (!canUseYuqiMountedJumpClient(queuedYuqiJumpDir)) {
+      jumpLocalRef.current = false;
+      jumpSendRef.current = false;
+      return;
+    }
     const maxJumps = getEffectiveMaxJumps();
     if (localJumpCountRef.current >= maxJumps) {
       jumpLocalRef.current = false;
@@ -2024,7 +2151,7 @@ export default function BattleArena({
     lastJumpInputAtRef.current = performance.now();
     jumpLocalRef.current = true;
     jumpSendRef.current = true;
-  }, [getEffectiveMaxJumps, me?.activeChannel, me?.buffs]);
+  }, [canUseYuqiMountedJumpClient, getEffectiveMaxJumps, getQueuedYuqiMountedJumpDirection, me?.activeChannel, me?.buffs]);
 
   // Keep local movement-speed prediction aligned with backend movement.ts
   useEffect(() => {
@@ -2169,10 +2296,11 @@ export default function BattleArena({
 
   useEffect(() => {
     const buffs = me?.buffs ?? [];
+    const lingRanJumpLockImmune = hasLingRanTianFengStateClient(buffs);
     const fullyLocked = buffsHaveAnyEffect(buffs, ['KNOCKED_BACK', 'CONTROL', 'ATTACK_LOCK']);
     const rooted = !fullyLocked && buffsHaveAnyEffect(buffs, ['ROOT']);
-    const jumpSuppressedByChannel = !!me?.activeChannel || hasLegacyChannelJumpLock(buffs);
-    const noJumpLocked = buffsHaveAnyEffect(buffs, ['NO_JUMP']);
+    const jumpSuppressedByChannel = !lingRanJumpLockImmune && (!!me?.activeChannel || hasLegacyChannelJumpLock(buffs));
+    const noJumpLocked = !lingRanJumpLockImmune && buffsHaveAnyEffect(buffs, ['NO_JUMP']);
     const channelMovementLocked = (me?.activeChannel as any)?.lockMovement === true;
     // Z_LOCK: full vertical lock (亢龙有悔). Pin vz=0 and skip Z integration.
     const zLocked = buffsHaveAnyEffect(buffs, ['Z_LOCK']);
@@ -2426,6 +2554,7 @@ export default function BattleArena({
         lastInstantSwapCastAtRef.current = performance.now();
       } else if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0 && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
         const damageWasCrit = isCritDamageEvent(evt);
+        const eventLabel = (evt as any).hideAbilityName === true ? '' : evt.abilityName;
         if (evt.targetUserId === myId) {
           if (!selectedTargetRef.current && !selectedEntityRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
             const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
@@ -2445,10 +2574,10 @@ export default function BattleArena({
           } else if (shieldAbs > 0) {
             // Partially blocked — show 化解 and the HP damage that got through
             addFloat(1, 'huajie', { text: '化解' });
-            addFloat(totalDmg - shieldAbs, 'dmg_taken', { label: evt.abilityName, isCrit: damageWasCrit });
+            addFloat(totalDmg - shieldAbs, 'dmg_taken', { label: eventLabel, isCrit: damageWasCrit });
           } else {
             // No shield involved — normal damage float
-            addFloat(evt.value, 'dmg_taken', { label: evt.abilityName, isCrit: damageWasCrit });
+            addFloat(evt.value, 'dmg_taken', { label: eventLabel, isCrit: damageWasCrit });
           }
         } else if (evt.actorUserId === myId) {
           // I dealt damage to opponent — account for shield absorption
@@ -2466,10 +2595,10 @@ export default function BattleArena({
             addFloat(1, 'huajie', { text: '化解', screenPct });
           } else if (shieldAbsAtk > 0) {
             // Partially absorbed — show net HP damage + 化解
-            addFloat(totalDmgAtk - shieldAbsAtk, 'dmg_dealt', { label: evt.abilityName, screenPct, isCrit: damageWasCrit });
+            addFloat(totalDmgAtk - shieldAbsAtk, 'dmg_dealt', { label: eventLabel, screenPct, isCrit: damageWasCrit });
             addFloat(1, 'huajie', { text: '化解', screenPct });
           } else {
-            addFloat(evt.value, 'dmg_dealt', { label: evt.abilityName, screenPct, isCrit: damageWasCrit });
+            addFloat(evt.value, 'dmg_dealt', { label: eventLabel, screenPct, isCrit: damageWasCrit });
           }
         }
       } else if (evt.type === 'HEAL' && (evt.value ?? 0) > 0 && evt.targetUserId === myId
@@ -2519,7 +2648,7 @@ export default function BattleArena({
     const dashFacingLocked = !!meActiveDashRef.current && !dashTurnOverrideRef.current;
     let facingPayload = { ...meFacingRef.current };
     let directionPayload:
-      | { dx: number; dy: number; jump: boolean }
+      | { dx: number; dy: number; jump: boolean; backpedalOnly?: boolean }
       | { up: boolean; down: boolean; left: boolean; right: boolean; jump: boolean }
       | null = null;
 
@@ -2532,9 +2661,10 @@ export default function BattleArena({
     const shiXinGuDirection = movementControlStateRef.current.shiXinGuDirection;
     const shiXinGuStandstill = movementControlStateRef.current.shiXinGuStandstill === true;
     const channelMovementLocked = movementControlStateRef.current.channelMovementLocked === true;
+    const lingRanJumpLockImmune = lingRanTianFengActiveRef.current;
 
     if (channelMovementLocked) {
-      directionPayload = { dx: 0, dy: 0, jump: false };
+      directionPayload = { dx: 0, dy: 0, jump: lingRanJumpLockImmune ? shouldJump : false };
     } else if (fearedDirection) {
       directionPayload = { dx: fearedDirection.x, dy: fearedDirection.y, jump: false };
       if (!dashFacingLocked) {
@@ -2560,6 +2690,7 @@ export default function BattleArena({
           dx: moveIntent.direction.dx,
           dy: moveIntent.direction.dy,
           jump: shouldJump,
+          backpedalOnly: moveIntent.backpedalOnly,
         };
       } else if (shouldJump) {
         directionPayload = { dx: 0, dy: 0, jump: true };
@@ -2868,21 +2999,45 @@ export default function BattleArena({
       ? targetableOpponentsList.find((o) => o.userId === selectedTargetId) ?? null
       : null;
     const selectedEntity = selectedEntityId
-      ? targetableEntityList.find((entity) => entity.id === selectedEntityId) ?? null
+      ? visibleEntities.find((entity) => entity.id === selectedEntityId) ?? null
       : null;
     const selectedSelfTarget = selectedSelf ? me : null;
-    const hasSelectedTarget = !!selectedTarget || !!selectedEntity || !!selectedSelfTarget;
-    const targetForChecks = selectedSelfTarget ?? selectedTarget ?? selectedEntity ?? targetableOpponentsList[0] ?? targetableEntityList[0] ?? null;
+    const getAbilityTargetContext = (ab: any) => {
+      const friendlyTarget = ab?.target === 'OPPONENT' && ab?.friendlyTarget === true;
+      const validSelfTarget = selectedSelfTarget && (friendlyTarget || ab?.canTargetSelf) ? selectedSelfTarget : null;
+      const validPlayerTarget = friendlyTarget ? null : selectedTarget;
+      const validEntityTarget = selectedEntity && (
+        friendlyTarget
+          ? selectedEntity.ownerUserId === me.userId
+          : selectedEntity.ownerUserId !== me.userId && !blocksTargetingClient(selectedEntity.buffs)
+      ) ? selectedEntity : null;
+      const hasSelectedTarget = !!validSelfTarget || !!validPlayerTarget || !!validEntityTarget;
+      const fallbackTarget = friendlyTarget ? null : targetableOpponentsList[0] ?? targetableEntityList[0] ?? null;
+      const targetForChecks = validSelfTarget ?? validPlayerTarget ?? validEntityTarget ?? fallbackTarget;
+      return {
+        friendlyTarget,
+        selfTarget: validSelfTarget,
+        playerTarget: validPlayerTarget,
+        entityTarget: validEntityTarget,
+        hasSelectedTarget,
+        targetForChecks,
+        targetPos: targetForChecks?.position,
+      };
+    };
     const myPos = me.position ?? localPositionRef.current;
     const myFacing = me.facing ?? meFacingRef.current;
-    const targetPos = targetForChecks?.position;
     const qinggongSealed = hasQinggongSealClient(me.buffs);
     const disarmed = hasDisarmClient(me.buffs);
     const nonQinggongLocked = hasNonQinggongLockClient(me.buffs);
     const rootedByDebuff = buffsHaveAnyEffect(me.buffs, ['ROOT']);
+    const yuqiMounted = hasYuqiStateClient(me.buffs);
 
     const isAbilityReady = (ab: any, instance: any): boolean => {
+      const targetContext = getAbilityTargetContext(ab);
+      const targetForChecks = targetContext.targetForChecks;
+      const targetPos = targetContext.targetPos;
       const sharedGcdTicks = getSharedGcdTicks(ab);
+      const mountedYuqiToggle = yuqiMounted && (ab?.id === 'yuqi' || instance?.abilityId === 'yuqi');
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       if (maxCharges > 1) {
         const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
@@ -2898,7 +3053,8 @@ export default function BattleArena({
         localJumpCountRef.current > 0 ||
         Math.abs(localVzRef.current) > 0.01;
       if (ab?.requiresGrounded && airborneLockedLocal) return false;
-      if (ab?.requiresStanding) {
+      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return false;
+      if (ab?.requiresStanding && !mountedYuqiToggle) {
         const movingByInput =
           wasdKeys.w ||
           wasdKeys.a ||
@@ -2937,17 +3093,18 @@ export default function BattleArena({
       if (ab?.target === 'OPPONENT' && !!ab?.allowGroundCastWithoutTarget) return true;
 
       const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
-      if (needsSelectedTarget && selectedSelfTarget && !ab?.canTargetSelf) return false;
+      if (needsSelectedTarget && targetContext.selfTarget && !targetContext.friendlyTarget && !ab?.canTargetSelf) return false;
+      if (needsSelectedTarget && targetContext.friendlyTarget && !targetContext.hasSelectedTarget) return false;
       if (needsSelectedTarget && !targetPos) return false;
       if ((ab?.id === 'hong_meng_tian_jin' || instance?.abilityId === 'hong_meng_tian_jin') && hasShuSeClient((targetForChecks as any)?.buffs)) {
         return false;
       }
       if (ab?.id === 'dou_zhuan_xing_yi' || instance?.abilityId === 'dou_zhuan_xing_yi') {
-        if (selectedEntity) return false;
+        if (targetContext.entityTarget) return false;
         if (hasMianLaClient((targetForChecks as any)?.buffs)) return false;
       }
       if (ab?.id === 'qin_yin_gong_ming' || instance?.abilityId === 'qin_yin_gong_ming') {
-        if (selectedEntity) return false;
+        if (targetContext.entityTarget) return false;
       }
 
       const distanceToTarget = (myPos && targetPos)
@@ -2956,13 +3113,13 @@ export default function BattleArena({
             Math.pow(targetPos.y - myPos.y, 2) +
             Math.pow(((targetPos as any)?.z ?? 0) - ((myPos as any)?.z ?? 0), 2)
           ), mode)
-        : distance;
+        : Infinity;
       const effectiveRange = getEffectiveAbilityRangeClient(ab, me?.buffs);
       const inMaxRange = !effectiveRange || distanceToTarget <= effectiveRange;
       const inMinRange = !ab?.minRange || distanceToTarget >= ab.minRange;
       if (!inMaxRange || !inMinRange) return false;
 
-      if (ab?.target === 'OPPONENT' && myPos && targetPos && !selectedSelfTarget) {
+      if (ab?.target === 'OPPONENT' && myPos && targetPos && !targetContext.selfTarget && !targetContext.friendlyTarget) {
         if (requiresFacingByDefault(ab) && myFacing) {
           const dx = targetPos.x - myPos.x;
           const dy = targetPos.y - myPos.y;
@@ -2970,7 +3127,7 @@ export default function BattleArena({
         }
           const myZ2 = (myPos as any)?.z ?? localZRef.current ?? 0;
           const tgtZ2 = (targetPos as any)?.z ?? 0;
-          if (isClientLineBlocked(myPos, targetPos, myZ2, tgtZ2, selectedEntity?.id)) {
+          if (isClientLineBlocked(myPos, targetPos, myZ2, tgtZ2, targetContext.entityTarget?.id)) {
             return false;
           }
       }
@@ -3016,13 +3173,14 @@ export default function BattleArena({
         const isReadyVal = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
-        const losBlockedVal = !isReadyVal && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
+        const targetContext = getAbilityTargetContext(ability);
+        const losBlockedVal = !isReadyVal && (ability as any)?.target === 'OPPONENT' && !(ability as any)?.friendlyTarget && myPos && targetContext.targetPos
           ? isClientLineBlocked(
               myPos,
-              targetPos,
+              targetContext.targetPos,
               (myPos as any)?.z ?? localZRef.current ?? 0,
-              (targetPos as any)?.z ?? 0,
-              selectedEntity?.id,
+              (targetContext.targetPos as any)?.z ?? 0,
+              targetContext.entityTarget?.id,
             )
           : false;
         return {
@@ -3045,10 +3203,12 @@ export default function BattleArena({
           losBlocked:  losBlockedVal,
           isCommon:    false,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
+          friendlyTarget: !!(ability as any).friendlyTarget,
           canTargetSelf: !!(ability as any).canTargetSelf,
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           noWeaponRequired: !!(ability as any).noWeaponRequired,
+          canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
@@ -3090,10 +3250,12 @@ export default function BattleArena({
           isCommon: false,
           isSpecialBarAbility: true,
           target: (ability.target as 'SELF' | 'OPPONENT') ?? 'SELF',
+          friendlyTarget: !!(ability as any).friendlyTarget,
           canTargetSelf: !!(ability as any).canTargetSelf,
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           noWeaponRequired: !!(ability as any).noWeaponRequired,
+          canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
@@ -3117,13 +3279,14 @@ export default function BattleArena({
         const isReadyCom = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
-        const losBlockedCom = !isReadyCom && (ability as any)?.target === 'OPPONENT' && myPos && targetPos
+        const targetContext = getAbilityTargetContext(ability);
+        const losBlockedCom = !isReadyCom && (ability as any)?.target === 'OPPONENT' && !(ability as any)?.friendlyTarget && myPos && targetContext.targetPos
           ? isClientLineBlocked(
               myPos,
-              targetPos,
+              targetContext.targetPos,
               (myPos as any)?.z ?? localZRef.current ?? 0,
-              (targetPos as any)?.z ?? 0,
-              selectedEntity?.id,
+              (targetContext.targetPos as any)?.z ?? 0,
+              targetContext.entityTarget?.id,
             )
           : false;
         return {
@@ -3146,10 +3309,12 @@ export default function BattleArena({
           losBlocked:  losBlockedCom,
           isCommon:    true,
           target:      (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
+          friendlyTarget: !!(ability as any).friendlyTarget,
           canTargetSelf: !!(ability as any).canTargetSelf,
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           noWeaponRequired: !!(ability as any).noWeaponRequired,
+          canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
@@ -3863,7 +4028,7 @@ export default function BattleArena({
       const ms  = mouseStateRef.current;
       const objs = mapObjectsRef.current;
       const useBVH = mode === 'collision-test' && !!collisionSysRef.current;
-      const tickGroundH = (() => {
+      const rawTickGroundH = (() => {
         if (!useBVH) {
           return getGroundHeightClient(pos.x, pos.y, localZRef.current, objs, playerRadius);
         }
@@ -3882,6 +4047,7 @@ export default function BattleArena({
         }
         return supportY * RENDER_SF + GROUP_POS_Y;
       })();
+      const tickGroundH = rawTickGroundH;
       const airborne = localZRef.current > tickGroundH + 0.01;
       groundHRef.current = tickGroundH; // keep height display in sync
       if (groundBaseRef.current === null) groundBaseRef.current = tickGroundH; // init baseline once
@@ -4006,8 +4172,10 @@ export default function BattleArena({
           airNudgeDx = moveIntentDx;
           airNudgeDy = moveIntentDy;
         } else if (moveDirection) {
-          vel.x += (moveDirection.dx * effectiveMaxSpeed - vel.x) * ACCEL;
-          vel.y += (moveDirection.dy * effectiveMaxSpeed - vel.y) * ACCEL;
+          const traditionalMoveSpeed =
+            effectiveMaxSpeed * (yuqiMountedRef.current && moveIntent.backpedalOnly ? 0.5 : 1);
+          vel.x += (moveDirection.dx * traditionalMoveSpeed - vel.x) * ACCEL;
+          vel.y += (moveDirection.dy * traditionalMoveSpeed - vel.y) * ACCEL;
 
           if (!moveIntent.backpedalOnly) {
             const facingDir = normalizePlanar(moveDirection.dx, moveDirection.dy);
@@ -4177,23 +4345,26 @@ export default function BattleArena({
       }
       if (!zLocked && !movementLocked && jumpLocalRef.current && localJumpCountRef.current < effectiveMaxJumps) {
         const jumpDir = normalizePlanar(moveIntentDx, moveIntentDy);
-        const isMultiJump = effectiveMaxJumps > 2;
-        const hadPowerJumpAirtime = isPowerJumpRef.current && !isPowerJumpCombinedRef.current && localJumpCountRef.current > 0;
-        const usePowerDirectionalBudget = hasFuyaoBuffRef.current;
-        const heightAboveGround = Math.max(0, localZRef.current - tickGroundH);
-        const jumpSpeedSource = Math.max(
-          effectiveMaxSpeed,
-          airborneSpeedCarryRef.current,
-          Math.hypot(vel.x, vel.y),
-          getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current),
-        );
-        const jumpSpeedScale = DEFAULT_MOVE_SPEED_WORLD_PER_TICK > 0.0001
-          ? jumpSpeedSource / DEFAULT_MOVE_SPEED_WORLD_PER_TICK
-          : 0;
-        let jumpVz: number;
-        let jumpGravityUp = GRAVITY_UP_CLIENT;
-        let jumpGravityDown = GRAVITY_DOWN_CLIENT;
-        if (hasFuyaoBuffRef.current && isMultiJump) {
+        if (!canUseYuqiMountedJumpClient(jumpDir)) {
+          jumpLocalRef.current = false;
+        } else {
+          const isMultiJump = effectiveMaxJumps > 2;
+          const hadPowerJumpAirtime = isPowerJumpRef.current && !isPowerJumpCombinedRef.current && localJumpCountRef.current > 0;
+          const usePowerDirectionalBudget = hasFuyaoBuffRef.current;
+          const heightAboveGround = Math.max(0, localZRef.current - tickGroundH);
+          const jumpSpeedSource = Math.max(
+            effectiveMaxSpeed,
+            airborneSpeedCarryRef.current,
+            Math.hypot(vel.x, vel.y),
+            getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current),
+          );
+          const jumpSpeedScale = DEFAULT_MOVE_SPEED_WORLD_PER_TICK > 0.0001
+            ? jumpSpeedSource / DEFAULT_MOVE_SPEED_WORLD_PER_TICK
+            : 0;
+          let jumpVz: number;
+          let jumpGravityUp = GRAVITY_UP_CLIENT;
+          let jumpGravityDown = GRAVITY_DOWN_CLIENT;
+          if (hasFuyaoBuffRef.current && isMultiJump) {
           // Combined 扶摇直上 + 鸟翔碧空: 24u peak, same timing as power jump
           jumpVz = COMBINED_JUMP_VZ_CLIENT;
           jumpGravityUp = COMBINED_GRAVITY_UP_CLIENT;
@@ -4282,8 +4453,9 @@ export default function BattleArena({
           airDirectionLockedRef.current = true;
           localFacingRef.current = jumpDir;
           charYawRef.current = facingToYaw(jumpDir);
-        } else {
-          airNudgeRemainingRef.current = UPWARD_JUMP_AIR_SHIFT_DISTANCE;
+          } else {
+            airNudgeRemainingRef.current = UPWARD_JUMP_AIR_SHIFT_DISTANCE;
+          }
         }
       }
       const gravUp   = isPowerJumpCombinedRef.current ? COMBINED_GRAVITY_UP_CLIENT
@@ -4299,7 +4471,7 @@ export default function BattleArena({
       }
 
       // Ground height: BVH cylinder (collision-test) or AABB (other modes)
-      let clientGroundH: number;
+      let rawClientGroundH: number;
       if (useBVH) {
         const sys = collisionSysRef.current!;
         // ── Cylinder vertical pass ──
@@ -4352,13 +4524,14 @@ export default function BattleArena({
         // Feet = cylinder bottom = exact terrain surface when grounded (no slope float)
         const feetGameZ = (_bvhCenter.y - EXPORT_CYL_HALF_HEIGHT) * RENDER_SF + GROUP_POS_Y;
         localZRef.current = feetGameZ;
-        clientGroundH = bvhOnGround
+        rawClientGroundH = bvhOnGround
           ? feetGameZ
           : (groundExportY !== null ? groundExportY * RENDER_SF + GROUP_POS_Y : feetGameZ);
       } else {
-        clientGroundH = getGroundHeightClient(localPositionRef.current.x, localPositionRef.current.y, localZRef.current, objs, playerRadius);
-        localZRef.current = Math.max(clientGroundH, localZRef.current + localVzRef.current);
+        rawClientGroundH = getGroundHeightClient(localPositionRef.current.x, localPositionRef.current.y, localZRef.current, objs, playerRadius);
+        localZRef.current = Math.max(rawClientGroundH, localZRef.current + localVzRef.current);
       }
+      const clientGroundH = rawClientGroundH;
       if (jumpTelemetryRef.current) {
         const currentHeightWorld = Math.max(0, localZRef.current - jumpTelemetryRef.current.takeoffGround);
         if (currentHeightWorld >= jumpTelemetryRef.current.peakHeightWorld - 0.001) {
@@ -4594,7 +4767,7 @@ export default function BattleArena({
       // eslint-disable-next-line @next/next/no-img-element
       <img
         key={ability.id}
-        src={`/icons/${ability.name}.png`}
+        src={getArenaAbilityIconPath(ability.name)}
         alt={ability.name}
         title={`${ability.name}${ability.rarity ? ` [${ability.rarity}]` : ''}${ability.description ? '\n' + ability.description : ''}`}
         style={{
@@ -4883,12 +5056,13 @@ export default function BattleArena({
             groundCastPreview={
               (() => {
                 if (pendingDummySpawn && dummySpawnPreview) {
+                  const dummyMeta = getDummySpawnMeta(pendingDummySpawn);
                   return {
                     x: dummySpawnPreview.x,
                     y: dummySpawnPreview.y,
                     z: dummySpawnPreview.z,
                     radius: 1.5 * storedUnitScale,
-                    label: pendingDummySpawn === 'ally' ? '友方木桩' : '敌方木桩',
+                    label: dummyMeta.label,
                     isValid: true,
                   };
                 }
@@ -4934,14 +5108,15 @@ export default function BattleArena({
             }}
             onGroundPointerDown={(x, y, worldZ) => {
               if (pendingDummySpawnRef.current) {
-                const side = pendingDummySpawnRef.current;
+                const preset = pendingDummySpawnRef.current;
+                const dummyMeta = getDummySpawnMeta(preset);
                 setPendingDummySpawn(null);
                 setDummySpawnPreview(null);
                 void runCheatAction(
-                  `spawn-dummy-${side}`,
+                  `spawn-dummy-${preset}`,
                   '/api/game/cheat/spawn-dummy',
-                  side === 'ally' ? '已生成友方木桩' : '已生成敌方木桩',
-                  { side, x, y, z: worldZ },
+                  dummyMeta.successText,
+                  { side: dummyMeta.side, x, y, z: worldZ, maxHp: dummyMeta.maxHp },
                 );
                 return;
               }
@@ -5602,7 +5777,7 @@ export default function BattleArena({
                       <div className={styles.enemyAbilitySlot} title={name}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={`/icons/${name}.png`}
+                          src={getArenaAbilityIconPath(name)}
                           alt={name}
                           className={styles.enemyAbilityIcon}
                           draggable={false}
@@ -5908,7 +6083,7 @@ export default function BattleArena({
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={`/icons/${modal.name}.png`}
+                    src={getArenaAbilityIconPath(modal.name)}
                     alt={modal.name}
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.20'; }}
@@ -6013,23 +6188,28 @@ export default function BattleArena({
 
           <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>木桩</div>
           {pendingDummySpawn && (
-            <div style={{
-              fontSize: 10, color: '#ffe07a', padding: '4px 6px',
-              border: '1px solid rgba(255, 200, 80, 0.55)', borderRadius: 4,
-              background: 'rgba(255, 200, 80, 0.10)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <span>点击地面放置{pendingDummySpawn === 'ally' ? '友方' : '敌方'}木桩</span>
-              <button
-                type="button"
-                onClick={() => setPendingDummySpawn(null)}
-                style={{
-                  background: 'transparent', color: '#ffe07a',
-                  border: '1px solid rgba(255, 200, 80, 0.55)', borderRadius: 3,
-                  fontSize: 10, padding: '1px 6px', cursor: 'pointer',
-                }}
-              >取消</button>
-            </div>
+            (() => {
+              const dummyMeta = getDummySpawnMeta(pendingDummySpawn);
+              return (
+                <div style={{
+                  fontSize: 10, color: '#ffe07a', padding: '4px 6px',
+                  border: '1px solid rgba(255, 200, 80, 0.55)', borderRadius: 4,
+                  background: 'rgba(255, 200, 80, 0.10)',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}>
+                  <span>点击地面放置{dummyMeta.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingDummySpawn(null)}
+                    style={{
+                      background: 'transparent', color: '#ffe07a',
+                      border: '1px solid rgba(255, 200, 80, 0.55)', borderRadius: 3,
+                      fontSize: 10, padding: '1px 6px', cursor: 'pointer',
+                    }}
+                  >取消</button>
+                </div>
+              );
+            })()
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
             <button
@@ -6052,6 +6232,16 @@ export default function BattleArena({
                 fontSize: 11, padding: '6px 8px', cursor: 'pointer',
               }}
             >友方木桩</button>
+            <button
+              type="button"
+              onClick={() => setPendingDummySpawn(prev => prev === 'ally100' ? null : 'ally100')}
+              style={{
+                background: pendingDummySpawn === 'ally100' ? 'rgba(80, 170, 220, 0.45)' : 'rgba(80, 170, 220, 0.20)',
+                color: '#d2f1ff',
+                border: '1px solid rgba(120, 210, 255, 0.55)', borderRadius: 4,
+                fontSize: 11, padding: '6px 8px', cursor: 'pointer',
+              }}
+            >友方100血木桩</button>
             <button
               type="button"
               disabled={!!runningCheatAction}
@@ -6307,7 +6497,7 @@ export default function BattleArena({
                         title={`${ability.name}${ability.blockedByAntiStealth ? ' | 反隐期间不可施展' : ''}${ability.range ? ` | 范围: ${ability.range}` : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={`/icons/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                        <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                         {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                           <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
                             <span className={styles.cdNum}>{cdSeconds}</span>
@@ -6396,7 +6586,7 @@ export default function BattleArena({
                       title={`${ability.name}${ability.blockedByAntiStealth ? ' | 反隐期间不可施展' : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`/icons/${ability.name}.png`} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                      <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                       {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                         <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
                           <span className={styles.cdNum}>{cdSeconds}</span>
@@ -6593,13 +6783,17 @@ export default function BattleArena({
         const displayText = entry.text
           ? entry.text
           : entry.type === 'dmg_dealt'
-          ? entry.label
+          ? entry.label === ''
+            ? `：${entry.isCrit ? '会心 ' : ''}${formatFloatValue(entry.value)}`
+            : entry.label
             ? (entry.isCrit
                 ? `${entry.label}：会心 ${formatFloatValue(entry.value)}`
                 : `${entry.label}：${formatFloatValue(entry.value)}`)
             : (entry.isCrit ? `会心 ${formatFloatValue(entry.value)}` : formatFloatValue(entry.value))
           : entry.type === 'dmg_taken'
-          ? entry.label
+          ? entry.label === ''
+            ? `： ${entry.isCrit ? '会心 ' : ''}-${formatFloatValue(entry.value)}`
+            : entry.label
             ? `${entry.label}： ${entry.isCrit ? '会心 ' : ''}-${formatFloatValue(entry.value)}`
             : `${entry.isCrit ? '会心 ' : ''}-${formatFloatValue(entry.value)}`
           : entry.type === 'heal'

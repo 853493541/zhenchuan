@@ -171,3 +171,9 @@ export function blocksControlByImmunity(
 export function hasKnockbackImmune(target: { buffs: ActiveBuff[] }) {
   return allEffects(target).some((e) => e.type === "KNOCKBACK_IMMUNE");
 }
+
+export function hasKnockedBackImmune(target: { buffs: ActiveBuff[] }) {
+  return allEffects(target).some(
+    (e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "KNOCKED_BACK_IMMUNE"
+  );
+}

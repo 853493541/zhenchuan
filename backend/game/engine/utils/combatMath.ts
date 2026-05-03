@@ -138,6 +138,48 @@ function allEffects(target: { buffs: ActiveBuff[] }) {
   return target.buffs.flatMap((b) => b.effects);
 }
 
+function applyTargetSideDamageModifiers(params: {
+  target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
+  base: number;
+  damageType?: string;
+}) {
+  let dmg = params.base;
+
+  const matchingReductions = allEffects(params.target).filter((e) => {
+    if (e.type !== "DAMAGE_REDUCTION") return false;
+    if ((e as any).damageType) {
+      return (e as any).damageType === params.damageType;
+    }
+    return true;
+  });
+  for (const dr of matchingReductions) {
+    dmg *= 1 - (dr.value ?? 0);
+  }
+
+  const takenIncSum = params.target.buffs.reduce((sum, buff) => {
+    const e = buff.effects.find((eff) => eff.type === "DAMAGE_TAKEN_INCREASE");
+    if (!e) return sum;
+    const stacks = buff.stacks ?? 1;
+    return sum + (e.value ?? 0) * stacks;
+  }, 0);
+  if (takenIncSum > 0) dmg *= 1 + takenIncSum;
+
+  const flatBonusList = allEffects(params.target).filter((e) => e.type === "DAMAGE_TAKEN_FLAT");
+  for (const fb of flatBonusList) {
+    dmg += (fb.value ?? 0);
+  }
+
+  return roundDamage(Math.max(0, dmg));
+}
+
+export function resolveRedirectedDamageToTarget(params: {
+  target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
+  base: number;
+  damageType?: string;
+}) {
+  return applyTargetSideDamageModifiers(params);
+}
+
 export function resolveScheduledDamageRoll(params: {
   source: {
     buffs: ActiveBuff[];
@@ -169,34 +211,11 @@ export function resolveScheduledDamageRoll(params: {
     dmg *= Math.max(0, 1 + dmgMultiBonus);
   }
 
-  // DAMAGE REDUCTION — apply all matching effects (typed or untyped).
-  // A typed effect (e.g. damageType:"内功") only applies when params.damageType matches exactly.
-  // An untyped effect applies to all damage.
-  const matchingReductions = allEffects(params.target).filter((e) => {
-    if (e.type !== "DAMAGE_REDUCTION") return false;
-    if ((e as any).damageType) {
-      return (e as any).damageType === params.damageType;
-    }
-    return true;
+  dmg = applyTargetSideDamageModifiers({
+    target: params.target,
+    base: dmg,
+    damageType: params.damageType,
   });
-  for (const dr of matchingReductions) {
-    dmg *= 1 - (dr.value ?? 0);
-  }
-
-  // DAMAGE TAKEN INCREASE (e.g. 易伤): summed across all buffs, multiplied by stacks.
-  const takenIncSum = params.target.buffs.reduce((sum, buff) => {
-    const e = buff.effects.find((eff) => eff.type === "DAMAGE_TAKEN_INCREASE");
-    if (!e) return sum;
-    const stacks = buff.stacks ?? 1;
-    return sum + (e.value ?? 0) * stacks;
-  }, 0);
-  if (takenIncSum > 0) dmg *= 1 + takenIncSum;
-
-  // DAMAGE TAKEN FLAT (e.g. 破风 — fixed bonus added after multipliers)
-  const flatBonusList = allEffects(params.target).filter((e) => e.type === "DAMAGE_TAKEN_FLAT");
-  for (const fb of flatBonusList) {
-    dmg += (fb.value ?? 0);
-  }
 
   return resolveRawDamageWithCritRoll({
     source: params.source,

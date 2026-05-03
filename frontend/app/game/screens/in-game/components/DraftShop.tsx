@@ -8,6 +8,7 @@
 import type { Shop, AbilityInstance } from "../types";
 import { useState } from "react";
 import styles from "./DraftShop.module.css";
+import { getAbilityIconPath } from "@/app/lib/iconPaths";
 
 type Props = {
   shop: Shop;
@@ -46,7 +47,7 @@ export default function DraftShop({
             >
               {!failedImages.has(ability.abilityId) ? (
                 <img 
-                  src={`/icons/${abilityDef.name}.png`} 
+                  src={getAbilityIconPath(abilityDef.name) ?? '/icons/fallback.png'} 
                   alt={abilityDef.name} 
                   className={styles.portrait}
                   onError={() => handleImageError(ability.abilityId)}

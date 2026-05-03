@@ -4,6 +4,7 @@ import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 
 import BuffEditorTab from "./BuffEditorTab";
+import CanCastWhileMountedTab from "./CanCastWhileMountedTab";
 import ProjectileEditorTab from "./ProjectileEditorTab";
 import DunLiWhitelistTab from "./DunLiWhitelistTab";
 import NoWeaponRequiredTab from "./NoWeaponRequiredTab";
@@ -15,6 +16,7 @@ import {
   AbilityRarity,
   AbilitySchool,
   BuffEditorSnapshot,
+  CanCastWhileMountedSnapshot,
   NoWeaponRequiredSnapshot,
   QinYinGongMingSnapshot,
   DAMAGE_TYPE_COLOR,
@@ -41,7 +43,7 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "qinYinGongMing";
+type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "qinYinGongMing";
 
 function buildOverviewTags(ability: AbilityEditorAbility) {
   const tags: string[] = [];
@@ -78,6 +80,8 @@ export default function AbilityEditorPage() {
       setMainTab("dunLiWhitelist");
     } else if (params.get("tab") === "noWeaponRequired") {
       setMainTab("noWeaponRequired");
+    } else if (params.get("tab") === "canCastWhileMounted") {
+      setMainTab("canCastWhileMounted");
     } else if (params.get("tab") === "qinYinGongMing") {
       setMainTab("qinYinGongMing");
     }
@@ -137,6 +141,9 @@ export default function AbilityEditorPage() {
   const [noWeaponRequiredSnapshot, setNoWeaponRequiredSnapshot] = useState<NoWeaponRequiredSnapshot | null>(null);
   const [noWeaponRequiredLoading, setNoWeaponRequiredLoading] = useState(false);
   const [noWeaponRequiredError, setNoWeaponRequiredError] = useState("");
+  const [canCastWhileMountedSnapshot, setCanCastWhileMountedSnapshot] = useState<CanCastWhileMountedSnapshot | null>(null);
+  const [canCastWhileMountedLoading, setCanCastWhileMountedLoading] = useState(false);
+  const [canCastWhileMountedError, setCanCastWhileMountedError] = useState("");
   const [qinYinGongMingSnapshot, setQinYinGongMingSnapshot] = useState<QinYinGongMingSnapshot | null>(null);
   const [qinYinGongMingLoading, setQinYinGongMingLoading] = useState(false);
   const [qinYinGongMingError, setQinYinGongMingError] = useState("");
@@ -207,6 +214,28 @@ export default function AbilityEditorPage() {
     }
   };
 
+  const loadCanCastWhileMountedSnapshot = async () => {
+    setCanCastWhileMountedLoading(true);
+    setCanCastWhileMountedError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/can-cast-while-mounted", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setCanCastWhileMountedSnapshot((await response.json()) as CanCastWhileMountedSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setCanCastWhileMountedError(message);
+    } finally {
+      setCanCastWhileMountedLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSnapshot();
   }, []);
@@ -229,6 +258,13 @@ export default function AbilityEditorPage() {
   useEffect(() => {
     if (mainTab === "noWeaponRequired" && !noWeaponRequiredSnapshot && !noWeaponRequiredLoading) {
       loadNoWeaponRequiredSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "canCastWhileMounted" && !canCastWhileMountedSnapshot && !canCastWhileMountedLoading) {
+      loadCanCastWhileMountedSnapshot();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab]);
@@ -286,6 +322,24 @@ export default function AbilityEditorPage() {
       if (!res.ok) return;
       const nextSnapshot = (await res.json()) as NoWeaponRequiredSnapshot;
       setNoWeaponRequiredSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
+  const handleCanCastWhileMountedToggle = async (
+    abilityId: string,
+    mode: "manual-include" | "manual-exclude" | "clear"
+  ) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/can-cast-while-mounted/${abilityId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as CanCastWhileMountedSnapshot;
+      setCanCastWhileMountedSnapshot(nextSnapshot);
       setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
     } catch { /* silent */ }
   };
@@ -421,6 +475,13 @@ export default function AbilityEditorPage() {
             onClick={() => setMainTab("noWeaponRequired")}
           >
             无需武器
+          </button>
+          <button
+            type="button"
+            className={`${styles.mainTab} ${mainTab === "canCastWhileMounted" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("canCastWhileMounted")}
+          >
+            可以马上施展
           </button>
           <button
             type="button"
@@ -733,6 +794,18 @@ export default function AbilityEditorPage() {
             errorMessage={noWeaponRequiredError}
             onRetry={loadNoWeaponRequiredSnapshot}
             onToggle={handleNoWeaponRequiredToggle}
+          />
+        </section>
+      )}
+
+      {mainTab === "canCastWhileMounted" && (
+        <section className={styles.buffEditorSection}>
+          <CanCastWhileMountedTab
+            snapshot={canCastWhileMountedSnapshot}
+            loading={canCastWhileMountedLoading}
+            errorMessage={canCastWhileMountedError}
+            onRetry={loadCanCastWhileMountedSnapshot}
+            onToggle={handleCanCastWhileMountedToggle}
           />
         </section>
       )}

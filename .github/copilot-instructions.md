@@ -58,6 +58,10 @@
 
 - **Never commit** unless explicitly told to. If the user says "commit once", do exactly one commit — never more.
 
+## Asset Rules
+
+- **Do not create icons or other art assets unless the user explicitly asks for them.** If an icon is missing, keep the code/reference aligned to the intended filename and report the missing asset name instead of creating it.
+
 ## Buff Implementation Rules
 
 - **All buffs must go through `addBuff()` in `buffRuntime.ts`.** Never directly push objects into a player's `buffs` array. Direct pushes bypass immunity checks, the 递减 (diminishing returns) system, BUFF_APPLIED event emission, and the status bar display.

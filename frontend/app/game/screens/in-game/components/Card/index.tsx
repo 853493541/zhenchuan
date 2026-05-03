@@ -2,6 +2,7 @@
 
 import styles from "./styles.module.css";
 import { useGamePreload } from "../../preload/GamePreloadContext";
+import { getAbilityIconPath } from "@/app/lib/iconPaths";
 
 /* ================= TYPES ================= */
 
@@ -18,10 +19,7 @@ type Props = {
 /* ================= HELPERS ================= */
 
 function getAbilityIconByName(abilityName: string | undefined) {
-  if (!abilityName) return null;
-
-  // icons are named by Chinese display name, e.g. 剑破虚空.png
-  return `/icons/${abilityName}.png`;
+  return getAbilityIconPath(abilityName);
 }
 
 /* ================= COMPONENT ================= */

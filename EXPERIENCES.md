@@ -3,6 +3,215 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 凌然天风特殊跳跃实现 (2026-05-03)
+
+**Problem set**:
+1. 新轻功 `凌然天风` 需要可移动中/空中施放，施放时上跳 `9尺/1秒`，并附带 `7秒` 特殊跳跃 Buff。
+2. Buff 期间要禁用普通跳跃，但保留地面正常移动；特殊跳跃次数是独立 `0/1` 资源，不受 `扶摇直上 / 梯云纵 / 鸟翔碧空` 这类跳跃强化影响。
+3. 特殊跳跃本身需要两种形态：纯空格 `4尺` 竖直跳，`W/A/S/D + 空格` 则在 `1秒` 内走完整个 `4尺上升 + 8尺定向位移` 弧线。
+4. Buff 本身只免疫普通控制，不免疫拉拽/击退；并且 Buff 期间任意成功施放招式都要把特殊跳跃次数回满到 `1`。
+5. 这次是 movement 改动，BattleArena 不能继续本地预测成普通跳，否则客户端会在 Buff 期间错误地显示常规起跳。
+
+**Fix**:
+- 新增 `LING_RAN_TIAN_FENG_CAST` 与 `LING_RAN_TIAN_FENG_STATE` 两个 effect 类型；能力定义里用前者做施放上跳，用后者做 Buff 状态标记。
+- `abilities.ts` 中新增 `ling_ran_tian_feng`：`300 ticks` CD、`qinggong: true`、`7s` Buff，Buff 效果为 `CONTROL_IMMUNE`、`RANGE_BOOST +5` 和 `LING_RAN_TIAN_FENG_STATE`。
+- `applyImmediateEffects(...)` 在成功施放结算时统一处理特殊跳跃充能：如果施法者当前有 `凌然天风` Buff，或当前施放的就是 `凌然天风`，则把 `lingRanTianFengCharges` 设为 `1`。这样“施放任意招式回满一次跳跃”落在共享施法成功 seam，而不是散落到每个技能里。
+- `凌然天风` 施放本体复用了现有 `activeDash` 竖直位移路径：不加共享 dash runtime buff，只创建 `1秒` 纯竖直 activeDash，因此控制免疫完全来自 `凌然天风` Buff 本身。
+- `movement.ts` 在普通跳跃入口前先检查 `LING_RAN_TIAN_FENG_STATE`。Buff 期间：
+  - 有充能时，空格改为启动一个 `1秒` 的弧线 activeDash（固定 `4尺` 峰值，定向时再带 `8尺` 水平位移），并消耗充能到 `0`。
+  - 没充能时，空格直接失效，不会落回普通跳跃逻辑。
+- 由于特殊跳跃走的是 activeDash，而不是原本 jump/air-nudge 分支，所以不会吃到 `JUMP_BOOST`、`TI_YUN_ZONG_JUMP`、`MULTI_JUMP`、`JUMP_NERF` 这些普通跳分支里的高度/距离改写。
+- BattleArena 侧没有再去本地伪造第二套特殊跳轨迹，只做了必要的 prediction 对齐：Buff 生效时本地空格不再进入普通 jumpLocal 预测，而是只发送 jump 输入并等待服务端的 activeDash 状态接管，这样不会在 Buff 期间错误显示普通跳。
+
+**Lessons**:
+- 当一个“特殊跳”既要固定轨迹、又要允许中途施法、还要完全绕开普通跳跃增益时，直接复用 `activeDash` 比往普通 jump 分支里塞更多例外更稳。
+- 对这类 Buff 驱动的独立位移资源，最稳的“回充”位置是共享施法成功 seam；如果把回充逻辑分别写进单个技能 handler，后续一定会漏掉自定义 effect 或空 effect 技能。
+- 前端 prediction 不一定非要完整本地复刻轨迹。只要客户端别在 Buff 期间错误走进旧的普通跳预测，而服务端又能很快下发 `activeDash`，就已经比“错误预测成普通跳”更可靠。
+
+**Follow-up retune (later same day)**:
+- `凌然天风` 本体现在 `gcd: false`，不会再占用公共调息。
+- 初始施放上跳进一步改成 `12尺/0.5秒`，并同步了能力说明与 cast handler 的默认值。
+- 特殊跳再改为“`1秒` 到达 `4尺上升 + 8.7尺定向位移` 的终点后，再交回普通下落”。实现上仍然不让这段 activeDash 在持续时间内自己落回地面，而是让它在结束时正好到达 apex，然后由正常重力继续下落。
+
+**Extra lesson from retune**:
+- 如果设计要求的是“在指定位移时间点到达顶点，然后再自然下落”，dash 内的竖直速度不能按完整抛物线总时长去算；应当按“结束时速度归零、位置到顶点”来反推离散重力和初速度，否则会错误地在 dash 持续时间内把下落也一起算进去。
+
+**Latest follow-up retune (same day)**:
+- 初始施放上跳再次下调为 `9尺/0.5秒`。
+- 特殊跳拆成了两条运行时分支：纯空格上跳现在是 `8尺/0.5秒`；带方向的特殊跳仍保持“`1秒` 到达 `4尺上升 + 8.7尺定向位移` 终点后再自然下落”。
+- 如果玩家在 `凌然天风` 初始上跳过程中进入 `九霄风雷` 的初始 `3秒` 运功，竖直 activeDash 现在会被刻意维持到运功结束，再立刻结束这段上升，复现旧 bug 的趣味交互。最终实现没有继续依赖“原始 activeDash 一定还在”，而是在 `九霄风雷` 开始运功时把这段上升记录到 `PlayerState` 上；这样即使中途有别的路径清掉了 dash，`movement.ts` 也会在运功期间把竖直上升补回去。
+- `凌然天风` Buff 期间新增“跳跃锁定免疫”：通用 channel jump suppression、`风来吴山` / `斩无常` 的旧硬锁、`九霄风雷` 的 `NO_JUMP`，以及 `channelLockMovement` 对 jump 脉冲的清零，都不会再拦住这次跳跃；BattleArena 的本地发包门槛也同步放开。
+- 如果同时持有 `凌然天风` 与 `风来吴山 / 斩无常` Buff，使用一次 `凌然天风` 特殊跳后会立刻把特殊跳次数回满到 `1`。BattleArena 也同步改成在这两个 Buff 下不把本地特殊跳次数预扣到 `0`，避免客户端短时间误判“没次数”。
+
+**Disproved approach from latest retune**:
+- 先前直接把 `凌然天风` 特殊跳的共享常量整体改成 `8尺/0.5秒` 会连带把定向特殊跳也一起改快，和用户“只改 special upward jump”的要求不符。最终必须按“有无方向输入”拆成两套高度/时长参数。
+- 单纯在 `movement.ts` 里冻结原始 `凌然天风` cast-lift dash 的 `ticksRemaining` 还不够稳，因为一旦别的控制路径提前清掉了那段 dash，`九霄风雷` 期间就会重新表现成“正常停止上升”。要复现这个旧 bug，必须把“当前正在延续的上升速度”单独记到玩家状态上，而不是只依赖原始 dash 对象仍然存在。
+
+## 御骑 mounted runtime (2026-05-03)
+
+**Problem set**:
+1. `御骑` 之前只是一个占位 common skill，没有真正的“上马 / 下马”运行时状态，也没有任何 mounted 限制。
+2. 需求是双态技能：未上马时必须站立运功 `3s`，移动或跳跃会打断；已上马时再次施放应立刻下马，而不是再走一次读条。
+3. 上马后要同时满足三条运行时规则：移动速度 `+100%`、只能施放带“可以马上施展”标记的招式、每次腾空最多只保留 `1` 次跳跃。
+4. `御骑` 获得时要立刻移除 `弹跳(JUMP_BOOST)`；受到除 `ROOT/SLOW` 以外的控制时，要立即失去 `御骑`。
+5. 这是 movement / cast-rule 变更，BattleArena 也必须同步 mounted 灰置与跳跃上限，否则前端会继续把非法招式点亮，或者本地多给一次跳跃。
+
+**Fix**:
+- 把 `yuqi` 从占位 instant skill 改成了真实 pure channel：未上马时 `requiresStanding + channelDurationMs: 3000 + channelCancelOnMove/jump`，运功完成后通过 `applyBuffsOnComplete` 获得长期 `【御骑】` Buff。
+- `playService.ts` 为 `yuqi` 增加了 mounted toggle-off 分支：如果玩家当前已有 `御骑` Buff，再次施放不会重新开读条，而是直接移除 `御骑`（并为后续 linked buffs 预留统一清理路径）。
+- 新增共享 mounted helper 后，`validateAction.ts` 会在服务端统一拦截“上马状态下但没有 `canCastWhileMounted` 标记”的招式；`yuqi` 自己则特判为 mounted 下仍可施放，并忽略 `requiresStanding` 这条进入态约束。
+- `buffRuntime.ts` 把 mounted 相关副作用收口到了 Buff seam：`御骑` Buff 成功加上后会清掉所有 `JUMP_BOOST` Buff；如果之后吃到 `CONTROL / ATTACK_LOCK / KNOCKED_BACK / PULLED / SILENCE / DISARM / NON_QINGGONG_LOCK / FEARED` 这类实际生效的控制，则会立刻把 `御骑` 状态移除。
+- `movement.ts` 与 `BattleArena.tsx` 都改成“若当前有 `御骑`，有效最大跳跃数恒为 `1`”；客户端 readiness 也新增了 mounted 灰置规则，只保留 `canCastWhileMounted` 招式亮起，并允许 `御骑` 自己在空中立即下马。
+
+**Lessons**:
+- 这种“进入态是读条、退出态是瞬发”的技能不要硬塞进单一 channel 行为里；让 channel 只负责进入态，再在 cast service 里为退出态做一个极小 special-case，整体比拧 channel pipeline 更稳。
+- `御骑` 的限制不是单一 movement 规则，而是 cast validation、buff apply/remove、副作用清理、前端按钮灰置、跳跃上限的组合。只补其中一层，玩家立刻就会看到“按钮能点但服务器报错”或“本地还能二段跳”这类明显不同步。
+
+## 御骑高度 / 跳跃限制 follow-up (2026-05-03)
+
+**Problem set**:
+1. 新需求要求 `御骑` 进入时角色立刻抬高 `3尺`，因为没有马匹模型，视觉上就让角色悬空代替坐骑高度。
+2. 如果只在上马瞬间做一次 `z += 3尺`，下一帧重力就会把角色重新拉回地面，看不到持续的“骑在马上”。
+3. 上马时如果角色身上还有 `女娲补天`，需要立刻移除；`任驰骋` 则不应再允许在已上马状态下施放。
+4. 骑乘期间要禁用原地跳和后跳，只保留前/左/右方向跳跃；这次也是 movement 变更，BattleArena 不能继续预测成普通原地跳。
+5. `下马` 仍要允许在移动中或空中施放，不能被前端那层旧的 `requiresStanding` 提前挡掉。
+
+**Fix**:
+- `movement.ts` / `BattleArena.tsx` 都新增了“mounted ground height”概念：只要当前有 `御骑`，有效地面高度就等于真实地面 `+3尺`。这样角色会稳定站在悬空高度上，而不会被下一帧重力直接拉回去。
+- `buffRuntime.ts` 在 `YUQI_BUFF_ID` 成功加上时会立刻把玩家高度再抬高一次，保证上马当帧就能看到抬升，而不是等下一个 movement tick 才浮起来。
+- 同一个 `addBuff()` seam 里顺手移除了 `女娲补天`（buff `1019`），这样 `御骑` 无论来自原始 `御骑` 还是 `任驰骋`，都会统一清掉该状态。
+- `任驰骋` 去掉了 `canCastWhileMounted`，因此它现在只能在未上马时读条进入，不能在已经 `御骑` 的状态下重放。
+- 普通跳跃分支新增了 mounted jump gate：骑乘时必须存在方向输入，且方向不能是 rearward；BattleArena 本地发跳和本地 jump prediction 也同步改成拒绝 `空格原地跳` 与 `S` 系后跳。
+- BattleArena 之前还有一层更早的客户端施法门槛，会在点按钮时直接按 `requiresStanding` 拦掉 `御骑`。这次给 mounted `yuqi` toggle-off 加了同样的例外，所以移动中/空中都能正常下马。
+
+**Lessons**:
+- “坐骑高度”这类长期悬空状态不能靠一次性位置抬升实现；真正稳定的做法是把它建模成一层持续存在的有效地面偏移。
+- 如果某个技能已经在 `isAbilityReady(...)` 里有特判，不代表前端别的 cast wrapper 也同步了。同一个 `requiresStanding` 规则很可能在多个按钮入口重复实现，必须一起排查。
+
+**Latest retune (same day)**:
+- 用户随后又明确要求取消这层“骑在马上”的悬空视觉，所以之前那套 `mounted ground height + addBuff 立即抬升 + BattleArena 同步地面偏移` 已被整段移除；`御骑` 现在重新回到普通地面高度。
+- `御骑` 的移动速度也从原先的 `+100%` 改成了 `SLOW 0.5`，最终速度等于普通角色按 `S` 后退步行的速度；前后端原有的 `1 + SPEED_BOOST - SLOW` 速度计算公式因此无需额外特判。
+
+**Extra lesson from retune**:
+- 一旦这种“手感型”需求被撤回，最好把整条实现链一次删干净，而不是只改掉其中一层。否则很容易留下 buff 抬高、服务端地面判定、客户端 prediction 三者里某一层的残余偏移。
+
+## 可以马上施展 editor property (2026-05-03)
+
+**Problem set**:
+1. `御骑` 已经有了新的 mounted cast 规则，但还缺一个可编辑的能力属性，来决定“哪些技能在御骑期间仍可施放”。
+2. 这个属性不能只做成独立列表页，否则技能详情页会看不到它；用户明确要求“能力列表详情页”与单独 tab 都能操作。
+3. 如果把这条规则单独塞到另一个 override 存储里，运行时、详情页、列表 tab 会很快漂移。
+
+**Fix**:
+- 把“可以马上施展”直接加入 `AbilityPropertyId` 与 canonical `abilityPropertyDefinitions`，底层字段是 `ability.canCastWhileMounted`。这样详情页会自动通过现有 property catalog 渲染出来，不需要再单独改 `[abilityId]/page.tsx`。
+- `abilities.ts` 里新增了 `buildCanCastWhileMountedSnapshot()` / `setAbilityCanCastWhileMountedOverride()`，但 override 仍然写回同一个 `ability-property-overrides.json` 的 `properties` 字段，而不是新开第二份配置。
+- `abilityEditor.routes.ts` 增加了 `/ability-editor/can-cast-while-mounted` 的 GET/PUT 路由；前端新增 `CanCastWhileMountedTab.tsx`，UI 复用 `NoWeaponRequiredTab` 的三列决策模式：手动排除 / 未决定 / 可以马上施展。
+- `Ability Editor` 主页新增了“可以马上施展” tab，并复用现有的 lazy-load + updatedAt 刷新模式，所以列表 tab 和详情页操作会看到同一份最新结果。
+
+**Lessons**:
+- 这类“既要出现在详情页，又要有单独批量操作 tab”的布尔能力属性，最稳的做法是先进入 canonical property catalog，再额外做一个 snapshot/tab 视图；反过来只做专门 tab，详情页和运行时迟早分叉。
+- 如果列表 tab 本质上只是同一个 property 的批量视图，就不要再造第二套存储模型。继续写回原来的 `properties` override，后续 preload/runtime 已经能自然吃到这条规则。
+
+## 任驰骋 + 纵轻骑 mounted follow-up (2026-05-03)
+
+**Problem set**:
+1. 需要新增 `任驰骋`：`0.5s` 运功、可移动、跳跃会打断，完成后同时获得 `御骑`、`任驰骋` 和 `纵轻骑` 三个 Buff。
+2. `任驰骋` Buff 要持续 `12s` 并给 `15%` 伤害提升；`纵轻骑` 要持续 `5s`，提供“控制免疫但仍会被拉”的 mounted 爆发窗口。
+3. `纵轻骑` 的“仍会被拉”不能复用现有 `KNOCKBACK_IMMUNE`，因为那个效果会把 `击退` 和 `拉拽` 一起挡掉。
+4. 用户还要求“离开御骑时一定移除 `纵轻骑`，但不能误删 `任驰骋`”。这意味着不能只在手动下马分支里清理一次。
+
+**Fix**:
+- 在 `abilities.ts` / `cards.ts` 中新增 `ren_chi_cheng`：`CHANNEL` 自身技能，`0.5s` 运功，`channelCancelOnMove: false`、`channelCancelOnJump: true`，结算后一次性应用 Buff `2741/2742/2743`。
+- `任驰骋` Buff (`2742`) 使用 `DAMAGE_MULTIPLIER 1.15`，不是 `0.15`。这个引擎里乘区字段存的是最终倍率，不是增量。
+- 为了实现“免击退但不免拉”，新增了狭义效果类型 `KNOCKED_BACK_IMMUNE`，并把纯击退路径（立即击退、慢速击退、连环弩近身击退等）切到新的 guard；拉拽/换位等仍继续只认完整的 `KNOCKBACK_IMMUNE`。
+- `buffRuntime.ts` 也同步改成分别过滤 `KNOCKED_BACK` 和 `PULLED`，避免 `纵轻骑` 被当成完整免拉。
+- `GameLoop.ts` 新增 mounted invariant：只要玩家当前已经没有 `御骑`，就会主动清掉残留的 `纵轻骑` 并发 `BUFF_EXPIRED`。这样无论是手动下马、吃控制掉马，还是其他路径让 `御骑` 消失，都不会留下悬空的 `纵轻骑`。
+
+**Lessons**:
+- 当设计写的是“免击退但仍会被拉”，不要在现有效果上硬加特判；加一个语义更窄的 immunity type，然后只替换真正的击退 call-site，成本更低，也不容易误伤拉拽逻辑。
+- 对“依附于另一状态存在”的 Buff，最稳的做法不是只信任几个显式移除入口，而是在主循环里补一条廉价 invariant。这样后续出现新的移除路径时，子 Buff 也不会残留。
+
+**Latest retune (same day)**:
+- 后续实测发现 `channelDurationMs: 500` 本身不会让技能自动进入运功；当前引擎只有 `ability.type === "CHANNEL"` 才会在 `playService.ts` 里创建 `activeChannel`。因此 `任驰骋` 必须从 `SUPPORT` 改成真正的 `CHANNEL`，前端运功条才会出现，技能也才不会继续表现成瞬发。
+
+## 御骑后退限速 + 渊显示 Buff + 舍身诀命名 follow-up (2026-05-03)
+
+**Problem set**:
+1. 把 `御骑` 直接改成 `SLOW 0.5` 虽然能让后退速度变慢，但会把骑乘下的所有方向一起限速，和用户“只限制纯 `S` 后退”的手感要求不符。
+2. `渊` 的落地击退仍在使用它自己的专用 Buff `2740`，而不是共享的标准 `9101 / 击退` 标记。
+3. `渊` 只有友方侧的拦伤 Buff，没有给施法者一个可见的“我正在替队友承伤”的状态提示，触发后也不会和友方 Buff 一起清掉。
+4. 这轮还新增了一个工作流约束：如果图标不存在，不要擅自创建图标文件，应该按用户给的命名去对齐代码并回报缺失文件名。
+5. `舍身诀` 的 Buff 名称需要和现有图标文件名对齐，否则 preload 默认路径会继续指向不存在或不匹配的文件名。
+
+**Fix**:
+- `御骑` Buff 恢复为 `SPEED_BOOST 1`；服务端 `MovementInput` 新增 `backpedalOnly` 标记，只有传统模式纯 `S` 后退时才额外乘 `0.5`。`BattleArena.tsx` 的发包与本地 prediction 也同步走同一条判定，因此 mounted 前进/侧移恢复正常，只有纯后退仍保持“和普通按 `S` 步行相同”。
+- `GameLoop.ts` 的共享击退 helper 现在能直接生成标准 `9101 / 击退` Buff；`渊` 的 dash-end AOE 也切到了这条共享路径，不再依赖专用 `2740` 击退 Buff。
+- `渊` 的两个展示 Buff 重新整理成：友方侧 `2739 = 渊`，施法者侧 `2740 = 渊·承伤`。`immediateEffects.ts` 会一起加上这两个 Buff，`onDamageHooks.ts` 则要求两边 Buff 同时存在才生效，并在第一次 redirect 触发时一起消费，避免 self-side 提示残留。
+- `.github/copilot-instructions.md` 新增了明确规则：不要创建图标或其他美术资源，除非用户明确要求。另在用户 memory 里也记录了同样偏好，方便后续会话沿用。
+- `舍身诀` 的 Buff 名称改为 `舍身诀`、`舍身诀·减伤`、`舍身诀·承伤`。这里特意没有用“舍身诀·减伤害”，因为仓库内现成文件名是 `frontend/public/icons/舍身诀·减伤.png`，默认 icon 路径会直接按这个名字命中。
+
+**Lessons**:
+- 如果用户只想改某一种输入形态的手感，不要直接改 Buff 的全局速度系数；应该把判定放在输入/移动 seam，这样服务端和客户端 prediction 都能精准同步。
+- 像 `9101 / 击退` 这种共享运行时 Buff，真正的复用点在“生成 Buff 的 helper”，不是单独某个技能的 call-site。只改 call-site 而 helper 仍然只认技能私有 Buff 表时，状态图标会直接丢失。
+- 当前图标加载默认走“`/icons/${buff.name}.png`”这条命名约定，因此 Buff 改名时应该优先服从磁盘上的真实文件名，而不是只看文案是否更完整。
+
+## 友方目标技能第二轮修正 + 图标路径编码 (2026-05-03)
+
+**Problem set**:
+1. `听风吹雪` 的血量平衡阶段仍在发伤害/治疗飘字，但这个阶段本质是静默设定双方当前血量，不应该被当作受伤或治疗展示。
+2. `听风吹雪` 后续双方 `+20` 的治疗需要明确按 `贯体` 路径展示和处理。
+3. `舍身诀` 在后续实战里再次表现为失效，根因不是主伤害链，而是仍有多条 active-mode 伤害分支绕过了共享 redirect seam，导致被保护者直接掉血。
+4. `渊` 需要保持原来的击退总时长，但把击退距离翻倍。
+5. 新技能/新 Buff 图标文件已经存在，但前端仍有部分界面加载失败，需要确认是真缺文件、路径不一致，还是运行时 URL 构造问题。
+
+**Fix**:
+- `immediateEffects.ts` 中把 `TING_FENG_CHUI_XUE` 的均血阶段改成静默状态写入，不再发送即时血量调整事件；只保留后续真实治疗事件。
+- 即时 `贯体` 治疗辅助函数现在统一把事件名写成 `（贯体）`，这样 BattleArena 飘字和其他 `贯体` 治疗保持一致。
+- 为了修复 `舍身诀`，把仍然遗漏的伤害分支全部接回共享 redirect 流程：`BonusDamageIfHpGt.ts`、`Channel.ts`、`DirectionalDash.ts`、`GameLoop.ts` 的 `TIMED_SELF_DAMAGE` 与 `STACK_ON_HIT_DAMAGE` 现在都会先走 `preCheckRedirect(...)`，再走 `applyRedirectToOpponent(...)` / `processOnDamageTaken(...)`。
+- `渊` 只把击退距离从 `6` 提到 `12`，保持 `durationTicks: 15` 不变，因此飞行总时间还是 `0.5s`。
+- 图标问题最终确认不是“文件不存在”也不是“目录写错”：文件在 `frontend/public/icons/` 中存在且非空，服务端对 percent-encoded URL 返回 `200`，但原始 Unicode 文件名 URL 可能返回 `400`。前端新增共享 icon-path 编码辅助，并把能力图标、Buff 图标、BattleArena 内联图标、选牌/商店/备战区图标统一改为先编码文件名再请求 `/icons/...`。
+
+**Lessons**:
+- 中文文件名静态资源不能只看磁盘上有没有文件；必须验证运行中的 HTTP 路径。文件存在但 URL 未编码时，服务端仍可能拒绝请求。
+- `舍身诀` 这类保护技能是否“偶发失效”，通常不是单点逻辑问题，而是共享 redirect seam 覆盖面不完整；任何绕开该 seam 的伤害分支都会让保护看起来随机失灵。
+- 当需求是“击退更远但时间不变”时，优先只改位移距离，不要顺手改 AOE 半径或持续 tick 数，否则手感会一起漂移。
+
+## 友方目标技能基础设施 + 舍身诀 / 渊 / 听风吹雪 (2026-05-02)
+
+**Problem set**:
+1. The first ally-targeted support skills were requested, but the real-time cast pipeline only had `SELF` and hostile `OPPONENT` semantics. Backend validation, play routing, and `BattleArena.tsx` all assumed `OPPONENT` meant enemy-only, even though ally-owned dummies/entities already existed in runtime.
+2. `舍身诀` needed to target a friendly player/NPC, remove removable controls except knockdown, grant `30%` DR, and redirect `100%` of post-mitigation damage to the caster. The redirected damage must ignore the protector's DR/shield but still respect damage immunity.
+3. `渊` needed friendly targeting with a `6-20` range gate, a dash to the ally, an AOE knockback around that ally, and a one-hit intercept buff that makes the caster take the next incoming hit for the target.
+4. `听风吹雪` needed to equalize current HP between caster and friendly target, then apply flat `贯体` healing to both sides.
+
+**Fix**:
+- Added a lightweight `friendlyTarget` ability flag in shared ability types and preload, instead of introducing a third target enum. This let the existing `targetUserId` / `entityTargetId` payload survive with minimal churn.
+- Updated backend validation and play routing so `friendlyTarget` + `target: "OPPONENT"` now means “self or owned entity” rather than “enemy”, and skipped enemy-only facing/LOS rules for those casts.
+- Updated `BattleArena.tsx` readiness/cast logic to distinguish hostile vs friendly entity selection, keep ally entity clicks valid, and honor `minRange` / `range` on the selected friendly target. This is what makes `渊` gray out when the ally is closer than `6`.
+- Extended the shared redirect seam in `onDamageHooks.ts` with two redirect modes:
+  - `舍身诀`: full post-mitigation redirect to the caster via direct HP loss, bypassing shield/DR but still stopped by `DAMAGE_IMMUNE`.
+  - `渊`: one-hit redirect to the caster, then explicitly expires the ally buff on trigger.
+- Patched entity damage paths (`immediateEffects.ts`, `GameLoop.ts`) to run through the same redirect hook, so ally NPCs/dummies are protected by `舍身诀` / `渊` instead of only player characters.
+- Implemented the three new abilities as custom immediate effects in `abilities.ts` + `immediateEffects.ts`, with generic `applyAbilityBuffs(...)` disabled for them.
+- Rechecked BattleArena movement prediction after adding `渊`'s dash. No ability-specific client prediction hook was needed because the scene already mirrors server `activeDash` generically.
+
+**Lessons**:
+- A small `friendlyTarget` flag is lower risk than a new target enum when the rest of the engine already knows how to carry explicit `targetUserId` and `entityTargetId`; the real work is in the hostile assumptions layered on top of `OPPONENT`.
+- If an ally-protection ability can affect owned entities, every entity damage branch must share the same redirect hook as player damage branches. Fixing only player damage paths leaves NPC support abilities half-broken.
+- The original `舍身诀` text conflicted between `10s` target buffs and “during this `12 seconds` self buff”. This implementation uses `10s` for the self buff as well, because the redirect window should match the stated target-buff duration.
+- `渊`'s design text specified “one hit” but no timeout. The runtime implementation adds a `10s` safety duration so stale intercept buffs do not persist forever if the protected target is never hit.
+
+**Follow-up fixes (later same day)**:
+- Added a friendly `100` HP dummy test path end-to-end: `/cheat/spawn-dummy` now accepts optional `maxHp`, and `BattleArena.tsx` exposes a separate `友方100血木桩` spawn preset.
+- Corrected `舍身诀` redirect semantics after playtesting disproved the first read of the design. Redirected damage now resolves through the protector's own target-side DR and shields via `resolveRedirectedDamageToTarget(...)`, while `DAMAGE_IMMUNE` still nullifies the redirected hit.
+- Moved `渊` knockback from cast time into the existing dash-end seam in `GameLoop.ts`. The cast now stores ally/knockback metadata on `activeDash`, and the AOE knockback only fires if the caster lands within `4尺` of the protected ally.
+- Added explicit `hideAbilityName` event support so `舍身诀` and `渊` redirect hits suppress the damage source text in BattleArena floats without changing other damage-label behavior.
+
+**Lessons from follow-up**:
+- For support dash skills, landing-timed gameplay belongs in `GameLoop`'s dash-completion hooks, not in immediate cast handlers. `BattleArena`'s generic server-authoritative `activeDash` path was already sufficient once the backend timing moved.
+- Redirect-damage wording is easy to misread. “Redirect the hit” should be validated separately against the protector's DR, shields, and immunity instead of assuming the original target's post-mitigation number must bypass the protector's own defenses.
+- If only a few mechanics should hide combat-text source labels, use an explicit event flag instead of overloading blank ability names; that keeps float formatting local and avoids accidental regressions for other unlabeled events.
+
 ## 龙啸九天气场/机关摧毁 + 人剑合一气场联动 (2026-05-02)
 
 **Problem set**:
@@ -1184,6 +1393,7 @@ The BVH collision triangles in the GLBs do NOT change — only the coordinate ma
 - Using an external URL in `BACKEND_URL` causes nginx 404 — always point to `http://localhost:5000` for server-side calls.
 - WebSocket proxy requires `http/1.1 + Upgrade + Connection` headers, or the connection silently fails.
 - Missing `Host` header in nginx proxy causes cookie routing failures.
+- The public nginx route currently serves `/icons/*.png` with `Cache-Control: public, max-age=2592000, immutable`. If a desktop browser cached an earlier missing/bad icon response, it can keep showing broken icons while a phone with a fresh cache shows the new files. Fix by versioning generated icon URLs in the frontend helper so icon requests move to a fresh cache key.
 
 ---
 

@@ -11,6 +11,7 @@ import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT } from "../../map/exportedMap";
 import { isLineBlockedByEnemyChuHeHanJieWall } from "../utils/chuHeHanJieWall";
 import { getEffectiveAbilityRange } from "../utils/abilityRange";
 import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../utils/specialAbilityBar";
+import { hasYuqiState } from "../utils/yuqi";
 
 const SHU_SE_BUFF_ID = 2646;
 
@@ -209,6 +210,9 @@ export function validateCastAbility(
     throw new Error("ERR_ABILITY_NOT_FOUND");
   }
 
+  const yuqiMounted = hasYuqiState(player as any);
+  const mountedYuqiToggle = yuqiMounted && ability.id === "yuqi";
+
   ensureChargeRuntime(instance, ability);
 
   if ((ability as any).gcd === true && Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
@@ -221,12 +225,15 @@ export function validateCastAbility(
     Number.isFinite(options.groundTarget.y);
   const allowGroundCastWithoutTarget =
     ability.target === "OPPONENT" &&
+    (ability as any).friendlyTarget !== true &&
     (ability as any).allowGroundCastWithoutTarget === true &&
     hasGroundTarget;
+  const isFriendlyTargetAbility =
+    ability.target === "OPPONENT" && (ability as any).friendlyTarget === true;
   const selfTargetRequested =
     ability.target === "OPPONENT" &&
     options?.targetUserId === player.userId &&
-    (ability as any).canTargetSelf === true;
+    ((ability as any).canTargetSelf === true || isFriendlyTargetAbility);
 
   if (ability.id === "feng_liu_yun_san" && !hasGroundTarget) {
     throw new Error("ERR_TARGET_UNAVAILABLE");
@@ -240,7 +247,18 @@ export function validateCastAbility(
     throw new Error("ERR_TARGET_UNAVAILABLE");
   }
 
-  let targetIndex = ability.target === "SELF" ? playerIndex : (playerIndex === 0 ? 1 : 0);
+  if (
+    isFriendlyTargetAbility &&
+    options?.targetUserId &&
+    options.targetUserId !== player.userId
+  ) {
+    throw new Error("ERR_TARGET_UNAVAILABLE");
+  }
+
+  let targetIndex =
+    ability.target === "SELF" || isFriendlyTargetAbility
+      ? playerIndex
+      : (playerIndex === 0 ? 1 : 0);
   if (ability.target === "OPPONENT" && options?.targetUserId) {
     const explicitTarget = state.players.findIndex((p) => p.userId === options.targetUserId);
     if (explicitTarget >= 0) targetIndex = explicitTarget;
@@ -277,6 +295,10 @@ export function validateCastAbility(
   /* ================= CHANNELING ================= */
   if (!options?.ignoreActiveChannel && (player as any).activeChannel) {
     throw new Error("ERR_CHANNELING");
+  }
+
+  if (yuqiMounted && !mountedYuqiToggle && (ability as any).canCastWhileMounted !== true) {
+    throw new Error("ERR_BLOCKED_BY_BUFF");
   }
 
   /* ================= SILENCE (Level 3 — not removable) ================= */
@@ -427,7 +449,7 @@ export function validateCastAbility(
   }
 
   /* ================= REQUIRES STANDING ================= */
-  if ((ability as any).requiresStanding) {
+  if ((ability as any).requiresStanding && !mountedYuqiToggle) {
     const jumpCount = (player as any).jumpCount ?? 0;
     const vz = (player as any).velocity?.vz ?? 0;
     const vx = (player as any).velocity?.vx ?? 0;
@@ -467,18 +489,27 @@ export function validateCastAbility(
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
   if (ability.target === "OPPONENT" && !allowGroundCastWithoutTarget && !selfTargetRequested) {
     if (explicitEntity) {
-      if (explicitEntity.hp <= 0 || explicitEntity.ownerUserId === player.userId) {
+      const invalidEntityTarget = isFriendlyTargetAbility
+        ? explicitEntity.hp <= 0 || explicitEntity.ownerUserId !== player.userId
+        : explicitEntity.hp <= 0 || explicitEntity.ownerUserId === player.userId;
+      if (invalidEntityTarget) {
         throw new Error("ERR_TARGET_UNAVAILABLE");
       }
     } else {
-      const enemy = targetPlayer;
-      if (blocksCardTargeting(enemy)) {
-        throw new Error("ERR_TARGET_UNAVAILABLE");
+      if (isFriendlyTargetAbility) {
+        if (!targetPlayer || targetPlayer.userId !== player.userId || (targetPlayer.hp ?? 0) <= 0) {
+          throw new Error("ERR_TARGET_UNAVAILABLE");
+        }
+      } else {
+        const enemy = targetPlayer;
+        if (blocksCardTargeting(enemy)) {
+          throw new Error("ERR_TARGET_UNAVAILABLE");
+        }
       }
     }
 
     /* ================= FACE DIRECTION (180°) ================= */
-    if (requiresFacing(ability as any)) {
+    if (!isFriendlyTargetAbility && requiresFacing(ability as any)) {
       if (!isInFacingHemisphere(player, { position: targetPosition })) {
         throw new Error("ERR_NOT_FACING_TARGET");
       }
@@ -487,7 +518,7 @@ export function validateCastAbility(
     /* ================= LINE OF SIGHT (structure blocking) ================= */
   }
 
-  if (ability.target === "OPPONENT" && !selfTargetRequested) {
+  if (ability.target === "OPPONENT" && !selfTargetRequested && !isFriendlyTargetAbility) {
     const losTargetPosition = allowGroundCastWithoutTarget
       ? {
           x: options?.groundTarget?.x ?? targetPosition.x,

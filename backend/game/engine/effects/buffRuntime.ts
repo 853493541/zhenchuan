@@ -13,6 +13,14 @@ import { addShieldToTarget, applyDamageToTarget, removeLinkedShield } from "../u
 import { ABILITIES } from "../../abilities/abilities";
 import { applyPropertyOverridesToEffects, loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
 import { hasDunLiReflectFlag, isAbilityDunLiWhitelisted } from "./dunLiReflect";
+import {
+  NUWA_BUTIAN_BUFF_ID,
+  YUQI_BUFF_ID,
+  ZONG_QING_QI_BUFF_ID,
+  hasYuqiState,
+  isJumpBoostBuff,
+  shouldBreakYuqiOnIncomingControl,
+} from "../utils/yuqi";
 
 /* ================= Utilities ================= */
 
@@ -191,6 +199,12 @@ function hasKnockbackImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "KNOCKBACK_IMMUNE"));
 }
 
+function hasKnockedBackImmune(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some(
+    (e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "KNOCKED_BACK_IMMUNE"
+  ));
+}
+
 function hasControlImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "CONTROL_IMMUNE"));
 }
@@ -268,6 +282,71 @@ function removeSharedLockoutDebuffs(params: {
       buffCategory: b.category,
     });
   }
+}
+
+function expireBuffsMatching(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+  shouldExpire: (buff: ActiveBuff) => boolean;
+}) {
+  const { state, targetUserId, target, shouldExpire } = params;
+  const removed = target.buffs.filter((buff) => shouldExpire(buff));
+  if (removed.length === 0) return false;
+
+  for (const buff of removed) {
+    removeLinkedShield(target as any, buff);
+  }
+  target.buffs = target.buffs.filter((buff) => !shouldExpire(buff));
+
+  for (const buff of removed) {
+    pushEvent(state, {
+      turn: state.turn,
+      type: "BUFF_EXPIRED",
+      actorUserId: targetUserId,
+      targetUserId,
+      abilityId: buff.sourceAbilityId,
+      abilityName: buff.sourceAbilityName,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+    });
+  }
+
+  return true;
+}
+
+function removeJumpBoostBuffs(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  return expireBuffsMatching({
+    ...params,
+    shouldExpire: (buff) => isJumpBoostBuff(buff),
+  });
+}
+
+function removeNuwaButianBuffs(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  return expireBuffsMatching({
+    ...params,
+    shouldExpire: (buff) => buff.buffId === NUWA_BUTIAN_BUFF_ID,
+  });
+}
+
+export function removeYuqiStateBuffs(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  return expireBuffsMatching({
+    ...params,
+    shouldExpire: (buff) => buff.buffId === YUQI_BUFF_ID || buff.buffId === ZONG_QING_QI_BUFF_ID,
+  });
 }
 
 function cancelActiveChannelForDisarm(params: {
@@ -509,12 +588,28 @@ export function addBuff(params: {
     }
   }
 
-  if (
-    sourceUserId !== targetUserId &&
-    runtimeBuff.effects.some((e) => e.type === "KNOCKED_BACK" || e.type === "PULLED") &&
-    hasKnockbackImmune(buffTarget)
-  ) {
-    return;
+  if (sourceUserId !== targetUserId) {
+    const blocksPull = hasKnockbackImmune(buffTarget);
+    const blocksKnockback = blocksPull || hasKnockedBackImmune(buffTarget);
+    if (
+      (blocksKnockback && runtimeBuff.effects.some((e) => e.type === "KNOCKED_BACK")) ||
+      (blocksPull && runtimeBuff.effects.some((e) => e.type === "PULLED"))
+    ) {
+      const filteredEffects = runtimeBuff.effects.filter((e) => {
+        if (e.type === "KNOCKED_BACK") return !blocksKnockback;
+        if (e.type === "PULLED") return !blocksPull;
+        return true;
+      });
+      if (filteredEffects.length === 0) {
+        return;
+      }
+      if (filteredEffects.length !== runtimeBuff.effects.length) {
+        runtimeBuff = {
+          ...runtimeBuff,
+          effects: filteredEffects,
+        };
+      }
+    }
   }
 
   if (sourceUserId !== targetUserId && hasControlImmune(buffTarget)) {
@@ -715,6 +810,18 @@ export function addBuff(params: {
     }
   }
 
+  if (
+    sourceUserId !== targetUserId &&
+    hasYuqiState(buffTarget, now) &&
+    shouldBreakYuqiOnIncomingControl(runtimeBuff)
+  ) {
+    removeYuqiStateBuffs({
+      state,
+      targetUserId,
+      target: buffTarget,
+    });
+  }
+
   // Stacking: if buff defines maxStacks > 1, increment stacks on the existing buff
   // instead of replacing it. The lastTickAt is intentionally NOT reset — this prevents
   // stack-refresh abuse (re-casting resets the tick timer allowing faster ticks).
@@ -895,6 +1002,19 @@ export function addBuff(params: {
       ability,
       now,
       config: resistanceConfig,
+    });
+  }
+
+  if (active.buffId === YUQI_BUFF_ID) {
+    removeJumpBoostBuffs({
+      state,
+      targetUserId,
+      target: buffTarget,
+    });
+    removeNuwaButianBuffs({
+      state,
+      targetUserId,
+      target: buffTarget,
     });
   }
 }

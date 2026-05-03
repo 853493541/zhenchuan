@@ -10,6 +10,7 @@ import { blocksEnemyTargeting } from "../../rules/guards";
 import { resolveScheduledDamage, resolveHealAmountRoll } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
+import { applyRedirectToOpponent, preCheckRedirect, processOnDamageTaken } from "../onDamageHooks";
 
 /**
  * LEGACY CHANNEL IMMEDIATE EFFECTS
@@ -51,7 +52,21 @@ export function handleChannelEffect(
       base: 10,
     });
 
-    applyDamageToTarget(enemy as any, dmg);
+    let eventDamage = dmg;
+    let shieldAbsorbed = 0;
+
+    if (dmg > 0) {
+      const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(state, enemy as any, dmg);
+      eventDamage = adjustedDamage;
+      if (adjustedDamage > 0) {
+        const result = applyDamageToTarget(enemy as any, adjustedDamage);
+        shieldAbsorbed = result.shieldAbsorbed;
+        processOnDamageTaken(state, enemy as any, result.hpDamage, source.userId);
+      }
+      if (redirectPlayer && redirectAmt > 0) {
+        applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
+      }
+    }
 
     pushEvent(state, {
       turn: state.turn,
@@ -61,7 +76,8 @@ export function handleChannelEffect(
       abilityId: ability.id,
       abilityName: ability.name,
       effectType: "DAMAGE",
-      value: dmg,
+      value: eventDamage,
+      shieldAbsorbed: shieldAbsorbed > 0 ? shieldAbsorbed : undefined,
     });
   }
 

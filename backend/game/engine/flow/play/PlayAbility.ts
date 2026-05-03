@@ -50,7 +50,9 @@ export function applyAbility(
     turn: state.turn,
     type: "PLAY_ABILITY",
     actorUserId: source.userId,
-    targetUserId: target.userId,
+    targetUserId: entityTarget ? undefined : target.userId,
+    entityId: entityTarget?.id,
+    entityName: entityTarget?.abilityName,
     abilityId: ability.id,
     abilityName: ability.name,
   });
@@ -72,6 +74,7 @@ export function applyAbility(
 
   const shouldReflectToCaster =
     ability.target === "OPPONENT" &&
+    (ability as any).friendlyTarget !== true &&
     source.userId !== target.userId &&
     !entityTarget &&
     isDirectPlayerTargetCast &&

@@ -25,7 +25,7 @@ import { exportedMap } from "../../map/exportedMap";
 import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
 import { ABILITIES } from "../../abilities/abilities";
 import { loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
-import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasUntargetable, hasDamageImmune, shouldDodge, shouldDodgeForAbility } from "../rules/guards";
+import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasKnockedBackImmune, hasUntargetable, hasDamageImmune, shouldDodge, shouldDodgeForAbility } from "../rules/guards";
 import type { MapObject } from "../state/types/map";
 import { applyTriggeredFollowUpPlayRules, breakOnPlay } from "../flow/play/breakOnPlay";
 import { applyDashRuntimeBuff } from "../effects/definitions/DirectionalDash";
@@ -38,6 +38,7 @@ import {
   ZHEN_SHAN_HE_XUANJIAN_BUFF_ID,
   ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID,
 } from "../effects/definitions/ZhenShanHe";
+import { ZONG_QING_QI_BUFF_ID, hasYuqiState } from "../utils/yuqi";
 import {
   isLineBlockedByEnemyChuHeHanJieWall,
   resolveEnemyChuHeHanJieWallCollision,
@@ -409,8 +410,10 @@ function applyDamageToHostileTarget(params: {
   }
 
   const entity = target.target;
-  const result = resolvedDamage > 0
-    ? applyDamageToTarget(entity as any, resolvedDamage)
+  const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(state, entity as any, resolvedDamage);
+  const appliedDamage = adjustedDamage;
+  const result = appliedDamage > 0
+    ? applyDamageToTarget(entity as any, appliedDamage)
     : { hpDamage: 0, shieldAbsorbed: 0 };
   state.events.push({
     id: randomUUID(),
@@ -423,14 +426,86 @@ function applyDamageToHostileTarget(params: {
     abilityId,
     abilityName,
     effectType,
-    value: resolvedDamage,
+    value: appliedDamage,
     isCrit: damageRoll.isCrit,
     shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
   } as any);
   if (result.hpDamage > 0) {
     processOnDamageTaken(state, entity as any, result.hpDamage, source.userId);
   }
-  return resolvedDamage;
+  if (redirectPlayer && redirectAmt > 0) {
+    applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
+  }
+  return appliedDamage;
+}
+
+function applyKnockbackToHostileTarget(params: {
+  state: GameState;
+  source: { userId: string; position: { x: number; y: number; z?: number } };
+  target: HostileDamageTarget;
+  ability: any;
+  distanceUnits: number;
+  durationTicks: number;
+  knockedBackBuffId?: number;
+}) {
+  const { state, source, target, ability, distanceUnits, durationTicks, knockedBackBuffId } = params;
+  const knockbackTarget = target.target as any;
+  const dx = knockbackTarget.position.x - source.position.x;
+  const dy = knockbackTarget.position.y - source.position.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 0.001) return false;
+  if (target.kind === "player" && hasKnockedBackImmune(knockbackTarget)) return false;
+
+  const dirX = dx / distance;
+  const dirY = dy / distance;
+  const knockbackDistance = gameplayUnitsToWorldUnits(distanceUnits, state.unitScale);
+  const moveTicks = Math.max(1, durationTicks);
+
+  delete knockbackTarget.activeDash;
+  if (knockbackTarget.velocity) {
+    knockbackTarget.velocity.vx = 0;
+    knockbackTarget.velocity.vy = 0;
+    knockbackTarget.velocity.vz = 0;
+  }
+
+  knockbackTarget.activeDash = {
+    abilityId: ability.id,
+    vxPerTick: (dirX * knockbackDistance) / moveTicks,
+    vyPerTick: (dirY * knockbackDistance) / moveTicks,
+    forceVzPerTick: 0,
+    maxUpVz: 0,
+    maxDownVz: 0,
+    ticksRemaining: moveTicks,
+    vzPerTick: 0,
+  } as any;
+
+  if (target.kind === "player" && typeof knockedBackBuffId === "number") {
+    const knockedBackBuff = knockedBackBuffId === 9101
+      ? {
+          buffId: 9101,
+          name: "击退",
+          category: "DEBUFF",
+          description: "被击退中，行动受限",
+          breakOnPlay: false,
+          effects: [{ type: "KNOCKED_BACK" }],
+        }
+      : ability?.buffs?.find((buff: any) => buff.buffId === knockedBackBuffId);
+    if (knockedBackBuff) {
+      addBuff({
+        state,
+        sourceUserId: source.userId,
+        targetUserId: knockbackTarget.userId,
+        ability,
+        buffTarget: knockbackTarget,
+        buff: {
+          ...knockedBackBuff,
+          durationMs: Math.max(1, Math.ceil((moveTicks * 1000) / 30)),
+        } as any,
+      });
+    }
+  }
+
+  return true;
 }
 
 function clearChannelStartBuffs(
@@ -519,10 +594,19 @@ function isChannelBuffRuntime(buff: { buffId: number }): boolean {
   return CHANNEL_BUFF_IDS.has(buff.buffId);
 }
 
+function hasLingRanTianFengState(player: {
+  buffs?: Array<{ effects?: Array<{ type?: string }> }>;
+}): boolean {
+  return Array.isArray(player.buffs) && player.buffs.some((buff) =>
+    buff.effects?.some((effect) => effect.type === "LING_RAN_TIAN_FENG_STATE")
+  );
+}
+
 function shouldSuppressJumpWhileChanneling(player: {
   activeChannel?: any;
   buffs?: Array<{ buffId: number; effects?: Array<{ type?: string }> }>;
 }): boolean {
+  if (hasLingRanTianFengState(player)) return false;
   if (player.activeChannel) return true;
   return Array.isArray(player.buffs) && player.buffs.some((buff) =>
     isChannelBuffRuntime(buff) || buff.effects?.some((effect) => effect.type === "NO_JUMP")
@@ -670,7 +754,7 @@ function applyType3KnockbackControl(params: {
     return { applied: false, removedStuns: false };
   }
 
-  if (hasKnockbackImmune(target)) {
+  if (hasKnockedBackImmune(target)) {
     return { applied: false, removedStuns: false };
   }
 
@@ -1073,9 +1157,15 @@ export class GameLoop {
         input = { ...input, jump: false };
         this.playerInputs.set(idx, input);
       }
+      const lingRanJumpLockImmune = hasLingRanTianFengState(player as any);
       if ((player as any).activeChannel?.lockMovement === true) {
         if (input) {
-          input = { ...input, dx: 0, dy: 0, jump: false };
+          input = {
+            ...input,
+            dx: 0,
+            dy: 0,
+            jump: lingRanJumpLockImmune ? input.jump : false,
+          };
           this.playerInputs.set(idx, input);
         }
         player.velocity.vx = 0;
@@ -1356,6 +1446,46 @@ export class GameLoop {
           movementStateChanged = true;
         }
         delete (player as any)._hunYaNuTaoSourceUserId;
+      }
+
+      if (dashAbilityIdBefore === "yuan" && !player.activeDash) {
+        const yuanAbility = ABILITIES["yuan"] as any;
+        const yuanTargetUserId = (dashStateBefore as any).yuanTargetUserId;
+        const yuanTargetEntityId = (dashStateBefore as any).yuanTargetEntityId;
+        const yuanTarget = yuanTargetEntityId
+          ? (this.state.entities ?? []).find((entity: any) => entity.id === yuanTargetEntityId)
+          : this.state.players.find((candidate) => candidate.userId === yuanTargetUserId);
+        const landingRangeUnits = Math.max(0, Number((dashStateBefore as any).yuanLandingRangeUnits ?? 4));
+        const knockbackRangeUnits = Math.max(0, Number((dashStateBefore as any).yuanKnockbackRangeUnits ?? 6));
+        const knockbackDistanceUnits = Math.max(0, Number((dashStateBefore as any).yuanKnockbackDistanceUnits ?? 6));
+        const knockbackTicks = Math.max(1, Number((dashStateBefore as any).yuanKnockbackTicks ?? 15));
+        if (
+          yuanAbility &&
+          yuanTarget &&
+          (yuanTarget.hp ?? 0) > 0 &&
+          calculateDistance(player.position, yuanTarget.position, storedUnitScale) <= landingRangeUnits
+        ) {
+          let knockedBackAny = false;
+          for (const hostile of getHostileDamageTargets(this.state, player.userId)) {
+            if (blocksEnemyTargeting(hostile.target as any)) continue;
+            const dist = getHostileDamageTargetRangeDistance(yuanTarget.position, hostile, storedUnitScale);
+            if (dist > knockbackRangeUnits) continue;
+            if (applyKnockbackToHostileTarget({
+              state: this.state,
+              source: { userId: player.userId, position: yuanTarget.position },
+              target: hostile,
+              ability: yuanAbility,
+              distanceUnits: knockbackDistanceUnits,
+              durationTicks: knockbackTicks,
+              knockedBackBuffId: 9101,
+            })) {
+              knockedBackAny = true;
+            }
+          }
+          if (knockedBackAny) {
+            movementStateChanged = true;
+          }
+        }
       }
 
       // 鹤归孤山: on dash end, deal damage + stun to nearby enemies, then give caster 0.5s dash buff
@@ -1731,7 +1861,7 @@ export class GameLoop {
 
                 // Knockback if the actual victim is within 15u of the actual source.
                 const distLhnGameplay = calculateDistance(lhnSource.position, lhnVictim.position, storedUnitScale);
-                if (distLhnGameplay <= 15 && !hasKnockbackImmune(lhnVictim as any)) {
+                if (distLhnGameplay <= 15 && !hasKnockedBackImmune(lhnVictim as any)) {
                   const dxK = lhnVictim.position.x - lhnSource.position.x;
                   const dyK = lhnVictim.position.y - lhnSource.position.y;
                   const lenK = Math.sqrt(dxK * dxK + dyK * dyK);
@@ -2750,7 +2880,20 @@ export class GameLoop {
                 base: e.value ?? 0,
                 damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
               });
-              applyDamageToTarget(player as any, dmg);
+              const {
+                adjustedDamage: timedApply,
+                redirectPlayer: timedRedirectPlayer,
+                redirectAmt: timedRedirectAmt,
+              } = preCheckRedirect(this.state, player as any, dmg);
+              const timedResult = timedApply > 0
+                ? applyDamageToTarget(player as any, timedApply)
+                : { hpDamage: 0, shieldAbsorbed: 0 };
+              if (timedResult.hpDamage > 0) {
+                processOnDamageTaken(this.state, player as any, timedResult.hpDamage, sourcePlayer.userId);
+              }
+              if (timedRedirectPlayer && timedRedirectAmt > 0) {
+                applyRedirectToOpponent(this.state, timedRedirectPlayer, timedRedirectAmt);
+              }
               if (dmg > 0) {
                 this.state.events.push({
                   id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -2760,7 +2903,8 @@ export class GameLoop {
                   abilityId: buff.sourceAbilityId,
                   abilityName: buff.sourceAbilityName ?? buff.name,
                   effectType: "TIMED_SELF_DAMAGE",
-                  value: dmg,
+                  value: timedApply,
+                  shieldAbsorbed: timedResult.shieldAbsorbed > 0 ? timedResult.shieldAbsorbed : undefined,
                 });
               }
               buffsChanged = true;
@@ -2933,6 +3077,24 @@ export class GameLoop {
       player.buffs = player.buffs.filter((b) => now < b.expiresAt);
       if (player.buffs.length !== before) buffsChanged = true;
 
+      if (!hasYuqiState(player as any, now)) {
+        const lingeringZongQingQi = player.buffs.filter((b) => b.buffId === ZONG_QING_QI_BUFF_ID);
+        if (lingeringZongQingQi.length > 0) {
+          player.buffs = player.buffs.filter((b) => b.buffId !== ZONG_QING_QI_BUFF_ID);
+          for (const buff of lingeringZongQingQi) {
+            pushBuffExpired(this.state, {
+              targetUserId: player.userId,
+              buffId: buff.buffId,
+              buffName: buff.name,
+              buffCategory: buff.category,
+              sourceAbilityId: buff.sourceAbilityId,
+              sourceAbilityName: buff.sourceAbilityName,
+            });
+          }
+          buffsChanged = true;
+        }
+      }
+
       // 无相诀 natural-expire check: if any snapshot DR tier expires naturally AND player hp < 10%, 贯体 heal 50%
       const wuxiangExpired = naturallyExpired.filter((b) => WU_XIANG_JUE_SNAPSHOT_BUFF_IDS.has(b.buffId));
       for (const _b of wuxiangExpired) {
@@ -3068,7 +3230,8 @@ export class GameLoop {
               damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
             });
             if (dmg > 0) {
-              const result = applyDamageToTarget(entity as any, dmg);
+              const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(this.state, entity as any, dmg);
+              const result = applyDamageToTarget(entity as any, adjustedDamage);
               this.state.events.push({
                 id: randomUUID(),
                 timestamp: now,
@@ -3080,11 +3243,14 @@ export class GameLoop {
                 abilityId: buff.sourceAbilityId,
                 abilityName: buff.sourceAbilityName ?? buff.name,
                 effectType: "PERIODIC_DAMAGE",
-                value: dmg,
+                value: adjustedDamage,
                 shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
               } as any);
               if (result.hpDamage > 0) {
                 processOnDamageTaken(this.state, entity as any, result.hpDamage, sourcePlayer?.userId ?? buff.sourceUserId ?? entity.ownerUserId);
+              }
+              if (redirectPlayer && redirectAmt > 0) {
+                applyRedirectToOpponent(this.state, redirectPlayer, redirectAmt);
               }
             }
             buffsChanged = true;
@@ -4127,7 +4293,25 @@ export class GameLoop {
                 base: e.value ?? 0,
                 damageType: (ABILITIES[stackBuff.sourceAbilityId ?? ""] as any)?.damageType,
               });
-              applyDamageToTarget(targetPlayer as any, dmg);
+              const {
+                adjustedDamage: stackApply,
+                redirectPlayer: stackRedirectPlayer,
+                redirectAmt: stackRedirectAmt,
+              } = preCheckRedirect(this.state, targetPlayer as any, dmg);
+              const stackResult = stackApply > 0
+                ? applyDamageToTarget(targetPlayer as any, stackApply)
+                : { hpDamage: 0, shieldAbsorbed: 0 };
+              if (stackResult.hpDamage > 0) {
+                processOnDamageTaken(
+                  this.state,
+                  targetPlayer as any,
+                  stackResult.hpDamage,
+                  stackBuff.sourceUserId ?? actor?.userId,
+                );
+              }
+              if (stackRedirectPlayer && stackRedirectAmt > 0) {
+                applyRedirectToOpponent(this.state, stackRedirectPlayer, stackRedirectAmt);
+              }
               stackBuff.stacks = (stackBuff.stacks ?? 1) - 1;
               stackBuff.lastProcAt = now;
               this.state.events.push({
@@ -4138,7 +4322,8 @@ export class GameLoop {
                 abilityId: stackBuff.sourceAbilityId,
                 abilityName: stackBuff.sourceAbilityName ?? stackBuff.name,
                 effectType: "STACK_ON_HIT_DAMAGE",
-                value: dmg,
+                value: stackApply,
+                shieldAbsorbed: stackResult.shieldAbsorbed > 0 ? stackResult.shieldAbsorbed : undefined,
               });
               if (stackBuff.stacks <= 0) {
                 targetPlayer.buffs.splice(bi, 1);

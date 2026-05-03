@@ -14,6 +14,7 @@ export type AbilityPropertyId =
   | "cannotCastWhileRooted"
   | "requiresGrounded"
   | "requiresStanding"
+  | "canCastWhileMounted"
   | "qinggong"
   | "allowGroundCastWithoutTarget"
   | "ignoreFacingRequirement"
@@ -263,6 +264,7 @@ function setBooleanAbilityField(
     | "cannotCastWhileRooted"
     | "requiresGrounded"
     | "requiresStanding"
+    | "canCastWhileMounted"
     | "allowGroundCastWithoutTarget",
   enabled: boolean
 ) {
@@ -886,6 +888,17 @@ const abilityPropertyDefinitions: AbilityPropertyDefinition[] = [
     getValue: (ability) => !!ability.qinggong,
     setValue: (ability, enabled) => {
       setBooleanAbilityField(ability, "qinggong", enabled);
+    },
+  },
+  {
+    id: "canCastWhileMounted",
+    label: "可以马上施展",
+    description: "角色处于御骑状态时，仍可施放该技能。",
+    group: "施放例外",
+    isApplicable: () => true,
+    getValue: (ability) => !!(ability as any).canCastWhileMounted,
+    setValue: (ability, enabled) => {
+      setBooleanAbilityField(ability, "canCastWhileMounted", enabled);
     },
   },
   {

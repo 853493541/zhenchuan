@@ -149,12 +149,84 @@ export const BASE_ABILITIES: AbilityRecord = {
   yuqi: {
     id: "yuqi",
     name: "御骑",
-    description: "【占位技能】",
-    type: "SUPPORT",
+    description: "未御骑时：需站立运功3秒，移动或跳跃会打断；完成后获得【御骑】\n已御骑时：瞬发解除【御骑】并下马\n御骑期间移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展带【可以马上施展】标记的招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
+    type: "CHANNEL",
     target: "SELF",
-    cooldownTicks: 300,
+    cooldownTicks: 0,
+    gcd: false,
+    requiresStanding: true,
+    canCastWhileMounted: true,
+    channelDurationMs: 3_000,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelLockMovement: false,
+    applyBuffsOnComplete: true,
+    channelCompleteBuffIds: [2741],
     effects: [],
+    buffs: [
+      {
+        buffId: 2741,
+        name: "御骑",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 365 * 24 * 60 * 60 * 1000,
+        description: "骑乘状态：移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展【可以马上施展】招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
+        effects: [{ type: "SPEED_BOOST", value: 1 }],
+      },
+    ],
     isCommon: true,
+  },
+
+  ren_chi_cheng: {
+    id: "ren_chi_cheng",
+    name: "任驰骋",
+    description: "运功0.5秒，期间可以移动但跳跃会打断；完成后获得【御骑】、【任驰骋】12秒（伤害提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
+    type: "CHANNEL",
+    target: "SELF",
+    cooldownTicks: 900,
+    gcd: true,
+    channelDurationMs: 500,
+    channelCancelOnMove: false,
+    channelCancelOnJump: true,
+    channelLockMovement: false,
+    applyBuffsOnComplete: true,
+    channelCompleteBuffIds: [2741, 2742, 2743],
+    effects: [],
+    buffs: [
+      {
+        buffId: 2741,
+        name: "御骑",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 365 * 24 * 60 * 60 * 1000,
+        description: "骑乘状态：移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展【可以马上施展】招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
+        effects: [{ type: "SPEED_BOOST", value: 1 }],
+      },
+      {
+        buffId: 2742,
+        name: "任驰骋",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 12_000,
+        description: "伤害提高15%",
+        effects: [{ type: "DAMAGE_MULTIPLIER", value: 1.15 }],
+      },
+      {
+        buffId: 2743,
+        name: "纵轻骑",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 5_000,
+        description: "免疫控制、沉默、恐惧与击退，但仍会被拉",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
+          { type: "FEAR_IMMUNE" },
+          { type: "KNOCKED_BACK_IMMUNE" },
+        ],
+      },
+    ],
+    isCommon: false,
   },
 
   /* ================= 基础攻击 ================= */
@@ -3206,6 +3278,39 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
   },
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // 凌然天风 — 轻功. Instant SELF cast, usable while moving or airborne.
+  // On cast: rise up 9u in 0.5s and gain a 7s buff that grants control immunity
+  // (except pull / knockback), +5u range, disables normal jumps, and manages
+  // a separate 0/1 special-jump allowance.
+  // ──────────────────────────────────────────────────────────────────────────
+  ling_ran_tian_feng: {
+    id: "ling_ran_tian_feng",
+    name: "凌然天风",
+    description: "轻功，瞬发，自身施放，可移动中或空中施放\n向上跃起9尺（0.5秒）\n获得【凌然天风】7秒：特殊跳跃状态，免疫控制（被拉和击退除外），招式施展距离增加5尺，期间禁用普通跳跃\n施放时获得1次特殊跳跃次数；期间每次施放招式都会刷新至1次",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    qinggong: true,
+    effects: [{ type: "LING_RAN_TIAN_FENG_CAST", value: 9, durationTicks: 15 } as any],
+    buffs: [
+      {
+        buffId: 2654,
+        name: "凌然天风",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 7_000,
+        description: "特殊跳跃状态；免疫控制（被拉和击退除外），招式施展距离增加5尺，期间禁用普通跳跃",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "RANGE_BOOST", value: 5 },
+          { type: "LING_RAN_TIAN_FENG_STATE" },
+        ],
+      },
+    ],
+  },
+
   jing_hong_you_long: {
     id: "jing_hong_you_long",
     name: "惊鸿游龙",
@@ -3577,6 +3682,95 @@ export const BASE_ABILITIES: AbilityRecord = {
         effects: [{ type: "CONTROL" }],
       },
     ],
+  },
+
+  she_shen_jue: {
+    id: "she_shen_jue",
+    name: "舍身诀",
+    description: "瞬发，友方目标\n移除目标控制效果（倒地除外）\n使目标获得【舍身诀·减伤】10秒：伤害降低30%\n使目标获得【舍身诀】10秒：转移受到的伤害\n施法者获得【舍身诀·承伤】10秒：代替目标承受转移伤害，转移伤害不受减伤与护盾影响，但可被免伤抵消",
+    type: "SUPPORT",
+    target: "OPPONENT",
+    friendlyTarget: true,
+    cooldownTicks: 360,
+    gcd: true,
+    range: 20,
+    effects: [{ type: "SHESHEN_JUE" }],
+    buffs: [
+      {
+        buffId: 2736,
+        name: "舍身诀·减伤",
+        category: "BUFF",
+        applyTo: "OPPONENT",
+        durationMs: 10_000,
+        description: "伤害降低30%",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.3 }],
+      },
+      {
+        buffId: 2737,
+        name: "舍身诀",
+        category: "BUFF",
+        applyTo: "OPPONENT",
+        durationMs: 10_000,
+        description: "转移受到的伤害",
+        effects: [],
+      },
+      {
+        buffId: 2738,
+        name: "舍身诀·承伤",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 10_000,
+        description: "代替目标承受舍身转移的伤害",
+        effects: [],
+      },
+    ],
+  },
+
+  yuan: {
+    id: "yuan",
+    name: "渊",
+    description: "瞬发，友方目标，6-20码\n冲向目标\n击退目标周围6码内敌人12码，持续0.25秒\n目标获得【渊】，自身获得【渊·承伤】：目标下一次受到的伤害改由施法者承受，触发后两者同时消失",
+    type: "SUPPORT",
+    target: "OPPONENT",
+    friendlyTarget: true,
+    cooldownTicks: 300,
+    gcd: true,
+    range: 20,
+    minRange: 6,
+    effects: [{ type: "YUAN_GUARD", range: 6, value: 12, durationTicks: 8 } as any],
+    buffs: [
+      {
+        buffId: 2739,
+        name: "渊",
+        category: "BUFF",
+        applyTo: "OPPONENT",
+        durationMs: 10_000,
+        description: "下一次受到的伤害改由施法者承受，触发后与【渊·承伤】同时消失",
+        effects: [],
+      },
+      {
+        buffId: 2740,
+        name: "渊·承伤",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 10_000,
+        description: "为【渊】目标承受下一次受到的伤害，触发后消失",
+        effects: [],
+      },
+    ],
+  },
+
+  ting_feng_chui_xue: {
+    id: "ting_feng_chui_xue",
+    name: "听风吹雪",
+    description: "瞬发，友方目标\n令自身与目标的当前气血变为双方当前气血平均值\n随后双方各回复20点贯体气血",
+    type: "SUPPORT",
+    target: "OPPONENT",
+    friendlyTarget: true,
+    cooldownTicks: 360,
+    gcd: true,
+    range: 20,
+    effects: [{ type: "TING_FENG_CHUI_XUE", value: 20 }],
   },
 
   // ─── 碎星辰 — channel 0.5s (forward), movable/air, self zone 15u 30s: +10% 外功会心, +15% 外功会心效果 ───
@@ -4809,6 +5003,25 @@ export interface NoWeaponRequiredSnapshot {
 
 export type NoWeaponRequiredOverrideMode = "manual-include" | "manual-exclude" | "clear";
 
+export interface CanCastWhileMountedAbilityEntry {
+  id: string;
+  name: string;
+  description: string;
+  type: Ability["type"];
+  target: Ability["target"];
+  baseCanCastWhileMounted: boolean;
+  manualCanCastWhileMounted: boolean;
+  manuallyExcluded: boolean;
+  canCastWhileMounted: boolean;
+}
+
+export interface CanCastWhileMountedSnapshot {
+  updatedAt: string | null;
+  abilities: CanCastWhileMountedAbilityEntry[];
+}
+
+export type CanCastWhileMountedOverrideMode = "manual-include" | "manual-exclude" | "clear";
+
 function hasAbilityOverrideContent(entry: AbilityEditorOverrideEntry) {
   return Boolean(
     entry.tags ||
@@ -4868,6 +5081,44 @@ export function buildNoWeaponRequiredSnapshot(): NoWeaponRequiredSnapshot {
     })
     .sort((left, right) => {
       const selectedDelta = Number(right.noWeaponRequired) - Number(left.noWeaponRequired);
+      if (selectedDelta !== 0) return selectedDelta;
+      const excludedDelta = Number(right.manuallyExcluded) - Number(left.manuallyExcluded);
+      if (excludedDelta !== 0) return excludedDelta;
+      const typeDelta = ABILITY_TYPE_ORDER[left.type] - ABILITY_TYPE_ORDER[right.type];
+      if (typeDelta !== 0) return typeDelta;
+      return left.name.localeCompare(right.name, "zh-Hans-CN");
+    });
+
+  return {
+    updatedAt: abilityPropertyOverridesUpdatedAt,
+    abilities,
+  };
+}
+
+export function buildCanCastWhileMountedSnapshot(): CanCastWhileMountedSnapshot {
+  const resolvedAbilities = buildResolvedAbilities(BASE_ABILITIES, abilityPropertyOverrides);
+
+  const abilities = Object.values(resolvedAbilities)
+    .filter((ability) => (ability as any).specialBarAbility !== true)
+    .map((ability) => {
+      const override = abilityPropertyOverrides[ability.id];
+      const propertyOverride = override?.properties?.canCastWhileMounted;
+      const baseCanCastWhileMounted = BASE_ABILITIES[ability.id]?.canCastWhileMounted === true;
+
+      return {
+        id: ability.id,
+        name: ability.name,
+        description: ability.description,
+        type: ability.type,
+        target: ability.target,
+        baseCanCastWhileMounted,
+        manualCanCastWhileMounted: propertyOverride === true,
+        manuallyExcluded: propertyOverride === false,
+        canCastWhileMounted: (ability as any).canCastWhileMounted === true,
+      } satisfies CanCastWhileMountedAbilityEntry;
+    })
+    .sort((left, right) => {
+      const selectedDelta = Number(right.canCastWhileMounted) - Number(left.canCastWhileMounted);
       if (selectedDelta !== 0) return selectedDelta;
       const excludedDelta = Number(right.manuallyExcluded) - Number(left.manuallyExcluded);
       if (excludedDelta !== 0) return excludedDelta;
@@ -5121,4 +5372,43 @@ export function setAbilityNoWeaponRequiredOverride(abilityId: string, mode: NoWe
   rebuildAbilities();
 
   return buildNoWeaponRequiredSnapshot();
+}
+
+export function setAbilityCanCastWhileMountedOverride(abilityId: string, mode: CanCastWhileMountedOverrideMode) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
+  }
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+  };
+  const nextProperties = {
+    ...(nextEntry.properties ?? {}),
+  };
+
+  if (mode === "manual-include") {
+    nextProperties.canCastWhileMounted = true;
+  } else if (mode === "manual-exclude") {
+    nextProperties.canCastWhileMounted = false;
+  } else {
+    delete nextProperties.canCastWhileMounted;
+  }
+
+  if (Object.keys(nextProperties).length > 0) {
+    nextEntry.properties = nextProperties;
+  } else {
+    delete nextEntry.properties;
+  }
+
+  if (hasAbilityOverrideContent(nextEntry)) {
+    abilityPropertyOverrides[abilityId] = nextEntry;
+  } else {
+    delete abilityPropertyOverrides[abilityId];
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+
+  return buildCanCastWhileMountedSnapshot();
 }

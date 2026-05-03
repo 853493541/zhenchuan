@@ -59,6 +59,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       channel: (ability as any).channel,
       gcd: !!(ability as any).gcd,
       target: ability.target,
+      friendlyTarget: !!(ability as any).friendlyTarget,
       canTargetSelf: !!(ability as any).canTargetSelf,
       effects: ability.effects ?? [],
 
@@ -83,7 +84,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
 
       // Opponent-target abilities require facing by default unless explicitly disabled.
       faceDirection:
-        ability.target === "OPPONENT"
+        ability.target === "OPPONENT" && (ability as any).friendlyTarget !== true
           ? (ability as any).faceDirection !== false
           : !!(ability as any).faceDirection,
 
@@ -110,6 +111,9 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
 
       // 可在缴械时施放的特殊技能。
       noWeaponRequired: !!(ability as any).noWeaponRequired,
+
+      // 御骑期间允许施放的招式。
+      canCastWhileMounted: !!(ability as any).canCastWhileMounted,
 
       // Editor/runtime cast exception flags.
       allowWhileControlled:

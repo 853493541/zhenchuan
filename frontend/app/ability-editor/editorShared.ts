@@ -1,4 +1,5 @@
 import { resolveBuffIconPath } from "../lib/buffIcons";
+import { getAbilityIconPath } from "../lib/iconPaths";
 
 export type PropertyCatalogItem = {
   id: string;
@@ -209,6 +210,23 @@ export type NoWeaponRequiredSnapshot = {
   abilities: NoWeaponRequiredEntry[];
 };
 
+export type CanCastWhileMountedEntry = {
+  id: string;
+  name: string;
+  description: string;
+  type: AbilityEditorAbility["type"];
+  target: AbilityEditorAbility["target"];
+  baseCanCastWhileMounted: boolean;
+  manualCanCastWhileMounted: boolean;
+  manuallyExcluded: boolean;
+  canCastWhileMounted: boolean;
+};
+
+export type CanCastWhileMountedSnapshot = {
+  updatedAt: string | null;
+  abilities: CanCastWhileMountedEntry[];
+};
+
 export function getBuffSubtitle(entry: Pick<BuffEditorEntry, "category" | "attribute">): string {
   // No valid attribute → no tag at all
   const validAttr = entry.attribute !== "未选择" && entry.attribute !== "无";
@@ -235,7 +253,7 @@ export const targetTypeLabel: Record<AbilityEditorAbility["target"], string> = {
 };
 
 export function getAbilityIconByName(abilityName: string) {
-  return `/icons/${abilityName}.png`;
+  return getAbilityIconPath(abilityName);
 }
 
 export function getBuffIconPath(entry: Pick<BuffEditorEntry, "name" | "iconPath">): string {

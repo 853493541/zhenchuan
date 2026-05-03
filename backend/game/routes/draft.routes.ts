@@ -1369,17 +1369,18 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
 
 /**
  * POST /cheat/spawn-dummy - Spawn a target dummy entity at a world position.
- * Body: { gameId, side: "enemy" | "ally", x, y, z }
+ * Body: { gameId, side: "enemy" | "ally", x, y, z, maxHp? }
  *  - side="enemy": ownerUserId set to opponent's userId (or synthetic), so the
  *    caller treats it as an enemy and can target/damage it.
  *  - side="ally":  ownerUserId set to caller's userId; the caller's opponent
  *    treats it as their enemy.
- * Dummies have 200 HP, no intrinsic immunities, and persist 10 minutes.
+ * Dummies default to 200 HP, can override maxHp, have no intrinsic immunities,
+ * and persist 10 minutes.
  */
 router.post("/cheat/spawn-dummy", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, side, x, y, z } = req.body;
+    const { gameId, side, x, y, z, maxHp } = req.body;
 
     if (side !== "enemy" && side !== "ally") {
       return res.status(400).json({ error: "side must be 'enemy' or 'ally'" });
@@ -1388,6 +1389,7 @@ router.post("/cheat/spawn-dummy", async (req, res) => {
       return res.status(400).json({ error: "x/y must be numbers" });
     }
     const zNum = Number.isFinite(z) ? Number(z) : 0;
+    const dummyMaxHp = Number.isFinite(maxHp) ? Math.max(1, Math.floor(Number(maxHp))) : 200;
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -1419,8 +1421,8 @@ router.post("/cheat/spawn-dummy", async (req, res) => {
       ownerUserId,
       position: { x: Number(x), y: Number(y), z: zNum },
       radius,
-      hp: 200,
-      maxHp: 200,
+      hp: dummyMaxHp,
+      maxHp: dummyMaxHp,
       shield: 0,
       buffs: [],
       expiresAt: now + 600_000,

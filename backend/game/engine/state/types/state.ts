@@ -106,6 +106,11 @@ export interface PlayerState {
   jumpCount?: number;
 
   /**
+   * 凌然天风 special-jump charges remaining (0 or 1 while the buff is active).
+   */
+  lingRanTianFengCharges?: number;
+
+  /**
    * True when the current airtime was initiated by a power jump (扶摇直上).
    * Uses separate steeper gravity so the power jump arc is distinct.
    * Cleared on landing.
@@ -178,6 +183,8 @@ export interface PlayerState {
     abilityId: string;
     vxPerTick: number;    // horizontal X step per tick (units/tick)
     vyPerTick: number;    // horizontal Y step per tick (units/tick)
+    lingRanCastLift?: boolean;
+    sustainWhileChannelAbilityId?: string;
     speedPerTick?: number; // optional steering speed (units/tick)
     steerByFacing?: boolean;
     wallDiveOnBlock?: boolean;
@@ -201,6 +208,14 @@ export interface PlayerState {
 
   /** Active channel (e.g. 云飞玉皇). Set at cast, cleared on completion or cancel. */
   activeChannel?: ActiveChannel;
+
+  /**
+   * Intentional 凌然天风 -> 九霄风雷 bug interaction state.
+   * While the matching channel remains active, movement.ts keeps or recreates the
+   * Lingran cast-lift upward dash instead of letting it end normally.
+   */
+  lingRanCastLiftSustainChannelAbilityId?: string;
+  lingRanCastLiftSustainVzPerTick?: number;
 
   /**
    * Anti-race cast lock after jump input is queued.

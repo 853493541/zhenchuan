@@ -60,6 +60,9 @@ export function applyAbilityBuffs(params: {
     ability.id === "han_ru_lei" ||
     ability.id === "wu_xiang_jue" ||
     ability.id === "ren_jian_he_yi" ||
+    ability.id === "she_shen_jue" ||
+    ability.id === "yuan" ||
+    ability.id === "ting_feng_chui_xue" ||
     ability.id === "long_zhan_yu_ye" ||
     ability.id === "shou_que_shi" ||
     ability.id === "hua_die" ||

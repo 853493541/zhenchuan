@@ -29,6 +29,8 @@ export interface GameEvent {
   abilityId?: string;
   abilityName?: string;
   abilityInstanceId?: string;
+  hideAbilityName?: boolean;
+  suppressCritLabel?: boolean;
 
   effectType?: EffectType;
   value?: number;

@@ -7,6 +7,7 @@
 import type { AbilityInstance } from "../types";
 import { useState } from "react";
 import styles from "./SelectedAbilities.module.css";
+import { getAbilityIconPath } from "@/app/lib/iconPaths";
 
 type Props = {
   selected: AbilityInstance[];
@@ -52,7 +53,7 @@ export default function SelectedAbilities({
                 <>
                   {!failedImages.has(ability.abilityId) ? (
                     <img 
-                      src={`/icons/${abilityDef.name}.png`} 
+                      src={getAbilityIconPath(abilityDef.name) ?? '/icons/fallback.png'} 
                       alt={abilityDef.name} 
                       className={styles.portrait}
                       onError={() => handleImageError(ability.abilityId)}

@@ -5,6 +5,7 @@ import { blocksEnemyTargeting } from "../../rules/guards";
 import { resolveScheduledDamage } from "../../utils/combatMath";
 import { applyDamageToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
+import { applyRedirectToOpponent, preCheckRedirect, processOnDamageTaken } from "../onDamageHooks";
 
 export function handleBonusDamageIfHpGt(
   state: GameState,
@@ -39,8 +40,20 @@ export function handleBonusDamageIfHpGt(
     base: bonus,
   });
 
+  let eventDamage = final;
+  let shieldAbsorbed = 0;
+
   if (final > 0) {
-    applyDamageToTarget(target as any, final);
+    const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(state, target as any, final);
+    eventDamage = adjustedDamage;
+    if (adjustedDamage > 0) {
+      const result = applyDamageToTarget(target as any, adjustedDamage);
+      shieldAbsorbed = result.shieldAbsorbed;
+      processOnDamageTaken(state, target as any, result.hpDamage, source.userId);
+    }
+    if (redirectPlayer && redirectAmt > 0) {
+      applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
+    }
   }
 
   pushEvent(state, {
@@ -51,6 +64,7 @@ export function handleBonusDamageIfHpGt(
     abilityId: ability.id,
     abilityName: ability.name,
     effectType: "DAMAGE",
-    value: final,
+    value: eventDamage,
+    shieldAbsorbed: shieldAbsorbed > 0 ? shieldAbsorbed : undefined,
   });
 }
