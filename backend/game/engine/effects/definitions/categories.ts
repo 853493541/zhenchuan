@@ -42,6 +42,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   PERIODIC_DAMAGE: "DEBUFF",
   CHANNEL_AOE_TICK: "BUFF",
   CONTROL: "DEBUFF",
+  MIYUN_IMMUNE: "BUFF",
 
   // ✅ Channel buffs are BUFFs (self-cast)
   FENGLAI_CHANNEL: "BUFF",
@@ -185,6 +186,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   QIN_YIN_GONG_MING: "ABILITY",
   FEAR_IMMUNE: "BUFF",
   FEARED: "DEBUFF",
+  MIYUN_CONFUSION: "DEBUFF",
   SHI_XIN_GU: "DEBUFF",
   SHI_XIN_MARK: "DEBUFF",
   HONG_MENG_TIAN_JIN: "DEBUFF",

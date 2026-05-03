@@ -21,6 +21,7 @@ import {
   isJumpBoostBuff,
   shouldBreakYuqiOnIncomingControl,
 } from "../utils/yuqi";
+import { MIYUN_CONFUSION_BUFF_ID, WU_AN_MI_YUN_ABILITY_ID, WUSHI_IMMUNE_BUFF_ID, hasWuShiImmunity } from "../utils/miyun";
 
 /* ================= Utilities ================= */
 
@@ -550,6 +551,14 @@ export function addBuff(params: {
     return;
   }
 
+  if (
+    sourceUserId !== targetUserId &&
+    runtimeBuff.effects.some((e) => e.type === "MIYUN_CONFUSION") &&
+    hasWuShiImmunity(buffTarget, now)
+  ) {
+    return;
+  }
+
   // 盾立 reflect: any debuff applied to a 盾立 holder is redirected at the
   // original caster (unless the ability is whitelisted).
   if (
@@ -1053,4 +1062,22 @@ export function pushBuffExpired(
     buffName,
     buffCategory,
   });
+
+  if (buffId === MIYUN_CONFUSION_BUFF_ID) {
+    const miYunAbility = ABILITIES[WU_AN_MI_YUN_ABILITY_ID] as any;
+    const wuShiBuff = miYunAbility?.buffs?.find((buff: any) => buff.buffId === WUSHI_IMMUNE_BUFF_ID);
+    const buffTarget = (state.players as any[]).find((player: any) => player.userId === targetUserId)
+      ?? (state.entities ?? []).find((entity: any) => entity.userId === targetUserId)
+      ?? null;
+    if (wuShiBuff && buffTarget && (buffTarget.hp ?? 0) > 0) {
+      addBuff({
+        state,
+        sourceUserId: targetUserId,
+        targetUserId,
+        ability: miYunAbility,
+        buffTarget,
+        buff: wuShiBuff,
+      });
+    }
+  }
 }

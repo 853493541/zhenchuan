@@ -27,6 +27,7 @@ export type EffectType =
   | "LOCKOUT_IMMUNE"
   | "SILENCE_IMMUNE"
   | "FEAR_IMMUNE"
+  | "MIYUN_IMMUNE"
   | "QINGGONG_SEAL"
   | "KNOCKBACK_IMMUNE"
   | "KNOCKED_BACK_IMMUNE"
@@ -190,6 +191,7 @@ export type EffectType =
   | "NON_QINGGONG_LOCK"
   // 恐惧: silence + forced walk away from sourceUserId
   | "FEARED"
+  | "MIYUN_CONFUSION"
   // 蚀心蛊: lose control and either march in a stored direction or stand still
   | "SHI_XIN_GU"
   // 蚀心: repeat-hit marker that halves the next 蚀心蛊 duration

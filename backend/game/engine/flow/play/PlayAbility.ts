@@ -30,6 +30,8 @@ export function applyAbility(
     targetUserId?: string;
     groundTarget?: { x: number; y: number; z?: number };
     entityTargetId?: string;
+    ignoreTargetAllegiance?: boolean;
+    forceEnemyApplied?: boolean;
   }
 ) {
   if (state.gameOver) return;
@@ -140,6 +142,7 @@ export function applyAbility(
     target,
     entityTarget,
     abilityDodged,
+    forceEnemyApplied: castContext?.forceEnemyApplied,
   });
 
   // 绛唇珠袖: manually apply only the cast-time debuff (2323) to the opponent.

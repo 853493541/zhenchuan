@@ -3951,6 +3951,45 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
   },
 
+  wu_an_mi_yun: {
+    id: "wu_an_mi_yun",
+    name: "雾暗迷云",
+    description: "运功1.5秒，期间必须站立不动；完成后使目标获得【迷云】8秒：陷入混乱，释放技能时重新随机目标且不分敌我；【迷云】消失后获得【雾释】20秒：不会受到迷云影响",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    requiresStanding: true,
+    channelDurationMs: 1_500,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelLockMovement: false,
+    applyBuffsOnComplete: true,
+    channelCompleteBuffIds: [2744],
+    effects: [],
+    buffs: [
+      {
+        buffId: 2744,
+        name: "迷云",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 8_000,
+        description: "陷入混乱，释放技能时重新随机目标且不分敌我；消失后获得【雾释】20秒",
+        effects: [{ type: "MIYUN_CONFUSION" }],
+      },
+      {
+        buffId: 2745,
+        name: "雾释",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 20_000,
+        description: "不会受到迷云影响",
+        effects: [{ type: "MIYUN_IMMUNE" }],
+      },
+    ],
+  },
+
   // ──────────────────────────────────────────────────────────────────────────
   // 灭 — instant, range 4: 2 dmg; if self hp<10%: 12 dmg + MIN_HP_1 buff 3s
   // ──────────────────────────────────────────────────────────────────────────

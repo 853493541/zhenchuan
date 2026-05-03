@@ -225,7 +225,7 @@ async function playCastAbility(
 
   // Validate ability can be cast (cooldown, range, silence, grounded lock)
   const mapCtx = loop.getMapCtx();
-  validateCastAbility(state, playerIndex, abilityInstanceId, {
+  const validatedCast = validateCastAbility(state, playerIndex, abilityInstanceId, {
     ignoreActiveChannel: true,
     pendingJump: loop.hasPendingJump(playerIndex),
     targetUserId,
@@ -236,6 +236,9 @@ async function playCastAbility(
     collisionSystem: mapCtx.collisionSystem ?? null,
     minLOSBlockH: mapCtx.collisionSystem ? 5.5 : 0,
   });
+  const resolvedTargetUserId = validatedCast?.targetUserId ?? targetUserId;
+  const resolvedEntityTargetId = validatedCast?.entityTargetId ?? entityTargetId;
+  const confusionRetargeted = validatedCast?.confusionRetargeted === true;
 
   const prevState: GameState = structuredClone(state);
 
@@ -321,15 +324,15 @@ async function playCastAbility(
       ability.target === 'SELF' || isFriendlyTargetAbility
         ? playerIndex
         : (playerIndex === 0 ? 1 : 0);
-    if (ability.target === "OPPONENT" && targetUserId) {
-      const explicitTargetIdx = state.players.findIndex((p) => p.userId === targetUserId);
+    if (ability.target === "OPPONENT" && resolvedTargetUserId) {
+      const explicitTargetIdx = state.players.findIndex((p) => p.userId === resolvedTargetUserId);
       if (explicitTargetIdx >= 0) {
         targetIndex = explicitTargetIdx;
       }
     }
     const target = state.players[targetIndex];
-    const targetEntity = entityTargetId
-      ? (state.entities ?? []).find((entity: any) => entity.id === entityTargetId) ?? null
+    const targetEntity = resolvedEntityTargetId
+      ? (state.entities ?? []).find((entity: any) => entity.id === resolvedEntityTargetId) ?? null
       : null;
 
     // Pure channels are driven by activeChannel in GameLoop and apply cooldown on completion.
@@ -476,9 +479,11 @@ async function playCastAbility(
 
       // Apply ability effects
       applyEffects(state, ability, playerIndex, targetIndex, mapCtx, {
-        targetUserId,
+        targetUserId: resolvedTargetUserId,
         groundTarget,
-        entityTargetId,
+        entityTargetId: resolvedEntityTargetId,
+        ignoreTargetAllegiance: confusionRetargeted,
+        forceEnemyApplied: confusionRetargeted ? ((ability as any).friendlyTarget !== true) : undefined,
       });
       applyOnPlayBuffEffects(state, playerIndex);
 

@@ -28,8 +28,9 @@ export function applyAbilityBuffs(params: {
   target: { userId: string; buffs: ActiveBuff[] };
   entityTarget?: { userId: string; buffs: ActiveBuff[] } | null;
   abilityDodged: boolean;
+  forceEnemyApplied?: boolean;
 }) {
-  const { state, ability, source, target, entityTarget, abilityDodged } = params;
+  const { state, ability, source, target, entityTarget, abilityDodged, forceEnemyApplied } = params;
 
   // 百足/五方行尽/棒打狗头/大狮子吼 buff application is handled via custom immediate effect logic.
   // 撼地 stun is applied by the post-dash GameLoop handler (only when enemy is within AOE range on landing).
@@ -97,7 +98,7 @@ export function applyAbilityBuffs(params: {
 
   // Ability-level target (used as fallback when buff has no applyTo override)
   const abilityBuffTarget = ability.target === "SELF" ? source : (entityTarget ?? target);
-  const abilityEnemyApplied = abilityBuffTarget.userId !== source.userId;
+  const abilityEnemyApplied = forceEnemyApplied ?? (abilityBuffTarget.userId !== source.userId);
 
   // Dodge cancels enemy-applied buffs only (ability-level check)
   if (shouldSkipDueToDodge(abilityDodged, abilityEnemyApplied)) return;
@@ -112,7 +113,10 @@ export function applyAbilityBuffs(params: {
       buff.applyTo === "SELF" ? source
       : buff.applyTo === "OPPONENT" ? (entityTarget ?? target)
       : abilityBuffTarget;
-    const localEnemyApplied = localBuffTarget.userId !== source.userId;
+    const localEnemyApplied =
+      buff.applyTo === "SELF"
+        ? false
+        : (forceEnemyApplied ?? (localBuffTarget.userId !== source.userId));
 
     const isControl =
       Array.isArray(buff.effects) &&

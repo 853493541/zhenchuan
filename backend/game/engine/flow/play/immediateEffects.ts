@@ -1,7 +1,7 @@
 // engine/flow/applyImmediateEffects.ts
 import { randomUUID } from "crypto";
 import { resolveEffectTargetIndex } from "../../utils/targeting";
-import { blocksEnemyTargeting, isEnemyEffect, shouldSkipDueToDodge, hasKnockbackImmune, hasKnockedBackImmune, hasDamageImmune, blocksControlByImmunity } from "../../rules/guards";
+import { blocksEnemyTargeting, isAlwaysSelfEffect, isEnemyEffect, shouldSkipDueToDodge, hasKnockbackImmune, hasKnockedBackImmune, hasDamageImmune, blocksControlByImmunity } from "../../rules/guards";
 import {
   handleDamage,
   handleBonusDamageIfHpGt,
@@ -44,6 +44,7 @@ import {
 } from "../../utils/chuHeHanJieWall";
 import { triggerYunSanBlink } from "../../utils/yunSan";
 import { buildStolenBuffDefinition, isQinYinGongMingBuffStealable } from "../../../abilities/qinYinGongMing";
+import { rerollMiYunAreaTargets } from "../../utils/miyun";
 
 const WUFANG_ROOT_BUFF_ID = 1330;
 const WUFANG_HIT_PROTECT_BUFF_ID = 1331;
@@ -317,7 +318,8 @@ function getImmediateEnemyBuffTargets(
   state: any,
   sourceUserId: string,
   center: { x: number; y: number },
-  radius: number
+  radius: number,
+  rerollForMiYun: boolean = true,
 ): ImmediateEnemyDamageTarget[] {
   const targets: ImmediateEnemyDamageTarget[] = [];
 
@@ -337,7 +339,18 @@ function getImmediateEnemyBuffTargets(
     targets.push({ kind: "entity", target: entity });
   }
 
-  return targets;
+  if (!rerollForMiYun) return targets;
+
+  const source = (state.players ?? []).find((candidate: any) => candidate.userId === sourceUserId);
+  const rerolledTargets = rerollMiYunAreaTargets({
+    state,
+    source,
+    sourceUserId,
+    originalSlotCount: targets.length,
+    center,
+    radiusWorld: radius,
+  });
+  return (rerolledTargets as ImmediateEnemyDamageTarget[] | null) ?? targets;
 }
 
 function isImmediateStealthBuff(buff: any) {
@@ -380,24 +393,29 @@ function removeImmediateStealthBuffs(state: any, target: any) {
   return removed.length > 0;
 }
 
-function getExplicitEnemyEntityTarget(state: any, sourceUserId: string, entityTargetId?: string) {
+function getExplicitEntityTarget(state: any, entityTargetId?: string) {
   if (!entityTargetId || !Array.isArray(state.entities)) return null;
   const entity = state.entities.find((candidate: any) => candidate.id === entityTargetId);
-  if (!entity || entity.hp <= 0 || entity.ownerUserId === sourceUserId) return null;
+  if (!entity || entity.hp <= 0) return null;
   return entity;
 }
 
 function getExplicitFriendlyEntityTarget(state: any, sourceUserId: string, entityTargetId?: string) {
-  if (!entityTargetId || !Array.isArray(state.entities)) return null;
-  const entity = state.entities.find((candidate: any) => candidate.id === entityTargetId);
+  const entity = getExplicitEntityTarget(state, entityTargetId);
   if (!entity || entity.hp <= 0 || entity.ownerUserId !== sourceUserId) return null;
   return entity;
 }
 
-function getExplicitEnemyPlayerTarget(state: any, sourceUserId: string, targetUserId?: string) {
+function getExplicitEnemyPlayerTarget(
+  state: any,
+  sourceUserId: string,
+  targetUserId?: string,
+  ignoreTargetAllegiance?: boolean,
+) {
   if (!targetUserId || !Array.isArray(state.players)) return null;
   const target = state.players.find((candidate: any) => candidate.userId === targetUserId);
   if (!target || target.userId === sourceUserId || (target.hp ?? 0) <= 0) return null;
+  if (ignoreTargetAllegiance) return target;
   if (blocksEnemyTargeting(target)) return null;
   return target;
 }
@@ -412,7 +430,18 @@ function getExplicitPlayerTarget(state: any, targetUserId?: string) {
 function resolveFriendlySupportTarget(state: any, source: any, castContext?: {
   targetUserId?: string;
   entityTargetId?: string;
+  ignoreTargetAllegiance?: boolean;
 }) {
+  if (castContext?.ignoreTargetAllegiance === true) {
+    const confusionEntityTarget = getExplicitEntityTarget(state, castContext?.entityTargetId);
+    if (confusionEntityTarget) return confusionEntityTarget;
+
+    const confusionPlayerTarget = getExplicitPlayerTarget(state, castContext?.targetUserId);
+    if (confusionPlayerTarget) return confusionPlayerTarget;
+
+    return source;
+  }
+
   const friendlyEntityTarget = getExplicitFriendlyEntityTarget(
     state,
     source.userId,
@@ -530,7 +559,7 @@ function getForwardConeEnemyTargets(params: {
   const facing = getSourceFacingUnit(source);
   const halfAngleCos = Math.cos((coneAngleDeg / 2) * Math.PI / 180);
 
-  return getImmediateEnemyBuffTargets(state, source.userId, source.position, radius).filter((candidate) => {
+  const coneTargets = getImmediateEnemyBuffTargets(state, source.userId, source.position, radius, false).filter((candidate) => {
     const dx = (candidate.target.position?.x ?? 0) - source.position.x;
     const dy = (candidate.target.position?.y ?? 0) - source.position.y;
     const distance = Math.hypot(dx, dy);
@@ -538,6 +567,18 @@ function getForwardConeEnemyTargets(params: {
     const dot = (facing.x * dx + facing.y * dy) / distance;
     return dot >= halfAngleCos;
   });
+
+  const rerolledTargets = rerollMiYunAreaTargets({
+    state,
+    source,
+    sourceUserId: source.userId,
+    originalSlotCount: coneTargets.length,
+    center: source.position,
+    radiusWorld: radius,
+    coneAngleDeg,
+    facing,
+  });
+  return (rerolledTargets as ImmediateEnemyDamageTarget[] | null) ?? coneTargets;
 }
 
 function pullImmediateTargetTowardAnchor(params: {
@@ -871,7 +912,16 @@ function getImmediateEnemyDamageTargets(
     targets.push({ kind: "entity", target: entity });
   }
 
-  return targets;
+  const source = (state.players ?? []).find((candidate: any) => candidate.userId === sourceUserId);
+  const rerolledTargets = rerollMiYunAreaTargets({
+    state,
+    source,
+    sourceUserId,
+    originalSlotCount: targets.length,
+    center,
+    radiusWorld: radius,
+  });
+  return (rerolledTargets as ImmediateEnemyDamageTarget[] | null) ?? targets;
 }
 
 function applyImmediateDamageToEnemyTarget(params: {
@@ -994,6 +1044,8 @@ export function applyImmediateEffects(params: {
     targetUserId?: string;
     groundTarget?: { x: number; y: number; z?: number };
     entityTargetId?: string;
+    ignoreTargetAllegiance?: boolean;
+    forceEnemyApplied?: boolean;
   };
 }) {
   const {
@@ -1009,11 +1061,7 @@ export function applyImmediateEffects(params: {
     mapCtx,
     castContext,
   } = params;
-  const explicitEntityTarget = getExplicitEnemyEntityTarget(
-    state,
-    source.userId,
-    castContext?.entityTargetId,
-  );
+  const explicitEntityTarget = getExplicitEntityTarget(state, castContext?.entityTargetId);
 
   // 太极无极 stacking trigger: capture pre-damage CC state on target
   let taiJiCcOnTarget = false;
@@ -1074,13 +1122,14 @@ export function applyImmediateEffects(params: {
       effect.applyTo
     );
     const playerEffTarget = state.players[effTargetIndex];
-    const enemyApplied = isEnemyEffect(source, playerEffTarget, effect);
+    const enemyApplied =
+      effect.applyTo === "SELF" || isAlwaysSelfEffect(effect.type)
+        ? false
+        : (castContext?.forceEnemyApplied ?? isEnemyEffect(source, playerEffTarget, effect));
     // When an entity is the explicit target of a hostile effect, route the
     // effect (dash, control, damage) at the entity instead of the opposing
     // player so dashes home in on dummies / 逐云寒蕊 etc.
-    const effTarget: any = (explicitEntityTarget && enemyApplied)
-      ? explicitEntityTarget
-      : playerEffTarget;
+    const effTarget: any = explicitEntityTarget ?? playerEffTarget;
 
     // TRUE_DAMAGE bypasses dodge; all other enemy-applied effects skip on dodge.
     if ((effect as any).type !== "TRUE_DAMAGE" && shouldSkipDueToDodge(abilityDodged, enemyApplied)) continue;
@@ -1212,6 +1261,7 @@ export function applyImmediateEffects(params: {
           state,
           source.userId,
           castContext?.targetUserId,
+          castContext?.ignoreTargetAllegiance,
         );
         if (!reflectTarget) break;
 
@@ -2785,7 +2835,12 @@ export function applyImmediateEffects(params: {
       }
 
       case "DOU_ZHUAN_XING_YI": {
-        const swapTarget = getExplicitEnemyPlayerTarget(state, source.userId, castContext?.targetUserId)
+        const swapTarget = getExplicitEnemyPlayerTarget(
+          state,
+          source.userId,
+          castContext?.targetUserId,
+          castContext?.ignoreTargetAllegiance,
+        )
           ?? ((enemy && enemy.userId !== source.userId) ? enemy : null);
         if (!swapTarget || hasKnockbackImmune(swapTarget as any)) {
           break;
@@ -3243,6 +3298,7 @@ export function applyImmediateEffects(params: {
         const friendlyTarget = resolveFriendlySupportTarget(state, source, castContext);
         if (!friendlyTarget || (friendlyTarget.hp ?? 0) <= 0) break;
 
+        const storedUnitScale = state.unitScale;
         const targetPosition = friendlyTarget.position ?? source.position;
         const dashDx = (targetPosition.x ?? source.position.x) - source.position.x;
         const dashDy = (targetPosition.y ?? source.position.y) - source.position.y;
@@ -3250,10 +3306,15 @@ export function applyImmediateEffects(params: {
         const dashTicks = Math.max(1, Number(effect.durationTicks ?? 15));
         const targetZ = targetPosition.z ?? source.position.z ?? 0;
         const currentZ = source.position.z ?? targetZ;
+        const stopDistance = gameplayUnitsToWorldUnits(1, storedUnitScale);
+        const desiredDistance = dashDistance > stopDistance ? stopDistance : 0;
+        const travelDistance = Math.max(0, dashDistance - desiredDistance);
+        const dashDirX = dashDistance > 0.0001 ? dashDx / dashDistance : 0;
+        const dashDirY = dashDistance > 0.0001 ? dashDy / dashDistance : 0;
 
-        if (dashDistance > 0.0001 || Math.abs(targetZ - currentZ) > 0.0001) {
+        if (travelDistance > 0.0001 || Math.abs(targetZ - currentZ) > 0.0001) {
           if (dashDistance > 0.0001) {
-            source.facing = { x: dashDx / dashDistance, y: dashDy / dashDistance };
+            source.facing = { x: dashDirX, y: dashDirY };
           }
           if (source.velocity) {
             source.velocity.vx = 0;
@@ -3262,8 +3323,8 @@ export function applyImmediateEffects(params: {
           }
           source.activeDash = {
             abilityId: ability.id,
-            vxPerTick: dashDx / dashTicks,
-            vyPerTick: dashDy / dashTicks,
+            vxPerTick: (dashDirX * travelDistance) / dashTicks,
+            vyPerTick: (dashDirY * travelDistance) / dashTicks,
             forceVzPerTick: (targetZ - currentZ) / dashTicks,
             maxUpVz: 999,
             maxDownVz: -999,

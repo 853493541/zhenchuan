@@ -24,6 +24,8 @@ export function applyEffects(
     targetUserId?: string;
     groundTarget?: { x: number; y: number; z?: number };
     entityTargetId?: string;
+    ignoreTargetAllegiance?: boolean;
+    forceEnemyApplied?: boolean;
   }
 ) {
   applyAbility(state, ability, playerIndex, targetIndex, mapCtx, castContext);

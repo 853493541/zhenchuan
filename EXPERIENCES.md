@@ -3,6 +3,38 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 渊落点修正 + 雾暗迷云混乱重定向 (2026-05-03)
+
+**Problem set**:
+1. `渊` 友方 dash 之前会直接落到目标身上，没有保持和 `龙牙` 一样的 `1尺` 停距。
+2. 需要新增 `雾暗迷云`：站立运功 `1.5s` 后给目标 `【迷云】`，目标在 `迷云` 期间释放技能时会重新随机目标且不分敌我；`迷云` 消失后还要获得 `20s` 的 `【雾释】` 免疫。
+3. 这次的“混乱”不能只修单体技能。用户明确要求多段/多目标 AOE 也要按“原本会命中的每一个敌方命中槽位，分别独立重掷一次合法目标”处理，例如 `风来吴山` 每一跳都应独立 `50/50`。
+4. 旧代码的目标判定散在 `validateAction.ts`、`playService.ts`、`immediateEffects.ts`、`GameLoop.ts` 多个层面；如果在其中一层硬写特殊分支，很容易让单体、延时、channel tick、zone tick 表现不一致。
+
+**Fix**:
+- `渊` 的友方 dash 现在复用了和 `龙牙` 同样的停距计算：先算 `1尺` stop distance，再按缩短后的 travel distance 设置 dash 速度，因此落点稳定停在目标前 `1尺`，而不是重叠。
+- 新增 `backend/game/engine/utils/miyun.ts` 作为共享混乱辅助层，集中放 `迷云/雾释` Buff 常量、混乱/免疫判定，以及“按原命中槽位数量重新随机候选目标”的 area reroll helper。
+- `validateCastAbility(...)` 现在会在施法者带 `迷云` 时递归复用自己去枚举合法候选目标，再随机选出一个 resolved target 返回给 `playService.ts`。这样现有射程、最小距离、朝向、LOS、特殊技能约束都会自动复用，而不是重写第二套验证逻辑。
+- `playService.ts -> applyEffects(...) -> applyAbilityBuffs(...)` 整条链路新增了 `ignoreTargetAllegiance / forceEnemyApplied` 上下文，所以“原本是敌方技能但被混乱改打到友方”或“原本是友方技能但被混乱改打到敌方”时，伤害/控制/增益仍保持原技能的敌我语义，而不是被目标阵营反向篡改。
+- `immediateEffects.ts` 的显式玩家/实体目标 helper 已放宽到支持混乱后的 player/entity 目标；即时 AOE、扇形 AOE、多段即时伤害现在都会按“先算原本会打中的敌方槽位数，再对每个槽位独立 reroll 候选目标”处理。
+- `GameLoop.ts` 中的 dash-end AOE、channel tick、periodic AOE、地面 zone 爆炸/持续伤害也切到了同一套 reroll 语义；其中 `CHANNEL_AOE_TICK` 额外保留了原本的 LOS 检查，只在 LOS 合法候选集内随机，避免把混乱目标选到被墙挡住的位置。
+- `雾暗迷云` / `迷云` / `雾释` 已写入 `abilities.ts` 和 `cards.ts`。当前落地参数是：技能射程 `20`、冷却 `300 ticks`、`迷云 8s`、`雾释 20s`。这是因为用户只明确给了 channel 时长和 `雾释` 时长，其余数值本轮先按现有技能常用档位补齐。
+- `buffRuntime.ts` 现在会阻止带 `雾释` 的目标再次吃到 `迷云`，并在 `迷云` 自然结束或被提前移除时统一补上 `雾释`。`GameLoop.ts` 也顺手补了 channel-complete buff 对 entity target 的支持，避免这类读条完成型 debuff 只对 player 生效。
+
+**Lessons**:
+- 对“混乱改目标”这类需求，最稳的 seam 不是某个具体技能 handler，而是验证层返回“resolved target”。先在验证层把合法候选集合算准，后面的施法/即时效果/读条完成逻辑只消费 resolved target，就不会在每个技能里散落重复判断。
+- 多目标混乱不能直接把初始目标列表改成“全场所有单位”。正确语义是先保留原本会命中的敌方槽位数，再让每个槽位独立 reroll；否则像 `风来吴山` 这种多跳技能会连总命中次数都一起漂移。
+- 这轮 PM2 重启后的 backend/frontend 都成功上线了最新 build，但日志里仍能看到旧的 `backend-error.log` `GameLoop not active` 噪音，以及 frontend 旧的 `.next/prerender-manifest.json` `ENOENT` 记录。它们不是这次改动引入的新启动失败，后续排查日志时要和本轮功能回归分开看。
+
+**Follow-up fixes (later same day)**:
+- 单体 `迷云` 重定向第一次上线后，递归候选枚举虽然已经用 `ignoreTargetAllegiance: true` 放宽了敌我限制，但外层最终 `validateCastAbility(...)` 仍按原始敌方规则再次校验，导致“随机到友方后又被 `ERR_TARGET_UNAVAILABLE` 否掉”。修复方式不是再跳过一整段验证，而是把 `miYunRetarget !== null` 也视作最终外层校验的 allegiance-bypass 条件，仅绕过敌我归属判定，继续保留射程/最小距离/LOS/朝向等其他规则。
+- `迷云 -> 雾释` 没有生效的根因不是 `pushBuffExpired(...)` 内的加 Buff 逻辑，而是 `GameLoop.ts` 的主自然过期 sweep 只删除了过期 Buff，却没有为这些自然过期 Buff 调 `pushBuffExpired(...)`。现在 player/entity 两条自然过期路径都会统一发出 `BUFF_EXPIRED`，因此 `迷云` 自然结束或实体上的 `迷云` 自然结束时，都能走到同一条 `雾释` 补发逻辑。
+- 这次还顺手把 `buffsChanged` 判定补成了“只要有自然过期就算变化”，避免“一个 Buff 自然结束、同时立刻补上另一个 Buff，导致总 Buff 数量刚好不变”时，状态变更没有被及时广播。
+
+**Latest follow-up (same day)**:
+- 用户随后明确要求 `雾释` 不是增益而是减益，因此已把 `雾释` 在 `abilities.ts` 和 `cards.ts` 中的 `category` 从 `BUFF` 改为 `DEBUFF`。它的免疫效果类型仍保持 `MIYUN_IMMUNE`，只改状态栏/展示侧的类别语义。
+- 还对当前 preload Buff 表做了一次全量图标审计，按真实运行时 `buff.iconPath` 与 `frontend/public/icons` 比对后，发现仍缺 `32` 个 Buff 图标或图标映射：`散流霞隐藏`、`穹隆化生·转向`、`踏星行·转向`、`摩诃无量·眩晕`、`生太极·迟滞`、`被击不会解除五方锁足`、`沧月·击退`、`亢龙有悔·定身`、`龙啸九天·定身`、`龙啸九天·击退`、`韦陀献杵·易伤`、`韦陀献杵·防御`、`鹤归孤山·震慑`、`穿心弩·减疗`、`三才化生·前半保护`、`如意法·待发`、`龙战于野·被拉`、`守缺式·击退`、`无相诀·五十/六十/七十/八十/九十`、`破势`、`九转击退`、`被拉`、`锁足抗性`、`眩晕抗性`、`锁招抗性`、`定身抗性`。其中 `无相诀` 五档不是单纯缺文件，而是当前 preload override 仍指向不存在的 `/icons/无相.png`，而仓库里实际存在的是 `无相诀.png` 与各档 `无相诀·*.png`。
+
 ## 凌然天风特殊跳跃实现 (2026-05-03)
 
 **Problem set**:

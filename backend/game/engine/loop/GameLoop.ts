@@ -45,6 +45,7 @@ import {
 } from "../utils/chuHeHanJieWall";
 import { getEffectiveAbilityRange } from "../utils/abilityRange";
 import { triggerYunSanBlink } from "../utils/yunSan";
+import { getMiYunAreaCandidates, hasMiYunConfusion, rerollMiYunAreaTargets } from "../utils/miyun";
 
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
@@ -260,6 +261,64 @@ function getHostileDamageTargetRangeDistance(
   const rawDistance = calculateDistance(sourcePosition, getHostileDamageTargetPosition(target), storedUnitScale);
   if (target.kind !== "entity") return rawDistance;
   return Math.max(0, rawDistance - ((target.target.radius ?? 0) / Math.max(0.0001, storedUnitScale)));
+}
+
+function getMiYunAffectedHostileTargets(params: {
+  state: GameState;
+  source: { userId: string; buffs?: any[]; facing?: { x: number; y: number } | null } | null | undefined;
+  sourceUserId: string;
+  center: { x: number; y: number; z?: number };
+  storedUnitScale: number;
+  rangeUnits?: number;
+  radiusWorld?: number;
+  coneAngleDeg?: number;
+}) {
+  const {
+    state,
+    source,
+    sourceUserId,
+    center,
+    storedUnitScale,
+    rangeUnits,
+    radiusWorld,
+    coneAngleDeg,
+  } = params;
+  const resolvedRangeUnits = rangeUnits ?? ((radiusWorld ?? 0) / Math.max(0.0001, storedUnitScale));
+  const resolvedRadiusWorld = radiusWorld ?? gameplayUnitsToWorldUnits(resolvedRangeUnits, storedUnitScale);
+  const facing = source?.facing ?? null;
+  const halfAngleCos = coneAngleDeg && coneAngleDeg < 360
+    ? Math.cos((coneAngleDeg / 2) * Math.PI / 180)
+    : null;
+
+  const hostiles = getHostileDamageTargets(state, sourceUserId).filter((target) => {
+    if (blocksEnemyTargeting(target.target as any)) return false;
+    if (getHostileDamageTargetRangeDistance(center, target, storedUnitScale) > resolvedRangeUnits) return false;
+    if (halfAngleCos === null) return true;
+
+    const targetPos = getHostileDamageTargetPosition(target);
+    const dx = targetPos.x - center.x;
+    const dy = targetPos.y - center.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 0.0001) return true;
+
+    const facingX = Number(facing?.x ?? 0);
+    const facingY = Number(facing?.y ?? 1);
+    const facingLen = Math.hypot(facingX, facingY) || 1;
+    const dot = ((facingX / facingLen) * dx + (facingY / facingLen) * dy) / distance;
+    return dot >= halfAngleCos;
+  });
+
+  const rerolledTargets = rerollMiYunAreaTargets({
+    state,
+    source,
+    sourceUserId,
+    originalSlotCount: hostiles.length,
+    center,
+    radiusWorld: resolvedRadiusWorld,
+    coneAngleDeg,
+    facing,
+  });
+  return (rerolledTargets as HostileDamageTarget[] | null) ?? hostiles;
 }
 
 type RuYiRecordedControlKind = "root" | "freeze" | "stun" | "knockdown";
@@ -1351,9 +1410,14 @@ export class GameLoop {
         if (hanDiAbility) {
           const stunBuff = hanDiAbility.buffs?.[0];
           if (stunBuff) {
-            for (const opp of getHostileDamageTargets(this.state, player.userId)) {
-              if (blocksEnemyTargeting(opp.target as any)) continue;
-              if (getHostileDamageTargetRangeDistance(player.position, opp, storedUnitScale) > 5) continue;
+            for (const opp of getMiYunAffectedHostileTargets({
+              state: this.state,
+              source: player as any,
+              sourceUserId: player.userId,
+              center: player.position,
+              storedUnitScale,
+              rangeUnits: 5,
+            })) {
               if (stunBuff) {
                 addBuff({
                   state: this.state,
@@ -1385,9 +1449,14 @@ export class GameLoop {
       if (dashAbilityIdBefore === "yue_chao_zhan_bo" && !player.activeDash) {
         const yczbAbility = ABILITIES["yue_chao_zhan_bo"] as any;
         if (yczbAbility) {
-          for (const opp of getHostileDamageTargets(this.state, player.userId)) {
-            if (blocksEnemyTargeting(opp.target as any)) continue;
-            if (getHostileDamageTargetRangeDistance(player.position, opp, storedUnitScale) > 8) continue;
+          for (const opp of getMiYunAffectedHostileTargets({
+            state: this.state,
+            source: player as any,
+            sourceUserId: player.userId,
+            center: player.position,
+            storedUnitScale,
+            rangeUnits: 8,
+          })) {
             applyDamageToHostileTarget({
               state: this.state,
               source: player as any,
@@ -1466,10 +1535,14 @@ export class GameLoop {
           calculateDistance(player.position, yuanTarget.position, storedUnitScale) <= landingRangeUnits
         ) {
           let knockedBackAny = false;
-          for (const hostile of getHostileDamageTargets(this.state, player.userId)) {
-            if (blocksEnemyTargeting(hostile.target as any)) continue;
-            const dist = getHostileDamageTargetRangeDistance(yuanTarget.position, hostile, storedUnitScale);
-            if (dist > knockbackRangeUnits) continue;
+          for (const hostile of getMiYunAffectedHostileTargets({
+            state: this.state,
+            source: player as any,
+            sourceUserId: player.userId,
+            center: yuanTarget.position,
+            storedUnitScale,
+            rangeUnits: knockbackRangeUnits,
+          })) {
             if (applyKnockbackToHostileTarget({
               state: this.state,
               source: { userId: player.userId, position: yuanTarget.position },
@@ -1493,10 +1566,15 @@ export class GameLoop {
         const heAbility = ABILITIES["he_gui_gu_shan"] as any;
         if (heAbility) {
           const stunBuff = heAbility.buffs?.find((b: any) => b.buffId === 2325);
-          for (const opp of getHostileDamageTargets(this.state, player.userId)) {
-            if (blocksEnemyTargeting(opp.target as any)) continue;
+          for (const opp of getMiYunAffectedHostileTargets({
+            state: this.state,
+            source: player as any,
+            sourceUserId: player.userId,
+            center: player.position,
+            storedUnitScale,
+            rangeUnits: 10,
+          })) {
             const dist = getHostileDamageTargetRangeDistance(player.position, opp, storedUnitScale);
-            if (dist > 10) continue;
             applyDamageToHostileTarget({
               state: this.state,
               source: player as any,
@@ -2354,12 +2432,13 @@ export class GameLoop {
             const completeBuffIdSet = Array.isArray((channelAbility as any)?.channelCompleteBuffIds)
               ? new Set((channelAbility as any).channelCompleteBuffIds)
               : null;
-            const oppAlive = targetPlayer && (targetPlayer.hp ?? 0) > 0;
+            const completeTarget = targetEntity ?? targetPlayer;
+            const completeTargetAlive = (completeTarget?.hp ?? 0) > 0;
             for (const buffDef of buffDefs) {
               if (completeBuffIdSet && !completeBuffIdSet.has(buffDef.buffId)) continue;
-              const applyTarget = buffDef.applyTo === "SELF" ? player : targetPlayer;
+              const applyTarget = buffDef.applyTo === "SELF" ? player : completeTarget;
               if (!applyTarget) continue;
-              if (applyTarget !== player && (!oppAlive || blocksEnemyTargeting(targetPlayer as any))) continue;
+              if (applyTarget !== player && (!completeTargetAlive || blocksEnemyTargeting(completeTarget as any))) continue;
               addBuff({
                 state: this.state,
                 sourceUserId: player.userId,
@@ -2643,23 +2722,8 @@ export class GameLoop {
               } else if (e.type === "CHANNEL_AOE_TICK") {
                 // Channel AOE: deal damage to opponent if within range
                 const range = e.range ?? 10;
-                for (const target of getHostileDamageTargets(this.state, player.userId)) {
-                  const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
-                  if (dist > range) continue;
-                  if (blocksEnemyTargeting(target.target as any)) continue;
-                  const angle = (e as any).aoeAngle ?? 360;
-                  if (angle < 360 && dist > 0) {
-                    const facing = player.facing ?? { x: 0, y: 1 };
-                    const dx = getHostileDamageTargetPosition(target).x - player.position.x;
-                    const dy = getHostileDamageTargetPosition(target).y - player.position.y;
-                    const planarDist = Math.sqrt(dx * dx + dy * dy);
-                    const dot = planarDist > 0.0001 ? (facing.x * dx + facing.y * dy) / planarDist : 1;
-                    const halfAngleRad = (angle / 2) * (Math.PI / 180);
-                    if (dot < Math.cos(halfAngleRad)) {
-                      continue;
-                    }
-                  }
-                  const _losBlockedTick = (() => {
+                const angle = (e as any).aoeAngle ?? 360;
+                const isLosBlockedTick = (target: HostileDamageTarget) => {
                     const pz = (player.position as any).z ?? 0;
                     const oz = (getHostileDamageTargetPosition(target) as any).z ?? 0;
                     if (this.mapCtx.collisionSystem) {
@@ -2694,7 +2758,42 @@ export class GameLoop {
                       targetZ: oz,
                       ignoreEntityId: target.kind === "entity" ? target.target.id : undefined,
                     });
-                  })();
+                };
+                const baseTargets = getHostileDamageTargets(this.state, player.userId).filter((target) => {
+                  const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
+                  if (dist > range) return false;
+                  if (blocksEnemyTargeting(target.target as any)) return false;
+                  if (angle < 360 && dist > 0) {
+                    const facing = player.facing ?? { x: 0, y: 1 };
+                    const dx = getHostileDamageTargetPosition(target).x - player.position.x;
+                    const dy = getHostileDamageTargetPosition(target).y - player.position.y;
+                    const planarDist = Math.sqrt(dx * dx + dy * dy);
+                    const dot = planarDist > 0.0001 ? (facing.x * dx + facing.y * dy) / planarDist : 1;
+                    const halfAngleRad = (angle / 2) * (Math.PI / 180);
+                    if (dot < Math.cos(halfAngleRad)) {
+                      return false;
+                    }
+                  }
+                  return true;
+                });
+                const confusedTickTargets = (() => {
+                  if (!hasMiYunConfusion(player as any) || baseTargets.length === 0) return baseTargets;
+                  const candidatePool = getMiYunAreaCandidates({
+                    state: this.state,
+                    sourceUserId: player.userId,
+                    center: player.position,
+                    radiusWorld: gameplayUnitsToWorldUnits(range, storedUnitScale),
+                    coneAngleDeg: angle < 360 ? angle : undefined,
+                    facing: player.facing ?? null,
+                  }).filter((candidate) => !isLosBlockedTick(candidate as HostileDamageTarget));
+                  if (candidatePool.length === 0) return baseTargets;
+                  return Array.from(
+                    { length: baseTargets.length },
+                    () => candidatePool[Math.floor(Math.random() * candidatePool.length)] as HostileDamageTarget,
+                  );
+                })();
+                for (const target of confusedTickTargets) {
+                  const _losBlockedTick = isLosBlockedTick(target);
                   if (_losBlockedTick) {
                     cancelActiveChannel(this.state, player as any);
                     channelStateChanged = true;
@@ -2733,13 +2832,14 @@ export class GameLoop {
                 const dmgRange = e.range ?? 4;
                 const tickAbility = (ABILITIES[buff.sourceAbilityId ?? ""] as any)
                   ?? ({ id: buff.sourceAbilityId, name: buff.sourceAbilityName ?? buff.name } as any);
-                for (const target of getHostileDamageTargets(this.state, player.userId)) {
-                  const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
-                  if (dist > dmgRange) continue;
-                  if (blocksEnemyTargeting(target.target as any)) {
-                    buffsChanged = true;
-                    continue;
-                  }
+                for (const target of getMiYunAffectedHostileTargets({
+                  state: this.state,
+                  source: player as any,
+                  sourceUserId: player.userId,
+                  center: player.position,
+                  storedUnitScale,
+                  rangeUnits: dmgRange,
+                })) {
                   const reflectVictim = target.kind === "player"
                     ? getDunLiReflectVictim(this.state, player.userId, target.target, tickAbility)
                     : null;
@@ -2911,25 +3011,17 @@ export class GameLoop {
               continue;
             }
 
-            for (const target of getHostileDamageTargets(this.state, player.userId)) {
-              const range = e.range ?? 10;
-              const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
-              if (dist > range) continue;
-
-              const angle = e.aoeAngle ?? 360;
-              if (angle < 360 && dist > 0) {
-                const facing = player.facing ?? { x: 0, y: 1 };
-                const rawDx = getHostileDamageTargetPosition(target).x - player.position.x;
-                const rawDy = getHostileDamageTargetPosition(target).y - player.position.y;
-                const rawDist2d = Math.sqrt(rawDx * rawDx + rawDy * rawDy);
-                const dot = rawDist2d > 0 ? (facing.x * rawDx + facing.y * rawDy) / rawDist2d : 0;
-                const halfAngleRad = (angle / 2) * (Math.PI / 180);
-                if (dot < Math.cos(halfAngleRad)) continue;
-              }
-
-              if (blocksEnemyTargeting(target.target as any)) {
-                continue;
-              }
+            const range = e.range ?? 10;
+            const angle = e.aoeAngle ?? 360;
+            for (const target of getMiYunAffectedHostileTargets({
+              state: this.state,
+              source: player as any,
+              sourceUserId: player.userId,
+              center: player.position,
+              storedUnitScale,
+              rangeUnits: range,
+              coneAngleDeg: angle < 360 ? angle : undefined,
+            })) {
 
               if (
                 target.kind === "player" &&
@@ -2981,7 +3073,11 @@ export class GameLoop {
                 }
               }
 
-              if (target.kind === "player" && e.knockbackUnits && e.knockbackUnits > 0 && dist > 0) {
+              if (target.kind === "player" && e.knockbackUnits && e.knockbackUnits > 0) {
+                const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
+                if (dist <= 0) {
+                  continue;
+                }
                 const opp = target.target;
                 const knockbackResult = applyType3KnockbackControl({
                   state: this.state,
@@ -3075,7 +3171,17 @@ export class GameLoop {
         }
       }
       player.buffs = player.buffs.filter((b) => now < b.expiresAt);
-      if (player.buffs.length !== before) buffsChanged = true;
+      for (const expired of naturallyExpired) {
+        pushBuffExpired(this.state, {
+          targetUserId: player.userId,
+          buffId: expired.buffId,
+          buffName: expired.name,
+          buffCategory: expired.category,
+          sourceAbilityId: expired.sourceAbilityId,
+          sourceAbilityName: expired.sourceAbilityName,
+        });
+      }
+      if (naturallyExpired.length > 0 || player.buffs.length !== before) buffsChanged = true;
 
       if (!hasYuqiState(player as any, now)) {
         const lingeringZongQingQi = player.buffs.filter((b) => b.buffId === ZONG_QING_QI_BUFF_ID);
@@ -3284,7 +3390,17 @@ export class GameLoop {
         removeLinkedShield(entity as any, expired as any);
       }
       entity.buffs = (entity.buffs ?? []).filter((b) => now < b.expiresAt);
-      if ((entity.buffs?.length ?? 0) !== before) {
+      for (const expired of naturallyExpired) {
+        pushBuffExpired(this.state, {
+          targetUserId: entity.userId,
+          buffId: expired.buffId,
+          buffName: expired.name,
+          buffCategory: expired.category,
+          sourceAbilityId: expired.sourceAbilityId,
+          sourceAbilityName: expired.sourceAbilityName,
+        });
+      }
+      if (naturallyExpired.length > 0 || (entity.buffs?.length ?? 0) !== before) {
         buffsChanged = true;
       }
     }
@@ -3371,8 +3487,14 @@ export class GameLoop {
           const explodeDmg = (zone as any).explodeDamage ?? 10;
           const owner = this.state.players.find((p) => p.userId === zone.ownerUserId)
             ?? ({ userId: zone.ownerUserId, buffs: [] } as any);
-          for (const hostile of getHostileDamageTargets(this.state, zone.ownerUserId)) {
-            if (blocksEnemyTargeting(hostile.target as any)) continue;
+          for (const hostile of getMiYunAffectedHostileTargets({
+            state: this.state,
+            source: owner as any,
+            sourceUserId: zone.ownerUserId,
+            center: { x: zone.x, y: zone.y, z: zone.z },
+            storedUnitScale,
+            radiusWorld: zone.radius,
+          })) {
             // NOTE: damage immunity + 盾立 reflect is handled inside applyDamageToHostileTarget.
 
             const targetPos = getHostileDamageTargetPosition(hostile);
@@ -3380,7 +3502,6 @@ export class GameLoop {
             const dyE = targetPos.y - zone.y;
             const targetRadius = hostile.kind === "entity" ? Math.max(0, Number(hostile.target.radius ?? 0)) : 0;
             const distE = Math.sqrt(dxE * dxE + dyE * dyE);
-            if (distE > zone.radius + targetRadius) continue;
 
             // Skip pull when the host is damage-immune (盾立) so we don't move them.
             const skipPullForImmune =
@@ -3969,19 +4090,40 @@ export class GameLoop {
 
           const owner = this.state.players.find(p => p.userId === zone.ownerUserId);
           let targetsHit = 0;
-          for (const target of getHostileDamageTargets(this.state, zone.ownerUserId)) {
-            if (zone.maxTargets !== undefined && targetsHit >= zone.maxTargets) break;
-            if (blocksEnemyTargeting(target.target as any)) continue;
+          const baseZoneTargets = getHostileDamageTargets(this.state, zone.ownerUserId).filter((target) => {
+            if (blocksEnemyTargeting(target.target as any)) return false;
             const targetPosition = getHostileDamageTargetPosition(target);
             const dx = targetPosition.x - zone.x;
             const dy = targetPosition.y - zone.y;
             const hitRadius = zone.radius + (target.kind === "entity" ? Math.max(0, Number(target.target.radius ?? 0)) : 0);
-            if (Math.sqrt(dx * dx + dy * dy) > hitRadius) continue;
+            if (Math.sqrt(dx * dx + dy * dy) > hitRadius) return false;
             if (zone.height !== undefined) {
               const zoneZ = zone.z ?? 0;
               const targetZ = targetPosition.z ?? 0;
-              if (Math.abs(targetZ - zoneZ) > zone.height) continue;
+              if (Math.abs(targetZ - zoneZ) > zone.height) return false;
             }
+            return true;
+          });
+          const zoneTargets = (() => {
+            if (!hasMiYunConfusion(owner as any) || baseZoneTargets.length === 0) return baseZoneTargets;
+            const candidatePool = getMiYunAreaCandidates({
+              state: this.state,
+              sourceUserId: zone.ownerUserId,
+              center: { x: zone.x, y: zone.y },
+              radiusWorld: zone.radius,
+            }).filter((candidate) => {
+              if (zone.height === undefined) return true;
+              const targetZ = getHostileDamageTargetPosition(candidate as HostileDamageTarget).z ?? 0;
+              return Math.abs(targetZ - (zone.z ?? 0)) <= zone.height;
+            });
+            if (candidatePool.length === 0) return baseZoneTargets;
+            return Array.from(
+              { length: baseZoneTargets.length },
+              () => candidatePool[Math.floor(Math.random() * candidatePool.length)] as HostileDamageTarget,
+            );
+          })();
+          for (const target of zoneTargets) {
+            if (zone.maxTargets !== undefined && targetsHit >= zone.maxTargets) break;
             if (
               target.kind === "player" &&
               tryApplyDodgeForHit({
