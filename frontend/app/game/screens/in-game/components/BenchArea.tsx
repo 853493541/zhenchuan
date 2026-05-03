@@ -8,6 +8,7 @@
 import type { AbilityInstance } from "../types";
 import { useState } from "react";
 import styles from "./BenchArea.module.css";
+import { getAbilityIconPath } from "@/app/lib/iconPaths";
 
 type Props = {
   bench: AbilityInstance[];
@@ -65,7 +66,7 @@ export default function BenchArea({
             >
               {!failedImages.has(ability.abilityId) ? (
                 <img 
-                  src={`/icons/${abilityDef?.name}.png`} 
+                  src={getAbilityIconPath(abilityDef?.name) ?? '/icons/fallback.png'} 
                   alt={abilityDef?.name} 
                   className={styles.portrait}
                   onError={() => handleImageError(ability.abilityId)}

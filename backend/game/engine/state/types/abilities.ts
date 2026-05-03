@@ -36,6 +36,12 @@ export interface Ability {
   target: TargetType;
 
   /**
+   * If true, an OPPONENT-targeted ability instead resolves against the caster
+   * or one of the caster's owned entities.
+   */
+  friendlyTarget?: boolean;
+
+  /**
    * If true, an opponent-targeted ability may explicitly select the caster.
    */
   canTargetSelf?: boolean;
@@ -182,6 +188,11 @@ export interface Ability {
 
   /** If true, the ability is excluded from shops, draft pools, and pickup books. */
   hiddenFromDraft?: boolean;
+
+  /**
+   * If true, this ability may still be cast while the player is in 御骑 mounted state.
+   */
+  canCastWhileMounted?: boolean;
 
   /**
    * If true this ability is a common movement ability given to every player

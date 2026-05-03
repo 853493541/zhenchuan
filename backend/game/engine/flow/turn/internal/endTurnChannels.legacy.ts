@@ -2,7 +2,7 @@
 
 import { GameState, ActiveBuff } from "../../../state/types";
 import { shouldDodge } from "../../../rules/guards";
-import { resolveScheduledDamage } from "../../../utils/combatMath";
+import { resolveScheduledDamageRoll } from "../../../utils/combatMath";
 import { applyDamageToTarget } from "../../../utils/health";
 import { pushDamageEvent } from "./combatEvents";
 import { getBuffSourceAbilityId, getBuffSourceAbilityName } from "./buffOrigin";
@@ -19,11 +19,12 @@ export function applyLegacyEndTurnChannels(params: {
     for (const e of buff.effects) {
       if (e.type === "FENGLAI_CHANNEL") {
         if (!shouldDodge(other)) {
-          const dmg = resolveScheduledDamage({
+          const damageRoll = resolveScheduledDamageRoll({
             source: current,
             target: other,
             base: 10,
           });
+          const dmg = damageRoll.damage;
           applyDamageToTarget(other as any, dmg);
 
           pushDamageEvent({
@@ -33,17 +34,19 @@ export function applyLegacyEndTurnChannels(params: {
             abilityId: getBuffSourceAbilityId(buff),
             abilityName: getBuffSourceAbilityName(buff),
             value: dmg,
+            isCrit: damageRoll.isCrit,
           });
         }
       }
 
       if (e.type === "WUJIAN_CHANNEL") {
         if (!shouldDodge(other)) {
-          const dmg = resolveScheduledDamage({
+          const damageRoll = resolveScheduledDamageRoll({
             source: current,
             target: other,
             base: 10,
           });
+          const dmg = damageRoll.damage;
           applyDamageToTarget(other as any, dmg);
 
           pushDamageEvent({
@@ -53,6 +56,7 @@ export function applyLegacyEndTurnChannels(params: {
             abilityId: getBuffSourceAbilityId(buff),
             abilityName: getBuffSourceAbilityName(buff),
             value: dmg,
+            isCrit: damageRoll.isCrit,
           });
         }
 
@@ -67,11 +71,12 @@ export function applyLegacyEndTurnChannels(params: {
 
       if (e.type === "XINZHENG_CHANNEL") {
         if (!shouldDodge(other)) {
-          const dmg = resolveScheduledDamage({
+          const damageRoll = resolveScheduledDamageRoll({
             source: current,
             target: other,
             base: 5,
           });
+          const dmg = damageRoll.damage;
           applyDamageToTarget(other as any, dmg);
 
           pushDamageEvent({
@@ -81,6 +86,7 @@ export function applyLegacyEndTurnChannels(params: {
             abilityId: getBuffSourceAbilityId(buff),
             abilityName: getBuffSourceAbilityName(buff),
             value: dmg,
+            isCrit: damageRoll.isCrit,
           });
         }
       }

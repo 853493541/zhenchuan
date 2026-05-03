@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { toastError, toastSuccess } from "../components/toast/toast";
 import { FALLBACK_BUFF_ICON_PATH } from "../lib/buffIcons";
 import {
   BUFF_ATTRIBUTES,
@@ -22,6 +23,7 @@ type HiddenFilter = "全部状态" | "隐藏" | "显示";
 const SUB_TABS: SubTab[] = ["有利气劲", "不利气劲"];
 const ATTRIBUTE_FILTERS: AttributeFilter[] = ["全部", ...BUFF_ATTRIBUTES];
 const HIDDEN_FILTERS: HiddenFilter[] = ["全部状态", "隐藏", "显示"];
+const QUICK_ATTRIBUTE_VALUES = BUFF_ATTRIBUTES.filter((attribute) => attribute !== "未选择") as BuffAttribute[];
 
 interface BuffEditorTabProps {
   snapshot: BuffEditorSnapshot | null;
@@ -35,6 +37,7 @@ export default function BuffEditorTab({
   snapshot,
   loading,
   errorMessage,
+  onSnapshotUpdate,
   onRetry,
 }: BuffEditorTabProps) {
   const [subTab, setSubTab] = useState<SubTab>("有利气劲");
@@ -42,6 +45,7 @@ export default function BuffEditorTab({
   const [hiddenFilter, setHiddenFilter] = useState<HiddenFilter>("显示");
   const [silenceImmuneOnly, setSilenceImmuneOnly] = useState<boolean>(false);
   const [search, setSearch] = useState("");
+  const [savingBuffId, setSavingBuffId] = useState<number | null>(null);
 
   const allBuffs = snapshot?.buffs ?? [];
   const normalizedSearch = search.trim().toLowerCase();
@@ -68,6 +72,30 @@ export default function BuffEditorTab({
         (buff.sourceAbilityName ?? "").toLowerCase().includes(normalizedSearch)
       );
     });
+
+  const handleQuickAttributeChange = async (entry: BuffEditorEntry, attribute: BuffAttribute) => {
+    if (entry.hidden) {
+      toastError("隐藏 Buff 不可设置属性");
+      return;
+    }
+    setSavingBuffId(entry.buffId);
+    try {
+      const res = await fetch(`/api/game/ability-editor/buffs/${entry.buffId}/attribute`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ attribute }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const nextSnapshot = (await res.json()) as BuffEditorSnapshot;
+      onSnapshotUpdate(nextSnapshot);
+      toastSuccess(`${entry.name} 属性已设为 ${attribute}`);
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSavingBuffId((current) => (current === entry.buffId ? null : current));
+    }
+  };
 
   if (loading) {
     return <div className={styles.statePanel}>正在加载 Buff 列表…</div>;
@@ -168,7 +196,12 @@ export default function BuffEditorTab({
       ) : (
         <div className={styles.buffGrid}>
           {filtered.map((entry) => (
-            <BuffReadOnlyCard key={entry.buffId} entry={entry} />
+            <BuffReadOnlyCard
+              key={entry.buffId}
+              entry={entry}
+              saving={savingBuffId === entry.buffId}
+              onQuickAttributeChange={handleQuickAttributeChange}
+            />
           ))}
         </div>
       )}
@@ -176,63 +209,98 @@ export default function BuffEditorTab({
   );
 }
 
-function BuffReadOnlyCard({ entry }: { entry: BuffEditorEntry }) {
+function BuffReadOnlyCard({
+  entry,
+  saving,
+  onQuickAttributeChange,
+}: {
+  entry: BuffEditorEntry;
+  saving: boolean;
+  onQuickAttributeChange: (entry: BuffEditorEntry, attribute: BuffAttribute) => Promise<void>;
+}) {
   const subtitle = getBuffSubtitle(entry);
   const iconSrc = getBuffIconPath(entry);
   const isDebuff = entry.category === "DEBUFF";
   const effectiveProps = entry.properties.length > 0 ? entry.properties : entry.baseProperties;
+  const quickEditDisabled = entry.hidden || saving;
 
   return (
-    <Link
-      href={`/ability-editor/buff/${entry.buffId}`}
+    <div
       className={[
         styles.buffCard,
         isDebuff ? styles.buffCardDebuff : styles.buffCardBuff,
         entry.hidden ? styles.buffCardHidden : "",
-        styles.buffCardLink,
       ].join(" ")}
     >
-      <div className={styles.buffCardTop}>
-        <div className={styles.buffIconFrame}>
-          <img
-            src={iconSrc}
-            alt={entry.name}
-            className={styles.buffIcon}
-            draggable={false}
-            loading="lazy"
-            onError={(event) => {
-              const image = event.currentTarget;
-              if (image.src.endsWith(FALLBACK_BUFF_ICON_PATH)) {
-                image.style.opacity = "0.25";
-                return;
-              }
-              image.src = FALLBACK_BUFF_ICON_PATH;
-            }}
-          />
-        </div>
-        <div className={styles.buffCardMeta}>
-          <div className={styles.buffCardName}>{entry.name}</div>
-        </div>
-        {subtitle && (
-          <span className={`${styles.buffTopTag} ${isDebuff ? styles.buffTopTagDebuff : styles.buffTopTagBuff}`}>
-            {subtitle}
-          </span>
-        )}
-      </div>
-
-      <p className={styles.buffCardDesc}>{entry.description}</p>
-
-      {effectiveProps.length > 0 && (
-        <div className={styles.buffPropTagRow}>
-          {effectiveProps.map((p) => (
-            <span key={p.type} className={styles.buffPropTag}>
-              {p.type}
+      <Link href={`/ability-editor/buff/${entry.buffId}`} className={styles.buffCardLink}>
+        <div className={styles.buffCardTop}>
+          <div className={styles.buffIconFrame}>
+            <img
+              src={iconSrc}
+              alt={entry.name}
+              className={styles.buffIcon}
+              draggable={false}
+              loading="lazy"
+              onError={(event) => {
+                const image = event.currentTarget;
+                if (image.src.endsWith(FALLBACK_BUFF_ICON_PATH)) {
+                  image.style.opacity = "0.25";
+                  return;
+                }
+                image.src = FALLBACK_BUFF_ICON_PATH;
+              }}
+            />
+          </div>
+          <div className={styles.buffCardMeta}>
+            <div className={styles.buffCardName}>{entry.name}</div>
+          </div>
+          {subtitle && (
+            <span className={`${styles.buffTopTag} ${isDebuff ? styles.buffTopTagDebuff : styles.buffTopTagBuff}`}>
+              {subtitle}
             </span>
-          ))}
+          )}
         </div>
-      )}
 
-      <div className={styles.buffCardHint}>点击编辑详细属性</div>
-    </Link>
+        <p className={styles.buffCardDesc}>{entry.description}</p>
+
+        {effectiveProps.length > 0 && (
+          <div className={styles.buffPropTagRow}>
+            {effectiveProps.map((p) => (
+              <span key={p.type} className={styles.buffPropTag}>
+                {p.type}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className={styles.buffCardHint}>点击编辑详细属性</div>
+      </Link>
+
+      <div className={styles.buffQuickAttrSection}>
+        <div className={styles.buffQuickAttrHeader}>
+          <span className={styles.buffQuickAttrLabel}>快速属性</span>
+          <span className={styles.buffQuickAttrState}>
+            {entry.hidden ? "隐藏 Buff 不可设置" : saving ? "保存中..." : `当前：${entry.attribute}`}
+          </span>
+        </div>
+        <div className={styles.buffQuickAttrRow}>
+          {QUICK_ATTRIBUTE_VALUES.map((attribute) => {
+            const isActive = entry.attribute === attribute;
+            return (
+              <button
+                key={attribute}
+                type="button"
+                className={`${styles.buffQuickAttrBtn} ${isActive ? styles.buffQuickAttrBtnActive : ""}`}
+                disabled={quickEditDisabled}
+                onClick={() => void onQuickAttributeChange(entry, attribute)}
+                title={entry.hidden ? "隐藏 Buff 不可设置属性" : undefined}
+              >
+                {attribute}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }

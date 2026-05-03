@@ -28,8 +28,9 @@ export function applyAbilityBuffs(params: {
   target: { userId: string; buffs: ActiveBuff[] };
   entityTarget?: { userId: string; buffs: ActiveBuff[] } | null;
   abilityDodged: boolean;
+  forceEnemyApplied?: boolean;
 }) {
-  const { state, ability, source, target, entityTarget, abilityDodged } = params;
+  const { state, ability, source, target, entityTarget, abilityDodged, forceEnemyApplied } = params;
 
   // 百足/五方行尽/棒打狗头/大狮子吼 buff application is handled via custom immediate effect logic.
   // 撼地 stun is applied by the post-dash GameLoop handler (only when enemy is within AOE range on landing).
@@ -39,6 +40,9 @@ export function applyAbilityBuffs(params: {
   // 银月斩/烈日斩/横扫六合: buff application handled in custom effect handlers (synergy logic).
   // 三才化生: buff application handled in SAN_CAI_HUA_SHENG_AOE handler.
   // 极乐引: SELF-cast AOE; buffs applied manually in JILE_YIN_AOE_PULL handler to enemies only.
+  // 撼如雷: self buff + reveal + anti-stealth debuff are applied together in HAN_RU_LEI_AOE.
+  // 无相诀: cast-time HP snapshot selects exactly one fixed DR buff in immediateEffects.
+  // 人剑合一: only conditionally applies 破势 after resolving nearby 气场 destruction in immediateEffects.
   // 化蝶: buff 2613 (stealth/immune) applied in GameLoop when Phase 2 starts, NOT on cast.
   // 剑主天地: buff 2614 applied/managed in JIAN_ZHU_TIAN_DI_STRIKE handler (detonation logic).
   // 破风: buffs 2615/2616 applied in PO_FENG_STRIKE handler (conditional extra bleed stack).
@@ -54,6 +58,12 @@ export function applyAbilityBuffs(params: {
     ability.id === "heng_sao_liu_he" ||
     ability.id === "san_cai_hua_sheng" ||
     ability.id === "ji_le_yin" ||
+    ability.id === "han_ru_lei" ||
+    ability.id === "wu_xiang_jue" ||
+    ability.id === "ren_jian_he_yi" ||
+    ability.id === "she_shen_jue" ||
+    ability.id === "yuan" ||
+    ability.id === "ting_feng_chui_xue" ||
     ability.id === "long_zhan_yu_ye" ||
     ability.id === "shou_que_shi" ||
     ability.id === "hua_die" ||
@@ -88,7 +98,7 @@ export function applyAbilityBuffs(params: {
 
   // Ability-level target (used as fallback when buff has no applyTo override)
   const abilityBuffTarget = ability.target === "SELF" ? source : (entityTarget ?? target);
-  const abilityEnemyApplied = abilityBuffTarget.userId !== source.userId;
+  const abilityEnemyApplied = forceEnemyApplied ?? (abilityBuffTarget.userId !== source.userId);
 
   // Dodge cancels enemy-applied buffs only (ability-level check)
   if (shouldSkipDueToDodge(abilityDodged, abilityEnemyApplied)) return;
@@ -103,7 +113,10 @@ export function applyAbilityBuffs(params: {
       buff.applyTo === "SELF" ? source
       : buff.applyTo === "OPPONENT" ? (entityTarget ?? target)
       : abilityBuffTarget;
-    const localEnemyApplied = localBuffTarget.userId !== source.userId;
+    const localEnemyApplied =
+      buff.applyTo === "SELF"
+        ? false
+        : (forceEnemyApplied ?? (localBuffTarget.userId !== source.userId));
 
     const isControl =
       Array.isArray(buff.effects) &&

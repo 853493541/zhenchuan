@@ -1,8 +1,10 @@
 import express from "express";
 
 import {
+  buildCanCastWhileMountedSnapshot,
   buildAbilityEditorSnapshot,
   buildNoWeaponRequiredSnapshot,
+  setAbilityCanCastWhileMountedOverride,
   setAbilityEditorDamageValue,
   setAbilityEditorNumericValue,
   setAbilityEditorProperty,
@@ -85,6 +87,15 @@ router.get("/ability-editor/no-weapon-required", (req, res) => {
   }
 });
 
+router.get("/ability-editor/can-cast-while-mounted", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildCanCastWhileMountedSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
 router.put("/ability-editor/no-weapon-required/:abilityId", (req, res) => {
   try {
     getUserIdFromCookie(req);
@@ -97,6 +108,23 @@ router.put("/ability-editor/no-weapon-required/:abilityId", (req, res) => {
     setAbilityNoWeaponRequiredOverride(req.params.abilityId, mode);
 
     return res.json(buildNoWeaponRequiredSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/can-cast-while-mounted/:abilityId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+
+    const { mode } = req.body ?? {};
+    if (mode !== "manual-include" && mode !== "manual-exclude" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+
+    setAbilityCanCastWhileMountedOverride(req.params.abilityId, mode);
+
+    return res.json(buildCanCastWhileMountedSnapshot());
   } catch (error) {
     return handleAbilityEditorError(res, error);
   }

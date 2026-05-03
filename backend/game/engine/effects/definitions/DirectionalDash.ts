@@ -23,6 +23,7 @@ import { resolveScheduledDamage } from "../../utils/combatMath";
 import { applyDamageToTarget } from "../../utils/health";
 import { blocksEnemyTargeting, hasDamageImmune } from "../../rules/guards";
 import { getDunLiReflectVictim } from "../dunLiReflect";
+import { applyRedirectToOpponent, preCheckRedirect, processOnDamageTaken } from "../onDamageHooks";
 
 /** Stable buffId for the CC-immunity granted while dashing */
 export const DASH_CC_IMMUNE_BUFF_ID = 999900;
@@ -247,7 +248,20 @@ export function handleDirectionalDash(
         damageTargetUserId = reflectVictim.userId;
       }
 
-      applyDamageToTarget(damageVictim, dmg);
+      let eventDamage = dmg;
+      let shieldAbsorbed = 0;
+      if (dmg > 0) {
+        const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(state, damageVictim as any, dmg);
+        eventDamage = adjustedDamage;
+        if (adjustedDamage > 0) {
+          const result = applyDamageToTarget(damageVictim, adjustedDamage);
+          shieldAbsorbed = result.shieldAbsorbed;
+          processOnDamageTaken(state, damageVictim as any, result.hpDamage, damageActorUserId);
+        }
+        if (redirectPlayer && redirectAmt > 0) {
+          applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
+        }
+      }
 
       pushEvent(state, {
         turn: state.turn,
@@ -257,7 +271,8 @@ export function handleDirectionalDash(
         abilityId: ability.id,
         abilityName: ability.name,
         effectType: "DAMAGE",
-        value: dmg,
+        value: eventDamage,
+        shieldAbsorbed: shieldAbsorbed > 0 ? shieldAbsorbed : undefined,
       });
     }
   }

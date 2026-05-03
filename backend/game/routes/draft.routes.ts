@@ -1273,18 +1273,114 @@ router.post("/cheat/clear-buffs", async (req, res) => {
 });
 
 /**
+ * POST /cheat/set-crit-chance - Set both players' 外功会心/内功会心 (%).
+ * Body: { gameId, critChancePct? , waiGongCritChancePct?, neiGongCritChancePct? }
+ * - If critChancePct is provided, both split values are set to that value.
+ */
+router.post("/cheat/set-crit-chance", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, critChancePct, waiGongCritChancePct, neiGongCritChancePct } = req.body;
+
+    const hasLegacy = critChancePct !== undefined;
+    const legacy = Number(critChancePct);
+    const waiRaw = waiGongCritChancePct !== undefined ? Number(waiGongCritChancePct) : legacy;
+    const neiRaw = neiGongCritChancePct !== undefined ? Number(neiGongCritChancePct) : legacy;
+
+    if (!Number.isFinite(waiRaw) || !Number.isFinite(neiRaw) || (!hasLegacy && waiGongCritChancePct === undefined && neiGongCritChancePct === undefined)) {
+      return res.status(400).json({ error: "Provide critChancePct or waiGongCritChancePct/neiGongCritChancePct as numbers" });
+    }
+
+    const boundedWaiCrit = Math.max(0, Math.min(100, waiRaw));
+    const boundedNeiCrit = Math.max(0, Math.min(100, neiRaw));
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let liveVersion = game.state.version ?? 0;
+    const diff: Array<{ path: string; value: any }> = [];
+    const gameLoop = GameLoop.get(gameId);
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      loopState.players = loopState.players.map((p: any, idx: number) => {
+        diff.push({ path: `/players/${idx}/waiGongCritChancePct`, value: boundedWaiCrit });
+        diff.push({ path: `/players/${idx}/neiGongCritChancePct`, value: boundedNeiCrit });
+        diff.push({ path: `/players/${idx}/critChancePct`, value: boundedWaiCrit });
+        return {
+          ...p,
+          waiGongCritChancePct: boundedWaiCrit,
+          neiGongCritChancePct: boundedNeiCrit,
+          // Keep legacy field for compatibility with old clients.
+          critChancePct: boundedWaiCrit,
+        };
+      });
+      loopState.version = (loopState.version ?? 0) + 1;
+      liveVersion = loopState.version;
+      gameLoop.updateState(loopState);
+    } else {
+      game.state.players = game.state.players.map((p: any, idx: number) => {
+        diff.push({ path: `/players/${idx}/waiGongCritChancePct`, value: boundedWaiCrit });
+        diff.push({ path: `/players/${idx}/neiGongCritChancePct`, value: boundedNeiCrit });
+        diff.push({ path: `/players/${idx}/critChancePct`, value: boundedWaiCrit });
+        return {
+          ...p,
+          waiGongCritChancePct: boundedWaiCrit,
+          neiGongCritChancePct: boundedNeiCrit,
+          critChancePct: boundedWaiCrit,
+        };
+      });
+      game.state.version = (game.state.version ?? 0) + 1;
+      liveVersion = game.state.version;
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    res.json({
+      ok: true,
+      waiGongCritChancePct: boundedWaiCrit,
+      neiGongCritChancePct: boundedNeiCrit,
+    });
+
+    game.state.players = game.state.players.map((p: any) => ({
+      ...p,
+      waiGongCritChancePct: boundedWaiCrit,
+      neiGongCritChancePct: boundedNeiCrit,
+      critChancePct: boundedWaiCrit,
+    }));
+    game.markModified("state");
+    game.markModified("state.players");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/set-crit-chance] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * POST /cheat/spawn-dummy - Spawn a target dummy entity at a world position.
- * Body: { gameId, side: "enemy" | "ally", x, y, z }
+ * Body: { gameId, side: "enemy" | "ally", x, y, z, maxHp? }
  *  - side="enemy": ownerUserId set to opponent's userId (or synthetic), so the
  *    caller treats it as an enemy and can target/damage it.
  *  - side="ally":  ownerUserId set to caller's userId; the caller's opponent
  *    treats it as their enemy.
- * Dummies have 200 HP, no intrinsic immunities, and persist 10 minutes.
+ * Dummies default to 200 HP, can override maxHp, have no intrinsic immunities,
+ * and persist 10 minutes.
  */
 router.post("/cheat/spawn-dummy", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, side, x, y, z } = req.body;
+    const { gameId, side, x, y, z, maxHp } = req.body;
 
     if (side !== "enemy" && side !== "ally") {
       return res.status(400).json({ error: "side must be 'enemy' or 'ally'" });
@@ -1293,6 +1389,7 @@ router.post("/cheat/spawn-dummy", async (req, res) => {
       return res.status(400).json({ error: "x/y must be numbers" });
     }
     const zNum = Number.isFinite(z) ? Number(z) : 0;
+    const dummyMaxHp = Number.isFinite(maxHp) ? Math.max(1, Math.floor(Number(maxHp))) : 200;
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -1324,8 +1421,8 @@ router.post("/cheat/spawn-dummy", async (req, res) => {
       ownerUserId,
       position: { x: Number(x), y: Number(y), z: zNum },
       radius,
-      hp: 200,
-      maxHp: 200,
+      hp: dummyMaxHp,
+      maxHp: dummyMaxHp,
       shield: 0,
       buffs: [],
       expiresAt: now + 600_000,

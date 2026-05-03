@@ -11,8 +11,28 @@ import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT } from "../../map/exportedMap";
 import { isLineBlockedByEnemyChuHeHanJieWall } from "../utils/chuHeHanJieWall";
 import { getEffectiveAbilityRange } from "../utils/abilityRange";
 import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../utils/specialAbilityBar";
+import { hasYuqiState } from "../utils/yuqi";
+import { hasMiYunConfusion } from "../utils/miyun";
 
 const SHU_SE_BUFF_ID = 2646;
+
+type ValidateCastOptions = {
+  ignoreActiveChannel?: boolean;
+  pendingJump?: boolean;
+  targetUserId?: string;
+  entityTargetId?: string;
+  groundTarget?: { x: number; y: number; z?: number };
+  /** Map objects to use for LOS checks. Defaults to worldMap.objects if omitted. */
+  mapObjects?: MapObject[];
+  /** Minimum object height for LOS blocking (0 = all heights block). */
+  minLOSBlockH?: number;
+  /** If provided, uses BVH-based LOS instead of AABB-based (more accurate). */
+  collisionSystem?: ExportedMapCollisionSystem | null;
+  /** Internal 迷云 support: let retarget validation ignore normal allegiance checks. */
+  ignoreTargetAllegiance?: boolean;
+  /** Internal recursion guard for confusion target enumeration. */
+  ignoreMiYunRetarget?: boolean;
+};
 
 /* =========================================================
    INTERNAL HELPERS
@@ -127,6 +147,58 @@ function segmentIntersectsAABB(
   return true;
 }
 
+function resolveMiYunCastTarget(params: {
+  state: GameState;
+  playerIndex: number;
+  abilityInstanceId: string;
+  player: { userId: string; buffs: any[] };
+  options?: ValidateCastOptions;
+}) {
+  const { state, playerIndex, abilityInstanceId, player, options } = params;
+  if (!hasMiYunConfusion(player)) return null;
+
+  const candidates: Array<{ targetUserId?: string; entityTargetId?: string }> = [];
+  const recursiveBaseOptions: ValidateCastOptions = {
+    ...(options ?? {}),
+    ignoreTargetAllegiance: true,
+    ignoreMiYunRetarget: true,
+  };
+
+  for (const candidate of state.players) {
+    if (candidate.userId === player.userId) continue;
+    if ((candidate.hp ?? 0) <= 0) continue;
+
+    try {
+      validateCastAbility(state, playerIndex, abilityInstanceId, {
+        ...recursiveBaseOptions,
+        targetUserId: candidate.userId,
+        entityTargetId: undefined,
+      });
+      candidates.push({ targetUserId: candidate.userId });
+    } catch {
+      // Ignore invalid confusion candidates.
+    }
+  }
+
+  for (const entity of state.entities ?? []) {
+    if ((entity.hp ?? 0) <= 0) continue;
+
+    try {
+      validateCastAbility(state, playerIndex, abilityInstanceId, {
+        ...recursiveBaseOptions,
+        targetUserId: undefined,
+        entityTargetId: entity.id,
+      });
+      candidates.push({ entityTargetId: entity.id });
+    } catch {
+      // Ignore invalid confusion candidates.
+    }
+  }
+
+  if (candidates.length === 0) return null;
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
 /* =========================================================
    VALIDATE PLAY ABILITY (REAL-TIME BATTLE)
 ========================================================= */
@@ -139,19 +211,7 @@ export function validateCastAbility(
   state: GameState,
   playerIndex: number,
   abilityInstanceId: string,
-  options?: {
-    ignoreActiveChannel?: boolean;
-    pendingJump?: boolean;
-    targetUserId?: string;
-    entityTargetId?: string;
-    groundTarget?: { x: number; y: number; z?: number };
-    /** Map objects to use for LOS checks. Defaults to worldMap.objects if omitted. */
-    mapObjects?: MapObject[];
-    /** Minimum object height for LOS blocking (0 = all heights block). */
-    minLOSBlockH?: number;
-    /** If provided, uses BVH-based LOS instead of AABB-based (more accurate). */
-    collisionSystem?: ExportedMapCollisionSystem | null;
-  }
+  options?: ValidateCastOptions
 ) {
   if (state.gameOver) {
     throw new Error("ERR_GAME_OVER");
@@ -209,6 +269,11 @@ export function validateCastAbility(
     throw new Error("ERR_ABILITY_NOT_FOUND");
   }
 
+  const yuqiMounted = hasYuqiState(player as any);
+  const mountedYuqiToggle = yuqiMounted && ability.id === "yuqi";
+  let resolvedTargetUserId = options?.targetUserId;
+  let resolvedEntityTargetId = options?.entityTargetId;
+
   ensureChargeRuntime(instance, ability);
 
   if ((ability as any).gcd === true && Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
@@ -221,12 +286,34 @@ export function validateCastAbility(
     Number.isFinite(options.groundTarget.y);
   const allowGroundCastWithoutTarget =
     ability.target === "OPPONENT" &&
+    (ability as any).friendlyTarget !== true &&
     (ability as any).allowGroundCastWithoutTarget === true &&
     hasGroundTarget;
+  const isFriendlyTargetAbility =
+    ability.target === "OPPONENT" && (ability as any).friendlyTarget === true;
+  const miYunRetarget =
+    ability.target === "OPPONENT" &&
+    !hasGroundTarget &&
+    !allowGroundCastWithoutTarget &&
+    options?.ignoreMiYunRetarget !== true &&
+    (resolvedTargetUserId !== undefined || resolvedEntityTargetId !== undefined)
+      ? resolveMiYunCastTarget({
+          state,
+          playerIndex,
+          abilityInstanceId,
+          player,
+          options,
+        })
+      : null;
+  if (miYunRetarget) {
+    resolvedTargetUserId = miYunRetarget.targetUserId;
+    resolvedEntityTargetId = miYunRetarget.entityTargetId;
+  }
+  const ignoreTargetAllegiance = options?.ignoreTargetAllegiance === true || miYunRetarget !== null;
   const selfTargetRequested =
     ability.target === "OPPONENT" &&
-    options?.targetUserId === player.userId &&
-    (ability as any).canTargetSelf === true;
+    resolvedTargetUserId === player.userId &&
+    ((ability as any).canTargetSelf === true || isFriendlyTargetAbility);
 
   if (ability.id === "feng_liu_yun_san" && !hasGroundTarget) {
     throw new Error("ERR_TARGET_UNAVAILABLE");
@@ -234,22 +321,35 @@ export function validateCastAbility(
 
   if (
     ability.target === "OPPONENT" &&
-    options?.targetUserId === player.userId &&
+    resolvedTargetUserId === player.userId &&
+    !ignoreTargetAllegiance &&
     !selfTargetRequested
   ) {
     throw new Error("ERR_TARGET_UNAVAILABLE");
   }
 
-  let targetIndex = ability.target === "SELF" ? playerIndex : (playerIndex === 0 ? 1 : 0);
-  if (ability.target === "OPPONENT" && options?.targetUserId) {
-    const explicitTarget = state.players.findIndex((p) => p.userId === options.targetUserId);
+  if (
+    isFriendlyTargetAbility &&
+    !ignoreTargetAllegiance &&
+    resolvedTargetUserId &&
+    resolvedTargetUserId !== player.userId
+  ) {
+    throw new Error("ERR_TARGET_UNAVAILABLE");
+  }
+
+  let targetIndex =
+    ability.target === "SELF" || isFriendlyTargetAbility
+      ? playerIndex
+      : (playerIndex === 0 ? 1 : 0);
+  if (ability.target === "OPPONENT" && resolvedTargetUserId) {
+    const explicitTarget = state.players.findIndex((p) => p.userId === resolvedTargetUserId);
     if (explicitTarget >= 0) targetIndex = explicitTarget;
   }
   const targetPlayer = state.players[targetIndex];
-  const explicitEntity = ability.target === "OPPONENT" && options?.entityTargetId
-    ? (state.entities ?? []).find((entity: any) => entity.id === options.entityTargetId) ?? null
+  const explicitEntity = ability.target === "OPPONENT" && resolvedEntityTargetId
+    ? (state.entities ?? []).find((entity: any) => entity.id === resolvedEntityTargetId) ?? null
     : null;
-  if (ability.target === "OPPONENT" && options?.entityTargetId && !explicitEntity) {
+  if (ability.target === "OPPONENT" && resolvedEntityTargetId && !explicitEntity) {
     throw new Error("ERR_TARGET_UNAVAILABLE");
   }
   const targetPosition = explicitEntity?.position ?? targetPlayer.position;
@@ -277,6 +377,10 @@ export function validateCastAbility(
   /* ================= CHANNELING ================= */
   if (!options?.ignoreActiveChannel && (player as any).activeChannel) {
     throw new Error("ERR_CHANNELING");
+  }
+
+  if (yuqiMounted && !mountedYuqiToggle && (ability as any).canCastWhileMounted !== true) {
+    throw new Error("ERR_BLOCKED_BY_BUFF");
   }
 
   /* ================= SILENCE (Level 3 — not removable) ================= */
@@ -427,7 +531,7 @@ export function validateCastAbility(
   }
 
   /* ================= REQUIRES STANDING ================= */
-  if ((ability as any).requiresStanding) {
+  if ((ability as any).requiresStanding && !mountedYuqiToggle) {
     const jumpCount = (player as any).jumpCount ?? 0;
     const vz = (player as any).velocity?.vz ?? 0;
     const vx = (player as any).velocity?.vx ?? 0;
@@ -467,18 +571,39 @@ export function validateCastAbility(
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
   if (ability.target === "OPPONENT" && !allowGroundCastWithoutTarget && !selfTargetRequested) {
     if (explicitEntity) {
-      if (explicitEntity.hp <= 0 || explicitEntity.ownerUserId === player.userId) {
+      if ((explicitEntity.hp ?? 0) <= 0) {
         throw new Error("ERR_TARGET_UNAVAILABLE");
       }
+      if (!ignoreTargetAllegiance) {
+        const invalidEntityTarget = isFriendlyTargetAbility
+          ? explicitEntity.ownerUserId !== player.userId
+          : explicitEntity.ownerUserId === player.userId;
+        if (invalidEntityTarget) {
+          throw new Error("ERR_TARGET_UNAVAILABLE");
+        }
+      }
     } else {
-      const enemy = targetPlayer;
-      if (blocksCardTargeting(enemy)) {
-        throw new Error("ERR_TARGET_UNAVAILABLE");
+      if (ignoreTargetAllegiance) {
+        if (!targetPlayer || targetPlayer.userId === player.userId || (targetPlayer.hp ?? 0) <= 0) {
+          throw new Error("ERR_TARGET_UNAVAILABLE");
+        }
+        if (blocksCardTargeting(targetPlayer)) {
+          throw new Error("ERR_TARGET_UNAVAILABLE");
+        }
+      } else if (isFriendlyTargetAbility) {
+        if (!targetPlayer || targetPlayer.userId !== player.userId || (targetPlayer.hp ?? 0) <= 0) {
+          throw new Error("ERR_TARGET_UNAVAILABLE");
+        }
+      } else {
+        const enemy = targetPlayer;
+        if (blocksCardTargeting(enemy)) {
+          throw new Error("ERR_TARGET_UNAVAILABLE");
+        }
       }
     }
 
     /* ================= FACE DIRECTION (180°) ================= */
-    if (requiresFacing(ability as any)) {
+    if (!isFriendlyTargetAbility && requiresFacing(ability as any)) {
       if (!isInFacingHemisphere(player, { position: targetPosition })) {
         throw new Error("ERR_NOT_FACING_TARGET");
       }
@@ -487,7 +612,7 @@ export function validateCastAbility(
     /* ================= LINE OF SIGHT (structure blocking) ================= */
   }
 
-  if (ability.target === "OPPONENT" && !selfTargetRequested) {
+  if (ability.target === "OPPONENT" && !selfTargetRequested && !isFriendlyTargetAbility) {
     const losTargetPosition = allowGroundCastWithoutTarget
       ? {
           x: options?.groundTarget?.x ?? targetPosition.x,
@@ -533,6 +658,11 @@ export function validateCastAbility(
   }
 
   // ✅ All validations passed
+  return {
+    targetUserId: resolvedTargetUserId,
+    entityTargetId: resolvedEntityTargetId,
+    confusionRetargeted: miYunRetarget !== null,
+  };
 }
 
 /* =========================================================

@@ -6,7 +6,7 @@ import {
   AbilityEffect,
   ActiveBuff,
 } from "../../state/types";
-import { resolveHealAmount } from "../../utils/combatMath";
+import { resolveHealAmountRoll } from "../../utils/combatMath";
 import { applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 
@@ -26,12 +26,13 @@ export function handleHeal(
 ) {
   const base = effect.value ?? 0;
 
-  const final = resolveHealAmount({
+  const healRoll = resolveHealAmountRoll({
+    source,
     target,
     base,
   });
 
-  const applied = applyHealToTarget(target as any, final);
+  const applied = applyHealToTarget(target as any, healRoll.heal);
 
   if (applied > 0) {
     pushEvent(state, {
@@ -43,6 +44,7 @@ export function handleHeal(
       abilityName: ability.name,
       effectType: "HEAL",
       value: applied,
+      isCrit: healRoll.isCrit,
     });
   }
 }

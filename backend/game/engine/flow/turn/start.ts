@@ -2,8 +2,8 @@
 
 import { GameState, ActiveBuff } from "../../state/types";
 import {
-  resolveScheduledDamage,
-  resolveHealAmount,
+  resolveScheduledDamageRoll,
+  resolveHealAmountRoll,
 } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import {
@@ -41,11 +41,12 @@ export function applyStartTurnEffects(params: {
   for (const buff of me.buffs) {
     for (const e of buff.effects) {
       if (e.type === "PERIODIC_DAMAGE") {
-        const dmg = resolveScheduledDamage({
+        const damageRoll = resolveScheduledDamageRoll({
           source: enemy,
           target: me,
           base: e.value ?? 0,
         });
+        const dmg = damageRoll.damage;
 
         applyDamageToTarget(me as any, dmg);
 
@@ -56,17 +57,19 @@ export function applyStartTurnEffects(params: {
           abilityId: getBuffSourceAbilityId(buff),
           abilityName: getBuffSourceAbilityName(buff),
           value: dmg,
+          isCrit: damageRoll.isCrit,
           effectType: "SCHEDULED_DAMAGE",
         });
       }
 
       if (e.type === "PERIODIC_HEAL") {
-        const heal = resolveHealAmount({
+        const healRoll = resolveHealAmountRoll({
+          source: me,
           target: me,
           base: e.value ?? 0,
         });
 
-        const applied = applyHealToTarget(me as any, heal);
+        const applied = applyHealToTarget(me as any, healRoll.heal);
 
         if (applied > 0) {
           pushHealEvent({
@@ -76,6 +79,7 @@ export function applyStartTurnEffects(params: {
             abilityId: getBuffSourceAbilityId(buff),
             abilityName: getBuffSourceAbilityName(buff),
             value: applied,
+            isCrit: healRoll.isCrit,
           });
         }
       }

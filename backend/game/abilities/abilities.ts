@@ -149,12 +149,84 @@ export const BASE_ABILITIES: AbilityRecord = {
   yuqi: {
     id: "yuqi",
     name: "御骑",
-    description: "【占位技能】",
-    type: "SUPPORT",
+    description: "未御骑时：需站立运功3秒，移动或跳跃会打断；完成后获得【御骑】\n已御骑时：瞬发解除【御骑】并下马\n御骑期间移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展带【可以马上施展】标记的招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
+    type: "CHANNEL",
     target: "SELF",
-    cooldownTicks: 300,
+    cooldownTicks: 0,
+    gcd: false,
+    requiresStanding: true,
+    canCastWhileMounted: true,
+    channelDurationMs: 3_000,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelLockMovement: false,
+    applyBuffsOnComplete: true,
+    channelCompleteBuffIds: [2741],
     effects: [],
+    buffs: [
+      {
+        buffId: 2741,
+        name: "御骑",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 365 * 24 * 60 * 60 * 1000,
+        description: "骑乘状态：移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展【可以马上施展】招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
+        effects: [{ type: "SPEED_BOOST", value: 1 }],
+      },
+    ],
     isCommon: true,
+  },
+
+  ren_chi_cheng: {
+    id: "ren_chi_cheng",
+    name: "任驰骋",
+    description: "运功0.5秒，期间可以移动但跳跃会打断；完成后获得【御骑】、【任驰骋】12秒（伤害提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
+    type: "CHANNEL",
+    target: "SELF",
+    cooldownTicks: 900,
+    gcd: true,
+    channelDurationMs: 500,
+    channelCancelOnMove: false,
+    channelCancelOnJump: true,
+    channelLockMovement: false,
+    applyBuffsOnComplete: true,
+    channelCompleteBuffIds: [2741, 2742, 2743],
+    effects: [],
+    buffs: [
+      {
+        buffId: 2741,
+        name: "御骑",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 365 * 24 * 60 * 60 * 1000,
+        description: "骑乘状态：移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展【可以马上施展】招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
+        effects: [{ type: "SPEED_BOOST", value: 1 }],
+      },
+      {
+        buffId: 2742,
+        name: "任驰骋",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 12_000,
+        description: "伤害提高15%",
+        effects: [{ type: "DAMAGE_MULTIPLIER", value: 1.15 }],
+      },
+      {
+        buffId: 2743,
+        name: "纵轻骑",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 5_000,
+        description: "免疫控制、沉默、恐惧与击退，但仍会被拉",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
+          { type: "FEAR_IMMUNE" },
+          { type: "KNOCKED_BACK_IMMUNE" },
+        ],
+      },
+    ],
+    isCommon: false,
   },
 
   /* ================= 基础攻击 ================= */
@@ -199,14 +271,14 @@ export const BASE_ABILITIES: AbilityRecord = {
   sanhuan_taoyue: {
     id: "sanhuan_taoyue",
     name: "三环套月",
-    description: "造成3点伤害，并叠加【三环套月】；叠满3层时引爆并额外造成3点伤害（持续10秒）",
+    description: "造成1点伤害，并叠加【三环套月】；叠满3层时引爆并额外造成1点伤害（持续10秒）",
     type: "ATTACK",
     target: "OPPONENT",
     cooldownTicks: 0,
     gcd: true,
     range: 4,
     effects: [
-      { type: "DAMAGE", value: 3 },
+      { type: "DAMAGE", value: 1 },
     ],
     buffs: [
       {
@@ -222,10 +294,23 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
   },
 
+  long_yin: {
+    id: "long_yin",
+    name: "龙吟",
+    description: "需要目标，射程4\n造成2点伤害\n若本次造成会心，则重置自身冷却（仍触发GCD）",
+    type: "ATTACK",
+    target: "OPPONENT",
+    cooldownTicks: 300,
+    gcd: true,
+    range: 4,
+    effects: [{ type: "DAMAGE", value: 2 }],
+    buffs: [],
+  },
+
   baizu: {
     id: "baizu",
     name: "百足",
-    description: "可选目标或地面施放（范围6）\n命中后立刻造成5点伤害\n附加【百足】18秒：每3秒造成6点伤害，结束时额外造成5点伤害",
+    description: "可选目标或地面施放（范围6）\n命中后立刻造成3点伤害\n附加【百足】18秒：每3秒造成4点伤害，结束时额外造成3点伤害",
     type: "ATTACK",
     target: "OPPONENT",
     range: 25,
@@ -233,7 +318,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     faceDirection: false,
     allowGroundCastWithoutTarget: true,
-    effects: [{ type: "BAIZU_AOE", value: 5, range: 6 }],
+    effects: [{ type: "BAIZU_AOE", value: 3, range: 6 }],
     buffs: [
       {
         buffId: 1001,
@@ -241,10 +326,10 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "DEBUFF",
         durationMs: 18_000,
         periodicMs: 3_000,  // fires every 3 seconds
-        description: "每3秒受到6点伤害，结束时额外受到5点伤害",
+        description: "每3秒受到4点伤害，结束时额外受到3点伤害",
         effects: [
-          { type: "PERIODIC_DAMAGE", value: 6 },
-          { type: "TIMED_SELF_DAMAGE", value: 5, delayMs: 18_000 },
+          { type: "PERIODIC_DAMAGE", value: 4 },
+          { type: "TIMED_SELF_DAMAGE", value: 3, delayMs: 18_000 },
         ],
       },
     ],
@@ -731,7 +816,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   yun_qi_song: {
     id: "yun_qi_song",
     name: "云栖松",
-    description: "自身获得【云栖松】12秒：外功闪避率提高60%\n同时获得【栖松】5秒：每秒回复1点气血\n并驱散自身阳性、混元、阴性、毒性不利效果各两个",
+    description: "自身获得【云栖松】12秒：外功闪避率提高60%\n同时获得【栖松】5秒：每秒回复1点气血（贯体）\n并驱散自身阳性、混元、阴性、毒性不利效果各两个",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -758,8 +843,8 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "BUFF",
         durationMs: 5_000,
         periodicMs: 1_000,
-        description: "每秒回复1点气血",
-        effects: [{ type: "PERIODIC_HEAL", value: 1 }],
+        description: "每秒回复1点气血（贯体）",
+        effects: [{ type: "PERIODIC_GUAN_TI_HEAL", value: 1 }],
       },
     ],
   },
@@ -790,12 +875,12 @@ export const BASE_ABILITIES: AbilityRecord = {
   fengxiu_diang: {
     id: "fengxiu_diang",
     name: "风袖低昂",
-    description: "恢复50点生命值\n获得【天地低昂】10秒：受到伤害降低40%",
+    description: "恢复30点生命值\n获得【天地低昂】10秒：受到伤害降低40%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "HEAL", value: 50 }],
+    effects: [{ type: "HEAL", value: 30 }],
     buffs: [
       {
         buffId: 1009,
@@ -933,7 +1018,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   fenglai_wushan: {
     id: "fenglai_wushan",
     name: "风来吴山",
-    description: "在5秒内，对10尺内目标造成10次伤害",
+    description: "在5秒内，对10尺内目标造成多次伤害（每次5点）",
     originalDescription:
       "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计10次伤害。在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
     type: "CHANNEL",
@@ -955,7 +1040,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "SILENCE_IMMUNE" },
-          { type: "CHANNEL_AOE_TICK", value: 8, range: 10 },
+          { type: "CHANNEL_AOE_TICK", value: 5, range: 10 },
         ],
       },
     ],
@@ -1125,7 +1210,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   zhuiming_jian: {
     id: "zhuiming_jian",
     name: "追命箭",
-    description: "需要目标，运功2秒（正读条）\n需要站立施放，移动或跳跃会中断\n完成时造成15点伤害；若自身气血高于60，额外造成9点伤害",
+    description: "需要目标，运功2秒（正读条）\n需要站立施放，移动或跳跃会中断\n完成时造成10点伤害；若自身气血高于60，额外造成6点伤害",
     type: "CHANNEL",
     target: "OPPONENT",
     cooldownTicks: 300,
@@ -1141,8 +1226,8 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelCancelOnOutOfRange: 25,
     channelForward: true,
     channelEffects: [
-      { type: "TIMED_AOE_DAMAGE", value: 15, range: 50 },
-      { type: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT", value: 9, threshold: 60, range: 50 },
+      { type: "TIMED_AOE_DAMAGE", value: 10, range: 50 },
+      { type: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT", value: 6, threshold: 60, range: 50 },
     ],
   } as any,
 
@@ -1151,14 +1236,14 @@ export const BASE_ABILITIES: AbilityRecord = {
   zhenshen_xingsi: {
     id: "zhenshen_xingsi",
     name: "龙牙",
-    description: "需要目标，冲向敌人（最远20码）\n施放时造成20点伤害",
+    description: "需要目标，冲向敌人（最远20码）\n施放时造成15点伤害",
     type: "CONTROL",
     target: "OPPONENT",
     cooldownTicks: 300,
     gcd: true,
     range: 20,
     effects: [
-      { type: "DAMAGE", value: 20 },
+      { type: "DAMAGE", value: 15 },
       { type: "DASH", value: 8 },
     ],
   },
@@ -1193,7 +1278,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   qiandie_turui: {
     id: "qiandie_turui",
     name: "千蝶吐瑞",
-    description: "逆读条8秒，每0.5秒回复3点气血；运功期间免控，移动会打断并失去效果",
+    description: "逆读条8秒，每0.5秒回复5点气血；运功期间免控，移动会打断并失去效果",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 300,
@@ -1216,7 +1301,7 @@ export const BASE_ABILITIES: AbilityRecord = {
           { type: "CONTROL_IMMUNE" },
           { type: "KNOCKBACK_IMMUNE" },
           { type: "SILENCE_IMMUNE" },
-          { type: "PERIODIC_HEAL", value: 3 },
+          { type: "PERIODIC_HEAL", value: 5 },
         ],
       },
     ],
@@ -1268,7 +1353,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   kuang_long_luan_wu: {
     id: "kuang_long_luan_wu",
     name: "狂龙乱舞",
-    description: "运功2秒，于前方2尺处唤起雷云，雷云半径8尺，每0.5秒造成4点伤害，持续6秒",
+    description: "运功2秒，于前方2尺处唤起雷云，雷云半径8尺，每0.5秒造成3点伤害，持续6秒",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 300,
@@ -1281,7 +1366,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelCancelOnJump: true,
     channelForward: true,
     channelEffects: [
-      { type: "PLACE_GROUND_ZONE", value: 4, range: 8 },
+      { type: "PLACE_GROUND_ZONE", value: 3, range: 8 },
     ],
   } as any,
 
@@ -1315,12 +1400,12 @@ export const BASE_ABILITIES: AbilityRecord = {
   } as any,
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 云飞玉皇 — 2s channel (pure: no buffs), 20dmg on completion + 10 bonus if in 4u
+  // 云飞玉皇 — 2s channel (pure: no buffs), 10dmg on completion + 5 bonus if in 4u
   // ──────────────────────────────────────────────────────────────────────────
   yun_fei_yu_huang: {
     id: "yun_fei_yu_huang",
     name: "云飞玉皇",
-    description: "需要目标，运功2秒（不可移动），对目标造成20点伤害；运功完成时目标在4码内额外造成10点伤害",
+    description: "需要目标，运功2秒（不可移动），对目标造成10点伤害；运功完成时目标在4码内额外造成5点伤害",
     type: "CHANNEL",
     target: "OPPONENT",
     cooldownTicks: 150,
@@ -1336,8 +1421,8 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelCancelOnOutOfRange: 8,
     channelForward: true,
     channelEffects: [
-      { type: "TIMED_AOE_DAMAGE", value: 20, range: 50 },
-      { type: "TIMED_AOE_DAMAGE", value: 10, range: 4 },
+      { type: "TIMED_AOE_DAMAGE", value: 10, range: 50 },
+      { type: "TIMED_AOE_DAMAGE", value: 5, range: 4 },
     ],
   } as any,
 
@@ -1347,14 +1432,14 @@ export const BASE_ABILITIES: AbilityRecord = {
   kong_que_ling: {
     id: "kong_que_ling",
     name: "孔雀翎",
-    description: "范围25，即刻对目标造成3点伤害，并附加【孔雀翎受击】（8层，每次受攻击触发额外3点伤害）和【孔雀翎】（减速50%），各持续6秒",
+    description: "范围25，即刻对目标造成4点伤害，并附加【孔雀翎受击】（8层，每次受攻击触发额外1点伤害）和【孔雀翎】（减速50%），各持续6秒",
     type: "ATTACK",
     target: "OPPONENT",
     cooldownTicks: 600,
     gcd: true,
     range: 25,
     effects: [
-      { type: "DAMAGE", value: 3 },
+      { type: "DAMAGE", value: 4 },
     ],
     buffs: [
       {
@@ -1366,9 +1451,9 @@ export const BASE_ABILITIES: AbilityRecord = {
         initialStacks: 8,
         maxStacks: 8,
         procCooldownMs: 500,
-        description: "每次受攻击触发3点额外伤害（每0.5秒至多触发一次），剩余层数见图标",
+        description: "每次受攻击触发1点额外伤害（每0.5秒至多触发一次），剩余层数见图标",
         effects: [
-          { type: "STACK_ON_HIT_DAMAGE", value: 3 },
+          { type: "STACK_ON_HIT_DAMAGE", value: 1 },
         ],
       },
       {
@@ -1495,6 +1580,65 @@ export const BASE_ABILITIES: AbilityRecord = {
           { type: "DAMAGE_TAKEN_INCREASE", value: 0.3 },
           { type: "DAMAGE_MULTIPLIER", value: 1.3 },
         ],
+      },
+    ],
+  },
+
+  zi_qi_dong_lai: {
+    id: "zi_qi_dong_lai",
+    name: "紫气东来",
+    description: "瞬发自我施放\n获得【紫气东来】12秒：造成伤害提高25%，外功会心和内功会心提高25%，外功会心效果和内功会心效果提高25%\n不触发GCD",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    effects: [],
+    buffs: [
+      {
+        buffId: 2706,
+        name: "紫气东来",
+        category: "BUFF",
+        durationMs: 12_000,
+        description: "造成伤害提高25%，外功会心和内功会心提高25%，外功会心效果和内功会心效果提高25%",
+        effects: [
+          { type: "DAMAGE_MULTIPLIER", value: 1.25 },
+          { type: "CRIT_CHANCE_BONUS", value: 25 },
+          { type: "CRIT_EFFECT_BONUS", value: 0.25 },
+        ],
+      },
+    ],
+  },
+
+  han_ru_lei: {
+    id: "han_ru_lei",
+    name: "撼如雷",
+    description: "瞬发自我施放\n获得【撼如雷】20秒：外功会心和内功会心提高10%，外功会心效果和内功会心效果提高20%\n同时震散15尺内所有敌方隐身，并使其获得【撼如雷·反隐】20秒：尝试进入隐身时立刻破隐",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "HAN_RU_LEI_AOE", range: 15 } as any],
+    buffs: [
+      {
+        buffId: 2707,
+        name: "撼如雷",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 20_000,
+        description: "外功会心和内功会心提高10%，外功会心效果和内功会心效果提高20%",
+        effects: [
+          { type: "CRIT_CHANCE_BONUS", value: 10 },
+          { type: "CRIT_EFFECT_BONUS", value: 0.2 },
+        ],
+      },
+      {
+        buffId: 2708,
+        name: "撼如雷·反隐",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 20_000,
+        description: "尝试进入隐身时立刻破隐",
+        effects: [{ type: "ANTI_STEALTH" } as any],
       },
     ],
   },
@@ -2877,7 +3021,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "徐如林·回复",
         category: "BUFF",
         durationMs: 1_000,
-        description: "结束时回复5点生命；持有期间不会再次获得",
+        description: "结束时回复5点生命（贯体）；持有期间不会再次获得",
         effects: [{ type: "XU_RU_LIN_RESTORE", value: 5 }],
       },
     ],
@@ -3002,13 +3146,13 @@ export const BASE_ABILITIES: AbilityRecord = {
 
   // ──────────────────────────────────────────────────────────────────────────
   // 龙啸九天 — castable while controlled, cleanses self, control immune 3s,
-  //   60% DR for 6s, self-stuck (CONTROL+Z_LOCK) 1s, AOE 6u: 1 dmg + slow
-  //   knockback (10u over 10s)
+  //   60% DR for 6s, self-stuck (CONTROL+Z_LOCK) 1s, destroys enemy 气场/机关
+  //   within 6u, then AOE 6u: 1 dmg + slow knockback (10u over 10s)
   // ──────────────────────────────────────────────────────────────────────────
   long_xiao_jiu_tian: {
     id: "long_xiao_jiu_tian",
     name: "龙啸九天",
-    description: "瞬发，自身施放。\n空中、移动中、被控制时均可施放\n施放后解除自身所有控制\n获得【龙威】3秒：免疫控制\n获得【龙啸九天】6秒：受到的伤害降低60%\n施放后【龙啸九天·定身】1秒：自身定身（含Z轴）\n并对周围6码内敌人造成1点伤害，并将其击退10码（0.5秒）",
+    description: "瞬发，自身施放。\n空中、移动中、被控制时均可施放\n施放后解除自身所有控制\n获得【龙威】3秒：免疫控制\n获得【龙啸九天】6秒：受到的伤害降低60%\n施放后【龙啸九天·定身】1秒：自身定身（含Z轴）\n摧毁周围6码内敌方气场和机关\n并对周围6码内敌人造成1点伤害，并将其击退10码（0.5秒）",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -3130,6 +3274,39 @@ export const BASE_ABILITIES: AbilityRecord = {
         durationMs: 12_000,
         description: "跳跃高度额外增加12码",
         effects: [{ type: "TI_YUN_ZONG_JUMP" }],
+      },
+    ],
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 凌然天风 — 轻功. Instant SELF cast, usable while moving or airborne.
+  // On cast: rise up 9u in 0.5s and gain a 7s buff that grants control immunity
+  // (except pull / knockback), +5u range, disables normal jumps, and manages
+  // a separate 0/1 special-jump allowance.
+  // ──────────────────────────────────────────────────────────────────────────
+  ling_ran_tian_feng: {
+    id: "ling_ran_tian_feng",
+    name: "凌然天风",
+    description: "轻功，瞬发，自身施放，可移动中或空中施放\n向上跃起9尺（0.5秒）\n获得【凌然天风】7秒：特殊跳跃状态，免疫控制（被拉和击退除外），招式施展距离增加5尺，期间禁用普通跳跃\n施放时获得1次特殊跳跃次数；期间每次施放招式都会刷新至1次",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: false,
+    qinggong: true,
+    effects: [{ type: "LING_RAN_TIAN_FENG_CAST", value: 9, durationTicks: 15 } as any],
+    buffs: [
+      {
+        buffId: 2654,
+        name: "凌然天风",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 7_000,
+        description: "特殊跳跃状态；免疫控制（被拉和击退除外），招式施展距离增加5尺，期间禁用普通跳跃",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "RANGE_BOOST", value: 5 },
+          { type: "LING_RAN_TIAN_FENG_STATE" },
+        ],
       },
     ],
   },
@@ -3325,7 +3502,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   po_feng: {
     id: "po_feng",
     name: "破风",
-    description: "瞬发，射程4。造成2点伤害，附加【破风】（额外受到5%伤害，持续12秒）和【流血】（每2秒1点伤害，持续12秒，最多2层）。若目标拥有控制免疫，额外附加一层【流血】",
+    description: "瞬发，射程4。造成1点伤害，附加【破风】（额外受到5%伤害，持续12秒）和【流血】（每2秒1点伤害，持续12秒，最多2层）。若目标拥有控制免疫，额外附加一层【流血】",
     type: "ATTACK",
     target: "OPPONENT",
     range: 4,
@@ -3482,12 +3659,187 @@ export const BASE_ABILITIES: AbilityRecord = {
   } as any,
 
   // ──────────────────────────────────────────────────────────────────────────
+  // 人剑合一 — instant self cast. Destroy all qichang within 13u; if any
+  // friendly qichang were destroyed, apply 破势 (定身 5s) to nearby enemies.
+  // ──────────────────────────────────────────────────────────────────────────
+  ren_jian_he_yi: {
+    id: "ren_jian_he_yi",
+    name: "人剑合一",
+    description: "瞬发，自身施放\n摧毁周围13码内所有气场\n若其中包含己方气场，则周围13码内敌方玩家获得【破势】5秒：定身",
+    type: "CONTROL",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    effects: [{ type: "REN_JIAN_HE_YI_AOE", range: 13 } as any],
+    buffs: [
+      {
+        buffId: 2735,
+        name: "破势",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 5_000,
+        description: "定身：无法移动、跳跃和施放技能",
+        effects: [{ type: "CONTROL" }],
+      },
+    ],
+  },
+
+  she_shen_jue: {
+    id: "she_shen_jue",
+    name: "舍身诀",
+    description: "瞬发，友方目标\n移除目标控制效果（倒地除外）\n使目标获得【舍身诀·减伤】10秒：伤害降低30%\n使目标获得【舍身诀】10秒：转移受到的伤害\n施法者获得【舍身诀·承伤】10秒：代替目标承受转移伤害，转移伤害不受减伤与护盾影响，但可被免伤抵消",
+    type: "SUPPORT",
+    target: "OPPONENT",
+    friendlyTarget: true,
+    cooldownTicks: 360,
+    gcd: true,
+    range: 20,
+    effects: [{ type: "SHESHEN_JUE" }],
+    buffs: [
+      {
+        buffId: 2736,
+        name: "舍身诀·减伤",
+        category: "BUFF",
+        applyTo: "OPPONENT",
+        durationMs: 10_000,
+        description: "伤害降低30%",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.3 }],
+      },
+      {
+        buffId: 2737,
+        name: "舍身诀",
+        category: "BUFF",
+        applyTo: "OPPONENT",
+        durationMs: 10_000,
+        description: "转移受到的伤害",
+        effects: [],
+      },
+      {
+        buffId: 2738,
+        name: "舍身诀·承伤",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 10_000,
+        description: "代替目标承受舍身转移的伤害",
+        effects: [],
+      },
+    ],
+  },
+
+  yuan: {
+    id: "yuan",
+    name: "渊",
+    description: "瞬发，友方目标，6-20码\n冲向目标\n击退目标周围6码内敌人12码，持续0.25秒\n目标获得【渊】，自身获得【渊·承伤】：目标下一次受到的伤害改由施法者承受，触发后两者同时消失",
+    type: "SUPPORT",
+    target: "OPPONENT",
+    friendlyTarget: true,
+    cooldownTicks: 300,
+    gcd: true,
+    range: 20,
+    minRange: 6,
+    effects: [{ type: "YUAN_GUARD", range: 6, value: 12, durationTicks: 8 } as any],
+    buffs: [
+      {
+        buffId: 2739,
+        name: "渊",
+        category: "BUFF",
+        applyTo: "OPPONENT",
+        durationMs: 10_000,
+        description: "下一次受到的伤害改由施法者承受，触发后与【渊·承伤】同时消失",
+        effects: [],
+      },
+      {
+        buffId: 2740,
+        name: "渊·承伤",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 10_000,
+        description: "为【渊】目标承受下一次受到的伤害，触发后消失",
+        effects: [],
+      },
+    ],
+  },
+
+  ting_feng_chui_xue: {
+    id: "ting_feng_chui_xue",
+    name: "听风吹雪",
+    description: "瞬发，友方目标\n令自身与目标的当前气血变为双方当前气血平均值\n随后双方各回复20点贯体气血",
+    type: "SUPPORT",
+    target: "OPPONENT",
+    friendlyTarget: true,
+    cooldownTicks: 360,
+    gcd: true,
+    range: 20,
+    effects: [{ type: "TING_FENG_CHUI_XUE", value: 20 }],
+  },
+
+  // ─── 碎星辰 — channel 0.5s (forward), movable/air, self zone 15u 30s: +10% 外功会心, +15% 外功会心效果 ───
+  sui_xing_chen: {
+    id: "sui_xing_chen",
+    name: "碎星辰",
+    description: "正读条0.5秒（可移动、可在空中施放）。读条完成后于脚下降落碎星辰阵，持续30秒，半径15尺。阵中自身获得【碎星辰】：外功会心提高10%，外功会心效果提高15%",
+    type: "CHANNEL",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: false,
+    effects: [],
+    buffs: [],
+    channelDurationMs: 500,
+    channelCancelOnMove: false,
+    channelCancelOnJump: false,
+    channelForward: true,
+    applyBuffsOnComplete: false,
+    channelEffects: [
+      {
+        type: "PLACE_GROUND_ZONE",
+        value: 0,
+        range: 15,
+        zoneDurationMs: 30_000,
+        zoneIntervalMs: 1_000,
+        zoneOffsetUnits: 0,
+        zoneHeight: 10,
+      },
+    ],
+  } as any,
+
+  // ─── 破苍穹 — channel 0.5s (forward), movable/air, self zone 15u 30s: +10% 内功会心, +15% 内功会心效果 ───
+  po_cang_qiong: {
+    id: "po_cang_qiong",
+    name: "破苍穹",
+    description: "正读条0.5秒（可移动、可在空中施放）。读条完成后于脚下降落破苍穹阵，持续30秒，半径15尺。阵中自身获得【破苍穹】：内功会心提高10%，内功会心效果提高15%",
+    type: "CHANNEL",
+    target: "SELF",
+    cooldownTicks: 300,
+    gcd: true,
+    requiresGrounded: false,
+    effects: [],
+    buffs: [],
+    channelDurationMs: 500,
+    channelCancelOnMove: false,
+    channelCancelOnJump: false,
+    channelForward: true,
+    applyBuffsOnComplete: false,
+    channelEffects: [
+      {
+        type: "PLACE_GROUND_ZONE",
+        value: 0,
+        range: 15,
+        zoneDurationMs: 30_000,
+        zoneIntervalMs: 1_000,
+        zoneOffsetUnits: 0,
+        zoneHeight: 10,
+      },
+    ],
+  } as any,
+
+  // ──────────────────────────────────────────────────────────────────────────
   // 无相诀 — instant self, 10s: 50-80% DR scaled by missing HP; natural expire → 50% 贯体 heal if hp<10%
   // ──────────────────────────────────────────────────────────────────────────
   wu_xiang_jue: {
     id: "wu_xiang_jue",
     name: "无相诀",
-    description: "瞬发，自身施放\n获得【无相】10秒：受到伤害降低50%；血量每降低25%，减伤额外提高10%（最高80%）\n【无相】自然结束时若气血低于10%，立刻回复50%最大气血（贯体）",
+    description: "瞬发，自身施放\n施放时按当前气血快照获得【无相诀·五十/六十/七十/八十/九十】10秒：气血高于75%/50%/25%/10%时分别减伤50%/60%/70%/80%，10%及以下减伤90%\n【无相诀】自然结束时若气血低于10%，立刻回复50%最大气血（贯体）",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -3496,11 +3848,43 @@ export const BASE_ABILITIES: AbilityRecord = {
     buffs: [
       {
         buffId: 2710,
-        name: "无相",
+        name: "无相诀·五十",
         category: "BUFF",
         durationMs: 10_000,
-        description: "受到伤害降低50-80%（随血量降低增加）",
-        effects: [{ type: "DAMAGE_REDUCTION_HP_SCALING", value: 0.5 }],
+        description: "受到伤害降低50%",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.5 }],
+      },
+      {
+        buffId: 2731,
+        name: "无相诀·六十",
+        category: "BUFF",
+        durationMs: 10_000,
+        description: "受到伤害降低60%",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.6 }],
+      },
+      {
+        buffId: 2732,
+        name: "无相诀·七十",
+        category: "BUFF",
+        durationMs: 10_000,
+        description: "受到伤害降低70%",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.7 }],
+      },
+      {
+        buffId: 2733,
+        name: "无相诀·八十",
+        category: "BUFF",
+        durationMs: 10_000,
+        description: "受到伤害降低80%",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.8 }],
+      },
+      {
+        buffId: 2734,
+        name: "无相诀·九十",
+        category: "BUFF",
+        durationMs: 10_000,
+        description: "受到伤害降低90%",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.9 }],
       },
     ],
   },
@@ -3563,6 +3947,45 @@ export const BASE_ABILITIES: AbilityRecord = {
           { type: "DAMAGE_REDUCTION", value: 0.5 },
           { type: "CHANNEL_AOE_TICK_DAMAGE", value: 1, range: 4 },
         ],
+      },
+    ],
+  },
+
+  wu_an_mi_yun: {
+    id: "wu_an_mi_yun",
+    name: "雾暗迷云",
+    description: "运功1.5秒，期间必须站立不动；完成后使目标获得【迷云】8秒：陷入混乱，释放技能时重新随机目标且不分敌我；【迷云】消失后获得【雾释】20秒：不会受到迷云影响",
+    type: "CHANNEL",
+    target: "OPPONENT",
+    range: 20,
+    cooldownTicks: 300,
+    gcd: true,
+    requiresStanding: true,
+    channelDurationMs: 1_500,
+    channelCancelOnMove: true,
+    channelCancelOnJump: true,
+    channelLockMovement: false,
+    applyBuffsOnComplete: true,
+    channelCompleteBuffIds: [2744],
+    effects: [],
+    buffs: [
+      {
+        buffId: 2744,
+        name: "迷云",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 8_000,
+        description: "陷入混乱，释放技能时重新随机目标且不分敌我；消失后获得【雾释】20秒",
+        effects: [{ type: "MIYUN_CONFUSION" }],
+      },
+      {
+        buffId: 2745,
+        name: "雾释",
+        category: "DEBUFF",
+        applyTo: "OPPONENT",
+        durationMs: 20_000,
+        description: "不会受到迷云影响",
+        effects: [{ type: "MIYUN_IMMUNE" }],
       },
     ],
   },
@@ -4619,6 +5042,25 @@ export interface NoWeaponRequiredSnapshot {
 
 export type NoWeaponRequiredOverrideMode = "manual-include" | "manual-exclude" | "clear";
 
+export interface CanCastWhileMountedAbilityEntry {
+  id: string;
+  name: string;
+  description: string;
+  type: Ability["type"];
+  target: Ability["target"];
+  baseCanCastWhileMounted: boolean;
+  manualCanCastWhileMounted: boolean;
+  manuallyExcluded: boolean;
+  canCastWhileMounted: boolean;
+}
+
+export interface CanCastWhileMountedSnapshot {
+  updatedAt: string | null;
+  abilities: CanCastWhileMountedAbilityEntry[];
+}
+
+export type CanCastWhileMountedOverrideMode = "manual-include" | "manual-exclude" | "clear";
+
 function hasAbilityOverrideContent(entry: AbilityEditorOverrideEntry) {
   return Boolean(
     entry.tags ||
@@ -4678,6 +5120,44 @@ export function buildNoWeaponRequiredSnapshot(): NoWeaponRequiredSnapshot {
     })
     .sort((left, right) => {
       const selectedDelta = Number(right.noWeaponRequired) - Number(left.noWeaponRequired);
+      if (selectedDelta !== 0) return selectedDelta;
+      const excludedDelta = Number(right.manuallyExcluded) - Number(left.manuallyExcluded);
+      if (excludedDelta !== 0) return excludedDelta;
+      const typeDelta = ABILITY_TYPE_ORDER[left.type] - ABILITY_TYPE_ORDER[right.type];
+      if (typeDelta !== 0) return typeDelta;
+      return left.name.localeCompare(right.name, "zh-Hans-CN");
+    });
+
+  return {
+    updatedAt: abilityPropertyOverridesUpdatedAt,
+    abilities,
+  };
+}
+
+export function buildCanCastWhileMountedSnapshot(): CanCastWhileMountedSnapshot {
+  const resolvedAbilities = buildResolvedAbilities(BASE_ABILITIES, abilityPropertyOverrides);
+
+  const abilities = Object.values(resolvedAbilities)
+    .filter((ability) => (ability as any).specialBarAbility !== true)
+    .map((ability) => {
+      const override = abilityPropertyOverrides[ability.id];
+      const propertyOverride = override?.properties?.canCastWhileMounted;
+      const baseCanCastWhileMounted = BASE_ABILITIES[ability.id]?.canCastWhileMounted === true;
+
+      return {
+        id: ability.id,
+        name: ability.name,
+        description: ability.description,
+        type: ability.type,
+        target: ability.target,
+        baseCanCastWhileMounted,
+        manualCanCastWhileMounted: propertyOverride === true,
+        manuallyExcluded: propertyOverride === false,
+        canCastWhileMounted: (ability as any).canCastWhileMounted === true,
+      } satisfies CanCastWhileMountedAbilityEntry;
+    })
+    .sort((left, right) => {
+      const selectedDelta = Number(right.canCastWhileMounted) - Number(left.canCastWhileMounted);
       if (selectedDelta !== 0) return selectedDelta;
       const excludedDelta = Number(right.manuallyExcluded) - Number(left.manuallyExcluded);
       if (excludedDelta !== 0) return excludedDelta;
@@ -4931,4 +5411,43 @@ export function setAbilityNoWeaponRequiredOverride(abilityId: string, mode: NoWe
   rebuildAbilities();
 
   return buildNoWeaponRequiredSnapshot();
+}
+
+export function setAbilityCanCastWhileMountedOverride(abilityId: string, mode: CanCastWhileMountedOverrideMode) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
+  }
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+  };
+  const nextProperties = {
+    ...(nextEntry.properties ?? {}),
+  };
+
+  if (mode === "manual-include") {
+    nextProperties.canCastWhileMounted = true;
+  } else if (mode === "manual-exclude") {
+    nextProperties.canCastWhileMounted = false;
+  } else {
+    delete nextProperties.canCastWhileMounted;
+  }
+
+  if (Object.keys(nextProperties).length > 0) {
+    nextEntry.properties = nextProperties;
+  } else {
+    delete nextEntry.properties;
+  }
+
+  if (hasAbilityOverrideContent(nextEntry)) {
+    abilityPropertyOverrides[abilityId] = nextEntry;
+  } else {
+    delete abilityPropertyOverrides[abilityId];
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+
+  return buildCanCastWhileMountedSnapshot();
 }

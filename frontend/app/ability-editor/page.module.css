@@ -670,6 +670,9 @@
 /* Make the whole card a clickable link */
 .buffCardLink {
   display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
   text-decoration: none;
   color: inherit;
   cursor: pointer;
@@ -1110,6 +1113,75 @@
 }
 .buffCardLink:hover .buffCardHint {
   opacity: 1;
+}
+
+.buffQuickAttrSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e6dfd2;
+}
+
+.buffQuickAttrHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.buffQuickAttrLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #7d7467;
+}
+
+.buffQuickAttrState {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8a5a2b;
+}
+
+.buffQuickAttrRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.buffQuickAttrBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #d7cfbf;
+  background: #f8f4ec;
+  color: #574b3c;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.12s;
+}
+
+.buffQuickAttrBtn:hover:not(:disabled) {
+  background: #efe6d7;
+  border-color: #bba27c;
+  transform: translateY(-1px);
+}
+
+.buffQuickAttrBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.buffQuickAttrBtnActive {
+  background: #6f3f16;
+  border-color: #6f3f16;
+  color: #ffffff;
 }
 
 /* ─── Buff detail page ────────────────────────────────────────────────────── */

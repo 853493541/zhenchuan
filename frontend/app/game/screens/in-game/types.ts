@@ -105,6 +105,9 @@ export interface PlayerState {
   hp: number;
   maxHp?: number;
   shield?: number;
+  waiGongCritChancePct?: number;
+  neiGongCritChancePct?: number;
+  critChancePct?: number;
   hand: AbilityInstance[];
   specialAbilityStates?: Record<string, AbilityInstance>;
   globalGcdTicks?: number;
@@ -145,6 +148,7 @@ export interface GameEvent {
 
   value?: number;
   shieldAbsorbed?: number;
+  isCrit?: boolean;
 
   buffId?: number;
   buffName?: string;

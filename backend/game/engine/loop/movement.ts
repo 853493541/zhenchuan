@@ -19,6 +19,7 @@ import {
 import {
   DASH_CC_IMMUNE_BUFF_ID,
 } from "../effects/definitions/DirectionalDash";
+import { hasYuqiState } from "../utils/yuqi";
 
 /**
  * Arena boundaries (in units)
@@ -343,6 +344,21 @@ function normalizePlanar(x: number, y: number): { x: number; y: number } | null 
   return { x: x / len, y: y / len };
 }
 
+function canUseYuqiMountedJump(
+  jumpDir: { x: number; y: number } | null,
+  facing: { x: number; y: number } | undefined,
+): boolean {
+  if (!jumpDir) return false;
+  if (!facing) return true;
+
+  const facingLen = Math.sqrt(facing.x * facing.x + facing.y * facing.y);
+  if (facingLen <= 0.01) return true;
+
+  const facingX = facing.x / facingLen;
+  const facingY = facing.y / facingLen;
+  return jumpDir.x * facingX + jumpDir.y * facingY >= -0.01;
+}
+
 function clearAirShift(player: PlayerState): void {
   player.airNudgeRemaining = 0;
   player.airNudgeTicksRemaining = 0;
@@ -478,6 +494,11 @@ export function applyMovement(
   const POWER_DIRECTIONAL_JUMP_DISTANCE = 18 * UNIT_SCALE;
   const POWER_DOUBLE_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
   const MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
+  const LING_RAN_TIAN_FENG_UPWARD_JUMP_HEIGHT = 8 * UNIT_SCALE;
+  const LING_RAN_TIAN_FENG_UPWARD_JUMP_TICKS = 15;
+  const LING_RAN_TIAN_FENG_DIRECTIONAL_JUMP_HEIGHT = 4 * UNIT_SCALE;
+  const LING_RAN_TIAN_FENG_DIRECTIONAL_JUMP_DISTANCE = 8.7 * UNIT_SCALE;
+  const LING_RAN_TIAN_FENG_DIRECTIONAL_JUMP_TICKS = 30;
   const pr         = mapCtx?.playerRadius ?? DEFAULT_PLAYER_RADIUS;
   const airShiftDurationTicks = Math.max(1, Math.round(tickRate * AIR_SHIFT_DURATION_SECONDS));
   const baseMoveSpeedPerTick = (BASE_MOVE_SPEED_NEW_PER_SECOND * UNIT_SCALE) / tickRate;
@@ -490,12 +511,44 @@ export function applyMovement(
   if (player.airDirectionLocked === undefined) player.airDirectionLocked = false;
   if (player.airborneSpeedCarry === undefined) player.airborneSpeedCarry = 0;
 
-  const currentGroundH = hasExportedCollision(mapCtx)
+  const allEffects = player.buffs.flatMap((b) => b.effects);
+  const lingRanTianFengActive = allEffects.some((e) => e.type === "LING_RAN_TIAN_FENG_STATE");
+  const yuqiMounted = hasYuqiState(player as any);
+  const baseGroundH = hasExportedCollision(mapCtx)
     ? getExportedGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, arenaW, arenaH, pr, mapCtx.collisionSystem)
     : getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects, pr);
+  const currentGroundH = baseGroundH;
   const wasAirborne = (player.position.z ?? 0) > currentGroundH + 0.01;
 
-  const allEffects = player.buffs.flatMap((b) => b.effects);
+  if (!lingRanTianFengActive && (player.lingRanTianFengCharges ?? 0) !== 0) {
+    player.lingRanTianFengCharges = 0;
+  }
+  const lingRanCastLiftSustainChannelAbilityId = player.lingRanCastLiftSustainChannelAbilityId;
+  const lingRanCastLiftSustainVzPerTick = Number(player.lingRanCastLiftSustainVzPerTick ?? 0);
+  const hasJiuXiaoInitialChannelBuff = player.buffs.some((b: any) => b.buffId === 2726 && (b.expiresAt ?? 0) > Date.now());
+  const lingRanCastLiftChannelActive =
+    !!lingRanCastLiftSustainChannelAbilityId && (
+      player.activeChannel?.abilityId === lingRanCastLiftSustainChannelAbilityId ||
+      (lingRanCastLiftSustainChannelAbilityId === "jiu_xiao_feng_lei" && hasJiuXiaoInitialChannelBuff)
+    );
+  if (!player.activeDash && lingRanCastLiftChannelActive && lingRanCastLiftSustainVzPerTick > 0.0001) {
+    player.activeDash = {
+      abilityId: "ling_ran_tian_feng",
+      vxPerTick: 0,
+      vyPerTick: 0,
+      lingRanCastLift: true,
+      sustainWhileChannelAbilityId: lingRanCastLiftSustainChannelAbilityId,
+      vzPerTick: lingRanCastLiftSustainVzPerTick,
+      forceVzPerTick: lingRanCastLiftSustainVzPerTick,
+      maxUpVz: lingRanCastLiftSustainVzPerTick + 0.1,
+      maxDownVz: -0.1,
+      ticksRemaining: 1,
+    };
+    (player.activeDash as any)._lingRanCastLiftSustained = true;
+  } else if (!player.activeDash && !lingRanCastLiftChannelActive && lingRanCastLiftSustainChannelAbilityId) {
+    delete player.lingRanCastLiftSustainChannelAbilityId;
+    delete player.lingRanCastLiftSustainVzPerTick;
+  }
 
   // ── Level 2 (KNOCKED_BACK) and Level 1 (CONTROL/stun/knockdown): ──
   // Both fully lock the player — no movement, no facing, no jump.
@@ -529,7 +582,7 @@ export function applyMovement(
 
   // 风来吴山 (buffId=1014) and 斩无常 (buffId=2712): lock jump input while channeling.
   // This is a hard jump-disable, not a jump-cancel mechanic.
-  const jumpLockedByFenglai = player.buffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712);
+  const jumpLockedByFenglai = !lingRanTianFengActive && player.buffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712);
   if (jumpLockedByFenglai && input?.jump) {
     input = {
       ...input,
@@ -565,7 +618,8 @@ export function applyMovement(
     if (dash.vzPerTick === undefined) {
       // Process a pending jump so "double-jump then instantly nieyun" works.
       const multiJumpEffect = allEffects.find((e) => e.type === "MULTI_JUMP");
-      const maxJumps = multiJumpEffect ? (multiJumpEffect.value ?? MAX_JUMPS) : MAX_JUMPS;
+      const baseMaxJumps = multiJumpEffect ? (multiJumpEffect.value ?? MAX_JUMPS) : MAX_JUMPS;
+      const maxJumps = yuqiMounted ? 1 : baseMaxJumps;
       if (input?.jump && (player.jumpCount ?? 0) < maxJumps) {
         const isMultiJumpDashPending = !!multiJumpEffect;
         const boostIdx = player.buffs.findIndex(
@@ -701,9 +755,10 @@ export function applyMovement(
 
     // Apply frozen vertical velocity (gravity suspended)
     // In collision-test mode use BVH ground height; otherwise fall back to AABB.
-    const dashGroundH = hasExportedCollision(mapCtx)
+    const dashBaseGroundH = hasExportedCollision(mapCtx)
       ? getExportedGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, arenaW, arenaH, pr, mapCtx.collisionSystem)
       : getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects);
+    const dashGroundH = dashBaseGroundH;
     player.position.z = Math.max(dashGroundH, player.position.z! + dash.vzPerTick);
     if (dash.useArcGravity) {
       const gUp = dash.arcGravityUpPerTick ?? 0;
@@ -715,14 +770,31 @@ export function applyMovement(
       dash.vzPerTick = 0;
     }
 
-    dash.ticksRemaining--;
+    const shouldSustainLingRanCastLift =
+      dash.lingRanCastLift === true &&
+      (
+        player.activeChannel?.abilityId === dash.sustainWhileChannelAbilityId ||
+        (player.lingRanCastLiftSustainChannelAbilityId === dash.sustainWhileChannelAbilityId && hasJiuXiaoInitialChannelBuff)
+      );
+
+    if (shouldSustainLingRanCastLift) {
+      (dash as any)._lingRanCastLiftSustained = true;
+    } else {
+      if ((dash as any)._lingRanCastLiftSustained) {
+        dash.ticksRemaining = 0;
+      } else {
+        dash.ticksRemaining--;
+      }
+    }
+
     if (dash.ticksRemaining <= 0) {
       const elapsed = Date.now() - ((dash as any)._startMs ?? 0);
       console.log(`[DASH] <<< END    time=${new Date().toISOString()}  elapsed=${elapsed}ms  (expected ~1000ms for 30 ticks @ 30Hz)`);
       // Dash complete — gravity resets
-      const dashEndGroundH = hasExportedCollision(mapCtx)
+      const dashEndBaseGroundH = hasExportedCollision(mapCtx)
         ? getExportedGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, arenaW, arenaH, pr, mapCtx.collisionSystem)
         : getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects);
+      const dashEndGroundH = dashEndBaseGroundH;
       if (player.position.z! <= dashEndGroundH + 0.01) {
         // On the ground (or rooftop): fully land
         player.position.z  = dashEndGroundH;
@@ -742,6 +814,10 @@ export function applyMovement(
       }
       player.isPowerJump = false;
       delete player.activeDash;
+      if (dash.lingRanCastLift) {
+        delete player.lingRanCastLiftSustainChannelAbilityId;
+        delete player.lingRanCastLiftSustainVzPerTick;
+      }
       // Remove the shared dash runtime buff once the active dash ends.
       player.buffs = player.buffs.filter(
         (b) =>
@@ -791,8 +867,9 @@ export function applyMovement(
   const slowSum = allEffects
     .filter((e) => e.type === "SLOW")
     .reduce((sum, e) => sum + (e.value ?? 0), 0);
+  const yuqiBackpedalPenalty = yuqiMounted && input?.backpedalOnly === true ? 0.5 : 1;
   const effectiveMoveSpeed =
-    player.moveSpeed * Math.max(0, 1 + speedBoostSum - slowSum);
+    player.moveSpeed * Math.max(0, 1 + speedBoostSum - slowSum) * yuqiBackpedalPenalty;
 
   if (!wasAirborne && (player.jumpCount ?? 0) === 0) {
     clearAirborneSpeedCarry(player);
@@ -873,10 +950,58 @@ export function applyMovement(
     // ── Jump (one-shot: GameLoop clears input.jump after each tick) ──
     // MULTI_JUMP buff overrides the default 2-jump cap.
     const multiJumpEffect = allEffects.find((e) => e.type === "MULTI_JUMP");
-    const maxJumps = multiJumpEffect ? (multiJumpEffect.value ?? MAX_JUMPS) : MAX_JUMPS;
-    if (input.jump && player.jumpCount < maxJumps) {
+    const baseMaxJumps = multiJumpEffect ? (multiJumpEffect.value ?? MAX_JUMPS) : MAX_JUMPS;
+    const maxJumps = yuqiMounted ? 1 : baseMaxJumps;
+    if (input.jump && lingRanTianFengActive) {
+      const lingRanTianFengCharges = Math.max(0, Math.min(1, Number(player.lingRanTianFengCharges ?? 0)));
+      if (lingRanTianFengCharges > 0) {
+        const hasLingRanJumpRefillBuff = player.buffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712);
+        const jumpDir = normalizePlanar(targetVx, targetVy);
+        const specialJumpHeight = jumpDir
+          ? LING_RAN_TIAN_FENG_DIRECTIONAL_JUMP_HEIGHT
+          : LING_RAN_TIAN_FENG_UPWARD_JUMP_HEIGHT;
+        const specialJumpTicks = jumpDir
+          ? LING_RAN_TIAN_FENG_DIRECTIONAL_JUMP_TICKS
+          : LING_RAN_TIAN_FENG_UPWARD_JUMP_TICKS;
+        const specialJumpDistance = jumpDir
+          ? LING_RAN_TIAN_FENG_DIRECTIONAL_JUMP_DISTANCE
+          : 0;
+        // Pure upward jump now reaches 8u in 0.5s. Directional jump keeps the
+        // prior 4u apex + 8.7u endpoint over 1.0s, then normal gravity takes over.
+        const gravityPerTick = (2 * specialJumpHeight)
+          / (specialJumpTicks * (specialJumpTicks + 1));
+        const initialVz = gravityPerTick * specialJumpTicks;
+        player.velocity.vx = 0;
+        player.velocity.vy = 0;
+        player.velocity.vz = 0;
+        player.isPowerJump = false;
+        player.isPowerJumpCombined = false;
+        clearAirShift(player);
+        clearAirborneSpeedCarry(player);
+        player.activeDash = {
+          abilityId: "ling_ran_tian_feng",
+          vxPerTick: jumpDir ? (jumpDir.x * specialJumpDistance) / specialJumpTicks : 0,
+          vyPerTick: jumpDir ? (jumpDir.y * specialJumpDistance) / specialJumpTicks : 0,
+          forceVzPerTick: initialVz,
+          useArcGravity: true,
+          arcGravityUpPerTick: gravityPerTick,
+          arcGravityDownPerTick: gravityPerTick,
+          maxUpVz: initialVz + 0.1,
+          maxDownVz: -(initialVz + 0.1),
+          ticksRemaining: specialJumpTicks,
+        };
+        player.lingRanTianFengCharges = hasLingRanJumpRefillBuff ? 1 : 0;
+        if (jumpDir) {
+          player.facing = { x: jumpDir.x, y: jumpDir.y };
+        }
+        return;
+      }
+    } else if (input.jump && player.jumpCount < maxJumps) {
       const isMultiJump = !!multiJumpEffect;
       const jumpDir = normalizePlanar(targetVx, targetVy);
+      if (yuqiMounted && !canUseYuqiMountedJump(jumpDir, player.facing)) {
+        input = { ...input, jump: false };
+      } else {
       const isDirectionalJump = jumpDir !== null;
       const hadPowerJumpAirtime = !!player.isPowerJump && !player.isPowerJumpCombined && (player.jumpCount ?? 0) > 0;
       const heightAboveGround = Math.max(0, (player.position.z ?? 0) - currentGroundH);
@@ -991,6 +1116,7 @@ export function applyMovement(
         // Upward jump: wait for the first mid-air direction input, then lock it for this jump phase.
         player.airNudgeRemaining = UPWARD_JUMP_AIR_SHIFT_DISTANCE;
       }
+      }
     }
   }
 
@@ -1074,9 +1200,10 @@ export function applyMovement(
     player.position.z! += player.velocity.vz!;
   }
 
-  const postMoveGroundH = hasExportedCollision(mapCtx)
+  const postMoveBaseGroundH = hasExportedCollision(mapCtx)
     ? resolveExportedVerticalCollision(player, arenaW, arenaH, pr, mapCtx.collisionSystem)
     : getGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, mapObjects, pr);
+  const postMoveGroundH = postMoveBaseGroundH;
   const isAirborneNow = player.position.z! > postMoveGroundH + 0.01;
   if (!wasAirborne && isAirborneNow && player.jumpCount === 0) {
     // Preserve limiter state for jump takeoff; only clear for non-jump airborne transitions.

@@ -34,6 +34,31 @@
   z-index: 30;
 }
 
+.critPresetBar {
+  position: absolute;
+  top: 48px;
+  left: 10px;
+  transform: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 500;
+  pointer-events: auto;
+}
+
+.critPresetButton {
+  min-width: 72px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
 /* ============================================================
    CANVAS — fills everything
    ============================================================ */
@@ -257,6 +282,77 @@
   font-weight: bold;
   color: #eee;
   min-width: 26px;
+  text-align: right;
+}
+
+.heartDetailsPanel {
+  position: absolute;
+  top: calc(44% + 62px);
+  left: 21%;
+  width: 12vw;
+  min-width: 180px;
+  background: rgba(34, 42, 49, 0.96);
+  border: 1px solid rgba(128, 148, 166, 0.42);
+  border-radius: 6px;
+  overflow: hidden;
+  z-index: 26;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.4);
+}
+
+.heartDetailsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(180deg, rgba(54, 64, 74, 0.98), rgba(42, 50, 57, 0.98));
+  border-bottom: 1px solid rgba(126, 145, 162, 0.32);
+}
+
+.heartDetailsTitle {
+  padding: 12px 14px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #f3f6f8;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+.heartDetailsTab {
+  min-width: 76px;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(92, 112, 132, 0.96), rgba(75, 93, 110, 0.96));
+  color: #eef4f7;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  border-left: 1px solid rgba(154, 173, 190, 0.28);
+}
+
+.heartDetailsBody {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.heartDetailsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.heartDetailsLabel {
+  font-size: 15px;
+  color: #eef4f7;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+.heartDetailsValue {
+  font-size: 15px;
+  color: #f2f5f8;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
   text-align: right;
 }
 

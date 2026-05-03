@@ -3,6 +3,513 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 渊落点修正 + 雾暗迷云混乱重定向 (2026-05-03)
+
+**Problem set**:
+1. `渊` 友方 dash 之前会直接落到目标身上，没有保持和 `龙牙` 一样的 `1尺` 停距。
+2. 需要新增 `雾暗迷云`：站立运功 `1.5s` 后给目标 `【迷云】`，目标在 `迷云` 期间释放技能时会重新随机目标且不分敌我；`迷云` 消失后还要获得 `20s` 的 `【雾释】` 免疫。
+3. 这次的“混乱”不能只修单体技能。用户明确要求多段/多目标 AOE 也要按“原本会命中的每一个敌方命中槽位，分别独立重掷一次合法目标”处理，例如 `风来吴山` 每一跳都应独立 `50/50`。
+4. 旧代码的目标判定散在 `validateAction.ts`、`playService.ts`、`immediateEffects.ts`、`GameLoop.ts` 多个层面；如果在其中一层硬写特殊分支，很容易让单体、延时、channel tick、zone tick 表现不一致。
+
+**Fix**:
+- `渊` 的友方 dash 现在复用了和 `龙牙` 同样的停距计算：先算 `1尺` stop distance，再按缩短后的 travel distance 设置 dash 速度，因此落点稳定停在目标前 `1尺`，而不是重叠。
+- 新增 `backend/game/engine/utils/miyun.ts` 作为共享混乱辅助层，集中放 `迷云/雾释` Buff 常量、混乱/免疫判定，以及“按原命中槽位数量重新随机候选目标”的 area reroll helper。
+- `validateCastAbility(...)` 现在会在施法者带 `迷云` 时递归复用自己去枚举合法候选目标，再随机选出一个 resolved target 返回给 `playService.ts`。这样现有射程、最小距离、朝向、LOS、特殊技能约束都会自动复用，而不是重写第二套验证逻辑。
+- `playService.ts -> applyEffects(...) -> applyAbilityBuffs(...)` 整条链路新增了 `ignoreTargetAllegiance / forceEnemyApplied` 上下文，所以“原本是敌方技能但被混乱改打到友方”或“原本是友方技能但被混乱改打到敌方”时，伤害/控制/增益仍保持原技能的敌我语义，而不是被目标阵营反向篡改。
+- `immediateEffects.ts` 的显式玩家/实体目标 helper 已放宽到支持混乱后的 player/entity 目标；即时 AOE、扇形 AOE、多段即时伤害现在都会按“先算原本会打中的敌方槽位数，再对每个槽位独立 reroll 候选目标”处理。
+- `GameLoop.ts` 中的 dash-end AOE、channel tick、periodic AOE、地面 zone 爆炸/持续伤害也切到了同一套 reroll 语义；其中 `CHANNEL_AOE_TICK` 额外保留了原本的 LOS 检查，只在 LOS 合法候选集内随机，避免把混乱目标选到被墙挡住的位置。
+- `雾暗迷云` / `迷云` / `雾释` 已写入 `abilities.ts` 和 `cards.ts`。当前落地参数是：技能射程 `20`、冷却 `300 ticks`、`迷云 8s`、`雾释 20s`。这是因为用户只明确给了 channel 时长和 `雾释` 时长，其余数值本轮先按现有技能常用档位补齐。
+- `buffRuntime.ts` 现在会阻止带 `雾释` 的目标再次吃到 `迷云`，并在 `迷云` 自然结束或被提前移除时统一补上 `雾释`。`GameLoop.ts` 也顺手补了 channel-complete buff 对 entity target 的支持，避免这类读条完成型 debuff 只对 player 生效。
+
+**Lessons**:
+- 对“混乱改目标”这类需求，最稳的 seam 不是某个具体技能 handler，而是验证层返回“resolved target”。先在验证层把合法候选集合算准，后面的施法/即时效果/读条完成逻辑只消费 resolved target，就不会在每个技能里散落重复判断。
+- 多目标混乱不能直接把初始目标列表改成“全场所有单位”。正确语义是先保留原本会命中的敌方槽位数，再让每个槽位独立 reroll；否则像 `风来吴山` 这种多跳技能会连总命中次数都一起漂移。
+- 这轮 PM2 重启后的 backend/frontend 都成功上线了最新 build，但日志里仍能看到旧的 `backend-error.log` `GameLoop not active` 噪音，以及 frontend 旧的 `.next/prerender-manifest.json` `ENOENT` 记录。它们不是这次改动引入的新启动失败，后续排查日志时要和本轮功能回归分开看。
+
+**Follow-up fixes (later same day)**:
+- 单体 `迷云` 重定向第一次上线后，递归候选枚举虽然已经用 `ignoreTargetAllegiance: true` 放宽了敌我限制，但外层最终 `validateCastAbility(...)` 仍按原始敌方规则再次校验，导致“随机到友方后又被 `ERR_TARGET_UNAVAILABLE` 否掉”。修复方式不是再跳过一整段验证，而是把 `miYunRetarget !== null` 也视作最终外层校验的 allegiance-bypass 条件，仅绕过敌我归属判定，继续保留射程/最小距离/LOS/朝向等其他规则。
+- `迷云 -> 雾释` 没有生效的根因不是 `pushBuffExpired(...)` 内的加 Buff 逻辑，而是 `GameLoop.ts` 的主自然过期 sweep 只删除了过期 Buff，却没有为这些自然过期 Buff 调 `pushBuffExpired(...)`。现在 player/entity 两条自然过期路径都会统一发出 `BUFF_EXPIRED`，因此 `迷云` 自然结束或实体上的 `迷云` 自然结束时，都能走到同一条 `雾释` 补发逻辑。
+- 这次还顺手把 `buffsChanged` 判定补成了“只要有自然过期就算变化”，避免“一个 Buff 自然结束、同时立刻补上另一个 Buff，导致总 Buff 数量刚好不变”时，状态变更没有被及时广播。
+
+**Latest follow-up (same day)**:
+- 用户随后明确要求 `雾释` 不是增益而是减益，因此已把 `雾释` 在 `abilities.ts` 和 `cards.ts` 中的 `category` 从 `BUFF` 改为 `DEBUFF`。它的免疫效果类型仍保持 `MIYUN_IMMUNE`，只改状态栏/展示侧的类别语义。
+- 还对当前 preload Buff 表做了一次全量图标审计，按真实运行时 `buff.iconPath` 与 `frontend/public/icons` 比对后，发现仍缺 `32` 个 Buff 图标或图标映射：`散流霞隐藏`、`穹隆化生·转向`、`踏星行·转向`、`摩诃无量·眩晕`、`生太极·迟滞`、`被击不会解除五方锁足`、`沧月·击退`、`亢龙有悔·定身`、`龙啸九天·定身`、`龙啸九天·击退`、`韦陀献杵·易伤`、`韦陀献杵·防御`、`鹤归孤山·震慑`、`穿心弩·减疗`、`三才化生·前半保护`、`如意法·待发`、`龙战于野·被拉`、`守缺式·击退`、`无相诀·五十/六十/七十/八十/九十`、`破势`、`九转击退`、`被拉`、`锁足抗性`、`眩晕抗性`、`锁招抗性`、`定身抗性`。其中 `无相诀` 五档不是单纯缺文件，而是当前 preload override 仍指向不存在的 `/icons/无相.png`，而仓库里实际存在的是 `无相诀.png` 与各档 `无相诀·*.png`。
+
+## 凌然天风特殊跳跃实现 (2026-05-03)
+
+**Problem set**:
+1. 新轻功 `凌然天风` 需要可移动中/空中施放，施放时上跳 `9尺/1秒`，并附带 `7秒` 特殊跳跃 Buff。
+2. Buff 期间要禁用普通跳跃，但保留地面正常移动；特殊跳跃次数是独立 `0/1` 资源，不受 `扶摇直上 / 梯云纵 / 鸟翔碧空` 这类跳跃强化影响。
+3. 特殊跳跃本身需要两种形态：纯空格 `4尺` 竖直跳，`W/A/S/D + 空格` 则在 `1秒` 内走完整个 `4尺上升 + 8尺定向位移` 弧线。
+4. Buff 本身只免疫普通控制，不免疫拉拽/击退；并且 Buff 期间任意成功施放招式都要把特殊跳跃次数回满到 `1`。
+5. 这次是 movement 改动，BattleArena 不能继续本地预测成普通跳，否则客户端会在 Buff 期间错误地显示常规起跳。
+
+**Fix**:
+- 新增 `LING_RAN_TIAN_FENG_CAST` 与 `LING_RAN_TIAN_FENG_STATE` 两个 effect 类型；能力定义里用前者做施放上跳，用后者做 Buff 状态标记。
+- `abilities.ts` 中新增 `ling_ran_tian_feng`：`300 ticks` CD、`qinggong: true`、`7s` Buff，Buff 效果为 `CONTROL_IMMUNE`、`RANGE_BOOST +5` 和 `LING_RAN_TIAN_FENG_STATE`。
+- `applyImmediateEffects(...)` 在成功施放结算时统一处理特殊跳跃充能：如果施法者当前有 `凌然天风` Buff，或当前施放的就是 `凌然天风`，则把 `lingRanTianFengCharges` 设为 `1`。这样“施放任意招式回满一次跳跃”落在共享施法成功 seam，而不是散落到每个技能里。
+- `凌然天风` 施放本体复用了现有 `activeDash` 竖直位移路径：不加共享 dash runtime buff，只创建 `1秒` 纯竖直 activeDash，因此控制免疫完全来自 `凌然天风` Buff 本身。
+- `movement.ts` 在普通跳跃入口前先检查 `LING_RAN_TIAN_FENG_STATE`。Buff 期间：
+  - 有充能时，空格改为启动一个 `1秒` 的弧线 activeDash（固定 `4尺` 峰值，定向时再带 `8尺` 水平位移），并消耗充能到 `0`。
+  - 没充能时，空格直接失效，不会落回普通跳跃逻辑。
+- 由于特殊跳跃走的是 activeDash，而不是原本 jump/air-nudge 分支，所以不会吃到 `JUMP_BOOST`、`TI_YUN_ZONG_JUMP`、`MULTI_JUMP`、`JUMP_NERF` 这些普通跳分支里的高度/距离改写。
+- BattleArena 侧没有再去本地伪造第二套特殊跳轨迹，只做了必要的 prediction 对齐：Buff 生效时本地空格不再进入普通 jumpLocal 预测，而是只发送 jump 输入并等待服务端的 activeDash 状态接管，这样不会在 Buff 期间错误显示普通跳。
+
+**Lessons**:
+- 当一个“特殊跳”既要固定轨迹、又要允许中途施法、还要完全绕开普通跳跃增益时，直接复用 `activeDash` 比往普通 jump 分支里塞更多例外更稳。
+- 对这类 Buff 驱动的独立位移资源，最稳的“回充”位置是共享施法成功 seam；如果把回充逻辑分别写进单个技能 handler，后续一定会漏掉自定义 effect 或空 effect 技能。
+- 前端 prediction 不一定非要完整本地复刻轨迹。只要客户端别在 Buff 期间错误走进旧的普通跳预测，而服务端又能很快下发 `activeDash`，就已经比“错误预测成普通跳”更可靠。
+
+**Follow-up retune (later same day)**:
+- `凌然天风` 本体现在 `gcd: false`，不会再占用公共调息。
+- 初始施放上跳进一步改成 `12尺/0.5秒`，并同步了能力说明与 cast handler 的默认值。
+- 特殊跳再改为“`1秒` 到达 `4尺上升 + 8.7尺定向位移` 的终点后，再交回普通下落”。实现上仍然不让这段 activeDash 在持续时间内自己落回地面，而是让它在结束时正好到达 apex，然后由正常重力继续下落。
+
+**Extra lesson from retune**:
+- 如果设计要求的是“在指定位移时间点到达顶点，然后再自然下落”，dash 内的竖直速度不能按完整抛物线总时长去算；应当按“结束时速度归零、位置到顶点”来反推离散重力和初速度，否则会错误地在 dash 持续时间内把下落也一起算进去。
+
+**Latest follow-up retune (same day)**:
+- 初始施放上跳再次下调为 `9尺/0.5秒`。
+- 特殊跳拆成了两条运行时分支：纯空格上跳现在是 `8尺/0.5秒`；带方向的特殊跳仍保持“`1秒` 到达 `4尺上升 + 8.7尺定向位移` 终点后再自然下落”。
+- 如果玩家在 `凌然天风` 初始上跳过程中进入 `九霄风雷` 的初始 `3秒` 运功，竖直 activeDash 现在会被刻意维持到运功结束，再立刻结束这段上升，复现旧 bug 的趣味交互。最终实现没有继续依赖“原始 activeDash 一定还在”，而是在 `九霄风雷` 开始运功时把这段上升记录到 `PlayerState` 上；这样即使中途有别的路径清掉了 dash，`movement.ts` 也会在运功期间把竖直上升补回去。
+- `凌然天风` Buff 期间新增“跳跃锁定免疫”：通用 channel jump suppression、`风来吴山` / `斩无常` 的旧硬锁、`九霄风雷` 的 `NO_JUMP`，以及 `channelLockMovement` 对 jump 脉冲的清零，都不会再拦住这次跳跃；BattleArena 的本地发包门槛也同步放开。
+- 如果同时持有 `凌然天风` 与 `风来吴山 / 斩无常` Buff，使用一次 `凌然天风` 特殊跳后会立刻把特殊跳次数回满到 `1`。BattleArena 也同步改成在这两个 Buff 下不把本地特殊跳次数预扣到 `0`，避免客户端短时间误判“没次数”。
+
+**Disproved approach from latest retune**:
+- 先前直接把 `凌然天风` 特殊跳的共享常量整体改成 `8尺/0.5秒` 会连带把定向特殊跳也一起改快，和用户“只改 special upward jump”的要求不符。最终必须按“有无方向输入”拆成两套高度/时长参数。
+- 单纯在 `movement.ts` 里冻结原始 `凌然天风` cast-lift dash 的 `ticksRemaining` 还不够稳，因为一旦别的控制路径提前清掉了那段 dash，`九霄风雷` 期间就会重新表现成“正常停止上升”。要复现这个旧 bug，必须把“当前正在延续的上升速度”单独记到玩家状态上，而不是只依赖原始 dash 对象仍然存在。
+
+## 御骑 mounted runtime (2026-05-03)
+
+**Problem set**:
+1. `御骑` 之前只是一个占位 common skill，没有真正的“上马 / 下马”运行时状态，也没有任何 mounted 限制。
+2. 需求是双态技能：未上马时必须站立运功 `3s`，移动或跳跃会打断；已上马时再次施放应立刻下马，而不是再走一次读条。
+3. 上马后要同时满足三条运行时规则：移动速度 `+100%`、只能施放带“可以马上施展”标记的招式、每次腾空最多只保留 `1` 次跳跃。
+4. `御骑` 获得时要立刻移除 `弹跳(JUMP_BOOST)`；受到除 `ROOT/SLOW` 以外的控制时，要立即失去 `御骑`。
+5. 这是 movement / cast-rule 变更，BattleArena 也必须同步 mounted 灰置与跳跃上限，否则前端会继续把非法招式点亮，或者本地多给一次跳跃。
+
+**Fix**:
+- 把 `yuqi` 从占位 instant skill 改成了真实 pure channel：未上马时 `requiresStanding + channelDurationMs: 3000 + channelCancelOnMove/jump`，运功完成后通过 `applyBuffsOnComplete` 获得长期 `【御骑】` Buff。
+- `playService.ts` 为 `yuqi` 增加了 mounted toggle-off 分支：如果玩家当前已有 `御骑` Buff，再次施放不会重新开读条，而是直接移除 `御骑`（并为后续 linked buffs 预留统一清理路径）。
+- 新增共享 mounted helper 后，`validateAction.ts` 会在服务端统一拦截“上马状态下但没有 `canCastWhileMounted` 标记”的招式；`yuqi` 自己则特判为 mounted 下仍可施放，并忽略 `requiresStanding` 这条进入态约束。
+- `buffRuntime.ts` 把 mounted 相关副作用收口到了 Buff seam：`御骑` Buff 成功加上后会清掉所有 `JUMP_BOOST` Buff；如果之后吃到 `CONTROL / ATTACK_LOCK / KNOCKED_BACK / PULLED / SILENCE / DISARM / NON_QINGGONG_LOCK / FEARED` 这类实际生效的控制，则会立刻把 `御骑` 状态移除。
+- `movement.ts` 与 `BattleArena.tsx` 都改成“若当前有 `御骑`，有效最大跳跃数恒为 `1`”；客户端 readiness 也新增了 mounted 灰置规则，只保留 `canCastWhileMounted` 招式亮起，并允许 `御骑` 自己在空中立即下马。
+
+**Lessons**:
+- 这种“进入态是读条、退出态是瞬发”的技能不要硬塞进单一 channel 行为里；让 channel 只负责进入态，再在 cast service 里为退出态做一个极小 special-case，整体比拧 channel pipeline 更稳。
+- `御骑` 的限制不是单一 movement 规则，而是 cast validation、buff apply/remove、副作用清理、前端按钮灰置、跳跃上限的组合。只补其中一层，玩家立刻就会看到“按钮能点但服务器报错”或“本地还能二段跳”这类明显不同步。
+
+## 御骑高度 / 跳跃限制 follow-up (2026-05-03)
+
+**Problem set**:
+1. 新需求要求 `御骑` 进入时角色立刻抬高 `3尺`，因为没有马匹模型，视觉上就让角色悬空代替坐骑高度。
+2. 如果只在上马瞬间做一次 `z += 3尺`，下一帧重力就会把角色重新拉回地面，看不到持续的“骑在马上”。
+3. 上马时如果角色身上还有 `女娲补天`，需要立刻移除；`任驰骋` 则不应再允许在已上马状态下施放。
+4. 骑乘期间要禁用原地跳和后跳，只保留前/左/右方向跳跃；这次也是 movement 变更，BattleArena 不能继续预测成普通原地跳。
+5. `下马` 仍要允许在移动中或空中施放，不能被前端那层旧的 `requiresStanding` 提前挡掉。
+
+**Fix**:
+- `movement.ts` / `BattleArena.tsx` 都新增了“mounted ground height”概念：只要当前有 `御骑`，有效地面高度就等于真实地面 `+3尺`。这样角色会稳定站在悬空高度上，而不会被下一帧重力直接拉回去。
+- `buffRuntime.ts` 在 `YUQI_BUFF_ID` 成功加上时会立刻把玩家高度再抬高一次，保证上马当帧就能看到抬升，而不是等下一个 movement tick 才浮起来。
+- 同一个 `addBuff()` seam 里顺手移除了 `女娲补天`（buff `1019`），这样 `御骑` 无论来自原始 `御骑` 还是 `任驰骋`，都会统一清掉该状态。
+- `任驰骋` 去掉了 `canCastWhileMounted`，因此它现在只能在未上马时读条进入，不能在已经 `御骑` 的状态下重放。
+- 普通跳跃分支新增了 mounted jump gate：骑乘时必须存在方向输入，且方向不能是 rearward；BattleArena 本地发跳和本地 jump prediction 也同步改成拒绝 `空格原地跳` 与 `S` 系后跳。
+- BattleArena 之前还有一层更早的客户端施法门槛，会在点按钮时直接按 `requiresStanding` 拦掉 `御骑`。这次给 mounted `yuqi` toggle-off 加了同样的例外，所以移动中/空中都能正常下马。
+
+**Lessons**:
+- “坐骑高度”这类长期悬空状态不能靠一次性位置抬升实现；真正稳定的做法是把它建模成一层持续存在的有效地面偏移。
+- 如果某个技能已经在 `isAbilityReady(...)` 里有特判，不代表前端别的 cast wrapper 也同步了。同一个 `requiresStanding` 规则很可能在多个按钮入口重复实现，必须一起排查。
+
+**Latest retune (same day)**:
+- 用户随后又明确要求取消这层“骑在马上”的悬空视觉，所以之前那套 `mounted ground height + addBuff 立即抬升 + BattleArena 同步地面偏移` 已被整段移除；`御骑` 现在重新回到普通地面高度。
+- `御骑` 的移动速度也从原先的 `+100%` 改成了 `SLOW 0.5`，最终速度等于普通角色按 `S` 后退步行的速度；前后端原有的 `1 + SPEED_BOOST - SLOW` 速度计算公式因此无需额外特判。
+
+**Extra lesson from retune**:
+- 一旦这种“手感型”需求被撤回，最好把整条实现链一次删干净，而不是只改掉其中一层。否则很容易留下 buff 抬高、服务端地面判定、客户端 prediction 三者里某一层的残余偏移。
+
+## 可以马上施展 editor property (2026-05-03)
+
+**Problem set**:
+1. `御骑` 已经有了新的 mounted cast 规则，但还缺一个可编辑的能力属性，来决定“哪些技能在御骑期间仍可施放”。
+2. 这个属性不能只做成独立列表页，否则技能详情页会看不到它；用户明确要求“能力列表详情页”与单独 tab 都能操作。
+3. 如果把这条规则单独塞到另一个 override 存储里，运行时、详情页、列表 tab 会很快漂移。
+
+**Fix**:
+- 把“可以马上施展”直接加入 `AbilityPropertyId` 与 canonical `abilityPropertyDefinitions`，底层字段是 `ability.canCastWhileMounted`。这样详情页会自动通过现有 property catalog 渲染出来，不需要再单独改 `[abilityId]/page.tsx`。
+- `abilities.ts` 里新增了 `buildCanCastWhileMountedSnapshot()` / `setAbilityCanCastWhileMountedOverride()`，但 override 仍然写回同一个 `ability-property-overrides.json` 的 `properties` 字段，而不是新开第二份配置。
+- `abilityEditor.routes.ts` 增加了 `/ability-editor/can-cast-while-mounted` 的 GET/PUT 路由；前端新增 `CanCastWhileMountedTab.tsx`，UI 复用 `NoWeaponRequiredTab` 的三列决策模式：手动排除 / 未决定 / 可以马上施展。
+- `Ability Editor` 主页新增了“可以马上施展” tab，并复用现有的 lazy-load + updatedAt 刷新模式，所以列表 tab 和详情页操作会看到同一份最新结果。
+
+**Lessons**:
+- 这类“既要出现在详情页，又要有单独批量操作 tab”的布尔能力属性，最稳的做法是先进入 canonical property catalog，再额外做一个 snapshot/tab 视图；反过来只做专门 tab，详情页和运行时迟早分叉。
+- 如果列表 tab 本质上只是同一个 property 的批量视图，就不要再造第二套存储模型。继续写回原来的 `properties` override，后续 preload/runtime 已经能自然吃到这条规则。
+
+## 任驰骋 + 纵轻骑 mounted follow-up (2026-05-03)
+
+**Problem set**:
+1. 需要新增 `任驰骋`：`0.5s` 运功、可移动、跳跃会打断，完成后同时获得 `御骑`、`任驰骋` 和 `纵轻骑` 三个 Buff。
+2. `任驰骋` Buff 要持续 `12s` 并给 `15%` 伤害提升；`纵轻骑` 要持续 `5s`，提供“控制免疫但仍会被拉”的 mounted 爆发窗口。
+3. `纵轻骑` 的“仍会被拉”不能复用现有 `KNOCKBACK_IMMUNE`，因为那个效果会把 `击退` 和 `拉拽` 一起挡掉。
+4. 用户还要求“离开御骑时一定移除 `纵轻骑`，但不能误删 `任驰骋`”。这意味着不能只在手动下马分支里清理一次。
+
+**Fix**:
+- 在 `abilities.ts` / `cards.ts` 中新增 `ren_chi_cheng`：`CHANNEL` 自身技能，`0.5s` 运功，`channelCancelOnMove: false`、`channelCancelOnJump: true`，结算后一次性应用 Buff `2741/2742/2743`。
+- `任驰骋` Buff (`2742`) 使用 `DAMAGE_MULTIPLIER 1.15`，不是 `0.15`。这个引擎里乘区字段存的是最终倍率，不是增量。
+- 为了实现“免击退但不免拉”，新增了狭义效果类型 `KNOCKED_BACK_IMMUNE`，并把纯击退路径（立即击退、慢速击退、连环弩近身击退等）切到新的 guard；拉拽/换位等仍继续只认完整的 `KNOCKBACK_IMMUNE`。
+- `buffRuntime.ts` 也同步改成分别过滤 `KNOCKED_BACK` 和 `PULLED`，避免 `纵轻骑` 被当成完整免拉。
+- `GameLoop.ts` 新增 mounted invariant：只要玩家当前已经没有 `御骑`，就会主动清掉残留的 `纵轻骑` 并发 `BUFF_EXPIRED`。这样无论是手动下马、吃控制掉马，还是其他路径让 `御骑` 消失，都不会留下悬空的 `纵轻骑`。
+
+**Lessons**:
+- 当设计写的是“免击退但仍会被拉”，不要在现有效果上硬加特判；加一个语义更窄的 immunity type，然后只替换真正的击退 call-site，成本更低，也不容易误伤拉拽逻辑。
+- 对“依附于另一状态存在”的 Buff，最稳的做法不是只信任几个显式移除入口，而是在主循环里补一条廉价 invariant。这样后续出现新的移除路径时，子 Buff 也不会残留。
+
+**Latest retune (same day)**:
+- 后续实测发现 `channelDurationMs: 500` 本身不会让技能自动进入运功；当前引擎只有 `ability.type === "CHANNEL"` 才会在 `playService.ts` 里创建 `activeChannel`。因此 `任驰骋` 必须从 `SUPPORT` 改成真正的 `CHANNEL`，前端运功条才会出现，技能也才不会继续表现成瞬发。
+
+## 御骑后退限速 + 渊显示 Buff + 舍身诀命名 follow-up (2026-05-03)
+
+**Problem set**:
+1. 把 `御骑` 直接改成 `SLOW 0.5` 虽然能让后退速度变慢，但会把骑乘下的所有方向一起限速，和用户“只限制纯 `S` 后退”的手感要求不符。
+2. `渊` 的落地击退仍在使用它自己的专用 Buff `2740`，而不是共享的标准 `9101 / 击退` 标记。
+3. `渊` 只有友方侧的拦伤 Buff，没有给施法者一个可见的“我正在替队友承伤”的状态提示，触发后也不会和友方 Buff 一起清掉。
+4. 这轮还新增了一个工作流约束：如果图标不存在，不要擅自创建图标文件，应该按用户给的命名去对齐代码并回报缺失文件名。
+5. `舍身诀` 的 Buff 名称需要和现有图标文件名对齐，否则 preload 默认路径会继续指向不存在或不匹配的文件名。
+
+**Fix**:
+- `御骑` Buff 恢复为 `SPEED_BOOST 1`；服务端 `MovementInput` 新增 `backpedalOnly` 标记，只有传统模式纯 `S` 后退时才额外乘 `0.5`。`BattleArena.tsx` 的发包与本地 prediction 也同步走同一条判定，因此 mounted 前进/侧移恢复正常，只有纯后退仍保持“和普通按 `S` 步行相同”。
+- `GameLoop.ts` 的共享击退 helper 现在能直接生成标准 `9101 / 击退` Buff；`渊` 的 dash-end AOE 也切到了这条共享路径，不再依赖专用 `2740` 击退 Buff。
+- `渊` 的两个展示 Buff 重新整理成：友方侧 `2739 = 渊`，施法者侧 `2740 = 渊·承伤`。`immediateEffects.ts` 会一起加上这两个 Buff，`onDamageHooks.ts` 则要求两边 Buff 同时存在才生效，并在第一次 redirect 触发时一起消费，避免 self-side 提示残留。
+- `.github/copilot-instructions.md` 新增了明确规则：不要创建图标或其他美术资源，除非用户明确要求。另在用户 memory 里也记录了同样偏好，方便后续会话沿用。
+- `舍身诀` 的 Buff 名称改为 `舍身诀`、`舍身诀·减伤`、`舍身诀·承伤`。这里特意没有用“舍身诀·减伤害”，因为仓库内现成文件名是 `frontend/public/icons/舍身诀·减伤.png`，默认 icon 路径会直接按这个名字命中。
+
+**Lessons**:
+- 如果用户只想改某一种输入形态的手感，不要直接改 Buff 的全局速度系数；应该把判定放在输入/移动 seam，这样服务端和客户端 prediction 都能精准同步。
+- 像 `9101 / 击退` 这种共享运行时 Buff，真正的复用点在“生成 Buff 的 helper”，不是单独某个技能的 call-site。只改 call-site 而 helper 仍然只认技能私有 Buff 表时，状态图标会直接丢失。
+- 当前图标加载默认走“`/icons/${buff.name}.png`”这条命名约定，因此 Buff 改名时应该优先服从磁盘上的真实文件名，而不是只看文案是否更完整。
+
+## 友方目标技能第二轮修正 + 图标路径编码 (2026-05-03)
+
+**Problem set**:
+1. `听风吹雪` 的血量平衡阶段仍在发伤害/治疗飘字，但这个阶段本质是静默设定双方当前血量，不应该被当作受伤或治疗展示。
+2. `听风吹雪` 后续双方 `+20` 的治疗需要明确按 `贯体` 路径展示和处理。
+3. `舍身诀` 在后续实战里再次表现为失效，根因不是主伤害链，而是仍有多条 active-mode 伤害分支绕过了共享 redirect seam，导致被保护者直接掉血。
+4. `渊` 需要保持原来的击退总时长，但把击退距离翻倍。
+5. 新技能/新 Buff 图标文件已经存在，但前端仍有部分界面加载失败，需要确认是真缺文件、路径不一致，还是运行时 URL 构造问题。
+
+**Fix**:
+- `immediateEffects.ts` 中把 `TING_FENG_CHUI_XUE` 的均血阶段改成静默状态写入，不再发送即时血量调整事件；只保留后续真实治疗事件。
+- 即时 `贯体` 治疗辅助函数现在统一把事件名写成 `（贯体）`，这样 BattleArena 飘字和其他 `贯体` 治疗保持一致。
+- 为了修复 `舍身诀`，把仍然遗漏的伤害分支全部接回共享 redirect 流程：`BonusDamageIfHpGt.ts`、`Channel.ts`、`DirectionalDash.ts`、`GameLoop.ts` 的 `TIMED_SELF_DAMAGE` 与 `STACK_ON_HIT_DAMAGE` 现在都会先走 `preCheckRedirect(...)`，再走 `applyRedirectToOpponent(...)` / `processOnDamageTaken(...)`。
+- `渊` 只把击退距离从 `6` 提到 `12`，保持 `durationTicks: 15` 不变，因此飞行总时间还是 `0.5s`。
+- 图标问题最终确认不是“文件不存在”也不是“目录写错”：文件在 `frontend/public/icons/` 中存在且非空，服务端对 percent-encoded URL 返回 `200`，但原始 Unicode 文件名 URL 可能返回 `400`。前端新增共享 icon-path 编码辅助，并把能力图标、Buff 图标、BattleArena 内联图标、选牌/商店/备战区图标统一改为先编码文件名再请求 `/icons/...`。
+
+**Lessons**:
+- 中文文件名静态资源不能只看磁盘上有没有文件；必须验证运行中的 HTTP 路径。文件存在但 URL 未编码时，服务端仍可能拒绝请求。
+- `舍身诀` 这类保护技能是否“偶发失效”，通常不是单点逻辑问题，而是共享 redirect seam 覆盖面不完整；任何绕开该 seam 的伤害分支都会让保护看起来随机失灵。
+- 当需求是“击退更远但时间不变”时，优先只改位移距离，不要顺手改 AOE 半径或持续 tick 数，否则手感会一起漂移。
+
+## 友方目标技能基础设施 + 舍身诀 / 渊 / 听风吹雪 (2026-05-02)
+
+**Problem set**:
+1. The first ally-targeted support skills were requested, but the real-time cast pipeline only had `SELF` and hostile `OPPONENT` semantics. Backend validation, play routing, and `BattleArena.tsx` all assumed `OPPONENT` meant enemy-only, even though ally-owned dummies/entities already existed in runtime.
+2. `舍身诀` needed to target a friendly player/NPC, remove removable controls except knockdown, grant `30%` DR, and redirect `100%` of post-mitigation damage to the caster. The redirected damage must ignore the protector's DR/shield but still respect damage immunity.
+3. `渊` needed friendly targeting with a `6-20` range gate, a dash to the ally, an AOE knockback around that ally, and a one-hit intercept buff that makes the caster take the next incoming hit for the target.
+4. `听风吹雪` needed to equalize current HP between caster and friendly target, then apply flat `贯体` healing to both sides.
+
+**Fix**:
+- Added a lightweight `friendlyTarget` ability flag in shared ability types and preload, instead of introducing a third target enum. This let the existing `targetUserId` / `entityTargetId` payload survive with minimal churn.
+- Updated backend validation and play routing so `friendlyTarget` + `target: "OPPONENT"` now means “self or owned entity” rather than “enemy”, and skipped enemy-only facing/LOS rules for those casts.
+- Updated `BattleArena.tsx` readiness/cast logic to distinguish hostile vs friendly entity selection, keep ally entity clicks valid, and honor `minRange` / `range` on the selected friendly target. This is what makes `渊` gray out when the ally is closer than `6`.
+- Extended the shared redirect seam in `onDamageHooks.ts` with two redirect modes:
+  - `舍身诀`: full post-mitigation redirect to the caster via direct HP loss, bypassing shield/DR but still stopped by `DAMAGE_IMMUNE`.
+  - `渊`: one-hit redirect to the caster, then explicitly expires the ally buff on trigger.
+- Patched entity damage paths (`immediateEffects.ts`, `GameLoop.ts`) to run through the same redirect hook, so ally NPCs/dummies are protected by `舍身诀` / `渊` instead of only player characters.
+- Implemented the three new abilities as custom immediate effects in `abilities.ts` + `immediateEffects.ts`, with generic `applyAbilityBuffs(...)` disabled for them.
+- Rechecked BattleArena movement prediction after adding `渊`'s dash. No ability-specific client prediction hook was needed because the scene already mirrors server `activeDash` generically.
+
+**Lessons**:
+- A small `friendlyTarget` flag is lower risk than a new target enum when the rest of the engine already knows how to carry explicit `targetUserId` and `entityTargetId`; the real work is in the hostile assumptions layered on top of `OPPONENT`.
+- If an ally-protection ability can affect owned entities, every entity damage branch must share the same redirect hook as player damage branches. Fixing only player damage paths leaves NPC support abilities half-broken.
+- The original `舍身诀` text conflicted between `10s` target buffs and “during this `12 seconds` self buff”. This implementation uses `10s` for the self buff as well, because the redirect window should match the stated target-buff duration.
+- `渊`'s design text specified “one hit” but no timeout. The runtime implementation adds a `10s` safety duration so stale intercept buffs do not persist forever if the protected target is never hit.
+
+**Follow-up fixes (later same day)**:
+- Added a friendly `100` HP dummy test path end-to-end: `/cheat/spawn-dummy` now accepts optional `maxHp`, and `BattleArena.tsx` exposes a separate `友方100血木桩` spawn preset.
+- Corrected `舍身诀` redirect semantics after playtesting disproved the first read of the design. Redirected damage now resolves through the protector's own target-side DR and shields via `resolveRedirectedDamageToTarget(...)`, while `DAMAGE_IMMUNE` still nullifies the redirected hit.
+- Moved `渊` knockback from cast time into the existing dash-end seam in `GameLoop.ts`. The cast now stores ally/knockback metadata on `activeDash`, and the AOE knockback only fires if the caster lands within `4尺` of the protected ally.
+- Added explicit `hideAbilityName` event support so `舍身诀` and `渊` redirect hits suppress the damage source text in BattleArena floats without changing other damage-label behavior.
+
+**Lessons from follow-up**:
+- For support dash skills, landing-timed gameplay belongs in `GameLoop`'s dash-completion hooks, not in immediate cast handlers. `BattleArena`'s generic server-authoritative `activeDash` path was already sufficient once the backend timing moved.
+- Redirect-damage wording is easy to misread. “Redirect the hit” should be validated separately against the protector's DR, shields, and immunity instead of assuming the original target's post-mitigation number must bypass the protector's own defenses.
+- If only a few mechanics should hide combat-text source labels, use an explicit event flag instead of overloading blank ability names; that keeps float formatting local and avoids accidental regressions for other unlabeled events.
+
+## 龙啸九天气场/机关摧毁 + 人剑合一气场联动 (2026-05-02)
+
+**Problem set**:
+1. `龙啸九天` needed a new effect on top of its current self-cleanse / self-buffs / AOE knockback package: destroy enemy `气场` and `机关` within `6尺`.
+2. In the current zone model, the relevant `气场` are the ground zones from `生太极 / 吞日月 / 镇山河 / 破苍穹 / 碎星辰 / 凌太虚 / 冲阴阳`; the only current `机关` zone is `天绝地灭`.
+3. Destroying a zone early must stop all future zone effects immediately, including `天绝地灭`'s explode-on-expire behavior, and must also clear any zone-granted runtime buff that would otherwise linger forever after the zone disappears.
+4. A new ability `人剑合一` was requested: destroy `13尺`内气场; if any destroyed气场 belonged to the caster, then enemy players within `13尺` gain `【破势】5秒：定身`.
+
+**Fix**:
+- Added shared immediate-effect helpers in `immediateEffects.ts` to classify current `气场/机关` ground zones, destroy them by range/ownership, and clear the specific zone-tied runtime buffs that otherwise would not self-clean if the source zone vanished early.
+- Extended `龙啸九天` so its existing `LONG_XIAO_JIU_TIAN_AOE` handler now destroys enemy-owned `气场` and `天绝地灭` within `6尺` before applying the old AOE damage + knockback. Tooltip text in `abilities.ts` was updated to match.
+- Added new ability `人剑合一` in `abilities.ts` as a self-cast control skill with custom effect `REN_JIAN_HE_YI_AOE`, plus buff `2735` `【破势】`.
+- Implemented `REN_JIAN_HE_YI_AOE` in `immediateEffects.ts` by destroying all nearby `气场`, counting whether any destroyed one was friendly, and only then applying `【破势】` to nearby enemy players. `人剑合一` was excluded from generic `applyAbilityBuffs(...)` so the debuff is only applied conditionally.
+- Registered the new effect type in `state/types/effects.ts` and `effects/definitions/categories.ts`, and added a `纯阳 / 外功 / 卓越` editor tag entry in `ability-property-overrides.json`.
+
+**Lessons**:
+- Ground-zone destruction is not just `state.groundZones = filter(...)`. Several current zones grant persistent buffs in `GameLoop` that only clean up on leave/zone tick; if the zone is removed out-of-band, those buffs must be explicitly expired too.
+- Reusing one destruction helper for both enemy-only (`龙啸九天`) and mixed-ownership (`人剑合一`) cases keeps ownership semantics local and avoids duplicating the qi-field list in multiple handlers.
+- New abilities and buffs also need art plumbing. No icon assets currently exist for `人剑合一` or `破势` under `frontend/public/icons`, so the mechanic is live but the ability icon still needs art to avoid a missing-image button in the frontend.
+
+## 无相诀改为施放时快照减伤档位 (2026-05-02)
+
+**Problem set**:
+1. `无相诀` still used a dynamic `DAMAGE_REDUCTION_HP_SCALING` path in `combatMath.ts`, so its damage reduction kept recalculating from the holder's current HP every time they were hit.
+2. The intended rule was snapshot-at-cast behavior: cast once, lock in one fixed减伤档位 for the whole buff duration, and keep the natural-expire 贯体 heal.
+3. The requested named tiers were `无相诀·五十 / 六十 / 七十 / 八十 / 九十`, with the explicit rule example that `10%` HP at cast should snapshot to `90%` DR.
+
+**Fix**:
+- Reworked `wu_xiang_jue` in `abilities.ts` from one dynamic buff into five declared fixed `DAMAGE_REDUCTION` buffs: `2710` (`50%`), `2731` (`60%`), `2732` (`70%`), `2733` (`80%`), `2734` (`90%`).
+- Excluded `wu_xiang_jue` from generic `applyAbilityBuffs(...)` and applied its buff manually in `immediateEffects.ts`, choosing the tier from the caster's HP at cast time.
+- Implemented the snapshot thresholds to match the requested five named tiers and the explicit low-HP example: `>75% -> 50`, `>50% -> 60`, `>25% -> 70`, `>10% -> 80`, `<=10% -> 90`.
+- Removed the old dynamic DR branch from `combatMath.ts` and deleted the now-unused `DAMAGE_REDUCTION_HP_SCALING` effect type/category entries.
+- Updated `GameLoop.ts` so the natural-expire 贯体 heal triggers off any of the five snapshot buff ids, not only the old `2710` buff.
+- Removed the stale preload-only dynamic metadata block in `abilityPreload.ts` and pinned all five renamed buffs to the existing `/icons/无相.png` icon so the status bar/editor stay stable after the rename.
+
+**Lessons**:
+- If a combat rule is described as “based on HP when cast”, the controlling seam should be buff application, not per-hit damage math. Leaving the decision in damage math guarantees drift the moment HP changes after cast.
+- When a single buff becomes multiple named runtime variants, update all three surfaces together: cast-time application seam, natural-expire hooks keyed by buff id, and preload/status metadata. Fixing only one or two of them leaves the engine and UI out of sync.
+
+## 反隐灰置兜底 + 碎星辰/破苍穹回调 (2026-05-02)
+
+**Problem set**:
+1. The first client gray-out pass for `撼如雷·反隐` was still too soft/fragile: it depended on ability metadata arriving perfectly and the draft bar buttons were not actually disabled.
+2. `碎星辰` and `破苍穹` needed their zone crit chance bonus reduced from `60%` to `10%`, and their channel time reduced from `1s` to `0.5s`.
+
+**Fix**:
+- In `BattleArena.tsx`, added a stable `STEALTH_ABILITY_IDS` fallback (`anchen_misan`, `fuguang_lueying`, `tiandi_wuji`, `hua_die`) on top of the metadata-based stealth detector, and set the draft/special bar buttons to real `disabled` state when anti-stealth blocks them. This makes the gray-out independent of preload drift and visually matches the common bar behavior.
+- Updated `碎星辰` / `破苍穹` in `abilities.ts` to `channelDurationMs: 500` with synced descriptions.
+- Updated both preload metadata and runtime zone application (`abilityPreload.ts`, `GameLoop.ts`) so the granted `CRIT_CHANCE_BONUS` is now `10` instead of `60`, while the `+15%` crit-effect bonus stays unchanged.
+
+**Lessons**:
+- When the user asks for a client gray-out rule, make the button state authoritative (`disabled`) rather than relying only on class styling and click guards.
+- For zone buffs, tune all three surfaces together: canonical ability text, preload/status-bar metadata, and the runtime buff application in `GameLoop`. If one is left behind, the game and UI immediately drift.
+
+## 反隐灰置 + 云栖松/徐如林贯体化 + Buff 列表快速属性按钮 (2026-05-02)
+
+**Problem set**:
+1. Heal crit floats should keep the normal green heal color instead of switching to a brighter crit-only green.
+2. While carrying `撼如雷·反隐`, stealth-casting abilities should be visibly grayed out on the client instead of only failing at runtime.
+3. `云栖松` and `徐如林·回复` needed to count as 贯体 heals rather than ordinary 非贯体 heals.
+4. Lifesteal needed an explicit follow-up audit to confirm no branch still crits after the non-crit helper split.
+5. The Buff list page needed a faster batch-edit workflow for 属性 tags, similar to the quick tag buttons already used elsewhere in the editor.
+
+**Fix**:
+- In `BattleArena.tsx`, removed the crit-only heal color override. Heal crits still show `会心`, but they keep the same green color as ordinary heals.
+- Added client helpers in `BattleArena.tsx` for `ANTI_STEALTH` and for detecting abilities that actually apply `STEALTH`. While anti-stealth is active, those abilities are marked blocked in the ability model, grayed out in both the draft/special and common bars, and rejected by the shared cast wrapper with a toast.
+- Converted `云栖松` to `PERIODIC_GUAN_TI_HEAL` with matching `(贯体)` descriptions, so it now uses the existing periodic 贯体 path.
+- Kept `徐如林·回复` on its custom natural-expire trigger, but changed that loop branch to apply direct 贯体 healing and emit the heal event as `（贯体）` without heal crit metadata.
+- Re-audited all lifesteal callers and confirmed they now all use `resolveNonCritHealAmountRoll(...)`: immediate damage, explicit entity-target damage, scheduled damage, and timed-AOE damage.
+- In `BuffEditorTab.tsx`, reused the existing `/ability-editor/buffs/:buffId/attribute` endpoint to add a per-card quick attribute row for all attributes plus `无`. Successful writes refresh the shared snapshot immediately, and hidden buffs remain non-editable from the list.
+
+**Lessons**:
+- If the user reads crit information mainly from text, not color, do not spend a separate color channel on heal crits; keeping the semantic heal color stable makes the combat UI easier to parse.
+- Client gray-out rules should key off the same mechanical metadata the server uses (`STEALTH` on ability buffs/effects), not raw description text, or unrelated abilities that merely mention stealth in text will get blocked incorrectly.
+- When converting a heal to 贯体, changing the combat path matters more than changing the label. The authoritative distinction is whether the heal bypasses ordinary heal-reduction/crit handling, not whether its tooltip text says `贯体`.
+
+## 风袖/千蝶数值调整 + 反隐 companion cleanup + 非贯体清单审计 (2026-05-02)
+
+**Problem set**:
+1. `风袖低昂` needed its direct heal reduced to `30`, and `千蝶吐瑞` needed its per-tick heal increased to `5`.
+2. `撼如雷·反隐` blocked `浮光掠影` itself but could still leave or reapply the companion `遁影(1021)`, which several runtime/client paths still treat as part of hidden state.
+3. While auditing all 非贯体 heals, one remaining timed-AOE lifesteal path was still healing directly instead of using the shared heal-crit roll.
+4. Lifesteal itself should not crit, because the triggering damage already had its own crit roll.
+
+**Fix**:
+- Updated canonical ability values in `abilities.ts`: `风袖低昂` heal `30`, `千蝶吐瑞` periodic heal `5`, with descriptions kept in sync.
+- Updated the legacy `cards.ts` mirror for `风袖低昂` to the same `30` heal so old duplicate data does not drift further from runtime.
+- In `buffRuntime.ts`, widened the anti-stealth gate so it treats `遁影(1021)` as part of the blocked stealth attempt, and added a small helper that removes any already-present `遁影` companion buff when `ANTI_STEALTH` rejects stealth entry.
+- Added shared `resolveNonCritHealAmountRoll(...)` in `combatMath.ts` for lifesteal-style healing that should still respect `HEAL_REDUCTION` but must never roll a second crit.
+- Switched all lifesteal branches (`Damage.ts`, `immediateEffects.ts`, `resolveScheduled.ts`, `GameLoop.ts` timed-AOE branch) onto that non-crit helper. This closed the remaining timed-AOE bypass found during the audit and aligned all lifesteal paths with the intended rule.
+
+**Lessons**:
+- For stealth bundles like `浮光掠影 + 遁影`, blocking only the visible `STEALTH` effect is insufficient if the companion buff is also interpreted as hidden-state elsewhere. The anti-stealth seam has to block and clean up the companion id too.
+- After introducing a shared combat-math helper, audit every direct `applyHealToTarget(...)` branch in the engine. Timed or scheduled side paths are the common misses, especially lifesteal branches living outside the generic HEAL handler.
+- “非贯体 heals can crit” still needs one carve-out: lifesteal inherits the damage result and should not get a second independent heal crit on top.
+
+## 撼如雷 companion reveal fix + non-贯体 heal crits (2026-05-02)
+
+**Problem set**:
+1. `撼如雷` removed `浮光掠影` but could leave `遁影` behind, and several client/runtime paths still treat `1021` as part of the hidden state.
+2. Non-贯体 healing needed to crit, using the healer's 内功会心 chance and 内功会心效果 multiplier.
+
+**Fix**:
+- Simplified `遁影` companion detection in the stealth-break helpers (`immediateEffects.ts`, `buffRuntime.ts`, `breakOnPlay.ts`, `GameLoop.ts`) to the authoritative identity `buffId === 1021`. This makes reveal/cleanup logic robust even if buff names or copied-source metadata differ.
+- Added shared `resolveHealAmountRoll(...)` in `combatMath.ts` for non-贯体 heals. It applies target-side `HEAL_REDUCTION`, then rolls crit using healer-side 内功会心 / 会心效果.
+- Moved ordinary HEAL paths onto that shared roll: direct HEAL effects, periodic heals, timed self-heals, scheduled legacy heals, and 徐如林·回复. Lifesteal now uses a separate non-crit heal helper, while dedicated 贯体 branches (`INSTANT_GUAN_TI_HEAL`, periodic/timed 贯体 heal, 无相诀贯体, 应天授命贯体, etc.) remain unchanged.
+- HEAL events now carry `isCrit` metadata, and the existing heal float in `BattleArena.tsx` shows `会心` plus a brighter crit-heal color for easier validation.
+
+**Lessons**:
+- When a buff is mechanically identified by a stable runtime id, matching on name/source metadata is weaker than necessary and can fail under copies, editor renames, or synthesized applications.
+- "All non-贯体 heals can crit" belongs in one shared heal roll, not scattered per ability. The real cleanup work is the bypass list: lifesteal and natural-expire heals are easy to miss if you only patch the obvious HEAL handler.
+
+## Live 会心 panel + split 会心效果 + 紫气东来/撼如雷 (2026-05-02)
+
+**Problem set**:
+1. The 会心 detail panel did not update when buffs changed crit stats because it only read persisted base crit fields and a hardcoded `175%` 会心效果.
+2. 会心效果 now needed to be split by damage type, just like 外功会心 / 内功会心.
+3. New self-buff `紫气东来` was requested: 12s, +25% damage, +25 外/内功会心, +25% 外/内功会心效果, no GCD.
+4. `碎星辰` / `破苍穹` needed an extra +15% typed 会心效果 while inside the zone.
+5. New skill `撼如雷` was requested: instant self buff (+10 外/内功会心, +20% 外/内功会心效果), 15u reveal, and a 20s anti-stealth debuff that breaks future stealth entries.
+
+**Fix**:
+- Added shared `CRIT_EFFECT_BONUS` support to effect types, category mapping, and `combatMath.ts`; crit multiplier is no longer fixed at `1.75` once buffs are involved.
+- Updated `BattleArena.tsx` to derive displayed 外功会心 / 内功会心 and 外功会心效果 / 内功会心效果 from active buff effects instead of base-only player state. The preset buttons still key off base cheat values, so temporary buffs do not make the preset highlight misleading.
+- Added `紫气东来` in `abilities.ts` as a standard declared self buff (`2706`), so preload/status-bar metadata is automatic.
+- Extended `碎星辰` / `破苍穹` runtime zone buffs and preload metadata with typed `CRIT_EFFECT_BONUS` `0.15`.
+- Added `ANTI_STEALTH` and custom immediate effect `HAN_RU_LEI_AOE` for `撼如雷`. The custom handler applies the self buff, removes existing stealth buffs in radius, and applies `撼如雷·反隐` (`2708`) to enemy players. `addBuff()` now centrally rejects any incoming buff carrying `STEALTH` while the target has `ANTI_STEALTH`, so future stealth sources break consistently.
+
+**Lessons**:
+- If the UI shows combat-derived stats, derive them from the same buff/effect model the server uses. Reading only stored base fields guarantees drift the moment a zone or temporary buff is involved.
+- “Reveal now and block future stealth” is two different mechanics: one immediate removal pass plus one central stealth-application gate. Doing only one of them leaves either existing stealth or future stealth incorrect.
+
+## 碎星辰/破苍穹 channel-zone crit buffs (2026-05-02)
+
+**Problem set**:
+1. Add `碎星辰`: 1s forward channel (movable + air-cast), then drop a 15u radius zone for 30s that grants +60% 外功会心 while inside.
+2. Add `破苍穹`: same channel/zone shell, but grant +60% 内功会心 while inside.
+3. These zone buffs must be standard runtime buffs (status bar visible with metadata), not hidden state.
+
+**Fix**:
+- Added new channel abilities in `abilities.ts`:
+  - `sui_xing_chen` and `po_cang_qiong`
+  - `channelDurationMs: 1000`, `channelForward: true`, `requiresGrounded: false`, `channelCancelOnMove: false`, `channelCancelOnJump: false`
+  - `PLACE_GROUND_ZONE` with `range: 15`, `zoneDurationMs: 30000`.
+- Added new buff effect type `CRIT_CHANCE_BONUS` in shared effect unions and category map.
+- Extended `combatMath.ts` crit resolution to include additive `CRIT_CHANCE_BONUS` effects from active buffs, filtered by `damageType` (`外功` / `内功`) and stack-aware.
+- Added GameLoop zone enter/leave handlers:
+  - `sui_xing_chen` applies/removes buff `2704` with `CRIT_CHANCE_BONUS +60 (外功)`.
+  - `po_cang_qiong` applies/removes buff `2705` with `CRIT_CHANCE_BONUS +60 (内功)`.
+- Added buff preload entries (`2704`, `2705`) in `abilityPreload.ts`, so status bar and tooltip metadata are available.
+- Frontend scene updated to render both new zones as red circles with timers, matching the requested visual direction.
+
+**Lessons**:
+- Zone-granted combat stats should be modeled as ordinary buffs and consumed by central math helpers; this keeps status UI, combat logic, and expiry/removal behavior in sync.
+- For typed stat bonuses, it is cleaner to add a generic effect (`CRIT_CHANCE_BONUS` + `damageType`) than to hardcode per-buff-id branches in combat math.
+
+## 外功会心/内功会心 split + 风来吴山/狂龙乱舞 retune (2026-05-02)
+
+**Problem set**:
+1. 风来吴山 needed its per-hit damage reduced to 5.
+2. 狂龙乱舞 needed ground-zone tick damage reduced to 3.
+3. Crit had to be split into 外功会心 and 内功会心, with runtime selection based on ability damage type (`外功` / `内功`) rather than one global crit rate.
+
+**Fix**:
+- `abilities.ts`:
+  - 风来吴山 `CHANNEL_AOE_TICK` value changed to `5` and description synced.
+  - 狂龙乱舞 `PLACE_GROUND_ZONE` value changed to `3` and description synced.
+- `cards.ts` legacy mirror: 风来吴山 scheduled damage values updated from `8` to `5` to avoid historical data drift.
+- `combatMath.ts`:
+  - Added split source fields `waiGongCritChancePct` / `neiGongCritChancePct` support.
+  - Crit chance selection now keys off incoming `damageType`:
+    - `外功` -> 外功会心
+    - `内功` -> 内功会心
+    - otherwise -> legacy fallback (`critChancePct`).
+  - `resolveScheduledDamageRoll(...)` now forwards `damageType` into raw crit resolution.
+- `draft.routes.ts` cheat API upgraded:
+  - `POST /cheat/set-crit-chance` now accepts either legacy `critChancePct` or split `waiGongCritChancePct` / `neiGongCritChancePct`.
+  - Broadcasts and saves both split fields, while still writing legacy `critChancePct` for compatibility with older clients.
+- Backend/frontend player state types now include split crit fields.
+- `BattleArena.tsx` panel now displays 外功会心 and 内功会心 separately; preset buttons still set both together for fast testing.
+- Additional raw-damage paths that bypass scheduled damage now pass `damageType` where known (TRUE_DAMAGE, STACK_ON_HIT_DAMAGE, and related trigger paths) so split crit logic applies consistently.
+
+**Lessons**:
+- For mechanic splits (one field -> two typed fields), preserve a compatibility write path for old clients first, then migrate UI/readers incrementally.
+- Damage-type keyed systems only work if every non-scheduled raw-damage path also forwards `damageType`; scheduled-only migration leaves hidden inconsistency.
+
+## 会心 float polish + 龙吟 crit-reset follow-up (2026-05-02)
+
+## High-damage pass retune (2026-05-02)
+
+**Problem set**:
+1. The requested high-damage balance pass lowered multiple burst profiles at once: 百足, 云飞玉皇, 孔雀翎, 追命箭, 龙牙, 破风, 三环套月.
+2. Two of these abilities are not fully data-only: `破风` base hit is hardcoded in a custom immediate-effect handler, and 三环套月 3-stack explosion damage is hardcoded in buff stacking runtime.
+
+**Fix**:
+- Updated authored values/descriptions in `abilities.ts`:
+  - 百足: upfront `3`, periodic `4/3s`, expiry `3`.
+  - 云飞玉皇: `10` + `5` within 4.
+  - 孔雀翎: upfront `4`, on-hit proc `1` each.
+  - 追命箭: `10` + `6` bonus.
+  - 龙牙: `15`.
+  - 破风: upfront description updated to `1` (bleed remains `1/2s`).
+  - 三环套月: base hit `1`, explosion text `1`.
+  - 拿云式 left unchanged as requested.
+- Updated `immediateEffects.ts` custom `PO_FENG_STRIKE` handler base damage from `2` to `1`.
+- Updated `buffRuntime.ts` 三环套月 stack-consume bonus from `3` to `1`.
+
+**Lessons**:
+- For balance rounds, ability metadata alone is not enough; always grep custom effect handlers and buff runtime hooks for hardcoded damage numbers tied to the same ability.
+- Updating descriptions together with runtime values avoids immediate player-facing mismatch during tuning verification.
+
+**Problem set**:
+1. The dealt-damage float still rendered normal hits as `技能名 5` instead of the requested `技能名：5`.
+2. The dealt-crit yellow needed to be shifted to the brighter screenshot-matching color.
+3. A new melee ability `龙吟` was requested: 4 range, 2 damage, and if that hit crits it should reset only its own cooldown while still respecting shared GCD.
+
+**Fix**:
+- Updated `BattleArena.tsx` dealt-float formatting so both normal and crit dealt hits use the Chinese colon form: `技能名：5` and `技能名：会心 5`.
+- Shifted dealt-crit float color to a brighter yellow (`#ffe600`) while leaving taken-damage colors unchanged.
+- Added `long_yin` to `abilities.ts` as a standard target-required 4-range attack with 2 damage and a normal authored cooldown (`300` ticks), so the reset has meaningful runtime effect.
+- In `playService.ts`, reused the post-cast ability-specific hook seam: after `applyEffects(...)` but before shared GCD application finishes, detect whether `龙吟` emitted a crit DAMAGE event for the caster during that cast window; if yes, zero out only that ability instance's cooldown and `_cooldownProgress`. The later shared-GCD pass still reapplies GCD, matching the requested behavior.
+
+**Lessons**:
+- For “reset cooldown but keep GCD”, the correct seam is after the cast has already produced events and consumed runtime charges/cooldown, but before the generic GCD pass is fully done. Resetting earlier can be overwritten by `consumeAbilityUseRuntime`; resetting later risks bypassing shared GCD.
+- Small combat-text punctuation differences are user-visible gameplay feedback, not cosmetic trivia. Treat them like behavior fixes and validate them with the same care as backend combat changes.
+
+## 会心 panel toggle + damage float wording/layout follow-up (2026-05-02)
+
+**Problem set**:
+1. The prior implementation showed crit chance inline on the left HP panel, but the requested UI was a separate `C`-toggle attribute panel using 会心 / 会心效果 wording.
+2. Crit preset buttons belonged on the left, below the mode indicator, not top-center.
+3. Damage float wording/sign rules differed for dealt vs taken damage, and dealt crits needed a yellow highlight.
+
+**Fix**:
+- Removed the inline left-panel `暴击率` row from `BattleArena.tsx`.
+- Added `C` hotkey toggle state for a new attribute panel rendered below the player HP block, styled after the provided screenshot and showing `会心` plus fixed `会心效果 175%`.
+- Moved the crit preset buttons under the mode indicator and updated labels/toasts to 会心 wording.
+- Reworked float formatting: dealt damage now shows `技能名 5` or `技能名: 会心 5` with no minus sign; taken damage shows `技能名： -5` or `技能名： 会心 -10`.
+- Dealt crit floats now render yellow; taken damage remains red whether crit or not.
+- Added backend `isCrit` metadata to shared DAMAGE events for the main scheduled/immediate helper paths, with a fractional-value fallback on the frontend for older/unpatched event shapes.
+
+**Lessons**:
+- Combat-float phrasing should be treated as a UX contract, not incidental formatting. Dealt and taken damage want different punctuation/sign conventions even when sourced from the same DAMAGE event type.
+- When a UI needs “panel, not inline row”, it is better to delete the old inline readout entirely instead of duplicating the same stat in two places.
+
+## Crit chance presets + global crit damage pipeline (2026-05-02)
+
+**Problem set**:
+1. Needed a fast in-battle way to set BOTH players' crit chance presets (0 / 36 / 40 / 46) from top-screen buttons.
+2. Needed the local player's crit chance shown on the left HUD.
+3. Required crit damage base = 175% and to apply across the damage pipeline, without mutating 会心 / 会心效果 editor/runtime attributes.
+4. During implementation, a misplaced insertion in `BattleArena.tsx` landed inside `buildChannelBarDataForPlayer()`, causing Next/SWC parse failure (`'import'/'export' cannot be used outside of module code`).
+
+**Fix**:
+- Added backend cheat route `POST /api/game/cheat/set-crit-chance` in `draft.routes.ts`, updating both players' `critChancePct` in live loop state + persisted state, broadcasting diffs.
+- Added `critChancePct?: number` to backend/frontend player state types.
+- Added top-screen preset buttons in `BattleArena.tsx` (`No Crit`, `绿`, `蓝`, `紫`) wired to the new cheat route, and left-panel crit chance readout (`暴击率 xx.x%`).
+- In combat math, added shared raw crit resolver with base multiplier `1.75`; `resolveScheduledDamage()` now flows through crit resolution.
+- Updated direct raw-damage branches (e.g. trigger/true-damage paths in `playService.ts`, `PlayAbility.ts`, `immediateEffects.ts`, and selected `GameLoop.ts` branches) to use crit-aware raw damage resolution.
+- Updated damage application to support fractional values so crit examples like `10 -> 17.5` are representable.
+- Fixed the malformed frontend edit by restoring the missing function brace and re-applying crit UI code at the correct JSX locations.
+
+**Lessons / disproved approach**:
+- A large-file patch on `BattleArena.tsx` can silently match the wrong region; always re-check `git diff` immediately when touching repeated patterns. The parse error surfaced far away from the actual mistake.
+- For “all damage can crit”, centralizing at `resolveScheduledDamage()` covers most ability damage; remaining direct raw-damage branches should be explicitly converted to the shared crit resolver instead of ad-hoc per-file formulas.
+
 ## Special-bar GCD display, persistent per-ability cooldown, and silence bypass (2026-05-02)
 
 **Problem set**:
@@ -918,6 +1425,7 @@ The BVH collision triangles in the GLBs do NOT change — only the coordinate ma
 - Using an external URL in `BACKEND_URL` causes nginx 404 — always point to `http://localhost:5000` for server-side calls.
 - WebSocket proxy requires `http/1.1 + Upgrade + Connection` headers, or the connection silently fails.
 - Missing `Host` header in nginx proxy causes cookie routing failures.
+- The public nginx route currently serves `/icons/*.png` with `Cache-Control: public, max-age=2592000, immutable`. If a desktop browser cached an earlier missing/bad icon response, it can keep showing broken icons while a phone with a fresh cache shows the new files. Fix by versioning generated icon URLs in the frontend helper so icon requests move to a fresh cache key.
 
 ---
 

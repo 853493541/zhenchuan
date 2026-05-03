@@ -12,10 +12,13 @@ export type EffectType =
   | "DAMAGE_REDUCTION"
   | "DAMAGE_TAKEN_INCREASE"
   | "DAMAGE_MULTIPLIER"
+  | "CRIT_CHANCE_BONUS"
+  | "CRIT_EFFECT_BONUS"
   | "HEAL_REDUCTION"
   | "UNTARGETABLE"
   | "INVULNERABLE"
   | "STEALTH"
+  | "ANTI_STEALTH"
   | "ATTACK_LOCK"
   | "NON_QINGGONG_LOCK"
   | "CONTROL"
@@ -24,8 +27,10 @@ export type EffectType =
   | "LOCKOUT_IMMUNE"
   | "SILENCE_IMMUNE"
   | "FEAR_IMMUNE"
+  | "MIYUN_IMMUNE"
   | "QINGGONG_SEAL"
   | "KNOCKBACK_IMMUNE"
+  | "KNOCKED_BACK_IMMUNE"
   | "CONTROL_IMMUNE"
   | "DASH_TURN_LOCK"
   | "DASH_TURN_OVERRIDE"
@@ -44,6 +49,7 @@ export type EffectType =
   | "DASH"
   | "DIRECTIONAL_DASH"
   | "AOE_APPLY_BUFFS"
+  | "HAN_RU_LEI_AOE"
   | "JUMP_BOOST"
   | "GROUND_TARGET_DASH"
   | "PERIODIC_DAMAGE"
@@ -113,8 +119,6 @@ export type EffectType =
   | "PO_FENG_STRIKE"
   // 外功闪避: dodge chance that only applies to non-内功 (physical / untyped) attacks
   | "PHYSICAL_DODGE"
-  // 无相诀: scaling damage reduction based on current HP percentage
-  | "DAMAGE_REDUCTION_HP_SCALING"
   // 斩无常: immune to abilities with isProjectile:true
   | "PROJECTILE_IMMUNE"
   // 应天授命: unlimited shield + periodic true-damage settle mechanic
@@ -146,8 +150,19 @@ export type EffectType =
   | "TRUE_DAMAGE"
   // 龙啸九天: cleanse self, apply 龙威/龙啸九天/定身 buffs, AOE 6u damage + slow knockback
   | "LONG_XIAO_JIU_TIAN_AOE"
+  // 人剑合一: destroy nearby 气场; if any friendly 气场 were destroyed, apply 破势 to nearby enemy players
+  | "REN_JIAN_HE_YI_AOE"
+  // 舍身诀: cleanse a friendly target, grant 30% DR, and redirect damage to the caster
+  | "SHESHEN_JUE"
+  // 渊: dash to a friendly target, knock back nearby enemies, and intercept the next hit
+  | "YUAN_GUARD"
+  // 听风吹雪: equalize current HP with a friendly target, then grant 贯体 heal to both
+  | "TING_FENG_CHUI_XUE"
   // 驭羽骋风: cleanse self + vertical dash up 12u in 1s
   | "YU_YU_DASH"
+  // 凌然天风: vertical lift on cast, plus a buff-managed special jump state
+  | "LING_RAN_TIAN_FENG_CAST"
+  | "LING_RAN_TIAN_FENG_STATE"
   // 梯云纵: while active, jumps are 3× high (stacks multiplicatively with MULTI_JUMP)
   | "TI_YUN_ZONG_JUMP"
   // 梯云纵: refresh 赑云逐月 cooldown on cast
@@ -176,6 +191,7 @@ export type EffectType =
   | "NON_QINGGONG_LOCK"
   // 恐惧: silence + forced walk away from sourceUserId
   | "FEARED"
+  | "MIYUN_CONFUSION"
   // 蚀心蛊: lose control and either march in a stored direction or stand still
   | "SHI_XIN_GU"
   // 蚀心: repeat-hit marker that halves the next 蚀心蛊 duration

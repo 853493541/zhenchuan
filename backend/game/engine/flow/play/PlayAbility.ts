@@ -5,6 +5,8 @@ import { getEnemy } from "../../utils/targeting";
 import { pushEvent } from "../../../services/flow/events";
 import { addBuff } from "../../effects/buffRuntime";
 import { applyDamageToTarget } from "../../utils/health";
+import { resolveRawDamageWithCrit } from "../../utils/combatMath";
+import { ABILITIES } from "../../../abilities/abilities";
 
 import { breakOnPlay } from "./breakOnPlay";
 import { computeAbilityDodge } from "../../rules/dodge";
@@ -28,6 +30,8 @@ export function applyAbility(
     targetUserId?: string;
     groundTarget?: { x: number; y: number; z?: number };
     entityTargetId?: string;
+    ignoreTargetAllegiance?: boolean;
+    forceEnemyApplied?: boolean;
   }
 ) {
   if (state.gameOver) return;
@@ -48,7 +52,9 @@ export function applyAbility(
     turn: state.turn,
     type: "PLAY_ABILITY",
     actorUserId: source.userId,
-    targetUserId: target.userId,
+    targetUserId: entityTarget ? undefined : target.userId,
+    entityId: entityTarget?.id,
+    entityName: entityTarget?.abilityName,
     abilityId: ability.id,
     abilityName: ability.name,
   });
@@ -70,6 +76,7 @@ export function applyAbility(
 
   const shouldReflectToCaster =
     ability.target === "OPPONENT" &&
+    (ability as any).friendlyTarget !== true &&
     source.userId !== target.userId &&
     !entityTarget &&
     isDirectPlayerTargetCast &&
@@ -135,6 +142,7 @@ export function applyAbility(
     target,
     entityTarget,
     abilityDodged,
+    forceEnemyApplied: castContext?.forceEnemyApplied,
   });
 
   // 绛唇珠袖: manually apply only the cast-time debuff (2323) to the opponent.
@@ -175,7 +183,12 @@ export function applyAbility(
     } else {
       bangHuaBuff.stacks = currentStacks - 1;
     }
-    applyDamageToTarget(source as any, 2);
+    const triggerDamage = resolveRawDamageWithCrit({
+      source: enemy as any,
+      base: 2,
+      damageType: (ABILITIES["bang_hua_sui_liu"] as any)?.damageType,
+    });
+    applyDamageToTarget(source as any, triggerDamage);
     pushEvent(state, {
       turn: state.turn,
       type: "DAMAGE",
@@ -184,7 +197,7 @@ export function applyAbility(
       abilityId: "bang_hua_sui_liu",
       abilityName: "傍花随柳",
       effectType: "BANG_HUA_TRIGGER",
-      value: 2,
+      value: triggerDamage,
     } as any);
 
     // Last stack: also apply 束发 silence 4s

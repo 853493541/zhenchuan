@@ -636,11 +636,15 @@ export default function ArenaScene({
         const isChongYinYang = zone.abilityId === 'chong_yin_yang';
         const isLingTaiXu = zone.abilityId === 'ling_tai_xu';
         const isTunRiYue = zone.abilityId === 'tun_ri_yue';
+        const isSuiXingChen = zone.abilityId === 'sui_xing_chen';
+        const isPoCangQiong = zone.abilityId === 'po_cang_qiong';
         const isXiBingYu = zone.abilityId === 'xi_bing_yu';
         const isOwn = zone.ownerUserId === me.userId;
         const isXiBingYuTarget = zone.pickupTargetUserId === me.userId;
         const color = isXiBingYu
           ? (isXiBingYuTarget ? '#4488ff' : '#ff3333')
+          : (isSuiXingChen || isPoCangQiong)
+          ? '#ff3333'
           : isBaizuMarker
           ? (isOwn ? '#b06cff' : '#ff3333')
           : (isOwn ? '#4488ff' : '#ff3333');
@@ -654,8 +658,12 @@ export default function ArenaScene({
           ? '凌太虚'
           : isTunRiYue
           ? '吞日月'
+          : isSuiXingChen
+          ? '碎星辰'
+          : isPoCangQiong
+          ? '破苍穹'
           : (zone.abilityName ?? '雷云');
-        const showOwnTimer = isOwn && (isShengTaiji || isKuanglong || isZhenShanHe || isChongYinYang || isLingTaiXu || isTunRiYue);
+        const showOwnTimer = isOwn && (isShengTaiji || isKuanglong || isZhenShanHe || isChongYinYang || isLingTaiXu || isTunRiYue || isSuiXingChen || isPoCangQiong);
         const secondsLeft = Math.max(1, Math.ceil((zone.expiresAt - nowMs) / 1000));
         const label = showOwnTimer ? `${baseLabel} · ${secondsLeft}` : baseLabel;
         return (

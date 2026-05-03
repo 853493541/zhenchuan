@@ -13,13 +13,17 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DAMAGE_REDUCTION: "BUFF",
   DAMAGE_TAKEN_INCREASE: "DEBUFF",
   DAMAGE_MULTIPLIER: "BUFF",
+  CRIT_CHANCE_BONUS: "BUFF",
+  CRIT_EFFECT_BONUS: "BUFF",
 
   UNTARGETABLE: "BUFF",
   INVULNERABLE: "BUFF",
   STEALTH: "BUFF",
+  ANTI_STEALTH: "DEBUFF",
   CONTROL_IMMUNE: "BUFF",
   LOCKOUT_IMMUNE: "BUFF",
   KNOCKBACK_IMMUNE: "BUFF",
+  KNOCKED_BACK_IMMUNE: "BUFF",
   DASH_TURN_LOCK: "BUFF",
   DASH_TURN_OVERRIDE: "BUFF",
   DISPLACEMENT: "BUFF",
@@ -38,6 +42,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   PERIODIC_DAMAGE: "DEBUFF",
   CHANNEL_AOE_TICK: "BUFF",
   CONTROL: "DEBUFF",
+  MIYUN_IMMUNE: "BUFF",
 
   // ✅ Channel buffs are BUFFs (self-cast)
   FENGLAI_CHANNEL: "BUFF",
@@ -62,6 +67,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   DIRECTIONAL_DASH: "BUFF",
   GROUND_TARGET_DASH: "BUFF",
   AOE_APPLY_BUFFS: "DEBUFF",
+  HAN_RU_LEI_AOE: "DEBUFF",
   JUMP_BOOST: "BUFF",
 
   /* ================= CONTROL LEVELS ================= */
@@ -129,8 +135,6 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   PO_FENG_STRIKE: "DEBUFF",
   // 外功闪避: dodge only physical / untyped attacks
   PHYSICAL_DODGE: "BUFF",
-  // 无相诀: scaling DR based on current HP%
-  DAMAGE_REDUCTION_HP_SCALING: "BUFF",
   // 斩无常: immune to isProjectile abilities
   PROJECTILE_IMMUNE: "BUFF",
   // 应天授命: unlimited shield + true-damage settle per second
@@ -159,10 +163,16 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   // 拿云式 true damage / 龙啸九天 AOE — immediate ability effects
   TRUE_DAMAGE: "ABILITY",
   LONG_XIAO_JIU_TIAN_AOE: "ABILITY",
+  REN_JIAN_HE_YI_AOE: "ABILITY",
+  SHESHEN_JUE: "ABILITY",
+  YUAN_GUARD: "ABILITY",
+  TING_FENG_CHUI_XUE: "ABILITY",
   // 驭羽骋风 / 梯云纵
   YU_YU_DASH: "ABILITY",
+  LING_RAN_TIAN_FENG_CAST: "ABILITY",
   TI_YUN_ZONG_REFRESH: "ABILITY",
   TI_YUN_ZONG_JUMP: "BUFF",
+  LING_RAN_TIAN_FENG_STATE: "BUFF",
   // 疾电叱羽
   PLACE_JI_DIAN_ZONE: "ABILITY",
   PLACE_XI_BING_YU_ZONE: "ABILITY",
@@ -176,6 +186,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   QIN_YIN_GONG_MING: "ABILITY",
   FEAR_IMMUNE: "BUFF",
   FEARED: "DEBUFF",
+  MIYUN_CONFUSION: "DEBUFF",
   SHI_XIN_GU: "DEBUFF",
   SHI_XIN_MARK: "DEBUFF",
   HONG_MENG_TIAN_JIN: "DEBUFF",

@@ -1,7 +1,7 @@
 // engine/flow/applyImmediateEffects.ts
 import { randomUUID } from "crypto";
 import { resolveEffectTargetIndex } from "../../utils/targeting";
-import { blocksEnemyTargeting, isEnemyEffect, shouldSkipDueToDodge, hasKnockbackImmune, hasDamageImmune, blocksControlByImmunity } from "../../rules/guards";
+import { blocksEnemyTargeting, isAlwaysSelfEffect, isEnemyEffect, shouldSkipDueToDodge, hasKnockbackImmune, hasKnockedBackImmune, hasDamageImmune, blocksControlByImmunity } from "../../rules/guards";
 import {
   handleDamage,
   handleBonusDamageIfHpGt,
@@ -18,7 +18,7 @@ import {
   type CapturedControlSnapshot,
 } from "../../effects/definitions/Cleanse";
 import { gameplayUnitsToWorldUnits, worldUnitsToGameplayUnits } from "../../state/types";
-import { resolveScheduledDamage } from "../../utils/combatMath";
+import { resolveHealAmountRoll, resolveNonCritHealAmountRoll, resolveRawDamageWithCrit, resolveScheduledDamage, resolveScheduledDamageRoll } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../../utils/health";
 import { addBuff, pushBuffExpired } from "../../effects/buffRuntime";
 import {
@@ -44,6 +44,7 @@ import {
 } from "../../utils/chuHeHanJieWall";
 import { triggerYunSanBlink } from "../../utils/yunSan";
 import { buildStolenBuffDefinition, isQinYinGongMingBuffStealable } from "../../../abilities/qinYinGongMing";
+import { rerollMiYunAreaTargets } from "../../utils/miyun";
 
 const WUFANG_ROOT_BUFF_ID = 1330;
 const WUFANG_HIT_PROTECT_BUFF_ID = 1331;
@@ -86,6 +87,177 @@ const SHU_SE_BUFF_ID = 2646;
 const HONG_MENG_CLEANSE_ATTRIBUTES = ["阴性", "阳性", "混元", "毒性", "持续伤害"];
 const SHOU_QUE_BUFF_ID = 2652;
 const SHOU_QUE_KNOCKBACK_BUFF_ID = 2653;
+const WU_XIANG_JUE_FIFTY_BUFF_ID = 2710;
+const WU_XIANG_JUE_SIXTY_BUFF_ID = 2731;
+const WU_XIANG_JUE_SEVENTY_BUFF_ID = 2732;
+const WU_XIANG_JUE_EIGHTY_BUFF_ID = 2733;
+const WU_XIANG_JUE_NINETY_BUFF_ID = 2734;
+const SHESHEN_DAMAGE_REDUCTION_BUFF_ID = 2736;
+const SHESHEN_REDIRECT_BUFF_ID = 2737;
+const SHESHEN_BEAR_BUFF_ID = 2738;
+const YUAN_GUARD_BUFF_ID = 2739;
+const YUAN_BEAR_BUFF_ID = 2740;
+const SHENGTAIJI_ZONE_ABILITY_ID = "qionglong_huasheng_zone";
+const SHENGTAIJI_PULSE_BUFF_ID = 1310;
+const SHENGTAIJI_ENEMY_SLOW_BUFF_ID = 1311;
+const ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID = 1323;
+const CHONG_YIN_YANG_ZONE_BUFF_ID = 2701;
+const LING_TAI_XU_ZONE_BUFF_ID = 2702;
+const TUN_RI_YUE_ZONE_BUFF_ID = 2703;
+const SUI_XING_CHEN_ZONE_BUFF_ID = 2704;
+const PO_CANG_QIONG_ZONE_BUFF_ID = 2705;
+
+const QI_FIELD_ZONE_ABILITY_IDS = new Set([
+  SHENGTAIJI_ZONE_ABILITY_ID,
+  "sheng_tai_ji",
+  "tun_ri_yue",
+  ZHEN_SHAN_HE_ABILITY_ID,
+  "po_cang_qiong",
+  "sui_xing_chen",
+  "ling_tai_xu",
+  "chong_yin_yang",
+]);
+
+const MECHANISM_ZONE_ABILITY_IDS = new Set(["tian_jue_di_mie"]);
+
+function getWuXiangJueSnapshotBuffId(player: { hp?: number; maxHp?: number }) {
+  const maxHp = player.maxHp ?? 100;
+  if (maxHp <= 0) return WU_XIANG_JUE_FIFTY_BUFF_ID;
+  const hp = Math.max(0, player.hp ?? maxHp);
+  const hpPct = hp / maxHp;
+  if (hpPct <= 0.1) return WU_XIANG_JUE_NINETY_BUFF_ID;
+  if (hpPct <= 0.25) return WU_XIANG_JUE_EIGHTY_BUFF_ID;
+  if (hpPct <= 0.5) return WU_XIANG_JUE_SEVENTY_BUFF_ID;
+  if (hpPct <= 0.75) return WU_XIANG_JUE_SIXTY_BUFF_ID;
+  return WU_XIANG_JUE_FIFTY_BUFF_ID;
+}
+
+function expireImmediateBuffById(state: any, target: any, buffId: number) {
+  let removedAny = false;
+  while (true) {
+    const idx = (target.buffs ?? []).findIndex((buff: any) => buff?.buffId === buffId);
+    if (idx === -1) break;
+    const [removed] = target.buffs.splice(idx, 1);
+    pushBuffExpired(state, {
+      targetUserId: target.userId,
+      buffId: removed.buffId,
+      buffName: removed.name,
+      buffCategory: removed.category,
+      sourceAbilityId: removed.sourceAbilityId,
+      sourceAbilityName: removed.sourceAbilityName,
+    });
+    removedAny = true;
+  }
+  return removedAny;
+}
+
+function clearDestroyedGroundZoneBuffs(state: any, zone: any) {
+  const players = state.players ?? [];
+  const owner = players.find((player: any) => player.userId === zone.ownerUserId);
+
+  if (zone.abilityId === SHENGTAIJI_ZONE_ABILITY_ID || zone.abilityId === "sheng_tai_ji") {
+    for (const player of players) {
+      expireImmediateBuffById(state, player, SHENGTAIJI_PULSE_BUFF_ID);
+      expireImmediateBuffById(state, player, SHENGTAIJI_ENEMY_SLOW_BUFF_ID);
+    }
+    return;
+  }
+
+  if (zone.abilityId === ZHEN_SHAN_HE_ABILITY_ID) {
+    if (owner) {
+      expireImmediateBuffById(state, owner, ZHEN_SHAN_HE_ZONE_INVULNERABLE_BUFF_ID);
+    }
+    return;
+  }
+
+  if (zone.abilityId === "chong_yin_yang") {
+    if (owner) expireImmediateBuffById(state, owner, CHONG_YIN_YANG_ZONE_BUFF_ID);
+    return;
+  }
+
+  if (zone.abilityId === "ling_tai_xu") {
+    if (owner) expireImmediateBuffById(state, owner, LING_TAI_XU_ZONE_BUFF_ID);
+    return;
+  }
+
+  if (zone.abilityId === "sui_xing_chen") {
+    if (owner) expireImmediateBuffById(state, owner, SUI_XING_CHEN_ZONE_BUFF_ID);
+    return;
+  }
+
+  if (zone.abilityId === "po_cang_qiong") {
+    if (owner) expireImmediateBuffById(state, owner, PO_CANG_QIONG_ZONE_BUFF_ID);
+    return;
+  }
+
+  if (zone.abilityId === "tun_ri_yue") {
+    for (const player of players) {
+      if (player.userId === zone.ownerUserId) continue;
+      expireImmediateBuffById(state, player, TUN_RI_YUE_ZONE_BUFF_ID);
+    }
+  }
+}
+
+function destroyGroundZonesInRange(params: {
+  state: any;
+  sourceUserId: string;
+  center: { x: number; y: number };
+  radius: number;
+  ownerMode: "enemy-only" | "ally-only" | "any";
+  destroyQiFields: boolean;
+  destroyMechanisms: boolean;
+}) {
+  const { state, sourceUserId, center, radius, ownerMode, destroyQiFields, destroyMechanisms } = params;
+  const zones = Array.isArray(state.groundZones) ? state.groundZones : [];
+  if (zones.length === 0) {
+    return { destroyedZones: [] as any[], destroyedFriendlyQiFields: 0 };
+  }
+
+  const keptZones: any[] = [];
+  const destroyedZones: any[] = [];
+  let destroyedFriendlyQiFields = 0;
+
+  for (const zone of zones) {
+    const isFriendly = zone.ownerUserId === sourceUserId;
+    if (ownerMode === "enemy-only" && isFriendly) {
+      keptZones.push(zone);
+      continue;
+    }
+    if (ownerMode === "ally-only" && !isFriendly) {
+      keptZones.push(zone);
+      continue;
+    }
+
+    const abilityId = String(zone.abilityId ?? "");
+    const isQiField = destroyQiFields && QI_FIELD_ZONE_ABILITY_IDS.has(abilityId);
+    const isMechanism = destroyMechanisms && MECHANISM_ZONE_ABILITY_IDS.has(abilityId);
+    if (!isQiField && !isMechanism) {
+      keptZones.push(zone);
+      continue;
+    }
+
+    const dx = (zone.x ?? 0) - center.x;
+    const dy = (zone.y ?? 0) - center.y;
+    if (Math.hypot(dx, dy) > radius) {
+      keptZones.push(zone);
+      continue;
+    }
+
+    destroyedZones.push(zone);
+    if (isQiField && isFriendly) {
+      destroyedFriendlyQiFields += 1;
+    }
+  }
+
+  if (destroyedZones.length > 0) {
+    state.groundZones = keptZones;
+    for (const zone of destroyedZones) {
+      clearDestroyedGroundZoneBuffs(state, zone);
+    }
+  }
+
+  return { destroyedZones, destroyedFriendlyQiFields };
+}
 
 function syncStolenBuffRuntime(params: {
   sourcePlayer: any;
@@ -146,7 +318,8 @@ function getImmediateEnemyBuffTargets(
   state: any,
   sourceUserId: string,
   center: { x: number; y: number },
-  radius: number
+  radius: number,
+  rerollForMiYun: boolean = true,
 ): ImmediateEnemyDamageTarget[] {
   const targets: ImmediateEnemyDamageTarget[] = [];
 
@@ -166,20 +339,83 @@ function getImmediateEnemyBuffTargets(
     targets.push({ kind: "entity", target: entity });
   }
 
-  return targets;
+  if (!rerollForMiYun) return targets;
+
+  const source = (state.players ?? []).find((candidate: any) => candidate.userId === sourceUserId);
+  const rerolledTargets = rerollMiYunAreaTargets({
+    state,
+    source,
+    sourceUserId,
+    originalSlotCount: targets.length,
+    center,
+    radiusWorld: radius,
+  });
+  return (rerolledTargets as ImmediateEnemyDamageTarget[] | null) ?? targets;
 }
 
-function getExplicitEnemyEntityTarget(state: any, sourceUserId: string, entityTargetId?: string) {
+function isImmediateStealthBuff(buff: any) {
+  return Array.isArray(buff?.effects) && buff.effects.some((effect: any) => effect?.type === "STEALTH");
+}
+
+function isImmediateDunyingCompanion(buff: any) {
+  return buff?.buffId === 1021;
+}
+
+function removeImmediateStealthBuffs(state: any, target: any) {
+  const removed: any[] = [];
+
+  target.buffs = (target.buffs ?? []).filter((buff: any) => {
+    if (!isImmediateStealthBuff(buff)) return true;
+    removed.push(buff);
+    return false;
+  });
+
+  if (removed.some((buff) => buff?.buffId === 1012 || buff?.sourceAbilityId === "fuguang_lueying")) {
+    const companionRemoved = (target.buffs ?? []).filter((buff: any) => isImmediateDunyingCompanion(buff));
+    if (companionRemoved.length > 0) {
+      target.buffs = target.buffs.filter((buff: any) => !isImmediateDunyingCompanion(buff));
+      removed.push(...companionRemoved);
+    }
+  }
+
+  for (const buff of removed) {
+    removeLinkedShield(target as any, buff as any);
+    pushBuffExpired(state, {
+      targetUserId: target.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+    });
+  }
+
+  return removed.length > 0;
+}
+
+function getExplicitEntityTarget(state: any, entityTargetId?: string) {
   if (!entityTargetId || !Array.isArray(state.entities)) return null;
   const entity = state.entities.find((candidate: any) => candidate.id === entityTargetId);
-  if (!entity || entity.hp <= 0 || entity.ownerUserId === sourceUserId) return null;
+  if (!entity || entity.hp <= 0) return null;
   return entity;
 }
 
-function getExplicitEnemyPlayerTarget(state: any, sourceUserId: string, targetUserId?: string) {
+function getExplicitFriendlyEntityTarget(state: any, sourceUserId: string, entityTargetId?: string) {
+  const entity = getExplicitEntityTarget(state, entityTargetId);
+  if (!entity || entity.hp <= 0 || entity.ownerUserId !== sourceUserId) return null;
+  return entity;
+}
+
+function getExplicitEnemyPlayerTarget(
+  state: any,
+  sourceUserId: string,
+  targetUserId?: string,
+  ignoreTargetAllegiance?: boolean,
+) {
   if (!targetUserId || !Array.isArray(state.players)) return null;
   const target = state.players.find((candidate: any) => candidate.userId === targetUserId);
   if (!target || target.userId === sourceUserId || (target.hp ?? 0) <= 0) return null;
+  if (ignoreTargetAllegiance) return target;
   if (blocksEnemyTargeting(target)) return null;
   return target;
 }
@@ -189,6 +425,117 @@ function getExplicitPlayerTarget(state: any, targetUserId?: string) {
   const target = state.players.find((candidate: any) => candidate.userId === targetUserId);
   if (!target || (target.hp ?? 0) <= 0) return null;
   return target;
+}
+
+function resolveFriendlySupportTarget(state: any, source: any, castContext?: {
+  targetUserId?: string;
+  entityTargetId?: string;
+  ignoreTargetAllegiance?: boolean;
+}) {
+  if (castContext?.ignoreTargetAllegiance === true) {
+    const confusionEntityTarget = getExplicitEntityTarget(state, castContext?.entityTargetId);
+    if (confusionEntityTarget) return confusionEntityTarget;
+
+    const confusionPlayerTarget = getExplicitPlayerTarget(state, castContext?.targetUserId);
+    if (confusionPlayerTarget) return confusionPlayerTarget;
+
+    return source;
+  }
+
+  const friendlyEntityTarget = getExplicitFriendlyEntityTarget(
+    state,
+    source.userId,
+    castContext?.entityTargetId,
+  );
+  if (friendlyEntityTarget) return friendlyEntityTarget;
+
+  const playerTarget = getExplicitPlayerTarget(state, castContext?.targetUserId);
+  if (playerTarget && playerTarget.userId === source.userId) {
+    return playerTarget;
+  }
+
+  return source;
+}
+
+function pushImmediateHpAdjustmentEvent(params: {
+  state: any;
+  ability: any;
+  sourceUserId: string;
+  target: any;
+  beforeHp: number;
+  effectType: string;
+}) {
+  const { state, ability, sourceUserId, target, beforeHp, effectType } = params;
+  const afterHp = Number(target?.hp ?? beforeHp);
+  const delta = Math.round((afterHp - beforeHp) * 100) / 100;
+  if (Math.abs(delta) <= 0.0001) return;
+
+  const baseEvent = {
+    id: randomUUID(),
+    timestamp: Date.now(),
+    turn: state.turn,
+    actorUserId: sourceUserId,
+    abilityId: ability.id,
+    abilityName: ability.name,
+    effectType,
+    value: Math.abs(delta),
+  } as any;
+
+  if (typeof target?.id === "string") {
+    state.events.push({
+      ...baseEvent,
+      type: delta < 0 ? "DAMAGE" : "HEAL",
+      entityId: target.id,
+      entityName: target.abilityName,
+    });
+    return;
+  }
+
+  state.events.push({
+    ...baseEvent,
+    type: delta < 0 ? "DAMAGE" : "HEAL",
+    targetUserId: target.userId,
+  });
+}
+
+function applyImmediateGuanTiHeal(params: {
+  state: any;
+  ability: any;
+  sourceUserId: string;
+  target: any;
+  amount: number;
+}) {
+  const { state, ability, sourceUserId, target, amount } = params;
+  const applied = applyHealToTarget(target as any, amount);
+  if (applied <= 0) return;
+
+  const guanTiName = ability.name.includes("（贯体）") ? ability.name : `${ability.name}（贯体）`;
+
+  const baseEvent = {
+    id: randomUUID(),
+    timestamp: Date.now(),
+    turn: state.turn,
+    type: "HEAL",
+    actorUserId: sourceUserId,
+    abilityId: ability.id,
+    abilityName: guanTiName,
+    effectType: "INSTANT_GUAN_TI_HEAL",
+    value: applied,
+  } as any;
+
+  if (typeof target?.id === "string") {
+    state.events.push({
+      ...baseEvent,
+      entityId: target.id,
+      entityName: target.abilityName,
+    });
+    return;
+  }
+
+  state.events.push({
+    ...baseEvent,
+    targetUserId: target.userId,
+  });
 }
 
 function getSourceFacingUnit(source: any) {
@@ -212,7 +559,7 @@ function getForwardConeEnemyTargets(params: {
   const facing = getSourceFacingUnit(source);
   const halfAngleCos = Math.cos((coneAngleDeg / 2) * Math.PI / 180);
 
-  return getImmediateEnemyBuffTargets(state, source.userId, source.position, radius).filter((candidate) => {
+  const coneTargets = getImmediateEnemyBuffTargets(state, source.userId, source.position, radius, false).filter((candidate) => {
     const dx = (candidate.target.position?.x ?? 0) - source.position.x;
     const dy = (candidate.target.position?.y ?? 0) - source.position.y;
     const distance = Math.hypot(dx, dy);
@@ -220,6 +567,18 @@ function getForwardConeEnemyTargets(params: {
     const dot = (facing.x * dx + facing.y * dy) / distance;
     return dot >= halfAngleCos;
   });
+
+  const rerolledTargets = rerollMiYunAreaTargets({
+    state,
+    source,
+    sourceUserId: source.userId,
+    originalSlotCount: coneTargets.length,
+    center: source.position,
+    radiusWorld: radius,
+    coneAngleDeg,
+    facing,
+  });
+  return (rerolledTargets as ImmediateEnemyDamageTarget[] | null) ?? coneTargets;
 }
 
 function pullImmediateTargetTowardAnchor(params: {
@@ -359,7 +718,7 @@ function applyImmediateKnockback(params: {
   const dy = kbTarget.position.y - source.position.y;
   const distance = Math.hypot(dx, dy);
   if (distance < 0.001) return false;
-  if (target.kind === "player" && hasKnockbackImmune(kbTarget)) return false;
+  if (target.kind === "player" && hasKnockedBackImmune(kbTarget)) return false;
 
   const dirX = dx / distance;
   const dirY = dy / distance;
@@ -553,7 +912,16 @@ function getImmediateEnemyDamageTargets(
     targets.push({ kind: "entity", target: entity });
   }
 
-  return targets;
+  const source = (state.players ?? []).find((candidate: any) => candidate.userId === sourceUserId);
+  const rerolledTargets = rerollMiYunAreaTargets({
+    state,
+    source,
+    sourceUserId,
+    originalSlotCount: targets.length,
+    center,
+    radiusWorld: radius,
+  });
+  return (rerolledTargets as ImmediateEnemyDamageTarget[] | null) ?? targets;
 }
 
 function applyImmediateDamageToEnemyTarget(params: {
@@ -592,12 +960,13 @@ function applyImmediateDamageToEnemyTarget(params: {
   }
 
   const damageTarget = target.target;
-  const resolvedDamage = resolveScheduledDamage({
+  const damageRoll = resolveScheduledDamageRoll({
     source,
     target: damageTarget,
     base: baseDamage,
     damageType: (ability as any).damageType,
   });
+  const resolvedDamage = damageRoll.damage;
   if (resolvedDamage <= 0) return 0;
 
   if (target.kind === "player") {
@@ -618,6 +987,7 @@ function applyImmediateDamageToEnemyTarget(params: {
       abilityName: ability.name,
       effectType,
       value: appliedDamage,
+      isCrit: damageRoll.isCrit,
       shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
     });
     if (result.hpDamage > 0) {
@@ -630,8 +1000,10 @@ function applyImmediateDamageToEnemyTarget(params: {
   }
 
   const entity = target.target;
-  const result = resolvedDamage > 0
-    ? applyDamageToTarget(entity as any, resolvedDamage)
+  const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(state, entity as any, resolvedDamage);
+  const appliedDamage = adjustedDamage;
+  const result = appliedDamage > 0
+    ? applyDamageToTarget(entity as any, appliedDamage)
     : { hpDamage: 0, shieldAbsorbed: 0 };
   state.events.push({
     id: randomUUID(),
@@ -644,13 +1016,17 @@ function applyImmediateDamageToEnemyTarget(params: {
     abilityId: ability.id,
     abilityName: ability.name,
     effectType,
-    value: resolvedDamage,
+    value: appliedDamage,
+    isCrit: damageRoll.isCrit,
     shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
   });
   if (result.hpDamage > 0) {
     processOnDamageTaken(state, entity as any, result.hpDamage, source.userId);
   }
-  return resolvedDamage;
+  if (redirectPlayer && redirectAmt > 0) {
+    applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
+  }
+  return appliedDamage;
 }
 
 export function applyImmediateEffects(params: {
@@ -668,6 +1044,8 @@ export function applyImmediateEffects(params: {
     targetUserId?: string;
     groundTarget?: { x: number; y: number; z?: number };
     entityTargetId?: string;
+    ignoreTargetAllegiance?: boolean;
+    forceEnemyApplied?: boolean;
   };
 }) {
   const {
@@ -683,11 +1061,7 @@ export function applyImmediateEffects(params: {
     mapCtx,
     castContext,
   } = params;
-  const explicitEntityTarget = getExplicitEnemyEntityTarget(
-    state,
-    source.userId,
-    castContext?.entityTargetId,
-  );
+  const explicitEntityTarget = getExplicitEntityTarget(state, castContext?.entityTargetId);
 
   // 太极无极 stacking trigger: capture pre-damage CC state on target
   let taiJiCcOnTarget = false;
@@ -733,6 +1107,14 @@ export function applyImmediateEffects(params: {
     }
   }
 
+  const lingRanTianFengActive = (source.buffs ?? []).some((buff: any) =>
+    buff.expiresAt > Date.now() &&
+    buff.effects?.some((effect: any) => effect.type === "LING_RAN_TIAN_FENG_STATE")
+  );
+  if (lingRanTianFengActive || ability.id === "ling_ran_tian_feng") {
+    source.lingRanTianFengCharges = 1;
+  }
+
   for (const effect of ability.effects) {
     const effTargetIndex = resolveEffectTargetIndex(
       targetIndex,
@@ -740,13 +1122,14 @@ export function applyImmediateEffects(params: {
       effect.applyTo
     );
     const playerEffTarget = state.players[effTargetIndex];
-    const enemyApplied = isEnemyEffect(source, playerEffTarget, effect);
+    const enemyApplied =
+      effect.applyTo === "SELF" || isAlwaysSelfEffect(effect.type)
+        ? false
+        : (castContext?.forceEnemyApplied ?? isEnemyEffect(source, playerEffTarget, effect));
     // When an entity is the explicit target of a hostile effect, route the
     // effect (dash, control, damage) at the entity instead of the opposing
     // player so dashes home in on dummies / 逐云寒蕊 etc.
-    const effTarget: any = (explicitEntityTarget && enemyApplied)
-      ? explicitEntityTarget
-      : playerEffTarget;
+    const effTarget: any = explicitEntityTarget ?? playerEffTarget;
 
     // TRUE_DAMAGE bypasses dodge; all other enemy-applied effects skip on dodge.
     if ((effect as any).type !== "TRUE_DAMAGE" && shouldSkipDueToDodge(abilityDodged, enemyApplied)) continue;
@@ -780,9 +1163,13 @@ export function applyImmediateEffects(params: {
             });
             const ls = (effect as any).lifestealPct as number | undefined;
             if (ls && ls > 0 && appliedDmg && appliedDmg > 0) {
-              const healAmt = Math.floor(appliedDmg * ls);
-              if (healAmt > 0) {
-                applyHealToTarget(source as any, healAmt);
+              const healRoll = resolveNonCritHealAmountRoll({
+                source,
+                target: source,
+                base: Math.floor(appliedDmg * ls),
+              });
+              if (healRoll.heal > 0) {
+                applyHealToTarget(source as any, healRoll.heal);
                 state.events.push({
                   id: randomUUID(),
                   timestamp: Date.now(),
@@ -793,7 +1180,8 @@ export function applyImmediateEffects(params: {
                   abilityId: ability.id,
                   abilityName: ability.name,
                   effectType: "DAMAGE",
-                  value: healAmt,
+                  value: healRoll.heal,
+                  isCrit: healRoll.isCrit,
                 });
               }
             }
@@ -873,6 +1261,7 @@ export function applyImmediateEffects(params: {
           state,
           source.userId,
           castContext?.targetUserId,
+          castContext?.ignoreTargetAllegiance,
         );
         if (!reflectTarget) break;
 
@@ -1087,7 +1476,7 @@ export function applyImmediateEffects(params: {
 
         // Check knockback immunity before committing (addBuff would also catch it,
         // but we need to know whether to set activeDash).
-        if (hasKnockbackImmune(kbTarget)) break;
+        if (hasKnockedBackImmune(kbTarget)) break;
 
         const kbDirX = kdx / kdist;
         const kbDirY = kdy / kdist;
@@ -1139,7 +1528,7 @@ export function applyImmediateEffects(params: {
         for (const candidate of getImmediateEnemyBuffTargets(state, source.userId, source.position, radius)) {
           if (candidate.kind !== "player") continue;
           const kbTarget = candidate.target as any;
-          if (!kbTarget || hasKnockbackImmune(kbTarget)) continue;
+          if (!kbTarget || hasKnockedBackImmune(kbTarget)) continue;
           const kdx = kbTarget.position.x - source.position.x;
           const kdy = kbTarget.position.y - source.position.y;
           const kdist = Math.sqrt(kdx * kdx + kdy * kdy);
@@ -1594,6 +1983,40 @@ export function applyImmediateEffects(params: {
         const radius = gameplayUnitsToWorldUnits(effect.range ?? 10, state.unitScale);
         for (const victim of getImmediateEnemyBuffTargets(state, source.userId, source.position, radius)) {
           for (const buffDef of ability.buffs) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: victim.target.userId,
+              ability,
+              buffTarget: victim.target,
+              buff: buffDef,
+            });
+          }
+        }
+        break;
+      }
+
+      case "HAN_RU_LEI_AOE": {
+        const abilityBuffs = Array.isArray(ability.buffs) ? ability.buffs : [];
+        const selfBuffs = abilityBuffs.filter((buffDef: any) => buffDef.applyTo !== "OPPONENT");
+        const enemyBuffs = abilityBuffs.filter((buffDef: any) => buffDef.applyTo === "OPPONENT");
+
+        for (const buffDef of selfBuffs) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: source.userId,
+            ability,
+            buffTarget: source as any,
+            buff: buffDef,
+          });
+        }
+
+        const radius = gameplayUnitsToWorldUnits(effect.range ?? 15, state.unitScale);
+        for (const victim of getImmediateEnemyBuffTargets(state, source.userId, source.position, radius)) {
+          if (victim.kind !== "player") continue;
+          removeImmediateStealthBuffs(state, victim.target);
+          for (const buffDef of enemyBuffs) {
             addBuff({
               state,
               sourceUserId: source.userId,
@@ -2104,7 +2527,7 @@ export function applyImmediateEffects(params: {
         for (const candidate of getImmediateEnemyBuffTargets(state, source.userId, center, aoeRadius)) {
           const t: any = candidate.target;
           if (t === primary) continue; // exclude primary
-          if (hasKnockbackImmune(t)) continue;
+          if (hasKnockedBackImmune(t)) continue;
           // Knockback direction = caster -> victim (away from caster).
           // Entity dash now uses the velocity-free collision helper, so
           // this no longer crashes the loop.
@@ -2177,7 +2600,11 @@ export function applyImmediateEffects(params: {
           });
           break;
         }
-        const td = Math.max(0, Math.floor(effect.value ?? 0));
+        const td = resolveRawDamageWithCrit({
+          source,
+          base: Number(effect.value ?? 0),
+          damageType: (ability as any).damageType,
+        });
         if (td <= 0) break;
         // Bypass shield: subtract directly from hp.
         const before = tdTarget.hp;
@@ -2216,6 +2643,8 @@ export function applyImmediateEffects(params: {
           abilityId: ability.id,
           vxPerTick: 0,
           vyPerTick: 0,
+          lingRanCastLift: true,
+          sustainWhileChannelAbilityId: "jiu_xiao_feng_lei",
           forceVzPerTick: upWorld / dashTicks,
           maxUpVz: upWorld / dashTicks + 0.1,
           maxDownVz: -0.1,
@@ -2223,6 +2652,40 @@ export function applyImmediateEffects(params: {
         } as any;
         // Reset jump state so the player can land cleanly after the upward dash.
         (source as any).jumpCount = 0;
+        state.events.push({
+          id: randomUUID(), timestamp: Date.now(), turn: state.turn,
+          type: "DASH",
+          actorUserId: source.userId,
+          targetUserId: source.userId,
+          abilityId: ability.id,
+          abilityName: ability.name,
+        } as any);
+        break;
+      }
+
+      // ─── 凌然天风: vertical rise up 9u in 0.5s, no dash runtime buff. ───
+      case "LING_RAN_TIAN_FENG_CAST": {
+        const upUnits = Math.max(0, Number(effect.value ?? 9));
+        const upWorld = gameplayUnitsToWorldUnits(upUnits, state.unitScale);
+        const dashTicks = Math.max(1, Number(effect.durationTicks ?? 15));
+        if (source.velocity) {
+          source.velocity.vx = 0;
+          source.velocity.vy = 0;
+          source.velocity.vz = 0;
+        }
+        source.activeDash = {
+          abilityId: ability.id,
+          vxPerTick: 0,
+          vyPerTick: 0,
+          lingRanCastLift: true,
+          sustainWhileChannelAbilityId: "jiu_xiao_feng_lei",
+          forceVzPerTick: upWorld / dashTicks,
+          maxUpVz: upWorld / dashTicks + 0.1,
+          maxDownVz: -0.1,
+          ticksRemaining: dashTicks,
+        } as any;
+        source.jumpCount = 0;
+        source.lingRanTianFengCharges = 1;
         state.events.push({
           id: randomUUID(), timestamp: Date.now(), turn: state.turn,
           type: "DASH",
@@ -2372,7 +2835,12 @@ export function applyImmediateEffects(params: {
       }
 
       case "DOU_ZHUAN_XING_YI": {
-        const swapTarget = getExplicitEnemyPlayerTarget(state, source.userId, castContext?.targetUserId)
+        const swapTarget = getExplicitEnemyPlayerTarget(
+          state,
+          source.userId,
+          castContext?.targetUserId,
+          castContext?.ignoreTargetAllegiance,
+        )
           ?? ((enemy && enemy.userId !== source.userId) ? enemy : null);
         if (!swapTarget || hasKnockbackImmune(swapTarget as any)) {
           break;
@@ -2606,7 +3074,7 @@ export function applyImmediateEffects(params: {
       }
 
       // ─── 龙啸九天: cleanse self, apply 龙威 + 龙啸九天 + 定身 buffs,
-      // AOE 6u: 1 damage + slow knockback (10u over `durationTicks` ticks). ─
+      // destroy enemy 气场/机关 within 6u, then AOE 6u: 1 damage + slow knockback. ─
       case "LONG_XIAO_JIU_TIAN_AOE": {
         const now = Date.now();
         // 1) Cleanse self of CONTROL / ATTACK_LOCK / ROOT (also SLOW via flag).
@@ -2641,6 +3109,16 @@ export function applyImmediateEffects(params: {
         const kbTicks = Math.max(1, Number(effect.durationTicks ?? 300));
         const knockedBackBuff = (ability.buffs ?? []).find((b: any) => b.buffId === 1352);
 
+        destroyGroundZonesInRange({
+          state,
+          sourceUserId: source.userId,
+          center: source.position,
+          radius: aoeRadius,
+          ownerMode: "enemy-only",
+          destroyQiFields: true,
+          destroyMechanisms: true,
+        });
+
         for (const candidate of getImmediateEnemyBuffTargets(
           state,
           source.userId,
@@ -2665,7 +3143,7 @@ export function applyImmediateEffects(params: {
           });
 
           // Slow knockback away from caster
-          if (hasKnockbackImmune(t)) continue;
+          if (hasKnockedBackImmune(t)) continue;
 
           // 盾立 reflect: redirect knockback back to caster.
           const kbReflectVictim = getDunLiReflectVictim(state, source.userId, t, ability);
@@ -2713,6 +3191,222 @@ export function applyImmediateEffects(params: {
               buff: { ...knockedBackBuff, durationMs: Math.max(1_000, Math.ceil((kbTicks * 1000) / 30)) },
             });
           }
+        }
+        break;
+      }
+
+      // ─── 人剑合一: destroy all nearby 气场; if any friendly 气场 were
+      // destroyed, apply 破势 (定身 5s) to enemy players within 13u. ───────
+      case "REN_JIAN_HE_YI_AOE": {
+        const aoeRadius = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.range ?? 13)), state.unitScale);
+        const { destroyedFriendlyQiFields } = destroyGroundZonesInRange({
+          state,
+          sourceUserId: source.userId,
+          center: source.position,
+          radius: aoeRadius,
+          ownerMode: "any",
+          destroyQiFields: true,
+          destroyMechanisms: false,
+        });
+
+        if (destroyedFriendlyQiFields <= 0) {
+          break;
+        }
+
+        const poShiBuff = (ability.buffs ?? []).find((b: any) => b.buffId === 2735);
+        if (!poShiBuff) {
+          break;
+        }
+
+        for (const candidate of getImmediateEnemyBuffTargets(
+          state,
+          source.userId,
+          source.position,
+          aoeRadius,
+        )) {
+          if (candidate.kind !== "player") continue;
+          const target: any = candidate.target;
+          if (!target || target.userId === source.userId || (target.hp ?? 0) <= 0) continue;
+          if (blocksEnemyTargeting(target)) continue;
+
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: target.userId,
+            ability,
+            buffTarget: target,
+            buff: poShiBuff,
+          });
+        }
+        break;
+      }
+
+      case "SHESHEN_JUE": {
+        const friendlyTarget = resolveFriendlySupportTarget(state, source, castContext);
+        if (!friendlyTarget || (friendlyTarget.hp ?? 0) <= 0) break;
+
+        handleCleanse(friendlyTarget as any, { cleanseRootSlow: true });
+
+        const reductionBuff = (ability.buffs ?? []).find((buff: any) => buff.buffId === SHESHEN_DAMAGE_REDUCTION_BUFF_ID);
+        if (reductionBuff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: friendlyTarget.userId,
+            ability,
+            buffTarget: friendlyTarget,
+            buff: reductionBuff,
+          });
+        }
+
+        const redirectBuff = (ability.buffs ?? []).find((buff: any) => buff.buffId === SHESHEN_REDIRECT_BUFF_ID);
+        if (redirectBuff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: friendlyTarget.userId,
+            ability,
+            buffTarget: friendlyTarget,
+            buff: {
+              ...redirectBuff,
+              redirectUserId: source.userId,
+              protectedTargetUserId: friendlyTarget.userId,
+              protectedEntityId: friendlyTarget.id,
+            },
+          });
+        }
+
+        const bearBuff = (ability.buffs ?? []).find((buff: any) => buff.buffId === SHESHEN_BEAR_BUFF_ID);
+        if (bearBuff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: source.userId,
+            ability,
+            buffTarget: source,
+            buff: {
+              ...bearBuff,
+              protectedTargetUserId: friendlyTarget.userId,
+              protectedEntityId: friendlyTarget.id,
+            },
+          });
+        }
+        break;
+      }
+
+      case "YUAN_GUARD": {
+        const friendlyTarget = resolveFriendlySupportTarget(state, source, castContext);
+        if (!friendlyTarget || (friendlyTarget.hp ?? 0) <= 0) break;
+
+        const storedUnitScale = state.unitScale;
+        const targetPosition = friendlyTarget.position ?? source.position;
+        const dashDx = (targetPosition.x ?? source.position.x) - source.position.x;
+        const dashDy = (targetPosition.y ?? source.position.y) - source.position.y;
+        const dashDistance = Math.hypot(dashDx, dashDy);
+        const dashTicks = Math.max(1, Number(effect.durationTicks ?? 15));
+        const targetZ = targetPosition.z ?? source.position.z ?? 0;
+        const currentZ = source.position.z ?? targetZ;
+        const stopDistance = gameplayUnitsToWorldUnits(1, storedUnitScale);
+        const desiredDistance = dashDistance > stopDistance ? stopDistance : 0;
+        const travelDistance = Math.max(0, dashDistance - desiredDistance);
+        const dashDirX = dashDistance > 0.0001 ? dashDx / dashDistance : 0;
+        const dashDirY = dashDistance > 0.0001 ? dashDy / dashDistance : 0;
+
+        if (travelDistance > 0.0001 || Math.abs(targetZ - currentZ) > 0.0001) {
+          if (dashDistance > 0.0001) {
+            source.facing = { x: dashDirX, y: dashDirY };
+          }
+          if (source.velocity) {
+            source.velocity.vx = 0;
+            source.velocity.vy = 0;
+            source.velocity.vz = 0;
+          }
+          source.activeDash = {
+            abilityId: ability.id,
+            vxPerTick: (dashDirX * travelDistance) / dashTicks,
+            vyPerTick: (dashDirY * travelDistance) / dashTicks,
+            forceVzPerTick: (targetZ - currentZ) / dashTicks,
+            maxUpVz: 999,
+            maxDownVz: -999,
+            ticksRemaining: dashTicks,
+            vzPerTick: 0,
+            yuanTargetUserId: friendlyTarget.id ? undefined : friendlyTarget.userId,
+            yuanTargetEntityId: friendlyTarget.id,
+            yuanKnockbackRangeUnits: Math.max(0, Number(effect.range ?? 6)),
+            yuanKnockbackDistanceUnits: Math.max(0, Number(effect.value ?? 6)),
+            yuanKnockbackTicks: dashTicks,
+            yuanLandingRangeUnits: 4,
+          } as any;
+          state.events.push({
+            id: randomUUID(),
+            timestamp: Date.now(),
+            turn: state.turn,
+            type: "DASH",
+            actorUserId: source.userId,
+            targetUserId: source.userId,
+            abilityId: ability.id,
+            abilityName: ability.name,
+          } as any);
+        }
+
+        const yuanGuardBuff = (ability.buffs ?? []).find((buff: any) => buff.buffId === YUAN_GUARD_BUFF_ID);
+        if (yuanGuardBuff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: friendlyTarget.userId,
+            ability,
+            buffTarget: friendlyTarget,
+            buff: {
+              ...yuanGuardBuff,
+              redirectUserId: source.userId,
+              protectedTargetUserId: friendlyTarget.userId,
+              protectedEntityId: friendlyTarget.id,
+            },
+          });
+        }
+
+        const yuanBearBuff = (ability.buffs ?? []).find((buff: any) => buff.buffId === YUAN_BEAR_BUFF_ID);
+        if (yuanBearBuff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: source.userId,
+            ability,
+            buffTarget: source,
+            buff: {
+              ...yuanBearBuff,
+              protectedTargetUserId: friendlyTarget.userId,
+              protectedEntityId: friendlyTarget.id,
+            },
+          });
+        }
+        break;
+      }
+
+      case "TING_FENG_CHUI_XUE": {
+        const friendlyTarget = resolveFriendlySupportTarget(state, source, castContext);
+        if (!friendlyTarget || (friendlyTarget.hp ?? 0) <= 0) break;
+
+        const sameTarget = friendlyTarget.userId === source.userId;
+        const sourceHpBefore = Number(source.hp ?? 0);
+        const targetHpBefore = Number(friendlyTarget.hp ?? 0);
+        const averageHp = Math.floor((sourceHpBefore + targetHpBefore) / 2);
+        const participants = sameTarget ? [source] : [source, friendlyTarget];
+
+        for (const participant of participants) {
+          const maxHp = participant.maxHp ?? 100;
+          participant.hp = Math.max(0, Math.min(maxHp, averageHp));
+        }
+
+        for (const participant of participants) {
+          applyImmediateGuanTiHeal({
+            state,
+            ability,
+            sourceUserId: source.userId,
+            target: participant,
+            amount: Number(effect.value ?? 20),
+          });
         }
         break;
       }
@@ -2915,10 +3609,10 @@ export function applyImmediateEffects(params: {
         break;
       }
 
-      // ─── 破风: 2 damage + 破风 debuff + 流血, extra 流血 if CONTROL_IMMUNE ──
+      // ─── 破风: 1 damage + 破风 debuff + 流血, extra 流血 if CONTROL_IMMUNE ──
       case "PO_FENG_STRIKE": {
         if (!enemyApplied) break;
-        const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: 2, damageType: (ability as any).damageType });
+        const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: 1, damageType: (ability as any).damageType });
         if (pfDmg > 0 && !hasDamageImmune(effTarget as any)) {
           const { adjustedDamage: adjPf, redirectPlayer: rtPf, redirectAmt: raPf } = preCheckRedirect(state, effTarget as any, pfDmg);
           const applyPf = adjPf;
@@ -3348,6 +4042,21 @@ export function applyImmediateEffects(params: {
         ability,
         buffTarget: source,
         buff: parent,
+      });
+    }
+  }
+
+  if (ability.id === "wu_xiang_jue") {
+    const snapshotBuffId = getWuXiangJueSnapshotBuffId(source);
+    const snapshotBuff = (ability.buffs ?? []).find((b: any) => b.buffId === snapshotBuffId);
+    if (snapshotBuff) {
+      addBuff({
+        state,
+        sourceUserId: source.userId,
+        targetUserId: source.userId,
+        ability,
+        buffTarget: source,
+        buff: snapshotBuff,
       });
     }
   }

@@ -13,6 +13,15 @@ import { addShieldToTarget, applyDamageToTarget, removeLinkedShield } from "../u
 import { ABILITIES } from "../../abilities/abilities";
 import { applyPropertyOverridesToEffects, loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
 import { hasDunLiReflectFlag, isAbilityDunLiWhitelisted } from "./dunLiReflect";
+import {
+  NUWA_BUTIAN_BUFF_ID,
+  YUQI_BUFF_ID,
+  ZONG_QING_QI_BUFF_ID,
+  hasYuqiState,
+  isJumpBoostBuff,
+  shouldBreakYuqiOnIncomingControl,
+} from "../utils/yuqi";
+import { MIYUN_CONFUSION_BUFF_ID, WU_AN_MI_YUN_ABILITY_ID, WUSHI_IMMUNE_BUFF_ID, hasWuShiImmunity } from "../utils/miyun";
 
 /* ================= Utilities ================= */
 
@@ -28,7 +37,7 @@ function pushEvent(
 }
 
 function isDunyingCompanion(buff: ActiveBuff): boolean {
-  return buff.buffId === 1021 && (buff.name === "遁影" || buff.sourceAbilityId === "fuguang_lueying");
+  return buff.buffId === 1021;
 }
 
 function isMoheKnockdown(buff: ActiveBuff): boolean {
@@ -191,6 +200,12 @@ function hasKnockbackImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "KNOCKBACK_IMMUNE"));
 }
 
+function hasKnockedBackImmune(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some(
+    (e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "KNOCKED_BACK_IMMUNE"
+  ));
+}
+
 function hasControlImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "CONTROL_IMMUNE"));
 }
@@ -209,6 +224,35 @@ function hasFearImmune(target: { buffs: ActiveBuff[] }): boolean {
 
 function hasInvulnerable(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "INVULNERABLE"));
+}
+
+function hasAntiStealth(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "ANTI_STEALTH"));
+}
+
+function removeDunyingCompanions(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  const { state, targetUserId, target } = params;
+  const removed = target.buffs.filter((b) => isDunyingCompanion(b));
+  if (removed.length === 0) return;
+
+  target.buffs = target.buffs.filter((b) => !isDunyingCompanion(b));
+  for (const buff of removed) {
+    pushEvent(state, {
+      turn: state.turn,
+      type: "BUFF_EXPIRED",
+      actorUserId: targetUserId,
+      targetUserId,
+      abilityId: buff.sourceAbilityId,
+      abilityName: buff.sourceAbilityName,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+    });
+  }
 }
 
 function isSharedLockoutDebuff(buff: ActiveBuff): boolean {
@@ -239,6 +283,71 @@ function removeSharedLockoutDebuffs(params: {
       buffCategory: b.category,
     });
   }
+}
+
+function expireBuffsMatching(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+  shouldExpire: (buff: ActiveBuff) => boolean;
+}) {
+  const { state, targetUserId, target, shouldExpire } = params;
+  const removed = target.buffs.filter((buff) => shouldExpire(buff));
+  if (removed.length === 0) return false;
+
+  for (const buff of removed) {
+    removeLinkedShield(target as any, buff);
+  }
+  target.buffs = target.buffs.filter((buff) => !shouldExpire(buff));
+
+  for (const buff of removed) {
+    pushEvent(state, {
+      turn: state.turn,
+      type: "BUFF_EXPIRED",
+      actorUserId: targetUserId,
+      targetUserId,
+      abilityId: buff.sourceAbilityId,
+      abilityName: buff.sourceAbilityName,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+    });
+  }
+
+  return true;
+}
+
+function removeJumpBoostBuffs(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  return expireBuffsMatching({
+    ...params,
+    shouldExpire: (buff) => isJumpBoostBuff(buff),
+  });
+}
+
+function removeNuwaButianBuffs(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  return expireBuffsMatching({
+    ...params,
+    shouldExpire: (buff) => buff.buffId === NUWA_BUTIAN_BUFF_ID,
+  });
+}
+
+export function removeYuqiStateBuffs(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  return expireBuffsMatching({
+    ...params,
+    shouldExpire: (buff) => buff.buffId === YUQI_BUFF_ID || buff.buffId === ZONG_QING_QI_BUFF_ID,
+  });
 }
 
 function cancelActiveChannelForDisarm(params: {
@@ -424,7 +533,29 @@ export function addBuff(params: {
     runtimeBuff.buffId === 1002 &&
     runtimeBuff.effects.some((e) => e.type === "CONTROL");
 
+  if (hasAntiStealth(buffTarget)) {
+    const blockedByAntiStealth =
+      runtimeBuff.effects.some((e) => e.type === "STEALTH") ||
+      runtimeBuff.buffId === 1021;
+    if (blockedByAntiStealth) {
+      removeDunyingCompanions({
+        state,
+        targetUserId,
+        target: buffTarget,
+      });
+      return;
+    }
+  }
+
   if (sourceUserId !== targetUserId && hasInvulnerable(buffTarget)) {
+    return;
+  }
+
+  if (
+    sourceUserId !== targetUserId &&
+    runtimeBuff.effects.some((e) => e.type === "MIYUN_CONFUSION") &&
+    hasWuShiImmunity(buffTarget, now)
+  ) {
     return;
   }
 
@@ -466,12 +597,28 @@ export function addBuff(params: {
     }
   }
 
-  if (
-    sourceUserId !== targetUserId &&
-    runtimeBuff.effects.some((e) => e.type === "KNOCKED_BACK" || e.type === "PULLED") &&
-    hasKnockbackImmune(buffTarget)
-  ) {
-    return;
+  if (sourceUserId !== targetUserId) {
+    const blocksPull = hasKnockbackImmune(buffTarget);
+    const blocksKnockback = blocksPull || hasKnockedBackImmune(buffTarget);
+    if (
+      (blocksKnockback && runtimeBuff.effects.some((e) => e.type === "KNOCKED_BACK")) ||
+      (blocksPull && runtimeBuff.effects.some((e) => e.type === "PULLED"))
+    ) {
+      const filteredEffects = runtimeBuff.effects.filter((e) => {
+        if (e.type === "KNOCKED_BACK") return !blocksKnockback;
+        if (e.type === "PULLED") return !blocksPull;
+        return true;
+      });
+      if (filteredEffects.length === 0) {
+        return;
+      }
+      if (filteredEffects.length !== runtimeBuff.effects.length) {
+        runtimeBuff = {
+          ...runtimeBuff,
+          effects: filteredEffects,
+        };
+      }
+    }
   }
 
   if (sourceUserId !== targetUserId && hasControlImmune(buffTarget)) {
@@ -672,6 +819,18 @@ export function addBuff(params: {
     }
   }
 
+  if (
+    sourceUserId !== targetUserId &&
+    hasYuqiState(buffTarget, now) &&
+    shouldBreakYuqiOnIncomingControl(runtimeBuff)
+  ) {
+    removeYuqiStateBuffs({
+      state,
+      targetUserId,
+      target: buffTarget,
+    });
+  }
+
   // Stacking: if buff defines maxStacks > 1, increment stacks on the existing buff
   // instead of replacing it. The lastTickAt is intentionally NOT reset — this prevents
   // stack-refresh abuse (re-casting resets the tick timer allowing faster ticks).
@@ -687,8 +846,8 @@ export function addBuff(params: {
         const target = state.players.find((p: any) => p.userId === targetUserId);
         if (target && target.hp > 0) {
           const bonus = source
-            ? resolveScheduledDamage({ source, target, base: 3 })
-            : 3;
+            ? resolveScheduledDamage({ source, target, base: 1 })
+            : 1;
           applyDamageToTarget(target as any, bonus);
           if (bonus > 0) {
             pushEvent(state, {
@@ -854,6 +1013,19 @@ export function addBuff(params: {
       config: resistanceConfig,
     });
   }
+
+  if (active.buffId === YUQI_BUFF_ID) {
+    removeJumpBoostBuffs({
+      state,
+      targetUserId,
+      target: buffTarget,
+    });
+    removeNuwaButianBuffs({
+      state,
+      targetUserId,
+      target: buffTarget,
+    });
+  }
 }
 
 /**
@@ -890,4 +1062,22 @@ export function pushBuffExpired(
     buffName,
     buffCategory,
   });
+
+  if (buffId === MIYUN_CONFUSION_BUFF_ID) {
+    const miYunAbility = ABILITIES[WU_AN_MI_YUN_ABILITY_ID] as any;
+    const wuShiBuff = miYunAbility?.buffs?.find((buff: any) => buff.buffId === WUSHI_IMMUNE_BUFF_ID);
+    const buffTarget = (state.players as any[]).find((player: any) => player.userId === targetUserId)
+      ?? (state.entities ?? []).find((entity: any) => entity.userId === targetUserId)
+      ?? null;
+    if (wuShiBuff && buffTarget && (buffTarget.hp ?? 0) > 0) {
+      addBuff({
+        state,
+        sourceUserId: targetUserId,
+        targetUserId,
+        ability: miYunAbility,
+        buffTarget,
+        buff: wuShiBuff,
+      });
+    }
+  }
 }

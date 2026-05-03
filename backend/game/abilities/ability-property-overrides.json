@@ -855,6 +855,14 @@
       },
       "noWeaponRequired": false
     },
+    "ren_jian_he_yi": {
+      "tags": {
+        "school": "纯阳",
+        "damageType": "外功",
+        "rarity": "卓越"
+      },
+      "noWeaponRequired": false
+    },
     "chong_yin_yang": {
       "tags": {
         "school": "纯阳",

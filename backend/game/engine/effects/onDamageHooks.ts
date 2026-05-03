@@ -15,6 +15,8 @@ import { GameState, Ability } from "../state/types";
 import { addBuff, pushBuffExpired } from "./buffRuntime";
 import { pushEvent } from "./events";
 import { hasDamageImmune } from "../rules/guards";
+import { applyDamageToTarget } from "../utils/health";
+import { resolveRedirectedDamageToTarget } from "../utils/combatMath";
 
 // ── 七星拱瑞 ──────────────────────────────────────────────────────────────────
 const QIXING_FREEZE_BUFF_ID = 2600;
@@ -33,6 +35,60 @@ const XUANSHUI_REDIRECT_PCT   = 0.55;
 // zone expires, and the buff is naturally cleared next tick by GameLoop's zone
 // presence check.
 const JI_DIAN_BUFF_ID = 2620;
+const SHESHEN_REDIRECT_BUFF_ID = 2737;
+const SHESHEN_BEAR_BUFF_ID = 2738;
+const YUAN_GUARD_BUFF_ID = 2739;
+const YUAN_BEAR_BUFF_ID = 2740;
+
+type RedirectProtectedTarget =
+  | { kind: "player"; userId: string }
+  | { kind: "entity"; entityId: string };
+
+type RedirectResolution = {
+  player: any;
+  mode: "direct-hp" | "shielded";
+  abilityId: string;
+  abilityName: string;
+  effectType: string;
+  hideAbilityName?: boolean;
+  suppressCritLabel?: boolean;
+  protectedTarget?: RedirectProtectedTarget;
+  consumeBuffId?: number;
+  consumeRedirectPlayerBuffId?: number;
+};
+
+function getRedirectProtectedTarget(target: { userId: string; id?: string }): RedirectProtectedTarget {
+  if (typeof (target as any).id === "string") {
+    return { kind: "entity", entityId: (target as any).id };
+  }
+  return { kind: "player", userId: target.userId };
+}
+
+function expireRedirectProtectedBuff(
+  state: GameState,
+  protectedTarget: RedirectProtectedTarget | undefined,
+  buffId: number | undefined,
+) {
+  if (!protectedTarget || typeof buffId !== "number") return;
+
+  const liveTarget = protectedTarget.kind === "player"
+    ? (state.players as any[]).find((candidate: any) => candidate.userId === protectedTarget.userId)
+    : ((state as any).entities ?? []).find((candidate: any) => candidate.id === protectedTarget.entityId);
+  if (!liveTarget) return;
+
+  const buffIndex = (liveTarget.buffs as any[])?.findIndex((buff: any) => buff?.buffId === buffId) ?? -1;
+  if (buffIndex < 0) return;
+
+  const [removedBuff] = (liveTarget.buffs as any[]).splice(buffIndex, 1);
+  pushBuffExpired(state, {
+    targetUserId: liveTarget.userId,
+    buffId: removedBuff.buffId,
+    buffName: removedBuff.name,
+    buffCategory: removedBuff.category,
+    sourceAbilityId: removedBuff.sourceAbilityId,
+    sourceAbilityName: removedBuff.sourceAbilityName,
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PRE-DAMAGE: 玄水蛊 redirect split
@@ -51,9 +107,9 @@ const JI_DIAN_BUFF_ID = 2620;
  */
 export function preCheckRedirect(
   state: GameState,
-  target: { userId: string; buffs: any[] },
+  target: { userId: string; buffs: any[]; id?: string },
   rawDamage: number
-): { adjustedDamage: number; redirectPlayer: any | null; redirectAmt: number } {
+): { adjustedDamage: number; redirectPlayer: RedirectResolution | null; redirectAmt: number } {
   const noRedirect = { adjustedDamage: rawDamage, redirectPlayer: null, redirectAmt: 0 };
   if (rawDamage <= 0) return noRedirect;
 
@@ -84,6 +140,64 @@ export function preCheckRedirect(
     }
   }
 
+  const yuanGuardBuff = (target.buffs as any[]).find(
+    (b: any) => b.buffId === YUAN_GUARD_BUFF_ID && b.expiresAt > now
+  );
+  if (yuanGuardBuff) {
+    const redirectPlayer = (state.players as any[]).find(
+      (player: any) =>
+        player.userId === (yuanGuardBuff as any).redirectUserId &&
+        (player.buffs as any[])?.some(
+          (buff: any) => buff.buffId === YUAN_BEAR_BUFF_ID && buff.expiresAt > now
+        )
+    );
+    if (redirectPlayer && redirectPlayer.hp > 0) {
+      return {
+        adjustedDamage: 0,
+        redirectPlayer: {
+          player: redirectPlayer,
+          mode: "shielded",
+          abilityId: "yuan",
+          abilityName: "渊",
+          effectType: "DAMAGE",
+          hideAbilityName: true,
+          protectedTarget: getRedirectProtectedTarget(target),
+          consumeBuffId: YUAN_GUARD_BUFF_ID,
+          consumeRedirectPlayerBuffId: YUAN_BEAR_BUFF_ID,
+        },
+        redirectAmt: rawDamage,
+      };
+    }
+  }
+
+  const sheshenRedirectBuff = (target.buffs as any[]).find(
+    (b: any) => b.buffId === SHESHEN_REDIRECT_BUFF_ID && b.expiresAt > now
+  );
+  if (sheshenRedirectBuff) {
+    const redirectPlayer = (state.players as any[]).find(
+      (player: any) =>
+        player.userId === (sheshenRedirectBuff as any).redirectUserId &&
+        (player.buffs as any[])?.some(
+          (buff: any) => buff.buffId === SHESHEN_BEAR_BUFF_ID && buff.expiresAt > now
+        )
+    );
+    if (redirectPlayer && redirectPlayer.hp > 0) {
+      return {
+        adjustedDamage: 0,
+        redirectPlayer: {
+          player: redirectPlayer,
+          mode: "shielded",
+          abilityId: "she_shen_jue",
+          abilityName: "舍身诀",
+          effectType: "DAMAGE",
+          hideAbilityName: true,
+          suppressCritLabel: true,
+        },
+        redirectAmt: rawDamage,
+      };
+    }
+  }
+
   const hasSelfBuff = target.buffs.some(
     (b: any) => b.buffId === XUANSHUI_SELF_BUFF_ID && b.expiresAt > now
   );
@@ -102,7 +216,17 @@ export function preCheckRedirect(
 
   const redirectAmt  = Math.max(1, Math.round(rawDamage * XUANSHUI_REDIRECT_PCT));
   const adjustedDamage = Math.max(0, rawDamage - redirectAmt);
-  return { adjustedDamage, redirectPlayer, redirectAmt };
+  return {
+    adjustedDamage,
+    redirectPlayer: {
+      player: redirectPlayer,
+      mode: "direct-hp",
+      abilityId: "xuanshui_gu",
+      abilityName: "",
+      effectType: "DAMAGE_REDIRECT_55",
+    },
+    redirectAmt,
+  };
 }
 
 /**
@@ -112,33 +236,79 @@ export function preCheckRedirect(
  */
 export function applyRedirectToOpponent(
   state: GameState,
-  redirectPlayer: any,
+  redirectPlayer: RedirectResolution | any,
   redirectAmt: number
 ): void {
-  const before: number = redirectPlayer.hp;
-  redirectPlayer.hp = Math.max(0, redirectPlayer.hp - redirectAmt);
-  // MIN_HP_1 (啸如虎 unkillable)
-  if (
-    redirectPlayer.hp <= 0 &&
-    (redirectPlayer.buffs as any[])?.some((b: any) =>
-      b.effects?.some((e: any) => e.type === "MIN_HP_1")
-    )
-  ) {
-    redirectPlayer.hp = 1;
+  const redirect = redirectPlayer && redirectPlayer.player
+    ? (redirectPlayer as RedirectResolution)
+    : {
+        player: redirectPlayer,
+        mode: "direct-hp",
+        abilityId: "xuanshui_gu",
+        abilityName: "",
+        effectType: "DAMAGE_REDIRECT_55",
+      } satisfies RedirectResolution;
+
+  const target = redirect.player;
+  if (!target || redirectAmt <= 0) return;
+
+  let actualDamage = 0;
+  let shieldAbsorbed = 0;
+
+  if (!hasDamageImmune(target as any)) {
+    if (redirect.mode === "shielded") {
+      const mitigatedRedirectAmt = resolveRedirectedDamageToTarget({
+        target: target as any,
+        base: redirectAmt,
+      });
+      const result = applyDamageToTarget(target as any, mitigatedRedirectAmt);
+      actualDamage = result.totalDamage;
+      shieldAbsorbed = result.shieldAbsorbed;
+      if (result.hpDamage > 0) {
+        processOnDamageTaken(state, target as any, result.hpDamage);
+      }
+    } else {
+      const before: number = target.hp;
+      target.hp = Math.max(0, target.hp - redirectAmt);
+      if (
+        target.hp <= 0 &&
+        (target.buffs as any[])?.some((b: any) =>
+          b.effects?.some((e: any) => e.type === "MIN_HP_1")
+        )
+      ) {
+        target.hp = 1;
+      }
+      actualDamage = before - target.hp;
+      if (actualDamage > 0) {
+        processOnDamageTaken(state, target as any, actualDamage);
+      }
+    }
   }
-  const actual = before - redirectPlayer.hp;
-  if (actual > 0) {
-    // B sees a damage float with no ability text.
-    // actorUserId = B (redirectPlayer) → A's client never matches as attacker.
+
+  if (redirect.consumeBuffId) {
+    expireRedirectProtectedBuff(state, redirect.protectedTarget, redirect.consumeBuffId);
+  }
+  if (redirect.consumeRedirectPlayerBuffId) {
+    expireRedirectProtectedBuff(
+      state,
+      { kind: "player", userId: target.userId },
+      redirect.consumeRedirectPlayerBuffId,
+    );
+  }
+
+  if (actualDamage > 0 || shieldAbsorbed > 0) {
     pushEvent(state, {
       turn: state.turn,
       type: "DAMAGE",
-      actorUserId: redirectPlayer.userId,
-      targetUserId: redirectPlayer.userId,
-      abilityId:    "xuanshui_gu",
-      abilityName:  "",
-      effectType:   "DAMAGE_REDIRECT_55",
-      value:        actual,
+      actorUserId: target.userId,
+      targetUserId: target.userId,
+      abilityId: redirect.abilityId,
+      abilityName: redirect.abilityName,
+      hideAbilityName: redirect.hideAbilityName === true,
+      suppressCritLabel: redirect.suppressCritLabel === true,
+      effectType: redirect.effectType,
+      value: actualDamage,
+      shieldAbsorbed: shieldAbsorbed > 0 ? shieldAbsorbed : undefined,
     } as any);
   }
 }
