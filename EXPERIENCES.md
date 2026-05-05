@@ -3,6 +3,28 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## In-game ability and buff hover panels (2026-05-05)
+
+**Problem set**:
+1. Native ability button `title` text could not show the full structured tooltip the user wanted, and disabled/cooldown buttons were not reliably hoverable.
+2. Ability hover needed display fields from current runtime/editor metadata: name, effective range, weapon requirement from `noWeaponRequired`, full description, cast type, and cooldown seconds.
+3. Buff hover needed live remaining time and top-right attribute display, but preload did not expose Buff attribute metadata to the in-game StatusBar.
+
+**Fix**:
+- BattleArena now renders a fixed-position custom ability hover panel from `AbilityInfo`, and ability buttons stay hoverable even when not ready while click handlers still block invalid casts.
+- Ability tooltip data includes effective range with Buff range bonuses, base range delta formatting, `需要武器：否` when `noWeaponRequired` is true, full description text, instant/channel cast label, and cooldown seconds.
+- Buff preload now includes non-empty Buff attributes, and StatusBar passes the hovered Buff through to the hint so remaining time updates live while hovering.
+
+**Follow-up fixes**:
+- Target-side Buff hover/cancel was blocked because `.enemyBossGroup` used `pointer-events: none` and the selected target Buff row did not opt back into pointer events. The Buff row now uses `pointerEvents: "auto"`.
+- Owned friendly test dummy Buffs now support normal left-click cancellation in addition to right-click, while normal player Buff cancellation remains restricted to the manual-cancel path.
+- Ability tooltip styling was reduced substantially, channel labels now show only the time such as `0.5秒`, weapon text is `武器：是/否`, and Buff tooltip remaining time uses whole Chinese seconds such as `12秒`.
+
+**Lessons**:
+- In-game tooltips should not rely on native `title`; they cannot show structured multi-column data and are unreliable on disabled buttons.
+- UI-only display metadata such as Buff attribute still belongs in preload when the battle UI needs it for live runtime entities.
+- When a parent overlay uses `pointer-events: none`, every interactive child region must explicitly opt back in; otherwise React hover/click handlers on nested components will never fire.
+
 ## Editor session state, dummy buff cancel, and movement audits (2026-05-05)
 
 **Problem set**:

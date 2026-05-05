@@ -23,13 +23,31 @@
   text-align: left;
 }
 
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
 /* name: lighter like the real one */
 .title {
   font-size: 14px;
   font-weight: 800;
-  color: #f3f4f6; /* lighter, not yellow */
-  margin-bottom: 2px;
+  color: #fff200;
   line-height: 1.05;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.attributeBadge {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.05;
+  color: #f4f4f5;
+  white-space: nowrap;
 }
 
 .desc {
@@ -58,6 +76,10 @@
 
   .title {
     font-size: 12px;
+  }
+
+  .attributeBadge {
+    font-size: 10px;
   }
 
   .desc,

@@ -963,9 +963,12 @@ interface AbilityInfo {
   id: string;        // instanceId (or abilityId fallback for common)
   abilityId: string;    // always the plain ability id (e.g. 'fuyao_zhishang')
   name: string;
+  description?: string;
   channel?: RuntimeAbilityChannel;
   range?: number;
+  baseRange?: number;
   minRange?: number;
+  baseCooldownTicks?: number;
   cooldown: number;
   maxCooldown: number;
   chargeCount?: number;
@@ -992,6 +995,111 @@ interface AbilityInfo {
   losBlocked?: boolean;
   blockedByAntiStealth?: boolean;
   isSpecialBarAbility?: boolean;
+}
+
+type AbilityHintState = {
+  ability: AbilityInfo;
+  anchorRect: DOMRect;
+};
+
+function formatCompactNumber(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  if (Math.abs(value) >= 10 || Number.isInteger(value)) return String(Math.round(value));
+  return value.toFixed(1).replace(/\.0$/, '');
+}
+
+function formatCompactSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0';
+  return formatCompactNumber(seconds);
+}
+
+function formatTicksAsSeconds(ticks: number | undefined): string {
+  const safeTicks = Math.max(0, Number(ticks ?? 0));
+  return `${formatCompactSeconds(safeTicks / SERVER_TICK_RATE)}秒`;
+}
+
+function formatAbilityRangeLabel(ability: AbilityInfo): string {
+  if (typeof ability.range !== 'number') {
+    return ability.target === 'SELF' ? '自身' : '-';
+  }
+
+  const range = ability.range;
+  const baseRange = typeof ability.baseRange === 'number' ? ability.baseRange : range;
+  const rangeDelta = range - baseRange;
+  const maxRangeText = Math.abs(rangeDelta) >= 0.01
+    ? `${formatCompactNumber(baseRange)}(${rangeDelta > 0 ? '+' : ''}${formatCompactNumber(rangeDelta)})`
+    : formatCompactNumber(range);
+
+  if (typeof ability.minRange === 'number' && ability.minRange > 0) {
+    return `${formatCompactNumber(ability.minRange)}-${maxRangeText}尺`;
+  }
+  return `${maxRangeText}尺`;
+}
+
+function formatAbilityCastLabel(ability: AbilityInfo): string {
+  const channel = ability.channel;
+  if (!channel || channel.durationMs <= 0) return '瞬间释放';
+  const seconds = formatCompactSeconds(channel.durationMs / 1000);
+  return `${seconds}秒`;
+}
+
+function formatAbilityCooldownLabel(ability: AbilityInfo): string {
+  const cooldownTicks = Number(ability.baseCooldownTicks ?? 0);
+  if (cooldownTicks > 0) return formatTicksAsSeconds(cooldownTicks);
+  const recoveryTicks = Number(ability.chargeRecoveryTicks ?? 0);
+  if ((ability.maxCharges ?? 0) > 1 && recoveryTicks > 0) return formatTicksAsSeconds(recoveryTicks);
+  return '0秒';
+}
+
+function AbilityHoverHint({ hint }: { hint: AbilityHintState }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const rect = element.getBoundingClientRect();
+    const gap = 8;
+    const safe = 8;
+    const maxLeft = window.innerWidth - rect.width - safe;
+    const maxTop = window.innerHeight - rect.height - safe;
+
+    const preferAbove = hint.anchorRect.top >= rect.height + gap + safe;
+    const top = preferAbove
+      ? hint.anchorRect.top - rect.height - gap
+      : hint.anchorRect.bottom + gap;
+    const left = hint.anchorRect.left;
+
+    setPos({
+      top: Math.max(safe, Math.min(maxTop, top)),
+      left: Math.max(safe, Math.min(maxLeft, left)),
+    });
+  }, [hint]);
+
+  const ability = hint.ability;
+  const description = ability.description?.trim() || '无';
+
+  return (
+    <div
+      ref={ref}
+      className={styles.abilityHintPanel}
+      style={pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999 }}
+    >
+      <div className={styles.abilityHintBody}>
+        <div className={styles.abilityHintMain}>
+          <div className={styles.abilityHintName}>{ability.name}</div>
+          <div className={styles.abilityHintMeta}>距离：{formatAbilityRangeLabel(ability)}</div>
+          <div className={styles.abilityHintMeta}>武器：{ability.noWeaponRequired ? '否' : '是'}</div>
+          <div className={styles.abilityHintDesc}>{description}</div>
+        </div>
+        <div className={styles.abilityHintSide}>
+          <div>{formatAbilityCastLabel(ability)}</div>
+          <div>{formatAbilityCooldownLabel(ability)}</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 type DummySpawnPreset = 'enemy' | 'ally' | 'ally100';
@@ -1204,6 +1312,7 @@ export default function BattleArena({
 
   /* --- React state (UI only) --- */
   const [handAbilities,    setHandAbilities]    = useState<AbilityInfo[]>([]);
+  const [activeAbilityHint, setActiveAbilityHint] = useState<AbilityHintState | null>(null);
   const [rtt,              setRtt]              = useState<number | null>(null);
   const [wasdKeys,         setWasdKeys]         = useState({ w: false, a: false, s: false, d: false });
   const [controlMode,      setControlMode]      = useState<'joystick' | 'traditional'>('traditional');
@@ -1212,6 +1321,15 @@ export default function BattleArena({
   const [showCollisionControlPanel, setShowCollisionControlPanel] = useState(false);
   const [showScreenCoordPanel, setShowScreenCoordPanel] = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
+
+  const openAbilityHint = useCallback((anchorRect: DOMRect, ability: AbilityInfo) => {
+    setActiveAbilityHint({ anchorRect, ability });
+  }, []);
+
+  const closeAbilityHint = useCallback(() => {
+    setActiveAbilityHint(null);
+  }, []);
+
   const [cheatRarityFilter, setCheatRarityFilter] = useState<string>(() => {
     try {
       return JSON.parse(localStorage.getItem('zhenchuan-cheat-filters') ?? '{}')?.rarity ?? 'all';
@@ -3188,9 +3306,12 @@ export default function BattleArena({
             id:          instanceId,
             abilityId:      instance.abilityId || instance.id || instanceId,
             name:        instance.name || instance.abilityId || instance.id || '?',
+            description: instance.description ?? '',
             channel:     undefined,
             range:       undefined as number | undefined,
+            baseRange:   undefined as number | undefined,
             minRange:    undefined as number | undefined,
+            baseCooldownTicks: 0,
             cooldown:    instance.cooldown || 0,
             maxCooldown: 0,
             isReady:     isAbilityReady(ability, instance),
@@ -3222,9 +3343,12 @@ export default function BattleArena({
           id:          instanceId,
           abilityId:      ability.id,
           name:        ability.name,
+          description: ability.description ?? '',
           channel:     getRuntimeAbilityChannel(ability),
           range:       effectiveRange,
+          baseRange:   typeof ability.range === 'number' ? ability.range : undefined,
           minRange:    ability.minRange,
+          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           maxCharges: chargeDisplay.maxCharges,
@@ -3268,9 +3392,12 @@ export default function BattleArena({
           id: ability.id,
           abilityId: ability.id,
           name: ability.name,
+          description: ability.description ?? '',
           channel: getRuntimeAbilityChannel(ability),
           range: effectiveRange,
+          baseRange: typeof ability.range === 'number' ? ability.range : undefined,
           minRange: ability.minRange,
+          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
           cooldown: chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           maxCharges: chargeDisplay.maxCharges,
@@ -3328,9 +3455,12 @@ export default function BattleArena({
           id:          ability.id,
           abilityId:      ability.id,
           name:        ability.name,
+          description: ability.description ?? '',
           channel:     getRuntimeAbilityChannel(ability),
           range:       effectiveRange,
+          baseRange:   typeof ability.range === 'number' ? ability.range : undefined,
           minRange:    ability.minRange,
+          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           maxCharges: chargeDisplay.maxCharges,
@@ -5798,7 +5928,7 @@ export default function BattleArena({
                 );
               })()}
               {/* Buffs row — fixed-height wrapper so ability row never shifts up */}
-              <div style={{ minHeight: 72, width: '100%' }}>
+              <div style={{ minHeight: 72, width: '100%', pointerEvents: 'auto' }}>
                 <StatusBar
                   buffs={targetBuffs}
                   debugLabel={isSelf ? 'me-target' : 'opp'}
@@ -6515,10 +6645,15 @@ export default function BattleArena({
                     const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
                     return (
                       <button
+                        type="button"
                         className={`${styles.abilityBtn} ${ability.isReady && !ability.blockedByAntiStealth ? styles.ready : styles.notReady}`}
-                        disabled={!ability.isReady || !!ability.blockedByAntiStealth}
+                        aria-disabled={!ability.isReady || !!ability.blockedByAntiStealth}
                         style={ability.losBlocked ? { boxShadow: '0 0 0 2px #ff3333, 0 0 10px 3px rgba(255,50,50,0.45)', outline: 'none' } : undefined}
                         draggable={!specialBarActive}
+                        onMouseEnter={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                        onMouseLeave={closeAbilityHint}
+                        onFocus={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                        onBlur={closeAbilityHint}
                         onDragStart={(e) => {
                           if (specialBarActive) {
                             e.preventDefault();
@@ -6540,7 +6675,6 @@ export default function BattleArena({
                           }
                           castAbilityRef.current(ability.id);
                         }}
-                        title={`${ability.name}${ability.blockedByAntiStealth ? ' | 反隐期间不可施展' : ''}${ability.range ? ` | 范围: ${ability.range}` : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
@@ -6626,10 +6760,22 @@ export default function BattleArena({
                     {/* gap between 后撤 and 御骑 */}
                     {idx === 7 && <div className={styles.commonGap} />}
                     <button
+                      type="button"
                       className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady && !ability.blockedByAntiStealth ? styles.ready : styles.notReady}`}
-                      disabled={!ability.isReady || !!ability.blockedByAntiStealth}
-                      onClick={() => castAbilityRef.current(ability.id)}
-                      title={`${ability.name}${ability.blockedByAntiStealth ? ' | 反隐期间不可施展' : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
+                      aria-disabled={!ability.isReady || !!ability.blockedByAntiStealth}
+                      onMouseEnter={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                      onMouseLeave={closeAbilityHint}
+                      onFocus={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                      onBlur={closeAbilityHint}
+                      onClick={() => {
+                        if (!ability.isReady || ability.blockedByAntiStealth) {
+                          if (ability.blockedByAntiStealth) {
+                            toastError('反隐期间无法施展隐身招式');
+                          }
+                          return;
+                        }
+                        castAbilityRef.current(ability.id);
+                      }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
@@ -6680,6 +6826,8 @@ export default function BattleArena({
         {!isMobileDevice && <div className={styles.wasdSpacer} />}
 
       </div>{/* end bottomHud */}
+
+      {activeAbilityHint && <AbilityHoverHint hint={activeAbilityHint} />}
 
       {/* ===== MOBILE FORWARD/BACK + JUMP BUTTONS — anchored to root container ===== */}
       {isMobileDevice && (

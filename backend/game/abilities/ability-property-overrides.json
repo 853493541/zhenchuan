@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-02T07:30:51.083Z",
+  "updatedAt": "2026-05-05T12:28:09.594Z",
   "abilities": {
     "baizu": {
       "tags": {
@@ -1260,6 +1260,83 @@
         "school": "唐门",
         "damageType": "外功",
         "rarity": "精巧"
+      }
+    },
+    "long_yin": {
+      "tags": {
+        "school": "天策",
+        "damageType": "外功",
+        "rarity": "卓越"
+      }
+    },
+    "han_ru_lei": {
+      "tags": {
+        "school": "天策",
+        "damageType": "外功",
+        "rarity": "卓越"
+      }
+    },
+    "ling_ran_tian_feng": {
+      "tags": {
+        "school": "药宗",
+        "damageType": "内功",
+        "rarity": "精巧"
+      }
+    },
+    "she_shen_jue": {
+      "tags": {
+        "school": "少林",
+        "damageType": "内功",
+        "rarity": "珍奇"
+      }
+    },
+    "ting_feng_chui_xue": {
+      "tags": {
+        "school": "万花",
+        "damageType": "内功",
+        "rarity": "珍奇"
+      }
+    },
+    "yuan": {
+      "tags": {
+        "school": "天策",
+        "damageType": "外功",
+        "rarity": "卓越"
+      }
+    },
+    "zi_qi_dong_lai": {
+      "tags": {
+        "school": "纯阳",
+        "damageType": "内功",
+        "rarity": "精巧"
+      }
+    },
+    "po_cang_qiong": {
+      "tags": {
+        "school": "纯阳",
+        "damageType": "内功",
+        "rarity": "精巧"
+      }
+    },
+    "ren_chi_cheng": {
+      "tags": {
+        "school": "天策",
+        "damageType": "外功",
+        "rarity": "精巧"
+      }
+    },
+    "sui_xing_chen": {
+      "tags": {
+        "school": "纯阳",
+        "damageType": "外功",
+        "rarity": "精巧"
+      }
+    },
+    "wu_an_mi_yun": {
+      "tags": {
+        "school": "段氏",
+        "damageType": "内功",
+        "rarity": "珍奇"
       }
     }
   }

@@ -30,14 +30,13 @@ type ResolvedBuff = {
   description: string;
   expiresAt: number;
   iconPath?: string;
+  attribute?: string;
   manualCancelable?: boolean;
   stacks?: number; // live stack count for stackable debuffs
 };
 
 type ActiveHint = {
-  name: string;
-  description: string;
-  remaining: number;
+  buff: ResolvedBuff;
   anchorRect: DOMRect;
 };
 
@@ -102,6 +101,9 @@ export default function StatusBar({
       if (!meta) return null;
       if (meta.hiddenInStatusBar === true) return null;
       const shortName = meta.name.length > 2 ? meta.name.slice(0, 2) : meta.name;
+      const attribute = typeof meta.attribute === "string" && meta.attribute !== "未选择" && meta.attribute !== "无"
+        ? meta.attribute
+        : undefined;
       return {
         buffId:      b.buffId,
         name:        meta.name,
@@ -110,6 +112,7 @@ export default function StatusBar({
         description: meta.description ?? "无",
         expiresAt:   b.expiresAt,
         iconPath:    meta.iconPath,
+        attribute,
         manualCancelable: meta.manualCancelable === true,
         stacks:      b.stacks,
       };
@@ -128,9 +131,7 @@ export default function StatusBar({
 
   function openHint(anchorRect: DOMRect, b: ResolvedBuff) {
     setActiveHint({
-      name:        b.name,
-      description: b.description,
-      remaining:   getRemainingSeconds(b),
+      buff:       b,
       anchorRect,
     });
   }
@@ -144,6 +145,7 @@ export default function StatusBar({
     const secsLeft    = getRemainingSeconds(b);
     const isLastTick  = secsLeft < 5;
     const canManualCancel = !!onCancelBuff && (allowAnyCancel || (b.category === "BUFF" && b.manualCancelable === true));
+    const cancelCursor = allowAnyCancel && canManualCancel ? "pointer" : canManualCancel ? "context-menu" : undefined;
     // Timer always shows countdown; stacks shown as icon overlay badge
     const timerStr    = secsLeft >= 10 ? String(Math.floor(secsLeft)) : secsLeft.toFixed(1);
 
@@ -160,10 +162,17 @@ export default function StatusBar({
             }`}
             style={{
               backgroundImage: getBuffIconBackgroundImage(b.name, b.iconPath),
-              cursor: canManualCancel ? "context-menu" : undefined,
+              cursor: cancelCursor,
             }}
             onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b)}
             onMouseLeave={closeHint}
+            onClick={(e) => {
+              if (!allowAnyCancel || !canManualCancel || !onCancelBuff) return;
+              e.preventDefault();
+              e.stopPropagation();
+              closeHint();
+              void onCancelBuff(b.buffId);
+            }}
             onContextMenu={(e) => {
               if (!canManualCancel || !onCancelBuff) return;
               e.preventDefault();
@@ -205,9 +214,10 @@ export default function StatusBar({
 
       {activeHint && (
         <StatusHint
-          name={activeHint.name}
-          description={activeHint.description}
-          remainingTurns={activeHint.remaining}
+          name={activeHint.buff.name}
+          description={activeHint.buff.description}
+          remainingTurns={getRemainingSeconds(activeHint.buff)}
+          attribute={activeHint.buff.attribute}
           anchorRect={activeHint.anchorRect}
           arenaRect={arenaRect}
         />

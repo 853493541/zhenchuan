@@ -619,6 +619,9 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     if (typeof override?.hidden === "boolean") {
       buff.hiddenInStatusBar = override.hidden;
     }
+    if (override?.attribute && override.attribute !== "未选择" && override.attribute !== "无") {
+      buff.attribute = override.attribute;
+    }
     if (override?.manualCancelable === true) {
       buff.manualCancelable = true;
     }
