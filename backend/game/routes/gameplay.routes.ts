@@ -1,5 +1,5 @@
 import express from "express";
-import { playAbility, passTurn } from "../services";
+import { cancelPlayerBuff, playAbility, passTurn } from "../services";
 import { getUserIdFromCookie } from "./auth";
 import { GameLoop } from "../engine/loop/GameLoop";
 import type { MovementInput } from "../engine/state/types";
@@ -40,6 +40,25 @@ router.post("/pass", async (req, res) => {
     console.error(`[PASS] ❌ ERROR: ${err.message}`);
     console.error(`[PASS] Stack: ${err.stack}`);
     res.status(400).send(err.message);
+  }
+});
+
+router.post("/buff/cancel", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, buffId, entityTargetId } = req.body;
+    const numericBuffId = Number(buffId);
+
+    if (!gameId || !Number.isFinite(numericBuffId)) {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+
+    const patch = await cancelPlayerBuff(gameId, userId, numericBuffId, { entityTargetId });
+    return res.json(patch);
+  } catch (err: any) {
+    console.error(`[BUFF_CANCEL] ❌ ERROR: ${err.message}`);
+    console.error(`[BUFF_CANCEL] Stack: ${err.stack}`);
+    return res.status(400).send(err.message);
   }
 });
 

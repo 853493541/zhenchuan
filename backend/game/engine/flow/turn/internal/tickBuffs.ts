@@ -26,6 +26,7 @@ export function cleanupExpiredBuffs(
         buffCategory: old.category,
         sourceAbilityId: old.sourceAbilityId,
         sourceAbilityName: old.sourceAbilityName,
+        sourceUserId: old.sourceUserId,
       });
     }
   }

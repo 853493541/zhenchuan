@@ -87,6 +87,11 @@ function hasLingRanTianFengStateClient(buffs?: ActiveBuff[]): boolean {
   );
 }
 
+function isLingRanSpecialJumpActiveClient(player?: any): boolean {
+  const dash = player?.activeDash;
+  return dash?.abilityId === 'ling_ran_tian_feng' && dash.ticksRemaining > 0 && dash.lingRanCastLift !== true;
+}
+
 function hasLingRanSpecialJumpRefillBuffClient(buffs?: ActiveBuff[]): boolean {
   return Array.isArray(buffs) && buffs.some((buff) => buff.buffId === 1014 || buff.buffId === 2712);
 }
@@ -958,9 +963,12 @@ interface AbilityInfo {
   id: string;        // instanceId (or abilityId fallback for common)
   abilityId: string;    // always the plain ability id (e.g. 'fuyao_zhishang')
   name: string;
+  description?: string;
   channel?: RuntimeAbilityChannel;
   range?: number;
+  baseRange?: number;
   minRange?: number;
+  baseCooldownTicks?: number;
   cooldown: number;
   maxCooldown: number;
   chargeCount?: number;
@@ -987,6 +995,111 @@ interface AbilityInfo {
   losBlocked?: boolean;
   blockedByAntiStealth?: boolean;
   isSpecialBarAbility?: boolean;
+}
+
+type AbilityHintState = {
+  ability: AbilityInfo;
+  anchorRect: DOMRect;
+};
+
+function formatCompactNumber(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  if (Math.abs(value) >= 10 || Number.isInteger(value)) return String(Math.round(value));
+  return value.toFixed(1).replace(/\.0$/, '');
+}
+
+function formatCompactSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0';
+  return formatCompactNumber(seconds);
+}
+
+function formatTicksAsSeconds(ticks: number | undefined): string {
+  const safeTicks = Math.max(0, Number(ticks ?? 0));
+  return `${formatCompactSeconds(safeTicks / SERVER_TICK_RATE)}秒`;
+}
+
+function formatAbilityRangeLabel(ability: AbilityInfo): string {
+  if (typeof ability.range !== 'number') {
+    return ability.target === 'SELF' ? '自身' : '-';
+  }
+
+  const range = ability.range;
+  const baseRange = typeof ability.baseRange === 'number' ? ability.baseRange : range;
+  const rangeDelta = range - baseRange;
+  const maxRangeText = Math.abs(rangeDelta) >= 0.01
+    ? `${formatCompactNumber(baseRange)}(${rangeDelta > 0 ? '+' : ''}${formatCompactNumber(rangeDelta)})`
+    : formatCompactNumber(range);
+
+  if (typeof ability.minRange === 'number' && ability.minRange > 0) {
+    return `${formatCompactNumber(ability.minRange)}-${maxRangeText}尺`;
+  }
+  return `${maxRangeText}尺`;
+}
+
+function formatAbilityCastLabel(ability: AbilityInfo): string {
+  const channel = ability.channel;
+  if (!channel || channel.durationMs <= 0) return '瞬间释放';
+  const seconds = formatCompactSeconds(channel.durationMs / 1000);
+  return `${seconds}秒`;
+}
+
+function formatAbilityCooldownLabel(ability: AbilityInfo): string {
+  const cooldownTicks = Number(ability.baseCooldownTicks ?? 0);
+  if (cooldownTicks > 0) return formatTicksAsSeconds(cooldownTicks);
+  const recoveryTicks = Number(ability.chargeRecoveryTicks ?? 0);
+  if ((ability.maxCharges ?? 0) > 1 && recoveryTicks > 0) return formatTicksAsSeconds(recoveryTicks);
+  return '0秒';
+}
+
+function AbilityHoverHint({ hint }: { hint: AbilityHintState }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const rect = element.getBoundingClientRect();
+    const gap = 8;
+    const safe = 8;
+    const maxLeft = window.innerWidth - rect.width - safe;
+    const maxTop = window.innerHeight - rect.height - safe;
+
+    const preferAbove = hint.anchorRect.top >= rect.height + gap + safe;
+    const top = preferAbove
+      ? hint.anchorRect.top - rect.height - gap
+      : hint.anchorRect.bottom + gap;
+    const left = hint.anchorRect.left;
+
+    setPos({
+      top: Math.max(safe, Math.min(maxTop, top)),
+      left: Math.max(safe, Math.min(maxLeft, left)),
+    });
+  }, [hint]);
+
+  const ability = hint.ability;
+  const description = ability.description?.trim() || '无';
+
+  return (
+    <div
+      ref={ref}
+      className={styles.abilityHintPanel}
+      style={pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999 }}
+    >
+      <div className={styles.abilityHintBody}>
+        <div className={styles.abilityHintMain}>
+          <div className={styles.abilityHintName}>{ability.name}</div>
+          <div className={styles.abilityHintMeta}>距离：{formatAbilityRangeLabel(ability)}</div>
+          <div className={styles.abilityHintMeta}>武器：{ability.noWeaponRequired ? '否' : '是'}</div>
+          <div className={styles.abilityHintDesc}>{description}</div>
+        </div>
+        <div className={styles.abilityHintSide}>
+          <div>{formatAbilityCastLabel(ability)}</div>
+          <div>{formatAbilityCooldownLabel(ability)}</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 type DummySpawnPreset = 'enemy' | 'ally' | 'ally100';
@@ -1071,6 +1184,7 @@ interface BattleArenaProps {
     groundTarget?: { x: number; y: number; z?: number },
     entityTargetId?: string,
   ) => Promise<void>;
+  onCancelBuff?: (buffId: number, options?: { entityTargetId?: string }) => Promise<void>;
   distance: number;
   maxHp: number;
   abilities: Record<string, any>;
@@ -1098,6 +1212,7 @@ export default function BattleArena({
   opponents,
   gameId,
   onCastAbility,
+  onCancelBuff,
   distance,
   maxHp,
   abilities,
@@ -1197,6 +1312,7 @@ export default function BattleArena({
 
   /* --- React state (UI only) --- */
   const [handAbilities,    setHandAbilities]    = useState<AbilityInfo[]>([]);
+  const [activeAbilityHint, setActiveAbilityHint] = useState<AbilityHintState | null>(null);
   const [rtt,              setRtt]              = useState<number | null>(null);
   const [wasdKeys,         setWasdKeys]         = useState({ w: false, a: false, s: false, d: false });
   const [controlMode,      setControlMode]      = useState<'joystick' | 'traditional'>('traditional');
@@ -1205,6 +1321,15 @@ export default function BattleArena({
   const [showCollisionControlPanel, setShowCollisionControlPanel] = useState(false);
   const [showScreenCoordPanel, setShowScreenCoordPanel] = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
+
+  const openAbilityHint = useCallback((anchorRect: DOMRect, ability: AbilityInfo) => {
+    setActiveAbilityHint({ anchorRect, ability });
+  }, []);
+
+  const closeAbilityHint = useCallback(() => {
+    setActiveAbilityHint(null);
+  }, []);
+
   const [cheatRarityFilter, setCheatRarityFilter] = useState<string>(() => {
     try {
       return JSON.parse(localStorage.getItem('zhenchuan-cheat-filters') ?? '{}')?.rarity ?? 'all';
@@ -1516,7 +1641,7 @@ export default function BattleArena({
   /* --- Floating damage/heal numbers --- */
   type FloatType = 'dmg_dealt' | 'dmg_taken' | 'heal' | 'huajie' | 'xishou';
   /** text: overrides the auto-generated display (used for 化解 which shows no number) */
-  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number }; yOffset: number; text?: string; isCrit?: boolean };
+  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number }; yOffset: number; text?: string; isCrit?: boolean; white?: boolean };
   const [floats, setFloats] = useState<FloatEntry[]>([]);
   const floatIdRef = useRef(0);
   const lastCastNameRef = useRef<string | null>(null);
@@ -1525,8 +1650,8 @@ export default function BattleArena({
   const floatTypeCountRef = useRef<Record<string, number>>({});
   // Track how many events we've already processed to avoid re-processing on re-render
   const prevEventsLenRef = useRef<number>(-1);
-  const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number }; text?: string; isCrit?: boolean }) => {
-    if (value <= 0 && type !== 'huajie' && type !== 'xishou') return;
+  const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number }; text?: string; isCrit?: boolean; allowZero?: boolean; white?: boolean }) => {
+    if (value <= 0 && type !== 'huajie' && type !== 'xishou' && opts?.allowZero !== true) return;
     const id = ++floatIdRef.current;
     const safeScreenPct =
       opts?.screenPct && Number.isFinite(opts.screenPct.x) && Number.isFinite(opts.screenPct.y)
@@ -1539,7 +1664,7 @@ export default function BattleArena({
     const stagger = floatTypeCountRef.current[type] ?? 0;
     floatTypeCountRef.current[type] = stagger + 1;
     const yOffset = stagger * 28; // 28px per simultaneous float of the same type
-    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: safeScreenPct, yOffset, text: opts?.text, isCrit: opts?.isCrit }]);
+    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: safeScreenPct, yOffset, text: opts?.text, isCrit: opts?.isCrit, white: opts?.white }]);
     setTimeout(() => {
       setFloats(f => f.filter(e => e.id !== id));
       floatTypeCountRef.current[type] = Math.max(0, (floatTypeCountRef.current[type] ?? 1) - 1);
@@ -1852,6 +1977,14 @@ export default function BattleArena({
       toastError('目标处于免拉状态');
       return;
     }
+    if (abilityKey === 'you_feng_piao_zong' && !selectedTargetIdNow) {
+      toastError('请先选择敌方目标');
+      return;
+    }
+    if (abilityKey === 'you_feng_piao_zong' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
+      toastError('目标不可选中');
+      return;
+    }
     if (ability?.target === 'OPPONENT' && !targetPos) {
       if (ability?.allowGroundCastWithoutTarget) {
         setPendingGroundCastAbilityId(id);
@@ -1889,6 +2022,10 @@ export default function BattleArena({
     }
     if (ability?.cannotCastWhileRooted && buffsHaveAnyEffect(me?.buffs, ['ROOT'])) {
       toastError('你被锁足，无法施展该招式');
+      return;
+    }
+    if (abilityKey === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
+      toastError('凌然天风特殊跳跃中无法施展任驰骋');
       return;
     }
     if (typeof ability?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ability.minSelfHpExclusive) {
@@ -1930,11 +2067,14 @@ export default function BattleArena({
     setGroundCastPreview(null);
     // If an entity is selected and ability targets OPPONENT, route as entity attack.
     const useEntityTarget = ability?.target === 'OPPONENT' && selectedEntityIdNow && !selectedTargetIdNow && !selectedSelfNow;
+    const supportSelfTargetUserId = abilityKey === 'you_feng_piao_zong'
+      ? selectedTargetIdNow ?? undefined
+      : undefined;
     onCastAbility(
       id,
       ability?.target === 'OPPONENT'
         ? (selectedSelfNow ? me.userId : selectedTargetIdNow ?? undefined)
-        : undefined,
+        : supportSelfTargetUserId,
       undefined,
       useEntityTarget ? selectedEntityIdNow : undefined,
     );
@@ -2552,9 +2692,11 @@ export default function BattleArena({
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
       if (evt.type === 'PLAY_ABILITY' && evt.abilityId === 'dou_zhuan_xing_yi') {
         lastInstantSwapCastAtRef.current = performance.now();
-      } else if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0 && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
+      } else if (evt.type === 'DAMAGE' && (((evt.value ?? 0) > 0) || (evt as any).displayZeroDamage === true) && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
         const damageWasCrit = isCritDamageEvent(evt);
         const eventLabel = (evt as any).hideAbilityName === true ? '' : evt.abilityName;
+        const displayZeroDamage = (evt as any).displayZeroDamage === true;
+        const zeroDamageText = eventLabel ? `${eventLabel}： -0` : '-0';
         if (evt.targetUserId === myId) {
           if (!selectedTargetRef.current && !selectedEntityRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
             const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
@@ -2565,19 +2707,23 @@ export default function BattleArena({
               selectedSelfRef.current = false;
             }
           }
-          // I took damage — determine 化解 (shield absorption) display
-          const shieldAbs = evt.shieldAbsorbed ?? 0;
-          const totalDmg = evt.value ?? 0;
-          if (shieldAbs >= totalDmg) {
-            // Fully blocked by shield — show 化解 only
-            addFloat(1, 'huajie', { text: '化解' });
-          } else if (shieldAbs > 0) {
-            // Partially blocked — show 化解 and the HP damage that got through
-            addFloat(1, 'huajie', { text: '化解' });
-            addFloat(totalDmg - shieldAbs, 'dmg_taken', { label: eventLabel, isCrit: damageWasCrit });
+          if (displayZeroDamage) {
+            addFloat(0, 'dmg_taken', { text: zeroDamageText, allowZero: true, white: true });
           } else {
+            // I took damage — determine 化解 (shield absorption) display
+            const shieldAbs = evt.shieldAbsorbed ?? 0;
+            const totalDmg = evt.value ?? 0;
+            if (shieldAbs >= totalDmg) {
+            // Fully blocked by shield — show 化解 only
+              addFloat(1, 'huajie', { text: '化解' });
+            } else if (shieldAbs > 0) {
+            // Partially blocked — show 化解 and the HP damage that got through
+              addFloat(1, 'huajie', { text: '化解' });
+              addFloat(totalDmg - shieldAbs, 'dmg_taken', { label: eventLabel, isCrit: damageWasCrit });
+            } else {
             // No shield involved — normal damage float
-            addFloat(evt.value, 'dmg_taken', { label: eventLabel, isCrit: damageWasCrit });
+              addFloat(evt.value, 'dmg_taken', { label: eventLabel, isCrit: damageWasCrit });
+            }
           }
         } else if (evt.actorUserId === myId) {
           // I dealt damage to opponent — account for shield absorption
@@ -2590,7 +2736,9 @@ export default function BattleArena({
           const screenPct = bounds
             ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 55) / h) }
             : undefined;
-          if (shieldAbsAtk >= totalDmgAtk) {
+          if (displayZeroDamage) {
+            addFloat(0, 'dmg_dealt', { text: zeroDamageText, screenPct, allowZero: true, white: true });
+          } else if (shieldAbsAtk >= totalDmgAtk) {
             // Fully absorbed by opponent's shield
             addFloat(1, 'huajie', { text: '化解', screenPct });
           } else if (shieldAbsAtk > 0) {
@@ -3036,6 +3184,7 @@ export default function BattleArena({
       const targetContext = getAbilityTargetContext(ab);
       const targetForChecks = targetContext.targetForChecks;
       const targetPos = targetContext.targetPos;
+      const abilityIdForChecks = ab?.id ?? instance?.abilityId;
       const sharedGcdTicks = getSharedGcdTicks(ab);
       const mountedYuqiToggle = yuqiMounted && (ab?.id === 'yuqi' || instance?.abilityId === 'yuqi');
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
@@ -3073,6 +3222,7 @@ export default function BattleArena({
       if (nonQinggongLocked && ab?.qinggong !== true) return false;
       if (ab?.qinggong && qinggongSealed) return false;
       if (ab?.cannotCastWhileRooted && rootedByDebuff) return false;
+      if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) return false;
 
       // 拿云式: target HP must be < 30
       if (ab?.id === 'na_yun_shi' || instance?.abilityId === 'na_yun_shi') {
@@ -3105,6 +3255,9 @@ export default function BattleArena({
       }
       if (ab?.id === 'qin_yin_gong_ming' || instance?.abilityId === 'qin_yin_gong_ming') {
         if (targetContext.entityTarget) return false;
+      }
+      if (abilityIdForChecks === 'you_feng_piao_zong' && !targetContext.playerTarget) {
+        return false;
       }
 
       const distanceToTarget = (myPos && targetPos)
@@ -3153,9 +3306,12 @@ export default function BattleArena({
             id:          instanceId,
             abilityId:      instance.abilityId || instance.id || instanceId,
             name:        instance.name || instance.abilityId || instance.id || '?',
+            description: instance.description ?? '',
             channel:     undefined,
             range:       undefined as number | undefined,
+            baseRange:   undefined as number | undefined,
             minRange:    undefined as number | undefined,
+            baseCooldownTicks: 0,
             cooldown:    instance.cooldown || 0,
             maxCooldown: 0,
             isReady:     isAbilityReady(ability, instance),
@@ -3187,9 +3343,12 @@ export default function BattleArena({
           id:          instanceId,
           abilityId:      ability.id,
           name:        ability.name,
+          description: ability.description ?? '',
           channel:     getRuntimeAbilityChannel(ability),
           range:       effectiveRange,
+          baseRange:   typeof ability.range === 'number' ? ability.range : undefined,
           minRange:    ability.minRange,
+          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           maxCharges: chargeDisplay.maxCharges,
@@ -3233,9 +3392,12 @@ export default function BattleArena({
           id: ability.id,
           abilityId: ability.id,
           name: ability.name,
+          description: ability.description ?? '',
           channel: getRuntimeAbilityChannel(ability),
           range: effectiveRange,
+          baseRange: typeof ability.range === 'number' ? ability.range : undefined,
           minRange: ability.minRange,
+          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
           cooldown: chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           maxCharges: chargeDisplay.maxCharges,
@@ -3293,9 +3455,12 @@ export default function BattleArena({
           id:          ability.id,
           abilityId:      ability.id,
           name:        ability.name,
+          description: ability.description ?? '',
           channel:     getRuntimeAbilityChannel(ability),
           range:       effectiveRange,
+          baseRange:   typeof ability.range === 'number' ? ability.range : undefined,
           minRange:    ability.minRange,
+          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           maxCharges: chargeDisplay.maxCharges,
@@ -5763,8 +5928,19 @@ export default function BattleArena({
                 );
               })()}
               {/* Buffs row — fixed-height wrapper so ability row never shifts up */}
-              <div style={{ minHeight: 72, width: '100%' }}>
-                <StatusBar buffs={targetBuffs} debugLabel={isSelf ? 'me-target' : 'opp'} />
+              <div style={{ minHeight: 72, width: '100%', pointerEvents: 'auto' }}>
+                <StatusBar
+                  buffs={targetBuffs}
+                  debugLabel={isSelf ? 'me-target' : 'opp'}
+                  allowAnyCancel={!isSelf && isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally'}
+                  onCancelBuff={
+                    isSelf
+                      ? onCancelBuff
+                      : (isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally' && onCancelBuff)
+                        ? ((buffId) => onCancelBuff(buffId, { entityTargetId: selectedEntity.id }))
+                        : undefined
+                  }
+                />
               </div>
               {/* Drafted abilities */}
               <div className={styles.enemyAbilityRow}>
@@ -6420,7 +6596,7 @@ export default function BattleArena({
           {/* ── Player buffs above drafted slots ── */}
           {me?.buffs && me.buffs.length > 0 && (
             <div className={styles.playerBuffRow}>
-              <StatusBar buffs={me.buffs} showDebug debugLabel="me" />
+              <StatusBar buffs={me.buffs} showDebug debugLabel="me" onCancelBuff={onCancelBuff} />
             </div>
           )}
 
@@ -6469,10 +6645,15 @@ export default function BattleArena({
                     const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
                     return (
                       <button
+                        type="button"
                         className={`${styles.abilityBtn} ${ability.isReady && !ability.blockedByAntiStealth ? styles.ready : styles.notReady}`}
-                        disabled={!ability.isReady || !!ability.blockedByAntiStealth}
+                        aria-disabled={!ability.isReady || !!ability.blockedByAntiStealth}
                         style={ability.losBlocked ? { boxShadow: '0 0 0 2px #ff3333, 0 0 10px 3px rgba(255,50,50,0.45)', outline: 'none' } : undefined}
                         draggable={!specialBarActive}
+                        onMouseEnter={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                        onMouseLeave={closeAbilityHint}
+                        onFocus={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                        onBlur={closeAbilityHint}
                         onDragStart={(e) => {
                           if (specialBarActive) {
                             e.preventDefault();
@@ -6494,7 +6675,6 @@ export default function BattleArena({
                           }
                           castAbilityRef.current(ability.id);
                         }}
-                        title={`${ability.name}${ability.blockedByAntiStealth ? ' | 反隐期间不可施展' : ''}${ability.range ? ` | 范围: ${ability.range}` : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
@@ -6580,10 +6760,22 @@ export default function BattleArena({
                     {/* gap between 后撤 and 御骑 */}
                     {idx === 7 && <div className={styles.commonGap} />}
                     <button
+                      type="button"
                       className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady && !ability.blockedByAntiStealth ? styles.ready : styles.notReady}`}
-                      disabled={!ability.isReady || !!ability.blockedByAntiStealth}
-                      onClick={() => castAbilityRef.current(ability.id)}
-                      title={`${ability.name}${ability.blockedByAntiStealth ? ' | 反隐期间不可施展' : ''}${hasCharges ? ` | 充能: ${chargeCount}/${ability.maxCharges}` : ''}${ability.cooldown > 0 ? ` | CD: ${cdSeconds}` : ''}`}
+                      aria-disabled={!ability.isReady || !!ability.blockedByAntiStealth}
+                      onMouseEnter={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                      onMouseLeave={closeAbilityHint}
+                      onFocus={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                      onBlur={closeAbilityHint}
+                      onClick={() => {
+                        if (!ability.isReady || ability.blockedByAntiStealth) {
+                          if (ability.blockedByAntiStealth) {
+                            toastError('反隐期间无法施展隐身招式');
+                          }
+                          return;
+                        }
+                        castAbilityRef.current(ability.id);
+                      }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
@@ -6634,6 +6826,8 @@ export default function BattleArena({
         {!isMobileDevice && <div className={styles.wasdSpacer} />}
 
       </div>{/* end bottomHud */}
+
+      {activeAbilityHint && <AbilityHoverHint hint={activeAbilityHint} />}
 
       {/* ===== MOBILE FORWARD/BACK + JUMP BUTTONS — anchored to root container ===== */}
       {isMobileDevice && (
@@ -6747,7 +6941,9 @@ export default function BattleArena({
         // quick fade-in (0→8%), hold (8→75%), fade-out (75→100%)
         const opacity  = age < 0.08 ? age / 0.08 : Math.max(0, 1 - Math.max(0, age - 0.75) / 0.25);
         const travelUp = -80 * age; // floats upward
-        const color = entry.type === 'dmg_dealt'
+        const color = entry.white
+          ? '#ffffff'
+          : entry.type === 'dmg_dealt'
           ? (entry.isCrit ? '#ffe600' : '#ffffff')
           : entry.type === 'heal'
           ? '#44ff66'

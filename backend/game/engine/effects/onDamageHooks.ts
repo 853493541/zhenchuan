@@ -87,6 +87,7 @@ function expireRedirectProtectedBuff(
     buffCategory: removedBuff.category,
     sourceAbilityId: removedBuff.sourceAbilityId,
     sourceAbilityName: removedBuff.sourceAbilityName,
+    sourceUserId: removedBuff.sourceUserId,
   });
 }
 
@@ -352,6 +353,7 @@ export function processOnDamageTaken(
       buffCategory: "DEBUFF",
       sourceAbilityId: fb.sourceAbilityId ?? "qixing_gongrui",
       sourceAbilityName: fb.sourceAbilityName ?? "七星拱瑞",
+      sourceUserId: fb.sourceUserId,
     });
 
     const casterUserId =

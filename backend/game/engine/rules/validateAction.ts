@@ -15,6 +15,7 @@ import { hasYuqiState } from "../utils/yuqi";
 import { hasMiYunConfusion } from "../utils/miyun";
 
 const SHU_SE_BUFF_ID = 2646;
+const REN_CHI_CHENG_ABILITY_ID = "ren_chi_cheng";
 
 type ValidateCastOptions = {
   ignoreActiveChannel?: boolean;
@@ -42,6 +43,19 @@ function hasEffect(player: { buffs: any[] }, type: string) {
   return player.buffs.some((b: any) =>
     b.effects.some((e: any) => e.type === type)
   );
+}
+
+function isLingRanSpecialJumpActive(player: { activeDash?: any }) {
+  const dash = player.activeDash;
+  return (
+    dash?.abilityId === "ling_ran_tian_feng" &&
+    dash.ticksRemaining > 0 &&
+    dash.lingRanCastLift !== true
+  );
+}
+
+function isRenChiChengBlockedByLingRan(player: { activeDash?: any }, ability: any) {
+  return ability?.id === REN_CHI_CHENG_ABILITY_ID && isLingRanSpecialJumpActive(player);
 }
 
 function hasChargeSystem(ability: any): boolean {
@@ -372,6 +386,10 @@ export function validateCastAbility(
     (hasEffect(player, "QINGGONG_SEAL") || hasEffect(player, "DISPLACEMENT"))
   ) {
     throw new Error("ERR_QINGGONG_SEALED");
+  }
+
+  if (isRenChiChengBlockedByLingRan(player, ability)) {
+    throw new Error("ERR_BLOCKED_BY_BUFF");
   }
 
   /* ================= CHANNELING ================= */
@@ -711,6 +729,10 @@ export function validatePlayAbility(
     (hasEffect(player, "QINGGONG_SEAL") || hasEffect(player, "DISPLACEMENT"))
   ) {
     throw new Error("ERR_QINGGONG_SEALED");
+  }
+
+  if (isRenChiChengBlockedByLingRan(player, ability)) {
+    throw new Error("ERR_BLOCKED_BY_BUFF");
   }
 
   /* ================= COOLDOWN ================= */

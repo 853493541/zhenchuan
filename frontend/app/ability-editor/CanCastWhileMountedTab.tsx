@@ -2,6 +2,7 @@
 
 import { ReactNode, useMemo, useState } from "react";
 
+import CopyNameButton from "./CopyNameButton";
 import {
   CanCastWhileMountedEntry,
   CanCastWhileMountedSnapshot,
@@ -10,6 +11,7 @@ import {
   getSimpleDescription,
   targetTypeLabel,
 } from "./editorShared";
+import { usePersistentState } from "./usePersistentState";
 import styles from "./page.module.css";
 
 interface Props {
@@ -21,7 +23,7 @@ interface Props {
 }
 
 export default function CanCastWhileMountedTab({ snapshot, loading, errorMessage, onRetry, onToggle }: Props) {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = usePersistentState("abilityEditor.canCastWhileMounted.search", "");
   const [togglingAbilityId, setTogglingAbilityId] = useState<string | null>(null);
 
   const abilities = snapshot?.abilities ?? [];
@@ -209,25 +211,10 @@ function DecisionAbilityRow({
         <button
           type="button"
           disabled={disabled}
-          onClick={onDecideCan}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 6,
-            border: "1px solid #305f3d",
-            background: disabled ? "#ddd" : "transparent",
-            color: disabled ? "#777" : "#305f3d",
-            fontWeight: 700,
-            cursor: disabled ? "not-allowed" : "pointer",
-          }}
-        >
-          ✓
-        </button>
-        <button
-          type="button"
-          disabled={disabled}
           onClick={onDecideNo}
           style={{
-            padding: "4px 10px",
+            width: 34,
+            minHeight: 28,
             borderRadius: 6,
             border: "1px solid #9a4a2a",
             background: disabled ? "#ddd" : "transparent",
@@ -237,6 +224,23 @@ function DecisionAbilityRow({
           }}
         >
           X
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onDecideCan}
+          style={{
+            width: 34,
+            minHeight: 28,
+            borderRadius: 6,
+            border: "1px solid #305f3d",
+            background: disabled ? "#ddd" : "transparent",
+            color: disabled ? "#777" : "#305f3d",
+            fontWeight: 700,
+            cursor: disabled ? "not-allowed" : "pointer",
+          }}
+        >
+          ✓
         </button>
       </div>
     </div>
@@ -288,7 +292,8 @@ function AbilityRow({
           onClick={onAction}
           style={{
             flexShrink: 0,
-            padding: "4px 10px",
+            width: 132,
+            minHeight: 28,
             borderRadius: 6,
             border: `1px solid ${actionTint}`,
             background: disabled ? "#ddd" : "transparent",
@@ -311,6 +316,7 @@ function AbilityHeading({ entry }: { entry: CanCastWhileMountedEntry }) {
         <div style={{ fontWeight: 700, fontSize: 13, color: "#211d18", lineHeight: 1.2 }}>
           {entry.name}
         </div>
+        <CopyNameButton value={entry.name} />
         <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 999, background: "#9992", color: "#666", border: "1px solid #9996" }}>
           {abilityTypeLabel[entry.type]}
         </span>
@@ -356,7 +362,7 @@ function SectionHeader({
       style={{
         padding: "8px 14px",
         background,
-        borderRadius: "10px 10px 0 0",
+        borderRadius: "8px 8px 0 0",
         fontWeight: 700,
         fontSize: 13,
         color,
@@ -374,7 +380,7 @@ function ListShell({ children, border, background }: { children: ReactNode; bord
       style={{
         border: `1px solid ${border}`,
         borderTop: "none",
-        borderRadius: "0 0 10px 10px",
+        borderRadius: "0 0 8px 8px",
         background,
         maxHeight: 640,
         overflowY: "auto",

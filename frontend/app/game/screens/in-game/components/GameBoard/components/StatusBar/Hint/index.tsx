@@ -7,6 +7,7 @@ type Props = {
   name: string;
   description?: string;
   remainingTurns: number;
+  attribute?: string;
   anchorRect: DOMRect;
   arenaRect?: DOMRect;
 };
@@ -15,11 +16,13 @@ export default function StatusHint({
   name,
   description,
   remainingTurns,
+  attribute,
   anchorRect,
   arenaRect,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const remainingSeconds = Math.max(0, Math.floor(remainingTurns));
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -86,10 +89,13 @@ export default function StatusHint({
           : { top: -9999, left: -9999 }
       }
     >
-      <div className={styles.title}>{name}</div>
+      <div className={styles.titleRow}>
+        <div className={styles.title}>{name}</div>
+        {attribute && <div className={styles.attributeBadge}>{attribute}气劲</div>}
+      </div>
       <div className={styles.desc}>{description || "无"}</div>
       <div className={styles.time}>
-        剩余时间：{Math.max(0, remainingTurns).toFixed(1)}s
+        剩余时间：{remainingSeconds}秒
       </div>
     </div>
   );

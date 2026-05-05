@@ -1231,6 +1231,93 @@
   letter-spacing: -0.5px;
 }
 
+.abilityHintPanel {
+  position: fixed;
+  z-index: 9998;
+  width: min(500px, calc(100vw - 16px));
+  max-height: min(62vh, 420px);
+  overflow: hidden;
+  pointer-events: none;
+  background: rgba(8, 12, 18, 0.91);
+  border: 1px solid rgba(210, 225, 245, 0.22);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.62);
+  color: #f2f4f8;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+.abilityHintBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 10px;
+  padding: 8px 11px 9px;
+}
+
+.abilityHintMain {
+  min-width: 0;
+}
+
+.abilityHintName {
+  font-size: 14px;
+  line-height: 1.16;
+  font-weight: 900;
+  color: #fff200;
+  overflow-wrap: anywhere;
+}
+
+.abilityHintMeta {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.18;
+  font-weight: 700;
+  color: #eef1f5;
+}
+
+.abilityHintDesc {
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.25;
+  color: #fff200;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.abilityHintSide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  font-size: 13px;
+  line-height: 1.18;
+  font-weight: 800;
+  color: #f4f4f5;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .abilityHintBody {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .abilityHintName {
+    font-size: 16px;
+  }
+
+  .abilityHintMeta,
+  .abilityHintDesc,
+  .abilityHintSide {
+    font-size: 14px;
+  }
+
+  .abilityHintSide {
+    align-items: flex-start;
+    text-align: left;
+    white-space: normal;
+  }
+}
+
 /* Visual gap between ability groups in common bar */
 .commonGap {
   width: 2px;

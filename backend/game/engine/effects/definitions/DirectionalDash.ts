@@ -184,6 +184,11 @@ export function handleDirectionalDash(
     arcGravityDownPerTick = g;
   }
 
+  const snapUpWorld = gameplayUnitsToWorldUnits(effect.snapUpUnits ?? 0, storedUnitScale);
+  if (snapUpWorld > 0) {
+    source.position.z = (source.position.z ?? 0) + snapUpWorld;
+  }
+
   source.activeDash = {
     abilityId: ability.id,
     vxPerTick: dirX * worldDistance / durationTicks,
@@ -193,7 +198,6 @@ export function handleDirectionalDash(
       : undefined,
     steerByFacing: effect.steerByFacing,
     wallDiveOnBlock: effect.wallDiveOnBlock,
-    snapUpUnits: effect.snapUpUnits,
     diveVzPerTick: effect.diveVzPerTick,
     // vzPerTick: undefined — captured on first tick in movement.ts
     forceVzPerTick,
@@ -290,9 +294,6 @@ export function handleDirectionalDash(
     { type: "DISPLACEMENT" },
     { type: "DASH_TURN_LOCK" },
   ];
-  if (ability.id === "taxingxing") {
-    dashRuntimeEffects.push({ type: "DODGE", chance: 0.65 } as any);
-  }
   const dashRuntimeAppliedAt = Date.now();
   applyDashRuntimeBuff({
     state,

@@ -875,7 +875,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   fengxiu_diang: {
     id: "fengxiu_diang",
     name: "风袖低昂",
-    description: "恢复30点生命值\n获得【天地低昂】10秒：受到伤害降低40%",
+    description: "恢复30点生命值\n获得【风袖低昂】10秒：受到伤害降低40%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -884,7 +884,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     buffs: [
       {
         buffId: 1009,
-        name: "天地低昂",
+        name: "风袖低昂",
         category: "BUFF",
         durationMs: 10_000, // 10 seconds
         description: "受到伤害降低40%",
@@ -1039,6 +1039,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         cancelOnJump: false,
         effects: [
           { type: "CONTROL_IMMUNE" },
+          { type: "KNOCKED_BACK_IMMUNE" },
           { type: "SILENCE_IMMUNE" },
           { type: "CHANNEL_AOE_TICK", value: 5, range: 10 },
         ],
@@ -1195,12 +1196,16 @@ export const BASE_ABILITIES: AbilityRecord = {
     buffs: [
       {
         buffId: 1020,
-        name: "踏星行·转向",
-        category: "BUFF",
+        name: "踏星行",
+        category: "DEBUFF",
         durationMs: 5_000,
         breakOnPlay: false,
-        description: "冲刺期间可转向",
-        effects: [{ type: "DASH_TURN_OVERRIDE" }],
+        description: "冲刺期间免疫控制，闪避率提高65%，可以转向",
+        effects: [
+          { type: "CONTROL_IMMUNE" },
+          { type: "DODGE", chance: 0.65 },
+          { type: "DASH_TURN_OVERRIDE" },
+        ],
       },
     ],
   },
@@ -1940,7 +1945,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   yan_yu_xing: {
     id: "yan_yu_xing",
     name: "烟雨行",
-    description: "轻功，瞬发，可在空中或移动中施放\n解除减速与锁足\n向前冲刺20尺\n2充能，每10秒恢复1充能\n不触发GCD",
+    description: "轻功，瞬发，可在空中或移动中施放\n解除减速与锁足\n向前冲刺20尺，冲刺期间显示【烟雨行】：免疫控制\n2充能，每10秒恢复1充能\n不触发GCD",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 0,
@@ -1959,7 +1964,17 @@ export const BASE_ABILITIES: AbilityRecord = {
         dirMode: "TOWARD",
       },
     ],
-    buffs: [],
+    buffs: [
+      {
+        buffId: 2327,
+        name: "烟雨行",
+        category: "BUFF",
+        durationMs: 1_500,
+        breakOnPlay: false,
+        description: "冲刺期间免疫控制",
+        effects: [{ type: "CONTROL_IMMUNE" }],
+      },
+    ],
   },
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -2742,7 +2757,7 @@ export const BASE_ABILITIES: AbilityRecord = {
       {
         buffId: 2602,
         name: "啸如虎",
-        category: "BUFF",
+        category: "DEBUFF",
         durationMs: 12_000,
         description: "气血不会降至1以下；伤害提高30%",
         effects: [
@@ -3687,7 +3702,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   she_shen_jue: {
     id: "she_shen_jue",
     name: "舍身诀",
-    description: "瞬发，友方目标\n移除目标控制效果（倒地除外）\n使目标获得【舍身诀·减伤】10秒：伤害降低30%\n使目标获得【舍身诀】10秒：转移受到的伤害\n施法者获得【舍身诀·承伤】10秒：代替目标承受转移伤害，转移伤害不受减伤与护盾影响，但可被免伤抵消",
+    description: "瞬发，友方目标\n移除目标控制效果（倒地除外）\n使目标获得【舍身诀】10秒：伤害降低30%，转移受到的伤害\n施法者获得【舍身诀·承伤】10秒：代替目标承受转移伤害，转移伤害不受减伤与护盾影响，但可被免伤抵消",
     type: "SUPPORT",
     target: "OPPONENT",
     friendlyTarget: true,
@@ -3697,22 +3712,13 @@ export const BASE_ABILITIES: AbilityRecord = {
     effects: [{ type: "SHESHEN_JUE" }],
     buffs: [
       {
-        buffId: 2736,
-        name: "舍身诀·减伤",
-        category: "BUFF",
-        applyTo: "OPPONENT",
-        durationMs: 10_000,
-        description: "伤害降低30%",
-        effects: [{ type: "DAMAGE_REDUCTION", value: 0.3 }],
-      },
-      {
         buffId: 2737,
         name: "舍身诀",
         category: "BUFF",
         applyTo: "OPPONENT",
         durationMs: 10_000,
-        description: "转移受到的伤害",
-        effects: [],
+        description: "伤害降低30%，转移受到的伤害",
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.3 }],
       },
       {
         buffId: 2738,
@@ -3751,7 +3757,7 @@ export const BASE_ABILITIES: AbilityRecord = {
       {
         buffId: 2740,
         name: "渊·承伤",
-        category: "BUFF",
+        category: "DEBUFF",
         applyTo: "SELF",
         durationMs: 10_000,
         description: "为【渊】目标承受下一次受到的伤害，触发后消失",
@@ -4032,7 +4038,7 @@ export const BASE_ABILITIES: AbilityRecord = {
       {
         buffId: 2714,
         name: "孤影化双",
-        category: "BUFF",
+        category: "DEBUFF",
         durationMs: 7_000,
         description: "7秒后恢复记录时的气血和技能冷却",
         effects: [],
@@ -5309,16 +5315,27 @@ export function setAbilityTag(abilityId: string, tagGroup: TagGroupId, value: st
   });
 }
 
-export function setAbilityIsProjectile(abilityId: string, isProjectile: boolean) {
+type AbilityBooleanOverrideMode = boolean | "manual-include" | "manual-exclude" | "clear";
+
+function normalizeAbilityBooleanOverrideMode(mode: AbilityBooleanOverrideMode): true | false | null {
+  if (mode === true || mode === "manual-include") return true;
+  if (mode === false || mode === "manual-exclude") return false;
+  return null;
+}
+
+export function setAbilityIsProjectile(abilityId: string, mode: AbilityBooleanOverrideMode) {
   const baseAbility = BASE_ABILITIES[abilityId];
   if (!baseAbility) throw new Error("ERR_ABILITY_NOT_FOUND");
 
   const nextEntry: AbilityEditorOverrideEntry = {
     ...(abilityPropertyOverrides[abilityId] ?? {}),
   };
+  const nextValue = normalizeAbilityBooleanOverrideMode(mode);
 
-  if (isProjectile) {
+  if (nextValue === true) {
     nextEntry.isProjectile = true;
+  } else if (nextValue === false) {
+    nextEntry.isProjectile = false;
   } else {
     delete nextEntry.isProjectile;
   }
@@ -5327,8 +5344,8 @@ export function setAbilityIsProjectile(abilityId: string, isProjectile: boolean)
     !nextEntry.tags &&
     !nextEntry.properties &&
     !nextEntry.numeric &&
-    !nextEntry.isProjectile &&
-    !nextEntry.dunLiWhitelisted &&
+    nextEntry.isProjectile === undefined &&
+    nextEntry.dunLiWhitelisted === undefined &&
     nextEntry.noWeaponRequired === undefined;
   if (isEmpty) {
     delete abilityPropertyOverrides[abilityId];
@@ -5346,16 +5363,19 @@ export function setAbilityIsProjectile(abilityId: string, isProjectile: boolean)
   });
 }
 
-export function setAbilityDunLiWhitelisted(abilityId: string, dunLiWhitelisted: boolean) {
+export function setAbilityDunLiWhitelisted(abilityId: string, mode: AbilityBooleanOverrideMode) {
   const baseAbility = BASE_ABILITIES[abilityId];
   if (!baseAbility) throw new Error("ERR_ABILITY_NOT_FOUND");
 
   const nextEntry: AbilityEditorOverrideEntry = {
     ...(abilityPropertyOverrides[abilityId] ?? {}),
   };
+  const nextValue = normalizeAbilityBooleanOverrideMode(mode);
 
-  if (dunLiWhitelisted) {
+  if (nextValue === true) {
     nextEntry.dunLiWhitelisted = true;
+  } else if (nextValue === false) {
+    nextEntry.dunLiWhitelisted = false;
   } else {
     delete nextEntry.dunLiWhitelisted;
   }
@@ -5364,8 +5384,8 @@ export function setAbilityDunLiWhitelisted(abilityId: string, dunLiWhitelisted: 
     !nextEntry.tags &&
     !nextEntry.properties &&
     !nextEntry.numeric &&
-    !nextEntry.isProjectile &&
-    !nextEntry.dunLiWhitelisted &&
+    nextEntry.isProjectile === undefined &&
+    nextEntry.dunLiWhitelisted === undefined &&
     nextEntry.noWeaponRequired === undefined;
   if (isEmpty) {
     delete abilityPropertyOverrides[abilityId];

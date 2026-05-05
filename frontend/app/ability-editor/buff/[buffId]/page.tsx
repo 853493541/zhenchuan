@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { toastError, toastSuccess } from "../../../components/toast/toast";
 import { FALLBACK_BUFF_ICON_PATH } from "../../../lib/buffIcons";
+import CopyNameButton from "../../CopyNameButton";
 import {
   BUFF_ATTRIBUTES,
   BUFF_PROPERTY_TYPES,
@@ -30,6 +30,7 @@ const PROPERTY_VALUE_CONFIG: Partial<
 
 export default function BuffDetailPage() {
   const params = useParams<{ buffId: string }>();
+  const router = useRouter();
   const rawBuffId = Array.isArray(params.buffId) ? params.buffId[0] : params.buffId;
   const buffId = parseInt(rawBuffId ?? "", 10);
 
@@ -45,6 +46,14 @@ export default function BuffDetailPage() {
   const [localProperties, setLocalProperties] = useState<BuffProperty[]>([]);
   const [showAddPicker, setShowAddPicker] = useState(false);
   const [prevEntryBuffId, setPrevEntryBuffId] = useState<number | null>(null);
+
+  const goBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/ability-editor?tab=buffs");
+  };
 
   const loadSnapshot = async () => {
     setLoading(true);
@@ -255,7 +264,7 @@ export default function BuffDetailPage() {
         <div className={styles.statePanel}>
           <p className={styles.stateTitle}>加载失败</p>
           <p className={styles.stateCopy}>{errorMessage}</p>
-          <Link href="/ability-editor?tab=buffs" className={styles.backLink}>← 返回</Link>
+          <button type="button" className={styles.backLink} onClick={goBack} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}>← 返回</button>
         </div>
       </div>
     );
@@ -267,7 +276,7 @@ export default function BuffDetailPage() {
         <div className={styles.statePanel}>
           <p className={styles.stateTitle}>Buff 不存在</p>
           <p className={styles.stateCopy}>buffId: {buffId}</p>
-          <Link href="/ability-editor?tab=buffs" className={styles.backLink}>← 返回</Link>
+          <button type="button" className={styles.backLink} onClick={goBack} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}>← 返回</button>
         </div>
       </div>
     );
@@ -282,9 +291,9 @@ export default function BuffDetailPage() {
     <div className={styles.page}>
       {/* Top nav */}
       <div className={styles.buffDetailNav}>
-        <Link href="/ability-editor?tab=buffs" className={styles.backLink}>
+        <button type="button" className={styles.backLink} onClick={goBack} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}>
           ← 气劲列表
-        </Link>
+        </button>
         <span className={styles.updatedAt}>
           最后保存：{formatUpdatedAt(snapshot?.updatedAt ?? null)}
         </span>
@@ -333,6 +342,7 @@ export default function BuffDetailPage() {
                 ) : (
                   <span className={styles.buffDetailRowText}>{entry.name}</span>
                 )}
+                {!isEditingName && <CopyNameButton value={entry.name} label="复制气劲名称" />}
                 <button
                   type="button"
                   disabled={saving || (isEditingName && trimmedName.length === 0)}

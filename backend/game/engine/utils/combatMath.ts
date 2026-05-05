@@ -7,6 +7,12 @@ const BASE_CRIT_DAMAGE_MULTIPLIER = 1.75;
 export type DamageRoll = {
   damage: number;
   isCrit: boolean;
+  fullyReducedByDamageReduction?: boolean;
+};
+
+type TargetSideDamageResult = {
+  damage: number;
+  fullyReducedByDamageReduction: boolean;
 };
 
 export type HealRoll = {
@@ -142,19 +148,8 @@ function applyTargetSideDamageModifiers(params: {
   target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
   base: number;
   damageType?: string;
-}) {
+}): TargetSideDamageResult {
   let dmg = params.base;
-
-  const matchingReductions = allEffects(params.target).filter((e) => {
-    if (e.type !== "DAMAGE_REDUCTION") return false;
-    if ((e as any).damageType) {
-      return (e as any).damageType === params.damageType;
-    }
-    return true;
-  });
-  for (const dr of matchingReductions) {
-    dmg *= 1 - (dr.value ?? 0);
-  }
 
   const takenIncSum = params.target.buffs.reduce((sum, buff) => {
     const e = buff.effects.find((eff) => eff.type === "DAMAGE_TAKEN_INCREASE");
@@ -169,7 +164,22 @@ function applyTargetSideDamageModifiers(params: {
     dmg += (fb.value ?? 0);
   }
 
-  return roundDamage(Math.max(0, dmg));
+  const totalDamageReduction = allEffects(params.target).reduce((sum, effect) => {
+    if (effect.type !== "DAMAGE_REDUCTION") return sum;
+    if ((effect as any).damageType && (effect as any).damageType !== params.damageType) {
+      return sum;
+    }
+    const value = Number(effect.value ?? 0);
+    return Number.isFinite(value) && value > 0 ? sum + value : sum;
+  }, 0);
+  if (totalDamageReduction > 0) {
+    dmg *= Math.max(0, 1 - totalDamageReduction);
+  }
+
+  return {
+    damage: roundDamage(Math.max(0, dmg)),
+    fullyReducedByDamageReduction: params.base > 0 && totalDamageReduction >= 1,
+  };
 }
 
 export function resolveRedirectedDamageToTarget(params: {
@@ -177,7 +187,7 @@ export function resolveRedirectedDamageToTarget(params: {
   base: number;
   damageType?: string;
 }) {
-  return applyTargetSideDamageModifiers(params);
+  return applyTargetSideDamageModifiers(params).damage;
 }
 
 export function resolveScheduledDamageRoll(params: {
@@ -211,17 +221,22 @@ export function resolveScheduledDamageRoll(params: {
     dmg *= Math.max(0, 1 + dmgMultiBonus);
   }
 
-  dmg = applyTargetSideDamageModifiers({
+  const targetSideDamage = applyTargetSideDamageModifiers({
     target: params.target,
     base: dmg,
     damageType: params.damageType,
   });
 
-  return resolveRawDamageWithCritRoll({
+  const damageRoll = resolveRawDamageWithCritRoll({
     source: params.source,
-    base: dmg,
+    base: targetSideDamage.damage,
     damageType: params.damageType,
   });
+
+  return {
+    ...damageRoll,
+    fullyReducedByDamageReduction: targetSideDamage.fullyReducedByDamageReduction,
+  };
 }
 
 export function resolveScheduledDamage(params: {

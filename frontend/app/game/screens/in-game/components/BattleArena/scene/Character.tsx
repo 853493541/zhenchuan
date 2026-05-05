@@ -19,6 +19,7 @@ const _hpWorldPos = new THREE.Vector3();
 const _bodyWorldPos = new THREE.Vector3();
 const SELF_HIDE_DISTANCE = CHAR_HEIGHT;
 const SELF_FADE_DISTANCE = CHAR_HEIGHT * 1.8;
+const OPPONENT_VERTICAL_BLINK_THRESHOLD = 4;
 
 function computeHpShieldSegments(hp: number, shield: number, maxHp: number): { hpPct: number; shieldPct: number } {
   const safeMaxHp = Math.max(1, Number(maxHp || 100));
@@ -160,7 +161,8 @@ export default function Character({
         !!instantSnapAtRef &&
         instantSnapWindowMs > 0 &&
         performance.now() - instantSnapAtRef.current < instantSnapWindowMs;
-      if (shouldInstantSnap) {
+      const shouldVerticalBlink = Math.abs(ty - currentPos.current.y) >= OPPONENT_VERTICAL_BLINK_THRESHOLD;
+      if (shouldInstantSnap || shouldVerticalBlink) {
         currentPos.current.set(tx, ty, tz);
       } else {
         currentPos.current.lerp(new THREE.Vector3(tx, ty, tz), 0.18);

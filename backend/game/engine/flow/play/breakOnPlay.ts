@@ -35,7 +35,7 @@ const TRIGGERED_STEALTH_BREAK_ABILITIES = new Set(["wu_jianyu"]);
  * Stealth buffs have per-skill break exceptions.
  * Keep this logic centralized so future tuning only needs one edit point.
  */
-function shouldKeepStealthOnPlay(buff: ActiveBuff, ability: Ability, now: number): boolean {
+function shouldKeepStealthOnPlay(buff: ActiveBuff, ability: Ability, sourceBuffs: ActiveBuff[], now: number): boolean {
   const buffId = buff.buffId;
   const isCommon = ability.isCommon === true;
   const channelCast = isChannel(ability);
@@ -55,7 +55,10 @@ function shouldKeepStealthOnPlay(buff: ActiveBuff, ability: Ability, now: number
     // - common breaks only after the first 5s grace window
     case 1012:
       if (channelCast) return isForward;
-      if (isCommon) return stealthAgeMs(buff, now) < 5_000;
+      if (isCommon) {
+        const hasDunyingGrace = sourceBuffs.some((sourceBuff) => isDunyingCompanion(sourceBuff));
+        return hasDunyingGrace && stealthAgeMs(buff, now) < 5_000;
+      }
       return false;
 
     // 天地无极:
@@ -82,10 +85,11 @@ export function breakOnPlay(source: { buffs?: ActiveBuff[] }, playedAbility: Abi
   if (!Array.isArray(source.buffs)) return;
   breakShiFangXuanJiOnPlay(source, playedAbility);
   const now = Date.now();
+  const sourceBuffs = source.buffs;
   const hadFuguangBefore = source.buffs.some((b) => b.buffId === 1012);
   source.buffs = source.buffs.filter((b) => {
     if (!b.breakOnPlay) return true;
-    if (shouldKeepStealthOnPlay(b, playedAbility, now)) return true;
+    if (shouldKeepStealthOnPlay(b, playedAbility, sourceBuffs, now)) return true;
     return false;
   });
 

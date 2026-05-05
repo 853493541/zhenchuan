@@ -31,6 +31,18 @@ import {
   buildQinYinGongMingSnapshot,
   setQinYinGongMingBuffOverride,
 } from "../abilities/qinYinGongMing";
+import {
+  buildDamageReductionOverrideSnapshot,
+  setDamageReductionOverride,
+} from "../abilities/damageReductionOverride";
+import {
+  buildHiddenBuffSnapshot,
+  setHiddenBuffOverride,
+} from "../abilities/hiddenBuffs";
+import {
+  buildManualCancelableBuffSnapshot,
+  setManualCancelableBuffOverride,
+} from "../abilities/manualCancelableBuffs";
 import { getUserIdFromCookie } from "./auth";
 
 const router = express.Router();
@@ -206,11 +218,17 @@ router.put("/ability-editor/:abilityId/tag", (req, res) => {
 router.put("/ability-editor/:abilityId/is-projectile", (req, res) => {
   try {
     getUserIdFromCookie(req);
-    const { isProjectile } = req.body ?? {};
-    if (typeof isProjectile !== "boolean") {
+    const { isProjectile, mode } = req.body ?? {};
+    const nextMode = mode ?? isProjectile;
+    if (
+      typeof nextMode !== "boolean" &&
+      nextMode !== "manual-include" &&
+      nextMode !== "manual-exclude" &&
+      nextMode !== "clear"
+    ) {
       return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
     }
-    setAbilityIsProjectile(req.params.abilityId, isProjectile);
+    setAbilityIsProjectile(req.params.abilityId, nextMode);
     return res.json(buildAbilityEditorSnapshot());
   } catch (error) {
     return handleAbilityEditorError(res, error);
@@ -220,11 +238,17 @@ router.put("/ability-editor/:abilityId/is-projectile", (req, res) => {
 router.put("/ability-editor/:abilityId/dun-li-whitelist", (req, res) => {
   try {
     getUserIdFromCookie(req);
-    const { dunLiWhitelisted } = req.body ?? {};
-    if (typeof dunLiWhitelisted !== "boolean") {
+    const { dunLiWhitelisted, mode } = req.body ?? {};
+    const nextMode = mode ?? dunLiWhitelisted;
+    if (
+      typeof nextMode !== "boolean" &&
+      nextMode !== "manual-include" &&
+      nextMode !== "manual-exclude" &&
+      nextMode !== "clear"
+    ) {
       return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
     }
-    setAbilityDunLiWhitelisted(req.params.abilityId, dunLiWhitelisted);
+    setAbilityDunLiWhitelisted(req.params.abilityId, nextMode);
     return res.json(buildAbilityEditorSnapshot());
   } catch (error) {
     return handleAbilityEditorError(res, error);
@@ -268,6 +292,99 @@ router.put("/ability-editor/qin-yin-gong-ming/:buffId", (req, res) => {
     setQinYinGongMingBuffOverride(buffId, mode);
 
     return res.json(buildQinYinGongMingSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/damage-reduction-override", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildDamageReductionOverrideSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/damage-reduction-override/:buffId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+
+    const buffId = parseInt(req.params.buffId, 10);
+    if (!Number.isFinite(buffId)) {
+      return res.status(400).json({ error: "ERR_INVALID_BUFF_ID" });
+    }
+
+    const { mode } = req.body ?? {};
+    if (mode !== "can-override" && mode !== "no-override" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+
+    setDamageReductionOverride(buffId, mode);
+
+    return res.json(buildDamageReductionOverrideSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/manual-cancelable-buffs", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildManualCancelableBuffSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/manual-cancelable-buffs/:buffId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+
+    const buffId = parseInt(req.params.buffId, 10);
+    if (!Number.isFinite(buffId)) {
+      return res.status(400).json({ error: "ERR_INVALID_BUFF_ID" });
+    }
+
+    const { mode } = req.body ?? {};
+    if (mode !== "manual-include" && mode !== "manual-exclude" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+
+    setManualCancelableBuffOverride(buffId, mode);
+
+    return res.json(buildManualCancelableBuffSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/hidden-buffs", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildHiddenBuffSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/hidden-buffs/:buffId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+
+    const buffId = parseInt(req.params.buffId, 10);
+    if (!Number.isFinite(buffId)) {
+      return res.status(400).json({ error: "ERR_INVALID_BUFF_ID" });
+    }
+
+    const { mode } = req.body ?? {};
+    if (mode !== "manual-include" && mode !== "manual-exclude" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+
+    setHiddenBuffOverride(buffId, mode);
+
+    return res.json(buildHiddenBuffSnapshot());
   } catch (error) {
     return handleAbilityEditorError(res, error);
   }
