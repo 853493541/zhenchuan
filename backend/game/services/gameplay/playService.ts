@@ -18,7 +18,7 @@ import { breakOnPlay } from "../../engine/flow/play/breakOnPlay";
 import { broadcastGameUpdate } from "../broadcast";
 import { globalTimer } from "../../../utils/timing";
 import { gameStateCache } from "../gameStateCache";
-import { addBuff, pushBuffExpired } from "../../engine/effects/buffRuntime";
+import { addBuff, cancelAnyBuffForTesting, cancelManualBuff, pushBuffExpired } from "../../engine/effects/buffRuntime";
 import { applyDamageToTarget, removeLinkedShield } from "../../engine/utils/health";
 import { resolveRawDamageWithCrit, resolveScheduledDamage } from "../../engine/utils/combatMath";
 import { getAbilityRangeBonusFromBuffs } from "../../engine/utils/abilityRange";
@@ -158,6 +158,7 @@ function clearChannelStartBuffs(
       buffCategory: buff.category,
       sourceAbilityId: buff.sourceAbilityId,
       sourceAbilityName: buff.sourceAbilityName,
+      sourceUserId: buff.sourceUserId,
     });
     removedAny = true;
   }
@@ -764,6 +765,145 @@ export async function passTurn(gameId: string, userId: string) {
   console.log(
     `[Timing] PassTurn ${gameId}: DBFetch=${dbFetchTime.toFixed(2)}ms (${cacheStatus}), Diff=${diffTime.toFixed(2)}ms, Total=${totalTime?.toFixed(2) || '?'}ms, Patches=${diff.length}`
   );
+
+  return {
+    version: state.version,
+    diff,
+    events: state.events,
+    serverTimestamp: Date.now(),
+  };
+}
+
+function resolveBuffCancelTarget(state: GameState, userId: string, entityTargetId?: string) {
+  if (entityTargetId) {
+    const entity = (state.entities ?? []).find((candidate: any) => candidate.id === entityTargetId);
+    if (!entity) {
+      throw new Error("ERR_INVALID_TARGET");
+    }
+    if (entity.kind !== "test_dummy_ally" || entity.ownerUserId !== userId) {
+      throw new Error("ERR_BUFF_CANCEL_TARGET_NOT_ALLOWED");
+    }
+    return {
+      targetUserId: entity.userId,
+      target: entity,
+      allowTestingCancel: true,
+    };
+  }
+
+  const player = state.players.find((candidate) => candidate.userId === userId);
+  if (!player) {
+    throw new Error("Not in this game");
+  }
+  return {
+    targetUserId: userId,
+    target: player,
+    allowTestingCancel: false,
+  };
+}
+
+export async function cancelPlayerBuff(gameId: string, userId: string, buffId: number, options?: { entityTargetId?: string }) {
+  if (!Number.isFinite(buffId)) {
+    throw new Error("ERR_INVALID_BUFF_ID");
+  }
+
+  const loop = GameLoop.get(gameId);
+  if (loop) {
+    const state = loop.getState();
+    if (!state.events) state.events = [];
+    const playerIndex = state.players.findIndex((player) => player.userId === userId);
+    if (playerIndex === -1) {
+      throw new Error("Not in this game");
+    }
+
+    const prevState: GameState = structuredClone(state);
+    const cancelTarget = resolveBuffCancelTarget(state, userId, options?.entityTargetId);
+    const removed = cancelTarget.allowTestingCancel
+      ? cancelAnyBuffForTesting({
+          state,
+          targetUserId: cancelTarget.targetUserId,
+          target: cancelTarget.target,
+          buffId,
+        })
+      : cancelManualBuff({
+          state,
+          targetUserId: cancelTarget.targetUserId,
+          target: cancelTarget.target,
+          buffId,
+        });
+    if (!removed) {
+      throw new Error("ERR_BUFF_NOT_CANCELABLE");
+    }
+
+    state.version = (state.version ?? 0) + 1;
+    loop.updateState(state);
+    const diff = diffState(prevState, state);
+
+    broadcastGameUpdate({
+      gameId,
+      version: state.version,
+      diff,
+      events: state.events,
+      timestamp: Date.now(),
+    });
+
+    return {
+      version: state.version,
+      diff,
+      events: state.events,
+      serverTimestamp: Date.now(),
+    };
+  }
+
+  let state = gameStateCache.get(gameId);
+  if (!state) {
+    const game = await GameSession.findById(gameId);
+    if (!game || !game.state) throw new Error("Game not found");
+    state = game.state as GameState;
+  }
+
+  if (!state.events) state.events = [];
+  const playerIndex = state.players.findIndex((player) => player.userId === userId);
+  if (playerIndex === -1) {
+    throw new Error("Not in this game");
+  }
+
+  const prevState: GameState = structuredClone(state);
+  const cancelTarget = resolveBuffCancelTarget(state, userId, options?.entityTargetId);
+  const removed = cancelTarget.allowTestingCancel
+    ? cancelAnyBuffForTesting({
+        state,
+        targetUserId: cancelTarget.targetUserId,
+        target: cancelTarget.target,
+        buffId,
+      })
+    : cancelManualBuff({
+        state,
+        targetUserId: cancelTarget.targetUserId,
+        target: cancelTarget.target,
+        buffId,
+      });
+  if (!removed) {
+    throw new Error("ERR_BUFF_NOT_CANCELABLE");
+  }
+
+  state.version = (state.version ?? 0) + 1;
+  pruneOldEvents(state, 10);
+  const diff = diffState(prevState, state);
+
+  gameStateCache.update(gameId, state);
+  broadcastGameUpdate({
+    gameId,
+    version: state.version,
+    diff,
+    events: state.events,
+    gameOver: state.gameOver,
+    winnerUserId: state.winnerUserId,
+    timestamp: Date.now(),
+  });
+
+  GameSession.findByIdAndUpdate(gameId, { state }, { new: true }).catch((err) => {
+    console.error(`[DB] Failed to save game ${gameId}:`, err.message);
+  });
 
   return {
     version: state.version,

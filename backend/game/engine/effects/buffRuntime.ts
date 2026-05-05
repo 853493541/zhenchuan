@@ -12,6 +12,7 @@ import { resolveScheduledDamage } from "../utils/combatMath";
 import { addShieldToTarget, applyDamageToTarget, removeLinkedShield } from "../utils/health";
 import { ABILITIES } from "../../abilities/abilities";
 import { applyPropertyOverridesToEffects, loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
+import { isBuffManualCancelable } from "../../abilities/manualCancelableBuffs";
 import { hasDunLiReflectFlag, isAbilityDunLiWhitelisted } from "./dunLiReflect";
 import {
   NUWA_BUTIAN_BUFF_ID,
@@ -37,7 +38,7 @@ function pushEvent(
 }
 
 function isDunyingCompanion(buff: ActiveBuff): boolean {
-  return buff.buffId === 1021;
+  return buff.buffId === DUNYING_COMPANION_BUFF_ID;
 }
 
 function isMoheKnockdown(buff: ActiveBuff): boolean {
@@ -56,6 +57,18 @@ const SHI_XIN_GU_BUFF_ID = 2643;
 const CONTROL_DR_DURATION_MS = 10_000;
 // 雷霆震怒: stun + damage immunity package
 const LEI_TING_ZHEN_NU_BUFF_ID = 2506;
+const FUGUANG_LUEYING_BUFF_ID = 1012;
+const DUNYING_COMPANION_BUFF_ID = 1021;
+const LING_RAN_TIAN_FENG_BUFF_ID = 2654;
+const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
+const LV_YE_MAN_SHENG_BUFF_ID = 2718;
+const SHESHEN_JUE_ABILITY_ID = "she_shen_jue";
+const SHESHEN_DAMAGE_REDUCTION_BUFF_ID = 2736;
+const SHESHEN_REDIRECT_BUFF_ID = 2737;
+const SHESHEN_BEAR_BUFF_ID = 2738;
+const YUAN_ABILITY_ID = "yuan";
+const YUAN_GUARD_BUFF_ID = 2739;
+const YUAN_BEAR_BUFF_ID = 2740;
 
 type ResistanceConfig = {
   buffId: number;
@@ -84,6 +97,13 @@ const LOCKOUT_DR_CONFIG: ResistanceConfig = {
 
 const SILENCE_FAMILY_EFFECT_TYPES = new Set(["SILENCE", "DISARM"]);
 const SHARED_LOCKOUT_EFFECT_TYPES = new Set(["SILENCE", "ATTACK_LOCK", "DISARM", "NON_QINGGONG_LOCK"]);
+
+type BuffEditorOverrideMap = ReturnType<typeof loadBuffEditorOverrides>["overrides"];
+
+type DamageReductionRuntimeEffect = {
+  value: number;
+  damageType?: string;
+};
 
 function getActiveResistanceBuff(
   target: { buffs: ActiveBuff[] },
@@ -226,6 +246,109 @@ function hasInvulnerable(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "INVULNERABLE"));
 }
 
+function getDamageReductionEffects(buff: { effects?: Array<{ type: string; value?: number; damageType?: string }> }): DamageReductionRuntimeEffect[] {
+  const effects = Array.isArray(buff.effects) ? buff.effects : [];
+  return effects.flatMap((effect) => {
+    if (effect.type !== "DAMAGE_REDUCTION") return [];
+    const value = Number(effect.value ?? 0);
+    if (!Number.isFinite(value) || value <= 0) return [];
+    return [{
+      value,
+      ...(typeof effect.damageType === "string" && effect.damageType ? { damageType: effect.damageType } : {}),
+    }];
+  });
+}
+
+function damageReductionScopeCovers(coveringDamageType: string | undefined, coveredDamageType: string | undefined) {
+  return !coveringDamageType || coveringDamageType === coveredDamageType;
+}
+
+function isDamageReductionNoOverride(buffId: number, editorOverrides: BuffEditorOverrideMap) {
+  return editorOverrides[String(buffId)]?.properties?.some(
+    (property) => property.type === "减伤" && property.noOverride === true
+  ) === true;
+}
+
+function existingDamageReductionCoversIncoming(params: {
+  incomingBuffId: number;
+  incomingEffects: DamageReductionRuntimeEffect[];
+  target: { buffs: ActiveBuff[] };
+}) {
+  const { incomingBuffId, incomingEffects, target } = params;
+  return incomingEffects.every((incomingEffect) =>
+    target.buffs.some((existingBuff) => {
+      if (existingBuff.buffId === incomingBuffId) return false;
+      return getDamageReductionEffects(existingBuff).some((existingEffect) =>
+        damageReductionScopeCovers(existingEffect.damageType, incomingEffect.damageType) &&
+        existingEffect.value >= incomingEffect.value
+      );
+    })
+  );
+}
+
+function getToppedDamageReductionBuffs(params: {
+  incomingBuffId: number;
+  incomingEffects: DamageReductionRuntimeEffect[];
+  target: { buffs: ActiveBuff[] };
+  editorOverrides: BuffEditorOverrideMap;
+}) {
+  const { incomingBuffId, incomingEffects, target, editorOverrides } = params;
+  return target.buffs.filter((existingBuff) => {
+    if (existingBuff.buffId === incomingBuffId) return false;
+    if (isDamageReductionNoOverride(existingBuff.buffId, editorOverrides)) return false;
+
+    const existingEffects = getDamageReductionEffects(existingBuff);
+    return existingEffects.some((existingEffect) =>
+      incomingEffects.some((incomingEffect) =>
+        damageReductionScopeCovers(incomingEffect.damageType, existingEffect.damageType) &&
+        incomingEffect.value >= existingEffect.value
+      )
+    );
+  });
+}
+
+function applyDamageReductionToppingRules(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+  runtimeBuff: BuffDefinition;
+  editorOverrides: BuffEditorOverrideMap;
+}) {
+  const { state, targetUserId, target, runtimeBuff, editorOverrides } = params;
+  const incomingEffects = getDamageReductionEffects(runtimeBuff);
+  if (incomingEffects.length === 0) return false;
+
+  const incomingNoOverride = isDamageReductionNoOverride(runtimeBuff.buffId, editorOverrides);
+  if (
+    !incomingNoOverride &&
+    existingDamageReductionCoversIncoming({
+      incomingBuffId: runtimeBuff.buffId,
+      incomingEffects,
+      target,
+    })
+  ) {
+    return true;
+  }
+
+  const toppedBuffs = getToppedDamageReductionBuffs({
+    incomingBuffId: runtimeBuff.buffId,
+    incomingEffects,
+    target,
+    editorOverrides,
+  });
+  if (toppedBuffs.length > 0) {
+    const toppedSet = new Set(toppedBuffs);
+    expireBuffsMatching({
+      state,
+      targetUserId,
+      target,
+      shouldExpire: (buff) => toppedSet.has(buff),
+    });
+  }
+
+  return false;
+}
+
 function hasAntiStealth(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "ANTI_STEALTH"));
 }
@@ -241,16 +364,14 @@ function removeDunyingCompanions(params: {
 
   target.buffs = target.buffs.filter((b) => !isDunyingCompanion(b));
   for (const buff of removed) {
-    pushEvent(state, {
-      turn: state.turn,
-      type: "BUFF_EXPIRED",
-      actorUserId: targetUserId,
+    pushBuffExpired(state, {
       targetUserId,
-      abilityId: buff.sourceAbilityId,
-      abilityName: buff.sourceAbilityName,
       buffId: buff.buffId,
       buffName: buff.name,
       buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+      sourceUserId: buff.sourceUserId,
     });
   }
 }
@@ -271,16 +392,14 @@ function removeSharedLockoutDebuffs(params: {
 
   target.buffs = target.buffs.filter((b) => !isSharedLockoutDebuff(b));
   for (const b of removed) {
-    pushEvent(state, {
-      turn: state.turn,
-      type: "BUFF_EXPIRED",
-      actorUserId: targetUserId,
+    pushBuffExpired(state, {
       targetUserId,
-      abilityId: b.sourceAbilityId,
-      abilityName: b.sourceAbilityName,
       buffId: b.buffId,
       buffName: b.name,
       buffCategory: b.category,
+      sourceAbilityId: b.sourceAbilityId,
+      sourceAbilityName: b.sourceAbilityName,
+      sourceUserId: b.sourceUserId,
     });
   }
 }
@@ -301,16 +420,82 @@ function expireBuffsMatching(params: {
   target.buffs = target.buffs.filter((buff) => !shouldExpire(buff));
 
   for (const buff of removed) {
-    pushEvent(state, {
-      turn: state.turn,
-      type: "BUFF_EXPIRED",
-      actorUserId: targetUserId,
+    pushBuffExpired(state, {
       targetUserId,
-      abilityId: buff.sourceAbilityId,
-      abilityName: buff.sourceAbilityName,
       buffId: buff.buffId,
       buffName: buff.name,
       buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+      sourceUserId: buff.sourceUserId,
+    });
+  }
+
+  return true;
+}
+
+export function cancelManualBuff(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+  buffId: number;
+}) {
+  const { state, targetUserId, target, buffId } = params;
+  if (!isBuffManualCancelable(buffId)) {
+    return false;
+  }
+
+  const removed = (target.buffs ?? []).filter(
+    (buff) => buff.buffId === buffId && buff.category === "BUFF"
+  );
+  if (removed.length === 0) return false;
+
+  for (const buff of removed) {
+    removeLinkedShield(target as any, buff);
+  }
+  target.buffs = target.buffs.filter(
+    (buff) => !(buff.buffId === buffId && buff.category === "BUFF")
+  );
+
+  for (const buff of removed) {
+    pushBuffExpired(state, {
+      targetUserId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+      sourceUserId: buff.sourceUserId,
+    });
+  }
+
+  return true;
+}
+
+export function cancelAnyBuffForTesting(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+  buffId: number;
+}) {
+  const { state, targetUserId, target, buffId } = params;
+  const removed = (target.buffs ?? []).filter((buff) => buff.buffId === buffId);
+  if (removed.length === 0) return false;
+
+  for (const buff of removed) {
+    removeLinkedShield(target as any, buff);
+  }
+  target.buffs = target.buffs.filter((buff) => buff.buffId !== buffId);
+
+  for (const buff of removed) {
+    pushBuffExpired(state, {
+      targetUserId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+      sourceUserId: buff.sourceUserId,
     });
   }
 
@@ -336,6 +521,17 @@ function removeNuwaButianBuffs(params: {
   return expireBuffsMatching({
     ...params,
     shouldExpire: (buff) => buff.buffId === NUWA_BUTIAN_BUFF_ID,
+  });
+}
+
+function removeLingRanTianFengBuffs(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  return expireBuffsMatching({
+    ...params,
+    shouldExpire: (buff) => buff.buffId === LING_RAN_TIAN_FENG_BUFF_ID,
   });
 }
 
@@ -831,6 +1027,17 @@ export function addBuff(params: {
     });
   }
 
+  const blockedByDamageReductionTopping = applyDamageReductionToppingRules({
+    state,
+    targetUserId,
+    target: buffTarget,
+    runtimeBuff,
+    editorOverrides,
+  });
+  if (blockedByDamageReductionTopping) {
+    return;
+  }
+
   // Stacking: if buff defines maxStacks > 1, increment stacks on the existing buff
   // instead of replacing it. The lastTickAt is intentionally NOT reset — this prevents
   // stack-refresh abuse (re-casting resets the tick timer allowing faster ticks).
@@ -1025,12 +1232,139 @@ export function addBuff(params: {
       targetUserId,
       target: buffTarget,
     });
+    removeLingRanTianFengBuffs({
+      state,
+      targetUserId,
+      target: buffTarget,
+    });
   }
 }
 
 /**
  * Emit a buff-expired event.
  */
+function getBuffTargets(state: GameState): Array<{ targetUserId: string; target: { buffs: ActiveBuff[] } }> {
+  const playerTargets = (state.players ?? []).map((player: any) => ({
+    targetUserId: player.userId,
+    target: player as { buffs: ActiveBuff[] },
+  }));
+  const entityTargets = (state.entities ?? [])
+    .filter((entity: any) => Array.isArray(entity.buffs) && typeof entity.userId === "string")
+    .map((entity: any) => ({
+      targetUserId: entity.userId,
+      target: entity as { buffs: ActiveBuff[] },
+    }));
+
+  return [...playerTargets, ...entityTargets];
+}
+
+function removeBuffsFromTarget(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+  shouldRemove: (buff: ActiveBuff) => boolean;
+}) {
+  const { state, targetUserId, target, shouldRemove } = params;
+  const removed = (target.buffs ?? []).filter(shouldRemove);
+  if (removed.length === 0) return false;
+
+  for (const buff of removed) {
+    removeLinkedShield(target as any, buff);
+  }
+  target.buffs = (target.buffs ?? []).filter((buff) => !shouldRemove(buff));
+
+  for (const buff of removed) {
+    pushBuffExpired(state, {
+      targetUserId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+      sourceUserId: buff.sourceUserId,
+    });
+  }
+
+  return true;
+}
+
+function sourceMatches(buff: ActiveBuff, sourceAbilityId: string, sourceUserId?: string) {
+  if (buff.sourceAbilityId !== sourceAbilityId) return false;
+  if (sourceUserId && buff.sourceUserId !== sourceUserId) return false;
+  return true;
+}
+
+function removeLinkedBuffGroup(params: {
+  state: GameState;
+  sourceAbilityId: string;
+  sourceUserId?: string;
+  linkedBuffIds: Set<number>;
+}) {
+  const { state, sourceAbilityId, sourceUserId, linkedBuffIds } = params;
+  for (const { targetUserId, target } of getBuffTargets(state)) {
+    removeBuffsFromTarget({
+      state,
+      targetUserId,
+      target,
+      shouldRemove: (buff) => linkedBuffIds.has(buff.buffId) && sourceMatches(buff, sourceAbilityId, sourceUserId),
+    });
+  }
+}
+
+function removeLvYeManShengZones(state: GameState, targetUserId: string) {
+  if (!Array.isArray((state as any).groundZones)) return;
+  (state as any).groundZones = (state as any).groundZones.filter((zone: any) => {
+    if (zone?.abilityId !== LV_YE_MAN_SHENG_ABILITY_ID) return true;
+    return zone.ownerUserId !== targetUserId && zone.followTargetUserId !== targetUserId;
+  });
+}
+
+function applyBuffRemovalSideEffects(
+  state: GameState,
+  params: {
+    targetUserId: string;
+    buffId: number;
+    sourceAbilityId?: string;
+    sourceUserId?: string;
+  }
+) {
+  const { targetUserId, buffId, sourceAbilityId, sourceUserId } = params;
+
+  if (buffId === FUGUANG_LUEYING_BUFF_ID) {
+    const targetEntry = getBuffTargets(state).find((entry) => entry.targetUserId === targetUserId);
+    if (targetEntry) {
+      removeBuffsFromTarget({
+        state,
+        targetUserId,
+        target: targetEntry.target,
+        shouldRemove: (buff) => buff.buffId === DUNYING_COMPANION_BUFF_ID,
+      });
+    }
+  }
+
+  if (buffId === LV_YE_MAN_SHENG_BUFF_ID) {
+    removeLvYeManShengZones(state, targetUserId);
+  }
+
+  if ([SHESHEN_DAMAGE_REDUCTION_BUFF_ID, SHESHEN_REDIRECT_BUFF_ID, SHESHEN_BEAR_BUFF_ID].includes(buffId)) {
+    removeLinkedBuffGroup({
+      state,
+      sourceAbilityId: sourceAbilityId ?? SHESHEN_JUE_ABILITY_ID,
+      sourceUserId,
+      linkedBuffIds: new Set([SHESHEN_DAMAGE_REDUCTION_BUFF_ID, SHESHEN_REDIRECT_BUFF_ID, SHESHEN_BEAR_BUFF_ID]),
+    });
+  }
+
+  if ([YUAN_GUARD_BUFF_ID, YUAN_BEAR_BUFF_ID].includes(buffId)) {
+    removeLinkedBuffGroup({
+      state,
+      sourceAbilityId: sourceAbilityId ?? YUAN_ABILITY_ID,
+      sourceUserId,
+      linkedBuffIds: new Set([YUAN_GUARD_BUFF_ID, YUAN_BEAR_BUFF_ID]),
+    });
+  }
+}
+
 export function pushBuffExpired(
   state: GameState,
   params: {
@@ -1040,6 +1374,7 @@ export function pushBuffExpired(
     buffCategory: "BUFF" | "DEBUFF";
     sourceAbilityId?: string;
     sourceAbilityName?: string;
+    sourceUserId?: string;
   }
 ) {
   const {
@@ -1049,6 +1384,7 @@ export function pushBuffExpired(
     buffCategory,
     sourceAbilityId,
     sourceAbilityName,
+    sourceUserId,
   } = params;
 
   pushEvent(state, {
@@ -1061,6 +1397,13 @@ export function pushBuffExpired(
     buffId,
     buffName,
     buffCategory,
+  });
+
+  applyBuffRemovalSideEffects(state, {
+    targetUserId,
+    buffId,
+    sourceAbilityId,
+    sourceUserId,
   });
 
   if (buffId === MIYUN_CONFUSION_BUFF_ID) {

@@ -24,6 +24,8 @@ export interface BuffEditorOverrideEntry {
   durationMs?: number;
   qinYinGongMingStealable?: boolean;
   qinYinGongMingUnstealable?: boolean;
+  manualCancelable?: boolean;
+  manualCancelExcluded?: boolean;
 }
 
 interface StoredBuffEditorOverrideEntry {
@@ -31,9 +33,12 @@ interface StoredBuffEditorOverrideEntry {
   hidden?: boolean;
   name?: string;
   description?: string;
+  properties?: BuffProperty[];
   durationMs?: number;
   qinYinGongMingStealable?: boolean;
   qinYinGongMingUnstealable?: boolean;
+  manualCancelable?: boolean;
+  manualCancelExcluded?: boolean;
 }
 
 interface StoredBuffEditorOverrides {
@@ -160,6 +165,14 @@ function normalizeOverrideEntry(
     typeof (value as Record<string, unknown>).qinYinGongMingUnstealable === "boolean"
       ? (value as Record<string, unknown>).qinYinGongMingUnstealable as boolean
       : undefined;
+  const manualCancelable =
+    typeof (value as Record<string, unknown>).manualCancelable === "boolean"
+      ? (value as Record<string, unknown>).manualCancelable as boolean
+      : undefined;
+  const manualCancelExcluded =
+    typeof (value as Record<string, unknown>).manualCancelExcluded === "boolean"
+      ? (value as Record<string, unknown>).manualCancelExcluded as boolean
+      : undefined;
 
   if (
     attribute === "\u672a\u9009\u62e9" &&
@@ -169,7 +182,9 @@ function normalizeOverrideEntry(
     properties === undefined &&
     durationMs === undefined &&
     qinYinGongMingStealable !== true &&
-    qinYinGongMingUnstealable !== true
+    qinYinGongMingUnstealable !== true &&
+    manualCancelable !== true &&
+    manualCancelExcluded !== true
   ) {
     return null;
   }
@@ -184,6 +199,8 @@ function normalizeOverrideEntry(
     ...(durationMs !== undefined ? { durationMs } : {}),
     ...(qinYinGongMingStealable === true ? { qinYinGongMingStealable: true } : {}),
     ...(qinYinGongMingUnstealable === true ? { qinYinGongMingUnstealable: true } : {}),
+    ...(manualCancelable === true ? { manualCancelable: true } : {}),
+    ...(manualCancelExcluded === true ? { manualCancelExcluded: true } : {}),
   };
 }
 

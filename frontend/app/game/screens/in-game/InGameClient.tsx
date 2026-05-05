@@ -130,6 +130,7 @@ export default function InGameClient({
     isMyTurn,
     isWinner,
     playAbility,
+    cancelBuff,
     endTurn,
     rtt,
     refetch,
@@ -397,6 +398,12 @@ export default function InGameClient({
           const res = await playAbility(cardInstance, targetUserId, groundTarget, entityTargetId);
           if (!res.ok && res.error) {
             console.error("[CastAbility] Error response:", res.error);
+            showGameError(res.error);
+          }
+        }}
+        onCancelBuff={async (buffId, options) => {
+          const res = await cancelBuff(buffId, options);
+          if (!res.ok && res.error) {
             showGameError(res.error);
           }
         }}

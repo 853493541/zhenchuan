@@ -114,7 +114,11 @@ export interface AbilityEditorAbilityEntry {
   hasOverrides: boolean;
   tags: Record<string, string>;
   isProjectile: boolean;
+  manualIsProjectile: boolean;
+  manuallyProjectileExcluded: boolean;
   dunLiWhitelisted: boolean;
+  manualDunLiWhitelisted: boolean;
+  manuallyDunLiExcluded: boolean;
   stats: AbilityEditorStat[];
   activePropertyIds: AbilityPropertyId[];
   availablePropertyIds: AbilityPropertyId[];
@@ -1224,7 +1228,9 @@ export function buildAbilityEditorEntry(params: {
     coreSettings.some((setting) => setting.overridden) ||
     damageSettings.some((setting) => setting.overridden) ||
     channelTimingSettings.some((setting) => setting.overridden) ||
-    (overrides?.tags ? Object.keys(overrides.tags).length > 0 : false);
+    (overrides?.tags ? Object.keys(overrides.tags).length > 0 : false) ||
+    overrides?.isProjectile !== undefined ||
+    overrides?.dunLiWhitelisted !== undefined;
 
   return {
     id: ability.id,
@@ -1234,8 +1240,12 @@ export function buildAbilityEditorEntry(params: {
     target: ability.target,
     hasOverrides,
     tags: overrides?.tags ?? {},
-    isProjectile: overrides?.isProjectile === true,
-    dunLiWhitelisted: overrides?.dunLiWhitelisted === true,
+    isProjectile: (ability as any).isProjectile === true,
+    manualIsProjectile: overrides?.isProjectile === true,
+    manuallyProjectileExcluded: overrides?.isProjectile === false,
+    dunLiWhitelisted: (ability as any).dunLiWhitelisted === true,
+    manualDunLiWhitelisted: overrides?.dunLiWhitelisted === true,
+    manuallyDunLiExcluded: overrides?.dunLiWhitelisted === false,
     stats: buildAbilityEditorStats(ability),
     activePropertyIds: properties.filter((property) => property.enabled).map((property) => property.id),
     availablePropertyIds: properties.filter((property) => !property.enabled).map((property) => property.id),

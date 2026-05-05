@@ -1,4 +1,4 @@
-import { resolveBuffIconPath } from "../lib/buffIcons";
+import { FALLBACK_BUFF_ICON_PATH, resolveBuffIconPath } from "../lib/buffIcons";
 import { getAbilityIconPath } from "../lib/iconPaths";
 
 export type PropertyCatalogItem = {
@@ -125,7 +125,11 @@ export type AbilityEditorAbility = {
   hasOverrides: boolean;
   tags: Record<string, string>;
   isProjectile: boolean;
+  manualIsProjectile: boolean;
+  manuallyProjectileExcluded: boolean;
   dunLiWhitelisted: boolean;
+  manualDunLiWhitelisted: boolean;
+  manuallyDunLiExcluded: boolean;
   stats: AbilityEditorStat[];
   activePropertyIds: string[];
   availablePropertyIds: string[];
@@ -165,6 +169,7 @@ export type BuffEditorEntry = {
   hidden: boolean;
   description: string;
   iconPath?: string;
+  iconMissing?: boolean;
   sourceAbilityName?: string;
   /** Duration in ms as exposed by the editor (override value if set, else base). */
   durationMs: number | null;
@@ -192,6 +197,46 @@ export type QinYinGongMingSnapshot = {
   updatedAt: string | null;
   buffs: QinYinGongMingEntry[];
 };
+
+export type DamageReductionOverrideEntry = BuffEditorEntry & {
+  damageReductionValue: number;
+  manualCanOverride: boolean;
+  manualNoOverride: boolean;
+  canOverride: boolean;
+};
+
+export type DamageReductionOverrideSnapshot = {
+  updatedAt: string | null;
+  buffs: DamageReductionOverrideEntry[];
+};
+
+export type DamageReductionOverrideMode = "can-override" | "no-override" | "clear";
+
+export type ManualCancelableBuffEntry = BuffEditorEntry & {
+  manualCancelable: boolean;
+  manuallyExcluded: boolean;
+  canManualCancel: boolean;
+};
+
+export type ManualCancelableBuffSnapshot = {
+  updatedAt: string | null;
+  buffs: ManualCancelableBuffEntry[];
+};
+
+export type ManualCancelableBuffMode = "manual-include" | "manual-exclude" | "clear";
+
+export type HiddenBuffEntry = BuffEditorEntry & {
+  defaultHidden: boolean;
+  manualHidden: boolean;
+  manuallyVisible: boolean;
+};
+
+export type HiddenBuffSnapshot = {
+  updatedAt: string | null;
+  buffs: HiddenBuffEntry[];
+};
+
+export type HiddenBuffMode = "manual-include" | "manual-exclude" | "clear";
 
 export type NoWeaponRequiredEntry = {
   id: string;
@@ -256,7 +301,8 @@ export function getAbilityIconByName(abilityName: string) {
   return getAbilityIconPath(abilityName);
 }
 
-export function getBuffIconPath(entry: Pick<BuffEditorEntry, "name" | "iconPath">): string {
+export function getBuffIconPath(entry: Pick<BuffEditorEntry, "name" | "iconPath" | "iconMissing">): string {
+  if (entry.iconMissing === true) return FALLBACK_BUFF_ICON_PATH;
   return resolveBuffIconPath(entry.name, entry.iconPath);
 }
 

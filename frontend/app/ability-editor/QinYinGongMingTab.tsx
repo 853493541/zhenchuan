@@ -2,12 +2,14 @@
 
 import { useMemo, useState } from "react";
 
+import CopyNameButton from "./CopyNameButton";
 import {
   QinYinGongMingEntry,
   QinYinGongMingSnapshot,
   getBuffIconPath,
   getBuffSubtitle,
 } from "./editorShared";
+import { usePersistentState } from "./usePersistentState";
 import styles from "./page.module.css";
 
 interface Props {
@@ -19,9 +21,9 @@ interface Props {
 }
 
 export default function QinYinGongMingTab({ snapshot, loading, errorMessage, onRetry, onToggle }: Props) {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = usePersistentState("abilityEditor.qinYinGongMing.search", "");
   const [togglingBuffId, setTogglingBuffId] = useState<number | null>(null);
-  const [stealableTab, setStealableTab] = useState<"default" | "special">("default");
+  const [stealableTab, setStealableTab] = usePersistentState<"default" | "special">("abilityEditor.qinYinGongMing.stealableTab", "default");
 
   const buffs = snapshot?.buffs ?? [];
   const normalizedSearch = search.trim().toLowerCase();
@@ -249,6 +251,7 @@ function DecisionBuffRow({
           <div style={{ fontWeight: 700, fontSize: 13, color: "#211d18", lineHeight: 1.2 }}>
             {entry.name}
           </div>
+          <CopyNameButton value={entry.name} />
         </div>
 
         <div style={{ marginTop: 3, fontSize: 12, color: "#72675b" }}>
@@ -260,34 +263,36 @@ function DecisionBuffRow({
         <button
           type="button"
           disabled={disabled}
-          onClick={onDecideCan}
+            onClick={onDecideNo}
           style={{
-            padding: "4px 10px",
+              width: 34,
+              minHeight: 28,
             borderRadius: 6,
-            border: "1px solid #305f3d",
+              border: "1px solid #9a4a2a",
             background: disabled ? "#ddd" : "transparent",
-            color: disabled ? "#777" : "#305f3d",
+              color: disabled ? "#777" : "#9a4a2a",
             fontWeight: 700,
             cursor: disabled ? "not-allowed" : "pointer",
           }}
         >
-          ✓
+            X
         </button>
         <button
           type="button"
           disabled={disabled}
-          onClick={onDecideNo}
+            onClick={onDecideCan}
           style={{
-            padding: "4px 10px",
+              width: 34,
+              minHeight: 28,
             borderRadius: 6,
-            border: "1px solid #9a4a2a",
+              border: "1px solid #305f3d",
             background: disabled ? "#ddd" : "transparent",
-            color: disabled ? "#777" : "#9a4a2a",
+              color: disabled ? "#777" : "#305f3d",
             fontWeight: 700,
             cursor: disabled ? "not-allowed" : "pointer",
           }}
         >
-          X
+            ✓
         </button>
       </div>
     </div>
@@ -310,7 +315,7 @@ function SectionHeader({
       style={{
         padding: "8px 14px",
         background,
-        borderRadius: "10px 10px 0 0",
+        borderRadius: "8px 8px 0 0",
         fontWeight: 700,
         fontSize: 13,
         color,
@@ -328,7 +333,7 @@ function ListShell({ children, border, background }: { children: React.ReactNode
       style={{
         border: `1px solid ${border}`,
         borderTop: "none",
-        borderRadius: "0 0 10px 10px",
+        borderRadius: "0 0 8px 8px",
         background,
         maxHeight: 640,
         overflowY: "auto",
@@ -385,6 +390,7 @@ function BuffRow({
           <div style={{ fontWeight: 700, fontSize: 13, color: "#211d18", lineHeight: 1.2 }}>
             {entry.name}
           </div>
+          <CopyNameButton value={entry.name} />
           {entry.hidden && (
             <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 999, background: "#9992", color: "#666", border: "1px solid #9996" }}>
               隐藏
@@ -419,7 +425,8 @@ function BuffRow({
           onClick={onAction}
           style={{
             flexShrink: 0,
-            padding: "4px 10px",
+            width: 72,
+            minHeight: 28,
             borderRadius: 6,
             border: `1px solid ${actionTint}`,
             background: disabled ? "#ddd" : "transparent",

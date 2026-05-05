@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { toastError, toastSuccess } from "../../components/toast/toast";
@@ -59,6 +58,7 @@ function formatChannelBoolean(value: boolean) {
 
 export default function AbilityDetailPage() {
   const params = useParams<{ abilityId: string }>();
+  const router = useRouter();
   const abilityId = Array.isArray(params.abilityId) ? params.abilityId[0] : params.abilityId;
 
   const [snapshot, setSnapshot] = useState<AbilityEditorSnapshot | null>(null);
@@ -66,6 +66,14 @@ export default function AbilityDetailPage() {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [numericDrafts, setNumericDrafts] = useState<Record<string, string>>({});
+
+  const goBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/ability-editor");
+  };
 
   const loadSnapshot = async () => {
     setLoading(true);
@@ -237,7 +245,7 @@ export default function AbilityDetailPage() {
         <div className={styles.statePanel}>
           <p className={styles.stateTitle}>没有找到这个技能</p>
           <p className={styles.stateCopy}>可能是技能 ID 不存在，或者数据还没有加载成功。</p>
-          <Link href="/ability-editor" className={styles.backLink}>← 返回技能总览</Link>
+          <button type="button" className={styles.backLink} onClick={goBack} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}>← 返回技能总览</button>
         </div>
       </div>
     );
@@ -250,7 +258,7 @@ export default function AbilityDetailPage() {
     <div className={styles.page}>
       {/* Top nav */}
       <div className={styles.topNav}>
-        <Link href="/ability-editor" className={styles.backLink}>← 技能列表</Link>
+        <button type="button" className={styles.backLink} onClick={goBack} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}>← 技能列表</button>
         <span className={styles.updatedAt}>最后保存：{formatUpdatedAt(snapshot?.updatedAt ?? null)}</span>
       </div>
 

@@ -3,6 +3,83 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Editor session state, dummy buff cancel, and movement audits (2026-05-05)
+
+**Problem set**:
+1. Ability Editor filters should remember choices only while the current page stays loaded, then reset on refresh.
+2. Owned friendly test dummy buffs still could not be canceled because the normal player cancel path only allows beneficial Buffs marked `manualCancelable`.
+3. `踏星行` snap-up looked instant locally but interpolated upward for the opponent.
+4. `任驰骋` should be blocked only during the actual `凌然天风` special-jump activeDash, not for the full Buff duration; entering `御骑` should remove `凌然天风`.
+5. Projectile and DunLi whitelist editor pages need true three-column decision state, including explicit manual exclusion, to match `琴音共鸣`.
+
+**Fix**:
+- `usePersistentState(...)` now stores editor filter/tab state in a module-level page-session map instead of browser storage, so navigation within the loaded page keeps filters but refresh clears them.
+- Owned `test_dummy_ally` status bars use a testing-only cancel path: frontend passes `entityTargetId`, backend verifies ownership/kind, then `cancelAnyBuffForTesting(...)` removes the selected status and emits normal `BUFF_EXPIRED` cleanup events.
+- `DirectionalDash.ts` applies `snapUpUnits` immediately at cast setup before the next broadcast, and `Character.tsx` hard-snaps large vertical opponent deltas instead of lerping them.
+- `任驰骋` validation now checks `activeDash.abilityId === "ling_ran_tian_feng"` with remaining ticks; `御骑` application expires Buff `2654` if present.
+- Projectile/DunLi override state now supports explicit `true`, explicit `false`, and clear. The UI can show Included / Undecided / Excluded without conflating base resolved state with manual decisions.
+
+**Audits**:
+- Knockback and pull movement paths are still using `activeDash` for real forced movement. The visible `KNOCKED_BACK` / `PULLED` Buffs act as status/control/display markers, not as the movement carrier.
+- Full unused-Buff audit found one stale override-only Buff entry: `2736 舍身诀·减伤`, which was intentionally merged into `2737 舍身诀`; preload-only entries are runtime/preload metadata and not delete candidates by that fact alone.
+
+**Lessons**:
+- Test dummies need narrowly scoped testing semantics on the backend; reusing normal player rules can make editor/debug targets impossible to manipulate.
+- Server-side instant position changes still need frontend interpolation rules reviewed, because a correct authoritative state can still look wrong if the renderer smooths a blink.
+- Tri-state editor pages need backend storage that preserves explicit `false`; treating `false` as empty collapses “manual no” into “undecided”.
+
+## Buff links, display metadata, and support-target cleanup (2026-05-05)
+
+**Problem set**:
+1. Several linked or companion buffs could be manually canceled, dispelled, or naturally removed without their paired runtime state disappearing.
+2. `韦陀献杵·防御` had a real icon file, but preload built the icon path before applying the editor override name, so it looked for the old no-dot filename.
+3. Display-only or compound mobility buffs (`踏星行`, `烟雨行`) need preload metadata and must not be hidden just because one of their effects is `DASH_TURN_OVERRIDE`.
+4. The Buff Editor needs a true “no icon” filter; checking whether `iconPath` is present is insufficient because preload gives every buff a default path.
+
+**Fix**:
+- `pushBuffExpired(...)` is now the central linked-removal seam for `浮光掠影 -> 遁影`, `舍身诀/舍身诀·承伤`, `渊/渊·承伤`, and `绿野蔓生` zone cleanup. Manual cancel, dispel, natural expiry, and redirect-consume paths pass source metadata through where needed.
+- `浮光掠影` movement/common-skill grace now depends on `遁影` still being present; canceling `遁影` no longer leaves the first-5-second movement grace active.
+- `abilityPreload.ts` applies buff editor `name` overrides before default icon path generation, and only hides pure one-effect `DASH_TURN_OVERRIDE` marker buffs. Compound buffs with real gameplay/display effects remain visible.
+- `buffTagSystem.ts` checks `frontend/public/icons` for the resolved icon file and exposes `iconMissing`, letting `BuffEditorTab.tsx` filter real no-icon buffs.
+- Friendly test dummy buff cancellation reuses the existing manual-cancel route with an optional `entityTargetId`, constrained to `test_dummy_ally` entities owned by the requesting user.
+
+**Lessons**:
+- Linked buff semantics belong as close as possible to buff removal, not inside individual UI or dispel handlers. Otherwise manual cancel, dispel, damage consume, and natural expiry drift.
+- For editor-derived display names, icon resolution must happen after overrides are applied. Otherwise assets can exist and still miss due to stale canonical names.
+- “No icon” is a filesystem fact, not a data-shape fact, because the preload layer intentionally creates fallback-looking default paths for every buff.
+
+## 减伤被顶 runtime + editor (2026-05-05)
+
+**Problem set**:
+1. 减伤 Buff 以前只会全部共存并按乘法叠加，无法表达“高减伤顶掉低减伤”的规则。
+2. 用户需要一个类似 `琴音共鸣` 的批量页面，逐个决定减伤 Buff 是“可以被顶”还是“不可被顶”。
+3. `不可被顶` 减伤必须与更高减伤或其他 `不可被顶` 共存，并按加法进入最终减伤总量，例如 `50% + 80% = 130%`。
+4. 当最终减伤达到 `100%` 时，实际不能掉血，但战斗飘字要显示 `-0.1`。
+
+**Fix**:
+- `buffRuntime.ts` 在 `addBuff()` 的统一入口加入了“减伤被顶”规则。新的可被顶减伤会被已有更高或相等减伤挡掉；更高的新减伤会立刻移除较低的“可以被顶”减伤；`不可被顶` 永远不会被这条规则移除。
+- 减伤比较按 `damageType` 覆盖关系处理：不带伤害类型的减伤视为全局覆盖，带类型的减伤只覆盖相同类型。
+- `combatMath.ts` 把目标侧 `DAMAGE_REDUCTION` 从乘法叠加改成加法汇总，再用 `max(0, 1 - totalReduction)` 结算；同一轮也把 `fullyReducedByDamageReduction` 标记带回伤害 roll。
+- `Damage.ts` 在即时伤害被 `100%+` 减伤完全抵消时，不调用扣血，只发一个 `value: 0.1` 且 `suppressCritLabel: true` 的 `DAMAGE` 事件，让 BattleArena 显示 `-0.1` 而不会误判为会心。
+- 新增 `damageReductionOverride.ts`、后端路由 `/ability-editor/damage-reduction-override`、前端 `DamageReductionOverrideTab.tsx`，并接入 Ability Editor 主页面的“减伤被顶”tab。页面写回现有 `buff-attribute-overrides.json` 的 `properties[].noOverride`，因此 Buff 详情页和批量页共用同一份配置。
+- 顺手补了 `StoredBuffEditorOverrideEntry.properties` 类型与 `buffTagSystem.ts` 对 `qinYinGongMingUnstealable` 的保留，避免新增批量页保存时意外丢掉既有配置字段。
+
+**Lessons**:
+- 减伤被顶必须落在 `addBuff()`，因为项目规则要求所有 Buff 都通过这里进入运行时；如果在伤害结算时才临时挑选最高减伤，低减伤 Buff 仍会错误留在状态栏。
+- “不可被顶”已经存在于 Buff 属性覆盖模型中，新增批量页时应复用这条字段，而不是另开一个配置文件。
+- `-0.1` 飘字最好作为显示事件处理，不应该把 `resolveScheduledDamage()` 直接返回 `0.1`，否则其他直接扣血分支可能真的扣掉这 `0.1` HP。
+
+**Follow-up (later same day)**:
+- 用户随后要求 `100%+` 减伤飘字从 `-0.1` 改成白色 `-0`，且所有受伤路径都要统一。最终做法是继续保持真实伤害为 `0`，在 `GameEvent` 上加 `displayZeroDamage`，由 `Damage.ts`、`GameLoop.ts`、`immediateEffects.ts` 的伤害分支发出零伤害展示事件，再由 `BattleArena.tsx` 以白字 `-0` 展示。
+- `风来吴山` 的不工 Buff 需要免疫击退但不免疫拉拽，因此使用已有窄语义 `KNOCKED_BACK_IMMUNE`，不能改成完整的 `KNOCKBACK_IMMUNE`。
+
+**手动点掉 Buff + decider pages follow-up (later same day)**:
+- 新增 `manualCancelableBuffs.ts` 与 `/ability-editor/manual-cancelable-buffs`，把“可以主动取消 / 不可主动取消 / 未决定”写入现有 `buff-attribute-overrides.json`，避免再造一份配置。
+- 运行时取消入口是 `cancelManualBuff(...)`：只允许 `BUFF` 且必须被标记为 `manualCancelable`；移除时会清 linked shield、删 active buff，并发 `BUFF_EXPIRED`，这样表现与过期/驱散保持一致。
+- 前端只在本方 StatusBar 的可见 Buff 图标上响应右键，且只在 preload metadata 标记 `manualCancelable` 时发送 `/api/game/buff/cancel`。
+- 新增隐藏 Buff 批量页 `/ability-editor/hidden-buffs`，复用现有 `hidden` override 字段；同时把远程弹道技能、盾立白名单、无需武器、可以马上施展、琴音共鸣、减伤被顶以及新增两个 Buff decider 页统一成更接近三列判定样式，并给列表名旁补复制按钮。
+- `无相诀·五十/六十/七十/八十/九十` 的图标不是缺文件，而是 preload override 指向不存在的 `/icons/无相.png`。实际文件存在于 `frontend/public/icons/无相诀·*.png`，已改成逐档精确路径。
+
 ## 渊落点修正 + 雾暗迷云混乱重定向 (2026-05-03)
 
 **Problem set**:

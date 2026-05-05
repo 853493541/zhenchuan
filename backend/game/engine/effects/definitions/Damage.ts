@@ -128,6 +128,7 @@ export function handleDamage(
       }
     }
   } else {
+    const fullyReducedByDamageReduction = damageRoll.fullyReducedByDamageReduction === true;
     // final === 0 (dodge / immune): still emit the zero-damage event.
     pushEvent(state, {
       turn: state.turn,
@@ -138,6 +139,8 @@ export function handleDamage(
       abilityName: ability.name,
       effectType: "DAMAGE",
       value: 0,
+      suppressCritLabel: fullyReducedByDamageReduction ? true : undefined,
+      displayZeroDamage: fullyReducedByDamageReduction ? true : undefined,
     });
   }
 }

@@ -87,6 +87,11 @@ function hasLingRanTianFengStateClient(buffs?: ActiveBuff[]): boolean {
   );
 }
 
+function isLingRanSpecialJumpActiveClient(player?: any): boolean {
+  const dash = player?.activeDash;
+  return dash?.abilityId === 'ling_ran_tian_feng' && dash.ticksRemaining > 0 && dash.lingRanCastLift !== true;
+}
+
 function hasLingRanSpecialJumpRefillBuffClient(buffs?: ActiveBuff[]): boolean {
   return Array.isArray(buffs) && buffs.some((buff) => buff.buffId === 1014 || buff.buffId === 2712);
 }
@@ -1071,6 +1076,7 @@ interface BattleArenaProps {
     groundTarget?: { x: number; y: number; z?: number },
     entityTargetId?: string,
   ) => Promise<void>;
+  onCancelBuff?: (buffId: number, options?: { entityTargetId?: string }) => Promise<void>;
   distance: number;
   maxHp: number;
   abilities: Record<string, any>;
@@ -1098,6 +1104,7 @@ export default function BattleArena({
   opponents,
   gameId,
   onCastAbility,
+  onCancelBuff,
   distance,
   maxHp,
   abilities,
@@ -1516,7 +1523,7 @@ export default function BattleArena({
   /* --- Floating damage/heal numbers --- */
   type FloatType = 'dmg_dealt' | 'dmg_taken' | 'heal' | 'huajie' | 'xishou';
   /** text: overrides the auto-generated display (used for 化解 which shows no number) */
-  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number }; yOffset: number; text?: string; isCrit?: boolean };
+  type FloatEntry = { id: number; value: number; type: FloatType; startTime: number; label?: string; screenPct?: { x: number; y: number }; yOffset: number; text?: string; isCrit?: boolean; white?: boolean };
   const [floats, setFloats] = useState<FloatEntry[]>([]);
   const floatIdRef = useRef(0);
   const lastCastNameRef = useRef<string | null>(null);
@@ -1525,8 +1532,8 @@ export default function BattleArena({
   const floatTypeCountRef = useRef<Record<string, number>>({});
   // Track how many events we've already processed to avoid re-processing on re-render
   const prevEventsLenRef = useRef<number>(-1);
-  const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number }; text?: string; isCrit?: boolean }) => {
-    if (value <= 0 && type !== 'huajie' && type !== 'xishou') return;
+  const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number }; text?: string; isCrit?: boolean; allowZero?: boolean; white?: boolean }) => {
+    if (value <= 0 && type !== 'huajie' && type !== 'xishou' && opts?.allowZero !== true) return;
     const id = ++floatIdRef.current;
     const safeScreenPct =
       opts?.screenPct && Number.isFinite(opts.screenPct.x) && Number.isFinite(opts.screenPct.y)
@@ -1539,7 +1546,7 @@ export default function BattleArena({
     const stagger = floatTypeCountRef.current[type] ?? 0;
     floatTypeCountRef.current[type] = stagger + 1;
     const yOffset = stagger * 28; // 28px per simultaneous float of the same type
-    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: safeScreenPct, yOffset, text: opts?.text, isCrit: opts?.isCrit }]);
+    setFloats(f => [...f, { id, value, type, startTime: Date.now(), label: opts?.label, screenPct: safeScreenPct, yOffset, text: opts?.text, isCrit: opts?.isCrit, white: opts?.white }]);
     setTimeout(() => {
       setFloats(f => f.filter(e => e.id !== id));
       floatTypeCountRef.current[type] = Math.max(0, (floatTypeCountRef.current[type] ?? 1) - 1);
@@ -1852,6 +1859,14 @@ export default function BattleArena({
       toastError('目标处于免拉状态');
       return;
     }
+    if (abilityKey === 'you_feng_piao_zong' && !selectedTargetIdNow) {
+      toastError('请先选择敌方目标');
+      return;
+    }
+    if (abilityKey === 'you_feng_piao_zong' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
+      toastError('目标不可选中');
+      return;
+    }
     if (ability?.target === 'OPPONENT' && !targetPos) {
       if (ability?.allowGroundCastWithoutTarget) {
         setPendingGroundCastAbilityId(id);
@@ -1889,6 +1904,10 @@ export default function BattleArena({
     }
     if (ability?.cannotCastWhileRooted && buffsHaveAnyEffect(me?.buffs, ['ROOT'])) {
       toastError('你被锁足，无法施展该招式');
+      return;
+    }
+    if (abilityKey === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
+      toastError('凌然天风特殊跳跃中无法施展任驰骋');
       return;
     }
     if (typeof ability?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ability.minSelfHpExclusive) {
@@ -1930,11 +1949,14 @@ export default function BattleArena({
     setGroundCastPreview(null);
     // If an entity is selected and ability targets OPPONENT, route as entity attack.
     const useEntityTarget = ability?.target === 'OPPONENT' && selectedEntityIdNow && !selectedTargetIdNow && !selectedSelfNow;
+    const supportSelfTargetUserId = abilityKey === 'you_feng_piao_zong'
+      ? selectedTargetIdNow ?? undefined
+      : undefined;
     onCastAbility(
       id,
       ability?.target === 'OPPONENT'
         ? (selectedSelfNow ? me.userId : selectedTargetIdNow ?? undefined)
-        : undefined,
+        : supportSelfTargetUserId,
       undefined,
       useEntityTarget ? selectedEntityIdNow : undefined,
     );
@@ -2552,9 +2574,11 @@ export default function BattleArena({
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
       if (evt.type === 'PLAY_ABILITY' && evt.abilityId === 'dou_zhuan_xing_yi') {
         lastInstantSwapCastAtRef.current = performance.now();
-      } else if (evt.type === 'DAMAGE' && (evt.value ?? 0) > 0 && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
+      } else if (evt.type === 'DAMAGE' && (((evt.value ?? 0) > 0) || (evt as any).displayZeroDamage === true) && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
         const damageWasCrit = isCritDamageEvent(evt);
         const eventLabel = (evt as any).hideAbilityName === true ? '' : evt.abilityName;
+        const displayZeroDamage = (evt as any).displayZeroDamage === true;
+        const zeroDamageText = eventLabel ? `${eventLabel}： -0` : '-0';
         if (evt.targetUserId === myId) {
           if (!selectedTargetRef.current && !selectedEntityRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
             const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
@@ -2565,19 +2589,23 @@ export default function BattleArena({
               selectedSelfRef.current = false;
             }
           }
-          // I took damage — determine 化解 (shield absorption) display
-          const shieldAbs = evt.shieldAbsorbed ?? 0;
-          const totalDmg = evt.value ?? 0;
-          if (shieldAbs >= totalDmg) {
-            // Fully blocked by shield — show 化解 only
-            addFloat(1, 'huajie', { text: '化解' });
-          } else if (shieldAbs > 0) {
-            // Partially blocked — show 化解 and the HP damage that got through
-            addFloat(1, 'huajie', { text: '化解' });
-            addFloat(totalDmg - shieldAbs, 'dmg_taken', { label: eventLabel, isCrit: damageWasCrit });
+          if (displayZeroDamage) {
+            addFloat(0, 'dmg_taken', { text: zeroDamageText, allowZero: true, white: true });
           } else {
+            // I took damage — determine 化解 (shield absorption) display
+            const shieldAbs = evt.shieldAbsorbed ?? 0;
+            const totalDmg = evt.value ?? 0;
+            if (shieldAbs >= totalDmg) {
+            // Fully blocked by shield — show 化解 only
+              addFloat(1, 'huajie', { text: '化解' });
+            } else if (shieldAbs > 0) {
+            // Partially blocked — show 化解 and the HP damage that got through
+              addFloat(1, 'huajie', { text: '化解' });
+              addFloat(totalDmg - shieldAbs, 'dmg_taken', { label: eventLabel, isCrit: damageWasCrit });
+            } else {
             // No shield involved — normal damage float
-            addFloat(evt.value, 'dmg_taken', { label: eventLabel, isCrit: damageWasCrit });
+              addFloat(evt.value, 'dmg_taken', { label: eventLabel, isCrit: damageWasCrit });
+            }
           }
         } else if (evt.actorUserId === myId) {
           // I dealt damage to opponent — account for shield absorption
@@ -2590,7 +2618,9 @@ export default function BattleArena({
           const screenPct = bounds
             ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 55) / h) }
             : undefined;
-          if (shieldAbsAtk >= totalDmgAtk) {
+          if (displayZeroDamage) {
+            addFloat(0, 'dmg_dealt', { text: zeroDamageText, screenPct, allowZero: true, white: true });
+          } else if (shieldAbsAtk >= totalDmgAtk) {
             // Fully absorbed by opponent's shield
             addFloat(1, 'huajie', { text: '化解', screenPct });
           } else if (shieldAbsAtk > 0) {
@@ -3036,6 +3066,7 @@ export default function BattleArena({
       const targetContext = getAbilityTargetContext(ab);
       const targetForChecks = targetContext.targetForChecks;
       const targetPos = targetContext.targetPos;
+      const abilityIdForChecks = ab?.id ?? instance?.abilityId;
       const sharedGcdTicks = getSharedGcdTicks(ab);
       const mountedYuqiToggle = yuqiMounted && (ab?.id === 'yuqi' || instance?.abilityId === 'yuqi');
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
@@ -3073,6 +3104,7 @@ export default function BattleArena({
       if (nonQinggongLocked && ab?.qinggong !== true) return false;
       if (ab?.qinggong && qinggongSealed) return false;
       if (ab?.cannotCastWhileRooted && rootedByDebuff) return false;
+      if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) return false;
 
       // 拿云式: target HP must be < 30
       if (ab?.id === 'na_yun_shi' || instance?.abilityId === 'na_yun_shi') {
@@ -3105,6 +3137,9 @@ export default function BattleArena({
       }
       if (ab?.id === 'qin_yin_gong_ming' || instance?.abilityId === 'qin_yin_gong_ming') {
         if (targetContext.entityTarget) return false;
+      }
+      if (abilityIdForChecks === 'you_feng_piao_zong' && !targetContext.playerTarget) {
+        return false;
       }
 
       const distanceToTarget = (myPos && targetPos)
@@ -5764,7 +5799,18 @@ export default function BattleArena({
               })()}
               {/* Buffs row — fixed-height wrapper so ability row never shifts up */}
               <div style={{ minHeight: 72, width: '100%' }}>
-                <StatusBar buffs={targetBuffs} debugLabel={isSelf ? 'me-target' : 'opp'} />
+                <StatusBar
+                  buffs={targetBuffs}
+                  debugLabel={isSelf ? 'me-target' : 'opp'}
+                  allowAnyCancel={!isSelf && isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally'}
+                  onCancelBuff={
+                    isSelf
+                      ? onCancelBuff
+                      : (isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally' && onCancelBuff)
+                        ? ((buffId) => onCancelBuff(buffId, { entityTargetId: selectedEntity.id }))
+                        : undefined
+                  }
+                />
               </div>
               {/* Drafted abilities */}
               <div className={styles.enemyAbilityRow}>
@@ -6420,7 +6466,7 @@ export default function BattleArena({
           {/* ── Player buffs above drafted slots ── */}
           {me?.buffs && me.buffs.length > 0 && (
             <div className={styles.playerBuffRow}>
-              <StatusBar buffs={me.buffs} showDebug debugLabel="me" />
+              <StatusBar buffs={me.buffs} showDebug debugLabel="me" onCancelBuff={onCancelBuff} />
             </div>
           )}
 
@@ -6747,7 +6793,9 @@ export default function BattleArena({
         // quick fade-in (0→8%), hold (8→75%), fade-out (75→100%)
         const opacity  = age < 0.08 ? age / 0.08 : Math.max(0, 1 - Math.max(0, age - 0.75) / 0.25);
         const travelUp = -80 * age; // floats upward
-        const color = entry.type === 'dmg_dealt'
+        const color = entry.white
+          ? '#ffffff'
+          : entry.type === 'dmg_dealt'
           ? (entry.isCrit ? '#ffe600' : '#ffffff')
           : entry.type === 'heal'
           ? '#44ff66'

@@ -18,6 +18,8 @@ type Props = {
   showDebug?: boolean;
   /** Label shown in the debug panel to distinguish me vs opponent. */
   debugLabel?: string;
+  onCancelBuff?: (buffId: number) => Promise<void> | void;
+  allowAnyCancel?: boolean;
 };
 
 type ResolvedBuff = {
@@ -28,6 +30,7 @@ type ResolvedBuff = {
   description: string;
   expiresAt: number;
   iconPath?: string;
+  manualCancelable?: boolean;
   stacks?: number; // live stack count for stackable debuffs
 };
 
@@ -45,6 +48,8 @@ export default function StatusBar({
   arenaRef,
   showDebug = false,
   debugLabel = '?',
+  onCancelBuff,
+  allowAnyCancel = false,
 }: Props) {
   const preload = useGamePreload();
   const [activeHint, setActiveHint] = useState<ActiveHint | null>(null);
@@ -105,6 +110,7 @@ export default function StatusBar({
         description: meta.description ?? "无",
         expiresAt:   b.expiresAt,
         iconPath:    meta.iconPath,
+        manualCancelable: meta.manualCancelable === true,
         stacks:      b.stacks,
       };
     })
@@ -137,6 +143,7 @@ export default function StatusBar({
     const colorClass  = b.category === "BUFF" ? styles.buffText : styles.debuffText;
     const secsLeft    = getRemainingSeconds(b);
     const isLastTick  = secsLeft < 5;
+    const canManualCancel = !!onCancelBuff && (allowAnyCancel || (b.category === "BUFF" && b.manualCancelable === true));
     // Timer always shows countdown; stacks shown as icon overlay badge
     const timerStr    = secsLeft >= 10 ? String(Math.floor(secsLeft)) : secsLeft.toFixed(1);
 
@@ -151,9 +158,19 @@ export default function StatusBar({
             className={`${styles.buffIcon} ${
               b.category === "BUFF" ? styles.buffBorder : styles.debuffBorder
             }`}
-            style={{ backgroundImage: getBuffIconBackgroundImage(b.name, b.iconPath) }}
+            style={{
+              backgroundImage: getBuffIconBackgroundImage(b.name, b.iconPath),
+              cursor: canManualCancel ? "context-menu" : undefined,
+            }}
             onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b)}
             onMouseLeave={closeHint}
+            onContextMenu={(e) => {
+              if (!canManualCancel || !onCancelBuff) return;
+              e.preventDefault();
+              e.stopPropagation();
+              closeHint();
+              void onCancelBuff(b.buffId);
+            }}
           />
           {b.stacks !== undefined && (b.stacks >= 2 || ALWAYS_SHOW_STACK_BADGE.has(b.buffId)) && (
             <span className={styles.stackBadge}>{b.stacks}</span>

@@ -92,7 +92,6 @@ const WU_XIANG_JUE_SIXTY_BUFF_ID = 2731;
 const WU_XIANG_JUE_SEVENTY_BUFF_ID = 2732;
 const WU_XIANG_JUE_EIGHTY_BUFF_ID = 2733;
 const WU_XIANG_JUE_NINETY_BUFF_ID = 2734;
-const SHESHEN_DAMAGE_REDUCTION_BUFF_ID = 2736;
 const SHESHEN_REDIRECT_BUFF_ID = 2737;
 const SHESHEN_BEAR_BUFF_ID = 2738;
 const YUAN_GUARD_BUFF_ID = 2739;
@@ -830,6 +829,7 @@ function cleanseDebuffsByAttributes(params: {
         buffCategory: removedBuff.category,
         sourceAbilityId: removedBuff.sourceAbilityId,
         sourceAbilityName: removedBuff.sourceAbilityName,
+        sourceUserId: removedBuff.sourceUserId,
       });
       removed++;
     }
@@ -967,7 +967,27 @@ function applyImmediateDamageToEnemyTarget(params: {
     damageType: (ability as any).damageType,
   });
   const resolvedDamage = damageRoll.damage;
-  if (resolvedDamage <= 0) return 0;
+  if (resolvedDamage <= 0) {
+    if (damageRoll.fullyReducedByDamageReduction === true) {
+      state.events.push({
+        id: randomUUID(),
+        timestamp: now,
+        turn: state.turn,
+        type: "DAMAGE",
+        actorUserId: source.userId,
+        ...(target.kind === "player"
+          ? { targetUserId: target.target.userId }
+          : { entityId: target.target.id, entityName: target.target.abilityName }),
+        abilityId: ability.id,
+        abilityName: ability.name,
+        effectType,
+        value: 0,
+        suppressCritLabel: true,
+        displayZeroDamage: true,
+      });
+    }
+    return 0;
+  }
 
   if (target.kind === "player") {
     const victim = target.target;
@@ -3247,18 +3267,6 @@ export function applyImmediateEffects(params: {
 
         handleCleanse(friendlyTarget as any, { cleanseRootSlow: true });
 
-        const reductionBuff = (ability.buffs ?? []).find((buff: any) => buff.buffId === SHESHEN_DAMAGE_REDUCTION_BUFF_ID);
-        if (reductionBuff) {
-          addBuff({
-            state,
-            sourceUserId: source.userId,
-            targetUserId: friendlyTarget.userId,
-            ability,
-            buffTarget: friendlyTarget,
-            buff: reductionBuff,
-          });
-        }
-
         const redirectBuff = (ability.buffs ?? []).find((buff: any) => buff.buffId === SHESHEN_REDIRECT_BUFF_ID);
         if (redirectBuff) {
           addBuff({
@@ -3994,6 +4002,7 @@ export function applyImmediateEffects(params: {
                 buffCategory: buff.category,
                 sourceAbilityId: buff.sourceAbilityId,
                 sourceAbilityName: buff.sourceAbilityName,
+                sourceUserId: buff.sourceUserId,
               });
             }
             effTarget.buffs = remaining;
@@ -4009,6 +4018,7 @@ export function applyImmediateEffects(params: {
             buffCategory: buffChannelToRemove.category,
             sourceAbilityId: buffChannelToRemove.sourceAbilityId,
             sourceAbilityName: buffChannelToRemove.sourceAbilityName,
+            sourceUserId: buffChannelToRemove.sourceUserId,
           });
         }
 

@@ -411,7 +411,27 @@ function applyDamageToHostileTarget(params: {
     damageType,
   });
   const resolvedDamage = damageRoll.damage;
-  if (resolvedDamage <= 0) return 0;
+  if (resolvedDamage <= 0) {
+    if (damageRoll.fullyReducedByDamageReduction === true) {
+      state.events.push({
+        id: randomUUID(),
+        timestamp,
+        turn: state.turn,
+        type: "DAMAGE",
+        actorUserId: source.userId,
+        ...(target.kind === "player"
+          ? { targetUserId: target.target.userId }
+          : { entityId: target.target.id, entityName: target.target.abilityName }),
+        abilityId,
+        abilityName,
+        effectType,
+        value: 0,
+        suppressCritLabel: true,
+        displayZeroDamage: true,
+      } as any);
+    }
+    return 0;
+  }
 
   // Damage immunity + 盾立 reflect for player victims.
   if (target.kind === "player" && hasDamageImmune(target.target as any)) {
@@ -1699,16 +1719,29 @@ export class GameLoop {
         if (isJumping) player.buffs = player.buffs.filter((b) => !b.cancelOnJump);
 
         // 浮光掠影(1012):
-        // - first 5s: moving does not break
+        // - first 5s: moving does not break while 遁影 is still active
         // - jump always breaks
-        // - after 5s: moving breaks
+        // - after 5s, or after 遁影 is removed: moving breaks
         const fuguangStealth = player.buffs.find((b) => b.buffId === 1012);
         if (fuguangStealth) {
+          const hasDunyingGrace = player.buffs.some((b) => isDunyingCompanion(b));
           const stealthAgeMs = Date.now() - (fuguangStealth.appliedAt ?? Date.now());
-          const breakByMove = isMoving && stealthAgeMs >= 5_000;
+          const breakByMove = isMoving && (!hasDunyingGrace || stealthAgeMs >= 5_000);
           const breakByJump = isJumping;
           if (breakByMove || breakByJump) {
+            const brokenBuffs = player.buffs.filter((b) => b.buffId === 1012 || isDunyingCompanion(b));
             player.buffs = player.buffs.filter((b) => b.buffId !== 1012 && !isDunyingCompanion(b));
+            for (const brokenBuff of brokenBuffs) {
+              pushBuffExpired(this.state, {
+                targetUserId: player.userId,
+                buffId: brokenBuff.buffId,
+                buffName: brokenBuff.name,
+                buffCategory: brokenBuff.category,
+                sourceAbilityId: brokenBuff.sourceAbilityId,
+                sourceAbilityName: brokenBuff.sourceAbilityName,
+                sourceUserId: brokenBuff.sourceUserId,
+              });
+            }
           }
         }
 
@@ -3179,6 +3212,7 @@ export class GameLoop {
           buffCategory: expired.category,
           sourceAbilityId: expired.sourceAbilityId,
           sourceAbilityName: expired.sourceAbilityName,
+          sourceUserId: expired.sourceUserId,
         });
       }
       if (naturallyExpired.length > 0 || player.buffs.length !== before) buffsChanged = true;
@@ -3195,6 +3229,7 @@ export class GameLoop {
               buffCategory: buff.category,
               sourceAbilityId: buff.sourceAbilityId,
               sourceAbilityName: buff.sourceAbilityName,
+              sourceUserId: buff.sourceUserId,
             });
           }
           buffsChanged = true;
@@ -3398,6 +3433,7 @@ export class GameLoop {
           buffCategory: expired.category,
           sourceAbilityId: expired.sourceAbilityId,
           sourceAbilityName: expired.sourceAbilityName,
+          sourceUserId: expired.sourceUserId,
         });
       }
       if (naturallyExpired.length > 0 || (entity.buffs?.length ?? 0) !== before) {
@@ -3451,6 +3487,14 @@ export class GameLoop {
           const t = Math.min(1, Math.max(0, (now - startedAt) / growMs));
           zone.radius = (zone as any).growStartRadius + ((zone as any).growEndRadius - (zone as any).growStartRadius) * t;
         }
+        if (zone.abilityId === LV_YE_MAN_SHENG_ABILITY_ID) {
+          const lvYeTargetUserId = (zone as any).followTargetUserId ?? zone.ownerUserId;
+          const lvYeTarget = this.state.players.find((p) => p.userId === lvYeTargetUserId);
+          if (!lvYeTarget || !hasLvYeManShengBuff(lvYeTarget, now)) {
+            continue;
+          }
+        }
+
         // ── Pre-step: follow-target zones (振翅图南/飞刃回转) ──────────────
         if (zone.abilityId === LV_YE_MAN_SHENG_ABILITY_ID && (zone as any).followTargetUserId) {
           const fp = this.state.players.find((p) => p.userId === (zone as any).followTargetUserId);

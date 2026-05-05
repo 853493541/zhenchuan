@@ -1,4 +1,6 @@
 import { buildAbilityPreload } from "./abilityPreload";
+import fs from "fs";
+import path from "path";
 import {
   BUFF_ATTRIBUTES,
   BuffAttribute,
@@ -22,6 +24,7 @@ export interface BuffEditorEntry {
   hidden: boolean;
   description: string;
   iconPath?: string;
+  iconMissing?: boolean;
   sourceAbilityName?: string;
   /** Effective duration in ms (override if set, else code-defined). */
   durationMs: number | null;
@@ -42,6 +45,30 @@ function normalizeName(value: unknown) {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function getFrontendPublicDir() {
+  const candidates = [
+    path.resolve(__dirname, "../../../frontend/public"),
+    path.resolve(__dirname, "../../../../frontend/public"),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
+}
+
+function iconPathExists(iconPath: string | undefined) {
+  if (!iconPath) return false;
+  const [publicPath] = iconPath.split("?");
+  if (!publicPath.startsWith("/icons/")) return true;
+
+  let decodedPath = publicPath;
+  try {
+    decodedPath = decodeURIComponent(publicPath);
+  } catch {
+    decodedPath = publicPath;
+  }
+
+  const relativePath = decodedPath.replace(/^\/+/, "");
+  return fs.existsSync(path.join(getFrontendPublicDir(), relativePath));
 }
 
 function normalizeDescription(value: unknown) {
@@ -132,6 +159,9 @@ function sanitizeOverrideEntry(
     ? Math.max(100, Math.min(300_000, Math.round(entry.durationMs)))
     : undefined;
   const normalizedQinYinGongMingStealable = entry.qinYinGongMingStealable === true ? true : undefined;
+  const normalizedQinYinGongMingUnstealable = entry.qinYinGongMingUnstealable === true ? true : undefined;
+  const normalizedManualCancelable = entry.manualCancelable === true ? true : undefined;
+  const normalizedManualCancelExcluded = entry.manualCancelExcluded === true ? true : undefined;
 
   if (
     normalizedAttribute === "\u672a\u9009\u62e9" &&
@@ -140,7 +170,10 @@ function sanitizeOverrideEntry(
     !normalizedDescription &&
     normalizedProperties === undefined &&
     normalizedDurationMs === undefined &&
-    normalizedQinYinGongMingStealable === undefined
+    normalizedQinYinGongMingStealable === undefined &&
+    normalizedQinYinGongMingUnstealable === undefined &&
+    normalizedManualCancelable === undefined &&
+    normalizedManualCancelExcluded === undefined
   ) {
     return null;
   }
@@ -153,6 +186,9 @@ function sanitizeOverrideEntry(
     ...(normalizedProperties !== undefined ? { properties: normalizedProperties } : {}),
     ...(normalizedDurationMs !== undefined ? { durationMs: normalizedDurationMs } : {}),
     ...(normalizedQinYinGongMingStealable === true ? { qinYinGongMingStealable: true } : {}),
+    ...(normalizedQinYinGongMingUnstealable === true ? { qinYinGongMingUnstealable: true } : {}),
+    ...(normalizedManualCancelable === true ? { manualCancelable: true } : {}),
+    ...(normalizedManualCancelExcluded === true ? { manualCancelExcluded: true } : {}),
   };
 }
 
@@ -213,6 +249,7 @@ export function buildBuffEditorSnapshot(): BuffEditorSnapshot {
       hidden,
       description: override?.description ?? normalizeDescription(buff.description) ?? "\u65e0",
       iconPath: buff.iconPath ?? undefined,
+      iconMissing: !iconPathExists(buff.iconPath ?? undefined),
       sourceAbilityName: buff.sourceAbilityName ?? undefined,
       baseDurationMs,
       durationMs: override?.durationMs !== undefined ? override.durationMs : baseDurationMs,
@@ -241,6 +278,14 @@ export function setBuffHidden(buffId: number, hidden: boolean): string {
   return updateBuffOverride(buffId, (currentOverride, baseName, baseDescription, baseHidden) =>
     sanitizeOverrideEntry({ ...currentOverride, hidden }, baseName, baseDescription, baseHidden)
   );
+}
+
+export function clearBuffHiddenOverride(buffId: number): string {
+  return updateBuffOverride(buffId, (currentOverride, baseName, baseDescription, baseHidden) => {
+    const nextOverride = { ...currentOverride };
+    delete nextOverride.hidden;
+    return sanitizeOverrideEntry(nextOverride, baseName, baseDescription, baseHidden);
+  });
 }
 
 export function setBuffName(buffId: number, name: string): string {

@@ -467,6 +467,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       isMyTurn: false,
       isWinner: false,
       playAbility: async () => ({ ok: false }),
+      cancelBuff: async () => ({ ok: false }),
       endTurn: async () => ({ ok: false }),
       rtt,
     };
@@ -491,6 +492,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       isMyTurn: false,
       isWinner: false,
       playAbility: async () => ({ ok: false }),
+      cancelBuff: async () => ({ ok: false }),
       endTurn: async () => ({ ok: false }),
       rtt,
       refetch: fetchInitialGame,
@@ -568,6 +570,43 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     }
   };
 
+  const cancelBuff = async (buffId: number, options?: { entityTargetId?: string }) => {
+    if (playing || state.gameOver) {
+      return { ok: false };
+    }
+
+    setPlaying(true);
+    try {
+      const res = await fetch("/api/game/buff/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameId, buffId, entityTargetId: options?.entityTargetId }),
+      });
+
+      if (!res.ok) {
+        return { ok: false, error: await res.text() };
+      }
+
+      const patch = await res.json();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
+      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      versionRef.current = patch.version;
+
+      setGame((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          state: applyDiff(prev.state, normalizedDiff),
+        };
+      });
+
+      return { ok: true };
+    } finally {
+      setPlaying(false);
+    }
+  };
+
   /* ================= END TURN ================= */
 
   const endTurn = async () => {
@@ -618,6 +657,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     isMyTurn,
     isWinner,
     playAbility,
+    cancelBuff,
     endTurn,
     rtt,
     refetch: fetchInitialGame,

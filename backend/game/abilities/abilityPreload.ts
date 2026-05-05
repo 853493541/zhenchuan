@@ -7,11 +7,11 @@ const BUFF_ICON_PATH_OVERRIDES: Record<string, string> = {
   "散流霞": "/icons/散流霞-buff.png",
   "长针": "/icons/长针-buff.png",
   "风袖低昂": "/icons/风袖低昂-buff.png",
-  "无相诀·五十": "/icons/无相.png",
-  "无相诀·六十": "/icons/无相.png",
-  "无相诀·七十": "/icons/无相.png",
-  "无相诀·八十": "/icons/无相.png",
-  "无相诀·九十": "/icons/无相.png",
+  "无相诀·五十": "/icons/无相诀·五十.png",
+  "无相诀·六十": "/icons/无相诀·六十.png",
+  "无相诀·七十": "/icons/无相诀·七十.png",
+  "无相诀·八十": "/icons/无相诀·八十.png",
+  "无相诀·九十": "/icons/无相诀·九十.png",
 };
 
 function hasEffectFlag(
@@ -155,7 +155,9 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
         if (buff.buffId === 1008) {
           buffPayload.hiddenInStatusBar = true;
         }
-        if (Array.isArray(buff.effects) && buff.effects.some((effect) => effect?.type === "DASH_TURN_OVERRIDE")) {
+        const effects = Array.isArray(buff.effects) ? buff.effects : [];
+        const isPureDashTurnMarker = effects.length === 1 && effects.some((effect) => effect?.type === "DASH_TURN_OVERRIDE");
+        if (isPureDashTurnMarker) {
           buffPayload.hiddenInStatusBar = true;
         }
         buffs.push(buffPayload);
@@ -605,17 +607,20 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
 
   for (const buff of buffs) {
     const override = buffEditorOverrides[String(buff.buffId)];
-    if (!buff.iconPath) {
-      buff.iconPath = BUFF_ICON_PATH_OVERRIDES[buff.name] ?? `/icons/${buff.name}.png`;
-    }
     if (override?.name) {
       buff.name = override.name;
+    }
+    if (!buff.iconPath) {
+      buff.iconPath = BUFF_ICON_PATH_OVERRIDES[buff.name] ?? `/icons/${buff.name}.png`;
     }
     if (override?.description) {
       buff.description = override.description;
     }
     if (typeof override?.hidden === "boolean") {
       buff.hiddenInStatusBar = override.hidden;
+    }
+    if (override?.manualCancelable === true) {
+      buff.manualCancelable = true;
     }
     // Apply duration override so the engine uses the editor-set duration
     if (typeof override?.durationMs === "number") {

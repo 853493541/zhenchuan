@@ -5,10 +5,14 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import BuffEditorTab from "./BuffEditorTab";
 import CanCastWhileMountedTab from "./CanCastWhileMountedTab";
+import DamageReductionOverrideTab from "./DamageReductionOverrideTab";
+import HiddenBuffTab from "./HiddenBuffTab";
+import ManualCancelableBuffTab from "./ManualCancelableBuffTab";
 import ProjectileEditorTab from "./ProjectileEditorTab";
 import DunLiWhitelistTab from "./DunLiWhitelistTab";
 import NoWeaponRequiredTab from "./NoWeaponRequiredTab";
 import QinYinGongMingTab from "./QinYinGongMingTab";
+import { usePersistentState } from "./usePersistentState";
 import {
   ABILITY_RARITIES,
   AbilityEditorAbility,
@@ -17,6 +21,12 @@ import {
   AbilitySchool,
   BuffEditorSnapshot,
   CanCastWhileMountedSnapshot,
+  DamageReductionOverrideMode,
+  DamageReductionOverrideSnapshot,
+  HiddenBuffMode,
+  HiddenBuffSnapshot,
+  ManualCancelableBuffMode,
+  ManualCancelableBuffSnapshot,
   NoWeaponRequiredSnapshot,
   QinYinGongMingSnapshot,
   DAMAGE_TYPE_COLOR,
@@ -43,7 +53,7 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "qinYinGongMing";
+type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "hiddenBuffs";
 
 function buildOverviewTags(ability: AbilityEditorAbility) {
   const tags: string[] = [];
@@ -67,7 +77,7 @@ function buildOverviewTags(ability: AbilityEditorAbility) {
 }
 
 export default function AbilityEditorPage() {
-  const [mainTab, setMainTab] = useState<MainTab>("abilities");
+  const [mainTab, setMainTab] = usePersistentState<MainTab>("abilityEditor.mainTab", "abilities");
 
   // Read ?tab= from URL on first mount to support deep-linking to the buff tab
   useEffect(() => {
@@ -84,30 +94,39 @@ export default function AbilityEditorPage() {
       setMainTab("canCastWhileMounted");
     } else if (params.get("tab") === "qinYinGongMing") {
       setMainTab("qinYinGongMing");
+    } else if (params.get("tab") === "damageReductionOverride") {
+      setMainTab("damageReductionOverride");
+    } else if (params.get("tab") === "manualCancelableBuffs") {
+      setMainTab("manualCancelableBuffs");
+    } else if (params.get("tab") === "hiddenBuffs") {
+      setMainTab("hiddenBuffs");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (mainTab === "abilities") {
+      url.searchParams.delete("tab");
+    } else {
+      url.searchParams.set("tab", mainTab);
+    }
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [mainTab]);
 
   // ── Ability snapshot ──────────────────────────────────────────────────────
   const [snapshot, setSnapshot] = useState<AbilityEditorSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ── Filter persistence via sessionStorage ────────────────────────────────
-  const FILTER_KEY = "abilityEditorFilters_v2";
-  const savedFilters = typeof window !== "undefined"
-    ? (() => { try { return JSON.parse(sessionStorage.getItem(FILTER_KEY) ?? "null"); } catch { return null; } })()
-    : null;
-  const [search, setSearch] = useState<string>(savedFilters?.search ?? "");
+  // ── Filter state lives for the current page session ─────────────────────
+  const [search, setSearch] = usePersistentState<string>("abilityEditor.abilities.search", "");
   // tagFilters: groupId → "" (all) | "unset" | actual value
-  const [tagFilters, setTagFilters] = useState<Record<TagGroupId, string>>(
-    savedFilters?.tagFilters ?? { rarity: "", school: "", damageType: "" }
+  const [tagFilters, setTagFilters] = usePersistentState<Record<TagGroupId, string>>(
+    "abilityEditor.abilities.tagFilters",
+    { rarity: "", school: "", damageType: "" }
   );
   // channelFilter: "" (all) | "none" (no channel) | "FORWARD" (正读条) | "REVERSE" (逆读条) | "any" (any channel)
-  const [channelFilter, setChannelFilter] = useState<string>(savedFilters?.channelFilter ?? "");
-  // Persist to sessionStorage whenever filters change
-  useEffect(() => {
-    try { sessionStorage.setItem(FILTER_KEY, JSON.stringify({ search, tagFilters, channelFilter })); } catch { /* ignore */ }
-  }, [search, tagFilters, channelFilter]);
+  const [channelFilter, setChannelFilter] = usePersistentState<string>("abilityEditor.abilities.channelFilter", "");
 
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -147,6 +166,15 @@ export default function AbilityEditorPage() {
   const [qinYinGongMingSnapshot, setQinYinGongMingSnapshot] = useState<QinYinGongMingSnapshot | null>(null);
   const [qinYinGongMingLoading, setQinYinGongMingLoading] = useState(false);
   const [qinYinGongMingError, setQinYinGongMingError] = useState("");
+  const [damageReductionOverrideSnapshot, setDamageReductionOverrideSnapshot] = useState<DamageReductionOverrideSnapshot | null>(null);
+  const [damageReductionOverrideLoading, setDamageReductionOverrideLoading] = useState(false);
+  const [damageReductionOverrideError, setDamageReductionOverrideError] = useState("");
+  const [manualCancelableBuffSnapshot, setManualCancelableBuffSnapshot] = useState<ManualCancelableBuffSnapshot | null>(null);
+  const [manualCancelableBuffLoading, setManualCancelableBuffLoading] = useState(false);
+  const [manualCancelableBuffError, setManualCancelableBuffError] = useState("");
+  const [hiddenBuffSnapshot, setHiddenBuffSnapshot] = useState<HiddenBuffSnapshot | null>(null);
+  const [hiddenBuffLoading, setHiddenBuffLoading] = useState(false);
+  const [hiddenBuffError, setHiddenBuffError] = useState("");
 
   const loadBuffSnapshot = async () => {
     setBuffLoading(true);
@@ -189,6 +217,72 @@ export default function AbilityEditorPage() {
       setQinYinGongMingError(message);
     } finally {
       setQinYinGongMingLoading(false);
+    }
+  };
+
+  const loadDamageReductionOverrideSnapshot = async () => {
+    setDamageReductionOverrideLoading(true);
+    setDamageReductionOverrideError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/damage-reduction-override", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setDamageReductionOverrideSnapshot((await response.json()) as DamageReductionOverrideSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setDamageReductionOverrideError(message);
+    } finally {
+      setDamageReductionOverrideLoading(false);
+    }
+  };
+
+  const loadManualCancelableBuffSnapshot = async () => {
+    setManualCancelableBuffLoading(true);
+    setManualCancelableBuffError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/manual-cancelable-buffs", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setManualCancelableBuffSnapshot((await response.json()) as ManualCancelableBuffSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setManualCancelableBuffError(message);
+    } finally {
+      setManualCancelableBuffLoading(false);
+    }
+  };
+
+  const loadHiddenBuffSnapshot = async () => {
+    setHiddenBuffLoading(true);
+    setHiddenBuffError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/hidden-buffs", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setHiddenBuffSnapshot((await response.json()) as HiddenBuffSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setHiddenBuffError(message);
+    } finally {
+      setHiddenBuffLoading(false);
     }
   };
 
@@ -256,6 +350,27 @@ export default function AbilityEditorPage() {
   }, [mainTab]);
 
   useEffect(() => {
+    if (mainTab === "damageReductionOverride") {
+      loadDamageReductionOverrideSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "manualCancelableBuffs") {
+      loadManualCancelableBuffSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "hiddenBuffs") {
+      loadHiddenBuffSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
     if (mainTab === "noWeaponRequired" && !noWeaponRequiredSnapshot && !noWeaponRequiredLoading) {
       loadNoWeaponRequiredSnapshot();
     }
@@ -282,26 +397,32 @@ export default function AbilityEditorPage() {
     } catch { /* silent */ }
   };
 
-  const handleProjectileToggle = async (abilityId: string, isProjectile: boolean) => {
+  const handleProjectileToggle = async (
+    abilityId: string,
+    mode: "manual-include" | "manual-exclude" | "clear"
+  ) => {
     try {
       const res = await fetch(`/api/game/ability-editor/${abilityId}/is-projectile`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ isProjectile }),
+        body: JSON.stringify({ mode }),
       });
       if (!res.ok) return;
       setSnapshot((await res.json()) as AbilityEditorSnapshot);
     } catch { /* silent */ }
   };
 
-  const handleDunLiWhitelistToggle = async (abilityId: string, dunLiWhitelisted: boolean) => {
+  const handleDunLiWhitelistToggle = async (
+    abilityId: string,
+    mode: "manual-include" | "manual-exclude" | "clear"
+  ) => {
     try {
       const res = await fetch(`/api/game/ability-editor/${abilityId}/dun-li-whitelist`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ dunLiWhitelisted }),
+        body: JSON.stringify({ mode }),
       });
       if (!res.ok) return;
       setSnapshot((await res.json()) as AbilityEditorSnapshot);
@@ -354,6 +475,51 @@ export default function AbilityEditorPage() {
       });
       if (!res.ok) return;
       setQinYinGongMingSnapshot((await res.json()) as QinYinGongMingSnapshot);
+    } catch { /* silent */ }
+  };
+
+  const handleDamageReductionOverrideToggle = async (buffId: number, mode: DamageReductionOverrideMode) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/damage-reduction-override/${buffId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as DamageReductionOverrideSnapshot;
+      setDamageReductionOverrideSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
+  const handleManualCancelableBuffToggle = async (buffId: number, mode: ManualCancelableBuffMode) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/manual-cancelable-buffs/${buffId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as ManualCancelableBuffSnapshot;
+      setManualCancelableBuffSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
+  const handleHiddenBuffToggle = async (buffId: number, mode: HiddenBuffMode) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/hidden-buffs/${buffId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as HiddenBuffSnapshot;
+      setHiddenBuffSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
     } catch { /* silent */ }
   };
 
@@ -489,6 +655,27 @@ export default function AbilityEditorPage() {
             onClick={() => setMainTab("qinYinGongMing")}
           >
             琴音共鸣
+          </button>
+          <button
+            type="button"
+            className={`${styles.mainTab} ${mainTab === "damageReductionOverride" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("damageReductionOverride")}
+          >
+            减伤被顶
+          </button>
+          <button
+            type="button"
+            className={`${styles.mainTab} ${mainTab === "manualCancelableBuffs" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("manualCancelableBuffs")}
+          >
+            主动取消 Buff
+          </button>
+          <button
+            type="button"
+            className={`${styles.mainTab} ${mainTab === "hiddenBuffs" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("hiddenBuffs")}
+          >
+            隐藏 Buff
           </button>
         </div>
       </section>
@@ -818,6 +1005,42 @@ export default function AbilityEditorPage() {
             errorMessage={qinYinGongMingError}
             onRetry={loadQinYinGongMingSnapshot}
             onToggle={handleQinYinGongMingToggle}
+          />
+        </section>
+      )}
+
+      {mainTab === "damageReductionOverride" && (
+        <section className={styles.buffEditorSection}>
+          <DamageReductionOverrideTab
+            snapshot={damageReductionOverrideSnapshot}
+            loading={damageReductionOverrideLoading}
+            errorMessage={damageReductionOverrideError}
+            onRetry={loadDamageReductionOverrideSnapshot}
+            onToggle={handleDamageReductionOverrideToggle}
+          />
+        </section>
+      )}
+
+      {mainTab === "manualCancelableBuffs" && (
+        <section className={styles.buffEditorSection}>
+          <ManualCancelableBuffTab
+            snapshot={manualCancelableBuffSnapshot}
+            loading={manualCancelableBuffLoading}
+            errorMessage={manualCancelableBuffError}
+            onRetry={loadManualCancelableBuffSnapshot}
+            onToggle={handleManualCancelableBuffToggle}
+          />
+        </section>
+      )}
+
+      {mainTab === "hiddenBuffs" && (
+        <section className={styles.buffEditorSection}>
+          <HiddenBuffTab
+            snapshot={hiddenBuffSnapshot}
+            loading={hiddenBuffLoading}
+            errorMessage={hiddenBuffError}
+            onRetry={loadHiddenBuffSnapshot}
+            onToggle={handleHiddenBuffToggle}
           />
         </section>
       )}

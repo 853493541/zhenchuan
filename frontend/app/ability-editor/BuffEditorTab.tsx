@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { toastError, toastSuccess } from "../components/toast/toast";
 import { FALLBACK_BUFF_ICON_PATH } from "../lib/buffIcons";
+import CopyNameButton from "./CopyNameButton";
 import {
   BUFF_ATTRIBUTES,
   BuffAttribute,
@@ -14,6 +15,7 @@ import {
   getBuffIconPath,
   getBuffSubtitle,
 } from "./editorShared";
+import { usePersistentState } from "./usePersistentState";
 import styles from "./page.module.css";
 
 type SubTab = "有利气劲" | "不利气劲";
@@ -40,11 +42,12 @@ export default function BuffEditorTab({
   onSnapshotUpdate,
   onRetry,
 }: BuffEditorTabProps) {
-  const [subTab, setSubTab] = useState<SubTab>("有利气劲");
-  const [attributeFilter, setAttributeFilter] = useState<AttributeFilter>("全部");
-  const [hiddenFilter, setHiddenFilter] = useState<HiddenFilter>("显示");
-  const [silenceImmuneOnly, setSilenceImmuneOnly] = useState<boolean>(false);
-  const [search, setSearch] = useState("");
+  const [subTab, setSubTab] = usePersistentState<SubTab>("abilityEditor.buffs.subTab", "有利气劲");
+  const [attributeFilter, setAttributeFilter] = usePersistentState<AttributeFilter>("abilityEditor.buffs.attributeFilter", "全部");
+  const [hiddenFilter, setHiddenFilter] = usePersistentState<HiddenFilter>("abilityEditor.buffs.hiddenFilter", "显示");
+  const [silenceImmuneOnly, setSilenceImmuneOnly] = usePersistentState<boolean>("abilityEditor.buffs.silenceImmuneOnly", false);
+  const [noIconOnly, setNoIconOnly] = usePersistentState<boolean>("abilityEditor.buffs.noIconOnly", false);
+  const [search, setSearch] = usePersistentState("abilityEditor.buffs.search", "");
   const [savingBuffId, setSavingBuffId] = useState<number | null>(null);
 
   const allBuffs = snapshot?.buffs ?? [];
@@ -64,6 +67,7 @@ export default function BuffEditorTab({
       const all = [...buff.properties, ...buff.baseProperties];
       return all.some((p) => p.type === "沉默免疫");
     })
+    .filter((buff) => !noIconOnly || buff.iconMissing === true)
     .filter((buff) => {
       if (!normalizedSearch) return true;
       return (
@@ -185,6 +189,15 @@ export default function BuffEditorTab({
         >
           沉默免疫
         </button>
+        <button
+          type="button"
+          className={`${styles.buffAttrFilterChip} ${noIconOnly ? styles.buffAttrFilterChipActive : ""}`}
+          onClick={() => setNoIconOnly((v) => !v)}
+          title="仅显示当前没有匹配图标文件的 Buff"
+        >
+          无图标
+          <span className={styles.buffAttrFilterCount}>{visibilityFiltered.filter((buff) => buff.iconMissing === true).length}</span>
+        </button>
       </div>
 
       {/* Buff grid */}
@@ -252,7 +265,10 @@ function BuffReadOnlyCard({
             />
           </div>
           <div className={styles.buffCardMeta}>
-            <div className={styles.buffCardName}>{entry.name}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <div className={styles.buffCardName}>{entry.name}</div>
+              <CopyNameButton value={entry.name} label="复制气劲名称" />
+            </div>
           </div>
           {subtitle && (
             <span className={`${styles.buffTopTag} ${isDebuff ? styles.buffTopTagDebuff : styles.buffTopTagBuff}`}>
@@ -275,6 +291,13 @@ function BuffReadOnlyCard({
 
         <div className={styles.buffCardHint}>点击编辑详细属性</div>
       </Link>
+
+      {entry.sourceAbilityName && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 14px 10px", color: "#6f655b", fontSize: 12 }}>
+          <span style={{ color: "#9a8d7d" }}>来源</span>
+          <span style={{ fontWeight: 700, color: "#4f463d" }}>{entry.sourceAbilityName}</span>
+        </div>
+      )}
 
       <div className={styles.buffQuickAttrSection}>
         <div className={styles.buffQuickAttrHeader}>
