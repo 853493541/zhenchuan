@@ -11,28 +11,45 @@ type DiffPatch = {
 };
 
 function applyDiff<T extends object>(prev: T, diff: DiffPatch[]): T {
-  const next = structuredClone(prev);
+  let next: any = prev;
 
   for (const { path, value } of diff) {
     // full replace
     if (path === "/") {
-      return value;
+      next = value;
+      continue;
     }
 
     const keys = path.split("/").filter(Boolean);
-    let target: any = next;
+    if (keys.length === 0) continue;
+
+    const root = Array.isArray(next) ? [...next] : { ...next };
+    let sourceCursor: any = next;
+    let targetCursor: any = root;
 
     for (let i = 0; i < keys.length - 1; i++) {
-      target = target[keys[i]];
-      if (target == null) return next;
+      const key = keys[i];
+      const sourceChild = sourceCursor?.[key];
+      if (sourceChild == null) {
+        targetCursor = null;
+        break;
+      }
+      const clonedChild = Array.isArray(sourceChild) ? [...sourceChild] : { ...sourceChild };
+      targetCursor[key] = clonedChild;
+      sourceCursor = sourceChild;
+      targetCursor = clonedChild;
     }
+
+    if (targetCursor == null) continue;
 
     const lastKey = keys[keys.length - 1];
     if (value === undefined) {
-      delete target[lastKey];
+      delete targetCursor[lastKey];
     } else {
-      target[lastKey] = value;
+      targetCursor[lastKey] = value;
     }
+
+    next = root;
   }
 
   return next;

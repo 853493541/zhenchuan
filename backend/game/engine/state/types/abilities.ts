@@ -161,6 +161,12 @@ export interface Ability {
   minSelfHpExclusive?: number;
 
   /**
+   * Optional minimum current HP percent (exclusive, 0-100) required to cast.
+   * Shields are not counted for this check.
+   */
+  minSelfHpPercentExclusive?: number;
+
+  /**
    * If true, this ability can only be cast if the target is within 180° of the
    * player's facing direction. Set to false for 360° abilities.
    */

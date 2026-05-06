@@ -29,6 +29,7 @@ export function applyOnPlayBuffEffects(
         source: player,
         target: player,
         base,
+        abilityId: buff.sourceAbilityId,
       });
 
       if (dmg <= 0) continue;

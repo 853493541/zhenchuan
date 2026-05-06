@@ -38,6 +38,8 @@ export function handleBonusDamageIfHpGt(
     source,
     target,
     base: bonus,
+    abilityId: ability.id,
+    damageType: (ability as any).damageType,
   });
 
   let eventDamage = final;

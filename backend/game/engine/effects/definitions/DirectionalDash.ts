@@ -236,6 +236,8 @@ export function handleDirectionalDash(
         source: source as any,
         target: targetPlayer,
         base: effect.routeDamage ?? 0,
+        abilityId: ability.id,
+        damageType: (ability as any).damageType,
       });
 
       // Damage immunity + 盾立 reflect

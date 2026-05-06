@@ -105,11 +105,13 @@ export interface PlayerState {
   username?: string;
   hp: number;
   maxHp?: number;
+  attackDamage?: number;
   shield?: number;
   waiGongCritChancePct?: number;
   neiGongCritChancePct?: number;
   critChancePct?: number;
   defensePct?: number;
+  huajinPct?: number;
   hasteRatePct?: number;
   hand: AbilityInstance[];
   specialAbilityStates?: Record<string, AbilityInstance>;

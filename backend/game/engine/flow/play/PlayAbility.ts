@@ -5,7 +5,7 @@ import { getEnemy } from "../../utils/targeting";
 import { pushEvent } from "../../../services/flow/events";
 import { addBuff } from "../../effects/buffRuntime";
 import { applyDamageToTarget } from "../../utils/health";
-import { resolveRawDamageWithCrit } from "../../utils/combatMath";
+import { resolveScheduledDamageRoll } from "../../utils/combatMath";
 import { ABILITIES } from "../../../abilities/abilities";
 
 import { breakOnPlay } from "./breakOnPlay";
@@ -183,11 +183,14 @@ export function applyAbility(
     } else {
       bangHuaBuff.stacks = currentStacks - 1;
     }
-    const triggerDamage = resolveRawDamageWithCrit({
+    const triggerDamageRoll = resolveScheduledDamageRoll({
       source: enemy as any,
+      target: source as any,
       base: 2,
+      abilityId: "bang_hua_sui_liu",
       damageType: (ABILITIES["bang_hua_sui_liu"] as any)?.damageType,
     });
+    const triggerDamage = triggerDamageRoll.damage;
     applyDamageToTarget(source as any, triggerDamage);
     pushEvent(state, {
       turn: state.turn,
@@ -198,6 +201,7 @@ export function applyAbility(
       abilityName: "傍花随柳",
       effectType: "BANG_HUA_TRIGGER",
       value: triggerDamage,
+      isCrit: triggerDamageRoll.isCrit,
     } as any);
 
     // Last stack: also apply 束发 silence 4s

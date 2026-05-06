@@ -1067,6 +1067,7 @@ interface AbilityInfo {
   requiresGrounded?: boolean;
   requiresStanding?: boolean;
   minSelfHpExclusive?: number;
+  minSelfHpPercentExclusive?: number;
   noWeaponRequired?: boolean;
   canCastWhileMounted?: boolean;
   qinggong?: boolean;
@@ -1087,6 +1088,27 @@ function formatCompactNumber(value: number): string {
   if (!Number.isFinite(value)) return '0';
   if (Math.abs(value) >= 10 || Number.isInteger(value)) return String(Math.round(value));
   return value.toFixed(1).replace(/\.0$/, '');
+}
+
+function formatGameAmount(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  const sign = value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+  if (abs >= 10000) {
+    const wan = abs / 10000;
+    const rounded = wan >= 100 ? Math.round(wan) : Math.round(wan * 10) / 10;
+    const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace(/\.0$/, '');
+    return `${sign}${text}万`;
+  }
+  if (abs >= 10 || Number.isInteger(abs)) return `${sign}${Math.round(abs)}`;
+  return `${sign}${abs.toFixed(2)}`;
+}
+
+function formatGameHealthRatio(current: number, max: number): string {
+  const safeMax = Math.max(1, Number(max) || 1);
+  const safeCurrent = Math.max(0, Number(current) || 0);
+  const pct = Math.max(0, Math.min(999, Math.round((safeCurrent / safeMax) * 100)));
+  return `${formatGameAmount(safeCurrent)}/${formatGameAmount(safeMax)}（${pct}%）`;
 }
 
 function formatCompactSeconds(seconds: number): string {
@@ -1359,12 +1381,12 @@ type DummySpawnPreset = 'enemy' | 'ally' | 'ally100';
 
 function getDummySpawnMeta(preset: DummySpawnPreset) {
   if (preset === 'enemy') {
-    return { side: 'enemy' as const, label: '敌方木桩', successText: '已生成敌方木桩', maxHp: 200 };
+    return { side: 'enemy' as const, label: '敌方木桩', successText: '已生成敌方木桩', maxHp: 1_260_000 };
   }
   if (preset === 'ally100') {
     return { side: 'ally' as const, label: '友方100血木桩', successText: '已生成友方100血木桩', maxHp: 100 };
   }
-  return { side: 'ally' as const, label: '友方木桩', successText: '已生成友方木桩', maxHp: 200 };
+  return { side: 'ally' as const, label: '友方木桩', successText: '已生成友方木桩', maxHp: 1_260_000 };
 }
 
 function getArenaAbilityIconPath(name: string | undefined | null) {
@@ -1426,10 +1448,10 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
-  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
+  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
+  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
   /** All other players (opponents) — supports 1v1 and N-player modes */
-  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel }[];
+  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel }[];
   gameId: string;
   onCastAbility: (
     abilityInstanceId: string,
@@ -1438,6 +1460,7 @@ interface BattleArenaProps {
     entityTargetId?: string,
   ) => Promise<void>;
   onCancelBuff?: (buffId: number, options?: { entityTargetId?: string }) => Promise<void>;
+  onMovementRecover?: () => void;
   distance: number;
   maxHp: number;
   abilities: Record<string, any>;
@@ -1466,6 +1489,7 @@ export default function BattleArena({
   gameId,
   onCastAbility,
   onCancelBuff,
+  onMovementRecover,
   distance,
   maxHp,
   abilities,
@@ -1943,8 +1967,9 @@ export default function BattleArena({
   // Per-type stagger counter — increments each time a float of a given type
   // is spawned, so simultaneous hits don’t visually overlap.
   const floatTypeCountRef = useRef<Record<string, number>>({});
-  // Track how many events we've already processed to avoid re-processing on re-render
-  const prevEventsLenRef = useRef<number>(-1);
+  const processedEventIdsRef = useRef<Set<string>>(new Set());
+  const processedEventOrderRef = useRef<string[]>([]);
+  const eventsInitializedRef = useRef(false);
   const addFloat = (value: number, type: FloatType, opts?: { label?: string; screenPct?: { x: number; y: number }; text?: string; isCrit?: boolean; allowZero?: boolean; white?: boolean }) => {
     if (value <= 0 && type !== 'huajie' && type !== 'xishou' && opts?.allowZero !== true) return;
     const id = ++floatIdRef.current;
@@ -1967,8 +1992,9 @@ export default function BattleArena({
   };
 
   const formatFloatValue = (value: number) => {
-    if (!Number.isFinite(value)) return '0.00';
-    return value.toFixed(2);
+    if (!Number.isFinite(value)) return '0';
+    if (Math.abs(value) >= 10000) return formatGameAmount(value);
+    return String(Math.round(value));
   };
 
   const isCritDamageEvent = (evt: any) => {
@@ -2011,6 +2037,7 @@ export default function BattleArena({
   const localVelocityRef = useRef({ x: 0, y: 0 });
   const initializedRef   = useRef(false);
   const movementSeqRef   = useRef(0);
+  const lastMovementRecoverAtRef = useRef(0);
 
   /* --- Jump / Z refs --- */
   const jumpLocalRef      = useRef(false); // drives local Z prediction
@@ -2324,6 +2351,13 @@ export default function BattleArena({
     if (typeof ability?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ability.minSelfHpExclusive) {
       toastError(`当前气血必须大于${ability.minSelfHpExclusive}才能施放`);
       return;
+    }
+    if (typeof ability?.minSelfHpPercentExclusive === 'number') {
+      const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ability.minSelfHpPercentExclusive / 100);
+      if ((me?.hp ?? 0) <= requiredHp) {
+        toastError(`当前气血必须大于${ability.minSelfHpPercentExclusive}%才能施放`);
+        return;
+      }
     }
 
     // Face direction check (180° hemisphere)
@@ -2962,21 +2996,41 @@ export default function BattleArena({
   }, [showDebugGrid]);
 
   /* --- Event-based floating numbers (replaces HP-delta system) --- */
-  // Initialize on first render so we don't replay old events from before mount
   useEffect(() => {
-    if (prevEventsLenRef.current === -1) {
-      prevEventsLenRef.current = events.length;
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const rememberEventId = (eventId: string) => {
+      if (processedEventIdsRef.current.has(eventId)) return false;
+      processedEventIdsRef.current.add(eventId);
+      processedEventOrderRef.current.push(eventId);
+      while (processedEventOrderRef.current.length > 1200) {
+        const oldest = processedEventOrderRef.current.shift();
+        if (oldest) processedEventIdsRef.current.delete(oldest);
+      }
+      return true;
+    };
+    const getEventId = (evt: any, index: number) => {
+      if (evt?.id !== undefined && evt?.id !== null) return String(evt.id);
+      return `${evt?.timestamp ?? 'no-ts'}:${evt?.turn ?? 'no-turn'}:${evt?.type ?? 'unknown'}:${index}`;
+    };
 
-  useEffect(() => {
-    // Skip on very first render before initialization
-    if (prevEventsLenRef.current === -1) return;
-    const lastSeen = prevEventsLenRef.current;
-    if (events.length <= lastSeen) return;
-    const newEvents = events.slice(lastSeen);
-    prevEventsLenRef.current = events.length;
+    if (!eventsInitializedRef.current) {
+      for (let index = 0; index < events.length; index++) {
+        const evt = events[index];
+        if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
+        rememberEventId(getEventId(evt, index));
+      }
+      eventsInitializedRef.current = true;
+      return;
+    }
+
+    const newEvents: any[] = [];
+    for (let index = 0; index < events.length; index++) {
+      const evt = events[index];
+      if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
+      if (rememberEventId(getEventId(evt, index))) {
+        newEvents.push(evt);
+      }
+    }
+    if (newEvents.length === 0) return;
 
     const myId = me?.userId;
     for (const evt of newEvents) {
@@ -2989,7 +3043,7 @@ export default function BattleArena({
         const damageWasCrit = isCritDamageEvent(evt);
         const eventLabel = (evt as any).hideAbilityName === true ? '' : evt.abilityName;
         const displayZeroDamage = (evt as any).displayZeroDamage === true;
-        const zeroDamageText = eventLabel ? `${eventLabel}： -0.00` : '-0.00';
+        const zeroDamageText = eventLabel ? `${eventLabel}： -1` : '-1';
         if (evt.targetUserId === myId) {
           if (!selectedTargetRef.current && !selectedEntityRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
             const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
@@ -3051,7 +3105,7 @@ export default function BattleArena({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events.length]);
+  }, [events]);
 
   // Warn when a targeted channel is interrupted because target became untargetable (e.g. entered stealth).
   useEffect(() => {
@@ -3172,7 +3226,7 @@ export default function BattleArena({
     meFacingRef.current = facingPayload;
     const seq = ++movementSeqRef.current;
     try {
-      await fetch('/api/game/movement', {
+      const res = await fetch('/api/game/movement', {
         method:      'POST',
         headers:     { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -3188,8 +3242,17 @@ export default function BattleArena({
           direction: directionPayload,
         }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        const now = Date.now();
+        if (now - lastMovementRecoverAtRef.current > 2000) {
+          lastMovementRecoverAtRef.current = now;
+          console.warn('[BattleArena] movement update failed; requesting fresh snapshot', err ?? res.status);
+          onMovementRecover?.();
+        }
+      }
     } catch { /* AbortError expected */ }
-  }, [gameId]);
+  }, [gameId, onMovementRecover]);
 
   useEffect(() => {
     if (me?.position && !initializedRef.current) {
@@ -3511,16 +3574,21 @@ export default function BattleArena({
       if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
         return false;
       }
+      if (typeof ab?.minSelfHpPercentExclusive === 'number') {
+        const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ab.minSelfHpPercentExclusive / 100);
+        if ((me?.hp ?? 0) <= requiredHp) return false;
+      }
       if (disarmed && ab?.noWeaponRequired !== true) return false;
       if (nonQinggongLocked && !isQinggongLike) return false;
       if (isQinggongLike && qinggongSealed) return false;
       if (ab?.cannotCastWhileRooted && rootedByDebuff) return false;
       if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) return false;
 
-      // 拿云式: target HP must be < 30
+      // 拿云式: target HP must be < 30%
       if (ab?.id === 'na_yun_shi' || instance?.abilityId === 'na_yun_shi') {
         const tgtHp = (targetForChecks as any)?.hp ?? Infinity;
-        if (tgtHp >= 30) return false;
+        const tgtMaxHp = Math.max(1, Number((targetForChecks as any)?.maxHp ?? 100));
+        if (tgtHp >= tgtMaxHp * 0.3) return false;
       }
       // 梯云纵 / 扶摇直上 mutual exclusion (mirrors backend gate)
       if (ab?.id === 'ti_yun_zong' || instance?.abilityId === 'ti_yun_zong') {
@@ -3660,6 +3728,7 @@ export default function BattleArena({
           canTargetSelf: !!(ability as any).canTargetSelf,
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
+          minSelfHpPercentExclusive: typeof (ability as any).minSelfHpPercentExclusive === 'number' ? (ability as any).minSelfHpPercentExclusive : undefined,
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
@@ -3711,6 +3780,7 @@ export default function BattleArena({
           canTargetSelf: !!(ability as any).canTargetSelf,
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
+          minSelfHpPercentExclusive: typeof (ability as any).minSelfHpPercentExclusive === 'number' ? (ability as any).minSelfHpPercentExclusive : undefined,
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
@@ -3774,6 +3844,7 @@ export default function BattleArena({
           canTargetSelf: !!(ability as any).canTargetSelf,
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
+          minSelfHpPercentExclusive: typeof (ability as any).minSelfHpPercentExclusive === 'number' ? (ability as any).minSelfHpPercentExclusive : undefined,
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
@@ -5060,6 +5131,7 @@ export default function BattleArena({
 
   /* ========================= HUD DATA ========================= */
   const myMaxHp = me?.maxHp ?? maxHp;
+  const myAttackDamage = Math.max(0, Number((me as any)?.attackDamage ?? 50_000));
   const myShield = Math.max(0, me?.shield ?? 0);
   const myBarSegments = computeHpShieldSegments(me?.hp ?? 0, myShield, myMaxHp);
   const myHpPct = myBarSegments.hpPct;
@@ -5077,6 +5149,10 @@ export default function BattleArena({
     0,
     Math.min(100, Number((me as any)?.defensePct ?? 0)),
   );
+  const myHuajinPct = Math.max(
+    0,
+    Math.min(100, Number((me as any)?.huajinPct ?? 0)),
+  );
   const myHasteRatePct = Math.max(0, Number((me as any)?.hasteRatePct ?? BASE_HASTE_RATE_PCT));
   const myFacingArrow = facingArrow(localFacingRef.current);
   const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
@@ -5089,6 +5165,13 @@ export default function BattleArena({
       const value = Number(e?.value ?? e?.defenseMultiplier ?? 1);
       return Number.isFinite(value) ? multiplier * Math.max(0, value) : multiplier;
     }, 1);
+  const attackDamageMultiplier = meEffects
+    .filter((e: any) => e?.type === 'ATTACK_DAMAGE_MULTIPLIER')
+    .reduce((bonus: number, e: any) => {
+      const value = Number(e?.value ?? 1);
+      return Number.isFinite(value) ? bonus + (value - 1) : bonus;
+    }, 0);
+  const myEffectiveAttackDamage = Math.max(0, myAttackDamage * Math.max(0, 1 + attackDamageMultiplier));
   const myDefensePct = Math.max(0, Math.min(100, myBaseDefensePct * defenseMultiplier));
   const myWaiGongCritChancePct = Math.max(
     0,
@@ -5144,16 +5227,21 @@ export default function BattleArena({
     {
       key: 'attack',
       label: '攻击力',
-      value: '0',
+      value: formatGameAmount(myEffectiveAttackDamage),
       tooltipTitle: '攻击力',
-      tooltipLines: [formatTooltipLine('攻击力', '0')],
+      tooltipLines: Math.abs(myEffectiveAttackDamage - myAttackDamage) > 0.5
+        ? [
+            formatTooltipLine('基础攻击力', formatGameAmount(myAttackDamage)),
+            formatTooltipLine('当前攻击力', formatGameAmount(myEffectiveAttackDamage)),
+          ]
+        : [formatTooltipLine('攻击力', formatGameAmount(myAttackDamage))],
     },
     {
       key: 'maxHp',
       label: '气血值',
-      value: String(Math.max(0, Math.round(myMaxHp))),
+      value: formatGameAmount(myMaxHp),
       tooltipTitle: '气血值',
-      tooltipLines: [formatTooltipLine('气血值', String(Math.max(0, Math.round(myMaxHp))))],
+      tooltipLines: [formatTooltipLine('气血值', formatGameAmount(myMaxHp))],
     },
     {
       key: 'crit',
@@ -5206,9 +5294,9 @@ export default function BattleArena({
     {
       key: 'huajin',
       label: '化劲',
-      value: '0%',
+      value: formatStatPct(myHuajinPct),
       tooltipTitle: '化劲',
-      tooltipLines: [formatTooltipLine('化劲', '0%')],
+      tooltipLines: [formatTooltipLine('最终伤害降低', formatStatPct(myHuajinPct))],
     },
     {
       key: 'damageReduction',
@@ -5532,15 +5620,18 @@ export default function BattleArena({
       </div>
       <div className={styles.critPresetBar}>
         {[
-          { id: 'white-crit', label: '白', value: 0, defenseValue: 0, color: '#f3f4f6' },
-          { id: 'green-crit', label: '绿', value: 20, defenseValue: 12, color: '#42b663' },
-          { id: 'blue-crit', label: '蓝', value: 30, defenseValue: 16, color: '#3a8dff' },
-          { id: 'purple-crit', label: '紫', value: 40, defenseValue: 23, color: '#9f5fd9' },
+          { id: 'white-crit', label: '白', value: 0, defenseValue: 0, huajinValue: 40, maxHp: 300000, attackDamage: 10000, color: '#f3f4f6' },
+          { id: 'green-crit', label: '绿', value: 20, defenseValue: 12, huajinValue: 55, maxHp: 900000, attackDamage: 30000, color: '#42b663' },
+          { id: 'blue-crit', label: '蓝', value: 30, defenseValue: 16, huajinValue: 60, maxHp: 1050000, attackDamage: 40000, color: '#3a8dff' },
+          { id: 'purple-crit', label: '紫', value: 40, defenseValue: 23, huajinValue: 73, maxHp: 1260000, attackDamage: 50000, color: '#9f5fd9' },
         ].map((preset) => {
           const active =
             Math.abs(myBaseWaiGongCritChancePct - preset.value) < 0.001 &&
             Math.abs(myBaseNeiGongCritChancePct - preset.value) < 0.001 &&
-            Math.abs(myBaseDefensePct - preset.defenseValue) < 0.001;
+            Math.abs(myBaseDefensePct - preset.defenseValue) < 0.001 &&
+            Math.abs(myHuajinPct - preset.huajinValue) < 0.001 &&
+            Math.abs(myMaxHp - preset.maxHp) < 0.001 &&
+            Math.abs(myAttackDamage - preset.attackDamage) < 0.001;
           return (
             <button
               key={preset.id}
@@ -5557,11 +5648,14 @@ export default function BattleArena({
               onClick={() => void runCheatAction(
                 `set-crit-${preset.value}-def-${preset.defenseValue}`,
                 '/api/game/cheat/set-crit-chance',
-                `双方外功会心/内功会心已设为 ${preset.value}%，防御力已设为 ${preset.defenseValue}%`,
+                `双方外功会心/内功会心已设为 ${preset.value}%，防御力已设为 ${preset.defenseValue}%，化劲已设为 ${preset.huajinValue}%，气血 ${formatGameAmount(preset.maxHp)}，攻击力 ${formatGameAmount(preset.attackDamage)}`,
                 {
                   waiGongCritChancePct: preset.value,
                   neiGongCritChancePct: preset.value,
                   defensePct: preset.defenseValue,
+                  huajinPct: preset.huajinValue,
+                  maxHp: preset.maxHp,
+                  attackDamage: preset.attackDamage,
                 },
               )}
             >
@@ -6257,9 +6351,9 @@ export default function BattleArena({
           {(me?.hp ?? 0) > 0 && (
             <span
               className={styles.hpSegmentNum}
-              style={{ left: `${Math.max(6, Math.min(94, myHpPct / 2))}%` }}
+              style={{ left: '50%' }}
             >
-              {Math.round(me?.hp ?? 0)}
+              {formatGameHealthRatio(me?.hp ?? 0, myMaxHp)}
             </span>
           )}
           {myShield > 0 && (
@@ -6267,7 +6361,7 @@ export default function BattleArena({
               className={styles.shieldSegmentNum}
               style={{ left: `${Math.max(6, Math.min(94, myHpPct + myShieldPct / 2))}%` }}
             >
-              {Math.round(myShield)}
+              {formatGameAmount(myShield)}
             </span>
           )}
         </div>
@@ -6391,9 +6485,9 @@ export default function BattleArena({
                   {targetHp > 0 && (
                     <span
                       className={styles.hpSegmentNum}
-                      style={{ left: `${Math.max(6, Math.min(94, targetHpPct / 2))}%` }}
+                      style={{ left: '50%' }}
                     >
-                      {Math.round(targetHp)}
+                      {formatGameHealthRatio(targetHp, targetMaxHp)}
                     </span>
                   )}
                   {targetShield > 0 && (
@@ -6401,7 +6495,7 @@ export default function BattleArena({
                       className={styles.shieldSegmentNum}
                       style={{ left: `${Math.max(6, Math.min(94, targetHpPct + targetShieldPct / 2))}%` }}
                     >
-                      {Math.round(targetShield)}
+                      {formatGameAmount(targetShield)}
                     </span>
                   )}
                 </div>

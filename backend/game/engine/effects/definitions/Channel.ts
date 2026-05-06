@@ -50,6 +50,8 @@ export function handleChannelEffect(
       source,
       target: enemy,
       base: 10,
+      abilityId: ability.id,
+      damageType: (ability as any).damageType,
     });
 
     let eventDamage = dmg;

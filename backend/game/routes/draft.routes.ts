@@ -15,9 +15,56 @@ import { ABILITIES } from "../abilities/abilities";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { diffState } from "../services/flow/stateDiff";
 import type { AbilityInstance } from "../engine/state/types";
-import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types";
+import {
+  NEW_WORLD_UNIT_SCALE,
+  STARTING_ATTACK_DAMAGE,
+  STARTING_BATTLE_HP,
+  STARTING_CRIT_CHANCE_PCT,
+  STARTING_DEFENSE_PCT,
+  STARTING_HUAJIN_PCT,
+} from "../engine/state/types";
 
 const router = express.Router();
+
+function getPurpleCombatStats(maxHp = STARTING_BATTLE_HP) {
+  const safeMaxHp = Math.max(1, Math.floor(Number(maxHp) || STARTING_BATTLE_HP));
+  return {
+    hp: safeMaxHp,
+    maxHp: safeMaxHp,
+    attackDamage: STARTING_ATTACK_DAMAGE,
+    waiGongCritChancePct: STARTING_CRIT_CHANCE_PCT,
+    neiGongCritChancePct: STARTING_CRIT_CHANCE_PCT,
+    critChancePct: STARTING_CRIT_CHANCE_PCT,
+    defensePct: STARTING_DEFENSE_PCT,
+    huajinPct: STARTING_HUAJIN_PCT,
+  };
+}
+
+function hasPurpleBattleStats(player: any) {
+  return (
+    Number(player?.maxHp ?? 0) === STARTING_BATTLE_HP &&
+    Number(player?.attackDamage ?? 0) === STARTING_ATTACK_DAMAGE &&
+    Number(player?.waiGongCritChancePct ?? player?.critChancePct ?? 0) === STARTING_CRIT_CHANCE_PCT &&
+    Number(player?.neiGongCritChancePct ?? player?.critChancePct ?? 0) === STARTING_CRIT_CHANCE_PCT &&
+    Number(player?.defensePct ?? 0) === STARTING_DEFENSE_PCT &&
+    Number(player?.huajinPct ?? 0) === STARTING_HUAJIN_PCT
+  );
+}
+
+function shouldReinitializeExistingBattleLoop(state: any) {
+  const players = Array.isArray(state?.players) ? state.players : [];
+  if (state?.gameOver || players.length === 0 || players.every(hasPurpleBattleStats)) return false;
+  const hasActivity =
+    (state?.events?.length ?? 0) > 0 ||
+    players.some((player: any) =>
+      (player.buffs?.length ?? 0) > 0 ||
+      (player.shield ?? 0) > 0 ||
+      !!player.activeChannel ||
+      !!player.activeDash ||
+      (player.hand ?? []).some((card: any) => Number(card?.cooldown ?? 0) > 0)
+    );
+  return !hasActivity;
+}
 
 function isCommonAbilityCard(card: any): boolean {
   const abilityId = card?.abilityId ?? card?.id;
@@ -515,7 +562,12 @@ router.post("/battle/start", async (req, res) => {
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not ready for battle" });
 
     // ✅ CHECK IF GAME LOOP ALREADY STARTED (prevent duplicate from second player)
-    const existingLoop = GameLoop.get(gameId);
+    let existingLoop = GameLoop.get(gameId);
+    if (existingLoop && shouldReinitializeExistingBattleLoop(existingLoop.getState())) {
+      console.warn(`[battle/start] Reinitializing unstarted battle loop with purple defaults for ${gameId}`);
+      GameLoop.stop(gameId);
+      existingLoop = undefined;
+    }
     if (existingLoop) {
       // The loop may have been started before the pickup system was added.
       // Retroactively inject pickups if the loop state is empty so claim/inspect work.
@@ -644,6 +696,7 @@ router.post("/battle/complete", async (req, res) => {
     console.log(`[battle/complete] Stopped GameLoop for ${gameId}`);
 
     // If tournament is over, update game over flag
+    let shouldStartNextBattleLoop = false;
     if (game.tournament.phase === "GAME_OVER") {
       game.state.gameOver = true;
       game.state.winnerUserId = game.tournament.winnerId;
@@ -658,11 +711,18 @@ router.post("/battle/complete", async (req, res) => {
       }
       // Initialize fresh battle state with only common abilities
       game.state = initializeBattleState(game.tournament, allPlayers, ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test');
+      shouldStartNextBattleLoop = true;
     }
 
     game.markModified("state");
     game.markModified("tournament");
     await game.save();
+
+    if (shouldStartNextBattleLoop && !GameLoop.get(gameId)) {
+      const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test';
+      GameLoop.start(gameId, game.state, { tickRate: 30, mode: gameMode });
+      console.log(`[battle/complete] Started next battle GameLoop for ${gameId}`);
+    }
 
     // ✅ Broadcast phase change to BOTH players so neither needs to manually refresh
     const stateDiff      = diffState(prevState, game.state);
@@ -1273,21 +1333,27 @@ router.post("/cheat/clear-buffs", async (req, res) => {
 });
 
 /**
- * POST /cheat/set-crit-chance - Set both players' 外功会心/内功会心 (%) and optionally 防御力 (%).
- * Body: { gameId, critChancePct? , waiGongCritChancePct?, neiGongCritChancePct?, defensePct? }
+ * POST /cheat/set-crit-chance - Set both players' combat preset stats.
+ * Body: { gameId, critChancePct? , waiGongCritChancePct?, neiGongCritChancePct?, defensePct?, huajinPct?, maxHp?, attackDamage? }
  * - If critChancePct is provided, both split values are set to that value.
  */
 router.post("/cheat/set-crit-chance", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, critChancePct, waiGongCritChancePct, neiGongCritChancePct, defensePct } = req.body;
+    const { gameId, critChancePct, waiGongCritChancePct, neiGongCritChancePct, defensePct, huajinPct, maxHp, attackDamage } = req.body;
 
     const hasLegacy = critChancePct !== undefined;
     const hasDefense = defensePct !== undefined;
+    const hasHuajin = huajinPct !== undefined;
+    const hasMaxHp = maxHp !== undefined;
+    const hasAttackDamage = attackDamage !== undefined;
     const legacy = Number(critChancePct);
     const waiRaw = waiGongCritChancePct !== undefined ? Number(waiGongCritChancePct) : legacy;
     const neiRaw = neiGongCritChancePct !== undefined ? Number(neiGongCritChancePct) : legacy;
     const defenseRaw = Number(defensePct);
+    const huajinRaw = Number(huajinPct);
+    const maxHpRaw = Number(maxHp);
+    const attackDamageRaw = Number(attackDamage);
 
     if (!Number.isFinite(waiRaw) || !Number.isFinite(neiRaw) || (!hasLegacy && waiGongCritChancePct === undefined && neiGongCritChancePct === undefined)) {
       return res.status(400).json({ error: "Provide critChancePct or waiGongCritChancePct/neiGongCritChancePct as numbers" });
@@ -1295,10 +1361,22 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
     if (hasDefense && !Number.isFinite(defenseRaw)) {
       return res.status(400).json({ error: "defensePct must be a number" });
     }
+    if (hasHuajin && !Number.isFinite(huajinRaw)) {
+      return res.status(400).json({ error: "huajinPct must be a number" });
+    }
+    if (hasMaxHp && (!Number.isFinite(maxHpRaw) || maxHpRaw <= 0)) {
+      return res.status(400).json({ error: "maxHp must be a positive number" });
+    }
+    if (hasAttackDamage && (!Number.isFinite(attackDamageRaw) || attackDamageRaw <= 0)) {
+      return res.status(400).json({ error: "attackDamage must be a positive number" });
+    }
 
     const boundedWaiCrit = Math.max(0, Math.min(100, waiRaw));
     const boundedNeiCrit = Math.max(0, Math.min(100, neiRaw));
     const boundedDefense = Math.max(0, Math.min(100, defenseRaw));
+    const boundedHuajin = Math.max(0, Math.min(100, huajinRaw));
+    const boundedMaxHp = Math.max(1, Math.floor(maxHpRaw));
+    const boundedAttackDamage = Math.max(1, Math.floor(attackDamageRaw));
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -1317,6 +1395,12 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
         diff.push({ path: `/players/${idx}/neiGongCritChancePct`, value: boundedNeiCrit });
         diff.push({ path: `/players/${idx}/critChancePct`, value: boundedWaiCrit });
         if (hasDefense) diff.push({ path: `/players/${idx}/defensePct`, value: boundedDefense });
+        if (hasHuajin) diff.push({ path: `/players/${idx}/huajinPct`, value: boundedHuajin });
+        if (hasMaxHp) {
+          diff.push({ path: `/players/${idx}/maxHp`, value: boundedMaxHp });
+          diff.push({ path: `/players/${idx}/hp`, value: boundedMaxHp });
+        }
+        if (hasAttackDamage) diff.push({ path: `/players/${idx}/attackDamage`, value: boundedAttackDamage });
         return {
           ...p,
           waiGongCritChancePct: boundedWaiCrit,
@@ -1324,6 +1408,9 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
           // Keep legacy field for compatibility with old clients.
           critChancePct: boundedWaiCrit,
           ...(hasDefense ? { defensePct: boundedDefense } : {}),
+          ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
+          ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
+          ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
         };
       });
       loopState.version = (loopState.version ?? 0) + 1;
@@ -1335,12 +1422,21 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
         diff.push({ path: `/players/${idx}/neiGongCritChancePct`, value: boundedNeiCrit });
         diff.push({ path: `/players/${idx}/critChancePct`, value: boundedWaiCrit });
         if (hasDefense) diff.push({ path: `/players/${idx}/defensePct`, value: boundedDefense });
+        if (hasHuajin) diff.push({ path: `/players/${idx}/huajinPct`, value: boundedHuajin });
+        if (hasMaxHp) {
+          diff.push({ path: `/players/${idx}/maxHp`, value: boundedMaxHp });
+          diff.push({ path: `/players/${idx}/hp`, value: boundedMaxHp });
+        }
+        if (hasAttackDamage) diff.push({ path: `/players/${idx}/attackDamage`, value: boundedAttackDamage });
         return {
           ...p,
           waiGongCritChancePct: boundedWaiCrit,
           neiGongCritChancePct: boundedNeiCrit,
           critChancePct: boundedWaiCrit,
           ...(hasDefense ? { defensePct: boundedDefense } : {}),
+          ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
+          ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
+          ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
         };
       });
       game.state.version = (game.state.version ?? 0) + 1;
@@ -1359,6 +1455,9 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
       waiGongCritChancePct: boundedWaiCrit,
       neiGongCritChancePct: boundedNeiCrit,
       ...(hasDefense ? { defensePct: boundedDefense } : {}),
+      ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
+      ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
+      ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
     });
 
     game.state.players = game.state.players.map((p: any) => ({
@@ -1367,6 +1466,9 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
       neiGongCritChancePct: boundedNeiCrit,
       critChancePct: boundedWaiCrit,
       ...(hasDefense ? { defensePct: boundedDefense } : {}),
+      ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
+      ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
+      ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
     }));
     game.markModified("state");
     game.markModified("state.players");
@@ -1386,7 +1488,7 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
  *    caller treats it as an enemy and can target/damage it.
  *  - side="ally":  ownerUserId set to caller's userId; the caller's opponent
  *    treats it as their enemy.
- * Dummies default to 200 HP, can override maxHp, have no intrinsic immunities,
+ * Dummies default to 126万 HP, can override maxHp, have no intrinsic immunities,
  * and persist 10 minutes.
  */
 router.post("/cheat/spawn-dummy", async (req, res) => {
@@ -1401,7 +1503,7 @@ router.post("/cheat/spawn-dummy", async (req, res) => {
       return res.status(400).json({ error: "x/y must be numbers" });
     }
     const zNum = Number.isFinite(z) ? Number(z) : 0;
-    const dummyMaxHp = Number.isFinite(maxHp) ? Math.max(1, Math.floor(Number(maxHp))) : 200;
+    const dummyMaxHp = Number.isFinite(maxHp) ? Math.max(1, Math.floor(Number(maxHp))) : 1_260_000;
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -1433,10 +1535,10 @@ router.post("/cheat/spawn-dummy", async (req, res) => {
       ownerUserId,
       position: { x: Number(x), y: Number(y), z: zNum },
       radius,
-      hp: dummyMaxHp,
-      maxHp: dummyMaxHp,
+      ...getPurpleCombatStats(dummyMaxHp),
       shield: 0,
       buffs: [],
+      statsPreset: "purple",
       expiresAt: now + 600_000,
       enteredAtByUser: {},
       rearmAtByUser: {},
@@ -1499,7 +1601,8 @@ router.post("/cheat/restore-dummies", async (req, res) => {
     const target: any = gameLoop ? gameLoop.getState() : game.state;
     const entities = ((target.entities ?? []) as any[]).map((e: any) => {
       if (!DUMMY_KINDS.has(e.kind)) return e;
-      return { ...e, hp: e.maxHp, shield: 0 };
+      const restoreMaxHp = Number(e.maxHp) === 100 ? 100 : STARTING_BATTLE_HP;
+      return { ...e, ...getPurpleCombatStats(restoreMaxHp), shield: 0, statsPreset: "purple" };
     });
     target.entities = entities;
     target.version = (target.version ?? 0) + 1;

@@ -25,6 +25,12 @@ export function getMaxHp(target: { maxHp?: number }): number {
   return target.maxHp ?? 100;
 }
 
+export function resolveMaxHpPercentHealAmount(target: { maxHp?: number }, percent: number): number {
+  const rawPercent = Number(percent ?? 0);
+  if (!Number.isFinite(rawPercent) || rawPercent <= 0) return 0;
+  return Math.max(0, Math.floor(getMaxHp(target) * (rawPercent / 100)));
+}
+
 export function applyHealToTarget(target: ShieldedTarget, rawHeal: number): number {
   const heal = Math.max(0, Math.floor(rawHeal));
   if (heal <= 0) return 0;

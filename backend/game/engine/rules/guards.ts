@@ -164,16 +164,21 @@ export function blocksControlByImmunity(
   effectType: EffectType,
   target: { buffs: ActiveBuff[] }
 ) {
-  if (effectType !== "CONTROL" && effectType !== "ATTACK_LOCK") return false;
-  return allEffects(target).some((e) => e.type === "CONTROL_IMMUNE");
+  if (effectType === "CONTROL") {
+    return allEffects(target).some((e) => e.type === "CONTROL_IMMUNE" || e.type === "CONTROL_ONLY_IMMUNE");
+  }
+  if (effectType === "ATTACK_LOCK") {
+    return allEffects(target).some((e) => e.type === "CONTROL_IMMUNE");
+  }
+  return false;
 }
 
 export function hasKnockbackImmune(target: { buffs: ActiveBuff[] }) {
-  return allEffects(target).some((e) => e.type === "KNOCKBACK_IMMUNE");
+  return allEffects(target).some((e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "CONTROL_ONLY_IMMUNE");
 }
 
 export function hasKnockedBackImmune(target: { buffs: ActiveBuff[] }) {
   return allEffects(target).some(
-    (e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "KNOCKED_BACK_IMMUNE"
+    (e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "KNOCKED_BACK_IMMUNE" || e.type === "CONTROL_ONLY_IMMUNE"
   );
 }

@@ -66,6 +66,7 @@ export interface PlayerState {
 
   hp: number;
   maxHp?: number;
+  attackDamage?: number;
   shield?: number;
   /** Runtime 外功会心 percentage (0-100). */
   waiGongCritChancePct?: number;
@@ -75,6 +76,8 @@ export interface PlayerState {
   critChancePct?: number;
   /** Runtime 防御力 percentage (0-100). Applied to base damage before crit/DR. */
   defensePct?: number;
+  /** Runtime 化劲 percentage (0-100). Applied at the end of damage calculation. */
+  huajinPct?: number;
   /** Runtime 加速率 percentage shown to players. Timing uses a separate reduction constant. */
   hasteRatePct?: number;
 

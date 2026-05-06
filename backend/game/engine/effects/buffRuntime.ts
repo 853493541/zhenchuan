@@ -9,7 +9,7 @@ import {
   BuffDefinition,
 } from "../state/types";
 import { resolveScheduledDamage } from "../utils/combatMath";
-import { addShieldToTarget, applyDamageToTarget, removeLinkedShield } from "../utils/health";
+import { addShieldToTarget, applyDamageToTarget, getMaxHp, removeLinkedShield } from "../utils/health";
 import { ABILITIES } from "../../abilities/abilities";
 import { applyPropertyOverridesToEffects, loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
 import { isBuffManualCancelable } from "../../abilities/manualCancelableBuffs";
@@ -98,6 +98,17 @@ const LOCKOUT_DR_CONFIG: ResistanceConfig = {
 
 const SILENCE_FAMILY_EFFECT_TYPES = new Set(["SILENCE", "DISARM"]);
 const SHARED_LOCKOUT_EFFECT_TYPES = new Set(["SILENCE", "ATTACK_LOCK", "DISARM", "NON_QINGGONG_LOCK"]);
+const CONTROL_ONLY_IMMUNE_BLOCKED_EFFECT_TYPES = new Set([
+  "CONTROL",
+  "ROOT",
+  "SLOW",
+  "KNOCKED_BACK",
+  "PULLED",
+  "FEARED",
+  "MIYUN_CONFUSION",
+  "SHI_XIN_GU",
+  "Z_LOCK",
+]);
 
 type BuffEditorOverrideMap = ReturnType<typeof loadBuffEditorOverrides>["overrides"];
 
@@ -218,17 +229,21 @@ function hasRootSlowImmune(target: { buffs: ActiveBuff[] }): boolean {
 }
 
 function hasKnockbackImmune(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some((e) => e.type === "KNOCKBACK_IMMUNE"));
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "CONTROL_ONLY_IMMUNE"));
 }
 
 function hasKnockedBackImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some(
-    (e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "KNOCKED_BACK_IMMUNE"
+    (e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "KNOCKED_BACK_IMMUNE" || e.type === "CONTROL_ONLY_IMMUNE"
   ));
 }
 
 function hasControlImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "CONTROL_IMMUNE"));
+}
+
+function hasControlOnlyImmune(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "CONTROL_ONLY_IMMUNE"));
 }
 
 function hasLockoutImmune(target: { buffs: ActiveBuff[] }): boolean {
@@ -752,9 +767,27 @@ export function addBuff(params: {
   if (
     sourceUserId !== targetUserId &&
     runtimeBuff.effects.some((e) => e.type === "MIYUN_CONFUSION") &&
-    hasWuShiImmunity(buffTarget, now)
+    (hasWuShiImmunity(buffTarget, now) || hasControlOnlyImmune(buffTarget))
   ) {
     return;
+  }
+
+  if (sourceUserId !== targetUserId && hasControlOnlyImmune(buffTarget)) {
+    const blocksControlEffect = runtimeBuff.effects.some((e) => CONTROL_ONLY_IMMUNE_BLOCKED_EFFECT_TYPES.has(e.type));
+    if (blocksControlEffect) {
+      const filteredEffects = runtimeBuff.effects.filter(
+        (e) => !CONTROL_ONLY_IMMUNE_BLOCKED_EFFECT_TYPES.has(e.type) && e.type !== "DAMAGE_IMMUNE"
+      );
+      if (filteredEffects.length === 0) {
+        return;
+      }
+      if (filteredEffects.length !== runtimeBuff.effects.length) {
+        runtimeBuff = {
+          ...runtimeBuff,
+          effects: filteredEffects,
+        };
+      }
+    }
   }
 
   // 盾立 reflect: any debuff applied to a 盾立 holder is redirected at the
@@ -1055,7 +1088,7 @@ export function addBuff(params: {
         const target = state.players.find((p: any) => p.userId === targetUserId);
         if (target && target.hp > 0) {
           const bonus = source
-            ? resolveScheduledDamage({ source, target, base: 1 })
+            ? resolveScheduledDamage({ source, target, base: 1, abilityId: ability.id, damageType: (ability as any).damageType })
             : 1;
           applyDamageToTarget(target as any, bonus);
           if (bonus > 0) {
@@ -1111,7 +1144,13 @@ export function addBuff(params: {
 
   const linkedShield = runtimeBuff.effects
     .filter((e) => e.type === "SHIELD")
-    .reduce((sum, e) => sum + (e.value ?? 0), 0);
+    .reduce((sum, e) => {
+      const value = Number(e.value ?? 0);
+      const shield = (e as any).percentOfTargetMaxHp === true
+        ? Math.floor(getMaxHp(buffTarget as any) * (Math.max(0, value) / 100))
+        : value;
+      return sum + Math.max(0, shield);
+    }, 0);
 
   // 应天授命: YING_TIAN_SHIELD provides a massive internal shield for damage absorption
   const hasYingTianShield = runtimeBuff.effects.some((e) => e.type === "YING_TIAN_SHIELD");

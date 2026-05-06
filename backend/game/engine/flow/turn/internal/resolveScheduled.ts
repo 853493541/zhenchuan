@@ -53,6 +53,7 @@ export function applyScheduledDamage(
       source: owner,
       target,
       base: stage.value ?? 0,
+      abilityId: getBuffSourceAbilityId(buff),
     });
     const dmg = damageRoll.damage;
 
@@ -75,6 +76,7 @@ export function applyScheduledDamage(
         source: owner,
         target: owner,
         base: Math.floor(dmg * stage.lifestealPct),
+        scaleFlatHeal: false,
       });
       const applied = applyHealToTarget(owner as any, healRoll.heal);
 

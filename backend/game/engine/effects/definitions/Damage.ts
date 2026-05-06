@@ -111,6 +111,7 @@ export function handleDamage(
         source,
         target: source,
         base: Math.floor(damageToApply * ls),
+        scaleFlatHeal: false,
       });
       if (healRoll.heal > 0) {
         applyHealToTarget(source as any, healRoll.heal);

@@ -10,6 +10,7 @@ import { resolveTurnEnd } from "../../engine/flow/turn/advanceTurn";
 import { validatePlayAbility, validateCastAbility } from "../../engine/rules/validateAction";
 import { GameState } from "../../engine/state/types";
 import { GameLoop } from "../../engine/loop/GameLoop";
+import { ensureBattleLoop } from "../battleLoopRuntime";
 
 import { pushEvent } from "../flow/events";
 import { diffState } from "../flow/stateDiff";
@@ -20,7 +21,7 @@ import { globalTimer } from "../../../utils/timing";
 import { gameStateCache } from "../gameStateCache";
 import { addBuff, cancelAnyBuffForTesting, cancelManualBuff, pushBuffExpired } from "../../engine/effects/buffRuntime";
 import { applyDamageToTarget, removeLinkedShield } from "../../engine/utils/health";
-import { resolveRawDamageWithCrit, resolveScheduledDamage } from "../../engine/utils/combatMath";
+import { resolveScheduledDamage, resolveScheduledDamageRoll } from "../../engine/utils/combatMath";
 import { getAbilityRangeBonusFromBuffs } from "../../engine/utils/abilityRange";
 import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../../engine/utils/specialAbilityBar";
 import { hasYuqiState } from "../../engine/utils/yuqi";
@@ -34,7 +35,7 @@ function pruneOldEvents(state: GameState, keepTurns = 10) {
   state.events = state.events.filter((e) => e.turn >= minTurn);
 }
 
-const TEST_COOLDOWN_CAP_TICKS = 150; // 5 seconds at 30Hz
+const TEST_COOLDOWN_CAP_TICKS = 90; // 3 seconds at 30Hz
 const SERVER_TICK_RATE = 30;
 const BASE_GCD_SECONDS = 1.19;
 const BASE_GCD_TICKS = Math.round(BASE_GCD_SECONDS * SERVER_TICK_RATE);
@@ -265,7 +266,7 @@ export async function playAbility(
   globalTimer.start(`play_card_${gameId}`);
 
   // Check if this is a real-time battle
-  const loop = GameLoop.get(gameId);
+  const loop = await ensureBattleLoop(gameId);
 
   if (loop) {
     // ✅ REAL-TIME BATTLE LOGIC
@@ -516,11 +517,14 @@ async function playCastAbility(
             } else {
               bangHuaBuff.stacks = currentStacks - 1;
             }
-            const triggerDamage = resolveRawDamageWithCrit({
+            const triggerDamageRoll = resolveScheduledDamageRoll({
               source: opp as any,
+              target: player as any,
               base: 2,
+              abilityId: "bang_hua_sui_liu",
               damageType: (ABILITIES["bang_hua_sui_liu"] as any)?.damageType,
             });
+            const triggerDamage = triggerDamageRoll.damage;
             applyDamageToTarget(player as any, triggerDamage);
             pushEvent(state, {
               turn: state.turn,
@@ -531,6 +535,7 @@ async function playCastAbility(
               abilityName: "傍花随柳",
               effectType: "BANG_HUA_TRIGGER",
               value: triggerDamage,
+              isCrit: triggerDamageRoll.isCrit,
             } as any);
             // Last stack: also apply 束发 silence 4s
             if (isLastStack) {
@@ -618,7 +623,7 @@ async function playCastAbility(
           buffTarget: player as any,
           buff: silenceBuff,
         });
-        const dmg = resolveScheduledDamage({ source: opp, target: player as any, base: 1 });
+        const dmg = resolveScheduledDamage({ source: opp, target: player as any, base: 1, abilityId: "jiang_chun_zhu_xiu" });
         if (dmg > 0) applyDamageToTarget(player as any, dmg);
       }
     }
@@ -887,7 +892,7 @@ export async function cancelPlayerBuff(gameId: string, userId: string, buffId: n
     throw new Error("ERR_INVALID_BUFF_ID");
   }
 
-  const loop = GameLoop.get(gameId);
+  const loop = await ensureBattleLoop(gameId);
   if (loop) {
     const state = loop.getState();
     if (!state.events) state.events = [];

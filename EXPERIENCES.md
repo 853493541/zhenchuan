@@ -3,6 +3,105 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Control-only immunity, dummy stats, restart HP, and client diff load (2026-05-06)
+
+**Problem set**:
+1. 啸如虎 used `CONTROL_ONLY_IMMUNE`, but knockback and pull paths are type-3 controls implemented through forced-movement helpers, not only normal buff filtering.
+2. Target dummies had 126万 HP but not the rest of the 紫色 test-preset stats.
+3. A BATTLE snapshot could hydrate an unstarted or old-stat loop before `/battle/start`, causing the start route to return `battle_already_started` instead of restoring purple battle stats.
+4. The frontend applied every 30Hz diff by `structuredClone`-ing the full game state, which recreated large unchanged arrays like `events` and made idle pages keep doing heavy work.
+
+**Fix**:
+- Treated `CONTROL_ONLY_IMMUNE` as knockback/pull immunity in forced-movement guards while keeping lockouts separate.
+- Added purple combat stats to dummy spawn/restore: HP, AD, crit, defense, and 化劲. The 100-HP ally dummy keeps its HP override.
+- Reinitialize unstarted old-stat loops in `/battle/start`, and start the next battle loop immediately after `/battle/complete` creates the fresh purple state.
+- Replaced full-state frontend diff cloning with path-level immutable cloning so unchanged `events` and other heavy branches retain their references.
+
+**Lessons**:
+- Control immunity has to cover the actual runtime implementation path. Forced movement can bypass ordinary buff-effect filtering if the active dash is created before the status buff lands.
+- Client-side diff application must preserve references for unchanged high-frequency branches; otherwise even capped event history still causes avoidable CPU and memory pressure.
+
+## Reverse channel finals, AD buffs, and purple defaults (2026-05-06)
+
+**Problem set**:
+1. 加速 shortened reverse-channel duration, but final delayed effects still used the original delay and could miss the last second.
+2. 连环弩 used frame-based interval checks, so the final 3rd hit could be skipped when accelerated channel completion landed before a tick frame.
+3. Some requested buffs needed to increase attack damage, not post-AD damage.
+4. 追命箭 needed its 60% target HP check snapshotted before the first completion hit, not after it.
+5. Testing defaults still used low dummy HP, white starting stats, and a 5-second cooldown cap.
+
+**Fix**:
+- Haste-adjusted delayed buff effect `delayMs` together with duration/periodic timing, and let due delayed effects fire on the expiration tick before natural buff removal.
+- Changed 连环弩 to track completed tick count and catch up all due ticks up to channel end, so the 1/2/3 hits cannot be skipped by frame timing.
+- Added `ATTACK_DAMAGE_MULTIPLIER` for AD buffs and moved 女娲补天, 任驰骋, and 紫气东来 onto it; BattleArena now displays effective attack damage from those buffs.
+- Added `CONTROL_ONLY_IMMUNE` for 啸如虎 so controls are blocked while lockouts still apply.
+- Snapshotted channel-completion HP before processing 追命箭 effects, updated 韦陀献杵 defense values to 30%, raised dummy HP to 126万, made new battles default to 紫色 stats, and reduced the test cooldown cap to 3 seconds.
+
+**Lessons**:
+- Haste changes must adjust every timing field that participates in a channel, including final delayed effect offsets.
+- Completion-condition effects that depend on pre-hit HP need a per-completion snapshot before mutating HP.
+- AD increase and final damage increase must stay separate effect types after the AD overhaul.
+
+## Percent ability corrections and movement recovery diagnostics (2026-05-06)
+
+**Problem set**:
+1. Several post-AD abilities still interpreted HP-related values as flat numbers or AD-scaled damage.
+2. Fully reduced damage floats still displayed as `-0.00`, and small damage floats still showed decimals.
+3. Refresh movement failures were hard to diagnose because failed `/movement` posts were ignored by the frontend and the backend only returned a generic inactive-loop message.
+4. PM2 logs showed many concurrent refresh/reconnect requests racing to hydrate the same `GameLoop`, producing repeated “already has an active loop” warnings.
+
+**Fix**:
+- Added explicit effect metadata for target max-HP percentage thresholds, percent-of-max-HP true damage, no-crit true damage, and percent-of-max-HP shields.
+- Updated `蛊虫献祭`, `追命箭`, `拿云式`, `坐忘无我`, and `疾电叱羽` to use the requested percent/large-HP rules without accidental AD scaling.
+- Changed BattleArena damage floats so values below `10000` render as whole numbers and fully reduced hits render as `-1`.
+- Added structured battle-loop hydration diagnostics to movement failures and made BattleArena request a fresh snapshot when movement posts fail, so refresh/server-restart movement issues are no longer silent.
+- Added a per-game in-flight hydration guard so concurrent snapshot/movement recovery calls share one `GameLoop` recovery attempt.
+
+**Lessons**:
+- After AD scaling, every health-percentage ability needs an explicit runtime flag; reusing `DAMAGE` or a flat `threshold` silently introduces AD or flat-HP behavior.
+- Movement recovery needs both server-side loop hydration and client-side detection of failed movement requests. Otherwise the player can see casting work while movement appears dead with no actionable clue.
+- Hydration helpers that can be called from high-frequency routes need per-key in-flight de-duplication, not just an “already active” check before async DB work.
+
+## Runtime reconnect, event history, 化劲, and HP percent gates (2026-05-06)
+
+**Problem set**:
+1. After page refresh or PM2/server restart, casting could still appear to work but movement failed because the realtime `GameLoop` only lived in memory.
+2. Long battles could keep growing `state.events`, increasing DB payloads, WebSocket diff/index drift risk, and frontend render work.
+3. New `化劲` stat needed to reduce final damage after the existing damage calculation.
+4. `蛊虫献祭` needed a 35% max-HP cast gate instead of a flat 35 HP gate.
+
+**Fix**:
+- Added a shared `ensureBattleLoop()` runtime helper that hydrates a missing `GameLoop` from persisted `GameSession.state` when the tournament is in `BATTLE`, then used it from snapshot, movement, pickup, and cast/cancel paths.
+- Bounded realtime event history in `GameLoop` by periodically replacing `/events` with a trimmed recent window, and changed BattleArena floating combat text to track processed event IDs instead of array length.
+- Added `huajinPct` to player state, stat presets, C-panel display, and combat math. Scheduled damage now applies 化劲 at the final damage step after crit and existing reductions.
+- Added `minSelfHpPercentExclusive` ability metadata and validation, exposed it through preload, and switched `蛊虫献祭` to require current HP greater than 35% max HP.
+
+**Lessons**:
+- Any route that requires an active realtime loop must either hydrate that loop from the saved battle state or fail after a process restart even though the DB snapshot still exists.
+- Event consumers should identify events by stable IDs, not array length. Once the server trims or replaces history, length-based detection can miss new events written into reused indexes.
+- Percentage HP gates need explicit metadata instead of overloading flat HP gates; otherwise large HP pools silently turn old flat thresholds into meaningless requirements.
+
+## Attack damage overhaul (2026-05-06)
+
+**Problem set**:
+1. Existing damage numbers now represent AD multipliers rather than final flat damage.
+2. Normal flat healing needs ten-thousand scaling, while lifesteal must stay based on actual damage dealt.
+3. 贯体 healing numbers now represent max-health percentages, but shields remain flat values.
+4. The ability editor needs a bulk AD multiplier page, and battle HUD values above 1万 need compact 万 display.
+
+**Fix**:
+- Central scheduled damage now resolves `base * attackDamage` before source multipliers, target defense, damage taken, damage reduction, and crit. Direct custom damage paths were moved onto the same resolver or explicitly converted for true-damage paths.
+- Normal `resolveHealAmountRoll` / `resolveNonCritHealAmountRoll` now scale flat heal bases by `10000`; lifesteal call sites pass `scaleFlatHeal: false` so they heal from post-mitigation damage.
+- Added a shared max-HP percentage heal helper and used it for instant, periodic, timed, and stack-on-hit 贯体 heals. `addShieldToTarget` stayed flat for shield effects.
+- Added `attackDamage` to runtime player state, defaulted battle HP to `300000` and attack damage to `10000`, and extended the rarity preset cheat route to set HP and AD.
+- Added the Ability Editor `AD控制` tab over existing damage numeric settings and changed damage labels to `伤害倍率`.
+- BattleArena now formats large floating combat values, HP bars, shield text, max HP, and attack damage with 万 units.
+
+**Lessons**:
+- The safest place to reinterpret damage values as AD multipliers is the central scheduled damage resolver; patching individual ability definitions would create drift with editor overrides.
+- Flat heal scaling must not be hidden inside `applyHealToTarget`, because lifesteal and 贯体 healing both need different semantics.
+- Existing damage editor override storage was already the right source for AD control; adding a bulk page over those settings avoided a second override system.
+
 ## Haste stat and timing acceleration (2026-05-06)
 
 **Problem set**:

@@ -1,11 +1,11 @@
 import express from "express";
 import { cancelPlayerBuff, playAbility, passTurn } from "../services";
 import { getUserIdFromCookie } from "./auth";
-import { GameLoop } from "../engine/loop/GameLoop";
 import type { MovementInput } from "../engine/state/types";
 import { ABILITIES } from "../abilities/abilities";
 import GameSession from "../models/GameSession";
 import { broadcastGameUpdate } from "../services/broadcast";
+import { ensureBattleLoop, getBattleLoopHydrationDiagnostics } from "../services/battleLoopRuntime";
 import { randomUUID } from "crypto";
 import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types";
 
@@ -77,11 +77,12 @@ router.post("/movement", async (req, res) => {
       return res.status(400).json({ error: "Missing gameId or userId" });
     }
 
-    const loop = GameLoop.get(gameId);
+    const loop = await ensureBattleLoop(gameId);
     if (!loop) {
-      console.warn(`[MOVEMENT] GameLoop not active for ${gameId}`);
+      const diagnostics = await getBattleLoopHydrationDiagnostics(gameId);
+      console.warn(`[MOVEMENT] GameLoop not active for ${gameId}`, diagnostics);
       // Return 400 instead of crashing - battle may be pending start
-      return res.status(400).json({ error: "Battle not in progress" });
+      return res.status(400).json({ error: "Battle not in progress", diagnostics });
     }
 
     try {
@@ -139,6 +140,7 @@ router.post("/movement", async (req, res) => {
       const player = state.players[playerIndex];
       res.json({ 
         success: true,
+        seq,
         position: player.position,
         velocity: player.velocity,
         input: input // Send input back so client can predict next position
@@ -184,7 +186,7 @@ router.post("/pickup/inspect", async (req, res) => {
       return res.status(400).json({ error: "gameId and pickupId required" });
     }
 
-    const loop = GameLoop.get(gameId);
+    const loop = await ensureBattleLoop(gameId);
     if (!loop) {
       return res.status(400).json({ error: "Battle not in progress" });
     }
@@ -243,7 +245,7 @@ router.post("/pickup/claim", async (req, res) => {
       return res.status(400).json({ error: "gameId and pickupId required" });
     }
 
-    const loop = GameLoop.get(gameId);
+    const loop = await ensureBattleLoop(gameId);
     if (!loop) {
       return res.status(400).json({ error: "Battle not in progress" });
     }

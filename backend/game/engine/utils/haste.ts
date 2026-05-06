@@ -62,6 +62,18 @@ export function shouldApplyHasteToBuffTiming(ability: Ability | any, buff: BuffD
   return isChannelPeriodicBuff(ability, buff) || hasPeriodicDamage(buff);
 }
 
+function getHasteAdjustedBuffEffects(ability: Ability | any, buff: BuffDefinition | any) {
+  if (!Array.isArray(buff?.effects) || isHasteUnaffectedAbility(ability)) return buff.effects;
+
+  return buff.effects.map((effect: any) => {
+    if (!Number.isFinite(effect?.delayMs) || effect.delayMs <= 0) return effect;
+    return {
+      ...effect,
+      delayMs: getHasteAdjustedTimingMs(effect.delayMs, ability),
+    };
+  });
+}
+
 export function getHasteAdjustedBuffTiming<T extends BuffDefinition>(ability: Ability | any, buff: T): T {
   if (!shouldApplyHasteToBuffTiming(ability, buff)) return buff;
 
@@ -74,6 +86,7 @@ export function getHasteAdjustedBuffTiming<T extends BuffDefinition>(ability: Ab
   return {
     ...buff,
     durationMs: adjustedTiming.durationMs,
+    effects: getHasteAdjustedBuffEffects(ability, buff) as T["effects"],
     ...(adjustedTiming.periodicMs !== undefined ? { periodicMs: adjustedTiming.periodicMs } : {}),
   };
 }

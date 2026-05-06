@@ -84,7 +84,7 @@ function showGameError(rawCode: string) {
       toastError("你被封轻功，无法施放轻功技能");
       break;
     case "ERR_HP_TOO_LOW":
-      toastError("当前气血必须大于35才能施放");
+      toastError("当前气血不足，无法施放");
       break;
     case "ERR_NO_LINE_OF_SIGHT":
       toastError("目标不在视线范围内");
@@ -389,6 +389,7 @@ export default function InGameClient({
         entities={state?.entities}
         opponentPositionBufferRef={opponentPositionBufferRef}
         mode={gameMode ?? 'arena'}
+        onMovementRecover={refetch}
         onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId) => {
           // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
           const cardInstance =

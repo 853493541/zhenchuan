@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 
+import AdControlTab from "./AdControlTab";
 import BuffEditorTab from "./BuffEditorTab";
 import AbilityBooleanDeciderTab from "./AbilityBooleanDeciderTab";
 import CanCastWhileMountedTab from "./CanCastWhileMountedTab";
@@ -56,10 +57,11 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "qinggong" | "qinggongGcdImmune" | "hasteUnaffected" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "hiddenBuffs";
+type MainTab = "abilities" | "buffs" | "adControl" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "qinggong" | "qinggongGcdImmune" | "hasteUnaffected" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "hiddenBuffs";
 type EditorTabGroup = "skill" | "buff";
 
 const SKILL_EDITOR_TABS: Array<{ id: MainTab; label: string }> = [
+  { id: "adControl", label: "AD控制" },
   { id: "projectiles", label: "远程弹道" },
   { id: "dunLiWhitelist", label: "盾立白名单" },
   { id: "noWeaponRequired", label: "无需武器" },
@@ -117,6 +119,8 @@ export default function AbilityEditorPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("tab") === "buffs") {
       setMainTab("buffs");
+    } else if (params.get("tab") === "adControl") {
+      setMainTab("adControl");
     } else if (params.get("tab") === "projectiles") {
       setMainTab("projectiles");
     } else if (params.get("tab") === "dunLiWhitelist") {
@@ -785,9 +789,9 @@ export default function AbilityEditorPage() {
 
         <div className={styles.headerBlock}>
           <p className={styles.eyebrow}>Ability Editor</p>
-          <h1 className={styles.title}>能力属性与伤害编辑</h1>
+          <h1 className={styles.title}>能力属性与AD倍率编辑</h1>
           <p className={styles.subtitle}>
-            总览层只负责浏览。点击技能卡片进入详情页后，再编辑属性、读条、冷却、范围和伤害。
+            总览层只负责浏览。点击技能卡片进入详情页后，再编辑属性、读条、冷却、范围和AD倍率。
           </p>
           <div className={styles.summaryRow}>
             <span className={styles.summaryPill}>技能 {snapshot?.abilities.length ?? 0}</span>
@@ -1115,6 +1119,16 @@ export default function AbilityEditorPage() {
       )}
 
       {/* ── Projectile abilities tab ─────────────────────────────────────────── */}
+      {mainTab === "adControl" && (
+        <section className={styles.buffEditorSection}>
+          <AdControlTab
+            snapshot={snapshot}
+            loading={loading}
+            onSnapshotUpdate={setSnapshot}
+          />
+        </section>
+      )}
+
       {mainTab === "projectiles" && (
         <section className={styles.buffEditorSection}>
           <ProjectileEditorTab

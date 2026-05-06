@@ -8,8 +8,6 @@ import type {
   PlayerState,
 } from "@/app/game/screens/in-game/types";
 
-const MAX_HP = 100;
-
 type Props = {
   me: PlayerState;
   isMyTurn: boolean;
@@ -36,7 +34,7 @@ export default function PlayerArea({
         {/* HP + GCD */}
         <HealthBar
           hp={me.hp}
-          maxHp={MAX_HP}
+          maxHp={me.maxHp ?? 100}
           side="player"
           gcd={me.gcd}
         />

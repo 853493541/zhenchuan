@@ -479,11 +479,19 @@ export function validateCastAbility(
       throw new Error("ERR_HP_TOO_LOW");
     }
   }
+  if (typeof (ability as any).minSelfHpPercentExclusive === "number") {
+    const maxHp = Math.max(1, Number(player.maxHp ?? 100));
+    const requiredHp = maxHp * ((ability as any).minSelfHpPercentExclusive / 100);
+    if (player.hp <= requiredHp) {
+      throw new Error("ERR_HP_TOO_LOW");
+    }
+  }
 
-  /* ================= 拿云式: target HP must be < 30 ================= */
+  /* ================= 拿云式: target HP must be < 30% ================= */
   if (ability.id === "na_yun_shi") {
     const enemy = state.players[targetIndex];
-    if (!enemy || enemy.userId === player.userId || (enemy.hp ?? 0) >= 30) {
+    const enemyMaxHp = Math.max(1, Number(enemy?.maxHp ?? 100));
+    if (!enemy || enemy.userId === player.userId || (enemy.hp ?? 0) >= enemyMaxHp * 0.3) {
       throw new Error("ERR_TARGET_HP_TOO_HIGH");
     }
   }

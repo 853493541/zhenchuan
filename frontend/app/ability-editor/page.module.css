@@ -515,6 +515,257 @@
   padding-top: 12px;
 }
 
+.adControlShell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 40px;
+}
+
+.adControlHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #ddd7cb;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(26, 21, 14, 0.04);
+}
+
+.adControlTitle {
+  margin: 0;
+  font-size: 20px;
+  font-family: Georgia, "Noto Serif SC", serif;
+  color: #1e1a14;
+}
+
+.adControlMeta {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7a7368;
+}
+
+.adControlTools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.adControlSearch,
+.adNumericInput {
+  border: 1px solid #d9d3c8;
+  background: #ffffff;
+  color: #2d2416;
+  font-family: inherit;
+  outline: none;
+}
+
+.adControlSearch {
+  width: 220px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.adControlToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #ddd7cb;
+  border-radius: 8px;
+  background: #f8f5ef;
+  color: #4f4639;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.adControlError {
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.adControlList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.adControlCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #ddd7cb;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(26, 21, 14, 0.04);
+}
+
+.adAbilityHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.adAbilityTitleBlock {
+  min-width: 0;
+  flex: 1;
+}
+
+.adAbilityName {
+  font-size: 16px;
+  font-weight: 800;
+  color: #1e1a14;
+  line-height: 1.2;
+}
+
+.adAbilityMeta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #7a7368;
+  font-weight: 700;
+}
+
+.adSettingList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.adSettingRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid #eee7dc;
+  border-radius: 8px;
+  background: #fbf8f2;
+}
+
+.adSettingLabelBlock {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.adSettingLabel {
+  font-size: 13px;
+  font-weight: 800;
+  color: #33291d;
+}
+
+.adOverrideBadge,
+.adDefaultBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.adOverrideBadge {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.adDefaultBadge {
+  background: #edf7ee;
+  color: #166534;
+}
+
+.adSettingControl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.adNumericInput {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.adNumericInput::-webkit-outer-spin-button,
+.adNumericInput::-webkit-inner-spin-button { display: none; }
+
+.adNumericInput {
+  -moz-appearance: textfield;
+}
+
+.adControlSearch:focus,
+.adNumericInput:focus {
+  border-color: #8a5a2b;
+  box-shadow: 0 0 0 3px rgba(138, 90, 43, 0.12);
+}
+
+.adSaveButton {
+  min-height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: #1f5d4b;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.adSaveButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 980px) {
+  .adControlHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .adControlTools {
+    justify-content: flex-start;
+  }
+
+  .adControlList {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .adSettingRow {
+    grid-template-columns: 1fr;
+  }
+
+  .adSettingControl {
+    grid-template-columns: 1fr auto;
+  }
+
+  .adControlSearch {
+    width: 100%;
+  }
+}
+
 /* Sub-tab bar inside buff editor */
 .buffSubTabBar {
   display: flex;
