@@ -43,6 +43,24 @@ Each entry goes under its relevant section header.
 - 这种 UI 重组最稳的方式，是保留现有 leaf tab 作为唯一真实状态，再在渲染层派生分组导航。这样懒加载逻辑、URL 同步、已有本地状态键都不用跟着重写。
 - 文案调整最好和分组一起做，否则用户会先看到新的信息架构，再看到旧的标签名，体验上仍然会像“没整理完”。
 
+## GCD bar polish and jue mai cap tuning (2026-05-06)
+
+**Problem set**:
+1. 用户希望视觉 GCD 条更薄一些，避免它在读条条下方占太多垂直空间。
+2. 服务器延迟下，新的 `visualGcd` 状态偶尔会把条宽度往回拉；当前 CSS 过渡会把这个回退渲染成明显的倒退动画。
+3. `绝脉` 的上限需要从 `12` 层下调到 `10` 层。
+
+**Fix**:
+- BattleArena 的 GCD track 高度从 `10px` 调整到 `7px`，刚好比原来低 `30%`。
+- `GcdVisualBar` 不再依赖 `33ms` 的 `setInterval + width transition`；现在改成 `requestAnimationFrame` 驱动，并用 `transform: scaleX(...)` 渲染 fill，所以运动更连续，视觉上不会再有那种低帧率拖动感。
+- 当新的 `visualGcd` 试图在同一种 GCD 轨道上把进度往回拉，而且当前这根条还没接近结束时，前端会继续保留当前显示中的那一根条，不接受这次 backward replacement。这样能直接挡掉延迟包导致的中途回退，而不是只把回退动画改成瞬移。
+- `绝脉` 的 source-of-truth 仍然是 `abilities.ts` 里 buff `1337` 的 `maxStacks`；本轮已把它从 `12` 改成 `10`。
+
+**Lessons**:
+- 如果条的宽度本身每 `33ms` 才更新一次，再叠一层 CSS `width` 补间，观感上很容易像“卡着在追帧”。这类持续进度条更适合直接用 `requestAnimationFrame + transform`，让浏览器按合成层去画。
+- 这种“偶尔收到更低进度”的问题，不一定要先改后端排序。先在最终渲染 seam 拦住 backward replacement，通常就能消掉最刺眼的视觉错误，而且改动最小。
+- 对 stack cap 这类数值调整，先确认 runtime 没有第二套硬编码上限，再只改 source-of-truth，能避免 editor / preload / combat 之间出现新漂移。
+
 ## GCD runtime/editor/visual bar overhaul (2026-05-06)
 
 **Problem set**:

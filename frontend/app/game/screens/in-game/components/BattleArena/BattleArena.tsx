@@ -1138,44 +1138,95 @@ function buildVisibleVisualGcd(
   };
 }
 
+function getVisualGcdElapsedMs(gcd: VisualGcdState, nowMs: number): number {
+  return Math.max(0, Math.min(gcd.durationMs, nowMs - gcd.startedAt));
+}
+
+function getVisualGcdProgressPct(gcd: VisualGcdState, nowMs: number): number {
+  if (!Number.isFinite(gcd.startedAt) || !Number.isFinite(gcd.durationMs) || gcd.durationMs <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, (getVisualGcdElapsedMs(gcd, nowMs) / gcd.durationMs) * 100));
+}
+
 function GcdVisualBar({ gcd }: { gcd?: VisualGcdState | null }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [displayGcd, setDisplayGcd] = useState<VisualGcdState | null>(gcd ?? null);
 
   useEffect(() => {
-    if (!gcd) return;
+    if (!gcd) {
+      return;
+    }
+
+    setDisplayGcd((current) => {
+      if (!current) {
+        return gcd;
+      }
+
+      const now = Date.now();
+      const currentProgressPct = getVisualGcdProgressPct(current, now);
+      const nextProgressPct = getVisualGcdProgressPct(gcd, now);
+      const isSameTrack =
+        current.kind === gcd.kind &&
+        Math.abs(current.durationMs - gcd.durationMs) <= 50;
+      const currentStillRunning = now - current.startedAt < current.durationMs - 40;
+
+      if (isSameTrack && currentStillRunning && nextProgressPct + 0.5 < currentProgressPct) {
+        return current;
+      }
+
+      return gcd;
+    });
+  }, [gcd?.id, gcd?.kind, gcd?.startedAt, gcd?.durationMs, gcd?.name]);
+
+  useEffect(() => {
+    if (!displayGcd) return;
+
+    let frameId = 0;
+    const tick = () => {
+      setNowMs(Date.now());
+      frameId = window.requestAnimationFrame(tick);
+    };
+
     setNowMs(Date.now());
-    const timer = window.setInterval(() => setNowMs(Date.now()), 33);
-    return () => window.clearInterval(timer);
-  }, [gcd?.id]);
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [displayGcd?.id]);
 
-  if (!gcd || !Number.isFinite(gcd.startedAt) || !Number.isFinite(gcd.durationMs) || gcd.durationMs <= 0) {
+  const activeGcd = displayGcd ?? gcd ?? null;
+  const isValidGcd = Boolean(
+    activeGcd && Number.isFinite(activeGcd.startedAt) && Number.isFinite(activeGcd.durationMs) && activeGcd.durationMs > 0,
+  );
+
+  if (!isValidGcd || !activeGcd) {
     return null;
   }
 
-  const elapsedMs = Math.max(0, nowMs - gcd.startedAt);
-  if (elapsedMs >= gcd.durationMs + 120) {
+  const elapsedMs = Math.max(0, nowMs - activeGcd.startedAt);
+  if (elapsedMs >= activeGcd.durationMs + 120) {
     return null;
   }
 
-  const clampedElapsedMs = Math.min(gcd.durationMs, elapsedMs);
-  const progressPct = Math.max(0, Math.min(100, (clampedElapsedMs / gcd.durationMs) * 100));
+  const clampedElapsedMs = getVisualGcdElapsedMs(activeGcd, nowMs);
+  const progressPct = getVisualGcdProgressPct(activeGcd, nowMs);
   const elapsedSeconds = clampedElapsedMs / 1000;
-  const durationSeconds = gcd.durationMs / 1000;
-  const kindClass = gcd.kind === 'qinggong'
+  const durationSeconds = activeGcd.durationMs / 1000;
+  const kindClass = activeGcd.kind === 'qinggong'
     ? styles.gcdBarFillQinggong
-    : gcd.kind === 'houyao'
+    : activeGcd.kind === 'houyao'
       ? styles.gcdBarFillHouyao
       : styles.gcdBarFillBase;
 
   return (
-    <div className={styles.gcdBarWrap} aria-label={gcd.name}>
+    <div className={styles.gcdBarWrap} aria-label={activeGcd.name}>
       <div className={styles.gcdBarLabel}>
-        {gcd.name} ({formatGcdBarSeconds(elapsedSeconds)}/{formatGcdBarSeconds(durationSeconds)})
+        {activeGcd.name} ({formatGcdBarSeconds(elapsedSeconds)}/{formatGcdBarSeconds(durationSeconds)})
       </div>
       <div className={styles.gcdBarTrack}>
         <div
           className={`${styles.gcdBarFill} ${kindClass}`}
-          style={{ width: `${progressPct}%` }}
+          style={{ transform: `scaleX(${progressPct / 100})` }}
         />
       </div>
     </div>

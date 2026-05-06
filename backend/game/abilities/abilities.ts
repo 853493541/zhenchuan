@@ -447,7 +447,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "DEBUFF",
         durationMs: 30_000,
         initialStacks: 3,
-        maxStacks: 12,
+        maxStacks: 10,
         description: "每层使技能调息速度降低1%",
         effects: [
           { type: "COOLDOWN_SLOW", value: 0.01 },
