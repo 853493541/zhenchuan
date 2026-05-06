@@ -28,6 +28,10 @@ const PROPERTY_VALUE_CONFIG: Partial<
   外功闪避: { label: "外功闪避率", unit: "%", min: 0, max: 100 },
 };
 
+type BuffAttributeSelection = BuffAttribute | "隐藏";
+
+const BUFF_ATTRIBUTE_SELECTIONS: BuffAttributeSelection[] = [...BUFF_ATTRIBUTES, "隐藏"];
+
 export default function BuffDetailPage() {
   const params = useParams<{ buffId: string }>();
   const router = useRouter();
@@ -164,10 +168,34 @@ export default function BuffDetailPage() {
     }
   };
 
-  const handleAttributeChange = async (attribute: BuffAttribute) => {
+  const handleAttributeChange = async (attribute: BuffAttributeSelection) => {
     if (!entry) return;
     setSaving(true);
     try {
+      if (attribute === "隐藏") {
+        const res = await fetch(`/api/game/ability-editor/buffs/${entry.buffId}/hidden`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ hidden: true }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        setSnapshot((await res.json()) as BuffEditorSnapshot);
+        toastSuccess("已加入隐藏 Buff");
+        return;
+      }
+
+      if (entry.hidden) {
+        const unhideRes = await fetch(`/api/game/ability-editor/buffs/${entry.buffId}/hidden`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ hidden: false }),
+        });
+        if (!unhideRes.ok) throw new Error(await unhideRes.text());
+        setSnapshot((await unhideRes.json()) as BuffEditorSnapshot);
+      }
+
       const res = await fetch(`/api/game/ability-editor/buffs/${entry.buffId}/attribute`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -286,6 +314,7 @@ export default function BuffDetailPage() {
   const iconSrc = getBuffIconPath(entry);
   const isDebuff = entry.category === "DEBUFF";
   const sourceAbilityIcon = entry.sourceAbilityName ? getAbilityIconByName(entry.sourceAbilityName) : null;
+  const attributeSelectionValue: BuffAttributeSelection = entry.hidden ? "隐藏" : entry.attribute;
 
   return (
     <div className={styles.page}>
@@ -410,18 +439,17 @@ export default function BuffDetailPage() {
               </div>
             )}
 
-            {/* Type + hidden */}
+            {/* Attribute + hidden */}
             <div className={styles.buffDetailRow}>
-              <span className={styles.buffDetailRowLabel}>类型</span>
+              <span className={styles.buffDetailRowLabel}>属性</span>
               <div className={styles.buffDetailRowValue}>
                 <select
                   className={styles.buffAttrSelect}
-                  disabled={saving || entry.hidden}
-                  value={entry.attribute}
-                  onChange={(e) => handleAttributeChange(e.target.value as BuffAttribute)}
-                  title={entry.hidden ? "隐藏 Buff 不可设置属性" : undefined}
+                  disabled={saving}
+                  value={attributeSelectionValue}
+                  onChange={(e) => handleAttributeChange(e.target.value as BuffAttributeSelection)}
                 >
-                  {BUFF_ATTRIBUTES.map((attr) => (
+                  {BUFF_ATTRIBUTE_SELECTIONS.map((attr) => (
                     <option key={attr} value={attr}>{attr}</option>
                   ))}
                 </select>

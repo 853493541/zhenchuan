@@ -83,6 +83,15 @@ export interface PlayerState {
   /** Shared GCD lock for abilities that trigger public cooldown, including temporary special-bar skills. */
   globalGcdTicks?: number;
 
+  /** Frontend-only visual GCD bar payload; overwritten whenever a new GCD display should start. */
+  visualGcd?: {
+    id: string;
+    name: string;
+    kind: "base" | "qinggong" | "houyao";
+    startedAt: number;
+    durationMs: number;
+  };
+
   /** active buffs on player */
   buffs: ActiveBuff[];
 

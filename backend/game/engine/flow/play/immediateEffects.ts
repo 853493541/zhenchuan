@@ -85,8 +85,8 @@ const SHI_XIN_MARK_BUFF_ID = 2644;
 const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
 const SHU_SE_BUFF_ID = 2646;
 const HONG_MENG_CLEANSE_ATTRIBUTES = ["阴性", "阳性", "混元", "毒性", "持续伤害"];
+const STANDARD_KNOCKBACK_BUFF_ID = 9101;
 const SHOU_QUE_BUFF_ID = 2652;
-const SHOU_QUE_KNOCKBACK_BUFF_ID = 2653;
 const WU_XIANG_JUE_FIFTY_BUFF_ID = 2710;
 const WU_XIANG_JUE_SIXTY_BUFF_ID = 2731;
 const WU_XIANG_JUE_SEVENTY_BUFF_ID = 2732;
@@ -637,26 +637,11 @@ function pullImmediateTargetTowardAnchor(params: {
   } as any;
 
   if (target.kind === "player") {
-    pullTarget.velocity = {
-      ...pullTarget.velocity,
-      vx: 0,
-      vy: 0,
-      vz: 0,
-    };
-    pullTarget.isPowerJump = false;
-    pullTarget.isPowerJumpCombined = false;
-    applyDashRuntimeBuff({
+    applyPlayerPullDashRuntimeBuff({
       state,
+      ability,
       target: pullTarget,
-      durationMs: durationMs + 100,
-      effects: [
-        { type: "CONTROL_IMMUNE" },
-        { type: "KNOCKBACK_IMMUNE" },
-        { type: "DISPLACEMENT" },
-        { type: "DASH_TURN_LOCK" },
-      ] as any,
-      sourceAbilityId: ability.id,
-      sourceAbilityName: ability.name,
+      durationMs,
     });
   }
 
@@ -743,7 +728,9 @@ function applyImmediateKnockback(params: {
   } as any;
 
   if (target.kind === "player" && typeof knockedBackBuffId === "number") {
-    const knockedBackBuff = getAbilityBuffDefinition(ability, knockedBackBuffId);
+    const knockedBackBuff = knockedBackBuffId === STANDARD_KNOCKBACK_BUFF_ID
+      ? buildStandardKnockbackBuff(Math.max(1, Math.ceil((moveTicks * 1000) / 30)))
+      : getAbilityBuffDefinition(ability, knockedBackBuffId);
     if (knockedBackBuff) {
       addBuff({
         state,
@@ -751,10 +738,12 @@ function applyImmediateKnockback(params: {
         targetUserId: kbTarget.userId,
         ability,
         buffTarget: kbTarget,
-        buff: {
-          ...knockedBackBuff,
-          durationMs: Math.max(1, Math.ceil((moveTicks * 1000) / 30)),
-        },
+        buff: knockedBackBuffId === STANDARD_KNOCKBACK_BUFF_ID
+          ? knockedBackBuff
+          : {
+              ...knockedBackBuff,
+              durationMs: Math.max(1, Math.ceil((moveTicks * 1000) / 30)),
+            },
       });
     }
   }
@@ -801,6 +790,48 @@ function getAbilityBuffDefinition(ability: any, buffId: number) {
   return Array.isArray(ability.buffs)
     ? ability.buffs.find((buff: any) => buff.buffId === buffId)
     : undefined;
+}
+
+function buildStandardKnockbackBuff(durationMs: number) {
+  return {
+    buffId: STANDARD_KNOCKBACK_BUFF_ID,
+    name: "击退",
+    category: "DEBUFF",
+    durationMs,
+    breakOnPlay: false,
+    description: "被击退中，行动受限",
+    effects: [{ type: "KNOCKED_BACK" }],
+  } as any;
+}
+
+function applyPlayerPullDashRuntimeBuff(params: {
+  state: any;
+  ability: any;
+  target: any;
+  durationMs: number;
+}) {
+  const { state, ability, target, durationMs } = params;
+  target.velocity = {
+    ...target.velocity,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+  };
+  target.isPowerJump = false;
+  target.isPowerJumpCombined = false;
+  applyDashRuntimeBuff({
+    state,
+    target,
+    durationMs: durationMs + 100,
+    effects: [
+      { type: "CONTROL_IMMUNE" },
+      { type: "KNOCKBACK_IMMUNE" },
+      { type: "DISPLACEMENT" },
+      { type: "DASH_TURN_LOCK" },
+    ] as any,
+    sourceAbilityId: ability.id,
+    sourceAbilityName: ability.name,
+  });
 }
 
 function cleanseDebuffsByAttributes(params: {
@@ -1489,11 +1520,6 @@ export function applyImmediateEffects(params: {
         const kdist = Math.sqrt(kdx * kdx + kdy * kdy);
         if (kdist < 0.001) break; // no direction to push
 
-        // Apply the KNOCKED_BACK buff via official system (checks immunity).
-        // If immune, addBuff silently returns — skip setting the activeDash too.
-        const knockedBackBuffDef = ability.buffs?.find((b: any) => b.buffId === 9201);
-        if (!knockedBackBuffDef) break;
-
         // Check knockback immunity before committing (addBuff would also catch it,
         // but we need to know whether to set activeDash).
         if (hasKnockedBackImmune(kbTarget)) break;
@@ -1534,7 +1560,7 @@ export function applyImmediateEffects(params: {
           targetUserId: kbTarget.userId,
           ability,
           buffTarget: kbTarget,
-          buff: { ...knockedBackBuffDef, durationMs: 1_000 },
+          buff: buildStandardKnockbackBuff(1_000),
         });
         break;
       }
@@ -2434,7 +2460,6 @@ export function applyImmediateEffects(params: {
       case "JILE_YIN_AOE_PULL": {
         const jileRange = gameplayUnitsToWorldUnits(effect.value ?? 10, state.unitScale);
         const jileStunBuffDef = ability.buffs?.find((b: any) => b.buffId === 2608);
-        const jilePulledBuffDef = ability.buffs?.find((b: any) => b.buffId === 9203);
         // Pull speed: 20 gameplay units/sec (same as DASH)
         const PULL_SPEED_WORLD_PER_TICK = gameplayUnitsToWorldUnits(20, state.unitScale) / 30;
         const STOP_DISTANCE = gameplayUnitsToWorldUnits(1, state.unitScale);
@@ -2474,17 +2499,6 @@ export function applyImmediateEffects(params: {
               ticksRemaining: ticksNeeded,
             };
           }
-          // Apply PULLED buff (blocks casting during pull; expires naturally)
-          if (jilePulledBuffDef) {
-            addBuff({
-              state,
-              sourceUserId: pullSource.userId,
-              targetUserId: pullTarget.userId,
-              ability,
-              buffTarget: pullTarget,
-              buff: { ...jilePulledBuffDef, durationMs },
-            });
-          }
           // Apply stun immediately — it will still be active after pull ends
           if (jileStunBuffDef) {
             addBuff({
@@ -2494,6 +2508,14 @@ export function applyImmediateEffects(params: {
               ability,
               buffTarget: pullTarget,
               buff: jileStunBuffDef,
+            });
+          }
+          if (candidate.kind === "player" || jileReflectVictim) {
+            applyPlayerPullDashRuntimeBuff({
+              state,
+              ability,
+              target: pullTarget,
+              durationMs,
             });
           }
         }
@@ -2540,9 +2562,6 @@ export function applyImmediateEffects(params: {
         const aoeRadius = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.range ?? 6)), storedUnitScale);
         const kbDistance = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.value ?? 30)), storedUnitScale);
         const kbTicks = Math.max(1, Number(effect.durationTicks ?? 30));
-        const knockedBackBuff = Array.isArray(ability.buffs)
-          ? ability.buffs.find((b: any) => b.buffId === 1341)
-          : null;
         const center = { x: primary.position.x, y: primary.position.y };
         for (const candidate of getImmediateEnemyBuffTargets(state, source.userId, center, aoeRadius)) {
           const t: any = candidate.target;
@@ -2585,16 +2604,14 @@ export function applyImmediateEffects(params: {
             vzPerTick: 0,
           };
 
-          if (knockedBackBuff) {
-            addBuff({
-              state,
-              sourceUserId: source.userId,
-              targetUserId: t.userId,
-              ability,
-              buffTarget: t,
-              buff: { ...knockedBackBuff, durationMs: Math.max(1_000, Math.ceil((kbTicks * 1000) / 30)) },
-            });
-          }
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: t.userId,
+            ability,
+            buffTarget: t,
+            buff: buildStandardKnockbackBuff(Math.max(1_000, Math.ceil((kbTicks * 1000) / 30))),
+          });
         }
         break;
       }
@@ -2962,7 +2979,7 @@ export function applyImmediateEffects(params: {
               target: shouQueTarget,
               distanceUnits: 2,
               durationTicks: 6,
-              knockedBackBuffId: SHOU_QUE_KNOCKBACK_BUFF_ID,
+              knockedBackBuffId: STANDARD_KNOCKBACK_BUFF_ID,
             });
           }
         }
@@ -3127,7 +3144,6 @@ export function applyImmediateEffects(params: {
         const aoeRadius = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.range ?? 6)), state.unitScale);
         const kbDistance = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.value ?? 10)), state.unitScale);
         const kbTicks = Math.max(1, Number(effect.durationTicks ?? 300));
-        const knockedBackBuff = (ability.buffs ?? []).find((b: any) => b.buffId === 1352);
 
         destroyGroundZonesInRange({
           state,
@@ -3201,16 +3217,14 @@ export function applyImmediateEffects(params: {
             vzPerTick: 0,
           };
 
-          if (knockedBackBuff) {
-            addBuff({
-              state,
-              sourceUserId: source.userId,
-              targetUserId: kbVictim.userId,
-              ability,
-              buffTarget: kbVictim,
-              buff: { ...knockedBackBuff, durationMs: Math.max(1_000, Math.ceil((kbTicks * 1000) / 30)) },
-            });
-          }
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: kbVictim.userId,
+            ability,
+            buffTarget: kbVictim,
+            buff: buildStandardKnockbackBuff(Math.max(1_000, Math.ceil((kbTicks * 1000) / 30))),
+          });
         }
         break;
       }

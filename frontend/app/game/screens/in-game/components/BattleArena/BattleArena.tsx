@@ -43,7 +43,15 @@ type HeartStatHintState = {
   anchorRect: DOMRect;
 };
 
+type GcdVisibilitySettings = {
+  enabled: boolean;
+  base: boolean;
+  qinggong: boolean;
+  houyao: boolean;
+};
+
 const HEART_STAT_STORAGE_KEY = 'zhenchuan-heart-stat-visibility';
+const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
 const HEART_STAT_ORDER: HeartStatKey[] = [
   'attack',
   'maxHp',
@@ -68,6 +76,12 @@ const DEFAULT_HEART_STAT_VISIBILITY: Record<HeartStatKey, boolean> = {
   huajin: true,
   damageReduction: true,
 };
+const DEFAULT_GCD_VISIBILITY_SETTINGS: GcdVisibilitySettings = {
+  enabled: true,
+  base: true,
+  qinggong: false,
+  houyao: false,
+};
 
 type CollisionDebugState = {
   enabled: boolean;
@@ -91,6 +105,9 @@ const DEFAULT_PLAYER_RADIUS = 2; // must match backend
 const COLLISION_TEST_PLAYER_RADIUS = 0.384;
 const LEGACY_STORED_UNIT_SCALE = 2.2;
 const SERVER_TICK_RATE = 30;
+const BASE_GCD_SECONDS = 1.19;
+const BASE_GCD_MS = BASE_GCD_SECONDS * 1000;
+const BASE_GCD_WINDOW_TICKS = Math.round(BASE_GCD_SECONDS * SERVER_TICK_RATE);
 const BASE_MOVE_SPEED_PER_TICK = 0.1666667;
 const AIR_SHIFT_DURATION_TICKS = SERVER_TICK_RATE;
 const LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS = new Set([1014, 1017, 2001, 2003, 2712]);
@@ -106,6 +123,14 @@ type RuntimeAbilityChannel = {
   interruptible?: boolean;
   tickIntervalMs?: number;
   buffId?: number;
+};
+
+type VisualGcdState = {
+  id: string;
+  name: string;
+  kind: 'base' | 'qinggong' | 'houyao';
+  startedAt: number;
+  durationMs: number;
 };
 
 type ChannelingPlayer = {
@@ -1042,6 +1067,7 @@ interface AbilityInfo {
   noWeaponRequired?: boolean;
   canCastWhileMounted?: boolean;
   qinggong?: boolean;
+  qinggongGcdImmune?: boolean;
   cannotCastWhileRooted?: boolean;
   allowGroundCastWithoutTarget?: boolean;
   losBlocked?: boolean;
@@ -1065,9 +1091,92 @@ function formatCompactSeconds(seconds: number): string {
   return formatCompactNumber(seconds);
 }
 
+function formatGcdBarSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0.00';
+  return seconds.toFixed(2);
+}
+
 function formatTicksAsSeconds(ticks: number | undefined): string {
   const safeTicks = Math.max(0, Number(ticks ?? 0));
   return `${formatCompactSeconds(safeTicks / SERVER_TICK_RATE)}秒`;
+}
+
+function shouldShowVisualGcd(
+  gcd: VisualGcdState | null | undefined,
+  settings: GcdVisibilitySettings,
+): gcd is VisualGcdState {
+  if (!gcd || !settings.enabled) return false;
+  if (gcd.kind === 'base') return settings.base;
+  if (gcd.kind === 'qinggong') return settings.qinggong;
+  return settings.houyao;
+}
+
+function buildVisibleVisualGcd(
+  gcd: VisualGcdState | null | undefined,
+  globalGcdTicks: number | undefined,
+  settings: GcdVisibilitySettings,
+): VisualGcdState | null {
+  if (shouldShowVisualGcd(gcd, settings)) {
+    return gcd;
+  }
+
+  const remainingBaseGcdTicks = Math.max(0, Number(globalGcdTicks ?? 0));
+  if (!settings.enabled || !settings.base || remainingBaseGcdTicks <= 0) {
+    return null;
+  }
+
+  const remainingBaseGcdMs = (remainingBaseGcdTicks / SERVER_TICK_RATE) * 1000;
+  return {
+    id: 'fallback-base-gcd',
+    name: '基础调息时间',
+    kind: 'base',
+    startedAt: Date.now() - Math.max(0, BASE_GCD_MS - remainingBaseGcdMs),
+    durationMs: BASE_GCD_MS,
+  };
+}
+
+function GcdVisualBar({ gcd }: { gcd?: VisualGcdState | null }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!gcd) return;
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 33);
+    return () => window.clearInterval(timer);
+  }, [gcd?.id]);
+
+  if (!gcd || !Number.isFinite(gcd.startedAt) || !Number.isFinite(gcd.durationMs) || gcd.durationMs <= 0) {
+    return null;
+  }
+
+  const elapsedMs = Math.max(0, nowMs - gcd.startedAt);
+  if (elapsedMs >= gcd.durationMs + 120) {
+    return null;
+  }
+
+  const clampedElapsedMs = Math.min(gcd.durationMs, elapsedMs);
+  const progressPct = Math.max(0, Math.min(100, (clampedElapsedMs / gcd.durationMs) * 100));
+  const elapsedSeconds = clampedElapsedMs / 1000;
+  const durationSeconds = gcd.durationMs / 1000;
+  const kindClass = gcd.kind === 'qinggong'
+    ? styles.gcdBarFillQinggong
+    : gcd.kind === 'houyao'
+      ? styles.gcdBarFillHouyao
+      : styles.gcdBarFillBase;
+
+  return (
+    <div className={styles.gcdBarWrap} aria-label={gcd.name}>
+      <div className={styles.gcdBarLabel}>
+        {gcd.name} ({formatGcdBarSeconds(elapsedSeconds)}/{formatGcdBarSeconds(durationSeconds)})
+      </div>
+      <div className={styles.gcdBarTrack}>
+        <div
+          className={`${styles.gcdBarFill} ${kindClass}`}
+          style={{ width: `${progressPct}%` }}
+        />
+      </div>
+    </div>
+  );
 }
 
 function formatAbilityRangeLabel(ability: AbilityInfo): string {
@@ -1263,7 +1372,7 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
+  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
   opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
   /** All other players (opponents) — supports 1v1 and N-player modes */
   opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel }[];
@@ -1478,6 +1587,20 @@ export default function BattleArena({
       localStorage.setItem(HEART_STAT_STORAGE_KEY, JSON.stringify(heartStatVisibility));
     } catch {}
   }, [heartStatVisibility]);
+  const [gcdVisibilitySettings, setGcdVisibilitySettings] = useState<GcdVisibilitySettings>(() => {
+    try {
+      if (typeof window === 'undefined') return DEFAULT_GCD_VISIBILITY_SETTINGS;
+      const stored = JSON.parse(localStorage.getItem(GCD_VISIBILITY_STORAGE_KEY) ?? '{}');
+      return { ...DEFAULT_GCD_VISIBILITY_SETTINGS, ...stored };
+    } catch {
+      return DEFAULT_GCD_VISIBILITY_SETTINGS;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(GCD_VISIBILITY_STORAGE_KEY, JSON.stringify(gcdVisibilitySettings));
+    } catch {}
+  }, [gcdVisibilitySettings]);
   useEffect(() => {
     setShowHeartStatSettings(false);
     if (!showHeartDetailsPanel) {
@@ -1544,6 +1667,11 @@ export default function BattleArena({
   const cameraDebugIdRef = useRef(0);
   const cameraEventTestingEnabledRef = useRef(false);
   const losBlockerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visibleVisualGcd = buildVisibleVisualGcd(
+    me?.visualGcd ?? null,
+    me?.globalGcdTicks,
+    gcdVisibilitySettings,
+  );
   const showLOSBlocker = useCallback((msg: string) => {
     setLosBlocker(msg);
     if (losBlockerTimerRef.current) clearTimeout(losBlockerTimerRef.current);
@@ -3178,10 +3306,9 @@ export default function BattleArena({
 
   useEffect(() => {
     // ── Draft abilities: sourced from me.hand (only non-common abilities) ──
-    const GCD_WINDOW_TICKS = 45;
     const getDisplayMaxCooldown = (ab: any): number => {
       const base = ab?.cooldownTicks ?? 0;
-      const gcdWindow = ab?.gcd === true ? GCD_WINDOW_TICKS : 0;
+      const gcdWindow = ab?.gcd === true ? BASE_GCD_WINDOW_TICKS : 0;
       return Math.max(base, gcdWindow);
     };
     const getSharedGcdTicks = (ab: any): number => (
@@ -3297,6 +3424,7 @@ export default function BattleArena({
       const targetPos = targetContext.targetPos;
       const abilityIdForChecks = ab?.id ?? instance?.abilityId;
       const sharedGcdTicks = getSharedGcdTicks(ab);
+      const isQinggongLike = ab?.qinggong === true || ab?.qinggongGcdImmune === true;
       const mountedYuqiToggle = yuqiMounted && (ab?.id === 'yuqi' || instance?.abilityId === 'yuqi');
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       if (maxCharges > 1) {
@@ -3330,8 +3458,8 @@ export default function BattleArena({
         return false;
       }
       if (disarmed && ab?.noWeaponRequired !== true) return false;
-      if (nonQinggongLocked && ab?.qinggong !== true) return false;
-      if (ab?.qinggong && qinggongSealed) return false;
+      if (nonQinggongLocked && !isQinggongLike) return false;
+      if (isQinggongLike && qinggongSealed) return false;
       if (ab?.cannotCastWhileRooted && rootedByDebuff) return false;
       if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) return false;
 
@@ -3432,6 +3560,7 @@ export default function BattleArena({
             requiresGrounded: false,
             requiresStanding: false,
             qinggong: false,
+            qinggongGcdImmune: false,
             cannotCastWhileRooted: false,
             allowGroundCastWithoutTarget: false,
           };
@@ -3482,6 +3611,7 @@ export default function BattleArena({
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
+          qinggongGcdImmune: !!(ability as any).qinggongGcdImmune,
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
@@ -3532,6 +3662,7 @@ export default function BattleArena({
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
+          qinggongGcdImmune: !!(ability as any).qinggongGcdImmune,
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
@@ -3594,6 +3725,7 @@ export default function BattleArena({
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
+          qinggongGcdImmune: !!(ability as any).qinggongGcdImmune,
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
@@ -5824,6 +5956,60 @@ export default function BattleArena({
             </div>
 
             <div className={styles.escToggleList}>
+              <div className={styles.escToggleGroup}>
+                <label className={styles.escToggleGroupHeader}>
+                  <input
+                    type="checkbox"
+                    checked={gcdVisibilitySettings.enabled}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setGcdVisibilitySettings((prev) => ({ ...prev, enabled }));
+                    }}
+                    className={styles.escToggleInput}
+                  />
+                  <span>显示GCD</span>
+                </label>
+                {gcdVisibilitySettings.enabled && (
+                  <div className={styles.escToggleSubList}>
+                    <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
+                      <input
+                        type="checkbox"
+                        checked={gcdVisibilitySettings.base}
+                        onChange={(e) => {
+                          const base = e.target.checked;
+                          setGcdVisibilitySettings((prev) => ({ ...prev, base }));
+                        }}
+                        className={styles.escToggleInput}
+                      />
+                      <span>显示基础GCD</span>
+                    </label>
+                    <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
+                      <input
+                        type="checkbox"
+                        checked={gcdVisibilitySettings.qinggong}
+                        onChange={(e) => {
+                          const qinggong = e.target.checked;
+                          setGcdVisibilitySettings((prev) => ({ ...prev, qinggong }));
+                        }}
+                        className={styles.escToggleInput}
+                      />
+                      <span>显示轻功GCD</span>
+                    </label>
+                    <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
+                      <input
+                        type="checkbox"
+                        checked={gcdVisibilitySettings.houyao}
+                        onChange={(e) => {
+                          const houyao = e.target.checked;
+                          setGcdVisibilitySettings((prev) => ({ ...prev, houyao }));
+                        }}
+                        className={styles.escToggleInput}
+                      />
+                      <span>显示后撤GCD</span>
+                    </label>
+                  </div>
+                )}
+              </div>
               <label className={styles.escToggleRow}>
                 <input type="checkbox" checked={showEnvTestingPanel} onChange={(e) => setShowEnvTestingPanel(e.target.checked)} className={styles.escToggleInput} />
                 <span>灯光控制</span>
@@ -6860,6 +7046,7 @@ export default function BattleArena({
           {/* ── Channel bar (正读条 / 倒读条) ──
              Always mounted so success/interrupt + fade-out animations can play. */}
           <ChannelBarHost data={channelBarData} showTimer />
+           <GcdVisualBar gcd={visibleVisualGcd} />
 
           {/* ── Top row: draft abilities or temporary form bar ── */}
           <div className={styles.hotbar}>

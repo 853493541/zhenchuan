@@ -272,6 +272,27 @@ export type CanCastWhileMountedSnapshot = {
   abilities: CanCastWhileMountedEntry[];
 };
 
+export type AbilityBooleanDeciderEntry = {
+  id: string;
+  name: string;
+  description: string;
+  type: AbilityType;
+  target: TargetType;
+  baseEnabled: boolean;
+  manualEnabled: boolean;
+  manuallyExcluded: boolean;
+  enabled: boolean;
+  qinggong: boolean;
+  qinggongGcdImmune: boolean;
+};
+
+export type AbilityBooleanDeciderSnapshot = {
+  updatedAt: string | null;
+  abilities: AbilityBooleanDeciderEntry[];
+};
+
+export type AbilityBooleanDeciderMode = "manual-include" | "manual-exclude" | "clear";
+
 export function getBuffSubtitle(entry: Pick<BuffEditorEntry, "category" | "attribute">): string {
   // No valid attribute → no tag at all
   const validAttr = entry.attribute !== "未选择" && entry.attribute !== "无";

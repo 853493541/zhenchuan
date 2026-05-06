@@ -62,6 +62,10 @@ function hasChargeSystem(ability: any): boolean {
   return Number(ability?.maxCharges ?? 0) > 1;
 }
 
+function isQinggongAbility(ability: any): boolean {
+  return ability?.qinggong === true || ability?.qinggongGcdImmune === true;
+}
+
 function ensureChargeRuntime(instance: any, ability: any) {
   const maxCharges = Math.max(0, Number(ability?.maxCharges ?? 0));
   if (maxCharges <= 1) return;
@@ -382,7 +386,7 @@ export function validateCastAbility(
 
   /* ================= QINGGONG SEAL ================= */
   if (
-    (ability as any).qinggong &&
+    isQinggongAbility(ability) &&
     (hasEffect(player, "QINGGONG_SEAL") || hasEffect(player, "DISPLACEMENT"))
   ) {
     throw new Error("ERR_QINGGONG_SEALED");
@@ -416,7 +420,7 @@ export function validateCastAbility(
     throw new Error("ERR_DISARMED");
   }
 
-  if (hasEffect(player, "NON_QINGGONG_LOCK") && (ability as any).qinggong !== true) {
+  if (hasEffect(player, "NON_QINGGONG_LOCK") && !isQinggongAbility(ability)) {
     throw new Error("ERR_NON_QINGGONG_LOCKED");
   }
 
@@ -725,7 +729,7 @@ export function validatePlayAbility(
 
   /* ================= QINGGONG SEAL ================= */
   if (
-    (ability as any).qinggong &&
+    isQinggongAbility(ability) &&
     (hasEffect(player, "QINGGONG_SEAL") || hasEffect(player, "DISPLACEMENT"))
   ) {
     throw new Error("ERR_QINGGONG_SEALED");
@@ -761,7 +765,7 @@ export function validatePlayAbility(
     throw new Error("ERR_DISARMED");
   }
 
-  if (hasEffect(player, "NON_QINGGONG_LOCK") && (ability as any).qinggong !== true) {
+  if (hasEffect(player, "NON_QINGGONG_LOCK") && !isQinggongAbility(ability)) {
     throw new Error("ERR_NON_QINGGONG_LOCKED");
   }
 

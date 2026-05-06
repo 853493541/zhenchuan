@@ -3,6 +3,56 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## GCD runtime/editor/visual bar overhaul (2026-05-06)
+
+**Problem set**:
+1. Base GCD was still hardcoded as 45 ticks / 1.5s, and the old light-skill cooldown only targeted four IDs.
+2. New rules require three layers: base 1.19s GCD for `gcd:true`, 3s 轻功 GCD for non-exempt light skills, and 后撤's 2s special lock on almost every ability.
+3. The Ability Editor needed two new tri-state decider tabs: 轻功判定 and 轻功但不受轻功GCD.
+4. The battle UI needed a visual GCD bar below the channel bar that can be overwritten by a later GCD trigger.
+
+**Fix**:
+- `playService.ts` now uses named helpers for ability locks, including charge skills and special-bar runtime states. Base GCD is 36 ticks with a 1.19s visual duration; non-exempt 轻功 casts apply a 90-tick 轻功 GCD; 后撤 applies a 60-tick lock to all non-exempt abilities, including non-GCD skills.
+- Added `qinggongGcdImmune` ability metadata. 扶摇直上 and 后撤 default to that flag; 聂云/凌霄揽胜/迎风回浪/瑶台枕鹤/扶摇直上 now trigger base GCD through `gcd:true`.
+- Ability Editor gained backend routes and frontend tabs for 轻功判定 and 轻功但不受轻功GCD, reusing tri-state override storage and copy-name controls.
+- Player state now carries `visualGcd`; GameLoop broadcasts and expires it, and BattleArena renders a 0-to-100 bar under the channel bar with exact two-decimal timing.
+
+**Lessons**:
+- Shared cooldown rules should lock abilities through one helper that knows about normal cooldowns and charge locks; otherwise charge abilities silently bypass new GCD layers.
+- Treating the visual GCD as backend state is cleaner than trying to infer it from client cooldowns, because 后撤 and 轻功 GCD do not map 1:1 to `globalGcdTicks`.
+- “轻功但不受轻功GCD” still needs to count as 轻功 for seal/lock rules, so validation should use a helper instead of reading only `ability.qinggong`.
+
+**Follow-up (later same day)**:
+- 后撤的 2 秒特殊调息豁免列表必须显式包含 `houyao` 自己。只豁免“其他技能”会让后撤错误地被自己施放后的特殊锁定反卡住。
+- BattleArena 里的视觉 GCD 过滤最稳妥的落点是最终渲染 seam。把 `base/qinggong/houyao` 显示开关持久化到 localStorage，然后在 `<GcdVisualBar />` 前按 `visualGcd.kind` 过滤，比改后端广播或改多处 UI 条件更不容易漂移。
+- `轻功判定` 页的共享列表头默认会显示内部 ID 和标签行；如果只想让这个 tab 更干净，给共享 heading 一个可选 metadata 开关，比复制一份独立列表组件更小更稳。
+- 如果一个轻功同时触发基础 GCD 和 轻功 GCD，而用户又隐藏了 轻功 GCD，前端不能因为后写入的 `visualGcd` 被隐藏就把基础 GCD 一起丢掉。BattleArena 需要在这种情况下回退到 `globalGcdTicks` 来补显示基础 GCD。
+- `轻功但不受轻功GCD` 页真正有噪音的是 `未决定` 列，不必为了它重做整份 snapshot；在共享 decider 组件里给 `未决定` 列加一个“只看轻功”过滤，改动更小，也不会把已有手动覆盖项藏掉。
+- 拼音 / 内部 ID 不应该出现在玩家可见 UI 里。这类字段最多保留给内部搜索或数据层，列表展示时只会增加噪音。
+
+## Pull/knockback buff audit (2026-05-06)
+
+**Audit result**:
+- `龙战于野·被拉` (`2651`) is still defined on the ability, but the live cast path no longer applies it. `long_zhan_yu_ye` is excluded from generic `applyAbilityBuffs(...)`, and its custom effect now only uses the shared `pullImmediateTargetTowardAnchor(...)` pull helper.
+- `守缺式·击退` (`2653`) is still live. `SHOU_QUE_SHI` calls `applyImmediateKnockback(...)` with `knockedBackBuffId: 2653` when the empowered second cast lands.
+- `九转击退` (`9201`) is still live. The built-in `KNOCKBACK_DASH` effect handler for `jiu_zhuan_gui_yi` still adds buff `9201` while pushing the target.
+- `沧月·击退` (`1341`) is still live. `CANG_YUE_AOE` still applies that named `KNOCKED_BACK` debuff to the secondary knockback targets.
+- `龙啸九天·击退` (`1352`) is still live. `LONG_XIAO_JIU_TIAN_AOE` still applies that named `KNOCKED_BACK` debuff during the AOE knockback.
+
+**Lesson**:
+- “Using the standard pull/knockback runtime” and “not using an ability-specific displacement buff” are different goals. Some abilities already use the shared activeDash displacement model but still attach named `PULLED` / `KNOCKED_BACK` buffs for status display and control timing.
+
+**Follow-up (later same day)**:
+- Standardized the live displacement status layer onto two shared buff IDs instead of per-ability names: pull now uses `9203 / 被拉`, and knockback now uses `9101 / 击退`.
+- The shared runtime seam is broader than one handler. `pullImmediateTargetTowardAnchor(...)`, `JILE_YIN_AOE_PULL`, `SHOU_QUE_SHI`, `KNOCKBACK_DASH`, `CANG_YUE_AOE`, and `LONG_XIAO_JIU_TIAN_AOE` all had to converge on the same generic buff builders, and `GameLoop.ts` had to clear `9101` before applying 九转的 `羽化` wall stun.
+- Frontend status display depends on preload metadata, not just runtime Buff objects. When a displacement status is standardized to a shared buff ID, `abilityPreload.ts` must expose that shared buff as well, or the status bar silently drops it.
+- After the runtime is switched over, remove the retired per-ability displacement Buff definitions from `abilities.ts`. Leaving dead definitions behind makes later audits look like those Buffs are still part of live gameplay when they are not.
+
+**Latest follow-up (same day)**:
+- Pull control should not use a standalone `PULLED / 被拉` status at all in the current ruleset. `捉影式` is the correct seam: target movement is carried by `activeDash`, and cast-lock comes from the hidden dash runtime buff with `DISPLACEMENT`, not from a visible pull debuff.
+- `极乐引` had drifted from that model because it was still creating a shared `9203 / 被拉` debuff. Fixing it meant removing the shared pull buff metadata and making the instant AOE pull reuse the same dash-runtime lock path as the other pull helper.
+- Before deleting a control status type, check the permission mirror. In this repo the safe condition was that every ability explicitly marked `allowWhilePulled` was already also marked `allowWhileDisplaced`, so removing live `PULLED` application did not silently break any allowed-cast cases.
+
 ## C panel display settings and GCD audit (2026-05-06)
 
 **Problem set**:
@@ -1850,6 +1900,8 @@ The BVH collision triangles in the GLBs do NOT change — only the coordinate ma
 - `隐藏` should not live in the attribute enum. Treat it as a separate persisted boolean flag, or attribute filters and dispel-oriented tagging both become semantically wrong.
 - If buff names become editable, freeze icon lookup to the original icon path before applying the name override. Using the edited display name as the icon filename immediately turns most renamed buffs into fallback icons.
 - Hidden-state filtering needs its own dropdown separate from the attribute filter, and the default slice should be `显示`. Defaulting the editor to `全部状态` makes hidden buffs leak back into the main working list.
+- If the user wants `属性: 隐藏` in the Buff detail editor, keep `隐藏` as a UI alias that writes to the existing hidden-buff override. Do not promote it into the real attribute enum, or the attribute filters and dispel-related tagging semantics drift again.
+- The Buff list card should not spend vertical space on `来源` if that metadata is only useful on the detail page. Keep the list optimized for scanning name, description, property tags, and quick actions.
 - If the name action is meant to feel attached to the title, do not let the title text flex across the whole row. Otherwise the pen icon drifts toward the card edge instead of staying visually next to the name.
 - Once `无` becomes a real dispel attribute and `未选择` becomes the workflow placeholder, the override loader needs a versioned migration rule. Old files used `无` to mean “not set yet”, so only pre-migration versions should remap stored `无` to `未选择`.
 - The hidden-buff rule has to be enforced in the backend snapshot/update layer, not just by disabling the dropdown in the UI. Otherwise old overrides or direct API calls can still leave a hidden buff carrying a stale attribute.

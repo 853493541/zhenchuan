@@ -811,6 +811,39 @@
   background: rgba(255, 255, 255, 0.04);
 }
 
+.escToggleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.escToggleGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #d7e0ea;
+}
+
+.escToggleSubList {
+  display: grid;
+  gap: 6px;
+  padding-left: 30px;
+}
+
+.escToggleSubRow {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .escToggleInput {
   width: 20px;
   height: 20px;
@@ -1168,6 +1201,52 @@
 }
 
 /* ---- Channel bar CSS moved to ChannelBar.module.css ---- */
+
+.gcdBarWrap {
+  width: 50%;
+  min-width: 220px;
+  max-width: 520px;
+  margin: -3px auto 2px;
+  pointer-events: none;
+  text-align: center;
+  color: #e7f5ff;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Source Han Sans CN", "WenQuanYi Micro Hei", sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+}
+
+.gcdBarLabel {
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.gcdBarTrack {
+  height: 10px;
+  border: 1px solid rgba(96, 180, 230, 0.95);
+  background: rgba(5, 13, 22, 0.86);
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.85), 0 0 7px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.gcdBarFill {
+  height: 100%;
+  width: 0;
+  transition: width 33ms linear;
+}
+
+.gcdBarFillBase {
+  background: linear-gradient(90deg, #1f6fd1 0%, #5bb9ff 55%, #d8f5ff 100%);
+}
+
+.gcdBarFillQinggong {
+  background: linear-gradient(90deg, #d08021 0%, #ffd063 60%, #fff1b1 100%);
+}
+
+.gcdBarFillHouyao {
+  background: linear-gradient(90deg, #a93d31 0%, #f46b5a 55%, #ffd2ca 100%);
+}
 
 /* ---- Floating damage / heal numbers ---- */
 @keyframes floatFade {

@@ -15,6 +15,13 @@ export interface PlayerState {
   hand: AbilityInstance[];
   specialAbilityStates?: Record<string, AbilityInstance>;
   globalGcdTicks?: number;
+  visualGcd?: {
+    id: string;
+    name: string;
+    kind: "base" | "qinggong" | "houyao";
+    startedAt: number;
+    durationMs: number;
+  };
   buffs: ActiveBuff[];
 }
 

@@ -1,32 +1,47 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-05T12:28:09.594Z",
+  "updatedAt": "2026-05-06T06:19:52.960Z",
   "abilities": {
     "baizu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "卓越",
         "school": "五毒",
         "damageType": "内功"
       },
+      "isProjectile": false,
       "noWeaponRequired": false
     },
     "heng_sao_liu_he": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "精巧",
         "school": "少林",
         "damageType": "内功"
       },
+      "isProjectile": false,
       "noWeaponRequired": false
     },
     "menghu_xiasha": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "精巧",
         "school": "通用",
         "damageType": "外功"
       },
+      "isProjectile": false,
       "noWeaponRequired": true
     },
     "jianpo_xukong": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "卓越",
         "school": "七秀",
@@ -35,6 +50,9 @@
       "noWeaponRequired": false
     },
     "jieyang": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "卓越",
         "school": "段氏",
@@ -44,6 +62,9 @@
       "noWeaponRequired": false
     },
     "jing_shi_po_mo_ji": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "卓越",
         "school": "明教",
@@ -52,6 +73,9 @@
       "noWeaponRequired": false
     },
     "ting_lei": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "精巧",
         "school": "藏剑",
@@ -60,6 +84,9 @@
       "noWeaponRequired": false
     },
     "anchen_misan": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "卓越",
         "school": "明教",
@@ -68,6 +95,9 @@
       "noWeaponRequired": false
     },
     "fengxiu_diang": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "卓越",
         "school": "七秀",
@@ -84,6 +114,9 @@
       "noWeaponRequired": true
     },
     "fuguang_lueying": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "卓越",
         "school": "唐门",
@@ -92,6 +125,9 @@
       "noWeaponRequired": false
     },
     "guchong_xianji": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "珍奇",
         "school": "五毒",
@@ -100,6 +136,9 @@
       "noWeaponRequired": false
     },
     "xiao_zui_kuang": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "珍奇",
         "school": "丐帮",
@@ -108,6 +147,9 @@
       "noWeaponRequired": true
     },
     "nuwa_butian": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "珍奇",
         "school": "五毒",
@@ -116,6 +158,9 @@
       "noWeaponRequired": false
     },
     "sanliu_xia": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "稀世",
         "school": "霸刀",
@@ -124,6 +169,9 @@
       "noWeaponRequired": true
     },
     "fu_rong_bing_di": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "万花",
         "rarity": "珍奇",
@@ -133,6 +181,9 @@
       "noWeaponRequired": false
     },
     "hua_xue_biao": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "唐门",
         "rarity": "卓越",
@@ -142,6 +193,9 @@
       "noWeaponRequired": false
     },
     "jian_zhuan_liu_yun": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "七秀",
         "rarity": "精巧",
@@ -151,6 +205,9 @@
       "noWeaponRequired": false
     },
     "kong_que_ling": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "唐门",
         "rarity": "珍奇",
@@ -160,6 +217,9 @@
       "noWeaponRequired": false
     },
     "lie_ri_zhan": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "明教",
         "rarity": "精巧",
@@ -168,6 +228,9 @@
       "noWeaponRequired": false
     },
     "sanhuan_taoyue": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "精巧",
@@ -176,6 +239,9 @@
       "noWeaponRequired": false
     },
     "shang_yang_zhi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -185,6 +251,9 @@
       "noWeaponRequired": false
     },
     "she_ying": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "五毒",
         "rarity": "卓越",
@@ -193,6 +262,9 @@
       "noWeaponRequired": false
     },
     "tiandi_wuji": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "珍奇",
@@ -201,6 +273,9 @@
       "noWeaponRequired": false
     },
     "weituo_xianchu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -210,6 +285,9 @@
       "noWeaponRequired": false
     },
     "wu_wo_wu_jian": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -218,6 +296,9 @@
       "noWeaponRequired": false
     },
     "yin_yue_zhan": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "明教",
         "rarity": "精巧",
@@ -226,6 +307,9 @@
       "noWeaponRequired": false
     },
     "yu_shi_ju_fen": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -235,6 +319,9 @@
       "noWeaponRequired": false
     },
     "yue_chao_zhan_bo": {
+      "properties": {
+        "qinggongGcdImmune": true
+      },
       "tags": {
         "school": "蓬莱",
         "rarity": "精巧",
@@ -243,6 +330,9 @@
       "noWeaponRequired": true
     },
     "bang_da_gou_tou": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "丐帮",
         "rarity": "精巧",
@@ -251,6 +341,9 @@
       "noWeaponRequired": false
     },
     "chan_xiao": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "五毒",
         "rarity": "卓越",
@@ -260,6 +353,9 @@
       "noWeaponRequired": false
     },
     "da_shizi_hou": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -268,6 +364,9 @@
       "noWeaponRequired": false
     },
     "dican_longxiang": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "七秀",
         "rarity": "精巧",
@@ -276,6 +375,9 @@
       "noWeaponRequired": false
     },
     "han_di": {
+      "properties": {
+        "qinggongGcdImmune": true
+      },
       "tags": {
         "school": "苍云",
         "rarity": "精巧",
@@ -295,6 +397,9 @@
       "noWeaponRequired": false
     },
     "jiang_chun_zhu_xiu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "七秀",
         "rarity": "卓越",
@@ -304,6 +409,9 @@
       "noWeaponRequired": false
     },
     "jiu_zhuan_gui_yi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "精巧",
@@ -312,6 +420,9 @@
       "noWeaponRequired": false
     },
     "lei_ting_zhen_nu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "七秀",
         "rarity": "珍奇",
@@ -320,6 +431,9 @@
       "noWeaponRequired": false
     },
     "leizhenzi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "唐门",
         "rarity": "精巧",
@@ -329,6 +443,9 @@
       "noWeaponRequired": false
     },
     "zhenshen_xingsi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "天策",
         "rarity": "珍奇",
@@ -337,6 +454,9 @@
       "noWeaponRequired": false
     },
     "mohe_wuliang": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -345,6 +465,9 @@
       "noWeaponRequired": false
     },
     "san_cai_hua_sheng": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -353,6 +476,9 @@
       "noWeaponRequired": false
     },
     "shengsi_jie": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "明教",
         "rarity": "卓越",
@@ -362,6 +488,9 @@
       "noWeaponRequired": false
     },
     "xuanshui_gu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "五毒",
         "rarity": "卓越",
@@ -371,6 +500,9 @@
       "noWeaponRequired": false
     },
     "chuan": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "天策",
         "rarity": "精巧",
@@ -379,6 +511,9 @@
       "noWeaponRequired": false
     },
     "wan_jian_gui_zong": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -387,6 +522,9 @@
       "noWeaponRequired": false
     },
     "wufang_xingjin": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -395,6 +533,9 @@
       "noWeaponRequired": false
     },
     "wuyun_jiekong": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -403,6 +544,9 @@
       "noWeaponRequired": false
     },
     "chun_ni_hu_hua": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -411,6 +555,9 @@
       "noWeaponRequired": false
     },
     "dienong_zu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "七秀",
         "rarity": "精巧",
@@ -419,6 +566,9 @@
       "noWeaponRequired": false
     },
     "duangu_jue": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -427,6 +577,9 @@
       "noWeaponRequired": true
     },
     "duoming_gu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "五毒",
         "rarity": "卓越",
@@ -435,6 +588,9 @@
       "noWeaponRequired": false
     },
     "gu_feng_sa_ta": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "凌雪",
         "rarity": "精巧",
@@ -451,6 +607,9 @@
       "noWeaponRequired": true
     },
     "huayu_suxin": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "万花",
         "rarity": "卓越",
@@ -459,6 +618,9 @@
       "noWeaponRequired": false
     },
     "ji": {
+      "properties": {
+        "qinggongGcdImmune": false
+      },
       "tags": {
         "school": "天策",
         "rarity": "精巧",
@@ -467,6 +629,9 @@
       "noWeaponRequired": true
     },
     "jiru_feng": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "天策",
         "rarity": "精巧",
@@ -499,6 +664,9 @@
       "noWeaponRequired": true
     },
     "qionglong_huasheng": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "精巧",
@@ -507,6 +675,9 @@
       "noWeaponRequired": false
     },
     "que_ta_zhi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "七秀",
         "rarity": "卓越",
@@ -515,6 +686,9 @@
       "noWeaponRequired": false
     },
     "sheng_ming_you": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "明教",
         "rarity": "卓越",
@@ -523,6 +697,9 @@
       "noWeaponRequired": false
     },
     "shou_ru_shan": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "天策",
         "rarity": "珍奇",
@@ -531,6 +708,9 @@
       "noWeaponRequired": false
     },
     "taxingxing": {
+      "properties": {
+        "qinggongGcdImmune": true
+      },
       "tags": {
         "school": "衍天",
         "rarity": "卓越",
@@ -539,6 +719,9 @@
       "noWeaponRequired": true
     },
     "tai_yin_zhi": {
+      "properties": {
+        "qinggongGcdImmune": true
+      },
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -547,6 +730,9 @@
       "noWeaponRequired": true
     },
     "tian_di_di_ang": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "七秀",
         "rarity": "精巧",
@@ -555,6 +741,9 @@
       "noWeaponRequired": false
     },
     "wu_jianyu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "凌雪",
         "rarity": "卓越",
@@ -563,6 +752,9 @@
       "noWeaponRequired": false
     },
     "xiao_ru_hu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "天策",
         "rarity": "珍奇",
@@ -571,6 +763,9 @@
       "noWeaponRequired": false
     },
     "xinglou_yueying": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -595,6 +790,9 @@
       "noWeaponRequired": true
     },
     "yuqi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "通用",
         "rarity": "精巧",
@@ -603,6 +801,9 @@
       "noWeaponRequired": true
     },
     "yun_qi_song": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "藏剑",
         "rarity": "精巧",
@@ -611,6 +812,9 @@
       "noWeaponRequired": false
     },
     "zhen_shan_he": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "珍奇",
@@ -619,6 +823,9 @@
       "noWeaponRequired": false
     },
     "zhuan_qiankun": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -627,6 +834,9 @@
       "noWeaponRequired": false
     },
     "zuowang_wuwo": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "精巧",
@@ -635,6 +845,9 @@
       "noWeaponRequired": false
     },
     "chuan_xin_nu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "唐门",
         "rarity": "精巧",
@@ -644,6 +857,9 @@
       "noWeaponRequired": false
     },
     "fenglai_wushan": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "藏剑",
         "rarity": "卓越",
@@ -652,6 +868,9 @@
       "noWeaponRequired": false
     },
     "lan_cui_yu_zhe": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -661,6 +880,9 @@
       "noWeaponRequired": false
     },
     "qixing_gongrui": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -670,6 +892,9 @@
       "noWeaponRequired": false
     },
     "qiandie_turui": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "五毒",
         "rarity": "珍奇",
@@ -678,6 +903,9 @@
       "noWeaponRequired": false
     },
     "xinzheng": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -686,6 +914,9 @@
       "noWeaponRequired": false
     },
     "yun_fei_yu_huang": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "藏剑",
         "rarity": "卓越",
@@ -694,6 +925,9 @@
       "noWeaponRequired": false
     },
     "changzhen": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "万花",
         "rarity": "珍奇",
@@ -702,6 +936,9 @@
       "noWeaponRequired": false
     },
     "zhong_lin_yu_xiu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -711,6 +948,9 @@
       "noWeaponRequired": false
     },
     "zhuiming_jian": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "唐门",
         "rarity": "珍奇",
@@ -720,6 +960,9 @@
       "noWeaponRequired": false
     },
     "zhuo_ying_shi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "少林",
         "rarity": "珍奇",
@@ -729,6 +972,9 @@
       "noWeaponRequired": false
     },
     "yan_yu_xing": {
+      "properties": {
+        "qinggongGcdImmune": true
+      },
       "tags": {
         "school": "丐帮",
         "rarity": "精巧",
@@ -737,6 +983,9 @@
       "noWeaponRequired": true
     },
     "kuang_long_luan_wu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "丐帮",
         "rarity": "珍奇",
@@ -745,6 +994,9 @@
       "noWeaponRequired": false
     },
     "jian_zhu_tian_di": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "七秀",
         "damageType": "内功",
@@ -754,6 +1006,9 @@
       "noWeaponRequired": false
     },
     "liang_yi_hua_xing": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "damageType": "内功",
@@ -763,6 +1018,9 @@
       "noWeaponRequired": false
     },
     "po_feng": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -771,6 +1029,9 @@
       "noWeaponRequired": false
     },
     "da_dao_wu_shu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -779,6 +1040,9 @@
       "noWeaponRequired": false
     },
     "hua_die": {
+      "properties": {
+        "qinggongGcdImmune": true
+      },
       "tags": {
         "school": "五毒",
         "damageType": "内功",
@@ -787,6 +1051,9 @@
       "noWeaponRequired": true
     },
     "ji_le_yin": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "明教",
         "damageType": "内功",
@@ -795,6 +1062,9 @@
       "noWeaponRequired": false
     },
     "jing_hong_you_long": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "唐门",
         "damageType": "外功",
@@ -814,6 +1084,9 @@
       "noWeaponRequired": true
     },
     "bang_hua_sui_liu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "珍奇",
         "school": "万花",
@@ -823,6 +1096,9 @@
       "noWeaponRequired": false
     },
     "shao_ming_zhi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "精巧",
         "school": "万花",
@@ -832,6 +1108,9 @@
       "noWeaponRequired": false
     },
     "ling_tai_xu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -840,6 +1119,9 @@
       "noWeaponRequired": false
     },
     "sheng_tai_ji": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "damageType": "内功",
@@ -848,6 +1130,9 @@
       "noWeaponRequired": false
     },
     "tun_ri_yue": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -856,6 +1141,9 @@
       "noWeaponRequired": false
     },
     "ren_jian_he_yi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -864,6 +1152,9 @@
       "noWeaponRequired": false
     },
     "chong_yin_yang": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "damageType": "内功",
@@ -872,6 +1163,9 @@
       "noWeaponRequired": false
     },
     "zhan_wu_chang": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "凌雪",
         "damageType": "外功",
@@ -880,6 +1174,9 @@
       "noWeaponRequired": false
     },
     "ying_tian_shou_ming": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "万灵",
         "damageType": "外功",
@@ -888,6 +1185,9 @@
       "noWeaponRequired": false
     },
     "wu_xiang_jue": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "少林",
         "damageType": "内功",
@@ -896,6 +1196,9 @@
       "noWeaponRequired": false
     },
     "mie": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -904,6 +1207,9 @@
       "noWeaponRequired": false
     },
     "gu_ying_hua_shuang": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "稀世",
         "school": "长歌",
@@ -912,6 +1218,9 @@
       "noWeaponRequired": false
     },
     "zhu_yun_han_rui": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "rarity": "卓越",
         "school": "药宗",
@@ -920,14 +1229,21 @@
       "noWeaponRequired": false
     },
     "bao_can_shi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "内功",
         "school": "少林",
         "rarity": "精巧"
       },
+      "isProjectile": false,
       "noWeaponRequired": false
     },
     "bu_feng_shi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "内功",
         "school": "少林",
@@ -937,14 +1253,21 @@
       "noWeaponRequired": false
     },
     "fei_ren_hui_zhuan": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "外功",
         "school": "凌雪",
         "rarity": "精巧"
       },
+      "isProjectile": false,
       "noWeaponRequired": false
     },
     "kang_long_you_hui": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "外功",
         "school": "丐帮",
@@ -953,6 +1276,9 @@
       "noWeaponRequired": true
     },
     "na_yun_shi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "内功",
         "school": "少林",
@@ -961,6 +1287,9 @@
       "noWeaponRequired": true
     },
     "qu_ye_duan_chou": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "内功",
         "school": "明教",
@@ -969,6 +1298,9 @@
       "noWeaponRequired": false
     },
     "tai_ji_wu_ji": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "内功",
         "school": "纯阳",
@@ -977,6 +1309,9 @@
       "noWeaponRequired": false
     },
     "tian_jue_di_mie": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "外功",
         "school": "唐门",
@@ -985,6 +1320,9 @@
       "noWeaponRequired": false
     },
     "you_yue_lun": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "内功",
         "school": "明教",
@@ -993,6 +1331,9 @@
       "noWeaponRequired": false
     },
     "zhen_chi_tu_nan": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "外功",
         "school": "蓬莱",
@@ -1001,6 +1342,9 @@
       "noWeaponRequired": true
     },
     "cang_yue": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "外功",
         "school": "天策",
@@ -1009,6 +1353,9 @@
       "noWeaponRequired": false
     },
     "cheng_huang_zhi_wei": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "外功",
         "school": "万灵",
@@ -1017,6 +1364,9 @@
       "noWeaponRequired": false
     },
     "ji_dian_chi_yu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "外功",
         "school": "蓬莱",
@@ -1025,6 +1375,9 @@
       "noWeaponRequired": true
     },
     "long_xiao_jiu_tian": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "外功",
         "school": "丐帮",
@@ -1033,6 +1386,9 @@
       "noWeaponRequired": true
     },
     "ti_yun_zong": {
+      "properties": {
+        "qinggongGcdImmune": true
+      },
       "tags": {
         "damageType": "外功",
         "school": "纯阳",
@@ -1041,6 +1397,9 @@
       "noWeaponRequired": true
     },
     "xu_ru_lin": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "外功",
         "school": "天策",
@@ -1049,6 +1408,9 @@
       "noWeaponRequired": false
     },
     "yu_yu_cheng_feng": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "外功",
         "school": "蓬莱",
@@ -1057,6 +1419,9 @@
       "noWeaponRequired": true
     },
     "lian_huan_nu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "damageType": "外功",
         "school": "唐门",
@@ -1065,6 +1430,9 @@
       "noWeaponRequired": false
     },
     "shi_xin_gu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "五毒",
         "rarity": "精巧",
@@ -1074,6 +1442,9 @@
       "noWeaponRequired": false
     },
     "hong_meng_tian_jin": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "衍天",
         "damageType": "内功",
@@ -1083,6 +1454,9 @@
       "noWeaponRequired": false
     },
     "shi_fang_xuan_ji": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "凌雪",
         "damageType": "外功",
@@ -1092,6 +1466,9 @@
       "noWeaponRequired": true
     },
     "chu_he_han_jie": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "霸刀",
         "damageType": "外功",
@@ -1100,6 +1477,9 @@
       "noWeaponRequired": false
     },
     "dun_li": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "苍云",
         "damageType": "外功",
@@ -1108,6 +1488,9 @@
       "noWeaponRequired": false
     },
     "lv_ye_man_sheng": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "药宗",
         "damageType": "内功",
@@ -1116,6 +1499,9 @@
       "noWeaponRequired": false
     },
     "ru_yi_fa": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "明教",
         "damageType": "内功",
@@ -1124,6 +1510,9 @@
       "noWeaponRequired": false
     },
     "you_feng_piao_zong": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "刀宗",
         "damageType": "外功",
@@ -1132,6 +1521,9 @@
       "noWeaponRequired": false
     },
     "jian_fei_jing_tian": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -1141,6 +1533,9 @@
       "noWeaponRequired": false
     },
     "qian_long_wu_yong": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "丐帮",
         "damageType": "外功",
@@ -1149,6 +1544,9 @@
       "noWeaponRequired": true
     },
     "qin_yin_gong_ming": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "长歌",
         "damageType": "内功",
@@ -1158,6 +1556,9 @@
       "noWeaponRequired": false
     },
     "shou_que_shi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "少林",
         "damageType": "内功",
@@ -1166,6 +1567,9 @@
       "noWeaponRequired": true
     },
     "xiang_ji_bi_luo": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "蓬莱",
         "damageType": "外功",
@@ -1174,6 +1578,9 @@
       "noWeaponRequired": true
     },
     "bu_wei_an_xing": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "明教",
         "damageType": "内功",
@@ -1182,6 +1589,9 @@
       "noWeaponRequired": false
     },
     "qiang_zhu_shi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "少林",
         "damageType": "内功",
@@ -1191,6 +1601,9 @@
       "noWeaponRequired": false
     },
     "xi_bing_yu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "刀宗",
         "damageType": "外功",
@@ -1199,6 +1612,9 @@
       "noWeaponRequired": false
     },
     "xia_liu_bao_shi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "藏剑",
         "damageType": "外功",
@@ -1207,6 +1623,9 @@
       "noWeaponRequired": false
     },
     "dou_zhuan_xing_yi": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "衍天",
         "damageType": "内功",
@@ -1215,6 +1634,10 @@
       "noWeaponRequired": false
     },
     "feng_liu_yun_san": {
+      "properties": {
+        "qinggong": true,
+        "qinggongGcdImmune": true
+      },
       "tags": {
         "school": "段氏",
         "damageType": "内功",
@@ -1223,6 +1646,9 @@
       "noWeaponRequired": false
     },
     "ku_can_gu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "五毒",
         "damageType": "内功",
@@ -1231,6 +1657,9 @@
       "noWeaponRequired": false
     },
     "long_zhan_yu_ye": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "丐帮",
         "damageType": "外功",
@@ -1239,6 +1668,9 @@
       "noWeaponRequired": true
     },
     "mi_xin_gu": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "五毒",
         "damageType": "内功",
@@ -1247,6 +1679,9 @@
       "noWeaponRequired": false
     },
     "yin_qiao": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "段氏",
         "damageType": "内功",
@@ -1256,6 +1691,9 @@
       "noWeaponRequired": false
     },
     "jiu_xiao_feng_lei": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "唐门",
         "damageType": "外功",
@@ -1263,6 +1701,9 @@
       }
     },
     "long_yin": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -1270,6 +1711,9 @@
       }
     },
     "han_ru_lei": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -1277,6 +1721,9 @@
       }
     },
     "ling_ran_tian_feng": {
+      "properties": {
+        "qinggongGcdImmune": true
+      },
       "tags": {
         "school": "药宗",
         "damageType": "内功",
@@ -1284,6 +1731,9 @@
       }
     },
     "she_shen_jue": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "少林",
         "damageType": "内功",
@@ -1291,6 +1741,9 @@
       }
     },
     "ting_feng_chui_xue": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "万花",
         "damageType": "内功",
@@ -1298,6 +1751,9 @@
       }
     },
     "yuan": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -1305,6 +1761,9 @@
       }
     },
     "zi_qi_dong_lai": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "damageType": "内功",
@@ -1312,6 +1771,9 @@
       }
     },
     "po_cang_qiong": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "damageType": "内功",
@@ -1319,6 +1781,9 @@
       }
     },
     "ren_chi_cheng": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -1326,6 +1791,9 @@
       }
     },
     "sui_xing_chen": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -1333,6 +1801,9 @@
       }
     },
     "wu_an_mi_yun": {
+      "properties": {
+        "qinggong": false
+      },
       "tags": {
         "school": "段氏",
         "damageType": "内功",

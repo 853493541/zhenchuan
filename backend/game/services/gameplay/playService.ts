@@ -34,6 +34,23 @@ function pruneOldEvents(state: GameState, keepTurns = 10) {
 }
 
 const TEST_COOLDOWN_CAP_TICKS = 150; // 5 seconds at 30Hz
+const SERVER_TICK_RATE = 30;
+const BASE_GCD_SECONDS = 1.19;
+const BASE_GCD_TICKS = Math.round(BASE_GCD_SECONDS * SERVER_TICK_RATE);
+const BASE_GCD_MS = BASE_GCD_SECONDS * 1000;
+const QINGGONG_GCD_TICKS = 3 * SERVER_TICK_RATE;
+const QINGGONG_GCD_MS = 3000;
+const HOUYAO_ABILITY_ID = "houyao";
+const HOUYAO_GCD_TICKS = 2 * SERVER_TICK_RATE;
+const HOUYAO_GCD_MS = 2000;
+const HOUYAO_GCD_EXEMPT_ABILITY_IDS = new Set([
+  HOUYAO_ABILITY_ID,
+  "fuyao_zhishang",
+  "nieyun_zhuyue",
+  "lingxiao_lansheng",
+  "yingfeng_huilang",
+  "yaotai_zhenhe",
+]);
 
 function clampCooldownTicksForTesting(ticks: number | undefined): number {
   if (ticks === undefined) return 0;
@@ -43,6 +60,47 @@ function clampCooldownTicksForTesting(ticks: number | undefined): number {
 
 function hasChargeSystem(ability: any): boolean {
   return Number(ability?.maxCharges ?? 0) > 1;
+}
+
+function getAbilityIdFromInstance(instance: any): string {
+  return String(instance?.abilityId || instance?.id || "");
+}
+
+function getRuntimeAbilityInstances(player: any): any[] {
+  return [
+    ...(Array.isArray(player?.hand) ? player.hand : []),
+    ...Object.values(player?.specialAbilityStates ?? {}),
+  ];
+}
+
+function isQinggongAbility(ability: any): boolean {
+  return ability?.qinggong === true || ability?.qinggongGcdImmune === true;
+}
+
+function isQinggongGcdImmune(ability: any): boolean {
+  return ability?.qinggongGcdImmune === true;
+}
+
+function applyMinimumAbilityLock(instance: any, ability: any, ticks: number) {
+  if (!ability || ticks <= 0) return;
+  if (hasChargeSystem(ability)) {
+    ensureChargeRuntime(instance, ability);
+    instance.chargeLockTicks = Math.max(instance.chargeLockTicks ?? 0, ticks);
+    instance.cooldown = Math.max(instance.cooldown ?? 0, instance.chargeLockTicks);
+    return;
+  }
+  instance.cooldown = Math.max(instance.cooldown ?? 0, ticks);
+}
+
+function setVisualGcd(player: any, name: string, kind: "base" | "qinggong" | "houyao", durationMs: number) {
+  const startedAt = Date.now();
+  player.visualGcd = {
+    id: `${kind}-${startedAt}`,
+    name,
+    kind,
+    startedAt,
+    durationMs,
+  };
 }
 
 function getChargeRecoveryTicks(ability: any): number {
@@ -523,7 +581,7 @@ async function playCastAbility(
   // 绛唇珠袖 trigger: if the caster has the 绛唇珠袖 debuff and just cast a qinggong ability,
   // immediately apply 绛唇珠袖·沉默 (SILENCE 2s) and deal 1 damage.
   const JIANG_CHUN_DEBUFF_ID = 2323;
-  if ((ability as any).qinggong === true) {
+  if (isQinggongAbility(ability)) {
     const jiangBuff = (player as any).buffs?.find(
       (b: any) => b.buffId === JIANG_CHUN_DEBUFF_ID && b.expiresAt > Date.now()
     );
@@ -546,37 +604,40 @@ async function playCastAbility(
     }
   }
 
-  // 轻功 GCD: casting any 轻功 ability imposes a 3-second minimum cooldown on the other 3
-  const QINGGONG_IDS = new Set(['nieyun_zhuyue', 'lingxiao_lansheng', 'yaotai_zhenhe', 'yingfeng_huilang']);
-  const QINGGONG_GCD_TICKS = 90; // 3 s × 30 Hz
-  if (QINGGONG_IDS.has(abilityId)) {
-    for (const inst of player.hand) {
-      const instCardId = (inst as any).abilityId || (inst as any).id;
-      if (instCardId !== abilityId && QINGGONG_IDS.has(instCardId)) {
-        inst.cooldown = Math.max(inst.cooldown, QINGGONG_GCD_TICKS);
-      }
-    }
-  }
+  const runtimeAbilities = getRuntimeAbilityInstances(player);
 
-  // Global GCD: casting any gcd:true ability imposes a 1.5-second minimum CD on other gcd:true abilities
-  const DRAFT_GCD_TICKS = 45; // 1.5 s × 30 Hz
-  if ((ability as any).gcd === true) {
+  if (abilityId === HOUYAO_ABILITY_ID) {
+    for (const inst of runtimeAbilities) {
+      const instCardId = getAbilityIdFromInstance(inst);
+      if (!instCardId || HOUYAO_GCD_EXEMPT_ABILITY_IDS.has(instCardId)) continue;
+      const instCard = ABILITIES[instCardId];
+      applyMinimumAbilityLock(inst, instCard, HOUYAO_GCD_TICKS);
+    }
+    setVisualGcd(player, "后撤调息时间", "houyao", HOUYAO_GCD_MS);
+  } else if ((ability as any).gcd === true) {
     (player as any).globalGcdTicks = Math.max(
       Math.max(0, Number((player as any).globalGcdTicks ?? 0)),
-      DRAFT_GCD_TICKS,
+      BASE_GCD_TICKS,
     );
-    for (const inst of player.hand) {
-      const instCardId = (inst as any).abilityId || (inst as any).id;
+    for (const inst of runtimeAbilities) {
+      const instCardId = getAbilityIdFromInstance(inst);
       const instCard = ABILITIES[instCardId];
       if (instCard && (instCard as any).gcd === true) {
-        if (hasChargeSystem(instCard)) {
-          ensureChargeRuntime(inst, instCard);
-          inst.chargeLockTicks = Math.max(inst.chargeLockTicks ?? 0, DRAFT_GCD_TICKS);
-          inst.cooldown = Math.max(inst.cooldown ?? 0, inst.chargeLockTicks);
-        } else {
-          inst.cooldown = Math.max(inst.cooldown ?? 0, DRAFT_GCD_TICKS);
+        applyMinimumAbilityLock(inst, instCard, BASE_GCD_TICKS);
+      }
+    }
+    setVisualGcd(player, "基础调息时间", "base", BASE_GCD_MS);
+
+    if (isQinggongAbility(ability) && !isQinggongGcdImmune(ability)) {
+      for (const inst of runtimeAbilities) {
+        const instCardId = getAbilityIdFromInstance(inst);
+        if (!instCardId || instCardId === abilityId) continue;
+        const instCard = ABILITIES[instCardId];
+        if (isQinggongAbility(instCard) && !isQinggongGcdImmune(instCard)) {
+          applyMinimumAbilityLock(inst, instCard, QINGGONG_GCD_TICKS);
         }
       }
+      setVisualGcd(player, "轻功调息时间", "qinggong", QINGGONG_GCD_MS);
     }
   }
 

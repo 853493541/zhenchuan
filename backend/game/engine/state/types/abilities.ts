@@ -47,8 +47,8 @@ export interface Ability {
   canTargetSelf?: boolean;
 
   /**
-   * If true, casting this ability triggers a 1.5-second draft GCD on other
-   * draft abilities that also have gcd:true.
+   * If true, casting this ability triggers the base public GCD on other
+   * abilities that also have gcd:true.
    */
   gcd?: boolean;
 
@@ -205,6 +205,12 @@ export interface Ability {
    * 被【封轻功】时，带此标记的技能不可施放。
    */
   qinggong?: boolean;
+
+  /**
+   * If true, this ability is treated as 轻功 for seals, but it neither triggers
+   * nor receives the separate 轻功 GCD layer.
+   */
+  qinggongGcdImmune?: boolean;
 
   /**
    * Allows this opponent-targeted ability to be cast on a ground point

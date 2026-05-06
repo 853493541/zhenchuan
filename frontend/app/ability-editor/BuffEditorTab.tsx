@@ -292,13 +292,6 @@ function BuffReadOnlyCard({
         <div className={styles.buffCardHint}>点击编辑详细属性</div>
       </Link>
 
-      {entry.sourceAbilityName && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 14px 10px", color: "#6f655b", fontSize: 12 }}>
-          <span style={{ color: "#9a8d7d" }}>来源</span>
-          <span style={{ fontWeight: 700, color: "#4f463d" }}>{entry.sourceAbilityName}</span>
-        </div>
-      )}
-
       <div className={styles.buffQuickAttrSection}>
         <div className={styles.buffQuickAttrHeader}>
           <span className={styles.buffQuickAttrLabel}>快速属性</span>
