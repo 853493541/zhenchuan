@@ -11,9 +11,18 @@ export interface PlayerState {
   waiGongCritChancePct?: number;
   neiGongCritChancePct?: number;
   critChancePct?: number;
+  defensePct?: number;
+  hasteRatePct?: number;
   hand: AbilityInstance[];
   specialAbilityStates?: Record<string, AbilityInstance>;
   globalGcdTicks?: number;
+  visualGcd?: {
+    id: string;
+    name: string;
+    kind: "base" | "qinggong" | "houyao";
+    startedAt: number;
+    durationMs: number;
+  };
   buffs: ActiveBuff[];
 }
 

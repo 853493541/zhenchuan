@@ -46,6 +46,7 @@ import {
 import { getEffectiveAbilityRange } from "../utils/abilityRange";
 import { triggerYunSanBlink } from "../utils/yunSan";
 import { getMiYunAreaCandidates, hasMiYunConfusion, rerollMiYunAreaTargets } from "../utils/miyun";
+import { getHasteAdjustedTimingMs } from "../utils/haste";
 
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
@@ -1500,7 +1501,7 @@ export class GameLoop {
           const yuHuaBuff = jiuAbility?.buffs?.find((b: any) => b.buffId === 9202);
           if (jiuAbility && yuHuaBuff) {
             // Remove the KNOCKED_BACK phase debuff so it doesn't overlap
-            player.buffs = player.buffs.filter((b) => b.buffId !== 9201);
+            player.buffs = player.buffs.filter((b) => b.buffId !== 9101);
             const sourceId: string = (player as any)._wallKnockSourceUserId ?? player.userId;
             // addBuff handles: 递减, CONTROL_IMMUNE check, BUFF_APPLIED event, status bar
             addBuff({
@@ -1943,7 +1944,7 @@ export class GameLoop {
 
         // ── 连环弩 periodic ticks: every 1s deal 1/2/3 damage. Knockback if target ≤15u. ──
         if (ch.abilityId === "lian_huan_nu" && targetPlayer && (targetPlayer.hp ?? 0) > 0) {
-          const lhnInterval = 1000;
+          const lhnInterval = Math.max(1, Number((ch as any).tickIntervalMs ?? getHasteAdjustedTimingMs(1_000, channelAbility as any)));
           const lhnLast = (ch as any).lianHuanNuLastTickAt ?? ch.startedAt;
           if (chNow - lhnLast >= lhnInterval) {
             (ch as any).lianHuanNuLastTickAt = chNow;
@@ -2512,6 +2513,16 @@ export class GameLoop {
       } else {
         (player as any).globalGcdTicks = 0;
         (player as any)._globalGcdProgress = 0;
+      }
+
+      const visualGcd = (player as any).visualGcd;
+      if (
+        visualGcd &&
+        typeof visualGcd.startedAt === "number" &&
+        typeof visualGcd.durationMs === "number" &&
+        Date.now() - visualGcd.startedAt >= visualGcd.durationMs + 100
+      ) {
+        (player as any).visualGcd = undefined;
       }
 
       const runtimeAbilities = [
@@ -4748,6 +4759,10 @@ export class GameLoop {
         diff.push({
           path: `/players/${pidx}/globalGcdTicks`,
           value: (p as any).globalGcdTicks ?? 0,
+        });
+        diff.push({
+          path: `/players/${pidx}/visualGcd`,
+          value: (p as any).visualGcd ?? null,
         });
         diff.push({
           path: `/players/${pidx}/specialAbilityStates`,

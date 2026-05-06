@@ -8,6 +8,7 @@ import { User } from "../../../models/User";
 import { GameState } from "../../engine/state/types";
 import { initializeTournament } from "../economy/tournamentService";
 import { initializeBattleState } from "../battle/battleService";
+import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
 
 /**
  * Helper: fetch username by user ID
@@ -37,6 +38,7 @@ export async function createGame(userId: string, mode: 'arena' | 'pubg' | 'colli
         hp: 100,
         maxHp: 100,
         shield: 0,
+        hasteRatePct: BASE_HASTE_RATE_PCT,
         hand: [],
         buffs: [],
 

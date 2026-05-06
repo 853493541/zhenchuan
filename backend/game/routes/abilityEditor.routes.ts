@@ -4,11 +4,17 @@ import {
   buildCanCastWhileMountedSnapshot,
   buildAbilityEditorSnapshot,
   buildNoWeaponRequiredSnapshot,
+  buildHasteUnaffectedSnapshot,
+  buildQinggongGcdImmuneSnapshot,
+  buildQinggongSnapshot,
   setAbilityCanCastWhileMountedOverride,
   setAbilityEditorDamageValue,
   setAbilityEditorNumericValue,
   setAbilityEditorProperty,
   setAbilityNoWeaponRequiredOverride,
+  setAbilityHasteUnaffectedOverride,
+  setAbilityQinggongGcdImmuneOverride,
+  setAbilityQinggongOverride,
   setAbilityIsProjectile,
   setAbilityDunLiWhitelisted,
   setAbilityTag,
@@ -250,6 +256,72 @@ router.put("/ability-editor/:abilityId/dun-li-whitelist", (req, res) => {
     }
     setAbilityDunLiWhitelisted(req.params.abilityId, nextMode);
     return res.json(buildAbilityEditorSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/qinggong", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildQinggongSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/qinggong/:abilityId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { mode } = req.body ?? {};
+    if (mode !== "manual-include" && mode !== "manual-exclude" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+    return res.json(setAbilityQinggongOverride(req.params.abilityId, mode));
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/qinggong-gcd-immune", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildQinggongGcdImmuneSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/qinggong-gcd-immune/:abilityId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { mode } = req.body ?? {};
+    if (mode !== "manual-include" && mode !== "manual-exclude" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+    return res.json(setAbilityQinggongGcdImmuneOverride(req.params.abilityId, mode));
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/haste-unaffected", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildHasteUnaffectedSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/haste-unaffected/:abilityId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { mode } = req.body ?? {};
+    if (mode !== "manual-include" && mode !== "manual-exclude" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+    return res.json(setAbilityHasteUnaffectedOverride(req.params.abilityId, mode));
   } catch (error) {
     return handleAbilityEditorError(res, error);
   }

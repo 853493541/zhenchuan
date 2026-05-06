@@ -17,6 +17,72 @@ import { getAbilityIconPath } from '@/app/lib/iconPaths';
 import * as THREE from 'three';
 
 type V3 = { x: number; y: number; z: number };
+type HeartStatKey =
+  | 'attack'
+  | 'maxHp'
+  | 'crit'
+  | 'critEffect'
+  | 'haste'
+  | 'dodge'
+  | 'runSpeed'
+  | 'defense'
+  | 'huajin'
+  | 'damageReduction';
+
+type HeartStatRow = {
+  key: HeartStatKey;
+  label: string;
+  value: string;
+  tooltipTitle?: string;
+  tooltipLines?: string[];
+};
+
+type HeartStatHintState = {
+  title: string;
+  lines: string[];
+  anchorRect: DOMRect;
+};
+
+type GcdVisibilitySettings = {
+  enabled: boolean;
+  base: boolean;
+  qinggong: boolean;
+  houyao: boolean;
+};
+
+const HEART_STAT_STORAGE_KEY = 'zhenchuan-heart-stat-visibility';
+const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
+const HEART_STAT_ORDER: HeartStatKey[] = [
+  'attack',
+  'maxHp',
+  'crit',
+  'critEffect',
+  'haste',
+  'dodge',
+  'runSpeed',
+  'defense',
+  'huajin',
+  'damageReduction',
+];
+const DEFAULT_HEART_STAT_VISIBILITY: Record<HeartStatKey, boolean> = {
+  attack: true,
+  maxHp: true,
+  crit: true,
+  critEffect: true,
+  haste: true,
+  dodge: true,
+  runSpeed: true,
+  defense: true,
+  huajin: true,
+  damageReduction: true,
+};
+const DEFAULT_GCD_VISIBILITY_SETTINGS: GcdVisibilitySettings = {
+  enabled: true,
+  base: true,
+  qinggong: false,
+  houyao: false,
+};
+
 type CollisionDebugState = {
   enabled: boolean;
   center: V3;
@@ -39,6 +105,10 @@ const DEFAULT_PLAYER_RADIUS = 2; // must match backend
 const COLLISION_TEST_PLAYER_RADIUS = 0.384;
 const LEGACY_STORED_UNIT_SCALE = 2.2;
 const SERVER_TICK_RATE = 30;
+const BASE_HASTE_RATE_PCT = 23.54;
+const BASE_GCD_SECONDS = 1.19;
+const BASE_GCD_MS = BASE_GCD_SECONDS * 1000;
+const BASE_GCD_WINDOW_TICKS = Math.round(BASE_GCD_SECONDS * SERVER_TICK_RATE);
 const BASE_MOVE_SPEED_PER_TICK = 0.1666667;
 const AIR_SHIFT_DURATION_TICKS = SERVER_TICK_RATE;
 const LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS = new Set([1014, 1017, 2001, 2003, 2712]);
@@ -54,6 +124,14 @@ type RuntimeAbilityChannel = {
   interruptible?: boolean;
   tickIntervalMs?: number;
   buffId?: number;
+};
+
+type VisualGcdState = {
+  id: string;
+  name: string;
+  kind: 'base' | 'qinggong' | 'houyao';
+  startedAt: number;
+  durationMs: number;
 };
 
 type ChannelingPlayer = {
@@ -157,12 +235,14 @@ function buildChannelBarResultForPlayer(
     const interruptible = (channel as any).interruptible !== undefined
       ? (channel as any).interruptible
       : (ability?.channel?.interruptible !== false);
+    const activeTickIntervalMs = Number((channel as any).tickIntervalMs ?? ability?.channel?.tickIntervalMs ?? 0);
     const data: ChannelBarData = channel.forwardChannel === false
       ? {
           kind: 'reverse',
           name: channel.abilityName,
           appliedAt: channel.startedAt,
           durationMs: Math.max(1, channel.durationMs),
+          ...(Number.isFinite(activeTickIntervalMs) && activeTickIntervalMs > 0 ? { tickIntervalMs: activeTickIntervalMs } : {}),
           interruptible,
         }
       : {
@@ -990,6 +1070,7 @@ interface AbilityInfo {
   noWeaponRequired?: boolean;
   canCastWhileMounted?: boolean;
   qinggong?: boolean;
+  qinggongGcdImmune?: boolean;
   cannotCastWhileRooted?: boolean;
   allowGroundCastWithoutTarget?: boolean;
   losBlocked?: boolean;
@@ -1013,9 +1094,143 @@ function formatCompactSeconds(seconds: number): string {
   return formatCompactNumber(seconds);
 }
 
+function formatGcdBarSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0.00';
+  return seconds.toFixed(2);
+}
+
 function formatTicksAsSeconds(ticks: number | undefined): string {
   const safeTicks = Math.max(0, Number(ticks ?? 0));
   return `${formatCompactSeconds(safeTicks / SERVER_TICK_RATE)}秒`;
+}
+
+function shouldShowVisualGcd(
+  gcd: VisualGcdState | null | undefined,
+  settings: GcdVisibilitySettings,
+): gcd is VisualGcdState {
+  if (!gcd || !settings.enabled) return false;
+  if (gcd.kind === 'base') return settings.base;
+  if (gcd.kind === 'qinggong') return settings.qinggong;
+  return settings.houyao;
+}
+
+function buildVisibleVisualGcd(
+  gcd: VisualGcdState | null | undefined,
+  globalGcdTicks: number | undefined,
+  settings: GcdVisibilitySettings,
+): VisualGcdState | null {
+  if (shouldShowVisualGcd(gcd, settings)) {
+    return gcd;
+  }
+
+  const remainingBaseGcdTicks = Math.max(0, Number(globalGcdTicks ?? 0));
+  if (!settings.enabled || !settings.base || remainingBaseGcdTicks <= 0) {
+    return null;
+  }
+
+  const remainingBaseGcdMs = (remainingBaseGcdTicks / SERVER_TICK_RATE) * 1000;
+  return {
+    id: 'fallback-base-gcd',
+    name: '基础调息时间',
+    kind: 'base',
+    startedAt: Date.now() - Math.max(0, BASE_GCD_MS - remainingBaseGcdMs),
+    durationMs: BASE_GCD_MS,
+  };
+}
+
+function getVisualGcdElapsedMs(gcd: VisualGcdState, nowMs: number): number {
+  return Math.max(0, Math.min(gcd.durationMs, nowMs - gcd.startedAt));
+}
+
+function getVisualGcdProgressPct(gcd: VisualGcdState, nowMs: number): number {
+  if (!Number.isFinite(gcd.startedAt) || !Number.isFinite(gcd.durationMs) || gcd.durationMs <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, (getVisualGcdElapsedMs(gcd, nowMs) / gcd.durationMs) * 100));
+}
+
+function GcdVisualBar({ gcd }: { gcd?: VisualGcdState | null }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [displayGcd, setDisplayGcd] = useState<VisualGcdState | null>(gcd ?? null);
+
+  useEffect(() => {
+    if (!gcd) {
+      return;
+    }
+
+    setDisplayGcd((current) => {
+      if (!current) {
+        return gcd;
+      }
+
+      const now = Date.now();
+      const currentProgressPct = getVisualGcdProgressPct(current, now);
+      const nextProgressPct = getVisualGcdProgressPct(gcd, now);
+      const isSameTrack =
+        current.kind === gcd.kind &&
+        Math.abs(current.durationMs - gcd.durationMs) <= 50;
+      const currentStillRunning = now - current.startedAt < current.durationMs - 40;
+
+      if (isSameTrack && currentStillRunning && nextProgressPct + 0.5 < currentProgressPct) {
+        return current;
+      }
+
+      return gcd;
+    });
+  }, [gcd?.id, gcd?.kind, gcd?.startedAt, gcd?.durationMs, gcd?.name]);
+
+  useEffect(() => {
+    if (!displayGcd) return;
+
+    let frameId = 0;
+    const tick = () => {
+      setNowMs(Date.now());
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    setNowMs(Date.now());
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [displayGcd?.id]);
+
+  const activeGcd = displayGcd ?? gcd ?? null;
+  const isValidGcd = Boolean(
+    activeGcd && Number.isFinite(activeGcd.startedAt) && Number.isFinite(activeGcd.durationMs) && activeGcd.durationMs > 0,
+  );
+
+  if (!isValidGcd || !activeGcd) {
+    return null;
+  }
+
+  const elapsedMs = Math.max(0, nowMs - activeGcd.startedAt);
+  if (elapsedMs >= activeGcd.durationMs + 120) {
+    return null;
+  }
+
+  const clampedElapsedMs = getVisualGcdElapsedMs(activeGcd, nowMs);
+  const progressPct = getVisualGcdProgressPct(activeGcd, nowMs);
+  const elapsedSeconds = clampedElapsedMs / 1000;
+  const durationSeconds = activeGcd.durationMs / 1000;
+  const kindClass = activeGcd.kind === 'qinggong'
+    ? styles.gcdBarFillQinggong
+    : activeGcd.kind === 'houyao'
+      ? styles.gcdBarFillHouyao
+      : styles.gcdBarFillBase;
+
+  return (
+    <div className={styles.gcdBarWrap} aria-label={activeGcd.name}>
+      <div className={styles.gcdBarLabel}>
+        {activeGcd.name} ({formatGcdBarSeconds(elapsedSeconds)}/{formatGcdBarSeconds(durationSeconds)})
+      </div>
+      <div className={styles.gcdBarTrack}>
+        <div
+          className={`${styles.gcdBarFill} ${kindClass}`}
+          style={{ transform: `scaleX(${progressPct / 100})` }}
+        />
+      </div>
+    </div>
+  );
 }
 
 function formatAbilityRangeLabel(ability: AbilityInfo): string {
@@ -1102,6 +1317,44 @@ function AbilityHoverHint({ hint }: { hint: AbilityHintState }) {
   );
 }
 
+function HeartStatHoverHint({ hint }: { hint: HeartStatHintState }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const rect = element.getBoundingClientRect();
+    const gap = 8;
+    const safe = 8;
+    const maxLeft = window.innerWidth - rect.width - safe;
+    const maxTop = window.innerHeight - rect.height - safe;
+    const top = Math.max(safe, Math.min(maxTop, hint.anchorRect.top));
+    const preferredLeft = hint.anchorRect.right + gap;
+    const fallbackLeft = hint.anchorRect.left - rect.width - gap;
+    const left = preferredLeft <= maxLeft ? preferredLeft : fallbackLeft;
+
+    setPos({
+      top,
+      left: Math.max(safe, Math.min(maxLeft, left)),
+    });
+  }, [hint]);
+
+  return (
+    <div
+      ref={ref}
+      className={styles.heartStatHint}
+      style={pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999 }}
+    >
+      <div className={styles.heartStatHintTitle}>{hint.title}</div>
+      {hint.lines.map((line, index) => (
+        <div key={`${line}-${index}`} className={styles.heartStatHintLine}>{line}</div>
+      ))}
+    </div>
+  );
+}
+
 type DummySpawnPreset = 'enemy' | 'ally' | 'ally100';
 
 function getDummySpawnMeta(preset: DummySpawnPreset) {
@@ -1173,7 +1426,7 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
+  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
   opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
   /** All other players (opponents) — supports 1v1 and N-player modes */
   opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; shield?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel }[];
@@ -1362,6 +1615,7 @@ export default function BattleArena({
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [cheatSchoolOpen]);
+
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
   const [runningCheatAction, setRunningCheatAction] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
@@ -1371,6 +1625,42 @@ export default function BattleArena({
   const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number; z?: number; isValid?: boolean } | null>(null);
   const [showControlPanel, setShowControlPanel] = useState(false);
   const [showHeartDetailsPanel, setShowHeartDetailsPanel] = useState(false);
+  const [showHeartStatSettings, setShowHeartStatSettings] = useState(false);
+  const [heartStatHint, setHeartStatHint] = useState<HeartStatHintState | null>(null);
+  const [heartStatVisibility, setHeartStatVisibility] = useState<Record<HeartStatKey, boolean>>(() => {
+    try {
+      if (typeof window === 'undefined') return DEFAULT_HEART_STAT_VISIBILITY;
+      const stored = JSON.parse(localStorage.getItem(HEART_STAT_STORAGE_KEY) ?? '{}');
+      return { ...DEFAULT_HEART_STAT_VISIBILITY, ...stored };
+    } catch {
+      return DEFAULT_HEART_STAT_VISIBILITY;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(HEART_STAT_STORAGE_KEY, JSON.stringify(heartStatVisibility));
+    } catch {}
+  }, [heartStatVisibility]);
+  const [gcdVisibilitySettings, setGcdVisibilitySettings] = useState<GcdVisibilitySettings>(() => {
+    try {
+      if (typeof window === 'undefined') return DEFAULT_GCD_VISIBILITY_SETTINGS;
+      const stored = JSON.parse(localStorage.getItem(GCD_VISIBILITY_STORAGE_KEY) ?? '{}');
+      return { ...DEFAULT_GCD_VISIBILITY_SETTINGS, ...stored };
+    } catch {
+      return DEFAULT_GCD_VISIBILITY_SETTINGS;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(GCD_VISIBILITY_STORAGE_KEY, JSON.stringify(gcdVisibilitySettings));
+    } catch {}
+  }, [gcdVisibilitySettings]);
+  useEffect(() => {
+    setShowHeartStatSettings(false);
+    if (!showHeartDetailsPanel) {
+      setHeartStatHint(null);
+    }
+  }, [showHeartDetailsPanel]);
   const [pendingDummySpawn, setPendingDummySpawn] = useState<DummySpawnPreset | null>(null);
   const [dummySpawnPreview, setDummySpawnPreview] = useState<{ x: number; y: number; z?: number } | null>(null);
   const pendingDummySpawnRef = useRef<DummySpawnPreset | null>(null);
@@ -1431,6 +1721,11 @@ export default function BattleArena({
   const cameraDebugIdRef = useRef(0);
   const cameraEventTestingEnabledRef = useRef(false);
   const losBlockerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visibleVisualGcd = buildVisibleVisualGcd(
+    me?.visualGcd ?? null,
+    me?.globalGcdTicks,
+    gcdVisibilitySettings,
+  );
   const showLOSBlocker = useCallback((msg: string) => {
     setLosBlocker(msg);
     if (losBlockerTimerRef.current) clearTimeout(losBlockerTimerRef.current);
@@ -1672,15 +1967,13 @@ export default function BattleArena({
   };
 
   const formatFloatValue = (value: number) => {
-    if (!Number.isFinite(value)) return '0';
-    return Number(value.toFixed(2)).toString();
+    if (!Number.isFinite(value)) return '0.00';
+    return value.toFixed(2);
   };
 
   const isCritDamageEvent = (evt: any) => {
     if ((evt as any)?.suppressCritLabel === true) return false;
-    if ((evt as any)?.isCrit === true) return true;
-    const rawValue = Number(evt?.value ?? 0);
-    return Math.abs(rawValue - Math.round(rawValue)) > 0.0001;
+    return (evt as any)?.isCrit === true;
   };
 
   // Split abilities into two rows for rendering
@@ -2696,7 +2989,7 @@ export default function BattleArena({
         const damageWasCrit = isCritDamageEvent(evt);
         const eventLabel = (evt as any).hideAbilityName === true ? '' : evt.abilityName;
         const displayZeroDamage = (evt as any).displayZeroDamage === true;
-        const zeroDamageText = eventLabel ? `${eventLabel}： -0` : '-0';
+        const zeroDamageText = eventLabel ? `${eventLabel}： -0.00` : '-0.00';
         if (evt.targetUserId === myId) {
           if (!selectedTargetRef.current && !selectedEntityRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
             const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
@@ -3067,10 +3360,9 @@ export default function BattleArena({
 
   useEffect(() => {
     // ── Draft abilities: sourced from me.hand (only non-common abilities) ──
-    const GCD_WINDOW_TICKS = 45;
     const getDisplayMaxCooldown = (ab: any): number => {
       const base = ab?.cooldownTicks ?? 0;
-      const gcdWindow = ab?.gcd === true ? GCD_WINDOW_TICKS : 0;
+      const gcdWindow = ab?.gcd === true ? BASE_GCD_WINDOW_TICKS : 0;
       return Math.max(base, gcdWindow);
     };
     const getSharedGcdTicks = (ab: any): number => (
@@ -3186,6 +3478,7 @@ export default function BattleArena({
       const targetPos = targetContext.targetPos;
       const abilityIdForChecks = ab?.id ?? instance?.abilityId;
       const sharedGcdTicks = getSharedGcdTicks(ab);
+      const isQinggongLike = ab?.qinggong === true || ab?.qinggongGcdImmune === true;
       const mountedYuqiToggle = yuqiMounted && (ab?.id === 'yuqi' || instance?.abilityId === 'yuqi');
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       if (maxCharges > 1) {
@@ -3219,8 +3512,8 @@ export default function BattleArena({
         return false;
       }
       if (disarmed && ab?.noWeaponRequired !== true) return false;
-      if (nonQinggongLocked && ab?.qinggong !== true) return false;
-      if (ab?.qinggong && qinggongSealed) return false;
+      if (nonQinggongLocked && !isQinggongLike) return false;
+      if (isQinggongLike && qinggongSealed) return false;
       if (ab?.cannotCastWhileRooted && rootedByDebuff) return false;
       if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) return false;
 
@@ -3321,6 +3614,7 @@ export default function BattleArena({
             requiresGrounded: false,
             requiresStanding: false,
             qinggong: false,
+            qinggongGcdImmune: false,
             cannotCastWhileRooted: false,
             allowGroundCastWithoutTarget: false,
           };
@@ -3371,6 +3665,7 @@ export default function BattleArena({
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
+          qinggongGcdImmune: !!(ability as any).qinggongGcdImmune,
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
@@ -3421,6 +3716,7 @@ export default function BattleArena({
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
+          qinggongGcdImmune: !!(ability as any).qinggongGcdImmune,
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
@@ -3483,6 +3779,7 @@ export default function BattleArena({
           requiresGrounded: !!(ability as any).requiresGrounded,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
+          qinggongGcdImmune: !!(ability as any).qinggongGcdImmune,
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
@@ -4776,11 +5073,23 @@ export default function BattleArena({
     0,
     Math.min(100, Number((me as any)?.neiGongCritChancePct ?? (me as any)?.critChancePct ?? 0)),
   );
+  const myBaseDefensePct = Math.max(
+    0,
+    Math.min(100, Number((me as any)?.defensePct ?? 0)),
+  );
+  const myHasteRatePct = Math.max(0, Number((me as any)?.hasteRatePct ?? BASE_HASTE_RATE_PCT));
   const myFacingArrow = facingArrow(localFacingRef.current);
   const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
   const getTypedEffectTotal = (effectType: string, damageType: '外功' | '内功') => meEffects
     .filter((e: any) => e?.type === effectType && (!e?.damageType || e?.damageType === damageType))
     .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
+  const defenseMultiplier = meEffects
+    .filter((e: any) => e?.type === 'DEFENSE_MULTIPLIER')
+    .reduce((multiplier: number, e: any) => {
+      const value = Number(e?.value ?? e?.defenseMultiplier ?? 1);
+      return Number.isFinite(value) ? multiplier * Math.max(0, value) : multiplier;
+    }, 1);
+  const myDefensePct = Math.max(0, Math.min(100, myBaseDefensePct * defenseMultiplier));
   const myWaiGongCritChancePct = Math.max(
     0,
     Math.min(100, myBaseWaiGongCritChancePct + getTypedEffectTotal('CRIT_CHANCE_BONUS', '外功')),
@@ -4807,8 +5116,12 @@ export default function BattleArena({
   const finalMoveSpeed = Math.max(0, baseMoveSpeed * Math.max(0, 1 + moveSpeedBoostSum - moveSpeedSlowSum));
   const baseMoveSpeedUnitsPerSec = baseMoveSpeed * SERVER_TICK_RATE / storedUnitScale;
   const effectiveMoveSpeedUnitsPerSec = finalMoveSpeed * SERVER_TICK_RATE / storedUnitScale;
-  const damageReductionEffect = meEffects.find((e: any) => e?.type === 'DAMAGE_REDUCTION');
-  const damageReductionPct = Math.max(0, Number(damageReductionEffect?.value ?? 0) * 100);
+  const damageReductionPct = Math.max(
+    0,
+    meEffects
+      .filter((e: any) => e?.type === 'DAMAGE_REDUCTION')
+      .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0) * 100,
+  );
   const dodgeChancePct = Math.max(
     0,
     Math.min(
@@ -4818,6 +5131,107 @@ export default function BattleArena({
         .reduce((sum: number, e: any) => sum + Number(e?.chance ?? 0), 0) * 100,
     ),
   );
+  const formatStatPct = (value: number) => `${Number.isFinite(value) ? value.toFixed(2) : '0.00'}%`;
+  const formatWholePct = (value: number) => `${Math.max(0, Math.round(Number.isFinite(value) ? value : 0))}%`;
+  const formatMergedPct = (outerValue: number, innerValue: number) => {
+    if (Math.abs(outerValue - innerValue) < 0.005) return formatStatPct(outerValue);
+    return `${formatStatPct(outerValue)} / ${formatStatPct(innerValue)}`;
+  };
+  const formatTooltipLine = (label: string, value: string) => `${label}: ${value}`;
+  const formatSpeedUnits = (value: number) => `${formatCompactNumber(value)}尺/秒`;
+  const runSpeedDisplayValue = String(Math.max(0, Math.round(effectiveMoveSpeedUnitsPerSec * 4)));
+  const heartStatRows: HeartStatRow[] = [
+    {
+      key: 'attack',
+      label: '攻击力',
+      value: '0',
+      tooltipTitle: '攻击力',
+      tooltipLines: [formatTooltipLine('攻击力', '0')],
+    },
+    {
+      key: 'maxHp',
+      label: '气血值',
+      value: String(Math.max(0, Math.round(myMaxHp))),
+      tooltipTitle: '气血值',
+      tooltipLines: [formatTooltipLine('气血值', String(Math.max(0, Math.round(myMaxHp))))],
+    },
+    {
+      key: 'crit',
+      label: '会心',
+      value: formatMergedPct(myWaiGongCritChancePct, myNeiGongCritChancePct),
+      tooltipTitle: '会心',
+      tooltipLines: [
+        formatTooltipLine('外功会心', formatStatPct(myWaiGongCritChancePct)),
+        formatTooltipLine('内功会心', formatStatPct(myNeiGongCritChancePct)),
+      ],
+    },
+    {
+      key: 'critEffect',
+      label: '会心效果',
+      value: formatMergedPct(myWaiGongCritEffectPct, myNeiGongCritEffectPct),
+      tooltipTitle: '会心效果',
+      tooltipLines: [
+        formatTooltipLine('外功会心效果', formatStatPct(myWaiGongCritEffectPct)),
+        formatTooltipLine('内功会心效果', formatStatPct(myNeiGongCritEffectPct)),
+      ],
+    },
+    {
+      key: 'haste',
+      label: '加速率',
+      value: formatStatPct(myHasteRatePct),
+      tooltipTitle: '加速率',
+      tooltipLines: [formatTooltipLine('加速率', formatStatPct(myHasteRatePct))],
+    },
+    {
+      key: 'dodge',
+      label: '闪避',
+      value: `${Math.max(0, Math.round(dodgeChancePct))}%`,
+      tooltipTitle: '闪避',
+      tooltipLines: [formatTooltipLine('闪避', `${Math.max(0, Math.round(dodgeChancePct))}%`)],
+    },
+    {
+      key: 'runSpeed',
+      label: '跑速',
+      value: runSpeedDisplayValue,
+      tooltipTitle: '跑速',
+      tooltipLines: [formatTooltipLine('移动速度', formatSpeedUnits(effectiveMoveSpeedUnitsPerSec))],
+    },
+    {
+      key: 'defense',
+      label: '防御',
+      value: formatStatPct(myDefensePct),
+      tooltipTitle: '防御',
+      tooltipLines: [formatTooltipLine('受到伤害降低', formatStatPct(myDefensePct))],
+    },
+    {
+      key: 'huajin',
+      label: '化劲',
+      value: '0%',
+      tooltipTitle: '化劲',
+      tooltipLines: [formatTooltipLine('化劲', '0%')],
+    },
+    {
+      key: 'damageReduction',
+      label: '伤害减免',
+      value: formatWholePct(damageReductionPct),
+      tooltipTitle: '伤害减免',
+      tooltipLines: [formatTooltipLine('伤害减免', formatWholePct(damageReductionPct))],
+    },
+  ].sort((a, b) => HEART_STAT_ORDER.indexOf(a.key) - HEART_STAT_ORDER.indexOf(b.key));
+  const openHeartStatHint = useCallback((event: React.MouseEvent<HTMLElement>, row: HeartStatRow) => {
+    if (!row.tooltipLines || row.tooltipLines.length === 0) return;
+    setHeartStatHint({
+      title: row.tooltipTitle ?? row.label,
+      lines: row.tooltipLines,
+      anchorRect: event.currentTarget.getBoundingClientRect(),
+    });
+  }, []);
+  const toggleHeartStatVisibility = useCallback((key: HeartStatKey) => {
+    setHeartStatVisibility((prev) => ({
+      ...prev,
+      [key]: prev[key] === false,
+    }));
+  }, []);
   const selectedTargetForHud = selectedTargetId
     ? opponentsList.find((o) => o.userId === selectedTargetId) ?? null
     : null;
@@ -5118,14 +5532,15 @@ export default function BattleArena({
       </div>
       <div className={styles.critPresetBar}>
         {[
-          { id: 'no-crit', label: '无会心', value: 0, color: '#96a0aa' },
-          { id: 'green-crit', label: '绿', value: 36, color: '#42b663' },
-          { id: 'blue-crit', label: '蓝', value: 40, color: '#3a8dff' },
-          { id: 'purple-crit', label: '紫', value: 46, color: '#9f5fd9' },
+          { id: 'white-crit', label: '白', value: 0, defenseValue: 0, color: '#f3f4f6' },
+          { id: 'green-crit', label: '绿', value: 20, defenseValue: 12, color: '#42b663' },
+          { id: 'blue-crit', label: '蓝', value: 30, defenseValue: 16, color: '#3a8dff' },
+          { id: 'purple-crit', label: '紫', value: 40, defenseValue: 23, color: '#9f5fd9' },
         ].map((preset) => {
           const active =
             Math.abs(myBaseWaiGongCritChancePct - preset.value) < 0.001 &&
-            Math.abs(myBaseNeiGongCritChancePct - preset.value) < 0.001;
+            Math.abs(myBaseNeiGongCritChancePct - preset.value) < 0.001 &&
+            Math.abs(myBaseDefensePct - preset.defenseValue) < 0.001;
           return (
             <button
               key={preset.id}
@@ -5134,18 +5549,19 @@ export default function BattleArena({
               className={styles.critPresetButton}
               style={{
                 borderColor: preset.color,
-                color: active ? '#ffffff' : preset.color,
+                color: active ? (preset.id === 'white-crit' ? '#111827' : '#ffffff') : preset.color,
                 background: active ? preset.color : 'rgba(12,18,30,0.88)',
                 opacity: runningCheatAction ? 0.6 : 1,
                 cursor: runningCheatAction ? 'not-allowed' : 'pointer',
               }}
               onClick={() => void runCheatAction(
-                `set-crit-${preset.value}`,
+                `set-crit-${preset.value}-def-${preset.defenseValue}`,
                 '/api/game/cheat/set-crit-chance',
-                `双方外功会心/内功会心已设为 ${preset.value}%`,
+                `双方外功会心/内功会心已设为 ${preset.value}%，防御力已设为 ${preset.defenseValue}%`,
                 {
                   waiGongCritChancePct: preset.value,
                   neiGongCritChancePct: preset.value,
+                  defensePct: preset.defenseValue,
                 },
               )}
             >
@@ -5595,6 +6011,60 @@ export default function BattleArena({
             </div>
 
             <div className={styles.escToggleList}>
+              <div className={styles.escToggleGroup}>
+                <label className={styles.escToggleGroupHeader}>
+                  <input
+                    type="checkbox"
+                    checked={gcdVisibilitySettings.enabled}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setGcdVisibilitySettings((prev) => ({ ...prev, enabled }));
+                    }}
+                    className={styles.escToggleInput}
+                  />
+                  <span>显示GCD</span>
+                </label>
+                {gcdVisibilitySettings.enabled && (
+                  <div className={styles.escToggleSubList}>
+                    <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
+                      <input
+                        type="checkbox"
+                        checked={gcdVisibilitySettings.base}
+                        onChange={(e) => {
+                          const base = e.target.checked;
+                          setGcdVisibilitySettings((prev) => ({ ...prev, base }));
+                        }}
+                        className={styles.escToggleInput}
+                      />
+                      <span>显示基础GCD</span>
+                    </label>
+                    <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
+                      <input
+                        type="checkbox"
+                        checked={gcdVisibilitySettings.qinggong}
+                        onChange={(e) => {
+                          const qinggong = e.target.checked;
+                          setGcdVisibilitySettings((prev) => ({ ...prev, qinggong }));
+                        }}
+                        className={styles.escToggleInput}
+                      />
+                      <span>显示轻功GCD</span>
+                    </label>
+                    <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
+                      <input
+                        type="checkbox"
+                        checked={gcdVisibilitySettings.houyao}
+                        onChange={(e) => {
+                          const houyao = e.target.checked;
+                          setGcdVisibilitySettings((prev) => ({ ...prev, houyao }));
+                        }}
+                        className={styles.escToggleInput}
+                      />
+                      <span>显示后撤GCD</span>
+                    </label>
+                  </div>
+                )}
+              </div>
               <label className={styles.escToggleRow}>
                 <input type="checkbox" checked={showEnvTestingPanel} onChange={(e) => setShowEnvTestingPanel(e.target.checked)} className={styles.escToggleInput} />
                 <span>灯光控制</span>
@@ -5803,30 +6273,58 @@ export default function BattleArena({
         </div>
       </div>
       {showHeartDetailsPanel && (
-        <div className={styles.heartDetailsPanel}>
-          <div className={styles.heartDetailsHeader}>
-            <span className={styles.heartDetailsTitle}>属性</span>
-            <span className={styles.heartDetailsTab}>详细</span>
+        <>
+          <div className={styles.heartDetailsPanel}>
+            <div className={styles.heartDetailsHeader}>
+              <span className={styles.heartDetailsTitle}>属性</span>
+              <button
+                type="button"
+                className={styles.heartDetailsTab}
+                onClick={() => setShowHeartStatSettings((value) => !value)}
+                aria-pressed={showHeartStatSettings}
+              >
+                详细
+              </button>
+            </div>
+            <div className={styles.heartDetailsBody}>
+              {heartStatRows.map((row) => {
+                const isVisible = heartStatVisibility[row.key] !== false;
+                return (
+                <div
+                  key={row.key}
+                  className={`${styles.heartDetailsRow} ${isVisible ? '' : styles.heartDetailsRowHidden}`.trim()}
+                  onMouseEnter={isVisible ? (event) => openHeartStatHint(event, row) : undefined}
+                  onMouseLeave={isVisible ? () => setHeartStatHint(null) : undefined}
+                  aria-hidden={!isVisible}
+                >
+                  <span className={styles.heartDetailsLabel}>{row.label}</span>
+                  <span className={styles.heartDetailsValue}>{row.value}</span>
+                </div>
+                );
+              })}
+            </div>
           </div>
-          <div className={styles.heartDetailsBody}>
-            <div className={styles.heartDetailsRow}>
-              <span className={styles.heartDetailsLabel}>外功会心</span>
-              <span className={styles.heartDetailsValue}>{myWaiGongCritChancePct.toFixed(2)}%</span>
+          {showHeartStatSettings && (
+            <div className={styles.heartSettingsPanel}>
+              <div className={styles.heartSettingsHeader}>详细</div>
+              <div className={styles.heartSettingsBody}>
+                {heartStatRows.map((row) => (
+                  <label key={row.key} className={styles.heartSettingsRow}>
+                    <input
+                      type="checkbox"
+                      checked={heartStatVisibility[row.key] !== false}
+                      onChange={() => toggleHeartStatVisibility(row.key)}
+                      className={styles.heartSettingsCheckbox}
+                    />
+                    <span className={styles.heartSettingsLabel}>{row.label}</span>
+                    <span className={styles.heartSettingsValue}>{row.value}</span>
+                  </label>
+                ))}
+              </div>
             </div>
-            <div className={styles.heartDetailsRow}>
-              <span className={styles.heartDetailsLabel}>内功会心</span>
-              <span className={styles.heartDetailsValue}>{myNeiGongCritChancePct.toFixed(2)}%</span>
-            </div>
-            <div className={styles.heartDetailsRow}>
-              <span className={styles.heartDetailsLabel}>外功会心效果</span>
-              <span className={styles.heartDetailsValue}>{myWaiGongCritEffectPct.toFixed(2)}%</span>
-            </div>
-            <div className={styles.heartDetailsRow}>
-              <span className={styles.heartDetailsLabel}>内功会心效果</span>
-              <span className={styles.heartDetailsValue}>{myNeiGongCritEffectPct.toFixed(2)}%</span>
-            </div>
-          </div>
-        </div>
+          )}
+          {heartStatHint && <HeartStatHoverHint hint={heartStatHint} />}
+        </>
       )}
 
       {/* ===== TOP-CENTER: Target info panel — health → buffs → abilities (self or enemy) ===== */}
@@ -6603,6 +7101,7 @@ export default function BattleArena({
           {/* ── Channel bar (正读条 / 倒读条) ──
              Always mounted so success/interrupt + fade-out animations can play. */}
           <ChannelBarHost data={channelBarData} showTimer />
+           <GcdVisualBar gcd={visibleVisualGcd} />
 
           {/* ── Top row: draft abilities or temporary form bar ── */}
           <div className={styles.hotbar}>

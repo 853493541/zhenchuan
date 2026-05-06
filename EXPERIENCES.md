@@ -3,6 +3,154 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Haste stat and timing acceleration (2026-05-06)
+
+**Problem set**:
+1. 新增展示属性 `加速率 23.54%`，但实际时间缩短量独立为 `16.2%`。
+2. 加速需要影响正读条、逆读条、以及 DOT 的总时间和每跳间隔，且不能误改普通控制 / 普通增益时长。
+3. 需要一个 Ability Editor 判定页，让部分技能可明确设置为不受加速。
+
+**Fix**:
+- 新增 `engine/utils/haste.ts`，集中保存展示值、实际时间缩短系数，以及读条 / 周期 Buff 的时间缩放 helper。
+- 正读条和 active reverse channel 在 `playService.ts` 创建 `activeChannel` 时缩短 `durationMs`，并给连环弩这类 active reverse channel 传递加速后的 `tickIntervalMs`。
+- DOT 与 buff-based reverse channel 在 `addBuff()` 统一入口缩短 `durationMs` 和 `periodicMs`，因此普通无周期控制 Buff 不会被加速误伤。
+- BattleArena C 面板显示 `加速率 23.54%`，并让 active reverse channel bar 使用后端下发的加速后 tick interval。
+- 新增 `hasteUnaffected` ability property、后端 `/ability-editor/haste-unaffected` 路由，以及前端 `不受加速` 三列判定页。该字段会进入 resolved ability，运行时加速 helper 会直接跳过它。
+
+**Lessons**:
+- 加速的显示数值和实际缩短系数必须分开建模；把 `23.54%` 直接拿去当时间缩短量会让平衡数值漂移。
+- 对 DOT/逆读条这类周期效果，最稳的落点是创建时同时缩放总时长和 `periodicMs`，而不是在 GameLoop 每跳临时折算。
+- 任何“该技能不吃某个全局机制”的需求，优先复用 Ability Editor 的 tri-state property override；这样详情页、批量页、preload 和运行时 resolved ability 会自然保持一致。
+
+**Follow-up (later same day)**:
+- `不受加速` 的批量页文案已改成更准确的 `读条不受加速影响`，因为当前规则真正影响的是正读条、逆读条和相关周期读条节奏，不是所有技能都需要做这个判定。
+- 这个批量页真正需要收紧的是 `未决定` 列，而不是整份 snapshot。给共享 decider 组件增加“只在未决定列显示 `CHANNEL` 技能”的开关，能保留已有手动覆盖项，同时把待决策列表压回到真正有读条的技能。
+- 直接用 resolved `ABILITIES` 做一次 runtime audit 最稳：本轮检查了全部 `29` 个 `CHANNEL` 技能，确认它们都带有 `FORWARD` 或 `REVERSE` 的 channel mode，没有漏标的读条技能。
+
+## Ability Editor tab grouping cleanup (2026-05-06)
+
+**Problem set**:
+1. Ability Editor 的批量页已经扩展到多个技能 / 气劲规则，但顶栏还是一个平铺长条，定位成本越来越高。
+2. 用户需要把这些规则明确分成两组：`技能` 和 `气劲`，同时统一若干页签文案。
+
+**Fix**:
+- 保留原有 leaf `mainTab` 状态和 `?tab=` deep-link，不重写页面路由；在它之上新增了两组派生导航：`技能` 和 `气劲`。
+- 顶栏现在只保留 `技能列表`、`BUFF 编辑`、`技能`、`气劲` 四个主入口；进入 `技能` / `气劲` 后，会出现对应的第二行分组页签。
+- `技能` 组现在包含：`远程弹道`、`盾立白名单`、`无需武器`、`可以马上施展`、`轻功`、`不受轻功GCD 影响`、`读条不受加速影响`。
+- `气劲` 组现在包含：`琴音共鸣`、`减伤被顶`、`主动取消`、`隐藏`。
+
+**Lessons**:
+- 这种 UI 重组最稳的方式，是保留现有 leaf tab 作为唯一真实状态，再在渲染层派生分组导航。这样懒加载逻辑、URL 同步、已有本地状态键都不用跟着重写。
+- 文案调整最好和分组一起做，否则用户会先看到新的信息架构，再看到旧的标签名，体验上仍然会像“没整理完”。
+
+## GCD bar polish and jue mai cap tuning (2026-05-06)
+
+**Problem set**:
+1. 用户希望视觉 GCD 条更薄一些，避免它在读条条下方占太多垂直空间。
+2. 服务器延迟下，新的 `visualGcd` 状态偶尔会把条宽度往回拉；当前 CSS 过渡会把这个回退渲染成明显的倒退动画。
+3. `绝脉` 的上限需要从 `12` 层下调到 `10` 层。
+
+**Fix**:
+- BattleArena 的 GCD track 高度从 `10px` 调整到 `7px`，刚好比原来低 `30%`。
+- `GcdVisualBar` 不再依赖 `33ms` 的 `setInterval + width transition`；现在改成 `requestAnimationFrame` 驱动，并用 `transform: scaleX(...)` 渲染 fill，所以运动更连续，视觉上不会再有那种低帧率拖动感。
+- 当新的 `visualGcd` 试图在同一种 GCD 轨道上把进度往回拉，而且当前这根条还没接近结束时，前端会继续保留当前显示中的那一根条，不接受这次 backward replacement。这样能直接挡掉延迟包导致的中途回退，而不是只把回退动画改成瞬移。
+- `绝脉` 的 source-of-truth 仍然是 `abilities.ts` 里 buff `1337` 的 `maxStacks`；本轮已把它从 `12` 改成 `10`。
+
+**Lessons**:
+- 如果条的宽度本身每 `33ms` 才更新一次，再叠一层 CSS `width` 补间，观感上很容易像“卡着在追帧”。这类持续进度条更适合直接用 `requestAnimationFrame + transform`，让浏览器按合成层去画。
+- 这种“偶尔收到更低进度”的问题，不一定要先改后端排序。先在最终渲染 seam 拦住 backward replacement，通常就能消掉最刺眼的视觉错误，而且改动最小。
+- 对 stack cap 这类数值调整，先确认 runtime 没有第二套硬编码上限，再只改 source-of-truth，能避免 editor / preload / combat 之间出现新漂移。
+
+## GCD runtime/editor/visual bar overhaul (2026-05-06)
+
+**Problem set**:
+1. Base GCD was still hardcoded as 45 ticks / 1.5s, and the old light-skill cooldown only targeted four IDs.
+2. New rules require three layers: base 1.19s GCD for `gcd:true`, 3s 轻功 GCD for non-exempt light skills, and 后撤's 2s special lock on almost every ability.
+3. The Ability Editor needed two new tri-state decider tabs: 轻功判定 and 轻功但不受轻功GCD.
+4. The battle UI needed a visual GCD bar below the channel bar that can be overwritten by a later GCD trigger.
+
+**Fix**:
+- `playService.ts` now uses named helpers for ability locks, including charge skills and special-bar runtime states. Base GCD is 36 ticks with a 1.19s visual duration; non-exempt 轻功 casts apply a 90-tick 轻功 GCD; 后撤 applies a 60-tick lock to all non-exempt abilities, including non-GCD skills.
+- Added `qinggongGcdImmune` ability metadata. 扶摇直上 and 后撤 default to that flag; 聂云/凌霄揽胜/迎风回浪/瑶台枕鹤/扶摇直上 now trigger base GCD through `gcd:true`.
+- Ability Editor gained backend routes and frontend tabs for 轻功判定 and 轻功但不受轻功GCD, reusing tri-state override storage and copy-name controls.
+- Player state now carries `visualGcd`; GameLoop broadcasts and expires it, and BattleArena renders a 0-to-100 bar under the channel bar with exact two-decimal timing.
+
+**Lessons**:
+- Shared cooldown rules should lock abilities through one helper that knows about normal cooldowns and charge locks; otherwise charge abilities silently bypass new GCD layers.
+- Treating the visual GCD as backend state is cleaner than trying to infer it from client cooldowns, because 后撤 and 轻功 GCD do not map 1:1 to `globalGcdTicks`.
+- “轻功但不受轻功GCD” still needs to count as 轻功 for seal/lock rules, so validation should use a helper instead of reading only `ability.qinggong`.
+
+**Follow-up (later same day)**:
+- 后撤的 2 秒特殊调息豁免列表必须显式包含 `houyao` 自己。只豁免“其他技能”会让后撤错误地被自己施放后的特殊锁定反卡住。
+- BattleArena 里的视觉 GCD 过滤最稳妥的落点是最终渲染 seam。把 `base/qinggong/houyao` 显示开关持久化到 localStorage，然后在 `<GcdVisualBar />` 前按 `visualGcd.kind` 过滤，比改后端广播或改多处 UI 条件更不容易漂移。
+- `轻功判定` 页的共享列表头默认会显示内部 ID 和标签行；如果只想让这个 tab 更干净，给共享 heading 一个可选 metadata 开关，比复制一份独立列表组件更小更稳。
+- 如果一个轻功同时触发基础 GCD 和 轻功 GCD，而用户又隐藏了 轻功 GCD，前端不能因为后写入的 `visualGcd` 被隐藏就把基础 GCD 一起丢掉。BattleArena 需要在这种情况下回退到 `globalGcdTicks` 来补显示基础 GCD。
+- `轻功但不受轻功GCD` 页真正有噪音的是 `未决定` 列，不必为了它重做整份 snapshot；在共享 decider 组件里给 `未决定` 列加一个“只看轻功”过滤，改动更小，也不会把已有手动覆盖项藏掉。
+- 拼音 / 内部 ID 不应该出现在玩家可见 UI 里。这类字段最多保留给内部搜索或数据层，列表展示时只会增加噪音。
+
+## Pull/knockback buff audit (2026-05-06)
+
+**Audit result**:
+- `龙战于野·被拉` (`2651`) is still defined on the ability, but the live cast path no longer applies it. `long_zhan_yu_ye` is excluded from generic `applyAbilityBuffs(...)`, and its custom effect now only uses the shared `pullImmediateTargetTowardAnchor(...)` pull helper.
+- `守缺式·击退` (`2653`) is still live. `SHOU_QUE_SHI` calls `applyImmediateKnockback(...)` with `knockedBackBuffId: 2653` when the empowered second cast lands.
+- `九转击退` (`9201`) is still live. The built-in `KNOCKBACK_DASH` effect handler for `jiu_zhuan_gui_yi` still adds buff `9201` while pushing the target.
+- `沧月·击退` (`1341`) is still live. `CANG_YUE_AOE` still applies that named `KNOCKED_BACK` debuff to the secondary knockback targets.
+- `龙啸九天·击退` (`1352`) is still live. `LONG_XIAO_JIU_TIAN_AOE` still applies that named `KNOCKED_BACK` debuff during the AOE knockback.
+
+**Lesson**:
+- “Using the standard pull/knockback runtime” and “not using an ability-specific displacement buff” are different goals. Some abilities already use the shared activeDash displacement model but still attach named `PULLED` / `KNOCKED_BACK` buffs for status display and control timing.
+
+**Follow-up (later same day)**:
+- Standardized the live displacement status layer onto two shared buff IDs instead of per-ability names: pull now uses `9203 / 被拉`, and knockback now uses `9101 / 击退`.
+- The shared runtime seam is broader than one handler. `pullImmediateTargetTowardAnchor(...)`, `JILE_YIN_AOE_PULL`, `SHOU_QUE_SHI`, `KNOCKBACK_DASH`, `CANG_YUE_AOE`, and `LONG_XIAO_JIU_TIAN_AOE` all had to converge on the same generic buff builders, and `GameLoop.ts` had to clear `9101` before applying 九转的 `羽化` wall stun.
+- Frontend status display depends on preload metadata, not just runtime Buff objects. When a displacement status is standardized to a shared buff ID, `abilityPreload.ts` must expose that shared buff as well, or the status bar silently drops it.
+- After the runtime is switched over, remove the retired per-ability displacement Buff definitions from `abilities.ts`. Leaving dead definitions behind makes later audits look like those Buffs are still part of live gameplay when they are not.
+
+**Latest follow-up (same day)**:
+- Pull control should not use a standalone `PULLED / 被拉` status at all in the current ruleset. `捉影式` is the correct seam: target movement is carried by `activeDash`, and cast-lock comes from the hidden dash runtime buff with `DISPLACEMENT`, not from a visible pull debuff.
+- `极乐引` had drifted from that model because it was still creating a shared `9203 / 被拉` debuff. Fixing it meant removing the shared pull buff metadata and making the instant AOE pull reuse the same dash-runtime lock path as the other pull helper.
+- Before deleting a control status type, check the permission mirror. In this repo the safe condition was that every ability explicitly marked `allowWhilePulled` was already also marked `allowWhileDisplaced`, so removing live `PULLED` application did not silently break any allowed-cast cases.
+
+## C panel display settings and GCD audit (2026-05-06)
+
+**Problem set**:
+1. 防御力 made normal damage decimal, but the frontend still inferred 会心 from decimal damage values.
+2. The C-key 属性 panel needed higher layering, reordered stats, no decimals for 气血值/闪避, scaled 跑速 display, hover breakdowns, and persistent per-stat visibility.
+3. Current GCD behavior needed a cross-code audit instead of relying on ability descriptions.
+
+**Fix**:
+- BattleArena now treats damage as 会心 only when the event explicitly carries `isCrit: true`; decimal damage no longer implies crit.
+- The C-key panel z-index is above the jump-height overlay, uses ordered rows, shows `跑速` as the UI-scale speed while its hover shows real `尺/每秒`, and provides a `详细` checkbox panel persisted in localStorage.
+- 会心 and 会心效果 are combined in the main panel and expose 外功/内功 values in the hover tooltip.
+
+**Lessons**:
+- Once damage can be modified by percentage stats such as 防御力, display code must never infer crit from non-integer damage.
+- Runtime GCD has three different concepts: global `gcd:true`, qinggong shared cooldown, and charge cast locks. They need separate audit rows because they are applied and counted down in different places.
+
+**Follow-up (later same day)**:
+- The main C panel should keep a fixed footprint even when rows are hidden. Filtering rows out made the panel shrink, so the safer UI pattern is to keep row slots mounted and hide their contents with layout-preserving CSS.
+- Reset transient subpanels when a parent panel is reopened. Leaving `详细` open across C-panel close/reopen felt sticky and mismatched the expected default-open state.
+- Native checkbox accent colors are not reliable enough for exact art direction; custom checkbox styling is the stable way to guarantee a white background for both checked and unchecked states.
+- Tooltip copy needed a shared formatter. Hardcoding `label:value` strings made spacing and wording drift; routing them through one formatter keeps `label: value` spacing consistent while still allowing special lines like 跑速 and 防御 to override their phrasing.
+- `伤害减免` reads better as a whole-number percentage in this compact panel; fixed-point decimals add noise there faster than they add useful precision.
+
+## Defense stat and combat display updates (2026-05-05)
+
+**Problem set**:
+1. 防御力 needed to reduce base damage before the existing crit and damage-reduction pipeline.
+2. The crit preset buttons needed matching 防御力 presets.
+3. 韦陀献杵 should modify 防御力 multiplicatively rather than acting as direct damage taken/DR.
+4. Combat floats and the C-key stats panel needed clearer numeric display.
+
+**Fix**:
+- Players now carry `defensePct`, and combat math applies final 防御力 to base damage before existing target-side damage taken / DR modifiers and crit resolution.
+- Added `DEFENSE_MULTIPLIER` Buff effects so 韦陀献杵易伤 uses `0.9x` defense and 韦陀献杵防御 uses `1.1x` defense.
+- The four preset buttons now set crit/defense pairs of `0/0`, `20/12`, `30/16`, and `40/23`.
+- Floating damage text uses two fixed decimals, and the C-key stats panel now shows 最大气血值, 防御力, 闪避, 移动速度, and DR in addition to crit stats.
+
+**Lessons**:
+- Base stats like 防御力 should be resolved before higher-level damage modifiers, while Buff changes to that stat should multiply the original stat instead of being treated as additive DR.
+
 ## In-game ability and buff hover panels (2026-05-05)
 
 **Problem set**:
@@ -1810,6 +1958,8 @@ The BVH collision triangles in the GLBs do NOT change — only the coordinate ma
 - `隐藏` should not live in the attribute enum. Treat it as a separate persisted boolean flag, or attribute filters and dispel-oriented tagging both become semantically wrong.
 - If buff names become editable, freeze icon lookup to the original icon path before applying the name override. Using the edited display name as the icon filename immediately turns most renamed buffs into fallback icons.
 - Hidden-state filtering needs its own dropdown separate from the attribute filter, and the default slice should be `显示`. Defaulting the editor to `全部状态` makes hidden buffs leak back into the main working list.
+- If the user wants `属性: 隐藏` in the Buff detail editor, keep `隐藏` as a UI alias that writes to the existing hidden-buff override. Do not promote it into the real attribute enum, or the attribute filters and dispel-related tagging semantics drift again.
+- The Buff list card should not spend vertical space on `来源` if that metadata is only useful on the detail page. Keep the list optimized for scanning name, description, property tags, and quick actions.
 - If the name action is meant to feel attached to the title, do not let the title text flex across the whole row. Otherwise the pen icon drifts toward the card edge instead of staying visually next to the name.
 - Once `无` becomes a real dispel attribute and `未选择` becomes the workflow placeholder, the override loader needs a versioned migration rule. Old files used `无` to mean “not set yet”, so only pre-migration versions should remap stored `无` to `未选择`.
 - The hidden-buff rule has to be enforced in the backend snapshot/update layer, not just by disabling the dropdown in the UI. Otherwise old overrides or direct API calls can still leave a hidden buff carrying a stale attribute.

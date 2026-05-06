@@ -15,6 +15,8 @@ type TargetSideDamageResult = {
   fullyReducedByDamageReduction: boolean;
 };
 
+type DamageTarget = { buffs: ActiveBuff[]; hp?: number; maxHp?: number; defensePct?: number };
+
 export type HealRoll = {
   heal: number;
   isCrit: boolean;
@@ -144,12 +146,35 @@ function allEffects(target: { buffs: ActiveBuff[] }) {
   return target.buffs.flatMap((b) => b.effects);
 }
 
+function getTargetDefensePct(target: DamageTarget): number {
+  const baseDefense = Number(target.defensePct ?? 0);
+  if (!Number.isFinite(baseDefense) || baseDefense <= 0) return 0;
+
+  let multiplier = 1;
+  for (const buff of target.buffs ?? []) {
+    const stacks = Math.max(1, Number(buff.stacks ?? 1));
+    for (const effect of buff.effects ?? []) {
+      if (effect.type !== "DEFENSE_MULTIPLIER") continue;
+      const value = Number(effect.value ?? (effect as any).defenseMultiplier ?? 1);
+      if (!Number.isFinite(value)) continue;
+      multiplier *= Math.pow(Math.max(0, value), stacks);
+    }
+  }
+
+  return Math.max(0, Math.min(100, baseDefense * multiplier));
+}
+
 function applyTargetSideDamageModifiers(params: {
-  target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
+  target: DamageTarget;
   base: number;
   damageType?: string;
 }): TargetSideDamageResult {
   let dmg = params.base;
+
+  const defensePct = getTargetDefensePct(params.target);
+  if (defensePct > 0) {
+    dmg *= Math.max(0, 1 - defensePct / 100);
+  }
 
   const takenIncSum = params.target.buffs.reduce((sum, buff) => {
     const e = buff.effects.find((eff) => eff.type === "DAMAGE_TAKEN_INCREASE");
@@ -183,7 +208,7 @@ function applyTargetSideDamageModifiers(params: {
 }
 
 export function resolveRedirectedDamageToTarget(params: {
-  target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
+  target: DamageTarget;
   base: number;
   damageType?: string;
 }) {
@@ -197,7 +222,7 @@ export function resolveScheduledDamageRoll(params: {
     waiGongCritChancePct?: number;
     neiGongCritChancePct?: number;
   };
-  target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
+  target: DamageTarget;
   base: number;
   /** When provided, DAMAGE_MULTIPLIER effects with restrictToAbilityId are only applied if they match. */
   abilityId?: string;
@@ -246,7 +271,7 @@ export function resolveScheduledDamage(params: {
     waiGongCritChancePct?: number;
     neiGongCritChancePct?: number;
   };
-  target: { buffs: ActiveBuff[]; hp?: number; maxHp?: number };
+  target: DamageTarget;
   base: number;
   abilityId?: string;
   damageType?: string;

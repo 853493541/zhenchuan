@@ -4,6 +4,7 @@ import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 
 import BuffEditorTab from "./BuffEditorTab";
+import AbilityBooleanDeciderTab from "./AbilityBooleanDeciderTab";
 import CanCastWhileMountedTab from "./CanCastWhileMountedTab";
 import DamageReductionOverrideTab from "./DamageReductionOverrideTab";
 import HiddenBuffTab from "./HiddenBuffTab";
@@ -15,6 +16,8 @@ import QinYinGongMingTab from "./QinYinGongMingTab";
 import { usePersistentState } from "./usePersistentState";
 import {
   ABILITY_RARITIES,
+  AbilityBooleanDeciderMode,
+  AbilityBooleanDeciderSnapshot,
   AbilityEditorAbility,
   AbilityEditorSnapshot,
   AbilityRarity,
@@ -53,7 +56,37 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "hiddenBuffs";
+type MainTab = "abilities" | "buffs" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "qinggong" | "qinggongGcdImmune" | "hasteUnaffected" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "hiddenBuffs";
+type EditorTabGroup = "skill" | "buff";
+
+const SKILL_EDITOR_TABS: Array<{ id: MainTab; label: string }> = [
+  { id: "projectiles", label: "远程弹道" },
+  { id: "dunLiWhitelist", label: "盾立白名单" },
+  { id: "noWeaponRequired", label: "无需武器" },
+  { id: "canCastWhileMounted", label: "可以马上施展" },
+  { id: "qinggong", label: "轻功" },
+  { id: "qinggongGcdImmune", label: "不受轻功GCD 影响" },
+  { id: "hasteUnaffected", label: "读条不受加速影响" },
+];
+
+const BUFF_EDITOR_TABS: Array<{ id: MainTab; label: string }> = [
+  { id: "qinYinGongMing", label: "琴音共鸣" },
+  { id: "damageReductionOverride", label: "减伤被顶" },
+  { id: "manualCancelableBuffs", label: "主动取消" },
+  { id: "hiddenBuffs", label: "隐藏" },
+];
+
+function getEditorTabGroup(tab: MainTab): EditorTabGroup | null {
+  if (SKILL_EDITOR_TABS.some((item) => item.id === tab)) {
+    return "skill";
+  }
+
+  if (BUFF_EDITOR_TABS.some((item) => item.id === tab)) {
+    return "buff";
+  }
+
+  return null;
+}
 
 function buildOverviewTags(ability: AbilityEditorAbility) {
   const tags: string[] = [];
@@ -92,6 +125,12 @@ export default function AbilityEditorPage() {
       setMainTab("noWeaponRequired");
     } else if (params.get("tab") === "canCastWhileMounted") {
       setMainTab("canCastWhileMounted");
+    } else if (params.get("tab") === "qinggong") {
+      setMainTab("qinggong");
+    } else if (params.get("tab") === "qinggongGcdImmune") {
+      setMainTab("qinggongGcdImmune");
+    } else if (params.get("tab") === "hasteUnaffected") {
+      setMainTab("hasteUnaffected");
     } else if (params.get("tab") === "qinYinGongMing") {
       setMainTab("qinYinGongMing");
     } else if (params.get("tab") === "damageReductionOverride") {
@@ -163,6 +202,15 @@ export default function AbilityEditorPage() {
   const [canCastWhileMountedSnapshot, setCanCastWhileMountedSnapshot] = useState<CanCastWhileMountedSnapshot | null>(null);
   const [canCastWhileMountedLoading, setCanCastWhileMountedLoading] = useState(false);
   const [canCastWhileMountedError, setCanCastWhileMountedError] = useState("");
+  const [qinggongSnapshot, setQinggongSnapshot] = useState<AbilityBooleanDeciderSnapshot | null>(null);
+  const [qinggongLoading, setQinggongLoading] = useState(false);
+  const [qinggongError, setQinggongError] = useState("");
+  const [qinggongGcdImmuneSnapshot, setQinggongGcdImmuneSnapshot] = useState<AbilityBooleanDeciderSnapshot | null>(null);
+  const [qinggongGcdImmuneLoading, setQinggongGcdImmuneLoading] = useState(false);
+  const [qinggongGcdImmuneError, setQinggongGcdImmuneError] = useState("");
+  const [hasteUnaffectedSnapshot, setHasteUnaffectedSnapshot] = useState<AbilityBooleanDeciderSnapshot | null>(null);
+  const [hasteUnaffectedLoading, setHasteUnaffectedLoading] = useState(false);
+  const [hasteUnaffectedError, setHasteUnaffectedError] = useState("");
   const [qinYinGongMingSnapshot, setQinYinGongMingSnapshot] = useState<QinYinGongMingSnapshot | null>(null);
   const [qinYinGongMingLoading, setQinYinGongMingLoading] = useState(false);
   const [qinYinGongMingError, setQinYinGongMingError] = useState("");
@@ -330,6 +378,72 @@ export default function AbilityEditorPage() {
     }
   };
 
+  const loadQinggongSnapshot = async () => {
+    setQinggongLoading(true);
+    setQinggongError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/qinggong", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setQinggongSnapshot((await response.json()) as AbilityBooleanDeciderSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setQinggongError(message);
+    } finally {
+      setQinggongLoading(false);
+    }
+  };
+
+  const loadQinggongGcdImmuneSnapshot = async () => {
+    setQinggongGcdImmuneLoading(true);
+    setQinggongGcdImmuneError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/qinggong-gcd-immune", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setQinggongGcdImmuneSnapshot((await response.json()) as AbilityBooleanDeciderSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setQinggongGcdImmuneError(message);
+    } finally {
+      setQinggongGcdImmuneLoading(false);
+    }
+  };
+
+  const loadHasteUnaffectedSnapshot = async () => {
+    setHasteUnaffectedLoading(true);
+    setHasteUnaffectedError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/haste-unaffected", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setHasteUnaffectedSnapshot((await response.json()) as AbilityBooleanDeciderSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setHasteUnaffectedError(message);
+    } finally {
+      setHasteUnaffectedLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSnapshot();
   }, []);
@@ -380,6 +494,27 @@ export default function AbilityEditorPage() {
   useEffect(() => {
     if (mainTab === "canCastWhileMounted" && !canCastWhileMountedSnapshot && !canCastWhileMountedLoading) {
       loadCanCastWhileMountedSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "qinggong" && !qinggongSnapshot && !qinggongLoading) {
+      loadQinggongSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "qinggongGcdImmune" && !qinggongGcdImmuneSnapshot && !qinggongGcdImmuneLoading) {
+      loadQinggongGcdImmuneSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "hasteUnaffected" && !hasteUnaffectedSnapshot && !hasteUnaffectedLoading) {
+      loadHasteUnaffectedSnapshot();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab]);
@@ -461,6 +596,53 @@ export default function AbilityEditorPage() {
       if (!res.ok) return;
       const nextSnapshot = (await res.json()) as CanCastWhileMountedSnapshot;
       setCanCastWhileMountedSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
+  const handleQinggongToggle = async (abilityId: string, mode: AbilityBooleanDeciderMode) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/qinggong/${abilityId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as AbilityBooleanDeciderSnapshot;
+      setQinggongSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+      setQinggongGcdImmuneSnapshot(null);
+    } catch { /* silent */ }
+  };
+
+  const handleQinggongGcdImmuneToggle = async (abilityId: string, mode: AbilityBooleanDeciderMode) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/qinggong-gcd-immune/${abilityId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as AbilityBooleanDeciderSnapshot;
+      setQinggongGcdImmuneSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+      setQinggongSnapshot(null);
+    } catch { /* silent */ }
+  };
+
+  const handleHasteUnaffectedToggle = async (abilityId: string, mode: AbilityBooleanDeciderMode) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/haste-unaffected/${abilityId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as AbilityBooleanDeciderSnapshot;
+      setHasteUnaffectedSnapshot(nextSnapshot);
       setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
     } catch { /* silent */ }
   };
@@ -584,6 +766,13 @@ export default function AbilityEditorPage() {
     return counts;
   }, [snapshot]);
 
+  const activeEditorGroup = getEditorTabGroup(mainTab);
+  const activeEditorTabs = activeEditorGroup === "skill"
+    ? SKILL_EDITOR_TABS
+    : activeEditorGroup === "buff"
+      ? BUFF_EDITOR_TABS
+      : [];
+
   return (
     <div className={styles.page}>
       <section className={styles.shell}>
@@ -623,61 +812,34 @@ export default function AbilityEditorPage() {
           </button>
           <button
             type="button"
-            className={`${styles.mainTab} ${mainTab === "projectiles" ? styles.mainTabActive : ""}`}
-            onClick={() => setMainTab("projectiles")}
+            className={`${styles.mainTab} ${activeEditorGroup === "skill" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab(activeEditorGroup === "skill" ? mainTab : "projectiles")}
           >
-            远程弹道技能
+            技能
           </button>
           <button
             type="button"
-            className={`${styles.mainTab} ${mainTab === "dunLiWhitelist" ? styles.mainTabActive : ""}`}
-            onClick={() => setMainTab("dunLiWhitelist")}
+            className={`${styles.mainTab} ${activeEditorGroup === "buff" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab(activeEditorGroup === "buff" ? mainTab : "qinYinGongMing")}
           >
-            盾立白名单
-          </button>
-          <button
-            type="button"
-            className={`${styles.mainTab} ${mainTab === "noWeaponRequired" ? styles.mainTabActive : ""}`}
-            onClick={() => setMainTab("noWeaponRequired")}
-          >
-            无需武器
-          </button>
-          <button
-            type="button"
-            className={`${styles.mainTab} ${mainTab === "canCastWhileMounted" ? styles.mainTabActive : ""}`}
-            onClick={() => setMainTab("canCastWhileMounted")}
-          >
-            可以马上施展
-          </button>
-          <button
-            type="button"
-            className={`${styles.mainTab} ${mainTab === "qinYinGongMing" ? styles.mainTabActive : ""}`}
-            onClick={() => setMainTab("qinYinGongMing")}
-          >
-            琴音共鸣
-          </button>
-          <button
-            type="button"
-            className={`${styles.mainTab} ${mainTab === "damageReductionOverride" ? styles.mainTabActive : ""}`}
-            onClick={() => setMainTab("damageReductionOverride")}
-          >
-            减伤被顶
-          </button>
-          <button
-            type="button"
-            className={`${styles.mainTab} ${mainTab === "manualCancelableBuffs" ? styles.mainTabActive : ""}`}
-            onClick={() => setMainTab("manualCancelableBuffs")}
-          >
-            主动取消 Buff
-          </button>
-          <button
-            type="button"
-            className={`${styles.mainTab} ${mainTab === "hiddenBuffs" ? styles.mainTabActive : ""}`}
-            onClick={() => setMainTab("hiddenBuffs")}
-          >
-            隐藏 Buff
+            气劲
           </button>
         </div>
+
+        {activeEditorGroup && (
+          <div className={styles.editorSubTabBar}>
+            {activeEditorTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={`${styles.editorSubTab} ${mainTab === tab.id ? styles.editorSubTabActive : ""}`}
+                onClick={() => setMainTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* ── Abilities tab ───────────────────────────────────────────────────── */}
@@ -993,6 +1155,81 @@ export default function AbilityEditorPage() {
             errorMessage={canCastWhileMountedError}
             onRetry={loadCanCastWhileMountedSnapshot}
             onToggle={handleCanCastWhileMountedToggle}
+          />
+        </section>
+      )}
+
+      {mainTab === "qinggong" && (
+        <section className={styles.buffEditorSection}>
+          <AbilityBooleanDeciderTab
+            searchStorageKey="abilityEditor.qinggong.search"
+            loadingText="正在加载轻功列表…"
+            snapshot={qinggongSnapshot}
+            loading={qinggongLoading}
+            errorMessage={qinggongError}
+            onRetry={loadQinggongSnapshot}
+            onToggle={handleQinggongToggle}
+            enabledColumnTitle="轻功"
+            enabledEmptyText="当前没有轻功技能"
+            excludedColumnTitle="非轻功"
+            undecidedColumnTitle="未决定"
+            decideYesLabel="标记为轻功"
+            decideNoLabel="标记为非轻功"
+            enabledActionLabel="改为非轻功"
+            excludedActionLabel="恢复"
+            footerText="这里决定哪些技能视为轻功。轻功技能会被封轻功限制，并且在带有 GCD 时可触发轻功公共调息。"
+            showImmuneBadge
+            showMetadataRow={false}
+          />
+        </section>
+      )}
+
+      {mainTab === "qinggongGcdImmune" && (
+        <section className={styles.buffEditorSection}>
+          <AbilityBooleanDeciderTab
+            searchStorageKey="abilityEditor.qinggongGcdImmune.search"
+            loadingText="正在加载不受轻功GCD影响列表…"
+            snapshot={qinggongGcdImmuneSnapshot}
+            loading={qinggongGcdImmuneLoading}
+            errorMessage={qinggongGcdImmuneError}
+            onRetry={loadQinggongGcdImmuneSnapshot}
+            onToggle={handleQinggongGcdImmuneToggle}
+            enabledColumnTitle="不受轻功GCD 影响"
+            enabledEmptyText="当前没有不受轻功GCD影响的技能"
+            excludedColumnTitle="受到轻功GCD 影响"
+            undecidedColumnTitle="未决定"
+            decideYesLabel="设为不受轻功GCD影响"
+            decideNoLabel="设为受到轻功GCD影响"
+            enabledActionLabel="改为受到轻功GCD影响"
+            excludedActionLabel="恢复"
+            footerText="这里决定哪些技能仍视为轻功，但不会触发或受到 3 秒轻功公共调息。扶摇直上默认属于这一类。"
+            showQinggongBadge
+            limitUndecidedToQinggong
+          />
+        </section>
+      )}
+
+      {mainTab === "hasteUnaffected" && (
+        <section className={styles.buffEditorSection}>
+          <AbilityBooleanDeciderTab
+            searchStorageKey="abilityEditor.hasteUnaffected.search"
+            loadingText="正在加载读条不受加速影响列表…"
+            snapshot={hasteUnaffectedSnapshot}
+            loading={hasteUnaffectedLoading}
+            errorMessage={hasteUnaffectedError}
+            onRetry={loadHasteUnaffectedSnapshot}
+            onToggle={handleHasteUnaffectedToggle}
+            enabledColumnTitle="读条不受加速影响"
+            enabledEmptyText="当前没有读条不受加速影响的技能"
+            excludedColumnTitle="读条受到加速影响"
+            undecidedColumnTitle="未决定"
+            decideYesLabel="设为读条不受加速影响"
+            decideNoLabel="设为读条受到加速影响"
+            enabledActionLabel="改为读条受到加速影响"
+            excludedActionLabel="恢复"
+            footerText="这里决定哪些读条技能不吃加速率。未排除的技能会按当前规则缩短正读条、逆读条以及持续伤害的总时间和跳间隔；未决定列表只显示带读条的技能。"
+            showMetadataRow={false}
+            limitUndecidedToChannel
           />
         </section>
       )}

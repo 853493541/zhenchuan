@@ -23,6 +23,7 @@ import {
   shouldBreakYuqiOnIncomingControl,
 } from "../utils/yuqi";
 import { MIYUN_CONFUSION_BUFF_ID, WU_AN_MI_YUN_ABILITY_ID, WUSHI_IMMUNE_BUFF_ID, hasWuShiImmunity } from "../utils/miyun";
+import { getHasteAdjustedBuffTiming } from "../utils/haste";
 
 /* ================= Utilities ================= */
 
@@ -723,6 +724,7 @@ export function addBuff(params: {
   if (typeof propEntry?.durationMs === "number") {
     runtimeBuff = { ...runtimeBuff, durationMs: propEntry.durationMs };
   }
+  runtimeBuff = getHasteAdjustedBuffTiming(ability, runtimeBuff);
   const now = Date.now();
   const incomingMoheKnockdown =
     sourceUserId !== targetUserId &&

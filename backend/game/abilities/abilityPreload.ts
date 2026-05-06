@@ -103,6 +103,9 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       // 轻功 tag: blocked by 封轻功.
       qinggong: !!(ability as any).qinggong,
 
+      // 轻功 GCD exception: still treated as 轻功 by runtime, but ignores the 3s qinggong GCD layer.
+      qinggongGcdImmune: !!(ability as any).qinggongGcdImmune,
+
       // Hybrid cast abilities may be cast on ground without a selected target.
       allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
 
@@ -350,17 +353,15 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     sourceAbilityName: "捉影式",
   });
 
-  // ── 极乐引 pull state ──────────────────────────────────────────────────────
+  // ── Shared displacement states ─────────────────────────────────────────────
   buffs.push({
-    buffId: 9203,
-    name: "被拉",
+    buffId: 9101,
+    name: "击退",
     category: "DEBUFF",
-    durationMs: 700,
+    durationMs: 1_000,
     breakOnPlay: false,
-    description: "被极乐引拉拽中",
-    effects: [{ type: "PULLED" }],
-    sourceAbilityId: "ji_le_yin",
-    sourceAbilityName: "极乐引",
+    description: "被击退中，行动受限",
+    effects: [{ type: "KNOCKED_BACK" }],
   });
 
   // ── 极乐引 post-pull stun ──────────────────────────────────────────────────

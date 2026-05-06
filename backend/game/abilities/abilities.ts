@@ -40,6 +40,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
+    gcd: true,
     qinggong: true,
     cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 20, dirMode: "TOWARD", durationTicks: 30 }],
@@ -53,6 +54,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
+    gcd: true,
     qinggong: true,
     cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 10, dirMode: "AWAY", durationTicks: 21 }],
@@ -66,6 +68,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
+    gcd: true,
     qinggong: true,
     cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_LEFT", durationTicks: 30 }],
@@ -79,6 +82,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
+    gcd: true,
     qinggong: true,
     cannotCastWhileRooted: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 7, dirMode: "PERP_RIGHT", durationTicks: 30 }],
@@ -92,7 +96,9 @@ export const BASE_ABILITIES: AbilityRecord = {
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300, // 30 seconds at 60 Hz
+    gcd: true,
     qinggong: true,
+    qinggongGcdImmune: true,
     requiresGrounded: true,
     effects: [],
     buffs: [
@@ -117,6 +123,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 0,
     gcd: false,
     qinggong: true,
+    qinggongGcdImmune: true,
     cannotCastWhileRooted: true,
     requiresGrounded: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 2.7, dirMode: "AWAY", durationTicks: 30 }],
@@ -440,7 +447,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "DEBUFF",
         durationMs: 30_000,
         initialStacks: 3,
-        maxStacks: 12,
+        maxStacks: 10,
         description: "每层使技能调息速度降低1%",
         effects: [
           { type: "COOLDOWN_SLOW", value: 0.01 },
@@ -510,16 +517,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: false,
     effects: [{ type: "LONG_ZHAN_YU_YE", value: 10 } as any],
-    buffs: [
-      {
-        buffId: 2651,
-        name: "龙战于野·被拉",
-        category: "DEBUFF",
-        durationMs: 700,
-        description: "被拉拽中，正向施法者身前飞行",
-        effects: [{ type: "PULLED" }],
-      },
-    ],
+    buffs: [],
   },
 
   qian_long_wu_yong: {
@@ -573,16 +571,6 @@ export const BASE_ABILITIES: AbilityRecord = {
         breakOnPlay: false,
         description: "守缺式伤害提高30%，并击退目标2尺（0.2秒）",
         effects: [],
-      },
-      {
-        buffId: 2653,
-        name: "守缺式·击退",
-        category: "DEBUFF",
-        applyTo: "OPPONENT",
-        durationMs: 200,
-        breakOnPlay: false,
-        description: "被守缺式击退中，短暂失去行动能力",
-        effects: [{ type: "KNOCKED_BACK" }],
       },
     ],
   },
@@ -1481,7 +1469,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   weituo_xianchu: {
     id: "weituo_xianchu",
     name: "韦陀献杵",
-    description: "需要目标，正面180°\n瞬发造成5点伤害\n附加【韦陀献杵易伤】5秒：受到伤害提高10%\n自身获得【韦陀献杵防御】5秒：受到伤害降低10%\n可在移动与跳跃中施放",
+    description: "需要目标，正面180°\n瞬发造成5点伤害\n附加【韦陀献杵易伤】5秒：防御力降低10%\n自身获得【韦陀献杵防御】5秒：防御力提高10%\n可在移动与跳跃中施放",
     type: "ATTACK",
     target: "OPPONENT",
     range: 20,
@@ -1495,17 +1483,17 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "韦陀献杵易伤",
         category: "DEBUFF",
         durationMs: 5_000,
-        description: "受到伤害提高10%",
-        effects: [{ type: "DAMAGE_TAKEN_INCREASE", value: 0.1 }],
+        description: "防御力降低10%",
+        effects: [{ type: "DEFENSE_MULTIPLIER", value: 0.9 }],
       },
       {
         buffId: 2302,
         name: "韦陀献杵防御",
         category: "BUFF",
         durationMs: 5_000,
-        description: "受到伤害降低10%",
+        description: "防御力提高10%",
         applyTo: "SELF",
-        effects: [{ type: "DAMAGE_REDUCTION", value: 0.1 }],
+        effects: [{ type: "DEFENSE_MULTIPLIER", value: 1.1 }],
       },
     ],
   },
@@ -2125,17 +2113,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
     buffs: [
       {
-        // 0: KNOCKED_BACK phase debuff — locks target during the 1-second CC window
-        buffId: 9201,
-        name: "九转击退",
-        description: "被击退中，行动受限1秒",
-        category: "DEBUFF",
-        durationMs: 1_000,
-        breakOnPlay: false,
-        effects: [{ type: "KNOCKED_BACK" }],
-      },
-      {
-        // 1: 羽化 — CONTROL stun applied only on wall hit (by GameLoop handler)
+        // 羽化 — CONTROL stun applied only on wall hit (by GameLoop handler)
         buffId: 9202,
         name: "羽化",
         description: "撞墙后陷入眩晕，无法行动",
@@ -2870,16 +2848,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     effects: [
       { type: "JILE_YIN_AOE_PULL", value: 10 } as any,
     ],
-    // buffs declared here for editor visibility only — applied manually in JILE_YIN_AOE_PULL handler
     buffs: [
-      {
-        buffId: 9203,
-        name: "被拉",
-        category: "DEBUFF",
-        durationMs: 700,
-        description: "被拉拽中，正向对方飞行",
-        effects: [{ type: "PULLED" }],
-      },
       {
         buffId: 2608,
         name: "极乐引",
@@ -2937,15 +2906,6 @@ export const BASE_ABILITIES: AbilityRecord = {
         durationMs: 2_000,
         description: "倒地：无法移动、跳跃和施放技能",
         effects: [{ type: "CONTROL" }],
-      },
-      {
-        buffId: 1341,
-        name: "沧月·击退",
-        category: "DEBUFF",
-        durationMs: 1_000,
-        description: "被击退中，行动受限",
-        breakOnPlay: false,
-        effects: [{ type: "KNOCKED_BACK" }],
       },
     ],
   },
@@ -3203,16 +3163,6 @@ export const BASE_ABILITIES: AbilityRecord = {
         durationMs: 1_000,
         description: "施放后定身：无法移动、跳跃、施放技能，且空中不下落",
         effects: [{ type: "CONTROL" }, { type: "Z_LOCK" }],
-      },
-      {
-        buffId: 1352,
-        name: "龙啸九天·击退",
-        category: "DEBUFF",
-        applyTo: "OPPONENT",
-        durationMs: 500,
-        description: "被击退中",
-        breakOnPlay: false,
-        effects: [{ type: "KNOCKED_BACK" }],
       },
     ],
   },
@@ -5067,6 +5017,27 @@ export interface CanCastWhileMountedSnapshot {
 
 export type CanCastWhileMountedOverrideMode = "manual-include" | "manual-exclude" | "clear";
 
+export interface AbilityBooleanDeciderEntry {
+  id: string;
+  name: string;
+  description: string;
+  type: Ability["type"];
+  target: Ability["target"];
+  baseEnabled: boolean;
+  manualEnabled: boolean;
+  manuallyExcluded: boolean;
+  enabled: boolean;
+  qinggong: boolean;
+  qinggongGcdImmune: boolean;
+}
+
+export interface AbilityBooleanDeciderSnapshot {
+  updatedAt: string | null;
+  abilities: AbilityBooleanDeciderEntry[];
+}
+
+export type AbilityBooleanDeciderMode = "manual-include" | "manual-exclude" | "clear";
+
 function hasAbilityOverrideContent(entry: AbilityEditorOverrideEntry) {
   return Boolean(
     entry.tags ||
@@ -5176,6 +5147,75 @@ export function buildCanCastWhileMountedSnapshot(): CanCastWhileMountedSnapshot 
     updatedAt: abilityPropertyOverridesUpdatedAt,
     abilities,
   };
+}
+
+function buildAbilityBooleanDeciderSnapshot(params: {
+  propertyId: AbilityPropertyId;
+  baseEnabled: (ability: Ability) => boolean;
+  enabled: (ability: Ability) => boolean;
+}): AbilityBooleanDeciderSnapshot {
+  const resolvedAbilities = buildResolvedAbilities(BASE_ABILITIES, abilityPropertyOverrides);
+
+  const abilities = Object.values(resolvedAbilities)
+    .filter((ability) => (ability as any).specialBarAbility !== true)
+    .map((ability) => {
+      const override = abilityPropertyOverrides[ability.id];
+      const propertyOverride = override?.properties?.[params.propertyId];
+      const qinggongGcdImmune = (ability as any).qinggongGcdImmune === true;
+      const qinggong = ability.qinggong === true || qinggongGcdImmune;
+
+      return {
+        id: ability.id,
+        name: ability.name,
+        description: ability.description,
+        type: ability.type,
+        target: ability.target,
+        baseEnabled: params.baseEnabled(BASE_ABILITIES[ability.id]),
+        manualEnabled: propertyOverride === true,
+        manuallyExcluded: propertyOverride === false,
+        enabled: params.enabled(ability),
+        qinggong,
+        qinggongGcdImmune,
+      } satisfies AbilityBooleanDeciderEntry;
+    })
+    .sort((left, right) => {
+      const selectedDelta = Number(right.enabled) - Number(left.enabled);
+      if (selectedDelta !== 0) return selectedDelta;
+      const excludedDelta = Number(right.manuallyExcluded) - Number(left.manuallyExcluded);
+      if (excludedDelta !== 0) return excludedDelta;
+      const typeDelta = ABILITY_TYPE_ORDER[left.type] - ABILITY_TYPE_ORDER[right.type];
+      if (typeDelta !== 0) return typeDelta;
+      return left.name.localeCompare(right.name, "zh-Hans-CN");
+    });
+
+  return {
+    updatedAt: abilityPropertyOverridesUpdatedAt,
+    abilities,
+  };
+}
+
+export function buildQinggongSnapshot(): AbilityBooleanDeciderSnapshot {
+  return buildAbilityBooleanDeciderSnapshot({
+    propertyId: "qinggong",
+    baseEnabled: (ability) => ability.qinggong === true || (ability as any).qinggongGcdImmune === true,
+    enabled: (ability) => ability.qinggong === true || (ability as any).qinggongGcdImmune === true,
+  });
+}
+
+export function buildQinggongGcdImmuneSnapshot(): AbilityBooleanDeciderSnapshot {
+  return buildAbilityBooleanDeciderSnapshot({
+    propertyId: "qinggongGcdImmune",
+    baseEnabled: (ability) => (ability as any).qinggongGcdImmune === true,
+    enabled: (ability) => (ability as any).qinggongGcdImmune === true,
+  });
+}
+
+export function buildHasteUnaffectedSnapshot(): AbilityBooleanDeciderSnapshot {
+  return buildAbilityBooleanDeciderSnapshot({
+    propertyId: "hasteUnaffected",
+    baseEnabled: (ability) => (ability as any).hasteUnaffected === true,
+    enabled: (ability) => (ability as any).hasteUnaffected === true,
+  });
 }
 
 export function setAbilityEditorProperty(
@@ -5470,4 +5510,60 @@ export function setAbilityCanCastWhileMountedOverride(abilityId: string, mode: C
   rebuildAbilities();
 
   return buildCanCastWhileMountedSnapshot();
+}
+
+function setAbilityPropertyBooleanOverride(
+  abilityId: string,
+  propertyId: AbilityPropertyId,
+  mode: AbilityBooleanDeciderMode
+) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) {
+    throw new Error("ERR_ABILITY_NOT_FOUND");
+  }
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+  };
+  const nextProperties = {
+    ...(nextEntry.properties ?? {}),
+  };
+
+  if (mode === "manual-include") {
+    nextProperties[propertyId] = true;
+  } else if (mode === "manual-exclude") {
+    nextProperties[propertyId] = false;
+  } else {
+    delete nextProperties[propertyId];
+  }
+
+  if (Object.keys(nextProperties).length > 0) {
+    nextEntry.properties = nextProperties;
+  } else {
+    delete nextEntry.properties;
+  }
+
+  if (hasAbilityOverrideContent(nextEntry)) {
+    abilityPropertyOverrides[abilityId] = nextEntry;
+  } else {
+    delete abilityPropertyOverrides[abilityId];
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+}
+
+export function setAbilityQinggongOverride(abilityId: string, mode: AbilityBooleanDeciderMode) {
+  setAbilityPropertyBooleanOverride(abilityId, "qinggong", mode);
+  return buildQinggongSnapshot();
+}
+
+export function setAbilityQinggongGcdImmuneOverride(abilityId: string, mode: AbilityBooleanDeciderMode) {
+  setAbilityPropertyBooleanOverride(abilityId, "qinggongGcdImmune", mode);
+  return buildQinggongGcdImmuneSnapshot();
+}
+
+export function setAbilityHasteUnaffectedOverride(abilityId: string, mode: AbilityBooleanDeciderMode) {
+  setAbilityPropertyBooleanOverride(abilityId, "hasteUnaffected", mode);
+  return buildHasteUnaffectedSnapshot();
 }

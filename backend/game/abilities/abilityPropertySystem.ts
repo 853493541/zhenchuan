@@ -16,6 +16,8 @@ export type AbilityPropertyId =
   | "requiresStanding"
   | "canCastWhileMounted"
   | "qinggong"
+  | "qinggongGcdImmune"
+  | "hasteUnaffected"
   | "allowGroundCastWithoutTarget"
   | "ignoreFacingRequirement"
   | "noGcd"
@@ -265,6 +267,8 @@ function setBooleanAbilityField(
     | "gcd"
     | "isCommon"
     | "qinggong"
+    | "qinggongGcdImmune"
+    | "hasteUnaffected"
     | "cannotCastWhileRooted"
     | "requiresGrounded"
     | "requiresStanding"
@@ -886,12 +890,34 @@ const abilityPropertyDefinitions: AbilityPropertyDefinition[] = [
   {
     id: "qinggong",
     label: "视为轻功",
-    description: "会受到封轻功效果限制。",
+    description: "会受到封轻功效果限制，并可参与轻功公共调息规则。",
     group: "施放限制",
     isApplicable: () => true,
     getValue: (ability) => !!ability.qinggong,
     setValue: (ability, enabled) => {
       setBooleanAbilityField(ability, "qinggong", enabled);
+    },
+  },
+  {
+    id: "qinggongGcdImmune",
+    label: "不受轻功GCD",
+    description: "仍视为轻功，但不会触发或受到 3 秒轻功公共调息。",
+    group: "施放例外",
+    isApplicable: () => true,
+    getValue: (ability) => !!ability.qinggongGcdImmune,
+    setValue: (ability, enabled) => {
+      setBooleanAbilityField(ability, "qinggongGcdImmune", enabled);
+    },
+  },
+  {
+    id: "hasteUnaffected",
+    label: "不受加速",
+    description: "开启后该技能的读条、逆读条和持续伤害时间不会被加速率缩短。",
+    group: "施放例外",
+    isApplicable: () => true,
+    getValue: (ability) => !!(ability as any).hasteUnaffected,
+    setValue: (ability, enabled) => {
+      setBooleanAbilityField(ability, "hasteUnaffected", enabled);
     },
   },
   {
@@ -935,7 +961,7 @@ const abilityPropertyDefinitions: AbilityPropertyDefinition[] = [
   {
     id: "noGcd",
     label: "不触发GCD",
-    description: "施放后不会让其他带公共调息的技能进入 1.5 秒公共冷却。",
+    description: "施放后不会让其他带公共调息的技能进入基础公共冷却。",
     group: "施放例外",
     isApplicable: () => true,
     getValue: (ability) => ability.gcd !== true,

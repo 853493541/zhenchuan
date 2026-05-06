@@ -439,6 +439,7 @@
 
 .mainTabBar {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 20px;
   border-bottom: 2px solid #e4ddd4;
@@ -468,6 +469,41 @@
   background: #ffffff;
   color: #3d3226;
   border-bottom: 2px solid #6f3f16;
+}
+
+.editorSubTabBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 14px;
+}
+
+.editorSubTab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid #ddd7cb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #5d5145;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, box-shadow 0.12s;
+}
+
+.editorSubTab:hover {
+  background: #f4f1eb;
+  color: #3d3226;
+}
+
+.editorSubTabActive {
+  border-color: #6f3f16;
+  background: #6f3f16;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(111, 63, 22, 0.16);
 }
 
 /* ─── Buff editor section ───────────────────────────────────────────────────── */

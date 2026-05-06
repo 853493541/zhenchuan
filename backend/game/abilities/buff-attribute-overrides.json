@@ -1,10 +1,29 @@
 {
   "version": 5,
-  "updatedAt": "2026-05-05T11:15:55.149Z",
+  "updatedAt": "2026-05-06T07:35:28.746Z",
   "buffs": {
+    "1001": {
+      "attribute": "毒性"
+    },
+    "1002": {
+      "attribute": "无"
+    },
+    "1003": {
+      "attribute": "阳性"
+    },
+    "1004": {
+      "attribute": "蛊"
+    },
+    "1005": {
+      "attribute": "无"
+    },
     "1007": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelable": true
+    },
+    "1008": {
+      "attribute": "未选择",
+      "name": "散流霞·隐藏"
     },
     "1009": {
       "attribute": "阴性",
@@ -62,10 +81,16 @@
       ],
       "manualCancelable": true
     },
+    "1020": {
+      "attribute": "无"
+    },
     "1021": {
       "attribute": "无",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
+    },
+    "1025": {
+      "attribute": "无"
     },
     "1030": {
       "attribute": "阴性",
@@ -80,30 +105,65 @@
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
+    "1202": {
+      "attribute": "无"
+    },
+    "1221": {
+      "attribute": "阴性"
+    },
     "1310": {
-      "attribute": "未选择",
-      "name": "生太极",
+      "attribute": "无",
       "manualCancelExcluded": true
     },
     "1311": {
-      "attribute": "未选择",
+      "attribute": "无",
       "name": "生太极·减速"
     },
     "1320": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelExcluded": true
     },
+    "1321": {
+      "attribute": "无"
+    },
+    "1322": {
+      "attribute": "无"
+    },
     "1323": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelExcluded": true
+    },
+    "1330": {
+      "attribute": "无"
     },
     "1331": {
       "attribute": "未选择",
       "hidden": true
     },
+    "1332": {
+      "attribute": "外功"
+    },
+    "1333": {
+      "attribute": "外功"
+    },
+    "1334": {
+      "attribute": "无"
+    },
+    "1335": {
+      "attribute": "无"
+    },
     "1336": {
       "attribute": "混元",
       "manualCancelable": true
+    },
+    "1337": {
+      "attribute": "无"
+    },
+    "1340": {
+      "attribute": "无"
+    },
+    "1342": {
+      "attribute": "阳性"
     },
     "1343": {
       "attribute": "无",
@@ -117,6 +177,15 @@
       "attribute": "未选择",
       "hidden": true,
       "name": "亢龙有悔·僵直"
+    },
+    "1346": {
+      "attribute": "外功"
+    },
+    "1347": {
+      "attribute": "阳性"
+    },
+    "1348": {
+      "attribute": "混元"
     },
     "1349": {
       "attribute": "无",
@@ -168,6 +237,15 @@
       "attribute": "无",
       "manualCancelExcluded": true
     },
+    "2004": {
+      "attribute": "外功"
+    },
+    "2005": {
+      "attribute": "外功"
+    },
+    "2006": {
+      "attribute": "毒性"
+    },
     "2201": {
       "attribute": "阴性"
     },
@@ -175,12 +253,12 @@
       "attribute": "阴性"
     },
     "2301": {
-      "attribute": "未选择",
-      "name": "韦陀献杵·易伤"
+      "attribute": "阳性",
+      "name": "韦陀献杵·减防"
     },
     "2302": {
       "attribute": "无",
-      "name": "韦陀献杵·防御",
+      "name": "韦陀献杵·增防",
       "properties": [
         {
           "type": "减伤",
@@ -189,6 +267,9 @@
         }
       ],
       "manualCancelable": true
+    },
+    "2303": {
+      "attribute": "无"
     },
     "2304": {
       "attribute": "无",
@@ -206,6 +287,12 @@
       "attribute": "无",
       "name": "转乾坤·免控",
       "manualCancelable": true
+    },
+    "2306": {
+      "attribute": "无"
+    },
+    "2307": {
+      "attribute": "无"
     },
     "2308": {
       "attribute": "混元",
@@ -258,12 +345,27 @@
       "attribute": "无",
       "manualCancelExcluded": true
     },
+    "2319": {
+      "attribute": "无"
+    },
+    "2320": {
+      "attribute": "混元"
+    },
+    "2321": {
+      "attribute": "外功"
+    },
     "2322": {
       "attribute": "无",
       "manualCancelable": true
     },
+    "2323": {
+      "attribute": "阴性"
+    },
+    "2324": {
+      "attribute": "阴性"
+    },
     "2325": {
-      "attribute": "未选择",
+      "attribute": "外功",
       "name": "鹤归孤山"
     },
     "2326": {
@@ -278,7 +380,7 @@
       "manualCancelable": true
     },
     "2327": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelable": true
     },
     "2401": {
@@ -288,6 +390,9 @@
     "2402": {
       "attribute": "外功",
       "manualCancelable": true
+    },
+    "2403": {
+      "attribute": "无"
     },
     "2404": {
       "attribute": "无",
@@ -301,16 +406,76 @@
       "qinYinGongMingStealable": true,
       "manualCancelable": true
     },
+    "2500": {
+      "attribute": "混元"
+    },
+    "2501": {
+      "attribute": "混元"
+    },
+    "2502": {
+      "attribute": "混元"
+    },
+    "2503": {
+      "attribute": "毒性"
+    },
+    "2504": {
+      "attribute": "无"
+    },
+    "2506": {
+      "attribute": "无"
+    },
+    "2507": {
+      "attribute": "外功"
+    },
+    "2508": {
+      "attribute": "外功"
+    },
+    "2509": {
+      "attribute": "无"
+    },
     "2510": {
       "attribute": "未选择",
       "hidden": true
     },
+    "2511": {
+      "attribute": "阴性"
+    },
+    "2512": {
+      "attribute": "阳性"
+    },
+    "2513": {
+      "attribute": "阳性"
+    },
+    "2600": {
+      "attribute": "无"
+    },
+    "2601": {
+      "attribute": "无"
+    },
     "2602": {
+      "attribute": "无"
+    },
+    "2603": {
+      "attribute": "无"
+    },
+    "2604": {
+      "attribute": "无"
+    },
+    "2605": {
+      "attribute": "无"
+    },
+    "2606": {
       "attribute": "无"
     },
     "2607": {
       "attribute": "无",
       "manualCancelable": true
+    },
+    "2608": {
+      "attribute": "无"
+    },
+    "2609": {
+      "attribute": "无"
     },
     "2610": {
       "attribute": "无",
@@ -324,39 +489,82 @@
       "qinYinGongMingStealable": true,
       "manualCancelable": true
     },
+    "2611": {
+      "attribute": "无"
+    },
+    "2612": {
+      "attribute": "点穴"
+    },
     "2613": {
-      "attribute": "未选择",
+      "attribute": "无",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
+    },
+    "2614": {
+      "attribute": "无"
+    },
+    "2615": {
+      "attribute": "外功"
+    },
+    "2616": {
+      "attribute": "无"
     },
     "2620": {
-      "attribute": "未选择",
+      "attribute": "无",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
+    "2625": {
+      "attribute": "无"
+    },
     "2630": {
-      "attribute": "未选择",
+      "attribute": "无",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2631": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelable": true
     },
+    "2632": {
+      "attribute": "无"
+    },
+    "2633": {
+      "attribute": "无"
+    },
+    "2634": {
+      "attribute": "无"
+    },
+    "2635": {
+      "attribute": "无"
+    },
     "2636": {
-      "attribute": "未选择",
+      "attribute": "无",
+      "name": "灵辉",
       "manualCancelable": true
     },
     "2637": {
       "attribute": "未选择",
       "hidden": true
     },
+    "2638": {
+      "attribute": "无"
+    },
+    "2639": {
+      "attribute": "无"
+    },
+    "2640": {
+      "attribute": "无"
+    },
+    "2641": {
+      "attribute": "无"
+    },
     "2642": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelable": true
     },
     "2643": {
-      "attribute": "未选择",
+      "attribute": "无",
       "properties": [
         {
           "type": "减伤",
@@ -365,10 +573,25 @@
         }
       ]
     },
+    "2644": {
+      "attribute": "无"
+    },
+    "2645": {
+      "attribute": "无"
+    },
+    "2646": {
+      "attribute": "无"
+    },
     "2647": {
-      "attribute": "未选择",
+      "attribute": "无",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
+    },
+    "2648": {
+      "attribute": "无"
+    },
+    "2649": {
+      "attribute": "无"
     },
     "2650": {
       "attribute": "无",
@@ -382,7 +605,7 @@
       "manualCancelable": true
     },
     "2701": {
-      "attribute": "未选择",
+      "attribute": "无",
       "properties": [
         {
           "type": "减伤",
@@ -394,7 +617,7 @@
       "manualCancelExcluded": true
     },
     "2702": {
-      "attribute": "未选择",
+      "attribute": "无",
       "properties": [
         {
           "type": "减伤",
@@ -405,12 +628,15 @@
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
+    "2703": {
+      "attribute": "无"
+    },
     "2704": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelExcluded": true
     },
     "2705": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelExcluded": true
     },
     "2706": {
@@ -421,8 +647,11 @@
       "attribute": "无",
       "manualCancelable": true
     },
+    "2708": {
+      "attribute": "无"
+    },
     "2710": {
-      "attribute": "未选择",
+      "attribute": "阳性",
       "properties": [
         {
           "type": "减伤",
@@ -433,11 +662,11 @@
       "manualCancelable": true
     },
     "2711": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelable": true
     },
     "2712": {
-      "attribute": "未选择",
+      "attribute": "无",
       "properties": [
         {
           "type": "减伤",
@@ -448,19 +677,19 @@
       "manualCancelExcluded": true
     },
     "2713": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelable": true
     },
     "2714": {
-      "attribute": "未选择",
+      "attribute": "无",
       "qinYinGongMingUnstealable": true
     },
     "2715": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelExcluded": true
     },
     "2716": {
-      "attribute": "未选择",
+      "attribute": "无",
       "name": "逐云寒蕊·藏匿",
       "manualCancelExcluded": true
     },
@@ -470,23 +699,47 @@
       "name": "逐云寒蕊本体免疫"
     },
     "2718": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelable": true
     },
+    "2719": {
+      "attribute": "无"
+    },
+    "2720": {
+      "attribute": "无"
+    },
+    "2721": {
+      "attribute": "混元"
+    },
+    "2722": {
+      "attribute": "无"
+    },
+    "2723": {
+      "attribute": "无"
+    },
+    "2724": {
+      "attribute": "无"
+    },
+    "2725": {
+      "attribute": "无"
+    },
     "2726": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelExcluded": true
     },
     "2727": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelable": true
     },
     "2728": {
-      "attribute": "未选择",
+      "attribute": "无",
       "manualCancelable": true
     },
+    "2730": {
+      "attribute": "无"
+    },
     "2731": {
-      "attribute": "未选择",
+      "attribute": "阳性",
       "properties": [
         {
           "type": "减伤",
@@ -497,7 +750,7 @@
       "manualCancelable": true
     },
     "2732": {
-      "attribute": "未选择",
+      "attribute": "阳性",
       "properties": [
         {
           "type": "减伤",
@@ -508,7 +761,7 @@
       "manualCancelable": true
     },
     "2733": {
-      "attribute": "未选择",
+      "attribute": "阳性",
       "properties": [
         {
           "type": "减伤",
@@ -519,7 +772,7 @@
       "manualCancelable": true
     },
     "2734": {
-      "attribute": "未选择",
+      "attribute": "阳性",
       "properties": [
         {
           "type": "减伤",
@@ -528,6 +781,9 @@
         }
       ],
       "manualCancelable": true
+    },
+    "2735": {
+      "attribute": "点穴"
     },
     "2736": {
       "attribute": "未选择",
@@ -542,8 +798,7 @@
       "manualCancelable": true
     },
     "2737": {
-      "attribute": "未选择",
-      "name": "舍身诀",
+      "attribute": "阳性",
       "properties": [
         {
           "type": "减伤",
@@ -554,14 +809,15 @@
       "manualCancelable": true
     },
     "2738": {
-      "attribute": "未选择",
-      "name": "舍身诀·承伤",
+      "attribute": "无",
       "manualCancelable": true
     },
     "2739": {
-      "attribute": "未选择",
-      "name": "渊",
+      "attribute": "无",
       "manualCancelable": true
+    },
+    "2740": {
+      "attribute": "无"
     },
     "2741": {
       "attribute": "无",
@@ -575,6 +831,15 @@
       "attribute": "无",
       "manualCancelable": true
     },
+    "2744": {
+      "attribute": "无"
+    },
+    "2745": {
+      "attribute": "无"
+    },
+    "3001": {
+      "attribute": "无"
+    },
     "9001": {
       "attribute": "外功",
       "description": "下一次跳跃将跳得更高",
@@ -587,6 +852,13 @@
     "9003": {
       "attribute": "混元",
       "manualCancelable": true
+    },
+    "9101": {
+      "attribute": "未选择",
+      "hidden": true
+    },
+    "9202": {
+      "attribute": "无"
     },
     "990100": {
       "attribute": "未选择",

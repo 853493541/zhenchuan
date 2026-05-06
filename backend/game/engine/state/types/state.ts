@@ -41,6 +41,8 @@ export interface ActiveChannel {
   startedAt: number;
   /** Total channel duration in ms */
   durationMs: number;
+  /** Optional reverse-channel tick interval in ms. */
+  tickIntervalMs?: number;
   cancelOnMove?: boolean;
   cancelOnJump?: boolean;
   /** Cancel if distance to opponent exceeds this (units) */
@@ -71,6 +73,10 @@ export interface PlayerState {
   neiGongCritChancePct?: number;
   /** Runtime crit chance percentage used by combat resolution (0-100). */
   critChancePct?: number;
+  /** Runtime 防御力 percentage (0-100). Applied to base damage before crit/DR. */
+  defensePct?: number;
+  /** Runtime 加速率 percentage shown to players. Timing uses a separate reduction constant. */
+  hasteRatePct?: number;
 
   /** abilities in hand */
   hand: AbilityInstance[];
@@ -80,6 +86,15 @@ export interface PlayerState {
 
   /** Shared GCD lock for abilities that trigger public cooldown, including temporary special-bar skills. */
   globalGcdTicks?: number;
+
+  /** Frontend-only visual GCD bar payload; overwritten whenever a new GCD display should start. */
+  visualGcd?: {
+    id: string;
+    name: string;
+    kind: "base" | "qinggong" | "houyao";
+    startedAt: number;
+    durationMs: number;
+  };
 
   /** active buffs on player */
   buffs: ActiveBuff[];

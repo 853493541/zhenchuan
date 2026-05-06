@@ -47,8 +47,8 @@ export interface Ability {
   canTargetSelf?: boolean;
 
   /**
-   * If true, casting this ability triggers a 1.5-second draft GCD on other
-   * draft abilities that also have gcd:true.
+   * If true, casting this ability triggers the base public GCD on other
+   * abilities that also have gcd:true.
    */
   gcd?: boolean;
 
@@ -207,6 +207,15 @@ export interface Ability {
   qinggong?: boolean;
 
   /**
+   * If true, this ability is treated as 轻功 for seals, but it neither triggers
+   * nor receives the separate 轻功 GCD layer.
+   */
+  qinggongGcdImmune?: boolean;
+
+  /** If true, this ability keeps its original channel and DOT timing, ignoring 加速. */
+  hasteUnaffected?: boolean;
+
+  /**
    * Allows this opponent-targeted ability to be cast on a ground point
    * even when no target is selected.
    */
@@ -255,6 +264,9 @@ export interface Ability {
 
   /** Effects fired by GameLoop when the active channel completes. */
   channelEffects?: AbilityEffect[];
+
+  /** Optional active-channel tick interval in milliseconds. */
+  channelTickIntervalMs?: number;
 
   /** Apply ability.buffs at active-channel start. */
   applyBuffsOnChannelStart?: boolean;
