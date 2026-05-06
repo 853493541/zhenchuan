@@ -12,6 +12,7 @@ import { ABILITIES } from "../../abilities/abilities";
 import { randomUUID } from "crypto";
 import { NEW_WORLD_UNIT_SCALE } from "../../engine/state/types/position";
 import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT, EXPORTED_MAP_SPAWN_POSITIONS } from "../../map/exportedMap";
+import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
 
 // Arena dimensions (must match backend arena size)
 const PUBG_WIDTH = 2000;
@@ -239,6 +240,7 @@ export function initializeBattleState(
       maxHp: STARTING_BATTLE_HP,
       shield: 0,
       defensePct: 0,
+      hasteRatePct: BASE_HASTE_RATE_PCT,
       hand,
       buffs: [],
       position: { x: spawn.x, y: spawn.y },

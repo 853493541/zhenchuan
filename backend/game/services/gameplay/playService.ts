@@ -25,6 +25,7 @@ import { getAbilityRangeBonusFromBuffs } from "../../engine/utils/abilityRange";
 import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../../engine/utils/specialAbilityBar";
 import { hasYuqiState } from "../../engine/utils/yuqi";
 import { removeYuqiStateBuffs } from "../../engine/effects/buffRuntime";
+import { getHasteAdjustedTimingMs } from "../../engine/utils/haste";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -101,6 +102,18 @@ function setVisualGcd(player: any, name: string, kind: "base" | "qinggong" | "ho
     startedAt,
     durationMs,
   };
+}
+
+function getActiveChannelTickIntervalMs(ability: any): number | undefined {
+  const explicitInterval = Number(ability?.channelTickIntervalMs ?? ability?.channel?.tickIntervalMs ?? 0);
+  if (Number.isFinite(explicitInterval) && explicitInterval > 0) {
+    return explicitInterval;
+  }
+
+  const hasLianHuanNuTick = Array.isArray(ability?.channelEffects) && ability.channelEffects.some(
+    (effect: any) => effect?.type === "LIAN_HUAN_NU_TICK"
+  );
+  return hasLianHuanNuTick ? 1_000 : undefined;
 }
 
 function getChargeRecoveryTicks(ability: any): number {
@@ -408,6 +421,12 @@ async function playCastAbility(
         ? (ability as any).channelCancelOnOutOfRange + channelRangeBonus
         : (ability as any).channelCancelOnOutOfRange;
 
+      const rawChannelDurationMs = (ability as any).channelDurationMs ?? 2_000;
+      const rawChannelTickIntervalMs = getActiveChannelTickIntervalMs(ability as any);
+      const channelTickIntervalMs = rawChannelTickIntervalMs !== undefined
+        ? getHasteAdjustedTimingMs(rawChannelTickIntervalMs, ability as any)
+        : undefined;
+
       player.activeChannel = {
         abilityId,
         abilityName: ability.name,
@@ -415,7 +434,8 @@ async function playCastAbility(
         targetUserId: targetEntity ? undefined : target.userId,
         entityTargetId: targetEntity?.id,
         startedAt: Date.now(),
-        durationMs: (ability as any).channelDurationMs ?? 2_000,
+        durationMs: getHasteAdjustedTimingMs(rawChannelDurationMs, ability as any),
+        ...(channelTickIntervalMs !== undefined ? { tickIntervalMs: channelTickIntervalMs } : {}),
         cancelOnMove: (ability as any).channelCancelOnMove ?? true,
         cancelOnJump: (ability as any).channelCancelOnJump ?? true,
         cancelOnOutOfRange: channelCancelOnOutOfRange,

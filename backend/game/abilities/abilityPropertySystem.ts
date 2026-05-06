@@ -17,6 +17,7 @@ export type AbilityPropertyId =
   | "canCastWhileMounted"
   | "qinggong"
   | "qinggongGcdImmune"
+  | "hasteUnaffected"
   | "allowGroundCastWithoutTarget"
   | "ignoreFacingRequirement"
   | "noGcd"
@@ -267,6 +268,7 @@ function setBooleanAbilityField(
     | "isCommon"
     | "qinggong"
     | "qinggongGcdImmune"
+    | "hasteUnaffected"
     | "cannotCastWhileRooted"
     | "requiresGrounded"
     | "requiresStanding"
@@ -905,6 +907,17 @@ const abilityPropertyDefinitions: AbilityPropertyDefinition[] = [
     getValue: (ability) => !!ability.qinggongGcdImmune,
     setValue: (ability, enabled) => {
       setBooleanAbilityField(ability, "qinggongGcdImmune", enabled);
+    },
+  },
+  {
+    id: "hasteUnaffected",
+    label: "不受加速",
+    description: "开启后该技能的读条、逆读条和持续伤害时间不会被加速率缩短。",
+    group: "施放例外",
+    isApplicable: () => true,
+    getValue: (ability) => !!(ability as any).hasteUnaffected,
+    setValue: (ability, enabled) => {
+      setBooleanAbilityField(ability, "hasteUnaffected", enabled);
     },
   },
   {

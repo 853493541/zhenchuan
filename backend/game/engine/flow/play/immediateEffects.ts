@@ -3542,7 +3542,7 @@ export function applyImmediateEffects(params: {
           // Detonate: remove buff and deal total remaining DoT immediately
           const dmgPerTick2 = jztdBuffDef?.effects?.find((e: any) => e.type === "PERIODIC_DAMAGE")?.value ?? 1;
           const remainingMs2 = Math.max(0, existing2614.expiresAt - Date.now());
-          const periodicMs2 = jztdBuffDef?.periodicMs ?? 3000;
+          const periodicMs2 = existing2614.periodicMs ?? jztdBuffDef?.periodicMs ?? 3000;
           const remainTicks2 = Math.max(0, Math.ceil(remainingMs2 / periodicMs2));
           const burstDmg = remainTicks2 * dmgPerTick2 + 1; // +1 for the hit itself
           effTarget.buffs = effTarget.buffs.filter((b: any) => b.buffId !== 2614);

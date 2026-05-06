@@ -212,6 +212,9 @@ export interface Ability {
    */
   qinggongGcdImmune?: boolean;
 
+  /** If true, this ability keeps its original channel and DOT timing, ignoring 加速. */
+  hasteUnaffected?: boolean;
+
   /**
    * Allows this opponent-targeted ability to be cast on a ground point
    * even when no target is selected.
@@ -261,6 +264,9 @@ export interface Ability {
 
   /** Effects fired by GameLoop when the active channel completes. */
   channelEffects?: AbilityEffect[];
+
+  /** Optional active-channel tick interval in milliseconds. */
+  channelTickIntervalMs?: number;
 
   /** Apply ability.buffs at active-channel start. */
   applyBuffsOnChannelStart?: boolean;

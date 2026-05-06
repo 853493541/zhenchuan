@@ -12,6 +12,7 @@ export interface PlayerState {
   neiGongCritChancePct?: number;
   critChancePct?: number;
   defensePct?: number;
+  hasteRatePct?: number;
   hand: AbilityInstance[];
   specialAbilityStates?: Record<string, AbilityInstance>;
   globalGcdTicks?: number;

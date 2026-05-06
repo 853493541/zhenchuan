@@ -36,6 +36,7 @@ interface AbilityBooleanDeciderTabProps {
   showImmuneBadge?: boolean;
   showMetadataRow?: boolean;
   limitUndecidedToQinggong?: boolean;
+  limitUndecidedToChannel?: boolean;
 }
 
 export default function AbilityBooleanDeciderTab({
@@ -59,6 +60,7 @@ export default function AbilityBooleanDeciderTab({
   showImmuneBadge,
   showMetadataRow = true,
   limitUndecidedToQinggong = false,
+  limitUndecidedToChannel = false,
 }: AbilityBooleanDeciderTabProps) {
   const [search, setSearch] = usePersistentState(searchStorageKey, "");
   const [togglingAbilityId, setTogglingAbilityId] = useState<string | null>(null);
@@ -78,7 +80,11 @@ export default function AbilityBooleanDeciderTab({
 
   const excludedAbilities = filteredAbilities.filter((entry) => entry.manuallyExcluded);
   const undecidedAbilities = filteredAbilities.filter(
-    (entry) => !entry.enabled && !entry.manuallyExcluded && (!limitUndecidedToQinggong || entry.qinggong)
+    (entry) =>
+      !entry.enabled &&
+      !entry.manuallyExcluded &&
+      (!limitUndecidedToQinggong || entry.qinggong) &&
+      (!limitUndecidedToChannel || entry.type === "CHANNEL")
   );
   const enabledAbilities = filteredAbilities.filter((entry) => entry.enabled && !entry.manuallyExcluded);
 

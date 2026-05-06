@@ -4,6 +4,7 @@ import {
   buildCanCastWhileMountedSnapshot,
   buildAbilityEditorSnapshot,
   buildNoWeaponRequiredSnapshot,
+  buildHasteUnaffectedSnapshot,
   buildQinggongGcdImmuneSnapshot,
   buildQinggongSnapshot,
   setAbilityCanCastWhileMountedOverride,
@@ -11,6 +12,7 @@ import {
   setAbilityEditorNumericValue,
   setAbilityEditorProperty,
   setAbilityNoWeaponRequiredOverride,
+  setAbilityHasteUnaffectedOverride,
   setAbilityQinggongGcdImmuneOverride,
   setAbilityQinggongOverride,
   setAbilityIsProjectile,
@@ -298,6 +300,28 @@ router.put("/ability-editor/qinggong-gcd-immune/:abilityId", (req, res) => {
       return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
     }
     return res.json(setAbilityQinggongGcdImmuneOverride(req.params.abilityId, mode));
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/haste-unaffected", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildHasteUnaffectedSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/haste-unaffected/:abilityId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { mode } = req.body ?? {};
+    if (mode !== "manual-include" && mode !== "manual-exclude" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+    return res.json(setAbilityHasteUnaffectedOverride(req.params.abilityId, mode));
   } catch (error) {
     return handleAbilityEditorError(res, error);
   }

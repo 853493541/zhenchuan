@@ -3,6 +3,46 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Haste stat and timing acceleration (2026-05-06)
+
+**Problem set**:
+1. 新增展示属性 `加速率 23.54%`，但实际时间缩短量独立为 `16.2%`。
+2. 加速需要影响正读条、逆读条、以及 DOT 的总时间和每跳间隔，且不能误改普通控制 / 普通增益时长。
+3. 需要一个 Ability Editor 判定页，让部分技能可明确设置为不受加速。
+
+**Fix**:
+- 新增 `engine/utils/haste.ts`，集中保存展示值、实际时间缩短系数，以及读条 / 周期 Buff 的时间缩放 helper。
+- 正读条和 active reverse channel 在 `playService.ts` 创建 `activeChannel` 时缩短 `durationMs`，并给连环弩这类 active reverse channel 传递加速后的 `tickIntervalMs`。
+- DOT 与 buff-based reverse channel 在 `addBuff()` 统一入口缩短 `durationMs` 和 `periodicMs`，因此普通无周期控制 Buff 不会被加速误伤。
+- BattleArena C 面板显示 `加速率 23.54%`，并让 active reverse channel bar 使用后端下发的加速后 tick interval。
+- 新增 `hasteUnaffected` ability property、后端 `/ability-editor/haste-unaffected` 路由，以及前端 `不受加速` 三列判定页。该字段会进入 resolved ability，运行时加速 helper 会直接跳过它。
+
+**Lessons**:
+- 加速的显示数值和实际缩短系数必须分开建模；把 `23.54%` 直接拿去当时间缩短量会让平衡数值漂移。
+- 对 DOT/逆读条这类周期效果，最稳的落点是创建时同时缩放总时长和 `periodicMs`，而不是在 GameLoop 每跳临时折算。
+- 任何“该技能不吃某个全局机制”的需求，优先复用 Ability Editor 的 tri-state property override；这样详情页、批量页、preload 和运行时 resolved ability 会自然保持一致。
+
+**Follow-up (later same day)**:
+- `不受加速` 的批量页文案已改成更准确的 `读条不受加速影响`，因为当前规则真正影响的是正读条、逆读条和相关周期读条节奏，不是所有技能都需要做这个判定。
+- 这个批量页真正需要收紧的是 `未决定` 列，而不是整份 snapshot。给共享 decider 组件增加“只在未决定列显示 `CHANNEL` 技能”的开关，能保留已有手动覆盖项，同时把待决策列表压回到真正有读条的技能。
+- 直接用 resolved `ABILITIES` 做一次 runtime audit 最稳：本轮检查了全部 `29` 个 `CHANNEL` 技能，确认它们都带有 `FORWARD` 或 `REVERSE` 的 channel mode，没有漏标的读条技能。
+
+## Ability Editor tab grouping cleanup (2026-05-06)
+
+**Problem set**:
+1. Ability Editor 的批量页已经扩展到多个技能 / 气劲规则，但顶栏还是一个平铺长条，定位成本越来越高。
+2. 用户需要把这些规则明确分成两组：`技能` 和 `气劲`，同时统一若干页签文案。
+
+**Fix**:
+- 保留原有 leaf `mainTab` 状态和 `?tab=` deep-link，不重写页面路由；在它之上新增了两组派生导航：`技能` 和 `气劲`。
+- 顶栏现在只保留 `技能列表`、`BUFF 编辑`、`技能`、`气劲` 四个主入口；进入 `技能` / `气劲` 后，会出现对应的第二行分组页签。
+- `技能` 组现在包含：`远程弹道`、`盾立白名单`、`无需武器`、`可以马上施展`、`轻功`、`不受轻功GCD 影响`、`读条不受加速影响`。
+- `气劲` 组现在包含：`琴音共鸣`、`减伤被顶`、`主动取消`、`隐藏`。
+
+**Lessons**:
+- 这种 UI 重组最稳的方式，是保留现有 leaf tab 作为唯一真实状态，再在渲染层派生分组导航。这样懒加载逻辑、URL 同步、已有本地状态键都不用跟着重写。
+- 文案调整最好和分组一起做，否则用户会先看到新的信息架构，再看到旧的标签名，体验上仍然会像“没整理完”。
+
 ## GCD runtime/editor/visual bar overhaul (2026-05-06)
 
 **Problem set**:

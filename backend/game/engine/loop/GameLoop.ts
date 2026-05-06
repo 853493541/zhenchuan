@@ -46,6 +46,7 @@ import {
 import { getEffectiveAbilityRange } from "../utils/abilityRange";
 import { triggerYunSanBlink } from "../utils/yunSan";
 import { getMiYunAreaCandidates, hasMiYunConfusion, rerollMiYunAreaTargets } from "../utils/miyun";
+import { getHasteAdjustedTimingMs } from "../utils/haste";
 
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
@@ -1943,7 +1944,7 @@ export class GameLoop {
 
         // ── 连环弩 periodic ticks: every 1s deal 1/2/3 damage. Knockback if target ≤15u. ──
         if (ch.abilityId === "lian_huan_nu" && targetPlayer && (targetPlayer.hp ?? 0) > 0) {
-          const lhnInterval = 1000;
+          const lhnInterval = Math.max(1, Number((ch as any).tickIntervalMs ?? getHasteAdjustedTimingMs(1_000, channelAbility as any)));
           const lhnLast = (ch as any).lianHuanNuLastTickAt ?? ch.startedAt;
           if (chNow - lhnLast >= lhnInterval) {
             (ch as any).lianHuanNuLastTickAt = chNow;

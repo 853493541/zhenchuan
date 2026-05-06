@@ -105,6 +105,7 @@ const DEFAULT_PLAYER_RADIUS = 2; // must match backend
 const COLLISION_TEST_PLAYER_RADIUS = 0.384;
 const LEGACY_STORED_UNIT_SCALE = 2.2;
 const SERVER_TICK_RATE = 30;
+const BASE_HASTE_RATE_PCT = 23.54;
 const BASE_GCD_SECONDS = 1.19;
 const BASE_GCD_MS = BASE_GCD_SECONDS * 1000;
 const BASE_GCD_WINDOW_TICKS = Math.round(BASE_GCD_SECONDS * SERVER_TICK_RATE);
@@ -234,12 +235,14 @@ function buildChannelBarResultForPlayer(
     const interruptible = (channel as any).interruptible !== undefined
       ? (channel as any).interruptible
       : (ability?.channel?.interruptible !== false);
+    const activeTickIntervalMs = Number((channel as any).tickIntervalMs ?? ability?.channel?.tickIntervalMs ?? 0);
     const data: ChannelBarData = channel.forwardChannel === false
       ? {
           kind: 'reverse',
           name: channel.abilityName,
           appliedAt: channel.startedAt,
           durationMs: Math.max(1, channel.durationMs),
+          ...(Number.isFinite(activeTickIntervalMs) && activeTickIntervalMs > 0 ? { tickIntervalMs: activeTickIntervalMs } : {}),
           interruptible,
         }
       : {
@@ -5023,6 +5026,7 @@ export default function BattleArena({
     0,
     Math.min(100, Number((me as any)?.defensePct ?? 0)),
   );
+  const myHasteRatePct = Math.max(0, Number((me as any)?.hasteRatePct ?? BASE_HASTE_RATE_PCT));
   const myFacingArrow = facingArrow(localFacingRef.current);
   const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
   const getTypedEffectTotal = (effectType: string, damageType: '外功' | '内功') => meEffects
@@ -5122,10 +5126,10 @@ export default function BattleArena({
     },
     {
       key: 'haste',
-      label: '加速',
-      value: '0%',
-      tooltipTitle: '加速',
-      tooltipLines: [formatTooltipLine('加速', '0%')],
+      label: '加速率',
+      value: formatStatPct(myHasteRatePct),
+      tooltipTitle: '加速率',
+      tooltipLines: [formatTooltipLine('加速率', formatStatPct(myHasteRatePct))],
     },
     {
       key: 'dodge',

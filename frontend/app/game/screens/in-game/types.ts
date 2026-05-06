@@ -86,6 +86,7 @@ export interface ActiveChannel {
   entityTargetId?: string;
   startedAt: number;
   durationMs: number;
+  tickIntervalMs?: number;
   cancelOnMove?: boolean;
   cancelOnJump?: boolean;
   cancelOnOutOfRange?: number;
@@ -109,6 +110,7 @@ export interface PlayerState {
   neiGongCritChancePct?: number;
   critChancePct?: number;
   defensePct?: number;
+  hasteRatePct?: number;
   hand: AbilityInstance[];
   specialAbilityStates?: Record<string, AbilityInstance>;
   globalGcdTicks?: number;

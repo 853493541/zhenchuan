@@ -41,6 +41,8 @@ export interface ActiveChannel {
   startedAt: number;
   /** Total channel duration in ms */
   durationMs: number;
+  /** Optional reverse-channel tick interval in ms. */
+  tickIntervalMs?: number;
   cancelOnMove?: boolean;
   cancelOnJump?: boolean;
   /** Cancel if distance to opponent exceeds this (units) */
@@ -73,6 +75,8 @@ export interface PlayerState {
   critChancePct?: number;
   /** Runtime 防御力 percentage (0-100). Applied to base damage before crit/DR. */
   defensePct?: number;
+  /** Runtime 加速率 percentage shown to players. Timing uses a separate reduction constant. */
+  hasteRatePct?: number;
 
   /** abilities in hand */
   hand: AbilityInstance[];

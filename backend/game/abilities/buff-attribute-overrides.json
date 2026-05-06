@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updatedAt": "2026-05-06T06:19:13.518Z",
+  "updatedAt": "2026-05-06T07:35:28.746Z",
   "buffs": {
     "1001": {
       "attribute": "毒性"
@@ -20,6 +20,10 @@
     "1007": {
       "attribute": "无",
       "manualCancelable": true
+    },
+    "1008": {
+      "attribute": "未选择",
+      "name": "散流霞·隐藏"
     },
     "1009": {
       "attribute": "阴性",
@@ -848,6 +852,10 @@
     "9003": {
       "attribute": "混元",
       "manualCancelable": true
+    },
+    "9101": {
+      "attribute": "未选择",
+      "hidden": true
     },
     "9202": {
       "attribute": "无"

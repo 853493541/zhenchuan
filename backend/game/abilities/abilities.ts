@@ -5210,6 +5210,14 @@ export function buildQinggongGcdImmuneSnapshot(): AbilityBooleanDeciderSnapshot 
   });
 }
 
+export function buildHasteUnaffectedSnapshot(): AbilityBooleanDeciderSnapshot {
+  return buildAbilityBooleanDeciderSnapshot({
+    propertyId: "hasteUnaffected",
+    baseEnabled: (ability) => (ability as any).hasteUnaffected === true,
+    enabled: (ability) => (ability as any).hasteUnaffected === true,
+  });
+}
+
 export function setAbilityEditorProperty(
   abilityId: string,
   propertyId: AbilityPropertyId,
@@ -5553,4 +5561,9 @@ export function setAbilityQinggongOverride(abilityId: string, mode: AbilityBoole
 export function setAbilityQinggongGcdImmuneOverride(abilityId: string, mode: AbilityBooleanDeciderMode) {
   setAbilityPropertyBooleanOverride(abilityId, "qinggongGcdImmune", mode);
   return buildQinggongGcdImmuneSnapshot();
+}
+
+export function setAbilityHasteUnaffectedOverride(abilityId: string, mode: AbilityBooleanDeciderMode) {
+  setAbilityPropertyBooleanOverride(abilityId, "hasteUnaffected", mode);
+  return buildHasteUnaffectedSnapshot();
 }
