@@ -17,6 +17,58 @@ import { getAbilityIconPath } from '@/app/lib/iconPaths';
 import * as THREE from 'three';
 
 type V3 = { x: number; y: number; z: number };
+type HeartStatKey =
+  | 'attack'
+  | 'maxHp'
+  | 'crit'
+  | 'critEffect'
+  | 'haste'
+  | 'dodge'
+  | 'runSpeed'
+  | 'defense'
+  | 'huajin'
+  | 'damageReduction';
+
+type HeartStatRow = {
+  key: HeartStatKey;
+  label: string;
+  value: string;
+  tooltipTitle?: string;
+  tooltipLines?: string[];
+};
+
+type HeartStatHintState = {
+  title: string;
+  lines: string[];
+  anchorRect: DOMRect;
+};
+
+const HEART_STAT_STORAGE_KEY = 'zhenchuan-heart-stat-visibility';
+const HEART_STAT_ORDER: HeartStatKey[] = [
+  'attack',
+  'maxHp',
+  'crit',
+  'critEffect',
+  'haste',
+  'dodge',
+  'runSpeed',
+  'defense',
+  'huajin',
+  'damageReduction',
+];
+const DEFAULT_HEART_STAT_VISIBILITY: Record<HeartStatKey, boolean> = {
+  attack: true,
+  maxHp: true,
+  crit: true,
+  critEffect: true,
+  haste: true,
+  dodge: true,
+  runSpeed: true,
+  defense: true,
+  huajin: true,
+  damageReduction: true,
+};
+
 type CollisionDebugState = {
   enabled: boolean;
   center: V3;
@@ -1102,6 +1154,44 @@ function AbilityHoverHint({ hint }: { hint: AbilityHintState }) {
   );
 }
 
+function HeartStatHoverHint({ hint }: { hint: HeartStatHintState }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const rect = element.getBoundingClientRect();
+    const gap = 8;
+    const safe = 8;
+    const maxLeft = window.innerWidth - rect.width - safe;
+    const maxTop = window.innerHeight - rect.height - safe;
+    const top = Math.max(safe, Math.min(maxTop, hint.anchorRect.top));
+    const preferredLeft = hint.anchorRect.right + gap;
+    const fallbackLeft = hint.anchorRect.left - rect.width - gap;
+    const left = preferredLeft <= maxLeft ? preferredLeft : fallbackLeft;
+
+    setPos({
+      top,
+      left: Math.max(safe, Math.min(maxLeft, left)),
+    });
+  }, [hint]);
+
+  return (
+    <div
+      ref={ref}
+      className={styles.heartStatHint}
+      style={pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999 }}
+    >
+      <div className={styles.heartStatHintTitle}>{hint.title}</div>
+      {hint.lines.map((line, index) => (
+        <div key={`${line}-${index}`} className={styles.heartStatHintLine}>{line}</div>
+      ))}
+    </div>
+  );
+}
+
 type DummySpawnPreset = 'enemy' | 'ally' | 'ally100';
 
 function getDummySpawnMeta(preset: DummySpawnPreset) {
@@ -1362,6 +1452,7 @@ export default function BattleArena({
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [cheatSchoolOpen]);
+
   const [addingAbility,    setAddingAbility]    = useState<string | null>(null);
   const [runningCheatAction, setRunningCheatAction] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
@@ -1371,6 +1462,28 @@ export default function BattleArena({
   const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number; z?: number; isValid?: boolean } | null>(null);
   const [showControlPanel, setShowControlPanel] = useState(false);
   const [showHeartDetailsPanel, setShowHeartDetailsPanel] = useState(false);
+  const [showHeartStatSettings, setShowHeartStatSettings] = useState(false);
+  const [heartStatHint, setHeartStatHint] = useState<HeartStatHintState | null>(null);
+  const [heartStatVisibility, setHeartStatVisibility] = useState<Record<HeartStatKey, boolean>>(() => {
+    try {
+      if (typeof window === 'undefined') return DEFAULT_HEART_STAT_VISIBILITY;
+      const stored = JSON.parse(localStorage.getItem(HEART_STAT_STORAGE_KEY) ?? '{}');
+      return { ...DEFAULT_HEART_STAT_VISIBILITY, ...stored };
+    } catch {
+      return DEFAULT_HEART_STAT_VISIBILITY;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(HEART_STAT_STORAGE_KEY, JSON.stringify(heartStatVisibility));
+    } catch {}
+  }, [heartStatVisibility]);
+  useEffect(() => {
+    setShowHeartStatSettings(false);
+    if (!showHeartDetailsPanel) {
+      setHeartStatHint(null);
+    }
+  }, [showHeartDetailsPanel]);
   const [pendingDummySpawn, setPendingDummySpawn] = useState<DummySpawnPreset | null>(null);
   const [dummySpawnPreview, setDummySpawnPreview] = useState<{ x: number; y: number; z?: number } | null>(null);
   const pendingDummySpawnRef = useRef<DummySpawnPreset | null>(null);
@@ -1672,15 +1785,13 @@ export default function BattleArena({
   };
 
   const formatFloatValue = (value: number) => {
-    if (!Number.isFinite(value)) return '0';
-    return Number(value.toFixed(2)).toString();
+    if (!Number.isFinite(value)) return '0.00';
+    return value.toFixed(2);
   };
 
   const isCritDamageEvent = (evt: any) => {
     if ((evt as any)?.suppressCritLabel === true) return false;
-    if ((evt as any)?.isCrit === true) return true;
-    const rawValue = Number(evt?.value ?? 0);
-    return Math.abs(rawValue - Math.round(rawValue)) > 0.0001;
+    return (evt as any)?.isCrit === true;
   };
 
   // Split abilities into two rows for rendering
@@ -2696,7 +2807,7 @@ export default function BattleArena({
         const damageWasCrit = isCritDamageEvent(evt);
         const eventLabel = (evt as any).hideAbilityName === true ? '' : evt.abilityName;
         const displayZeroDamage = (evt as any).displayZeroDamage === true;
-        const zeroDamageText = eventLabel ? `${eventLabel}： -0` : '-0';
+        const zeroDamageText = eventLabel ? `${eventLabel}： -0.00` : '-0.00';
         if (evt.targetUserId === myId) {
           if (!selectedTargetRef.current && !selectedEntityRef.current && !selectedSelfRef.current && evt.actorUserId && evt.actorUserId !== myId) {
             const attackerStillPresent = visibleOpponentsList.some((o) => o.userId === evt.actorUserId);
@@ -4776,11 +4887,22 @@ export default function BattleArena({
     0,
     Math.min(100, Number((me as any)?.neiGongCritChancePct ?? (me as any)?.critChancePct ?? 0)),
   );
+  const myBaseDefensePct = Math.max(
+    0,
+    Math.min(100, Number((me as any)?.defensePct ?? 0)),
+  );
   const myFacingArrow = facingArrow(localFacingRef.current);
   const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
   const getTypedEffectTotal = (effectType: string, damageType: '外功' | '内功') => meEffects
     .filter((e: any) => e?.type === effectType && (!e?.damageType || e?.damageType === damageType))
     .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
+  const defenseMultiplier = meEffects
+    .filter((e: any) => e?.type === 'DEFENSE_MULTIPLIER')
+    .reduce((multiplier: number, e: any) => {
+      const value = Number(e?.value ?? e?.defenseMultiplier ?? 1);
+      return Number.isFinite(value) ? multiplier * Math.max(0, value) : multiplier;
+    }, 1);
+  const myDefensePct = Math.max(0, Math.min(100, myBaseDefensePct * defenseMultiplier));
   const myWaiGongCritChancePct = Math.max(
     0,
     Math.min(100, myBaseWaiGongCritChancePct + getTypedEffectTotal('CRIT_CHANCE_BONUS', '外功')),
@@ -4807,8 +4929,12 @@ export default function BattleArena({
   const finalMoveSpeed = Math.max(0, baseMoveSpeed * Math.max(0, 1 + moveSpeedBoostSum - moveSpeedSlowSum));
   const baseMoveSpeedUnitsPerSec = baseMoveSpeed * SERVER_TICK_RATE / storedUnitScale;
   const effectiveMoveSpeedUnitsPerSec = finalMoveSpeed * SERVER_TICK_RATE / storedUnitScale;
-  const damageReductionEffect = meEffects.find((e: any) => e?.type === 'DAMAGE_REDUCTION');
-  const damageReductionPct = Math.max(0, Number(damageReductionEffect?.value ?? 0) * 100);
+  const damageReductionPct = Math.max(
+    0,
+    meEffects
+      .filter((e: any) => e?.type === 'DAMAGE_REDUCTION')
+      .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0) * 100,
+  );
   const dodgeChancePct = Math.max(
     0,
     Math.min(
@@ -4818,6 +4944,107 @@ export default function BattleArena({
         .reduce((sum: number, e: any) => sum + Number(e?.chance ?? 0), 0) * 100,
     ),
   );
+  const formatStatPct = (value: number) => `${Number.isFinite(value) ? value.toFixed(2) : '0.00'}%`;
+  const formatWholePct = (value: number) => `${Math.max(0, Math.round(Number.isFinite(value) ? value : 0))}%`;
+  const formatMergedPct = (outerValue: number, innerValue: number) => {
+    if (Math.abs(outerValue - innerValue) < 0.005) return formatStatPct(outerValue);
+    return `${formatStatPct(outerValue)} / ${formatStatPct(innerValue)}`;
+  };
+  const formatTooltipLine = (label: string, value: string) => `${label}: ${value}`;
+  const formatSpeedUnits = (value: number) => `${formatCompactNumber(value)}尺/秒`;
+  const runSpeedDisplayValue = String(Math.max(0, Math.round(effectiveMoveSpeedUnitsPerSec * 4)));
+  const heartStatRows: HeartStatRow[] = [
+    {
+      key: 'attack',
+      label: '攻击力',
+      value: '0',
+      tooltipTitle: '攻击力',
+      tooltipLines: [formatTooltipLine('攻击力', '0')],
+    },
+    {
+      key: 'maxHp',
+      label: '气血值',
+      value: String(Math.max(0, Math.round(myMaxHp))),
+      tooltipTitle: '气血值',
+      tooltipLines: [formatTooltipLine('气血值', String(Math.max(0, Math.round(myMaxHp))))],
+    },
+    {
+      key: 'crit',
+      label: '会心',
+      value: formatMergedPct(myWaiGongCritChancePct, myNeiGongCritChancePct),
+      tooltipTitle: '会心',
+      tooltipLines: [
+        formatTooltipLine('外功会心', formatStatPct(myWaiGongCritChancePct)),
+        formatTooltipLine('内功会心', formatStatPct(myNeiGongCritChancePct)),
+      ],
+    },
+    {
+      key: 'critEffect',
+      label: '会心效果',
+      value: formatMergedPct(myWaiGongCritEffectPct, myNeiGongCritEffectPct),
+      tooltipTitle: '会心效果',
+      tooltipLines: [
+        formatTooltipLine('外功会心效果', formatStatPct(myWaiGongCritEffectPct)),
+        formatTooltipLine('内功会心效果', formatStatPct(myNeiGongCritEffectPct)),
+      ],
+    },
+    {
+      key: 'haste',
+      label: '加速',
+      value: '0%',
+      tooltipTitle: '加速',
+      tooltipLines: [formatTooltipLine('加速', '0%')],
+    },
+    {
+      key: 'dodge',
+      label: '闪避',
+      value: `${Math.max(0, Math.round(dodgeChancePct))}%`,
+      tooltipTitle: '闪避',
+      tooltipLines: [formatTooltipLine('闪避', `${Math.max(0, Math.round(dodgeChancePct))}%`)],
+    },
+    {
+      key: 'runSpeed',
+      label: '跑速',
+      value: runSpeedDisplayValue,
+      tooltipTitle: '跑速',
+      tooltipLines: [formatTooltipLine('移动速度', formatSpeedUnits(effectiveMoveSpeedUnitsPerSec))],
+    },
+    {
+      key: 'defense',
+      label: '防御',
+      value: formatStatPct(myDefensePct),
+      tooltipTitle: '防御',
+      tooltipLines: [formatTooltipLine('受到伤害降低', formatStatPct(myDefensePct))],
+    },
+    {
+      key: 'huajin',
+      label: '化劲',
+      value: '0%',
+      tooltipTitle: '化劲',
+      tooltipLines: [formatTooltipLine('化劲', '0%')],
+    },
+    {
+      key: 'damageReduction',
+      label: '伤害减免',
+      value: formatWholePct(damageReductionPct),
+      tooltipTitle: '伤害减免',
+      tooltipLines: [formatTooltipLine('伤害减免', formatWholePct(damageReductionPct))],
+    },
+  ].sort((a, b) => HEART_STAT_ORDER.indexOf(a.key) - HEART_STAT_ORDER.indexOf(b.key));
+  const openHeartStatHint = useCallback((event: React.MouseEvent<HTMLElement>, row: HeartStatRow) => {
+    if (!row.tooltipLines || row.tooltipLines.length === 0) return;
+    setHeartStatHint({
+      title: row.tooltipTitle ?? row.label,
+      lines: row.tooltipLines,
+      anchorRect: event.currentTarget.getBoundingClientRect(),
+    });
+  }, []);
+  const toggleHeartStatVisibility = useCallback((key: HeartStatKey) => {
+    setHeartStatVisibility((prev) => ({
+      ...prev,
+      [key]: prev[key] === false,
+    }));
+  }, []);
   const selectedTargetForHud = selectedTargetId
     ? opponentsList.find((o) => o.userId === selectedTargetId) ?? null
     : null;
@@ -5118,14 +5345,15 @@ export default function BattleArena({
       </div>
       <div className={styles.critPresetBar}>
         {[
-          { id: 'no-crit', label: '无会心', value: 0, color: '#96a0aa' },
-          { id: 'green-crit', label: '绿', value: 36, color: '#42b663' },
-          { id: 'blue-crit', label: '蓝', value: 40, color: '#3a8dff' },
-          { id: 'purple-crit', label: '紫', value: 46, color: '#9f5fd9' },
+          { id: 'white-crit', label: '白', value: 0, defenseValue: 0, color: '#f3f4f6' },
+          { id: 'green-crit', label: '绿', value: 20, defenseValue: 12, color: '#42b663' },
+          { id: 'blue-crit', label: '蓝', value: 30, defenseValue: 16, color: '#3a8dff' },
+          { id: 'purple-crit', label: '紫', value: 40, defenseValue: 23, color: '#9f5fd9' },
         ].map((preset) => {
           const active =
             Math.abs(myBaseWaiGongCritChancePct - preset.value) < 0.001 &&
-            Math.abs(myBaseNeiGongCritChancePct - preset.value) < 0.001;
+            Math.abs(myBaseNeiGongCritChancePct - preset.value) < 0.001 &&
+            Math.abs(myBaseDefensePct - preset.defenseValue) < 0.001;
           return (
             <button
               key={preset.id}
@@ -5134,18 +5362,19 @@ export default function BattleArena({
               className={styles.critPresetButton}
               style={{
                 borderColor: preset.color,
-                color: active ? '#ffffff' : preset.color,
+                color: active ? (preset.id === 'white-crit' ? '#111827' : '#ffffff') : preset.color,
                 background: active ? preset.color : 'rgba(12,18,30,0.88)',
                 opacity: runningCheatAction ? 0.6 : 1,
                 cursor: runningCheatAction ? 'not-allowed' : 'pointer',
               }}
               onClick={() => void runCheatAction(
-                `set-crit-${preset.value}`,
+                `set-crit-${preset.value}-def-${preset.defenseValue}`,
                 '/api/game/cheat/set-crit-chance',
-                `双方外功会心/内功会心已设为 ${preset.value}%`,
+                `双方外功会心/内功会心已设为 ${preset.value}%，防御力已设为 ${preset.defenseValue}%`,
                 {
                   waiGongCritChancePct: preset.value,
                   neiGongCritChancePct: preset.value,
+                  defensePct: preset.defenseValue,
                 },
               )}
             >
@@ -5803,30 +6032,58 @@ export default function BattleArena({
         </div>
       </div>
       {showHeartDetailsPanel && (
-        <div className={styles.heartDetailsPanel}>
-          <div className={styles.heartDetailsHeader}>
-            <span className={styles.heartDetailsTitle}>属性</span>
-            <span className={styles.heartDetailsTab}>详细</span>
+        <>
+          <div className={styles.heartDetailsPanel}>
+            <div className={styles.heartDetailsHeader}>
+              <span className={styles.heartDetailsTitle}>属性</span>
+              <button
+                type="button"
+                className={styles.heartDetailsTab}
+                onClick={() => setShowHeartStatSettings((value) => !value)}
+                aria-pressed={showHeartStatSettings}
+              >
+                详细
+              </button>
+            </div>
+            <div className={styles.heartDetailsBody}>
+              {heartStatRows.map((row) => {
+                const isVisible = heartStatVisibility[row.key] !== false;
+                return (
+                <div
+                  key={row.key}
+                  className={`${styles.heartDetailsRow} ${isVisible ? '' : styles.heartDetailsRowHidden}`.trim()}
+                  onMouseEnter={isVisible ? (event) => openHeartStatHint(event, row) : undefined}
+                  onMouseLeave={isVisible ? () => setHeartStatHint(null) : undefined}
+                  aria-hidden={!isVisible}
+                >
+                  <span className={styles.heartDetailsLabel}>{row.label}</span>
+                  <span className={styles.heartDetailsValue}>{row.value}</span>
+                </div>
+                );
+              })}
+            </div>
           </div>
-          <div className={styles.heartDetailsBody}>
-            <div className={styles.heartDetailsRow}>
-              <span className={styles.heartDetailsLabel}>外功会心</span>
-              <span className={styles.heartDetailsValue}>{myWaiGongCritChancePct.toFixed(2)}%</span>
+          {showHeartStatSettings && (
+            <div className={styles.heartSettingsPanel}>
+              <div className={styles.heartSettingsHeader}>详细</div>
+              <div className={styles.heartSettingsBody}>
+                {heartStatRows.map((row) => (
+                  <label key={row.key} className={styles.heartSettingsRow}>
+                    <input
+                      type="checkbox"
+                      checked={heartStatVisibility[row.key] !== false}
+                      onChange={() => toggleHeartStatVisibility(row.key)}
+                      className={styles.heartSettingsCheckbox}
+                    />
+                    <span className={styles.heartSettingsLabel}>{row.label}</span>
+                    <span className={styles.heartSettingsValue}>{row.value}</span>
+                  </label>
+                ))}
+              </div>
             </div>
-            <div className={styles.heartDetailsRow}>
-              <span className={styles.heartDetailsLabel}>内功会心</span>
-              <span className={styles.heartDetailsValue}>{myNeiGongCritChancePct.toFixed(2)}%</span>
-            </div>
-            <div className={styles.heartDetailsRow}>
-              <span className={styles.heartDetailsLabel}>外功会心效果</span>
-              <span className={styles.heartDetailsValue}>{myWaiGongCritEffectPct.toFixed(2)}%</span>
-            </div>
-            <div className={styles.heartDetailsRow}>
-              <span className={styles.heartDetailsLabel}>内功会心效果</span>
-              <span className={styles.heartDetailsValue}>{myNeiGongCritEffectPct.toFixed(2)}%</span>
-            </div>
-          </div>
-        </div>
+          )}
+          {heartStatHint && <HeartStatHoverHint hint={heartStatHint} />}
+        </>
       )}
 
       {/* ===== TOP-CENTER: Target info panel — health → buffs → abilities (self or enemy) ===== */}

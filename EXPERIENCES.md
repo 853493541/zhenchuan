@@ -3,6 +3,46 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## C panel display settings and GCD audit (2026-05-06)
+
+**Problem set**:
+1. 防御力 made normal damage decimal, but the frontend still inferred 会心 from decimal damage values.
+2. The C-key 属性 panel needed higher layering, reordered stats, no decimals for 气血值/闪避, scaled 跑速 display, hover breakdowns, and persistent per-stat visibility.
+3. Current GCD behavior needed a cross-code audit instead of relying on ability descriptions.
+
+**Fix**:
+- BattleArena now treats damage as 会心 only when the event explicitly carries `isCrit: true`; decimal damage no longer implies crit.
+- The C-key panel z-index is above the jump-height overlay, uses ordered rows, shows `跑速` as the UI-scale speed while its hover shows real `尺/每秒`, and provides a `详细` checkbox panel persisted in localStorage.
+- 会心 and 会心效果 are combined in the main panel and expose 外功/内功 values in the hover tooltip.
+
+**Lessons**:
+- Once damage can be modified by percentage stats such as 防御力, display code must never infer crit from non-integer damage.
+- Runtime GCD has three different concepts: global `gcd:true`, qinggong shared cooldown, and charge cast locks. They need separate audit rows because they are applied and counted down in different places.
+
+**Follow-up (later same day)**:
+- The main C panel should keep a fixed footprint even when rows are hidden. Filtering rows out made the panel shrink, so the safer UI pattern is to keep row slots mounted and hide their contents with layout-preserving CSS.
+- Reset transient subpanels when a parent panel is reopened. Leaving `详细` open across C-panel close/reopen felt sticky and mismatched the expected default-open state.
+- Native checkbox accent colors are not reliable enough for exact art direction; custom checkbox styling is the stable way to guarantee a white background for both checked and unchecked states.
+- Tooltip copy needed a shared formatter. Hardcoding `label:value` strings made spacing and wording drift; routing them through one formatter keeps `label: value` spacing consistent while still allowing special lines like 跑速 and 防御 to override their phrasing.
+- `伤害减免` reads better as a whole-number percentage in this compact panel; fixed-point decimals add noise there faster than they add useful precision.
+
+## Defense stat and combat display updates (2026-05-05)
+
+**Problem set**:
+1. 防御力 needed to reduce base damage before the existing crit and damage-reduction pipeline.
+2. The crit preset buttons needed matching 防御力 presets.
+3. 韦陀献杵 should modify 防御力 multiplicatively rather than acting as direct damage taken/DR.
+4. Combat floats and the C-key stats panel needed clearer numeric display.
+
+**Fix**:
+- Players now carry `defensePct`, and combat math applies final 防御力 to base damage before existing target-side damage taken / DR modifiers and crit resolution.
+- Added `DEFENSE_MULTIPLIER` Buff effects so 韦陀献杵易伤 uses `0.9x` defense and 韦陀献杵防御 uses `1.1x` defense.
+- The four preset buttons now set crit/defense pairs of `0/0`, `20/12`, `30/16`, and `40/23`.
+- Floating damage text uses two fixed decimals, and the C-key stats panel now shows 最大气血值, 防御力, 闪避, 移动速度, and DR in addition to crit stats.
+
+**Lessons**:
+- Base stats like 防御力 should be resolved before higher-level damage modifiers, while Buff changes to that stat should multiply the original stat instead of being treated as additive DR.
+
 ## In-game ability and buff hover panels (2026-05-05)
 
 **Problem set**:

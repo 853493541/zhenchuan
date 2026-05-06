@@ -10,6 +10,7 @@ export type EffectType =
   | "DRAW"
   | "COOLDOWN_SLOW"
   | "DAMAGE_REDUCTION"
+  | "DEFENSE_MULTIPLIER"
   | "DAMAGE_TAKEN_INCREASE"
   | "DAMAGE_MULTIPLIER"
   | "CRIT_CHANCE_BONUS"
@@ -343,6 +344,9 @@ export interface AbilityEffect {
    * Values: "外功" | "内功" | "无"
    */
   damageType?: string;
+
+  /** For DEFENSE_MULTIPLIER: multiplier applied to the target's base defensePct. */
+  defenseMultiplier?: number;
 
   /** For SPECIAL_ABILITY_BAR: ability ids to display and allow while the buff is active. */
   abilityIds?: string[];

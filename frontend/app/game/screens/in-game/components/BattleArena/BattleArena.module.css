@@ -289,13 +289,14 @@
   position: absolute;
   top: calc(44% + 62px);
   left: 21%;
-  width: 12vw;
-  min-width: 180px;
+  width: 13vw;
+  min-width: 220px;
+  max-width: 300px;
   background: rgba(34, 42, 49, 0.96);
   border: 1px solid rgba(128, 148, 166, 0.42);
   border-radius: 6px;
   overflow: hidden;
-  z-index: 26;
+  z-index: 720;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.4);
 }
 
@@ -326,34 +327,180 @@
   font-size: 16px;
   font-weight: 700;
   font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  border: 0;
   border-left: 1px solid rgba(154, 173, 190, 0.28);
+  cursor: pointer;
+}
+
+.heartDetailsTab:hover,
+.heartDetailsTab[aria-pressed="true"] {
+  background: linear-gradient(180deg, rgba(48, 134, 142, 0.95), rgba(35, 101, 112, 0.95));
+  color: #ffffff;
 }
 
 .heartDetailsBody {
-  padding: 14px 16px 16px;
+  padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;
 }
 
 .heartDetailsRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  min-height: 26px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.heartDetailsRowHidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .heartDetailsLabel {
   font-size: 15px;
   color: #eef4f7;
   font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  white-space: nowrap;
 }
 
 .heartDetailsValue {
-  font-size: 15px;
+  font-size: 14px;
   color: #f2f5f8;
   font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
   text-align: right;
+  white-space: nowrap;
+}
+
+.heartDetailsEmpty {
+  padding: 6px;
+  color: rgba(238, 244, 247, 0.62);
+  font-size: 14px;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+.heartSettingsPanel {
+  position: absolute;
+  top: calc(44% + 62px);
+  left: calc(21% + max(220px, 13vw) + 10px);
+  width: 13vw;
+  min-width: 220px;
+  max-width: 300px;
+  background: rgba(30, 38, 45, 0.97);
+  border: 1px solid rgba(128, 148, 166, 0.42);
+  border-radius: 6px;
+  z-index: 730;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.42);
+  overflow: hidden;
+}
+
+.heartSettingsHeader {
+  padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(54, 64, 74, 0.98), rgba(42, 50, 57, 0.98));
+  border-bottom: 1px solid rgba(126, 145, 162, 0.32);
+  color: #f3f6f8;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+.heartSettingsBody {
+  padding: 8px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heartSettingsRow {
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  color: #eef4f7;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  cursor: pointer;
+}
+
+.heartSettingsRow:hover {
+  background: rgba(52, 142, 154, 0.34);
+}
+
+.heartSettingsCheckbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 2px;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.heartSettingsCheckbox::after {
+  content: '';
+  width: 7px;
+  height: 4px;
+  border-left: 2px solid #2eb8c4;
+  border-bottom: 2px solid #2eb8c4;
+  transform: rotate(-45deg) scale(0);
+  transform-origin: center;
+}
+
+.heartSettingsCheckbox:checked {
+  background: #ffffff;
+  border-color: #2eb8c4;
+}
+
+.heartSettingsCheckbox:checked::after {
+  transform: rotate(-45deg) scale(1);
+}
+
+.heartSettingsLabel {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.heartSettingsValue {
+  font-size: 13px;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.heartStatHint {
+  position: fixed;
+  min-width: 170px;
+  max-width: 240px;
+  padding: 8px 10px;
+  background: rgba(24, 29, 34, 0.97);
+  border: 1px solid rgba(229, 164, 62, 0.5);
+  border-radius: 5px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 740;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+.heartStatHintTitle {
+  margin-bottom: 4px;
+  color: #f2a33b;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.heartStatHintLine {
+  color: #f4f7f9;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
 /* ============================================================

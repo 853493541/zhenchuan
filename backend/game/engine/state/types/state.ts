@@ -71,6 +71,8 @@ export interface PlayerState {
   neiGongCritChancePct?: number;
   /** Runtime crit chance percentage used by combat resolution (0-100). */
   critChancePct?: number;
+  /** Runtime 防御力 percentage (0-100). Applied to base damage before crit/DR. */
+  defensePct?: number;
 
   /** abilities in hand */
   hand: AbilityInstance[];
