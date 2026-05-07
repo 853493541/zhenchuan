@@ -3,6 +3,176 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Status readability, shield display, icon bar, and HTTPS verification (2026-05-07)
+
+**Problem set**:
+1. Status placement boxes needed to be long, centered-label rows with at least 10 buffs per row.
+2. Status icon/text readability needed brighter colors, larger icons, stronger text outlines, slower near-invisible urgent blinking, and hover text `马上消亡` for sub-1-second remaining time.
+3. 应天授命 needed a 1亿 shield, while shield numbers above max HP should be hidden on self, target, and target-target bars.
+4. Empty-ground deselect needed to happen only on a rapid left click, not on left-click drag used for camera movement.
+5. The target health UI needed a screenshot-inspired icon-bar style, then was corrected to target-only, centered name text, no icon slot, no blue marker, and tighter/larger red health layout.
+6. Localhost Playwright testing produced connection noise, so final browser testing needed the real HTTPS host.
+
+**Fix**:
+- Raised status rows to 10 items by default, made custom status placement boxes long, and centered their editing labels.
+- Increased status icon size by 15%, brightened buff names/timers with heavier outlines, used displayed seconds for urgent blinking, and changed tooltip zero-second text to `马上消亡`.
+- Set the 应天授命 linked shield to `100_000_000` and hid numeric shield labels when shield exceeds max HP while preserving the white shield fill.
+- Deferred empty-ground target clearing to low-movement, short-duration left-click release, so camera drag no longer deselects.
+- Reworked selected target and target-target health bars into centered red icon bars with distance-name titles, removed the temporary self-bar conversion, removed the placeholder icon area and blue marker, and removed live status debug panels from the HUD.
+- Verified on `https://zhenchuan.renstoolbox.com`: login, start 玉门关, target selection via Tab, drag-vs-click deselect behavior, and 应天授命 shield application/display.
+
+**Lessons**:
+- Use the real HTTPS host for browser verification when WebSocket routing differs from localhost; localhost can create false connection failures even after PM2 is healthy.
+- Visual target HUD changes should be tested against screenshots quickly, because placeholder icon areas and extra resource markers can look wrong even when the underlying markup is technically structured.
+- Status debug overlays are useful while tuning timers, but must not remain enabled in live HUD paths.
+
+## Target selection and split movable status bars (2026-05-07)
+
+**Problem set**:
+1. Target-of-target was inferred from active channels/fallbacks instead of the selected actor's real target.
+2. Status bar borders, hover emphasis, urgent blinking, timer outlines, timer size, and second-mark spacing needed to better match the requested in-game visual style.
+3. Player and target buff/debuff bars needed to be separate movable custom UI elements.
+4. Dragging in 自定义界面 could still move the camera because global capture-phase mouse handlers saw the event before React handlers stopped it.
+
+**Fix**:
+- Added authoritative `targetSelection` to player state, a `/game/target/selection` route, frontend sync through `useGameState`, and target-of-target resolution from the selected actor's stored selection.
+- Softened status icon borders to lightweight gray, made hover more obvious through icon framing, changed urgent flashing to a smooth 1-second opacity animation, enlarged centered timer text, thinned its black outline, and replaced spaced ASCII seconds marks with compact prime glyphs.
+- Added `categoryFilter` to `StatusBar`, then split player and target status into independent `BUFF` and `DEBUFF` placement keys under the existing `zhenchuan-ui-positions` storage. Legacy player status placement seeds the new player buff bar so old layouts do not jump unexpectedly.
+- Cleared camera drag state when entering custom UI or starting UI drag, marked draggable status placements with `data-ui-drag`, and blocked mouse/touch/wheel camera handlers while custom UI mode is active.
+
+**Lessons**:
+- Target-of-target must be shared authoritative state once the UI promises to show another actor's real target. Active channels are useful cast context, not selection state.
+- Capture-phase window listeners can beat React `stopPropagation`; draggable HUD elements need both a data-attribute guard and explicit camera-state reset.
+- Splitting a shared visual component is cleaner when the component gets a narrow category filter prop instead of duplicating buff rendering logic in the parent HUD.
+
+## Homepage start styling, status hover rules, and custom UI placement (2026-05-07)
+
+**Problem set**:
+1. The homepage primary start button looked like a plain black rectangle and needed stronger game styling.
+2. The in-game mode badge had been offset to avoid a home panel that is no longer displayed.
+3. Status text needed thin black outlining, yellow default buff/debuff names, black icon borders, smaller icon scale, flex-start rows, and full-item blinking below 3 seconds.
+4. Hovered status icons needed to read differently from non-hovered icons without turning status text white.
+5. The ESC panel needed a first custom UI mode that closes the panel, shows confirm/cancel controls, and lets the player move the status bar with saved placement.
+
+**Fix**:
+- Restyled the big homepage start button with a framed, highlighted game-button treatment while keeping the existing mode selector flow.
+- Moved the mode badge back to the top-left now that the home panel no longer occupies that space.
+- Updated StatusBar rows to flex-start layout, reduced default icon size by 30%, added thin black borders/outlines to icons, names, timers, and stack numbers, made names yellow by default, and made sub-3-second statuses blink as a complete item.
+- Replaced the old hover whitening with a blue icon border/glow so hover matches the screenshot difference while preserving text colors.
+- Added 自定义界面 in the ESC panel. It opens a centered confirm/cancel panel and a green placement frame for the player status bar; confirmed positions persist through the existing `zhenchuan-ui-positions` storage, and cancel restores the snapshot.
+
+**Lessons**:
+- StatusBar hover should use icon framing for affordance when text colors carry gameplay meaning; changing text to white fights readability and screenshots.
+- UI customization should reuse the existing position persistence seam and add confirm/cancel snapshot behavior instead of writing a separate storage format.
+
+## Status layout, disconnect prompt, target-target HUD, and BVH audit (2026-05-07)
+
+**Problem set**:
+1. The status bar name/time/icon layout had drifted from the old name-above-icon presentation.
+2. Status icons needed to be larger while keeping time below the icon and rows left-aligned.
+3. Remaining players needed a modal choice when another player disconnects, with No/Yes and a 30-second countdown.
+4. The target-target bar needed to be half-size, include compact buff/debuff icons, show percent-only health text, and still appear when self is selected.
+5. The per-stat combat preset panel needed visible exact values, not hidden tooltip-only values.
+6. The previous BVH helper restoration needed an audit to confirm it did not undo the intentional exported-map ground fallback cleanup.
+
+**Fix**:
+- Restored StatusBar names to the previous above-icon flow with category-colored text, set icons to 48px, moved timers below icons, and made rows consume full width so contents align left.
+- Added `PLAYER_DISCONNECTED` / `PLAYER_RECONNECTED` WebSocket presence messages and a solid, non-blur disconnect modal that can dismiss or call `/game/end` and return home; the countdown auto-returns after 30 seconds.
+- Added compact StatusBar options for icon-only rows, then used them under the half-width target-target boss health bar. Target-target HP now displays as a percentage, and self selection falls back to the primary opponent.
+- Updated the expanded combat stat preset panel so every rarity button shows the exact stat value directly in the panel.
+- Audited the BVH helper restore: the restored symbols are required by collision, vertical ground probing, and LOS, while collision-test unsupported support still returns `0` instead of falling back to legacy object heights.
+
+**Lessons**:
+- For a shared component like StatusBar, add explicit props for compact/hidden-name/hidden-timer variants instead of restyling the default and breaking existing presentation.
+- Opponent disconnect prompts need a server-side presence event; a client can only observe its own socket closing.
+- Restoring a missing helper can be correct even if the helper includes legacy-mode utilities, as long as the active collision-test path keeps the intended guard against legacy fallback behavior.
+
+## Exported map BVH helper regression (2026-05-07)
+
+**Problem set**:
+1. The exported-map battle scene crashed at runtime with `ReferenceError: getBvhGroundProbeOriginY is not defined`.
+2. The same broken helper seam also removed `EXPORT_CYL_RADIUS`, and the remaining collision / LOS code still referenced it during BattleArena startup.
+3. Because the frontend production build skips type validation in this setup, those missing top-level symbols survived build time and only failed in the browser.
+
+**Fix**:
+- Restored the deleted shared BattleArena helper block: `getGroundHeightClient`, `_bvhCenter`, `_bvhVelocity`, `EXPORT_CYL_RADIUS`, `EXPORT_CYL_HALF_HEIGHT`, `BVH_STEP_UP_EXPORT`, and `getBvhGroundProbeOriginY`.
+- Rebuilt backend and frontend, restarted PM2, and verified frontend `200` plus backend preload `200` after the fix.
+
+**Lessons**:
+- When a render or collision helper is shared across multiple runtime paths, partial cleanup can leave valid syntax but broken runtime globals. Re-check the whole helper seam, not only the first missing symbol in the browser console.
+- In this repo, `next build` can still miss missing runtime identifiers when type validation is skipped, so PM2/browser failures need a direct audit of referenced top-level constants and helpers.
+
+## Cast guards, leave flow, lobby controls, target HUD, and status rows (2026-05-07)
+
+**Problem set**:
+1. 云飞玉皇 and similar movement-cancelled channels could still be triggered while walking when latency was low, because they were not explicitly marked `requiresStanding`.
+2. The global header/home affordance needed to send a leave signal, show the other player a delayed-end notice, then end the game after 5 seconds.
+3. The homepage needed a default 玉门关 mode picker, nearby start button, large center start button, and far-right 技能编辑 entry.
+4. The combat stat test controls needed the existing rarity presets plus an expanded per-stat rarity selector.
+5. Empty left-clicks in non-UI game space needed to clear target selection.
+6. The target HUD needed a target-of-target boss bar to the right of the selected target health bar.
+7. Status rows needed fixed buff/debuff rows, application ordering, square neutral icons, compact gaps, hover whitening, minute/second timer formatting, and sub-3-second flashing.
+
+**Fix**:
+- Backend and frontend cast guards now treat active `CHANNEL` abilities that cancel on movement as standing-required at cast time, even if the ability definition lacks `requiresStanding`.
+- `/game/end` now broadcasts `leaveNotice`, schedules terminal `GAME_OVER` 5 seconds later, and the global header title button owns the in-game leave-home flow.
+- Homepage start controls now use the selected mode for both start buttons, default to collision-test/玉门关, include export viewer, and keep 技能编辑 aligned to the far right.
+- BattleArena preserves the four broad rarity stat presets and adds an expandable per-stat selector that reuses the existing cheat route while sending required crit fields every time.
+- BattleArena clears selected player/entity/self targets on empty left-clicks when no ground cast or dummy spawn is pending.
+- The selected-target HUD now renders a right-side target-of-target health bar, using active channel target data when available and falling back to the local player for the 1v1 selected-enemy case.
+- StatusBar now sorts visible statuses by applied time/original order, keeps fixed positive and negative rows, removes category-colored borders, uses square compact cells, formats timers as red seconds (`5''`) or yellow minutes (`1'`), and flashes timers below 3 seconds.
+
+**Lessons**:
+- Movement-cancelled channel abilities need a cast-time standing guard, not only runtime channel cancellation. Otherwise a low-latency walk input can spend the ability before the cancel path catches up.
+- Header leave flow should be driven by shared game state (`leaveNotice` + delayed `GAME_OVER`) instead of a purely local redirect, so the other client receives a visible ending notice.
+- The target-of-target bar is frontend-derived for now because selected targets are not shared state. If exact remote target selection is needed later, extend the authoritative game state rather than inferring from active channels.
+- A bad JSX patch that landed inside a geometry helper compiled through diagnostics but failed `next build`; for render-heavy TSX edits, the production build is the reliable syntax backstop.
+
+## Testing battle reset, channel cancellation, and manual battle exit (2026-05-07)
+
+**Problem set**:
+1. In testing, a lethal hit ended the battle and triggered tournament progression instead of keeping both players in the same fight.
+2. Buff-backed reverse channels such as `斩无常` could remain active after another ability successfully cast.
+3. The local player could keep seeing their own active channel bar briefly after movement because the frontend waited for the authoritative diff.
+4. Ended or stale battles returned active-loop errors but did not consistently behave like a missing game on the frontend.
+5. Collision-test self rendering waited for map collision readiness, and unsupported exported-map support checks could fall back to legacy map heights.
+
+**Fix**:
+- The shared `checkGameOver()` seam now heals only defeated players to full health and never writes `winnerUserId` / `gameOver` for testing deaths, so immediate casts cannot trigger tournament progression.
+- Realtime successful casts now break existing buff-backed reverse channel buffs before applying the new ability, while failed validation leaves the old channel intact.
+- The local movement-triggered active-channel suppression/cancel experiment was reverted; backend movement cancellation remains authoritative, while standing-required casts stay blocked by frontend movement intent.
+- Added `/api/game/end` handling so the top-left home button marks the battle ended, broadcasts that terminal state, and both clients return to `/game`.
+- Collision-test self rendering is no longer gated on collision readiness, exported-map loading yields a frame first, and unsupported BVH ground checks no longer use legacy object-height fallback.
+
+**Lessons**:
+- Testing-only death behavior belongs in the shared win-condition seam, not only in `GameLoop.tick()`. Immediate cast paths call `checkGameOver()` before the next tick, so that seam must heal defeated players before any `gameOver + winnerUserId` state can exist.
+- Channel replacement rules should run only after validation succeeds, and buff-backed channel metadata may need to be inferred from canonical buff definitions rather than frontend resolved metadata.
+- Be careful with local channel-cancel prediction: sending explicit cancel requests from movement input can fight normal cast/movement flow. For 云飞, keep the standing-cast prevention intent-based and let the backend channel cancellation arrive through the normal state diff.
+
+## Standing casts, active-channel errors, movement feel, and map loading (2026-05-06)
+
+**Problem set**:
+1. `requiresStanding` casts were gated by residual planar velocity, so after key release the player could wait on deceleration instead of intent.
+2. Forward channeling could be silently replaced by a new cast because realtime play bypassed active-channel validation and auto-cancelled the existing channel.
+3. Gameplay routes mixed plain-text errors and uncoded JSON messages, making frontend handling inconsistent.
+4. Collision-test map loading serialized GLBs, terrain, and collision sidecars, delaying collision readiness behind visual mesh loading.
+5. Moving channel AOE rings followed raw server/player props while character meshes used smoothed render positions.
+6. Traditional S+A/D mixed backpedal with diagonal movement/facing snaps instead of backpedaling while A/D turned facing.
+
+**Fix**:
+- Standing validation now uses current movement intent plus airborne/dash state, and standing casts clear residual planar velocity on both backend and local prediction.
+- Realtime casts no longer ignore active channels; `ERR_CHANNELING` is returned and Escape uses a dedicated `/channel/cancel` path to cancel the current channel.
+- Gameplay action routes now return coded JSON errors with `{ error, code, message }`, and the in-game client parses those codes for toasts.
+- Exported map loading starts entities, terrain, and collision sidecars together; collision BVH readiness is no longer blocked by all GLB visuals finishing first.
+- Channel AOE rings now follow the local smoothed render ref or interpolate like opponent characters.
+- Traditional S+A/D now stays in backpedal movement while keyboard turning updates facing, including the backend facing payload.
+
+**Lessons**:
+- Standing checks should distinguish input intent from inertial cleanup. If residual movement still exists after release, the cast seam can snap it to zero instead of making validation wait.
+- Do not make normal casts double as channel-cancel commands. Cancellation deserves an explicit route, especially when Escape has existing UI behavior.
+- Moving world-space VFX should share the same smoothed position source as the actor they are attached to; mixing raw server props with smoothed meshes creates visible jitter.
+- The exported map pipeline is heavy enough that independent loading phases should run concurrently, and collision readiness should be reported as soon as the collision/terrain data is ready.
+
 ## Control-only immunity, dummy stats, restart HP, and client diff load (2026-05-06)
 
 **Problem set**:

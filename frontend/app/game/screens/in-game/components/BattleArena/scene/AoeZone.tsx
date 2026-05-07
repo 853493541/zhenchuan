@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, type MutableRefObject } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
@@ -19,16 +19,41 @@ interface AoeZoneProps {
   label?: string;
   /** Colour override for the label — defaults to `color` */
   labelColor?: string;
+  followPositionRef?: MutableRefObject<{ x: number; y: number; z: number }>;
+  followZOffset?: number;
+  smoothPosition?: boolean;
+  instantSnapAtRef?: MutableRefObject<number>;
+  instantSnapWindowMs?: number;
 }
 
 export default function AoeZone({
   worldX, worldY, worldZ = 0, radius, color, ringThickness, labelSize, worldHalfX, worldHalfY,
-  label, labelColor,
+  label, labelColor, followPositionRef, followZOffset = 0, smoothPosition = false, instantSnapAtRef, instantSnapWindowMs = 0,
 }: AoeZoneProps) {
+  const groupRef  = useRef<THREE.Group>(null);
   const ringRef   = useRef<THREE.Mesh>(null);
   const fillRef   = useRef<THREE.Mesh>(null);
+  const currentPos = useRef(new THREE.Vector3(worldX - worldHalfX, worldZ + 0.04, worldHalfY - worldY));
 
   useFrame(({ clock }) => {
+    const target = followPositionRef?.current;
+    const targetX = target ? target.x - worldHalfX : worldX - worldHalfX;
+    const targetY = target ? (target.z ?? 0) + followZOffset + 0.04 : worldZ + 0.04;
+    const targetZ = target ? worldHalfY - target.y : worldHalfY - worldY;
+    if (groupRef.current) {
+      if (followPositionRef) {
+        groupRef.current.position.set(targetX, targetY, targetZ);
+      } else if (smoothPosition) {
+        const shouldSnap = !!instantSnapAtRef && instantSnapWindowMs > 0 && performance.now() - instantSnapAtRef.current < instantSnapWindowMs;
+        if (shouldSnap) {
+          currentPos.current.set(targetX, targetY, targetZ);
+        } else {
+          currentPos.current.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.18);
+        }
+        groupRef.current.position.copy(currentPos.current);
+      }
+    }
+
     const pulse = 0.5 + 0.5 * Math.sin(clock.getElapsedTime() * 3.3);
     if (ringRef.current) {
       const mat = ringRef.current.material as THREE.MeshBasicMaterial;
@@ -47,7 +72,7 @@ export default function AoeZone({
   const resolvedLabelSize = Math.max(0.2, labelSize ?? 0.72);
 
   return (
-    <group position={[x, worldZ + 0.04, z]}>
+    <group ref={groupRef} position={[x, worldZ + 0.04, z]}>
       {/* Ground fill disc */}
       <mesh ref={fillRef} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[radius, 48]} />

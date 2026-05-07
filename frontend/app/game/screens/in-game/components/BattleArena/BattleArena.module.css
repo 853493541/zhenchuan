@@ -40,11 +40,17 @@
   left: 10px;
   transform: none;
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   z-index: 500;
   pointer-events: auto;
+}
+
+.critPresetButtonStack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
 
 .critPresetButton {
@@ -57,6 +63,71 @@
   font-weight: 800;
   letter-spacing: 0.4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.critPresetExpandButton {
+  min-width: 28px;
+  width: 28px;
+  padding: 0;
+  background: rgba(14, 20, 30, 0.9);
+  border-color: rgba(209, 213, 219, 0.72);
+  color: #e5e7eb;
+}
+
+.critPresetPanel {
+  min-width: 360px;
+  padding: 8px;
+  background: rgba(15, 23, 34, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.critPresetPanelRow {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+.critPresetPanelLabel {
+  color: #dbe5ef;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.critPresetPanelButtons {
+  display: grid;
+  grid-template-columns: repeat(4, 72px);
+  gap: 4px;
+}
+
+.critPresetMiniButton {
+  width: 72px;
+  height: 36px;
+  border: 1px solid;
+  border-radius: 4px;
+  font-weight: 800;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1;
+}
+
+.critPresetMiniLabel {
+  font-size: 11px;
+}
+
+.critPresetMiniValue {
+  font-size: 9px;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 /* ============================================================
@@ -514,37 +585,124 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
-  width: 14vw;
-  min-width: 160px;
+  gap: 5px;
+  width: auto;
+  min-width: 0;
   pointer-events: none;
   z-index: 20;
 }
 
 .enemyBossBar {
-  width: 100%;
+  width: 360px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 2px;
-  background: rgba(120, 20, 30, 0.55);
-  border: 1px solid rgba(200, 60, 80, 0.5);
-  border-radius: 8px;
-  padding: 8px 14px 10px;
-  box-shadow: 0 0 14px rgba(180, 30, 30, 0.2), inset 0 1px 0 rgba(255,200,200,0.08);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.enemyBossTopRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: max-content;
+}
+
+.enemyBossTopRow .enemyBossBar {
+  width: 360px;
+  min-width: 360px;
+}
+
+.targetTargetBossStack {
+  width: 220px;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: auto;
+}
+
+.enemyBossTopRow .targetTargetBossStack .targetTargetBossBar {
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+.targetTargetBossBar {
+  width: 220px;
+  gap: 1px;
+}
+
+.targetTargetBossBar .enemyName {
+  color: #ff4b42;
+  font-size: 12px;
+}
+
+.targetTargetBossBar .enemyHpTrack {
+  height: 13px;
+}
+
+.targetTargetBossBar .hpSegmentNum {
+  font-size: 8px;
+}
+
+.targetTargetBossBar .iconBarBody {
+  min-height: 30px;
+  padding: 4px 6px 2px;
+  border-width: 1px;
+}
+
+.targetTargetBossBar .iconBarResourceRow {
+  height: 10px;
+  margin-top: 0;
+}
+
+.targetTargetBossBar .iconBarResourceValue {
+  font-size: 10px;
+}
+
+.targetTargetStatusSlot {
+  width: 100%;
 }
 
 .enemyName {
-  font-size: 11px;
+  font-size: 16px;
   font-weight: 900;
   font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-  letter-spacing: 1.5px;
-  color: #ffd0d5;
+  letter-spacing: 0;
+  color: #ff3f35;
   text-align: center;
   width: 100%;
   text-shadow:
-    1px 0 0 rgba(0,0,0,0.8), -1px 0 0 rgba(0,0,0,0.8),
-    0 1px 0 rgba(0,0,0,0.8),  0 -1px 0 rgba(0,0,0,0.8);
+    1px 0 0 rgba(0, 0, 0, 0.86), -1px 0 0 rgba(0, 0, 0, 0.86),
+    0 1px 0 rgba(0, 0, 0, 0.86),  0 -1px 0 rgba(0, 0, 0, 0.86),
+    0 0 4px rgba(0, 0, 0, 0.78);
+}
+
+.iconBarBody {
+  position: relative;
+  min-height: 44px;
+  padding: 5px 7px 3px;
+  border: 2px solid rgba(117, 31, 24, 0.95);
+  border-radius: 5px;
+  background:
+    linear-gradient(180deg, rgba(198, 57, 43, 0.86), rgba(147, 30, 27, 0.92)),
+    linear-gradient(90deg, rgba(95, 16, 20, 0.82), rgba(157, 36, 31, 0.9));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 137, 105, 0.38),
+    0 3px 10px rgba(20, 0, 0, 0.38);
+}
+
+.selfIconBar .enemyName {
+  color: #f2f5f8;
+}
+
+.selfIconBar .iconBarBody {
+  border-color: rgba(148, 163, 184, 0.68);
+  background: linear-gradient(180deg, rgba(77, 91, 105, 0.86), rgba(41, 52, 64, 0.92));
 }
 
 .enemyHpRow {
@@ -557,17 +715,18 @@
 .enemyHpTrack {
   position: relative;
   width: 100%;
-  height: 22px;
-  background: rgba(60, 0, 0, 0.6);
-  border: 1px solid rgba(180, 40, 40, 0.4);
-  border-radius: 3px;
+  height: 24px;
+  background: rgba(235, 111, 88, 0.72);
+  border: 2px solid rgba(113, 36, 28, 0.88);
+  border-radius: 2px;
   overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 192, 165, 0.38);
 }
 
 .enemyHpFill {
   position: absolute;
   top: 0; left: 0; bottom: 0;
-  border-radius: 3px;
+  border-radius: 0;
   transition: width 0.2s ease-out;
   z-index: 2;
 }
@@ -581,6 +740,26 @@
   box-shadow: 0 0 10px rgba(236, 246, 255, 0.5);
   transition: left 0.12s ease-out, width 0.12s ease-out;
   z-index: 1;
+}
+
+.iconBarResourceRow {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  height: 12px;
+  margin-top: 1px;
+}
+
+.iconBarResourceValue {
+  color: #cdf038;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow:
+    1px 0 0 rgba(0, 0, 0, 0.85), -1px 0 0 rgba(0, 0, 0, 0.85),
+    0 1px 0 rgba(0, 0, 0, 0.85), 0 -1px 0 rgba(0, 0, 0, 0.85);
 }
 
 /* Tick marks at 25 / 50 / 75% */
@@ -811,6 +990,25 @@
   background: rgba(255, 255, 255, 0.04);
 }
 
+.escActionButton {
+  min-height: 54px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(250, 204, 21, 0.34);
+  background: rgba(113, 63, 18, 0.42);
+  color: #fde68a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.escActionButton:hover {
+  border-color: rgba(250, 204, 21, 0.62);
+  background: rgba(146, 64, 14, 0.52);
+}
+
 .escToggleGroup {
   display: flex;
   flex-direction: column;
@@ -963,6 +1161,103 @@
   color: #fecaca;
   cursor: pointer;
   font: inherit;
+}
+
+.customUiPrompt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 10010;
+  transform: translate(-50%, -50%);
+  width: min(320px, calc(100vw - 32px));
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.46);
+  background: rgba(15, 23, 34, 0.98);
+  color: #e5e7eb;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.46);
+  pointer-events: auto;
+}
+
+.customUiTitle {
+  font-size: 16px;
+  font-weight: 900;
+  color: #f8fafc;
+  text-align: center;
+}
+
+.customUiActions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.customUiButtonSecondary,
+.customUiButtonPrimary {
+  min-width: 92px;
+  height: 34px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.customUiButtonSecondary {
+  border: 1px solid rgba(148, 163, 184, 0.52);
+  background: rgba(30, 41, 59, 0.92);
+  color: #e5e7eb;
+}
+
+.customUiButtonPrimary {
+  border: 1px solid rgba(20, 184, 166, 0.78);
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.customUiStatusPlacement {
+  position: absolute;
+  z-index: 650;
+  width: min(500px, calc(100vw - 32px));
+  min-width: 420px;
+  min-height: 78px;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  pointer-events: auto;
+}
+
+.customUiStatusPlacementSingle {
+  min-height: 48px;
+}
+
+.customUiStatusPlacementEditing {
+  border-color: rgba(34, 197, 94, 0.9);
+  background: rgba(6, 20, 18, 0.42);
+  cursor: move;
+}
+
+.customUiPlacementLabel {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #d7ffe4;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.72),
+    0 0 4px rgba(34, 197, 94, 0.34);
+}
+
+.customUiStatusContent {
+  width: 100%;
+  min-width: 100%;
 }
 
 @media (max-width: 900px) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AbilityInstance, GameResponse } from "../types";
+import type { AbilityInstance, GameResponse, TargetSelection } from "../types";
 
 /* ================= DIFF APPLY ================= */
 
@@ -58,13 +58,22 @@ function applyDiff<T extends object>(prev: T, diff: DiffPatch[]): T {
 /* ================= WEBSOCKET MESSAGE TYPES ================= */
 
 type WSMessage = {
-  type: "STATE_DIFF" | "GAME_OVER" | "PONG" | "PING";
+  type: "STATE_DIFF" | "GAME_OVER" | "PONG" | "PING" | "PLAYER_DISCONNECTED" | "PLAYER_RECONNECTED";
   version?: number;
   diff?: DiffPatch[];
   events?: any[];
   winnerUserId?: string;
+  userId?: string;
+  username?: string;
+  endsAt?: number;
   timestamp?: number; // Server timestamp for RTT measurement
   serverTimestamp?: number;
+};
+
+type DisconnectPrompt = {
+  userId: string;
+  username: string;
+  endsAt: number;
 };
 
 const ABSOLUTE_SERVER_TIME_KEYS = new Set([
@@ -110,11 +119,24 @@ function normalizeGamePayloadTimestamps<T extends { state?: any }>(payload: T, o
   };
 }
 
+async function readBackendError(res: Response): Promise<string> {
+  const text = await res.text();
+  if (!text) return `ERR_HTTP_${res.status}`;
+  try {
+    const data = JSON.parse(text);
+    return String(data.code ?? data.error ?? data.message ?? text);
+  } catch {
+    return text;
+  }
+}
+
 /* ================= HOOK ================= */
 
 export function useGameState(gameId: string, selfUserId: string, initialAuthToken?: string) {
   const [game, setGame] = useState<GameResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [disconnectPrompt, setDisconnectPrompt] = useState<DisconnectPrompt | null>(null);
   const [playing, setPlaying] = useState(false);
   const [rtt, setRtt] = useState<number | null>(null); // Network latency
 
@@ -164,6 +186,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     });
 
     if (!res.ok) {
+      setLoadError(await readBackendError(res));
+      setGame(null);
       setLoading(false);
       return;
     }
@@ -184,6 +208,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     meIndexRef.current = normalizedFull.state.players.findIndex((p: any) => p.userId === selfUserId);
     playerIdsRef.current = normalizedFull.state.players.map((p: any) => p.userId as string);
     setGame(normalizedFull);
+    setLoadError(null);
     setLoading(false);
   }, [gameId, selfUserId, updateServerTimeOffset]);
 
@@ -309,6 +334,24 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             setRtt((prev) => (prev === rttValue ? prev : rttValue));
           }
           updateServerTimeOffset(message.serverTimestamp, receiveDateNow);
+          return;
+        }
+
+        if (message.type === "PLAYER_DISCONNECTED") {
+          if (message.userId && message.userId !== selfUserId) {
+            setDisconnectPrompt({
+              userId: message.userId,
+              username: message.username ?? "对方",
+              endsAt: message.endsAt ?? Date.now() + 30_000,
+            });
+          }
+          return;
+        }
+
+        if (message.type === "PLAYER_RECONNECTED") {
+          if (message.userId) {
+            setDisconnectPrompt((prev) => prev?.userId === message.userId ? null : prev);
+          }
           return;
         }
 
@@ -477,7 +520,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   if (!game) {
     return {
       loading,
+      loadError,
+      disconnectPrompt,
       state: null,
+      tournament: null,
+      gameMode: undefined,
       me: null,
       opponent: null,
       opponents: [],
@@ -485,8 +532,13 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       isWinner: false,
       playAbility: async () => ({ ok: false }),
       cancelBuff: async () => ({ ok: false }),
+      cancelChannel: async () => ({ ok: false }),
+      updateTargetSelection: async () => ({ ok: false }),
       endTurn: async () => ({ ok: false }),
       rtt,
+      refetch: fetchInitialGame,
+      clearDisconnectPrompt: () => setDisconnectPrompt(null),
+      opponentPositionBufferRef,
     };
   }
 
@@ -501,8 +553,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   if (meIndex === -1 || !players[meIndex]) {
     return {
       loading: false,
+      loadError,
+      disconnectPrompt,
       state,
       tournament: game?.tournament,
+      gameMode: game?.mode,
       me: null,
       opponent: null,
       opponents: [],
@@ -510,9 +565,13 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       isWinner: false,
       playAbility: async () => ({ ok: false }),
       cancelBuff: async () => ({ ok: false }),
+      cancelChannel: async () => ({ ok: false }),
+      updateTargetSelection: async () => ({ ok: false }),
       endTurn: async () => ({ ok: false }),
       rtt,
       refetch: fetchInitialGame,
+      clearDisconnectPrompt: () => setDisconnectPrompt(null),
+      opponentPositionBufferRef,
     };
   }
 
@@ -539,6 +598,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     targetUserId?: string,
     groundTarget?: { x: number; y: number; z?: number },
     entityTargetId?: string,
+    movementIntent?: boolean,
   ) => {
     // Real-time battles: no turn restrictions (both players act simultaneously)
     // Turn-based (draft): must be your turn
@@ -561,11 +621,12 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
           targetUserId,
           groundTarget,
           entityTargetId,
+          movementIntent,
         }),
       });
 
       if (!res.ok) {
-        return { ok: false, error: await res.text() };
+        return { ok: false, error: await readBackendError(res) };
       }
 
       const patch = await res.json();
@@ -602,7 +663,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       });
 
       if (!res.ok) {
-        return { ok: false, error: await res.text() };
+        return { ok: false, error: await readBackendError(res) };
       }
 
       const patch = await res.json();
@@ -641,7 +702,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       });
 
       if (!res.ok) {
-        return { ok: false, error: await res.text() };
+        return { ok: false, error: await readBackendError(res) };
       }
 
       const patch = await res.json();
@@ -663,8 +724,81 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     }
   };
 
+  const cancelChannel = async () => {
+    if (playing || state.gameOver) {
+      return { ok: false };
+    }
+
+    setPlaying(true);
+    try {
+      const res = await fetch("/api/game/channel/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameId }),
+      });
+
+      if (!res.ok) {
+        return { ok: false, error: await readBackendError(res) };
+      }
+
+      const patch = await res.json();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
+      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      versionRef.current = patch.version;
+
+      setGame((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          state: applyDiff(prev.state, normalizedDiff),
+        };
+      });
+
+      return { ok: true };
+    } finally {
+      setPlaying(false);
+    }
+  };
+
+  const updateTargetSelection = async (selection: TargetSelection | null) => {
+    if (state.gameOver) {
+      return { ok: false };
+    }
+
+    const res = await fetch("/api/game/target/selection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ gameId, selection: selection ?? { kind: "none" } }),
+    });
+
+    if (!res.ok) {
+      return { ok: false, error: await readBackendError(res) };
+    }
+
+    const patch = await res.json();
+    const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
+    const normalizedDiff = normalizeDiffTimestamps(patch.diff ?? [], offsetMs);
+    versionRef.current = patch.version;
+
+    if (normalizedDiff.length > 0) {
+      setGame((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          state: applyDiff(prev.state, normalizedDiff),
+        };
+      });
+    }
+
+    return { ok: true };
+  };
+
   return {
     loading,
+    loadError,
+    disconnectPrompt,
     state,
     tournament: game?.tournament,
     gameMode: game?.mode,
@@ -675,9 +809,12 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     isWinner,
     playAbility,
     cancelBuff,
+    cancelChannel,
+    updateTargetSelection,
     endTurn,
     rtt,
     refetch: fetchInitialGame,
+    clearDisconnectPrompt: () => setDisconnectPrompt(null),
     opponentPositionBufferRef, // Map<userId, buffer[]> — bypasses React render delay
   };
 }

@@ -55,7 +55,8 @@
    LOGO + TITLE
    ========================================= */
 
-.titleWrap {
+.titleWrap,
+.titleWrapButton {
   display: flex;
   align-items: center;
 
@@ -64,6 +65,14 @@
 
   text-decoration: none;
   cursor: pointer;
+}
+
+.titleWrapButton {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
 }
 
 .title {
@@ -111,7 +120,8 @@
   }
 }
 @media (max-width: 768px) {
-  .titleWrap {
+  .titleWrap,
+  .titleWrapButton {
     transform: translateY(2px);
   }
 }

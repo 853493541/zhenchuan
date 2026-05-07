@@ -61,6 +61,11 @@ export interface ActiveChannel {
   interruptible?: boolean;
 }
 
+export type TargetSelection =
+  | { kind: "self"; userId: PlayerID }
+  | { kind: "player"; userId: PlayerID }
+  | { kind: "entity"; entityId: string };
+
 export interface PlayerState {
   userId: PlayerID;
 
@@ -101,6 +106,9 @@ export interface PlayerState {
 
   /** active buffs on player */
   buffs: ActiveBuff[];
+
+  /** Current player-selected target, used for target-of-target UI. */
+  targetSelection?: TargetSelection;
 
   /* ================= REAL-TIME POSITION & MOVEMENT ================= */
 
@@ -354,6 +362,11 @@ export interface GameState {
 
   gameOver: boolean;
   winnerUserId?: PlayerID;
+  leaveNotice?: {
+    userId: PlayerID;
+    username: string;
+    endsAt: number;
+  };
 
   /** append-only event log */
   events: GameEvent[];

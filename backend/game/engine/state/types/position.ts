@@ -48,7 +48,7 @@ export interface MovementInput {
   /** Precise normalized direction vector (传统模式). Overrides up/down/left/right when present. */
   dx?: number;
   dy?: number;
-  /** True only for pure-S backpedal intent in traditional mode. */
+  /** True for traditional-mode backpedal intent. A/D may still turn facing. */
   backpedalOnly?: boolean;
   /** Client-reported character facing direction (for server-side ability targeting). */
   facing?: { x: number; y: number };

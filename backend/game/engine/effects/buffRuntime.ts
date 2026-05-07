@@ -1154,7 +1154,7 @@ export function addBuff(params: {
 
   // 应天授命: YING_TIAN_SHIELD provides a massive internal shield for damage absorption
   const hasYingTianShield = runtimeBuff.effects.some((e) => e.type === "YING_TIAN_SHIELD");
-  const effectiveShield = hasYingTianShield ? 999_999_999 : linkedShield;
+  const effectiveShield = hasYingTianShield ? 100_000_000 : linkedShield;
 
   const active: ActiveBuff = {
     ...(runtimeBuff as any),

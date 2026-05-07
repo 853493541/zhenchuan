@@ -49,6 +49,7 @@ export type {
   GroundZone,
   TargetEntity,
   ActiveChannel,
+  TargetSelection,
 } from "./types/state";
 
 /* ================= Tournament / Draft / Economy ================= */

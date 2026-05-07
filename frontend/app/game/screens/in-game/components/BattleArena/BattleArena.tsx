@@ -8,7 +8,7 @@ import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBarHost, type ChannelBarData } from './ChannelBar';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
-import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity } from '../../types';
+import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
@@ -52,6 +52,13 @@ type GcdVisibilitySettings = {
 
 const HEART_STAT_STORAGE_KEY = 'zhenchuan-heart-stat-visibility';
 const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
+const UI_POSITION_STORAGE_KEY = 'zhenchuan-ui-positions';
+const LEGACY_PLAYER_STATUS_UI_KEY = 'player-status-bar';
+const PLAYER_BUFF_STATUS_UI_KEY = 'player-buff-status-bar';
+const PLAYER_DEBUFF_STATUS_UI_KEY = 'player-debuff-status-bar';
+const TARGET_BUFF_STATUS_UI_KEY = 'target-buff-status-bar';
+const TARGET_DEBUFF_STATUS_UI_KEY = 'target-debuff-status-bar';
+const STATUS_BAR_VERTICAL_OFFSET = 58;
 const HEART_STAT_ORDER: HeartStatKey[] = [
   'attack',
   'maxHp',
@@ -82,6 +89,22 @@ const DEFAULT_GCD_VISIBILITY_SETTINGS: GcdVisibilitySettings = {
   qinggong: false,
   houyao: false,
 };
+type CombatPresetStatKey = 'attackDamage' | 'maxHp' | 'critChancePct' | 'defensePct' | 'huajinPct';
+
+const COMBAT_PRESET_RARITIES = [
+  { id: 'white', label: '白', color: '#f3f4f6', stats: { critChancePct: 0, defensePct: 0, huajinPct: 40, maxHp: 300000, attackDamage: 10000 } },
+  { id: 'green', label: '绿', color: '#42b663', stats: { critChancePct: 20, defensePct: 12, huajinPct: 55, maxHp: 900000, attackDamage: 30000 } },
+  { id: 'blue', label: '蓝', color: '#3a8dff', stats: { critChancePct: 30, defensePct: 16, huajinPct: 60, maxHp: 1050000, attackDamage: 40000 } },
+  { id: 'purple', label: '紫', color: '#9f5fd9', stats: { critChancePct: 40, defensePct: 23, huajinPct: 73, maxHp: 1260000, attackDamage: 50000 } },
+] as const;
+
+const COMBAT_PRESET_STAT_ROWS: Array<{ key: CombatPresetStatKey; label: string }> = [
+  { key: 'attackDamage', label: '攻击' },
+  { key: 'maxHp', label: '气血' },
+  { key: 'critChancePct', label: '会心' },
+  { key: 'defensePct', label: '防御' },
+  { key: 'huajinPct', label: '化劲' },
+];
 
 type CollisionDebugState = {
   enabled: boolean;
@@ -199,6 +222,12 @@ function getRuntimeAbilityChannel(ability: any): RuntimeAbilityChannel | null {
     ...(Number.isFinite(tickIntervalMs) && tickIntervalMs > 0 ? { tickIntervalMs } : {}),
     ...(typeof channel.buffId === 'number' ? { buffId: channel.buffId } : {}),
   };
+}
+
+function requiresStandingAtCastClient(ability: any): boolean {
+  if (ability?.requiresStanding === true) return true;
+  const channel = getRuntimeAbilityChannel(ability);
+  return channel?.source === 'ACTIVE' && channel.cancelOnMove === true;
 }
 
 function buildChannelBarDataForPlayer(
@@ -337,25 +366,28 @@ function buildTraditionalMoveIntent(
 
     let forwardInput = (keys.w ? 1 : 0) + (keys.s ? -1 : 0) + (bothMouse ? 1 : 0);
     let strafeInput = (keys.a ? 1 : 0) + (keys.d ? -1 : 0);
-    if (keys.a && keys.d) {
+    if (keys.s && !keys.w && !bothMouse) {
+      forwardInput = -1;
+      strafeInput = 0;
+      backpedalOnly = true;
+    }
+    if (!backpedalOnly && keys.a && keys.d) {
       strafeInput = -1;
       forwardInput += 1;
     }
 
     dx = moveFwd.x * forwardInput + moveRight.x * strafeInput;
     dy = moveFwd.y * forwardInput + moveRight.y * strafeInput;
-    backpedalOnly = keys.s && !keys.w && !keys.a && !keys.d && !bothMouse;
   } else {
     const moveFwd = { x: Math.sin(charYaw), y: -Math.cos(charYaw) };
     if (keys.w) {
       dx += moveFwd.x;
       dy += moveFwd.y;
-    }
-    if (keys.s) {
+    } else if (keys.s) {
       dx -= moveFwd.x;
       dy -= moveFwd.y;
+      backpedalOnly = true;
     }
-    backpedalOnly = keys.s && !keys.w && !keys.a && !keys.d;
   }
 
   const dir = normalizePlanar(dx, dy);
@@ -432,10 +464,16 @@ function resolveObjCollisionClient(
 }
 
 /** Get ground height at XY (tallest object the player overlaps and is above). */
-function getGroundHeightClient(px: number, py: number, pz: number, objects: MapObject[], playerRadius = DEFAULT_PLAYER_RADIUS): number {
+function getGroundHeightClient(
+  px: number,
+  py: number,
+  pz: number,
+  objects: MapObject[],
+  playerRadius = DEFAULT_PLAYER_RADIUS,
+): number {
   let ground = 0;
   for (const obj of objects) {
-    if (pz < obj.h - 0.1) continue; // player is below this object's top
+    if (pz < obj.h - 0.1) continue;
     const cx = Math.max(obj.x, Math.min(px, obj.x + obj.w));
     const cy = Math.max(obj.y, Math.min(py, obj.y + obj.d));
     const dx = px - cx;
@@ -447,15 +485,15 @@ function getGroundHeightClient(px: number, py: number, pz: number, objects: MapO
   return ground;
 }
 
-/* ─── BVH collision scratch objects (reused to avoid GC pressure) ─── */
-const _bvhCenter   = new THREE.Vector3();
+/* --- BVH collision scratch objects (reused to avoid GC pressure) --- */
+const _bvhCenter = new THREE.Vector3();
 const _bvhVelocity = new THREE.Vector3();
 // Cylinder collision shape: horizontal radius + half-height tracked separately.
 // _bvhCenter.y is always the CYLINDER CENTRE (feet + half-height), never sphere-bottom.
-const EXPORT_CYL_RADIUS      = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF;
-const CYL_HALF_HEIGHT_GAME   = 0.75;                                      // game units (total height = 1.5)
+const EXPORT_CYL_RADIUS = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF;
+const CYL_HALF_HEIGHT_GAME = 0.75;
 const EXPORT_CYL_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / RENDER_SF;
-const BVH_STEP_UP_EXPORT     = 56;                                         // max step-up in export units
+const BVH_STEP_UP_EXPORT = 56;
 
 function getBvhGroundProbeOriginY(centerY: number): number {
   return centerY - EXPORT_CYL_HALF_HEIGHT + BVH_STEP_UP_EXPORT;
@@ -1021,6 +1059,20 @@ function computeHpShieldSegments(
   };
 }
 
+function shouldDisplayShieldAmount(shield: number | undefined, maxHp: number | undefined): boolean {
+  const safeShield = Math.max(0, Number(shield ?? 0));
+  const safeMaxHp = Math.max(1, Number(maxHp ?? 0));
+  return safeShield > 0 && safeShield <= safeMaxHp;
+}
+
+function formatIconBarDistance(from: Position | undefined, to: Position | undefined, unitScale: number): string {
+  if (!from || !to) return '0.0';
+  const dx = (to.x ?? 0) - (from.x ?? 0);
+  const dy = (to.y ?? 0) - (from.y ?? 0);
+  const dz = ((to as any).z ?? 0) - ((from as any).z ?? 0);
+  return (Math.sqrt(dx * dx + dy * dy + dz * dz) / Math.max(0.001, unitScale)).toFixed(1);
+}
+
 // Fixed camera direction constant — referenced in physics tick
 const CAM_DIR = { x: 0, y: 1 };
 const DEFAULT_PITCH = Math.atan2(10, 20);
@@ -1448,17 +1500,20 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
-  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel };
+  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
+  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection };
   /** All other players (opponents) — supports 1v1 and N-player modes */
-  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel }[];
+  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection }[];
   gameId: string;
   onCastAbility: (
     abilityInstanceId: string,
     targetUserId?: string,
     groundTarget?: { x: number; y: number; z?: number },
     entityTargetId?: string,
+    movementIntent?: boolean,
   ) => Promise<void>;
+  onCancelChannel?: () => Promise<void>;
+  onTargetSelection?: (selection: TargetSelection | null) => Promise<void> | void;
   onCancelBuff?: (buffId: number, options?: { entityTargetId?: string }) => Promise<void>;
   onMovementRecover?: () => void;
   distance: number;
@@ -1488,6 +1543,8 @@ export default function BattleArena({
   opponents,
   gameId,
   onCastAbility,
+  onCancelChannel,
+  onTargetSelection,
   onCancelBuff,
   onMovementRecover,
   distance,
@@ -1650,6 +1707,7 @@ export default function BattleArena({
   const [showControlPanel, setShowControlPanel] = useState(false);
   const [showHeartDetailsPanel, setShowHeartDetailsPanel] = useState(false);
   const [showHeartStatSettings, setShowHeartStatSettings] = useState(false);
+  const [showCombatPresetPanel, setShowCombatPresetPanel] = useState(false);
   const [heartStatHint, setHeartStatHint] = useState<HeartStatHintState | null>(null);
   const [heartStatVisibility, setHeartStatVisibility] = useState<Record<HeartStatKey, boolean>>(() => {
     try {
@@ -1710,9 +1768,11 @@ export default function BattleArena({
 
   /* --- Draggable UI positions (persisted to localStorage) --- */
   const [uiPositions, setUiPositions] = useState<Record<string, { left: number; top: number }>>(() => {
-    try { return JSON.parse(localStorage.getItem('zhenchuan-ui-positions') ?? '{}'); } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem(UI_POSITION_STORAGE_KEY) ?? '{}'); } catch { return {}; }
   });
   const uiPositionsRef = useRef<Record<string, { left: number; top: number }>>({});
+  const [customUiMode, setCustomUiMode] = useState(false);
+  const customUiSnapshotRef = useRef<Record<string, { left: number; top: number }> | null>(null);
 
   /* --- Debug position overlay --- */
   const [showDebugGrid, setShowDebugGrid] = useState(false);
@@ -2060,6 +2120,7 @@ export default function BattleArena({
   const meFacingRef       = useRef<Facing>({ x: 0, y: 1 });
   const oppFacingRef      = useRef<Facing>({ x: 0, y: 1 });
   const prevActiveChannelRef = useRef<ActiveChannel | null>(null);
+  const activeChannelRef = useRef<ActiveChannel | null>(null);
   const speedSamplePrevRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const speedTestRunRef = useRef({
     active: false,
@@ -2087,12 +2148,48 @@ export default function BattleArena({
   const cameraMoveCommandActiveRef = useRef(false);
   const cameraLookInputVersionRef = useRef(0);
   const manualCameraLookActiveRef = useRef(false);
-  const mouseStateRef  = useRef({ isLeft: false, isRight: false, lastX: 0, lastY: 0, downX: NaN, downY: NaN });
+  const mouseStateRef  = useRef({ isLeft: false, isRight: false, lastX: 0, lastY: 0, downX: NaN, downY: NaN, downAt: 0, dragDistance: 0 });
+  const groundDeselectCandidateRef = useRef(false);
+  const lastQuickLeftClickAtRef = useRef(0);
+
+  activeChannelRef.current = me?.activeChannel ?? null;
+
+  const hasMovementIntent = useCallback((keys = keysRef.current) => {
+    if (controlModeRef.current === 'traditional') {
+      const mouseLook = mouseStateRef.current.isRight;
+      const bothMouse = mouseStateRef.current.isRight && mouseStateRef.current.isLeft;
+      return !!buildTraditionalMoveIntent(
+        keys,
+        mouseLook,
+        bothMouse,
+        camYawRef.current,
+        charYawRef.current,
+      ).direction;
+    }
+
+    if (joystickDirRef.current) {
+      return Math.hypot(joystickDirRef.current.dx, joystickDirRef.current.dy) > 0.01;
+    }
+
+    return keys.w || keys.a || keys.s || keys.d;
+  }, []);
+
+  const isStandingCastBlocked = useCallback((keys = keysRef.current) => {
+    const movementIntent = hasMovementIntent(keys) || autoForwardRef.current;
+    const localPlanarSpeed = Math.hypot(localVelocityRef.current.x, localVelocityRef.current.y);
+    const airborneLockedLocal =
+      jumpLocalRef.current ||
+      jumpSendRef.current ||
+      localJumpCountRef.current > 0 ||
+      Math.abs(localVzRef.current) > 0.01;
+    return movementIntent || localPlanarSpeed > 0.01 || airborneLockedLocal || !!meActiveDashRef.current;
+  }, [hasMovementIntent]);
 
   /* --- Target selection refs --- */
   const selectedTargetRef   = useRef<string | null>(null);
   const selectedEntityRef   = useRef<string | null>(null);
   const selectedSelfRef     = useRef(false);
+  const syncedTargetSelectionRef = useRef<string>(JSON.stringify(null));
   const lastInstantSwapCastAtRef = useRef(0);
   const lastFengLiuYunSanCastAtRef = useRef(0);
   const lastObservedServerDashAtRef = useRef(0);
@@ -2113,6 +2210,28 @@ export default function BattleArena({
     ...targetableOpponentsList.map((opp) => ({ kind: 'player' as const, id: opp.userId, position: opp.position })),
     ...targetableEntityList.map((entity) => ({ kind: 'entity' as const, id: entity.id, position: entity.position })),
   ];
+  const clearTargetSelection = useCallback(() => {
+    selectedTargetRef.current = null;
+    selectedEntityRef.current = null;
+    selectedSelfRef.current = false;
+    setSelectedTargetId(null);
+    setSelectedEntityId(null);
+    setSelectedSelf(false);
+  }, []);
+
+  useEffect(() => {
+    const selection: TargetSelection | null = selectedSelf
+      ? { kind: 'self', userId: me.userId }
+      : selectedTargetId
+      ? { kind: 'player', userId: selectedTargetId }
+      : selectedEntityId
+      ? { kind: 'entity', entityId: selectedEntityId }
+      : null;
+    const selectionKey = JSON.stringify(selection);
+    if (syncedTargetSelectionRef.current === selectionKey) return;
+    syncedTargetSelectionRef.current = selectionKey;
+    void onTargetSelection?.(selection);
+  }, [me.userId, onTargetSelection, selectedEntityId, selectedSelf, selectedTargetId]);
 
   /* --- Dash animation refs --- */
   const localDashAnimRef = useRef<{ start: V3; startTime: number } | null>(null);
@@ -2217,7 +2336,7 @@ export default function BattleArena({
       lastCastNameRef.current = ability?.name ?? null;
       setPendingGroundCastAbilityId(null);
       setGroundCastPreview(null);
-      onCastAbility(id, undefined, { x: hoverTarget.x, y: hoverTarget.y, z: hoverTarget.z });
+      onCastAbility(id, undefined, { x: hoverTarget.x, y: hoverTarget.y, z: hoverTarget.z }, undefined, hasMovementIntent(keysRef.current));
       return;
     }
     if (abilityKey === 'gu_feng_sa_ta' || abilityKey === 'han_di') {
@@ -2325,20 +2444,12 @@ export default function BattleArena({
       toastError('该技能需要落地后施放');
       return;
     }
-    if (ability?.requiresStanding && !mountedYuqiToggle) {
-      const movingByInput =
-        keysRef.current.w ||
-        keysRef.current.a ||
-        keysRef.current.s ||
-        keysRef.current.d;
-      const movingLocal =
-        movingByInput ||
-        Math.abs(localVelocityRef.current.x) > 0.01 ||
-        Math.abs(localVelocityRef.current.y) > 0.01;
-      if (airborneLockedLocal || movingLocal) {
+    if (requiresStandingAtCastClient(ability) && !mountedYuqiToggle) {
+      if (isStandingCastBlocked(keysRef.current)) {
         toastError('该技能需要站立后施放');
         return;
       }
+      localVelocityRef.current = { x: 0, y: 0 };
     }
     if (ability?.cannotCastWhileRooted && buffsHaveAnyEffect(me?.buffs, ['ROOT'])) {
       toastError('你被锁足，无法施展该招式');
@@ -2404,6 +2515,7 @@ export default function BattleArena({
         : supportSelfTargetUserId,
       undefined,
       useEntityTarget ? selectedEntityIdNow : undefined,
+      hasMovementIntent(keysRef.current),
     );
   };
 
@@ -2434,7 +2546,7 @@ export default function BattleArena({
     }
     setPendingGroundCastAbilityId(null);
     setGroundCastPreview(null);
-    onCastAbility(abilityId, undefined, { x, y, z: worldZ });
+    onCastAbility(abilityId, undefined, { x, y, z: worldZ }, undefined, hasMovementIntent(keysRef.current));
   };
 
   /* --- Render position + dash-trail refs --- */
@@ -3199,6 +3311,11 @@ export default function BattleArena({
       } else if (!dashFacingLocked && moveIntent.direction && !moveIntent.backpedalOnly) {
         const facingDir = normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy);
         if (facingDir) facingPayload = facingDir;
+      } else if (!dashFacingLocked) {
+        facingPayload = {
+          x: Math.sin(charYawRef.current),
+          y: -Math.cos(charYawRef.current),
+        };
       }
     } else if (joystickDirRef.current) {
       const jd = joystickDirRef.current;
@@ -3559,17 +3676,8 @@ export default function BattleArena({
         Math.abs(localVzRef.current) > 0.01;
       if (ab?.requiresGrounded && airborneLockedLocal) return false;
       if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return false;
-      if (ab?.requiresStanding && !mountedYuqiToggle) {
-        const movingByInput =
-          wasdKeys.w ||
-          wasdKeys.a ||
-          wasdKeys.s ||
-          wasdKeys.d;
-        const movingLocal =
-          movingByInput ||
-          Math.abs(localVelocityRef.current.x) > 0.01 ||
-          Math.abs(localVelocityRef.current.y) > 0.01;
-        if (airborneLockedLocal || movingLocal) return false;
+      if (requiresStandingAtCastClient(ab) && !mountedYuqiToggle) {
+        if (isStandingCastBlocked(wasdKeys)) return false;
       }
       if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
         return false;
@@ -3872,27 +3980,57 @@ export default function BattleArena({
     distance,
     abilities,
     wasdKeys,
+    hasMovementIntent,
+    isStandingCastBlocked,
   ]);
 
   /* ========================= PICKUP INTERACTION ========================= */
 
+  const persistUiPositions = useCallback((positions: Record<string, { left: number; top: number }>) => {
+    try { localStorage.setItem(UI_POSITION_STORAGE_KEY, JSON.stringify(positions)); } catch {}
+  }, []);
+
+  const getDefaultPlayerStatusPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return {
+      left: Math.max(12, Math.round(w / 2 - 180)),
+      top: Math.max(12, Math.round(h - 190)),
+    };
+  }, []);
+
+  const getDefaultTargetStatusPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return {
+      left: Math.max(12, Math.round(w * 0.23)),
+      top: Math.max(12, Math.round(h * 0.05 + 104)),
+    };
+  }, []);
+
   /** Start a drag session for any draggable UI panel. Key is stored in localStorage. */
-  const startUIDrag = useCallback((key: string, defaultPos: { left: number; top: number }, e: React.MouseEvent) => {
+  const startUIDrag = useCallback((key: string, defaultPos: { left: number; top: number }, e: React.MouseEvent, options?: { persist?: boolean }) => {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    mouseStateRef.current.isLeft = false;
+    mouseStateRef.current.isRight = false;
+    manualCameraLookActiveRef.current = false;
     const startX = e.clientX, startY = e.clientY;
     const base = uiPositionsRef.current[key] ?? defaultPos;
+    const shouldPersist = options?.persist !== false;
     const onMove = (me: MouseEvent) => {
+      const next = { left: base.left + me.clientX - startX, top: base.top + me.clientY - startY };
       setUiPositions(prev => ({
         ...prev,
-        [key]: { left: base.left + me.clientX - startX, top: base.top + me.clientY - startY },
+        [key]: next,
       }));
+      uiPositionsRef.current = { ...uiPositionsRef.current, [key]: next };
     };
     const onUp = (me: MouseEvent) => {
       const next = { left: base.left + me.clientX - startX, top: base.top + me.clientY - startY };
       setUiPositions(prev => {
         const updated = { ...prev, [key]: next };
-        try { localStorage.setItem('zhenchuan-ui-positions', JSON.stringify(updated)); } catch {}
+        uiPositionsRef.current = updated;
+        if (shouldPersist) persistUiPositions(updated);
         return updated;
       });
       window.removeEventListener('mousemove', onMove);
@@ -3900,8 +4038,53 @@ export default function BattleArena({
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [persistUiPositions]);
+
+  const openCustomUiMode = useCallback(() => {
+    const snapshot = Object.fromEntries(
+      Object.entries(uiPositionsRef.current).map(([key, pos]) => [key, { ...pos }]),
+    ) as Record<string, { left: number; top: number }>;
+    customUiSnapshotRef.current = snapshot;
+    setShowTestingPanel(false);
+    mouseStateRef.current.isLeft = false;
+    mouseStateRef.current.isRight = false;
+    manualCameraLookActiveRef.current = false;
+    setUiPositions(prev => {
+      const playerBase = prev[LEGACY_PLAYER_STATUS_UI_KEY] ?? getDefaultPlayerStatusPos();
+      const targetBase = getDefaultTargetStatusPos();
+      const next = {
+        ...prev,
+        [PLAYER_BUFF_STATUS_UI_KEY]: prev[PLAYER_BUFF_STATUS_UI_KEY] ?? playerBase,
+        [PLAYER_DEBUFF_STATUS_UI_KEY]: prev[PLAYER_DEBUFF_STATUS_UI_KEY] ?? {
+          left: playerBase.left,
+          top: playerBase.top + STATUS_BAR_VERTICAL_OFFSET,
+        },
+        [TARGET_BUFF_STATUS_UI_KEY]: prev[TARGET_BUFF_STATUS_UI_KEY] ?? targetBase,
+        [TARGET_DEBUFF_STATUS_UI_KEY]: prev[TARGET_DEBUFF_STATUS_UI_KEY] ?? {
+          left: targetBase.left,
+          top: targetBase.top + STATUS_BAR_VERTICAL_OFFSET,
+        },
+      };
+      uiPositionsRef.current = next;
+      return next;
+    });
+    setCustomUiMode(true);
+  }, [getDefaultPlayerStatusPos, getDefaultTargetStatusPos]);
+
+  const cancelCustomUiMode = useCallback(() => {
+    const snapshot = customUiSnapshotRef.current ?? {};
+    customUiSnapshotRef.current = null;
+    uiPositionsRef.current = snapshot;
+    setUiPositions(snapshot);
+    persistUiPositions(snapshot);
+    setCustomUiMode(false);
+  }, [persistUiPositions]);
+
+  const confirmCustomUiMode = useCallback(() => {
+    customUiSnapshotRef.current = null;
+    persistUiPositions(uiPositionsRef.current);
+    setCustomUiMode(false);
+  }, [persistUiPositions]);
 
   const handlePickupInteract = useCallback(() => {
     const target = nearbyPickupIdsRef.current[0] ?? null;
@@ -3957,7 +4140,7 @@ export default function BattleArena({
       });
       if (!res.ok) {
         const err = await res.json();
-        toastError(err.error ?? '无法读取');
+        toastError(err.message ?? err.error ?? '无法读取');
         return;
       }
       const data = await res.json();
@@ -3982,7 +4165,7 @@ export default function BattleArena({
       });
       const data = await res.json();
       if (!res.ok) {
-        toastError(data.error ?? '无法拾取');
+        toastError(data.message ?? data.error ?? '无法拾取');
         return; // keep panel open on failure
       }
       setPickupModals(prev => prev.filter(m => m.pickupId !== pickupId));
@@ -4021,6 +4204,14 @@ export default function BattleArena({
     const onDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (customUiMode) {
+          cancelCustomUiMode();
+          return;
+        }
+        if (activeChannelRef.current && onCancelChannel) {
+          void onCancelChannel();
+          return;
+        }
         if (selectedTargetRef.current || selectedEntityRef.current || selectedSelfRef.current) {
           selectedTargetRef.current = null;
           selectedEntityRef.current = null;
@@ -4194,6 +4385,11 @@ export default function BattleArena({
         }
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = false;
         setWasdKeys(prev => ({ ...prev, [k]: false }));
+        const nextKeys = { ...keysRef.current };
+        if (!hasMovementIntent(nextKeys)) {
+          localVelocityRef.current = { x: 0, y: 0 };
+        }
+        void sendMovement();
       }
     };
     const onVisibilityChange = () => {
@@ -4209,7 +4405,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tryQueueLocalJump]);
+  }, [tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -4223,10 +4419,17 @@ export default function BattleArena({
     const resetMouseButtons = () => {
       mouseStateRef.current.isLeft = false;
       mouseStateRef.current.isRight = false;
+      mouseStateRef.current.downAt = 0;
+      mouseStateRef.current.dragDistance = 0;
+      groundDeselectCandidateRef.current = false;
       manualCameraLookActiveRef.current = false;
     };
 
     const onMouseDown = (e: MouseEvent) => {
+      if (customUiMode) {
+        resetMouseButtons();
+        return;
+      }
       // Left button — start camera drag
       if (e.button === 0) {
         // Only start drag if not clicking a UI button or a draggable panel
@@ -4237,6 +4440,9 @@ export default function BattleArena({
         mouseStateRef.current.lastY  = e.clientY;
         mouseStateRef.current.downX  = e.clientX;
         mouseStateRef.current.downY  = e.clientY;
+        mouseStateRef.current.downAt = performance.now();
+        mouseStateRef.current.dragDistance = 0;
+        groundDeselectCandidateRef.current = false;
         return;
       }
       // Right button — start character rotate drag (context menu already suppressed by onContextMenu)
@@ -4273,11 +4479,26 @@ export default function BattleArena({
     };
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) {
+        const ms = mouseStateRef.current;
+        const wasLeftDown = ms.isLeft;
+        const downX = Number.isFinite(ms.downX) ? ms.downX : e.clientX;
+        const downY = Number.isFinite(ms.downY) ? ms.downY : e.clientY;
+        const releaseDistance = Math.max(ms.dragDistance, Math.hypot(e.clientX - downX, e.clientY - downY));
+        const releaseMs = ms.downAt > 0 ? performance.now() - ms.downAt : Number.POSITIVE_INFINITY;
+        const isRapidSingleClick = wasLeftDown && releaseMs <= 220 && releaseDistance <= 6;
         mouseStateRef.current.isLeft = false;
         manualCameraLookActiveRef.current = false;
-        // Keep old behavior compatibility: do not force clear or cycle targets on plain mouse up.
+        if (isRapidSingleClick) {
+          lastQuickLeftClickAtRef.current = performance.now();
+          if (groundDeselectCandidateRef.current && !pendingDummySpawnRef.current && !pendingGroundCastAbilityRef.current) {
+            clearTargetSelection();
+          }
+        }
+        groundDeselectCandidateRef.current = false;
         mouseStateRef.current.downX = NaN;
         mouseStateRef.current.downY = NaN;
+        mouseStateRef.current.downAt = 0;
+        mouseStateRef.current.dragDistance = 0;
         return;
       }
       if (e.button === 2) {
@@ -4298,11 +4519,18 @@ export default function BattleArena({
       }
     };
     const onMouseMove = (e: MouseEvent) => {
+      if (customUiMode) {
+        resetMouseButtons();
+        return;
+      }
       const ms = mouseStateRef.current;
       if (!ms.isLeft && !ms.isRight) return;
       e.preventDefault();
       const dx = e.clientX - ms.lastX;
       const dy = e.clientY - ms.lastY;
+      if (ms.isLeft && Number.isFinite(ms.downX) && Number.isFinite(ms.downY)) {
+        ms.dragDistance = Math.max(ms.dragDistance, Math.hypot(e.clientX - ms.downX, e.clientY - ms.downY));
+      }
       ms.lastX = e.clientX;
       ms.lastY = e.clientY;
 
@@ -4372,6 +4600,7 @@ export default function BattleArena({
       }
     };
     const onWheel = (e: WheelEvent) => {
+      if (customUiMode) return;
       if ((e.target as HTMLElement | null)?.closest('[data-testing-panel]')) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.12 : -0.12;
@@ -4396,7 +4625,7 @@ export default function BattleArena({
       window.removeEventListener('wheel',       onWheel,       { capture: true } as EventListenerOptions);
       window.removeEventListener('blur',        resetMouseButtons);
     };
-  }, [allowOverrangeCameraZoom]);
+  }, [allowOverrangeCameraZoom, clearTargetSelection, customUiMode]);
 
   // ── Touch camera rotation (mobile/iPad) ──────────────────────────────────
   // A single touch that starts on the 3D canvas (wrapRef) rotates camera + player
@@ -4407,6 +4636,11 @@ export default function BattleArena({
     const camTouchRef = { id: null as number | null, lastX: 0, lastY: 0 };
 
     const onTouchStart = (e: TouchEvent) => {
+      if (customUiMode) {
+        camTouchRef.id = null;
+        manualCameraLookActiveRef.current = false;
+        return;
+      }
       if (camTouchRef.id !== null) return; // already tracking one finger
       const touch = e.changedTouches[0];
       const target = touch.target as HTMLElement;
@@ -4419,6 +4653,11 @@ export default function BattleArena({
     };
 
     const onTouchMove = (e: TouchEvent) => {
+      if (customUiMode) {
+        camTouchRef.id = null;
+        manualCameraLookActiveRef.current = false;
+        return;
+      }
       if (camTouchRef.id === null) return;
       const touch = Array.from(e.changedTouches).find(t => t.identifier === camTouchRef.id);
       if (!touch) return;
@@ -4458,7 +4697,7 @@ export default function BattleArena({
       window.removeEventListener('touchend',   onTouchEnd);
       window.removeEventListener('touchcancel',onTouchEnd);
     };
-  }, []);
+  }, [customUiMode]);
 
   const handleJoystickDirection = useCallback(
     (keys: { w: boolean; a: boolean; s: boolean; d: boolean }) => {
@@ -4576,7 +4815,7 @@ export default function BattleArena({
         );
         const supportY = getBvhGroundSupportY(sys, _bvhCenter);
         if (supportY === null) {
-          return getGroundHeightClient(pos.x, pos.y, localZRef.current, objs, playerRadius);
+          return 0;
         }
         return supportY * RENDER_SF + GROUP_POS_Y;
       })();
@@ -5136,6 +5375,7 @@ export default function BattleArena({
   const myBarSegments = computeHpShieldSegments(me?.hp ?? 0, myShield, myMaxHp);
   const myHpPct = myBarSegments.hpPct;
   const myShieldPct = myBarSegments.shieldPct;
+  const iconBarHpGradient = 'linear-gradient(180deg, #ff7a65 0%, #e23b2f 42%, #b91518 100%)';
   const BASE_CRIT_EFFECT_MULTIPLIER = 1.75;
   const myBaseWaiGongCritChancePct = Math.max(
     0,
@@ -5320,6 +5560,56 @@ export default function BattleArena({
       [key]: prev[key] === false,
     }));
   }, []);
+
+  const formatCombatPresetValue = (statKey: CombatPresetStatKey, value: number) => (
+    statKey === 'attackDamage' || statKey === 'maxHp' ? formatGameAmount(value) : `${value}%`
+  );
+  const formatCombatPresetExactValue = (statKey: CombatPresetStatKey, value: number) => (
+    statKey === 'attackDamage' || statKey === 'maxHp' ? value.toLocaleString('en-US') : `${value}%`
+  );
+  const isWholeCombatPresetActive = (preset: typeof COMBAT_PRESET_RARITIES[number]) => (
+    Math.abs(myBaseWaiGongCritChancePct - preset.stats.critChancePct) < 0.001 &&
+    Math.abs(myBaseNeiGongCritChancePct - preset.stats.critChancePct) < 0.001 &&
+    Math.abs(myBaseDefensePct - preset.stats.defensePct) < 0.001 &&
+    Math.abs(myHuajinPct - preset.stats.huajinPct) < 0.001 &&
+    Math.abs(myMaxHp - preset.stats.maxHp) < 0.001 &&
+    Math.abs(myAttackDamage - preset.stats.attackDamage) < 0.001
+  );
+  const isCombatPresetStatActive = (preset: typeof COMBAT_PRESET_RARITIES[number], statKey: CombatPresetStatKey) => {
+    if (statKey === 'critChancePct') {
+      return Math.abs(myBaseWaiGongCritChancePct - preset.stats.critChancePct) < 0.001 &&
+        Math.abs(myBaseNeiGongCritChancePct - preset.stats.critChancePct) < 0.001;
+    }
+    if (statKey === 'defensePct') return Math.abs(myBaseDefensePct - preset.stats.defensePct) < 0.001;
+    if (statKey === 'huajinPct') return Math.abs(myHuajinPct - preset.stats.huajinPct) < 0.001;
+    if (statKey === 'maxHp') return Math.abs(myMaxHp - preset.stats.maxHp) < 0.001;
+    return Math.abs(myAttackDamage - preset.stats.attackDamage) < 0.001;
+  };
+  const applyCombatPreset = (preset: typeof COMBAT_PRESET_RARITIES[number], statKey?: CombatPresetStatKey) => {
+    const body: Record<string, number> = {
+      waiGongCritChancePct: myBaseWaiGongCritChancePct,
+      neiGongCritChancePct: myBaseNeiGongCritChancePct,
+    };
+    if (!statKey || statKey === 'critChancePct') {
+      body.waiGongCritChancePct = preset.stats.critChancePct;
+      body.neiGongCritChancePct = preset.stats.critChancePct;
+    }
+    if (!statKey || statKey === 'defensePct') body.defensePct = preset.stats.defensePct;
+    if (!statKey || statKey === 'huajinPct') body.huajinPct = preset.stats.huajinPct;
+    if (!statKey || statKey === 'maxHp') body.maxHp = preset.stats.maxHp;
+    if (!statKey || statKey === 'attackDamage') body.attackDamage = preset.stats.attackDamage;
+
+    const statText = statKey
+      ? `${COMBAT_PRESET_STAT_ROWS.find((row) => row.key === statKey)?.label ?? '属性'} ${formatCombatPresetValue(statKey, preset.stats[statKey])}`
+      : `外功会心/内功会心 ${preset.stats.critChancePct}%，防御力 ${preset.stats.defensePct}%，化劲 ${preset.stats.huajinPct}%，气血 ${formatGameAmount(preset.stats.maxHp)}，攻击力 ${formatGameAmount(preset.stats.attackDamage)}`;
+
+    return runCheatAction(
+      statKey ? `set-${statKey}-${preset.id}` : `set-combat-preset-${preset.id}`,
+      '/api/game/cheat/set-crit-chance',
+      `双方${statText}已设定`,
+      body,
+    );
+  };
   const selectedTargetForHud = selectedTargetId
     ? opponentsList.find((o) => o.userId === selectedTargetId) ?? null
     : null;
@@ -5586,13 +5876,120 @@ export default function BattleArena({
     });
   };
 
+  const playerStatusBuffs = me?.buffs ?? [];
+  const legacyPlayerStatusSavedPos = uiPositions[LEGACY_PLAYER_STATUS_UI_KEY];
+  const playerBuffStatusSavedPos = uiPositions[PLAYER_BUFF_STATUS_UI_KEY] ?? legacyPlayerStatusSavedPos;
+  const playerDebuffStatusSavedPos = uiPositions[PLAYER_DEBUFF_STATUS_UI_KEY];
+  const playerBuffStatusDefaultPos = getDefaultPlayerStatusPos();
+  const playerDebuffStatusDefaultPos = {
+    left: playerBuffStatusDefaultPos.left,
+    top: playerBuffStatusDefaultPos.top + STATUS_BAR_VERTICAL_OFFSET,
+  };
+  const playerBuffStatusPos = playerBuffStatusSavedPos ?? playerBuffStatusDefaultPos;
+  const playerDebuffStatusPos = playerDebuffStatusSavedPos ?? (
+    legacyPlayerStatusSavedPos
+      ? { left: legacyPlayerStatusSavedPos.left, top: legacyPlayerStatusSavedPos.top + STATUS_BAR_VERTICAL_OFFSET }
+      : playerDebuffStatusDefaultPos
+  );
+  const playerStatusDetachedConfigured = !!legacyPlayerStatusSavedPos || !!playerBuffStatusSavedPos || !!playerDebuffStatusSavedPos;
+  const playerHasBuffStatus = playerStatusBuffs.some((buff) => buff.category === 'BUFF');
+  const playerHasDebuffStatus = playerStatusBuffs.some((buff) => buff.category === 'DEBUFF');
+  const showDetachedPlayerBuffStatus = customUiMode || (playerHasBuffStatus && playerStatusDetachedConfigured);
+  const showDetachedPlayerDebuffStatus = customUiMode || (playerHasDebuffStatus && playerStatusDetachedConfigured);
+  const showInlinePlayerStatus = playerStatusBuffs.length > 0 && !customUiMode && !playerStatusDetachedConfigured;
+
+  const selectedTargetForStatus = selectedTargetId
+    ? opponentsList.find((opponent) => opponent.userId === selectedTargetId) ?? null
+    : null;
+  const selectedEntityForStatus = selectedEntityId
+    ? (entities ?? []).find((entity) => entity.id === selectedEntityId) ?? null
+    : null;
+  const targetStatusIsSelf = !!(selectedSelf && !selectedTargetId && !selectedEntityId);
+  const targetStatusIsEntity = !targetStatusIsSelf && !!selectedEntityForStatus;
+  const targetStatusIsDummyEntity = targetStatusIsEntity && (
+    selectedEntityForStatus?.kind === 'test_dummy_ally' || selectedEntityForStatus?.kind === 'test_dummy_enemy'
+  );
+  const targetStatusIsOwnEntity = targetStatusIsEntity && selectedEntityForStatus?.ownerUserId === me?.userId;
+  const targetStatusHasSelection = !!(selectedTargetId || selectedEntityId || selectedSelf);
+  const targetStatusBuffs = targetStatusIsSelf
+    ? (me?.buffs ?? [])
+    : targetStatusIsEntity
+    ? (selectedEntityForStatus?.buffs ?? [])
+    : (selectedTargetForStatus?.buffs ?? []);
+  const targetBuffStatusSavedPos = uiPositions[TARGET_BUFF_STATUS_UI_KEY];
+  const targetDebuffStatusSavedPos = uiPositions[TARGET_DEBUFF_STATUS_UI_KEY];
+  const targetBuffStatusDefaultPos = getDefaultTargetStatusPos();
+  const targetDebuffStatusDefaultPos = {
+    left: targetBuffStatusDefaultPos.left,
+    top: targetBuffStatusDefaultPos.top + STATUS_BAR_VERTICAL_OFFSET,
+  };
+  const targetBuffStatusPos = targetBuffStatusSavedPos ?? targetBuffStatusDefaultPos;
+  const targetDebuffStatusPos = targetDebuffStatusSavedPos ?? targetDebuffStatusDefaultPos;
+  const targetStatusDetachedConfigured = !!targetBuffStatusSavedPos || !!targetDebuffStatusSavedPos;
+  const targetHasBuffStatus = targetStatusBuffs.some((buff) => buff.category === 'BUFF');
+  const targetHasDebuffStatus = targetStatusBuffs.some((buff) => buff.category === 'DEBUFF');
+  const showDetachedTargetBuffStatus = customUiMode || (targetStatusHasSelection && targetHasBuffStatus && targetStatusDetachedConfigured);
+  const showDetachedTargetDebuffStatus = customUiMode || (targetStatusHasSelection && targetHasDebuffStatus && targetStatusDetachedConfigured);
+  const showInlineTargetStatus = targetStatusHasSelection && !customUiMode && !targetStatusDetachedConfigured;
+  const targetStatusAllowAnyCancel = !targetStatusIsSelf
+    && targetStatusIsDummyEntity
+    && targetStatusIsOwnEntity
+    && selectedEntityForStatus?.kind === 'test_dummy_ally';
+  const targetStatusOnCancelBuff = targetStatusIsSelf
+    ? onCancelBuff
+    : (targetStatusAllowAnyCancel && onCancelBuff && selectedEntityForStatus)
+    ? ((buffId: number) => onCancelBuff(buffId, { entityTargetId: selectedEntityForStatus.id }))
+    : undefined;
+
+  const renderStatusPlacement = ({
+    keyName,
+    label,
+    pos,
+    defaultPos,
+    buffs,
+    categoryFilter,
+    debugLabel,
+    showDebug = false,
+    onCancel,
+    allowAnyCancel = false,
+  }: {
+    keyName: string;
+    label: string;
+    pos: { left: number; top: number };
+    defaultPos: { left: number; top: number };
+    buffs: typeof playerStatusBuffs;
+    categoryFilter: 'BUFF' | 'DEBUFF';
+    debugLabel: string;
+    showDebug?: boolean;
+    onCancel?: (buffId: number) => Promise<void> | void;
+    allowAnyCancel?: boolean;
+  }) => (
+    <div
+      data-ui-drag="true"
+      className={`${styles.customUiStatusPlacement} ${styles.customUiStatusPlacementSingle} ${customUiMode ? styles.customUiStatusPlacementEditing : ''}`}
+      style={{ left: pos.left, top: pos.top }}
+      onMouseDown={customUiMode ? (event) => startUIDrag(keyName, defaultPos, event, { persist: false }) : undefined}
+    >
+      {customUiMode && <div className={styles.customUiPlacementLabel}>{label}</div>}
+      <div className={styles.customUiStatusContent}>
+        <StatusBar
+          buffs={buffs}
+          showDebug={showDebug}
+          debugLabel={debugLabel}
+          onCancelBuff={onCancel}
+          allowAnyCancel={allowAnyCancel}
+          categoryFilter={categoryFilter}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div
       className={styles.container}
       onMouseMove={handleDebugMouseMove}
       onMouseLeave={() => showDebugGrid && setDebugCursor(null)}
     >
-
       {/* ===== MODE INDICATOR ===== */}
       <div style={{
         position: 'absolute', top: 10, left: 10, zIndex: 500,
@@ -5602,7 +5999,6 @@ export default function BattleArena({
         borderRadius: 6,
         padding: '4px 10px',
         pointerEvents: 'none',
-        backdropFilter: 'blur(2px)',
       }}>
         <span style={{
           width: 8, height: 8, borderRadius: '50%',
@@ -5618,21 +6014,80 @@ export default function BattleArena({
           {mode === 'arena' ? '竞技场' : mode === 'collision-test' ? '玉门关' : '吃鸡'}
         </span>
       </div>
+
+      {customUiMode && (
+        <div className={styles.customUiPrompt}>
+          <div className={styles.customUiTitle}>自定义界面</div>
+          <div className={styles.customUiActions}>
+            <button
+              type="button"
+              className={styles.customUiButtonSecondary}
+              onClick={cancelCustomUiMode}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className={styles.customUiButtonPrimary}
+              onClick={confirmCustomUiMode}
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showDetachedPlayerBuffStatus && renderStatusPlacement({
+        keyName: PLAYER_BUFF_STATUS_UI_KEY,
+        label: '自身增益',
+        pos: playerBuffStatusPos,
+        defaultPos: playerBuffStatusDefaultPos,
+        buffs: playerStatusBuffs,
+        categoryFilter: 'BUFF',
+        debugLabel: 'me',
+        onCancel: onCancelBuff,
+      })}
+
+      {showDetachedPlayerDebuffStatus && renderStatusPlacement({
+        keyName: PLAYER_DEBUFF_STATUS_UI_KEY,
+        label: '自身减益',
+        pos: playerDebuffStatusPos,
+        defaultPos: playerDebuffStatusDefaultPos,
+        buffs: playerStatusBuffs,
+        categoryFilter: 'DEBUFF',
+        debugLabel: 'me',
+        onCancel: onCancelBuff,
+      })}
+
+      {showDetachedTargetBuffStatus && renderStatusPlacement({
+        keyName: TARGET_BUFF_STATUS_UI_KEY,
+        label: '目标增益',
+        pos: targetBuffStatusPos,
+        defaultPos: targetBuffStatusDefaultPos,
+        buffs: targetStatusBuffs,
+        categoryFilter: 'BUFF',
+        debugLabel: targetStatusIsSelf ? 'me-target' : 'opp',
+        onCancel: targetStatusOnCancelBuff,
+        allowAnyCancel: targetStatusAllowAnyCancel,
+      })}
+
+      {showDetachedTargetDebuffStatus && renderStatusPlacement({
+        keyName: TARGET_DEBUFF_STATUS_UI_KEY,
+        label: '目标减益',
+        pos: targetDebuffStatusPos,
+        defaultPos: targetDebuffStatusDefaultPos,
+        buffs: targetStatusBuffs,
+        categoryFilter: 'DEBUFF',
+        debugLabel: targetStatusIsSelf ? 'me-target' : 'opp',
+        onCancel: targetStatusOnCancelBuff,
+        allowAnyCancel: targetStatusAllowAnyCancel,
+      })}
+
       <div className={styles.critPresetBar}>
-        {[
-          { id: 'white-crit', label: '白', value: 0, defenseValue: 0, huajinValue: 40, maxHp: 300000, attackDamage: 10000, color: '#f3f4f6' },
-          { id: 'green-crit', label: '绿', value: 20, defenseValue: 12, huajinValue: 55, maxHp: 900000, attackDamage: 30000, color: '#42b663' },
-          { id: 'blue-crit', label: '蓝', value: 30, defenseValue: 16, huajinValue: 60, maxHp: 1050000, attackDamage: 40000, color: '#3a8dff' },
-          { id: 'purple-crit', label: '紫', value: 40, defenseValue: 23, huajinValue: 73, maxHp: 1260000, attackDamage: 50000, color: '#9f5fd9' },
-        ].map((preset) => {
-          const active =
-            Math.abs(myBaseWaiGongCritChancePct - preset.value) < 0.001 &&
-            Math.abs(myBaseNeiGongCritChancePct - preset.value) < 0.001 &&
-            Math.abs(myBaseDefensePct - preset.defenseValue) < 0.001 &&
-            Math.abs(myHuajinPct - preset.huajinValue) < 0.001 &&
-            Math.abs(myMaxHp - preset.maxHp) < 0.001 &&
-            Math.abs(myAttackDamage - preset.attackDamage) < 0.001;
-          return (
+        <div className={styles.critPresetButtonStack}>
+          {COMBAT_PRESET_RARITIES.map((preset) => {
+            const active = isWholeCombatPresetActive(preset);
+            return (
             <button
               key={preset.id}
               type="button"
@@ -5640,29 +6095,72 @@ export default function BattleArena({
               className={styles.critPresetButton}
               style={{
                 borderColor: preset.color,
-                color: active ? (preset.id === 'white-crit' ? '#111827' : '#ffffff') : preset.color,
+                color: active ? (preset.id === 'white' ? '#111827' : '#ffffff') : preset.color,
                 background: active ? preset.color : 'rgba(12,18,30,0.88)',
                 opacity: runningCheatAction ? 0.6 : 1,
                 cursor: runningCheatAction ? 'not-allowed' : 'pointer',
               }}
               onClick={() => void runCheatAction(
-                `set-crit-${preset.value}-def-${preset.defenseValue}`,
+                `set-combat-preset-${preset.id}`,
                 '/api/game/cheat/set-crit-chance',
-                `双方外功会心/内功会心已设为 ${preset.value}%，防御力已设为 ${preset.defenseValue}%，化劲已设为 ${preset.huajinValue}%，气血 ${formatGameAmount(preset.maxHp)}，攻击力 ${formatGameAmount(preset.attackDamage)}`,
+                `双方外功会心/内功会心已设为 ${preset.stats.critChancePct}%，防御力已设为 ${preset.stats.defensePct}%，化劲已设为 ${preset.stats.huajinPct}%，气血 ${formatGameAmount(preset.stats.maxHp)}，攻击力 ${formatGameAmount(preset.stats.attackDamage)}`,
                 {
-                  waiGongCritChancePct: preset.value,
-                  neiGongCritChancePct: preset.value,
-                  defensePct: preset.defenseValue,
-                  huajinPct: preset.huajinValue,
-                  maxHp: preset.maxHp,
-                  attackDamage: preset.attackDamage,
+                  waiGongCritChancePct: preset.stats.critChancePct,
+                  neiGongCritChancePct: preset.stats.critChancePct,
+                  defensePct: preset.stats.defensePct,
+                  huajinPct: preset.stats.huajinPct,
+                  maxHp: preset.stats.maxHp,
+                  attackDamage: preset.stats.attackDamage,
                 },
               )}
             >
               {preset.label}
             </button>
-          );
-        })}
+            );
+          })}
+          <button
+            type="button"
+            className={`${styles.critPresetButton} ${styles.critPresetExpandButton}`}
+            aria-expanded={showCombatPresetPanel}
+            onClick={() => setShowCombatPresetPanel((value) => !value)}
+          >
+            {showCombatPresetPanel ? '<' : '>'}
+          </button>
+        </div>
+        {showCombatPresetPanel && (
+          <div className={styles.critPresetPanel}>
+            {COMBAT_PRESET_STAT_ROWS.map((row) => (
+              <div key={row.key} className={styles.critPresetPanelRow}>
+                <span className={styles.critPresetPanelLabel}>{row.label}</span>
+                <div className={styles.critPresetPanelButtons}>
+                  {COMBAT_PRESET_RARITIES.map((preset) => {
+                    const active = isCombatPresetStatActive(preset, row.key);
+                    return (
+                      <button
+                        key={`${row.key}-${preset.id}`}
+                        type="button"
+                        disabled={!!runningCheatAction}
+                        className={styles.critPresetMiniButton}
+                        title={`${preset.label}${row.label}: ${formatCombatPresetExactValue(row.key, preset.stats[row.key])}`}
+                        style={{
+                          borderColor: preset.color,
+                          color: active ? (preset.id === 'white' ? '#111827' : '#ffffff') : preset.color,
+                          background: active ? preset.color : 'rgba(10,16,25,0.92)',
+                          opacity: runningCheatAction ? 0.6 : 1,
+                          cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                        }}
+                        onClick={() => void applyCombatPreset(preset, row.key)}
+                      >
+                        <span className={styles.critPresetMiniLabel}>{preset.label}</span>
+                        <span className={styles.critPresetMiniValue}>{formatCombatPresetExactValue(row.key, preset.stats[row.key])}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
       {/* ===== R3F 3D CANVAS ===== */}
@@ -5672,6 +6170,12 @@ export default function BattleArena({
           style={{ background: blueprintMode ? '#000010' : selfHasHongMengTianJin ? '#000000' : '#888888' }}
           gl={{ antialias: true }}
           shadows={mode === 'collision-test' && envToggles.shadows && !blueprintMode ? 'percentage' : false}
+          onPointerMissed={(event) => {
+            if (event.button !== 0) return;
+            if (pendingDummySpawnRef.current || pendingGroundCastAbilityRef.current) return;
+            if (performance.now() - lastQuickLeftClickAtRef.current > 140) return;
+            clearTargetSelection();
+          }}
         >
           <ArenaScene
             me={me}
@@ -5795,7 +6299,10 @@ export default function BattleArena({
                 );
                 return;
               }
-              if (!pendingGroundCastAbilityRef.current) return;
+              if (!pendingGroundCastAbilityRef.current) {
+                groundDeselectCandidateRef.current = true;
+                return;
+              }
               castGroundAbilityRef.current(x, y, worldZ);
             }}
             showCollisionShells={showCollisionShells}
@@ -6207,6 +6714,13 @@ export default function BattleArena({
                 />
                 <span>允许超距镜头</span>
               </label>
+              <button
+                type="button"
+                className={styles.escActionButton}
+                onClick={openCustomUiMode}
+              >
+                自定义界面
+              </button>
             </div>
           </div>
         </div>
@@ -6356,7 +6870,7 @@ export default function BattleArena({
               {formatGameHealthRatio(me?.hp ?? 0, myMaxHp)}
             </span>
           )}
-          {myShield > 0 && (
+          {shouldDisplayShieldAmount(myShield, myMaxHp) && (
             <span
               className={styles.shieldSegmentNum}
               style={{ left: `${Math.max(6, Math.min(94, myHpPct + myShieldPct / 2))}%` }}
@@ -6439,6 +6953,7 @@ export default function BattleArena({
           const isEntityTarget = !isSelf && !!selectedEntity;
           const isDummyEntity = isEntityTarget && (selectedEntity?.kind === 'test_dummy_ally' || selectedEntity?.kind === 'test_dummy_enemy');
           const isOwnEntity  = isEntityTarget && selectedEntity?.ownerUserId === me?.userId;
+          const targetPosition = isSelf ? me.position : isEntityTarget ? selectedEntity?.position : selectedTarget?.position;
           const targetHp     = isSelf ? (me?.hp ?? 0) : isEntityTarget ? (selectedEntity?.hp ?? 0) : (selectedTarget?.hp ?? 0);
           const targetShield = Math.max(0, isSelf ? (me?.shield ?? 0) : isEntityTarget ? (selectedEntity?.shield ?? 0) : (selectedTarget?.shield ?? 0));
           const targetMaxHp  = isSelf
@@ -6452,53 +6967,128 @@ export default function BattleArena({
             : isEntityTarget
             ? (isDummyEntity
                 ? (isOwnEntity ? '友方木桩' : '敌方木桩')
-                : `${entityOwner?.username ?? entityOwner?.userId ?? '玩家'}的逐云寒蕊`)
-            : (selectedTarget?.username ?? selectedTarget?.userId ?? '目标');
+                : `${entityOwner?.username ?? '玩家'}的逐云寒蕊`)
+            : (selectedTarget?.username ?? '目标');
+          const targetIconTitle = `${formatIconBarDistance(me.position, targetPosition, storedUnitScale)} · ${targetName}`;
           const targetBuffs  = isSelf ? (me?.buffs ?? []) : isEntityTarget ? (selectedEntity?.buffs ?? []) : (selectedTarget?.buffs ?? []);
           const targetHand   = isSelf ? me.hand : isEntityTarget ? [] : (selectedTarget?.hand ?? []);
-          const hpGradient   = 'linear-gradient(90deg, #991111, #cc2222)';
-          const barBg        = isSelf
-            ? { background: 'rgba(210, 215, 220, 0.18)', border: '1px solid rgba(200, 210, 220, 0.35)' }
-            : {};
+          const hpGradient   = iconBarHpGradient;
+          const targetTargetActor = isSelf ? me : isEntityTarget ? null : selectedTarget;
+          const targetTargetSelection = targetTargetActor?.targetSelection ?? null;
+          const targetTargetPlayer = targetTargetSelection?.kind === 'self'
+            ? targetTargetActor
+            : targetTargetSelection?.kind === 'player'
+            ? [me, ...opponentsList].find((player) => player?.userId === targetTargetSelection.userId) ?? null
+            : null;
+          const targetTargetEntity = targetTargetSelection?.kind === 'entity'
+            ? (entities ?? []).find((entity) => entity.id === targetTargetSelection.entityId) ?? null
+            : null;
+          const targetTargetOwner = targetTargetEntity
+            ? (targetTargetEntity.ownerUserId === me?.userId
+                ? me
+                : opponentsList.find((o) => o.userId === targetTargetEntity.ownerUserId) ?? null)
+            : null;
+          const targetTargetHp = targetTargetEntity ? (targetTargetEntity.hp ?? 0) : (targetTargetPlayer?.hp ?? 0);
+          const targetTargetShield = Math.max(0, targetTargetEntity ? (targetTargetEntity.shield ?? 0) : (targetTargetPlayer?.shield ?? 0));
+          const targetTargetMaxHp = targetTargetEntity ? (targetTargetEntity.maxHp ?? 1) : (targetTargetPlayer?.maxHp ?? maxHp);
+          const targetTargetSegments = computeHpShieldSegments(targetTargetHp, targetTargetShield, targetTargetMaxHp);
+          const targetTargetBuffs = targetTargetEntity ? (targetTargetEntity.buffs ?? []) : (targetTargetPlayer?.buffs ?? []);
+          const targetTargetPosition = targetTargetEntity ? targetTargetEntity.position : targetTargetPlayer?.position;
+          const targetTargetHpPercentText = `${Math.max(0, Math.min(100, Math.round((Math.max(0, targetTargetHp) / Math.max(1, targetTargetMaxHp)) * 100)))}%`;
+          const targetTargetName = targetTargetEntity
+            ? `${targetTargetOwner?.username ?? '玩家'}的目标`
+            : targetTargetPlayer
+            ? (targetTargetPlayer.username ?? '目标')
+            : '';
+          const targetTargetIconTitle = `${formatIconBarDistance(targetPosition ?? me.position, targetTargetPosition, storedUnitScale)} · ${targetTargetName}`;
+          const showTargetTargetBar = !!(targetTargetEntity || targetTargetPlayer);
           const draftedAbilities = targetHand.filter((ability: any) => {
             const abilityId = ability.abilityId || ability.id;
             return abilityId && !COMMON_ABILITY_ORDER.includes(abilityId as any);
           });
           return (
             <>
-              <div className={styles.enemyBossBar} style={barBg}>
-                <div className={styles.enemyName}>{targetName}</div>
-                <div className={styles.enemyHpTrack}>
-                  {targetShieldPct > 0 && (
-                    <div
-                      className={styles.enemyShieldFill}
-                      style={{
-                        left: `${targetHpPct}%`,
-                        width: `${targetShieldPct}%`,
-                      }}
-                    />
-                  )}
-                  <div
-                    className={styles.enemyHpFill}
-                    style={{ width: `${targetHpPct}%`, background: hpGradient }}
-                  />
-                  {targetHp > 0 && (
-                    <span
-                      className={styles.hpSegmentNum}
-                      style={{ left: '50%' }}
-                    >
-                      {formatGameHealthRatio(targetHp, targetMaxHp)}
-                    </span>
-                  )}
-                  {targetShield > 0 && (
-                    <span
-                      className={styles.shieldSegmentNum}
-                      style={{ left: `${Math.max(6, Math.min(94, targetHpPct + targetShieldPct / 2))}%` }}
-                    >
-                      {formatGameAmount(targetShield)}
-                    </span>
-                  )}
+              <div className={styles.enemyBossTopRow}>
+                <div className={`${styles.enemyBossBar} ${isSelf ? styles.selfIconBar : ''}`}>
+                  <div className={styles.enemyName}>{targetIconTitle}</div>
+                  <div className={styles.iconBarBody}>
+                    <div className={styles.enemyHpTrack}>
+                      {targetShieldPct > 0 && (
+                        <div
+                          className={styles.enemyShieldFill}
+                          style={{
+                            left: `${targetHpPct}%`,
+                            width: `${targetShieldPct}%`,
+                          }}
+                        />
+                      )}
+                      <div
+                        className={styles.enemyHpFill}
+                        style={{ width: `${targetHpPct}%`, background: hpGradient }}
+                      />
+                      {targetHp > 0 && (
+                        <span
+                          className={styles.hpSegmentNum}
+                          style={{ left: '50%' }}
+                        >
+                          {formatGameHealthRatio(targetHp, targetMaxHp)}
+                        </span>
+                      )}
+                      {shouldDisplayShieldAmount(targetShield, targetMaxHp) && (
+                        <span
+                          className={styles.shieldSegmentNum}
+                          style={{ left: `${Math.max(6, Math.min(94, targetHpPct + targetShieldPct / 2))}%` }}
+                        >
+                          {formatGameAmount(targetShield)}
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.iconBarResourceRow}>
+                      <span className={styles.iconBarResourceValue}>130</span>
+                    </div>
+                  </div>
                 </div>
+                {showTargetTargetBar && (
+                  <div className={styles.targetTargetBossStack}>
+                    <div className={`${styles.enemyBossBar} ${styles.targetTargetBossBar}`}>
+                      <div className={styles.enemyName}>{targetTargetIconTitle}</div>
+                      <div className={styles.iconBarBody}>
+                        <div className={styles.enemyHpTrack}>
+                          {targetTargetSegments.shieldPct > 0 && (
+                            <div
+                              className={styles.enemyShieldFill}
+                              style={{
+                                left: `${targetTargetSegments.hpPct}%`,
+                                width: `${targetTargetSegments.shieldPct}%`,
+                              }}
+                            />
+                          )}
+                          <div
+                            className={styles.enemyHpFill}
+                            style={{ width: `${targetTargetSegments.hpPct}%`, background: hpGradient }}
+                          />
+                          {targetTargetHp > 0 && (
+                            <span className={styles.hpSegmentNum} style={{ left: '50%' }}>
+                              {targetTargetHpPercentText}
+                            </span>
+                          )}
+                        </div>
+                        <div className={styles.iconBarResourceRow}>
+                          <span className={styles.iconBarResourceValue}>130</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className={styles.targetTargetStatusSlot}>
+                      <StatusBar
+                        buffs={targetTargetBuffs}
+                        showNames={false}
+                        showTimers={false}
+                        compact
+                        maxPerRow={3}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               {/* Channel bar — yellow bar with name centered over the bar, no 段落.
                  Shown for the selected target (enemy/self/entity-owner). Always
@@ -6519,21 +7109,22 @@ export default function BattleArena({
                   </div>
                 );
               })()}
-              {/* Buffs row — fixed-height wrapper so ability row never shifts up */}
-              <div style={{ minHeight: 72, width: '100%', pointerEvents: 'auto' }}>
-                <StatusBar
-                  buffs={targetBuffs}
-                  debugLabel={isSelf ? 'me-target' : 'opp'}
-                  allowAnyCancel={!isSelf && isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally'}
-                  onCancelBuff={
-                    isSelf
-                      ? onCancelBuff
-                      : (isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally' && onCancelBuff)
-                        ? ((buffId) => onCancelBuff(buffId, { entityTargetId: selectedEntity.id }))
-                        : undefined
-                  }
-                />
-              </div>
+              {showInlineTargetStatus && (
+                <div style={{ minHeight: 72, width: '100%', pointerEvents: 'auto' }}>
+                  <StatusBar
+                    buffs={targetBuffs}
+                    debugLabel={isSelf ? 'me-target' : 'opp'}
+                    allowAnyCancel={!isSelf && isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally'}
+                    onCancelBuff={
+                      isSelf
+                        ? onCancelBuff
+                        : (isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally' && onCancelBuff)
+                          ? ((buffId) => onCancelBuff(buffId, { entityTargetId: selectedEntity.id }))
+                          : undefined
+                    }
+                  />
+                </div>
+              )}
               {/* Drafted abilities */}
               <div className={styles.enemyAbilityRow}>
                 {draftedAbilities.map((ability: any) => {
@@ -7186,9 +7777,9 @@ export default function BattleArena({
 
         <div className={styles.hotbarStack}>
           {/* ── Player buffs above drafted slots ── */}
-          {me?.buffs && me.buffs.length > 0 && (
+          {showInlinePlayerStatus && (
             <div className={styles.playerBuffRow}>
-              <StatusBar buffs={me.buffs} showDebug debugLabel="me" onCancelBuff={onCancelBuff} />
+              <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} />
             </div>
           )}
 

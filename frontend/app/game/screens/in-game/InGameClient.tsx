@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import styles from "./styles.module.css";
 
 import BattleArena from "./components/BattleArena";
 import GameOverModal from "./components/GameBoard/components/GameOverModal";
@@ -23,6 +24,9 @@ function showGameError(rawCode: string) {
   const code = rawCode?.trim();
 
   switch (code) {
+    case "ERR_CHANNELING":
+      toastError("正在进行其他动作");
+      break;
     case "ERR_NOT_YOUR_TURN":
       toastError("还没轮到你");
       break;
@@ -41,6 +45,9 @@ function showGameError(rawCode: string) {
     case "ERR_KNOCKED_BACK":
       toastError("你被击退，无法行动");
       break;
+    case "ERR_PULLED":
+      toastError("你被拉拽，无法行动");
+      break;
     case "ERR_CONTROLLED":
       toastError("你被控制，无法行动");
       break;
@@ -52,6 +59,9 @@ function showGameError(rawCode: string) {
       break;
     case "ERR_ABILITY_NOT_IN_HAND":
       toastError("技能不可用");
+      break;
+    case "ERR_ABILITY_NOT_FOUND":
+      toastError("技能配置不存在");
       break;
     case "ERR_ON_COOLDOWN":
       toastError("这个能力正在冷却");
@@ -86,8 +96,39 @@ function showGameError(rawCode: string) {
     case "ERR_HP_TOO_LOW":
       toastError("当前气血不足，无法施放");
       break;
+    case "ERR_TARGET_HP_TOO_HIGH":
+      toastError("目标气血过高，无法施放");
+      break;
+    case "ERR_BLOCKED_BY_BUFF":
+      toastError("该招式被当前气劲阻止");
+      break;
+    case "ERR_INVALID_PAYLOAD":
+      toastError("请求参数无效");
+      break;
+    case "ERR_BATTLE_NOT_IN_PROGRESS":
+      toastError("战斗尚未开始");
+      break;
+    case "ERR_GAME_LOOP":
+      toastError("战斗同步异常，请稍后重试");
+      break;
+    case "ERR_NOT_IN_GAME":
+      toastError("你不在这个对局中");
+      break;
+    case "ERR_PICKUP_TOO_FAR":
+    case "ERR_PICKUP_CLAIM_TOO_FAR":
+      toastError("距离太远，无法拾取");
+      break;
+    case "ERR_PICKUP_NOT_FOUND":
+      toastError("可拾取物不存在或已被拾取");
+      break;
+    case "ERR_PICKUP_HAND_FULL":
+      toastError("你已经有6个技能，无法再拾取");
+      break;
     case "ERR_NO_LINE_OF_SIGHT":
       toastError("目标不在视线范围内");
+      break;
+    case "ERR_INTERNAL":
+      toastError("服务器处理失败");
       break;
     default:
       toastError("操作无法执行");
@@ -121,6 +162,8 @@ export default function InGameClient({
 
   const {
     loading,
+    loadError,
+    disconnectPrompt,
     state,
     tournament,
     gameMode,
@@ -131,9 +174,12 @@ export default function InGameClient({
     isWinner,
     playAbility,
     cancelBuff,
+    cancelChannel,
+    updateTargetSelection,
     endTurn,
     rtt,
     refetch,
+    clearDisconnectPrompt,
     opponentPositionBufferRef,
   } = useGameState(gameId, selfUserId, authToken);
 
@@ -142,6 +188,28 @@ export default function InGameClient({
   // Track if we've already initiated battle to prevent duplicate calls
   const battleInitiatedRef = useRef(false);
   const battleCompletionHandledRef = useRef<string | null>(null);
+  const leaveNoticeHandledRef = useRef<string | null>(null);
+  const disconnectAutoLeaveKeyRef = useRef<string | null>(null);
+  const [disconnectCountdown, setDisconnectCountdown] = useState(30);
+
+  const leaveAfterDisconnectPrompt = async () => {
+    if (!disconnectPrompt) return;
+    const promptKey = `${disconnectPrompt.userId}:${disconnectPrompt.endsAt}`;
+    if (disconnectAutoLeaveKeyRef.current === promptKey) return;
+    disconnectAutoLeaveKeyRef.current = promptKey;
+    clearDisconnectPrompt();
+    try {
+      await fetch('/api/game/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameId }),
+      });
+    } catch (err) {
+      console.error('[DisconnectPrompt] /game/end failed:', err);
+    }
+    router.replace('/');
+  };
 
   // Reset battleInitiatedRef when phase leaves BATTLE (so next battle can start)
   useEffect(() => {
@@ -161,6 +229,50 @@ export default function InGameClient({
       battleCompletionHandledRef.current = null;
     }
   }, [tournament?.phase, tournament?.battleNumber, state?.gameOver, state?.winnerUserId]);
+
+  useEffect(() => {
+    if (!loadError) return;
+    if (["ERR_NOT_FOUND", "ERR_NOT_IN_GAME", "ERR_BATTLE_NOT_IN_PROGRESS", "Game not found"].includes(loadError)) {
+      router.replace("/game");
+    }
+  }, [loadError, router]);
+
+  useEffect(() => {
+    if (state?.gameOver && !state?.winnerUserId) {
+      router.replace("/game");
+    }
+  }, [router, state?.gameOver, state?.winnerUserId]);
+
+  useEffect(() => {
+    const notice = state?.leaveNotice;
+    if (!notice || notice.userId === selfUserId) return;
+
+    const noticeKey = `${notice.userId}:${notice.endsAt}`;
+    if (leaveNoticeHandledRef.current === noticeKey) return;
+    leaveNoticeHandledRef.current = noticeKey;
+    toastError(`${notice.username || "对方"} has left the game, game will end soon.`);
+  }, [selfUserId, state?.leaveNotice]);
+
+  useEffect(() => {
+    if (!disconnectPrompt) {
+      setDisconnectCountdown(30);
+      disconnectAutoLeaveKeyRef.current = null;
+      return;
+    }
+
+    const updateCountdown = () => {
+      setDisconnectCountdown(Math.max(0, Math.ceil((disconnectPrompt.endsAt - Date.now()) / 1000)));
+    };
+    updateCountdown();
+    const intervalId = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(intervalId);
+  }, [disconnectPrompt]);
+
+  useEffect(() => {
+    if (!disconnectPrompt || disconnectCountdown > 0) return;
+    void leaveAfterDisconnectPrompt();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disconnectPrompt, disconnectCountdown]);
 
   // Auto-call /battle/start when phase transitions to BATTLE (only once)
   useEffect(() => {
@@ -390,21 +502,45 @@ export default function InGameClient({
         opponentPositionBufferRef={opponentPositionBufferRef}
         mode={gameMode ?? 'arena'}
         onMovementRecover={refetch}
-        onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId) => {
+        onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId, movementIntent) => {
           // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
           const cardInstance =
             me.hand.find((c) => c.instanceId === abilityInstanceId) ??
             me.hand.find((c) => ((c as any).abilityId ?? (c as any).id) === abilityInstanceId) ??
             ({ instanceId: abilityInstanceId } as any); // synthetic stub — backend validates
-          const res = await playAbility(cardInstance, targetUserId, groundTarget, entityTargetId);
+          const res = await playAbility(cardInstance, targetUserId, groundTarget, entityTargetId, movementIntent);
           if (!res.ok && res.error) {
             console.error("[CastAbility] Error response:", res.error);
+            if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
+              router.replace("/game");
+              return;
+            }
             showGameError(res.error);
+          }
+        }}
+        onCancelChannel={async () => {
+          const res = await cancelChannel();
+          if (!res.ok && res.error) {
+            if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
+              router.replace("/game");
+              return;
+            }
+            showGameError(res.error);
+          }
+        }}
+        onTargetSelection={async (selection) => {
+          const res = await updateTargetSelection(selection);
+          if (!res.ok && res.error) {
+            console.error("[TargetSelection] Error response:", res.error);
           }
         }}
         onCancelBuff={async (buffId, options) => {
           const res = await cancelBuff(buffId, options);
           if (!res.ok && res.error) {
+            if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
+              router.replace("/game");
+              return;
+            }
             showGameError(res.error);
           }
         }}
@@ -415,6 +551,36 @@ export default function InGameClient({
           isWinner={isWinner}
           onExit={() => router.push("/game")}
         />
+      )}
+
+      {disconnectPrompt && (
+        <div className={styles.disconnectPromptOverlay} role="dialog" aria-modal="true">
+          <div className={styles.disconnectPromptWindow}>
+            <div className={styles.disconnectPromptTitle}>Player disconnected</div>
+            <div className={styles.disconnectPromptMessage}>
+              {disconnectPrompt.username || "Opponent"} disconnected. Leave and return to home page?
+            </div>
+            <div className={styles.disconnectPromptCountdown}>
+              Auto return in {disconnectCountdown}s
+            </div>
+            <div className={styles.disconnectPromptActions}>
+              <button
+                type="button"
+                className={styles.disconnectPromptButtonSecondary}
+                onClick={clearDisconnectPrompt}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className={styles.disconnectPromptButtonPrimary}
+                onClick={() => void leaveAfterDisconnectPrompt()}
+              >
+                Yes ({disconnectCountdown}s)
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </GamePreloadProvider>
   );

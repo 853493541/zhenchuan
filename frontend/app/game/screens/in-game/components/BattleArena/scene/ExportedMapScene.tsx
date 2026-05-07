@@ -242,6 +242,9 @@ export default function ExportedMapScene({
 
     (async () => {
       try {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        if (disposed) return;
+
         const [entities, meshMap, mapConfig, textureMap, terrainTexIndex] = await Promise.all([
           fetchJson(`${DATA_PATH}/entities/full.rh.json`),
           fetchJson(`${DATA_PATH}/mesh-map.json`),
@@ -251,13 +254,14 @@ export default function ExportedMapScene({
         ]);
         if (disposed) return;
 
-        const entityStats = await loadEntities(contentGroup, entities, meshMap, textureMap, disposed);
-        if (disposed) return;
+        const entityStatsPromise = loadEntities(contentGroup, entities, meshMap, textureMap, disposed);
+        const terrainResultPromise = loadTerrain(contentGroup, mapConfig, terrainTexIndex, disposed);
+        const collisionResultPromise = loadCollision(group, entities, meshMap, disposed, shellLinesRef, boxLinesRef);
 
-        const terrainResult = await loadTerrain(contentGroup, mapConfig, terrainTexIndex, disposed);
-        if (disposed) return;
-
-        const collisionResult = await loadCollision(group, entities, meshMap, disposed, shellLinesRef, boxLinesRef);
+        const [terrainResult, collisionResult] = await Promise.all([
+          terrainResultPromise,
+          collisionResultPromise,
+        ]);
         if (disposed) return;
 
         // Build collision system (BVH + terrain)
@@ -287,6 +291,9 @@ export default function ExportedMapScene({
             terrainResult.heightmaps.size, 'terrain tiles');
           onCollisionSystemReady?.(collisionSystem);
         }
+
+        const entityStats = await entityStatsPromise;
+        if (disposed) return;
 
         console.log(
           `[ExportedMapScene] LOADED — ` +

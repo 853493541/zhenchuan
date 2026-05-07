@@ -4,12 +4,24 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 
+type StartMode = 'collision-test' | 'pubg' | 'arena' | 'export-viewer';
+
+const START_MODES: Array<{ value: StartMode; label: string }> = [
+  { value: 'collision-test', label: '玉门关' },
+  { value: 'pubg', label: '吃鸡' },
+  { value: 'arena', label: '竞技场' },
+  { value: 'export-viewer', label: 'export viewer' },
+];
+
+const startModeLabel = (mode: StartMode) => START_MODES.find((item) => item.value === mode)?.label ?? '玉门关';
+
 export default function HomePage() {
   const router = useRouter();
 
   const [waitingGames, setWaitingGames] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedStartMode, setSelectedStartMode] = useState<StartMode>('collision-test');
   const previousGameIds = useRef<Set<string>>(new Set());
   const hasAutoJoined = useRef(false);
   // Keep me in a ref so the polling closure always sees the latest value
@@ -121,47 +133,56 @@ export default function HomePage() {
     router.push("/ability-editor");
   };
 
+  const startSelectedMode = () => {
+    if (selectedStartMode === 'export-viewer') {
+      openExportViewer();
+      return;
+    }
+    void createGame(selectedStartMode);
+  };
+
   /* =========================================================
      UI
   ========================================================= */
   return (
     <div className={styles.page}>
-      <h1 className={styles.title}>对战大厅</h1>
+      <h1 className={styles.title}>真传</h1>
 
       <div className={styles.createActions}>
-        <button
-          className={styles.createBtn}
-          onClick={() => createGame('pubg')}
-          disabled={loading}
-        >
-          {loading ? "创建中…" : "创建吃鸡"}
-        </button>
-        <button
-          className={`${styles.createBtn} ${styles.createBtnArena}`}
-          onClick={() => createGame('arena')}
-          disabled={loading}
-        >
-          {loading ? "创建中…" : "创建竞技场"}
-        </button>
-        <button
-          className={`${styles.createBtn} ${styles.createBtnCollisionTest}`}
-          onClick={() => createGame('collision-test')}
-          disabled={loading}
-        >
-          {loading ? "创建中…" : "创建玉门关"}
-        </button>
-        <button
-          className={`${styles.createBtn} ${styles.createBtnExportViewer}`}
-          onClick={openExportViewer}
-        >
-          Export Viewer
-        </button>
-        <button
-          className={`${styles.createBtn} ${styles.createBtnAbilityEditor}`}
-          onClick={openAbilityEditor}
-        >
-          能力属性编辑
-        </button>
+        <div className={styles.createActionRow}>
+          <select
+            className={styles.modeSelect}
+            value={selectedStartMode}
+            onChange={(event) => setSelectedStartMode(event.target.value as StartMode)}
+            aria-label="选择模式"
+          >
+            {START_MODES.map((mode) => (
+              <option key={mode.value} value={mode.value}>{mode.label}</option>
+            ))}
+          </select>
+          <button
+            className={`${styles.createBtn} ${styles.createBtnPrimary}`}
+            onClick={startSelectedMode}
+            disabled={loading}
+          >
+            {loading ? "创建中…" : "开始"}
+          </button>
+          <button
+            className={`${styles.createBtn} ${styles.createBtnAbilityEditor}`}
+            onClick={openAbilityEditor}
+          >
+            技能编辑
+          </button>
+        </div>
+        <div className={styles.bigStartWrap}>
+          <button
+            className={styles.bigStartBtn}
+            onClick={startSelectedMode}
+            disabled={loading}
+          >
+            {loading ? "创建中…" : `开始 ${startModeLabel(selectedStartMode)}`}
+          </button>
+        </div>
       </div>
 
       <div className={styles.list}>

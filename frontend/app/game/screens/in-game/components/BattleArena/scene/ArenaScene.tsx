@@ -581,6 +581,29 @@ export default function ArenaScene({
         </>
       )}
 
+      {!blueprintMode && (
+        <Character
+          worldX={me.position.x}
+          worldY={me.position.y}
+          worldZ={me.position.z ?? 0}
+          color="#1a66cc"
+          emissive="#0a2255"
+          hp={me.hp}
+          shield={me.shield ?? 0}
+          maxHp={me.maxHp ?? maxHp}
+          isMe={true}
+          isSelected={selectedSelf}
+          facingRef={meFacingRef}
+          posRef={localRenderPosRef}
+          onScreenBounds={meScreenBoundsRef ? (b) => { meScreenBoundsRef.current = b; } : undefined}
+          worldHalfX={worldHalfX}
+          worldHalfY={worldHalfY}
+          isStealthed={meSemiTransparent}
+          cameraFadeEnabled={isCollisionTest && !selfOnlyMode}
+          hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
+        />
+      )}
+
       {!selfOnlyMode && (
         <>
           {/* World */}
@@ -771,6 +794,8 @@ export default function ArenaScene({
           color="#ffd700"
           worldHalfX={worldHalfX}
           worldHalfY={worldHalfY}
+          followPositionRef={localRenderPosRef}
+          followZOffset={CHANNEL_RING_WAIST_Z}
         />
       )}
 
@@ -795,6 +820,9 @@ export default function ArenaScene({
                 color="#ff5500"
                 worldHalfX={worldHalfX}
                 worldHalfY={worldHalfY}
+                smoothPosition
+                instantSnapAtRef={opponentInstantSnapAtRef}
+                instantSnapWindowMs={600}
               />
             )}
             <Character
@@ -837,30 +865,6 @@ export default function ArenaScene({
       })}
 
       </>}  {/* end !blueprintMode */}
-
-      {!blueprintMode && (!isCollisionTest || collisionReady) && (
-        <Character
-          worldX={me.position.x}
-          worldY={me.position.y}
-          worldZ={me.position.z ?? 0}
-          color="#1a66cc"
-          emissive="#0a2255"
-          hp={me.hp}
-          shield={me.shield ?? 0}
-          maxHp={me.maxHp ?? maxHp}
-          isMe={true}
-          isSelected={selectedSelf}
-          facingRef={meFacingRef}
-          posRef={localRenderPosRef}
-          onScreenBounds={meScreenBoundsRef ? (b) => { meScreenBoundsRef.current = b; } : undefined}
-          worldHalfX={worldHalfX}
-          worldHalfY={worldHalfY}
-          isStealthed={meSemiTransparent}
-          cameraFadeEnabled={isCollisionTest && !selfOnlyMode}
-          hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
-        />
-      )}
-
       {!selfOnlyMode && isCollisionTest && collisionDebugRef && showCollisionShells && (
         <CollisionProbeOverlay debugRef={collisionDebugRef} />
       )}

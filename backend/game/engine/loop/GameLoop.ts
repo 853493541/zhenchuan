@@ -10,7 +10,7 @@
  */
 
 import { GameState, MovementInput, GroundZone, TargetEntity, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
-import { checkGameOver } from "../flow/turn/checkGameOver";
+import { checkGameOver, resetDefeatedPlayersForTesting } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
@@ -1130,6 +1130,15 @@ export class GameLoop {
   hasPendingJump(playerIndex: number): boolean {
     const input = this.playerInputs.get(playerIndex);
     return input?.jump === true;
+  }
+
+  hasMovementIntent(playerIndex: number): boolean {
+    const input = this.playerInputs.get(playerIndex);
+    if (!input) return false;
+    if (typeof input.dx === "number" || typeof input.dy === "number") {
+      return Math.hypot(input.dx ?? 0, input.dy ?? 0) > 0.01;
+    }
+    return input.up || input.down || input.left || input.right;
   }
 
   /**
@@ -4728,9 +4737,14 @@ export class GameLoop {
       this.stackProcScanIndex = this.state.events.length;
     }
 
-    // 2. Check win condition
+    // 2. Check win condition. Testing mode keeps the same battle running by
+    // restoring everyone when any player hits 0 HP.
     const winStart = performance.now();
-    checkGameOver(this.state);
+    if (resetDefeatedPlayersForTesting(this.state)) {
+      buffsChanged = true;
+    } else {
+      checkGameOver(this.state);
+    }
     const winTime = performance.now() - winStart;
 
     // 3. Broadcast position updates (throttled to reduce bandwidth)

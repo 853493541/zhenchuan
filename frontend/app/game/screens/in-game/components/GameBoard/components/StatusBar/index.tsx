@@ -20,6 +20,11 @@ type Props = {
   debugLabel?: string;
   onCancelBuff?: (buffId: number) => Promise<void> | void;
   allowAnyCancel?: boolean;
+  showNames?: boolean;
+  showTimers?: boolean;
+  compact?: boolean;
+  maxPerRow?: number;
+  categoryFilter?: "BUFF" | "DEBUFF";
 };
 
 type ResolvedBuff = {
@@ -33,6 +38,8 @@ type ResolvedBuff = {
   attribute?: string;
   manualCancelable?: boolean;
   stacks?: number; // live stack count for stackable debuffs
+  appliedAt?: number;
+  originalOrder: number;
 };
 
 type ActiveHint = {
@@ -41,6 +48,31 @@ type ActiveHint = {
 };
 
 const ALWAYS_SHOW_STACK_BADGE = new Set([990100, 990101, 990102]);
+const MINUTE_MARK = "′";
+const SECOND_MARK = "″";
+
+function compareApplicationOrder(a: ResolvedBuff, b: ResolvedBuff): number {
+  if (a.appliedAt !== undefined && b.appliedAt !== undefined && a.appliedAt !== b.appliedAt) {
+    return a.appliedAt - b.appliedAt;
+  }
+  return a.originalOrder - b.originalOrder;
+}
+
+function formatTimer(secsLeft: number): { text: string; className: string; urgent: boolean } {
+  if (secsLeft >= 60) {
+    return {
+      text: `${Math.max(1, Math.ceil(secsLeft / 60))}${MINUTE_MARK}`,
+      className: styles.minuteTime,
+      urgent: false,
+    };
+  }
+  const displaySeconds = Math.max(1, Math.ceil(secsLeft));
+  return {
+    text: `${displaySeconds}${SECOND_MARK}`,
+    className: styles.secondTime,
+    urgent: displaySeconds <= 2,
+  };
+}
 
 export default function StatusBar({
   buffs = [],
@@ -49,6 +81,11 @@ export default function StatusBar({
   debugLabel = '?',
   onCancelBuff,
   allowAnyCancel = false,
+  showNames = true,
+  showTimers = true,
+  compact = false,
+  maxPerRow = 10,
+  categoryFilter,
 }: Props) {
   const preload = useGamePreload();
   const [activeHint, setActiveHint] = useState<ActiveHint | null>(null);
@@ -96,7 +133,7 @@ export default function StatusBar({
 
   // Resolve metadata for currently-live buffs.
   const resolved: ResolvedBuff[] = buffs
-    .map((b) => {
+    .map((b, originalOrder) => {
       const meta = preload?.buffMap?.[b.buffId];
       if (!meta) return null;
       if (meta.hiddenInStatusBar === true) return null;
@@ -115,6 +152,8 @@ export default function StatusBar({
         attribute,
         manualCancelable: meta.manualCancelable === true,
         stacks:      b.stacks,
+        appliedAt:   b.appliedAt,
+        originalOrder,
       };
     })
     .filter(Boolean) as ResolvedBuff[];
@@ -124,10 +163,15 @@ export default function StatusBar({
   // up to 5 s for the server to send the removal.
   const visibleResolved = resolved.filter((b) => {
     return getRemainingSeconds(b) > 0;
-  });
+  }).sort(compareApplicationOrder);
 
   const buffsPos = visibleResolved.filter((b) => b.category === "BUFF");
   const buffsNeg = visibleResolved.filter((b) => b.category === "DEBUFF");
+  const statusRows = categoryFilter === "BUFF"
+    ? [buffsPos]
+    : categoryFilter === "DEBUFF"
+    ? [buffsNeg]
+    : [buffsPos, buffsNeg];
 
   function openHint(anchorRect: DOMRect, b: ResolvedBuff) {
     setActiveHint({
@@ -143,23 +187,22 @@ export default function StatusBar({
   function renderBuff(b: ResolvedBuff) {
     const colorClass  = b.category === "BUFF" ? styles.buffText : styles.debuffText;
     const secsLeft    = getRemainingSeconds(b);
-    const isLastTick  = secsLeft < 5;
+    const timer       = showTimers ? formatTimer(secsLeft) : null;
+    const urgent      = timer?.urgent === true;
     const canManualCancel = !!onCancelBuff && (allowAnyCancel || (b.category === "BUFF" && b.manualCancelable === true));
     const cancelCursor = allowAnyCancel && canManualCancel ? "pointer" : canManualCancel ? "context-menu" : undefined;
-    // Timer always shows countdown; stacks shown as icon overlay badge
-    const timerStr    = secsLeft >= 10 ? String(Math.floor(secsLeft)) : secsLeft.toFixed(1);
 
     return (
-      <div key={b.buffId} className={styles.buffItem}>
-        <div className={`${styles.buffName} ${colorClass}`}>
-          {b.shortName}
-        </div>
+      <div key={b.buffId} className={`${styles.buffItem} ${urgent ? styles.urgentBuffItem : ""}`}>
+        {showNames && (
+          <div className={`${styles.buffName} ${colorClass}`}>
+            {b.shortName}
+          </div>
+        )}
 
         <div className={styles.iconWrapper}>
           <div
-            className={`${styles.buffIcon} ${
-              b.category === "BUFF" ? styles.buffBorder : styles.debuffBorder
-            }`}
+            className={styles.buffIcon}
             style={{
               backgroundImage: getBuffIconBackgroundImage(b.name, b.iconPath),
               cursor: cancelCursor,
@@ -186,13 +229,13 @@ export default function StatusBar({
           )}
         </div>
 
-        <div
-          className={`${styles.buffTurns} ${colorClass} ${
-            isLastTick ? styles.lastTurn : ""
-          }`}
-        >
-          {timerStr}
-        </div>
+        {timer && (
+          <div
+            className={`${styles.buffTurns} ${timer.className}`}
+          >
+            {timer.text}
+          </div>
+        )}
       </div>
     );
   }
@@ -203,13 +246,12 @@ export default function StatusBar({
 
   return (
     <>
-      <div className={styles.statusBar}>
-        <div className={styles.statusRow}>
-          {buffsPos.slice(0, 6).map(renderBuff)}
-        </div>
-        <div className={styles.statusRow}>
-          {buffsNeg.slice(0, 6).map(renderBuff)}
-        </div>
+      <div className={`${styles.statusBar} ${compact ? styles.compactStatusBar : ""}`}>
+        {statusRows.map((row, index) => (
+          <div key={categoryFilter ?? index} className={styles.statusRow}>
+            {row.slice(0, maxPerRow).map(renderBuff)}
+          </div>
+        ))}
       </div>
 
       {activeHint && (

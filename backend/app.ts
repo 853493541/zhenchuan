@@ -288,6 +288,59 @@ app.use(compression());
 
 console.log("✅ CORS and compression configured");
 
+function defaultErrorCodeForStatus(status: number): string {
+   if (status === 401) return "ERR_NOT_AUTHENTICATED";
+   if (status === 403) return "ERR_FORBIDDEN";
+   if (status === 404) return "ERR_NOT_FOUND";
+   if (status >= 500) return "ERR_INTERNAL";
+   return "ERR_BAD_REQUEST";
+}
+
+function normalizeErrorCode(raw: unknown, status: number): string {
+   const text = String(raw ?? "").trim();
+   if (/^ERR_[A-Z0-9_]+$/.test(text)) return text;
+   return defaultErrorCodeForStatus(status);
+}
+
+app.use((_req, res, next) => {
+   const originalJson = res.json.bind(res);
+   res.json = ((body?: any) => {
+      if (
+         res.statusCode >= 400 &&
+         body &&
+         typeof body === "object" &&
+         !Array.isArray(body) &&
+         "error" in body &&
+         !("code" in body)
+      ) {
+         const message = typeof body.message === "string" ? body.message : String(body.error ?? "Request failed");
+         return originalJson({
+            ...body,
+            code: normalizeErrorCode(body.error, res.statusCode),
+            message,
+         });
+      }
+      return originalJson(body);
+   }) as typeof res.json;
+
+   const originalSend = res.send.bind(res);
+   res.send = ((body?: any) => {
+      const contentType = String(res.getHeader("content-type") ?? "");
+      if (res.statusCode >= 400 && typeof body === "string" && !contentType.includes("application/json")) {
+         const code = normalizeErrorCode(body, res.statusCode);
+         res.type("application/json");
+         return originalSend(JSON.stringify({
+            error: body,
+            code,
+            message: body,
+         }));
+      }
+      return originalSend(body);
+   }) as typeof res.send;
+
+   next();
+});
+
 /* =====================================================
    🗄️ Database
 ===================================================== */

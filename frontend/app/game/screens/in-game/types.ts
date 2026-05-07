@@ -96,6 +96,11 @@ export interface ActiveChannel {
   cooldownTicks: number;
 }
 
+export type TargetSelection =
+  | { kind: "self"; userId: string }
+  | { kind: "player"; userId: string }
+  | { kind: "entity"; entityId: string };
+
 /* =========================================================
    Player State
 ========================================================= */
@@ -124,6 +129,7 @@ export interface PlayerState {
     durationMs: number;
   };
   buffs: ActiveBuff[];
+  targetSelection?: TargetSelection;
   position?: { x: number; y: number; z?: number };
   velocity?: { vx: number; vy: number; vz?: number };
   moveSpeed?: number;
@@ -234,6 +240,11 @@ export interface GameState {
 
   gameOver: boolean;
   winnerUserId?: string;
+  leaveNotice?: {
+    userId: string;
+    username: string;
+    endsAt: number;
+  };
 
   players: PlayerState[];
   events: GameEvent[];

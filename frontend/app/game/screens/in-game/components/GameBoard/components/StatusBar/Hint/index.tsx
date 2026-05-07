@@ -95,7 +95,7 @@ export default function StatusHint({
       </div>
       <div className={styles.desc}>{description || "无"}</div>
       <div className={styles.time}>
-        剩余时间：{remainingSeconds}秒
+        剩余时间：{remainingSeconds <= 0 ? "马上消亡" : `${remainingSeconds}秒`}
       </div>
     </div>
   );
