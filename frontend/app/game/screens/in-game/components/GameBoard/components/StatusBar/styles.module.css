@@ -1,14 +1,15 @@
 /* ================= ROOT ================= */
 
 .statusBar {
-  --status-icon-size: 39px;
-  --status-row-gap: 2px;
+  --status-icon-size: 35.1px;
+  --status-row-gap: 1.8px;
+  --status-text-block-size: 32.4px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--status-row-gap);
   width: 100%;
-  min-height: calc((var(--status-icon-size) + 36px) * 2 + var(--status-row-gap));
+  min-height: calc((var(--status-icon-size) + var(--status-text-block-size)) * 2 + var(--status-row-gap));
 }
 
 /* ================= ROW ================= */
@@ -18,19 +19,19 @@
   flex-wrap: wrap;
   justify-content: flex-start;
   align-items: flex-start;
-  gap: 2px;
+  gap: 1.8px;
   width: 100%;
-  min-height: calc(var(--status-icon-size) + 36px);
+  min-height: calc(var(--status-icon-size) + var(--status-text-block-size));
 }
 
 .compactStatusBar {
-  --status-icon-size: 17px;
-  --status-row-gap: 1px;
+  --status-icon-size: 15.3px;
+  --status-row-gap: 0.9px;
   min-height: calc(var(--status-icon-size) * 2 + var(--status-row-gap));
 }
 
 .compactStatusBar .statusRow {
-  gap: 1px;
+  gap: 0.9px;
   min-height: var(--status-icon-size);
 }
 
@@ -39,7 +40,7 @@
 }
 
 .compactStatusBar .stackBadge {
-  font-size: 8px;
+  font-size: 7.2px;
 }
 
 /* ================= BUFF ITEM ================= */
@@ -50,7 +51,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 1.8px;
   user-select: none;
 }
 
@@ -65,17 +66,17 @@
 /* ================= NAME ================= */
 
 .buffName {
-  font-size: 14px;
+  font-size: 12.6px;
   font-weight: 900;
   line-height: 1;
   text-align: center;
   white-space: nowrap;
-  -webkit-text-stroke: 0.42px rgba(0, 0, 0, 0.98);
+  -webkit-text-stroke: 0.29px rgba(0, 0, 0, 0.98);
   text-shadow:
-    0 1.2px 0 #000,
-    1.2px 0 0 #000,
-    0 -1.2px 0 #000,
-    -1.2px 0 0 #000,
+    0 0.84px 0 #000,
+    0.84px 0 0 #000,
+    0 -0.84px 0 #000,
+    -0.84px 0 0 #000,
     0 0 3px rgba(0, 0, 0, 0.95);
 }
 
@@ -108,16 +109,16 @@
   position: absolute;
   top: 1px;
   right: 2px;
-  font-size: 12px;
+  font-size: 10.8px;
   font-weight: 800;
   line-height: 1;
   color: #ffffff;
-  -webkit-text-stroke: 0.36px rgba(0, 0, 0, 0.98);
+  -webkit-text-stroke: 0.25px rgba(0, 0, 0, 0.98);
   text-shadow:
-    0 1px 0 #000,
-    1px 0 0 #000,
-    0 -1px 0 #000,
-    -1px 0 0 #000;
+    0 0.7px 0 #000,
+    0.7px 0 0 #000,
+    0 -0.7px 0 #000,
+    -0.7px 0 0 #000;
   pointer-events: none;
   z-index: 2;
 }
@@ -130,17 +131,17 @@
   justify-content: center;
   align-items: center;
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 16px;
+  font-size: 14.4px;
   font-weight: 900;
   line-height: 1;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  -webkit-text-stroke: 0.34px rgba(0, 0, 0, 0.98);
+  -webkit-text-stroke: 0.24px rgba(0, 0, 0, 0.98);
   text-shadow:
-    0 1.1px 0 #000,
-    1.1px 0 0 #000,
-    0 -1.1px 0 #000,
-    -1.1px 0 0 #000,
+    0 0.77px 0 #000,
+    0.77px 0 0 #000,
+    0 -0.77px 0 #000,
+    -0.77px 0 0 #000,
     0 0 3px rgba(0, 0, 0, 0.95);
 }
 
@@ -179,10 +180,10 @@
 
 @media (max-width: 768px) {
   .buffName {
-    font-size: 13px;
+    font-size: 11.7px;
   }
 
   .buffTurns {
-    font-size: 15px;
+    font-size: 13.5px;
   }
 }

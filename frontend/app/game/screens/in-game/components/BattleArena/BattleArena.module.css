@@ -593,7 +593,7 @@
 }
 
 .enemyBossBar {
-  width: 360px;
+  width: 252px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -608,18 +608,18 @@
 .enemyBossTopRow {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 24px;
   width: max-content;
 }
 
 .enemyBossTopRow .enemyBossBar {
-  width: 360px;
-  min-width: 360px;
+  width: 252px;
+  min-width: 252px;
 }
 
 .targetTargetBossStack {
-  width: 220px;
-  min-width: 220px;
+  width: 110px;
+  min-width: 110px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -632,8 +632,9 @@
 }
 
 .targetTargetBossBar {
-  width: 220px;
+  width: 110px;
   gap: 1px;
+  margin-top: 26.5px;
 }
 
 .targetTargetBossBar .enemyName {

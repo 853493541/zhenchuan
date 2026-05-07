@@ -3,6 +3,54 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Target-target title simplification and spacing retune (2026-05-07)
+
+**Problem set**:
+1. The target-target icon bar still displayed a range prefix when only the name should remain visible.
+2. The target-target bar sat too low relative to the main target bar.
+3. The horizontal gap between the main target bar and target-target bar needed another 50% increase.
+
+**Fix**:
+- Removed the target-target distance prefix and now render only the resolved target-target name in the compact icon bar title.
+- Reduced the target-target bar top offset from `53px` to `26.5px`, effectively moving it up by 50%.
+- Increased the main-target to target-target gap from `16px` to `24px`.
+- Rebuilt backend and frontend, restarted PM2 on the newest build, and re-checked local frontend, backend preload, and deployed HTTPS health.
+
+**Lessons**:
+- The target-target title is controlled by a single local string in `BattleArena.tsx`, so removing distance text does not require touching the shared distance formatter used by the main target bar.
+- For this HUD layout, a simple `margin-top` change on the compact secondary bar is enough to retune its vertical relationship to the main target without reopening the whole target stack structure.
+
+## Status bar scale trim and target-target icon bar spacing (2026-05-07)
+
+**Problem set**:
+1. Status text outlines needed to be about 30% thinner without changing the underlying timer behavior.
+2. The whole status bar needed to read about 10% smaller overall, not just with smaller icons.
+3. The target-target icon bar needed another 50% width reduction.
+4. The target-target bar needed a larger separation from the main target bar and a lower vertical placement by roughly one bar height.
+
+**Fix**:
+- Reduced the buff-name, stack-count, and timer stroke/shadow outline thickness values by roughly 30%.
+- Scaled the status bar down by about 10% across icon size, row/item gaps, reserved label/timer height, and related text sizes, including compact mode.
+- Reduced the target-target boss stack and bar width from `220px` to `110px`.
+- Doubled the main-target to target-target gap from `8px` to `16px` and lowered the target-target icon bar with a `53px` top offset to match its compact bar height.
+- Rebuilt backend and frontend after each numbered point, restarted PM2 on the newest build, and re-checked local frontend, backend preload, and deployed HTTPS health.
+
+**Lessons**:
+- For this HUD, “overall size” changes need the reserved text block height and row gaps scaled with the icons; shrinking only the icons leaves the component visually too tall.
+- The main target bar and target-target bar remain safest to tune with independent CSS width and offset rules.
+- In this environment, chained build/restart/health commands can stop echoing after the frontend `Creating an optimized production build ...` line even when the follow-up explicit build succeeds, so final verification should use direct reruns of the frontend build and health probes when the combined output is inconclusive.
+
+## Enemy icon bar width reduction (2026-05-07)
+
+**Problem set**:
+1. The enemy icon bar remained too wide after the previous HUD rework and needed to be reduced by 30%.
+
+**Fix**:
+- Reduced the main enemy icon bar width and min-width from `360px` to `252px`, leaving the smaller target-target bar unchanged.
+
+**Lessons**:
+- The main target bar and target-target bar use separate width rules, so width corrections can stay narrowly scoped without disturbing the secondary target stack.
+
 ## Status readability, shield display, icon bar, and HTTPS verification (2026-05-07)
 
 **Problem set**:

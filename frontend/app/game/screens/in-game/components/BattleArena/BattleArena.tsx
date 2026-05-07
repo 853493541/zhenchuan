@@ -7000,7 +7000,7 @@ export default function BattleArena({
             : targetTargetPlayer
             ? (targetTargetPlayer.username ?? '目标')
             : '';
-          const targetTargetIconTitle = `${formatIconBarDistance(targetPosition ?? me.position, targetTargetPosition, storedUnitScale)} · ${targetTargetName}`;
+          const targetTargetIconTitle = targetTargetName;
           const showTargetTargetBar = !!(targetTargetEntity || targetTargetPlayer);
           const draftedAbilities = targetHand.filter((ability: any) => {
             const abilityId = ability.abilityId || ability.id;
