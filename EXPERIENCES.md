@@ -3,6 +3,418 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## BattleArena ESC scaling, Catcake defaults, and WebGL recovery (2026-05-08)
+
+**Problem set**:
+1. The compact ESC shell needed to grow by 15% while keeping the existing page structure.
+2. The game-settings `恢复默认` footer button felt out of place, but custom UI still needed a default-layout restore action.
+3. The `体积碰撞开关` indirection hid the useful collision controls behind a second floating panel.
+4. The top-left home button was too small for the current HUD scale.
+5. 玉门关 could repeatedly hit WebGL context loss on iPad/other constrained devices, showing recovery text and sometimes disconnecting/crashing.
+6. Catcake's saved custom UI layout needed to become the responsive default layout.
+
+**Fix**:
+- Increased the ESC shell to `688px` by `437px` and updated the responsive height cap.
+- Removed the game-settings footer reset button, then added `恢复默认` to the custom-UI prompt where it applies Catcake's saved `1920 x 945` HUD positions through the existing viewport scaling helper.
+- Removed the `showCollisionControlPanel` floating panel path and put direct `显示碰撞线` / `显示蓝图` checkboxes in the ESC `开关` test page.
+- Increased the home button and icon from `34px`/`18px` to `51px`/`27px`.
+- Changed WebGL recovery to wait for `webglcontextrestored` before remounting the canvas, capped mobile DPR, disabled mobile antialias, disabled mobile shadows by default, reduced exported-map shadow maps to `1024`, and made exported collision wireframes lazy so hidden debug geometry is not allocated during normal loading.
+
+**Lessons**:
+- WebGL context-loss recovery should reduce pressure and wait for restoration; immediately remounting the same heavy scene can create a visible recovery loop.
+- Hidden collision debug lines still cost memory if their geometry is built up front. Keep the CPU collision data for gameplay, but allocate GPU wireframes only when a debug view is active.
+- Responsive HUD defaults should store the authored viewport with the coordinates and scale at load/apply time rather than hardcoding screen-specific pixels.
+
+## BattleArena compact ESC test/settings rework (2026-05-08)
+
+**Problem set**:
+1. The ESC panel needed to be reduced to half its previous footprint.
+2. The centered custom-UI confirmation panel needed to be draggable without becoming a green custom-UI guide.
+3. ESC footer actions needed `返回角色` removed and `退出游戏` wired to the same leave-game flow as the top-left home button.
+4. The `测试` tab needed left-list pages for `开关` and `灯光控制`, with renamed switches and direct `屏幕坐标` behavior.
+5. Lighting controls needed to move inside the ESC test page instead of rendering a separate floating panel.
+6. Normal ESC placeholders needed to read as disabled gray, and game settings placeholders needed to be removed.
+
+**Fix**:
+- Shrunk the ESC shell to `598px` by `380px` with matching compact header, tabs, tiles, footer buttons, sidebars, toggles, and ranges.
+- Added a dedicated non-persistent drag handler for the center `自定义界面` prompt; it uses neutral panel styling and never receives the green edit-guide class.
+- Passed `leaveGameAndReturnHome` from `InGameClient` into `BattleArena` as `onLeaveGame`, removed `返回角色`, and made `退出游戏` call that handler.
+- Replaced the flat test grid with a left-list layout: `开关` contains renamed test switches and `灯光控制` contains the moved light toggles, brightness slider, color picker, and presets.
+- Made `屏幕坐标` toggle the screen coordinate overlay directly and removed the old secondary screen-coordinate panel state.
+- Removed game settings placeholder sidebar/action entries and strengthened disabled normal-tile gray styling.
+
+**Lessons**:
+- When a control panel is moved inside ESC, separate the panel's visibility from the underlying debug state so live scene props continue to work without rendering duplicate floating UI.
+- Draggable utility prompts should use a local, non-persisted position rather than joining the saved HUD placement map unless the user explicitly wants that prompt saved as part of custom UI.
+
+## BattleArena ESC settings menu rework and top bar resize (2026-05-08)
+
+**Problem set**:
+1. The compact top metrics bar needed to grow by 30% along with its text.
+2. The ESC panel needed a first-page system-settings layout similar to the provided screenshots.
+3. Only `游戏设置` and `自定义界面` should be functional in the first-page placeholder grid.
+4. `游戏设置` needed a second page with a back button and working `技能栏大小` / `显示GCD` controls.
+5. The remaining debug/testing controls needed to move out of the normal settings view into a `测试` tab.
+
+**Fix**:
+- Increased the top metrics strip from `14.5px` to `18.85px`, with matching text and spacing growth.
+- Replaced the old ESC control list with a large solid `系统设置` panel containing `常规` and `测试` tabs.
+- Added placeholder setting tiles for the normal tab and wired `游戏设置` to a second page plus `自定义界面` to close ESC and enter custom UI mode.
+- Moved `技能栏大小` and the full GCD visibility group into the `游戏设置` second page.
+- Moved the remaining collision/debug controls into the `测试` tab with the same panel control styling.
+
+**Lessons**:
+- ESC overlays that block arena input should keep a single active shell and route pages with local state; this avoids duplicating settings persistence or keyboard handling.
+- When moving live controls between panels, preserve the existing state keys and localStorage effects so the UI changes do not reset player preferences.
+
+## BattleArena compact top bar and custom UI guide visibility follow-up (2026-05-08)
+
+**Problem set**:
+1. The top metrics bar and its text needed to be reduced by 50%.
+2. The `玉门关` mode badge should no longer display.
+3. Combat stat control buttons were too high and needed to move into the bottom half of the screen.
+4. The `目标技能栏` custom UI box could collapse to nearly no height when there was no live target ability content.
+5. Custom UI green guides could be hidden behind the actual widget and were too tight around the UI.
+
+**Fix**:
+- Reduced the top metrics strip from `29px`/`22px` text to `14.5px`/`11px` text and halved its spacing/button chrome.
+- Removed the in-scene mode badge render entirely.
+- Moved `.critPresetBar` to `top: 56%` so stat controls sit in the lower half of the arena.
+- Added target skill preview placeholders plus fixed `32px` target skill slots so the custom UI guide includes icon height and ability-name text.
+- Raised shared custom UI green overlays above widgets and expanded them by `6px` without adding layout padding or moving saved positions.
+
+**Lessons**:
+- A non-layout pseudo-element can be visually larger than the widget and still preserve exact saved placement if the parent padding/border remain zero.
+- Custom UI preview content should include realistic placeholder dimensions; otherwise edit guides for context-dependent HUD widgets collapse when the live target state is empty.
+
+## BattleArena top metrics bar and custom UI placement correction (2026-05-08)
+
+**Problem set**:
+1. The temporary `物品栏` needed to be reduced from sixteen slots to fourteen.
+2. The self HP custom-UI guide showed an unnecessary `自身血条` label.
+3. The C-key attribute panel was not included in custom UI positioning.
+4. The top-right latency badge needed to become a full-width top metrics strip with `设置`, system time, render FPS, and network latency.
+5. Floating custom-UI green edit boxes shifted after confirm because their editing border/padding changed the measured widget box.
+
+**Fix**:
+- Changed `ITEM_BAR_SLOT_COUNT` to `14` and re-centered the item-bar default fallback.
+- Removed the self HP guide label in custom UI mode.
+- Added a `heart-stats-bar` custom UI key and draggable placement wrapper for the C stats panel.
+- Added a 29px full-width translucent gray top metrics bar with live system time, rAF-based render FPS, and the existing ping latency value, then removed the old RTT badge.
+- Converted shared floating custom-UI edit chrome to an exact overlay pseudo-element so the green line displays the widget bounds without changing layout.
+
+**Lessons**:
+- Custom-UI edit chrome should use non-layout outline/overlay styling; any padding or border on the draggable element changes both saved geometry and the post-confirm visual position.
+- HUD metrics that replace a corner badge should reuse existing measurement state when possible, then remove the old rendered surface entirely to avoid duplicate readouts.
+
+## BattleArena item count, GCD/status sizing, and drag isolation follow-up (2026-05-08)
+
+**Problem set**:
+1. The temporary `物品栏` needed sixteen slots instead of ten.
+2. The player GCD bar was still too wide, and status remaining-time numbers were too large.
+3. Saving custom UI after moving `物品栏` made the bar appear to shift because edit chrome/label affected its layout box.
+4. Holding an ability should fully suppress camera drag, even if the pointer moves away from the hotbar.
+
+**Fix**:
+- Increased `ITEM_BAR_SLOT_COUNT` to `16` and re-centered the default item-bar fallback.
+- Reduced the GCD bar width/min-width and floating GCD width by about 10%.
+- Reduced status timer font sizes by about 10%, including the player-scaled and mobile variants.
+- Added scoped item-bar edit classes so the custom-UI label/chrome are absolute overlays and do not move the actual saved bar position.
+- Guarded mouse camera handlers with `abilityDragActiveRef` so ability drags clear camera mouse state and do not rotate the camera.
+
+**Lessons**:
+- Draggable HUD edit labels should be overlay chrome, not layout content, when the saved coordinate is meant to anchor the real widget.
+- If a drag operation has its own global pointer tracking, other global mouse systems must explicitly bail while that drag is active.
+
+## BattleArena icon chrome, item slots, and reorder prediction follow-up (2026-05-08)
+
+**Problem set**:
+1. Icon-bar transparency was applied to text rows, so the name/range and resource number were dimmed along with the frame.
+2. The item bar placeholder used a different slot size than the skill bar.
+3. Optimistic skill reorders could flicker because derived ability state from the still-stale server hand briefly overwrote the prediction.
+4. The temporary item bar needed to accept ability drags and swap with skill slots locally.
+
+**Fix**:
+- Removed text-row opacity from icon bars, reduced the name/range font size slightly, and moved 30% transparency to the surrounding chrome/background colors.
+- Scaled item slots from the same `--ability-panel-scale` math as skill slots.
+- Kept pending optimistic skill reorders applied until the authoritative slot index confirms the move, while still rolling back on request failure.
+- Added local item-bar ability slots, draft-slot overrides, hotkey filtering, and pointer drop handling so abilities can temporarily move/swap between skill and item slots without staying castable from their old hotkey.
+
+**Lessons**:
+- When only HUD chrome should be translucent, use alpha colors on the frame/background instead of `opacity` on parent text rows.
+- Optimistic UI that is derived from server state needs a pending overlay, not just a one-time state set, or normal state hydration can visibly snap it back.
+- Temporary local inventory slots need explicit hidden-id and slot-override state in both render and hotkey paths so moving an ability out of the hotbar leaves a real empty slot instead of duplicating or preserving the old cast binding.
+
+## BattleArena item bar, tooltip alpha, and optimistic hotbar reorder (2026-05-08)
+
+**Problem set**:
+1. Tooltip alpha was interpreted as 30% visible instead of 30% transparent, so ability and buff hover panels were too transparent.
+2. Draft slot switching only updated after the reorder endpoint returned, making the interaction feel slow.
+3. The discard strip needed more height, a bluer accent, and no hover border/glow.
+4. A future item bar placeholder needed ten empty boxes with the same edge hover effect as ability slots, while not accepting skill drops.
+
+**Fix**:
+- Changed ability and buff hover panels to `rgba(0, 0, 0, 0.7)` for 30% transparency.
+- Added frontend optimistic slot reorder prediction with rollback if the backend reorder request fails.
+- Increased discard-strip height by 50%, changed the accent from cyan to bluer light blue, and removed the active outer hover glow.
+- Added a draggable custom-UI `item-bar` placement with ten inert item slots that share the ability-slot edge hover overlay and have no drop target attributes.
+
+**Lessons**:
+- For UI opacity language, confirm whether the user means visible alpha or transparency amount; `30% transparent` maps to alpha `0.7`.
+- Reorder prediction should use the same slot-index swap helper as the final state update and keep a previous-state rollback for failed requests.
+- Future HUD containers that should not accept ability drops should avoid draft/drop data attributes entirely, so pointer hit testing naturally ignores them.
+
+## BattleArena slot order, charge frame, and status blink follow-up (2026-05-08)
+
+**Problem set**:
+1. New non-common skills could land in the last visual slot because `slotIndex` fallback used full hand order after common abilities were appended.
+2. Reorder behavior could feel like the wrong boxes were swapping when existing cards had duplicate or missing slot indexes.
+3. Height and distance custom UI placements had unnecessary label text, tooltip panels were too opaque, and the discard strip still had a background tint.
+4. Charge frames needed bottom-right path order, a smaller count badge, and explicit layering so shortcut text stays above the red frame while the count badge covers it.
+5. Status bar icons blinked invisible below two seconds even though they should remain visible until the buff naturally expires.
+
+**Fix**:
+- Normalized draft slots separately from common abilities on frontend and backend, assigned new skills to the first available draft slot, kept common abilities after draft cards, and rejected the seventh skill with `只能拾取6个技能` for cheat add, draft selected slots, and pickup claims.
+- Changed charge frame SVGs from `rect` to an explicit bottom-right-starting path, reduced charge badge width/font size, and added z-index ordering for badge/frame/shortcut text.
+- Removed the height/distance custom UI label text, reduced ability and buff hint backgrounds to 30% black, removed discard background entirely, and switched its accent to light blue.
+- Replaced full-slot cyan hover fill with edge-weighted gradients so the center stays transparent.
+- Removed low-time opacity blinking from `StatusBar`; buffs now disappear only when their remaining time reaches zero.
+
+**Lessons**:
+- Draft slot fallback must be based on draft-card order only; using full hand order breaks as soon as common abilities are present.
+- A compact array cannot be treated as visual slot truth after holes are allowed; normalize explicit slots, fill invalid/missing slots into first openings, then render from slot metadata.
+- SVG stroke direction is safest when the path is written in the exact desired order instead of relying on browser `rect` path starts.
+
+## BattleArena tooltip, custom UI, and empty-slot hotbar round (2026-05-08)
+
+**Problem set**:
+1. Ability and buff hover boxes needed to revert to whole-box black half-transparent styling instead of gray panels or desc-only backgrounds.
+2. The height counter and blue range/distance text were still fixed HUD elements and could not be positioned in custom UI mode.
+3. Icon-bar chrome needed to be half-transparent without dimming the actual health/shield fills.
+4. The target-owned ability strip still had visible gaps and rounded icons, while the ability hover overlay did not match the desired cyan filled hover state.
+5. Hotbar charge frames were accidentally restyled away from red, charge count badges were too small, discard used a yellow background, and dropping a skill onto an empty slot did not persist.
+
+**Fix**:
+- Restyled ability and buff hint containers to `rgba(0, 0, 0, 0.5)` and removed the separate gray ability-desc background.
+- Added `height-counter` and `distance-indicator` custom UI keys, default placements, edit labels, and drag height clamping based on the actual dragged element size.
+- Reduced alpha on icon-bar chrome/title/resource rows while leaving health and shield track/fill rules untouched.
+- Tightened target-owned ability gaps, removed target-owned icon radius, changed ability hover to a translucent cyan fill/glow, restored red charge ring strokes, enlarged charge stack badges to match shortcut text, and replaced the discard strip with a dark transparent base plus cyan bottom indentation.
+- Added draft `slotIndex` support on frontend and backend reorder persistence so moving an ability to an empty hotbar slot survives the authoritative update instead of compacting back.
+- Updated Playwright HUD coverage to assert source guards and browser-computed styles for the tooltip, hover, charge, discard, custom UI, icon-bar, target-owned ability, and slot-index behaviors.
+
+**Lessons**:
+- Empty hotbar slots require persisted slot metadata; reordering only a compact array cannot represent holes after the server broadcasts state.
+- Hover effects on icon buttons should be validated through pseudo-element computed styles because visually thin border overlays can pass source checks while missing the intended filled state.
+- For draggable HUD elements, clamp against the measured element width and height, not just the mouse point, or large labels can be dragged partially off-screen.
+
+## Ability bar pointer drag and hover styling round (2026-05-08)
+
+**Problem set**:
+1. Native HTML5 drag/drop over ability buttons was unreliable for slot-to-slot reorder, and dragging could leave the hover tooltip visible.
+2. The dragged ability needed to follow the cursor at half slot size and invalid drops should return without changing order.
+3. Cooldown hotkeys needed to show the same pressed visual feedback even when the ability could not cast.
+4. The ability slot border, hover line, discard strip, scale mapping, and tooltip description background needed another visual pass.
+
+**Fix**:
+- Added pointer-based draft dragging that starts after a small movement threshold, renders a half-size fixed ghost, resolves release targets with `document.elementFromPoint`, and calls the existing reorder/discard endpoints only for valid slot or discard drops.
+- Closed ability hover hints when dragging begins and blocked new hint opens while a drag is active.
+- Updated hotkey handling so occupied draft/common slots set `pressedAbilityInput` before checking readiness, while casts still require `isReady` and no anti-stealth block.
+- Doubled the source slot border to `2.5px`, added a small radius, changed the hover/pressed overlay into a thin semi-transparent line effect, restyled the discard strip with beige/cyan screenshot-inspired colors, and gave ability descriptions a gray tooltip background.
+- Remapped the displayed ability-bar `1.00x` to the old `0.94x` visual size while preserving the `0.50x`-`2.00x` slider range.
+
+**Lessons**:
+- For hotbar reorder controls, pointer release plus `elementFromPoint` is more dependable than native drag/drop when nested buttons, images, overlays, and drop-strip children all participate in hit testing.
+- Set the post-drag click guard before awaiting network reorder/discard work; otherwise a mouseup click can cast the ability before the async cleanup runs.
+- Discard-zone child icons/text should ignore pointer events so hit testing returns the zone wrapper and not the decorative child.
+
+## Ability bar drag/drop follow-up and visible hover overlay (2026-05-08)
+
+**Problem set**:
+1. The previous hover test checked `box-shadow`, but the white inset was under the ability icon image and therefore not visibly glowing in-game.
+2. The ability-bar scale control needed to display down to `0.50x` while keeping the old `1.25x` visual size as the new `1.00x`.
+3. The blue discard strip should appear only while dragging and touch the draft slots with no gap.
+4. Draft abilities needed drag-to-reorder so moving slot 1 to slot 2 changes the hotkey slot after drop.
+5. Invalid drops should naturally return the dragged ability to its original slot.
+
+**Fix**:
+- Moved the white hover/pressed glow to `.abilityBtn::after`, above the icon layer, and updated Playwright to assert the pseudo-element opacity/color rather than the hidden button shadow.
+- Extended displayed ability scale to `0.50`-`2.00`; values below `1.00` now scale relative to the new default visual size.
+- Wrapped the discard strip and draft slots in a zero-gap cluster, made the strip render only while a draft ability is being dragged, and kept it as a broad drop target above the slots.
+- Used the existing `/cheat/reorder-ability` endpoint on slot drops and immediately mirrored the successful reorder into local `handAbilities`/`abilitiesRef` so hotkeys follow the new order without waiting for the WebSocket diff.
+- Kept native drag cancellation as the invalid-drop return path and set a centered drag image so the held ability sticks to the cursor during drag.
+
+**Lessons**:
+- A computed `box-shadow` test can pass while a child image visually covers the effect; for icon buttons, put hover chrome in a positioned overlay layer and assert `::after` styles.
+- Drag/drop HUD controls should use one continuous hit area for destructive actions; small gaps make the action feel unreliable even when handlers are correct.
+- When reordering hotkey-bound slots, update the local hotkey source immediately after a successful backend response, then let the authoritative WebSocket diff confirm it.
+
+## Ability bar hover, discard zone, and WebGL recovery round (2026-05-08)
+
+**Problem set**:
+1. Ability-slot hover changed the real border to white instead of keeping the dark border and drawing the glow inside it.
+2. The ability-bar scale slider needed the old visual `1.25x` size to become the new displayed `1.00x`, and dragging the ESC-panel range control was being intercepted by arena input handlers.
+3. Shortcut text and slot borders needed a small size increase, empty slots needed a gray fill, and a permanent blue discard strip needed to sit above the draft slots.
+4. Pressing or holding ability hotkeys/mouse buttons needed to show the same visual feedback as hover until release.
+5. The fullscreen/idle white-screen crash still had no direct stack trace, but the scene had a hidden second R3F canvas rendering continuously.
+
+**Fix**:
+- Moved the hover/pressed white effect into an inset `box-shadow` while preserving the dark green border color, increased shortcut text by 30%, and bumped the slot border source declaration to `1.25px`.
+- Added a v2 ability-scale storage key and mapped displayed `1.00`-`2.00` to visual `1.25`-`2.00`, so the previous `1.25x` appearance is now the default `1.00x`.
+- Excluded inputs, labels, interactive controls, and the ESC overlay from arena capture handlers so the range slider can drag normally.
+- Made empty ability slots gray with a more-specific `.abilityBtn.emptySlot` rule after Playwright exposed CSS-order override by `.abilityBtn`.
+- Added a permanent blue discard drop zone above the draft slots using the existing discard endpoint and added pressed-state tracking for keyboard and mouse ability inputs.
+- Reduced idle GPU pressure by mounting the HongMeng self canvas only while active, and added main-canvas `webglcontextlost` recovery that remounts the scene with a dark recovery overlay instead of leaving a white viewport.
+
+**Lessons**:
+- For hover effects that must preserve a real border, assert both source and browser-computed border color; use inset shadows for the inner glow.
+- Fractional CSS borders may compute as `1px` in Chromium even when the source is `1.25px`, so source guards are better than computed-width assertions for this exact tweak.
+- Hidden always-running WebGL canvases are a likely source of idle/fullscreen instability; mount expensive overlays only while active and handle context-loss recovery explicitly.
+
+## Ability shield, backpedal jump, hotbar scale, and leave prompt round (2026-05-08)
+
+**Problem set**:
+1. 蛊虫献祭 described a percentage shield but applied a flat shield value.
+2. The owned ability bar needed screenshot-matched spacing, darker green borders, top-left key text, a corrected hover state, and a user-controlled 1x-2x scale in the ESC panel.
+3. A backpedal double jump with S+Space incorrectly turned the player around instead of jumping backward while preserving facing.
+4. Combat preset crit values and the detailed stat preset display were stale.
+5. Explicit home-button leave needed to notify the remaining player with the same 5-second prompt style as a disconnect.
+
+**Fix**:
+- Changed 蛊虫献祭 to use `percentOfTargetMaxHp: true` on its shield effect and updated the ability descriptions to say `50%最大气血护盾`.
+- Added a backpedal-air-jump path on backend authority and frontend prediction: S+Space double jumps use `3.7` units of backward travel and skip facing changes.
+- Updated green/blue/purple crit presets to `30%`/`36%`/`46%`, aligned the backend starting crit with purple, and removed `x装` text from detailed stat buttons.
+- Restyled owned ability icons with transparent rows/buttons, darker green borders, gaps between abilities, wider row spacing, top-left shortcut labels, matching shield corners, and the ESC-panel ability scale slider.
+- Reused the disconnect modal for `leaveNotice`, so when one player exits via the home button the opponent sees a `Player left` prompt with the same 5-second countdown and Yes action.
+
+**Lessons**:
+- Percentage shield fixes should change both the effect payload and the visible ability copy so editor/runtime expectations stay aligned.
+- Any movement authority change that affects prediction must be mirrored in `BattleArena.tsx` in the same pass, especially for facing-sensitive inputs.
+- Leave flows can share one modal as long as the prompt records the cause (`left` vs `disconnected`) and keys the auto-return guard by user plus deadline.
+
+## BattleArena HUD correction round and Playwright coverage (2026-05-08)
+
+**Problem set**:
+1. Several earlier HUD changes were incomplete because frontend-only values were changed while backend defaults or WebSocket payloads still used old values.
+2. The skill bar visual changes needed computed-style verification: tray backgrounds, icon gaps, border colors, hover inner borders, shield visibility, and custom UI guide borders.
+3. The repo had no Playwright setup, so UI regressions were only checked by build output.
+4. Playwright creates result metadata after each run, which should not keep dirtying the working tree.
+
+**Fix**:
+- Removed the remaining add-skill panel header, aligned backend starting battle HP to `120万`, and changed WebSocket disconnect prompts to 5 seconds with a frontend clamp for stale 30-second payloads.
+- Replaced the top-left text home button with a compact icon button and moved the mode badge so `玉门关` is not covered.
+- Put status names directly on standard yellow with no dark stroke, restored ability custom-UI green borders, tightened owned ability gaps, reduced the target icon bar by 10%, and kept the shield white fill visible while removing only shield amount text.
+- Removed red charge/LOS ability borders, removed gray hotbar/common-bar tray backgrounds, and restyled ability borders to dark gray-green with a white inner hover line.
+- Added frontend Playwright config, a `test:e2e` script, and HUD regression tests that cover the source constants/rendered text plus browser-computed CSS for the visual rules.
+- Added Playwright output directories to `.gitignore` and removed generated result metadata from the tracked diff.
+
+**Lessons**:
+- For timing or default-value changes, update every producer of the value, not only the component fallback that displays it.
+- Visual HUD requests need browser-computed style tests when CSS transitions, module selectors, and stacked overrides can make source edits misleading.
+- When adding tests to an existing app, include source guards for backend/frontend constants plus a small rendered CSS fixture for visual rules that do not require a full authenticated game session.
+- Ignore Playwright output directories when introducing the runner, or the first successful test run will create unrelated result files.
+
+## BattleArena HUD polish, shield display, and control panel formatting (2026-05-08)
+
+**Problem set**:
+1. Several HUD visual changes needed to affect only specific widgets: status timer weight, target-of-target edit chrome, shield overlays, owned ability icons, latency badge sizing, and the in-game home button.
+2. Shield amount text on icon bars added clutter, and shield fill rounded corners looked wrong when the shield segment started after HP.
+3. Combat preset labels and values needed clearer Chinese equipment labels and consistent `万` number formatting.
+
+**Fix**:
+- Reduced status timer font weight, changed status buff/debuff names to the standard yellow, widened target-of-target by 30%, and removed its centered custom-UI label.
+- Removed shield amount labels from icon health bars and squared the left corners of shield fill overlays.
+- Squared owned ability icons, reduced owned ability button size, and tightened ability gaps substantially.
+- Shrunk and nudged the in-game `首页` button so it no longer overlaps the top-left preset controls.
+- Renamed preset buttons to `白装`/`绿装`/`蓝装`/`紫装`, made the stats panel use `万` formatting, reduced purple preset HP to `120万`, shortened disconnect auto-quit to 5 seconds, removed the add-ability panel notice, and tightened the latency badge background.
+
+**Lessons**:
+- When a single shared HUD component handles multiple contexts, tune narrowly through the exact class or call site requested so target/enemy/player variants do not drift together.
+- Shield overlays should avoid showing a second number inside compact health bars; the health ratio already carries enough numeric context.
+- Inline debug/control panels often carry stale helper text and exact-number formatting that must be revisited when the UI becomes a player-facing tool.
+
+## BattleArena HUD sizing and target-of-target custom UI split (2026-05-08)
+
+**Problem set**:
+1. Player-only HUD requests needed careful scoping so self icon/status changes did not resize enemy, target, or target-of-target UI.
+2. Target-of-target was nested inside the target icon bar, which meant custom UI mode could not position it independently.
+3. The remaining ability-bar custom UI guide needed a different edit-box shape than generic HUD placements.
+
+**Fix**:
+- Reduced only the player icon bar width, added a player-only `StatusBar` scale variant, and kept target/enemy status bars on the default sizing path.
+- Lightened status timer text by reducing its weight and removing timer-only black stroke/shadow while leaving names and stack badges unchanged.
+- Rebalanced the bottom skill bar upward by about 10% after the earlier reduction.
+- Added a dedicated `target-target-icon-bar` custom UI key, default placement, preview, and standalone renderer so target-of-target can be dragged separately from the target icon bar.
+- Added a target ability-bar custom UI edit style that is half the status guide width and removes the guide border/radius.
+
+**Lessons**:
+- For shared components like `StatusBar`, add explicit variant props for player-only tuning instead of changing base CSS that target/enemy panels reuse.
+- Nested HUD widgets that need independent placement should compute their live data outside the parent render branch and use their own persisted custom UI key.
+- Generic custom UI edit chrome is useful, but each HUD family may still need a scoped override when the desired edit box differs from the common green guide.
+
+## BattleArena HUD save moved from localStorage to user profile (2026-05-08)
+
+**Problem set**:
+1. The BattleArena custom UI layout was only saved in browser `localStorage`, so the HUD arrangement was device-local and could disappear across browsers, devices, or cleared storage.
+2. The user explicitly wanted this layout to behave like a real saved profile setting instead of a session-local browser cache.
+
+**Fix**:
+- Added `battleArenaUiLayout` to the backend `User` model so each account can persist HUD positions and the viewport they were authored against.
+- Added authenticated gameplay endpoints at `/api/game/ui-layout` to load and save the sanitized HUD layout payload.
+- Rewired `BattleArena.tsx` to hydrate draggable HUD positions from the server on load and persist changes back through the authenticated API while keeping the existing viewport-scaling logic.
+
+**Lessons**:
+- HUD personalization that the player expects to follow their account should live on the authenticated user profile, not in browser-only storage.
+- When replacing a legacy localStorage save path, keep the payload shape compatible enough to reuse existing normalization and scaling code instead of branching persistence logic.
+
+## Fullscreen-safe BattleArena custom UI scaling (2026-05-08)
+
+**Problem set**:
+1. The BattleArena custom UI saved HUD placements as raw pixel coordinates with no viewport metadata.
+2. Entering or leaving fullscreen changes the arena viewport size, so saved custom HUD layouts could drift or look wrong even though the player wanted the same relative arrangement.
+
+**Fix**:
+- Changed BattleArena UI-position persistence to store both the HUD positions and the arena viewport size that those positions were saved against.
+- Added resize-time scaling so existing in-memory HUD placements rescale proportionally when the arena viewport changes, including fullscreen transitions.
+- Also scale the custom-UI edit snapshot during viewport changes, so cancelling out of custom UI in fullscreen still restores the correct relative layout instead of old raw pixels.
+
+**Lessons**:
+- Any draggable HUD layout intended to survive fullscreen changes must either store normalized coordinates or carry the source viewport and rescale on resize.
+- If custom UI has a cancel snapshot, resize logic must update that snapshot too or fullscreen entry will make cancel restore the wrong geometry.
+
+## In-game home button, timing-bar resize, and top-bar route gating (2026-05-08)
+
+**Problem set**:
+1. The self timing bars needed their sizes retuned again: the self channel bar should be longer than the GCD bar, and both should be about 20% larger.
+2. After moving the global top bar out of the in-game view, the arena still needed its own top-left home button that uses the same `/api/game/end` leave flow before routing home.
+3. The shared layout shell only treated `/game/in-game` as in-game, so the duplicate `/game/screens/in-game` route could still render the global top bar incorrectly.
+
+**Fix**:
+- Retuned the self timing bars by setting the HUD channel bar to `70%` / `264px` and the GCD bar to `60%` / `226px`, which swaps their relative lengths and makes both about 20% larger.
+- Added a fixed top-left `首页` button in `InGameClient.tsx` and routed it through the same `/api/game/end` request before `router.replace('/')`; the disconnect prompt now reuses that same helper too.
+- Updated `LayoutShell` to treat both `/game/in-game` and `/game/screens/in-game` as in-game routes, skip rendering the shared `TopBar` there, and give the game view a full `100dvh` content area when the top bar is hidden.
+
+**Lessons**:
+- For these HUD bars, percentage width plus a floating-width constant must be tuned together or the inline and custom-UI placements drift apart.
+- When replacing a shared navigation control with an in-scene button, reuse the same leave endpoint so battle teardown behavior stays consistent.
+- Route gating for layout chrome should match every mounted route alias, not just the canonical page path, or duplicate screen entry points will regress independently.
+
+## Self timing bars custom-UI anchors and icon-bar title trim (2026-05-08)
+
+**Problem set**:
+1. The self channel bar and self GCD bar were rendered inside the owned ability stack, so custom UI mode could only move them together with the hotbar instead of as independent HUD widgets.
+2. When those bars are inactive, custom UI mode still needs visible previews and stable default anchor positions so the user can drag them before they appear in combat.
+3. The icon-bar title above self/target bars needed to read about 10% smaller without retuning the rest of the bar.
+
+**Fix**:
+- Added dedicated `player-channel-bar` and `player-gcd-bar` UI position keys in `BattleArena.tsx`, seeded them when custom UI mode opens, and rendered the self timing bars as separate floating placements whenever the user is editing or has saved a custom position.
+- Kept the old inline layout as the default path until a custom position exists, and used preview renderers plus hotbar-relative fallback placement so custom UI mode can drag both bars even when they are not currently active.
+- Added CSS custom-property width overrides for the channel/GCD bar roots so the floating draggable boxes match the live bar widths, and reduced `.enemyName` font size from `16px` to `14.4px` for the requested 10% title trim.
+
+**Lessons**:
+- If a HUD widget should be draggable independently, it needs its own persisted anchor key even when it normally lives inside a larger shared stack.
+- Preview renderers matter for combat-only HUD elements; otherwise the custom UI editor can store positions for panels the user cannot currently see.
+- For percentage-width HUD bars reused in floating placements, a CSS variable width override is a low-risk way to preserve the inline layout while giving detached anchors a stable measured size.
+
 ## Target channel-bar width context and placement under icon bar (2026-05-08)
 
 **Problem set**:

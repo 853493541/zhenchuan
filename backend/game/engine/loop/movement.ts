@@ -491,6 +491,7 @@ export function applyMovement(
   const COMBINED_JUMP_VZ      = COMBINED_GRAVITY_UP * 53.1;
   const UPWARD_JUMP_AIR_SHIFT_DISTANCE = 2 * UNIT_SCALE;
   const DIRECTIONAL_JUMP_DISTANCE = 6 * UNIT_SCALE;
+  const BACKPEDAL_DOUBLE_JUMP_DISTANCE = 3.7 * UNIT_SCALE;
   const POWER_DIRECTIONAL_JUMP_DISTANCE = 18 * UNIT_SCALE;
   const POWER_DOUBLE_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
   const MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
@@ -999,6 +1000,7 @@ export function applyMovement(
     } else if (input.jump && player.jumpCount < maxJumps) {
       const isMultiJump = !!multiJumpEffect;
       const jumpDir = normalizePlanar(targetVx, targetVy);
+      const isBackpedalAirJump = input.backpedalOnly === true && (player.jumpCount ?? 0) > 0 && jumpDir !== null;
       if (yuqiMounted && !canUseYuqiMountedJump(jumpDir, player.facing)) {
         input = { ...input, jump: false };
       } else {
@@ -1092,13 +1094,15 @@ export function applyMovement(
         const speedScale = baseMoveSpeedPerTick > 0.0001
           ? jumpStartPlanarSpeed / baseMoveSpeedPerTick
           : 0;
-        const directionalJumpDistance = boostIdx >= 0
-          ? POWER_DIRECTIONAL_JUMP_DISTANCE
-          : hadPowerJumpAirtime
-            ? POWER_DOUBLE_DIRECTIONAL_JUMP_DISTANCE
-            : isMultiJump && boostIdx < 0
-              ? MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE
-            : DIRECTIONAL_JUMP_DISTANCE;
+        const directionalJumpDistance = isBackpedalAirJump
+          ? BACKPEDAL_DOUBLE_JUMP_DISTANCE
+          : boostIdx >= 0
+            ? POWER_DIRECTIONAL_JUMP_DISTANCE
+            : hadPowerJumpAirtime
+              ? POWER_DOUBLE_DIRECTIONAL_JUMP_DISTANCE
+              : isMultiJump && boostIdx < 0
+                ? MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE
+              : DIRECTIONAL_JUMP_DISTANCE;
         const jumpTravelTicks = estimateAirborneTicks(
           heightAboveGround,
           jumpVz,
@@ -1111,7 +1115,9 @@ export function applyMovement(
           directionalJumpDistance * Math.max(0, speedScale),
           jumpTravelTicks,
         );
-        player.facing = { x: jumpDir.x, y: jumpDir.y };
+        if (!isBackpedalAirJump) {
+          player.facing = { x: jumpDir.x, y: jumpDir.y };
+        }
       } else {
         // Upward jump: wait for the first mid-air direction input, then lock it for this jump phase.
         player.airNudgeRemaining = UPWARD_JUMP_AIR_SHIFT_DISTANCE;

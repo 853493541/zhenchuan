@@ -74,17 +74,66 @@ function isCommonAbilityCard(card: any): boolean {
 }
 
 function toSelectedInstancesFromHand(hand: any[]): AbilityInstance[] {
-  return (hand ?? [])
-    .filter((card: any) => !isCommonAbilityCard(card))
-    .map((card: any) => {
+  return normalizeDraftCardSlots((hand ?? []).filter((card: any) => !isCommonAbilityCard(card)))
+    .map((card: any, fallbackIndex: number) => {
       const abilityId = card?.abilityId ?? card?.id;
       return {
         instanceId: card?.instanceId ?? randomUUID(),
         abilityId,
         cooldown: 0,
+        slotIndex: normalizeDraftSlotIndex(card?.slotIndex, fallbackIndex),
       } as AbilityInstance;
     })
     .filter((card: AbilityInstance) => !!card.abilityId);
+}
+
+const DRAFT_ABILITY_SLOT_COUNT = 6;
+const DRAFT_ABILITY_LIMIT_ERROR = "只能拾取6个技能";
+
+function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return Math.max(0, Math.min(DRAFT_ABILITY_SLOT_COUNT - 1, fallback));
+  return Math.max(0, Math.min(DRAFT_ABILITY_SLOT_COUNT - 1, Math.round(numeric)));
+}
+
+function normalizeDraftCardSlots<T extends Record<string, any>>(cards: T[]): T[] {
+  const assigned: Array<T | undefined> = Array.from({ length: DRAFT_ABILITY_SLOT_COUNT });
+  const pending: T[] = [];
+
+  cards.forEach((card, fallbackIndex) => {
+    const hasExplicitSlot = card?.slotIndex !== undefined && Number.isFinite(Number(card.slotIndex));
+    const slotIndex = normalizeDraftSlotIndex(card?.slotIndex, fallbackIndex);
+    if (hasExplicitSlot && !assigned[slotIndex]) {
+      assigned[slotIndex] = { ...card, slotIndex };
+      return;
+    }
+    pending.push(card);
+  });
+
+  pending.forEach((card) => {
+    const openIndex = assigned.findIndex((slot) => !slot);
+    if (openIndex >= 0) {
+      assigned[openIndex] = { ...card, slotIndex: openIndex };
+    }
+  });
+
+  return assigned.filter(Boolean) as T[];
+}
+
+function getFirstAvailableDraftSlot(cards: Array<Record<string, any>>): number | null {
+  const normalized = normalizeDraftCardSlots(cards);
+  if (normalized.length >= DRAFT_ABILITY_SLOT_COUNT) return null;
+  const occupied = new Set(normalized.map((card) => normalizeDraftSlotIndex(card.slotIndex, 0)));
+  for (let slotIndex = 0; slotIndex < DRAFT_ABILITY_SLOT_COUNT; slotIndex += 1) {
+    if (!occupied.has(slotIndex)) return slotIndex;
+  }
+  return null;
+}
+
+function splitDraftAndCommonCards(hand: any[]): { draftCards: any[]; commonCards: any[] } {
+  const draftCards = (hand ?? []).filter((card: any) => !isCommonAbilityCard(card));
+  const commonCards = (hand ?? []).filter((card: any) => isCommonAbilityCard(card));
+  return { draftCards: normalizeDraftCardSlots(draftCards), commonCards };
 }
 
 /**
@@ -136,8 +185,8 @@ router.post("/draft/select", async (req, res) => {
     const bench = game.tournament.bench[userId];
 
     // Check destination capacity
-    if (destination === "selected" && selected.length >= 6) {
-      return res.status(400).json({ error: "选择栏已满(最多6个)" });
+    if (destination === "selected" && getFirstAvailableDraftSlot(selected) === null) {
+      return res.status(400).json({ error: DRAFT_ABILITY_LIMIT_ERROR });
     }
     if (destination === "bench" && bench.length >= 8) {
       return res.status(400).json({ error: "备战区已满 (最多8个)" });
@@ -152,6 +201,7 @@ router.post("/draft/select", async (req, res) => {
     // Move ability from shop to destination
     const [ability] = shop.abilities.splice(abilityIndex, 1);
     if (destination === "selected") {
+      ability.slotIndex = getFirstAvailableDraftSlot(selected);
       selected.push(ability);
     } else {
       bench.push(ability);
@@ -196,8 +246,8 @@ router.post("/draft/move", async (req, res) => {
     const bench = game.tournament.bench[userId];
 
     // Check destination capacity
-    if (to === "selected" && selected.length >= 6) {
-      return res.status(400).json({ error: "选择栏已满(最多6个)" });
+    if (to === "selected" && getFirstAvailableDraftSlot(selected) === null) {
+      return res.status(400).json({ error: DRAFT_ABILITY_LIMIT_ERROR });
     }
     if (to === "bench" && bench.length >= 8) {
       return res.status(400).json({ error: "备战区已满 (最多8个)" });
@@ -212,6 +262,7 @@ router.post("/draft/move", async (req, res) => {
 
     const [ability] = fromArray.splice(abilityIdx, 1);
     if (to === "selected") {
+      ability.slotIndex = getFirstAvailableDraftSlot(selected);
       selected.push(ability);
     } else {
       bench.push(ability);
@@ -397,8 +448,8 @@ router.post("/draft/finalize", async (req, res) => {
       // Put selected abilities into player hands
       const player0Id = game.players[0];
       const player1Id = game.players[1];
-      const player0Selected = game.tournament.selectedAbilities[player0Id];
-      const player1Selected = game.tournament.selectedAbilities[player1Id];
+      const player0Selected = normalizeDraftCardSlots(game.tournament.selectedAbilities[player0Id] ?? []);
+      const player1Selected = normalizeDraftCardSlots(game.tournament.selectedAbilities[player1Id] ?? []);
 
       console.log("[draft/finalize] DEBUG - selectedAbilities structure:", {
         player0Id,
@@ -411,7 +462,7 @@ router.post("/draft/finalize", async (req, res) => {
 
       // ✅ CRITICAL: Look up full Ability definitions from ABILITIES database
       // selectedAbilities has {abilityId, instanceId, cooldown} - we need {abilityId, instanceId, cooldown, ...cardDefinition}
-      const player0Hand = player0Selected?.map((cardInstance: any) => {
+      const player0Hand = player0Selected?.map((cardInstance: any, index: number) => {
         const abilityDef = ABILITIES[cardInstance.abilityId];
         if (!abilityDef) {
           console.error(`[draft/finalize] ❌ Ability definition not found: ${cardInstance.abilityId}`);
@@ -422,10 +473,11 @@ router.post("/draft/finalize", async (req, res) => {
           ...abilityDef,
           instanceId: cardInstance.instanceId,
           cooldown: cardInstance.cooldown || 0,
+          slotIndex: normalizeDraftSlotIndex(cardInstance.slotIndex, index),
         };
       }).filter((c: any) => c !== null) || [];
 
-      const player1Hand = player1Selected?.map((cardInstance: any) => {
+      const player1Hand = player1Selected?.map((cardInstance: any, index: number) => {
         const abilityDef = ABILITIES[cardInstance.abilityId];
         if (!abilityDef) {
           console.error(`[draft/finalize] ❌ Ability definition not found: ${cardInstance.abilityId}`);
@@ -435,6 +487,7 @@ router.post("/draft/finalize", async (req, res) => {
           ...abilityDef,
           instanceId: cardInstance.instanceId,
           cooldown: cardInstance.cooldown || 0,
+          slotIndex: normalizeDraftSlotIndex(cardInstance.slotIndex, index),
         };
       }).filter((c: any) => c !== null) || [];
 
@@ -776,18 +829,29 @@ router.post("/cheat/add-ability", async (req, res) => {
 
     const playerIndex = game.players.indexOf(userId);
 
+    const sourceHand = game.state.players[playerIndex].hand || [];
+    const firstOpenSlot = getFirstAvailableDraftSlot(sourceHand.filter((card: any) => !isCommonAbilityCard(card)));
+    if (firstOpenSlot === null) {
+      return res.status(400).json({ error: DRAFT_ABILITY_LIMIT_ERROR });
+    }
+
     // Create new ability instance
     const newInstance: AbilityInstance = {
       instanceId: randomUUID(),
       abilityId,
       cooldown: 0,
+      slotIndex: firstOpenSlot,
     };
 
-    const fullCard = { ...abilityDef, instanceId: newInstance.instanceId, abilityId, cooldown: 0 };
+    const fullCard = { ...abilityDef, instanceId: newInstance.instanceId, abilityId, cooldown: 0, slotIndex: firstOpenSlot };
 
     // Apply to live loop first so the UI updates immediately (no DB-save wait).
     let livePlayerIndex = playerIndex;
-    let liveHand = [...(game.state.players[playerIndex].hand || []), fullCard];
+    let handSource = [...sourceHand];
+    let liveHand = (() => {
+      const { draftCards, commonCards } = splitDraftAndCommonCards(handSource);
+      return [...normalizeDraftCardSlots([...draftCards, fullCard]), ...commonCards];
+    })();
     let liveVersion = game.state.version ?? 0;
 
     const gameLoop = GameLoop.get(gameId);
@@ -796,7 +860,15 @@ router.post("/cheat/add-ability", async (req, res) => {
       const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
       if (loopPlayerIdx !== -1) {
         livePlayerIndex = loopPlayerIdx;
-        liveHand = [...(loopState.players[loopPlayerIdx].hand || []), fullCard];
+        handSource = [...(loopState.players[loopPlayerIdx].hand || [])];
+        const loopFirstOpenSlot = getFirstAvailableDraftSlot(handSource.filter((card: any) => !isCommonAbilityCard(card)));
+        if (loopFirstOpenSlot === null) {
+          return res.status(400).json({ error: DRAFT_ABILITY_LIMIT_ERROR });
+        }
+        newInstance.slotIndex = loopFirstOpenSlot;
+        fullCard.slotIndex = loopFirstOpenSlot;
+        const { draftCards, commonCards } = splitDraftAndCommonCards(handSource);
+        liveHand = [...normalizeDraftCardSlots([...draftCards, fullCard]), ...commonCards];
         loopState.players[loopPlayerIdx] = {
           ...loopState.players[loopPlayerIdx],
           hand: liveHand,
@@ -869,18 +941,27 @@ router.post("/cheat/reorder-ability", async (req, res) => {
       }
     }
 
-    const draftCards = handSource.filter((card: any) => !isCommonAbilityCard(card));
+    const draftCards = handSource
+      .filter((card: any) => !isCommonAbilityCard(card))
+      .map((card: any, fallbackIndex: number) => ({
+        ...card,
+        slotIndex: normalizeDraftSlotIndex(card?.slotIndex, fallbackIndex),
+      }));
     const commonCards = handSource.filter((card: any) => isCommonAbilityCard(card));
     const fromIndex = draftCards.findIndex((card: any) => (card.instanceId ?? card.id) === instanceId);
     if (fromIndex === -1) {
       return res.status(404).json({ error: "Draft ability not found in hand" });
     }
 
-    const clampedToIndex = Math.max(0, Math.min(draftCards.length - 1, Number(toIndex)));
-    if (fromIndex !== clampedToIndex) {
-      const [moved] = draftCards.splice(fromIndex, 1);
-      draftCards.splice(clampedToIndex, 0, moved);
+    const clampedToIndex = normalizeDraftSlotIndex(toIndex, fromIndex);
+    const moved = draftCards[fromIndex];
+    const fromSlotIndex = normalizeDraftSlotIndex(moved?.slotIndex, fromIndex);
+    const targetCard = draftCards.find((card: any, index: number) => index !== fromIndex && normalizeDraftSlotIndex(card?.slotIndex, index) === clampedToIndex);
+    moved.slotIndex = clampedToIndex;
+    if (targetCard) {
+      targetCard.slotIndex = fromSlotIndex;
     }
+    draftCards.sort((a: any, b: any) => normalizeDraftSlotIndex(a?.slotIndex, 0) - normalizeDraftSlotIndex(b?.slotIndex, 0));
     const reorderedHand = [...draftCards, ...commonCards];
 
     if (gameLoop) {

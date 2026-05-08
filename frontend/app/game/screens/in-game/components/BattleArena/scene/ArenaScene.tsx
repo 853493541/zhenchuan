@@ -282,8 +282,8 @@ function ExportReaderSunLight({ config = DEFAULT_DIR_LIGHT_CONFIG }: { config?: 
     const sun = new THREE.DirectionalLight(SUN_COLOR, 3.0);
     sun.position.copy(SUN_DIR).multiplyScalar(100000);
     sun.castShadow = true;
-    sun.shadow.mapSize.width = 2048;
-    sun.shadow.mapSize.height = 2048;
+    sun.shadow.mapSize.width = 1024;
+    sun.shadow.mapSize.height = 1024;
     sun.shadow.camera.near = 100;
     sun.shadow.camera.far = 200000;
     sun.shadow.camera.left = -50000;

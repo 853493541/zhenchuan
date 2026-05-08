@@ -23,6 +23,7 @@ type Props = {
   showNames?: boolean;
   showTimers?: boolean;
   compact?: boolean;
+  playerScale?: boolean;
   borderlessIcons?: boolean;
   maxPerRow?: number;
   categoryFilter?: "BUFF" | "DEBUFF";
@@ -75,28 +76,6 @@ function formatTimer(secsLeft: number): { text: string; className: string; urgen
   };
 }
 
-function interpolateOpacity(
-  secsLeft: number,
-  startTime: number,
-  endTime: number,
-  startOpacity: number,
-  endOpacity: number,
-): number {
-  if (secsLeft >= startTime) return startOpacity;
-  if (secsLeft <= endTime) return endOpacity;
-  const progress = (startTime - secsLeft) / (startTime - endTime);
-  return startOpacity + (endOpacity - startOpacity) * progress;
-}
-
-function getLowTimeBlinkOpacity(secsLeft: number): number {
-  if (secsLeft <= 0) return 0;
-  if (secsLeft >= 2) return 1;
-  if (secsLeft >= 1.49) return interpolateOpacity(secsLeft, 1.99, 1.49, 1, 0);
-  if (secsLeft >= 0.99) return interpolateOpacity(secsLeft, 1.49, 0.99, 0, 1);
-  if (secsLeft >= 0.49) return interpolateOpacity(secsLeft, 0.99, 0.49, 1, 0);
-  return interpolateOpacity(secsLeft, 0.49, 0.01, 0, 1);
-}
-
 export default function StatusBar({
   buffs = [],
   arenaRef,
@@ -107,6 +86,7 @@ export default function StatusBar({
   showNames = true,
   showTimers = true,
   compact = false,
+  playerScale = false,
   borderlessIcons = false,
   maxPerRow = 10,
   categoryFilter,
@@ -214,7 +194,6 @@ export default function StatusBar({
     const secsLeft    = getRemainingSeconds(b);
     const timer       = showTimers ? formatTimer(secsLeft) : null;
     const urgent      = timer?.urgent === true;
-    const lowTimeBlinkOpacity = urgent ? getLowTimeBlinkOpacity(secsLeft) : 1;
     const canManualCancel = !!onCancelBuff && (allowAnyCancel || (b.category === "BUFF" && b.manualCancelable === true));
     const cancelCursor = allowAnyCancel && canManualCancel ? "pointer" : canManualCancel ? "context-menu" : undefined;
 
@@ -222,7 +201,6 @@ export default function StatusBar({
       <div
         key={b.buffId}
         className={`${styles.buffItem} ${urgent ? styles.urgentBuffItem : ""}`}
-        style={urgent ? { opacity: lowTimeBlinkOpacity } : undefined}
       >
         {showNames && (
           <div className={`${styles.buffName} ${colorClass}`}>
@@ -276,7 +254,7 @@ export default function StatusBar({
 
   return (
     <>
-      <div className={`${styles.statusBar} ${compact ? styles.compactStatusBar : ""} ${singleRow ? styles.singleRowStatusBar : ""}`}>
+      <div className={`${styles.statusBar} ${compact ? styles.compactStatusBar : ""} ${playerScale ? styles.playerStatusBar : ""} ${singleRow ? styles.singleRowStatusBar : ""}`}>
         {statusRows.map((row, index) => (
           <div key={categoryFilter ?? index} className={styles.statusRow}>
             {row.slice(0, maxPerRow).map(renderBuff)}

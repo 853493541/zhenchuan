@@ -114,7 +114,7 @@ export class GameSubscriptionManager {
         type,
         userId,
         username,
-        endsAt: type === "PLAYER_DISCONNECTED" ? Date.now() + 30_000 : undefined,
+        endsAt: type === "PLAYER_DISCONNECTED" ? Date.now() + 5_000 : undefined,
         timestamp: Date.now(),
       });
     } catch (err) {

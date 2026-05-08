@@ -2,8 +2,8 @@
    Border is always 青色 (teal) at half opacity for both HUD and enemy variants. */
 
 .channelBarWrap {
-  width: 50%;
-  min-width: 140px;
+  width: var(--channel-bar-width, 77%);
+  min-width: 185px;
   display: flex;
   flex-direction: column;
   align-items: stretch;

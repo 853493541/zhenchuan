@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { Home } from "lucide-react";
 import styles from "./styles.module.css";
 
 import BattleArena from "./components/BattleArena";
@@ -122,7 +123,7 @@ function showGameError(rawCode: string) {
       toastError("可拾取物不存在或已被拾取");
       break;
     case "ERR_PICKUP_HAND_FULL":
-      toastError("你已经有6个技能，无法再拾取");
+      toastError("只能拾取6个技能");
       break;
     case "ERR_NO_LINE_OF_SIGHT":
       toastError("目标不在视线范围内");
@@ -190,25 +191,56 @@ export default function InGameClient({
   const battleCompletionHandledRef = useRef<string | null>(null);
   const leaveNoticeHandledRef = useRef<string | null>(null);
   const disconnectAutoLeaveKeyRef = useRef<string | null>(null);
-  const [disconnectCountdown, setDisconnectCountdown] = useState(30);
+  const [disconnectCountdown, setDisconnectCountdown] = useState(5);
+  const [dismissedLeaveNoticeKey, setDismissedLeaveNoticeKey] = useState<string | null>(null);
 
-  const leaveAfterDisconnectPrompt = async () => {
-    if (!disconnectPrompt) return;
-    const promptKey = `${disconnectPrompt.userId}:${disconnectPrompt.endsAt}`;
-    if (disconnectAutoLeaveKeyRef.current === promptKey) return;
-    disconnectAutoLeaveKeyRef.current = promptKey;
+  const leaveNotice = state?.leaveNotice;
+  const leaveNoticeKey = leaveNotice ? `${leaveNotice.userId}:${leaveNotice.endsAt}` : null;
+  const exitPrompt = useMemo(() => {
+    if (disconnectPrompt) {
+      return { ...disconnectPrompt, reason: "disconnected" as const };
+    }
+    if (!leaveNotice || leaveNotice.userId === selfUserId || dismissedLeaveNoticeKey === leaveNoticeKey) {
+      return null;
+    }
+    return {
+      userId: leaveNotice.userId,
+      username: leaveNotice.username || "Opponent",
+      endsAt: leaveNotice.endsAt,
+      reason: "left" as const,
+    };
+  }, [disconnectPrompt, dismissedLeaveNoticeKey, leaveNotice, leaveNoticeKey, selfUserId]);
+
+  const leaveGameAndReturnHome = async (source: string) => {
     clearDisconnectPrompt();
     try {
-      await fetch('/api/game/end', {
+      const res = await fetch('/api/game/end', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ gameId }),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        console.error(`[${source}] /game/end failed:`, res.status, text);
+      }
     } catch (err) {
-      console.error('[DisconnectPrompt] /game/end failed:', err);
+      console.error(`[${source}] /game/end failed:`, err);
     }
     router.replace('/');
+  };
+
+  const leaveAfterDisconnectPrompt = async () => {
+    if (!exitPrompt) return;
+    const promptKey = `${exitPrompt.reason}:${exitPrompt.userId}:${exitPrompt.endsAt}`;
+    if (disconnectAutoLeaveKeyRef.current === promptKey) return;
+    disconnectAutoLeaveKeyRef.current = promptKey;
+    await leaveGameAndReturnHome(exitPrompt.reason === "left" ? 'LeaveNoticePrompt' : 'DisconnectPrompt');
+  };
+
+  const dismissExitPrompt = () => {
+    if (disconnectPrompt) clearDisconnectPrompt();
+    if (leaveNoticeKey) setDismissedLeaveNoticeKey(leaveNoticeKey);
   };
 
   // Reset battleInitiatedRef when phase leaves BATTLE (so next battle can start)
@@ -245,34 +277,38 @@ export default function InGameClient({
 
   useEffect(() => {
     const notice = state?.leaveNotice;
-    if (!notice || notice.userId === selfUserId) return;
+    if (!notice) {
+      leaveNoticeHandledRef.current = null;
+      setDismissedLeaveNoticeKey(null);
+      return;
+    }
+    if (notice.userId === selfUserId) return;
 
     const noticeKey = `${notice.userId}:${notice.endsAt}`;
     if (leaveNoticeHandledRef.current === noticeKey) return;
     leaveNoticeHandledRef.current = noticeKey;
-    toastError(`${notice.username || "对方"} has left the game, game will end soon.`);
   }, [selfUserId, state?.leaveNotice]);
 
   useEffect(() => {
-    if (!disconnectPrompt) {
-      setDisconnectCountdown(30);
+    if (!exitPrompt) {
+      setDisconnectCountdown(5);
       disconnectAutoLeaveKeyRef.current = null;
       return;
     }
 
     const updateCountdown = () => {
-      setDisconnectCountdown(Math.max(0, Math.ceil((disconnectPrompt.endsAt - Date.now()) / 1000)));
+      setDisconnectCountdown(Math.max(0, Math.ceil((exitPrompt.endsAt - Date.now()) / 1000)));
     };
     updateCountdown();
     const intervalId = window.setInterval(updateCountdown, 250);
     return () => window.clearInterval(intervalId);
-  }, [disconnectPrompt]);
+  }, [exitPrompt]);
 
   useEffect(() => {
-    if (!disconnectPrompt || disconnectCountdown > 0) return;
+    if (!exitPrompt || disconnectCountdown > 0) return;
     void leaveAfterDisconnectPrompt();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disconnectPrompt, disconnectCountdown]);
+  }, [exitPrompt, disconnectCountdown]);
 
   // Auto-call /battle/start when phase transitions to BATTLE (only once)
   useEffect(() => {
@@ -486,102 +522,115 @@ export default function InGameClient({
 
   return (
     <GamePreloadProvider value={preload}>
-      <BattleArena
-        me={mePlayer}
-        opponent={primaryOpponent}
-        opponents={normalizedOpponents}
-        gameId={gameId}
-        distance={distance}
-        maxHp={me.maxHp ?? 100}
-        abilities={preload.abilityMap}
-        events={state?.events ?? []}
-        pickups={state?.pickups ?? []}
-        safeZone={state?.safeZone}
-        groundZones={state?.groundZones}
-        entities={state?.entities}
-        opponentPositionBufferRef={opponentPositionBufferRef}
-        mode={gameMode ?? 'arena'}
-        onMovementRecover={refetch}
-        onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId, movementIntent) => {
-          // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
-          const cardInstance =
-            me.hand.find((c) => c.instanceId === abilityInstanceId) ??
-            me.hand.find((c) => ((c as any).abilityId ?? (c as any).id) === abilityInstanceId) ??
-            ({ instanceId: abilityInstanceId } as any); // synthetic stub — backend validates
-          const res = await playAbility(cardInstance, targetUserId, groundTarget, entityTargetId, movementIntent);
-          if (!res.ok && res.error) {
-            console.error("[CastAbility] Error response:", res.error);
-            if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
-              router.replace("/game");
-              return;
-            }
-            showGameError(res.error);
-          }
-        }}
-        onCancelChannel={async () => {
-          const res = await cancelChannel();
-          if (!res.ok && res.error) {
-            if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
-              router.replace("/game");
-              return;
-            }
-            showGameError(res.error);
-          }
-        }}
-        onTargetSelection={async (selection) => {
-          const res = await updateTargetSelection(selection);
-          if (!res.ok && res.error) {
-            console.error("[TargetSelection] Error response:", res.error);
-          }
-        }}
-        onCancelBuff={async (buffId, options) => {
-          const res = await cancelBuff(buffId, options);
-          if (!res.ok && res.error) {
-            if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
-              router.replace("/game");
-              return;
-            }
-            showGameError(res.error);
-          }
-        }}
-      />
+      <>
+        <button
+          type="button"
+          className={styles.homeButton}
+          aria-label="首页"
+          title="首页"
+          onClick={() => void leaveGameAndReturnHome('InGameHomeButton')}
+        >
+          <Home size={27} strokeWidth={2.4} aria-hidden="true" />
+        </button>
 
-      {tournament?.phase === "GAME_OVER" && (
-        <GameOverModal
-          isWinner={isWinner}
-          onExit={() => router.push("/game")}
+        <BattleArena
+          me={mePlayer}
+          opponent={primaryOpponent}
+          opponents={normalizedOpponents}
+          gameId={gameId}
+          distance={distance}
+          maxHp={me.maxHp ?? 100}
+          abilities={preload.abilityMap}
+          events={state?.events ?? []}
+          pickups={state?.pickups ?? []}
+          safeZone={state?.safeZone}
+          groundZones={state?.groundZones}
+          entities={state?.entities}
+          opponentPositionBufferRef={opponentPositionBufferRef}
+          mode={gameMode ?? 'arena'}
+          onLeaveGame={() => leaveGameAndReturnHome('EscExitButton')}
+          onMovementRecover={refetch}
+          onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId, movementIntent) => {
+            // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
+            const cardInstance =
+              me.hand.find((c) => c.instanceId === abilityInstanceId) ??
+              me.hand.find((c) => ((c as any).abilityId ?? (c as any).id) === abilityInstanceId) ??
+              ({ instanceId: abilityInstanceId } as any); // synthetic stub — backend validates
+            const res = await playAbility(cardInstance, targetUserId, groundTarget, entityTargetId, movementIntent);
+            if (!res.ok && res.error) {
+              console.error("[CastAbility] Error response:", res.error);
+              if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
+                router.replace("/game");
+                return;
+              }
+              showGameError(res.error);
+            }
+          }}
+          onCancelChannel={async () => {
+            const res = await cancelChannel();
+            if (!res.ok && res.error) {
+              if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
+                router.replace("/game");
+                return;
+              }
+              showGameError(res.error);
+            }
+          }}
+          onTargetSelection={async (selection) => {
+            const res = await updateTargetSelection(selection);
+            if (!res.ok && res.error) {
+              console.error("[TargetSelection] Error response:", res.error);
+            }
+          }}
+          onCancelBuff={async (buffId, options) => {
+            const res = await cancelBuff(buffId, options);
+            if (!res.ok && res.error) {
+              if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
+                router.replace("/game");
+                return;
+              }
+              showGameError(res.error);
+            }
+          }}
         />
-      )}
 
-      {disconnectPrompt && (
-        <div className={styles.disconnectPromptOverlay} role="dialog" aria-modal="true">
-          <div className={styles.disconnectPromptWindow}>
-            <div className={styles.disconnectPromptTitle}>Player disconnected</div>
-            <div className={styles.disconnectPromptMessage}>
-              {disconnectPrompt.username || "Opponent"} disconnected. Leave and return to home page?
-            </div>
-            <div className={styles.disconnectPromptCountdown}>
-              Auto return in {disconnectCountdown}s
-            </div>
-            <div className={styles.disconnectPromptActions}>
-              <button
-                type="button"
-                className={styles.disconnectPromptButtonSecondary}
-                onClick={clearDisconnectPrompt}
-              >
-                No
-              </button>
-              <button
-                type="button"
-                className={styles.disconnectPromptButtonPrimary}
-                onClick={() => void leaveAfterDisconnectPrompt()}
-              >
-                Yes ({disconnectCountdown}s)
-              </button>
+        {tournament?.phase === "GAME_OVER" && (
+          <GameOverModal
+            isWinner={isWinner}
+            onExit={() => router.push("/game")}
+          />
+        )}
+
+        {exitPrompt && (
+          <div className={styles.disconnectPromptOverlay} role="dialog" aria-modal="true">
+            <div className={styles.disconnectPromptWindow}>
+              <div className={styles.disconnectPromptTitle}>{exitPrompt.reason === "left" ? "Player left" : "Player disconnected"}</div>
+              <div className={styles.disconnectPromptMessage}>
+                {exitPrompt.username || "Opponent"} {exitPrompt.reason === "left" ? "left" : "disconnected"}. Leave and return to home page?
+              </div>
+              <div className={styles.disconnectPromptCountdown}>
+                Auto return in {disconnectCountdown}s
+              </div>
+              <div className={styles.disconnectPromptActions}>
+                <button
+                  type="button"
+                  className={styles.disconnectPromptButtonSecondary}
+                  onClick={dismissExitPrompt}
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  className={styles.disconnectPromptButtonPrimary}
+                  onClick={() => void leaveAfterDisconnectPrompt()}
+                >
+                  Yes ({disconnectCountdown}s)
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </>
     </GamePreloadProvider>
   );
 }

@@ -55,6 +55,26 @@
   font-size: 6.48px;
 }
 
+.playerStatusBar {
+  --status-icon-size: 34.75px;
+  --status-row-gap: 1.78px;
+  --status-text-block-size: 32.08px;
+  --status-name-icon-gap: 0.54px;
+  --status-icon-timer-gap: 1.78px;
+}
+
+.playerStatusBar .buffName {
+  font-size: 12.47px;
+}
+
+.playerStatusBar .buffTurns {
+  font-size: 12.83px;
+}
+
+.playerStatusBar .stackBadge {
+  font-size: 10.69px;
+}
+
 /* ================= BUFF ITEM ================= */
 
 .buffItem {
@@ -83,14 +103,10 @@
   font-weight: 900;
   line-height: 1;
   text-align: center;
+  color: #ffe033;
   white-space: nowrap;
-  -webkit-text-stroke: 0.29px rgba(0, 0, 0, 0.98);
-  text-shadow:
-    0 0.84px 0 #000,
-    0.84px 0 0 #000,
-    0 -0.84px 0 #000,
-    -0.84px 0 0 #000,
-    0 0 3px rgba(0, 0, 0, 0.95);
+  -webkit-text-stroke: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.72);
 }
 
 /* ================= ICON ================= */
@@ -151,18 +167,13 @@
   justify-content: center;
   align-items: center;
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 12.96px;
-  font-weight: 900;
+  font-size: 11.66px;
+  font-weight: 315;
   line-height: 1;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  -webkit-text-stroke: 0.24px rgba(0, 0, 0, 0.98);
-  text-shadow:
-    0 0.77px 0 #000,
-    0.77px 0 0 #000,
-    0 -0.77px 0 #000,
-    -0.77px 0 0 #000,
-    0 0 3px rgba(0, 0, 0, 0.95);
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 /* ================= TEXT COLORS ================= */
@@ -176,11 +187,11 @@
 }
 
 .buffText {
-  color: #f4ff43;
+  color: #ffe033;
 }
 
 .debuffText {
-  color: #f4ff43;
+  color: #ffe033;
 }
 
 .urgentBuffItem {
@@ -196,6 +207,6 @@
   }
 
   .buffTurns {
-    font-size: 12.15px;
+    font-size: 10.94px;
   }
 }

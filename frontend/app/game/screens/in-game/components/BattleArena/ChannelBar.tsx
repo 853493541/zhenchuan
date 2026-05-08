@@ -159,6 +159,7 @@ export function ChannelBar({
   return (
     <div
       className={classNames.wrap}
+      data-channel-bar-root="true"
       style={{ opacity, transition: 'opacity 0.5s ease-out' }}
     >
       {variant === 'enemy' && data.interruptible === false && (

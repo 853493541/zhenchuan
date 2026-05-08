@@ -1803,7 +1803,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     id: "guchong_xianji",
     name: "蛊虫献祭",
     description:
-      "自我施放（当前气血需大于35%，不计护盾）\n解除等级1控制\n立即对自身造成30%最大气血伤害\n获得【献祭护盾】10秒：提供50点护盾并每秒回复3%气血（贯体）\n若献祭护盾被打破则该效果提前结束\n获得【献祭控制免疫】5秒：免疫等级1控制\n不触发GCD",
+      "自我施放（当前气血需大于35%，不计护盾）\n解除等级1控制\n立即对自身造成30%最大气血伤害\n获得【献祭护盾】10秒：提供50%最大气血护盾并每秒回复3%气血（贯体）\n若献祭护盾被打破则该效果提前结束\n获得【献祭控制免疫】5秒：免疫等级1控制\n不触发GCD",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -1820,9 +1820,9 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "BUFF",
         durationMs: 10_000,
         periodicMs: 1_000,
-        description: "提供50点护盾，并每秒回复3%气血（贯体）",
+        description: "提供50%最大气血护盾，并每秒回复3%气血（贯体）",
         effects: [
-          { type: "SHIELD", value: 50 },
+          { type: "SHIELD", value: 50, percentOfTargetMaxHp: true },
           { type: "PERIODIC_GUAN_TI_HEAL", value: 3 },
         ],
       },

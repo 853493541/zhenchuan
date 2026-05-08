@@ -317,4 +317,7 @@ export interface AbilityInstance {
 
   /** Remaining lock ticks between two casts while charges remain. */
   chargeLockTicks?: number;
+
+  /** Optional draft hotbar slot index, used by the battle HUD to preserve empty slots. */
+  slotIndex?: number;
 }

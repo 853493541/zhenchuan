@@ -4,6 +4,7 @@ import { getUserIdFromCookie } from "./auth";
 import type { GameState, MovementInput, TargetSelection } from "../engine/state/types";
 import { ABILITIES } from "../abilities/abilities";
 import GameSession from "../models/GameSession";
+import { User } from "../../models/User";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { ensureBattleLoop, getBattleLoopHydrationDiagnostics } from "../services/battleLoopRuntime";
 import { GameLoop } from "../engine/loop/GameLoop";
@@ -67,6 +68,7 @@ function scheduleLeaveEnd(gameId: string, endedByUserId: string, endsAt: number)
 const ERROR_MESSAGES: Record<string, string> = {
   ERR_INVALID_PAYLOAD: "Invalid request payload",
   ERR_NOT_AUTHENTICATED: "Not authenticated",
+  ERR_NOT_FOUND: "Not found",
   ERR_NOT_IN_GAME: "Not in this game",
   ERR_BATTLE_NOT_IN_PROGRESS: "Battle not in progress",
   ERR_INVALID_GAME_STATE: "Invalid game state",
@@ -74,7 +76,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   ERR_PICKUP_NOT_FOUND: "Pickup not found or already claimed",
   ERR_PICKUP_TOO_FAR: "Too far away to interact",
   ERR_PICKUP_CLAIM_TOO_FAR: "Too far away to pick up",
-  ERR_PICKUP_HAND_FULL: "Hand is full",
+  ERR_PICKUP_HAND_FULL: "只能拾取6个技能",
   ERR_ABILITY_NOT_FOUND: "Ability definition not found",
   ERR_INTERNAL: "Internal server error",
 };
@@ -100,6 +102,97 @@ function sendCaughtGameError(res: express.Response, err: any, status = 400) {
   const code = toErrorCode(err);
   return sendGameError(res, status, code, ERROR_MESSAGES[code] ?? err?.message ?? code);
 }
+
+type UiLayoutPosition = { left: number; top: number };
+type UiLayoutViewport = { w: number; h: number };
+type UiLayoutPayload = {
+  positions: Record<string, UiLayoutPosition>;
+  viewport: UiLayoutViewport | null;
+};
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function sanitizeUiLayoutPayload(raw: unknown): UiLayoutPayload {
+  const fallback: UiLayoutPayload = { positions: {}, viewport: null };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return fallback;
+  }
+
+  const container = raw as { positions?: unknown; viewport?: unknown };
+  const positionsSource =
+    container.positions && typeof container.positions === "object" && !Array.isArray(container.positions)
+      ? container.positions as Record<string, unknown>
+      : raw as Record<string, unknown>;
+
+  const positions: Record<string, UiLayoutPosition> = {};
+  for (const [key, value] of Object.entries(positionsSource)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const candidate = value as Partial<UiLayoutPosition>;
+    if (!isFiniteNumber(candidate.left) || !isFiniteNumber(candidate.top)) continue;
+    positions[key] = {
+      left: Math.round(candidate.left),
+      top: Math.round(candidate.top),
+    };
+  }
+
+  const viewportCandidate = container.viewport;
+  const viewport =
+    viewportCandidate && typeof viewportCandidate === "object" && !Array.isArray(viewportCandidate)
+    && isFiniteNumber((viewportCandidate as Partial<UiLayoutViewport>).w)
+    && isFiniteNumber((viewportCandidate as Partial<UiLayoutViewport>).h)
+    && (viewportCandidate as Partial<UiLayoutViewport>).w! > 0
+    && (viewportCandidate as Partial<UiLayoutViewport>).h! > 0
+      ? {
+          w: Math.round((viewportCandidate as UiLayoutViewport).w),
+          h: Math.round((viewportCandidate as UiLayoutViewport).h),
+        }
+      : null;
+
+  return { positions, viewport };
+}
+
+router.get("/ui-layout", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const user = await User.findById(userId).select("battleArenaUiLayout");
+    if (!user) {
+      return sendGameError(res, 401, "ERR_NOT_AUTHENTICATED");
+    }
+
+    return res.json(sanitizeUiLayoutPayload((user as any).battleArenaUiLayout));
+  } catch (err: any) {
+    console.error(`[UI_LAYOUT_GET] ❌ ERROR: ${err.message}`);
+    console.error(`[UI_LAYOUT_GET] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err, 401);
+  }
+});
+
+router.put("/ui-layout", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const user = await User.findById(userId).select("battleArenaUiLayout");
+    if (!user) {
+      return sendGameError(res, 401, "ERR_NOT_AUTHENTICATED");
+    }
+
+    const layout = sanitizeUiLayoutPayload(req.body);
+    (user as any).battleArenaUiLayout = {
+      positions: layout.positions,
+      viewport: layout.viewport,
+      updatedAt: new Date(),
+    };
+    user.markModified("battleArenaUiLayout");
+    await user.save();
+
+    return res.json(layout);
+  } catch (err: any) {
+    console.error(`[UI_LAYOUT_PUT] ❌ ERROR: ${err.message}`);
+    console.error(`[UI_LAYOUT_PUT] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err);
+  }
+});
 
 function normalizeTargetSelectionPayload(payload: any, state: GameState, userId: string): TargetSelection | undefined {
   if (!payload || payload.kind === "none") return undefined;
@@ -428,6 +521,48 @@ const PICKUP_INTERACT_RANGE = 5;  // gameplay units — must be within this dist
 const PICKUP_CLAIM_RANGE    = 20; // gameplay units — can claim after channeling even if walked away
 const MAX_DRAFT_HAND = 6;        // draft-ability cap (common abilities excluded)
 
+function isCommonAbilityCard(card: any): boolean {
+  const abilityId = card?.abilityId ?? card?.id;
+  const def = abilityId ? ABILITIES[abilityId] : undefined;
+  if (def) return !!(def as any).isCommon;
+  return !!card?.isCommon;
+}
+
+function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return Math.max(0, Math.min(MAX_DRAFT_HAND - 1, fallback));
+  return Math.max(0, Math.min(MAX_DRAFT_HAND - 1, Math.round(numeric)));
+}
+
+function normalizeDraftCardSlots<T extends Record<string, any>>(cards: T[]): T[] {
+  const assigned: Array<T | undefined> = Array.from({ length: MAX_DRAFT_HAND });
+  const pending: T[] = [];
+  cards.forEach((card, fallbackIndex) => {
+    const hasExplicitSlot = card?.slotIndex !== undefined && Number.isFinite(Number(card.slotIndex));
+    const slotIndex = normalizeDraftSlotIndex(card?.slotIndex, fallbackIndex);
+    if (hasExplicitSlot && !assigned[slotIndex]) {
+      assigned[slotIndex] = { ...card, slotIndex };
+      return;
+    }
+    pending.push(card);
+  });
+  pending.forEach((card) => {
+    const openIndex = assigned.findIndex((slot) => !slot);
+    if (openIndex >= 0) assigned[openIndex] = { ...card, slotIndex: openIndex };
+  });
+  return assigned.filter(Boolean) as T[];
+}
+
+function getFirstAvailableDraftSlot(cards: Array<Record<string, any>>): number | null {
+  const normalized = normalizeDraftCardSlots(cards);
+  if (normalized.length >= MAX_DRAFT_HAND) return null;
+  const occupied = new Set(normalized.map((card) => normalizeDraftSlotIndex(card.slotIndex, 0)));
+  for (let slotIndex = 0; slotIndex < MAX_DRAFT_HAND; slotIndex += 1) {
+    if (!occupied.has(slotIndex)) return slotIndex;
+  }
+  return null;
+}
+
 /**
  * POST /gameplay/pickup/inspect
  * Player inspects a pickup book. Backend validates range and returns ability details.
@@ -531,13 +666,10 @@ router.post("/pickup/claim", async (req, res) => {
       return sendGameError(res, 400, "ERR_PICKUP_CLAIM_TOO_FAR");
     }
 
-    // Check hand capacity (count only non-common draft abilities)
-    const draftCount = player.hand.filter((h: any) => {
-      const aid = h.abilityId ?? (h as any).id ?? h.instanceId;
-      const def = ABILITIES[aid];
-      return def && !(def as any).isCommon;
-    }).length;
-    if (draftCount >= MAX_DRAFT_HAND) {
+    const draftCards = player.hand.filter((card: any) => !isCommonAbilityCard(card));
+    const commonCards = player.hand.filter((card: any) => isCommonAbilityCard(card));
+    const firstOpenSlot = getFirstAvailableDraftSlot(draftCards);
+    if (firstOpenSlot === null) {
       return sendGameError(res, 400, "ERR_PICKUP_HAND_FULL");
     }
 
@@ -550,6 +682,7 @@ router.post("/pickup/claim", async (req, res) => {
       instanceId: randomUUID(),
       abilityId:  pickup.abilityId,
       cooldown:   0,
+      slotIndex:  firstOpenSlot,
     };
     const fullCard = { ...abilityDef, ...newInstance };
 
@@ -557,7 +690,7 @@ router.post("/pickup/claim", async (req, res) => {
     loopState.pickups.splice(pickupIdx, 1);
     loopState.players[playerIndex] = {
       ...loopState.players[playerIndex],
-      hand: [...loopState.players[playerIndex].hand, fullCard],
+      hand: [...normalizeDraftCardSlots([...draftCards, fullCard]), ...commonCards],
     };
     loop.updateState(loopState);
 

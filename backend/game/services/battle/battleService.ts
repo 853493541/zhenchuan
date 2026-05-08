@@ -195,6 +195,32 @@ const COMMON_ABILITY_IDS = [
 ];
 
 const BASE_MOVE_SPEED_PER_TICK = 0.1666667;
+const DRAFT_ABILITY_SLOT_COUNT = 6;
+
+function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return Math.max(0, Math.min(DRAFT_ABILITY_SLOT_COUNT - 1, fallback));
+  return Math.max(0, Math.min(DRAFT_ABILITY_SLOT_COUNT - 1, Math.round(numeric)));
+}
+
+function normalizeSelectedAbilitySlots(abilities: AbilityInstance[]): AbilityInstance[] {
+  const assigned: Array<AbilityInstance | undefined> = Array.from({ length: DRAFT_ABILITY_SLOT_COUNT });
+  const pending: AbilityInstance[] = [];
+  abilities.forEach((ability, fallbackIndex) => {
+    const hasExplicitSlot = ability?.slotIndex !== undefined && Number.isFinite(Number(ability.slotIndex));
+    const slotIndex = normalizeDraftSlotIndex(ability?.slotIndex, fallbackIndex);
+    if (hasExplicitSlot && !assigned[slotIndex]) {
+      assigned[slotIndex] = { ...ability, slotIndex };
+      return;
+    }
+    pending.push(ability);
+  });
+  pending.forEach((ability) => {
+    const openIndex = assigned.findIndex((slot) => !slot);
+    if (openIndex >= 0) assigned[openIndex] = { ...ability, slotIndex: openIndex };
+  });
+  return assigned.filter(Boolean) as AbilityInstance[];
+}
 
 function makeCommonAbilities(): AbilityInstance[] {
   return COMMON_ABILITY_IDS.map((id) => ({
@@ -228,7 +254,7 @@ export function initializeBattleState(
     const dy = mapHeight / 2 - spawn.y;
     const mag = Math.sqrt(dx * dx + dy * dy) || 1;
 
-    const abilities = tournament.selectedAbilities[id] ?? [];
+    const abilities = normalizeSelectedAbilitySlots(tournament.selectedAbilities[id] ?? []);
     const hand: AbilityInstance[] = [
       ...abilities.map((a) => ({ ...a, instanceId: randomUUID(), cooldown: 0 })),
       ...makeCommonAbilities(),

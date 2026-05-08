@@ -66,6 +66,12 @@ __pycache__/
 .eslintcache
 frontend/.eslintcache
 
+# Playwright output
+test-results/
+frontend/test-results/
+playwright-report/
+frontend/playwright-report/
+
 # SQLite / DB
 *.sqlite3
 *.db

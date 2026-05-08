@@ -12,7 +12,7 @@
  * Matches export-reader.js collision: shell wireframe (green) + part box wireframe (orange)
  */
 
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -142,30 +142,44 @@ export default function ExportedMapScene({
   const groupRef = useRef<THREE.Group | null>(null);
   const contentGroupRef = useRef<THREE.Group | null>(null); // entity + terrain meshes
   const shellLinesRef = useRef<THREE.LineSegments | null>(null);
-  const boxLinesRef = useRef<THREE.LineSegments | null>(null);
+  const collisionWorldTrianglesRef = useRef<Float32Array | null>(null);
+  const [collisionVisualVersion, setCollisionVisualVersion] = useState(0);
   // Keep latest callbacks in refs so the canvas event listener doesn't need to re-register
   const onPointerMoveRef = useRef(onPointerMove);
   const onPointerDownRef = useRef(onPointerDown);
   useEffect(() => { onPointerMoveRef.current = onPointerMove; });
   useEffect(() => { onPointerDownRef.current = onPointerDown; });
 
-  // Toggle collision visibility
-  useEffect(() => {
-    if (shellLinesRef.current) shellLinesRef.current.visible = showCollisionShells || blueprintMode;
-  }, [showCollisionShells, blueprintMode]);
-  useEffect(() => {
-    if (boxLinesRef.current) boxLinesRef.current.visible = false;
-  }, []);
-
-  // Blueprint mode: hide content, show wireframe in cyan; restore when off
+  // Blueprint mode: hide content; collision lines are built lazily below.
   useEffect(() => {
     if (contentGroupRef.current) contentGroupRef.current.visible = !blueprintMode && !hideVisuals;
-    if (shellLinesRef.current) {
-      const mat = shellLinesRef.current.material as THREE.LineBasicMaterial;
-      mat.color.set(blueprintMode ? 0x00ffff : 0x3fd56d);
-      mat.opacity = blueprintMode ? 1.0 : 0.65;
-    }
   }, [blueprintMode, hideVisuals]);
+
+  useEffect(() => {
+    const shouldShowCollisionLines = showCollisionShells || blueprintMode;
+    const group = groupRef.current;
+    const worldTriangles = collisionWorldTrianglesRef.current;
+
+    if (!shouldShowCollisionLines || !group || !worldTriangles || worldTriangles.length === 0) {
+      if (shellLinesRef.current) {
+        disposeLineSegments(shellLinesRef.current);
+        shellLinesRef.current = null;
+      }
+      return;
+    }
+
+    if (!shellLinesRef.current) {
+      const shellLines = buildCollisionShellLines(worldTriangles);
+      shellLinesRef.current = shellLines;
+      group.add(shellLines);
+    }
+
+    const shellLines = shellLinesRef.current;
+    const mat = shellLines.material as THREE.LineBasicMaterial;
+    mat.color.set(blueprintMode ? 0x00ffff : 0x3fd56d);
+    mat.opacity = blueprintMode ? 1.0 : 0.65;
+    shellLines.visible = true;
+  }, [showCollisionShells, blueprintMode, collisionVisualVersion]);
 
   // Canvas-level pointer events: raycast against GLB group first, fall back to y=0 ground plane
   const worldHalfX = worldWidth / 2;
@@ -256,7 +270,7 @@ export default function ExportedMapScene({
 
         const entityStatsPromise = loadEntities(contentGroup, entities, meshMap, textureMap, disposed);
         const terrainResultPromise = loadTerrain(contentGroup, mapConfig, terrainTexIndex, disposed);
-        const collisionResultPromise = loadCollision(group, entities, meshMap, disposed, shellLinesRef, boxLinesRef);
+        const collisionResultPromise = loadCollision(entities, disposed);
 
         const [terrainResult, collisionResult] = await Promise.all([
           terrainResultPromise,
@@ -266,8 +280,10 @@ export default function ExportedMapScene({
 
         // Build collision system (BVH + terrain)
         if (collisionResult.worldTrianglesFlat.length > 0) {
+          collisionWorldTrianglesRef.current = collisionResult.worldTrianglesFlat;
+          setCollisionVisualVersion((value) => value + 1);
           const collisionSystem = new MapCollisionSystem();
-          collisionSystem.initBVH(new Float32Array(collisionResult.worldTrianglesFlat));
+          collisionSystem.initBVH(collisionResult.worldTrianglesFlat);
           if (terrainResult.heightmaps.size > 0 && mapConfig.landscape) {
             const cfg = mapConfig.landscape;
             collisionSystem.initTerrain(
@@ -311,6 +327,10 @@ export default function ExportedMapScene({
       disposeGroup(group);
       scene.remove(group);
       groupRef.current = null;
+      contentGroupRef.current = null;
+      shellLinesRef.current = null;
+      collisionWorldTrianglesRef.current = null;
+      disposeTextureCache();
     };
   }, [scene]);
 
@@ -706,12 +726,8 @@ async function loadTerrain(
    ════════════════════════════════════════════════════════════ */
 
 async function loadCollision(
-  group: THREE.Group,
   entities: any[],
-  meshMap: Record<string, string>,
   disposed: boolean,
-  shellLinesRef: React.MutableRefObject<THREE.LineSegments | null>,
-  boxLinesRef: React.MutableRefObject<THREE.LineSegments | null>,
 ) {
   const stats = { sidecars: 0, shells: 0, partBoxes: 0 };
 
@@ -767,11 +783,9 @@ async function loadCollision(
 
   // Transform collision data by entity matrices and accumulate world-space geometry
   const worldFlat: number[] = [];
-  const partBoxLineFlat: number[] = [];
   const _triA = new THREE.Vector3();
   const _triB = new THREE.Vector3();
   const _triC = new THREE.Vector3();
-  const _boxCorners = Array.from({ length: 8 }, () => new THREE.Vector3());
 
   for (const entity of entities) {
     if (!Array.isArray(entity?.matrix) || entity.matrix.length !== 16) continue;
@@ -796,46 +810,11 @@ async function loadCollision(
       );
     }
 
-    // Transform part box edges
-    for (const box of sidecarData.partBoxes) {
-      appendPartBoxEdges(partBoxLineFlat, box, worldMatrix, _boxCorners);
-      stats.partBoxes++;
-    }
+    stats.partBoxes += sidecarData.partBoxes.length;
   }
 
   stats.shells = Math.floor(worldFlat.length / 9);
-
-  // Build shell wireframe (green) — EdgesGeometry at 20° threshold
-  if (worldFlat.length > 0) {
-    const shellGeo = new THREE.BufferGeometry();
-    shellGeo.setAttribute('position', new THREE.Float32BufferAttribute(worldFlat, 3));
-    const edges = new THREE.EdgesGeometry(shellGeo, 20);
-    const shellLines = new THREE.LineSegments(
-      edges,
-      new THREE.LineBasicMaterial({ color: 0x3fd56d, transparent: true, opacity: 0.65, depthTest: true }),
-    );
-    shellLines.renderOrder = 2;
-    shellLines.visible = false;  // toggled via props
-    shellLinesRef.current = shellLines;
-    group.add(shellLines);
-    shellGeo.dispose(); // only edges geometry is used
-  }
-
-  // Build part box wireframe (orange)
-  if (partBoxLineFlat.length > 0) {
-    const boxGeo = new THREE.BufferGeometry();
-    boxGeo.setAttribute('position', new THREE.Float32BufferAttribute(partBoxLineFlat, 3));
-    const boxLines = new THREE.LineSegments(
-      boxGeo,
-      new THREE.LineBasicMaterial({ color: 0xff8c3a, transparent: true, opacity: 0.92, depthTest: true }),
-    );
-    boxLines.renderOrder = 4;
-    boxLines.visible = false;  // toggled via props
-    boxLinesRef.current = boxLines;
-    group.add(boxLines);
-  }
-
-  return { stats, worldTrianglesFlat: worldFlat };
+  return { stats, worldTrianglesFlat: worldFlat.length > 0 ? new Float32Array(worldFlat) : new Float32Array(0) };
 }
 
 function extractSidecarData(sidecarJson: any) {
@@ -866,40 +845,33 @@ function extractSidecarData(sidecarJson: any) {
   return { trianglesFlat, partBoxes };
 }
 
-function appendPartBoxEdges(
-  flatOut: number[],
-  box: { cx: number; cz: number; w: number; d: number; baseY: number; topY: number },
-  worldMatrix: THREE.Matrix4,
-  corners: THREE.Vector3[],
-) {
-  const halfW = box.w * 0.5;
-  const halfD = box.d * 0.5;
-  const minX = box.cx - halfW, maxX = box.cx + halfW;
-  const minZ = box.cz - halfD, maxZ = box.cz + halfD;
-  const minY = box.baseY, maxY = box.topY;
-
-  corners[0].set(minX, minY, minZ).applyMatrix4(worldMatrix);
-  corners[1].set(maxX, minY, minZ).applyMatrix4(worldMatrix);
-  corners[2].set(maxX, minY, maxZ).applyMatrix4(worldMatrix);
-  corners[3].set(minX, minY, maxZ).applyMatrix4(worldMatrix);
-  corners[4].set(minX, maxY, minZ).applyMatrix4(worldMatrix);
-  corners[5].set(maxX, maxY, minZ).applyMatrix4(worldMatrix);
-  corners[6].set(maxX, maxY, maxZ).applyMatrix4(worldMatrix);
-  corners[7].set(minX, maxY, maxZ).applyMatrix4(worldMatrix);
-
-  const edges: [number, number][] = [
-    [0,1],[1,2],[2,3],[3,0], // bottom
-    [4,5],[5,6],[6,7],[7,4], // top
-    [0,4],[1,5],[2,6],[3,7], // vertical
-  ];
-  for (const [a, b] of edges) {
-    flatOut.push(corners[a].x, corners[a].y, corners[a].z, corners[b].x, corners[b].y, corners[b].z);
-  }
-}
-
 /* ════════════════════════════════════════════════════════════
    Helpers
    ════════════════════════════════════════════════════════════ */
+
+function buildCollisionShellLines(worldTrianglesFlat: Float32Array): THREE.LineSegments {
+  const shellGeo = new THREE.BufferGeometry();
+  shellGeo.setAttribute('position', new THREE.BufferAttribute(worldTrianglesFlat, 3));
+  const edges = new THREE.EdgesGeometry(shellGeo, 20);
+  shellGeo.dispose();
+  const shellLines = new THREE.LineSegments(
+    edges,
+    new THREE.LineBasicMaterial({ color: 0x3fd56d, transparent: true, opacity: 0.65, depthTest: true }),
+  );
+  shellLines.renderOrder = 2;
+  return shellLines;
+}
+
+function disposeLineSegments(lines: THREE.LineSegments) {
+  if (lines.parent) lines.parent.remove(lines);
+  lines.geometry.dispose();
+  const material = lines.material;
+  if (Array.isArray(material)) {
+    material.forEach((m) => m.dispose());
+  } else {
+    material.dispose();
+  }
+}
 
 async function fetchJson(url: string) {
   const res = await fetch(url);
@@ -921,4 +893,11 @@ function disposeGroup(group: THREE.Group) {
       }
     }
   });
+}
+
+function disposeTextureCache() {
+  for (const texture of textureCache.values()) {
+    texture.dispose();
+  }
+  textureCache.clear();
 }

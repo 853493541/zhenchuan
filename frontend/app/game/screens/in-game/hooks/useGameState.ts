@@ -339,10 +339,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
         if (message.type === "PLAYER_DISCONNECTED") {
           if (message.userId && message.userId !== selfUserId) {
+            const promptEndsAt = Date.now() + 5_000;
             setDisconnectPrompt({
               userId: message.userId,
               username: message.username ?? "对方",
-              endsAt: message.endsAt ?? Date.now() + 30_000,
+              endsAt: Math.min(message.endsAt ?? promptEndsAt, promptEndsAt),
             });
           }
           return;
