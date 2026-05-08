@@ -58,6 +58,10 @@ const PLAYER_BUFF_STATUS_UI_KEY = 'player-buff-status-bar';
 const PLAYER_DEBUFF_STATUS_UI_KEY = 'player-debuff-status-bar';
 const TARGET_BUFF_STATUS_UI_KEY = 'target-buff-status-bar';
 const TARGET_DEBUFF_STATUS_UI_KEY = 'target-debuff-status-bar';
+const PLAYER_ICON_BAR_UI_KEY = 'player-icon-bar';
+const TARGET_ICON_BAR_UI_KEY = 'target-icon-bar';
+const TARGET_OWNED_ABILITY_BAR_UI_KEY = 'target-owned-ability-bar';
+const OWNED_ABILITY_BAR_UI_KEY = 'owned-ability-bar';
 const STATUS_BAR_VERTICAL_OFFSET = 58;
 const HEART_STAT_ORDER: HeartStatKey[] = [
   'attack',
@@ -1592,6 +1596,10 @@ export default function BattleArena({
   }, []);
   const wrapRef        = useRef<HTMLDivElement>(null);
   const canvasSizeRef  = useRef({ w: 800, h: 500 });
+  const playerPanelRef = useRef<HTMLDivElement>(null);
+  const targetIconBarRef = useRef<HTMLDivElement>(null);
+  const targetOwnedAbilityBarRef = useRef<HTMLDivElement>(null);
+  const ownedAbilityBarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const updateCanvasSize = () => {
@@ -3990,6 +3998,21 @@ export default function BattleArena({
     try { localStorage.setItem(UI_POSITION_STORAGE_KEY, JSON.stringify(positions)); } catch {}
   }, []);
 
+  const getUiPositionFromRef = useCallback((
+    ref: React.RefObject<HTMLDivElement | null>,
+    fallback: { left: number; top: number },
+  ) => {
+    const wrapRect = wrapRef.current?.getBoundingClientRect();
+    const rect = ref.current?.getBoundingClientRect();
+    if (!wrapRect || !rect || rect.width <= 0 || rect.height <= 0) {
+      return fallback;
+    }
+    return {
+      left: Math.max(12, Math.round(rect.left - wrapRect.left)),
+      top: Math.max(12, Math.round(rect.top - wrapRect.top)),
+    };
+  }, []);
+
   const getDefaultPlayerStatusPos = useCallback(() => {
     const { w, h } = canvasSizeRef.current;
     return {
@@ -4005,6 +4028,38 @@ export default function BattleArena({
       top: Math.max(12, Math.round(h * 0.05 + 104)),
     };
   }, []);
+
+  const getDefaultPlayerIconBarPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return getUiPositionFromRef(playerPanelRef, {
+      left: Math.max(12, Math.round(w * 0.21)),
+      top: Math.max(12, Math.round(h * 0.44 - 24)),
+    });
+  }, [getUiPositionFromRef]);
+
+  const getDefaultTargetIconBarPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return getUiPositionFromRef(targetIconBarRef, {
+      left: Math.max(12, Math.round(w * 0.23)),
+      top: Math.max(12, Math.round(h * 0.05)),
+    });
+  }, [getUiPositionFromRef]);
+
+  const getDefaultTargetOwnedAbilityBarPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return getUiPositionFromRef(targetOwnedAbilityBarRef, {
+      left: Math.max(12, Math.round(w * 0.23)),
+      top: Math.max(12, Math.round(h * 0.05 + 170)),
+    });
+  }, [getUiPositionFromRef]);
+
+  const getDefaultOwnedAbilityBarPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return getUiPositionFromRef(ownedAbilityBarRef, {
+      left: Math.max(12, Math.round(w / 2 - 188)),
+      top: Math.max(12, Math.round(h - 168)),
+    });
+  }, [getUiPositionFromRef]);
 
   /** Start a drag session for any draggable UI panel. Key is stored in localStorage. */
   const startUIDrag = useCallback((key: string, defaultPos: { left: number; top: number }, e: React.MouseEvent, options?: { persist?: boolean }) => {
@@ -4050,26 +4105,41 @@ export default function BattleArena({
     mouseStateRef.current.isRight = false;
     manualCameraLookActiveRef.current = false;
     setUiPositions(prev => {
+      const playerIconBase = prev[PLAYER_ICON_BAR_UI_KEY] ?? getDefaultPlayerIconBarPos();
       const playerBase = prev[LEGACY_PLAYER_STATUS_UI_KEY] ?? getDefaultPlayerStatusPos();
+      const targetIconBase = prev[TARGET_ICON_BAR_UI_KEY] ?? getDefaultTargetIconBarPos();
+      const targetOwnedAbilityBase = prev[TARGET_OWNED_ABILITY_BAR_UI_KEY] ?? getDefaultTargetOwnedAbilityBarPos();
       const targetBase = getDefaultTargetStatusPos();
+      const ownedAbilityBase = prev[OWNED_ABILITY_BAR_UI_KEY] ?? getDefaultOwnedAbilityBarPos();
       const next = {
         ...prev,
+        [PLAYER_ICON_BAR_UI_KEY]: playerIconBase,
         [PLAYER_BUFF_STATUS_UI_KEY]: prev[PLAYER_BUFF_STATUS_UI_KEY] ?? playerBase,
         [PLAYER_DEBUFF_STATUS_UI_KEY]: prev[PLAYER_DEBUFF_STATUS_UI_KEY] ?? {
           left: playerBase.left,
           top: playerBase.top + STATUS_BAR_VERTICAL_OFFSET,
         },
+        [TARGET_ICON_BAR_UI_KEY]: targetIconBase,
+        [TARGET_OWNED_ABILITY_BAR_UI_KEY]: targetOwnedAbilityBase,
         [TARGET_BUFF_STATUS_UI_KEY]: prev[TARGET_BUFF_STATUS_UI_KEY] ?? targetBase,
         [TARGET_DEBUFF_STATUS_UI_KEY]: prev[TARGET_DEBUFF_STATUS_UI_KEY] ?? {
           left: targetBase.left,
           top: targetBase.top + STATUS_BAR_VERTICAL_OFFSET,
         },
+        [OWNED_ABILITY_BAR_UI_KEY]: ownedAbilityBase,
       };
       uiPositionsRef.current = next;
       return next;
     });
     setCustomUiMode(true);
-  }, [getDefaultPlayerStatusPos, getDefaultTargetStatusPos]);
+  }, [
+    getDefaultOwnedAbilityBarPos,
+    getDefaultPlayerIconBarPos,
+    getDefaultPlayerStatusPos,
+    getDefaultTargetIconBarPos,
+    getDefaultTargetOwnedAbilityBarPos,
+    getDefaultTargetStatusPos,
+  ]);
 
   const cancelCustomUiMode = useCallback(() => {
     const snapshot = customUiSnapshotRef.current ?? {};
@@ -5375,7 +5445,8 @@ export default function BattleArena({
   const myBarSegments = computeHpShieldSegments(me?.hp ?? 0, myShield, myMaxHp);
   const myHpPct = myBarSegments.hpPct;
   const myShieldPct = myBarSegments.shieldPct;
-  const iconBarHpGradient = 'linear-gradient(180deg, #ff7a65 0%, #e23b2f 42%, #b91518 100%)';
+  const iconBarHpGradient = 'linear-gradient(180deg, #ff9a74 0%, #ef5b39 46%, #c92a1c 100%)';
+  const selfIconBarHpGradient = 'linear-gradient(180deg, #ff9a74 0%, #ef5b39 46%, #c92a1c 100%)';
   const BASE_CRIT_EFFECT_MULTIPLIER = 1.75;
   const myBaseWaiGongCritChancePct = Math.max(
     0,
@@ -5877,6 +5948,10 @@ export default function BattleArena({
   };
 
   const playerStatusBuffs = me?.buffs ?? [];
+  const playerIconBarSavedPos = uiPositions[PLAYER_ICON_BAR_UI_KEY];
+  const playerIconBarDefaultPos = getDefaultPlayerIconBarPos();
+  const playerIconBarPos = playerIconBarSavedPos ?? playerIconBarDefaultPos;
+  const useCustomPlayerIconBarPlacement = customUiMode || !!playerIconBarSavedPos;
   const legacyPlayerStatusSavedPos = uiPositions[LEGACY_PLAYER_STATUS_UI_KEY];
   const playerBuffStatusSavedPos = uiPositions[PLAYER_BUFF_STATUS_UI_KEY] ?? legacyPlayerStatusSavedPos;
   const playerDebuffStatusSavedPos = uiPositions[PLAYER_DEBUFF_STATUS_UI_KEY];
@@ -5916,6 +5991,19 @@ export default function BattleArena({
     : targetStatusIsEntity
     ? (selectedEntityForStatus?.buffs ?? [])
     : (selectedTargetForStatus?.buffs ?? []);
+  const targetOwnedAbilityHand = targetStatusIsSelf
+    ? me.hand
+    : targetStatusIsEntity
+    ? []
+    : (selectedTargetForStatus?.hand ?? []);
+  const targetIconBarSavedPos = uiPositions[TARGET_ICON_BAR_UI_KEY];
+  const targetIconBarDefaultPos = getDefaultTargetIconBarPos();
+  const targetIconBarPos = targetIconBarSavedPos ?? targetIconBarDefaultPos;
+  const useCustomTargetIconBarPlacement = customUiMode || !!targetIconBarSavedPos;
+  const targetOwnedAbilityBarSavedPos = uiPositions[TARGET_OWNED_ABILITY_BAR_UI_KEY];
+  const targetOwnedAbilityBarDefaultPos = getDefaultTargetOwnedAbilityBarPos();
+  const targetOwnedAbilityBarPos = targetOwnedAbilityBarSavedPos ?? targetOwnedAbilityBarDefaultPos;
+  const showFloatingTargetOwnedAbilityBar = customUiMode || !!targetOwnedAbilityBarSavedPos;
   const targetBuffStatusSavedPos = uiPositions[TARGET_BUFF_STATUS_UI_KEY];
   const targetDebuffStatusSavedPos = uiPositions[TARGET_DEBUFF_STATUS_UI_KEY];
   const targetBuffStatusDefaultPos = getDefaultTargetStatusPos();
@@ -5940,6 +6028,10 @@ export default function BattleArena({
     : (targetStatusAllowAnyCancel && onCancelBuff && selectedEntityForStatus)
     ? ((buffId: number) => onCancelBuff(buffId, { entityTargetId: selectedEntityForStatus.id }))
     : undefined;
+  const ownedAbilityBarSavedPos = uiPositions[OWNED_ABILITY_BAR_UI_KEY];
+  const ownedAbilityBarDefaultPos = getDefaultOwnedAbilityBarPos();
+  const ownedAbilityBarPos = ownedAbilityBarSavedPos ?? ownedAbilityBarDefaultPos;
+  const showFloatingOwnedAbilityBar = customUiMode || !!ownedAbilityBarSavedPos;
 
   const renderStatusPlacement = ({
     keyName,
@@ -5970,7 +6062,6 @@ export default function BattleArena({
       style={{ left: pos.left, top: pos.top }}
       onMouseDown={customUiMode ? (event) => startUIDrag(keyName, defaultPos, event, { persist: false }) : undefined}
     >
-      {customUiMode && <div className={styles.customUiPlacementLabel}>{label}</div>}
       <div className={styles.customUiStatusContent}>
         <StatusBar
           buffs={buffs}
@@ -5980,7 +6071,301 @@ export default function BattleArena({
           allowAnyCancel={allowAnyCancel}
           categoryFilter={categoryFilter}
         />
+        {customUiMode && (
+          <div className={styles.customUiStatusGuide} aria-hidden="true">
+            <div className={styles.customUiPlacementLabel}>{label}</div>
+          </div>
+        )}
       </div>
+    </div>
+  );
+
+  const renderTargetIconBarPreview = () => (
+    <div className={styles.enemyBossTopRow}>
+      <div className={styles.enemyBossBar}>
+        <div className={styles.enemyName}>18m · 目标</div>
+        <div className={styles.iconBarBody}>
+          <div className={styles.enemyHpTrack}>
+            <div className={styles.enemyHpTick} style={{ left: '62%' }} />
+            <div
+              className={styles.enemyHpFill}
+              style={{ width: '62%', background: iconBarHpGradient }}
+            />
+            <span className={styles.hpSegmentNum} style={{ left: '50%' }}>
+              62%
+            </span>
+          </div>
+          <div className={styles.iconBarResourceRow}>
+            <span className={styles.iconBarResourceValue}>130</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderTargetOwnedAbilityBar = (hand: any[], options?: { preview?: boolean }) => {
+    const preview = options?.preview === true;
+    const draftedTargetAbilities = hand.filter((ability: any) => {
+      const abilityId = ability?.abilityId || ability?.id;
+      return abilityId && !COMMON_ABILITY_ORDER.includes(abilityId as any);
+    });
+    const displayedAbilities = preview && draftedTargetAbilities.length === 0
+      ? draftAbilities.filter(Boolean).slice(0, 4)
+      : draftedTargetAbilities;
+
+    return (
+      <div ref={targetOwnedAbilityBarRef} className={styles.enemyAbilityRow}>
+        {displayedAbilities.map((ability: any, index: number) => {
+          const abilityId = ability.abilityId || ability.id;
+          const cardData = abilities[abilityId];
+          const name = cardData?.name || ability.name || abilityId || `技能${index + 1}`;
+          return (
+            <div key={ability.instanceId || abilityId || `target-preview-${index}`} className={styles.enemyAbilityItem}>
+              <div className={styles.enemyAbilitySlot} title={name}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={getArenaAbilityIconPath(name)}
+                  alt={name}
+                  className={styles.enemyAbilityIcon}
+                  draggable={false}
+                />
+              </div>
+              <span className={styles.enemyAbilityName}>{name.slice(0, 2)}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderOwnedAbilityBar = (disableInteractions = false) => (
+    <div
+      ref={ownedAbilityBarRef}
+      className={styles.hotbarStack}
+      style={disableInteractions ? { pointerEvents: 'none' } : undefined}
+    >
+      {showInlinePlayerStatus && (
+        <div className={styles.playerBuffRow}>
+          <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} />
+        </div>
+      )}
+
+      <ChannelBarHost data={channelBarData} showTimer />
+      <GcdVisualBar gcd={visibleVisualGcd} />
+
+      <div className={styles.hotbar}>
+        {(specialBarActive ? draftAbilities : Array.from({ length: 6 }, (_, idx) => draftAbilities[idx])).map((ability, idx) => {
+          const keyHint = ['1', '2', '3', 'Q', 'XB2', 'XB1'][idx];
+          return (
+            <div
+              key={ability ? `slot-${ability.id}` : `empty-${idx}`}
+              className={`${styles.draftSlot} ${!specialBarActive && dragHoverIndex === idx ? styles.draftSlotHover : ''}`}
+              onDragOver={(e) => {
+                if (specialBarActive) return;
+                if (!draggingDraftInstanceId) return;
+                e.preventDefault();
+                setDragHoverIndex(idx);
+              }}
+              onDragLeave={() => {
+                if (dragHoverIndex === idx) setDragHoverIndex(null);
+              }}
+              onDrop={(e) => {
+                if (specialBarActive) return;
+                void handleDraftSlotDrop(e, idx);
+              }}
+            >
+              {!ability ? (
+                <div className={`${styles.abilityBtn} ${styles.emptySlot}`}>
+                  <span className={styles.abilityKey}>{keyHint}</span>
+                </div>
+              ) : (() => {
+                const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
+                const cdSeconds = Math.floor(ability.cooldown / 30);
+                const hasCharges = (ability.maxCharges ?? 0) > 1;
+                const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
+                const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
+                const chargeRegenProgress = hasCharges
+                  ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
+                  : 0;
+                const recoveringCharge = hasCharges && chargeCount < maxCharges;
+                const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
+                const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
+                const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
+                return (
+                  <button
+                    type="button"
+                    className={`${styles.abilityBtn} ${ability.isReady && !ability.blockedByAntiStealth ? styles.ready : styles.notReady}`}
+                    aria-disabled={!ability.isReady || !!ability.blockedByAntiStealth}
+                    style={ability.losBlocked ? { boxShadow: '0 0 0 2px #ff3333, 0 0 10px 3px rgba(255,50,50,0.45)', outline: 'none' } : undefined}
+                    draggable={!specialBarActive}
+                    onMouseEnter={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                    onMouseLeave={closeAbilityHint}
+                    onFocus={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                    onBlur={closeAbilityHint}
+                    onDragStart={(e) => {
+                      if (specialBarActive) {
+                        e.preventDefault();
+                        return;
+                      }
+                      handleDraftDragStart(e, ability.id, idx);
+                    }}
+                    onDragEnd={handleDraftDragEnd}
+                    onClick={() => {
+                      if (dragJustEndedRef.current) return;
+                      if (!ability.isReady || ability.blockedByAntiStealth) {
+                        if (ability.losBlocked) {
+                          showLOSBlocker('视线被遮挡');
+                        }
+                        if (ability.blockedByAntiStealth) {
+                          toastError('反隐期间无法施展隐身招式');
+                        }
+                        return;
+                      }
+                      castAbilityRef.current(ability.id);
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                    {ability.cooldown > 0 && ability.maxCooldown > 0 && (
+                      <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100 - cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100 - cdPct).toFixed(1)}%)` }}>
+                        <span className={styles.cdNum}>{cdSeconds}</span>
+                      </div>
+                    )}
+                    {hasCharges && (
+                      <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
+                        <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
+                          <rect
+                            className={styles.chargeFrameTrack}
+                            x="5"
+                            y="5"
+                            width="90"
+                            height="90"
+                            rx="8"
+                            ry="8"
+                            pathLength={100}
+                          />
+                          <rect
+                            className={styles.chargeFrameProgress}
+                            x="5"
+                            y="5"
+                            width="90"
+                            height="90"
+                            rx="8"
+                            ry="8"
+                            pathLength={100}
+                            strokeDasharray={`${chargePathLength} 100`}
+                          />
+                        </svg>
+                        <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
+                          {Math.max(0, chargeCount)}
+                        </span>
+                      </div>
+                    )}
+                    <span className={styles.abilityKey}>{keyHint}</span>
+                  </button>
+                );
+              })()}
+            </div>
+          );
+        })}
+      </div>
+      {draggingDraftInstanceId && !specialBarActive && (
+        <div
+          className={`${styles.discardDropZone} ${discardZoneHover ? styles.discardDropZoneActive : ''}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDiscardZoneHover(true);
+          }}
+          onDragLeave={() => setDiscardZoneHover(false)}
+          onDrop={(e) => void handleDiscardDrop(e)}
+        >
+          拖到蓝色区域删除技能
+        </div>
+      )}
+
+      {!specialBarActive && (
+        <div className={styles.commonBar}>
+          {commonAbilities.map((ability, idx) => {
+            const COMMON_KEY_HINTS = ['X', 'MD', 'MU', 'A+A', 'A+D', 'A+S', '`', 'T'] as const;
+            const keyHint = COMMON_KEY_HINTS[idx] ?? '';
+            const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
+            const cdSeconds = Math.floor(ability.cooldown / 30);
+            const hasCharges = (ability.maxCharges ?? 0) > 1;
+            const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
+            const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
+            const chargeRegenProgress = hasCharges
+              ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
+              : 0;
+            const recoveringCharge = hasCharges && chargeCount < maxCharges;
+            const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
+            const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
+            const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
+            return (
+              <React.Fragment key={ability.id}>
+                {idx === 1 && <div className={styles.commonGap} />}
+                {idx === 7 && <div className={styles.commonGap} />}
+                <button
+                  type="button"
+                  className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady && !ability.blockedByAntiStealth ? styles.ready : styles.notReady}`}
+                  aria-disabled={!ability.isReady || !!ability.blockedByAntiStealth}
+                  onMouseEnter={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                  onMouseLeave={closeAbilityHint}
+                  onFocus={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
+                  onBlur={closeAbilityHint}
+                  onClick={() => {
+                    if (!ability.isReady || ability.blockedByAntiStealth) {
+                      if (ability.blockedByAntiStealth) {
+                        toastError('反隐期间无法施展隐身招式');
+                      }
+                      return;
+                    }
+                    castAbilityRef.current(ability.id);
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                  {ability.cooldown > 0 && ability.maxCooldown > 0 && (
+                    <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100 - cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100 - cdPct).toFixed(1)}%)` }}>
+                      <span className={styles.cdNum}>{cdSeconds}</span>
+                    </div>
+                  )}
+                  {hasCharges && (
+                    <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
+                      <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
+                        <rect
+                          className={styles.chargeFrameTrack}
+                          x="5"
+                          y="5"
+                          width="90"
+                          height="90"
+                          rx="8"
+                          ry="8"
+                          pathLength={100}
+                        />
+                        <rect
+                          className={styles.chargeFrameProgress}
+                          x="5"
+                          y="5"
+                          width="90"
+                          height="90"
+                          rx="8"
+                          ry="8"
+                          pathLength={100}
+                          strokeDasharray={`${chargePathLength} 100`}
+                        />
+                      </svg>
+                      <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
+                        {Math.max(0, chargeCount)}
+                      </span>
+                    </div>
+                  )}
+                  <span className={styles.abilityKey}>{keyHint}</span>
+                </button>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 
@@ -6082,6 +6467,30 @@ export default function BattleArena({
         onCancel: targetStatusOnCancelBuff,
         allowAnyCancel: targetStatusAllowAnyCancel,
       })}
+
+      {showFloatingTargetOwnedAbilityBar && (customUiMode || targetStatusHasSelection) && (
+        <div
+          data-ui-drag={customUiMode ? 'true' : undefined}
+          className={`${styles.customUiFloatingHudPlacement} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+          style={{ left: targetOwnedAbilityBarPos.left, top: targetOwnedAbilityBarPos.top }}
+          onMouseDown={customUiMode ? (event) => startUIDrag(TARGET_OWNED_ABILITY_BAR_UI_KEY, targetOwnedAbilityBarDefaultPos, event, { persist: false }) : undefined}
+        >
+          {customUiMode && <div className={styles.customUiPlacementLabel}>目标技能栏</div>}
+          {renderTargetOwnedAbilityBar(customUiMode ? targetOwnedAbilityHand : targetOwnedAbilityHand, { preview: customUiMode && !targetStatusHasSelection })}
+        </div>
+      )}
+
+      {showFloatingOwnedAbilityBar && (
+        <div
+          data-ui-drag={customUiMode ? 'true' : undefined}
+          className={`${styles.customUiFloatingHudPlacement} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+          style={{ left: ownedAbilityBarPos.left, top: ownedAbilityBarPos.top }}
+          onMouseDown={customUiMode ? (event) => startUIDrag(OWNED_ABILITY_BAR_UI_KEY, ownedAbilityBarDefaultPos, event, { persist: false }) : undefined}
+        >
+          {customUiMode && <div className={styles.customUiPlacementLabel}>技能栏</div>}
+          {renderOwnedAbilityBar(customUiMode)}
+        </div>
+      )}
 
       <div className={styles.critPresetBar}>
         <div className={styles.critPresetButtonStack}>
@@ -6830,9 +7239,20 @@ export default function BattleArena({
 
       {/* ===== TOP-LEFT: My HP panel ===== */}
       <div
-        className={styles.playerPanel}
-        style={{ pointerEvents: 'all', cursor: 'pointer' }}
-        onClick={() => {
+        ref={playerPanelRef}
+        data-ui-drag={customUiMode ? 'true' : undefined}
+        className={`${styles.playerPanel} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+        style={useCustomPlayerIconBarPlacement
+          ? {
+              left: playerIconBarPos.left,
+              top: playerIconBarPos.top,
+              transform: 'none',
+              pointerEvents: 'all',
+              cursor: customUiMode ? 'move' : 'pointer',
+            }
+          : { pointerEvents: 'all', cursor: 'pointer' }}
+        onMouseDown={customUiMode ? (event) => startUIDrag(PLAYER_ICON_BAR_UI_KEY, playerIconBarDefaultPos, event, { persist: false }) : undefined}
+        onClick={customUiMode ? undefined : () => {
           const next = !selectedSelfRef.current;
           selectedSelfRef.current = next;
           setSelectedSelf(next);
@@ -6842,42 +7262,54 @@ export default function BattleArena({
           }
         }}
       >
-        <div className={styles.playerLabelRow}>
-          <span className={styles.playerLabel}>玩家</span>
-        </div>
-        <div className={styles.myHpTrack}>
-          {myShieldPct > 0 && (
-            <div
-              className={styles.myShieldFill}
-              style={{
-                left: `${myHpPct}%`,
-                width: `${myShieldPct}%`,
-              }}
-            />
-          )}
-          <div
-            className={styles.myHpFill}
-            style={{
-              width:      `${myHpPct}%`,
-              background: myHpPct > 50 ? '#44cc55' : myHpPct > 25 ? '#ffcc22' : '#ee3333',
-            }}
-          />
-          {(me?.hp ?? 0) > 0 && (
-            <span
-              className={styles.hpSegmentNum}
-              style={{ left: '50%' }}
-            >
-              {formatGameHealthRatio(me?.hp ?? 0, myMaxHp)}
-            </span>
-          )}
-          {shouldDisplayShieldAmount(myShield, myMaxHp) && (
-            <span
-              className={styles.shieldSegmentNum}
-              style={{ left: `${Math.max(6, Math.min(94, myHpPct + myShieldPct / 2))}%` }}
-            >
-              {formatGameAmount(myShield)}
-            </span>
-          )}
+        {customUiMode && <div className={styles.customUiPlacementLabel}>自身血条</div>}
+        <div className={`${styles.enemyBossBar} ${styles.selfIconBar} ${styles.playerIconBar}`}>
+          <div className={styles.enemyName}>{me?.username ?? '玩家'}</div>
+          <div className={styles.iconBarBody}>
+            <div className={styles.enemyHpTrack}>
+              {myHpPct > 0 && myHpPct < 100 && (
+                <div
+                  className={styles.enemyHpTick}
+                  style={{ left: `${myHpPct}%` }}
+                />
+              )}
+              {myShieldPct > 0 && (
+                <div
+                  className={styles.enemyShieldFill}
+                  style={{
+                    left: `${myHpPct}%`,
+                    width: `${myShieldPct}%`,
+                  }}
+                />
+              )}
+              <div
+                className={styles.enemyHpFill}
+                style={{
+                  width: `${myHpPct}%`,
+                  background: selfIconBarHpGradient,
+                }}
+              />
+              {(me?.hp ?? 0) > 0 && (
+                <span
+                  className={styles.hpSegmentNum}
+                  style={{ left: '50%' }}
+                >
+                  {formatGameHealthRatio(me?.hp ?? 0, myMaxHp)}
+                </span>
+              )}
+              {shouldDisplayShieldAmount(myShield, myMaxHp) && (
+                <span
+                  className={styles.shieldSegmentNum}
+                  style={{ left: `${Math.max(6, Math.min(94, myHpPct + myShieldPct / 2))}%` }}
+                >
+                  {formatGameAmount(myShield)}
+                </span>
+              )}
+            </div>
+            <div className={styles.iconBarResourceRow}>
+              <span className={styles.iconBarResourceValue}>130</span>
+            </div>
+          </div>
         </div>
       </div>
       {showHeartDetailsPanel && (
@@ -6936,8 +7368,15 @@ export default function BattleArena({
       )}
 
       {/* ===== TOP-CENTER: Target info panel — health → buffs → abilities (self or enemy) ===== */}
-      <div className={styles.enemyBossGroup}>
-        {(selectedTargetId || selectedEntityId || selectedSelf) && (() => {
+      <div
+        ref={targetIconBarRef}
+        data-ui-drag={customUiMode ? 'true' : undefined}
+        className={`${styles.enemyBossGroup} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+        style={useCustomTargetIconBarPlacement ? { left: targetIconBarPos.left, top: targetIconBarPos.top } : undefined}
+        onMouseDown={customUiMode ? (event) => startUIDrag(TARGET_ICON_BAR_UI_KEY, targetIconBarDefaultPos, event, { persist: false }) : undefined}
+      >
+        <div style={customUiMode ? { pointerEvents: 'none' } : undefined}>
+        {targetStatusHasSelection ? (() => {
           const selectedTarget = selectedTargetId
             ? opponentsList.find((o) => o.userId === selectedTargetId) ?? null
             : null;
@@ -6971,8 +7410,7 @@ export default function BattleArena({
             : (selectedTarget?.username ?? '目标');
           const targetIconTitle = `${formatIconBarDistance(me.position, targetPosition, storedUnitScale)} · ${targetName}`;
           const targetBuffs  = isSelf ? (me?.buffs ?? []) : isEntityTarget ? (selectedEntity?.buffs ?? []) : (selectedTarget?.buffs ?? []);
-          const targetHand   = isSelf ? me.hand : isEntityTarget ? [] : (selectedTarget?.hand ?? []);
-          const hpGradient   = iconBarHpGradient;
+          const hpGradient   = isSelf ? selfIconBarHpGradient : iconBarHpGradient;
           const targetTargetActor = isSelf ? me : isEntityTarget ? null : selectedTarget;
           const targetTargetSelection = targetTargetActor?.targetSelection ?? null;
           const targetTargetPlayer = targetTargetSelection?.kind === 'self'
@@ -7000,60 +7438,84 @@ export default function BattleArena({
             : targetTargetPlayer
             ? (targetTargetPlayer.username ?? '目标')
             : '';
+          const targetTargetIsSelf = !targetTargetEntity && targetTargetPlayer?.userId === me?.userId;
           const targetTargetIconTitle = targetTargetName;
           const showTargetTargetBar = !!(targetTargetEntity || targetTargetPlayer);
-          const draftedAbilities = targetHand.filter((ability: any) => {
-            const abilityId = ability.abilityId || ability.id;
-            return abilityId && !COMMON_ABILITY_ORDER.includes(abilityId as any);
-          });
+          const channelTargetUserId = isSelf
+            ? me?.userId
+            : isEntityTarget
+            ? entityOwner?.userId
+            : selectedTarget?.userId;
+          const enemyChannelData = channelTargetUserId
+            ? (channelTargetUserId === me?.userId
+              ? channelBarData
+              : opponentChannelDataById.get(channelTargetUserId) ?? null)
+            : null;
           return (
             <>
               <div className={styles.enemyBossTopRow}>
-                <div className={`${styles.enemyBossBar} ${isSelf ? styles.selfIconBar : ''}`}>
-                  <div className={styles.enemyName}>{targetIconTitle}</div>
-                  <div className={styles.iconBarBody}>
-                    <div className={styles.enemyHpTrack}>
-                      {targetShieldPct > 0 && (
+                <div className={styles.enemyPrimaryBossStack}>
+                  <div className={`${styles.enemyBossBar} ${isSelf ? styles.selfIconBar : ''}`}>
+                    <div className={styles.enemyName}>{targetIconTitle}</div>
+                    <div className={styles.iconBarBody}>
+                      <div className={styles.enemyHpTrack}>
+                        {targetHpPct > 0 && targetHpPct < 100 && (
+                          <div
+                            className={styles.enemyHpTick}
+                            style={{ left: `${targetHpPct}%` }}
+                          />
+                        )}
+                        {targetShieldPct > 0 && (
+                          <div
+                            className={styles.enemyShieldFill}
+                            style={{
+                              left: `${targetHpPct}%`,
+                              width: `${targetShieldPct}%`,
+                            }}
+                          />
+                        )}
                         <div
-                          className={styles.enemyShieldFill}
-                          style={{
-                            left: `${targetHpPct}%`,
-                            width: `${targetShieldPct}%`,
-                          }}
+                          className={styles.enemyHpFill}
+                          style={{ width: `${targetHpPct}%`, background: hpGradient }}
                         />
-                      )}
-                      <div
-                        className={styles.enemyHpFill}
-                        style={{ width: `${targetHpPct}%`, background: hpGradient }}
-                      />
-                      {targetHp > 0 && (
-                        <span
-                          className={styles.hpSegmentNum}
-                          style={{ left: '50%' }}
-                        >
-                          {formatGameHealthRatio(targetHp, targetMaxHp)}
-                        </span>
-                      )}
-                      {shouldDisplayShieldAmount(targetShield, targetMaxHp) && (
-                        <span
-                          className={styles.shieldSegmentNum}
-                          style={{ left: `${Math.max(6, Math.min(94, targetHpPct + targetShieldPct / 2))}%` }}
-                        >
-                          {formatGameAmount(targetShield)}
-                        </span>
-                      )}
+                        {targetHp > 0 && (
+                          <span
+                            className={styles.hpSegmentNum}
+                            style={{ left: '50%' }}
+                          >
+                            {formatGameHealthRatio(targetHp, targetMaxHp)}
+                          </span>
+                        )}
+                        {shouldDisplayShieldAmount(targetShield, targetMaxHp) && (
+                          <span
+                            className={styles.shieldSegmentNum}
+                            style={{ left: `${Math.max(6, Math.min(94, targetHpPct + targetShieldPct / 2))}%` }}
+                          >
+                            {formatGameAmount(targetShield)}
+                          </span>
+                        )}
+                      </div>
+                      <div className={styles.iconBarResourceRow}>
+                        <span className={styles.iconBarResourceValue}>130</span>
+                      </div>
                     </div>
-                    <div className={styles.iconBarResourceRow}>
-                      <span className={styles.iconBarResourceValue}>130</span>
-                    </div>
+                  </div>
+                  <div className={styles.enemyBossChannelSlot}>
+                    <ChannelBarHost data={enemyChannelData} variant="enemy" />
                   </div>
                 </div>
                 {showTargetTargetBar && (
                   <div className={styles.targetTargetBossStack}>
-                    <div className={`${styles.enemyBossBar} ${styles.targetTargetBossBar}`}>
+                    <div className={`${styles.enemyBossBar} ${styles.targetTargetBossBar} ${targetTargetIsSelf ? styles.selfIconBar : ''}`}>
                       <div className={styles.enemyName}>{targetTargetIconTitle}</div>
                       <div className={styles.iconBarBody}>
                         <div className={styles.enemyHpTrack}>
+                          {targetTargetSegments.hpPct > 0 && targetTargetSegments.hpPct < 100 && (
+                            <div
+                              className={styles.enemyHpTick}
+                              style={{ left: `${targetTargetSegments.hpPct}%` }}
+                            />
+                          )}
                           {targetTargetSegments.shieldPct > 0 && (
                             <div
                               className={styles.enemyShieldFill}
@@ -7084,31 +7546,13 @@ export default function BattleArena({
                         showNames={false}
                         showTimers={false}
                         compact
+                        borderlessIcons
                         maxPerRow={3}
                       />
                     </div>
                   </div>
                 )}
               </div>
-              {/* Channel bar — yellow bar with name centered over the bar, no 段落.
-                 Shown for the selected target (enemy/self/entity-owner). Always
-                 mounted so success/interrupt + fade-out animations can play. */}
-              {(() => {
-                const channelTargetUserId = isSelf
-                  ? me?.userId
-                  : isEntityTarget
-                  ? entityOwner?.userId
-                  : selectedTarget?.userId;
-                if (!channelTargetUserId) return null;
-                const enemyChannelData = channelTargetUserId === me?.userId
-                  ? channelBarData
-                  : opponentChannelDataById.get(channelTargetUserId) ?? null;
-                return (
-                  <div className={styles.enemyBossChannelSlot}>
-                    <ChannelBarHost data={enemyChannelData} variant="enemy" />
-                  </div>
-                );
-              })()}
               {showInlineTargetStatus && (
                 <div style={{ minHeight: 72, width: '100%', pointerEvents: 'auto' }}>
                   <StatusBar
@@ -7125,31 +7569,11 @@ export default function BattleArena({
                   />
                 </div>
               )}
-              {/* Drafted abilities */}
-              <div className={styles.enemyAbilityRow}>
-                {draftedAbilities.map((ability: any) => {
-                  const abilityId = ability.abilityId || ability.id;
-                  const cardData = abilities[abilityId];
-                  const name = cardData?.name || abilityId || '?';
-                  return (
-                    <div key={ability.instanceId || abilityId} className={styles.enemyAbilityItem}>
-                      <div className={styles.enemyAbilitySlot} title={name}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={getArenaAbilityIconPath(name)}
-                          alt={name}
-                          className={styles.enemyAbilityIcon}
-                          draggable={false}
-                        />
-                      </div>
-                      <span className={styles.enemyAbilityName}>{name.slice(0, 2)}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              {!showFloatingTargetOwnedAbilityBar && renderTargetOwnedAbilityBar(targetOwnedAbilityHand)}
             </>
           );
-        })()}
+        })() : customUiMode ? renderTargetIconBarPreview() : null}
+        </div>
       </div>
 
       {/* ===== TOP-RIGHT: RTT badge + debug grid toggle ===== */}
@@ -7775,237 +8199,7 @@ export default function BattleArena({
           </div>
         )}
 
-        <div className={styles.hotbarStack}>
-          {/* ── Player buffs above drafted slots ── */}
-          {showInlinePlayerStatus && (
-            <div className={styles.playerBuffRow}>
-              <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} />
-            </div>
-          )}
-
-          {/* ── Channel bar (正读条 / 倒读条) ──
-             Always mounted so success/interrupt + fade-out animations can play. */}
-          <ChannelBarHost data={channelBarData} showTimer />
-           <GcdVisualBar gcd={visibleVisualGcd} />
-
-          {/* ── Top row: draft abilities or temporary form bar ── */}
-          <div className={styles.hotbar}>
-            {(specialBarActive ? draftAbilities : Array.from({ length: 6 }, (_, idx) => draftAbilities[idx])).map((ability, idx) => {
-              const keyHint = ['1','2','3','Q','XB2','XB1'][idx];
-              return (
-                <div
-                  key={ability ? `slot-${ability.id}` : `empty-${idx}`}
-                  className={`${styles.draftSlot} ${!specialBarActive && dragHoverIndex === idx ? styles.draftSlotHover : ''}`}
-                  onDragOver={(e) => {
-                    if (specialBarActive) return;
-                    if (!draggingDraftInstanceId) return;
-                    e.preventDefault();
-                    setDragHoverIndex(idx);
-                  }}
-                  onDragLeave={() => {
-                    if (dragHoverIndex === idx) setDragHoverIndex(null);
-                  }}
-                  onDrop={(e) => {
-                    if (specialBarActive) return;
-                    void handleDraftSlotDrop(e, idx);
-                  }}
-                >
-                  {!ability ? (
-                    <div className={`${styles.abilityBtn} ${styles.emptySlot}`}>
-                      <span className={styles.abilityKey}>{keyHint}</span>
-                    </div>
-                  ) : (() => {
-                    const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
-                    const cdSeconds = Math.floor(ability.cooldown / 30);
-                    const hasCharges = (ability.maxCharges ?? 0) > 1;
-                    const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
-                    const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
-                    const chargeRegenProgress = hasCharges
-                      ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
-                      : 0;
-                    const recoveringCharge = hasCharges && chargeCount < maxCharges;
-                    const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
-                    const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
-                    const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
-                    return (
-                      <button
-                        type="button"
-                        className={`${styles.abilityBtn} ${ability.isReady && !ability.blockedByAntiStealth ? styles.ready : styles.notReady}`}
-                        aria-disabled={!ability.isReady || !!ability.blockedByAntiStealth}
-                        style={ability.losBlocked ? { boxShadow: '0 0 0 2px #ff3333, 0 0 10px 3px rgba(255,50,50,0.45)', outline: 'none' } : undefined}
-                        draggable={!specialBarActive}
-                        onMouseEnter={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
-                        onMouseLeave={closeAbilityHint}
-                        onFocus={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
-                        onBlur={closeAbilityHint}
-                        onDragStart={(e) => {
-                          if (specialBarActive) {
-                            e.preventDefault();
-                            return;
-                          }
-                          handleDraftDragStart(e, ability.id, idx);
-                        }}
-                        onDragEnd={handleDraftDragEnd}
-                        onClick={() => {
-                          if (dragJustEndedRef.current) return;
-                          if (!ability.isReady || ability.blockedByAntiStealth) {
-                            if (ability.losBlocked) {
-                              showLOSBlocker('视线被遮挡');
-                            }
-                            if (ability.blockedByAntiStealth) {
-                              toastError('反隐期间无法施展隐身招式');
-                            }
-                            return;
-                          }
-                          castAbilityRef.current(ability.id);
-                        }}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
-                        {ability.cooldown > 0 && ability.maxCooldown > 0 && (
-                          <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
-                            <span className={styles.cdNum}>{cdSeconds}</span>
-                          </div>
-                        )}
-                        {hasCharges && (
-                          <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
-                            <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-                              <rect
-                                className={styles.chargeFrameTrack}
-                                x="5"
-                                y="5"
-                                width="90"
-                                height="90"
-                                rx="8"
-                                ry="8"
-                                pathLength={100}
-                              />
-                              <rect
-                                className={styles.chargeFrameProgress}
-                                x="5"
-                                y="5"
-                                width="90"
-                                height="90"
-                                rx="8"
-                                ry="8"
-                                pathLength={100}
-                                strokeDasharray={`${chargePathLength} 100`}
-                              />
-                            </svg>
-                            <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
-                              {Math.max(0, chargeCount)}
-                            </span>
-                          </div>
-                        )}
-                        <span className={styles.abilityKey}>{keyHint}</span>
-                      </button>
-                    );
-                  })()}
-                </div>
-              );
-            })}
-          </div>
-          {draggingDraftInstanceId && !specialBarActive && (
-            <div
-              className={`${styles.discardDropZone} ${discardZoneHover ? styles.discardDropZoneActive : ''}`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDiscardZoneHover(true);
-              }}
-              onDragLeave={() => setDiscardZoneHover(false)}
-              onDrop={(e) => void handleDiscardDrop(e)}
-            >
-              拖到蓝色区域删除技能
-            </div>
-          )}
-
-          {/* ── Bottom row: 8 common abilities (with visual gaps) ── */}
-          {!specialBarActive && (
-            <div className={styles.commonBar}>
-              {commonAbilities.map((ability, idx) => {
-              const COMMON_KEY_HINTS = ['X','MD','MU','A+A','A+D','A+S','`','T'] as const;
-              const keyHint = COMMON_KEY_HINTS[idx] ?? '';
-              const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
-              const cdSeconds = Math.floor(ability.cooldown / 30);
-              const hasCharges = (ability.maxCharges ?? 0) > 1;
-              const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
-              const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
-              const chargeRegenProgress = hasCharges
-                ? Math.max(0, Math.min(1, Number(ability.chargeRegenProgress ?? 0)))
-                : 0;
-              const recoveringCharge = hasCharges && chargeCount < maxCharges;
-              const chargePathProgress = hasCharges ? (recoveringCharge ? chargeRegenProgress : 1) : 0;
-              const chargePathLength = (Math.max(0, Math.min(1, chargePathProgress)) * 100).toFixed(2);
-              const isQueTaZhi = ability.abilityId === 'que_ta_zhi';
-                return (
-                  <React.Fragment key={ability.id}>
-                    {/* gap between 猛虎下山 and 扶摇 */}
-                    {idx === 1 && <div className={styles.commonGap} />}
-                    {/* gap between 后撤 and 御骑 */}
-                    {idx === 7 && <div className={styles.commonGap} />}
-                    <button
-                      type="button"
-                      className={`${styles.abilityBtn} ${styles.commonBtn} ${ability.isReady && !ability.blockedByAntiStealth ? styles.ready : styles.notReady}`}
-                      aria-disabled={!ability.isReady || !!ability.blockedByAntiStealth}
-                      onMouseEnter={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
-                      onMouseLeave={closeAbilityHint}
-                      onFocus={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
-                      onBlur={closeAbilityHint}
-                      onClick={() => {
-                        if (!ability.isReady || ability.blockedByAntiStealth) {
-                          if (ability.blockedByAntiStealth) {
-                            toastError('反隐期间无法施展隐身招式');
-                          }
-                          return;
-                        }
-                        castAbilityRef.current(ability.id);
-                      }}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
-                      {ability.cooldown > 0 && ability.maxCooldown > 0 && (
-                        <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100-cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100-cdPct).toFixed(1)}%)` }}>
-                          <span className={styles.cdNum}>{cdSeconds}</span>
-                        </div>
-                      )}
-                      {hasCharges && (
-                        <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
-                          <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-                            <rect
-                              className={styles.chargeFrameTrack}
-                              x="5"
-                              y="5"
-                              width="90"
-                              height="90"
-                              rx="8"
-                              ry="8"
-                              pathLength={100}
-                            />
-                            <rect
-                              className={styles.chargeFrameProgress}
-                              x="5"
-                              y="5"
-                              width="90"
-                              height="90"
-                              rx="8"
-                              ry="8"
-                              pathLength={100}
-                              strokeDasharray={`${chargePathLength} 100`}
-                            />
-                          </svg>
-                          <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
-                            {Math.max(0, chargeCount)}
-                          </span>
-                        </div>
-                      )}
-                      <span className={styles.abilityKey}>{keyHint}</span>
-                    </button>
-                  </React.Fragment>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        {!showFloatingOwnedAbilityBar && renderOwnedAbilityBar()}
 
         {!isMobileDevice && <div className={styles.wasdSpacer} />}
 

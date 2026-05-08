@@ -1,15 +1,21 @@
 /* ================= ROOT ================= */
 
 .statusBar {
-  --status-icon-size: 35.1px;
-  --status-row-gap: 1.8px;
-  --status-text-block-size: 32.4px;
+  --status-icon-size: 31.59px;
+  --status-row-gap: 1.62px;
+  --status-text-block-size: 29.16px;
+  --status-name-icon-gap: 0.49px;
+  --status-icon-timer-gap: 1.62px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--status-row-gap);
   width: 100%;
   min-height: calc((var(--status-icon-size) + var(--status-text-block-size)) * 2 + var(--status-row-gap));
+}
+
+.singleRowStatusBar {
+  min-height: calc(var(--status-icon-size) + var(--status-text-block-size));
 }
 
 /* ================= ROW ================= */
@@ -19,19 +25,25 @@
   flex-wrap: wrap;
   justify-content: flex-start;
   align-items: flex-start;
-  gap: 1.8px;
+  gap: 1.62px;
   width: 100%;
   min-height: calc(var(--status-icon-size) + var(--status-text-block-size));
 }
 
 .compactStatusBar {
-  --status-icon-size: 15.3px;
-  --status-row-gap: 0.9px;
+  --status-icon-size: 13.77px;
+  --status-row-gap: 0.81px;
+  --status-name-icon-gap: 0;
+  --status-icon-timer-gap: 0;
   min-height: calc(var(--status-icon-size) * 2 + var(--status-row-gap));
 }
 
+.compactStatusBar.singleRowStatusBar {
+  min-height: var(--status-icon-size);
+}
+
 .compactStatusBar .statusRow {
-  gap: 0.9px;
+  gap: 0.81px;
   min-height: var(--status-icon-size);
 }
 
@@ -40,7 +52,7 @@
 }
 
 .compactStatusBar .stackBadge {
-  font-size: 7.2px;
+  font-size: 6.48px;
 }
 
 /* ================= BUFF ITEM ================= */
@@ -51,22 +63,23 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.8px;
+  gap: 0;
   user-select: none;
 }
 
 .buffItem:hover .buffIcon {
-  border-color: rgba(207, 216, 226, 0.88);
+  border-color: rgba(182, 188, 196, 0.92);
   filter: brightness(1.08) saturate(1.04);
   box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, 0.48),
-    0 0 0 1px rgba(207, 216, 226, 0.62);
+    inset 0 0 0 0.5px rgba(0, 0, 0, 0.48),
+    0 0 0 0.5px rgba(182, 188, 196, 0.66);
 }
 
 /* ================= NAME ================= */
 
 .buffName {
-  font-size: 12.6px;
+  margin-bottom: var(--status-name-icon-gap);
+  font-size: 11.34px;
   font-weight: 900;
   line-height: 1;
   text-align: center;
@@ -96,11 +109,17 @@
   background-position: center;
   background-repeat: no-repeat;
 
-  border: 1px solid rgba(128, 138, 150, 0.68);
+  border: 0.5px solid rgba(136, 142, 149, 0.82);
   border-radius: 0;
   box-sizing: border-box;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.38);
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.38);
   transition: filter 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.borderlessIcons .buffIcon,
+.borderlessIcons .buffItem:hover .buffIcon {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 /* ================= STACK BADGE ================= */
@@ -109,7 +128,7 @@
   position: absolute;
   top: 1px;
   right: 2px;
-  font-size: 10.8px;
+  font-size: 9.72px;
   font-weight: 800;
   line-height: 1;
   color: #ffffff;
@@ -126,12 +145,13 @@
 /* ================= TURNS ================= */
 
 .buffTurns {
+  margin-top: var(--status-icon-timer-gap);
   width: var(--status-icon-size);
   display: flex;
   justify-content: center;
   align-items: center;
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 14.4px;
+  font-size: 12.96px;
   font-weight: 900;
   line-height: 1;
   text-align: center;
@@ -164,26 +184,18 @@
 }
 
 .urgentBuffItem {
-  animation: urgentFlash 1.9s ease-in-out infinite;
-}
-
-@keyframes urgentFlash {
-  0% { opacity: 1; }
-  42% { opacity: 0.78; }
-  52% { opacity: 0.03; }
-  60% { opacity: 0.03; }
-  72% { opacity: 0.82; }
-  100% { opacity: 1; }
+  transition: opacity 90ms linear;
+  will-change: opacity;
 }
 
 /* ================= 📱 MOBILE ================= */
 
 @media (max-width: 768px) {
   .buffName {
-    font-size: 11.7px;
+    font-size: 10.53px;
   }
 
   .buffTurns {
-    font-size: 13.5px;
+    font-size: 12.15px;
   }
 }

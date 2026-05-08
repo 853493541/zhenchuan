@@ -23,6 +23,7 @@ type Props = {
   showNames?: boolean;
   showTimers?: boolean;
   compact?: boolean;
+  borderlessIcons?: boolean;
   maxPerRow?: number;
   categoryFilter?: "BUFF" | "DEBUFF";
 };
@@ -66,12 +67,34 @@ function formatTimer(secsLeft: number): { text: string; className: string; urgen
       urgent: false,
     };
   }
-  const displaySeconds = Math.max(1, Math.ceil(secsLeft));
+  const displaySeconds = Math.max(0, Math.floor(secsLeft));
   return {
     text: `${displaySeconds}${SECOND_MARK}`,
     className: styles.secondTime,
-    urgent: displaySeconds <= 2,
+    urgent: secsLeft < 2,
   };
+}
+
+function interpolateOpacity(
+  secsLeft: number,
+  startTime: number,
+  endTime: number,
+  startOpacity: number,
+  endOpacity: number,
+): number {
+  if (secsLeft >= startTime) return startOpacity;
+  if (secsLeft <= endTime) return endOpacity;
+  const progress = (startTime - secsLeft) / (startTime - endTime);
+  return startOpacity + (endOpacity - startOpacity) * progress;
+}
+
+function getLowTimeBlinkOpacity(secsLeft: number): number {
+  if (secsLeft <= 0) return 0;
+  if (secsLeft >= 2) return 1;
+  if (secsLeft >= 1.49) return interpolateOpacity(secsLeft, 1.99, 1.49, 1, 0);
+  if (secsLeft >= 0.99) return interpolateOpacity(secsLeft, 1.49, 0.99, 0, 1);
+  if (secsLeft >= 0.49) return interpolateOpacity(secsLeft, 0.99, 0.49, 1, 0);
+  return interpolateOpacity(secsLeft, 0.49, 0.01, 0, 1);
 }
 
 export default function StatusBar({
@@ -84,6 +107,7 @@ export default function StatusBar({
   showNames = true,
   showTimers = true,
   compact = false,
+  borderlessIcons = false,
   maxPerRow = 10,
   categoryFilter,
 }: Props) {
@@ -127,7 +151,7 @@ export default function StatusBar({
         next[+idStr] = Math.max(0, (exp - Date.now()) / 1000);
       }
       setLocalSecs(next);
-    }, 100);
+    }, 50);
     return () => clearInterval(id);
   }, []);
 
@@ -172,6 +196,7 @@ export default function StatusBar({
     : categoryFilter === "DEBUFF"
     ? [buffsNeg]
     : [buffsPos, buffsNeg];
+  const singleRow = statusRows.length === 1;
 
   function openHint(anchorRect: DOMRect, b: ResolvedBuff) {
     setActiveHint({
@@ -189,11 +214,16 @@ export default function StatusBar({
     const secsLeft    = getRemainingSeconds(b);
     const timer       = showTimers ? formatTimer(secsLeft) : null;
     const urgent      = timer?.urgent === true;
+    const lowTimeBlinkOpacity = urgent ? getLowTimeBlinkOpacity(secsLeft) : 1;
     const canManualCancel = !!onCancelBuff && (allowAnyCancel || (b.category === "BUFF" && b.manualCancelable === true));
     const cancelCursor = allowAnyCancel && canManualCancel ? "pointer" : canManualCancel ? "context-menu" : undefined;
 
     return (
-      <div key={b.buffId} className={`${styles.buffItem} ${urgent ? styles.urgentBuffItem : ""}`}>
+      <div
+        key={b.buffId}
+        className={`${styles.buffItem} ${urgent ? styles.urgentBuffItem : ""}`}
+        style={urgent ? { opacity: lowTimeBlinkOpacity } : undefined}
+      >
         {showNames && (
           <div className={`${styles.buffName} ${colorClass}`}>
             {b.shortName}
@@ -246,7 +276,7 @@ export default function StatusBar({
 
   return (
     <>
-      <div className={`${styles.statusBar} ${compact ? styles.compactStatusBar : ""}`}>
+      <div className={`${styles.statusBar} ${compact ? styles.compactStatusBar : ""} ${singleRow ? styles.singleRowStatusBar : ""}`}>
         {statusRows.map((row, index) => (
           <div key={categoryFilter ?? index} className={styles.statusRow}>
             {row.slice(0, maxPerRow).map(renderBuff)}

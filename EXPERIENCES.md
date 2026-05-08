@@ -3,6 +3,226 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Target channel-bar width context and placement under icon bar (2026-05-08)
+
+**Problem set**:
+1. The selected target channel bar was rendered below the entire target HUD row instead of directly under the primary target icon bar.
+2. Even though the enemy channel-bar component already used `70%` width, that width was being measured against the wider target HUD group, not the 252px target icon bar itself.
+3. The bar needed to count visually as part of the target icon bar: centered under it with a small gap.
+
+**Fix**:
+- Moved the selected target channel bar render path in `BattleArena.tsx` into a new `enemyPrimaryBossStack` that contains the main target icon bar plus its channel bar.
+- Kept the existing `variant="enemy"` channel styling, so the inner bar remains `70%` wide, but now that `70%` is measured against the target icon bar stack instead of the whole top row.
+- Added a dedicated `enemyPrimaryBossStack` layout in `BattleArena.module.css` and removed the old negative top offset from `enemyBossChannelSlot`, replacing it with a normal stacked gap so the channel bar sits directly underneath with visible spacing.
+- Rebuilt frontend and backend, restarted PM2 on the newest successful build, then flushed logs and restarted frontend once more to clear a transient backend-startup race before verifying clean PM2 tails.
+
+**Lessons**:
+- If a child already has the correct percentage width but still looks wrong, check what parent width it is being measured against before retuning the child itself.
+- For HUD elements that should read as part of the same widget, place them in the same local stack instead of trying to position them correctly from a wider outer group.
+
+## Status countdown checkpoint blink and full-height edit overlay (2026-05-08)
+
+**Problem set**:
+1. The urgent status blink still did not follow the requested checkpoints; it needed to start below 2 seconds and reach exact fully hidden / fully visible points at 1.49, 0.99, 0.49, and 0.01 before disappearing at 0.00.
+2. Screenshot review showed the custom-UI green guide still used a fixed height, so the timer text could fall below the box even after a previous height increase.
+3. The live status icons, names, and timer text needed to be about 10% smaller while keeping the editor guide aligned to the actual content.
+
+**Fix**:
+- Changed `StatusBar/index.tsx` so urgent blinking starts only when `secsLeft < 2` and uses explicit piecewise opacity interpolation for the 1.99 → 1.49 → 0.99 → 0.49 → 0.01 checkpoints.
+- Reduced shared StatusBar icon, timer, name, stack-badge, spacing, and compact-mode sizing by 10% in `StatusBar/styles.module.css`.
+- Replaced the fixed-height `customUiStatusGuide` overlay in `BattleArena.module.css` with a full-height `top/right/bottom/left: 0` overlay so the green frame always covers the full live status content.
+- Rebuilt frontend and backend after each numbered point, flushed PM2 logs before the final restart, and verified fresh frontend/backend PM2 tails without startup errors.
+
+**Lessons**:
+- When the user gives explicit blink checkpoints, encode the opacity curve directly instead of deriving it from the fractional part of the current second.
+- In a HUD editor, overlay guides should stretch to the real content height rather than guessing a fixed pixel height, or timer text will drift outside the frame as component sizing changes.
+- If a guide box must match a live shared component, shrink the shared component and stretch the guide to it rather than tuning both with separate hard-coded heights.
+
+## Custom UI status overlay restore and guide height retune (2026-05-08)
+
+**Problem set**:
+1. The user specifically meant the green custom-UI edit boxes in BattleArena, not the underlying StatusBar content size.
+2. Replacing the real detached `StatusBar` with a guide-only placeholder in custom UI mode made it impossible to verify whether the live HUD was aligned correctly while dragging.
+3. After restoring the live status UI, the green guide box still needed to be taller by 50%.
+4. The edit labels for green draggable boxes needed to stay centered inside the guide box instead of above it.
+
+**Fix**:
+- Changed `renderStatusPlacement` in `BattleArena.tsx` so the live `StatusBar` keeps rendering during custom UI mode and the green drag guide is layered over it instead of replacing it.
+- Kept `.customUiPlacementLabel` centered inside the green guide overlay so the edit-box name stays readable without hiding the drag frame.
+- Initially increased the overlay guide height in `BattleArena.module.css` from `28px` to `42px`; later screenshot review showed that a fixed height was still insufficient, so the final solution became a full-height overlay tied to the live content.
+- Rebuilt frontend and backend after each numbered point, flushed PM2 logs before the final restart, and verified fresh frontend/backend PM2 tails with no startup errors.
+
+**Lessons**:
+- In a HUD editor, the drag guide should be an overlay on the live component, not a replacement for it, or the user loses the ability to judge alignment.
+- Keep drag-guide sizing in the overlay CSS so visual tuning does not accidentally change the real HUD content path.
+
+## Status-bar custom UI height correction after wrong-layer edit (2026-05-08)
+
+**Problem set**:
+1. The earlier custom-UI size change was applied in `BattleArena.module.css`, but the user still saw effectively no height change on the detached buff/debuff placement boxes.
+2. The visible custom-UI status placement height was actually being held open by the shared `StatusBar` component, which always reserved two rows of height even when a filtered BUFF-only or DEBUFF-only bar rendered only one row.
+
+**Fix**:
+- Added a `singleRowStatusBar` path in the shared `StatusBar` styles and applied it automatically whenever `categoryFilter` reduces the bar to a single row.
+- Left the widened custom-UI placement wrapper in place, so once the shared status-bar min-height was corrected, the green edit box became both shorter and wider as intended.
+- Rebuilt frontend and backend and restarted PM2 on the newest successful build; fresh frontend/backend PM2 tails again showed no startup errors.
+
+**Lessons**:
+- When a visual wrapper change appears to do nothing, check whether the child component is enforcing a larger intrinsic size; fixing the wrong layer can be technically valid but visually irrelevant.
+- Detached BUFF-only and DEBUFF-only status bars should not inherit the two-row min-height used by the combined status display.
+
+## Target ability-bar split, status-frame resize, and self-bar width trim (2026-05-08)
+
+**Problem set**:
+1. The target drafted-ability row was still bundled inside the target HP cluster, so custom UI mode could not position the target ability bar independently from the target icon bar.
+2. Custom UI status-bar indicator frames were taller than needed and not wide enough for easier placement reading.
+3. The self icon health bar still needed to be about 25% narrower without changing the target bar widths.
+
+**Fix**:
+- Added a dedicated `target-owned-ability-bar` UI position key, ref-based default placement, and floating render path so the target ability row can be positioned independently from the target HP cluster while staying inline until a custom position exists.
+- Removed the literal `目标血条` custom-mode text from the target HP anchor by dropping the label there and changing the preview title to `18m · 目标`.
+- Retuned the custom UI status placement frame in `BattleArena.module.css` to halve its minimum height, reduce vertical padding, and widen its width by about 30%.
+- Reduced `.playerIconBar` width from `252px` to `189px`, trimming the self bar by exactly 25% while leaving target bars unchanged.
+- Rebuilt frontend and backend after each numbered point, restarted PM2 on the newest successful build each round, and verified fresh backend/frontend PM2 tails without startup errors.
+
+**Lessons**:
+- If a HUD element can be repositioned independently in the UI editor, it needs its own persisted anchor key even when it is visually nested under another cluster in the default layout.
+- For custom placement frames, reducing vertical padding matters as much as reducing min-height; otherwise the “green box” still reads too tall even after shrinking the nominal height.
+- When a width change is intended for the self HUD only, adjust the self-specific class rather than the shared boss-bar width so target bars do not regress.
+
+## Custom UI editing for player/target/ability HUD anchors (2026-05-08)
+
+**Problem set**:
+1. Custom UI editing only exposed detached buff/debuff status rows, so the always-visible self icon bar, target icon bar, and owned ability bar could not be repositioned.
+2. The owned ability bar lived inside the bottom HUD flex layout, so it needed a draggable path that could preserve the default centered layout until a saved custom position exists.
+3. The target icon bar can be absent when nothing is selected, but custom UI mode still needs a draggable anchor for it.
+
+**Fix**:
+- Added dedicated UI position keys for the self icon bar, target icon bar, and owned ability bar, all stored in the existing `zhenchuan-ui-positions` localStorage payload.
+- Seeded those keys from current on-screen DOM positions when custom UI mode opens, so confirming without dragging keeps the HUD visually stable instead of jumping to guessed coordinates.
+- Reused the existing drag session flow for the self and target bars, extracted the owned ability bar into a reusable renderer so it can stay inline by default and switch to a floating absolute placement once configured, and added a target-bar preview in custom UI mode when no target is selected.
+- Rebuilt frontend and backend and restarted PM2 on the newest successful build; a clean post-flush PM2 restart showed empty fresh error logs plus backend server start and frontend `Ready` lines.
+
+**Lessons**:
+- HUD panels that already have a stable live DOM position are safer to seed from measured rects than from guessed pixel offsets when introducing custom placement persistence.
+- For panels embedded in a flex layout, the least disruptive migration is to keep the original inline layout until a custom position exists, then switch to a floating absolute render path that reuses the same content renderer.
+- Custom UI edit frames must explicitly restore pointer events on normally non-interactive HUD containers, or the drag handlers will be wired but unreachable.
+
+## Slow one-second urgent buff fade correction (2026-05-08)
+
+**Problem set**:
+1. The under-3-second buff warning still looked instant because the previous implementation only hid the item for a tiny slice of each second.
+2. The warning needed to read as a slow one-second blink cycle instead of a near-instant flash.
+
+**Fix**:
+- Changed `StatusBar` urgent behavior to derive opacity continuously from the live fractional second remaining, so each 2 → 1 → 0 warning cycle fades over the full second.
+- Increased the local status countdown refresh cadence from 100ms to 50ms and added a short opacity transition to smooth the fade.
+- Rebuilt frontend and backend and restarted PM2 on the newest successful build.
+
+**Lessons**:
+- A brief hide-window is not equivalent to a “slow blink”; if the user asks for a one-second blink, drive opacity across the full second rather than toggling visibility at the edge of the second.
+
+## Single HP-boundary divider, second-aligned blink, and borderless target-target icons (2026-05-08)
+
+**Problem set**:
+1. The BattleArena icon bars showed three fixed white divider ticks, but the requested visual was a single softer divider only at the live boundary between filled HP and missing HP.
+2. Sub-3-second buff blinking was driven by a free-running CSS animation, so it did not blank once per actual displayed second and could appear to blink only twice before expiry.
+3. The compact target-target status bar should keep its icons but remove the icon borders entirely.
+
+**Fix**:
+- Replaced the 25/50/75 tick rendering in `BattleArena.tsx` with a single divider tied to each bar's current HP percentage and retuned the divider in `BattleArena.module.css` to a 2px half-transparent white line.
+- Replaced the free-running urgent CSS animation in `StatusBar` with a live time-sliced hide window based on remaining seconds, so the buff blanks once during each displayed second under 3 seconds and the final blank happens during `0.x` before removal.
+- Added an opt-in `borderlessIcons` variant to `StatusBar` and applied it only to the target-target compact status row in `BattleArena.tsx`.
+- Rebuilt frontend and backend after each numbered point and restarted PM2 on the newest successful build each time.
+
+**Lessons**:
+- Divider visuals in segmented bars need to follow the live fill boundary rather than using static percentage markers when the UI intent is “current HP vs missing HP.”
+- Countdown blink behavior that must align with displayed seconds is more reliable when derived from live remaining time than from a free-running CSS animation loop.
+- Shared HUD components are easier to tune safely when special cases such as borderless compact icons stay behind explicit opt-in props.
+
+## Status-bar timing spacing frame retune and enemy divider restore (2026-05-08)
+
+**Problem set**:
+1. Status-bar second timers rounded up, so `0.x` seconds showed `1″` and `1.x` seconds showed `2″`.
+2. The gap between status names and icons was too large.
+3. Status text still read weaker than the reference image; the main visual difference was stronger dark text outline/shadow separation rather than icon border alone.
+4. Status icon borders needed a more neutral gray frame at about half the previous thickness.
+5. The enemy icon bar should show lost health as a muted gray-red track rather than a pure neutral gray track.
+6. The vertical HP divider lines were not visible because the CSS existed but the tick elements were not rendered into the bars.
+
+**Fix**:
+- Changed StatusBar sub-minute timer display to floor whole seconds, so live countdowns now show `0″`, `1″`, `2″`, etc. instead of rounding up.
+- Split StatusBar internal spacing so the name-to-icon gap is about 70% smaller without collapsing the icon-to-timer spacing.
+- Retuned the StatusBar icon frame to a thinner neutral gray border and matching thinner hover framing.
+- Retuned the enemy icon-bar empty-health track in `BattleArena.module.css` to a desaturated gray-red tone.
+- Rendered 25/50/75% tick elements into all BattleArena icon bars and changed the tick styling to visible white dividers above the fill.
+- Rebuilt frontend and backend after each numbered point and restarted PM2 on the newest successful build each time.
+
+**Lessons**:
+- If the UI should display “time remaining as whole seconds left”, floor-based display is the correct rule; ceil-based display overstates near-expiry timers.
+- In this HUD, readability differences between reference text and in-game text come mostly from text stroke/shadow strength and brightness separation, not just icon border color.
+- Divider CSS alone is not enough for segmented HP bars; confirm the separator elements are actually rendered into each bar variant.
+
+## Icon-bar empty-health gray state and white-track inset fix (2026-05-07)
+
+**Problem set**:
+1. The red target icon bar kept showing a red empty-health area after damage instead of the neutral gray look already used by the white self bar.
+2. On the white self icon bar, the HP fill sat flush against the track border, which made the lower edge read slightly outside the border.
+
+**Fix**:
+- Updated the shared `enemyHpTrack` background and inner highlight in `BattleArena.module.css` so the exposed empty-health area reads gray while preserving the red HP fill gradient.
+- Added a white-bar-only `top: 1px; bottom: 1px;` inset for `.selfIconBar .enemyHpFill` and `.selfIconBar .enemyShieldFill` so the fill sits inside the track border.
+- Rebuilt frontend and backend after each numbered point and restarted PM2 on the newest successful build each time.
+
+**Lessons**:
+- In this HUD, the color of lost health is controlled by the track background, not by the HP fill itself.
+- Light icon-bar palettes reveal fill-to-border overlap much more than dark ones, so a small vertical inset is a safer fix than retuning the whole track height.
+
+## Self border darkening and target-target self relationship styling (2026-05-07)
+
+**Problem set**:
+1. The silver-white self border still read too light against the new self icon bar body.
+2. The target-target bar was still visually treated as an enemy target even when it resolved to the local player, so its border and name remained red.
+
+**Fix**:
+- Darkened the self icon bar outer border and inner HP track border in `BattleArena.module.css`.
+- Added `targetTargetIsSelf` detection in `BattleArena.tsx` and apply `selfIconBar` styling to the compact target-target bar when the resolved target-target player is the local player.
+- Rebuilt backend and frontend, restarted PM2 on the newest build, and re-checked local frontend, backend preload, and deployed HTTPS health.
+
+**Lessons**:
+- The target-target bar does not infer relationship styling from the resolved actor by itself; it needs an explicit self-style class branch when the resolved player is the local user.
+- Because `.selfIconBar` rules come later than `.targetTargetBossBar` rules in `BattleArena.module.css`, the self palette can override the compact target-target red styling without duplicating another CSS variant.
+
+## Shared icon-bar HP color retune (2026-05-07)
+
+**Problem set**:
+1. The new orange HP fill still leaned too orange and dark.
+2. The lighter, slightly redder correction needed to apply not only to self, but also to the main target bar and target-target bar.
+
+**Fix**:
+- Retuned both `iconBarHpGradient` and `selfIconBarHpGradient` in `BattleArena.tsx` to the same lighter red-orange gradient: `#ff9a74 -> #ef5b39 -> #c92a1c`.
+- Rebuilt backend and frontend, restarted PM2 on the newest build, and re-checked local frontend, backend preload, and deployed HTTPS health.
+
+**Lessons**:
+- All three icon-bar HP fills are controlled by the two gradient constants in `BattleArena.tsx`, so cross-bar color retunes can stay as a single-file change when the bar structure itself is already aligned.
+
+## Self icon bar conversion and silver-orange palette update (2026-05-07)
+
+**Problem set**:
+1. The always-visible self HUD was still using the older compact `playerPanel` instead of the newer icon-bar shape used by target bars.
+2. The self bar needed the same icon-bar structure as the target bar, but with a silver-white body and orange HP fill matching the provided reference image.
+3. The selected-self top bar and the lower self panel needed to share the same self-specific HP gradient instead of inheriting the enemy red fill.
+
+**Fix**:
+- Replaced the lower self panel markup in `BattleArena.tsx` with the same `enemyBossBar` / `iconBarBody` structure used by the target bar while keeping the existing self-select click behavior.
+- Added a self-only HP gradient branch in `BattleArena.tsx` so self bars use an orange fill instead of the enemy red gradient.
+- Updated `.selfIconBar` styling to a silver-white body, cooler empty HP track, brighter white shield fill, and yellow title/resource text, and sized the lower self bar to the same width as the main target bar.
+- Rebuilt backend and frontend, restarted PM2 on the newest build, and re-checked local frontend, backend preload, and deployed HTTPS health.
+
+**Lessons**:
+- The cleanest way to keep self and target bars visually aligned is to reuse the same icon-bar markup and branch only the self-specific palette.
+- VS Code chat storage did not expose the uploaded reference screenshot as a directly readable image file in this session, so exact pixel sampling was not possible through the available file/image tools; the applied silver-orange palette was matched from the visible reference instead.
+
 ## Target-target title simplification and spacing retune (2026-05-07)
 
 **Problem set**:
