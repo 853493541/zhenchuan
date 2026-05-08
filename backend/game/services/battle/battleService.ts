@@ -274,6 +274,8 @@ export function initializeBattleState(
       hasteRatePct: BASE_HASTE_RATE_PCT,
       hand,
       buffs: [],
+      inCombat: false,
+      combatLinks: {},
       position: { x: spawn.x, y: spawn.y },
       velocity: { vx: 0, vy: 0 },
       facing: { x: dx / mag, y: dy / mag },

@@ -27,6 +27,7 @@ import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../.
 import { hasYuqiState } from "../../engine/utils/yuqi";
 import { removeYuqiStateBuffs } from "../../engine/effects/buffRuntime";
 import { getHasteAdjustedTimingMs } from "../../engine/utils/haste";
+import { syncCombatStatusFromEvents } from "../../engine/utils/combatStatus";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -746,6 +747,8 @@ async function playCastAbility(
       setVisualGcd(player, "轻功调息时间", "qinggong", QINGGONG_GCD_MS);
     }
   }
+
+  syncCombatStatusFromEvents(state, prevState.events.length);
 
   state.version = (state.version ?? 0) + 1;
 

@@ -47,6 +47,7 @@ import { getEffectiveAbilityRange } from "../utils/abilityRange";
 import { triggerYunSanBlink } from "../utils/yunSan";
 import { getMiYunAreaCandidates, hasMiYunConfusion, rerollMiYunAreaTargets } from "../utils/miyun";
 import { getHasteAdjustedTimingMs } from "../utils/haste";
+import { COMBAT_STATUS_CHECK_INTERVAL_MS, expireCombatStatusLinks, syncCombatStatusFromEvents } from "../utils/combatStatus";
 
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
@@ -956,6 +957,7 @@ export class GameLoop {
     string,
     { sourceUserId: string; abilityId: string; abilityName: string }
   >();
+  private lastCombatStatusCheckAt = Date.now();
 
   // Phase table: each phase defines a time window, zone size transition, and DPS.
   static ZONE_PHASES = [
@@ -1201,6 +1203,13 @@ export class GameLoop {
 
     // Track new events for this entire tick (including activeChannel completion).
     const eventDiffStart = this.state.events.length;
+    let combatStatusChanged = false;
+
+    const combatCheckNow = Date.now();
+    if (combatCheckNow - this.lastCombatStatusCheckAt >= COMBAT_STATUS_CHECK_INTERVAL_MS) {
+      this.lastCombatStatusCheckAt = combatCheckNow;
+      combatStatusChanged = expireCombatStatusLinks(this.state, combatCheckNow) || combatStatusChanged;
+    }
 
     // 1. Apply player movement
     const moveStart = performance.now();
@@ -4737,6 +4746,8 @@ export class GameLoop {
       this.stackProcScanIndex = this.state.events.length;
     }
 
+    combatStatusChanged = syncCombatStatusFromEvents(this.state, eventDiffStart) || combatStatusChanged;
+
     // 2. Check win condition. Testing mode keeps the same battle running by
     // restoring everyone when any player hits 0 HP.
     const winStart = performance.now();
@@ -4857,7 +4868,7 @@ export class GameLoop {
       // or when new events were emitted this tick (e.g. pure channel completion).
       const hasNewEvents = this.state.events.length > eventDiffStart;
       const eventsPruned = this.pruneEventHistoryForBroadcast();
-      if (buffsChanged || hasNewEvents || channelStateChanged || eventsPruned) {
+      if (buffsChanged || hasNewEvents || channelStateChanged || eventsPruned || combatStatusChanged) {
         this.state.players.forEach((p, pidx) => {
           diff.push({
             path: `/players/${pidx}/buffs`,
@@ -4868,6 +4879,8 @@ export class GameLoop {
         this.state.players.forEach((p, pidx) => {
           diff.push({ path: `/players/${pidx}/hp`, value: p.hp });
           diff.push({ path: `/players/${pidx}/shield`, value: p.shield ?? 0 });
+          diff.push({ path: `/players/${pidx}/inCombat`, value: p.inCombat === true });
+          diff.push({ path: `/players/${pidx}/combatLinks`, value: (p as any).combatLinks ?? {} });
         });
 
         if (eventsPruned) {

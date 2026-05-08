@@ -130,6 +130,8 @@ export interface PlayerState {
   };
   buffs: ActiveBuff[];
   targetSelection?: TargetSelection;
+  inCombat?: boolean;
+  combatLinks?: Record<string, { lastActionAt: number }>;
   position?: { x: number; y: number; z?: number };
   velocity?: { vx: number; vy: number; vz?: number };
   moveSpeed?: number;
@@ -150,6 +152,7 @@ export type GameEventType =
   | "DODGE"
   | "BUFF_APPLIED"
   | "BUFF_EXPIRED"
+  | "COMBAT_STATUS"
   | "END_TURN";
 
 export interface GameEvent {
@@ -171,6 +174,10 @@ export interface GameEvent {
   buffId?: number;
   buffName?: string;
   buffCategory?: BuffCategory;
+
+  combatStatus?: "enter" | "exit";
+  inCombat?: boolean;
+  relatedUserId?: string;
 
   timestamp: number;
 }

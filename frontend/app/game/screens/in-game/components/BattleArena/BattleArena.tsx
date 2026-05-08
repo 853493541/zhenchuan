@@ -7,7 +7,7 @@ import WASDButtons from './WASDButtons';
 import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, ChannelBarHost, type ChannelBarData } from './ChannelBar';
-import { ArrowLeft, Gamepad2, Gauge, Keyboard, LayoutGrid, LogOut, MessageCircle, Puzzle, RotateCcw, Trash2, Volume2, Wind, X } from 'lucide-react';
+import { ArrowLeft, Gamepad2, Gauge, Keyboard, LayoutGrid, MessageCircle, Puzzle, RotateCcw, Swords, Trash2, Volume2, Wind, X } from 'lucide-react';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles } from './scene/ArenaScene';
@@ -1741,10 +1741,10 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
-  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection };
+  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
+  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }> };
   /** All other players (opponents) — supports 1v1 and N-player modes */
-  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection }[];
+  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }> }[];
   gameId: string;
   onCastAbility: (
     abilityInstanceId: string,
@@ -3647,7 +3647,13 @@ export default function BattleArena({
       // WS array patches can momentarily produce sparse event slices.
       // Ignore empty/malformed entries instead of crashing the whole arena.
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
-      if (evt.type === 'PLAY_ABILITY' && evt.abilityId === 'dou_zhuan_xing_yi') {
+      if (evt.type === 'COMBAT_STATUS' && evt.targetUserId === myId) {
+        if ((evt as any).combatStatus === 'enter' || (evt as any).inCombat === true) {
+          toastError('进入战斗');
+        } else {
+          toastSuccess('离开战斗');
+        }
+      } else if (evt.type === 'PLAY_ABILITY' && evt.abilityId === 'dou_zhuan_xing_yi') {
         lastInstantSwapCastAtRef.current = performance.now();
       } else if (evt.type === 'DAMAGE' && (((evt.value ?? 0) > 0) || (evt as any).displayZeroDamage === true) && (evt as any).effectType !== 'YING_TIAN_SHIELD') {
         const damageWasCrit = isCritDamageEvent(evt);
@@ -6213,6 +6219,11 @@ export default function BattleArena({
   const myShieldPct = myBarSegments.shieldPct;
   const iconBarHpGradient = 'linear-gradient(180deg, #ff9a74 0%, #ef5b39 46%, #c92a1c 100%)';
   const selfIconBarHpGradient = 'linear-gradient(180deg, #ff9a74 0%, #ef5b39 46%, #c92a1c 100%)';
+  const renderCombatStatusMarker = (active?: boolean) => active ? (
+    <div className={styles.combatStatusMarker} title="战斗中" aria-label="战斗中">
+      <Swords size={20} strokeWidth={2.5} aria-hidden="true" />
+    </div>
+  ) : null;
   const BASE_CRIT_EFFECT_MULTIPLIER = 1.75;
   const myBaseWaiGongCritChancePct = Math.max(
     0,
@@ -7070,6 +7081,7 @@ export default function BattleArena({
     ? (targetTargetPlayerForHud.username ?? '目标')
     : '';
   const targetTargetIsSelf = !targetTargetEntityForHud && targetTargetPlayerForHud?.userId === me?.userId;
+  const targetTargetInCombat = !!targetTargetPlayerForHud?.inCombat;
   const showTargetTargetBar = !!(targetTargetEntityForHud || targetTargetPlayerForHud);
   const targetTargetHpGradient = targetTargetIsSelf ? selfIconBarHpGradient : iconBarHpGradient;
   const targetTargetIconBarSavedPos = uiPositions[TARGET_TARGET_ICON_BAR_UI_KEY];
@@ -7133,7 +7145,7 @@ export default function BattleArena({
   const renderTargetIconBarPreview = () => (
     <div className={styles.enemyBossTopRow}>
       <div className={styles.enemyBossBar}>
-        <div className={styles.enemyName}>18m · 目标</div>
+        <div className={styles.enemyName}><span className={styles.targetIconDistance}>18m</span> · 目标</div>
         <div className={styles.iconBarBody}>
           <div className={styles.enemyHpTrack}>
             <div className={styles.enemyHpTick} style={{ left: '62%' }} />
@@ -7164,6 +7176,7 @@ export default function BattleArena({
     const buffs = showTargetTargetBar ? targetTargetBuffs : [];
     const isSelf = showTargetTargetBar && targetTargetIsSelf;
     const gradient = showTargetTargetBar ? targetTargetHpGradient : iconBarHpGradient;
+    const inCombat = showTargetTargetBar && targetTargetInCombat;
 
     return (
       <div className={styles.targetTargetBossStack}>
@@ -7197,6 +7210,7 @@ export default function BattleArena({
             <div className={styles.iconBarResourceRow}>
               <span className={styles.iconBarResourceValue}>130</span>
             </div>
+            {renderCombatStatusMarker(inCombat)}
           </div>
         </div>
         <div className={styles.targetTargetStatusSlot}>
@@ -8250,7 +8264,6 @@ export default function BattleArena({
                     </div>
                     <div className={styles.escMainFooter}>
                       <button type="button" className={styles.escFooterButton} onClick={() => setShowTestingPanel(false)}>返回游戏</button>
-                      <button type="button" className={styles.escFooterButton} disabled><LogOut size={16} strokeWidth={2.2} aria-hidden="true" />返回登录</button>
                       <button
                         type="button"
                         className={styles.escFooterButton}
@@ -8673,6 +8686,7 @@ export default function BattleArena({
             <div className={styles.iconBarResourceRow}>
               <span className={styles.iconBarResourceValue}>130</span>
             </div>
+            {renderCombatStatusMarker(me?.inCombat)}
           </div>
         </div>
       </div>
@@ -8779,9 +8793,10 @@ export default function BattleArena({
                 ? (isOwnEntity ? '友方木桩' : '敌方木桩')
                 : `${entityOwner?.username ?? '玩家'}的逐云寒蕊`)
             : (selectedTarget?.username ?? '目标');
-          const targetIconTitle = `${formatIconBarDistance(me.position, targetPosition, storedUnitScale)} · ${targetName}`;
+          const targetIconDistanceText = formatIconBarDistance(me.position, targetPosition, storedUnitScale);
           const targetBuffs  = isSelf ? (me?.buffs ?? []) : isEntityTarget ? (selectedEntity?.buffs ?? []) : (selectedTarget?.buffs ?? []);
           const hpGradient   = isSelf ? selfIconBarHpGradient : iconBarHpGradient;
+          const targetInCombat = isSelf ? !!me?.inCombat : isEntityTarget ? false : !!selectedTarget?.inCombat;
           const channelTargetUserId = isSelf
             ? me?.userId
             : isEntityTarget
@@ -8797,7 +8812,7 @@ export default function BattleArena({
               <div className={styles.enemyBossTopRow}>
                 <div className={styles.enemyPrimaryBossStack}>
                   <div className={`${styles.enemyBossBar} ${isSelf ? styles.selfIconBar : ''}`}>
-                    <div className={styles.enemyName}>{targetIconTitle}</div>
+                    <div className={styles.enemyName}><span className={styles.targetIconDistance}>{targetIconDistanceText}</span> · {targetName}</div>
                     <div className={styles.iconBarBody}>
                       <div className={styles.enemyHpTrack}>
                         {targetHpPct > 0 && targetHpPct < 100 && (
@@ -8831,6 +8846,7 @@ export default function BattleArena({
                       <div className={styles.iconBarResourceRow}>
                         <span className={styles.iconBarResourceValue}>130</span>
                       </div>
+                      {renderCombatStatusMarker(targetInCombat)}
                     </div>
                   </div>
                   <div className={styles.enemyBossChannelSlot}>

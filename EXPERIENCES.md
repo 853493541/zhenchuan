@@ -3,6 +3,43 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## LayoutShell home background and F11 fullscreen correction (2026-05-08)
+
+**Problem set**:
+1. A game fullscreen fix put `background: #010409` on the shared `LayoutShell` `.container`, turning normal pages such as the home/game room page black behind their controls.
+2. The in-game no-topbar shell still used an explicit `height: 100dvh`; browser fullscreen/F11 can make that dynamic viewport unit shorter than the visible viewport, exposing the white body at the bottom.
+3. The focused Playwright suite only checked source strings for the fullscreen shell and did not verify normal-page background or bottom-pixel fullscreen coverage.
+
+**Fix**:
+- Removed the dark background from the shared `LayoutShell` container so normal pages inherit their white page background again.
+- Kept the dark background only on the in-game fullscreen shell and changed it to fixed `inset: 0` with `height: auto`, so top/bottom constraints fill the viewport instead of trusting `100dvh`.
+- Added Playwright coverage that renders a normal shell over a white body, then renders the in-game shell over a white body and verifies the bottom of the viewport is covered by the game shell/surface.
+
+**Lessons**:
+- Never put game-only dark surfaces on a shared app shell; scope them to the in-game route class.
+- For browser fullscreen shells, fixed `inset: 0` with auto height is safer than explicit `100dvh` when the user's symptom is a bottom gap.
+- A source guard is not enough for layout regressions; include a browser-computed viewport coverage check.
+
+## BattleArena 战斗中 status and fullscreen HUD fixes (2026-05-08)
+
+**Problem set**:
+1. The game needed a non-buff `战斗中` status that enters on player-vs-player damage or in-range debuff hits and exits in symmetric pairs after a 3-second check.
+2. Out-of-range DOT damage should still show `进入战斗`, but should not refresh the stay-in-combat timer unless the linked players are within 60 units.
+3. The HUD needed `进入战斗` / `离开战斗` toasts plus a crossed-swords red marker on self, target, and target-target icon bars without using the buff/status bar.
+4. The ESC footer still had an obsolete disabled login action, target range text was slightly too large, and F11 fullscreen could reveal a white strip below the game.
+
+**Fix**:
+- Added backend `inCombat` and symmetric `combatLinks` state plus a `COMBAT_STATUS` event, initialized on new battles.
+- Centralized combat entry/exit in `combatStatus.ts`: damage events enter immediately, debuff-hit events require 60-unit range, and stale/out-of-range/dead links expire together every 3 seconds.
+- Fed the combat-status helper from both immediate ability casts and the realtime game loop so direct casts, loop damage, DOTs, and debuff events share the same rules.
+- Added frontend type support, toast handling, and a red crossed-swords marker to the icon bars, while keeping `战斗中` out of buff lists.
+- Removed the obsolete ESC login button, reduced target distance text by 10%, and made the fullscreen no-topbar shell fixed/inset so the game covers the entire F11 viewport.
+
+**Lessons**:
+- A pair status is easier to keep symmetric when stored as links on each player and reconciled from events, rather than trying to patch every damage call site manually.
+- DOT damage and stay-in-combat refresh are different rules: out-of-range damage can notify entry without extending the 3-second in-range activity window.
+- Fullscreen game shells should cover the viewport with fixed inset sizing; otherwise body/page background can show through during browser fullscreen size changes.
+
 ## BattleArena ESC scaling, Catcake defaults, and WebGL recovery (2026-05-08)
 
 **Problem set**:

@@ -12,6 +12,7 @@ export type GameEventType =
   | "HEAL"
   | "BUFF_APPLIED"
   | "BUFF_EXPIRED"
+  | "COMBAT_STATUS"
   | "DASH";
 
 export interface GameEvent {
@@ -42,6 +43,10 @@ export interface GameEvent {
   buffId?: number;
   buffName?: string;
   buffCategory?: BuffCategory;
+
+  combatStatus?: "enter" | "exit";
+  inCombat?: boolean;
+  relatedUserId?: PlayerID;
 
   appliedAtTurn?: number;
   expiresAtTurn?: number;

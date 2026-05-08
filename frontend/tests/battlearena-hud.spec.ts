@@ -9,13 +9,21 @@ const battleArenaTsxPath = path.join(frontendRoot, 'app/game/screens/in-game/com
 const battleArenaCssPath = path.join(frontendRoot, 'app/game/screens/in-game/components/BattleArena/BattleArena.module.css');
 const arenaScenePath = path.join(frontendRoot, 'app/game/screens/in-game/components/BattleArena/scene/ArenaScene.tsx');
 const exportedMapScenePath = path.join(frontendRoot, 'app/game/screens/in-game/components/BattleArena/scene/ExportedMapScene.tsx');
+const frontendTypesPath = path.join(frontendRoot, 'app/game/screens/in-game/types.ts');
 const statusCssPath = path.join(frontendRoot, 'app/game/screens/in-game/components/GameBoard/components/StatusBar/styles.module.css');
 const statusHintCssPath = path.join(frontendRoot, 'app/game/screens/in-game/components/GameBoard/components/StatusBar/Hint/styles.module.css');
 const inGameClientPath = path.join(frontendRoot, 'app/game/screens/in-game/InGameClient.tsx');
 const inGameCssPath = path.join(frontendRoot, 'app/game/screens/in-game/styles.module.css');
+const layoutShellCssPath = path.join(frontendRoot, 'app/components/layout/LayoutShell/styles.module.css');
 const useGameStatePath = path.join(frontendRoot, 'app/game/screens/in-game/hooks/useGameState.ts');
 const abilitiesPath = path.join(repoRoot, 'backend/game/abilities/abilities.ts');
 const movementPath = path.join(repoRoot, 'backend/game/engine/loop/movement.ts');
+const gameLoopPath = path.join(repoRoot, 'backend/game/engine/loop/GameLoop.ts');
+const combatStatusPath = path.join(repoRoot, 'backend/game/engine/utils/combatStatus.ts');
+const backendStateTypesPath = path.join(repoRoot, 'backend/game/engine/state/types/state.ts');
+const backendEventTypesPath = path.join(repoRoot, 'backend/game/engine/state/types/events.ts');
+const battleServicePath = path.join(repoRoot, 'backend/game/services/battle/battleService.ts');
+const playServicePath = path.join(repoRoot, 'backend/game/services/gameplay/playService.ts');
 const gameplayRoutesPath = path.join(repoRoot, 'backend/game/routes/gameplay.routes.ts');
 const draftRoutesPath = path.join(repoRoot, 'backend/game/routes/draft.routes.ts');
 const tournamentPath = path.join(repoRoot, 'backend/game/engine/state/types/tournament.ts');
@@ -39,14 +47,22 @@ test('source guards cover BattleArena HUD regression points', async () => {
   const battleArenaCss = readFile(battleArenaCssPath);
   const arenaScene = readFile(arenaScenePath);
   const exportedMapScene = readFile(exportedMapScenePath);
+  const frontendTypes = readFile(frontendTypesPath);
   const statusCss = readFile(statusCssPath);
   const statusHintCss = readFile(statusHintCssPath);
   const statusBarIndex = readFile(statusBarIndexPath);
   const inGameClient = readFile(inGameClientPath);
   const inGameCss = readFile(inGameCssPath);
+  const layoutShellCss = readFile(layoutShellCssPath);
   const useGameState = readFile(useGameStatePath);
   const abilities = readFile(abilitiesPath);
   const movement = readFile(movementPath);
+  const gameLoop = readFile(gameLoopPath);
+  const combatStatus = readFile(combatStatusPath);
+  const backendStateTypes = readFile(backendStateTypesPath);
+  const backendEventTypes = readFile(backendEventTypesPath);
+  const battleService = readFile(battleServicePath);
+  const playService = readFile(playServicePath);
   const gameplayRoutes = readFile(gameplayRoutesPath);
   const draftRoutes = readFile(draftRoutesPath);
   const tournament = readFile(tournamentPath);
@@ -115,6 +131,8 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(inGameClient).toContain("onLeaveGame={() => leaveGameAndReturnHome('EscExitButton')}");
   expect(battleArenaTsx).toContain('void onLeaveGame?.();');
   expect(battleArenaTsx).not.toContain('返回角色');
+  expect(battleArenaTsx).not.toContain('返回登录');
+  expect(battleArenaTsx).not.toContain('LogOut');
   expect(battleArenaTsx).toContain('测试');
   expect(battleArenaTsx).toContain('开关');
   expect(battleArenaTsx).toContain('灯光控制');
@@ -137,6 +155,36 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(battleArenaTsx).toContain('CATCAKE_DEFAULT_UI_VIEWPORT');
   expect(battleArenaTsx).toContain('CATCAKE_DEFAULT_UI_POSITIONS');
   expect(battleArenaTsx).toContain('applyCatcakeDefaultUiLayout');
+  expect(combatStatus).toContain('COMBAT_STATUS_RANGE_UNITS = 60');
+  expect(combatStatus).toContain('COMBAT_STATUS_TIMEOUT_MS = 3_000');
+  expect(combatStatus).toContain('COMBAT_STATUS_CHECK_INTERVAL_MS = 3_000');
+  expect(combatStatus).toContain('event.type === "DAMAGE"');
+  expect(combatStatus).toContain('refreshTimerOnlyInRange: true');
+  expect(combatStatus).toContain('event.buffCategory === "DEBUFF"');
+  expect(combatStatus).toContain('requireRange: true');
+  expect(combatStatus).toContain('timestamp - COMBAT_STATUS_TIMEOUT_MS');
+  expect(combatStatus).toContain('timestamp - lastActionAt >= COMBAT_STATUS_TIMEOUT_MS');
+  expect(combatStatus).toContain('!arePlayersWithinCombatRange');
+  expect(backendStateTypes).toContain('inCombat?: boolean');
+  expect(backendStateTypes).toContain('combatLinks?: Record<PlayerID, { lastActionAt: number }>');
+  expect(backendEventTypes).toContain('| "COMBAT_STATUS"');
+  expect(backendEventTypes).toContain('combatStatus?: "enter" | "exit"');
+  expect(battleService).toContain('inCombat: false');
+  expect(battleService).toContain('combatLinks: {}');
+  expect(gameLoop).toContain('expireCombatStatusLinks(this.state, combatCheckNow)');
+  expect(gameLoop).toContain('syncCombatStatusFromEvents(this.state, eventDiffStart)');
+  expect(gameLoop).toContain('combatStatusChanged');
+  expect(gameLoop).toContain('eventsPruned || combatStatusChanged');
+  expect(gameLoop).toContain('path: `/players/${pidx}/inCombat`');
+  expect(gameLoop).toContain('path: `/players/${pidx}/combatLinks`');
+  expect(playService).toContain('syncCombatStatusFromEvents(state, prevState.events.length);');
+  expect(frontendTypes).toContain('| "COMBAT_STATUS"');
+  expect(frontendTypes).toContain('inCombat?: boolean');
+  expect(battleArenaTsx).toContain("toastError('进入战斗')");
+  expect(battleArenaTsx).toContain("toastSuccess('离开战斗')");
+  expect(battleArenaTsx).toContain('Swords size={20}');
+  expect(battleArenaTsx).toContain('styles.combatStatusMarker');
+  expect(battleArenaTsx).toContain('styles.targetIconDistance');
   expect(battleArenaTsx).toContain('dpr={sceneCanvasDpr}');
   expect(battleArenaTsx).toContain('antialias: !isMobileDevice');
   expect(battleArenaTsx).toContain('webglcontextrestored');
@@ -156,6 +204,17 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(cssBlock(battleArenaCss, '.escTestLayout')).toContain('grid-template-columns: 120px 1fr');
   expect(cssBlock(battleArenaCss, '.escTestGrid')).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
   expect(cssBlock(battleArenaCss, '.escLightingToggleGrid')).toContain('grid-template-columns: repeat(3, minmax(0, 1fr))');
+  expect(battleArenaCss).not.toContain('.escMainFooter .escFooterButton:first-child');
+  expect(cssBlock(battleArenaCss, '.targetIconDistance')).toContain('font-size: 90%');
+  expect(cssBlock(battleArenaCss, '.combatStatusMarker')).toContain('bottom: -11px');
+  expect(cssBlock(battleArenaCss, '.combatStatusMarker')).toContain('color: #ff2424');
+  expect(cssBlock(layoutShellCss, '.container')).not.toContain('background: #010409');
+  expect(cssBlock(layoutShellCss, '.mainFullscreenNoTopbar')).toContain('position: fixed');
+  expect(cssBlock(layoutShellCss, '.mainFullscreenNoTopbar')).toContain('inset: 0');
+  expect(cssBlock(layoutShellCss, '.mainFullscreenNoTopbar')).toContain('width: auto');
+  expect(cssBlock(layoutShellCss, '.mainFullscreenNoTopbar')).toContain('height: auto');
+  expect(cssBlock(layoutShellCss, '.mainFullscreenNoTopbar')).not.toContain('height: 100dvh');
+  expect(cssBlock(layoutShellCss, '.mainFullscreenNoTopbar')).not.toContain('min-height: 100vh');
   expect(cssBlock(battleArenaCss, '.customUiPrompt')).toContain('cursor: move');
 
   const buffNameBlock = cssBlock(statusCss, '.buffName');
@@ -339,6 +398,59 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(statusBarIndex).not.toContain('opacity: lowTimeBlinkOpacity');
 });
 
+test('layout shell keeps normal pages white and in-game fullscreen covering viewport', async ({ page }) => {
+  const layoutShellCss = readFile(layoutShellCssPath);
+
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await page.setContent(`
+    <style>
+      html, body { margin: 0; min-height: 100%; background: rgb(255, 255, 255); }
+    </style>
+    <style>${layoutShellCss}</style>
+    <div class="container" id="normalShell">
+      <main class="main"><button id="homeAction">开始游戏</button></main>
+    </div>
+  `);
+
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(page.locator('#normalShell')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(page.locator('#homeAction')).toBeVisible();
+
+  await page.setContent(`
+    <style>
+      html, body { margin: 0; width: 100%; min-height: 100%; background: rgb(255, 255, 255); }
+    </style>
+    <style>${layoutShellCss}</style>
+    <div class="container">
+      <main class="mainFullscreenNoTopbar" id="gameShell">
+        <div id="gameSurface" style="width:100%;height:100%;background:rgb(1, 4, 9)"></div>
+      </main>
+    </div>
+  `);
+
+  const fullscreenMetrics = await page.locator('#gameShell').evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const bottomElement = document.elementFromPoint(window.innerWidth / 2, window.innerHeight - 1);
+    return {
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      bottomElementId: bottomElement?.id ?? '',
+      backgroundColor: getComputedStyle(element).backgroundColor,
+    };
+  });
+
+  expect(fullscreenMetrics.top).toBe(0);
+  expect(fullscreenMetrics.left).toBe(0);
+  expect(fullscreenMetrics.width).toBe(fullscreenMetrics.viewportWidth);
+  expect(fullscreenMetrics.height).toBe(fullscreenMetrics.viewportHeight);
+  expect(['gameShell', 'gameSurface']).toContain(fullscreenMetrics.bottomElementId);
+  expect(fullscreenMetrics.backgroundColor).toBe('rgb(1, 4, 9)');
+});
+
 test('browser-computed HUD styles match requested layout and visual rules', async ({ page }) => {
   const battleArenaCss = readFile(battleArenaCssPath);
   const statusCss = readFile(statusCssPath);
@@ -351,7 +463,7 @@ test('browser-computed HUD styles match requested layout and visual rules', asyn
     <div class="topMetricsBar"><button class="topMetricsSettingsButton">设置</button><div class="topMetricsItem"><span class="topMetricsLabel">时间:</span><span class="topMetricsTimeValue">2025-03-02 22:49:20</span></div><div class="topMetricsItem"><span class="topMetricsLabel">渲染FPS:</span><span class="topMetricsGoodValue">66</span></div><div class="topMetricsItem"><span class="topMetricsLabel">网络延迟:</span><span class="topMetricsGoodValue">113</span></div></div>
     <div class="customUiFloatingHudPlacement customUiHudPlacementEditing customUiAbilityPlacementEditing"><div class="enemyAbilityRow"><div class="enemyAbilityItem"><div class="enemyAbilitySlot enemyAbilityPreviewSlot"></div><span class="enemyAbilityName">技能</span></div><div class="enemyAbilityItem"><div class="enemyAbilitySlot enemyAbilityPreviewSlot"></div><span class="enemyAbilityName">技能</span></div></div></div>
     <div class="heartDetailsPlacement customUiHudPlacementEditing" style="left: 220px; top: 120px"><div class="customUiPlacementLabel">属性栏</div><div class="heartDetailsPanel"><div class="heartDetailsHeader"><span class="heartDetailsTitle">属性</span><button class="heartDetailsTab">详细</button></div><div class="heartDetailsBody"><div class="heartDetailsRow"><span class="heartDetailsLabel">攻击力</span><span class="heartDetailsValue">5万</span></div></div></div></div>
-    <div class="enemyBossBar"><div class="enemyName">目标</div><div class="iconBarBody"><div class="enemyHpTrack"><div class="enemyHpFill" style="width:60%"></div><div class="enemyShieldFill" style="left:60%;width:18%"></div></div><div class="iconBarResourceRow"><span class="iconBarResourceValue">130</span></div></div></div>
+    <div class="enemyBossBar"><div class="enemyName"><span class="targetIconDistance">18m</span> · 目标</div><div class="iconBarBody"><div class="enemyHpTrack"><div class="enemyHpFill" style="width:60%"></div><div class="enemyShieldFill" style="left:60%;width:18%"></div></div><div class="iconBarResourceRow"><span class="iconBarResourceValue">130</span></div><div class="combatStatusMarker" aria-label="战斗中"><svg></svg></div></div></div>
     <div class="enemyAbilityRow"><div class="enemyAbilityItem"><div class="enemyAbilitySlot"><img class="enemyAbilityIcon" alt="" /></div><span class="enemyAbilityName">技能</span></div><div class="enemyAbilityItem"><div class="enemyAbilitySlot"><img class="enemyAbilityIcon" alt="" /></div><span class="enemyAbilityName">技能</span></div></div>
     <div class="statusBar"><div class="buffItem"><div class="buffName buffText">山河</div><div class="iconWrapper"><div class="buffIcon"></div></div><div class="buffTurns secondTime">5″</div></div></div>
     <div class="statusBar playerStatusBar"><div class="buffItem"><div class="buffName buffText">山河</div><div class="iconWrapper"><div class="buffIcon"></div></div><div class="buffTurns secondTime">5″</div></div></div>
@@ -360,7 +472,7 @@ test('browser-computed HUD styles match requested layout and visual rules', asyn
     <div class="heightCounterPlacement" style="left: 900px; top: 180px"><div class="heightValueBox">1.0</div></div>
     <div class="distIndicator" style="left: 900px; top: 260px"><span class="distVal">12.0尺</span></div>
     <div class="itemBarPlacement customUiHudPlacementEditing itemBarPlacementEditing" style="left: 80px; top: 80px; z-index: 10000; --ability-panel-scale: 1.5"><div class="customUiPlacementLabel itemBarPlacementLabel">物品栏</div><div class="itemBar" aria-label="物品栏">${Array.from({ length: 14 }, (_, index) => `<div class="itemSlot" data-item-slot-index="${index}"></div>`).join('')}</div></div>
-    <div id="escFixture" class="escPanelShell" style="position:absolute;left:-2200px;top:-2200px"><div class="escWindowHeader"><div class="escWindowTitle">系统设置</div><button class="escHeaderIconButton">×</button></div><div class="escMainTabs"><button class="escMainTabButton escMainTabButtonActive">常规</button><button class="escMainTabButton">测试</button></div><div class="escMainGrid"><button class="escMainTile" disabled><span class="escMainIcon"></span><span>效果性能设置</span></button><button class="escMainTile"><span class="escMainIcon"></span><span>游戏设置</span></button><button class="escMainTile"><span class="escMainIcon"></span><span>自定义界面</span></button></div><div class="escMainFooter"><button class="escFooterButton">返回游戏</button><button class="escFooterButton" disabled>返回登录</button><button class="escFooterButton">退出游戏</button></div></div>
+    <div id="escFixture" class="escPanelShell" style="position:absolute;left:-2200px;top:-2200px"><div class="escWindowHeader"><div class="escWindowTitle">系统设置</div><button class="escHeaderIconButton">×</button></div><div class="escMainTabs"><button class="escMainTabButton escMainTabButtonActive">常规</button><button class="escMainTabButton">测试</button></div><div class="escMainGrid"><button class="escMainTile" disabled><span class="escMainIcon"></span><span>效果性能设置</span></button><button class="escMainTile"><span class="escMainIcon"></span><span>游戏设置</span></button><button class="escMainTile"><span class="escMainIcon"></span><span>自定义界面</span></button></div><div class="escMainFooter"><button class="escFooterButton">返回游戏</button><button class="escFooterButton">退出游戏</button></div></div>
     <div id="escSettingsFixture" class="escPanelShell escPanelShellSettings" style="position:absolute;left:-3600px;top:-2200px"><div class="escWindowHeader"><button class="escHeaderIconButton">←</button><div class="escWindowTitle">游戏设置</div><button class="escHeaderIconButton">×</button></div><div class="escSettingsBody"><aside class="escSettingsSidebar"><button class="escSettingsNavButton escSettingsNavButtonActive">综合</button></aside><section class="escSettingsContent"><div class="escSectionTitle"><span>界面设置</span></div><div class="escSettingsGrid"><div class="escSettingControl"><div class="escRangeHeader"><span>技能栏大小</span><span>1.00</span></div><input class="escRangeInput" type="range" /></div><div class="escToggleGroup escSettingControl"><label class="escToggleGroupHeader"><input class="escToggleInput" type="checkbox" /><span>显示GCD</span></label></div></div></section></div></div>
     <div id="escTestFixture" class="escPanelShell" style="position:absolute;left:-5000px;top:-2200px"><div class="escWindowHeader"><div class="escWindowTitle">系统设置</div></div><div class="escTestPanel"><div class="escTestLayout"><aside class="escTestSidebar"><button class="escSettingsNavButton escSettingsNavButtonActive">开关</button><button class="escSettingsNavButton">灯光控制</button></aside><section class="escTestContent"><div class="escTestGrid"><label class="escToggleRow"><input class="escToggleInput" type="checkbox" /><span>角色测试状态</span></label><label class="escToggleRow"><input class="escToggleInput" type="checkbox" /><span>屏幕坐标</span></label><label class="escToggleRow"><input class="escToggleInput" type="checkbox" /><span>显示碰撞线</span></label><label class="escToggleRow"><input class="escToggleInput" type="checkbox" /><span>显示蓝图</span></label></div></section></div></div></div>
     <div id="customPromptFixture" class="customUiPrompt" style="left:-6400px;top:-2200px;transform:none"><div class="customUiTitle">自定义界面</div><div class="customUiActions"><button class="customUiButtonSecondary">取消</button><button class="customUiButtonSecondary">恢复默认</button><button class="customUiButtonPrimary">确定</button></div></div>
@@ -405,7 +517,10 @@ test('browser-computed HUD styles match requested layout and visual rules', asyn
   await expect(page.locator('#escFixture .escMainTile').first()).toHaveCSS('color', 'rgba(172, 181, 181, 0.72)');
   await expect(page.locator('#escFixture .escMainIcon').first()).toHaveCSS('width', '75px');
   await expect(page.locator('#escFixture')).not.toContainText('返回角色');
+  await expect(page.locator('#escFixture')).not.toContainText('返回登录');
   await expect(page.locator('#escFixture')).toContainText('退出游戏');
+  await expect(page.locator('#escFixture .escMainFooter .escFooterButton')).toHaveCount(2);
+  await expect(page.locator('#escFixture .escMainFooter .escFooterButton').first()).toBeEnabled();
   await expect(page.locator('#escSettingsFixture .escWindowTitle')).toHaveText('游戏设置');
   await expect(page.locator('#escSettingsFixture .escSettingsBody')).toHaveCSS('grid-template-columns', '140px 548px');
   await expect(page.locator('#escSettingsFixture')).not.toContainText('界面开关');
@@ -441,7 +556,9 @@ test('browser-computed HUD styles match requested layout and visual rules', asyn
   await expect(page.locator('.enemyBossBar')).toHaveCSS('width', '227px');
   await expect(page.locator('.enemyName')).toHaveCSS('opacity', '1');
   await expect(page.locator('.enemyName')).toHaveCSS('font-size', '13.2px');
+  await expect(page.locator('.targetIconDistance')).toHaveCSS('font-size', '11.88px');
   await expect(page.locator('.iconBarResourceRow')).toHaveCSS('opacity', '1');
+  await expect(page.locator('.combatStatusMarker')).toHaveCSS('color', 'rgb(255, 36, 36)');
   const iconBarBodyBg = await page.locator('.iconBarBody').evaluate((element) => getComputedStyle(element).backgroundImage);
   expect(iconBarBodyBg).toContain('rgba(198, 57, 43, 0.7)');
   await expect(page.locator('.hotbarStack')).toHaveCSS('gap', '12px');

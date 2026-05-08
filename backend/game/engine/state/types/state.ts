@@ -110,6 +110,12 @@ export interface PlayerState {
   /** Current player-selected target, used for target-of-target UI. */
   targetSelection?: TargetSelection;
 
+  /** True while this player has at least one active 战斗中 link. */
+  inCombat?: boolean;
+
+  /** Symmetric player combat links, keyed by the other player's userId. */
+  combatLinks?: Record<PlayerID, { lastActionAt: number }>;
+
   /* ================= REAL-TIME POSITION & MOVEMENT ================= */
 
   /** Current position on 2D arena (x, y) */
