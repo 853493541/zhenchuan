@@ -17,6 +17,7 @@ import { pushEvent } from "./events";
 import { hasDamageImmune } from "../rules/guards";
 import { applyDamageToTarget } from "../utils/health";
 import { resolveRedirectedDamageToTarget } from "../utils/combatMath";
+import { YUE_YING_SHA_BUFF_ID } from "../utils/yueYingSha";
 
 // ── 七星拱瑞 ──────────────────────────────────────────────────────────────────
 const QIXING_FREEZE_BUFF_ID = 2600;
@@ -82,6 +83,25 @@ function expireRedirectProtectedBuff(
   const [removedBuff] = (liveTarget.buffs as any[]).splice(buffIndex, 1);
   pushBuffExpired(state, {
     targetUserId: liveTarget.userId,
+    buffId: removedBuff.buffId,
+    buffName: removedBuff.name,
+    buffCategory: removedBuff.category,
+    sourceAbilityId: removedBuff.sourceAbilityId,
+    sourceAbilityName: removedBuff.sourceAbilityName,
+    sourceUserId: removedBuff.sourceUserId,
+  });
+}
+
+function breakYueYingShaOnIncomingHit(
+  state: GameState,
+  damagedPlayer: { userId: string; buffs: any[] },
+) {
+  const buffIndex = damagedPlayer.buffs.findIndex((buff) => buff?.buffId === YUE_YING_SHA_BUFF_ID);
+  if (buffIndex < 0) return;
+
+  const [removedBuff] = damagedPlayer.buffs.splice(buffIndex, 1);
+  pushBuffExpired(state, {
+    targetUserId: damagedPlayer.userId,
     buffId: removedBuff.buffId,
     buffName: removedBuff.name,
     buffCategory: removedBuff.category,
@@ -265,8 +285,8 @@ export function applyRedirectToOpponent(
       const result = applyDamageToTarget(target as any, mitigatedRedirectAmt);
       actualDamage = result.totalDamage;
       shieldAbsorbed = result.shieldAbsorbed;
-      if (result.hpDamage > 0) {
-        processOnDamageTaken(state, target as any, result.hpDamage);
+      if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+        processOnDamageTaken(state, target as any, result.hpDamage, undefined, result.shieldAbsorbed);
       }
     } else {
       const before: number = target.hp;
@@ -315,25 +335,30 @@ export function applyRedirectToOpponent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST-DAMAGE: 七星拱瑞 freeze-break (and future post-damage hooks)
+// POST-DAMAGE: 月影沙 hit-break, 七星拱瑞 freeze-break, and future hooks
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Call this AFTER applyDamageToTarget() reports hpDamage > 0.
- * (Redirect is handled pre-damage via preCheckRedirect; this only handles
- *  七星拱瑞 freeze-break and any future post-damage triggers.)
+ * Call this AFTER applyDamageToTarget() reports hpDamage or shieldAbsorbed.
+ * (Redirect is handled pre-damage via preCheckRedirect; this handles shared
+ *  hit/damage hooks such as 月影沙 and 七星拱瑞.)
  *
  * @param state           – current game state
  * @param damagedPlayer   – player who just lost HP
  * @param hpDamage        – actual HP lost
  * @param attackerUserId  – userId of whoever dealt the damage
+ * @param shieldAbsorbed  – damage absorbed by shields on the same hit
  */
 export function processOnDamageTaken(
   state: GameState,
   damagedPlayer: { userId: string; hp: number; buffs: any[] },
   hpDamage: number,
-  attackerUserId?: string
+  attackerUserId?: string,
+  shieldAbsorbed = 0,
 ): void {
+  if (hpDamage <= 0 && shieldAbsorbed <= 0) return;
+
+  breakYueYingShaOnIncomingHit(state, damagedPlayer);
   if (hpDamage <= 0) return;
 
   const now = Date.now();

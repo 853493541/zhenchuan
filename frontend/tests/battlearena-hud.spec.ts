@@ -22,11 +22,15 @@ const movementPath = path.join(repoRoot, 'backend/game/engine/loop/movement.ts')
 const gameLoopPath = path.join(repoRoot, 'backend/game/engine/loop/GameLoop.ts');
 const combatStatusPath = path.join(repoRoot, 'backend/game/engine/utils/combatStatus.ts');
 const disguiseUtilsPath = path.join(repoRoot, 'backend/game/engine/utils/disguise.ts');
+const yueYingShaUtilsPath = path.join(repoRoot, 'backend/game/engine/utils/yueYingSha.ts');
 const backendStateTypesPath = path.join(repoRoot, 'backend/game/engine/state/types/state.ts');
 const backendEventTypesPath = path.join(repoRoot, 'backend/game/engine/state/types/events.ts');
 const backendEffectTypesPath = path.join(repoRoot, 'backend/game/engine/state/types/effects.ts');
 const backendEffectCategoriesPath = path.join(repoRoot, 'backend/game/engine/effects/definitions/categories.ts');
+const breakOnPlayPath = path.join(repoRoot, 'backend/game/engine/flow/play/breakOnPlay.ts');
+const immediateEffectsPath = path.join(repoRoot, 'backend/game/engine/flow/play/immediateEffects.ts');
 const buffRuntimePath = path.join(repoRoot, 'backend/game/engine/effects/buffRuntime.ts');
+const onDamageHooksPath = path.join(repoRoot, 'backend/game/engine/effects/onDamageHooks.ts');
 const abilityPreloadPath = path.join(repoRoot, 'backend/game/abilities/abilityPreload.ts');
 const battleServicePath = path.join(repoRoot, 'backend/game/services/battle/battleService.ts');
 const playServicePath = path.join(repoRoot, 'backend/game/services/gameplay/playService.ts');
@@ -68,11 +72,15 @@ test('source guards cover BattleArena HUD regression points', async () => {
   const gameLoop = readFile(gameLoopPath);
   const combatStatus = readFile(combatStatusPath);
   const disguiseUtils = readFile(disguiseUtilsPath);
+  const yueYingShaUtils = readFile(yueYingShaUtilsPath);
   const backendStateTypes = readFile(backendStateTypesPath);
   const backendEventTypes = readFile(backendEventTypesPath);
   const backendEffectTypes = readFile(backendEffectTypesPath);
   const backendEffectCategories = readFile(backendEffectCategoriesPath);
+  const breakOnPlay = readFile(breakOnPlayPath);
+  const immediateEffects = readFile(immediateEffectsPath);
   const buffRuntime = readFile(buffRuntimePath);
+  const onDamageHooks = readFile(onDamageHooksPath);
   const abilityPreload = readFile(abilityPreloadPath);
   const battleService = readFile(battleServicePath);
   const playService = readFile(playServicePath);
@@ -94,6 +102,8 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(abilities).toMatch(/id: "guchong_xianji"[\s\S]*type: "SHIELD", value: 50, percentOfTargetMaxHp: true/);
   expect(abilities).toContain('50%最大气血护盾');
   expect(abilities).not.toContain('提供50点护盾');
+  expect(abilities).toMatch(/id: "fuyao_zhishang"[\s\S]*cannotCastWhileRooted: true/);
+  expect(abilities).toMatch(/id: "yuqi"[\s\S]*cannotCastWhileRooted: true/);
 
   expect(movement).toContain('BACKPEDAL_DOUBLE_JUMP_DISTANCE = 3.7 * UNIT_SCALE');
   expect(movement).toContain('isBackpedalAirJump = input.backpedalOnly === true');
@@ -113,6 +123,9 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(inGameClient).toContain('LeaveNoticePrompt');
 
   expect(inGameClient).toContain('import { Home } from "lucide-react"');
+  expect(inGameClient).toContain('function getGameErrorText(rawCode: string)');
+  expect(inGameClient).toContain('return "无法在受控下施展"');
+  expect(inGameClient).toContain('externalGameWarning={battleWarningEvent}');
   expect(inGameClient).toContain('aria-label="首页"');
   expect(inGameClient).toContain('<Home size={27}');
   expect(inGameClient).not.toContain('>\n          首页\n        </button>');
@@ -123,10 +136,20 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(battleArenaTsx).toContain('className={styles.topMetricsBar}');
   expect(battleArenaTsx).toContain('topMetricsSettingsButton');
   expect(battleArenaTsx).toContain('formatTopMetricsTime(systemTime)');
+  expect(battleArenaTsx).toContain("const IN_GAME_WARNING_UI_KEY = 'in-game-warning'");
+  expect(battleArenaTsx).toContain('战斗警告大小');
+  expect(battleArenaTsx).toContain('showInGameWarning');
   expect(battleArenaTsx).toContain('setRenderFps(Math.round((frameCount * 1000) / elapsed))');
   expect(battleArenaTsx).toContain('网络延迟:');
   expect(battleArenaTsx).not.toContain('className={styles.rttBadge}');
   expect(battleArenaCss).not.toContain('.rttBadge');
+  expect(cssBlock(battleArenaCss, '.ingameWarningPlacement')).toContain('position: absolute');
+  expect(cssBlock(battleArenaCss, '.ingameWarningPlacementLabel')).toContain('position: static');
+  expect(cssBlock(battleArenaCss, '.ingameWarningText')).toContain('background: transparent');
+  expect(cssBlock(battleArenaCss, '.ingameWarningText')).toContain('color: #ff2a1f');
+  expect(cssBlock(battleArenaCss, '.ingameWarningText')).toContain('font-size: calc(14.7px * var(--game-warning-scale, 1));');
+  expect(battleArenaTsx).toContain('Math.max(0.1, Math.min(2, numeric))');
+  expect(battleArenaTsx).toContain('min="0.1"');
   expect(cssBlock(battleArenaCss, '.topMetricsBar')).toContain('height: 18.85px');
   expect(cssBlock(battleArenaCss, '.topMetricsBar')).toContain('font-size: 14.3px');
   expect(cssBlock(battleArenaCss, '.topMetricsBar')).toContain('gap: 19.5px');
@@ -184,26 +207,51 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(combatStatus).toContain('timestamp - lastActionAt >= COMBAT_STATUS_TIMEOUT_MS');
   expect(combatStatus).toContain('!arePlayersWithinCombatRange');
   expect(combatStatus).toContain('removeDisguiseBuffs(state, player, timestamp)');
+  expect(buffRuntime).toContain('removeDisguiseBuffs(state, buffTarget as any, now)');
+  expect(buffRuntime).toContain('const DISGUISE_STEALTH_OVERLAP_MS = 1_000');
+  expect(buffRuntime).toContain('shortenDisguiseBuffsForStealthOverlap');
+  expect(buffRuntime).toContain('activeBuff.expiresAt = overlapExpiresAt');
+  expect(buffRuntime).toContain('!incomingDisguise && hasDisguiseBuff(buffTarget as any) && incomingStealthPackage');
+  expect(buffRuntime).toContain('const MAX_DISGUISE_DURATION_MS = 4 * 60_000');
+  expect(buffRuntime).toContain('durationMs: Math.min(runtimeBuff.durationMs, MAX_DISGUISE_DURATION_MS)');
   expect(disguiseUtils).toContain('SAND_DISGUISE_CONSUMABLE_ID = "sha_shi_wei_zhuang"');
   expect(disguiseUtils).toContain('SAND_DISGUISE_BUFF_ID = 980001');
+  expect(disguiseUtils).toContain('SAND_DISGUISE_DURATION_MS = 4 * 60_000');
+  expect(disguiseUtils).toContain('SAND_DISGUISE_LEASH_RADIUS_UNITS = 2');
+  expect(disguiseUtils).toContain('createSandDisguiseRuntimeBuff');
+  expect(disguiseUtils).toContain('{ type: "SPECIAL_ABILITY_BAR", abilityIds: ["jie_chu_wei_zhuang"] }');
   expect(disguiseUtils).toContain('type: "STEALTH"');
   expect(disguiseUtils).toContain('type: "ROOT"');
   expect(disguiseUtils).toContain('type: "DISGUISE"');
   expect(disguiseUtils).toContain('clearTargetSelectionsTargetingPlayer');
+  expect(yueYingShaUtils).toContain('YUE_YING_SHA_BUFF_ID = 980002');
+  expect(yueYingShaUtils).toContain('durationMs: 7_000');
+  expect(yueYingShaUtils).toContain('breakOnPlay: true');
+  expect(yueYingShaUtils).toContain('{ type: "SPEED_BOOST", value: 0.3 }');
+  expect(yueYingShaUtils).toContain('{ type: "NO_JUMP" }');
   expect(backendStateTypes).toContain('inCombat?: boolean');
   expect(backendStateTypes).toContain('combatLinks?: Record<PlayerID, { lastActionAt: number }>');
   expect(backendStateTypes).toContain('consumableCooldowns?: Record<string, { expiresAt: number }>');
+  expect(backendStateTypes).toContain('consumableCounts?: Record<string, number>;');
   expect(backendStateTypes).toContain('consumableId?: string');
   expect(backendEventTypes).toContain('| "COMBAT_STATUS"');
+  expect(backendEventTypes).toContain('channelPhase?: "start" | "complete"');
   expect(backendEventTypes).toContain('combatStatus?: "enter" | "exit"');
   expect(backendEffectTypes).toContain('| "DISGUISE"');
   expect(backendEffectCategories).toContain('DISGUISE: "BUFF"');
   expect(abilityPreload).toContain('SAND_DISGUISE_BUFF');
+  expect(abilityPreload).toContain('iconPath: (ability as any).iconPath');
   expect(abilityPreload).toContain('manualCancelable: true');
+  expect(abilityPreload).toContain('...YUE_YING_SHA_BUFF,');
   expect(battleService).toContain('inCombat: false');
   expect(battleService).toContain('combatLinks: {}');
+  expect(battleService).toContain('consumableCounts: createStartingConsumableCounts()');
   expect(gameLoop).toContain('expireCombatStatusLinks(this.state, combatCheckNow)');
   expect(gameLoop).toContain('syncCombatStatusFromEvents(this.state, eventDiffStart)');
+  expect(gameLoop).toContain('createSandDisguiseRuntimeBuff(player.position)');
+  expect(gameLoop).toContain('const leftDisguiseLeashArea = player.buffs.some');
+  expect(gameLoop).toContain('removeDisguiseBuffs(this.state, player as any, now)');
+  expect(gameLoop).toContain('naturallyExpired.some((b) => isDisguiseBuff(b as any))');
   expect(gameLoop).toContain('combatStatusChanged');
   expect(gameLoop).toContain('eventsPruned || combatStatusChanged');
   expect(gameLoop).toContain('path: `/players/${pidx}/inCombat`');
@@ -211,10 +259,15 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(playService).toContain('syncCombatStatusFromEvents(state, prevState.events.length);');
   expect(playService).toContain('type: "PLAY_ABILITY"');
   expect(frontendTypes).toContain('| "COMBAT_STATUS"');
+  expect(frontendTypes).toContain('channelPhase?: "start" | "complete"');
   expect(frontendTypes).toContain('inCombat?: boolean');
   expect(frontendTypes).toContain('consumableCooldowns?: Record<string, { expiresAt: number }>');
+  expect(frontendTypes).toContain('consumableCounts?: Record<string, number>;');
   expect(frontendTypes).toContain('consumableId?: string');
-  expect(battleArenaTsx).toContain("toastError('进入战斗')");
+  expect(statusBarIndex).toContain('remainingTurns={getRemainingSeconds(activeHint.buff)}');
+  expect(readFile(path.join(frontendRoot, 'app/game/screens/in-game/components/GameBoard/components/StatusBar/Hint/index.tsx'))).toContain('function formatRemainingTime(totalSeconds: number)');
+  expect(readFile(path.join(frontendRoot, 'app/game/screens/in-game/components/GameBoard/components/StatusBar/Hint/index.tsx'))).toContain('return `${minutes}分 ${seconds}秒`;');
+  expect(battleArenaTsx).toContain("showInGameWarning('进入战斗')");
   expect(battleArenaTsx).toContain("toastSuccess('离开战斗')");
   expect(battleArenaTsx).toContain('Swords size={20}');
   expect(battleArenaTsx).toContain('styles.combatStatusMarker');
@@ -225,6 +278,7 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(consumableService).toContain('cooldownMs: 120_000');
   expect(consumableService).toContain('usableInCombat: true');
   expect(consumableService).toContain('beng_dai');
+  expect(consumableService).toContain('breaksDisguise: false');
   expect(consumableService).toContain('durationMs: 10_000');
   expect(consumableService).toContain('tickIntervalMs: 1_000');
   expect(consumableService).toContain('healBase: 1.93');
@@ -237,6 +291,11 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(consumableService).toContain('cancelOnMove: true');
   expect(consumableService).toContain('applyDisguiseOnComplete: true');
   expect(consumableService).toContain('yue_ying_sha');
+  expect(consumableService).toMatch(/yue_ying_sha:[\s\S]*cooldownMs: 30_000[\s\S]*usableInCombat: true[\s\S]*implemented: true[\s\S]*requiresGrounded: true/);
+  expect(consumableService).toContain('applyYueYingShaBuff(state, player)');
+  expect(consumableService).toContain('STEALTH_BREAK_BUFF_IDS = new Set([1011, 1012, 1013, SAND_DISGUISE_BUFF_ID, YUE_YING_SHA_BUFF_ID])');
+  expect(consumableService).toContain('"ROOT"');
+  expect(consumableService).toContain('throw new Error("ERR_REQUIRES_GROUNDED")');
   expect(consumableService).toContain('guan_mu_wei_zhuang');
   expect(consumableService).toContain('wa_guan_wei_zhuang');
   expect(consumableService).toContain('sha_xing_xie');
@@ -246,11 +305,50 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(consumableService).toContain('san_jie_wu_qi_he');
   expect(consumableService).toContain('tian_jie_wu_qi_he');
   expect(consumableService).toContain('ERR_CONSUMABLE_NOT_IMPLEMENTED');
+  expect(consumableService).toContain('STARTING_CONSUMABLE_COUNTS');
+  expect(consumableService).toContain('beng_dai: 12');
+  expect(consumableService).toContain('jin_chuang_yao: 8');
+  expect(consumableService).toContain('yue_ying_sha: 4');
+  expect(consumableService).toContain('sha_shi_wei_zhuang: 4');
+  expect(consumableService).toContain('function getConsumableCounts(player: PlayerState)');
+  expect(consumableService).toContain('throw new Error("ERR_CONSUMABLE_EMPTY")');
+  expect(consumableService).toContain('consumableCounts[consumable.id] = Math.max(0, Number(consumableCounts[consumable.id] ?? 0) - 1);');
   expect(consumableService).toContain('BLOCKING_CONSUMABLE_EFFECTS');
+  expect(consumableService).toContain('buff.effects.some((effect: any) => BLOCKING_CONSUMABLE_EFFECTS.has(effect?.type))');
+  expect(consumableService).not.toContain('buff?.category === "DEBUFF"');
   expect(consumableService).not.toContain('"NON_QINGGONG_LOCK"');
+  expect(arenaScene).not.toContain('if (hasDisguiseBuff(buffs)) return false;');
+  expect(battleArenaTsx).not.toContain('if (hasDisguiseClient(buffs)) return false;');
+  expect(characterScene).toContain('modelRef: MutableRefObject<THREE.Object3D | null>;');
+  expect(characterScene).toContain('const disguiseRef = useRef<THREE.Object3D>(null);');
+  expect(characterScene).toContain('disguiseRef.current.rotation.set(0, yaw, 0);');
+  expect(characterScene).toContain('<DisguiseCartModel facingYaw={facingYaw} modelRef={disguiseRef} />');
+  expect(characterScene).not.toContain('{(facing || facingRef) && isSelected && !isDisguised && (');
+  expect(immediateEffects).toContain('removeDisguiseBuffs(state, source as any, Date.now())');
+  expect(immediateEffects).toContain('removeIds.has(SAND_DISGUISE_BUFF_ID)');
+  expect(abilities).toContain('jie_chu_wei_zhuang');
+  expect(abilities).toContain('name: "解除伪装"');
+  expect(abilities).toContain('iconPath: "/icons/砂石伪装.png"');
+  expect(abilities).toContain('specialBarAbility: true');
+  expect(abilities).toContain('hiddenFromDraft: true');
+  expect(battleArenaTsx).toContain('encodeIconPublicPath(iconPath)');
+  expect(battleArenaTsx).toContain('iconPath?: string;');
+  expect(battleArenaTsx).toContain('iconPath: ability.iconPath');
   expect(consumableService).not.toContain('"ATTACK_LOCK"');
   expect(consumableService).toContain('breakReverseChannels(state, player)');
-  expect(consumableService).toContain('breakStealthForConsumable(state, player)');
+  expect(consumableService).toContain('breakStealthForConsumable(state, player, consumable)');
+  expect(consumableService).toContain('if (consumable.channel?.forwardChannel === true) return false;');
+  expect(consumableService).toContain('buff.buffId === SAND_DISGUISE_BUFF_ID && consumable.breaksDisguise === false');
+  expect(abilityPreload).toContain('YUE_YING_SHA_BUFF');
+  expect(breakOnPlay).toContain('case 1012:');
+  expect(breakOnPlay).toContain('common abilities break immediately; 遁影 only protects movement');
+  expect(breakOnPlay).toContain('return channelCast ? isForward : false;');
+  expect(breakOnPlay).toContain('case YUE_YING_SHA_BUFF_ID:');
+  expect(onDamageHooks).toContain('breakYueYingShaOnIncomingHit');
+  expect(onDamageHooks).toContain('if (hpDamage <= 0 && shieldAbsorbed <= 0) return;');
+  expect(onDamageHooks).toContain('result.hpDamage > 0 || result.shieldAbsorbed > 0');
+  expect(combatStatus).toContain('event.type === "PLAY_ABILITY" && event.channelPhase === "start"');
+  expect(playService).toContain('channelPhase: player.activeChannel.forwardChannel === true ? "start" : undefined');
   expect(buffRuntime).toContain('isConsumableChannel');
   expect(buffRuntime).toContain('!isConsumableChannel && (');
   expect(gameLoop).toContain('isConsumableChannel');
@@ -260,21 +358,53 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(gameLoop).toContain('hasCombatActivityAgainstPlayerDuringChannel');
   expect(gameLoop).toContain('player.inCombat !== true');
   expect(gameLoop).toContain('SAND_DISGUISE_BUFF');
+  expect(gameLoop).toContain('isHostileForwardChannelResolution');
+  expect(gameLoop).toContain('breakStealthOnForwardChannelResolution');
+  expect(gameLoop).toContain('channelPhase: "complete"');
   expect(gameplayRoutes).toContain('router.post("/consumable/use"');
   expect(gameplayRoutes).toContain('blocksCardTargeting(targetPlayer as any)');
   expect(useGameState).toContain('fetch("/api/game/consumable/use"');
   expect(inGameClient).toContain('onUseConsumable={async (consumableId)');
   expect(inGameClient).toContain('ERR_CONSUMABLE_NOT_IMPLEMENTED');
+  expect(inGameClient).toContain('return "该物品已用完"');
   expect(battleArenaTsx).toContain('CONSUMABLE_ITEMS');
+  expect(battleArenaTsx).toContain("{ id: 'beng_dai', name: '绷带', implemented: true, startingCount: 12 }");
+  expect(battleArenaTsx).toContain("{ id: 'guan_mu_wei_zhuang', name: '灌木伪装', implemented: false, startingCount: 0 }");
   expect(battleArenaTsx).toMatch(/name: '绷带'[\s\S]*name: '金疮药'[\s\S]*name: '月影沙'[\s\S]*name: '砂石伪装'[\s\S]*name: '灌木伪装'[\s\S]*name: '瓦罐伪装'[\s\S]*name: '沙行蝎'[\s\S]*name: '马草'[\s\S]*name: '一阶武器盒'[\s\S]*name: '二阶武器盒'[\s\S]*name: '三阶武器盒'[\s\S]*name: '天阶武器盒'/);
   expect(battleArenaTsx).toContain('CONSUMABLE_BAR_MIN_SLOTS = 12');
   expect(battleArenaTsx).toContain('CONSUMABLE_BAR_MAX_SLOTS = 16');
   expect(battleArenaTsx).toContain('CONSUMABLE_BAR_DEFAULT_SLOTS = 12');
+  expect(battleArenaTsx).toContain('function formatHudCooldownText');
+  expect(battleArenaTsx).toContain("if (seconds > 59) return `${Math.max(1, Math.ceil(seconds / 60))}m`;");
+  expect(battleArenaTsx).toContain("const minuteCooldown = cdLabel.endsWith('m');");
+  expect(battleArenaTsx).toContain('styles.cdNumMinutes');
   expect(battleArenaTsx).toContain('loadConsumableBarSettings');
   expect(battleArenaTsx).toContain('moveConsumableSlot');
   expect(battleArenaTsx).toContain('data-consumable-slot-index');
   expect(battleArenaTsx).toContain('application/x-zhenchuan-consumable-slot');
+  expect(battleArenaTsx).toContain('function getConsumableRemainingCount');
+  expect(battleArenaTsx).toContain('const unavailable = !!consumable && consumable.implemented !== true;');
+  expect(battleArenaTsx).toContain('const remainingCount = consumable ? getConsumableRemainingCount(me, consumable) : 0;');
+  expect(battleArenaTsx).toContain('const depleted = !!consumable && consumable.implemented === true && remainingCount <= 0;');
+  expect(battleArenaTsx).toContain("`${consumable.name}（暂未开放）`");
+  expect(battleArenaTsx).toContain("`${consumable.name}（剩余${remainingCount}）`");
+  expect(battleArenaTsx).toContain("`${consumable.name}（已用完）`");
+  expect(battleArenaTsx).toContain('styles.consumableSlotUnavailable');
+  expect(battleArenaTsx).toContain('styles.consumableSlotDepleted');
+  expect(battleArenaTsx).toContain('styles.consumableCount');
   expect(battleArenaTsx).toContain('getConsumableIconPath(consumable.name)');
+  expect(battleArenaCss).toContain('.consumableSlotUnavailable');
+  expect(battleArenaCss).toContain('.consumableSlotDepleted');
+  expect(battleArenaCss).toContain('.consumableCount');
+  expect(cssBlock(battleArenaCss, '.consumableCount')).toContain('right: 1px');
+  expect(cssBlock(battleArenaCss, '.consumableCount')).toContain('bottom: 1px');
+  expect(cssBlock(battleArenaCss, '.consumableCount')).toContain('font-weight: 600');
+  expect(cssBlock(battleArenaCss, '.consumableCount')).toContain('background: transparent');
+  expect(battleArenaCss).toContain('filter: grayscale(1) saturate(0.12) brightness(0.72);');
+  expect(battleArenaTsx).toContain("runCheatAction('refill-consumables', '/api/game/cheat/refill-consumables', '双方消耗品已补满')");
+  expect(draftRoutes).toContain('router.post("/cheat/refill-consumables"');
+  expect(draftRoutes).toContain('const consumableCounts = createStartingConsumableCounts();');
+  expect(battleArenaTsx).toContain("const noJumpLocked = !lingRanJumpLockImmune && buffsHaveAnyEffect(buffs, ['NO_JUMP']);");
   expect(battleArenaTsx).not.toContain("useConsumableRef.current('jin_chuang_yao')");
   expect(battleArenaTsx).not.toContain("useConsumableRef.current('beng_dai')");
   expect(battleArenaTsx).not.toContain("useConsumableRef.current('sha_shi_wei_zhuang')");
@@ -343,6 +473,17 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(cssBlock(statusCss, '.buffTurns')).toContain('font-weight: 315');
   expect(cssBlock(statusCss, '.buffTurns')).toContain('font-size: 11.66px');
   expect(cssBlock(statusCss, '.playerStatusBar .buffTurns')).toContain('font-size: 12.83px');
+  const stackBadgeBlock = cssBlock(statusCss, '.stackBadge');
+  expect(stackBadgeBlock).toContain('top: auto');
+  expect(stackBadgeBlock).toContain('right: 0');
+  expect(stackBadgeBlock).toContain('bottom: 0');
+  expect(stackBadgeBlock).toContain('min-width: 0.72em');
+  expect(stackBadgeBlock).toContain('font-size: 14.58px');
+  expect(stackBadgeBlock).toContain('line-height: 0.82');
+  expect(stackBadgeBlock).toContain('text-align: right');
+  expect(stackBadgeBlock).toContain('transform: translate(8%, 10%)');
+  expect(cssBlock(statusCss, '.compactStatusBar .stackBadge')).toContain('font-size: 9.72px');
+  expect(cssBlock(statusCss, '.playerStatusBar .stackBadge')).toContain('font-size: 16.04px');
 
   const abilityEditBlock = cssBlock(battleArenaCss, '.customUiAbilityPlacementEditing');
   expect(abilityEditBlock).not.toContain('border: 0');
@@ -422,6 +563,8 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(cssBlock(battleArenaCss, '.consumableSlot')).toContain('background: transparent');
   expect(cssBlock(battleArenaCss, '.consumableSlot')).toContain('appearance: none');
   expect(cssBlock(battleArenaCss, '.consumableCooldown')).toContain('background: rgba(0, 0, 0, 0.58)');
+  expect(cssBlock(battleArenaCss, '.cdNumMinutes')).toContain('font-size: 12px');
+  expect(cssBlock(battleArenaCss, '.cdNumMinutes')).toContain('color: #ffe033');
   expect(cssBlock(battleArenaCss, '.itemSlotFilled')).toContain('cursor: grab');
   expect(cssBlock(battleArenaCss, '.itemAbilityIcon')).toContain('object-fit: cover');
   expect(cssBlock(battleArenaCss, '.itemBarPlacementEditing')).toContain('pointer-events: auto');
@@ -435,6 +578,7 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(cssBlock(battleArenaCss, '.chargeFrameProgress')).toContain('stroke: #ff2e2e');
   expect(cssBlock(battleArenaCss, '.chargeFrameSvg')).toContain('position: absolute');
   expect(cssBlock(battleArenaCss, '.chargeStackBox')).toContain('font-size: 9.36px');
+  expect(cssBlock(battleArenaCss, '.chargeStackBox')).toContain('border: none');
   expect(cssBlock(battleArenaCss, '.chargeStackBox')).toContain('width: 12px');
   expect(cssBlock(battleArenaCss, '.chargeStackBox')).toContain('z-index: 2');
   expect(cssBlock(battleArenaCss, '.enemyName')).toContain('font-size: 13.2px');
@@ -466,7 +610,7 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(battleArenaTsx).not.toContain('距离显示');
   expect(battleArenaTsx).not.toContain('自身血条');
   expect(battleArenaTsx).toContain('dragRect.height');
-  expect(battleArenaTsx).toContain('M 95 95 L 95 5 L 5 5 L 5 95 L 95 95');
+  expect(battleArenaTsx).toContain('M 96 96 L 96 4 L 4 4 L 4 96 L 96 96');
   expect(battleArenaTsx).toContain('data-draft-slot-index');
   expect(battleArenaTsx).toContain('data-discard-drop-zone="true"');
   expect(battleArenaTsx).toContain('className={styles.abilityDragGhost}');
@@ -480,7 +624,7 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(draftRoutes).toContain('targetCard.slotIndex = fromSlotIndex');
   expect(gameplayRoutes).toContain('ERR_PICKUP_HAND_FULL: "只能拾取6个技能"');
   expect(gameplayRoutes).toContain('slotIndex:  firstOpenSlot');
-  expect(inGameClient).toContain('toastError("只能拾取6个技能")');
+  expect(inGameClient).toContain('return "只能拾取6个技能"');
   expect(battleArenaTsx).toContain('if (e.key === \'1\' && drafts[0])');
   expect(battleArenaTsx).toContain('if (drafts[0].isReady) castAbilityRef.current(drafts[0].id)');
   expect(battleArenaTsx).toContain('styles.abilityBtnDragging');
@@ -589,8 +733,8 @@ test('browser-computed HUD styles match requested layout and visual rules', asyn
     <div class="heartDetailsPlacement customUiHudPlacementEditing" style="left: 220px; top: 120px"><div class="customUiPlacementLabel">属性栏</div><div class="heartDetailsPanel"><div class="heartDetailsHeader"><span class="heartDetailsTitle">属性</span><button class="heartDetailsTab">详细</button></div><div class="heartDetailsBody"><div class="heartDetailsRow"><span class="heartDetailsLabel">攻击力</span><span class="heartDetailsValue">5万</span></div></div></div></div>
     <div class="enemyBossBar"><div class="enemyName"><span class="targetIconDistance">18m</span> · 目标</div><div class="iconBarBody"><div class="enemyHpTrack"><div class="enemyHpFill" style="width:60%"></div><div class="enemyShieldFill" style="left:60%;width:18%"></div></div><div class="iconBarResourceRow"><span class="iconBarResourceValue">130</span></div><div class="combatStatusMarker" aria-label="战斗中"><svg></svg></div></div></div>
     <div class="enemyAbilityRow"><div class="enemyAbilityItem"><div class="enemyAbilitySlot"><img class="enemyAbilityIcon" alt="" /></div><span class="enemyAbilityName">技能</span></div><div class="enemyAbilityItem"><div class="enemyAbilitySlot"><img class="enemyAbilityIcon" alt="" /></div><span class="enemyAbilityName">技能</span></div></div>
-    <div class="statusBar"><div class="buffItem"><div class="buffName buffText">山河</div><div class="iconWrapper"><div class="buffIcon"></div></div><div class="buffTurns secondTime">5″</div></div></div>
-    <div class="statusBar playerStatusBar"><div class="buffItem"><div class="buffName buffText">山河</div><div class="iconWrapper"><div class="buffIcon"></div></div><div class="buffTurns secondTime">5″</div></div></div>
+    <div class="statusBar"><div class="buffItem"><div class="buffName buffText">山河</div><div class="iconWrapper"><div class="buffIcon"></div><span class="stackBadge">4</span></div><div class="buffTurns secondTime">5″</div></div></div>
+    <div class="statusBar playerStatusBar"><div class="buffItem"><div class="buffName buffText">山河</div><div class="iconWrapper"><div class="buffIcon"></div><span class="stackBadge">6</span></div><div class="buffTurns secondTime">5″</div></div></div>
     <div class="hint">buff hint</div>
     <div class="abilityHintPanel"><div class="abilityHintBody"><div class="abilityHintMain"><div class="abilityHintDesc">desc</div></div></div></div>
     <div class="heightCounterPlacement" style="left: 900px; top: 180px"><div class="heightValueBox">1.0</div></div>
@@ -716,6 +860,20 @@ test('browser-computed HUD styles match requested layout and visual rules', asyn
   });
   await expect(page.locator('.statusBar:not(.playerStatusBar) .buffTurns')).toHaveCSS('font-size', '11.66px');
   await expect(page.locator('.playerStatusBar .buffTurns')).toHaveCSS('font-size', '12.83px');
+  const stackBadgePosition = await page.locator('.statusBar:not(.playerStatusBar) .stackBadge').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      right: style.right,
+      bottom: style.bottom,
+      fontSize: style.fontSize,
+    };
+  });
+  expect(stackBadgePosition).toEqual({
+    right: '0px',
+    bottom: '0px',
+    fontSize: '14.58px',
+  });
+  await expect(page.locator('.playerStatusBar .stackBadge')).toHaveCSS('font-size', '16.04px');
 
   const ability = page.locator('.draftDropCluster .abilityBtn.ready').first();
   await expect(ability).toHaveCSS('width', '57px');
@@ -737,6 +895,7 @@ test('browser-computed HUD styles match requested layout and visual rules', asyn
   await expect(page.locator('.chargeStackBox')).toHaveCSS('z-index', '2');
   const chargeProgressStroke = await page.locator('.chargeFrameProgress').evaluate((element) => getComputedStyle(element).stroke);
   expect(chargeProgressStroke).toContain('rgb(255, 46, 46)');
+  await expect(page.locator('.chargeFrameProgress')).toHaveAttribute('d', 'M 96 96 L 96 4 L 4 4 L 4 96 L 96 96');
   await expect(page.locator('.enemyAbilityRow').first()).toHaveCSS('gap', '1px');
   await expect(page.locator('.enemyAbilitySlot').first()).toHaveCSS('border-top-left-radius', '0px');
   await expect(page.locator('.enemyAbilityIcon').first()).toHaveCSS('border-top-left-radius', '0px');

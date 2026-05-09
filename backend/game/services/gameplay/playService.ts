@@ -570,6 +570,7 @@ async function playCastAbility(
         entityName: targetEntity?.abilityName,
         abilityId,
         abilityName: ability.name,
+        channelPhase: player.activeChannel.forwardChannel === true ? "start" : undefined,
       });
 
       // If a pure channel ever uses charge metadata, consume a charge at cast start.

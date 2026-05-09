@@ -77,7 +77,6 @@ function hasHongMengTianJinBuff(buffs?: any[]): boolean {
 }
 
 function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
-  if (hasDisguiseBuff(buffs)) return false;
   return (hasStealthBuff(buffs) && !hasSanliuXiaBuff(buffs)) || hasHongMengTianJinBuff(buffs);
 }
 

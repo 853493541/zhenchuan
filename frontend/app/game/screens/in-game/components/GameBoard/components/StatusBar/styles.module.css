@@ -52,7 +52,7 @@
 }
 
 .compactStatusBar .stackBadge {
-  font-size: 6.48px;
+  font-size: 9.72px;
 }
 
 .playerStatusBar {
@@ -72,7 +72,7 @@
 }
 
 .playerStatusBar .stackBadge {
-  font-size: 10.69px;
+  font-size: 16.04px;
 }
 
 /* ================= BUFF ITEM ================= */
@@ -142,11 +142,17 @@
 
 .stackBadge {
   position: absolute;
-  top: 1px;
-  right: 2px;
-  font-size: 9.72px;
+  top: auto;
+  right: 0;
+  bottom: 0;
+  display: block;
+  min-width: 0.72em;
+  font-size: 14.58px;
   font-weight: 800;
-  line-height: 1;
+  line-height: 0.82;
+  text-align: right;
+  transform: translate(8%, 10%);
+  transform-origin: 100% 100%;
   color: #ffffff;
   -webkit-text-stroke: 0.25px rgba(0, 0, 0, 0.98);
   text-shadow:
@@ -155,6 +161,7 @@
     0 -0.7px 0 #000,
     -0.7px 0 0 #000;
   pointer-events: none;
+  white-space: nowrap;
   z-index: 2;
 }
 

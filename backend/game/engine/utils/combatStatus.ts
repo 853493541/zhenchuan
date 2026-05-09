@@ -141,6 +141,7 @@ function eventCountsAsEnemyAbilityContact(event: any): boolean {
   if (!event?.abilityId || !event.actorUserId || !event.targetUserId) return false;
   if (event.actorUserId === event.targetUserId) return false;
   if (event.type === "COMBAT_STATUS" || event.type === "BUFF_EXPIRED" || event.type === "HEAL") return false;
+  if (event.type === "PLAY_ABILITY" && event.channelPhase === "start") return false;
   if (event.type === "BUFF_APPLIED" && event.buffCategory === "DEBUFF") return false;
   if (event.type === "DAMAGE" && eventCountsAsDamageActivity(event)) return false;
   return true;

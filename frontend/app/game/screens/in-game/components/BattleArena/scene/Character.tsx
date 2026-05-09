@@ -197,7 +197,13 @@ function cloneDisguiseCartModel(prototype: THREE.Group): THREE.Group {
   return model;
 }
 
-function DisguiseCartModel({ facingYaw }: { facingYaw: number }) {
+function DisguiseCartModel({
+  facingYaw,
+  modelRef,
+}: {
+  facingYaw: number;
+  modelRef: MutableRefObject<THREE.Object3D | null>;
+}) {
   const [model, setModel] = useState<THREE.Group | null>(null);
 
   useEffect(() => {
@@ -214,14 +220,14 @@ function DisguiseCartModel({ facingYaw }: { facingYaw: number }) {
 
   if (!model) {
     return (
-      <mesh position={[0, 0.35, 0]} rotation={[0, facingYaw, 0]} castShadow>
+      <mesh ref={modelRef as any} position={[0, 0.35, 0]} rotation={[0, facingYaw, 0]} castShadow>
         <boxGeometry args={[1.25, 0.7, 0.85]} />
         <meshStandardMaterial color="#7a6042" roughness={0.8} metalness={0.05} />
       </mesh>
     );
   }
 
-  return <primitive object={model} rotation={[0, facingYaw, 0]} />;
+  return <primitive ref={modelRef as any} object={model} rotation={[0, facingYaw, 0]} />;
 }
 
 interface CharacterProps {
@@ -290,6 +296,7 @@ export default function Character({
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
+  const disguiseRef = useRef<THREE.Object3D>(null);
   const capRef = useRef<THREE.Mesh>(null);
   const shadowRef = useRef<THREE.Mesh>(null);
   const arcRef = useRef<THREE.Mesh>(null);
@@ -357,9 +364,14 @@ export default function Character({
 
     // --- Facing rotation (updated every frame) ---
     const f = facingRef ? facingRef.current : facing;
-    if (f && bodyRef.current) {
+    if (f) {
       const yaw = Math.atan2(f.x, -f.y); // z-flip: negate game-y for correct Three.js facing
-      bodyRef.current.rotation.set(0, yaw, 0);
+      if (bodyRef.current) {
+        bodyRef.current.rotation.set(0, yaw, 0);
+      }
+      if (disguiseRef.current) {
+        disguiseRef.current.rotation.set(0, yaw, 0);
+      }
 
       // Smooth arc display yaw — rotates at max 720°/s so a full 180° takes ~0.25s
       const MAX_ARC_SPEED = Math.PI * 4; // rad/s
@@ -495,7 +507,7 @@ export default function Character({
     <group ref={groupRef} position={[threeX, threeY, threeZ]}>
       {isDisguised ? (
         <>
-          <DisguiseCartModel facingYaw={facingYaw} />
+          <DisguiseCartModel facingYaw={facingYaw} modelRef={disguiseRef} />
           <mesh ref={shadowRef} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <circleGeometry args={[0.95, 20]} />
             <meshBasicMaterial color="#000000" transparent opacity={0.24} depthWrite={false} />
@@ -592,7 +604,7 @@ export default function Character({
       )}
 
       {/* Facing arc — only shown when selected, updated by useFrame */}
-      {(facing || facingRef) && isSelected && !isDisguised && (
+      {(facing || facingRef) && isSelected && (
         <>
           {/* Fill */}
           <mesh

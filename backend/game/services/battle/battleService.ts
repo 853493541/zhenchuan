@@ -13,6 +13,7 @@ import { randomUUID } from "crypto";
 import { NEW_WORLD_UNIT_SCALE } from "../../engine/state/types/position";
 import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT, EXPORTED_MAP_SPAWN_POSITIONS } from "../../map/exportedMap";
 import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
+import { createStartingConsumableCounts } from "../gameplay/consumableService";
 
 // Arena dimensions (must match backend arena size)
 const PUBG_WIDTH = 2000;
@@ -276,6 +277,8 @@ export function initializeBattleState(
       buffs: [],
       inCombat: false,
       combatLinks: {},
+      consumableCooldowns: {},
+      consumableCounts: createStartingConsumableCounts(),
       position: { x: spawn.x, y: spawn.y },
       velocity: { vx: 0, vy: 0 },
       facing: { x: dx / mag, y: dy / mag },

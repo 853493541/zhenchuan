@@ -3,6 +3,284 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## In-game warning overlay and controls (2026-05-09)
+
+**Problem set**:
+1. Gameplay failure messages still depended on app-level toasts, which are detached from the actual combat HUD.
+2. The new warning needed to be plain red text with a black outline, plus its own ESC-panel scale control and custom-UI drag anchor.
+
+**Fix**:
+- Added a BattleArena-owned in-game warning overlay with a short-lived red outlined text treatment, its own saved HUD position, and a preview anchor in custom-UI mode.
+- Added an ESC panel slider for warning scale from `1.00` to `2.00`, persisted in local storage.
+- Routed central gameplay error-code messages from `InGameClient.tsx` into the overlay and switched the local combat validation warnings in `BattleArena.tsx` off app toasts and onto the new HUD warning path.
+- Reduced the baseline warning text size by 30%, so slider value `1.00` now starts from a smaller default footprint.
+- Reduced the baseline warning text by another 30% and widened the slider range to `0.10` through `2.00`.
+
+**Lessons**:
+- If a warning is combat-local, keep both the renderer and the drag anchor in the combat HUD owner; only the text source needs to cross the client boundary.
+- A combat-only widget still needs a preview in custom-UI mode, otherwise users cannot place it until the exact failure state happens live.
+- When a HUD scale slider starts too large, lowering the base size is safer than widening the slider range downward; saved user scale values keep the same meaning.
+- If the user still wants finer control after shrinking the base, widening the lower clamp is the direct fix; it should be done in both the slider min and the normalization helper so saved values and live drag stay consistent.
+
+## Charge stack box border removal (2026-05-09)
+
+**Problem set**:
+1. The charged-ability count box still showed a visible white border around its black background.
+2. The requested visual was to keep the black background but remove that border entirely.
+
+**Fix**:
+- Changed `.chargeStackBox` in `BattleArena.module.css` from a white bordered box to `border: none`.
+
+**Lessons**:
+- Small overlay counters on already framed hotbar buttons do not need a second bright outline; it creates visual noise faster than it adds readability.
+- If a variant class already has the right treatment (`.chargeStackBoxQueTaZhi`), align the base class to the same border policy instead of layering another special-case style.
+
+## Consumable count badge simplified (2026-05-09)
+
+**Problem set**:
+1. The consumable count badge looked like a full chip instead of just a small number in the corner.
+2. The requested style was a plain bottom-right number with thinner text and no background panel.
+
+**Fix**:
+- Simplified `.consumableCount` in `BattleArena.module.css` to sit as plain text in the bottom-right corner.
+- Reduced the weight to `600` and removed the pill-like background treatment so the count reads as a lightweight corner number.
+
+**Lessons**:
+- Small stock counters read better as unobtrusive corner text than as full badges when the slot already has strong icon framing.
+- If a HUD marker should feel secondary, remove both the background block and the heavier font weight together; changing only one still leaves it visually noisy.
+
+## Consumable stock counts and control-panel refill (2026-05-09)
+
+**Problem set**:
+1. Consumables needed finite stock counts instead of infinite reuse.
+2. New battles should start both players with `8` 金疮药, `12` 绷带, `4` 月影沙, and `4` 砂石伪装.
+3. The HUD needed to show remaining consumable stock, and the control panel needed a button to refill it for testing.
+
+**Fix**:
+- Added `consumableCounts` to player runtime state and initialized new battle players with the requested starting stock.
+- Updated `consumableService.ts` to sanitize counts, reject use with `ERR_CONSUMABLE_EMPTY`, and decrement stock on successful consumable use attempts.
+- Added item-bar count badges plus depleted-slot disabling in `BattleArena.tsx`, and wired a new control-panel cheat action to `/api/game/cheat/refill-consumables` to reset both players' consumable stock.
+
+**Lessons**:
+- Finite consumable systems need both a backend source of truth and a visible HUD count; doing only one side makes the state either abusable or unreadable.
+- Refill/test helpers belong with the existing cheat/control routes so the UI can reuse the same fetch-and-toast path instead of inventing another debug channel.
+
+## Consumable bar greys out unopened items (2026-05-09)
+
+**Problem set**:
+1. Only the first four consumables are implemented, but the item bar rendered the remaining consumables as if they were equally usable.
+2. That made the HUD misleading and encouraged clicks into `ERR_CONSUMABLE_NOT_IMPLEMENTED` for items that are not open yet.
+
+**Fix**:
+- Added explicit `implemented` flags to the frontend consumable bar list in `BattleArena.tsx`.
+- Greyed out unimplemented consumables with a dedicated unavailable style and updated their tooltip title to include `暂未开放`.
+- Blocked local click handling for those unimplemented slots so the bar reflects the current live consumable set more honestly.
+
+**Lessons**:
+- If the backend has placeholder item ids that are intentionally not open yet, the HUD should surface that state directly instead of waiting for an error response.
+- Static HUD catalog entries need explicit availability metadata when the live item roster is only partially implemented.
+
+## 浮光掠影 遁影 only protects movement (2026-05-09)
+
+**Problem set**:
+1. `浮光掠影` was still keeping stealth when the player used the 6 common movement abilities during the first 5 seconds of `遁影`.
+2. The intended rule is narrower: `遁影` only allows ordinary movement without breaking stealth; using those common abilities should still break `浮光掠影` stealth.
+3. `暗尘弥散` and other stealth buffs needed to keep their existing common-ability exceptions.
+
+**Fix**:
+- Removed the special first-5-seconds common-ability grace rule from `breakOnPlay.ts` for buff `1012` (`浮光掠影`).
+- Kept the existing forward-channel exception for `浮光掠影`, so only the common-ability stealth retention changed.
+- Left `暗尘弥散`, `天地无极`, `月影沙`, and the rest of the stealth-break rules untouched.
+
+**Lessons**:
+- If a stealth sub-buff like `遁影` is only meant to protect movement, encode that at the central stealth-break owner instead of folding common-ability exceptions into it.
+- When multiple stealth buffs have similar exception logic, isolate the change to the exact buff id to avoid accidental rules drift across other stealth families.
+
+## 月影沙 blocked by 伪装 root state (2026-05-09)
+
+**Problem set**:
+1. `月影沙` was still castable while the player was under `伪装`, even though `伪装` applies a real `ROOT` effect and should count as control for consumable blocking.
+2. The failure toast for blocked consumables still said `受控状态无法使用`, which did not match the requested rule wording.
+
+**Fix**:
+- Removed the `DEBUFF`-only filter from the consumable control gate in `consumableService.ts`, so any active buff carrying `ROOT`, `CONTROL`, `KNOCKED_BACK`, `PULLED`, `DISPLACEMENT`, `FEARED`, or `FREEZE` now blocks consumable use, including `伪装`.
+- Updated the frontend error mapping for `ERR_CONSUMABLE_CONTROLLED` to show `无法在受控下施展`.
+
+**Lessons**:
+- Consumable control validation must key off control effects, not buff category, because runtime states like `伪装` can deliberately carry control on a `BUFF` entry.
+- If the rule language is user-facing and specific, keep the toast text aligned with the gameplay rule instead of leaving a generic fallback message.
+
+## 伪装 special bar cancel ability (2026-05-09)
+
+**Problem set**:
+1. After `伪装` channel completion, the player needed the draft/special section of the skill bar to collapse to a single cancel action like `九霄风雷` does.
+2. That action needed to be `解除伪装` and use the same icon as `砂石伪装`.
+3. Triggering the cancel action needed to remove disguise through the shared disguise cleanup path, not a raw buff-id filter.
+
+**Fix**:
+- Added a hidden special-bar ability `解除伪装` and attached it to `伪装` through the existing `SPECIAL_ABILITY_BAR` buff effect, so the bar replacement uses the same runtime pattern as `九霄风雷`.
+- Set an explicit `iconPath` on that ability and passed ability icon overrides through preload and BattleArena's icon resolver so the button keeps the `砂石伪装` icon.
+- Taught `REMOVE_SELF_BUFFS` to route disguise removal through `removeDisguiseBuffs(...)` when it is removing buff `980001`, preserving target-selection cleanup and normal `BUFF_EXPIRED` emission.
+
+**Lessons**:
+- Temporary replacement bars are already first-class in this repo via `SPECIAL_ABILITY_BAR`; reusing that is safer than a HUD-only exception.
+- If a cancel action removes a special-state buff with side effects, do not rely on a generic raw buff filter; call the owning removal helper instead.
+- Icon reuse for special-bar actions is cleaner through explicit ability `iconPath` support than by falsifying the ability name.
+
+## 伪装 facing preservation and GLB rotation sync (2026-05-09)
+
+**Problem set**:
+1. While `伪装`, the local player should still preserve their current facing direction instead of visually losing it.
+2. Selecting yourself while disguised should still show the facing arc.
+3. The disguise GLB needed to rotate from the live facing path, not just the initial render-time yaw.
+
+**Fix**:
+- Kept the facing arc visible for selected disguised characters in `Character.tsx`, which covers self-selection while disguised.
+- Added a dedicated disguise model ref and updated its rotation inside the same per-frame facing block that already drives the normal character body.
+- Passed that live ref into `DisguiseCartModel`, so both the fallback mesh and the loaded GLB stay aligned with current facing instead of freezing at the initial yaw.
+
+**Lessons**:
+- If a disguised mesh replaces the main body, it still needs to share the same live facing update path; a render-time prop alone is not enough for local continuously updated facing.
+- Self-selection affordances like facing arcs should key off selection state, not whether the body is currently replaced by a disguise model.
+
+## 伪装 leash area on channel completion (2026-05-09)
+
+**Problem set**:
+1. `伪装` needed a fixed 2-unit area anchored at the channel-finish position.
+2. If the disguised player is displaced out of that area for any reason after the channel completes, the disguise buff should be removed immediately.
+
+**Fix**:
+- Added runtime leash metadata to the applied `伪装` buff at the moment the consumable channel completes, using the player's channel-finish position as the anchor center.
+- Added a `GameLoop` check that compares the player's current planar position against that anchored 2-unit radius and calls the shared `removeDisguiseBuffs(...)` helper when the player leaves it.
+
+**Lessons**:
+- Area-based post-channel rules belong on the applied runtime buff, not on the consumable definition alone, because the rule needs the exact resolved finish position.
+- If a movement/displacement rule should remove disguise, reuse `removeDisguiseBuffs(...)` so target-selection cleanup and `BUFF_EXPIRED` events stay correct.
+
+## 月影沙 grounded/control correction and disguise-stealth overlap correction (2026-05-09)
+
+**Problem set**:
+1. `月影沙` was still usable while `ROOT` was active because the consumable control gate did not treat root as blocking control.
+2. `月影沙` was not manually cancelable from the status bar.
+3. `月影沙` only needed to be blocked while airborne, but the first pass incorrectly blocked ground movement too.
+4. The earlier disguise-versus-stealth mutual-exclusion rule was wrong. The actual rule is: if a player already has `伪装` and then gains stealth, keep the stealth, shorten `伪装` to a 1-second overlap, and do not let disguise visuals override enemy stealth visibility during that overlap.
+
+**Fix**:
+- Added `ROOT` to the consumable control-block list so `月影沙` respects the "all control except slow" rule even when the control source is `伪装`.
+- Marked `月影沙(980002)` as runtime manual-cancelable and exposed that flag through preload metadata so the existing right-click cancel flow works without a new UI path.
+- Relaxed the `月影沙` cast-position gate from standing to grounded-only, so moving on the ground is allowed while airborne use is still blocked.
+- Replaced the bad mutual-exclusion rule with a shared overlap rule in `buffRuntime.ts`: incoming non-disguise stealth now shortens active `伪装` buffs to a 1-second overlap instead of deleting stealth.
+- Updated natural disguise expiry in `GameLoop.ts` to clear enemy target selections, so delayed disguise expiry behaves like normal disguise removal.
+- Updated enemy visibility helpers in `ArenaScene.tsx` and `BattleArena.tsx` so stealth hides disguised opponents too; enemies no longer keep seeing the `伪装` cart GLB while the player is actually stealthed.
+
+**Lessons**:
+- Manual cancel needs both backend permission and preload metadata. Updating only one side makes the buff either uncancelable or invisible to the UI affordance.
+- For consumables with "not in air" requirements, use grounded validation only; reusing standing semantics will incorrectly block ordinary ground movement.
+- When concealment states overlap, enemy visibility should follow the stronger hidden state. A disguise visual must not override an actual stealth hide.
+- If a fix relies on natural buff expiry instead of explicit removal, audit the natural-expiry path for side effects like target-selection cleanup.
+
+## Forward-channel stealth timing correction (2026-05-09)
+
+**Problem set**:
+1. Positive-channel start was still being treated like enemy ability contact, so some forward channels could enter `战斗中` before they actually finished.
+2. Forward-channel completion was using a blanket raw stealth strip, which incorrectly broke stealth for non-hostile completions like `砂石伪装` and did not emit `BUFF_EXPIRED` consistently.
+3. `月影沙` needed to survive forward-channel startup but still break when a hostile forward-channel attack actually resolved.
+
+**Fix**:
+- Marked forward-channel `PLAY_ABILITY` start events with `channelPhase: "start"` and taught combat-status sync to ignore those start events for enemy-contact entry.
+- Emitted the real forward-channel `PLAY_ABILITY` event on hostile completion with `channelPhase: "complete"`, so combat entry happens when the attack takes effect instead of when the bar starts.
+- Replaced the old blanket completion stealth filter with a hostile-resolution helper in `GameLoop.ts`; it skips consumable/self forward channels like `砂石伪装`, breaks `月影沙` and the existing stealth families on hostile completion, and emits normal `BUFF_EXPIRED` events.
+- Stopped consumable startup from breaking stealth when the consumable itself is a forward channel, so starting `砂石伪装` no longer strips stealth on use.
+
+**Lessons**:
+- For channel interactions, split the lifecycle into `start` and `complete`; stealth and combat entry care about different phases.
+- A forward channel is not automatically an attack. Consumables like `砂石伪装` still use the standard active-channel system, but their completion should not inherit hostile stealth-break rules just because the bar fills forward.
+- Raw array filtering for stealth removal is brittle; use a helper that also emits `BUFF_EXPIRED` so runtime/UI state stays consistent.
+
+## Disguise duration cap, status hover time formatting, and 月影沙 consumable (2026-05-09)
+
+**Problem set**:
+1. All `伪装` states needed a hard maximum duration of 4 minutes instead of relying on per-source durations.
+2. The status-bar hover hint needed remaining time in `分 / 秒` instead of raw seconds.
+3. `月影沙` needed to become a real consumable: 30s cooldown, usable in combat, blocked by hard control except slow, grants a 7s stealth/speed/no-jump buff, breaks on normal casts, and breaks instantly when hit.
+
+**Fix**:
+- Clamped disguise duration in the shared disguise definition and again in the centralized `addBuff()` runtime path so every disguise source obeys the same 4-minute ceiling.
+- Replaced the status-bar hover raw-seconds text with a shared `分 / 秒` formatter so long buff durations stay readable.
+- Implemented `月影沙` as a shared runtime buff definition with `STEALTH`, `SPEED_BOOST(30%)`, and `NO_JUMP`, wired the consumable to apply it via `addBuff()`, and exposed the buff through preload metadata.
+- Added centralized cast-break handling in `breakOnPlay.ts` and centralized incoming-hit handling in `onDamageHooks.ts`; the hit path now treats shield-absorbed damage as a real hit so `月影沙` still breaks even when HP damage is 0.
+
+**Lessons**:
+- For a rule that applies to a whole buff family, clamp it centrally instead of trusting each source definition to stay aligned.
+- `NO_JUMP` already exists end-to-end in this codebase, so jump suppression should reuse that effect rather than inventing another movement lock.
+- If a stealth-like effect should break "on hit", wire the shared damage hook with both `hpDamage` and `shieldAbsorbed`; a post-HP-only hook will silently miss shield-only hits.
+- When a stealth buff should survive positive channel flow, keep it out of the forward-channel completion strip list and only control the start-of-cast break behavior in `breakOnPlay.ts`.
+
+## 御骑 root lock, disguise strip, and highlighted minute cooldown labels (2026-05-09)
+
+**Problem set**:
+1. Minute-style HUD cooldown labels like `2m` needed to stand out more than second-scale labels.
+2. `御骑` should not be castable while rooted.
+3. Any new `御骑` buff application should immediately remove `伪装`, including other abilities that grant the same mounted buff.
+
+**Fix**:
+- Added a minute-only BattleArena cooldown-label modifier so `Xm` overlays render yellow and 20% larger without changing second-based cooldown labels.
+- Added `cannotCastWhileRooted: true` to the `yuqi` ability definition so both backend validation and the existing frontend readiness gate block it while rooted.
+- Hooked disguise stripping into the centralized `addBuff()` path when buff `2741` is applied, so any source of `御骑` clears `伪装` instead of duplicating the rule per ability handler.
+
+**Lessons**:
+- If only one formatted cooldown variant needs visual emphasis, key the style off the rendered label type rather than broadening the base cooldown-text class.
+- When multiple abilities share one mounted-state buff, attach the side effect to the shared buff id in `addBuff()` so future grant paths inherit the same rule automatically.
+
+## Root-locked 扶摇直上 and minute-style HUD cooldown text (2026-05-09)
+
+**Problem set**:
+1. `扶摇直上` could still be cast while rooted.
+2. HUD cooldown text above 59 seconds still rendered as raw seconds or `M:SS` instead of compact minute labels like `1m` and `2m`.
+
+**Fix**:
+- Added `cannotCastWhileRooted: true` to the `fuyao_zhishang` ability definition, which automatically feeds both backend validation and the existing BattleArena client readiness gate.
+- Added a shared `formatHudCooldownText(...)` helper in `BattleArena.tsx` and routed both ability-icon cooldown text and consumable cooldown text through it.
+- Minute-scale HUD cooldowns now render as ceil-style `Xm` labels once they exceed 59 seconds, so `2m` covers `1:01` through `2:00`, `3m` covers `2:01` through `3:00`, and so on.
+
+**Lessons**:
+- If the client already mirrors a gameplay lockout flag, first verify the owning ability metadata before changing validation logic or input handling.
+- When the HUD shows the same concept in multiple places, centralize the formatter; otherwise one surface can be updated while another keeps the old display style.
+- For MMO-style minute cooldown text, the player expectation is usually bucketed upward (`1:01` -> `2m`) rather than floored (`1m`), so confirm the rounding rule before wiring the formatter.
+
+## Bandage channel should not break disguise (2026-05-09)
+
+**Problem set**:
+1. Starting the `绷带` consumable channel while disguised immediately removed `伪装`.
+2. The bug came from the shared consumable stealth-break hook, not from channel completion or combat-status cleanup.
+
+**Fix**:
+- Added a per-consumable `breaksDisguise` flag in `consumableService.ts`.
+- Set `绷带` to `breaksDisguise: false` and taught `breakStealthForConsumable(...)` to preserve buff `980001` only for consumables that explicitly opt out.
+- Kept the existing stealth-break behavior for other concealment buffs and other consumables.
+
+**Lessons**:
+- If a consumable should preserve a special concealment state, do not hardcode another one-off outside the shared break hook; pass the consumable definition into the hook and let metadata decide.
+- `伪装` is close to stealth in targeting rules, but not every stealth-breaking action should automatically remove it.
+
+## Ability charge frame fit and status stack badge alignment (2026-05-09)
+
+**Problem set**:
+1. The red charge border on hotbar abilities sat slightly too far inside the icon frame instead of matching the inner edge of the ability border.
+2. Status-bar stack counts were anchored in the top-right corner and were too small to read comfortably.
+3. This request was a HUD-only polish change, so validation needed to avoid live Playwright work and rely on build coverage.
+
+**Fix**:
+- Tightened the BattleArena charge-frame SVG square from the old `5..95` inset path to a `4..96` path so the red charge border tracks the icon edge more closely.
+- Moved status-bar stack badges to the bottom-right corner and increased stack-count font sizes by 50% across normal, compact, and player-scaled variants.
+- After the first pass was still visually too subtle in-game, tightened the stack badge's line box and added an explicit bottom-right glyph offset so the number itself, not just its span box, sits in the corner.
+- Updated the HUD regression spec to encode the new stack-badge placement/font sizes and the new charge-frame path.
+
+**Lessons**:
+- When a HUD border overlay looks misaligned, verify whether the issue is the overlay container or the drawn path geometry; here the container was already correct and the SVG path inset was the real cause.
+- For status icons, stack counts read better when anchored bottom-right because they avoid colliding with short buff names and match player expectation from MMO buff bars.
+- If a badge is positioned with plain text only, changing `bottom/right` on the span may still look unchanged because the glyph sits high inside its own line box; tighten the line-height or offset the glyph explicitly.
+
 ## iPad in-game load failure from missing ResizeObserver support (2026-05-09)
 
 **Problem set**:

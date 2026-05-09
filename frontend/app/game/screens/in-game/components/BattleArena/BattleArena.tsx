@@ -14,7 +14,7 @@ import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles } f
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
 import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z } from './scene/ExportedMapScene';
-import { getAbilityIconPath } from '@/app/lib/iconPaths';
+import { encodeIconPublicPath, getAbilityIconPath } from '@/app/lib/iconPaths';
 import * as THREE from 'three';
 import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
 
@@ -50,6 +50,11 @@ type GcdVisibilitySettings = {
   base: boolean;
   qinggong: boolean;
   houyao: boolean;
+};
+
+type InGameWarningEvent = {
+  id: number;
+  text: string;
 };
 
 type UiPosition = { left: number; top: number };
@@ -151,6 +156,10 @@ const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
 const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
+const IN_GAME_WARNING_SCALE_STORAGE_KEY = 'zhenchuan-ingame-warning-scale-v1';
+const IN_GAME_WARNING_UI_KEY = 'in-game-warning';
+const IN_GAME_WARNING_DURATION_MS = 1500;
+const IN_GAME_WARNING_PREVIEW_TEXT = '无法施展该招式';
 const LEGACY_PLAYER_STATUS_UI_KEY = 'player-status-bar';
 const PLAYER_BUFF_STATUS_UI_KEY = 'player-buff-status-bar';
 const PLAYER_DEBUFF_STATUS_UI_KEY = 'player-debuff-status-bar';
@@ -181,6 +190,7 @@ const CATCAKE_DEFAULT_UI_POSITIONS: Record<string, UiPosition> = {
   [TARGET_TARGET_ICON_BAR_UI_KEY]: { left: 832, top: 42 },
   [HEIGHT_COUNTER_UI_KEY]: { left: 540, top: 816 },
   [DISTANCE_INDICATOR_UI_KEY]: { left: 1147, top: 383 },
+  [IN_GAME_WARNING_UI_KEY]: { left: 960, top: 151 },
   [ITEM_BAR_UI_KEY]: { left: 647, top: 751 },
   [HEART_STATS_UI_KEY]: { left: 194, top: 466 },
 };
@@ -191,18 +201,18 @@ const CONSUMABLE_BAR_MIN_SLOTS = 12;
 const CONSUMABLE_BAR_MAX_SLOTS = 16;
 const CONSUMABLE_BAR_DEFAULT_SLOTS = 12;
 const CONSUMABLE_ITEMS = [
-  { id: 'beng_dai', name: '绷带' },
-  { id: 'jin_chuang_yao', name: '金疮药' },
-  { id: 'yue_ying_sha', name: '月影沙' },
-  { id: 'sha_shi_wei_zhuang', name: '砂石伪装' },
-  { id: 'guan_mu_wei_zhuang', name: '灌木伪装' },
-  { id: 'wa_guan_wei_zhuang', name: '瓦罐伪装' },
-  { id: 'sha_xing_xie', name: '沙行蝎' },
-  { id: 'ma_cao', name: '马草' },
-  { id: 'yi_jie_wu_qi_he', name: '一阶武器盒' },
-  { id: 'er_jie_wu_qi_he', name: '二阶武器盒' },
-  { id: 'san_jie_wu_qi_he', name: '三阶武器盒' },
-  { id: 'tian_jie_wu_qi_he', name: '天阶武器盒' },
+  { id: 'beng_dai', name: '绷带', implemented: true, startingCount: 12 },
+  { id: 'jin_chuang_yao', name: '金疮药', implemented: true, startingCount: 8 },
+  { id: 'yue_ying_sha', name: '月影沙', implemented: true, startingCount: 4 },
+  { id: 'sha_shi_wei_zhuang', name: '砂石伪装', implemented: true, startingCount: 4 },
+  { id: 'guan_mu_wei_zhuang', name: '灌木伪装', implemented: false, startingCount: 0 },
+  { id: 'wa_guan_wei_zhuang', name: '瓦罐伪装', implemented: false, startingCount: 0 },
+  { id: 'sha_xing_xie', name: '沙行蝎', implemented: false, startingCount: 0 },
+  { id: 'ma_cao', name: '马草', implemented: false, startingCount: 0 },
+  { id: 'yi_jie_wu_qi_he', name: '一阶武器盒', implemented: false, startingCount: 0 },
+  { id: 'er_jie_wu_qi_he', name: '二阶武器盒', implemented: false, startingCount: 0 },
+  { id: 'san_jie_wu_qi_he', name: '三阶武器盒', implemented: false, startingCount: 0 },
+  { id: 'tian_jie_wu_qi_he', name: '天阶武器盒', implemented: false, startingCount: 0 },
 ] as const;
 const STATUS_BAR_VERTICAL_OFFSET = 58;
 const PLAYER_CHANNEL_BAR_FLOAT_WIDTH = 290;
@@ -344,6 +354,12 @@ function normalizeAbilityPanelScale(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return 1;
   return Math.round(Math.max(0.5, Math.min(2, numeric)) * 100) / 100;
+}
+
+function normalizeInGameWarningScale(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.round(Math.max(0.1, Math.min(2, numeric)) * 100) / 100;
 }
 
 function getAbilityPanelCssScale(value: number): number {
@@ -1134,7 +1150,6 @@ function hasMianLaClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
-  if (hasDisguiseClient(buffs)) return false;
   return (hasStealthClient(buffs) && !hasSanliuXiaClient(buffs)) || hasHongMengTianJinClient(buffs);
 }
 
@@ -1278,6 +1293,7 @@ interface AbilityInfo {
   id: string;        // instanceId (or abilityId fallback for common)
   abilityId: string;    // always the plain ability id (e.g. 'fuyao_zhishang')
   name: string;
+  iconPath?: string;
   description?: string;
   channel?: RuntimeAbilityChannel;
   range?: number;
@@ -1432,12 +1448,23 @@ function getConsumableCooldownRemainingMs(player: any, consumableId: ConsumableI
   return Math.max(0, expiresAt - nowMs);
 }
 
+function getConsumableRemainingCount(player: any, consumable: ConsumableItem): number {
+  const fallback = Number(consumable.startingCount ?? 0);
+  const remaining = Number(player?.consumableCounts?.[consumable.id] ?? fallback);
+  if (!Number.isFinite(remaining)) return Math.max(0, fallback);
+  return Math.max(0, Math.floor(remaining));
+}
+
+function formatHudCooldownText(seconds: number, options?: { roundUpSeconds?: boolean }): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '';
+  if (seconds > 59) return `${Math.max(1, Math.ceil(seconds / 60))}m`;
+
+  const roundedSeconds = options?.roundUpSeconds ? Math.ceil(seconds) : Math.floor(seconds);
+  return `${Math.max(0, roundedSeconds)}`;
+}
+
 function formatConsumableCooldown(ms: number): string {
-  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  if (totalSeconds <= 0) return '';
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return minutes > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : `${seconds}`;
+  return formatHudCooldownText(ms / 1000, { roundUpSeconds: true });
 }
 
 function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
@@ -1802,8 +1829,8 @@ function getDummySpawnMeta(preset: DummySpawnPreset) {
   return { side: 'ally' as const, label: '友方木桩', successText: '已生成友方木桩', maxHp: 1_260_000 };
 }
 
-function getArenaAbilityIconPath(name: string | undefined | null) {
-  return getAbilityIconPath(name) ?? '/icons/fallback.png';
+function getArenaAbilityIconPath(name: string | undefined | null, iconPath?: string | null) {
+  return encodeIconPublicPath(iconPath) ?? getAbilityIconPath(name) ?? '/icons/fallback.png';
 }
 
 function getConsumableIconPath(name: string | undefined | null) {
@@ -1865,7 +1892,7 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; consumableCooldowns?: Record<string, { expiresAt: number }>; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
+  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; consumableCooldowns?: Record<string, { expiresAt: number }>; consumableCounts?: Record<string, number>; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
   opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }> };
   /** All other players (opponents) — supports 1v1 and N-player modes */
   opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }> }[];
@@ -1881,6 +1908,7 @@ interface BattleArenaProps {
   onUseConsumable?: (consumableId: ConsumableItemId) => Promise<void> | void;
   onTargetSelection?: (selection: TargetSelection | null) => Promise<void> | void;
   onCancelBuff?: (buffId: number, options?: { entityTargetId?: string }) => Promise<void>;
+  externalGameWarning?: InGameWarningEvent | null;
   onLeaveGame?: () => Promise<void> | void;
   onMovementRecover?: () => void;
   distance: number;
@@ -1914,6 +1942,7 @@ export default function BattleArena({
   onUseConsumable,
   onTargetSelection,
   onCancelBuff,
+  externalGameWarning = null,
   onLeaveGame,
   onMovementRecover,
   distance,
@@ -2144,6 +2173,22 @@ export default function BattleArena({
       localStorage.setItem(ABILITY_PANEL_SCALE_STORAGE_KEY, abilityPanelScale.toFixed(2));
     } catch {}
   }, [abilityPanelScale]);
+  const [inGameWarningScale, setInGameWarningScale] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return 1;
+      return normalizeInGameWarningScale(localStorage.getItem(IN_GAME_WARNING_SCALE_STORAGE_KEY));
+    } catch {
+      return 1;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(IN_GAME_WARNING_SCALE_STORAGE_KEY, inGameWarningScale.toFixed(2));
+    } catch {}
+  }, [inGameWarningScale]);
+  const [activeInGameWarning, setActiveInGameWarning] = useState<InGameWarningEvent | null>(null);
+  const inGameWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inGameWarningSeqRef = useRef(0);
 
   useEffect(() => {
     const id = window.setInterval(() => setSystemTime(new Date()), 1000);
@@ -2323,6 +2368,9 @@ export default function BattleArena({
     if (sceneRecoveryTimerRef.current !== null) {
       window.clearTimeout(sceneRecoveryTimerRef.current);
     }
+    if (inGameWarningTimerRef.current !== null) {
+      window.clearTimeout(inGameWarningTimerRef.current);
+    }
     mainCanvasCleanupRef.current?.();
     mainCanvasCleanupRef.current = null;
   }, []);
@@ -2403,6 +2451,24 @@ export default function BattleArena({
     if (losBlockerTimerRef.current) clearTimeout(losBlockerTimerRef.current);
     losBlockerTimerRef.current = setTimeout(() => setLosBlocker(null), 3000);
   }, []);
+  const showInGameWarning = useCallback((text: string) => {
+    const nextText = text.trim();
+    if (!nextText) return;
+    const nextId = inGameWarningSeqRef.current + 1;
+    inGameWarningSeqRef.current = nextId;
+    setActiveInGameWarning({ id: nextId, text: nextText });
+    if (inGameWarningTimerRef.current !== null) {
+      window.clearTimeout(inGameWarningTimerRef.current);
+    }
+    inGameWarningTimerRef.current = window.setTimeout(() => {
+      setActiveInGameWarning((current) => (current?.id === nextId ? null : current));
+      inGameWarningTimerRef.current = null;
+    }, IN_GAME_WARNING_DURATION_MS);
+  }, []);
+  useEffect(() => {
+    if (!externalGameWarning?.text) return;
+    showInGameWarning(externalGameWarning.text);
+  }, [externalGameWarning?.id, externalGameWarning?.text, showInGameWarning]);
   const clearCameraDebugEntries = useCallback(() => {
     cameraDebugIdRef.current = 0;
     setCameraDebugEntries(prev => (prev.length === 0 ? prev : []));
@@ -2978,7 +3044,7 @@ export default function BattleArena({
     const ability = abilitiesRef.current.find(a => a.id === id);
     const abilityKey = ability?.abilityId ?? ability?.id;
     if (ability?.blockedByAntiStealth) {
-      toastError('反隐期间无法施展隐身招式');
+      showInGameWarning('反隐期间无法施展隐身招式');
       return;
     }
     // 孤风飒踏 and 撼地: enter pending ground-cast mode (shows hover circle, click to confirm)
@@ -2994,7 +3060,7 @@ export default function BattleArena({
       const targetZ = hoverTarget.z ?? 0;
       if (myPos && isClientLineBlocked(myPos, hoverTarget, myZ, targetZ)) {
         showLOSBlocker('视线被遮挡');
-        toastError('视线被遮挡');
+        showInGameWarning('视线被遮挡');
         return;
       }
       lastFengLiuYunSanCastAtRef.current = performance.now();
@@ -3036,7 +3102,7 @@ export default function BattleArena({
 
     // Abilities targeting the opponent require a target (player or entity) to be selected first
     if (ability?.target === 'OPPONENT' && selectedSelfNow && !isFriendlyTargetAbility && !ability?.canTargetSelf) {
-      toastError('该技能不能以自己为目标');
+      showInGameWarning('该技能不能以自己为目标');
       return;
     }
     if (ability?.target === 'OPPONENT' && !selectedTargetIdNow && !selectedEntityIdNow && !selectedSelfNow) {
@@ -3045,11 +3111,11 @@ export default function BattleArena({
         setGroundCastPreview(null);
         return;
       }
-      toastError('请先选择目标');
+      showInGameWarning('请先选择目标');
       return;
     }
     if (ability?.target === 'OPPONENT' && isFriendlyTargetAbility && selectedTargetIdNow) {
-      toastError('请先选择友方目标');
+      showInGameWarning('请先选择友方目标');
       return;
     }
     if (
@@ -3058,35 +3124,35 @@ export default function BattleArena({
       ((isFriendlyTargetAbility && selectedEntity.ownerUserId !== me.userId) ||
         (!isFriendlyTargetAbility && selectedEntity.ownerUserId === me.userId))
     ) {
-      toastError(isFriendlyTargetAbility ? '请先选择友方目标' : '请先选择敌方目标');
+      showInGameWarning(isFriendlyTargetAbility ? '请先选择友方目标' : '请先选择敌方目标');
       return;
     }
     if (ability?.target === 'OPPONENT' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
-      toastError('目标不可选中');
+      showInGameWarning('目标不可选中');
       return;
     }
     if (abilityKey === 'hong_meng_tian_jin' && hasShuSeClient((selectedSelfTarget ?? selectedTarget)?.buffs)) {
-      toastError('目标已受曙色影响');
+      showInGameWarning('目标已受曙色影响');
       return;
     }
     if (abilityKey === 'dou_zhuan_xing_yi' && selectedEntityIdNow) {
-      toastError('该技能只能对敌方玩家施放');
+      showInGameWarning('该技能只能对敌方玩家施放');
       return;
     }
     if (abilityKey === 'qin_yin_gong_ming' && selectedEntityIdNow) {
-      toastError('该技能只能对敌方玩家施放');
+      showInGameWarning('该技能只能对敌方玩家施放');
       return;
     }
     if (abilityKey === 'dou_zhuan_xing_yi' && selectedTarget && hasMianLaClient(selectedTarget.buffs)) {
-      toastError('目标处于免拉状态');
+      showInGameWarning('目标处于免拉状态');
       return;
     }
     if (abilityKey === 'you_feng_piao_zong' && !selectedTargetIdNow) {
-      toastError('请先选择敌方目标');
+      showInGameWarning('请先选择敌方目标');
       return;
     }
     if (abilityKey === 'you_feng_piao_zong' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
-      toastError('目标不可选中');
+      showInGameWarning('目标不可选中');
       return;
     }
     if (ability?.target === 'OPPONENT' && !targetPos) {
@@ -3095,7 +3161,7 @@ export default function BattleArena({
         setGroundCastPreview(null);
         return;
       }
-      toastError('目标不可见或已失去目标');
+      showInGameWarning('目标不可见或已失去目标');
       return;
     }
 
@@ -3106,32 +3172,32 @@ export default function BattleArena({
       Math.abs(localVzRef.current) > 0.01;
     const mountedYuqiToggle = hasYuqiStateClient(me?.buffs) && abilityKey === 'yuqi';
     if (ability?.requiresGrounded && airborneLockedLocal && !mountedYuqiToggle) {
-      toastError('该技能需要落地后施放');
+      showInGameWarning('该技能需要落地后施放');
       return;
     }
     if (requiresStandingAtCastClient(ability) && !mountedYuqiToggle) {
       if (isStandingCastBlocked(keysRef.current)) {
-        toastError('该技能需要站立后施放');
+        showInGameWarning('该技能需要站立后施放');
         return;
       }
       localVelocityRef.current = { x: 0, y: 0 };
     }
     if (ability?.cannotCastWhileRooted && buffsHaveAnyEffect(me?.buffs, ['ROOT'])) {
-      toastError('你被锁足，无法施展该招式');
+      showInGameWarning('你被锁足，无法施展该招式');
       return;
     }
     if (abilityKey === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
-      toastError('凌然天风特殊跳跃中无法施展任驰骋');
+      showInGameWarning('凌然天风特殊跳跃中无法施展任驰骋');
       return;
     }
     if (typeof ability?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ability.minSelfHpExclusive) {
-      toastError(`当前气血必须大于${ability.minSelfHpExclusive}才能施放`);
+      showInGameWarning(`当前气血必须大于${ability.minSelfHpExclusive}才能施放`);
       return;
     }
     if (typeof ability?.minSelfHpPercentExclusive === 'number') {
       const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ability.minSelfHpPercentExclusive / 100);
       if ((me?.hp ?? 0) <= requiredHp) {
-        toastError(`当前气血必须大于${ability.minSelfHpPercentExclusive}%才能施放`);
+        showInGameWarning(`当前气血必须大于${ability.minSelfHpPercentExclusive}%才能施放`);
         return;
       }
     }
@@ -3145,7 +3211,7 @@ export default function BattleArena({
         const dy = targetPos.y - myPos.y;
         const dot = myFacing.x * dx + myFacing.y * dy;
         if (dot < 0) {
-          toastError('目标不在面朝方向内');
+          showInGameWarning('目标不在面朝方向内');
           return;
         }
       }
@@ -3159,7 +3225,7 @@ export default function BattleArena({
         const losBlocked = isClientLineBlocked(myPos, targetPos, myZ, tgtZ, selectedEntityIdNow ?? undefined);
         if (losBlocked) {
           showLOSBlocker('视线被遮挡');
-          toastError('视线被遮挡');
+          showInGameWarning('视线被遮挡');
           return;
         }
       }
@@ -3197,7 +3263,7 @@ export default function BattleArena({
       const targetZ = worldZ ?? 0;
       if (myPos && isClientLineBlocked(myPos, { x, y }, myZ, targetZ)) {
         showLOSBlocker('视线被遮挡');
-        toastError('视线被遮挡');
+        showInGameWarning('视线被遮挡');
         return;
       }
     }
@@ -3819,7 +3885,7 @@ export default function BattleArena({
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
       if (evt.type === 'COMBAT_STATUS' && evt.targetUserId === myId) {
         if ((evt as any).combatStatus === 'enter' || (evt as any).inCombat === true) {
-          toastError('进入战斗');
+          showInGameWarning('进入战斗');
         } else {
           toastSuccess('离开战斗');
         }
@@ -3887,11 +3953,11 @@ export default function BattleArena({
         // Heal — fixed position (x=60%, y=60%)
         addFloat(evt.value, 'heal', { label: evt.abilityName, isCrit: (evt as any).isCrit === true });
       } else if (evt.type === 'DODGE' && evt.targetUserId === myId) {
-        toastError(`警告：${evt.abilityName ?? '技能'}被闪避`);
+        showInGameWarning(`警告：${evt.abilityName ?? '技能'}被闪避`);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events]);
+  }, [events, me?.userId, showInGameWarning, visibleOpponentsList]);
 
   // Warn when a targeted channel is interrupted because target became untargetable (e.g. entered stealth).
   useEffect(() => {
@@ -3906,13 +3972,13 @@ export default function BattleArena({
         const target = opponentsList.find((o) => o.userId === prev.targetUserId);
         const targetLost = !target || blocksTargetingClient(target.buffs);
         if (targetLost) {
-          toastError('警告：目标丢失，运功中断');
+          showInGameWarning('警告：目标丢失，运功中断');
         }
       }
     }
 
     prevActiveChannelRef.current = curr ? { ...curr } : null;
-  }, [me?.activeChannel, me?.userId, opponentsList]);
+  }, [me?.activeChannel, me?.userId, opponentsList, showInGameWarning]);
 
   /* --- Track opponent hand cooldown resets (kept for other UI purposes) --- */
   const prevOppHandRef      = useRef<any[]>([]);
@@ -4494,6 +4560,7 @@ export default function BattleArena({
           id:          instanceId,
           abilityId:      ability.id,
           name:        ability.name,
+          iconPath:    ability.iconPath,
           description: ability.description ?? '',
           channel:     getRuntimeAbilityChannel(ability),
           range:       effectiveRange,
@@ -4546,6 +4613,7 @@ export default function BattleArena({
           id: ability.id,
           abilityId: ability.id,
           name: ability.name,
+          iconPath: ability.iconPath,
           description: ability.description ?? '',
           channel: getRuntimeAbilityChannel(ability),
           range: effectiveRange,
@@ -4815,6 +4883,14 @@ export default function BattleArena({
     };
   }, []);
 
+  const getDefaultInGameWarningPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return {
+      left: Math.max(12, Math.round(w / 2)),
+      top: Math.max(12, Math.round(h * 0.16)),
+    };
+  }, []);
+
   const getDefaultItemBarPos = useCallback(() => {
     const { w } = canvasSizeRef.current;
     return getUiPositionFromRef(itemBarRef, {
@@ -4967,6 +5043,7 @@ export default function BattleArena({
       const targetOwnedAbilityBase = prev[TARGET_OWNED_ABILITY_BAR_UI_KEY] ?? getDefaultTargetOwnedAbilityBarPos();
       const heightCounterBase = prev[HEIGHT_COUNTER_UI_KEY] ?? getDefaultHeightCounterPos();
       const distanceIndicatorBase = prev[DISTANCE_INDICATOR_UI_KEY] ?? getDefaultDistanceIndicatorPos();
+      const inGameWarningBase = prev[IN_GAME_WARNING_UI_KEY] ?? getDefaultInGameWarningPos();
       const itemBarBase = prev[ITEM_BAR_UI_KEY] ?? getDefaultItemBarPos();
       const targetBase = getDefaultTargetStatusPos();
       const next = {
@@ -4985,6 +5062,7 @@ export default function BattleArena({
         [TARGET_OWNED_ABILITY_BAR_UI_KEY]: targetOwnedAbilityBase,
         [HEIGHT_COUNTER_UI_KEY]: heightCounterBase,
         [DISTANCE_INDICATOR_UI_KEY]: distanceIndicatorBase,
+        [IN_GAME_WARNING_UI_KEY]: inGameWarningBase,
         [ITEM_BAR_UI_KEY]: itemBarBase,
         [TARGET_BUFF_STATUS_UI_KEY]: prev[TARGET_BUFF_STATUS_UI_KEY] ?? targetBase,
         [TARGET_DEBUFF_STATUS_UI_KEY]: prev[TARGET_DEBUFF_STATUS_UI_KEY] ?? {
@@ -5000,6 +5078,7 @@ export default function BattleArena({
     getDefaultDistanceIndicatorPos,
     getDefaultHeartStatsPos,
     getDefaultHeightCounterPos,
+    getDefaultInGameWarningPos,
     getDefaultItemBarPos,
     getDefaultPlayerChannelBarPos,
     getDefaultPlayerGcdBarPos,
@@ -5307,7 +5386,7 @@ export default function BattleArena({
           // No alternative front-cone target. If a target is currently selected,
           // keep it; otherwise notify the user.
           if (!currentSelectedId) {
-            toastError('当前没有可选目标');
+            showInGameWarning('当前没有可选目标');
           }
           return;
         }
@@ -7278,6 +7357,10 @@ export default function BattleArena({
   const heightCounterPos = uiPositions[HEIGHT_COUNTER_UI_KEY] ?? heightCounterDefaultPos;
   const distanceIndicatorDefaultPos = getDefaultDistanceIndicatorPos();
   const distanceIndicatorPos = uiPositions[DISTANCE_INDICATOR_UI_KEY] ?? distanceIndicatorDefaultPos;
+  const inGameWarningDefaultPos = getDefaultInGameWarningPos();
+  const inGameWarningPos = uiPositions[IN_GAME_WARNING_UI_KEY] ?? inGameWarningDefaultPos;
+  const inGameWarningText = activeInGameWarning?.text ?? (customUiMode ? IN_GAME_WARNING_PREVIEW_TEXT : null);
+  const showFloatingInGameWarning = !!inGameWarningText;
   const itemBarDefaultPos = getDefaultItemBarPos();
   const itemBarPos = uiPositions[ITEM_BAR_UI_KEY] ?? itemBarDefaultPos;
   const renderStatusPlacement = ({
@@ -7532,6 +7615,36 @@ export default function BattleArena({
     );
   };
 
+  const renderInGameWarning = () => {
+    if (!inGameWarningText) {
+      return null;
+    }
+
+    return (
+      <div
+        data-ui-drag={customUiMode ? 'true' : undefined}
+        className={`${styles.ingameWarningPlacement} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+        style={{
+          left: inGameWarningPos.left,
+          top: inGameWarningPos.top,
+          pointerEvents: customUiMode ? 'auto' : 'none',
+          '--game-warning-scale': inGameWarningScale,
+        } as React.CSSProperties}
+        onMouseDown={customUiMode ? (event) => startUIDrag(IN_GAME_WARNING_UI_KEY, inGameWarningDefaultPos, event, { persist: false }) : undefined}
+      >
+        {customUiMode ? (
+          <div className={`${styles.customUiPlacementLabel} ${styles.ingameWarningPlacementLabel}`}>战斗警告</div>
+        ) : null}
+        <div
+          className={`${styles.ingameWarningText} ${customUiMode && !activeInGameWarning ? styles.ingameWarningPreviewText : ''}`}
+          aria-live="polite"
+        >
+          {inGameWarningText}
+        </div>
+      </div>
+    );
+  };
+
   const renderItemBar = () => {
     const consumableNowMs = systemTime.getTime();
     const visibleConsumableSlots = consumableBarSettings.enabled
@@ -7544,16 +7657,27 @@ export default function BattleArena({
         const consumable = consumableId ? CONSUMABLE_ITEM_BY_ID.get(consumableId) : undefined;
         const cooldownMs = consumable ? getConsumableCooldownRemainingMs(me, consumable.id, consumableNowMs) : 0;
         const cooldownLabel = formatConsumableCooldown(cooldownMs);
+        const remainingCount = consumable ? getConsumableRemainingCount(me, consumable) : 0;
+        const unavailable = !!consumable && consumable.implemented !== true;
+        const depleted = !!consumable && consumable.implemented === true && remainingCount <= 0;
         return (
           <button
             key={`consumable-slot-${index}-${consumable?.id ?? 'empty'}`}
             type="button"
             data-consumable-slot="true"
             data-consumable-slot-index={index}
-            className={`${styles.itemSlot} ${styles.consumableSlot} ${!consumable ? styles.consumableSlotEmpty : ''} ${cooldownMs > 0 ? styles.consumableSlotCooling : ''} ${dragHoverConsumableIndex === index ? styles.consumableSlotDragHover : ''} ${draggingConsumableIndex === index ? styles.consumableSlotDragging : ''}`}
+            className={`${styles.itemSlot} ${styles.consumableSlot} ${!consumable ? styles.consumableSlotEmpty : ''} ${cooldownMs > 0 ? styles.consumableSlotCooling : ''} ${unavailable ? styles.consumableSlotUnavailable : ''} ${depleted ? styles.consumableSlotDepleted : ''} ${dragHoverConsumableIndex === index ? styles.consumableSlotDragHover : ''} ${draggingConsumableIndex === index ? styles.consumableSlotDragging : ''}`}
             aria-label={consumable?.name ?? `空物品格 ${index + 1}`}
-            aria-disabled={!consumable || cooldownMs > 0}
-            title={consumable?.name ?? '空物品格'}
+            aria-disabled={!consumable || cooldownMs > 0 || unavailable || depleted}
+            title={
+              consumable
+                ? unavailable
+                  ? `${consumable.name}（暂未开放）`
+                  : depleted
+                    ? `${consumable.name}（已用完）`
+                    : `${consumable.name}（剩余${remainingCount}）`
+                : '空物品格'
+            }
             draggable={!customUiMode && !!consumable}
             onDragStart={(event) => {
               if (!consumable || customUiMode) return;
@@ -7588,7 +7712,7 @@ export default function BattleArena({
               setDragHoverConsumableIndex(null);
             }}
             onClick={() => {
-              if (!consumable || cooldownMs > 0 || customUiMode) return;
+              if (!consumable || cooldownMs > 0 || unavailable || depleted || customUiMode) return;
               useConsumableRef.current(consumable.id);
             }}
           >
@@ -7596,6 +7720,7 @@ export default function BattleArena({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={getConsumableIconPath(consumable.name)} alt={consumable.name} className={styles.consumableIcon} draggable={false} />
             )}
+            {consumable?.implemented === true && <span className={styles.consumableCount}>{remainingCount}</span>}
             {cooldownMs > 0 && <span className={styles.consumableCooldown}>{cooldownLabel}</span>}
           </button>
         );
@@ -7671,7 +7796,8 @@ export default function BattleArena({
                 </div>
               ) : (() => {
                 const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
-                const cdSeconds = Math.floor(ability.cooldown / 30);
+                const cdLabel = formatHudCooldownText(ability.cooldown / 30);
+                const minuteCooldown = cdLabel.endsWith('m');
                 const hasCharges = (ability.maxCharges ?? 0) > 1;
                 const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
                 const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
@@ -7709,7 +7835,7 @@ export default function BattleArena({
                           showLOSBlocker('视线被遮挡');
                         }
                         if (ability.blockedByAntiStealth) {
-                          toastError('反隐期间无法施展隐身招式');
+                          showInGameWarning('反隐期间无法施展隐身招式');
                         }
                         return;
                       }
@@ -7717,10 +7843,10 @@ export default function BattleArena({
                     }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                    <img src={getArenaAbilityIconPath(ability.name, ability.iconPath)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                     {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                       <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100 - cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100 - cdPct).toFixed(1)}%)` }}>
-                        <span className={styles.cdNum}>{cdSeconds}</span>
+                        <span className={`${styles.cdNum} ${minuteCooldown ? styles.cdNumMinutes : ''}`}>{cdLabel}</span>
                       </div>
                     )}
                     {hasCharges && (
@@ -7728,12 +7854,12 @@ export default function BattleArena({
                         <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
                           <path
                             className={styles.chargeFrameTrack}
-                            d="M 95 95 L 95 5 L 5 5 L 5 95 L 95 95"
+                            d="M 96 96 L 96 4 L 4 4 L 4 96 L 96 96"
                             pathLength={100}
                           />
                           <path
                             className={styles.chargeFrameProgress}
-                            d="M 95 95 L 95 5 L 5 5 L 5 95 L 95 95"
+                            d="M 96 96 L 96 4 L 4 4 L 4 96 L 96 96"
                             pathLength={100}
                             strokeDasharray={`${chargePathLength} 100`}
                           />
@@ -7759,7 +7885,8 @@ export default function BattleArena({
             const COMMON_KEY_HINTS = ['X', 'MD', 'MU', 'A+A', 'A+D', 'A+S', '`', 'T'] as const;
             const keyHint = COMMON_KEY_HINTS[idx] ?? '';
             const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
-            const cdSeconds = Math.floor(ability.cooldown / 30);
+            const cdLabel = formatHudCooldownText(ability.cooldown / 30);
+            const minuteCooldown = cdLabel.endsWith('m');
             const hasCharges = (ability.maxCharges ?? 0) > 1;
             const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
             const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
@@ -7785,7 +7912,7 @@ export default function BattleArena({
                   onClick={() => {
                     if (!ability.isReady || ability.blockedByAntiStealth) {
                       if (ability.blockedByAntiStealth) {
-                        toastError('反隐期间无法施展隐身招式');
+                        showInGameWarning('反隐期间无法施展隐身招式');
                       }
                       return;
                     }
@@ -7793,26 +7920,26 @@ export default function BattleArena({
                   }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
+                  <img src={getArenaAbilityIconPath(ability.name, ability.iconPath)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                   {ability.cooldown > 0 && ability.maxCooldown > 0 && (
                     <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100 - cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100 - cdPct).toFixed(1)}%)` }}>
-                      <span className={styles.cdNum}>{cdSeconds}</span>
+                      <span className={`${styles.cdNum} ${minuteCooldown ? styles.cdNumMinutes : ''}`}>{cdLabel}</span>
                     </div>
                   )}
                   {hasCharges && (
                     <div className={`${styles.chargeFrame} ${isQueTaZhi ? styles.chargeFrameQueTaZhi : ''}`}>
                       <svg className={styles.chargeFrameSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
                           <path
-                          className={styles.chargeFrameTrack}
-                            d="M 95 95 L 95 5 L 5 5 L 5 95 L 95 95"
-                          pathLength={100}
-                        />
+                            className={styles.chargeFrameTrack}
+                            d="M 96 96 L 96 4 L 4 4 L 4 96 L 96 96"
+                            pathLength={100}
+                          />
                           <path
-                          className={styles.chargeFrameProgress}
-                            d="M 95 95 L 95 5 L 5 5 L 5 95 L 95 95"
-                          pathLength={100}
-                          strokeDasharray={`${chargePathLength} 100`}
-                        />
+                            className={styles.chargeFrameProgress}
+                            d="M 96 96 L 96 4 L 4 4 L 4 96 L 96 96"
+                            pathLength={100}
+                            strokeDasharray={`${chargePathLength} 100`}
+                          />
                       </svg>
                       <span className={`${styles.chargeStackBox} ${isQueTaZhi ? styles.chargeStackBoxQueTaZhi : ''}`}>
                         {Math.max(0, chargeCount)}
@@ -7976,6 +8103,8 @@ export default function BattleArena({
         content: renderPlayerGcdBar(customUiMode),
       })}
 
+      {showFloatingInGameWarning && renderInGameWarning()}
+
       <div
         ref={itemBarRef}
         data-ui-drag={customUiMode ? 'true' : undefined}
@@ -8098,7 +8227,7 @@ export default function BattleArena({
                 return;
               }
               if (clicked && blocksTargetingClient(clicked.buffs)) {
-                toastError('目标不可选中');
+                showInGameWarning('目标不可选中');
                 return;
               }
               setPendingGroundCastAbilityId(null);
@@ -8751,6 +8880,22 @@ export default function BattleArena({
                               onChange={(e) => setAbilityPanelScale(normalizeAbilityPanelScale(e.target.value))}
                               className={styles.escRangeInput}
                               aria-label="技能栏大小"
+                            />
+                          </div>
+                          <div className={styles.escSettingControl}>
+                            <div className={styles.escRangeHeader}>
+                              <span>战斗警告大小</span>
+                              <span>{inGameWarningScale.toFixed(2)}</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.1"
+                              max="2"
+                              step="0.01"
+                              value={inGameWarningScale}
+                              onChange={(e) => setInGameWarningScale(normalizeInGameWarningScale(e.target.value))}
+                              className={styles.escRangeInput}
+                              aria-label="战斗警告大小"
                             />
                           </div>
                           <div className={`${styles.escToggleGroup} ${styles.escSettingControl}`}>
@@ -9555,6 +9700,18 @@ export default function BattleArena({
                 opacity: runningCheatAction ? 0.55 : 1,
               }}
             >清空技能</button>
+            <button
+              type="button"
+              disabled={!!runningCheatAction}
+              onClick={() => void runCheatAction('refill-consumables', '/api/game/cheat/refill-consumables', '双方消耗品已补满')}
+              style={{
+                background: 'rgba(140, 95, 220, 0.20)', color: '#e1d1ff',
+                border: '1px solid rgba(182, 140, 255, 0.58)', borderRadius: 4,
+                fontSize: 11, padding: '6px 8px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}
+            >补满物品</button>
           </div>
 
           <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>木桩</div>

@@ -1,6 +1,7 @@
 // backend/game/abilities/abilities.ts
 
 import { Ability } from "../engine/state/types";
+import { SAND_DISGUISE_BUFF_ID } from "../engine/utils/disguise";
 import {
   AbilityEditorOverrideEntry,
   AbilityEditorOverrideMap,
@@ -99,6 +100,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     qinggong: true,
     qinggongGcdImmune: true,
+    cannotCastWhileRooted: true,
     requiresGrounded: true,
     effects: [],
     buffs: [
@@ -162,6 +164,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 0,
     gcd: false,
     requiresStanding: true,
+    cannotCastWhileRooted: true,
     canCastWhileMounted: true,
     channelDurationMs: 3_000,
     channelCancelOnMove: true,
@@ -4941,6 +4944,22 @@ export const BASE_ABILITIES: AbilityRecord = {
     allowWhileDisplaced: true,
     allowWhileSilenced: true,
     effects: [{ type: "REMOVE_SELF_BUFFS", buffIds: [2727, 2728] } as any],
+    buffs: [],
+  },
+
+  jie_chu_wei_zhuang: {
+    id: "jie_chu_wei_zhuang",
+    name: "解除伪装",
+    iconPath: "/icons/砂石伪装.png",
+    description: "伪装期间可用\n结束伪装，恢复原技能栏\n无冷却，不进入公共冷却",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 0,
+    gcd: false,
+    noWeaponRequired: true,
+    specialBarAbility: true,
+    hiddenFromDraft: true,
+    effects: [{ type: "REMOVE_SELF_BUFFS", buffIds: [SAND_DISGUISE_BUFF_ID] } as any],
     buffs: [],
   },
 };

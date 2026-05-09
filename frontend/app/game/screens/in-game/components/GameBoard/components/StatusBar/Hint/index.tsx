@@ -12,6 +12,21 @@ type Props = {
   arenaRect?: DOMRect;
 };
 
+function formatRemainingTime(totalSeconds: number): string {
+  const roundedSeconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(roundedSeconds / 3600);
+  const minutes = Math.floor((roundedSeconds % 3600) / 60);
+  const seconds = roundedSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}时 ${minutes}分 ${seconds}秒`;
+  }
+  if (minutes > 0) {
+    return `${minutes}分 ${seconds}秒`;
+  }
+  return `${seconds}秒`;
+}
+
 export default function StatusHint({
   name,
   description,
@@ -95,7 +110,7 @@ export default function StatusHint({
       </div>
       <div className={styles.desc}>{description || "无"}</div>
       <div className={styles.time}>
-        剩余时间：{remainingSeconds <= 0 ? "马上消亡" : `${remainingSeconds}秒`}
+        剩余时间：{remainingSeconds <= 0 ? "马上消亡" : formatRemainingTime(remainingSeconds)}
       </div>
     </div>
   );

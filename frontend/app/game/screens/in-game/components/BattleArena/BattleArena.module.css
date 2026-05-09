@@ -1899,6 +1899,53 @@
   min-height: 47px;
 }
 
+.ingameWarningPlacement {
+  position: absolute;
+  z-index: 160;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.ingameWarningPlacementLabel {
+  position: static;
+  top: auto;
+  left: auto;
+  transform: none;
+  width: max-content;
+  max-width: none;
+  margin: 0;
+}
+
+.ingameWarningText {
+  background: transparent;
+  color: #ff2a1f;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-size: calc(14.7px * var(--game-warning-scale, 1));
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-align: center;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+  text-shadow:
+    0 calc(1px * var(--game-warning-scale, 1)) 0 rgba(0, 0, 0, 0.96),
+    0 calc(-1px * var(--game-warning-scale, 1)) 0 rgba(0, 0, 0, 0.96),
+    calc(1px * var(--game-warning-scale, 1)) 0 0 rgba(0, 0, 0, 0.96),
+    calc(-1px * var(--game-warning-scale, 1)) 0 0 rgba(0, 0, 0, 0.96),
+    calc(1px * var(--game-warning-scale, 1)) calc(1px * var(--game-warning-scale, 1)) 0 rgba(0, 0, 0, 0.92),
+    calc(-1px * var(--game-warning-scale, 1)) calc(1px * var(--game-warning-scale, 1)) 0 rgba(0, 0, 0, 0.92),
+    calc(1px * var(--game-warning-scale, 1)) calc(-1px * var(--game-warning-scale, 1)) 0 rgba(0, 0, 0, 0.92),
+    calc(-1px * var(--game-warning-scale, 1)) calc(-1px * var(--game-warning-scale, 1)) 0 rgba(0, 0, 0, 0.92);
+}
+
+.ingameWarningPreviewText {
+  opacity: 0.82;
+}
+
 @media (max-width: 900px) {
   .escOverlay {
     padding: 16px;
@@ -2412,6 +2459,41 @@
   opacity: 0.42;
 }
 
+.consumableSlotUnavailable {
+  cursor: default;
+  color: rgba(186, 190, 188, 0.6);
+}
+
+.consumableSlotUnavailable .consumableIcon {
+  opacity: 0.38;
+  filter: grayscale(1) saturate(0.12) brightness(0.72);
+}
+
+.consumableSlotDepleted {
+  cursor: default;
+}
+
+.consumableSlotDepleted .consumableIcon {
+  opacity: 0.52;
+  filter: saturate(0.3) brightness(0.7);
+}
+
+.consumableCount {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  z-index: 9;
+  color: #f8f4dd;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-size: calc(9px * var(--ability-panel-scale, 1));
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  background: transparent;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.86);
+  pointer-events: none;
+}
+
 .consumableCooldown {
   position: absolute;
   inset: 0;
@@ -2642,7 +2724,7 @@
   width: 12px;
   height: 14px;
   background: rgba(0, 0, 0, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  border: none;
   color: #fff;
   font-size: 9.36px;
   font-weight: 800;
@@ -2687,6 +2769,11 @@
   pointer-events: none;
   z-index: 4;
   letter-spacing: -0.5px;
+}
+
+.cdNumMinutes {
+  font-size: 12px;
+  color: #ffe033;
 }
 
 .abilityHintPanel {

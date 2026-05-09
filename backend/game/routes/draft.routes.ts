@@ -9,6 +9,7 @@ import { getUserIdFromCookie } from "./auth";
 import { generateShop, REFRESH_COST } from "../services/economy/economyService";
 import { getIncomePerRound } from "../services/economy/economyService";
 import { initializeBattleState, generatePickups, generateArenaPickups } from "../services/battle/battleService";
+import { createStartingConsumableCounts } from "../services/gameplay/consumableService";
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
 import { GameLoop } from "../engine/loop/GameLoop";
 import { ABILITIES } from "../abilities/abilities";
@@ -1339,6 +1340,76 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
 
     void game.save().catch((err: any) => {
       console.error("[cheat/reset-cooldowns] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/refill-consumables - Reset both players' consumable inventory to the starting stock.
+ * Body: { gameId }
+ */
+router.post("/cheat/refill-consumables", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let liveVersion = game.state.version ?? 0;
+    const diff: Array<{ path: string; value: any }> = [];
+    const gameLoop = GameLoop.get(gameId);
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      loopState.players = loopState.players.map((p: any, idx: number) => {
+        const consumableCounts = createStartingConsumableCounts();
+        diff.push({ path: `/players/${idx}/consumableCounts`, value: consumableCounts });
+        return {
+          ...p,
+          consumableCounts,
+        };
+      });
+      loopState.version = (loopState.version ?? 0) + 1;
+      liveVersion = loopState.version;
+      gameLoop.updateState(loopState);
+    } else {
+      game.state.players = game.state.players.map((p: any, idx: number) => {
+        const consumableCounts = createStartingConsumableCounts();
+        diff.push({ path: `/players/${idx}/consumableCounts`, value: consumableCounts });
+        return {
+          ...p,
+          consumableCounts,
+        };
+      });
+      game.state.version = (game.state.version ?? 0) + 1;
+      liveVersion = game.state.version;
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true });
+
+    game.state.players = game.state.players.map((p: any) => ({
+      ...p,
+      consumableCounts: createStartingConsumableCounts(),
+    }));
+
+    game.markModified("state");
+    game.markModified("state.players");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/refill-consumables] async save failed:", err?.message ?? err);
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

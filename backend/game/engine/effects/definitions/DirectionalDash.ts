@@ -262,7 +262,9 @@ export function handleDirectionalDash(
         if (adjustedDamage > 0) {
           const result = applyDamageToTarget(damageVictim, adjustedDamage);
           shieldAbsorbed = result.shieldAbsorbed;
-          processOnDamageTaken(state, damageVictim as any, result.hpDamage, damageActorUserId);
+          if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+            processOnDamageTaken(state, damageVictim as any, result.hpDamage, damageActorUserId, result.shieldAbsorbed);
+          }
         }
         if (redirectPlayer && redirectAmt > 0) {
           applyRedirectToOpponent(state, redirectPlayer, redirectAmt);

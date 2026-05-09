@@ -136,6 +136,7 @@ export interface PlayerState {
   inCombat?: boolean;
   combatLinks?: Record<string, { lastActionAt: number }>;
   consumableCooldowns?: Record<string, { expiresAt: number }>;
+  consumableCounts?: Record<string, number>;
   position?: { x: number; y: number; z?: number };
   velocity?: { vx: number; vy: number; vz?: number };
   moveSpeed?: number;
@@ -170,6 +171,7 @@ export interface GameEvent {
 
   abilityId?: string;
   abilityName?: string;
+  channelPhase?: "start" | "complete";
 
   value?: number;
   shieldAbsorbed?: number;

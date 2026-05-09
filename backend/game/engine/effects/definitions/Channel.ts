@@ -63,7 +63,9 @@ export function handleChannelEffect(
       if (adjustedDamage > 0) {
         const result = applyDamageToTarget(enemy as any, adjustedDamage);
         shieldAbsorbed = result.shieldAbsorbed;
-        processOnDamageTaken(state, enemy as any, result.hpDamage, source.userId);
+        if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+          processOnDamageTaken(state, enemy as any, result.hpDamage, source.userId, result.shieldAbsorbed);
+        }
       }
       if (redirectPlayer && redirectAmt > 0) {
         applyRedirectToOpponent(state, redirectPlayer, redirectAmt);

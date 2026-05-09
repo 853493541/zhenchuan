@@ -125,6 +125,9 @@ export interface PlayerState {
   /** Consumable cooldowns keyed by consumable id; expiresAt is an absolute Date.now() ms timestamp. */
   consumableCooldowns?: Record<string, { expiresAt: number }>;
 
+  /** Remaining consumable inventory counts keyed by consumable id. */
+  consumableCounts?: Record<string, number>;
+
   /* ================= REAL-TIME POSITION & MOVEMENT ================= */
 
   /** Current position on 2D arena (x, y) */

@@ -30,6 +30,7 @@ export interface GameEvent {
   abilityId?: string;
   abilityName?: string;
   abilityInstanceId?: string;
+  channelPhase?: "start" | "complete";
   hideAbilityName?: boolean;
   suppressCritLabel?: boolean;
   displayZeroDamage?: boolean;

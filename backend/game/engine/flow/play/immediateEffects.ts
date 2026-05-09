@@ -33,6 +33,7 @@ import { applyDashRuntimeBuff, DASH_CC_IMMUNE_BUFF_ID } from "../../effects/defi
 import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../../effects/onDamageHooks";
 import { getDunLiReflectVictim } from "../../effects/dunLiReflect";
 import { getAbilityRangeBonusFromBuffs, getEffectiveAbilityRange } from "../../utils/abilityRange";
+import { removeDisguiseBuffs, SAND_DISGUISE_BUFF_ID } from "../../utils/disguise";
 import {
   CHU_HE_HAN_JIE_WALL_DURATION_MS,
   CHU_HE_HAN_JIE_WALL_HEIGHT_UNITS,
@@ -1043,8 +1044,8 @@ function applyImmediateDamageToEnemyTarget(params: {
       isCrit: damageRoll.isCrit,
       shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
     });
-    if (result.hpDamage > 0) {
-      processOnDamageTaken(state, victim as any, result.hpDamage, source.userId);
+    if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+      processOnDamageTaken(state, victim as any, result.hpDamage, source.userId, result.shieldAbsorbed);
     }
     if (redirectPlayer && redirectAmt > 0) {
       applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
@@ -1073,8 +1074,8 @@ function applyImmediateDamageToEnemyTarget(params: {
     isCrit: damageRoll.isCrit,
     shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
   });
-  if (result.hpDamage > 0) {
-    processOnDamageTaken(state, entity as any, result.hpDamage, source.userId);
+  if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+    processOnDamageTaken(state, entity as any, result.hpDamage, source.userId, result.shieldAbsorbed);
   }
   if (redirectPlayer && redirectAmt > 0) {
     applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
@@ -1933,8 +1934,8 @@ export function applyImmediateEffects(params: {
               value: applyBg,
               shieldAbsorbed: (resultBg.shieldAbsorbed ?? 0) > 0 ? resultBg.shieldAbsorbed : undefined,
             });
-            if (resultBg.hpDamage > 0) {
-              processOnDamageTaken(state, victim as any, resultBg.hpDamage, source.userId);
+            if (resultBg.hpDamage > 0 || resultBg.shieldAbsorbed > 0) {
+              processOnDamageTaken(state, victim as any, resultBg.hpDamage, source.userId, resultBg.shieldAbsorbed);
             }
             if (rtBg && raBg > 0) {
               applyRedirectToOpponent(state, rtBg, raBg);
@@ -2149,6 +2150,12 @@ export function applyImmediateEffects(params: {
       case "REMOVE_SELF_BUFFS": {
         const removeIds = new Set((effect as any).buffIds ?? []);
         if (removeIds.size === 0) break;
+
+        if (removeIds.has(SAND_DISGUISE_BUFF_ID)) {
+          removeIds.delete(SAND_DISGUISE_BUFF_ID);
+          removeDisguiseBuffs(state, source as any, Date.now());
+        }
+
         source.buffs = source.buffs.filter((buff: any) => {
           if (!removeIds.has(buff.buffId)) return true;
           removeLinkedShield(source as any, buff);
@@ -2217,8 +2224,8 @@ export function applyImmediateEffects(params: {
                 value: applySett,
                 shieldAbsorbed: (resultSett.shieldAbsorbed ?? 0) > 0 ? resultSett.shieldAbsorbed : undefined,
               });
-              if (resultSett.hpDamage > 0) {
-                processOnDamageTaken(state, effTarget as any, resultSett.hpDamage, source.userId);
+              if (resultSett.hpDamage > 0 || resultSett.shieldAbsorbed > 0) {
+                processOnDamageTaken(state, effTarget as any, resultSett.hpDamage, source.userId, resultSett.shieldAbsorbed);
               }
               if (rtSett && raSett > 0) {
                 applyRedirectToOpponent(state, rtSett, raSett);
@@ -2339,8 +2346,8 @@ export function applyImmediateEffects(params: {
             value: applyYyz,
             shieldAbsorbed: (resultYyz.shieldAbsorbed ?? 0) > 0 ? resultYyz.shieldAbsorbed : undefined,
           });
-          if (resultYyz.hpDamage > 0) {
-            processOnDamageTaken(state, effTarget as any, resultYyz.hpDamage, source.userId);
+          if (resultYyz.hpDamage > 0 || resultYyz.shieldAbsorbed > 0) {
+            processOnDamageTaken(state, effTarget as any, resultYyz.hpDamage, source.userId, resultYyz.shieldAbsorbed);
           }
           if (rtYyz && raYyz > 0) {
             applyRedirectToOpponent(state, rtYyz, raYyz);
@@ -2396,8 +2403,8 @@ export function applyImmediateEffects(params: {
             value: applyLrz,
             shieldAbsorbed: (resultLrz.shieldAbsorbed ?? 0) > 0 ? resultLrz.shieldAbsorbed : undefined,
           });
-          if (resultLrz.hpDamage > 0) {
-            processOnDamageTaken(state, effTarget as any, resultLrz.hpDamage, source.userId);
+          if (resultLrz.hpDamage > 0 || resultLrz.shieldAbsorbed > 0) {
+            processOnDamageTaken(state, effTarget as any, resultLrz.hpDamage, source.userId, resultLrz.shieldAbsorbed);
           }
           if (rtLrz && raLrz > 0) {
             applyRedirectToOpponent(state, rtLrz, raLrz);
@@ -3581,8 +3588,8 @@ export function applyImmediateEffects(params: {
               value: applyBurst,
               shieldAbsorbed: (resultBurst.shieldAbsorbed ?? 0) > 0 ? resultBurst.shieldAbsorbed : undefined,
             } as any);
-            if (resultBurst.hpDamage > 0) {
-              processOnDamageTaken(state, effTarget as any, resultBurst.hpDamage, source.userId);
+            if (resultBurst.hpDamage > 0 || resultBurst.shieldAbsorbed > 0) {
+              processOnDamageTaken(state, effTarget as any, resultBurst.hpDamage, source.userId, resultBurst.shieldAbsorbed);
             }
             if (rtBurst && raBurst > 0) {
               applyRedirectToOpponent(state, rtBurst, raBurst);
@@ -3619,8 +3626,8 @@ export function applyImmediateEffects(params: {
               value: applyJ1,
               shieldAbsorbed: (resultJ1.shieldAbsorbed ?? 0) > 0 ? resultJ1.shieldAbsorbed : undefined,
             } as any);
-            if (resultJ1.hpDamage > 0) {
-              processOnDamageTaken(state, effTarget as any, resultJ1.hpDamage, source.userId);
+            if (resultJ1.hpDamage > 0 || resultJ1.shieldAbsorbed > 0) {
+              processOnDamageTaken(state, effTarget as any, resultJ1.hpDamage, source.userId, resultJ1.shieldAbsorbed);
             }
             if (rtJ1 && raJ1 > 0) {
               applyRedirectToOpponent(state, rtJ1, raJ1);
@@ -3661,8 +3668,8 @@ export function applyImmediateEffects(params: {
             value: applyPf,
             shieldAbsorbed: (resultPf.shieldAbsorbed ?? 0) > 0 ? resultPf.shieldAbsorbed : undefined,
           } as any);
-          if (resultPf.hpDamage > 0) {
-            processOnDamageTaken(state, effTarget as any, resultPf.hpDamage, source.userId);
+          if (resultPf.hpDamage > 0 || resultPf.shieldAbsorbed > 0) {
+            processOnDamageTaken(state, effTarget as any, resultPf.hpDamage, source.userId, resultPf.shieldAbsorbed);
           }
           if (rtPf && raPf > 0) {
             applyRedirectToOpponent(state, rtPf, raPf);
@@ -3737,8 +3744,8 @@ export function applyImmediateEffects(params: {
             value: mieApply,
             shieldAbsorbed: (mieResult.shieldAbsorbed ?? 0) > 0 ? mieResult.shieldAbsorbed : undefined,
           });
-          if (mieResult.hpDamage > 0) {
-            processOnDamageTaken(state, effTarget as any, mieResult.hpDamage, source.userId);
+          if (mieResult.hpDamage > 0 || mieResult.shieldAbsorbed > 0) {
+            processOnDamageTaken(state, effTarget as any, mieResult.hpDamage, source.userId, mieResult.shieldAbsorbed);
           }
           if (mieRt && mieRa > 0) {
             applyRedirectToOpponent(state, mieRt, mieRa);

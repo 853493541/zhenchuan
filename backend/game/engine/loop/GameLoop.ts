@@ -48,7 +48,17 @@ import { triggerYunSanBlink } from "../utils/yunSan";
 import { getMiYunAreaCandidates, hasMiYunConfusion, rerollMiYunAreaTargets } from "../utils/miyun";
 import { getHasteAdjustedTimingMs } from "../utils/haste";
 import { COMBAT_STATUS_CHECK_INTERVAL_MS, expireCombatStatusLinks, syncCombatStatusFromEvents } from "../utils/combatStatus";
-import { SAND_DISGUISE_ABILITY, SAND_DISGUISE_BUFF, SAND_DISGUISE_CONSUMABLE_ID, clearTargetSelectionsTargetingPlayer } from "../utils/disguise";
+import {
+  SAND_DISGUISE_ABILITY,
+  SAND_DISGUISE_BUFF,
+  SAND_DISGUISE_CONSUMABLE_ID,
+  SAND_DISGUISE_LEASH_RADIUS_UNITS,
+  clearTargetSelectionsTargetingPlayer,
+  createSandDisguiseRuntimeBuff,
+  isDisguiseBuff,
+  removeDisguiseBuffs,
+} from "../utils/disguise";
+import { YUE_YING_SHA_BUFF_ID } from "../utils/yueYingSha";
 
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
@@ -483,8 +493,8 @@ function applyDamageToHostileTarget(params: {
       isCrit: damageRoll.isCrit,
       shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
     } as any);
-    if (result.hpDamage > 0) {
-      processOnDamageTaken(state, victim as any, result.hpDamage, source.userId);
+    if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+      processOnDamageTaken(state, victim as any, result.hpDamage, source.userId, result.shieldAbsorbed);
     }
     if (redirectPlayer && redirectAmt > 0) {
       applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
@@ -513,8 +523,8 @@ function applyDamageToHostileTarget(params: {
     isCrit: damageRoll.isCrit,
     shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
   } as any);
-  if (result.hpDamage > 0) {
-    processOnDamageTaken(state, entity as any, result.hpDamage, source.userId);
+  if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+    processOnDamageTaken(state, entity as any, result.hpDamage, source.userId, result.shieldAbsorbed);
   }
   if (redirectPlayer && redirectAmt > 0) {
     applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
@@ -638,6 +648,60 @@ function cancelActiveChannel(state: GameState, player: { activeChannel?: any; bu
 
 function isDunyingCompanion(buff: { buffId: number; name?: string; sourceAbilityId?: string }): boolean {
   return buff.buffId === 1021;
+}
+
+const FORWARD_CHANNEL_RESOLUTION_STEALTH_BREAK_BUFF_IDS = new Set([1011, 1012, 1013, YUE_YING_SHA_BUFF_ID]);
+
+function isHostileForwardChannelResolution(params: {
+  channel?: { forwardChannel?: boolean; consumableId?: string };
+  ability?: { target?: string; friendlyTarget?: boolean } | null;
+  targetPlayer?: { userId?: string } | null;
+  targetEntity?: { id?: string } | null;
+}) {
+  const { channel, ability, targetPlayer, targetEntity } = params;
+  if (channel?.forwardChannel !== true) return false;
+  if (typeof channel?.consumableId === "string") return false;
+  if (!ability || ability.target !== "OPPONENT" || ability.friendlyTarget === true) return false;
+  return !!targetPlayer || !!targetEntity;
+}
+
+function breakStealthOnForwardChannelResolution(params: {
+  state: GameState;
+  player: { userId: string; buffs: any[] };
+}) {
+  const { state, player } = params;
+  if (!Array.isArray(player.buffs) || player.buffs.length === 0) return false;
+
+  const hadFuguang = player.buffs.some((buff) => buff.buffId === 1012);
+  const removedBuffs: any[] = [];
+  const remainingBuffs: any[] = [];
+
+  for (const buff of player.buffs) {
+    const removesStealth = FORWARD_CHANNEL_RESOLUTION_STEALTH_BREAK_BUFF_IDS.has(buff.buffId) ||
+      (hadFuguang && isDunyingCompanion(buff));
+    if (!removesStealth) {
+      remainingBuffs.push(buff);
+      continue;
+    }
+    removedBuffs.push(buff);
+  }
+
+  if (removedBuffs.length === 0) return false;
+
+  player.buffs = remainingBuffs;
+  for (const buff of removedBuffs) {
+    removeLinkedShield(player as any, buff as any);
+    pushBuffExpired(state, {
+      targetUserId: player.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+      sourceUserId: buff.sourceUserId,
+    });
+  }
+  return true;
 }
 
 function hasBuffEffect(player: { buffs: Array<{ effects: Array<{ type: string }> }> }, type: string): boolean {
@@ -1380,7 +1444,7 @@ export class GameLoop {
               const reachApply = adjustedDamage;
               const reachResult = reachApply > 0
                 ? applyDamageToTarget(reachTarget as any, reachApply)
-                : { hpDamage: 0 };
+                : { hpDamage: 0, shieldAbsorbed: 0 };
               this.state.events.push({
                 id: randomUUID(),
                 timestamp: Date.now(),
@@ -1393,8 +1457,8 @@ export class GameLoop {
                 effectType: dashStateBefore.hitEffectTypeOnComplete ?? "DAMAGE",
                 value: reachApply,
               } as any);
-              if (reachResult.hpDamage > 0) {
-                processOnDamageTaken(this.state, reachTarget as any, reachResult.hpDamage, player.userId);
+              if (reachResult.hpDamage > 0 || reachResult.shieldAbsorbed > 0) {
+                processOnDamageTaken(this.state, reachTarget as any, reachResult.hpDamage, player.userId, reachResult.shieldAbsorbed);
               }
               if (redirectPlayer && redirectAmt > 0) {
                 applyRedirectToOpponent(this.state, redirectPlayer, redirectAmt);
@@ -2113,7 +2177,7 @@ export class GameLoop {
                 targetUserId: player.userId,
                 ability: SAND_DISGUISE_ABILITY,
                 buffTarget: player as any,
-                buff: SAND_DISGUISE_BUFF,
+                buff: createSandDisguiseRuntimeBuff(player.position),
               });
               clearTargetSelectionsTargetingPlayer(this.state, player.userId);
             }
@@ -2595,12 +2659,30 @@ export class GameLoop {
             }
           }
 
-          // Forward channel completion counts as the cast "taking effect" and breaks stealth.
-          if (ch.forwardChannel) {
-            const hadFuguang = player.buffs.some((b) => b.buffId === 1012);
-            player.buffs = player.buffs.filter(
-              (b) => ![1011, 1012, 1013].includes(b.buffId) && !(hadFuguang && isDunyingCompanion(b))
-            );
+          const hostileForwardResolution = isHostileForwardChannelResolution({
+            channel: ch,
+            ability: channelAbility as any,
+            targetPlayer: targetPlayer as any,
+            targetEntity: targetEntity as any,
+          });
+          if (hostileForwardResolution) {
+            this.state.events.push({
+              id: randomUUID(),
+              timestamp: chNow,
+              turn: this.state.turn,
+              type: "PLAY_ABILITY",
+              actorUserId: player.userId,
+              targetUserId: targetEntity ? undefined : targetPlayer?.userId,
+              entityId: targetEntity?.id,
+              entityName: targetEntity?.abilityName,
+              abilityId: ch.abilityId,
+              abilityName: ch.abilityName,
+              channelPhase: "complete",
+            } as any);
+            breakStealthOnForwardChannelResolution({
+              state: this.state,
+              player: player as any,
+            });
           }
 
           cancelActiveChannel(this.state, player as any);
@@ -2792,6 +2874,23 @@ export class GameLoop {
         }
       }
 
+      const leftDisguiseLeashArea = player.buffs.some((buff: any) => {
+        if (!isDisguiseBuff(buff)) return false;
+
+        const leashOriginX = Number(buff?.leashOriginX);
+        const leashOriginY = Number(buff?.leashOriginY);
+        const leashRadiusUnits = Number(buff?.leashRadiusUnits ?? SAND_DISGUISE_LEASH_RADIUS_UNITS);
+        if (!Number.isFinite(leashOriginX) || !Number.isFinite(leashOriginY) || leashRadiusUnits <= 0) {
+          return false;
+        }
+
+        const leashRadiusWorld = gameplayUnitsToWorldUnits(leashRadiusUnits, storedUnitScale);
+        return Math.hypot(player.position.x - leashOriginX, player.position.y - leashOriginY) > leashRadiusWorld;
+      });
+      if (leftDisguiseLeashArea) {
+        buffsChanged = removeDisguiseBuffs(this.state, player as any, now) || buffsChanged;
+      }
+
       for (const buff of player.buffs) {
         const buffExpiredNow = now >= buff.expiresAt;
         // Fire periodic effects (DoT / HoT) if interval has elapsed
@@ -2830,8 +2929,8 @@ export class GameLoop {
                     value: periApply,
                     shieldAbsorbed: (periResult.shieldAbsorbed ?? 0) > 0 ? periResult.shieldAbsorbed : undefined,
                   });
-                  if (periResult.hpDamage > 0) {
-                    processOnDamageTaken(this.state, player as any, periResult.hpDamage, opp.userId);
+                  if (periResult.hpDamage > 0 || periResult.shieldAbsorbed > 0) {
+                    processOnDamageTaken(this.state, player as any, periResult.hpDamage, opp.userId, periResult.shieldAbsorbed);
                   }
                   if (rtPeri && raPeri > 0) {
                     applyRedirectToOpponent(this.state, rtPeri, raPeri);
@@ -3142,8 +3241,8 @@ export class GameLoop {
               const timedResult = timedApply > 0
                 ? applyDamageToTarget(player as any, timedApply)
                 : { hpDamage: 0, shieldAbsorbed: 0 };
-              if (timedResult.hpDamage > 0) {
-                processOnDamageTaken(this.state, player as any, timedResult.hpDamage, sourcePlayer.userId);
+              if (timedResult.hpDamage > 0 || timedResult.shieldAbsorbed > 0) {
+                processOnDamageTaken(this.state, player as any, timedResult.hpDamage, sourcePlayer.userId, timedResult.shieldAbsorbed);
               }
               if (timedRedirectPlayer && timedRedirectAmt > 0) {
                 applyRedirectToOpponent(this.state, timedRedirectPlayer, timedRedirectAmt);
@@ -3324,6 +3423,9 @@ export class GameLoop {
           }
           buffsChanged = true;
         }
+      }
+      if (naturallyExpired.some((b) => isDisguiseBuff(b as any))) {
+        buffsChanged = clearTargetSelectionsTargetingPlayer(this.state, player.userId) || buffsChanged;
       }
       player.buffs = player.buffs.filter((b) => now < b.expiresAt);
       for (const expired of naturallyExpired) {
@@ -3511,8 +3613,8 @@ export class GameLoop {
                 value: adjustedDamage,
                 shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
               } as any);
-              if (result.hpDamage > 0) {
-                processOnDamageTaken(this.state, entity as any, result.hpDamage, sourcePlayer?.userId ?? buff.sourceUserId ?? entity.ownerUserId);
+              if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+                processOnDamageTaken(this.state, entity as any, result.hpDamage, sourcePlayer?.userId ?? buff.sourceUserId ?? entity.ownerUserId, result.shieldAbsorbed);
               }
               if (redirectPlayer && redirectAmt > 0) {
                 applyRedirectToOpponent(this.state, redirectPlayer, redirectAmt);
@@ -4614,12 +4716,13 @@ export class GameLoop {
               const stackResult = stackApply > 0
                 ? applyDamageToTarget(targetPlayer as any, stackApply)
                 : { hpDamage: 0, shieldAbsorbed: 0 };
-              if (stackResult.hpDamage > 0) {
+              if (stackResult.hpDamage > 0 || stackResult.shieldAbsorbed > 0) {
                 processOnDamageTaken(
                   this.state,
                   targetPlayer as any,
                   stackResult.hpDamage,
                   stackBuff.sourceUserId ?? actor?.userId,
+                  stackResult.shieldAbsorbed,
                 );
               }
               if (stackRedirectPlayer && stackRedirectAmt > 0) {

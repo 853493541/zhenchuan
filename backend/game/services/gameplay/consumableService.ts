@@ -1,10 +1,17 @@
 import { ABILITIES } from "../../abilities/abilities";
 import { randomUUID } from "crypto";
-import { pushBuffExpired } from "../../engine/effects/buffRuntime";
+import { addBuff, pushBuffExpired } from "../../engine/effects/buffRuntime";
 import type { ActiveBuff, GameState, PlayerState } from "../../engine/state/types";
 import { resolveNonCritHealAmountRoll } from "../../engine/utils/combatMath";
 import { SAND_DISGUISE_BUFF_ID, SAND_DISGUISE_CONSUMABLE_ID } from "../../engine/utils/disguise";
 import { applyHealToTarget, removeLinkedShield } from "../../engine/utils/health";
+import {
+  YUE_YING_SHA_ABILITY,
+  YUE_YING_SHA_BUFF,
+  YUE_YING_SHA_BUFF_ID,
+  YUE_YING_SHA_CONSUMABLE_ID,
+  YUE_YING_SHA_CONSUMABLE_NAME,
+} from "../../engine/utils/yueYingSha";
 import { ensureBattleLoop } from "../battleLoopRuntime";
 import { broadcastGameUpdate } from "../broadcast";
 import { diffState } from "../flow/stateDiff";
@@ -23,12 +30,33 @@ export type ConsumableId =
   | "san_jie_wu_qi_he"
   | "tian_jie_wu_qi_he";
 
+export const STARTING_CONSUMABLE_COUNTS: Record<ConsumableId, number> = {
+  beng_dai: 12,
+  jin_chuang_yao: 8,
+  yue_ying_sha: 4,
+  sha_shi_wei_zhuang: 4,
+  guan_mu_wei_zhuang: 0,
+  wa_guan_wei_zhuang: 0,
+  sha_xing_xie: 0,
+  ma_cao: 0,
+  yi_jie_wu_qi_he: 0,
+  er_jie_wu_qi_he: 0,
+  san_jie_wu_qi_he: 0,
+  tian_jie_wu_qi_he: 0,
+};
+
+export function createStartingConsumableCounts(): Record<ConsumableId, number> {
+  return { ...STARTING_CONSUMABLE_COUNTS };
+}
+
 type ConsumableDefinition = {
   id: ConsumableId;
   name: string;
   cooldownMs: number;
   usableInCombat: boolean;
   implemented?: boolean;
+  breaksDisguise?: boolean;
+  requiresGrounded?: boolean;
   healBase?: number;
   channel?: {
     durationMs: number;
@@ -48,6 +76,7 @@ const CONSUMABLES: Record<ConsumableId, ConsumableDefinition> = {
     name: "绷带",
     cooldownMs: 0,
     usableInCombat: false,
+    breaksDisguise: false,
     channel: {
       durationMs: 10_000,
       tickIntervalMs: 1_000,
@@ -62,11 +91,12 @@ const CONSUMABLES: Record<ConsumableId, ConsumableDefinition> = {
     healBase: 48.3,
   },
   yue_ying_sha: {
-    id: "yue_ying_sha",
-    name: "月影沙",
-    cooldownMs: 0,
-    usableInCombat: false,
-    implemented: false,
+    id: YUE_YING_SHA_CONSUMABLE_ID,
+    name: YUE_YING_SHA_CONSUMABLE_NAME,
+    cooldownMs: 30_000,
+    usableInCombat: true,
+    implemented: true,
+    requiresGrounded: true,
   },
   sha_shi_wei_zhuang: {
     id: SAND_DISGUISE_CONSUMABLE_ID,
@@ -140,10 +170,10 @@ const CONSUMABLES: Record<ConsumableId, ConsumableDefinition> = {
   },
 };
 
-const STEALTH_BREAK_BUFF_IDS = new Set([1011, 1012, 1013, SAND_DISGUISE_BUFF_ID]);
+const STEALTH_BREAK_BUFF_IDS = new Set([1011, 1012, 1013, SAND_DISGUISE_BUFF_ID, YUE_YING_SHA_BUFF_ID]);
 const FUGUANG_COMPANION_BUFF_ID = 1021;
 const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
-const BLOCKING_CONSUMABLE_EFFECTS = new Set(["CONTROL", "KNOCKED_BACK", "PULLED", "DISPLACEMENT", "FEARED", "FREEZE"]);
+const BLOCKING_CONSUMABLE_EFFECTS = new Set(["ROOT", "CONTROL", "KNOCKED_BACK", "PULLED", "DISPLACEMENT", "FEARED", "FREEZE"]);
 
 function getConsumableDefinition(rawId: unknown): ConsumableDefinition | null {
   const id = String(rawId ?? "") as ConsumableId;
@@ -167,6 +197,22 @@ function getConsumableCooldowns(player: PlayerState): Record<string, { expiresAt
   }
 
   return raw as Record<string, { expiresAt: number }>;
+}
+
+function getConsumableCounts(player: PlayerState): Record<ConsumableId, number> {
+  const raw = (player as any).consumableCounts;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    const next = createStartingConsumableCounts();
+    (player as any).consumableCounts = next;
+    return next;
+  }
+
+  for (const consumableId of Object.keys(STARTING_CONSUMABLE_COUNTS) as ConsumableId[]) {
+    const value = Number(raw[consumableId] ?? STARTING_CONSUMABLE_COUNTS[consumableId]);
+    raw[consumableId] = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : STARTING_CONSUMABLE_COUNTS[consumableId];
+  }
+
+  return raw as Record<ConsumableId, number>;
 }
 
 function getBuffBackedChannelInfo(buff: ActiveBuff): { ability: any; mode: "FORWARD" | "REVERSE" } | null {
@@ -243,7 +289,8 @@ function breakReverseChannels(state: GameState, player: PlayerState): boolean {
   return changed;
 }
 
-function breakStealthForConsumable(state: GameState, player: PlayerState): boolean {
+function breakStealthForConsumable(state: GameState, player: PlayerState, consumable: ConsumableDefinition): boolean {
+  if (consumable.channel?.forwardChannel === true) return false;
   if (!Array.isArray(player.buffs) || player.buffs.length === 0) return false;
 
   const hadFuguang = player.buffs.some((buff) => buff.buffId === 1012);
@@ -251,6 +298,10 @@ function breakStealthForConsumable(state: GameState, player: PlayerState): boole
   const remainingBuffs: ActiveBuff[] = [];
 
   for (const buff of player.buffs as ActiveBuff[]) {
+    if (buff.buffId === SAND_DISGUISE_BUFF_ID && consumable.breaksDisguise === false) {
+      remainingBuffs.push(buff);
+      continue;
+    }
     const removesStealth = STEALTH_BREAK_BUFF_IDS.has(buff.buffId) ||
       buff.buffId === SHI_FANG_XUAN_JI_BUFF_ID ||
       (hadFuguang && buff.buffId === FUGUANG_COMPANION_BUFF_ID);
@@ -282,7 +333,6 @@ function breakStealthForConsumable(state: GameState, player: PlayerState): boole
 
 function hasConsumableBlockingControl(player: PlayerState): boolean {
   return (player.buffs ?? []).some((buff: any) =>
-    buff?.category === "DEBUFF" &&
     Array.isArray(buff.effects) &&
     buff.effects.some((effect: any) => BLOCKING_CONSUMABLE_EFFECTS.has(effect?.type))
   );
@@ -292,6 +342,18 @@ function validateConsumableUse(player: PlayerState, consumable: ConsumableDefini
   if (consumable.implemented === false) throw new Error("ERR_CONSUMABLE_NOT_IMPLEMENTED");
   if ((player.hp ?? 0) <= 0) throw new Error("ERR_CONTROLLED");
   if ((player as any).activeDash) throw new Error("ERR_CONSUMABLE_DASHING");
+  if ((getConsumableCounts(player)[consumable.id] ?? 0) <= 0) throw new Error("ERR_CONSUMABLE_EMPTY");
+
+  if (consumable.requiresGrounded === true) {
+    const jumpCount = (player as any).jumpCount ?? 0;
+    const vz = (player as any).velocity?.vz ?? 0;
+    const groundedCastLockUntil = (player as any).groundedCastLockUntil ?? 0;
+
+    if (jumpCount > 0 || Math.abs(vz) > 0.01 || groundedCastLockUntil > now) {
+      throw new Error("ERR_REQUIRES_GROUNDED");
+    }
+  }
+
   if (hasConsumableBlockingControl(player)) throw new Error("ERR_CONSUMABLE_CONTROLLED");
   if (player.activeChannel && player.activeChannel.forwardChannel !== false) throw new Error("ERR_CHANNELING");
   if (hasBuffBackedForwardChannel(player)) throw new Error("ERR_CHANNELING");
@@ -327,6 +389,17 @@ function applyInstantConsumableHeal(state: GameState, player: PlayerState, consu
     isCrit: false,
     suppressCritLabel: true,
   } as any);
+}
+
+function applyYueYingShaBuff(state: GameState, player: PlayerState) {
+  addBuff({
+    state,
+    sourceUserId: player.userId,
+    targetUserId: player.userId,
+    ability: YUE_YING_SHA_ABILITY,
+    buffTarget: player as any,
+    buff: YUE_YING_SHA_BUFF,
+  });
 }
 
 function startConsumableChannel(player: PlayerState, consumable: ConsumableDefinition, now: number) {
@@ -378,11 +451,17 @@ export async function useConsumable(gameId: string, userId: string, rawConsumabl
   validateConsumableUse(player, consumable, now);
 
   const prevState: GameState = structuredClone(state);
+  const consumableCounts = getConsumableCounts(player);
+  consumableCounts[consumable.id] = Math.max(0, Number(consumableCounts[consumable.id] ?? 0) - 1);
   breakReverseChannels(state, player);
-  breakStealthForConsumable(state, player);
+  breakStealthForConsumable(state, player, consumable);
 
   if (consumable.healBase !== undefined) {
     applyInstantConsumableHeal(state, player, consumable, now);
+  }
+
+  if (consumable.id === YUE_YING_SHA_CONSUMABLE_ID) {
+    applyYueYingShaBuff(state, player);
   }
 
   if (consumable.channel) {

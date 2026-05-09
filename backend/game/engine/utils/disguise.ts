@@ -5,7 +5,8 @@ export const SAND_DISGUISE_CONSUMABLE_ID = "sha_shi_wei_zhuang";
 export const SAND_DISGUISE_CONSUMABLE_NAME = "砂石伪装";
 export const SAND_DISGUISE_BUFF_ID = 980001;
 export const SAND_DISGUISE_BUFF_NAME = "伪装";
-export const SAND_DISGUISE_DURATION_MS = 10 * 60_000;
+export const SAND_DISGUISE_DURATION_MS = 4 * 60_000;
+export const SAND_DISGUISE_LEASH_RADIUS_UNITS = 2;
 
 export const SAND_DISGUISE_BUFF: BuffDefinition = {
   buffId: SAND_DISGUISE_BUFF_ID,
@@ -17,6 +18,7 @@ export const SAND_DISGUISE_BUFF: BuffDefinition = {
   effects: [
     { type: "STEALTH" },
     { type: "ROOT" },
+    { type: "SPECIAL_ABILITY_BAR", abilityIds: ["jie_chu_wei_zhuang"] } as any,
     { type: "DISGUISE" } as any,
   ],
 };
@@ -28,6 +30,15 @@ export const SAND_DISGUISE_ABILITY = {
   target: "SELF",
   buffs: [SAND_DISGUISE_BUFF],
 } as any;
+
+export function createSandDisguiseRuntimeBuff(anchor: { x: number; y: number }): BuffDefinition {
+  return {
+    ...SAND_DISGUISE_BUFF,
+    leashOriginX: anchor.x,
+    leashOriginY: anchor.y,
+    leashRadiusUnits: SAND_DISGUISE_LEASH_RADIUS_UNITS,
+  } as BuffDefinition;
+}
 
 export function isDisguiseBuff(buff: any): boolean {
   return buff?.buffId === SAND_DISGUISE_BUFF_ID ||

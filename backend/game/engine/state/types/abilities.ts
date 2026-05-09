@@ -32,6 +32,7 @@ export interface AbilityChannel {
 export interface Ability {
   id: string;
   name: string;
+  iconPath?: string;
   type: AbilityType;
   target: TargetType;
 

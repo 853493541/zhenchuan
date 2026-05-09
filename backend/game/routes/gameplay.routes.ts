@@ -81,6 +81,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   ERR_ABILITY_NOT_FOUND: "Ability definition not found",
   ERR_CONSUMABLE_NOT_FOUND: "Consumable definition not found",
   ERR_CONSUMABLE_NOT_IMPLEMENTED: "Consumable is not implemented yet",
+  ERR_CONSUMABLE_EMPTY: "Consumable is out of stock",
   ERR_CONSUMABLE_COOLDOWN: "Consumable is on cooldown",
   ERR_CONSUMABLE_IN_COMBAT: "Consumable cannot be used in combat",
   ERR_CONSUMABLE_CONTROLLED: "Consumable cannot be used while controlled",

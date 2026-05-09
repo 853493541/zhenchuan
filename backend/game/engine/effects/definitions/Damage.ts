@@ -81,7 +81,9 @@ export function handleDamage(
       const result = applyDamageToTarget(target as any, damageToApply);
       shieldAbsorbed = result.shieldAbsorbed;
       // Post-damage hooks (七星拱瑞 freeze-break, etc.)
-      processOnDamageTaken(state, target as any, result.hpDamage, source.userId);
+      if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+        processOnDamageTaken(state, target as any, result.hpDamage, source.userId, result.shieldAbsorbed);
+      }
     }
 
     // Apply the 55% redirect to the opponent (B) directly.

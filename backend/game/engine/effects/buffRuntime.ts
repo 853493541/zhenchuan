@@ -23,6 +23,7 @@ import {
   shouldBreakYuqiOnIncomingControl,
 } from "../utils/yuqi";
 import { MIYUN_CONFUSION_BUFF_ID, WU_AN_MI_YUN_ABILITY_ID, WUSHI_IMMUNE_BUFF_ID, hasWuShiImmunity } from "../utils/miyun";
+import { hasDisguiseBuff, isDisguiseBuff, removeDisguiseBuffs } from "../utils/disguise";
 import { getHasteAdjustedBuffTiming } from "../utils/haste";
 
 /* ================= Utilities ================= */
@@ -109,6 +110,8 @@ const CONTROL_ONLY_IMMUNE_BLOCKED_EFFECT_TYPES = new Set([
   "SHI_XIN_GU",
   "Z_LOCK",
 ]);
+const MAX_DISGUISE_DURATION_MS = 4 * 60_000;
+const DISGUISE_STEALTH_OVERLAP_MS = 1_000;
 
 type BuffEditorOverrideMap = ReturnType<typeof loadBuffEditorOverrides>["overrides"];
 
@@ -390,6 +393,28 @@ function removeDunyingCompanions(params: {
       sourceUserId: buff.sourceUserId,
     });
   }
+}
+
+function hasStealthEffect(buff: { effects?: Array<{ type?: string }> }): boolean {
+  return Array.isArray(buff.effects) && buff.effects.some((effect) => effect.type === "STEALTH");
+}
+
+function shortenDisguiseBuffsForStealthOverlap(params: {
+  now: number;
+  target: { buffs: ActiveBuff[] };
+}) {
+  const { now, target } = params;
+  const overlapExpiresAt = now + DISGUISE_STEALTH_OVERLAP_MS;
+  let changed = false;
+
+  for (const activeBuff of target.buffs) {
+    if (!isDisguiseBuff(activeBuff)) continue;
+    if (activeBuff.expiresAt <= overlapExpiresAt) continue;
+    activeBuff.expiresAt = overlapExpiresAt;
+    changed = true;
+  }
+
+  return changed;
 }
 
 function isSharedLockoutDebuff(buff: ActiveBuff): boolean {
@@ -740,6 +765,12 @@ export function addBuff(params: {
     runtimeBuff = { ...runtimeBuff, durationMs: propEntry.durationMs };
   }
   runtimeBuff = getHasteAdjustedBuffTiming(ability, runtimeBuff);
+  if (runtimeBuff.effects.some((effect) => effect.type === "DISGUISE")) {
+    runtimeBuff = {
+      ...runtimeBuff,
+      durationMs: Math.min(runtimeBuff.durationMs, MAX_DISGUISE_DURATION_MS),
+    };
+  }
   const now = Date.now();
   const incomingMoheKnockdown =
     sourceUserId !== targetUserId &&
@@ -758,6 +789,15 @@ export function addBuff(params: {
       });
       return;
     }
+  }
+
+  const incomingDisguise = isDisguiseBuff(runtimeBuff as any);
+  const incomingStealthPackage = hasStealthEffect(runtimeBuff as any) || runtimeBuff.buffId === DUNYING_COMPANION_BUFF_ID;
+  if (!incomingDisguise && hasDisguiseBuff(buffTarget as any) && incomingStealthPackage) {
+    shortenDisguiseBuffsForStealthOverlap({
+      now,
+      target: buffTarget,
+    });
   }
 
   if (sourceUserId !== targetUserId && hasInvulnerable(buffTarget)) {
@@ -1267,6 +1307,7 @@ export function addBuff(params: {
   }
 
   if (active.buffId === YUQI_BUFF_ID) {
+    removeDisguiseBuffs(state, buffTarget as any, now);
     removeJumpBoostBuffs({
       state,
       targetUserId,
