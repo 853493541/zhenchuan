@@ -16,6 +16,7 @@ import type { MapCollisionSystem } from './scene/MapCollisionSystem';
 import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z } from './scene/ExportedMapScene';
 import { getAbilityIconPath } from '@/app/lib/iconPaths';
 import * as THREE from 'three';
+import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
 
 type V3 = { x: number; y: number; z: number };
 type HeartStatKey =
@@ -186,9 +187,9 @@ const CATCAKE_DEFAULT_UI_POSITIONS: Record<string, UiPosition> = {
 const DRAFT_ABILITY_SLOT_COUNT = 6;
 const ITEM_BAR_SLOT_COUNT = 14;
 const CONSUMABLE_BAR_STORAGE_KEY = 'zhenchuan-consumable-bar-settings-v1';
-const CONSUMABLE_BAR_MIN_SLOTS = 10;
+const CONSUMABLE_BAR_MIN_SLOTS = 12;
 const CONSUMABLE_BAR_MAX_SLOTS = 16;
-const CONSUMABLE_BAR_DEFAULT_SLOTS = 10;
+const CONSUMABLE_BAR_DEFAULT_SLOTS = 12;
 const CONSUMABLE_ITEMS = [
   { id: 'beng_dai', name: '绷带' },
   { id: 'jin_chuang_yao', name: '金疮药' },
@@ -1930,6 +1931,8 @@ export default function BattleArena({
   const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : mode === 'collision-test' ? mapData.width : PUBG_WIDTH;
   const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : mode === 'collision-test' ? mapData.height : PUBG_HEIGHT;
   const playerRadius = mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : DEFAULT_PLAYER_RADIUS;
+  ensureResizeObserverSupport();
+
   const storedUnitScale = getStoredUnitScale(mode);
   const modePickups = useMemo(() => (mode === 'collision-test' ? [] : pickups), [mode, pickups]);
   const channelAbilityByBuffId = useMemo(() => {
@@ -2778,6 +2781,7 @@ export default function BattleArena({
   const cameraMoveCommandActiveRef = useRef(false);
   const cameraLookInputVersionRef = useRef(0);
   const manualCameraLookActiveRef = useRef(false);
+  const mouseLookFacingSyncRafRef = useRef<number | null>(null);
   const mouseStateRef  = useRef({ isLeft: false, isRight: false, lastX: 0, lastY: 0, downX: NaN, downY: NaN, downAt: 0, dragDistance: 0 });
   const groundDeselectCandidateRef = useRef(false);
   const lastQuickLeftClickAtRef = useRef(0);
@@ -2961,8 +2965,12 @@ export default function BattleArena({
         return prev;
       }
       const slots = normalizeConsumableSlots(prev.slots);
-      const [dragged] = slots.splice(fromIndex, 1);
-      slots.splice(toIndex, 0, dragged ?? null);
+      const dragged = slots[fromIndex];
+      if (dragged === undefined) {
+        return prev;
+      }
+      slots[fromIndex] = slots[toIndex] ?? null;
+      slots[toIndex] = dragged ?? null;
       return { ...prev, slots: slots.slice(0, CONSUMABLE_BAR_MAX_SLOTS) };
     });
   }, []);
@@ -5405,7 +5413,48 @@ export default function BattleArena({
           }),
       );
     };
+    const cancelMouseLookFacingSync = () => {
+      if (mouseLookFacingSyncRafRef.current === null) return;
+      window.cancelAnimationFrame(mouseLookFacingSyncRafRef.current);
+      mouseLookFacingSyncRafRef.current = null;
+    };
+    const syncMouseLookFacing = () => {
+      const ms = mouseStateRef.current;
+      if (!ms.isRight) return;
+      if (movementControlStateRef.current.rooted || movementControlStateRef.current.fullyLocked) return;
+      if (meActiveDashRef.current && !dashTurnOverrideRef.current) return;
+
+      const moveIntent = buildTraditionalMoveIntent(
+        keysRef.current,
+        true,
+        ms.isLeft,
+        camYawRef.current,
+        charYawRef.current,
+      );
+      if (moveIntent.direction && !moveIntent.backpedalOnly) {
+        const facingDir = normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy);
+        if (facingDir) {
+          localFacingRef.current = facingDir;
+          charYawRef.current = facingToYaw(facingDir);
+        }
+        return;
+      }
+
+      localFacingRef.current = {
+        x: Math.sin(camYawRef.current),
+        y: -Math.cos(camYawRef.current),
+      };
+      charYawRef.current = camYawRef.current;
+    };
+    const scheduleMouseLookFacingSync = () => {
+      if (mouseLookFacingSyncRafRef.current !== null) return;
+      mouseLookFacingSyncRafRef.current = window.requestAnimationFrame(() => {
+        mouseLookFacingSyncRafRef.current = null;
+        syncMouseLookFacing();
+      });
+    };
     const resetMouseButtons = () => {
+      cancelMouseLookFacingSync();
       mouseStateRef.current.isLeft = false;
       mouseStateRef.current.isRight = false;
       mouseStateRef.current.downAt = 0;
@@ -5480,6 +5529,7 @@ export default function BattleArena({
         const releaseDistance = Math.max(ms.dragDistance, Math.hypot(e.clientX - downX, e.clientY - downY));
         const releaseMs = ms.downAt > 0 ? performance.now() - ms.downAt : Number.POSITIVE_INFINITY;
         const isRapidSingleClick = wasLeftDown && releaseMs <= 220 && releaseDistance <= 6;
+        cancelMouseLookFacingSync();
         mouseStateRef.current.isLeft = false;
         manualCameraLookActiveRef.current = false;
         if (isRapidSingleClick) {
@@ -5498,6 +5548,7 @@ export default function BattleArena({
       if (e.button === 2) {
         e.preventDefault();
         e.stopPropagation();
+        cancelMouseLookFacingSync();
         mouseStateRef.current.isRight = false;
         manualCameraLookActiveRef.current = mouseStateRef.current.isLeft;
         return;
@@ -5541,23 +5592,7 @@ export default function BattleArena({
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = clampCameraPitch(newPitch, mode);
         cameraLookInputVersionRef.current += 1;
-        const moveIntent = buildTraditionalMoveIntent(
-          keysRef.current,
-          true,
-          false,
-          camYawRef.current,
-          charYawRef.current,
-        );
-        const facingDir = moveIntent.direction && !moveIntent.backpedalOnly
-          ? normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy)
-          : {
-              x: Math.sin(camYawRef.current),
-              y: -Math.cos(camYawRef.current),
-            };
-        if (facingDir && !(movementControlStateRef.current.rooted || movementControlStateRef.current.fullyLocked) && (!meActiveDashRef.current || dashTurnOverrideRef.current)) {
-          localFacingRef.current = facingDir;
-          charYawRef.current = facingToYaw(facingDir);
-        }
+        scheduleMouseLookFacingSync();
       } else if (ms.isLeft && !ms.isRight) {
         // LMB only: rotate camera yaw + pitch
         camYawRef.current  -= dx * 0.005;
@@ -5571,23 +5606,7 @@ export default function BattleArena({
         const newPitch = camPitchRef.current + dy * 0.003;
         camPitchRef.current = clampCameraPitch(newPitch, mode);
         cameraLookInputVersionRef.current += 1;
-        const moveIntent = buildTraditionalMoveIntent(
-          keysRef.current,
-          true,
-          true,
-          camYawRef.current,
-          charYawRef.current,
-        );
-        const facingDir = moveIntent.direction && !moveIntent.backpedalOnly
-          ? normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy)
-          : {
-              x: Math.sin(camYawRef.current),
-              y: -Math.cos(camYawRef.current),
-            };
-        if (facingDir && !(movementControlStateRef.current.rooted || movementControlStateRef.current.fullyLocked) && (!meActiveDashRef.current || dashTurnOverrideRef.current)) {
-          localFacingRef.current = facingDir;
-          charYawRef.current = facingToYaw(facingDir);
-        }
+        scheduleMouseLookFacingSync();
       }
     };
     // Prevent native right-click context menu
@@ -5617,6 +5636,7 @@ export default function BattleArena({
     window.addEventListener('wheel',       onWheel,       { passive: false, capture: true });
     window.addEventListener('blur',        resetMouseButtons);
     return () => {
+      cancelMouseLookFacingSync();
       window.removeEventListener('mousedown',   onMouseDown,   { capture: true });
       window.removeEventListener('mouseup',     onMouseUp,     { capture: true });
       window.removeEventListener('mousemove',   onMouseMove,   { capture: true });
@@ -7578,25 +7598,6 @@ export default function BattleArena({
             )}
             {cooldownMs > 0 && <span className={styles.consumableCooldown}>{cooldownLabel}</span>}
           </button>
-        );
-      })}
-      {Array.from({ length: ITEM_BAR_SLOT_COUNT }, (_, index) => {
-        const ability = itemBarAbilities[index];
-        return (
-          <div
-            key={`item-slot-${index}`}
-            data-item-slot-index={index}
-            className={`${styles.itemSlot} ${ability ? styles.itemSlotFilled : ''} ${dragHoverItemIndex === index ? styles.itemSlotHover : ''} ${ability && draggingDraftInstanceId === ability.id ? styles.itemSlotDragging : ''}`}
-            aria-label={ability?.name ?? `物品栏 ${index + 1}`}
-            onMouseDown={ability && !customUiMode ? (event) => beginAbilityPointerDrag(event, ability, 'item', index) : undefined}
-            onMouseEnter={ability ? (event) => openAbilityHint(event.currentTarget.getBoundingClientRect(), ability) : undefined}
-            onMouseLeave={ability ? closeAbilityHint : undefined}
-          >
-            {ability && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={getArenaAbilityIconPath(ability.name)} alt={ability.name} className={styles.itemAbilityIcon} draggable={false} />
-            )}
-          </div>
         );
       })}
     </div>

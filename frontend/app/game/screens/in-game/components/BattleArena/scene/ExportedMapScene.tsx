@@ -221,6 +221,9 @@ export default function ExportedMapScene({
     };
 
     const onMove = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' && e.buttons !== 0) {
+        return;
+      }
       const hit = getHitPoint(e.clientX, e.clientY);
       if (hit) onPointerMoveRef.current?.({ point: hit.point, isHorizontal: hit.isHorizontal });
     };

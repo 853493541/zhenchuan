@@ -3,10 +3,46 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## iPad in-game load failure from missing ResizeObserver support (2026-05-09)
+
+**Problem set**:
+1. After the desktop RMB-drag fix, the game could still fail to load on iPad and collapse into a generic client-side application error before the in-game scene appeared.
+2. The failure was device-specific, so desktop checks alone did not reveal the root cause.
+3. BattleArena and `@react-three/fiber` both depend on `ResizeObserver` during scene boot, and older Safari/iPad builds may not provide it.
+
+**Fix**:
+- Confirmed the failure mode by forcing `window.ResizeObserver = undefined` in a live browser session; the page crashed with `This browser does not support ResizeObserver out of the box` from `react-use-measure`.
+- Added a lightweight `ResizeObserver` fallback that reports initial element bounds and refreshes on `window`/`visualViewport` resize.
+- Installed that fallback from `InGameClient` before `BattleArena` and the R3F canvas mount, so older iPad/Safari builds get a compatible observer before in-game rendering starts.
+
+**Lessons**:
+- If iPad shows a generic Next.js client error while loading the battle screen, verify browser API support before chasing gameplay/runtime logic.
+- For client-only compatibility shims used by scene libraries, install the shim before the arena tree mounts; patching only inside a deeper child can be too late for library startup.
+
+## Combat icon darkening and right-drag camera smoothing (2026-05-09)
+
+**Problem set**:
+1. The icon-bar `战斗中` marker was visually too bright and needed a darker red.
+2. PC right-click camera drag became visibly laggy after the recent camera anti-clip work.
+3. Live in-game verification for this project needs to run against the HTTPS deployment, not localhost, so WebSocket/runtime behavior matches production.
+
+**Fix**:
+- Darkened the BattleArena combat marker from `#ff2424` to `#b11b1b` and updated the HUD source/browser style guards.
+- Trimmed CameraRig collision sampling during active look input: keep the full wall/probe sample set when the camera is settled, but use a smaller support/probe subset for a short recent-look window so RMB drag does not spend as many BVH raycasts per frame.
+- Stopped `ExportedMapScene` from raycasting the full exported GLB on mouse-drag pointer moves; hover hit-testing is unnecessary while the user is actively dragging the camera.
+- Rate-limited the RMB visual facing sync in `BattleArena` to one `requestAnimationFrame` callback per frame instead of recomputing facing on every raw `mousemove`; the existing 30 Hz movement tick still keeps RMB camera-plus-facing behavior authoritative.
+- Rebuilt backend/frontend, restarted PM2, and live-checked `https://zhenchuan.renstoolbox.com/` with the `catcake` account in Playwright; the in-battle HUD stayed at 60 FPS both idle and during scripted RMB drag.
+
+**Lessons**:
+- The recent camera anti-clip path is expensive because each frame can issue many BVH probe raycasts; when the symptom is RMB drag stutter, inspect CameraRig sampling before blaming generic React rerenders.
+- In collision-test mode, exported-map canvas hover picking should not keep raycasting the full GLB while any mouse button is held for camera drag.
+- If RMB mouse-look already has a lower-frequency authoritative movement/facing tick, avoid duplicating the same facing solve on every raw mouse event; cap visual sync to animation frames instead.
+- For live gameplay verification in this repo, prefer the HTTPS deployment and the approved `catcake` test account so the browser test exercises the real WebSocket/runtime path.
+
 ## Consumable bar settings, disguise texture, and root-facing fixes (2026-05-09)
 
 **Problem set**:
-1. Consumables needed a configurable saved shortcut bar with 10-16 slots, no default 4/5/6 hotkeys, real icon paths, and drag reorder between consumable slots.
+1. Consumables needed a configurable saved shortcut bar with 12-16 total slots, no default 4/5/6 hotkeys, real icon paths, and drag reorder between consumable slots.
 2. The 伪装 cart GLB rendered white because the standalone character loader did not apply the exported map `texture-map.json` PBR textures.
 3. Enemy abilities with no damage or debuff still needed to enter `战斗中` when they affected another player.
 4. Root should freeze facing direction on both backend movement and frontend prediction, and control-panel cooldown reset needed to include consumables.
@@ -15,7 +51,8 @@ Each entry goes under its relevant section header.
 **Fix**:
 - Replaced the three fixed consumable buttons with the ordered twelve-item catalog, image icons resolved through `/icons/{name}.png`, saved slot count/order/enabled settings, and native drag/drop reorder across visible consumable slots.
 - Kept ability drag hit testing blocked from consumable slots while allowing consumable-specific drop handling; removed rendered hotkey labels and 4/5/6 key bindings.
-- Added the ESC `快捷键设置` page with a left `物品快捷栏` tab, `关闭` toggle, and `格子数量` range from 10 to 16.
+- Added the ESC `快捷键设置` page with a left `物品快捷栏` tab, `关闭` toggle, and `格子数量` range from 12 to 16.
+- Removed the old always-rendered placeholder item-slot strip from the same HUD row so the default live bar shows exactly the twelve consumables and no extra boxes.
 - Loaded the cart GLB with exported texture-map albedo/MRE/normal material assignment matching `ExportedMapScene`.
 - Added normal `PLAY_ABILITY` events and combat-status handling for enemy ability contact, reset `consumableCooldowns` in the testing cooldown reset, and made root block client/server facing changes.
 - Changed 砂石伪装 to `lockMovement: false` + `cancelOnMove: true`, and marked runtime 伪装 metadata/backend cancelability as manual-cancelable.
@@ -24,6 +61,8 @@ Each entry goes under its relevant section header.
 - If a standalone GLB is reused outside `ExportedMapScene`, it still needs the export package texture-map material pass; the raw GLB may not carry the visual textures.
 - For rooted facing rules, patch both the outgoing input payload and local camera-look prediction, otherwise the server can be correct while the client appears to turn.
 - A configurable shortcut bar should persist slot order separately from visible slot count so hiding or shrinking the bar does not erase the user's arrangement.
+- Consumable drag/drop should treat the bar as fixed slots, not list insertion; dropping into an empty visible slot must move the item to that exact index and leave the source empty.
+- If the consumable row is the user-facing item bar, do not leave a second placeholder slot strip rendered after it; default visual count should match the actual default consumable slot count.
 
 ## 砂石伪装 consumable and disguise targeting (2026-05-09)
 

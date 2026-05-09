@@ -267,9 +267,9 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(inGameClient).toContain('ERR_CONSUMABLE_NOT_IMPLEMENTED');
   expect(battleArenaTsx).toContain('CONSUMABLE_ITEMS');
   expect(battleArenaTsx).toMatch(/name: '绷带'[\s\S]*name: '金疮药'[\s\S]*name: '月影沙'[\s\S]*name: '砂石伪装'[\s\S]*name: '灌木伪装'[\s\S]*name: '瓦罐伪装'[\s\S]*name: '沙行蝎'[\s\S]*name: '马草'[\s\S]*name: '一阶武器盒'[\s\S]*name: '二阶武器盒'[\s\S]*name: '三阶武器盒'[\s\S]*name: '天阶武器盒'/);
-  expect(battleArenaTsx).toContain('CONSUMABLE_BAR_MIN_SLOTS = 10');
+  expect(battleArenaTsx).toContain('CONSUMABLE_BAR_MIN_SLOTS = 12');
   expect(battleArenaTsx).toContain('CONSUMABLE_BAR_MAX_SLOTS = 16');
-  expect(battleArenaTsx).toContain('CONSUMABLE_BAR_DEFAULT_SLOTS = 10');
+  expect(battleArenaTsx).toContain('CONSUMABLE_BAR_DEFAULT_SLOTS = 12');
   expect(battleArenaTsx).toContain('loadConsumableBarSettings');
   expect(battleArenaTsx).toContain('moveConsumableSlot');
   expect(battleArenaTsx).toContain('data-consumable-slot-index');
@@ -327,7 +327,7 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(battleArenaCss).not.toContain('.escMainFooter .escFooterButton:first-child');
   expect(cssBlock(battleArenaCss, '.targetIconDistance')).toContain('font-size: 90%');
   expect(cssBlock(battleArenaCss, '.combatStatusMarker')).toContain('bottom: -11px');
-  expect(cssBlock(battleArenaCss, '.combatStatusMarker')).toContain('color: #ff2424');
+  expect(cssBlock(battleArenaCss, '.combatStatusMarker')).toContain('color: #b11b1b');
   expect(cssBlock(layoutShellCss, '.container')).not.toContain('background: #010409');
   expect(cssBlock(layoutShellCss, '.mainFullscreenNoTopbar')).toContain('position: fixed');
   expect(cssBlock(layoutShellCss, '.mainFullscreenNoTopbar')).toContain('inset: 0');
@@ -682,7 +682,7 @@ test('browser-computed HUD styles match requested layout and visual rules', asyn
   await expect(page.locator('.enemyName')).toHaveCSS('font-size', '13.2px');
   await expect(page.locator('.targetIconDistance')).toHaveCSS('font-size', '11.88px');
   await expect(page.locator('.iconBarResourceRow')).toHaveCSS('opacity', '1');
-  await expect(page.locator('.combatStatusMarker')).toHaveCSS('color', 'rgb(255, 36, 36)');
+  await expect(page.locator('.combatStatusMarker')).toHaveCSS('color', 'rgb(177, 27, 27)');
   const iconBarBodyBg = await page.locator('.iconBarBody').evaluate((element) => getComputedStyle(element).backgroundImage);
   expect(iconBarBodyBg).toContain('rgba(198, 57, 43, 0.7)');
   await expect(page.locator('.hotbarStack')).toHaveCSS('gap', '12px');

@@ -6,6 +6,7 @@ import { Home } from "lucide-react";
 import styles from "./styles.module.css";
 
 import BattleArena from "./components/BattleArena";
+import { ensureResizeObserverSupport } from "./ensureResizeObserverSupport";
 import GameOverModal from "./components/GameBoard/components/GameOverModal";
 import DraftScreen from "./components/DraftScreen";
 import { toastError, toastSuccess } from "@/app/components/toast/toast";
@@ -177,6 +178,8 @@ export default function InGameClient({
   selfUserId,
   authToken,
 }: Props) {
+  ensureResizeObserverSupport();
+
   const router = useRouter();
 
   const {
