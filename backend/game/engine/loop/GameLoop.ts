@@ -48,6 +48,7 @@ import { triggerYunSanBlink } from "../utils/yunSan";
 import { getMiYunAreaCandidates, hasMiYunConfusion, rerollMiYunAreaTargets } from "../utils/miyun";
 import { getHasteAdjustedTimingMs } from "../utils/haste";
 import { COMBAT_STATUS_CHECK_INTERVAL_MS, expireCombatStatusLinks, syncCombatStatusFromEvents } from "../utils/combatStatus";
+import { SAND_DISGUISE_ABILITY, SAND_DISGUISE_BUFF, SAND_DISGUISE_CONSUMABLE_ID, clearTargetSelectionsTargetingPlayer } from "../utils/disguise";
 
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
@@ -641,6 +642,19 @@ function isDunyingCompanion(buff: { buffId: number; name?: string; sourceAbility
 
 function hasBuffEffect(player: { buffs: Array<{ effects: Array<{ type: string }> }> }, type: string): boolean {
   return player.buffs.some((b) => b.effects.some((e) => e.type === type));
+}
+
+function hasCombatActivityAgainstPlayerDuringChannel(state: GameState, userId: string, channelStartedAt: number): boolean {
+  return (state.events ?? []).some((event: any) => {
+    const timestamp = Number(event?.timestamp ?? 0);
+    if (!Number.isFinite(timestamp) || timestamp < channelStartedAt) return false;
+    if (!event?.actorUserId || event.actorUserId === userId || event.targetUserId !== userId) return false;
+    if (event.type === "BUFF_APPLIED" && event.buffCategory === "DEBUFF") return true;
+    if (event.type !== "DAMAGE") return false;
+    const damageValue = Number(event.value ?? 0);
+    const shieldAbsorbed = Number(event.shieldAbsorbed ?? 0);
+    return damageValue > 0 || shieldAbsorbed > 0;
+  });
 }
 
 function tryApplyDodgeForHit(params: {
@@ -1889,9 +1903,10 @@ export class GameLoop {
           : this.state.players.find((p) => p.userId === ch.targetUserId) ?? opp;
         const targetPosition = targetEntity?.position ?? targetPlayer?.position;
         const channelAbility = (ABILITIES as any)[ch.abilityId] as any;
+        const isConsumableChannel = typeof (ch as any).consumableId === "string";
 
-        // Silence interrupts pure active channels.
-        if (hasBuffEffect(player as any, "SILENCE") || hasBuffEffect(player as any, "DISPLACEMENT")) {
+        // Silence interrupts ability channels. Consumable channels ignore lockouts, but real displacement still breaks them.
+        if ((!isConsumableChannel && hasBuffEffect(player as any, "SILENCE")) || hasBuffEffect(player as any, "DISPLACEMENT")) {
           cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
@@ -1975,6 +1990,43 @@ export class GameLoop {
         // Channel completion
         const chNow = Date.now();
 
+        const activeTickIntervalMs = Number((ch as any).tickIntervalMs ?? 0);
+        if (Number.isFinite(activeTickIntervalMs) && activeTickIntervalMs > 0) {
+          const elapsedMs = Math.max(0, Math.min(chNow, ch.startedAt + ch.durationMs) - ch.startedAt);
+          const dueTickCount = Math.floor(elapsedMs / activeTickIntervalMs);
+          const completedTickCount = Math.max(0, Number((ch as any).completedTickCount ?? 0));
+          for (let tickIdx = completedTickCount; tickIdx < dueTickCount && (player.hp ?? 0) > 0; tickIdx++) {
+            (ch as any).completedTickCount = tickIdx + 1;
+            (ch as any).lastTickAt = chNow;
+            for (const e of ch.effects) {
+              if (e.type !== "PERIODIC_HEAL") continue;
+              const healRoll = resolveNonCritHealAmountRoll({
+                source: player as any,
+                target: player as any,
+                base: e.value ?? 0,
+              });
+              const applied = applyHealToTarget(player as any, healRoll.heal);
+              if (applied > 0) {
+                this.state.events.push({
+                  id: randomUUID(),
+                  timestamp: chNow,
+                  turn: this.state.turn,
+                  type: "HEAL",
+                  actorUserId: player.userId,
+                  targetUserId: player.userId,
+                  abilityId: ch.abilityId,
+                  abilityName: ch.abilityName,
+                  effectType: "PERIODIC_HEAL",
+                  value: applied,
+                  isCrit: false,
+                  suppressCritLabel: true,
+                });
+                channelStateChanged = true;
+              }
+            }
+          }
+        }
+
         // ── 连环弩 periodic ticks: every 1s deal 1/2/3 damage. Knockback if target ≤15u. ──
         if (ch.abilityId === "lian_huan_nu" && targetPlayer && (targetPlayer.hp ?? 0) > 0) {
           const lhnInterval = Math.max(1, Number((ch as any).tickIntervalMs ?? getHasteAdjustedTimingMs(1_000, channelAbility as any)));
@@ -2052,6 +2104,24 @@ export class GameLoop {
         }
 
         if (chNow >= ch.startedAt + ch.durationMs) {
+          if (isConsumableChannel && (ch as any).consumableId === SAND_DISGUISE_CONSUMABLE_ID) {
+            const combatDuringChannel = hasCombatActivityAgainstPlayerDuringChannel(this.state, player.userId, ch.startedAt);
+            if (player.inCombat !== true && !combatDuringChannel && (player.hp ?? 0) > 0) {
+              addBuff({
+                state: this.state,
+                sourceUserId: player.userId,
+                targetUserId: player.userId,
+                ability: SAND_DISGUISE_ABILITY,
+                buffTarget: player as any,
+                buff: SAND_DISGUISE_BUFF,
+              });
+              clearTargetSelectionsTargetingPlayer(this.state, player.userId);
+            }
+            cancelActiveChannel(this.state, player as any);
+            channelStateChanged = true;
+            continue;
+          }
+
           const completeRange = getEffectiveAbilityRange(channelAbility as any, player.buffs);
           if (
             channelAbility?.target === "OPPONENT" &&

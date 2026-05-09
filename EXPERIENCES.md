@@ -3,6 +3,66 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Consumable bar settings, disguise texture, and root-facing fixes (2026-05-09)
+
+**Problem set**:
+1. Consumables needed a configurable saved shortcut bar with 10-16 slots, no default 4/5/6 hotkeys, real icon paths, and drag reorder between consumable slots.
+2. The 伪装 cart GLB rendered white because the standalone character loader did not apply the exported map `texture-map.json` PBR textures.
+3. Enemy abilities with no damage or debuff still needed to enter `战斗中` when they affected another player.
+4. Root should freeze facing direction on both backend movement and frontend prediction, and control-panel cooldown reset needed to include consumables.
+5. 砂石伪装 channeling should allow movement input but break when the player moves, and the resulting 伪装 buff should be right-click cancelable.
+
+**Fix**:
+- Replaced the three fixed consumable buttons with the ordered twelve-item catalog, image icons resolved through `/icons/{name}.png`, saved slot count/order/enabled settings, and native drag/drop reorder across visible consumable slots.
+- Kept ability drag hit testing blocked from consumable slots while allowing consumable-specific drop handling; removed rendered hotkey labels and 4/5/6 key bindings.
+- Added the ESC `快捷键设置` page with a left `物品快捷栏` tab, `关闭` toggle, and `格子数量` range from 10 to 16.
+- Loaded the cart GLB with exported texture-map albedo/MRE/normal material assignment matching `ExportedMapScene`.
+- Added normal `PLAY_ABILITY` events and combat-status handling for enemy ability contact, reset `consumableCooldowns` in the testing cooldown reset, and made root block client/server facing changes.
+- Changed 砂石伪装 to `lockMovement: false` + `cancelOnMove: true`, and marked runtime 伪装 metadata/backend cancelability as manual-cancelable.
+
+**Lessons**:
+- If a standalone GLB is reused outside `ExportedMapScene`, it still needs the export package texture-map material pass; the raw GLB may not carry the visual textures.
+- For rooted facing rules, patch both the outgoing input payload and local camera-look prediction, otherwise the server can be correct while the client appears to turn.
+- A configurable shortcut bar should persist slot order separately from visible slot count so hiding or shrinking the bar does not erase the user's arrangement.
+
+## 砂石伪装 consumable and disguise targeting (2026-05-09)
+
+**Problem set**:
+1. A new consumable needed a 2-second positive channel, a second combat check on completion, and a disguise state that self-roots without triggering control diminishing returns.
+2. Disguised players needed to be visible as a normal exported-map object but not directly targetable or selectable, while still hittable by AOE.
+3. Consumable slots needed to visually match ability-slot borders, and ability dragging needed to ignore consumable slots.
+
+**Fix**:
+- Added `砂石伪装` as `sha_shi_wei_zhuang`, a no-cooldown non-combat consumable with a locked 2-second forward channel; completion rechecks `inCombat` and recent enemy damage/debuff events before applying `伪装`.
+- Implemented `伪装` as a self-applied BUFF with `STEALTH`, `ROOT`, and `DISGUISE`, using `STEALTH` for direct-target blocking instead of `UNTARGETABLE` so AOE enumeration can still hit the player.
+- Combat-status entry now removes disguise immediately and clears enemy target selections aimed at the disguised player; backend target-selection also refuses stealth/disguise-blocked player targets.
+- Frontend renders disguised players as the exported-map `wj_木车002_hd.glb`, keeps them visible through the stealth filter, hides their health/name billboard, and prevents click/tab selection.
+- Consumable buttons now use ability-slot border styling and expose `data-consumable-slot` so ability drag hit testing explicitly ignores them.
+
+**Lessons**:
+- For “not selectable but still AOE-hittable,” prefer `STEALTH` plus UI/selection guards over `UNTARGETABLE`; `UNTARGETABLE` would block more enemy effect paths than intended.
+- Self-root is safe for disguise immobilization because control diminishing returns only apply when `addBuff()` sees `sourceUserId !== targetUserId`.
+- Reuse the exported map renderer's full-export path for disguise meshes instead of creating duplicate assets.
+
+## Debuff combat keep-alive and consumables (2026-05-09)
+
+**Problem set**:
+1. Enemy-applied debuffs needed to enter/refresh `战斗中`, including debuffs applied by zones, while long-lived debuffs should only keep the pair in combat while the source and target stay within 60 units.
+2. The existing combat status only stored a short event timestamp, so a 12-second debuff like 撼如雷 could fall out of combat after 3 seconds even if both players stayed close.
+3. Consumables needed their own validator because ability lockouts such as silence/non-qinggong locks should not block consumable use or break consumable reverse channels.
+4. A terminal build attempt used relative `cd backend` after the persistent terminal was left in `frontend`, so absolute project paths are safer for required build commands.
+
+**Fix**:
+- Enemy debuff application now records combat activity without the old range gate; periodic combat expiry keeps an existing link alive while an active enemy debuff remains on either player and the pair is within 60 units, and still drops the link when they leave range.
+- Added a consumable runtime service and route with `金创药` as a 48.3万 heal-reduced instant heal on a 120s cooldown, and `绷带` as a 10s reverse-channel consumable ticking 1.93万 heal-reduced healing every second.
+- Added consumable channel metadata so hard control, pull, knockback, and displacement can break bandage while lockout effects do not; frontend gets cooldown state and fixed lucide-icon item slots with 4/5 hotkeys.
+- Removed the custom slash overlay from the `战斗中` marker so the icon bar uses the standard red lucide double-swords icon only.
+
+**Lessons**:
+- Combat entry and combat keep-alive are separate rules: debuff application can count immediately, but the long debuff sustain rule should be range-checked during expiry.
+- Consumables should not reuse the ability validator wholesale when lockout semantics differ; give them a narrow validator and mark consumable channels explicitly.
+- Use absolute paths for mandatory build/restart commands in this repo because the shared terminal keeps its working directory between commands.
+
 ## LayoutShell home background and F11 fullscreen correction (2026-05-08)
 
 **Problem set**:

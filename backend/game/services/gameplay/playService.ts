@@ -653,6 +653,17 @@ async function playCastAbility(
       });
       applyOnPlayBuffEffects(state, playerIndex);
 
+      pushEvent(state, {
+        turn: state.turn,
+        type: "PLAY_ABILITY",
+        actorUserId: player.userId,
+        targetUserId: targetEntity ? undefined : target.userId,
+        entityId: targetEntity?.id,
+        entityName: targetEntity?.abilityName,
+        abilityId,
+        abilityName: ability.name,
+      });
+
       const upgradedBangDaGouTouCast =
         ability.id === BANG_DA_GOU_TOU_ABILITY_ID &&
         state.players[targetIndex]?.buffs?.some(

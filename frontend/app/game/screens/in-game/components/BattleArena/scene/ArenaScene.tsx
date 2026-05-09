@@ -33,6 +33,7 @@ const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const ZHU_YUN_HIDE_BUFF_IDS = new Set([2716]);
 const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
+const DISGUISE_BUFF_IDS = new Set([980001]);
 
 function hasStealthBuff(buffs?: any[]): boolean {
   if (!Array.isArray(buffs)) return false;
@@ -57,6 +58,15 @@ function hasZhuYunHideBuff(buffs?: any[]): boolean {
   return buffs.some((b: any) => ZHU_YUN_HIDE_BUFF_IDS.has(b?.buffId));
 }
 
+function hasDisguiseBuff(buffs?: any[]): boolean {
+  if (!Array.isArray(buffs)) return false;
+  return buffs.some((b: any) =>
+    DISGUISE_BUFF_IDS.has(b?.buffId) ||
+    (b.effects ?? []).some((e: any) => e.type === 'DISGUISE') ||
+    (typeof b?.name === 'string' && b.name.includes('伪装'))
+  );
+}
+
 function hasHongMengTianJinBuff(buffs?: any[]): boolean {
   if (!Array.isArray(buffs)) return false;
   return buffs.some((b: any) =>
@@ -67,6 +77,7 @@ function hasHongMengTianJinBuff(buffs?: any[]): boolean {
 }
 
 function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
+  if (hasDisguiseBuff(buffs)) return false;
   return (hasStealthBuff(buffs) && !hasSanliuXiaBuff(buffs)) || hasHongMengTianJinBuff(buffs);
 }
 
@@ -469,12 +480,13 @@ export default function ArenaScene({
   }, []);
 
   const selectedTarget = selectedTargetId
-    ? opponents.find((o) => o.userId === selectedTargetId && !shouldHideByStealthFromEnemyView(o.buffs))
+    ? opponents.find((o) => o.userId === selectedTargetId && !hasDisguiseBuff(o.buffs) && !shouldHideByStealthFromEnemyView(o.buffs))
     : null;
   const selectedEntity = selectedEntityId
     ? (entities ?? []).find((entity) => entity.id === selectedEntityId) ?? null
     : null;
-  const meSemiTransparent = hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs);
+  const meDisguised = hasDisguiseBuff(me?.buffs);
+  const meSemiTransparent = !meDisguised && (hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs));
 
   const targetAnchor = selectedTarget
     ? selectedTarget.position
@@ -599,6 +611,8 @@ export default function ArenaScene({
           worldHalfX={worldHalfX}
           worldHalfY={worldHalfY}
           isStealthed={meSemiTransparent}
+          isDisguised={meDisguised}
+          hideHpBar={meDisguised}
           cameraFadeEnabled={isCollisionTest && !selfOnlyMode}
           hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
         />
@@ -801,6 +815,7 @@ export default function ArenaScene({
 
       {/* Opponents — render all of them */}
       {opponents.map((opp, i) => {
+        const disguised = hasDisguiseBuff(opp.buffs);
         const hiddenByStealth = shouldHideByStealthFromEnemyView(opp.buffs);
         if (hiddenByStealth) return null;
 
@@ -835,11 +850,11 @@ export default function ArenaScene({
               shield={opp.shield ?? 0}
               maxHp={opp.maxHp ?? maxHp}
               isMe={false}
-              isSelected={selectedTargetId === opp.userId}
+              isSelected={selectedTargetId === opp.userId && !disguised}
               facing={opp.facing}
               username={opp.username ?? opp.userId}
               distance={dist}
-              onSelect={() => onSelectTarget?.(opp.userId)}
+              onSelect={disguised ? undefined : () => onSelectTarget?.(opp.userId)}
               onScreenBounds={
                 i === 0 || opponentScreenBoundsRef
                   ? (bounds) => {
@@ -854,8 +869,9 @@ export default function ArenaScene({
               }
               worldHalfX={worldHalfX}
               worldHalfY={worldHalfY}
-              isStealthed={hasSanliuXiaBuff(opp.buffs)}
-              hideHpBar={hasZhuYunHideBuff(opp.buffs)}
+              isStealthed={!disguised && hasSanliuXiaBuff(opp.buffs)}
+              isDisguised={disguised}
+              hideHpBar={disguised || hasZhuYunHideBuff(opp.buffs)}
               hpColorOverride={hasShiFangXuanJiBuff(opp.buffs) ? '#2acb6b' : undefined}
               instantSnapAtRef={opponentInstantSnapAtRef}
               instantSnapWindowMs={600}

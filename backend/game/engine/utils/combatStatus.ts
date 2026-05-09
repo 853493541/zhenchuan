@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { calculateDistance, type GameEvent, type GameState, type PlayerState } from "../state/types";
+import { removeDisguiseBuffs } from "./disguise";
 
 export const COMBAT_STATUS_RANGE_UNITS = 60;
 export const COMBAT_STATUS_TIMEOUT_MS = 3_000;
@@ -60,9 +61,14 @@ function setCombatFlag(params: {
   if (!nextInCombat) {
     (player as any).combatLinks = {};
   }
+  let changed = previousInCombat !== nextInCombat;
+  if (nextInCombat) {
+    changed = removeDisguiseBuffs(state, player, timestamp) || changed;
+  }
   if (previousInCombat !== nextInCombat) {
     emitCombatStatusEvent({ state, player, inCombat: nextInCombat, relatedUserId, timestamp });
   }
+  return changed;
 }
 
 function getPlayerMap(state: GameState): Map<string, PlayerState> {
@@ -72,6 +78,22 @@ function getPlayerMap(state: GameState): Map<string, PlayerState> {
 function arePlayersWithinCombatRange(state: GameState, first: PlayerState, second: PlayerState): boolean {
   if (!first.position || !second.position) return false;
   return calculateDistance(first.position, second.position, state.unitScale) <= COMBAT_STATUS_RANGE_UNITS;
+}
+
+function hasActiveEnemyDebuffFrom(sourceUserId: string, target: PlayerState, timestamp: number): boolean {
+  if (!sourceUserId || sourceUserId === target.userId || !Array.isArray(target.buffs)) return false;
+  return target.buffs.some((buff: any) => {
+    if (buff?.category !== "DEBUFF") return false;
+    if (buff?.sourceUserId !== sourceUserId) return false;
+    const expiresAt = Number(buff?.expiresAt ?? 0);
+    return Number.isFinite(expiresAt) && expiresAt > timestamp;
+  });
+}
+
+function hasActiveDebuffCombatLink(state: GameState, first: PlayerState, second: PlayerState, timestamp: number): boolean {
+  if (!arePlayersWithinCombatRange(state, first, second)) return false;
+  return hasActiveEnemyDebuffFrom(first.userId, second, timestamp) ||
+    hasActiveEnemyDebuffFrom(second.userId, first, timestamp);
 }
 
 export function recordCombatActivity(params: {
@@ -115,6 +137,15 @@ function eventCountsAsDamageActivity(event: any): boolean {
   return damageValue > 0 || shieldAbsorbed > 0;
 }
 
+function eventCountsAsEnemyAbilityContact(event: any): boolean {
+  if (!event?.abilityId || !event.actorUserId || !event.targetUserId) return false;
+  if (event.actorUserId === event.targetUserId) return false;
+  if (event.type === "COMBAT_STATUS" || event.type === "BUFF_EXPIRED" || event.type === "HEAL") return false;
+  if (event.type === "BUFF_APPLIED" && event.buffCategory === "DEBUFF") return false;
+  if (event.type === "DAMAGE" && eventCountsAsDamageActivity(event)) return false;
+  return true;
+}
+
 export function syncCombatStatusFromEvents(state: GameState, startIndex: number, endIndex = state.events.length): boolean {
   let changed = false;
   const boundedStart = Math.max(0, Math.min(startIndex, state.events.length));
@@ -141,7 +172,17 @@ export function syncCombatStatusFromEvents(state: GameState, startIndex: number,
         actorUserId: event.actorUserId,
         targetUserId: event.targetUserId,
         timestamp: event.timestamp,
-        requireRange: true,
+      }) || changed;
+      continue;
+    }
+
+    if (eventCountsAsEnemyAbilityContact(event)) {
+      changed = recordCombatActivity({
+        state,
+        actorUserId: event.actorUserId,
+        targetUserId: event.targetUserId,
+        timestamp: event.timestamp,
+        refreshTimerOnlyInRange: true,
       }) || changed;
     }
   }
@@ -161,9 +202,19 @@ export function expireCombatStatusLinks(state: GameState, timestamp = Date.now()
       const reverseLinks = combatant ? getCombatLinks(combatant) : null;
       const reverseLink = reverseLinks?.[player.userId];
       const lastActionAt = Math.max(links[combatantUserId]?.lastActionAt ?? 0, reverseLink?.lastActionAt ?? 0);
-      const stale = timestamp - lastActionAt >= COMBAT_STATUS_TIMEOUT_MS;
-      const outOfRange = !combatant || !arePlayersWithinCombatRange(state, player, combatant);
+      const withinRange = !!combatant && arePlayersWithinCombatRange(state, player, combatant);
       const dead = (player.hp ?? 0) <= 0 || ((combatant?.hp ?? 1) <= 0);
+      const activeDebuffKeepAlive = !!combatant && !dead && hasActiveDebuffCombatLink(state, player, combatant, timestamp);
+
+      if (activeDebuffKeepAlive) {
+        links[combatantUserId] = { lastActionAt: timestamp };
+        if (reverseLinks) reverseLinks[player.userId] = { lastActionAt: timestamp };
+        changed = true;
+        continue;
+      }
+
+      const stale = timestamp - lastActionAt >= COMBAT_STATUS_TIMEOUT_MS;
+      const outOfRange = !combatant || !withinRange;
 
       if (!combatant || stale || outOfRange || dead) {
         delete links[combatantUserId];
@@ -177,13 +228,12 @@ export function expireCombatStatusLinks(state: GameState, timestamp = Date.now()
 
   for (const player of state.players ?? []) {
     const before = player.inCombat === true;
-    setCombatFlag({
+    changed = setCombatFlag({
       state,
       player,
       relatedUserId: removedRelatedByPlayer.get(player.userId),
       timestamp,
-    });
-    changed = changed || before !== (player.inCombat === true);
+    }) || changed || before !== (player.inCombat === true);
   }
 
   return changed;

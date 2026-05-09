@@ -1254,7 +1254,7 @@ router.post("/cheat/full-heal", async (req, res) => {
 });
 
 /**
- * POST /cheat/reset-cooldowns - Set both players' hand cooldowns/charges to ready
+ * POST /cheat/reset-cooldowns - Set both players' hand cooldowns/charges and consumable cooldowns to ready
  * Body: { gameId }
  */
 router.post("/cheat/reset-cooldowns", async (req, res) => {
@@ -1294,9 +1294,11 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
       loopState.players = loopState.players.map((p: any, idx: number) => {
         const hand = resetHand(p.hand ?? []);
         diff.push({ path: `/players/${idx}/hand`, value: hand });
+        diff.push({ path: `/players/${idx}/consumableCooldowns`, value: {} });
         return {
           ...p,
           hand,
+          consumableCooldowns: {},
         };
       });
       loopState.version = (loopState.version ?? 0) + 1;
@@ -1306,9 +1308,11 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
       game.state.players = game.state.players.map((p: any, idx: number) => {
         const hand = resetHand(p.hand ?? []);
         diff.push({ path: `/players/${idx}/hand`, value: hand });
+        diff.push({ path: `/players/${idx}/consumableCooldowns`, value: {} });
         return {
           ...p,
           hand,
+          consumableCooldowns: {},
         };
       });
       game.state.version = (game.state.version ?? 0) + 1;
@@ -1327,6 +1331,7 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
     game.state.players = game.state.players.map((p: any) => ({
       ...p,
       hand: resetHand(p.hand ?? []),
+      consumableCooldowns: {},
     }));
 
     game.markModified("state");

@@ -125,6 +125,24 @@ function showGameError(rawCode: string) {
     case "ERR_PICKUP_HAND_FULL":
       toastError("只能拾取6个技能");
       break;
+    case "ERR_CONSUMABLE_COOLDOWN":
+      toastError("物品尚未冷却");
+      break;
+    case "ERR_CONSUMABLE_IN_COMBAT":
+      toastError("战斗中无法使用该物品");
+      break;
+    case "ERR_CONSUMABLE_CONTROLLED":
+      toastError("受控状态无法使用");
+      break;
+    case "ERR_CONSUMABLE_DASHING":
+      toastError("位移中无法使用");
+      break;
+    case "ERR_CONSUMABLE_NOT_FOUND":
+      toastError("物品配置不存在");
+      break;
+    case "ERR_CONSUMABLE_NOT_IMPLEMENTED":
+      toastError("该物品暂未开放");
+      break;
     case "ERR_NO_LINE_OF_SIGHT":
       toastError("目标不在视线范围内");
       break;
@@ -176,6 +194,7 @@ export default function InGameClient({
     playAbility,
     cancelBuff,
     cancelChannel,
+    useConsumable,
     updateTargetSelection,
     endTurn,
     rtt,
@@ -568,6 +587,16 @@ export default function InGameClient({
           }}
           onCancelChannel={async () => {
             const res = await cancelChannel();
+            if (!res.ok && res.error) {
+              if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
+                router.replace("/game");
+                return;
+              }
+              showGameError(res.error);
+            }
+          }}
+          onUseConsumable={async (consumableId) => {
+            const res = await useConsumable(consumableId);
             if (!res.ok && res.error) {
               if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
                 router.replace("/game");

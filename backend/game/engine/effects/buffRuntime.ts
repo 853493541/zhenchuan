@@ -1210,12 +1210,16 @@ export function addBuff(params: {
 
   // CC that hits a channeling player (with no SILENCE_IMMUNE) cancels their channel.
   if ((buffTarget as any).activeChannel) {
+    const activeChannel = (buffTarget as any).activeChannel;
+    const isConsumableChannel = typeof activeChannel?.consumableId === "string";
     const isCC = runtimeBuff.effects.some((e) =>
       e.type === "CONTROL" ||
       e.type === "KNOCKED_BACK" ||
       e.type === "PULLED" ||
-      e.type === "ATTACK_LOCK" ||
-      e.type === "NON_QINGGONG_LOCK"
+      (!isConsumableChannel && (
+        e.type === "ATTACK_LOCK" ||
+        e.type === "NON_QINGGONG_LOCK"
+      ))
     );
     const isImmune = buffTarget.buffs.some((b) =>
       b.effects.some((e) => e.type === "CONTROL_IMMUNE" || e.type === "SILENCE_IMMUNE")

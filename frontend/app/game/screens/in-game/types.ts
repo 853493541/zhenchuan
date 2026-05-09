@@ -87,6 +87,9 @@ export interface ActiveChannel {
   startedAt: number;
   durationMs: number;
   tickIntervalMs?: number;
+  lastTickAt?: number;
+  completedTickCount?: number;
+  consumableId?: string;
   cancelOnMove?: boolean;
   cancelOnJump?: boolean;
   cancelOnOutOfRange?: number;
@@ -132,6 +135,7 @@ export interface PlayerState {
   targetSelection?: TargetSelection;
   inCombat?: boolean;
   combatLinks?: Record<string, { lastActionAt: number }>;
+  consumableCooldowns?: Record<string, { expiresAt: number }>;
   position?: { x: number; y: number; z?: number };
   velocity?: { vx: number; vy: number; vz?: number };
   moveSpeed?: number;

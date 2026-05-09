@@ -43,6 +43,12 @@ export interface ActiveChannel {
   durationMs: number;
   /** Optional reverse-channel tick interval in ms. */
   tickIntervalMs?: number;
+  /** Last wall-clock tick fired for periodic active-channel effects. */
+  lastTickAt?: number;
+  /** Number of periodic active-channel ticks already resolved. */
+  completedTickCount?: number;
+  /** Set when the channel belongs to the consumable system rather than an ability. */
+  consumableId?: string;
   cancelOnMove?: boolean;
   cancelOnJump?: boolean;
   /** Cancel if distance to opponent exceeds this (units) */
@@ -115,6 +121,9 @@ export interface PlayerState {
 
   /** Symmetric player combat links, keyed by the other player's userId. */
   combatLinks?: Record<PlayerID, { lastActionAt: number }>;
+
+  /** Consumable cooldowns keyed by consumable id; expiresAt is an absolute Date.now() ms timestamp. */
+  consumableCooldowns?: Record<string, { expiresAt: number }>;
 
   /* ================= REAL-TIME POSITION & MOVEMENT ================= */
 

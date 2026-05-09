@@ -1,6 +1,7 @@
 import { ABILITIES } from "./abilities";
 import { applyPropertyOverridesToEffects, BuffEditorOverrideEntry, loadBuffEditorOverrides } from "./buffEditorOverrides";
 import { loadAbilityEditorOverrides } from "./abilityPropertySystem";
+import { SAND_DISGUISE_BUFF, SAND_DISGUISE_CONSUMABLE_ID, SAND_DISGUISE_CONSUMABLE_NAME } from "../engine/utils/disguise";
 
 const BUFF_ICON_PATH_OVERRIDES: Record<string, string> = {
   "心诤": "/icons/心诤-buff.png",
@@ -173,6 +174,13 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
   }
 
   // Runtime-generated buff metadata (not declared directly in ABILITIES).
+  buffs.push({
+    ...SAND_DISGUISE_BUFF,
+    manualCancelable: true,
+    sourceAbilityId: SAND_DISGUISE_CONSUMABLE_ID,
+    sourceAbilityName: SAND_DISGUISE_CONSUMABLE_NAME,
+  });
+
   buffs.push({
     buffId: 1007,
     name: "散流霞",

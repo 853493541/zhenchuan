@@ -185,6 +185,24 @@ const CATCAKE_DEFAULT_UI_POSITIONS: Record<string, UiPosition> = {
 };
 const DRAFT_ABILITY_SLOT_COUNT = 6;
 const ITEM_BAR_SLOT_COUNT = 14;
+const CONSUMABLE_BAR_STORAGE_KEY = 'zhenchuan-consumable-bar-settings-v1';
+const CONSUMABLE_BAR_MIN_SLOTS = 10;
+const CONSUMABLE_BAR_MAX_SLOTS = 16;
+const CONSUMABLE_BAR_DEFAULT_SLOTS = 10;
+const CONSUMABLE_ITEMS = [
+  { id: 'beng_dai', name: '绷带' },
+  { id: 'jin_chuang_yao', name: '金疮药' },
+  { id: 'yue_ying_sha', name: '月影沙' },
+  { id: 'sha_shi_wei_zhuang', name: '砂石伪装' },
+  { id: 'guan_mu_wei_zhuang', name: '灌木伪装' },
+  { id: 'wa_guan_wei_zhuang', name: '瓦罐伪装' },
+  { id: 'sha_xing_xie', name: '沙行蝎' },
+  { id: 'ma_cao', name: '马草' },
+  { id: 'yi_jie_wu_qi_he', name: '一阶武器盒' },
+  { id: 'er_jie_wu_qi_he', name: '二阶武器盒' },
+  { id: 'san_jie_wu_qi_he', name: '三阶武器盒' },
+  { id: 'tian_jie_wu_qi_he', name: '天阶武器盒' },
+] as const;
 const STATUS_BAR_VERTICAL_OFFSET = 58;
 const PLAYER_CHANNEL_BAR_FLOAT_WIDTH = 290;
 const PLAYER_GCD_BAR_FLOAT_WIDTH = 224;
@@ -1030,6 +1048,7 @@ function facingArrow(facing: { x: number; y: number } | undefined): string {
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
 const STEALTH_ABILITY_IDS = new Set(['anchen_misan', 'fuguang_lueying', 'tiandi_wuji', 'hua_die']);
 const UNTARGETABLE_BUFF_IDS = new Set([1008]);
+const DISGUISE_BUFF_IDS = new Set([980001]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const HONG_MENG_TIAN_JIN_BUFF_IDS = new Set([2645]);
 const SHU_SE_BUFF_IDS = new Set([2646]);
@@ -1049,6 +1068,15 @@ function hasStealthClient(buffs?: ActiveBuff[]): boolean {
     STEALTH_BUFF_IDS.has(b.buffId) ||
     buffNameIncludes(b, '隐身') ||
     buffNameIncludes(b, '遁影')
+  );
+}
+
+function hasDisguiseClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) =>
+    DISGUISE_BUFF_IDS.has(b.buffId) ||
+    buffHasEffect(b, 'DISGUISE') ||
+    buffNameIncludes(b, '伪装')
   );
 }
 
@@ -1105,6 +1133,7 @@ function hasMianLaClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
+  if (hasDisguiseClient(buffs)) return false;
   return (hasStealthClient(buffs) && !hasSanliuXiaClient(buffs)) || hasHongMengTianJinClient(buffs);
 }
 
@@ -1112,9 +1141,11 @@ function blocksTargetingClient(buffs?: ActiveBuff[]): boolean {
   if (!Array.isArray(buffs) || buffs.length === 0) return false;
   return buffs.some((b: any) =>
     buffHasEffect(b, 'STEALTH') ||
+    buffHasEffect(b, 'DISGUISE') ||
     buffHasEffect(b, 'UNTARGETABLE') ||
     STEALTH_BUFF_IDS.has(b.buffId) ||
     UNTARGETABLE_BUFF_IDS.has(b.buffId) ||
+    DISGUISE_BUFF_IDS.has(b.buffId) ||
     buffNameIncludes(b, '隐身') ||
     buffNameIncludes(b, '遁影') ||
     buffNameIncludes(b, '不可选中')
@@ -1318,6 +1349,94 @@ type DraftDragGhostState = {
 
 function createEmptyItemBarSlots(): Array<AbilityInfo | undefined> {
   return Array.from({ length: ITEM_BAR_SLOT_COUNT });
+}
+
+type ConsumableItemId = typeof CONSUMABLE_ITEMS[number]['id'];
+type ConsumableItem = typeof CONSUMABLE_ITEMS[number];
+type ConsumableSlotId = ConsumableItemId | null;
+type ConsumableBarSettings = {
+  enabled: boolean;
+  slotCount: number;
+  slots: ConsumableSlotId[];
+};
+
+const CONSUMABLE_ITEM_BY_ID = new Map<ConsumableItemId, ConsumableItem>(
+  CONSUMABLE_ITEMS.map((item) => [item.id, item] as [ConsumableItemId, ConsumableItem]),
+);
+const DEFAULT_CONSUMABLE_SLOT_IDS = CONSUMABLE_ITEMS.map((item) => item.id) as ConsumableItemId[];
+
+function normalizeConsumableSlotCount(value: unknown): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return CONSUMABLE_BAR_DEFAULT_SLOTS;
+  return Math.max(CONSUMABLE_BAR_MIN_SLOTS, Math.min(CONSUMABLE_BAR_MAX_SLOTS, Math.round(numeric)));
+}
+
+function normalizeConsumableSlots(value: unknown): ConsumableSlotId[] {
+  const validIds = new Set<ConsumableItemId>(DEFAULT_CONSUMABLE_SLOT_IDS);
+  const rawSlots = Array.isArray(value) ? value : DEFAULT_CONSUMABLE_SLOT_IDS;
+  const seen = new Set<ConsumableItemId>();
+  const slots: ConsumableSlotId[] = [];
+
+  for (const rawId of rawSlots) {
+    if (rawId === null) {
+      slots.push(null);
+      continue;
+    }
+    if (typeof rawId !== 'string' || !validIds.has(rawId as ConsumableItemId) || seen.has(rawId as ConsumableItemId)) {
+      continue;
+    }
+    const id = rawId as ConsumableItemId;
+    seen.add(id);
+    slots.push(id);
+  }
+
+  for (const id of DEFAULT_CONSUMABLE_SLOT_IDS) {
+    if (!seen.has(id)) {
+      slots.push(id);
+      seen.add(id);
+    }
+  }
+
+  while (slots.length < CONSUMABLE_BAR_MAX_SLOTS) slots.push(null);
+  return slots.slice(0, CONSUMABLE_BAR_MAX_SLOTS);
+}
+
+function loadConsumableBarSettings(): ConsumableBarSettings {
+  try {
+    if (typeof window === 'undefined') {
+      return {
+        enabled: true,
+        slotCount: CONSUMABLE_BAR_DEFAULT_SLOTS,
+        slots: normalizeConsumableSlots(undefined),
+      };
+    }
+    const stored = JSON.parse(localStorage.getItem(CONSUMABLE_BAR_STORAGE_KEY) ?? '{}');
+    return {
+      enabled: stored?.enabled !== false,
+      slotCount: normalizeConsumableSlotCount(stored?.slotCount),
+      slots: normalizeConsumableSlots(stored?.slots ?? stored?.order),
+    };
+  } catch {
+    return {
+      enabled: true,
+      slotCount: CONSUMABLE_BAR_DEFAULT_SLOTS,
+      slots: normalizeConsumableSlots(undefined),
+    };
+  }
+}
+
+function getConsumableCooldownRemainingMs(player: any, consumableId: ConsumableItemId, nowMs: number): number {
+  const expiresAt = Number(player?.consumableCooldowns?.[consumableId]?.expiresAt ?? 0);
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) return 0;
+  return Math.max(0, expiresAt - nowMs);
+}
+
+function formatConsumableCooldown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  if (totalSeconds <= 0) return '';
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : `${seconds}`;
 }
 
 function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
@@ -1686,6 +1805,10 @@ function getArenaAbilityIconPath(name: string | undefined | null) {
   return getAbilityIconPath(name) ?? '/icons/fallback.png';
 }
 
+function getConsumableIconPath(name: string | undefined | null) {
+  return getAbilityIconPath(name) ?? '/icons/fallback.png';
+}
+
 type CameraDebugEntry = {
   id: number;
   ts: number;
@@ -1741,7 +1864,7 @@ const COMMON_ABILITY_ORDER = [
 ] as const;
 
 interface BattleArenaProps {
-  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
+  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; consumableCooldowns?: Record<string, { expiresAt: number }>; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
   opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }> };
   /** All other players (opponents) — supports 1v1 and N-player modes */
   opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }> }[];
@@ -1754,6 +1877,7 @@ interface BattleArenaProps {
     movementIntent?: boolean,
   ) => Promise<void>;
   onCancelChannel?: () => Promise<void>;
+  onUseConsumable?: (consumableId: ConsumableItemId) => Promise<void> | void;
   onTargetSelection?: (selection: TargetSelection | null) => Promise<void> | void;
   onCancelBuff?: (buffId: number, options?: { entityTargetId?: string }) => Promise<void>;
   onLeaveGame?: () => Promise<void> | void;
@@ -1786,6 +1910,7 @@ export default function BattleArena({
   gameId,
   onCastAbility,
   onCancelChannel,
+  onUseConsumable,
   onTargetSelection,
   onCancelBuff,
   onLeaveGame,
@@ -2057,6 +2182,10 @@ export default function BattleArena({
   const [discardZoneHover, setDiscardZoneHover] = useState(false);
   const [itemBarAbilities, setItemBarAbilities] = useState<Array<AbilityInfo | undefined>>(() => createEmptyItemBarSlots());
   const itemBarAbilitiesRef = useRef<Array<AbilityInfo | undefined>>(createEmptyItemBarSlots());
+  const [consumableBarSettings, setConsumableBarSettings] = useState<ConsumableBarSettings>(() => loadConsumableBarSettings());
+  const [draggingConsumableIndex, setDraggingConsumableIndex] = useState<number | null>(null);
+  const [dragHoverConsumableIndex, setDragHoverConsumableIndex] = useState<number | null>(null);
+  const consumableDragIndexRef = useRef<number | null>(null);
   const [draftSlotOverrides, setDraftSlotOverrides] = useState<Record<string, number>>({});
   const draftSlotOverridesRef = useRef<Record<string, number>>({});
   const pendingDraftReorderRef = useRef<PendingDraftReorder | null>(null);
@@ -2064,6 +2193,12 @@ export default function BattleArena({
   const [draftDragGhost, setDraftDragGhost] = useState<DraftDragGhostState | null>(null);
   const [pressedAbilityInput, setPressedAbilityInput] = useState<string | null>(null);
   const [, ] = useState(0); // placeholder (was setChannelTick)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CONSUMABLE_BAR_STORAGE_KEY, JSON.stringify(consumableBarSettings));
+    } catch {}
+  }, [consumableBarSettings]);
 
   /* --- Pickup interaction state --- */
   const [nearbyPickupIds,   setNearbyPickupIds]   = useState<string[]>([]);         // sorted closest-first
@@ -2175,7 +2310,7 @@ export default function BattleArena({
   const [showTestingPanel, setShowTestingPanel] = useState(false);
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
   const [showCameraEventTestingPanel, setShowCameraEventTestingPanel] = useState(false);
-  const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings'>('main');
+  const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
   const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting'>('switches');
   const [customUiPromptPos, setCustomUiPromptPos] = useState<UiPosition | null>(null);
@@ -2804,6 +2939,33 @@ export default function BattleArena({
   // Ref-based cast wrapper — updated every render, so it always captures the
   // latest onCastAbility without causing keyboard/mouse useEffect re-runs.
   const castAbilityRef = useRef<(id: string) => void>(() => {});
+  const useConsumableRef = useRef<(id: ConsumableItemId) => void>(() => {});
+  useConsumableRef.current = (id: ConsumableItemId) => {
+    void onUseConsumable?.(id);
+  };
+  const setConsumableBarEnabled = useCallback((enabled: boolean) => {
+    setConsumableBarSettings((prev) => ({ ...prev, enabled }));
+  }, []);
+  const setConsumableBarSlotCount = useCallback((slotCount: unknown) => {
+    setConsumableBarSettings((prev) => ({ ...prev, slotCount: normalizeConsumableSlotCount(slotCount) }));
+  }, []);
+  const moveConsumableSlot = useCallback((fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setConsumableBarSettings((prev) => {
+      if (
+        fromIndex < 0 ||
+        fromIndex >= prev.slotCount ||
+        toIndex < 0 ||
+        toIndex >= prev.slotCount
+      ) {
+        return prev;
+      }
+      const slots = normalizeConsumableSlots(prev.slots);
+      const [dragged] = slots.splice(fromIndex, 1);
+      slots.splice(toIndex, 0, dragged ?? null);
+      return { ...prev, slots: slots.slice(0, CONSUMABLE_BAR_MAX_SLOTS) };
+    });
+  }, []);
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
     const abilityKey = ability?.abilityId ?? ability?.id;
@@ -3757,6 +3919,7 @@ export default function BattleArena({
     const shouldJump = jumpSendRef.current && !jumpLockedRef.current;
     if (jumpSendRef.current) jumpSendRef.current = false;
     const dashFacingLocked = !!meActiveDashRef.current && !dashTurnOverrideRef.current;
+    const facingInputLocked = movementControlStateRef.current.fullyLocked || movementControlStateRef.current.rooted;
     let facingPayload = { ...meFacingRef.current };
     let directionPayload:
       | { dx: number; dy: number; jump: boolean; backpedalOnly?: boolean }
@@ -3778,12 +3941,12 @@ export default function BattleArena({
       directionPayload = { dx: 0, dy: 0, jump: lingRanJumpLockImmune ? shouldJump : false };
     } else if (fearedDirection) {
       directionPayload = { dx: fearedDirection.x, dy: fearedDirection.y, jump: false };
-      if (!dashFacingLocked) {
+      if (!dashFacingLocked && !facingInputLocked) {
         facingPayload = fearedDirection;
       }
     } else if (shiXinGuDirection) {
       directionPayload = { dx: shiXinGuDirection.x, dy: shiXinGuDirection.y, jump: false };
-      if (!dashFacingLocked) {
+      if (!dashFacingLocked && !facingInputLocked) {
         facingPayload = shiXinGuDirection;
       }
     } else if (shiXinGuStandstill) {
@@ -3807,15 +3970,15 @@ export default function BattleArena({
         directionPayload = { dx: 0, dy: 0, jump: true };
       }
 
-      if (!dashFacingLocked && mouseLook) {
+      if (!dashFacingLocked && !facingInputLocked && mouseLook) {
         facingPayload = {
           x: Math.sin(camYawRef.current),
           y: -Math.cos(camYawRef.current),
         };
-      } else if (!dashFacingLocked && moveIntent.direction && !moveIntent.backpedalOnly) {
+      } else if (!dashFacingLocked && !facingInputLocked && moveIntent.direction && !moveIntent.backpedalOnly) {
         const facingDir = normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy);
         if (facingDir) facingPayload = facingDir;
-      } else if (!dashFacingLocked) {
+      } else if (!dashFacingLocked && !facingInputLocked) {
         facingPayload = {
           x: Math.sin(charYawRef.current),
           y: -Math.cos(charYawRef.current),
@@ -3827,7 +3990,7 @@ export default function BattleArena({
       if (mag >= 0.01 || shouldJump) {
         directionPayload = { dx: jd.dx, dy: jd.dy, jump: shouldJump };
       }
-      if (!dashFacingLocked) {
+      if (!dashFacingLocked && !facingInputLocked) {
         const facingDir = normalizePlanar(jd.dx, jd.dy);
         if (facingDir) facingPayload = facingDir;
       }
@@ -3835,7 +3998,7 @@ export default function BattleArena({
       if (k.w || k.a || k.s || k.d || shouldJump) {
         directionPayload = { up: k.s, down: k.w, left: k.a, right: k.d, jump: shouldJump };
       }
-      if (!dashFacingLocked) {
+      if (!dashFacingLocked && !facingInputLocked) {
         const facingDir = normalizePlanar(
           (k.a ? -1 : 0) + (k.d ? 1 : 0),
           (k.w ? 1 : 0) + (k.s ? -1 : 0),
@@ -3844,7 +4007,9 @@ export default function BattleArena({
       }
     }
 
-    meFacingRef.current = facingPayload;
+    if (!facingInputLocked) {
+      meFacingRef.current = facingPayload;
+    }
     const seq = ++movementSeqRef.current;
     try {
       const res = await fetch('/api/game/movement', {
@@ -5389,7 +5554,7 @@ export default function BattleArena({
               x: Math.sin(camYawRef.current),
               y: -Math.cos(camYawRef.current),
             };
-        if (facingDir && (!meActiveDashRef.current || dashTurnOverrideRef.current)) {
+        if (facingDir && !(movementControlStateRef.current.rooted || movementControlStateRef.current.fullyLocked) && (!meActiveDashRef.current || dashTurnOverrideRef.current)) {
           localFacingRef.current = facingDir;
           charYawRef.current = facingToYaw(facingDir);
         }
@@ -5419,7 +5584,7 @@ export default function BattleArena({
               x: Math.sin(camYawRef.current),
               y: -Math.cos(camYawRef.current),
             };
-        if (facingDir && (!meActiveDashRef.current || dashTurnOverrideRef.current)) {
+        if (facingDir && !(movementControlStateRef.current.rooted || movementControlStateRef.current.fullyLocked) && (!meActiveDashRef.current || dashTurnOverrideRef.current)) {
           localFacingRef.current = facingDir;
           charYawRef.current = facingToYaw(facingDir);
         }
@@ -5502,7 +5667,7 @@ export default function BattleArena({
       camTouchRef.lastY = touch.clientY;
       // Right-click behaviour: camera + character facing both rotate
       camYawRef.current  -= dx * 0.005;
-      if (!meActiveDashRef.current || dashTurnOverrideRef.current) {
+      if (!(movementControlStateRef.current.rooted || movementControlStateRef.current.fullyLocked) && (!meActiveDashRef.current || dashTurnOverrideRef.current)) {
         charYawRef.current  = camYawRef.current;
         localFacingRef.current = {
           x: Math.sin(charYawRef.current),
@@ -6831,6 +6996,7 @@ export default function BattleArena({
   useEffect(() => {
     const getAbilityDropTargetAtPoint = (clientX: number, clientY: number): AbilityDropTarget | null => {
       const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+      if (element?.closest('[data-consumable-slot]')) return null;
       const itemSlotElement = element?.closest('[data-item-slot-index]') as HTMLElement | null;
       if (itemSlotElement) {
         const rawIndex = itemSlotElement.dataset.itemSlotIndex;
@@ -7346,8 +7512,74 @@ export default function BattleArena({
     );
   };
 
-  const renderItemBar = () => (
+  const renderItemBar = () => {
+    const consumableNowMs = systemTime.getTime();
+    const visibleConsumableSlots = consumableBarSettings.enabled
+      ? consumableBarSettings.slots.slice(0, consumableBarSettings.slotCount)
+      : [];
+
+    return (
     <div className={styles.itemBar} aria-label="物品栏">
+      {visibleConsumableSlots.map((consumableId, index) => {
+        const consumable = consumableId ? CONSUMABLE_ITEM_BY_ID.get(consumableId) : undefined;
+        const cooldownMs = consumable ? getConsumableCooldownRemainingMs(me, consumable.id, consumableNowMs) : 0;
+        const cooldownLabel = formatConsumableCooldown(cooldownMs);
+        return (
+          <button
+            key={`consumable-slot-${index}-${consumable?.id ?? 'empty'}`}
+            type="button"
+            data-consumable-slot="true"
+            data-consumable-slot-index={index}
+            className={`${styles.itemSlot} ${styles.consumableSlot} ${!consumable ? styles.consumableSlotEmpty : ''} ${cooldownMs > 0 ? styles.consumableSlotCooling : ''} ${dragHoverConsumableIndex === index ? styles.consumableSlotDragHover : ''} ${draggingConsumableIndex === index ? styles.consumableSlotDragging : ''}`}
+            aria-label={consumable?.name ?? `空物品格 ${index + 1}`}
+            aria-disabled={!consumable || cooldownMs > 0}
+            title={consumable?.name ?? '空物品格'}
+            draggable={!customUiMode && !!consumable}
+            onDragStart={(event) => {
+              if (!consumable || customUiMode) return;
+              consumableDragIndexRef.current = index;
+              setDraggingConsumableIndex(index);
+              setDragHoverConsumableIndex(index);
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('application/x-zhenchuan-consumable-slot', String(index));
+              event.dataTransfer.setData('text/plain', consumable.id);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+              setDragHoverConsumableIndex(index);
+            }}
+            onDragLeave={() => setDragHoverConsumableIndex((current) => current === index ? null : current)}
+            onDrop={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const rawSourceIndex = event.dataTransfer.getData('application/x-zhenchuan-consumable-slot');
+              const sourceIndex = rawSourceIndex !== '' ? Number(rawSourceIndex) : consumableDragIndexRef.current;
+              if (Number.isInteger(sourceIndex)) {
+                moveConsumableSlot(sourceIndex, index);
+              }
+              consumableDragIndexRef.current = null;
+              setDraggingConsumableIndex(null);
+              setDragHoverConsumableIndex(null);
+            }}
+            onDragEnd={() => {
+              consumableDragIndexRef.current = null;
+              setDraggingConsumableIndex(null);
+              setDragHoverConsumableIndex(null);
+            }}
+            onClick={() => {
+              if (!consumable || cooldownMs > 0 || customUiMode) return;
+              useConsumableRef.current(consumable.id);
+            }}
+          >
+            {consumable && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={getConsumableIconPath(consumable.name)} alt={consumable.name} className={styles.consumableIcon} draggable={false} />
+            )}
+            {cooldownMs > 0 && <span className={styles.consumableCooldown}>{cooldownLabel}</span>}
+          </button>
+        );
+      })}
       {Array.from({ length: ITEM_BAR_SLOT_COUNT }, (_, index) => {
         const ability = itemBarAbilities[index];
         return (
@@ -7368,7 +7600,8 @@ export default function BattleArena({
         );
       })}
     </div>
-  );
+    );
+  };
 
   const renderOwnedAbilityBar = (disableInteractions = false) => (
     <div
@@ -7860,6 +8093,9 @@ export default function BattleArena({
             selectedTargetId={selectedTargetId}
             onSelectTarget={(userId) => {
               const clicked = worldVisibleOpponentsList.find((o) => o.userId === userId);
+              if (clicked && hasDisguiseClient(clicked.buffs)) {
+                return;
+              }
               if (clicked && blocksTargetingClient(clicked.buffs)) {
                 toastError('目标不可选中');
                 return;
@@ -8187,7 +8423,7 @@ export default function BattleArena({
 
       {mode === 'collision-test' && showTestingPanel && (
         <div className={styles.escOverlay}>
-          <div className={`${styles.escPanelShell} ${escPanelPage === 'game-settings' ? styles.escPanelShellSettings : ''}`} data-testing-panel>
+          <div className={`${styles.escPanelShell} ${escPanelPage !== 'main' ? styles.escPanelShellSettings : ''}`} data-testing-panel>
             {escPanelPage === 'main' ? (
               <>
                 <div className={styles.escWindowHeader}>
@@ -8249,7 +8485,7 @@ export default function BattleArena({
                         <span className={styles.escMainIcon}><MessageCircle size={78} strokeWidth={1.6} aria-hidden="true" /></span>
                         <span>聊天设置</span>
                       </button>
-                      <button type="button" className={styles.escMainTile} disabled>
+                      <button type="button" className={styles.escMainTile} onClick={() => setEscPanelPage('hotkey-settings')}>
                         <span className={styles.escMainIcon}><Keyboard size={78} strokeWidth={1.6} aria-hidden="true" /></span>
                         <span>快捷键设置</span>
                       </button>
@@ -8444,94 +8680,135 @@ export default function BattleArena({
                   >
                     <ArrowLeft size={28} strokeWidth={2.3} aria-hidden="true" />
                   </button>
-                  <div className={styles.escWindowTitle}>游戏设置</div>
+                  <div className={styles.escWindowTitle}>{escPanelPage === 'hotkey-settings' ? '快捷键设置' : '游戏设置'}</div>
                   <button
                     type="button"
                     onClick={() => setShowTestingPanel(false)}
                     className={styles.escHeaderIconButton}
-                    aria-label="关闭游戏设置"
+                    aria-label={escPanelPage === 'hotkey-settings' ? '关闭快捷键设置' : '关闭游戏设置'}
                   >
                     <X size={28} strokeWidth={2.3} aria-hidden="true" />
                   </button>
                 </div>
                 <div className={styles.escSettingsBody}>
                   <aside className={styles.escSettingsSidebar}>
-                    <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>综合</button>
+                    {escPanelPage === 'hotkey-settings' ? (
+                      <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>物品快捷栏</button>
+                    ) : (
+                      <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>综合</button>
+                    )}
                   </aside>
                   <section className={styles.escSettingsContent}>
-                    <div className={styles.escSectionTitle}><span>界面设置</span></div>
-                    <div className={styles.escSettingsGrid}>
-                      <div className={styles.escSettingControl}>
-                        <div className={styles.escRangeHeader}>
-                          <span>技能栏大小</span>
-                          <span>{abilityPanelScale.toFixed(2)}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0.5"
-                          max="2"
-                          step="0.01"
-                          value={abilityPanelScale}
-                          onChange={(e) => setAbilityPanelScale(normalizeAbilityPanelScale(e.target.value))}
-                          className={styles.escRangeInput}
-                          aria-label="技能栏大小"
-                        />
-                      </div>
-                      <div className={`${styles.escToggleGroup} ${styles.escSettingControl}`}>
-                        <label className={styles.escToggleGroupHeader}>
-                          <input
-                            type="checkbox"
-                            checked={gcdVisibilitySettings.enabled}
-                            onChange={(e) => {
-                              const enabled = e.target.checked;
-                              setGcdVisibilitySettings((prev) => ({ ...prev, enabled }));
-                            }}
-                            className={styles.escToggleInput}
-                          />
-                          <span>显示GCD</span>
-                        </label>
-                        {gcdVisibilitySettings.enabled && (
-                          <div className={styles.escToggleSubList}>
-                            <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
+                    {escPanelPage === 'hotkey-settings' ? (
+                      <>
+                        <div className={styles.escSectionTitle}><span>物品快捷栏</span></div>
+                        <div className={styles.escSettingsGrid}>
+                          <div className={`${styles.escToggleGroup} ${styles.escSettingControl}`}>
+                            <label className={styles.escToggleGroupHeader}>
                               <input
                                 type="checkbox"
-                                checked={gcdVisibilitySettings.base}
-                                onChange={(e) => {
-                                  const base = e.target.checked;
-                                  setGcdVisibilitySettings((prev) => ({ ...prev, base }));
-                                }}
+                                checked={!consumableBarSettings.enabled}
+                                onChange={(e) => setConsumableBarEnabled(!e.target.checked)}
                                 className={styles.escToggleInput}
                               />
-                              <span>显示基础GCD</span>
-                            </label>
-                            <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
-                              <input
-                                type="checkbox"
-                                checked={gcdVisibilitySettings.qinggong}
-                                onChange={(e) => {
-                                  const qinggong = e.target.checked;
-                                  setGcdVisibilitySettings((prev) => ({ ...prev, qinggong }));
-                                }}
-                                className={styles.escToggleInput}
-                              />
-                              <span>显示轻功GCD</span>
-                            </label>
-                            <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
-                              <input
-                                type="checkbox"
-                                checked={gcdVisibilitySettings.houyao}
-                                onChange={(e) => {
-                                  const houyao = e.target.checked;
-                                  setGcdVisibilitySettings((prev) => ({ ...prev, houyao }));
-                                }}
-                                className={styles.escToggleInput}
-                              />
-                              <span>显示后撤GCD</span>
+                              <span>关闭</span>
                             </label>
                           </div>
-                        )}
-                      </div>
-                    </div>
+                          <div className={styles.escSettingControl}>
+                            <div className={styles.escRangeHeader}>
+                              <span>格子数量</span>
+                              <span>{consumableBarSettings.slotCount}</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={CONSUMABLE_BAR_MIN_SLOTS}
+                              max={CONSUMABLE_BAR_MAX_SLOTS}
+                              step="1"
+                              value={consumableBarSettings.slotCount}
+                              onChange={(e) => setConsumableBarSlotCount(e.target.value)}
+                              className={styles.escRangeInput}
+                              aria-label="格子数量"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className={styles.escSectionTitle}><span>界面设置</span></div>
+                        <div className={styles.escSettingsGrid}>
+                          <div className={styles.escSettingControl}>
+                            <div className={styles.escRangeHeader}>
+                              <span>技能栏大小</span>
+                              <span>{abilityPanelScale.toFixed(2)}</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2"
+                              step="0.01"
+                              value={abilityPanelScale}
+                              onChange={(e) => setAbilityPanelScale(normalizeAbilityPanelScale(e.target.value))}
+                              className={styles.escRangeInput}
+                              aria-label="技能栏大小"
+                            />
+                          </div>
+                          <div className={`${styles.escToggleGroup} ${styles.escSettingControl}`}>
+                            <label className={styles.escToggleGroupHeader}>
+                              <input
+                                type="checkbox"
+                                checked={gcdVisibilitySettings.enabled}
+                                onChange={(e) => {
+                                  const enabled = e.target.checked;
+                                  setGcdVisibilitySettings((prev) => ({ ...prev, enabled }));
+                                }}
+                                className={styles.escToggleInput}
+                              />
+                              <span>显示GCD</span>
+                            </label>
+                            {gcdVisibilitySettings.enabled && (
+                              <div className={styles.escToggleSubList}>
+                                <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={gcdVisibilitySettings.base}
+                                    onChange={(e) => {
+                                      const base = e.target.checked;
+                                      setGcdVisibilitySettings((prev) => ({ ...prev, base }));
+                                    }}
+                                    className={styles.escToggleInput}
+                                  />
+                                  <span>显示基础GCD</span>
+                                </label>
+                                <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={gcdVisibilitySettings.qinggong}
+                                    onChange={(e) => {
+                                      const qinggong = e.target.checked;
+                                      setGcdVisibilitySettings((prev) => ({ ...prev, qinggong }));
+                                    }}
+                                    className={styles.escToggleInput}
+                                  />
+                                  <span>显示轻功GCD</span>
+                                </label>
+                                <label className={`${styles.escToggleRow} ${styles.escToggleSubRow}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={gcdVisibilitySettings.houyao}
+                                    onChange={(e) => {
+                                      const houyao = e.target.checked;
+                                      setGcdVisibilitySettings((prev) => ({ ...prev, houyao }));
+                                    }}
+                                    className={styles.escToggleInput}
+                                  />
+                                  <span>显示后撤GCD</span>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </section>
                 </div>
                 <div className={styles.escSettingsFooter}>

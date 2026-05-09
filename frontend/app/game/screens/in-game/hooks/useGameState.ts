@@ -534,6 +534,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       playAbility: async () => ({ ok: false }),
       cancelBuff: async () => ({ ok: false }),
       cancelChannel: async () => ({ ok: false }),
+      useConsumable: async () => ({ ok: false }),
       updateTargetSelection: async () => ({ ok: false }),
       endTurn: async () => ({ ok: false }),
       rtt,
@@ -567,6 +568,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       playAbility: async () => ({ ok: false }),
       cancelBuff: async () => ({ ok: false }),
       cancelChannel: async () => ({ ok: false }),
+      useConsumable: async () => ({ ok: false }),
       updateTargetSelection: async () => ({ ok: false }),
       endTurn: async () => ({ ok: false }),
       rtt,
@@ -762,6 +764,43 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     }
   };
 
+  const useConsumable = async (consumableId: string) => {
+    if (playing || state.gameOver) {
+      return { ok: false };
+    }
+
+    setPlaying(true);
+    try {
+      const res = await fetch("/api/game/consumable/use", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameId, consumableId }),
+      });
+
+      if (!res.ok) {
+        return { ok: false, error: await readBackendError(res) };
+      }
+
+      const patch = await res.json();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
+      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      versionRef.current = patch.version;
+
+      setGame((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          state: applyDiff(prev.state, normalizedDiff),
+        };
+      });
+
+      return { ok: true };
+    } finally {
+      setPlaying(false);
+    }
+  };
+
   const updateTargetSelection = async (selection: TargetSelection | null) => {
     if (state.gameOver) {
       return { ok: false };
@@ -811,6 +850,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     playAbility,
     cancelBuff,
     cancelChannel,
+    useConsumable,
     updateTargetSelection,
     endTurn,
     rtt,

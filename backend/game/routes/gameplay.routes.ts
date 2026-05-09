@@ -1,5 +1,5 @@
 import express from "express";
-import { cancelActiveChannelCast, cancelPlayerBuff, playAbility, passTurn } from "../services";
+import { cancelActiveChannelCast, cancelPlayerBuff, playAbility, passTurn, useConsumable } from "../services";
 import { getUserIdFromCookie } from "./auth";
 import type { GameState, MovementInput, TargetSelection } from "../engine/state/types";
 import { ABILITIES } from "../abilities/abilities";
@@ -10,6 +10,7 @@ import { ensureBattleLoop, getBattleLoopHydrationDiagnostics } from "../services
 import { GameLoop } from "../engine/loop/GameLoop";
 import { randomUUID } from "crypto";
 import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types";
+import { blocksCardTargeting } from "../engine/rules/guards";
 
 const router = express.Router();
 const pendingLeaveEndTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -78,6 +79,12 @@ const ERROR_MESSAGES: Record<string, string> = {
   ERR_PICKUP_CLAIM_TOO_FAR: "Too far away to pick up",
   ERR_PICKUP_HAND_FULL: "只能拾取6个技能",
   ERR_ABILITY_NOT_FOUND: "Ability definition not found",
+  ERR_CONSUMABLE_NOT_FOUND: "Consumable definition not found",
+  ERR_CONSUMABLE_NOT_IMPLEMENTED: "Consumable is not implemented yet",
+  ERR_CONSUMABLE_COOLDOWN: "Consumable is on cooldown",
+  ERR_CONSUMABLE_IN_COMBAT: "Consumable cannot be used in combat",
+  ERR_CONSUMABLE_CONTROLLED: "Consumable cannot be used while controlled",
+  ERR_CONSUMABLE_DASHING: "Consumable cannot be used while dashing",
   ERR_INTERNAL: "Internal server error",
 };
 
@@ -204,9 +211,8 @@ function normalizeTargetSelectionPayload(payload: any, state: GameState, userId:
   if (payload.kind === "player" && typeof payload.userId === "string") {
     const targetPlayer = state.players.find((player) => player.userId === payload.userId);
     if (!targetPlayer) throw new Error("ERR_INVALID_PAYLOAD");
-    return targetPlayer.userId === userId
-      ? { kind: "self", userId }
-      : { kind: "player", userId: targetPlayer.userId };
+    if (targetPlayer.userId !== userId && blocksCardTargeting(targetPlayer as any)) return undefined;
+    return targetPlayer.userId === userId ? { kind: "self", userId } : { kind: "player", userId: targetPlayer.userId };
   }
 
   if (payload.kind === "entity" && typeof payload.entityId === "string") {
@@ -281,6 +287,23 @@ router.post("/channel/cancel", async (req, res) => {
   } catch (err: any) {
     console.error(`[CHANNEL_CANCEL] ❌ ERROR: ${err.message}`);
     console.error(`[CHANNEL_CANCEL] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err);
+  }
+});
+
+router.post("/consumable/use", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, consumableId } = req.body;
+    if (!gameId || !userId || typeof consumableId !== "string") {
+      return sendGameError(res, 400, "ERR_INVALID_PAYLOAD");
+    }
+
+    const patch = await useConsumable(gameId, userId, consumableId);
+    return res.json(patch);
+  } catch (err: any) {
+    console.error(`[CONSUMABLE_USE] ❌ ERROR: ${err.message}`);
+    console.error(`[CONSUMABLE_USE] Stack: ${err.stack}`);
     return sendCaughtGameError(res, err);
   }
 });

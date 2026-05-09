@@ -18,8 +18,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MapCollisionSystem } from './MapCollisionSystem';
 
-const PACKAGE_NAME = 'Ctest-2026-04-10T23-11-25-797Z';
-const DATA_PATH = `/full-exports/${encodeURIComponent(PACKAGE_NAME)}/map-data`;
+export const EXPORTED_MAP_PACKAGE_NAME = 'Ctest-2026-04-10T23-11-25-797Z';
+export const EXPORTED_MAP_DATA_PATH = `/full-exports/${encodeURIComponent(EXPORTED_MAP_PACKAGE_NAME)}/map-data`;
+const DATA_PATH = EXPORTED_MAP_DATA_PATH;
 const LEGACY_COLLISION_TEST_SCALE = 2.2;
 
 const SF = 0.005557531566779299;

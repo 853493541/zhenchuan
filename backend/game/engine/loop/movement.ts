@@ -580,6 +580,7 @@ export function applyMovement(
       jump: false,
     };
   }
+  const facingInputLocked = isFullyLocked || isRooted;
 
   // 风来吴山 (buffId=1014) and 斩无常 (buffId=2712): lock jump input while channeling.
   // This is a hard jump-disable, not a jump-cancel mechanic.
@@ -691,7 +692,7 @@ export function applyMovement(
     }
 
     // Steering mode: keep moving forward, but heading follows live facing.
-    if (dash.steerByFacing && !dashFacingLocked) {
+    if (dash.steerByFacing && !dashFacingLocked && !facingInputLocked) {
       if (input?.facing) {
         const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
         if (flen > 0.01) {
@@ -925,12 +926,12 @@ export function applyMovement(
     // turning updates server-facing for directional abilities. The only intentional
     // client/server facing mismatch remains the RMB diagonal display exception,
     // which is already encoded in the client-facing payload itself.
-    if (input.facing) {
+    if (!facingInputLocked && input.facing) {
       const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
       if (flen > 0.01) {
         player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
       }
-    } else if (!jumpAirborne && (targetVx !== 0 || targetVy !== 0)) {
+    } else if (!facingInputLocked && !jumpAirborne && (targetVx !== 0 || targetVy !== 0)) {
       const flen = Math.sqrt(targetVx * targetVx + targetVy * targetVy);
       player.facing = { x: targetVx / flen, y: targetVy / flen };
     }

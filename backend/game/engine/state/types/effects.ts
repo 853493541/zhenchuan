@@ -20,6 +20,7 @@ export type EffectType =
   | "UNTARGETABLE"
   | "INVULNERABLE"
   | "STEALTH"
+  | "DISGUISE"
   | "ANTI_STEALTH"
   | "ATTACK_LOCK"
   | "NON_QINGGONG_LOCK"
