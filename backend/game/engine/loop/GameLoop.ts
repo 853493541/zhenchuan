@@ -10,14 +10,14 @@
  */
 
 import { GameState, MovementInput, GroundZone, TargetEntity, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
-import { checkGameOver } from "../flow/turn/checkGameOver";
+import { checkGameOver, resetDefeatedPlayersForTesting } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
 import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap, resolveEntityHorizontalCollision } from "./movement";
 import { addBuff, pushBuffExpired } from "../effects/buffRuntime";
 import { resolveHealAmountRoll, resolveNonCritHealAmountRoll, resolveRawDamageWithCrit, resolveScheduledDamage, resolveScheduledDamageRoll } from "../utils/combatMath";
-import { applyDamageToTarget, applyHealToTarget, removeLinkedShield } from "../utils/health";
+import { applyDamageToTarget, applyHealToTarget, removeLinkedShield, resolveMaxHpPercentHealAmount } from "../utils/health";
 import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
@@ -47,6 +47,18 @@ import { getEffectiveAbilityRange } from "../utils/abilityRange";
 import { triggerYunSanBlink } from "../utils/yunSan";
 import { getMiYunAreaCandidates, hasMiYunConfusion, rerollMiYunAreaTargets } from "../utils/miyun";
 import { getHasteAdjustedTimingMs } from "../utils/haste";
+import { COMBAT_STATUS_CHECK_INTERVAL_MS, expireCombatStatusLinks, syncCombatStatusFromEvents } from "../utils/combatStatus";
+import {
+  SAND_DISGUISE_ABILITY,
+  SAND_DISGUISE_BUFF,
+  SAND_DISGUISE_CONSUMABLE_ID,
+  SAND_DISGUISE_LEASH_RADIUS_UNITS,
+  clearTargetSelectionsTargetingPlayer,
+  createSandDisguiseRuntimeBuff,
+  isDisguiseBuff,
+  removeDisguiseBuffs,
+} from "../utils/disguise";
+import { YUE_YING_SHA_BUFF_ID } from "../utils/yueYingSha";
 
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
@@ -409,6 +421,7 @@ function applyDamageToHostileTarget(params: {
     source: source as any,
     target: damageTarget,
     base: baseDamage,
+    abilityId,
     damageType,
   });
   const resolvedDamage = damageRoll.damage;
@@ -480,8 +493,8 @@ function applyDamageToHostileTarget(params: {
       isCrit: damageRoll.isCrit,
       shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
     } as any);
-    if (result.hpDamage > 0) {
-      processOnDamageTaken(state, victim as any, result.hpDamage, source.userId);
+    if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+      processOnDamageTaken(state, victim as any, result.hpDamage, source.userId, result.shieldAbsorbed);
     }
     if (redirectPlayer && redirectAmt > 0) {
       applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
@@ -510,8 +523,8 @@ function applyDamageToHostileTarget(params: {
     isCrit: damageRoll.isCrit,
     shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
   } as any);
-  if (result.hpDamage > 0) {
-    processOnDamageTaken(state, entity as any, result.hpDamage, source.userId);
+  if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+    processOnDamageTaken(state, entity as any, result.hpDamage, source.userId, result.shieldAbsorbed);
   }
   if (redirectPlayer && redirectAmt > 0) {
     applyRedirectToOpponent(state, redirectPlayer, redirectAmt);
@@ -637,8 +650,75 @@ function isDunyingCompanion(buff: { buffId: number; name?: string; sourceAbility
   return buff.buffId === 1021;
 }
 
+const FORWARD_CHANNEL_RESOLUTION_STEALTH_BREAK_BUFF_IDS = new Set([1011, 1012, 1013, YUE_YING_SHA_BUFF_ID]);
+
+function isHostileForwardChannelResolution(params: {
+  channel?: { forwardChannel?: boolean; consumableId?: string };
+  ability?: { target?: string; friendlyTarget?: boolean } | null;
+  targetPlayer?: { userId?: string } | null;
+  targetEntity?: { id?: string } | null;
+}) {
+  const { channel, ability, targetPlayer, targetEntity } = params;
+  if (channel?.forwardChannel !== true) return false;
+  if (typeof channel?.consumableId === "string") return false;
+  if (!ability || ability.target !== "OPPONENT" || ability.friendlyTarget === true) return false;
+  return !!targetPlayer || !!targetEntity;
+}
+
+function breakStealthOnForwardChannelResolution(params: {
+  state: GameState;
+  player: { userId: string; buffs: any[] };
+}) {
+  const { state, player } = params;
+  if (!Array.isArray(player.buffs) || player.buffs.length === 0) return false;
+
+  const hadFuguang = player.buffs.some((buff) => buff.buffId === 1012);
+  const removedBuffs: any[] = [];
+  const remainingBuffs: any[] = [];
+
+  for (const buff of player.buffs) {
+    const removesStealth = FORWARD_CHANNEL_RESOLUTION_STEALTH_BREAK_BUFF_IDS.has(buff.buffId) ||
+      (hadFuguang && isDunyingCompanion(buff));
+    if (!removesStealth) {
+      remainingBuffs.push(buff);
+      continue;
+    }
+    removedBuffs.push(buff);
+  }
+
+  if (removedBuffs.length === 0) return false;
+
+  player.buffs = remainingBuffs;
+  for (const buff of removedBuffs) {
+    removeLinkedShield(player as any, buff as any);
+    pushBuffExpired(state, {
+      targetUserId: player.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+      sourceUserId: buff.sourceUserId,
+    });
+  }
+  return true;
+}
+
 function hasBuffEffect(player: { buffs: Array<{ effects: Array<{ type: string }> }> }, type: string): boolean {
   return player.buffs.some((b) => b.effects.some((e) => e.type === type));
+}
+
+function hasCombatActivityAgainstPlayerDuringChannel(state: GameState, userId: string, channelStartedAt: number): boolean {
+  return (state.events ?? []).some((event: any) => {
+    const timestamp = Number(event?.timestamp ?? 0);
+    if (!Number.isFinite(timestamp) || timestamp < channelStartedAt) return false;
+    if (!event?.actorUserId || event.actorUserId === userId || event.targetUserId !== userId) return false;
+    if (event.type === "BUFF_APPLIED" && event.buffCategory === "DEBUFF") return true;
+    if (event.type !== "DAMAGE") return false;
+    const damageValue = Number(event.value ?? 0);
+    const shieldAbsorbed = Number(event.shieldAbsorbed ?? 0);
+    return damageValue > 0 || shieldAbsorbed > 0;
+  });
 }
 
 function tryApplyDodgeForHit(params: {
@@ -927,6 +1007,8 @@ export interface GameLoopConfig {
  * Singleton game loop instances per game ID
  */
 const activeLoops = new Map<string, GameLoop>();
+const MAX_EVENT_HISTORY_BEFORE_TRIM = 500;
+const EVENT_HISTORY_KEEP_COUNT = 300;
 
 export class GameLoop {
   private gameId: string;
@@ -953,6 +1035,7 @@ export class GameLoop {
     string,
     { sourceUserId: string; abilityId: string; abilityName: string }
   >();
+  private lastCombatStatusCheckAt = Date.now();
 
   // Phase table: each phase defines a time window, zone size transition, and DPS.
   static ZONE_PHASES = [
@@ -1028,6 +1111,17 @@ export class GameLoop {
   /** Return true if player position is outside the safe zone */
   private isOutsideZone(px: number, py: number, cx: number, cy: number, half: number) {
     return px < cx - half || px > cx + half || py < cy - half || py > cy + half;
+  }
+
+  private pruneEventHistoryForBroadcast(): boolean {
+    if (!Array.isArray(this.state.events) || this.state.events.length <= MAX_EVENT_HISTORY_BEFORE_TRIM) {
+      return false;
+    }
+
+    const removedCount = Math.max(0, this.state.events.length - EVENT_HISTORY_KEEP_COUNT);
+    this.state.events = this.state.events.slice(-EVENT_HISTORY_KEEP_COUNT);
+    this.stackProcScanIndex = Math.max(0, this.stackProcScanIndex - removedCount);
+    return true;
   }
 
   /**
@@ -1118,6 +1212,15 @@ export class GameLoop {
     return input?.jump === true;
   }
 
+  hasMovementIntent(playerIndex: number): boolean {
+    const input = this.playerInputs.get(playerIndex);
+    if (!input) return false;
+    if (typeof input.dx === "number" || typeof input.dy === "number") {
+      return Math.hypot(input.dx ?? 0, input.dy ?? 0) > 0.01;
+    }
+    return input.up || input.down || input.left || input.right;
+  }
+
   /**
    * Main game loop - runs every tick
    */
@@ -1178,6 +1281,13 @@ export class GameLoop {
 
     // Track new events for this entire tick (including activeChannel completion).
     const eventDiffStart = this.state.events.length;
+    let combatStatusChanged = false;
+
+    const combatCheckNow = Date.now();
+    if (combatCheckNow - this.lastCombatStatusCheckAt >= COMBAT_STATUS_CHECK_INTERVAL_MS) {
+      this.lastCombatStatusCheckAt = combatCheckNow;
+      combatStatusChanged = expireCombatStatusLinks(this.state, combatCheckNow) || combatStatusChanged;
+    }
 
     // 1. Apply player movement
     const moveStart = performance.now();
@@ -1324,6 +1434,7 @@ export class GameLoop {
               source: player,
               target: reachTarget,
               base: reachDamage,
+              abilityId: reachAbilityId,
               damageType: (reachAbility as any)?.damageType,
             });
             if (finalDamage > 0) {
@@ -1333,7 +1444,7 @@ export class GameLoop {
               const reachApply = adjustedDamage;
               const reachResult = reachApply > 0
                 ? applyDamageToTarget(reachTarget as any, reachApply)
-                : { hpDamage: 0 };
+                : { hpDamage: 0, shieldAbsorbed: 0 };
               this.state.events.push({
                 id: randomUUID(),
                 timestamp: Date.now(),
@@ -1346,8 +1457,8 @@ export class GameLoop {
                 effectType: dashStateBefore.hitEffectTypeOnComplete ?? "DAMAGE",
                 value: reachApply,
               } as any);
-              if (reachResult.hpDamage > 0) {
-                processOnDamageTaken(this.state, reachTarget as any, reachResult.hpDamage, player.userId);
+              if (reachResult.hpDamage > 0 || reachResult.shieldAbsorbed > 0) {
+                processOnDamageTaken(this.state, reachTarget as any, reachResult.hpDamage, player.userId, reachResult.shieldAbsorbed);
               }
               if (redirectPlayer && redirectAmt > 0) {
                 applyRedirectToOpponent(this.state, redirectPlayer, redirectAmt);
@@ -1360,7 +1471,7 @@ export class GameLoop {
       // 穹隆化生: apply end-of-charge heal + 生太极 zone when directional dash naturally ends.
       if (dashAbilityIdBefore === "qionglong_huasheng" && !player.activeDash) {
         const dashEndNow = Date.now();
-        const healed = applyHealToTarget(player as any, 10);
+        const healed = applyHealToTarget(player as any, resolveMaxHpPercentHealAmount(player, 10));
         if (healed > 0) {
           this.state.events.push({
             id: randomUUID(),
@@ -1856,9 +1967,10 @@ export class GameLoop {
           : this.state.players.find((p) => p.userId === ch.targetUserId) ?? opp;
         const targetPosition = targetEntity?.position ?? targetPlayer?.position;
         const channelAbility = (ABILITIES as any)[ch.abilityId] as any;
+        const isConsumableChannel = typeof (ch as any).consumableId === "string";
 
-        // Silence interrupts pure active channels.
-        if (hasBuffEffect(player as any, "SILENCE") || hasBuffEffect(player as any, "DISPLACEMENT")) {
+        // Silence interrupts ability channels. Consumable channels ignore lockouts, but real displacement still breaks them.
+        if ((!isConsumableChannel && hasBuffEffect(player as any, "SILENCE")) || hasBuffEffect(player as any, "DISPLACEMENT")) {
           cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
@@ -1942,13 +2054,51 @@ export class GameLoop {
         // Channel completion
         const chNow = Date.now();
 
+        const activeTickIntervalMs = Number((ch as any).tickIntervalMs ?? 0);
+        if (Number.isFinite(activeTickIntervalMs) && activeTickIntervalMs > 0) {
+          const elapsedMs = Math.max(0, Math.min(chNow, ch.startedAt + ch.durationMs) - ch.startedAt);
+          const dueTickCount = Math.floor(elapsedMs / activeTickIntervalMs);
+          const completedTickCount = Math.max(0, Number((ch as any).completedTickCount ?? 0));
+          for (let tickIdx = completedTickCount; tickIdx < dueTickCount && (player.hp ?? 0) > 0; tickIdx++) {
+            (ch as any).completedTickCount = tickIdx + 1;
+            (ch as any).lastTickAt = chNow;
+            for (const e of ch.effects) {
+              if (e.type !== "PERIODIC_HEAL") continue;
+              const healRoll = resolveNonCritHealAmountRoll({
+                source: player as any,
+                target: player as any,
+                base: e.value ?? 0,
+              });
+              const applied = applyHealToTarget(player as any, healRoll.heal);
+              if (applied > 0) {
+                this.state.events.push({
+                  id: randomUUID(),
+                  timestamp: chNow,
+                  turn: this.state.turn,
+                  type: "HEAL",
+                  actorUserId: player.userId,
+                  targetUserId: player.userId,
+                  abilityId: ch.abilityId,
+                  abilityName: ch.abilityName,
+                  effectType: "PERIODIC_HEAL",
+                  value: applied,
+                  isCrit: false,
+                  suppressCritLabel: true,
+                });
+                channelStateChanged = true;
+              }
+            }
+          }
+        }
+
         // ── 连环弩 periodic ticks: every 1s deal 1/2/3 damage. Knockback if target ≤15u. ──
         if (ch.abilityId === "lian_huan_nu" && targetPlayer && (targetPlayer.hp ?? 0) > 0) {
           const lhnInterval = Math.max(1, Number((ch as any).tickIntervalMs ?? getHasteAdjustedTimingMs(1_000, channelAbility as any)));
-          const lhnLast = (ch as any).lianHuanNuLastTickAt ?? ch.startedAt;
-          if (chNow - lhnLast >= lhnInterval) {
-            (ch as any).lianHuanNuLastTickAt = chNow;
-            const tickIdx = Math.min(2, Math.max(0, Math.floor((chNow - ch.startedAt) / lhnInterval)));
+          const lhnElapsed = Math.max(0, Math.min(chNow, ch.startedAt + ch.durationMs) - ch.startedAt);
+          const lhnDueTickCount = Math.min(3, Math.floor(lhnElapsed / lhnInterval));
+          const lhnCompletedTickCount = Math.min(3, Math.max(0, Number((ch as any).lianHuanNuTickCount ?? 0)));
+          for (let tickIdx = lhnCompletedTickCount; tickIdx < lhnDueTickCount && (targetPlayer.hp ?? 0) > 0; tickIdx++) {
+            (ch as any).lianHuanNuTickCount = tickIdx + 1;
             const lhnDmg = tickIdx + 1; // 1, 2, 3
             if (!blocksEnemyTargeting(targetPlayer as any)) {
               const lhnAbility = (ABILITIES["lian_huan_nu"] ?? { id: "lian_huan_nu", name: "连环弩" }) as any;
@@ -2018,6 +2168,24 @@ export class GameLoop {
         }
 
         if (chNow >= ch.startedAt + ch.durationMs) {
+          if (isConsumableChannel && (ch as any).consumableId === SAND_DISGUISE_CONSUMABLE_ID) {
+            const combatDuringChannel = hasCombatActivityAgainstPlayerDuringChannel(this.state, player.userId, ch.startedAt);
+            if (player.inCombat !== true && !combatDuringChannel && (player.hp ?? 0) > 0) {
+              addBuff({
+                state: this.state,
+                sourceUserId: player.userId,
+                targetUserId: player.userId,
+                ability: SAND_DISGUISE_ABILITY,
+                buffTarget: player as any,
+                buff: createSandDisguiseRuntimeBuff(player.position),
+              });
+              clearTargetSelectionsTargetingPlayer(this.state, player.userId);
+            }
+            cancelActiveChannel(this.state, player as any);
+            channelStateChanged = true;
+            continue;
+          }
+
           const completeRange = getEffectiveAbilityRange(channelAbility as any, player.buffs);
           if (
             channelAbility?.target === "OPPONENT" &&
@@ -2036,6 +2204,10 @@ export class GameLoop {
             }
           }
 
+          const completionThresholdTarget = targetEntity ?? targetPlayer;
+          const completionTargetHp = Number((completionThresholdTarget as any)?.hp ?? 0);
+          const completionTargetMaxHp = Math.max(1, Number((completionThresholdTarget as any)?.maxHp ?? 100));
+          const completionSelfHp = player.hp;
           let channelEffectDodged = false;
           for (const e of ch.effects) {
             if (e.type === "TIMED_SELF_HEAL") {
@@ -2111,8 +2283,11 @@ export class GameLoop {
               }
             } else if (e.type === "TIMED_AOE_DAMAGE_IF_SELF_HP_GT") {
               const threshold = (e as any).threshold ?? 0;
+              const thresholdTargetMaxHpPct = Number((e as any).thresholdTargetMaxHpPct);
               const range = e.range ?? 50;
-              if (player.hp <= threshold) continue;
+              if (Number.isFinite(thresholdTargetMaxHpPct) && thresholdTargetMaxHpPct > 0) {
+                if (completionTargetHp <= completionTargetMaxHp * (thresholdTargetMaxHpPct / 100)) continue;
+              } else if (completionSelfHp <= threshold) continue;
               const dist = Math.max(
                 0,
                 calculateDistance(player.position, targetPosition, storedUnitScale) -
@@ -2484,12 +2659,30 @@ export class GameLoop {
             }
           }
 
-          // Forward channel completion counts as the cast "taking effect" and breaks stealth.
-          if (ch.forwardChannel) {
-            const hadFuguang = player.buffs.some((b) => b.buffId === 1012);
-            player.buffs = player.buffs.filter(
-              (b) => ![1011, 1012, 1013].includes(b.buffId) && !(hadFuguang && isDunyingCompanion(b))
-            );
+          const hostileForwardResolution = isHostileForwardChannelResolution({
+            channel: ch,
+            ability: channelAbility as any,
+            targetPlayer: targetPlayer as any,
+            targetEntity: targetEntity as any,
+          });
+          if (hostileForwardResolution) {
+            this.state.events.push({
+              id: randomUUID(),
+              timestamp: chNow,
+              turn: this.state.turn,
+              type: "PLAY_ABILITY",
+              actorUserId: player.userId,
+              targetUserId: targetEntity ? undefined : targetPlayer?.userId,
+              entityId: targetEntity?.id,
+              entityName: targetEntity?.abilityName,
+              abilityId: ch.abilityId,
+              abilityName: ch.abilityName,
+              channelPhase: "complete",
+            } as any);
+            breakStealthOnForwardChannelResolution({
+              state: this.state,
+              player: player as any,
+            });
           }
 
           cancelActiveChannel(this.state, player as any);
@@ -2681,10 +2874,27 @@ export class GameLoop {
         }
       }
 
+      const leftDisguiseLeashArea = player.buffs.some((buff: any) => {
+        if (!isDisguiseBuff(buff)) return false;
+
+        const leashOriginX = Number(buff?.leashOriginX);
+        const leashOriginY = Number(buff?.leashOriginY);
+        const leashRadiusUnits = Number(buff?.leashRadiusUnits ?? SAND_DISGUISE_LEASH_RADIUS_UNITS);
+        if (!Number.isFinite(leashOriginX) || !Number.isFinite(leashOriginY) || leashRadiusUnits <= 0) {
+          return false;
+        }
+
+        const leashRadiusWorld = gameplayUnitsToWorldUnits(leashRadiusUnits, storedUnitScale);
+        return Math.hypot(player.position.x - leashOriginX, player.position.y - leashOriginY) > leashRadiusWorld;
+      });
+      if (leftDisguiseLeashArea) {
+        buffsChanged = removeDisguiseBuffs(this.state, player as any, now) || buffsChanged;
+      }
+
       for (const buff of player.buffs) {
-        if (now >= buff.expiresAt) continue;
+        const buffExpiredNow = now >= buff.expiresAt;
         // Fire periodic effects (DoT / HoT) if interval has elapsed
-        if (buff.periodicMs !== undefined && buff.lastTickAt !== undefined) {
+        if (!buffExpiredNow && buff.periodicMs !== undefined && buff.lastTickAt !== undefined) {
           if (now - buff.lastTickAt >= buff.periodicMs) {
             buff.lastTickAt = now;
             for (const e of buff.effects) {
@@ -2698,6 +2908,7 @@ export class GameLoop {
                   source: opp,
                   target: player,
                   base: (e.value ?? 0) * stackMult,
+                  abilityId: buff.sourceAbilityId,
                   damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
                 });
                 if (dmg > 0) {
@@ -2718,8 +2929,8 @@ export class GameLoop {
                     value: periApply,
                     shieldAbsorbed: (periResult.shieldAbsorbed ?? 0) > 0 ? periResult.shieldAbsorbed : undefined,
                   });
-                  if (periResult.hpDamage > 0) {
-                    processOnDamageTaken(this.state, player as any, periResult.hpDamage, opp.userId);
+                  if (periResult.hpDamage > 0 || periResult.shieldAbsorbed > 0) {
+                    processOnDamageTaken(this.state, player as any, periResult.hpDamage, opp.userId, periResult.shieldAbsorbed);
                   }
                   if (rtPeri && raPeri > 0) {
                     applyRedirectToOpponent(this.state, rtPeri, raPeri);
@@ -2744,9 +2955,7 @@ export class GameLoop {
                 }
                 buffsChanged = true;
               } else if (e.type === "PERIODIC_GUAN_TI_HEAL") {
-                // 贯体 heal: bypasses HEAL_REDUCTION; value is % of maxHp per tick
-                const pct = (e.value ?? 0) / 100;
-                const healAmt = Math.floor((player.maxHp ?? 100) * pct);
+                const healAmt = resolveMaxHpPercentHealAmount(player, e.value ?? 0);
                 const applied = applyHealToTarget(player as any, healAmt);
                 if (applied > 0) {
                   const baseName = buff.sourceAbilityName ?? buff.name ?? "贯体";
@@ -2966,8 +3175,7 @@ export class GameLoop {
 
             // TIMED_GUAN_TI_HEAL: completion heal bypassing HEAL_REDUCTION
             if (e.type === "TIMED_GUAN_TI_HEAL") {
-              const pct = (e.value ?? 0) / 100;
-              const healAmt = Math.floor((player.maxHp ?? 100) * pct);
+              const healAmt = resolveMaxHpPercentHealAmount(player, e.value ?? 0);
               const applied = applyHealToTarget(player as any, healAmt);
               if (applied > 0) {
                 const baseName = buff.sourceAbilityName ?? buff.name ?? "贯体";
@@ -3022,6 +3230,7 @@ export class GameLoop {
                 source: sourcePlayer,
                 target: player,
                 base: e.value ?? 0,
+                abilityId: buff.sourceAbilityId,
                 damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
               });
               const {
@@ -3032,8 +3241,8 @@ export class GameLoop {
               const timedResult = timedApply > 0
                 ? applyDamageToTarget(player as any, timedApply)
                 : { hpDamage: 0, shieldAbsorbed: 0 };
-              if (timedResult.hpDamage > 0) {
-                processOnDamageTaken(this.state, player as any, timedResult.hpDamage, sourcePlayer.userId);
+              if (timedResult.hpDamage > 0 || timedResult.shieldAbsorbed > 0) {
+                processOnDamageTaken(this.state, player as any, timedResult.hpDamage, sourcePlayer.userId, timedResult.shieldAbsorbed);
               }
               if (timedRedirectPlayer && timedRedirectAmt > 0) {
                 applyRedirectToOpponent(this.state, timedRedirectPlayer, timedRedirectAmt);
@@ -3100,6 +3309,7 @@ export class GameLoop {
                   source: player as any,
                   target: player,
                   base: Math.floor(appliedDamage * e.lifestealPct),
+                  scaleFlatHeal: false,
                 });
                 const applied = applyHealToTarget(player as any, healRoll.heal);
                 if (applied > 0) {
@@ -3214,6 +3424,9 @@ export class GameLoop {
           buffsChanged = true;
         }
       }
+      if (naturallyExpired.some((b) => isDisguiseBuff(b as any))) {
+        buffsChanged = clearTargetSelectionsTargetingPlayer(this.state, player.userId) || buffsChanged;
+      }
       player.buffs = player.buffs.filter((b) => now < b.expiresAt);
       for (const expired of naturallyExpired) {
         pushBuffExpired(this.state, {
@@ -3278,7 +3491,8 @@ export class GameLoop {
       );
       for (const xb of xuRuLinExpired) {
         const healVal = (xb.effects.find((e) => (e as any).type === "XU_RU_LIN_RESTORE") as any)?.value ?? 5;
-        const applied = applyHealToTarget(player as any, healVal);
+        const healAmount = resolveMaxHpPercentHealAmount(player, healVal);
+        const applied = applyHealToTarget(player as any, healAmount);
         const baseName = xb.sourceAbilityName ?? xb.name ?? "贯体";
         const guanTiName = baseName.includes("（贯体）") ? baseName : `${baseName}（贯体）`;
         this.state.events.push({
@@ -3289,7 +3503,7 @@ export class GameLoop {
           abilityId: xb.sourceAbilityId,
           abilityName: guanTiName,
           effectType: "XU_RU_LIN_RESTORE",
-          value: applied > 0 ? applied : healVal,
+          value: applied > 0 ? applied : healAmount,
         });
         buffsChanged = true;
       }
@@ -3379,6 +3593,7 @@ export class GameLoop {
               source: sourcePlayer ?? ({ userId: buff.sourceUserId ?? entity.ownerUserId, buffs: [] } as any),
               target: entity as any,
               base: (e.value ?? 0) * (buff.stacks ?? 1),
+              abilityId: buff.sourceAbilityId,
               damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
             });
             if (dmg > 0) {
@@ -3398,8 +3613,8 @@ export class GameLoop {
                 value: adjustedDamage,
                 shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
               } as any);
-              if (result.hpDamage > 0) {
-                processOnDamageTaken(this.state, entity as any, result.hpDamage, sourcePlayer?.userId ?? buff.sourceUserId ?? entity.ownerUserId);
+              if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+                processOnDamageTaken(this.state, entity as any, result.hpDamage, sourcePlayer?.userId ?? buff.sourceUserId ?? entity.ownerUserId, result.shieldAbsorbed);
               }
               if (redirectPlayer && redirectAmt > 0) {
                 applyRedirectToOpponent(this.state, redirectPlayer, redirectAmt);
@@ -4485,11 +4700,14 @@ export class GameLoop {
                 if (now - stackBuff.lastProcAt < stackBuff.procCooldownMs) break;
               }
               const stackSource = this.state.players.find((p) => p.userId === (stackBuff.sourceUserId ?? "")) ?? actor;
-              const dmg = resolveRawDamageWithCrit({
+              const stackDamageRoll = resolveScheduledDamageRoll({
                 source: stackSource as any,
+                target: targetPlayer as any,
                 base: e.value ?? 0,
+                abilityId: stackBuff.sourceAbilityId,
                 damageType: (ABILITIES[stackBuff.sourceAbilityId ?? ""] as any)?.damageType,
               });
+              const dmg = stackDamageRoll.damage;
               const {
                 adjustedDamage: stackApply,
                 redirectPlayer: stackRedirectPlayer,
@@ -4498,12 +4716,13 @@ export class GameLoop {
               const stackResult = stackApply > 0
                 ? applyDamageToTarget(targetPlayer as any, stackApply)
                 : { hpDamage: 0, shieldAbsorbed: 0 };
-              if (stackResult.hpDamage > 0) {
+              if (stackResult.hpDamage > 0 || stackResult.shieldAbsorbed > 0) {
                 processOnDamageTaken(
                   this.state,
                   targetPlayer as any,
                   stackResult.hpDamage,
                   stackBuff.sourceUserId ?? actor?.userId,
+                  stackResult.shieldAbsorbed,
                 );
               }
               if (stackRedirectPlayer && stackRedirectAmt > 0) {
@@ -4520,6 +4739,7 @@ export class GameLoop {
                 abilityName: stackBuff.sourceAbilityName ?? stackBuff.name,
                 effectType: "STACK_ON_HIT_DAMAGE",
                 value: stackApply,
+                isCrit: stackDamageRoll.isCrit,
                 shieldAbsorbed: stackResult.shieldAbsorbed > 0 ? stackResult.shieldAbsorbed : undefined,
               });
               if (stackBuff.stacks <= 0) {
@@ -4540,7 +4760,7 @@ export class GameLoop {
                 if (now - stackBuff.lastProcAt < stackBuff.procCooldownMs) break;
               }
               const healBase = e.value ?? 0;
-              const healApplied = applyHealToTarget(targetPlayer as any, healBase);
+              const healApplied = applyHealToTarget(targetPlayer as any, resolveMaxHpPercentHealAmount(targetPlayer, healBase));
               stackBuff.stacks = (stackBuff.stacks ?? 1) - 1;
               stackBuff.lastProcAt = now;
               if (healApplied > 0) {
@@ -4699,9 +4919,16 @@ export class GameLoop {
       this.stackProcScanIndex = this.state.events.length;
     }
 
-    // 2. Check win condition
+    combatStatusChanged = syncCombatStatusFromEvents(this.state, eventDiffStart) || combatStatusChanged;
+
+    // 2. Check win condition. Testing mode keeps the same battle running by
+    // restoring everyone when any player hits 0 HP.
     const winStart = performance.now();
-    checkGameOver(this.state);
+    if (resetDefeatedPlayersForTesting(this.state)) {
+      buffsChanged = true;
+    } else {
+      checkGameOver(this.state);
+    }
     const winTime = performance.now() - winStart;
 
     // 3. Broadcast position updates (throttled to reduce bandwidth)
@@ -4813,7 +5040,8 @@ export class GameLoop {
       // Append buff arrays whenever they changed (expiry or periodic effects)
       // or when new events were emitted this tick (e.g. pure channel completion).
       const hasNewEvents = this.state.events.length > eventDiffStart;
-      if (buffsChanged || hasNewEvents || channelStateChanged) {
+      const eventsPruned = this.pruneEventHistoryForBroadcast();
+      if (buffsChanged || hasNewEvents || channelStateChanged || eventsPruned || combatStatusChanged) {
         this.state.players.forEach((p, pidx) => {
           diff.push({
             path: `/players/${pidx}/buffs`,
@@ -4824,12 +5052,18 @@ export class GameLoop {
         this.state.players.forEach((p, pidx) => {
           diff.push({ path: `/players/${pidx}/hp`, value: p.hp });
           diff.push({ path: `/players/${pidx}/shield`, value: p.shield ?? 0 });
+          diff.push({ path: `/players/${pidx}/inCombat`, value: p.inCombat === true });
+          diff.push({ path: `/players/${pidx}/combatLinks`, value: (p as any).combatLinks ?? {} });
         });
 
-        // Include each new game event as an individual diff patch so the frontend
-        // can spawn per-event floating numbers with proper labels + no combining.
-        for (let i = eventDiffStart; i < this.state.events.length; i++) {
-          diff.push({ path: `/events/${i}`, value: this.state.events[i] });
+        if (eventsPruned) {
+          diff.push({ path: "/events", value: this.state.events });
+        } else {
+          // Include each new game event as an individual diff patch so the frontend
+          // can spawn per-event floating numbers with proper labels + no combining.
+          for (let i = eventDiffStart; i < this.state.events.length; i++) {
+            diff.push({ path: `/events/${i}`, value: this.state.events[i] });
+          }
         }
       }
       

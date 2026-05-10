@@ -13,11 +13,14 @@ export type DiffPatch = {
 };
 
 export type GameMessage = {
-  type: "STATE_DIFF" | "GAME_OVER" | "PING";
+  type: "STATE_DIFF" | "GAME_OVER" | "PING" | "PLAYER_DISCONNECTED" | "PLAYER_RECONNECTED";
   version?: number;
   diff?: DiffPatch[];
   events?: any[];
   winnerUserId?: string;
+  userId?: string;
+  username?: string;
+  endsAt?: number;
   timestamp?: number; // Server timestamp for RTT measurement
 };
 
@@ -59,6 +62,8 @@ export class GameSubscriptionManager {
     console.log(
       `[WS] User ${userId} subscribed to game ${gameId}. Total: ${this.gameClients.get(gameId)!.size}`
     );
+
+    void this.broadcastPlayerPresence(gameId, userId, "PLAYER_RECONNECTED");
   }
 
   /**
@@ -83,6 +88,38 @@ export class GameSubscriptionManager {
     console.log(
       `[WS] User ${client.userId} unsubscribed from game ${client.gameId}`
     );
+
+    if (!this.isConnected(client.gameId, client.userId) && this.getGameClientCount(client.gameId) > 0) {
+      void this.broadcastPlayerPresence(client.gameId, client.userId, "PLAYER_DISCONNECTED");
+    }
+  }
+
+  private async broadcastPlayerPresence(
+    gameId: string,
+    userId: string,
+    type: "PLAYER_DISCONNECTED" | "PLAYER_RECONNECTED",
+  ) {
+    try {
+      const game = await GameSession.findById(gameId);
+      if (!game || !game.started) return;
+      const state = game.state as any;
+      if (state?.gameOver || state?.leaveNotice) return;
+
+      const username =
+        (game as any).playerNames?.[userId] ??
+        state?.players?.find((player: any) => player?.userId === userId)?.username ??
+        `User${String(userId).slice(-4)}`;
+
+      this.broadcast(gameId, {
+        type,
+        userId,
+        username,
+        endsAt: type === "PLAYER_DISCONNECTED" ? Date.now() + 5_000 : undefined,
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.error(`[WS] Failed to broadcast ${type} for ${gameId}/${userId}:`, err);
+    }
   }
 
   /**

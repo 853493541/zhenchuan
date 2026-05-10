@@ -38,6 +38,8 @@ export function handleBonusDamageIfHpGt(
     source,
     target,
     base: bonus,
+    abilityId: ability.id,
+    damageType: (ability as any).damageType,
   });
 
   let eventDamage = final;
@@ -49,7 +51,9 @@ export function handleBonusDamageIfHpGt(
     if (adjustedDamage > 0) {
       const result = applyDamageToTarget(target as any, adjustedDamage);
       shieldAbsorbed = result.shieldAbsorbed;
-      processOnDamageTaken(state, target as any, result.hpDamage, source.userId);
+      if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+        processOnDamageTaken(state, target as any, result.hpDamage, source.userId, result.shieldAbsorbed);
+      }
     }
     if (redirectPlayer && redirectAmt > 0) {
       applyRedirectToOpponent(state, redirectPlayer, redirectAmt);

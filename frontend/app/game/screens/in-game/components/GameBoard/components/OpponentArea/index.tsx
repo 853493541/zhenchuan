@@ -5,8 +5,6 @@ import StatusBar from "../StatusBar";
 import styles from "./styles.module.css";
 import type { PlayerState } from "@/app/game/screens/in-game/types";
 
-const MAX_HP = 100;
-
 type Props = {
   opponent: PlayerState;
   currentTurn: number;
@@ -28,7 +26,7 @@ export default function OpponentArea({
         {/* ENEMY HEALTH + GCD */}
         <HealthBar
           hp={opponent.hp}
-          maxHp={MAX_HP}
+          maxHp={opponent.maxHp ?? 100}
           side="enemy"
           gcd={opponent.gcd}
         />

@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { Home } from "lucide-react";
+import styles from "./styles.module.css";
 
 import BattleArena from "./components/BattleArena";
+import { ensureResizeObserverSupport } from "./ensureResizeObserverSupport";
 import GameOverModal from "./components/GameBoard/components/GameOverModal";
 import DraftScreen from "./components/DraftScreen";
 import { toastError, toastSuccess } from "@/app/components/toast/toast";
@@ -18,79 +21,98 @@ function getStoredUnitScale(mode?: string): number {
   return mode === 'collision-test' ? 1 : LEGACY_STORED_UNIT_SCALE;
 }
 
-/* ================= ERROR CODE → TOAST TEXT ================= */
-function showGameError(rawCode: string) {
+/* ================= ERROR CODE -> WARNING TEXT ================= */
+function getGameErrorText(rawCode: string) {
   const code = rawCode?.trim();
 
   switch (code) {
+    case "ERR_CHANNELING":
+      return "正在进行其他动作";
     case "ERR_NOT_YOUR_TURN":
-      toastError("还没轮到你");
-      break;
+      return "还没轮到你";
     case "ERR_SILENCED":
-      toastError("经脉受损，无法运功");
-      break;
+      return "经脉受损，无法运功";
     case "ERR_DISARMED":
-      toastError("你被缴械，无法施展需要武器的招式");
-      break;
+      return "你被缴械，无法施展需要武器的招式";
     case "ERR_NON_QINGGONG_LOCKED":
-      toastError("你当前只能施展轻功招式");
-      break;
+      return "你当前只能施展轻功招式";
     case "ERR_DISPLACEMENT":
-      toastError("该招式无法在位移时施展");
-      break;
+      return "该招式无法在位移时施展";
     case "ERR_KNOCKED_BACK":
-      toastError("你被击退，无法行动");
-      break;
+      return "你被击退，无法行动";
+    case "ERR_PULLED":
+      return "你被拉拽，无法行动";
     case "ERR_CONTROLLED":
-      toastError("你被控制，无法行动");
-      break;
+      return "你被控制，无法行动";
     case "ERR_ROOTED":
-      toastError("你被锁足，无法施展该招式");
-      break;
+      return "你被锁足，无法施展该招式";
     case "ERR_TARGET_UNTARGETABLE":
-      toastError("目标无法选中");
-      break;
+      return "目标无法选中";
     case "ERR_ABILITY_NOT_IN_HAND":
-      toastError("技能不可用");
-      break;
+      return "技能不可用";
+    case "ERR_ABILITY_NOT_FOUND":
+      return "技能配置不存在";
     case "ERR_ON_COOLDOWN":
-      toastError("这个能力正在冷却");
-      break;
+      return "这个能力正在冷却";
     case "ERR_NO_GCD":
-      toastError("行动值不足");
-      break;
+      return "行动值不足";
     case "ERR_GAME_OVER":
-      toastError("对局已经结束");
-      break;
+      return "对局已经结束";
     case "ERR_NOT_AUTHENTICATED":
-      toastError("登录状态失效，请重新进入");
-      break;
+      return "登录状态失效，请重新进入";
     case "ERR_OUT_OF_RANGE":
-      toastError("距离太远，无法释放该能力");
-      break;
+      return "距离太远，无法释放该能力";
     case "ERR_TOO_CLOSE":
-      toastError("距离太近，无法释放该能力");
-      break;
+      return "距离太近，无法释放该能力";
     case "ERR_TARGET_UNAVAILABLE":
-      toastError("警告：目标丢失或不可选中");
-      break;
+      return "警告：目标丢失或不可选中";
     case "ERR_REQUIRES_GROUNDED":
-      toastError("该技能需要落地后施放");
-      break;
+      return "该技能需要落地后施放";
     case "ERR_REQUIRES_STANDING":
-      toastError("该技能需要站立后施放");
-      break;
+      return "该技能需要站立后施放";
     case "ERR_QINGGONG_SEALED":
-      toastError("你被封轻功，无法施放轻功技能");
-      break;
+      return "你被封轻功，无法施放轻功技能";
     case "ERR_HP_TOO_LOW":
-      toastError("当前气血必须大于35才能施放");
-      break;
+      return "当前气血不足，无法施放";
+    case "ERR_TARGET_HP_TOO_HIGH":
+      return "目标气血过高，无法施放";
+    case "ERR_BLOCKED_BY_BUFF":
+      return "该招式被当前气劲阻止";
+    case "ERR_INVALID_PAYLOAD":
+      return "请求参数无效";
+    case "ERR_BATTLE_NOT_IN_PROGRESS":
+      return "战斗尚未开始";
+    case "ERR_GAME_LOOP":
+      return "战斗同步异常，请稍后重试";
+    case "ERR_NOT_IN_GAME":
+      return "你不在这个对局中";
+    case "ERR_PICKUP_TOO_FAR":
+    case "ERR_PICKUP_CLAIM_TOO_FAR":
+      return "距离太远，无法拾取";
+    case "ERR_PICKUP_NOT_FOUND":
+      return "可拾取物不存在或已被拾取";
+    case "ERR_PICKUP_HAND_FULL":
+      return "只能拾取6个技能";
+    case "ERR_CONSUMABLE_COOLDOWN":
+      return "物品尚未冷却";
+    case "ERR_CONSUMABLE_EMPTY":
+      return "该物品已用完";
+    case "ERR_CONSUMABLE_IN_COMBAT":
+      return "战斗中无法使用该物品";
+    case "ERR_CONSUMABLE_CONTROLLED":
+      return "无法在受控下施展";
+    case "ERR_CONSUMABLE_DASHING":
+      return "位移中无法使用";
+    case "ERR_CONSUMABLE_NOT_FOUND":
+      return "物品配置不存在";
+    case "ERR_CONSUMABLE_NOT_IMPLEMENTED":
+      return "该物品暂未开放";
     case "ERR_NO_LINE_OF_SIGHT":
-      toastError("目标不在视线范围内");
-      break;
+      return "目标不在视线范围内";
+    case "ERR_INTERNAL":
+      return "服务器处理失败";
     default:
-      toastError("操作无法执行");
+      return "操作无法执行";
   }
 }
 
@@ -117,10 +139,14 @@ export default function InGameClient({
   selfUserId,
   authToken,
 }: Props) {
+  ensureResizeObserverSupport();
+
   const router = useRouter();
 
   const {
     loading,
+    loadError,
+    disconnectPrompt,
     state,
     tournament,
     gameMode,
@@ -131,9 +157,13 @@ export default function InGameClient({
     isWinner,
     playAbility,
     cancelBuff,
+    cancelChannel,
+    useConsumable,
+    updateTargetSelection,
     endTurn,
     rtt,
     refetch,
+    clearDisconnectPrompt,
     opponentPositionBufferRef,
   } = useGameState(gameId, selfUserId, authToken);
 
@@ -142,6 +172,68 @@ export default function InGameClient({
   // Track if we've already initiated battle to prevent duplicate calls
   const battleInitiatedRef = useRef(false);
   const battleCompletionHandledRef = useRef<string | null>(null);
+  const leaveNoticeHandledRef = useRef<string | null>(null);
+  const disconnectAutoLeaveKeyRef = useRef<string | null>(null);
+  const battleWarningSeqRef = useRef(0);
+  const [disconnectCountdown, setDisconnectCountdown] = useState(5);
+  const [dismissedLeaveNoticeKey, setDismissedLeaveNoticeKey] = useState<string | null>(null);
+  const [battleWarningEvent, setBattleWarningEvent] = useState<{ id: number; text: string } | null>(null);
+
+  const pushBattleWarning = (text: string) => {
+    const nextText = text.trim();
+    if (!nextText) return;
+    battleWarningSeqRef.current += 1;
+    setBattleWarningEvent({ id: battleWarningSeqRef.current, text: nextText });
+  };
+
+  const leaveNotice = state?.leaveNotice;
+  const leaveNoticeKey = leaveNotice ? `${leaveNotice.userId}:${leaveNotice.endsAt}` : null;
+  const exitPrompt = useMemo(() => {
+    if (disconnectPrompt) {
+      return { ...disconnectPrompt, reason: "disconnected" as const };
+    }
+    if (!leaveNotice || leaveNotice.userId === selfUserId || dismissedLeaveNoticeKey === leaveNoticeKey) {
+      return null;
+    }
+    return {
+      userId: leaveNotice.userId,
+      username: leaveNotice.username || "Opponent",
+      endsAt: leaveNotice.endsAt,
+      reason: "left" as const,
+    };
+  }, [disconnectPrompt, dismissedLeaveNoticeKey, leaveNotice, leaveNoticeKey, selfUserId]);
+
+  const leaveGameAndReturnHome = async (source: string) => {
+    clearDisconnectPrompt();
+    try {
+      const res = await fetch('/api/game/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameId }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.error(`[${source}] /game/end failed:`, res.status, text);
+      }
+    } catch (err) {
+      console.error(`[${source}] /game/end failed:`, err);
+    }
+    router.replace('/');
+  };
+
+  const leaveAfterDisconnectPrompt = async () => {
+    if (!exitPrompt) return;
+    const promptKey = `${exitPrompt.reason}:${exitPrompt.userId}:${exitPrompt.endsAt}`;
+    if (disconnectAutoLeaveKeyRef.current === promptKey) return;
+    disconnectAutoLeaveKeyRef.current = promptKey;
+    await leaveGameAndReturnHome(exitPrompt.reason === "left" ? 'LeaveNoticePrompt' : 'DisconnectPrompt');
+  };
+
+  const dismissExitPrompt = () => {
+    if (disconnectPrompt) clearDisconnectPrompt();
+    if (leaveNoticeKey) setDismissedLeaveNoticeKey(leaveNoticeKey);
+  };
 
   // Reset battleInitiatedRef when phase leaves BATTLE (so next battle can start)
   useEffect(() => {
@@ -161,6 +253,54 @@ export default function InGameClient({
       battleCompletionHandledRef.current = null;
     }
   }, [tournament?.phase, tournament?.battleNumber, state?.gameOver, state?.winnerUserId]);
+
+  useEffect(() => {
+    if (!loadError) return;
+    if (["ERR_NOT_FOUND", "ERR_NOT_IN_GAME", "ERR_BATTLE_NOT_IN_PROGRESS", "Game not found"].includes(loadError)) {
+      router.replace("/game");
+    }
+  }, [loadError, router]);
+
+  useEffect(() => {
+    if (state?.gameOver && !state?.winnerUserId) {
+      router.replace("/game");
+    }
+  }, [router, state?.gameOver, state?.winnerUserId]);
+
+  useEffect(() => {
+    const notice = state?.leaveNotice;
+    if (!notice) {
+      leaveNoticeHandledRef.current = null;
+      setDismissedLeaveNoticeKey(null);
+      return;
+    }
+    if (notice.userId === selfUserId) return;
+
+    const noticeKey = `${notice.userId}:${notice.endsAt}`;
+    if (leaveNoticeHandledRef.current === noticeKey) return;
+    leaveNoticeHandledRef.current = noticeKey;
+  }, [selfUserId, state?.leaveNotice]);
+
+  useEffect(() => {
+    if (!exitPrompt) {
+      setDisconnectCountdown(5);
+      disconnectAutoLeaveKeyRef.current = null;
+      return;
+    }
+
+    const updateCountdown = () => {
+      setDisconnectCountdown(Math.max(0, Math.ceil((exitPrompt.endsAt - Date.now()) / 1000)));
+    };
+    updateCountdown();
+    const intervalId = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(intervalId);
+  }, [exitPrompt]);
+
+  useEffect(() => {
+    if (!exitPrompt || disconnectCountdown > 0) return;
+    void leaveAfterDisconnectPrompt();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exitPrompt, disconnectCountdown]);
 
   // Auto-call /battle/start when phase transitions to BATTLE (only once)
   useEffect(() => {
@@ -374,47 +514,126 @@ export default function InGameClient({
 
   return (
     <GamePreloadProvider value={preload}>
-      <BattleArena
-        me={mePlayer}
-        opponent={primaryOpponent}
-        opponents={normalizedOpponents}
-        gameId={gameId}
-        distance={distance}
-        maxHp={me.maxHp ?? 100}
-        abilities={preload.abilityMap}
-        events={state?.events ?? []}
-        pickups={state?.pickups ?? []}
-        safeZone={state?.safeZone}
-        groundZones={state?.groundZones}
-        entities={state?.entities}
-        opponentPositionBufferRef={opponentPositionBufferRef}
-        mode={gameMode ?? 'arena'}
-        onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId) => {
-          // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
-          const cardInstance =
-            me.hand.find((c) => c.instanceId === abilityInstanceId) ??
-            me.hand.find((c) => ((c as any).abilityId ?? (c as any).id) === abilityInstanceId) ??
-            ({ instanceId: abilityInstanceId } as any); // synthetic stub — backend validates
-          const res = await playAbility(cardInstance, targetUserId, groundTarget, entityTargetId);
-          if (!res.ok && res.error) {
-            console.error("[CastAbility] Error response:", res.error);
-            showGameError(res.error);
-          }
-        }}
-        onCancelBuff={async (buffId, options) => {
-          const res = await cancelBuff(buffId, options);
-          if (!res.ok && res.error) {
-            showGameError(res.error);
-          }
-        }}
-      />
+      <>
+        <button
+          type="button"
+          className={styles.homeButton}
+          aria-label="首页"
+          title="首页"
+          onClick={() => void leaveGameAndReturnHome('InGameHomeButton')}
+        >
+          <Home size={27} strokeWidth={2.4} aria-hidden="true" />
+        </button>
 
-      {tournament?.phase === "GAME_OVER" && (
-        <GameOverModal
-          isWinner={isWinner}
-          onExit={() => router.push("/game")}
+        <BattleArena
+          me={mePlayer}
+          opponent={primaryOpponent}
+          opponents={normalizedOpponents}
+          externalGameWarning={battleWarningEvent}
+          gameId={gameId}
+          distance={distance}
+          maxHp={me.maxHp ?? 100}
+          abilities={preload.abilityMap}
+          events={state?.events ?? []}
+          pickups={state?.pickups ?? []}
+          safeZone={state?.safeZone}
+          groundZones={state?.groundZones}
+          entities={state?.entities}
+          opponentPositionBufferRef={opponentPositionBufferRef}
+          mode={gameMode ?? 'arena'}
+          onLeaveGame={() => leaveGameAndReturnHome('EscExitButton')}
+          onMovementRecover={refetch}
+          onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId, movementIntent) => {
+            // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
+            const cardInstance =
+              me.hand.find((c) => c.instanceId === abilityInstanceId) ??
+              me.hand.find((c) => ((c as any).abilityId ?? (c as any).id) === abilityInstanceId) ??
+              ({ instanceId: abilityInstanceId } as any); // synthetic stub — backend validates
+            const res = await playAbility(cardInstance, targetUserId, groundTarget, entityTargetId, movementIntent);
+            if (!res.ok && res.error) {
+              console.error("[CastAbility] Error response:", res.error);
+              if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
+                router.replace("/game");
+                return;
+              }
+              pushBattleWarning(getGameErrorText(res.error));
+            }
+          }}
+          onCancelChannel={async () => {
+            const res = await cancelChannel();
+            if (!res.ok && res.error) {
+              if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
+                router.replace("/game");
+                return;
+              }
+              pushBattleWarning(getGameErrorText(res.error));
+            }
+          }}
+          onUseConsumable={async (consumableId) => {
+            const res = await useConsumable(consumableId);
+            if (!res.ok && res.error) {
+              if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
+                router.replace("/game");
+                return;
+              }
+              pushBattleWarning(getGameErrorText(res.error));
+            }
+          }}
+          onTargetSelection={async (selection) => {
+            const res = await updateTargetSelection(selection);
+            if (!res.ok && res.error) {
+              console.error("[TargetSelection] Error response:", res.error);
+            }
+          }}
+          onCancelBuff={async (buffId, options) => {
+            const res = await cancelBuff(buffId, options);
+            if (!res.ok && res.error) {
+              if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
+                router.replace("/game");
+                return;
+              }
+              pushBattleWarning(getGameErrorText(res.error));
+            }
+          }}
         />
-      )}
+
+        {tournament?.phase === "GAME_OVER" && (
+          <GameOverModal
+            isWinner={isWinner}
+            onExit={() => router.push("/game")}
+          />
+        )}
+
+        {exitPrompt && (
+          <div className={styles.disconnectPromptOverlay} role="dialog" aria-modal="true">
+            <div className={styles.disconnectPromptWindow}>
+              <div className={styles.disconnectPromptTitle}>{exitPrompt.reason === "left" ? "Player left" : "Player disconnected"}</div>
+              <div className={styles.disconnectPromptMessage}>
+                {exitPrompt.username || "Opponent"} {exitPrompt.reason === "left" ? "left" : "disconnected"}. Leave and return to home page?
+              </div>
+              <div className={styles.disconnectPromptCountdown}>
+                Auto return in {disconnectCountdown}s
+              </div>
+              <div className={styles.disconnectPromptActions}>
+                <button
+                  type="button"
+                  className={styles.disconnectPromptButtonSecondary}
+                  onClick={dismissExitPrompt}
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  className={styles.disconnectPromptButtonPrimary}
+                  onClick={() => void leaveAfterDisconnectPrompt()}
+                >
+                  Yes ({disconnectCountdown}s)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     </GamePreloadProvider>
   );
 }

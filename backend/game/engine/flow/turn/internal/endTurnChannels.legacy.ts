@@ -23,6 +23,7 @@ export function applyLegacyEndTurnChannels(params: {
             source: current,
             target: other,
             base: 10,
+            abilityId: getBuffSourceAbilityId(buff),
           });
           const dmg = damageRoll.damage;
           applyDamageToTarget(other as any, dmg);
@@ -45,6 +46,7 @@ export function applyLegacyEndTurnChannels(params: {
             source: current,
             target: other,
             base: 10,
+            abilityId: getBuffSourceAbilityId(buff),
           });
           const dmg = damageRoll.damage;
           applyDamageToTarget(other as any, dmg);
@@ -75,6 +77,7 @@ export function applyLegacyEndTurnChannels(params: {
             source: current,
             target: other,
             base: 5,
+            abilityId: getBuffSourceAbilityId(buff),
           });
           const dmg = damageRoll.damage;
           applyDamageToTarget(other as any, dmg);

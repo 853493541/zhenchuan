@@ -87,6 +87,9 @@ export interface ActiveChannel {
   startedAt: number;
   durationMs: number;
   tickIntervalMs?: number;
+  lastTickAt?: number;
+  completedTickCount?: number;
+  consumableId?: string;
   cancelOnMove?: boolean;
   cancelOnJump?: boolean;
   cancelOnOutOfRange?: number;
@@ -95,6 +98,11 @@ export interface ActiveChannel {
   effects: Array<{ type: string; value?: number; range?: number; threshold?: number }>;
   cooldownTicks: number;
 }
+
+export type TargetSelection =
+  | { kind: "self"; userId: string }
+  | { kind: "player"; userId: string }
+  | { kind: "entity"; entityId: string };
 
 /* =========================================================
    Player State
@@ -105,11 +113,13 @@ export interface PlayerState {
   username?: string;
   hp: number;
   maxHp?: number;
+  attackDamage?: number;
   shield?: number;
   waiGongCritChancePct?: number;
   neiGongCritChancePct?: number;
   critChancePct?: number;
   defensePct?: number;
+  huajinPct?: number;
   hasteRatePct?: number;
   hand: AbilityInstance[];
   specialAbilityStates?: Record<string, AbilityInstance>;
@@ -122,6 +132,11 @@ export interface PlayerState {
     durationMs: number;
   };
   buffs: ActiveBuff[];
+  targetSelection?: TargetSelection;
+  inCombat?: boolean;
+  combatLinks?: Record<string, { lastActionAt: number }>;
+  consumableCooldowns?: Record<string, { expiresAt: number }>;
+  consumableCounts?: Record<string, number>;
   position?: { x: number; y: number; z?: number };
   velocity?: { vx: number; vy: number; vz?: number };
   moveSpeed?: number;
@@ -142,6 +157,7 @@ export type GameEventType =
   | "DODGE"
   | "BUFF_APPLIED"
   | "BUFF_EXPIRED"
+  | "COMBAT_STATUS"
   | "END_TURN";
 
 export interface GameEvent {
@@ -155,6 +171,7 @@ export interface GameEvent {
 
   abilityId?: string;
   abilityName?: string;
+  channelPhase?: "start" | "complete";
 
   value?: number;
   shieldAbsorbed?: number;
@@ -163,6 +180,10 @@ export interface GameEvent {
   buffId?: number;
   buffName?: string;
   buffCategory?: BuffCategory;
+
+  combatStatus?: "enter" | "exit";
+  inCombat?: boolean;
+  relatedUserId?: string;
 
   timestamp: number;
 }
@@ -232,6 +253,11 @@ export interface GameState {
 
   gameOver: boolean;
   winnerUserId?: string;
+  leaveNotice?: {
+    userId: string;
+    username: string;
+    endsAt: number;
+  };
 
   players: PlayerState[];
   events: GameEvent[];

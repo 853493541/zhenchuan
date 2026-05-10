@@ -1,8 +1,9 @@
 // backend/game/engine/utils/combatMath.ts
 
-import { ActiveBuff } from "../state/types";
+import { ActiveBuff, STARTING_ATTACK_DAMAGE } from "../state/types";
 
 const BASE_CRIT_DAMAGE_MULTIPLIER = 1.75;
+const FLAT_HEAL_SCALE = 10_000;
 
 export type DamageRoll = {
   damage: number;
@@ -15,7 +16,14 @@ type TargetSideDamageResult = {
   fullyReducedByDamageReduction: boolean;
 };
 
-type DamageTarget = { buffs: ActiveBuff[]; hp?: number; maxHp?: number; defensePct?: number };
+type DamageTarget = { buffs: ActiveBuff[]; hp?: number; maxHp?: number; defensePct?: number; huajinPct?: number };
+type DamageSource = {
+  buffs: ActiveBuff[];
+  critChancePct?: number;
+  waiGongCritChancePct?: number;
+  neiGongCritChancePct?: number;
+  attackDamage?: number;
+};
 
 export type HealRoll = {
   heal: number;
@@ -24,6 +32,28 @@ export type HealRoll = {
 
 function roundDamage(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+export function getAttackDamage(source: { attackDamage?: number; buffs?: ActiveBuff[] } | undefined): number {
+  const raw = Number(source?.attackDamage ?? STARTING_ATTACK_DAMAGE);
+  const baseAttackDamage = Number.isFinite(raw) && raw > 0 ? raw : STARTING_ATTACK_DAMAGE;
+  let attackDamageBonus = 0;
+  for (const buff of source?.buffs ?? []) {
+    const stacks = Math.max(1, Number(buff.stacks ?? 1));
+    for (const effect of buff.effects ?? []) {
+      if (effect.type !== "ATTACK_DAMAGE_MULTIPLIER") continue;
+      const value = Number(effect.value ?? 1);
+      if (!Number.isFinite(value)) continue;
+      attackDamageBonus += (value - 1) * stacks;
+    }
+  }
+  return Math.max(0, baseAttackDamage * Math.max(0, 1 + attackDamageBonus));
+}
+
+export function resolveAttackDamageBase(source: { attackDamage?: number; buffs?: ActiveBuff[] } | undefined, multiplier: number): number {
+  const rawMultiplier = Number(multiplier ?? 0);
+  if (!Number.isFinite(rawMultiplier) || rawMultiplier <= 0) return 0;
+  return rawMultiplier * getAttackDamage(source);
 }
 
 function getCritBonusPctFromBuffs(
@@ -164,6 +194,18 @@ function getTargetDefensePct(target: DamageTarget): number {
   return Math.max(0, Math.min(100, baseDefense * multiplier));
 }
 
+function getTargetHuajinPct(target: DamageTarget): number {
+  const raw = Number(target.huajinPct ?? 0);
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  return Math.max(0, Math.min(100, raw));
+}
+
+function applyHuajin(damage: number, target: DamageTarget): number {
+  const huajinPct = getTargetHuajinPct(target);
+  if (huajinPct <= 0 || damage <= 0) return damage;
+  return roundDamage(damage * Math.max(0, 1 - huajinPct / 100));
+}
+
 function applyTargetSideDamageModifiers(params: {
   target: DamageTarget;
   base: number;
@@ -212,16 +254,11 @@ export function resolveRedirectedDamageToTarget(params: {
   base: number;
   damageType?: string;
 }) {
-  return applyTargetSideDamageModifiers(params).damage;
+  return applyHuajin(applyTargetSideDamageModifiers(params).damage, params.target);
 }
 
 export function resolveScheduledDamageRoll(params: {
-  source: {
-    buffs: ActiveBuff[];
-    critChancePct?: number;
-    waiGongCritChancePct?: number;
-    neiGongCritChancePct?: number;
-  };
+  source: DamageSource;
   target: DamageTarget;
   base: number;
   /** When provided, DAMAGE_MULTIPLIER effects with restrictToAbilityId are only applied if they match. */
@@ -229,7 +266,7 @@ export function resolveScheduledDamageRoll(params: {
   /** When provided, DAMAGE_REDUCTION effects with a damageType filter only apply if they match. */
   damageType?: string;
 }): DamageRoll {
-  let dmg = params.base;
+  let dmg = resolveAttackDamageBase(params.source, params.base);
 
   // DAMAGE MULTIPLIER (e.g. 女娲补天, 夺命蛊, 听雷·伤)
   // Stack additively by bonus portion per stack: value 1.1 with 3 stacks = +30%
@@ -260,17 +297,13 @@ export function resolveScheduledDamageRoll(params: {
 
   return {
     ...damageRoll,
+    damage: applyHuajin(damageRoll.damage, params.target),
     fullyReducedByDamageReduction: targetSideDamage.fullyReducedByDamageReduction,
   };
 }
 
 export function resolveScheduledDamage(params: {
-  source: {
-    buffs: ActiveBuff[];
-    critChancePct?: number;
-    waiGongCritChancePct?: number;
-    neiGongCritChancePct?: number;
-  };
+  source: DamageSource;
   target: DamageTarget;
   base: number;
   abilityId?: string;
@@ -288,6 +321,7 @@ export function resolveHealAmount(params: {
   };
   target: { buffs: ActiveBuff[] };
   base: number;
+  scaleFlatHeal?: boolean;
 }) {
   return resolveHealAmountRoll(params).heal;
 }
@@ -301,8 +335,12 @@ export function resolveNonCritHealAmountRoll(params: {
   };
   target: { buffs: ActiveBuff[] };
   base: number;
+  scaleFlatHeal?: boolean;
 }): HealRoll {
-  let heal = params.base;
+  let heal = Math.max(0, Number(params.base ?? 0));
+  if (params.scaleFlatHeal !== false) {
+    heal *= FLAT_HEAL_SCALE;
+  }
 
   // Sum HEAL_REDUCTION across all buffs, multiplied by stack count for stackable debuffs.
   const totalHealReduction = params.target.buffs.reduce((sum, buff) => {
@@ -328,6 +366,7 @@ export function resolveHealAmountRoll(params: {
   };
   target: { buffs: ActiveBuff[] };
   base: number;
+  scaleFlatHeal?: boolean;
 }): HealRoll {
   const baseHeal = resolveNonCritHealAmountRoll(params).heal;
   if (baseHeal <= 0) {

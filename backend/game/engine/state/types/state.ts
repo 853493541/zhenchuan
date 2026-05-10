@@ -43,6 +43,12 @@ export interface ActiveChannel {
   durationMs: number;
   /** Optional reverse-channel tick interval in ms. */
   tickIntervalMs?: number;
+  /** Last wall-clock tick fired for periodic active-channel effects. */
+  lastTickAt?: number;
+  /** Number of periodic active-channel ticks already resolved. */
+  completedTickCount?: number;
+  /** Set when the channel belongs to the consumable system rather than an ability. */
+  consumableId?: string;
   cancelOnMove?: boolean;
   cancelOnJump?: boolean;
   /** Cancel if distance to opponent exceeds this (units) */
@@ -61,11 +67,17 @@ export interface ActiveChannel {
   interruptible?: boolean;
 }
 
+export type TargetSelection =
+  | { kind: "self"; userId: PlayerID }
+  | { kind: "player"; userId: PlayerID }
+  | { kind: "entity"; entityId: string };
+
 export interface PlayerState {
   userId: PlayerID;
 
   hp: number;
   maxHp?: number;
+  attackDamage?: number;
   shield?: number;
   /** Runtime 外功会心 percentage (0-100). */
   waiGongCritChancePct?: number;
@@ -75,6 +87,8 @@ export interface PlayerState {
   critChancePct?: number;
   /** Runtime 防御力 percentage (0-100). Applied to base damage before crit/DR. */
   defensePct?: number;
+  /** Runtime 化劲 percentage (0-100). Applied at the end of damage calculation. */
+  huajinPct?: number;
   /** Runtime 加速率 percentage shown to players. Timing uses a separate reduction constant. */
   hasteRatePct?: number;
 
@@ -98,6 +112,21 @@ export interface PlayerState {
 
   /** active buffs on player */
   buffs: ActiveBuff[];
+
+  /** Current player-selected target, used for target-of-target UI. */
+  targetSelection?: TargetSelection;
+
+  /** True while this player has at least one active 战斗中 link. */
+  inCombat?: boolean;
+
+  /** Symmetric player combat links, keyed by the other player's userId. */
+  combatLinks?: Record<PlayerID, { lastActionAt: number }>;
+
+  /** Consumable cooldowns keyed by consumable id; expiresAt is an absolute Date.now() ms timestamp. */
+  consumableCooldowns?: Record<string, { expiresAt: number }>;
+
+  /** Remaining consumable inventory counts keyed by consumable id. */
+  consumableCounts?: Record<string, number>;
 
   /* ================= REAL-TIME POSITION & MOVEMENT ================= */
 
@@ -351,6 +380,11 @@ export interface GameState {
 
   gameOver: boolean;
   winnerUserId?: PlayerID;
+  leaveNotice?: {
+    userId: PlayerID;
+    username: string;
+    endsAt: number;
+  };
 
   /** append-only event log */
   events: GameEvent[];

@@ -9,15 +9,63 @@ import { getUserIdFromCookie } from "./auth";
 import { generateShop, REFRESH_COST } from "../services/economy/economyService";
 import { getIncomePerRound } from "../services/economy/economyService";
 import { initializeBattleState, generatePickups, generateArenaPickups } from "../services/battle/battleService";
+import { createStartingConsumableCounts } from "../services/gameplay/consumableService";
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
 import { GameLoop } from "../engine/loop/GameLoop";
 import { ABILITIES } from "../abilities/abilities";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { diffState } from "../services/flow/stateDiff";
 import type { AbilityInstance } from "../engine/state/types";
-import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types";
+import {
+  NEW_WORLD_UNIT_SCALE,
+  STARTING_ATTACK_DAMAGE,
+  STARTING_BATTLE_HP,
+  STARTING_CRIT_CHANCE_PCT,
+  STARTING_DEFENSE_PCT,
+  STARTING_HUAJIN_PCT,
+} from "../engine/state/types";
 
 const router = express.Router();
+
+function getPurpleCombatStats(maxHp = STARTING_BATTLE_HP) {
+  const safeMaxHp = Math.max(1, Math.floor(Number(maxHp) || STARTING_BATTLE_HP));
+  return {
+    hp: safeMaxHp,
+    maxHp: safeMaxHp,
+    attackDamage: STARTING_ATTACK_DAMAGE,
+    waiGongCritChancePct: STARTING_CRIT_CHANCE_PCT,
+    neiGongCritChancePct: STARTING_CRIT_CHANCE_PCT,
+    critChancePct: STARTING_CRIT_CHANCE_PCT,
+    defensePct: STARTING_DEFENSE_PCT,
+    huajinPct: STARTING_HUAJIN_PCT,
+  };
+}
+
+function hasPurpleBattleStats(player: any) {
+  return (
+    Number(player?.maxHp ?? 0) === STARTING_BATTLE_HP &&
+    Number(player?.attackDamage ?? 0) === STARTING_ATTACK_DAMAGE &&
+    Number(player?.waiGongCritChancePct ?? player?.critChancePct ?? 0) === STARTING_CRIT_CHANCE_PCT &&
+    Number(player?.neiGongCritChancePct ?? player?.critChancePct ?? 0) === STARTING_CRIT_CHANCE_PCT &&
+    Number(player?.defensePct ?? 0) === STARTING_DEFENSE_PCT &&
+    Number(player?.huajinPct ?? 0) === STARTING_HUAJIN_PCT
+  );
+}
+
+function shouldReinitializeExistingBattleLoop(state: any) {
+  const players = Array.isArray(state?.players) ? state.players : [];
+  if (state?.gameOver || players.length === 0 || players.every(hasPurpleBattleStats)) return false;
+  const hasActivity =
+    (state?.events?.length ?? 0) > 0 ||
+    players.some((player: any) =>
+      (player.buffs?.length ?? 0) > 0 ||
+      (player.shield ?? 0) > 0 ||
+      !!player.activeChannel ||
+      !!player.activeDash ||
+      (player.hand ?? []).some((card: any) => Number(card?.cooldown ?? 0) > 0)
+    );
+  return !hasActivity;
+}
 
 function isCommonAbilityCard(card: any): boolean {
   const abilityId = card?.abilityId ?? card?.id;
@@ -27,17 +75,66 @@ function isCommonAbilityCard(card: any): boolean {
 }
 
 function toSelectedInstancesFromHand(hand: any[]): AbilityInstance[] {
-  return (hand ?? [])
-    .filter((card: any) => !isCommonAbilityCard(card))
-    .map((card: any) => {
+  return normalizeDraftCardSlots((hand ?? []).filter((card: any) => !isCommonAbilityCard(card)))
+    .map((card: any, fallbackIndex: number) => {
       const abilityId = card?.abilityId ?? card?.id;
       return {
         instanceId: card?.instanceId ?? randomUUID(),
         abilityId,
         cooldown: 0,
+        slotIndex: normalizeDraftSlotIndex(card?.slotIndex, fallbackIndex),
       } as AbilityInstance;
     })
     .filter((card: AbilityInstance) => !!card.abilityId);
+}
+
+const DRAFT_ABILITY_SLOT_COUNT = 6;
+const DRAFT_ABILITY_LIMIT_ERROR = "只能拾取6个技能";
+
+function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return Math.max(0, Math.min(DRAFT_ABILITY_SLOT_COUNT - 1, fallback));
+  return Math.max(0, Math.min(DRAFT_ABILITY_SLOT_COUNT - 1, Math.round(numeric)));
+}
+
+function normalizeDraftCardSlots<T extends Record<string, any>>(cards: T[]): T[] {
+  const assigned: Array<T | undefined> = Array.from({ length: DRAFT_ABILITY_SLOT_COUNT });
+  const pending: T[] = [];
+
+  cards.forEach((card, fallbackIndex) => {
+    const hasExplicitSlot = card?.slotIndex !== undefined && Number.isFinite(Number(card.slotIndex));
+    const slotIndex = normalizeDraftSlotIndex(card?.slotIndex, fallbackIndex);
+    if (hasExplicitSlot && !assigned[slotIndex]) {
+      assigned[slotIndex] = { ...card, slotIndex };
+      return;
+    }
+    pending.push(card);
+  });
+
+  pending.forEach((card) => {
+    const openIndex = assigned.findIndex((slot) => !slot);
+    if (openIndex >= 0) {
+      assigned[openIndex] = { ...card, slotIndex: openIndex };
+    }
+  });
+
+  return assigned.filter(Boolean) as T[];
+}
+
+function getFirstAvailableDraftSlot(cards: Array<Record<string, any>>): number | null {
+  const normalized = normalizeDraftCardSlots(cards);
+  if (normalized.length >= DRAFT_ABILITY_SLOT_COUNT) return null;
+  const occupied = new Set(normalized.map((card) => normalizeDraftSlotIndex(card.slotIndex, 0)));
+  for (let slotIndex = 0; slotIndex < DRAFT_ABILITY_SLOT_COUNT; slotIndex += 1) {
+    if (!occupied.has(slotIndex)) return slotIndex;
+  }
+  return null;
+}
+
+function splitDraftAndCommonCards(hand: any[]): { draftCards: any[]; commonCards: any[] } {
+  const draftCards = (hand ?? []).filter((card: any) => !isCommonAbilityCard(card));
+  const commonCards = (hand ?? []).filter((card: any) => isCommonAbilityCard(card));
+  return { draftCards: normalizeDraftCardSlots(draftCards), commonCards };
 }
 
 /**
@@ -89,8 +186,8 @@ router.post("/draft/select", async (req, res) => {
     const bench = game.tournament.bench[userId];
 
     // Check destination capacity
-    if (destination === "selected" && selected.length >= 6) {
-      return res.status(400).json({ error: "选择栏已满(最多6个)" });
+    if (destination === "selected" && getFirstAvailableDraftSlot(selected) === null) {
+      return res.status(400).json({ error: DRAFT_ABILITY_LIMIT_ERROR });
     }
     if (destination === "bench" && bench.length >= 8) {
       return res.status(400).json({ error: "备战区已满 (最多8个)" });
@@ -105,6 +202,7 @@ router.post("/draft/select", async (req, res) => {
     // Move ability from shop to destination
     const [ability] = shop.abilities.splice(abilityIndex, 1);
     if (destination === "selected") {
+      ability.slotIndex = getFirstAvailableDraftSlot(selected);
       selected.push(ability);
     } else {
       bench.push(ability);
@@ -149,8 +247,8 @@ router.post("/draft/move", async (req, res) => {
     const bench = game.tournament.bench[userId];
 
     // Check destination capacity
-    if (to === "selected" && selected.length >= 6) {
-      return res.status(400).json({ error: "选择栏已满(最多6个)" });
+    if (to === "selected" && getFirstAvailableDraftSlot(selected) === null) {
+      return res.status(400).json({ error: DRAFT_ABILITY_LIMIT_ERROR });
     }
     if (to === "bench" && bench.length >= 8) {
       return res.status(400).json({ error: "备战区已满 (最多8个)" });
@@ -165,6 +263,7 @@ router.post("/draft/move", async (req, res) => {
 
     const [ability] = fromArray.splice(abilityIdx, 1);
     if (to === "selected") {
+      ability.slotIndex = getFirstAvailableDraftSlot(selected);
       selected.push(ability);
     } else {
       bench.push(ability);
@@ -350,8 +449,8 @@ router.post("/draft/finalize", async (req, res) => {
       // Put selected abilities into player hands
       const player0Id = game.players[0];
       const player1Id = game.players[1];
-      const player0Selected = game.tournament.selectedAbilities[player0Id];
-      const player1Selected = game.tournament.selectedAbilities[player1Id];
+      const player0Selected = normalizeDraftCardSlots(game.tournament.selectedAbilities[player0Id] ?? []);
+      const player1Selected = normalizeDraftCardSlots(game.tournament.selectedAbilities[player1Id] ?? []);
 
       console.log("[draft/finalize] DEBUG - selectedAbilities structure:", {
         player0Id,
@@ -364,7 +463,7 @@ router.post("/draft/finalize", async (req, res) => {
 
       // ✅ CRITICAL: Look up full Ability definitions from ABILITIES database
       // selectedAbilities has {abilityId, instanceId, cooldown} - we need {abilityId, instanceId, cooldown, ...cardDefinition}
-      const player0Hand = player0Selected?.map((cardInstance: any) => {
+      const player0Hand = player0Selected?.map((cardInstance: any, index: number) => {
         const abilityDef = ABILITIES[cardInstance.abilityId];
         if (!abilityDef) {
           console.error(`[draft/finalize] ❌ Ability definition not found: ${cardInstance.abilityId}`);
@@ -375,10 +474,11 @@ router.post("/draft/finalize", async (req, res) => {
           ...abilityDef,
           instanceId: cardInstance.instanceId,
           cooldown: cardInstance.cooldown || 0,
+          slotIndex: normalizeDraftSlotIndex(cardInstance.slotIndex, index),
         };
       }).filter((c: any) => c !== null) || [];
 
-      const player1Hand = player1Selected?.map((cardInstance: any) => {
+      const player1Hand = player1Selected?.map((cardInstance: any, index: number) => {
         const abilityDef = ABILITIES[cardInstance.abilityId];
         if (!abilityDef) {
           console.error(`[draft/finalize] ❌ Ability definition not found: ${cardInstance.abilityId}`);
@@ -388,6 +488,7 @@ router.post("/draft/finalize", async (req, res) => {
           ...abilityDef,
           instanceId: cardInstance.instanceId,
           cooldown: cardInstance.cooldown || 0,
+          slotIndex: normalizeDraftSlotIndex(cardInstance.slotIndex, index),
         };
       }).filter((c: any) => c !== null) || [];
 
@@ -515,7 +616,12 @@ router.post("/battle/start", async (req, res) => {
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not ready for battle" });
 
     // ✅ CHECK IF GAME LOOP ALREADY STARTED (prevent duplicate from second player)
-    const existingLoop = GameLoop.get(gameId);
+    let existingLoop = GameLoop.get(gameId);
+    if (existingLoop && shouldReinitializeExistingBattleLoop(existingLoop.getState())) {
+      console.warn(`[battle/start] Reinitializing unstarted battle loop with purple defaults for ${gameId}`);
+      GameLoop.stop(gameId);
+      existingLoop = undefined;
+    }
     if (existingLoop) {
       // The loop may have been started before the pickup system was added.
       // Retroactively inject pickups if the loop state is empty so claim/inspect work.
@@ -644,6 +750,7 @@ router.post("/battle/complete", async (req, res) => {
     console.log(`[battle/complete] Stopped GameLoop for ${gameId}`);
 
     // If tournament is over, update game over flag
+    let shouldStartNextBattleLoop = false;
     if (game.tournament.phase === "GAME_OVER") {
       game.state.gameOver = true;
       game.state.winnerUserId = game.tournament.winnerId;
@@ -658,11 +765,18 @@ router.post("/battle/complete", async (req, res) => {
       }
       // Initialize fresh battle state with only common abilities
       game.state = initializeBattleState(game.tournament, allPlayers, ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test');
+      shouldStartNextBattleLoop = true;
     }
 
     game.markModified("state");
     game.markModified("tournament");
     await game.save();
+
+    if (shouldStartNextBattleLoop && !GameLoop.get(gameId)) {
+      const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test';
+      GameLoop.start(gameId, game.state, { tickRate: 30, mode: gameMode });
+      console.log(`[battle/complete] Started next battle GameLoop for ${gameId}`);
+    }
 
     // ✅ Broadcast phase change to BOTH players so neither needs to manually refresh
     const stateDiff      = diffState(prevState, game.state);
@@ -716,18 +830,29 @@ router.post("/cheat/add-ability", async (req, res) => {
 
     const playerIndex = game.players.indexOf(userId);
 
+    const sourceHand = game.state.players[playerIndex].hand || [];
+    const firstOpenSlot = getFirstAvailableDraftSlot(sourceHand.filter((card: any) => !isCommonAbilityCard(card)));
+    if (firstOpenSlot === null) {
+      return res.status(400).json({ error: DRAFT_ABILITY_LIMIT_ERROR });
+    }
+
     // Create new ability instance
     const newInstance: AbilityInstance = {
       instanceId: randomUUID(),
       abilityId,
       cooldown: 0,
+      slotIndex: firstOpenSlot,
     };
 
-    const fullCard = { ...abilityDef, instanceId: newInstance.instanceId, abilityId, cooldown: 0 };
+    const fullCard = { ...abilityDef, instanceId: newInstance.instanceId, abilityId, cooldown: 0, slotIndex: firstOpenSlot };
 
     // Apply to live loop first so the UI updates immediately (no DB-save wait).
     let livePlayerIndex = playerIndex;
-    let liveHand = [...(game.state.players[playerIndex].hand || []), fullCard];
+    let handSource = [...sourceHand];
+    let liveHand = (() => {
+      const { draftCards, commonCards } = splitDraftAndCommonCards(handSource);
+      return [...normalizeDraftCardSlots([...draftCards, fullCard]), ...commonCards];
+    })();
     let liveVersion = game.state.version ?? 0;
 
     const gameLoop = GameLoop.get(gameId);
@@ -736,7 +861,15 @@ router.post("/cheat/add-ability", async (req, res) => {
       const loopPlayerIdx = loopState.players.findIndex((p: any) => p.userId === userId);
       if (loopPlayerIdx !== -1) {
         livePlayerIndex = loopPlayerIdx;
-        liveHand = [...(loopState.players[loopPlayerIdx].hand || []), fullCard];
+        handSource = [...(loopState.players[loopPlayerIdx].hand || [])];
+        const loopFirstOpenSlot = getFirstAvailableDraftSlot(handSource.filter((card: any) => !isCommonAbilityCard(card)));
+        if (loopFirstOpenSlot === null) {
+          return res.status(400).json({ error: DRAFT_ABILITY_LIMIT_ERROR });
+        }
+        newInstance.slotIndex = loopFirstOpenSlot;
+        fullCard.slotIndex = loopFirstOpenSlot;
+        const { draftCards, commonCards } = splitDraftAndCommonCards(handSource);
+        liveHand = [...normalizeDraftCardSlots([...draftCards, fullCard]), ...commonCards];
         loopState.players[loopPlayerIdx] = {
           ...loopState.players[loopPlayerIdx],
           hand: liveHand,
@@ -809,18 +942,27 @@ router.post("/cheat/reorder-ability", async (req, res) => {
       }
     }
 
-    const draftCards = handSource.filter((card: any) => !isCommonAbilityCard(card));
+    const draftCards = handSource
+      .filter((card: any) => !isCommonAbilityCard(card))
+      .map((card: any, fallbackIndex: number) => ({
+        ...card,
+        slotIndex: normalizeDraftSlotIndex(card?.slotIndex, fallbackIndex),
+      }));
     const commonCards = handSource.filter((card: any) => isCommonAbilityCard(card));
     const fromIndex = draftCards.findIndex((card: any) => (card.instanceId ?? card.id) === instanceId);
     if (fromIndex === -1) {
       return res.status(404).json({ error: "Draft ability not found in hand" });
     }
 
-    const clampedToIndex = Math.max(0, Math.min(draftCards.length - 1, Number(toIndex)));
-    if (fromIndex !== clampedToIndex) {
-      const [moved] = draftCards.splice(fromIndex, 1);
-      draftCards.splice(clampedToIndex, 0, moved);
+    const clampedToIndex = normalizeDraftSlotIndex(toIndex, fromIndex);
+    const moved = draftCards[fromIndex];
+    const fromSlotIndex = normalizeDraftSlotIndex(moved?.slotIndex, fromIndex);
+    const targetCard = draftCards.find((card: any, index: number) => index !== fromIndex && normalizeDraftSlotIndex(card?.slotIndex, index) === clampedToIndex);
+    moved.slotIndex = clampedToIndex;
+    if (targetCard) {
+      targetCard.slotIndex = fromSlotIndex;
     }
+    draftCards.sort((a: any, b: any) => normalizeDraftSlotIndex(a?.slotIndex, 0) - normalizeDraftSlotIndex(b?.slotIndex, 0));
     const reorderedHand = [...draftCards, ...commonCards];
 
     if (gameLoop) {
@@ -1113,7 +1255,7 @@ router.post("/cheat/full-heal", async (req, res) => {
 });
 
 /**
- * POST /cheat/reset-cooldowns - Set both players' hand cooldowns/charges to ready
+ * POST /cheat/reset-cooldowns - Set both players' hand cooldowns/charges and consumable cooldowns to ready
  * Body: { gameId }
  */
 router.post("/cheat/reset-cooldowns", async (req, res) => {
@@ -1153,9 +1295,11 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
       loopState.players = loopState.players.map((p: any, idx: number) => {
         const hand = resetHand(p.hand ?? []);
         diff.push({ path: `/players/${idx}/hand`, value: hand });
+        diff.push({ path: `/players/${idx}/consumableCooldowns`, value: {} });
         return {
           ...p,
           hand,
+          consumableCooldowns: {},
         };
       });
       loopState.version = (loopState.version ?? 0) + 1;
@@ -1165,9 +1309,11 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
       game.state.players = game.state.players.map((p: any, idx: number) => {
         const hand = resetHand(p.hand ?? []);
         diff.push({ path: `/players/${idx}/hand`, value: hand });
+        diff.push({ path: `/players/${idx}/consumableCooldowns`, value: {} });
         return {
           ...p,
           hand,
+          consumableCooldowns: {},
         };
       });
       game.state.version = (game.state.version ?? 0) + 1;
@@ -1186,6 +1332,7 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
     game.state.players = game.state.players.map((p: any) => ({
       ...p,
       hand: resetHand(p.hand ?? []),
+      consumableCooldowns: {},
     }));
 
     game.markModified("state");
@@ -1193,6 +1340,76 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
 
     void game.save().catch((err: any) => {
       console.error("[cheat/reset-cooldowns] async save failed:", err?.message ?? err);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/refill-consumables - Reset both players' consumable inventory to the starting stock.
+ * Body: { gameId }
+ */
+router.post("/cheat/refill-consumables", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let liveVersion = game.state.version ?? 0;
+    const diff: Array<{ path: string; value: any }> = [];
+    const gameLoop = GameLoop.get(gameId);
+
+    if (gameLoop) {
+      const loopState = gameLoop.getState();
+      loopState.players = loopState.players.map((p: any, idx: number) => {
+        const consumableCounts = createStartingConsumableCounts();
+        diff.push({ path: `/players/${idx}/consumableCounts`, value: consumableCounts });
+        return {
+          ...p,
+          consumableCounts,
+        };
+      });
+      loopState.version = (loopState.version ?? 0) + 1;
+      liveVersion = loopState.version;
+      gameLoop.updateState(loopState);
+    } else {
+      game.state.players = game.state.players.map((p: any, idx: number) => {
+        const consumableCounts = createStartingConsumableCounts();
+        diff.push({ path: `/players/${idx}/consumableCounts`, value: consumableCounts });
+        return {
+          ...p,
+          consumableCounts,
+        };
+      });
+      game.state.version = (game.state.version ?? 0) + 1;
+      liveVersion = game.state.version;
+    }
+
+    broadcastGameUpdate({
+      gameId,
+      version: liveVersion,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    res.json({ ok: true });
+
+    game.state.players = game.state.players.map((p: any) => ({
+      ...p,
+      consumableCounts: createStartingConsumableCounts(),
+    }));
+
+    game.markModified("state");
+    game.markModified("state.players");
+
+    void game.save().catch((err: any) => {
+      console.error("[cheat/refill-consumables] async save failed:", err?.message ?? err);
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1273,21 +1490,27 @@ router.post("/cheat/clear-buffs", async (req, res) => {
 });
 
 /**
- * POST /cheat/set-crit-chance - Set both players' 外功会心/内功会心 (%) and optionally 防御力 (%).
- * Body: { gameId, critChancePct? , waiGongCritChancePct?, neiGongCritChancePct?, defensePct? }
+ * POST /cheat/set-crit-chance - Set both players' combat preset stats.
+ * Body: { gameId, critChancePct? , waiGongCritChancePct?, neiGongCritChancePct?, defensePct?, huajinPct?, maxHp?, attackDamage? }
  * - If critChancePct is provided, both split values are set to that value.
  */
 router.post("/cheat/set-crit-chance", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, critChancePct, waiGongCritChancePct, neiGongCritChancePct, defensePct } = req.body;
+    const { gameId, critChancePct, waiGongCritChancePct, neiGongCritChancePct, defensePct, huajinPct, maxHp, attackDamage } = req.body;
 
     const hasLegacy = critChancePct !== undefined;
     const hasDefense = defensePct !== undefined;
+    const hasHuajin = huajinPct !== undefined;
+    const hasMaxHp = maxHp !== undefined;
+    const hasAttackDamage = attackDamage !== undefined;
     const legacy = Number(critChancePct);
     const waiRaw = waiGongCritChancePct !== undefined ? Number(waiGongCritChancePct) : legacy;
     const neiRaw = neiGongCritChancePct !== undefined ? Number(neiGongCritChancePct) : legacy;
     const defenseRaw = Number(defensePct);
+    const huajinRaw = Number(huajinPct);
+    const maxHpRaw = Number(maxHp);
+    const attackDamageRaw = Number(attackDamage);
 
     if (!Number.isFinite(waiRaw) || !Number.isFinite(neiRaw) || (!hasLegacy && waiGongCritChancePct === undefined && neiGongCritChancePct === undefined)) {
       return res.status(400).json({ error: "Provide critChancePct or waiGongCritChancePct/neiGongCritChancePct as numbers" });
@@ -1295,10 +1518,22 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
     if (hasDefense && !Number.isFinite(defenseRaw)) {
       return res.status(400).json({ error: "defensePct must be a number" });
     }
+    if (hasHuajin && !Number.isFinite(huajinRaw)) {
+      return res.status(400).json({ error: "huajinPct must be a number" });
+    }
+    if (hasMaxHp && (!Number.isFinite(maxHpRaw) || maxHpRaw <= 0)) {
+      return res.status(400).json({ error: "maxHp must be a positive number" });
+    }
+    if (hasAttackDamage && (!Number.isFinite(attackDamageRaw) || attackDamageRaw <= 0)) {
+      return res.status(400).json({ error: "attackDamage must be a positive number" });
+    }
 
     const boundedWaiCrit = Math.max(0, Math.min(100, waiRaw));
     const boundedNeiCrit = Math.max(0, Math.min(100, neiRaw));
     const boundedDefense = Math.max(0, Math.min(100, defenseRaw));
+    const boundedHuajin = Math.max(0, Math.min(100, huajinRaw));
+    const boundedMaxHp = Math.max(1, Math.floor(maxHpRaw));
+    const boundedAttackDamage = Math.max(1, Math.floor(attackDamageRaw));
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -1317,6 +1552,12 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
         diff.push({ path: `/players/${idx}/neiGongCritChancePct`, value: boundedNeiCrit });
         diff.push({ path: `/players/${idx}/critChancePct`, value: boundedWaiCrit });
         if (hasDefense) diff.push({ path: `/players/${idx}/defensePct`, value: boundedDefense });
+        if (hasHuajin) diff.push({ path: `/players/${idx}/huajinPct`, value: boundedHuajin });
+        if (hasMaxHp) {
+          diff.push({ path: `/players/${idx}/maxHp`, value: boundedMaxHp });
+          diff.push({ path: `/players/${idx}/hp`, value: boundedMaxHp });
+        }
+        if (hasAttackDamage) diff.push({ path: `/players/${idx}/attackDamage`, value: boundedAttackDamage });
         return {
           ...p,
           waiGongCritChancePct: boundedWaiCrit,
@@ -1324,6 +1565,9 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
           // Keep legacy field for compatibility with old clients.
           critChancePct: boundedWaiCrit,
           ...(hasDefense ? { defensePct: boundedDefense } : {}),
+          ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
+          ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
+          ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
         };
       });
       loopState.version = (loopState.version ?? 0) + 1;
@@ -1335,12 +1579,21 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
         diff.push({ path: `/players/${idx}/neiGongCritChancePct`, value: boundedNeiCrit });
         diff.push({ path: `/players/${idx}/critChancePct`, value: boundedWaiCrit });
         if (hasDefense) diff.push({ path: `/players/${idx}/defensePct`, value: boundedDefense });
+        if (hasHuajin) diff.push({ path: `/players/${idx}/huajinPct`, value: boundedHuajin });
+        if (hasMaxHp) {
+          diff.push({ path: `/players/${idx}/maxHp`, value: boundedMaxHp });
+          diff.push({ path: `/players/${idx}/hp`, value: boundedMaxHp });
+        }
+        if (hasAttackDamage) diff.push({ path: `/players/${idx}/attackDamage`, value: boundedAttackDamage });
         return {
           ...p,
           waiGongCritChancePct: boundedWaiCrit,
           neiGongCritChancePct: boundedNeiCrit,
           critChancePct: boundedWaiCrit,
           ...(hasDefense ? { defensePct: boundedDefense } : {}),
+          ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
+          ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
+          ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
         };
       });
       game.state.version = (game.state.version ?? 0) + 1;
@@ -1359,6 +1612,9 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
       waiGongCritChancePct: boundedWaiCrit,
       neiGongCritChancePct: boundedNeiCrit,
       ...(hasDefense ? { defensePct: boundedDefense } : {}),
+      ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
+      ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
+      ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
     });
 
     game.state.players = game.state.players.map((p: any) => ({
@@ -1367,6 +1623,9 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
       neiGongCritChancePct: boundedNeiCrit,
       critChancePct: boundedWaiCrit,
       ...(hasDefense ? { defensePct: boundedDefense } : {}),
+      ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
+      ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
+      ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
     }));
     game.markModified("state");
     game.markModified("state.players");
@@ -1386,7 +1645,7 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
  *    caller treats it as an enemy and can target/damage it.
  *  - side="ally":  ownerUserId set to caller's userId; the caller's opponent
  *    treats it as their enemy.
- * Dummies default to 200 HP, can override maxHp, have no intrinsic immunities,
+ * Dummies default to 126万 HP, can override maxHp, have no intrinsic immunities,
  * and persist 10 minutes.
  */
 router.post("/cheat/spawn-dummy", async (req, res) => {
@@ -1401,7 +1660,7 @@ router.post("/cheat/spawn-dummy", async (req, res) => {
       return res.status(400).json({ error: "x/y must be numbers" });
     }
     const zNum = Number.isFinite(z) ? Number(z) : 0;
-    const dummyMaxHp = Number.isFinite(maxHp) ? Math.max(1, Math.floor(Number(maxHp))) : 200;
+    const dummyMaxHp = Number.isFinite(maxHp) ? Math.max(1, Math.floor(Number(maxHp))) : 1_260_000;
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -1433,10 +1692,10 @@ router.post("/cheat/spawn-dummy", async (req, res) => {
       ownerUserId,
       position: { x: Number(x), y: Number(y), z: zNum },
       radius,
-      hp: dummyMaxHp,
-      maxHp: dummyMaxHp,
+      ...getPurpleCombatStats(dummyMaxHp),
       shield: 0,
       buffs: [],
+      statsPreset: "purple",
       expiresAt: now + 600_000,
       enteredAtByUser: {},
       rearmAtByUser: {},
@@ -1499,7 +1758,8 @@ router.post("/cheat/restore-dummies", async (req, res) => {
     const target: any = gameLoop ? gameLoop.getState() : game.state;
     const entities = ((target.entities ?? []) as any[]).map((e: any) => {
       if (!DUMMY_KINDS.has(e.kind)) return e;
-      return { ...e, hp: e.maxHp, shield: 0 };
+      const restoreMaxHp = Number(e.maxHp) === 100 ? 100 : STARTING_BATTLE_HP;
+      return { ...e, ...getPurpleCombatStats(restoreMaxHp), shield: 0, statsPreset: "purple" };
     });
     target.entities = entities;
     target.version = (target.version ?? 0) + 1;

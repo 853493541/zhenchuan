@@ -7,6 +7,7 @@
     "build": "next build",
     "buildp": "bash ./build.sh",
     "start": "next start",
+    "test:e2e": "playwright test",
     "lint": "eslint",
     "analyze": "ANALYZE=true next build"
   },
@@ -30,6 +31,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@next/bundle-analyzer": "^15.5.6",
+    "@playwright/test": "^1.59.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

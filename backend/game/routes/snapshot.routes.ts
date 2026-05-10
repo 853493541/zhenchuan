@@ -1,6 +1,7 @@
 import express from "express";
 import GameSession from "../models/GameSession";
 import { gameStateCache } from "../services/gameStateCache";
+import { ensureBattleLoop } from "../services/battleLoopRuntime";
 
 const router = express.Router();
 
@@ -14,9 +15,10 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Game not found" });
     }
     
-    // Prime the cache with this game state
-    if (game.state) {
-      gameStateCache.set(req.params.id, game.state as any);
+    const loop = await ensureBattleLoop(req.params.id, game);
+    const liveState = loop?.getState() ?? game.state;
+    if (liveState) {
+      gameStateCache.set(req.params.id, liveState as any);
     }
     
     // Convert to plain object to ensure all fields are properly serialized
@@ -39,7 +41,7 @@ router.get("/:id", async (req, res) => {
     res.json({
       _id: gameObj._id,
       players: gameObj.players,
-      state: gameObj.state,
+      state: liveState,
       serverTimestamp: Date.now(),
       playerNames: gameObj.playerNames,
       tournament: gameObj.tournament, // EXPLICITLY INCLUDE

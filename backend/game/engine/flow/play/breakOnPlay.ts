@@ -1,5 +1,6 @@
 // engine/flow/breakOnPlay.ts
 import { ActiveBuff, Ability } from "../../state/types";
+import { YUE_YING_SHA_BUFF_ID } from "../../utils/yueYingSha";
 
 const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 const SHI_FANG_XUAN_JI_KEEP_ABILITIES = new Set([
@@ -20,11 +21,6 @@ function isChannel(ability: Ability): boolean {
   return ability.type === "CHANNEL";
 }
 
-function stealthAgeMs(buff: ActiveBuff, now: number): number {
-  if (buff.appliedAt === undefined) return Number.POSITIVE_INFINITY;
-  return Math.max(0, now - buff.appliedAt);
-}
-
 function isDunyingCompanion(buff: ActiveBuff): boolean {
   return buff.buffId === 1021;
 }
@@ -35,7 +31,7 @@ const TRIGGERED_STEALTH_BREAK_ABILITIES = new Set(["wu_jianyu"]);
  * Stealth buffs have per-skill break exceptions.
  * Keep this logic centralized so future tuning only needs one edit point.
  */
-function shouldKeepStealthOnPlay(buff: ActiveBuff, ability: Ability, sourceBuffs: ActiveBuff[], now: number): boolean {
+function shouldKeepStealthOnPlay(buff: ActiveBuff, ability: Ability): boolean {
   const buffId = buff.buffId;
   const isCommon = ability.isCommon === true;
   const channelCast = isChannel(ability);
@@ -52,20 +48,22 @@ function shouldKeepStealthOnPlay(buff: ActiveBuff, ability: Ability, sourceBuffs
     // 浮光掠影:
     // - forward channel start does not break (breaks on completion)
     // - reverse channel breaks immediately
-    // - common breaks only after the first 5s grace window
+    // - common abilities break immediately; 遁影 only protects movement
     case 1012:
-      if (channelCast) return isForward;
-      if (isCommon) {
-        const hasDunyingGrace = sourceBuffs.some((sourceBuff) => isDunyingCompanion(sourceBuff));
-        return hasDunyingGrace && stealthAgeMs(buff, now) < 5_000;
-      }
-      return false;
+      return channelCast ? isForward : false;
 
     // 天地无极:
     // - common abilities do not break
     // - channel start does not break (breaks on completion)
     // - normal casts break immediately
     case 1013:
+      return isCommon || channelCast;
+
+    // 月影沙:
+    // - common abilities do not break
+    // - channel start does not break
+    // - normal casts break immediately
+    case YUE_YING_SHA_BUFF_ID:
       return isCommon || channelCast;
 
     default:
@@ -84,12 +82,10 @@ export function breakShiFangXuanJiOnPlay(source: { buffs?: ActiveBuff[] }, playe
 export function breakOnPlay(source: { buffs?: ActiveBuff[] }, playedAbility: Ability) {
   if (!Array.isArray(source.buffs)) return;
   breakShiFangXuanJiOnPlay(source, playedAbility);
-  const now = Date.now();
-  const sourceBuffs = source.buffs;
   const hadFuguangBefore = source.buffs.some((b) => b.buffId === 1012);
   source.buffs = source.buffs.filter((b) => {
     if (!b.breakOnPlay) return true;
-    if (shouldKeepStealthOnPlay(b, playedAbility, sourceBuffs, now)) return true;
+    if (shouldKeepStealthOnPlay(b, playedAbility)) return true;
     return false;
   });
 

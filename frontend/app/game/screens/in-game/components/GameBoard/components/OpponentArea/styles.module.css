@@ -25,9 +25,10 @@
 
 /* ================= SECTION ================= */
 .section {
-  display: inline-flex;
-  justify-content: center;
+  display: flex;
+  justify-content: flex-start;
   align-items: center;
+  width: 100%;
 }
 
 /* ================= OPPONENT HAND (SMALL) ================= */

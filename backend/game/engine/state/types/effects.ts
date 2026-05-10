@@ -11,6 +11,7 @@ export type EffectType =
   | "COOLDOWN_SLOW"
   | "DAMAGE_REDUCTION"
   | "DEFENSE_MULTIPLIER"
+  | "ATTACK_DAMAGE_MULTIPLIER"
   | "DAMAGE_TAKEN_INCREASE"
   | "DAMAGE_MULTIPLIER"
   | "CRIT_CHANCE_BONUS"
@@ -19,6 +20,7 @@ export type EffectType =
   | "UNTARGETABLE"
   | "INVULNERABLE"
   | "STEALTH"
+  | "DISGUISE"
   | "ANTI_STEALTH"
   | "ATTACK_LOCK"
   | "NON_QINGGONG_LOCK"
@@ -33,6 +35,7 @@ export type EffectType =
   | "KNOCKBACK_IMMUNE"
   | "KNOCKED_BACK_IMMUNE"
   | "CONTROL_IMMUNE"
+  | "CONTROL_ONLY_IMMUNE"
   | "DASH_TURN_LOCK"
   | "DASH_TURN_OVERRIDE"
   | "DISPLACEMENT"
@@ -243,6 +246,9 @@ export interface AbilityEffect {
   applyTo?: TargetType;
 
   threshold?: number;
+  thresholdTargetMaxHpPct?: number;
+  percentOfTargetMaxHp?: boolean;
+  noCrit?: boolean;
 
   /** Direction mode for DIRECTIONAL_DASH effects */
   dirMode?: "TOWARD" | "AWAY" | "PERP_LEFT" | "PERP_RIGHT";

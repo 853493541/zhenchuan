@@ -1,6 +1,8 @@
 import { ABILITIES } from "./abilities";
 import { applyPropertyOverridesToEffects, BuffEditorOverrideEntry, loadBuffEditorOverrides } from "./buffEditorOverrides";
 import { loadAbilityEditorOverrides } from "./abilityPropertySystem";
+import { SAND_DISGUISE_BUFF, SAND_DISGUISE_CONSUMABLE_ID, SAND_DISGUISE_CONSUMABLE_NAME } from "../engine/utils/disguise";
+import { YUE_YING_SHA_BUFF, YUE_YING_SHA_CONSUMABLE_ID, YUE_YING_SHA_CONSUMABLE_NAME } from "../engine/utils/yueYingSha";
 
 const BUFF_ICON_PATH_OVERRIDES: Record<string, string> = {
   "心诤": "/icons/心诤-buff.png",
@@ -43,7 +45,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     : { overrides: {} as Record<string, BuffEditorOverrideEntry> };
   const { overrides: abilityEditorOverrides } = loadAbilityEditorOverrides();
 
-  const TEST_COOLDOWN_CAP_TICKS = 150; // 5 seconds at 30Hz
+  const TEST_COOLDOWN_CAP_TICKS = 90; // 3 seconds at 30Hz
   const clampCooldownTicksForTesting = (ticks: number | undefined) => {
     if (ticks === undefined) return 0;
     if (ticks <= 0) return 0;
@@ -54,6 +56,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     const cardPayload = {
       id: ability.id,
       name: ability.name,
+      iconPath: (ability as any).iconPath,
       description: ability.description,
       type: ability.type,
       channel: (ability as any).channel,
@@ -98,6 +101,10 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       minSelfHpExclusive:
         typeof (ability as any).minSelfHpExclusive === "number"
           ? (ability as any).minSelfHpExclusive
+          : undefined,
+      minSelfHpPercentExclusive:
+        typeof (ability as any).minSelfHpPercentExclusive === "number"
+          ? (ability as any).minSelfHpPercentExclusive
           : undefined,
 
       // 轻功 tag: blocked by 封轻功.
@@ -169,6 +176,20 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
   }
 
   // Runtime-generated buff metadata (not declared directly in ABILITIES).
+  buffs.push({
+    ...SAND_DISGUISE_BUFF,
+    manualCancelable: true,
+    sourceAbilityId: SAND_DISGUISE_CONSUMABLE_ID,
+    sourceAbilityName: SAND_DISGUISE_CONSUMABLE_NAME,
+  });
+
+  buffs.push({
+    ...YUE_YING_SHA_BUFF,
+    manualCancelable: true,
+    sourceAbilityId: YUE_YING_SHA_CONSUMABLE_ID,
+    sourceAbilityName: YUE_YING_SHA_CONSUMABLE_NAME,
+  });
+
   buffs.push({
     buffId: 1007,
     name: "散流霞",

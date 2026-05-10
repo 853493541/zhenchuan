@@ -14,7 +14,10 @@ export interface ManualCancelableBuffSnapshot {
 
 export type ManualCancelableBuffMode = "manual-include" | "manual-exclude" | "clear";
 
+const RUNTIME_MANUAL_CANCELABLE_BUFF_IDS = new Set([980001, 980002]);
+
 export function isBuffManualCancelable(buffId: number): boolean {
+  if (RUNTIME_MANUAL_CANCELABLE_BUFF_IDS.has(buffId)) return true;
   const { overrides } = loadBuffEditorOverrides();
   return overrides[String(buffId)]?.manualCancelable === true;
 }

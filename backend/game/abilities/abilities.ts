@@ -1,6 +1,7 @@
 // backend/game/abilities/abilities.ts
 
 import { Ability } from "../engine/state/types";
+import { SAND_DISGUISE_BUFF_ID } from "../engine/utils/disguise";
 import {
   AbilityEditorOverrideEntry,
   AbilityEditorOverrideMap,
@@ -99,6 +100,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     qinggong: true,
     qinggongGcdImmune: true,
+    cannotCastWhileRooted: true,
     requiresGrounded: true,
     effects: [],
     buffs: [
@@ -162,6 +164,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 0,
     gcd: false,
     requiresStanding: true,
+    cannotCastWhileRooted: true,
     canCastWhileMounted: true,
     channelDurationMs: 3_000,
     channelCancelOnMove: true,
@@ -187,7 +190,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   ren_chi_cheng: {
     id: "ren_chi_cheng",
     name: "任驰骋",
-    description: "运功0.5秒，期间可以移动但跳跃会打断；完成后获得【御骑】、【任驰骋】12秒（伤害提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
+    description: "运功0.5秒，期间可以移动但跳跃会打断；完成后获得【御骑】、【任驰骋】12秒（攻击力提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 900,
@@ -215,8 +218,8 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "BUFF",
         applyTo: "SELF",
         durationMs: 12_000,
-        description: "伤害提高15%",
-        effects: [{ type: "DAMAGE_MULTIPLIER", value: 1.15 }],
+        description: "攻击力提高15%",
+        effects: [{ type: "ATTACK_DAMAGE_MULTIPLIER", value: 1.15 }],
       },
       {
         buffId: 2743,
@@ -1132,7 +1135,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   nuwa_butian: {
     id: "nuwa_butian",
     name: "女娲补天",
-    description: "持续20秒：伤害提升100%，免疫锁足与减速，移动速度降低50%，受到伤害降低50%",
+    description: "持续20秒：攻击力提升100%，免疫锁足与减速，移动速度降低50%，受到伤害降低50%",
     type: "STANCE",
     target: "SELF",
     cooldownTicks: 300,
@@ -1144,9 +1147,9 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "女娲补天",
         category: "BUFF",
         durationMs: 20_000, // 20 seconds
-        description: "伤害提升100%，免疫锁足与减速，移动速度降低50%，受到伤害降低50%",
+        description: "攻击力提升100%，免疫锁足与减速，移动速度降低50%，受到伤害降低50%",
         effects: [
-          { type: "DAMAGE_MULTIPLIER", value: 2 },
+          { type: "ATTACK_DAMAGE_MULTIPLIER", value: 2 },
           { type: "DAMAGE_REDUCTION", value: 0.5 },
           { type: "ROOT_SLOW_IMMUNE" },
           { type: "SLOW", value: 0.5 },
@@ -1203,7 +1206,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   zhuiming_jian: {
     id: "zhuiming_jian",
     name: "追命箭",
-    description: "需要目标，运功2秒（正读条）\n需要站立施放，移动或跳跃会中断\n完成时造成10点伤害；若自身气血高于60，额外造成6点伤害",
+    description: "需要目标，运功2秒（正读条）\n需要站立施放，移动或跳跃会中断\n完成时造成10点伤害；若目标气血高于60%，额外造成6点伤害",
     type: "CHANNEL",
     target: "OPPONENT",
     cooldownTicks: 300,
@@ -1220,7 +1223,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelForward: true,
     channelEffects: [
       { type: "TIMED_AOE_DAMAGE", value: 10, range: 50 },
-      { type: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT", value: 6, threshold: 60, range: 50 },
+      { type: "TIMED_AOE_DAMAGE_IF_SELF_HP_GT", value: 6, thresholdTargetMaxHpPct: 60, range: 50 },
     ],
   } as any,
 
@@ -1469,7 +1472,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   weituo_xianchu: {
     id: "weituo_xianchu",
     name: "韦陀献杵",
-    description: "需要目标，正面180°\n瞬发造成5点伤害\n附加【韦陀献杵易伤】5秒：防御力降低10%\n自身获得【韦陀献杵防御】5秒：防御力提高10%\n可在移动与跳跃中施放",
+    description: "需要目标，正面180°\n瞬发造成5点伤害\n附加【韦陀献杵易伤】5秒：防御力降低30%\n自身获得【韦陀献杵防御】5秒：防御力提高30%\n可在移动与跳跃中施放",
     type: "ATTACK",
     target: "OPPONENT",
     range: 20,
@@ -1483,17 +1486,17 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "韦陀献杵易伤",
         category: "DEBUFF",
         durationMs: 5_000,
-        description: "防御力降低10%",
-        effects: [{ type: "DEFENSE_MULTIPLIER", value: 0.9 }],
+        description: "防御力降低30%",
+        effects: [{ type: "DEFENSE_MULTIPLIER", value: 0.7 }],
       },
       {
         buffId: 2302,
         name: "韦陀献杵防御",
         category: "BUFF",
         durationMs: 5_000,
-        description: "防御力提高10%",
+        description: "防御力提高30%",
         applyTo: "SELF",
-        effects: [{ type: "DEFENSE_MULTIPLIER", value: 1.1 }],
+        effects: [{ type: "DEFENSE_MULTIPLIER", value: 1.3 }],
       },
     ],
   },
@@ -1580,7 +1583,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   zi_qi_dong_lai: {
     id: "zi_qi_dong_lai",
     name: "紫气东来",
-    description: "瞬发自我施放\n获得【紫气东来】12秒：造成伤害提高25%，外功会心和内功会心提高25%，外功会心效果和内功会心效果提高25%\n不触发GCD",
+    description: "瞬发自我施放\n获得【紫气东来】12秒：攻击力提高25%，外功会心和内功会心提高25%，外功会心效果和内功会心效果提高25%\n不触发GCD",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -1592,9 +1595,9 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "紫气东来",
         category: "BUFF",
         durationMs: 12_000,
-        description: "造成伤害提高25%，外功会心和内功会心提高25%，外功会心效果和内功会心效果提高25%",
+        description: "攻击力提高25%，外功会心和内功会心提高25%，外功会心效果和内功会心效果提高25%",
         effects: [
-          { type: "DAMAGE_MULTIPLIER", value: 1.25 },
+          { type: "ATTACK_DAMAGE_MULTIPLIER", value: 1.25 },
           { type: "CRIT_CHANCE_BONUS", value: 25 },
           { type: "CRIT_EFFECT_BONUS", value: 0.25 },
         ],
@@ -1781,7 +1784,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   zuowang_wuwo: {
     id: "zuowang_wuwo",
     name: "坐忘无我",
-    description: "自我施放\n获得【坐忘无我】120秒：提供5点护盾",
+    description: "自我施放\n获得【坐忘无我】120秒：提供5%气血护盾",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -1793,8 +1796,8 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "坐忘无我",
         category: "BUFF",
         durationMs: 120_000,
-        description: "提供5点护盾",
-        effects: [{ type: "SHIELD", value: 5 }],
+        description: "提供5%气血护盾",
+        effects: [{ type: "SHIELD", value: 5, percentOfTargetMaxHp: true }],
       },
     ],
   },
@@ -1803,15 +1806,15 @@ export const BASE_ABILITIES: AbilityRecord = {
     id: "guchong_xianji",
     name: "蛊虫献祭",
     description:
-      "自我施放（当前气血需大于35，不计护盾）\n解除等级1控制\n立即对自身造成30点伤害\n获得【献祭护盾】10秒：提供50点护盾并每秒回复3%气血（贯体）\n若献祭护盾被打破则该效果提前结束\n获得【献祭控制免疫】5秒：免疫等级1控制\n不触发GCD",
+      "自我施放（当前气血需大于35%，不计护盾）\n解除等级1控制\n立即对自身造成30%最大气血伤害\n获得【献祭护盾】10秒：提供50%最大气血护盾并每秒回复3%气血（贯体）\n若献祭护盾被打破则该效果提前结束\n获得【献祭控制免疫】5秒：免疫等级1控制\n不触发GCD",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
     gcd: false,
-    minSelfHpExclusive: 35,
+    minSelfHpPercentExclusive: 35,
     effects: [
       { type: "CLEANSE", allowWhileControlled: true },
-      { type: "DAMAGE", value: 30 },
+      { type: "TRUE_DAMAGE", value: 30, applyTo: "SELF", percentOfTargetMaxHp: true, noCrit: true } as any,
     ],
     buffs: [
       {
@@ -1820,9 +1823,9 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "BUFF",
         durationMs: 10_000,
         periodicMs: 1_000,
-        description: "提供50点护盾，并每秒回复3点气血",
+        description: "提供50%最大气血护盾，并每秒回复3%气血（贯体）",
         effects: [
-          { type: "SHIELD", value: 50 },
+          { type: "SHIELD", value: 50, percentOfTargetMaxHp: true },
           { type: "PERIODIC_GUAN_TI_HEAL", value: 3 },
         ],
       },
@@ -2725,7 +2728,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   xiao_ru_hu: {
     id: "xiao_ru_hu",
     name: "啸如虎",
-    description: "瞬发，触发GCD\n获得【啸如虎】12秒：气血不会降至1以下（无法被击杀）；造成伤害提高30%",
+    description: "瞬发，触发GCD\n获得【啸如虎】12秒：气血不会降至1以下（无法被击杀）；造成伤害提高30%；不受控制，但仍受锁招影响",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -2735,13 +2738,13 @@ export const BASE_ABILITIES: AbilityRecord = {
       {
         buffId: 2602,
         name: "啸如虎",
-        category: "DEBUFF",
+        category: "BUFF",
         durationMs: 12_000,
-        description: "气血不会降至1以下；伤害提高30%",
+        description: "气血不会降至1以下；伤害提高30%；不受控制，但仍受锁招影响",
         effects: [
           { type: "MIN_HP_1" },
           { type: "DAMAGE_MULTIPLIER", value: 1.30 },
-          { type: "CONTROL_IMMUNE" },
+          { type: "CONTROL_ONLY_IMMUNE" },
         ],
       },
     ],
@@ -3099,14 +3102,14 @@ export const BASE_ABILITIES: AbilityRecord = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 拿云式 — single cast, target HP must be < 30. Deals 5 normal damage
-  // (DR/shield/dodge apply) AND 10 TRUE_DAMAGE (ignores DR/shield/dodge;
+  // 拿云式 — single cast, target HP must be < 30%. Deals 5 normal damage
+  // (DR/shield/dodge apply) AND 10% max HP TRUE_DAMAGE (ignores DR/shield/dodge;
   // blocked only by INVULNERABLE) in the same cast.
   // ──────────────────────────────────────────────────────────────────────────
   na_yun_shi: {
     id: "na_yun_shi",
     name: "拿云式",
-    description: "瞬发，射程4\n只能对生命低于30的目标施放\n造成5点普通伤害（受减伤、护盾、闪避影响）\n并造成10点真实伤害（无视减伤、护盾与闪避，仅被无敌阻挡）",
+    description: "瞬发，射程4\n只能对气血低于30%的目标施放\n造成5点普通伤害（受减伤、护盾、闪避影响）\n并造成目标10%最大气血真实伤害（无视减伤、护盾与闪避，仅被无敌阻挡）",
     type: "ATTACK",
     target: "OPPONENT",
     range: 4,
@@ -3114,7 +3117,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     effects: [
       { type: "DAMAGE", value: 5 },
-      { type: "TRUE_DAMAGE", value: 10 } as any,
+      { type: "TRUE_DAMAGE", value: 10, percentOfTargetMaxHp: true, noCrit: true } as any,
     ],
     buffs: [],
   },
@@ -4050,7 +4053,7 @@ export const BASE_ABILITIES: AbilityRecord = {
 
   // ──────────────────────────────────────────────────────────────────────────
   // 疾电叱羽 — instant SELF cast. Place an HP-bearing redirect zone below the
-  // caster (radius 8u, lasts 8s, 40 HP). Allies inside gain 【疾电叱羽】 buff
+  // caster (radius 8u, lasts 8s, 430000 HP). Allies inside gain 【疾电叱羽】 buff
   // that redirects ALL incoming damage to the zone. When the zone HP hits 0
   // (or it expires) the buff is removed and damage resumes normally.
   // The zone itself cannot be targeted by abilities — all damage to it must
@@ -4059,13 +4062,13 @@ export const BASE_ABILITIES: AbilityRecord = {
   ji_dian_chi_yu: {
     id: "ji_dian_chi_yu",
     name: "疾电叱羽",
-    description: "瞬发，自身施放\n于脚下展开疾电叱羽阵，半径8尺，持续8秒，气血上限40\n阵中我方获得【疾电叱羽】：受到的所有伤害转移到本阵\n本阵气血归零或消失时，护盾解除",
+    description: "瞬发，自身施放\n于脚下展开疾电叱羽阵，半径8尺，持续8秒，气血上限43万\n阵中我方获得【疾电叱羽】：受到的所有伤害转移到本阵\n本阵气血归零或消失时，护盾解除",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 600,
     gcd: true,
     effects: [
-      { type: "PLACE_JI_DIAN_ZONE", value: 40, range: 8, zoneDurationMs: 8_000 } as any,
+      { type: "PLACE_JI_DIAN_ZONE", value: 430000, range: 8, zoneDurationMs: 8_000 } as any,
     ],
     buffs: [
       {
@@ -4941,6 +4944,22 @@ export const BASE_ABILITIES: AbilityRecord = {
     allowWhileDisplaced: true,
     allowWhileSilenced: true,
     effects: [{ type: "REMOVE_SELF_BUFFS", buffIds: [2727, 2728] } as any],
+    buffs: [],
+  },
+
+  jie_chu_wei_zhuang: {
+    id: "jie_chu_wei_zhuang",
+    name: "解除伪装",
+    iconPath: "/icons/砂石伪装.png",
+    description: "伪装期间可用\n结束伪装，恢复原技能栏\n无冷却，不进入公共冷却",
+    type: "SUPPORT",
+    target: "SELF",
+    cooldownTicks: 0,
+    gcd: false,
+    noWeaponRequired: true,
+    specialBarAbility: true,
+    hiddenFromDraft: true,
+    effects: [{ type: "REMOVE_SELF_BUFFS", buffIds: [SAND_DISGUISE_BUFF_ID] } as any],
     buffs: [],
   },
 };

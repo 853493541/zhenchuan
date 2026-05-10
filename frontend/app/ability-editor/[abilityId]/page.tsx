@@ -513,15 +513,15 @@ export default function AbilityDetailPage() {
         </section>
       )}
 
-      {/* ── 伤害数值 ──────────────────────────────────── */}
+      {/* ── AD伤害倍率 ──────────────────────────────────── */}
       <section className={styles.detailCard}>
-        <h2 className={styles.detailCardTitle}>伤害数值</h2>
+        <h2 className={styles.detailCardTitle}>AD伤害倍率</h2>
         {ability.damageSettings.length > 0 ? (
           <div className={styles.numericList}>
             {ability.damageSettings.map((setting) => renderNumericRow(ability, setting))}
           </div>
         ) : (
-          <p className={styles.emptyCopy}>这个技能当前没有可直接编辑的伤害项。</p>
+          <p className={styles.emptyCopy}>这个技能当前没有可直接编辑的伤害倍率。</p>
         )}
       </section>
     </div>

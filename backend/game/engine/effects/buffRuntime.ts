@@ -9,7 +9,7 @@ import {
   BuffDefinition,
 } from "../state/types";
 import { resolveScheduledDamage } from "../utils/combatMath";
-import { addShieldToTarget, applyDamageToTarget, removeLinkedShield } from "../utils/health";
+import { addShieldToTarget, applyDamageToTarget, getMaxHp, removeLinkedShield } from "../utils/health";
 import { ABILITIES } from "../../abilities/abilities";
 import { applyPropertyOverridesToEffects, loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
 import { isBuffManualCancelable } from "../../abilities/manualCancelableBuffs";
@@ -23,6 +23,7 @@ import {
   shouldBreakYuqiOnIncomingControl,
 } from "../utils/yuqi";
 import { MIYUN_CONFUSION_BUFF_ID, WU_AN_MI_YUN_ABILITY_ID, WUSHI_IMMUNE_BUFF_ID, hasWuShiImmunity } from "../utils/miyun";
+import { hasDisguiseBuff, isDisguiseBuff, removeDisguiseBuffs } from "../utils/disguise";
 import { getHasteAdjustedBuffTiming } from "../utils/haste";
 
 /* ================= Utilities ================= */
@@ -98,6 +99,19 @@ const LOCKOUT_DR_CONFIG: ResistanceConfig = {
 
 const SILENCE_FAMILY_EFFECT_TYPES = new Set(["SILENCE", "DISARM"]);
 const SHARED_LOCKOUT_EFFECT_TYPES = new Set(["SILENCE", "ATTACK_LOCK", "DISARM", "NON_QINGGONG_LOCK"]);
+const CONTROL_ONLY_IMMUNE_BLOCKED_EFFECT_TYPES = new Set([
+  "CONTROL",
+  "ROOT",
+  "SLOW",
+  "KNOCKED_BACK",
+  "PULLED",
+  "FEARED",
+  "MIYUN_CONFUSION",
+  "SHI_XIN_GU",
+  "Z_LOCK",
+]);
+const MAX_DISGUISE_DURATION_MS = 4 * 60_000;
+const DISGUISE_STEALTH_OVERLAP_MS = 1_000;
 
 type BuffEditorOverrideMap = ReturnType<typeof loadBuffEditorOverrides>["overrides"];
 
@@ -218,17 +232,21 @@ function hasRootSlowImmune(target: { buffs: ActiveBuff[] }): boolean {
 }
 
 function hasKnockbackImmune(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some((e) => e.type === "KNOCKBACK_IMMUNE"));
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "CONTROL_ONLY_IMMUNE"));
 }
 
 function hasKnockedBackImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some(
-    (e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "KNOCKED_BACK_IMMUNE"
+    (e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "KNOCKED_BACK_IMMUNE" || e.type === "CONTROL_ONLY_IMMUNE"
   ));
 }
 
 function hasControlImmune(target: { buffs: ActiveBuff[] }): boolean {
   return target.buffs.some((b) => b.effects.some((e) => e.type === "CONTROL_IMMUNE"));
+}
+
+function hasControlOnlyImmune(target: { buffs: ActiveBuff[] }): boolean {
+  return target.buffs.some((b) => b.effects.some((e) => e.type === "CONTROL_ONLY_IMMUNE"));
 }
 
 function hasLockoutImmune(target: { buffs: ActiveBuff[] }): boolean {
@@ -375,6 +393,28 @@ function removeDunyingCompanions(params: {
       sourceUserId: buff.sourceUserId,
     });
   }
+}
+
+function hasStealthEffect(buff: { effects?: Array<{ type?: string }> }): boolean {
+  return Array.isArray(buff.effects) && buff.effects.some((effect) => effect.type === "STEALTH");
+}
+
+function shortenDisguiseBuffsForStealthOverlap(params: {
+  now: number;
+  target: { buffs: ActiveBuff[] };
+}) {
+  const { now, target } = params;
+  const overlapExpiresAt = now + DISGUISE_STEALTH_OVERLAP_MS;
+  let changed = false;
+
+  for (const activeBuff of target.buffs) {
+    if (!isDisguiseBuff(activeBuff)) continue;
+    if (activeBuff.expiresAt <= overlapExpiresAt) continue;
+    activeBuff.expiresAt = overlapExpiresAt;
+    changed = true;
+  }
+
+  return changed;
 }
 
 function isSharedLockoutDebuff(buff: ActiveBuff): boolean {
@@ -725,6 +765,12 @@ export function addBuff(params: {
     runtimeBuff = { ...runtimeBuff, durationMs: propEntry.durationMs };
   }
   runtimeBuff = getHasteAdjustedBuffTiming(ability, runtimeBuff);
+  if (runtimeBuff.effects.some((effect) => effect.type === "DISGUISE")) {
+    runtimeBuff = {
+      ...runtimeBuff,
+      durationMs: Math.min(runtimeBuff.durationMs, MAX_DISGUISE_DURATION_MS),
+    };
+  }
   const now = Date.now();
   const incomingMoheKnockdown =
     sourceUserId !== targetUserId &&
@@ -745,6 +791,15 @@ export function addBuff(params: {
     }
   }
 
+  const incomingDisguise = isDisguiseBuff(runtimeBuff as any);
+  const incomingStealthPackage = hasStealthEffect(runtimeBuff as any) || runtimeBuff.buffId === DUNYING_COMPANION_BUFF_ID;
+  if (!incomingDisguise && hasDisguiseBuff(buffTarget as any) && incomingStealthPackage) {
+    shortenDisguiseBuffsForStealthOverlap({
+      now,
+      target: buffTarget,
+    });
+  }
+
   if (sourceUserId !== targetUserId && hasInvulnerable(buffTarget)) {
     return;
   }
@@ -752,9 +807,27 @@ export function addBuff(params: {
   if (
     sourceUserId !== targetUserId &&
     runtimeBuff.effects.some((e) => e.type === "MIYUN_CONFUSION") &&
-    hasWuShiImmunity(buffTarget, now)
+    (hasWuShiImmunity(buffTarget, now) || hasControlOnlyImmune(buffTarget))
   ) {
     return;
+  }
+
+  if (sourceUserId !== targetUserId && hasControlOnlyImmune(buffTarget)) {
+    const blocksControlEffect = runtimeBuff.effects.some((e) => CONTROL_ONLY_IMMUNE_BLOCKED_EFFECT_TYPES.has(e.type));
+    if (blocksControlEffect) {
+      const filteredEffects = runtimeBuff.effects.filter(
+        (e) => !CONTROL_ONLY_IMMUNE_BLOCKED_EFFECT_TYPES.has(e.type) && e.type !== "DAMAGE_IMMUNE"
+      );
+      if (filteredEffects.length === 0) {
+        return;
+      }
+      if (filteredEffects.length !== runtimeBuff.effects.length) {
+        runtimeBuff = {
+          ...runtimeBuff,
+          effects: filteredEffects,
+        };
+      }
+    }
   }
 
   // 盾立 reflect: any debuff applied to a 盾立 holder is redirected at the
@@ -1055,7 +1128,7 @@ export function addBuff(params: {
         const target = state.players.find((p: any) => p.userId === targetUserId);
         if (target && target.hp > 0) {
           const bonus = source
-            ? resolveScheduledDamage({ source, target, base: 1 })
+            ? resolveScheduledDamage({ source, target, base: 1, abilityId: ability.id, damageType: (ability as any).damageType })
             : 1;
           applyDamageToTarget(target as any, bonus);
           if (bonus > 0) {
@@ -1111,11 +1184,17 @@ export function addBuff(params: {
 
   const linkedShield = runtimeBuff.effects
     .filter((e) => e.type === "SHIELD")
-    .reduce((sum, e) => sum + (e.value ?? 0), 0);
+    .reduce((sum, e) => {
+      const value = Number(e.value ?? 0);
+      const shield = (e as any).percentOfTargetMaxHp === true
+        ? Math.floor(getMaxHp(buffTarget as any) * (Math.max(0, value) / 100))
+        : value;
+      return sum + Math.max(0, shield);
+    }, 0);
 
   // 应天授命: YING_TIAN_SHIELD provides a massive internal shield for damage absorption
   const hasYingTianShield = runtimeBuff.effects.some((e) => e.type === "YING_TIAN_SHIELD");
-  const effectiveShield = hasYingTianShield ? 999_999_999 : linkedShield;
+  const effectiveShield = hasYingTianShield ? 100_000_000 : linkedShield;
 
   const active: ActiveBuff = {
     ...(runtimeBuff as any),
@@ -1171,12 +1250,16 @@ export function addBuff(params: {
 
   // CC that hits a channeling player (with no SILENCE_IMMUNE) cancels their channel.
   if ((buffTarget as any).activeChannel) {
+    const activeChannel = (buffTarget as any).activeChannel;
+    const isConsumableChannel = typeof activeChannel?.consumableId === "string";
     const isCC = runtimeBuff.effects.some((e) =>
       e.type === "CONTROL" ||
       e.type === "KNOCKED_BACK" ||
       e.type === "PULLED" ||
-      e.type === "ATTACK_LOCK" ||
-      e.type === "NON_QINGGONG_LOCK"
+      (!isConsumableChannel && (
+        e.type === "ATTACK_LOCK" ||
+        e.type === "NON_QINGGONG_LOCK"
+      ))
     );
     const isImmune = buffTarget.buffs.some((b) =>
       b.effects.some((e) => e.type === "CONTROL_IMMUNE" || e.type === "SILENCE_IMMUNE")
@@ -1224,6 +1307,7 @@ export function addBuff(params: {
   }
 
   if (active.buffId === YUQI_BUFF_ID) {
+    removeDisguiseBuffs(state, buffTarget as any, now);
     removeJumpBoostBuffs({
       state,
       targetUserId,

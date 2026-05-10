@@ -33,6 +33,7 @@ const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const ZHU_YUN_HIDE_BUFF_IDS = new Set([2716]);
 const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
+const DISGUISE_BUFF_IDS = new Set([980001]);
 
 function hasStealthBuff(buffs?: any[]): boolean {
   if (!Array.isArray(buffs)) return false;
@@ -55,6 +56,15 @@ function hasSanliuXiaBuff(buffs?: any[]): boolean {
 function hasZhuYunHideBuff(buffs?: any[]): boolean {
   if (!Array.isArray(buffs)) return false;
   return buffs.some((b: any) => ZHU_YUN_HIDE_BUFF_IDS.has(b?.buffId));
+}
+
+function hasDisguiseBuff(buffs?: any[]): boolean {
+  if (!Array.isArray(buffs)) return false;
+  return buffs.some((b: any) =>
+    DISGUISE_BUFF_IDS.has(b?.buffId) ||
+    (b.effects ?? []).some((e: any) => e.type === 'DISGUISE') ||
+    (typeof b?.name === 'string' && b.name.includes('伪装'))
+  );
 }
 
 function hasHongMengTianJinBuff(buffs?: any[]): boolean {
@@ -282,8 +292,8 @@ function ExportReaderSunLight({ config = DEFAULT_DIR_LIGHT_CONFIG }: { config?: 
     const sun = new THREE.DirectionalLight(SUN_COLOR, 3.0);
     sun.position.copy(SUN_DIR).multiplyScalar(100000);
     sun.castShadow = true;
-    sun.shadow.mapSize.width = 2048;
-    sun.shadow.mapSize.height = 2048;
+    sun.shadow.mapSize.width = 1024;
+    sun.shadow.mapSize.height = 1024;
     sun.shadow.camera.near = 100;
     sun.shadow.camera.far = 200000;
     sun.shadow.camera.left = -50000;
@@ -469,12 +479,13 @@ export default function ArenaScene({
   }, []);
 
   const selectedTarget = selectedTargetId
-    ? opponents.find((o) => o.userId === selectedTargetId && !shouldHideByStealthFromEnemyView(o.buffs))
+    ? opponents.find((o) => o.userId === selectedTargetId && !hasDisguiseBuff(o.buffs) && !shouldHideByStealthFromEnemyView(o.buffs))
     : null;
   const selectedEntity = selectedEntityId
     ? (entities ?? []).find((entity) => entity.id === selectedEntityId) ?? null
     : null;
-  const meSemiTransparent = hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs);
+  const meDisguised = hasDisguiseBuff(me?.buffs);
+  const meSemiTransparent = !meDisguised && (hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs));
 
   const targetAnchor = selectedTarget
     ? selectedTarget.position
@@ -579,6 +590,31 @@ export default function ArenaScene({
           <directionalLight position={[-100, 50, -200]} intensity={0.4} color="#3d7045" />
           {!isArena && <fog attach="fog" args={['#7ab86a', 300, 1000]} />}
         </>
+      )}
+
+      {!blueprintMode && (
+        <Character
+          worldX={me.position.x}
+          worldY={me.position.y}
+          worldZ={me.position.z ?? 0}
+          color="#1a66cc"
+          emissive="#0a2255"
+          hp={me.hp}
+          shield={me.shield ?? 0}
+          maxHp={me.maxHp ?? maxHp}
+          isMe={true}
+          isSelected={selectedSelf}
+          facingRef={meFacingRef}
+          posRef={localRenderPosRef}
+          onScreenBounds={meScreenBoundsRef ? (b) => { meScreenBoundsRef.current = b; } : undefined}
+          worldHalfX={worldHalfX}
+          worldHalfY={worldHalfY}
+          isStealthed={meSemiTransparent}
+          isDisguised={meDisguised}
+          hideHpBar={meDisguised}
+          cameraFadeEnabled={isCollisionTest && !selfOnlyMode}
+          hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
+        />
       )}
 
       {!selfOnlyMode && (
@@ -771,11 +807,14 @@ export default function ArenaScene({
           color="#ffd700"
           worldHalfX={worldHalfX}
           worldHalfY={worldHalfY}
+          followPositionRef={localRenderPosRef}
+          followZOffset={CHANNEL_RING_WAIST_Z}
         />
       )}
 
       {/* Opponents — render all of them */}
       {opponents.map((opp, i) => {
+        const disguised = hasDisguiseBuff(opp.buffs);
         const hiddenByStealth = shouldHideByStealthFromEnemyView(opp.buffs);
         if (hiddenByStealth) return null;
 
@@ -795,6 +834,9 @@ export default function ArenaScene({
                 color="#ff5500"
                 worldHalfX={worldHalfX}
                 worldHalfY={worldHalfY}
+                smoothPosition
+                instantSnapAtRef={opponentInstantSnapAtRef}
+                instantSnapWindowMs={600}
               />
             )}
             <Character
@@ -807,11 +849,11 @@ export default function ArenaScene({
               shield={opp.shield ?? 0}
               maxHp={opp.maxHp ?? maxHp}
               isMe={false}
-              isSelected={selectedTargetId === opp.userId}
+              isSelected={selectedTargetId === opp.userId && !disguised}
               facing={opp.facing}
               username={opp.username ?? opp.userId}
               distance={dist}
-              onSelect={() => onSelectTarget?.(opp.userId)}
+              onSelect={disguised ? undefined : () => onSelectTarget?.(opp.userId)}
               onScreenBounds={
                 i === 0 || opponentScreenBoundsRef
                   ? (bounds) => {
@@ -826,8 +868,9 @@ export default function ArenaScene({
               }
               worldHalfX={worldHalfX}
               worldHalfY={worldHalfY}
-              isStealthed={hasSanliuXiaBuff(opp.buffs)}
-              hideHpBar={hasZhuYunHideBuff(opp.buffs)}
+              isStealthed={!disguised && hasSanliuXiaBuff(opp.buffs)}
+              isDisguised={disguised}
+              hideHpBar={disguised || hasZhuYunHideBuff(opp.buffs)}
               hpColorOverride={hasShiFangXuanJiBuff(opp.buffs) ? '#2acb6b' : undefined}
               instantSnapAtRef={opponentInstantSnapAtRef}
               instantSnapWindowMs={600}
@@ -837,30 +880,6 @@ export default function ArenaScene({
       })}
 
       </>}  {/* end !blueprintMode */}
-
-      {!blueprintMode && (!isCollisionTest || collisionReady) && (
-        <Character
-          worldX={me.position.x}
-          worldY={me.position.y}
-          worldZ={me.position.z ?? 0}
-          color="#1a66cc"
-          emissive="#0a2255"
-          hp={me.hp}
-          shield={me.shield ?? 0}
-          maxHp={me.maxHp ?? maxHp}
-          isMe={true}
-          isSelected={selectedSelf}
-          facingRef={meFacingRef}
-          posRef={localRenderPosRef}
-          onScreenBounds={meScreenBoundsRef ? (b) => { meScreenBoundsRef.current = b; } : undefined}
-          worldHalfX={worldHalfX}
-          worldHalfY={worldHalfY}
-          isStealthed={meSemiTransparent}
-          cameraFadeEnabled={isCollisionTest && !selfOnlyMode}
-          hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
-        />
-      )}
-
       {!selfOnlyMode && isCollisionTest && collisionDebugRef && showCollisionShells && (
         <CollisionProbeOverlay debugRef={collisionDebugRef} />
       )}

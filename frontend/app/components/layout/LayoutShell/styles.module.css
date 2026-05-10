@@ -55,6 +55,19 @@
   background: #010409;
 }
 
+.mainFullscreenNoTopbar {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  max-width: none;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  min-width: 0;
+  background: #010409;
+}
+
 @media (max-width: 768px) {
   .main {
     padding-left: max(16px, env(safe-area-inset-left));

@@ -1,9 +1,26 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
+type BattleArenaUiPosition = {
+  left: number;
+  top: number;
+};
+
+type BattleArenaUiViewport = {
+  w: number;
+  h: number;
+};
+
+export type BattleArenaUiLayout = {
+  positions: Record<string, BattleArenaUiPosition>;
+  viewport?: BattleArenaUiViewport | null;
+  updatedAt?: Date | null;
+};
+
 export interface IUser extends Document {
   username: string;
   passwordHash: string;
   tokenVersion: number;
+  battleArenaUiLayout?: BattleArenaUiLayout | null;
 
   lastSeenAt?: Date;
   lastSeenIp?: string;
@@ -30,6 +47,11 @@ const UserSchema = new Schema<IUser>(
       type: Number,
       required: true,
       default: 0,
+    },
+
+    battleArenaUiLayout: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
 
     // 👀 Presence

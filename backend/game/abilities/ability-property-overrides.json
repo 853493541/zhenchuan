@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-06T08:04:46.846Z",
+  "updatedAt": "2026-05-06T21:01:19.133Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -50,6 +50,7 @@
         "school": "七秀",
         "damageType": "内功"
       },
+      "isProjectile": false,
       "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
@@ -89,6 +90,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "anchen_misan": {
@@ -101,6 +103,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "fengxiu_diang": {
@@ -113,6 +116,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "fuyao_zhishang": {
@@ -122,6 +126,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "fuguang_lueying": {
@@ -134,6 +139,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "guchong_xianji": {
@@ -146,6 +152,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "xiao_zui_kuang": {
@@ -159,6 +166,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "nuwa_butian": {
@@ -171,6 +179,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "sanliu_xia": {
@@ -183,6 +192,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "fu_rong_bing_di": {
@@ -247,6 +257,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "sanhuan_taoyue": {
@@ -259,6 +270,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "shang_yang_zhi": {
@@ -271,6 +283,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "she_ying": {
@@ -282,6 +295,8 @@
         "rarity": "卓越",
         "damageType": "内功"
       },
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "tiandi_wuji": {
@@ -294,6 +309,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "weituo_xianchu": {
@@ -306,6 +322,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "wu_wo_wu_jian": {
@@ -318,6 +335,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "yin_yue_zhan": {
@@ -330,6 +348,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "yu_shi_ju_fen": {
@@ -342,6 +361,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "yue_chao_zhan_bo": {
@@ -354,6 +374,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "bang_da_gou_tou": {
@@ -366,6 +387,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "chan_xiao": {
@@ -378,6 +400,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "da_shizi_hou": {
@@ -390,6 +413,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "dican_longxiang": {
@@ -402,6 +426,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "han_di": {
@@ -414,6 +439,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "he_gui_gu_shan": {
@@ -426,6 +452,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "jiang_chun_zhu_xiu": {
@@ -438,6 +465,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "jiu_zhuan_gui_yi": {
@@ -450,6 +478,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "lei_ting_zhen_nu": {
@@ -462,6 +491,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "leizhenzi": {
@@ -474,6 +504,7 @@
         "damageType": "外功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "zhenshen_xingsi": {
@@ -486,6 +517,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "mohe_wuliang": {
@@ -497,6 +529,8 @@
         "rarity": "卓越",
         "damageType": "内功"
       },
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "san_cai_hua_sheng": {
@@ -509,6 +543,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "shengsi_jie": {
@@ -521,6 +556,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "xuanshui_gu": {
@@ -546,6 +582,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "wan_jian_gui_zong": {
@@ -558,6 +595,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "wufang_xingjin": {
@@ -569,6 +607,8 @@
         "rarity": "卓越",
         "damageType": "内功"
       },
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "wuyun_jiekong": {
@@ -581,6 +621,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "chun_ni_hu_hua": {
@@ -593,6 +634,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "dienong_zu": {
@@ -605,6 +647,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "duangu_jue": {
@@ -617,6 +660,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "duoming_gu": {
@@ -629,6 +673,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "gu_feng_sa_ta": {
@@ -641,6 +686,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "houyao": {
@@ -650,6 +696,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "huayu_suxin": {
@@ -662,6 +709,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "ji": {
@@ -674,6 +722,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "jiru_feng": {
@@ -686,33 +735,46 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "lingxiao_lansheng": {
+      "properties": {
+        "qinggongGcdImmune": false
+      },
       "tags": {
         "school": "通用",
         "rarity": "精巧",
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "niao_xiang_bi_kong": {
+      "properties": {
+        "qinggongGcdImmune": false
+      },
       "tags": {
         "school": "唐门",
         "rarity": "精巧",
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "nieyun_zhuyue": {
+      "properties": {
+        "qinggongGcdImmune": false
+      },
       "tags": {
         "school": "通用",
         "rarity": "精巧",
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "qionglong_huasheng": {
@@ -725,6 +787,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "que_ta_zhi": {
@@ -737,6 +800,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "sheng_ming_you": {
@@ -749,6 +813,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "shou_ru_shan": {
@@ -761,6 +826,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "taxingxing": {
@@ -773,6 +839,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "tai_yin_zhi": {
@@ -785,6 +852,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "tian_di_di_ang": {
@@ -797,6 +865,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "wu_jianyu": {
@@ -809,6 +878,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "xiao_ru_hu": {
@@ -821,6 +891,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "xinglou_yueying": {
@@ -833,24 +904,33 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "yaotai_zhenhe": {
+      "properties": {
+        "qinggongGcdImmune": false
+      },
       "tags": {
         "school": "通用",
         "rarity": "精巧",
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "yingfeng_huilang": {
+      "properties": {
+        "qinggongGcdImmune": false
+      },
       "tags": {
         "school": "通用",
         "rarity": "精巧",
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "yuqi": {
@@ -864,6 +944,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "yun_qi_song": {
@@ -876,6 +957,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "zhen_shan_he": {
@@ -888,6 +970,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": true,
       "noWeaponRequired": false
     },
     "zhuan_qiankun": {
@@ -900,6 +983,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "zuowang_wuwo": {
@@ -912,6 +996,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "chuan_xin_nu": {
@@ -925,6 +1010,7 @@
         "damageType": "外功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "fenglai_wushan": {
@@ -938,6 +1024,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "lan_cui_yu_zhe": {
@@ -951,6 +1038,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "qixing_gongrui": {
@@ -964,6 +1052,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "qiandie_turui": {
@@ -977,6 +1066,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "xinzheng": {
@@ -990,6 +1080,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "yun_fei_yu_huang": {
@@ -1003,6 +1094,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "changzhen": {
@@ -1016,6 +1108,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "zhong_lin_yu_xiu": {
@@ -1029,6 +1122,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "zhuiming_jian": {
@@ -1042,6 +1136,7 @@
         "damageType": "外功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "zhuo_ying_shi": {
@@ -1055,6 +1150,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "yan_yu_xing": {
@@ -1067,6 +1163,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "kuang_long_luan_wu": {
@@ -1080,6 +1177,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "jian_zhu_tian_di": {
@@ -1105,6 +1203,7 @@
         "rarity": "卓越"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "po_feng": {
@@ -1117,6 +1216,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "da_dao_wu_shu": {
@@ -1129,6 +1229,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "hua_die": {
@@ -1141,6 +1242,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "ji_le_yin": {
@@ -1153,6 +1255,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "jing_hong_you_long": {
@@ -1165,6 +1268,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "lin_shi_fei_zhua": {
@@ -1177,6 +1281,7 @@
         "damageType": "外功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "bang_hua_sui_liu": {
@@ -1190,6 +1295,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "shao_ming_zhi": {
@@ -1203,6 +1309,7 @@
         "damageType": "内功"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "ling_tai_xu": {
@@ -1216,6 +1323,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "sheng_tai_ji": {
@@ -1229,6 +1337,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "tun_ri_yue": {
@@ -1242,6 +1351,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "ren_jian_he_yi": {
@@ -1254,6 +1364,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "chong_yin_yang": {
@@ -1267,6 +1378,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "zhan_wu_chang": {
@@ -1280,6 +1392,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "ying_tian_shou_ming": {
@@ -1292,6 +1405,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "wu_xiang_jue": {
@@ -1304,6 +1418,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "mie": {
@@ -1316,6 +1431,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "gu_ying_hua_shuang": {
@@ -1328,6 +1444,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "zhu_yun_han_rui": {
@@ -1340,6 +1457,7 @@
         "damageType": "内功"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": true,
       "noWeaponRequired": false
     },
     "bao_can_shi": {
@@ -1404,6 +1522,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "qu_ye_duan_chou": {
@@ -1416,6 +1535,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "tai_ji_wu_ji": {
@@ -1428,6 +1548,7 @@
         "rarity": "精巧"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "tian_jue_di_mie": {
@@ -1440,6 +1561,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "you_yue_lun": {
@@ -1452,6 +1574,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "zhen_chi_tu_nan": {
@@ -1464,6 +1587,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "cang_yue": {
@@ -1476,6 +1600,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "cheng_huang_zhi_wei": {
@@ -1488,6 +1613,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "ji_dian_chi_yu": {
@@ -1500,6 +1626,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "long_xiao_jiu_tian": {
@@ -1512,6 +1639,7 @@
         "rarity": "珍奇"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "ti_yun_zong": {
@@ -1524,6 +1652,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "xu_ru_lin": {
@@ -1536,6 +1665,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "yu_yu_cheng_feng": {
@@ -1548,6 +1678,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "lian_huan_nu": {
@@ -1561,6 +1692,7 @@
         "rarity": "卓越"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "shi_xin_gu": {
@@ -1572,6 +1704,7 @@
         "rarity": "精巧",
         "damageType": "内功"
       },
+      "isProjectile": false,
       "dunLiWhitelisted": true,
       "noWeaponRequired": false
     },
@@ -1598,6 +1731,7 @@
         "damageType": "外功",
         "rarity": "珍奇"
       },
+      "isProjectile": false,
       "dunLiWhitelisted": true,
       "noWeaponRequired": true
     },
@@ -1611,6 +1745,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "dun_li": {
@@ -1623,6 +1758,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "lv_ye_man_sheng": {
@@ -1635,6 +1771,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "ru_yi_fa": {
@@ -1647,6 +1784,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "you_feng_piao_zong": {
@@ -1659,6 +1797,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "jian_fei_jing_tian": {
@@ -1684,6 +1823,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "qin_yin_gong_ming": {
@@ -1696,6 +1836,7 @@
         "rarity": "精巧"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": true,
       "noWeaponRequired": false
     },
     "shou_que_shi": {
@@ -1708,6 +1849,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "xiang_ji_bi_luo": {
@@ -1720,6 +1862,7 @@
         "rarity": "精巧"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "bu_wei_an_xing": {
@@ -1732,6 +1875,7 @@
         "rarity": "珍奇"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "qiang_zhu_shi": {
@@ -1744,6 +1888,7 @@
         "rarity": "珍奇"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "xi_bing_yu": {
@@ -1756,6 +1901,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "xia_liu_bao_shi": {
@@ -1768,6 +1914,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "dou_zhuan_xing_yi": {
@@ -1780,6 +1927,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "feng_liu_yun_san": {
@@ -1793,6 +1941,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "ku_can_gu": {
@@ -1805,6 +1954,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "long_zhan_yu_ye": {
@@ -1817,6 +1967,7 @@
         "rarity": "卓越"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": true
     },
     "mi_xin_gu": {
@@ -1829,6 +1980,7 @@
         "rarity": "精巧"
       },
       "isProjectile": false,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "yin_qiao": {
@@ -1842,6 +1994,7 @@
         "rarity": "卓越"
       },
       "isProjectile": true,
+      "dunLiWhitelisted": false,
       "noWeaponRequired": false
     },
     "jiu_xiao_feng_lei": {
@@ -1854,7 +2007,9 @@
         "damageType": "外功",
         "rarity": "精巧"
       },
-      "isProjectile": false
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
+      "noWeaponRequired": false
     },
     "long_yin": {
       "properties": {
@@ -1865,7 +2020,9 @@
         "damageType": "外功",
         "rarity": "卓越"
       },
-      "isProjectile": false
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
+      "noWeaponRequired": false
     },
     "han_ru_lei": {
       "properties": {
@@ -1876,7 +2033,9 @@
         "damageType": "外功",
         "rarity": "卓越"
       },
-      "isProjectile": false
+      "isProjectile": false,
+      "noWeaponRequired": false,
+      "dunLiWhitelisted": true
     },
     "ling_ran_tian_feng": {
       "properties": {
@@ -1887,7 +2046,9 @@
         "damageType": "内功",
         "rarity": "精巧"
       },
-      "isProjectile": false
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
+      "noWeaponRequired": true
     },
     "she_shen_jue": {
       "properties": {
@@ -1898,7 +2059,9 @@
         "damageType": "内功",
         "rarity": "珍奇"
       },
-      "isProjectile": false
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
+      "noWeaponRequired": false
     },
     "ting_feng_chui_xue": {
       "properties": {
@@ -1909,7 +2072,9 @@
         "damageType": "内功",
         "rarity": "珍奇"
       },
-      "isProjectile": false
+      "isProjectile": false,
+      "dunLiWhitelisted": true,
+      "noWeaponRequired": false
     },
     "yuan": {
       "properties": {
@@ -1920,7 +2085,9 @@
         "damageType": "外功",
         "rarity": "卓越"
       },
-      "isProjectile": false
+      "isProjectile": false,
+      "dunLiWhitelisted": true,
+      "noWeaponRequired": false
     },
     "zi_qi_dong_lai": {
       "properties": {
@@ -1931,7 +2098,9 @@
         "damageType": "内功",
         "rarity": "精巧"
       },
-      "isProjectile": false
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
+      "noWeaponRequired": false
     },
     "po_cang_qiong": {
       "properties": {
@@ -1943,7 +2112,9 @@
         "damageType": "内功",
         "rarity": "精巧"
       },
-      "isProjectile": false
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
+      "noWeaponRequired": false
     },
     "ren_chi_cheng": {
       "properties": {
@@ -1955,7 +2126,9 @@
         "damageType": "外功",
         "rarity": "精巧"
       },
-      "isProjectile": false
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
+      "noWeaponRequired": false
     },
     "sui_xing_chen": {
       "properties": {
@@ -1967,7 +2140,9 @@
         "damageType": "外功",
         "rarity": "精巧"
       },
-      "isProjectile": false
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
+      "noWeaponRequired": false
     },
     "wu_an_mi_yun": {
       "properties": {
@@ -1978,7 +2153,10 @@
         "school": "段氏",
         "damageType": "内功",
         "rarity": "珍奇"
-      }
+      },
+      "isProjectile": false,
+      "dunLiWhitelisted": false,
+      "noWeaponRequired": false
     }
   }
 }

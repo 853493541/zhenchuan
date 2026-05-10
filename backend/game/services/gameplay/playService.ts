@@ -10,6 +10,7 @@ import { resolveTurnEnd } from "../../engine/flow/turn/advanceTurn";
 import { validatePlayAbility, validateCastAbility } from "../../engine/rules/validateAction";
 import { GameState } from "../../engine/state/types";
 import { GameLoop } from "../../engine/loop/GameLoop";
+import { ensureBattleLoop } from "../battleLoopRuntime";
 
 import { pushEvent } from "../flow/events";
 import { diffState } from "../flow/stateDiff";
@@ -20,12 +21,13 @@ import { globalTimer } from "../../../utils/timing";
 import { gameStateCache } from "../gameStateCache";
 import { addBuff, cancelAnyBuffForTesting, cancelManualBuff, pushBuffExpired } from "../../engine/effects/buffRuntime";
 import { applyDamageToTarget, removeLinkedShield } from "../../engine/utils/health";
-import { resolveRawDamageWithCrit, resolveScheduledDamage } from "../../engine/utils/combatMath";
+import { resolveScheduledDamage, resolveScheduledDamageRoll } from "../../engine/utils/combatMath";
 import { getAbilityRangeBonusFromBuffs } from "../../engine/utils/abilityRange";
 import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../../engine/utils/specialAbilityBar";
 import { hasYuqiState } from "../../engine/utils/yuqi";
 import { removeYuqiStateBuffs } from "../../engine/effects/buffRuntime";
 import { getHasteAdjustedTimingMs } from "../../engine/utils/haste";
+import { syncCombatStatusFromEvents } from "../../engine/utils/combatStatus";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -34,7 +36,7 @@ function pruneOldEvents(state: GameState, keepTurns = 10) {
   state.events = state.events.filter((e) => e.turn >= minTurn);
 }
 
-const TEST_COOLDOWN_CAP_TICKS = 150; // 5 seconds at 30Hz
+const TEST_COOLDOWN_CAP_TICKS = 90; // 3 seconds at 30Hz
 const SERVER_TICK_RATE = 30;
 const BASE_GCD_SECONDS = 1.19;
 const BASE_GCD_TICKS = Math.round(BASE_GCD_SECONDS * SERVER_TICK_RATE);
@@ -246,9 +248,79 @@ function cancelActiveChannel(
 ) {
   const channel = player.activeChannel;
   if (!channel) return false;
-  const removedBuffs = clearChannelStartBuffs(state, player, channel);
+  clearChannelStartBuffs(state, player, channel);
   player.activeChannel = undefined;
-  return removedBuffs;
+  return true;
+}
+
+function getBuffBackedChannelInfo(buff: any): { ability: any; mode: "FORWARD" | "REVERSE" } | null {
+  const getInfo = (ability: any) => {
+    if (
+      ability?.type !== "CHANNEL" ||
+      !Array.isArray(ability.buffs) ||
+      ability.buffs.length === 0 ||
+      ability.applyBuffsOnComplete === true ||
+      ability.applyBuffsOnChannelStart === true
+    ) {
+      return null;
+    }
+
+    const channelBuff = ability.buffs.find((candidate: any) => candidate?.buffId === buff?.buffId);
+    if (!channelBuff) return null;
+    return {
+      ability,
+      mode: channelBuff.forwardChannel === true ? "FORWARD" as const : "REVERSE" as const,
+    };
+  };
+
+  const sourceAbilityId = String(buff?.sourceAbilityId ?? "");
+  if (sourceAbilityId) {
+    const info = getInfo(ABILITIES[sourceAbilityId] as any);
+    if (info) return info;
+  }
+
+  for (const ability of Object.values(ABILITIES)) {
+    const info = getInfo(ability as any);
+    if (info) return info;
+  }
+  return null;
+}
+
+function breakReverseChannelBuffsOnSuccessfulCast(
+  state: GameState,
+  player: { userId: string; buffs?: any[] },
+  playedAbilityId: string,
+): boolean {
+  if (!Array.isArray(player.buffs) || player.buffs.length === 0) return false;
+
+  let removedAny = false;
+  const remainingBuffs: any[] = [];
+  for (const buff of player.buffs) {
+    const channelInfo = getBuffBackedChannelInfo(buff);
+    const isReverseChannel = channelInfo?.mode === "REVERSE";
+    const isDifferentAbility = channelInfo?.ability?.id !== playedAbilityId;
+    if (!isReverseChannel || !isDifferentAbility) {
+      remainingBuffs.push(buff);
+      continue;
+    }
+
+    removeLinkedShield(player as any, buff as any);
+    pushBuffExpired(state, {
+      targetUserId: player.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+      sourceUserId: buff.sourceUserId,
+    });
+    removedAny = true;
+  }
+
+  if (removedAny) {
+    player.buffs = remainingBuffs;
+  }
+  return removedAny;
 }
 
 /* ================= PLAY CARD ================= */
@@ -259,17 +331,18 @@ export async function playAbility(
   abilityInstanceId: string,
   targetUserId?: string,
   groundTarget?: { x: number; y: number; z?: number },
-  entityTargetId?: string
+  entityTargetId?: string,
+  movementIntent?: boolean,
 ) {
   const startTime = performance.now();
   globalTimer.start(`play_card_${gameId}`);
 
   // Check if this is a real-time battle
-  const loop = GameLoop.get(gameId);
+  const loop = await ensureBattleLoop(gameId);
 
   if (loop) {
     // ✅ REAL-TIME BATTLE LOGIC
-    return await playCastAbility(loop, gameId, userId, abilityInstanceId, targetUserId, groundTarget, entityTargetId);
+    return await playCastAbility(loop, gameId, userId, abilityInstanceId, targetUserId, groundTarget, entityTargetId, movementIntent);
   } else {
     // ✅ TURN-BASED BATTLE LOGIC (legacy draft phase)
     return await playAbilityTurnBased(gameId, userId, abilityInstanceId);
@@ -286,7 +359,8 @@ async function playCastAbility(
   abilityInstanceId: string,
   targetUserId?: string,
   groundTarget?: { x: number; y: number; z?: number },
-  entityTargetId?: string
+  entityTargetId?: string,
+  movementIntent?: boolean,
 ) {
   const state = loop.getState();
   const playerIndex = state.players.findIndex((p) => p.userId === userId);
@@ -298,8 +372,8 @@ async function playCastAbility(
   // Validate ability can be cast (cooldown, range, silence, grounded lock)
   const mapCtx = loop.getMapCtx();
   const validatedCast = validateCastAbility(state, playerIndex, abilityInstanceId, {
-    ignoreActiveChannel: true,
     pendingJump: loop.hasPendingJump(playerIndex),
+    movementIntent: movementIntent ?? loop.hasMovementIntent(playerIndex),
     targetUserId,
     entityTargetId,
     groundTarget,
@@ -363,8 +437,12 @@ async function playCastAbility(
 
   ensureChargeRuntime(played, ability);
 
-  if (player.activeChannel) {
-    cancelActiveChannel(state, player as any);
+  if ((ability as any).requiresStanding) {
+    player.velocity = {
+      ...(player.velocity as any),
+      vx: 0,
+      vy: 0,
+    } as any;
   }
 
   const yuqiMounted = hasYuqiState(player as any);
@@ -372,6 +450,7 @@ async function playCastAbility(
 
   if (togglesOffYuqi) {
     breakOnPlay(player as any, ability as any);
+    breakReverseChannelBuffsOnSuccessfulCast(state, player as any, abilityId);
     removeYuqiStateBuffs({
       state,
       targetUserId: player.userId,
@@ -416,6 +495,7 @@ async function playCastAbility(
     );
     if (isPureChannel) {
       breakOnPlay(player as any, ability as any);
+      breakReverseChannelBuffsOnSuccessfulCast(state, player as any, abilityId);
       const channelRangeBonus = getAbilityRangeBonusFromBuffs(player.buffs);
       const channelCancelOnOutOfRange = typeof (ability as any).channelCancelOnOutOfRange === "number"
         ? (ability as any).channelCancelOnOutOfRange + channelRangeBonus
@@ -490,6 +570,7 @@ async function playCastAbility(
         entityName: targetEntity?.abilityName,
         abilityId,
         abilityName: ability.name,
+        channelPhase: player.activeChannel.forwardChannel === true ? "start" : undefined,
       });
 
       // If a pure channel ever uses charge metadata, consume a charge at cast start.
@@ -516,11 +597,14 @@ async function playCastAbility(
             } else {
               bangHuaBuff.stacks = currentStacks - 1;
             }
-            const triggerDamage = resolveRawDamageWithCrit({
+            const triggerDamageRoll = resolveScheduledDamageRoll({
               source: opp as any,
+              target: player as any,
               base: 2,
+              abilityId: "bang_hua_sui_liu",
               damageType: (ABILITIES["bang_hua_sui_liu"] as any)?.damageType,
             });
+            const triggerDamage = triggerDamageRoll.damage;
             applyDamageToTarget(player as any, triggerDamage);
             pushEvent(state, {
               turn: state.turn,
@@ -531,6 +615,7 @@ async function playCastAbility(
               abilityName: "傍花随柳",
               effectType: "BANG_HUA_TRIGGER",
               value: triggerDamage,
+              isCrit: triggerDamageRoll.isCrit,
             } as any);
             // Last stack: also apply 束发 silence 4s
             if (isLastStack) {
@@ -556,6 +641,9 @@ async function playCastAbility(
     } else {
       const castStartedAt = Date.now();
 
+      breakOnPlay(player as any, ability as any);
+      breakReverseChannelBuffsOnSuccessfulCast(state, player as any, abilityId);
+
       // Apply ability effects
       applyEffects(state, ability, playerIndex, targetIndex, mapCtx, {
         targetUserId: resolvedTargetUserId,
@@ -565,6 +653,17 @@ async function playCastAbility(
         forceEnemyApplied: confusionRetargeted ? ((ability as any).friendlyTarget !== true) : undefined,
       });
       applyOnPlayBuffEffects(state, playerIndex);
+
+      pushEvent(state, {
+        turn: state.turn,
+        type: "PLAY_ABILITY",
+        actorUserId: player.userId,
+        targetUserId: targetEntity ? undefined : target.userId,
+        entityId: targetEntity?.id,
+        entityName: targetEntity?.abilityName,
+        abilityId,
+        abilityName: ability.name,
+      });
 
       const upgradedBangDaGouTouCast =
         ability.id === BANG_DA_GOU_TOU_ABILITY_ID &&
@@ -618,7 +717,7 @@ async function playCastAbility(
           buffTarget: player as any,
           buff: silenceBuff,
         });
-        const dmg = resolveScheduledDamage({ source: opp, target: player as any, base: 1 });
+        const dmg = resolveScheduledDamage({ source: opp, target: player as any, base: 1, abilityId: "jiang_chun_zhu_xiu" });
         if (dmg > 0) applyDamageToTarget(player as any, dmg);
       }
     }
@@ -661,6 +760,8 @@ async function playCastAbility(
     }
   }
 
+  syncCombatStatusFromEvents(state, prevState.events.length);
+
   state.version = (state.version ?? 0) + 1;
 
   // Update game loop with new state
@@ -685,6 +786,48 @@ async function playCastAbility(
   return {
     version: state.version,
     diff,
+    events: state.events,
+    serverTimestamp: Date.now(),
+  };
+}
+
+export async function cancelActiveChannelCast(gameId: string, userId: string) {
+  const loop = await ensureBattleLoop(gameId);
+  if (!loop) {
+    throw new Error("ERR_BATTLE_NOT_IN_PROGRESS");
+  }
+
+  const state = loop.getState();
+  const playerIndex = state.players.findIndex((p) => p.userId === userId);
+  if (playerIndex === -1) {
+    throw new Error("ERR_NOT_IN_GAME");
+  }
+
+  const player = state.players[playerIndex] as any;
+  const prevState: GameState = structuredClone(state);
+  const cancelled = cancelActiveChannel(state, player);
+
+  if (cancelled) {
+    state.version = (state.version ?? 0) + 1;
+    loop.updateState(state);
+    const diff = diffState(prevState, state);
+    broadcastGameUpdate({
+      gameId,
+      version: state.version,
+      diff,
+      timestamp: Date.now(),
+    });
+    return {
+      version: state.version,
+      diff,
+      events: state.events,
+      serverTimestamp: Date.now(),
+    };
+  }
+
+  return {
+    version: state.version ?? 0,
+    diff: [],
     events: state.events,
     serverTimestamp: Date.now(),
   };
@@ -887,7 +1030,7 @@ export async function cancelPlayerBuff(gameId: string, userId: string, buffId: n
     throw new Error("ERR_INVALID_BUFF_ID");
   }
 
-  const loop = GameLoop.get(gameId);
+  const loop = await ensureBattleLoop(gameId);
   if (loop) {
     const state = loop.getState();
     if (!state.events) state.events = [];

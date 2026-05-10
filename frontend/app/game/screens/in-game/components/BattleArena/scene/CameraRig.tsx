@@ -93,8 +93,11 @@ const CAMERA_WALL_DISTANCE_EXPAND_TARGET_EPSILON = 0.3;
 const CAMERA_WALL_SUPPORT_SIDE = 0.78;
 const CAMERA_WALL_SUPPORT_UP = 0.56;
 const CAMERA_WALL_SUPPORT_DOWN = 0.42;
+const CAMERA_ACTIVE_LOOK_SAMPLE_WINDOW_MS = 120;
 const CAMERA_WALL_MIN_RELIABLE_HITS = 5;
 const CAMERA_WALL_RELIABLE_HIT_INDEX = 4;
+const CAMERA_WALL_ACTIVE_LOOK_MIN_RELIABLE_HITS = 3;
+const CAMERA_WALL_ACTIVE_LOOK_RELIABLE_HIT_INDEX = 2;
 const CAMERA_WALL_MIN_REDUCTION = 0.6;
 const CAMERA_WALL_MIN_HORIZONTAL_SPAN = 1.0;
 const CAMERA_PROBE_CLAMP_ENTER_DELTA = 0.16;
@@ -106,6 +109,8 @@ const CAMERA_GROUND_CLAMP_EXIT_RATIO = 0.035;
 const CAMERA_GROUND_CLAMP_MAX_ABOVE_PLAYER = 1.2;
 const CAMERA_PROBE_MIN_RELIABLE_HITS = 2;
 const CAMERA_PROBE_RELIABLE_HIT_INDEX = 1;
+const CAMERA_PROBE_ACTIVE_LOOK_MIN_RELIABLE_HITS = 2;
+const CAMERA_PROBE_ACTIVE_LOOK_RELIABLE_HIT_INDEX = 1;
 const CAMERA_PROBE_MIN_REDUCTION = 0.28;
 const CAMERA_PROBE_DISTANCE_SHRINK_SPEED = 6;
 const CAMERA_PROBE_DISTANCE_GROW_SPEED = 2.5;
@@ -126,6 +131,14 @@ const CAMERA_WALL_SUPPORT_SAMPLES = [
   { label: 'DL', x: -0.82, y: -0.64 },
 ] as const;
 
+const CAMERA_WALL_SUPPORT_ACTIVE_LOOK_SAMPLES = [
+  { label: 'C', x: 0, y: 0 },
+  { label: 'R', x: 1, y: 0 },
+  { label: 'L', x: -1, y: 0 },
+  { label: 'U', x: 0, y: 1 },
+  { label: 'D', x: 0, y: -1 },
+] as const;
+
 const CAMERA_PROBE_SAMPLES = [
   { label: 'R', x: 1, y: 0 },
   { label: 'L', x: -1, y: 0 },
@@ -135,6 +148,13 @@ const CAMERA_PROBE_SAMPLES = [
   { label: 'UL', x: -0.82, y: 0.72 },
   { label: 'DR', x: 0.82, y: -0.58 },
   { label: 'DL', x: -0.82, y: -0.58 },
+] as const;
+
+const CAMERA_PROBE_ACTIVE_LOOK_SAMPLES = [
+  { label: 'R', x: 1, y: 0 },
+  { label: 'L', x: -1, y: 0 },
+  { label: 'U', x: 0, y: 1 },
+  { label: 'D', x: 0, y: -1 },
 ] as const;
 
 const _pivot = new THREE.Vector3();
@@ -196,6 +216,7 @@ export default function CameraRig({
   const closeCameraActiveRef = useRef(false);
   const recenterStateRef = useRef(false);
   const lastSnapLogAtRef = useRef(0);
+  const lastLookInputAtRef = useRef(0);
   const lastWallClampHitAtRef = useRef(0);
   const retainedWallClampDistanceSceneRef = useRef<number | null>(null);
   const pendingWallExpandTargetSceneRef = useRef<number | null>(null);
@@ -214,8 +235,18 @@ export default function CameraRig({
 
     if (cameraLookInputVersionRef && cameraLookInputVersionRef.current !== lastLookInputVersionRef.current) {
       lastLookInputVersionRef.current = cameraLookInputVersionRef.current;
+      lastLookInputAtRef.current = nowMs;
       recenterLookRef.current = false;
     }
+
+    // Live mouse/touch look should stay responsive even in dense collision areas.
+    const activeLookSampling = nowMs - lastLookInputAtRef.current <= CAMERA_ACTIVE_LOOK_SAMPLE_WINDOW_MS;
+    const wallSupportSamples = activeLookSampling ? CAMERA_WALL_SUPPORT_ACTIVE_LOOK_SAMPLES : CAMERA_WALL_SUPPORT_SAMPLES;
+    const wallMinReliableHits = activeLookSampling ? CAMERA_WALL_ACTIVE_LOOK_MIN_RELIABLE_HITS : CAMERA_WALL_MIN_RELIABLE_HITS;
+    const wallReliableHitIndex = activeLookSampling ? CAMERA_WALL_ACTIVE_LOOK_RELIABLE_HIT_INDEX : CAMERA_WALL_RELIABLE_HIT_INDEX;
+    const probeSamples = activeLookSampling ? CAMERA_PROBE_ACTIVE_LOOK_SAMPLES : CAMERA_PROBE_SAMPLES;
+    const probeMinReliableHits = activeLookSampling ? CAMERA_PROBE_ACTIVE_LOOK_MIN_RELIABLE_HITS : CAMERA_PROBE_MIN_RELIABLE_HITS;
+    const probeReliableHitIndex = activeLookSampling ? CAMERA_PROBE_ACTIVE_LOOK_RELIABLE_HIT_INDEX : CAMERA_PROBE_RELIABLE_HIT_INDEX;
 
     const p = localRenderPosRef.current;
     // world: x=right, y=forward, z=up → three: x=right, y=up, z=back
@@ -288,7 +319,7 @@ export default function CameraRig({
             _cameraUpExport.normalize();
           }
 
-          for (const sample of CAMERA_WALL_SUPPORT_SAMPLES) {
+          for (const sample of wallSupportSamples) {
             const offsetX = sample.x * CAMERA_WALL_SUPPORT_SIDE;
             const offsetY = sample.y > 0
               ? sample.y * CAMERA_WALL_SUPPORT_UP
@@ -351,12 +382,9 @@ export default function CameraRig({
 
           // One-sided blocker clusters are usually posts, bridge sticks, or trim. Let the probe clamp
           // handle those edge occluders instead of collapsing the full boom like a real wall.
-          if (wallHasBroadHorizontalCoverage && _wallAllowedDistances.length >= CAMERA_WALL_MIN_RELIABLE_HITS) {
+          if (wallHasBroadHorizontalCoverage && _wallAllowedDistances.length >= wallMinReliableHits) {
             _wallAllowedDistances.sort((a, b) => a - b);
-            const reliableWallDistance = _wallAllowedDistances[Math.min(
-              CAMERA_WALL_RELIABLE_HIT_INDEX,
-              _wallAllowedDistances.length - 1,
-            )];
+            const reliableWallDistance = _wallAllowedDistances[Math.min(wallReliableHitIndex, _wallAllowedDistances.length - 1)];
             if (desiredDistance - reliableWallDistance > CAMERA_WALL_MIN_REDUCTION / RENDER_SF) {
               wallClampedDistance = reliableWallDistance;
             }
@@ -364,7 +392,7 @@ export default function CameraRig({
 
           _probeAllowedDistances.length = 0;
 
-          for (const sample of CAMERA_PROBE_SAMPLES) {
+          for (const sample of probeSamples) {
             _probeTargetExport.copy(_desiredCameraExport)
               .addScaledVector(_cameraRightExport, (sample.x * CAMERA_PROBE_SIDE) / RENDER_SF)
               .addScaledVector(_cameraUpExport, ((sample.y > 0 ? CAMERA_PROBE_UP : CAMERA_PROBE_DOWN) * sample.y) / RENDER_SF);
@@ -396,12 +424,9 @@ export default function CameraRig({
             probeMaxDistanceScene = probeMaxDistanceScene === null ? allowedDistanceScene : Math.max(probeMaxDistanceScene, allowedDistanceScene);
           }
 
-          if (_probeAllowedDistances.length >= CAMERA_PROBE_MIN_RELIABLE_HITS) {
+          if (_probeAllowedDistances.length >= probeMinReliableHits) {
             _probeAllowedDistances.sort((a, b) => a - b);
-            const reliableProbeDistance = _probeAllowedDistances[Math.min(
-              CAMERA_PROBE_RELIABLE_HIT_INDEX,
-              _probeAllowedDistances.length - 1,
-            )];
+            const reliableProbeDistance = _probeAllowedDistances[Math.min(probeReliableHitIndex, _probeAllowedDistances.length - 1)];
             if (wallClampedDistance - reliableProbeDistance > CAMERA_PROBE_MIN_REDUCTION / RENDER_SF) {
               rawReliableProbeDistanceScene = reliableProbeDistance * RENDER_SF;
             }
@@ -701,7 +726,7 @@ export default function CameraRig({
         recenter: recenterActive,
         wallDebug: {
           hitCount: wallHitCount,
-          sampleCount: CAMERA_WALL_SUPPORT_SAMPLES.length,
+          sampleCount: wallSupportSamples.length,
           hitMask: wallHitMask,
           spanX: wallSpanX,
           spanY: wallSpanY,
@@ -715,7 +740,7 @@ export default function CameraRig({
         },
         probeDebug: {
           hitCount: probeHitCount,
-          sampleCount: CAMERA_PROBE_SAMPLES.length,
+          sampleCount: probeSamples.length,
           hitMask: probeHitMask,
           minDistance: probeMinDistanceScene,
           maxDistance: probeMaxDistanceScene,

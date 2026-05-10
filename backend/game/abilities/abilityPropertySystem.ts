@@ -185,19 +185,19 @@ const LEGACY_GCD_PROPERTY_ID = "gcd";
 const MS_PER_GAME_TICK = 1000 / 30;
 
 const DAMAGE_VALUE_EFFECT_LABELS: Partial<Record<AbilityEffect["type"], string>> = {
-  DAMAGE: "直接伤害",
-  BONUS_DAMAGE_IF_TARGET_HP_GT: "追加伤害",
-  PERIODIC_DAMAGE: "持续伤害",
-  CHANNEL_AOE_TICK: "引导范围伤害",
-  TIMED_AOE_DAMAGE: "延时范围伤害",
-  TIMED_SELF_DAMAGE: "延时自身伤害",
-  TIMED_AOE_DAMAGE_IF_SELF_HP_GT: "条件延时范围伤害",
-  BAIZU_AOE: "范围初始伤害",
-  ON_PLAY_DAMAGE: "出招触发伤害",
-  STACK_ON_HIT_DAMAGE: "层数触发伤害",
+  DAMAGE: "直接伤害倍率",
+  BONUS_DAMAGE_IF_TARGET_HP_GT: "追加伤害倍率",
+  PERIODIC_DAMAGE: "持续伤害倍率",
+  CHANNEL_AOE_TICK: "引导范围伤害倍率",
+  TIMED_AOE_DAMAGE: "延时范围伤害倍率",
+  TIMED_SELF_DAMAGE: "延时自身伤害倍率",
+  TIMED_AOE_DAMAGE_IF_SELF_HP_GT: "条件延时范围伤害倍率",
+  BAIZU_AOE: "范围初始伤害倍率",
+  ON_PLAY_DAMAGE: "出招触发伤害倍率",
+  STACK_ON_HIT_DAMAGE: "层数触发伤害倍率",
   STACK_ON_HIT_GUAN_TI_HEAL: "层数触发贯体回血",
-  SCHEDULED_DAMAGE: "计划伤害",
-  DELAYED_DAMAGE: "延时伤害",
+  SCHEDULED_DAMAGE: "计划伤害倍率",
+  DELAYED_DAMAGE: "延时伤害倍率",
 };
 
 const DAMAGE_VALUE_EFFECT_TYPES = new Set<AbilityEffect["type"]>([
@@ -468,10 +468,10 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
         createNumericFieldDefinition({
           id: `effects.${effectIndex}.value`,
           label: getDamageEffectLabel(effect.type),
-          description: `技能效果 ${effectIndex + 1}`,
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
           order: 200 + effectIndex,
           path: ["effects", effectIndex, "value"],
-          step: 1,
+          step: 0.1,
         })
       );
     }
@@ -480,11 +480,11 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
       definitions.push(
         createNumericFieldDefinition({
           id: `effects.${effectIndex}.routeDamage`,
-          label: "冲刺路径伤害",
-          description: `技能效果 ${effectIndex + 1}`,
+          label: "冲刺路径伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
           order: 240 + effectIndex,
           path: ["effects", effectIndex, "routeDamage"],
-          step: 1,
+          step: 0.1,
         })
       );
     }
@@ -497,10 +497,10 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
           createNumericFieldDefinition({
             id: `buffs.${buffIndex}.effects.${effectIndex}.value`,
             label: `${buff.name} · ${getDamageEffectLabel(effect.type)}`,
-            description: `来自 Buff ${buff.name}`,
+            description: `来自 Buff ${buff.name} · 伤害倍率会乘以攻击力`,
             order: 300 + buffIndex * 20 + effectIndex,
             path: ["buffs", buffIndex, "effects", effectIndex, "value"],
-            step: 1,
+            step: 0.1,
           })
         );
       }

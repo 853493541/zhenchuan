@@ -118,12 +118,12 @@ export function applyAbilityBuffs(params: {
         ? false
         : (forceEnemyApplied ?? (localBuffTarget.userId !== source.userId));
 
-    const isControl =
-      Array.isArray(buff.effects) &&
-      buff.effects.some((e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK");
+    const blockedControlEffects = Array.isArray(buff.effects)
+      ? buff.effects.filter((e) => blocksControlByImmunity(e.type, localBuffTarget))
+      : [];
 
-    // Control immunity blocks CONTROL buffs (guard needs target.buffs)
-    if (isControl && blocksControlByImmunity("CONTROL", localBuffTarget)) {
+    // Skip only when every effect on this buff is blocked. addBuff handles partial filtering.
+    if (blockedControlEffects.length > 0 && blockedControlEffects.length === buff.effects.length) {
       continue;
     }
 

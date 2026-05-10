@@ -236,6 +236,8 @@ export function handleDirectionalDash(
         source: source as any,
         target: targetPlayer,
         base: effect.routeDamage ?? 0,
+        abilityId: ability.id,
+        damageType: (ability as any).damageType,
       });
 
       // Damage immunity + 盾立 reflect
@@ -260,7 +262,9 @@ export function handleDirectionalDash(
         if (adjustedDamage > 0) {
           const result = applyDamageToTarget(damageVictim, adjustedDamage);
           shieldAbsorbed = result.shieldAbsorbed;
-          processOnDamageTaken(state, damageVictim as any, result.hpDamage, damageActorUserId);
+          if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
+            processOnDamageTaken(state, damageVictim as any, result.hpDamage, damageActorUserId, result.shieldAbsorbed);
+          }
         }
         if (redirectPlayer && redirectAmt > 0) {
           applyRedirectToOpponent(state, redirectPlayer, redirectAmt);

@@ -32,6 +32,7 @@ export interface AbilityChannel {
 export interface Ability {
   id: string;
   name: string;
+  iconPath?: string;
   type: AbilityType;
   target: TargetType;
 
@@ -159,6 +160,12 @@ export interface Ability {
    * Shields are not counted for this check.
    */
   minSelfHpExclusive?: number;
+
+  /**
+   * Optional minimum current HP percent (exclusive, 0-100) required to cast.
+   * Shields are not counted for this check.
+   */
+  minSelfHpPercentExclusive?: number;
 
   /**
    * If true, this ability can only be cast if the target is within 180° of the
@@ -311,4 +318,7 @@ export interface AbilityInstance {
 
   /** Remaining lock ticks between two casts while charges remain. */
   chargeLockTicks?: number;
+
+  /** Optional draft hotbar slot index, used by the battle HUD to preserve empty slots. */
+  slotIndex?: number;
 }

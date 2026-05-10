@@ -5,7 +5,7 @@
 
 import { GameState, PlayerState, PickupItem } from "../../engine/state/types";
 import { TournamentState } from "../../engine/state/types";
-import { STARTING_BATTLE_HP } from "../../engine/state/types";
+import { STARTING_ATTACK_DAMAGE, STARTING_BATTLE_HP, STARTING_CRIT_CHANCE_PCT, STARTING_DEFENSE_PCT, STARTING_HUAJIN_PCT } from "../../engine/state/types";
 import { PlayerID } from "../../engine/state/types/common";
 import { AbilityInstance } from "../../engine/state/types/abilities";
 import { ABILITIES } from "../../abilities/abilities";
@@ -13,6 +13,7 @@ import { randomUUID } from "crypto";
 import { NEW_WORLD_UNIT_SCALE } from "../../engine/state/types/position";
 import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT, EXPORTED_MAP_SPAWN_POSITIONS } from "../../map/exportedMap";
 import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
+import { createStartingConsumableCounts } from "../gameplay/consumableService";
 
 // Arena dimensions (must match backend arena size)
 const PUBG_WIDTH = 2000;
@@ -195,6 +196,32 @@ const COMMON_ABILITY_IDS = [
 ];
 
 const BASE_MOVE_SPEED_PER_TICK = 0.1666667;
+const DRAFT_ABILITY_SLOT_COUNT = 6;
+
+function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return Math.max(0, Math.min(DRAFT_ABILITY_SLOT_COUNT - 1, fallback));
+  return Math.max(0, Math.min(DRAFT_ABILITY_SLOT_COUNT - 1, Math.round(numeric)));
+}
+
+function normalizeSelectedAbilitySlots(abilities: AbilityInstance[]): AbilityInstance[] {
+  const assigned: Array<AbilityInstance | undefined> = Array.from({ length: DRAFT_ABILITY_SLOT_COUNT });
+  const pending: AbilityInstance[] = [];
+  abilities.forEach((ability, fallbackIndex) => {
+    const hasExplicitSlot = ability?.slotIndex !== undefined && Number.isFinite(Number(ability.slotIndex));
+    const slotIndex = normalizeDraftSlotIndex(ability?.slotIndex, fallbackIndex);
+    if (hasExplicitSlot && !assigned[slotIndex]) {
+      assigned[slotIndex] = { ...ability, slotIndex };
+      return;
+    }
+    pending.push(ability);
+  });
+  pending.forEach((ability) => {
+    const openIndex = assigned.findIndex((slot) => !slot);
+    if (openIndex >= 0) assigned[openIndex] = { ...ability, slotIndex: openIndex };
+  });
+  return assigned.filter(Boolean) as AbilityInstance[];
+}
 
 function makeCommonAbilities(): AbilityInstance[] {
   return COMMON_ABILITY_IDS.map((id) => ({
@@ -228,7 +255,7 @@ export function initializeBattleState(
     const dy = mapHeight / 2 - spawn.y;
     const mag = Math.sqrt(dx * dx + dy * dy) || 1;
 
-    const abilities = tournament.selectedAbilities[id] ?? [];
+    const abilities = normalizeSelectedAbilitySlots(tournament.selectedAbilities[id] ?? []);
     const hand: AbilityInstance[] = [
       ...abilities.map((a) => ({ ...a, instanceId: randomUUID(), cooldown: 0 })),
       ...makeCommonAbilities(),
@@ -238,11 +265,20 @@ export function initializeBattleState(
       userId: id,
       hp: STARTING_BATTLE_HP,
       maxHp: STARTING_BATTLE_HP,
+      attackDamage: STARTING_ATTACK_DAMAGE,
       shield: 0,
-      defensePct: 0,
+      waiGongCritChancePct: STARTING_CRIT_CHANCE_PCT,
+      neiGongCritChancePct: STARTING_CRIT_CHANCE_PCT,
+      critChancePct: STARTING_CRIT_CHANCE_PCT,
+      defensePct: STARTING_DEFENSE_PCT,
+      huajinPct: STARTING_HUAJIN_PCT,
       hasteRatePct: BASE_HASTE_RATE_PCT,
       hand,
       buffs: [],
+      inCombat: false,
+      combatLinks: {},
+      consumableCooldowns: {},
+      consumableCounts: createStartingConsumableCounts(),
       position: { x: spawn.x, y: spawn.y },
       velocity: { vx: 0, vy: 0 },
       facing: { x: dx / mag, y: dy / mag },

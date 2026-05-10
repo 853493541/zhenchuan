@@ -1,9 +1,11 @@
 'use client';
 
-import { useRef, MutableRefObject } from 'react';
+import { useEffect, useRef, useState, MutableRefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { EXPORTED_MAP_DATA_PATH, RENDER_SF } from './ExportedMapScene';
 
 const CHAR_RADIUS = 0.42;
 const CHAR_HEIGHT = 1.5;
@@ -20,6 +22,130 @@ const _bodyWorldPos = new THREE.Vector3();
 const SELF_HIDE_DISTANCE = CHAR_HEIGHT;
 const SELF_FADE_DISTANCE = CHAR_HEIGHT * 1.8;
 const OPPONENT_VERTICAL_BLINK_THRESHOLD = 4;
+const DISGUISE_CART_GLB_NAME = 'wj_木车002_hd.glb';
+const DISGUISE_CART_GLB_URL = `${EXPORTED_MAP_DATA_PATH}/meshes/${encodeURIComponent(DISGUISE_CART_GLB_NAME)}`;
+const DISGUISE_TEXTURE_MAP_URL = `${EXPORTED_MAP_DATA_PATH}/texture-map.json`;
+let disguiseCartPrototypePromise: Promise<THREE.Group> | null = null;
+const disguiseTextureLoader = new THREE.TextureLoader();
+const disguiseTextureCache = new Map<string, THREE.Texture>();
+
+function loadDisguiseTextureCached(pngName: string, colorSpace: THREE.ColorSpace): THREE.Texture {
+  const key = `${pngName}:${colorSpace}`;
+  if (!disguiseTextureCache.has(key)) {
+    const tex = disguiseTextureLoader.load(`${EXPORTED_MAP_DATA_PATH}/textures/${encodeURIComponent(pngName)}`);
+    tex.colorSpace = colorSpace;
+    tex.flipY = false;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    disguiseTextureCache.set(key, tex);
+  }
+  return disguiseTextureCache.get(key)!;
+}
+
+function loadDisguiseMRECached(pngName: string): THREE.Texture {
+  const key = `${pngName}:mre`;
+  if (!disguiseTextureCache.has(key)) {
+    const tex = disguiseTextureLoader.load(
+      `${EXPORTED_MAP_DATA_PATH}/textures/${encodeURIComponent(pngName)}`,
+      (loaded) => {
+        const img = loaded.image as HTMLImageElement;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        for (let index = 0; index < data.data.length; index += 4) {
+          const red = data.data[index];
+          data.data[index] = data.data[index + 2];
+          data.data[index + 2] = red;
+        }
+        ctx.putImageData(data, 0, 0);
+        loaded.image = canvas;
+        loaded.needsUpdate = true;
+      },
+    );
+    tex.colorSpace = THREE.LinearSRGBColorSpace;
+    tex.flipY = false;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    disguiseTextureCache.set(key, tex);
+  }
+  return disguiseTextureCache.get(key)!;
+}
+
+function loadDisguiseCartGltf(loader: GLTFLoader): Promise<any> {
+  return new Promise((resolve, reject) => {
+    loader.load(DISGUISE_CART_GLB_URL, resolve, undefined, reject);
+  });
+}
+
+async function loadDisguiseCartTextureInfo(): Promise<any | null> {
+  try {
+    const response = await fetch(DISGUISE_TEXTURE_MAP_URL);
+    if (!response.ok) return null;
+    const textureMap = await response.json();
+    return textureMap?.[DISGUISE_CART_GLB_NAME] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function applyDisguiseCartTextureMaterials(scene: THREE.Group, textureInfo: any | null) {
+  const subsetTextures = Array.isArray(textureInfo?.subsets) ? textureInfo.subsets : null;
+  let meshIndex = 0;
+  scene.traverse((child: any) => {
+    if (!child?.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+
+    const geometry = child.geometry as THREE.BufferGeometry | undefined;
+    const subTex = subsetTextures && meshIndex < subsetTextures.length
+      ? subsetTextures[meshIndex]
+      : textureInfo;
+    const hasColors = !!geometry?.hasAttribute?.('color');
+    const materialOptions: any = {
+      color: hasColors ? 0xffffff : 0xccbbaa,
+      vertexColors: hasColors,
+      roughness: 0.7,
+      metalness: 0.0,
+      side: THREE.DoubleSide,
+    };
+
+    if (subTex) {
+      if (subTex.albedo) {
+        materialOptions.map = loadDisguiseTextureCached(subTex.albedo, THREE.SRGBColorSpace);
+        materialOptions.color = 0xffffff;
+        materialOptions.vertexColors = false;
+      }
+      if (subTex.mre) {
+        const mreTex = loadDisguiseMRECached(subTex.mre);
+        materialOptions.roughnessMap = mreTex;
+        materialOptions.metalnessMap = mreTex;
+        materialOptions.roughness = 1.0;
+        materialOptions.metalness = 1.0;
+      }
+      if (subTex.normal) {
+        materialOptions.normalMap = loadDisguiseTextureCached(subTex.normal, THREE.LinearSRGBColorSpace);
+        materialOptions.normalScale = new THREE.Vector2(1, -1);
+      }
+      const blendMode = subTex.blendMode || textureInfo?.blendMode || 0;
+      if (blendMode === 1 && materialOptions.map) {
+        const alphaRef = subTex.alphaRef != null ? subTex.alphaRef : 128;
+        materialOptions.alphaTest = alphaRef / 255;
+        materialOptions.transparent = false;
+      } else if (blendMode === 2 && materialOptions.map) {
+        materialOptions.transparent = true;
+        materialOptions.blending = THREE.AdditiveBlending;
+        materialOptions.depthWrite = false;
+      }
+    }
+
+    child.material = new THREE.MeshStandardMaterial(materialOptions);
+    meshIndex += 1;
+  });
+}
 
 function computeHpShieldSegments(hp: number, shield: number, maxHp: number): { hpPct: number; shieldPct: number } {
   const safeMaxHp = Math.max(1, Number(maxHp || 100));
@@ -40,6 +166,68 @@ function computeHpShieldSegments(hp: number, shield: number, maxHp: number): { h
     hpPct: Math.max(0, Math.min(1, safeHp / total)),
     shieldPct: Math.max(0, Math.min(1, safeShield / total)),
   };
+}
+
+function loadDisguiseCartPrototype(): Promise<THREE.Group> {
+  if (!disguiseCartPrototypePromise) {
+    const loader = new GLTFLoader();
+    disguiseCartPrototypePromise = Promise.all([
+      loadDisguiseCartGltf(loader),
+      loadDisguiseCartTextureInfo(),
+    ]).then(([gltf, textureInfo]) => {
+      const scene = gltf.scene as THREE.Group;
+      applyDisguiseCartTextureMaterials(scene, textureInfo);
+      return scene;
+    });
+  }
+  return disguiseCartPrototypePromise;
+}
+
+function cloneDisguiseCartModel(prototype: THREE.Group): THREE.Group {
+  const model = prototype.clone(true);
+  const box = new THREE.Box3().setFromObject(model);
+  const center = box.getCenter(new THREE.Vector3());
+  model.scale.setScalar(RENDER_SF);
+  model.position.set(-center.x * RENDER_SF, -box.min.y * RENDER_SF, -center.z * RENDER_SF);
+  model.traverse((child: any) => {
+    if (!child?.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+  });
+  return model;
+}
+
+function DisguiseCartModel({
+  facingYaw,
+  modelRef,
+}: {
+  facingYaw: number;
+  modelRef: MutableRefObject<THREE.Object3D | null>;
+}) {
+  const [model, setModel] = useState<THREE.Group | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadDisguiseCartPrototype()
+      .then((prototype) => {
+        if (!cancelled) setModel(cloneDisguiseCartModel(prototype));
+      })
+      .catch(() => {
+        if (!cancelled) setModel(null);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!model) {
+    return (
+      <mesh ref={modelRef as any} position={[0, 0.35, 0]} rotation={[0, facingYaw, 0]} castShadow>
+        <boxGeometry args={[1.25, 0.7, 0.85]} />
+        <meshStandardMaterial color="#7a6042" roughness={0.8} metalness={0.05} />
+      </mesh>
+    );
+  }
+
+  return <primitive ref={modelRef as any} object={model} rotation={[0, facingYaw, 0]} />;
 }
 
 interface CharacterProps {
@@ -70,6 +258,8 @@ interface CharacterProps {
   isStealthed?: boolean;
   /** Hide the HP/name billboard for enemy-view special cases. */
   hideHpBar?: boolean;
+  /** Replace the character with the exported-map cart mesh for 砂石伪装. */
+  isDisguised?: boolean;
   cameraFadeEnabled?: boolean;
   hpColorOverride?: string;
   instantSnapAtRef?: MutableRefObject<number>;
@@ -98,6 +288,7 @@ export default function Character({
   worldHalfY,
   isStealthed = false,
   hideHpBar = false,
+  isDisguised = false,
   cameraFadeEnabled = false,
   hpColorOverride,
   instantSnapAtRef,
@@ -105,6 +296,7 @@ export default function Character({
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
+  const disguiseRef = useRef<THREE.Object3D>(null);
   const capRef = useRef<THREE.Mesh>(null);
   const shadowRef = useRef<THREE.Mesh>(null);
   const arcRef = useRef<THREE.Mesh>(null);
@@ -172,9 +364,14 @@ export default function Character({
 
     // --- Facing rotation (updated every frame) ---
     const f = facingRef ? facingRef.current : facing;
-    if (f && bodyRef.current) {
+    if (f) {
       const yaw = Math.atan2(f.x, -f.y); // z-flip: negate game-y for correct Three.js facing
-      bodyRef.current.rotation.set(0, yaw, 0);
+      if (bodyRef.current) {
+        bodyRef.current.rotation.set(0, yaw, 0);
+      }
+      if (disguiseRef.current) {
+        disguiseRef.current.rotation.set(0, yaw, 0);
+      }
 
       // Smooth arc display yaw — rotates at max 720°/s so a full 180° takes ~0.25s
       const MAX_ARC_SPEED = Math.PI * 4; // rad/s
@@ -233,15 +430,15 @@ export default function Character({
     if (bodyRef.current) {
       bodyRef.current.visible = visualAlpha > 0.01;
       const bodyMaterial = bodyRef.current.material as THREE.MeshStandardMaterial;
-      bodyMaterial.opacity = (isStealthed ? 0.45 : 1) * visualAlpha;
-      bodyMaterial.depthWrite = !isStealthed && visualAlpha > 0.05;
+      bodyMaterial.opacity = (isStealthed && !isDisguised ? 0.45 : 1) * visualAlpha;
+      bodyMaterial.depthWrite = !(isStealthed && !isDisguised) && visualAlpha > 0.05;
     }
 
     if (capRef.current) {
       capRef.current.visible = visualAlpha > 0.01;
       const capMaterial = capRef.current.material as THREE.MeshStandardMaterial;
-      capMaterial.opacity = (isStealthed ? 0.45 : 1) * visualAlpha;
-      capMaterial.depthWrite = !isStealthed && visualAlpha > 0.05;
+      capMaterial.opacity = (isStealthed && !isDisguised ? 0.45 : 1) * visualAlpha;
+      capMaterial.depthWrite = !(isStealthed && !isDisguised) && visualAlpha > 0.05;
     }
 
     if (shadowRef.current) {
@@ -308,45 +505,57 @@ export default function Character({
 
   return (
     <group ref={groupRef} position={[threeX, threeY, threeZ]}>
-      {/* Body cylinder — rotation driven by useFrame */}
-      <mesh ref={bodyRef} position={[0, CHAR_HEIGHT / 2, 0]} castShadow rotation={[0, facingYaw, 0]} onPointerDown={handleSelect}>
-        <cylinderGeometry args={[CHAR_RADIUS, CHAR_RADIUS * 0.9, CHAR_HEIGHT, 16]} />
-        <meshStandardMaterial
-          color={color}
-          emissive={emissive}
-          emissiveIntensity={isMe ? 0.4 : 0.15}
-          roughness={0.6}
-          metalness={0.1}
-          transparent
-          opacity={isStealthed ? 0.45 : 1}
-          depthWrite={!isStealthed}
-        />
-      </mesh>
+      {isDisguised ? (
+        <>
+          <DisguiseCartModel facingYaw={facingYaw} modelRef={disguiseRef} />
+          <mesh ref={shadowRef} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.95, 20]} />
+            <meshBasicMaterial color="#000000" transparent opacity={0.24} depthWrite={false} />
+          </mesh>
+        </>
+      ) : (
+        <>
+          {/* Body cylinder — rotation driven by useFrame */}
+          <mesh ref={bodyRef} position={[0, CHAR_HEIGHT / 2, 0]} castShadow rotation={[0, facingYaw, 0]} onPointerDown={handleSelect}>
+            <cylinderGeometry args={[CHAR_RADIUS, CHAR_RADIUS * 0.9, CHAR_HEIGHT, 16]} />
+            <meshStandardMaterial
+              color={color}
+              emissive={emissive}
+              emissiveIntensity={isMe ? 0.4 : 0.15}
+              roughness={0.6}
+              metalness={0.1}
+              transparent
+              opacity={isStealthed ? 0.45 : 1}
+              depthWrite={!isStealthed}
+            />
+          </mesh>
 
-      {/* Top cap highlight */}
-      <mesh ref={capRef} position={[0, CHAR_HEIGHT + 0.02, 0]} onPointerDown={handleSelect}>
-        <cylinderGeometry args={[CHAR_RADIUS * 0.95, CHAR_RADIUS * 0.95, 0.06, 16]} />
-        <meshStandardMaterial
-          color={isMe ? '#aaccff' : '#ff9999'}
-          emissive={isMe ? '#6699ff' : '#ff5555'}
-          emissiveIntensity={0.7}
-          roughness={0.3}
-          transparent
-          opacity={isStealthed ? 0.45 : 1}
-          depthWrite={!isStealthed}
-        />
-      </mesh>
+          {/* Top cap highlight */}
+          <mesh ref={capRef} position={[0, CHAR_HEIGHT + 0.02, 0]} onPointerDown={handleSelect}>
+            <cylinderGeometry args={[CHAR_RADIUS * 0.95, CHAR_RADIUS * 0.95, 0.06, 16]} />
+            <meshStandardMaterial
+              color={isMe ? '#aaccff' : '#ff9999'}
+              emissive={isMe ? '#6699ff' : '#ff5555'}
+              emissiveIntensity={0.7}
+              roughness={0.3}
+              transparent
+              opacity={isStealthed ? 0.45 : 1}
+              depthWrite={!isStealthed}
+            />
+          </mesh>
 
-      {/* Shadow blob on ground */}
-      <mesh ref={shadowRef} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[CHAR_RADIUS * 1.4, 16]} />
-        <meshBasicMaterial color="#000000" transparent opacity={0.3} depthWrite={false} />
-      </mesh>
+          {/* Shadow blob on ground */}
+          <mesh ref={shadowRef} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[CHAR_RADIUS * 1.4, 16]} />
+            <meshBasicMaterial color="#000000" transparent opacity={0.3} depthWrite={false} />
+          </mesh>
+        </>
+      )}
 
 
 
       {/* Selected enemy glow */}
-      {isSelected && !isMe && (
+      {isSelected && !isMe && !isDisguised && (
         <mesh position={[0, CHAR_HEIGHT / 2, 0]} onPointerDown={handleSelect}>
           <cylinderGeometry args={[CHAR_RADIUS + 0.12, CHAR_RADIUS * 0.9 + 0.12, CHAR_HEIGHT + 0.15, 16]} />
           <meshBasicMaterial color="#ff4444" transparent opacity={0.25} side={THREE.BackSide} />

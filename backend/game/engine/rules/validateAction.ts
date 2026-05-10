@@ -20,6 +20,7 @@ const REN_CHI_CHENG_ABILITY_ID = "ren_chi_cheng";
 type ValidateCastOptions = {
   ignoreActiveChannel?: boolean;
   pendingJump?: boolean;
+  movementIntent?: boolean;
   targetUserId?: string;
   entityTargetId?: string;
   groundTarget?: { x: number; y: number; z?: number };
@@ -479,11 +480,19 @@ export function validateCastAbility(
       throw new Error("ERR_HP_TOO_LOW");
     }
   }
+  if (typeof (ability as any).minSelfHpPercentExclusive === "number") {
+    const maxHp = Math.max(1, Number(player.maxHp ?? 100));
+    const requiredHp = maxHp * ((ability as any).minSelfHpPercentExclusive / 100);
+    if (player.hp <= requiredHp) {
+      throw new Error("ERR_HP_TOO_LOW");
+    }
+  }
 
-  /* ================= 拿云式: target HP must be < 30 ================= */
+  /* ================= 拿云式: target HP must be < 30% ================= */
   if (ability.id === "na_yun_shi") {
     const enemy = state.players[targetIndex];
-    if (!enemy || enemy.userId === player.userId || (enemy.hp ?? 0) >= 30) {
+    const enemyMaxHp = Math.max(1, Number(enemy?.maxHp ?? 100));
+    if (!enemy || enemy.userId === player.userId || (enemy.hp ?? 0) >= enemyMaxHp * 0.3) {
       throw new Error("ERR_TARGET_HP_TOO_HIGH");
     }
   }
@@ -553,13 +562,19 @@ export function validateCastAbility(
   }
 
   /* ================= REQUIRES STANDING ================= */
-  if ((ability as any).requiresStanding && !mountedYuqiToggle) {
+  const isPureMovementCancelledChannel = ability.type === "CHANNEL" && (
+    !Array.isArray(ability.buffs) ||
+    ability.buffs.length === 0 ||
+    (ability as any).applyBuffsOnComplete === true ||
+    (ability as any).applyBuffsOnChannelStart === true
+  ) && ((ability as any).channelCancelOnMove ?? true) === true;
+  const requiresStandingForCast = (ability as any).requiresStanding === true || isPureMovementCancelledChannel;
+  if (requiresStandingForCast && !mountedYuqiToggle) {
     const jumpCount = (player as any).jumpCount ?? 0;
     const vz = (player as any).velocity?.vz ?? 0;
-    const vx = (player as any).velocity?.vx ?? 0;
-    const vy = (player as any).velocity?.vy ?? 0;
     const pendingJump = options?.pendingJump === true;
-    const moving = Math.abs(vx) > 0.01 || Math.abs(vy) > 0.01;
+    const activeDash = (player as any).activeDash;
+    const moving = options?.movementIntent === true || !!(activeDash && activeDash.ticksRemaining > 0);
 
     if (jumpCount > 0 || Math.abs(vz) > 0.01 || pendingJump || moving) {
       throw new Error("ERR_REQUIRES_STANDING");

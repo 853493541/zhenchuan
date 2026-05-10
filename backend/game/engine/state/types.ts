@@ -49,6 +49,7 @@ export type {
   GroundZone,
   TargetEntity,
   ActiveChannel,
+  TargetSelection,
 } from "./types/state";
 
 /* ================= Tournament / Draft / Economy ================= */
@@ -63,6 +64,10 @@ export {
   LOSER_DAMAGE_BY_BATTLE,
   STARTING_GAME_HP,
   STARTING_BATTLE_HP,
+  STARTING_ATTACK_DAMAGE,
+  STARTING_CRIT_CHANCE_PCT,
+  STARTING_DEFENSE_PCT,
+  STARTING_HUAJIN_PCT,
   STARTING_GOLD,
   GOLD_PER_ROUND,
   LEVEL_UP_COSTS,

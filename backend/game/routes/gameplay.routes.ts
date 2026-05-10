@@ -1,29 +1,243 @@
 import express from "express";
-import { cancelPlayerBuff, playAbility, passTurn } from "../services";
+import { cancelActiveChannelCast, cancelPlayerBuff, playAbility, passTurn, useConsumable } from "../services";
 import { getUserIdFromCookie } from "./auth";
-import { GameLoop } from "../engine/loop/GameLoop";
-import type { MovementInput } from "../engine/state/types";
+import type { GameState, MovementInput, TargetSelection } from "../engine/state/types";
 import { ABILITIES } from "../abilities/abilities";
 import GameSession from "../models/GameSession";
+import { User } from "../../models/User";
 import { broadcastGameUpdate } from "../services/broadcast";
+import { ensureBattleLoop, getBattleLoopHydrationDiagnostics } from "../services/battleLoopRuntime";
+import { GameLoop } from "../engine/loop/GameLoop";
 import { randomUUID } from "crypto";
 import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types";
+import { blocksCardTargeting } from "../engine/rules/guards";
 
 const router = express.Router();
+const pendingLeaveEndTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+async function finalizeLeaveEnd(gameId: string, endedByUserId: string, endsAt: number) {
+  const game = await GameSession.findById(gameId);
+  if (!game) return;
+
+  const loop = GameLoop.get(gameId);
+  const state = loop?.getState() ?? game.state;
+  if (!state || state.gameOver === true) return;
+
+  const notice = (state as any).leaveNotice;
+  if (!notice || notice.userId !== endedByUserId || notice.endsAt !== endsAt) return;
+
+  state.gameOver = true;
+  delete (state as any).winnerUserId;
+  (state as any).endedByUserId = endedByUserId;
+  state.version = (state.version ?? 0) + 1;
+
+  loop?.updateState(state);
+  GameLoop.stop(gameId);
+
+  game.state = state as any;
+  game.markModified("state");
+  await game.save();
+
+  broadcastGameUpdate({
+    gameId,
+    version: state.version,
+    diff: [
+      { path: "/gameOver", value: true },
+      { path: "/winnerUserId", value: undefined },
+      { path: "/endedByUserId", value: endedByUserId },
+    ],
+    gameOver: true,
+    timestamp: Date.now(),
+  });
+}
+
+function scheduleLeaveEnd(gameId: string, endedByUserId: string, endsAt: number) {
+  const existing = pendingLeaveEndTimers.get(gameId);
+  if (existing) clearTimeout(existing);
+
+  const delayMs = Math.max(0, endsAt - Date.now());
+  const timer = setTimeout(() => {
+    pendingLeaveEndTimers.delete(gameId);
+    void finalizeLeaveEnd(gameId, endedByUserId, endsAt).catch((err: any) => {
+      console.error("[game/end] delayed finalize failed:", err?.message ?? err);
+    });
+  }, delayMs);
+  timer.unref?.();
+  pendingLeaveEndTimers.set(gameId, timer);
+}
+
+const ERROR_MESSAGES: Record<string, string> = {
+  ERR_INVALID_PAYLOAD: "Invalid request payload",
+  ERR_NOT_AUTHENTICATED: "Not authenticated",
+  ERR_NOT_FOUND: "Not found",
+  ERR_NOT_IN_GAME: "Not in this game",
+  ERR_BATTLE_NOT_IN_PROGRESS: "Battle not in progress",
+  ERR_INVALID_GAME_STATE: "Invalid game state",
+  ERR_GAME_LOOP: "Game loop error",
+  ERR_PICKUP_NOT_FOUND: "Pickup not found or already claimed",
+  ERR_PICKUP_TOO_FAR: "Too far away to interact",
+  ERR_PICKUP_CLAIM_TOO_FAR: "Too far away to pick up",
+  ERR_PICKUP_HAND_FULL: "只能拾取6个技能",
+  ERR_ABILITY_NOT_FOUND: "Ability definition not found",
+  ERR_CONSUMABLE_NOT_FOUND: "Consumable definition not found",
+  ERR_CONSUMABLE_NOT_IMPLEMENTED: "Consumable is not implemented yet",
+  ERR_CONSUMABLE_EMPTY: "Consumable is out of stock",
+  ERR_CONSUMABLE_COOLDOWN: "Consumable is on cooldown",
+  ERR_CONSUMABLE_IN_COMBAT: "Consumable cannot be used in combat",
+  ERR_CONSUMABLE_CONTROLLED: "Consumable cannot be used while controlled",
+  ERR_CONSUMABLE_DASHING: "Consumable cannot be used while dashing",
+  ERR_INTERNAL: "Internal server error",
+};
+
+function toErrorCode(err: any): string {
+  const raw = typeof err === "string" ? err : String(err?.message ?? "");
+  if (/^ERR_[A-Z0-9_]+$/.test(raw)) return raw;
+  if (raw === "Not in this game") return "ERR_NOT_IN_GAME";
+  if (raw === "Battle not in progress") return "ERR_BATTLE_NOT_IN_PROGRESS";
+  return "ERR_INTERNAL";
+}
+
+function sendGameError(res: express.Response, status: number, code: string, message?: string, extra?: Record<string, any>) {
+  return res.status(status).json({
+    error: code,
+    code,
+    message: message ?? ERROR_MESSAGES[code] ?? code,
+    ...(extra ?? {}),
+  });
+}
+
+function sendCaughtGameError(res: express.Response, err: any, status = 400) {
+  const code = toErrorCode(err);
+  return sendGameError(res, status, code, ERROR_MESSAGES[code] ?? err?.message ?? code);
+}
+
+type UiLayoutPosition = { left: number; top: number };
+type UiLayoutViewport = { w: number; h: number };
+type UiLayoutPayload = {
+  positions: Record<string, UiLayoutPosition>;
+  viewport: UiLayoutViewport | null;
+};
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function sanitizeUiLayoutPayload(raw: unknown): UiLayoutPayload {
+  const fallback: UiLayoutPayload = { positions: {}, viewport: null };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return fallback;
+  }
+
+  const container = raw as { positions?: unknown; viewport?: unknown };
+  const positionsSource =
+    container.positions && typeof container.positions === "object" && !Array.isArray(container.positions)
+      ? container.positions as Record<string, unknown>
+      : raw as Record<string, unknown>;
+
+  const positions: Record<string, UiLayoutPosition> = {};
+  for (const [key, value] of Object.entries(positionsSource)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const candidate = value as Partial<UiLayoutPosition>;
+    if (!isFiniteNumber(candidate.left) || !isFiniteNumber(candidate.top)) continue;
+    positions[key] = {
+      left: Math.round(candidate.left),
+      top: Math.round(candidate.top),
+    };
+  }
+
+  const viewportCandidate = container.viewport;
+  const viewport =
+    viewportCandidate && typeof viewportCandidate === "object" && !Array.isArray(viewportCandidate)
+    && isFiniteNumber((viewportCandidate as Partial<UiLayoutViewport>).w)
+    && isFiniteNumber((viewportCandidate as Partial<UiLayoutViewport>).h)
+    && (viewportCandidate as Partial<UiLayoutViewport>).w! > 0
+    && (viewportCandidate as Partial<UiLayoutViewport>).h! > 0
+      ? {
+          w: Math.round((viewportCandidate as UiLayoutViewport).w),
+          h: Math.round((viewportCandidate as UiLayoutViewport).h),
+        }
+      : null;
+
+  return { positions, viewport };
+}
+
+router.get("/ui-layout", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const user = await User.findById(userId).select("battleArenaUiLayout");
+    if (!user) {
+      return sendGameError(res, 401, "ERR_NOT_AUTHENTICATED");
+    }
+
+    return res.json(sanitizeUiLayoutPayload((user as any).battleArenaUiLayout));
+  } catch (err: any) {
+    console.error(`[UI_LAYOUT_GET] ❌ ERROR: ${err.message}`);
+    console.error(`[UI_LAYOUT_GET] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err, 401);
+  }
+});
+
+router.put("/ui-layout", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const user = await User.findById(userId).select("battleArenaUiLayout");
+    if (!user) {
+      return sendGameError(res, 401, "ERR_NOT_AUTHENTICATED");
+    }
+
+    const layout = sanitizeUiLayoutPayload(req.body);
+    (user as any).battleArenaUiLayout = {
+      positions: layout.positions,
+      viewport: layout.viewport,
+      updatedAt: new Date(),
+    };
+    user.markModified("battleArenaUiLayout");
+    await user.save();
+
+    return res.json(layout);
+  } catch (err: any) {
+    console.error(`[UI_LAYOUT_PUT] ❌ ERROR: ${err.message}`);
+    console.error(`[UI_LAYOUT_PUT] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err);
+  }
+});
+
+function normalizeTargetSelectionPayload(payload: any, state: GameState, userId: string): TargetSelection | undefined {
+  if (!payload || payload.kind === "none") return undefined;
+
+  if (payload.kind === "self") {
+    return { kind: "self", userId };
+  }
+
+  if (payload.kind === "player" && typeof payload.userId === "string") {
+    const targetPlayer = state.players.find((player) => player.userId === payload.userId);
+    if (!targetPlayer) throw new Error("ERR_INVALID_PAYLOAD");
+    if (targetPlayer.userId !== userId && blocksCardTargeting(targetPlayer as any)) return undefined;
+    return targetPlayer.userId === userId ? { kind: "self", userId } : { kind: "player", userId: targetPlayer.userId };
+  }
+
+  if (payload.kind === "entity" && typeof payload.entityId === "string") {
+    const targetEntity = (state.entities ?? []).find((entity: any) => entity?.id === payload.entityId && (entity.hp ?? 0) > 0);
+    if (!targetEntity) throw new Error("ERR_INVALID_PAYLOAD");
+    return { kind: "entity", entityId: targetEntity.id };
+  }
+
+  throw new Error("ERR_INVALID_PAYLOAD");
+}
 
 router.post("/play", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, abilityInstanceId, targetUserId, groundTarget, entityTargetId } = req.body;
+    const { gameId, abilityInstanceId, targetUserId, groundTarget, entityTargetId, movementIntent } = req.body;
     console.log(`[PLAY] Starting - userId: ${userId}, gameId: ${gameId}`);
 
-    const patch = await playAbility(gameId, userId, abilityInstanceId, targetUserId, groundTarget, entityTargetId);
+    const patch = await playAbility(gameId, userId, abilityInstanceId, targetUserId, groundTarget, entityTargetId, typeof movementIntent === "boolean" ? movementIntent : undefined);
     console.log(`[PLAY] ✅ Complete - version: ${patch.version}`);
     res.json(patch);
   } catch (err: any) {
     console.error(`[PLAY] ❌ ERROR: ${err.message}`);
     console.error(`[PLAY] Stack: ${err.stack}`);
-    res.status(400).send(err.message);
+    sendCaughtGameError(res, err);
   }
 });
 
@@ -39,7 +253,7 @@ router.post("/pass", async (req, res) => {
   } catch (err: any) {
     console.error(`[PASS] ❌ ERROR: ${err.message}`);
     console.error(`[PASS] Stack: ${err.stack}`);
-    res.status(400).send(err.message);
+    sendCaughtGameError(res, err);
   }
 });
 
@@ -50,7 +264,7 @@ router.post("/buff/cancel", async (req, res) => {
     const numericBuffId = Number(buffId);
 
     if (!gameId || !Number.isFinite(numericBuffId)) {
-      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+      return sendGameError(res, 400, "ERR_INVALID_PAYLOAD");
     }
 
     const patch = await cancelPlayerBuff(gameId, userId, numericBuffId, { entityTargetId });
@@ -58,7 +272,167 @@ router.post("/buff/cancel", async (req, res) => {
   } catch (err: any) {
     console.error(`[BUFF_CANCEL] ❌ ERROR: ${err.message}`);
     console.error(`[BUFF_CANCEL] Stack: ${err.stack}`);
-    return res.status(400).send(err.message);
+    return sendCaughtGameError(res, err);
+  }
+});
+
+router.post("/channel/cancel", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+    if (!gameId || !userId) {
+      return sendGameError(res, 400, "ERR_INVALID_PAYLOAD");
+    }
+    const patch = await cancelActiveChannelCast(gameId, userId);
+    return res.json(patch);
+  } catch (err: any) {
+    console.error(`[CHANNEL_CANCEL] ❌ ERROR: ${err.message}`);
+    console.error(`[CHANNEL_CANCEL] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err);
+  }
+});
+
+router.post("/consumable/use", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, consumableId } = req.body;
+    if (!gameId || !userId || typeof consumableId !== "string") {
+      return sendGameError(res, 400, "ERR_INVALID_PAYLOAD");
+    }
+
+    const patch = await useConsumable(gameId, userId, consumableId);
+    return res.json(patch);
+  } catch (err: any) {
+    console.error(`[CONSUMABLE_USE] ❌ ERROR: ${err.message}`);
+    console.error(`[CONSUMABLE_USE] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err);
+  }
+});
+
+router.post("/target/selection", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, selection } = req.body;
+    if (!gameId || !userId) {
+      return sendGameError(res, 400, "ERR_INVALID_PAYLOAD");
+    }
+
+    const loop = await ensureBattleLoop(gameId);
+    if (!loop) {
+      return sendGameError(res, 400, "ERR_BATTLE_NOT_IN_PROGRESS");
+    }
+
+    const state = loop.getState();
+    const playerIndex = state.players.findIndex((player) => player.userId === userId);
+    if (playerIndex === -1) {
+      return sendGameError(res, 403, "ERR_NOT_IN_GAME");
+    }
+
+    const normalizedSelection = normalizeTargetSelectionPayload(selection, state, userId);
+    const currentSelection = state.players[playerIndex].targetSelection;
+    if (JSON.stringify(currentSelection ?? null) === JSON.stringify(normalizedSelection ?? null)) {
+      return res.json({ version: state.version ?? 0, diff: [], events: state.events, serverTimestamp: Date.now() });
+    }
+
+    if (normalizedSelection) {
+      state.players[playerIndex].targetSelection = normalizedSelection;
+    } else {
+      delete state.players[playerIndex].targetSelection;
+    }
+    state.version = (state.version ?? 0) + 1;
+    loop.updateState(state);
+
+    const diff = [
+      { path: `/players/${playerIndex}/targetSelection`, value: normalizedSelection },
+    ];
+
+    void GameSession.findById(gameId).then((game) => {
+      if (!game) return;
+      game.state = state as any;
+      game.markModified("state");
+      return game.save();
+    }).catch((err: any) => {
+      console.error("[target/selection] async save failed:", err?.message ?? err);
+    });
+
+    broadcastGameUpdate({
+      gameId,
+      version: state.version,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    return res.json({ version: state.version, diff, events: state.events, serverTimestamp: Date.now() });
+  } catch (err: any) {
+    console.error(`[TARGET_SELECTION] ❌ ERROR: ${err.message}`);
+    console.error(`[TARGET_SELECTION] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err);
+  }
+});
+
+router.post("/end", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+    if (!gameId || !userId) {
+      return sendGameError(res, 400, "ERR_INVALID_PAYLOAD");
+    }
+
+    const game = await GameSession.findById(gameId);
+    if (!game) {
+      return sendGameError(res, 404, "ERR_NOT_FOUND", "Game not found");
+    }
+    if (!game.players.includes(userId)) {
+      return sendGameError(res, 403, "ERR_NOT_IN_GAME");
+    }
+
+    const loop = await ensureBattleLoop(gameId, game);
+    const state = loop?.getState() ?? game.state;
+    if (!state) {
+      return sendGameError(res, 400, "ERR_INVALID_GAME_STATE");
+    }
+
+    const existingNotice = (state as any).leaveNotice;
+    if (existingNotice?.endsAt && existingNotice?.userId) {
+      scheduleLeaveEnd(gameId, existingNotice.userId, existingNotice.endsAt);
+      return res.json({
+        ok: true,
+        pending: true,
+        version: state.version,
+        diff: [{ path: "/leaveNotice", value: existingNotice }],
+        serverTimestamp: Date.now(),
+      });
+    }
+
+    const username = (game as any).playerNames?.[userId] ?? `User${String(userId).slice(-4)}`;
+    const leaveNotice = { userId, username, endsAt: Date.now() + 5_000 };
+    (state as any).leaveNotice = leaveNotice;
+    state.version = (state.version ?? 0) + 1;
+
+    loop?.updateState(state);
+    game.state = state as any;
+    game.markModified("state");
+    void game.save().catch((err: any) => {
+      console.error("[game/end] async save failed:", err?.message ?? err);
+    });
+
+    const diff = [
+      { path: "/leaveNotice", value: leaveNotice },
+    ];
+    broadcastGameUpdate({
+      gameId,
+      version: state.version,
+      diff,
+      timestamp: Date.now(),
+    });
+
+    scheduleLeaveEnd(gameId, userId, leaveNotice.endsAt);
+
+    return res.json({ ok: true, pending: true, version: state.version, diff, serverTimestamp: Date.now() });
+  } catch (err: any) {
+    console.error(`[GAME_END] ❌ ERROR: ${err.message}`);
+    console.error(`[GAME_END] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err);
   }
 });
 
@@ -74,14 +448,15 @@ router.post("/movement", async (req, res) => {
 
     if (!gameId || !userId) {
       console.error('[MOVEMENT] Missing gameId or userId');
-      return res.status(400).json({ error: "Missing gameId or userId" });
+      return sendGameError(res, 400, "ERR_INVALID_PAYLOAD");
     }
 
-    const loop = GameLoop.get(gameId);
+    const loop = await ensureBattleLoop(gameId);
     if (!loop) {
-      console.warn(`[MOVEMENT] GameLoop not active for ${gameId}`);
+      const diagnostics = await getBattleLoopHydrationDiagnostics(gameId);
+      console.warn(`[MOVEMENT] GameLoop not active for ${gameId}`, diagnostics);
       // Return 400 instead of crashing - battle may be pending start
-      return res.status(400).json({ error: "Battle not in progress" });
+      return sendGameError(res, 400, "ERR_BATTLE_NOT_IN_PROGRESS", undefined, { diagnostics });
     }
 
     try {
@@ -89,13 +464,13 @@ router.post("/movement", async (req, res) => {
       const state = loop.getState();
       if (!state || !state.players) {
         console.error('[MOVEMENT] Invalid game state');
-        return res.status(400).json({ error: "Invalid game state" });
+        return sendGameError(res, 400, "ERR_INVALID_GAME_STATE");
       }
 
       const playerIndex = state.players.findIndex((p) => p.userId === userId);
       if (playerIndex === -1) {
         console.warn(`[MOVEMENT] User ${userId} not found in game ${gameId}`);
-        return res.status(403).json({ error: "Not in this game" });
+        return sendGameError(res, 403, "ERR_NOT_IN_GAME");
       }
 
       // Update movement input
@@ -139,6 +514,7 @@ router.post("/movement", async (req, res) => {
       const player = state.players[playerIndex];
       res.json({ 
         success: true,
+        seq,
         position: player.position,
         velocity: player.velocity,
         input: input // Send input back so client can predict next position
@@ -146,12 +522,12 @@ router.post("/movement", async (req, res) => {
     } catch (loopErr: any) {
       console.error(`[MOVEMENT] GameLoop error: ${loopErr.message}`);
       console.error(loopErr.stack);
-      res.status(500).json({ error: "GameLoop error: " + loopErr.message });
+      sendGameError(res, 500, "ERR_GAME_LOOP", loopErr.message);
     }
   } catch (err: any) {
     console.error(`[MOVEMENT] ❌ ERROR: ${err.message}`);
     console.error(err.stack);
-    res.status(400).json({ error: err.message });
+    sendCaughtGameError(res, err);
   }
 });
 
@@ -169,6 +545,48 @@ const PICKUP_INTERACT_RANGE = 5;  // gameplay units — must be within this dist
 const PICKUP_CLAIM_RANGE    = 20; // gameplay units — can claim after channeling even if walked away
 const MAX_DRAFT_HAND = 6;        // draft-ability cap (common abilities excluded)
 
+function isCommonAbilityCard(card: any): boolean {
+  const abilityId = card?.abilityId ?? card?.id;
+  const def = abilityId ? ABILITIES[abilityId] : undefined;
+  if (def) return !!(def as any).isCommon;
+  return !!card?.isCommon;
+}
+
+function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return Math.max(0, Math.min(MAX_DRAFT_HAND - 1, fallback));
+  return Math.max(0, Math.min(MAX_DRAFT_HAND - 1, Math.round(numeric)));
+}
+
+function normalizeDraftCardSlots<T extends Record<string, any>>(cards: T[]): T[] {
+  const assigned: Array<T | undefined> = Array.from({ length: MAX_DRAFT_HAND });
+  const pending: T[] = [];
+  cards.forEach((card, fallbackIndex) => {
+    const hasExplicitSlot = card?.slotIndex !== undefined && Number.isFinite(Number(card.slotIndex));
+    const slotIndex = normalizeDraftSlotIndex(card?.slotIndex, fallbackIndex);
+    if (hasExplicitSlot && !assigned[slotIndex]) {
+      assigned[slotIndex] = { ...card, slotIndex };
+      return;
+    }
+    pending.push(card);
+  });
+  pending.forEach((card) => {
+    const openIndex = assigned.findIndex((slot) => !slot);
+    if (openIndex >= 0) assigned[openIndex] = { ...card, slotIndex: openIndex };
+  });
+  return assigned.filter(Boolean) as T[];
+}
+
+function getFirstAvailableDraftSlot(cards: Array<Record<string, any>>): number | null {
+  const normalized = normalizeDraftCardSlots(cards);
+  if (normalized.length >= MAX_DRAFT_HAND) return null;
+  const occupied = new Set(normalized.map((card) => normalizeDraftSlotIndex(card.slotIndex, 0)));
+  for (let slotIndex = 0; slotIndex < MAX_DRAFT_HAND; slotIndex += 1) {
+    if (!occupied.has(slotIndex)) return slotIndex;
+  }
+  return null;
+}
+
 /**
  * POST /gameplay/pickup/inspect
  * Player inspects a pickup book. Backend validates range and returns ability details.
@@ -181,23 +599,23 @@ router.post("/pickup/inspect", async (req, res) => {
     const { gameId, pickupId } = req.body;
 
     if (!gameId || !pickupId) {
-      return res.status(400).json({ error: "gameId and pickupId required" });
+      return sendGameError(res, 400, "ERR_INVALID_PAYLOAD");
     }
 
-    const loop = GameLoop.get(gameId);
+    const loop = await ensureBattleLoop(gameId);
     if (!loop) {
-      return res.status(400).json({ error: "Battle not in progress" });
+      return sendGameError(res, 400, "ERR_BATTLE_NOT_IN_PROGRESS");
     }
 
     const state = loop.getState();
     const playerIndex = state.players.findIndex((p) => p.userId === userId);
     if (playerIndex === -1) {
-      return res.status(403).json({ error: "Not in this game" });
+      return sendGameError(res, 403, "ERR_NOT_IN_GAME");
     }
 
     const pickup = (state.pickups ?? []).find((p) => p.id === pickupId);
     if (!pickup) {
-      return res.status(404).json({ error: "Pickup not found or already claimed" });
+      return sendGameError(res, 404, "ERR_PICKUP_NOT_FOUND");
     }
 
     // Check distance (3D — includes Z height)
@@ -208,12 +626,12 @@ router.post("/pickup/inspect", async (req, res) => {
     const dy = player.position.y - pickup.position.y;
     const dz = player.position.z ?? 0;
     if (dx * dx + dy * dy + dz * dz > interactRange * interactRange) {
-      return res.status(400).json({ error: "Too far away to interact" });
+      return sendGameError(res, 400, "ERR_PICKUP_TOO_FAR");
     }
 
     const abilityDef = ABILITIES[pickup.abilityId];
     if (!abilityDef) {
-      return res.status(400).json({ error: "Ability definition not found" });
+      return sendGameError(res, 400, "ERR_ABILITY_NOT_FOUND");
     }
 
     res.json({
@@ -225,7 +643,7 @@ router.post("/pickup/inspect", async (req, res) => {
     });
   } catch (err: any) {
     console.error("[pickup/inspect] error:", err.message);
-    res.status(500).json({ error: err.message });
+    sendCaughtGameError(res, err, 500);
   }
 });
 
@@ -240,23 +658,23 @@ router.post("/pickup/claim", async (req, res) => {
     const { gameId, pickupId } = req.body;
 
     if (!gameId || !pickupId) {
-      return res.status(400).json({ error: "gameId and pickupId required" });
+      return sendGameError(res, 400, "ERR_INVALID_PAYLOAD");
     }
 
-    const loop = GameLoop.get(gameId);
+    const loop = await ensureBattleLoop(gameId);
     if (!loop) {
-      return res.status(400).json({ error: "Battle not in progress" });
+      return sendGameError(res, 400, "ERR_BATTLE_NOT_IN_PROGRESS");
     }
 
     const loopState = loop.getState();
     const playerIndex = loopState.players.findIndex((p) => p.userId === userId);
     if (playerIndex === -1) {
-      return res.status(403).json({ error: "Not in this game" });
+      return sendGameError(res, 403, "ERR_NOT_IN_GAME");
     }
 
     const pickupIdx = (loopState.pickups ?? []).findIndex((p) => p.id === pickupId);
     if (pickupIdx === -1) {
-      return res.status(404).json({ error: "Pickup not found or already claimed" });
+      return sendGameError(res, 404, "ERR_PICKUP_NOT_FOUND");
     }
 
     const pickup = loopState.pickups[pickupIdx];
@@ -269,28 +687,26 @@ router.post("/pickup/claim", async (req, res) => {
     const dy = player.position.y - pickup.position.y;
     const dz = player.position.z ?? 0;
     if (dx * dx + dy * dy + dz * dz > claimRange * claimRange) {
-      return res.status(400).json({ error: "Too far away to pick up" });
+      return sendGameError(res, 400, "ERR_PICKUP_CLAIM_TOO_FAR");
     }
 
-    // Check hand capacity (count only non-common draft abilities)
-    const draftCount = player.hand.filter((h: any) => {
-      const aid = h.abilityId ?? (h as any).id ?? h.instanceId;
-      const def = ABILITIES[aid];
-      return def && !(def as any).isCommon;
-    }).length;
-    if (draftCount >= MAX_DRAFT_HAND) {
-      return res.status(400).json({ error: "你已经有6个技能，无法再拾取" });
+    const draftCards = player.hand.filter((card: any) => !isCommonAbilityCard(card));
+    const commonCards = player.hand.filter((card: any) => isCommonAbilityCard(card));
+    const firstOpenSlot = getFirstAvailableDraftSlot(draftCards);
+    if (firstOpenSlot === null) {
+      return sendGameError(res, 400, "ERR_PICKUP_HAND_FULL");
     }
 
     const abilityDef = ABILITIES[pickup.abilityId];
     if (!abilityDef) {
-      return res.status(400).json({ error: "Ability definition not found" });
+      return sendGameError(res, 400, "ERR_ABILITY_NOT_FOUND");
     }
 
     const newInstance = {
       instanceId: randomUUID(),
       abilityId:  pickup.abilityId,
       cooldown:   0,
+      slotIndex:  firstOpenSlot,
     };
     const fullCard = { ...abilityDef, ...newInstance };
 
@@ -298,7 +714,7 @@ router.post("/pickup/claim", async (req, res) => {
     loopState.pickups.splice(pickupIdx, 1);
     loopState.players[playerIndex] = {
       ...loopState.players[playerIndex],
-      hand: [...loopState.players[playerIndex].hand, fullCard],
+      hand: [...normalizeDraftCardSlots([...draftCards, fullCard]), ...commonCards],
     };
     loop.updateState(loopState);
 
@@ -339,7 +755,7 @@ router.post("/pickup/claim", async (req, res) => {
     });
   } catch (err: any) {
     console.error("[pickup/claim] error:", err.message);
-    res.status(500).json({ error: err.message });
+    sendCaughtGameError(res, err, 500);
   }
 });
 

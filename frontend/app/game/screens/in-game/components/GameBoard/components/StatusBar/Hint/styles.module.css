@@ -5,8 +5,7 @@
   width: 250px;
   padding: 6px 10px;
 
-  /* darker + slightly transparent (not too transparent) */
-  background: rgba(10, 12, 18, 0.92);
+  background: rgba(0, 0, 0, 0.7);
 
   color: #e5e7eb;
 

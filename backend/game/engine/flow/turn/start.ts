@@ -45,6 +45,7 @@ export function applyStartTurnEffects(params: {
           source: enemy,
           target: me,
           base: e.value ?? 0,
+          abilityId: getBuffSourceAbilityId(buff),
         });
         const dmg = damageRoll.damage;
 

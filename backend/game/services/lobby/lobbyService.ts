@@ -5,7 +5,7 @@
 
 import GameSession from "../../models/GameSession";
 import { User } from "../../../models/User";
-import { GameState } from "../../engine/state/types";
+import { GameState, STARTING_ATTACK_DAMAGE, STARTING_BATTLE_HP, STARTING_CRIT_CHANCE_PCT, STARTING_DEFENSE_PCT, STARTING_HUAJIN_PCT } from "../../engine/state/types";
 import { initializeTournament } from "../economy/tournamentService";
 import { initializeBattleState } from "../battle/battleService";
 import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
@@ -35,9 +35,15 @@ export async function createGame(userId: string, mode: 'arena' | 'pubg' | 'colli
     players: [
       {
         userId,
-        hp: 100,
-        maxHp: 100,
+        hp: STARTING_BATTLE_HP,
+        maxHp: STARTING_BATTLE_HP,
+        attackDamage: STARTING_ATTACK_DAMAGE,
         shield: 0,
+        waiGongCritChancePct: STARTING_CRIT_CHANCE_PCT,
+        neiGongCritChancePct: STARTING_CRIT_CHANCE_PCT,
+        critChancePct: STARTING_CRIT_CHANCE_PCT,
+        defensePct: STARTING_DEFENSE_PCT,
+        huajinPct: STARTING_HUAJIN_PCT,
         hasteRatePct: BASE_HASTE_RATE_PCT,
         hand: [],
         buffs: [],

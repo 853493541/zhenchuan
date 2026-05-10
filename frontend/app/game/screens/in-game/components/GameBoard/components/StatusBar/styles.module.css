@@ -1,145 +1,219 @@
 /* ================= ROOT ================= */
 
 .statusBar {
+  --status-icon-size: 31.59px;
+  --status-row-gap: 1.62px;
+  --status-text-block-size: 29.16px;
+  --status-name-icon-gap: 0.49px;
+  --status-icon-timer-gap: 1.62px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: flex-start;
+  gap: var(--status-row-gap);
+  width: 100%;
+  min-height: calc((var(--status-icon-size) + var(--status-text-block-size)) * 2 + var(--status-row-gap));
+}
+
+.singleRowStatusBar {
+  min-height: calc(var(--status-icon-size) + var(--status-text-block-size));
 }
 
 /* ================= ROW ================= */
 
 .statusRow {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 1.62px;
+  width: 100%;
+  min-height: calc(var(--status-icon-size) + var(--status-text-block-size));
+}
 
-  /* 🔑 KEY FIX: content-sized columns */
-  grid-auto-flow: column;
-  grid-auto-columns: min-content;
+.compactStatusBar {
+  --status-icon-size: 13.77px;
+  --status-row-gap: 0.81px;
+  --status-name-icon-gap: 0;
+  --status-icon-timer-gap: 0;
+  min-height: calc(var(--status-icon-size) * 2 + var(--status-row-gap));
+}
 
-  justify-content: start;
-  gap: 4px;
+.compactStatusBar.singleRowStatusBar {
+  min-height: var(--status-icon-size);
+}
+
+.compactStatusBar .statusRow {
+  gap: 0.81px;
+  min-height: var(--status-icon-size);
+}
+
+.compactStatusBar .buffItem {
+  gap: 0;
+}
+
+.compactStatusBar .stackBadge {
+  font-size: 9.72px;
+}
+
+.playerStatusBar {
+  --status-icon-size: 34.75px;
+  --status-row-gap: 1.78px;
+  --status-text-block-size: 32.08px;
+  --status-name-icon-gap: 0.54px;
+  --status-icon-timer-gap: 1.78px;
+}
+
+.playerStatusBar .buffName {
+  font-size: 12.47px;
+}
+
+.playerStatusBar .buffTurns {
+  font-size: 12.83px;
+}
+
+.playerStatusBar .stackBadge {
+  font-size: 16.04px;
 }
 
 /* ================= BUFF ITEM ================= */
 
 .buffItem {
-  width: fit-content; /* 🔑 shrink cell to content */
+  position: relative;
+  width: var(--status-icon-size);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-
+  gap: 0;
   user-select: none;
+}
+
+.buffItem:hover .buffIcon {
+  border-color: rgba(182, 188, 196, 0.92);
+  filter: brightness(1.08) saturate(1.04);
+  box-shadow:
+    inset 0 0 0 0.5px rgba(0, 0, 0, 0.48),
+    0 0 0 0.5px rgba(182, 188, 196, 0.66);
 }
 
 /* ================= NAME ================= */
 
 .buffName {
-  font-size: 10px;
-  font-weight: 700;
+  margin-bottom: var(--status-name-icon-gap);
+  font-size: 11.34px;
+  font-weight: 900;
   line-height: 1;
   text-align: center;
+  color: #ffe033;
+  white-space: nowrap;
+  -webkit-text-stroke: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.72);
 }
 
 /* ================= ICON ================= */
 
 .iconWrapper {
   position: relative;
-  width: 32px;
-  height: 32px;
+  width: var(--status-icon-size);
+  height: var(--status-icon-size);
 }
 
 .buffIcon {
-  width: 32px;
-  height: 32px;
+  width: var(--status-icon-size);
+  height: var(--status-icon-size);
 
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 
-  border-radius: 6px;
+  border: 0.5px solid rgba(136, 142, 149, 0.82);
+  border-radius: 0;
   box-sizing: border-box;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.38);
+  transition: filter 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
 
-/* ================= ICON BORDER ================= */
-
-.buffBorder {
-  border: 2px solid rgba(34, 197, 94, 0.9);
-}
-
-.debuffBorder {
-  border: 2px solid rgba(185, 28, 28, 0.95);
+.borderlessIcons .buffIcon,
+.borderlessIcons .buffItem:hover .buffIcon {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 /* ================= STACK BADGE ================= */
 
 .stackBadge {
   position: absolute;
-  bottom: 1px;
-  right: 2px;
-  font-size: 10px;
+  top: auto;
+  right: 0;
+  bottom: 0;
+  display: block;
+  min-width: 0.72em;
+  font-size: 14.58px;
   font-weight: 800;
-  line-height: 1;
+  line-height: 0.82;
+  text-align: right;
+  transform: translate(8%, 10%);
+  transform-origin: 100% 100%;
   color: #ffffff;
-  text-shadow: 0 0 3px #000, 0 0 2px #000;
+  -webkit-text-stroke: 0.25px rgba(0, 0, 0, 0.98);
+  text-shadow:
+    0 0.7px 0 #000,
+    0.7px 0 0 #000,
+    0 -0.7px 0 #000,
+    -0.7px 0 0 #000;
   pointer-events: none;
+  white-space: nowrap;
   z-index: 2;
 }
 
 /* ================= TURNS ================= */
 
 .buffTurns {
-  font-size: 11px;
-  font-weight: 700;
+  margin-top: var(--status-icon-timer-gap);
+  width: var(--status-icon-size);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11.66px;
+  font-weight: 315;
   line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 /* ================= TEXT COLORS ================= */
 
+.secondTime {
+  color: #ff1c1c;
+}
+
+.minuteTime {
+  color: #f4ff43;
+}
+
 .buffText {
-  color: #22c55e;
+  color: #ffe033;
 }
 
 .debuffText {
-  color: #dc2626;
+  color: #ffe033;
 }
 
-/* ================= LAST TURN ================= */
-
-.lastTurn {
-  animation: pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.6; }
-  100% { opacity: 1; }
+.urgentBuffItem {
+  transition: opacity 90ms linear;
+  will-change: opacity;
 }
 
 /* ================= 📱 MOBILE ================= */
 
 @media (max-width: 768px) {
-  .buffIcon {
-    width: 34px;
-    height: 34px;
+  .buffName {
+    font-size: 10.53px;
   }
 
-  .buffName,
   .buffTurns {
-    font-size: 10px;
-  }
-
-  .statusRow {
-    gap: 5px;
-  }
-}
-
-@media (max-width: 420px) {
-  .buffIcon {
-    width: 30px;
-    height: 30px;
-  }
-
-  .statusRow {
-    gap: 4px;
+    font-size: 10.94px;
   }
 }
