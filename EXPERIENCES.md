@@ -3,6 +3,26 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Ability and transmission audit (2026-05-10)
+
+**Problem set**:
+1. Ability runtime needed an audit for split paths, especially channels that might bypass the normalized `ability.channel` / `activeChannel` flow.
+2. Repeated game-state transmission needed an audit to identify what clients receive every tick and which fields look redundant.
+
+**Findings**:
+- Canonical `ABILITIES` is structurally consistent: 168 abilities load, all object keys match ability ids, all 29 channel abilities have normalized `ability.channel`, and all immediate effect types used by abilities have handler coverage.
+- Active/pure channels are centralized through `playService -> activeChannel -> GameLoop`; legacy buff-backed reverse channels still exist intentionally through `ability.channel.source === "BUFF"` and status-bar buff metadata.
+- Non-channel real-time casts appear to emit `PLAY_ABILITY` twice: once inside `applyAbility()` and once again after `applyEffects()` returns in `playService.ts`.
+- `backend/game/cards/cards.ts` is an unused stale duplicate: 37 legacy entries, one id no longer present in canonical abilities (`jiangchun_zhuxiu`), 132 canonical abilities missing from it, and 23 overlapping abilities with drift.
+- Direct channel cancellation still appears outside the shared cancel helpers in knockback paths (`immediateEffects.ts` and `GameLoop.ts`), which can skip cleanup for `startedBuffIds` and `BUFF_EXPIRED` side effects.
+- Direct runtime buff pushes still exist for dash/knockback helper buffs, bypassing `addBuff()`'s shared immunity/DR/event rules.
+- GameLoop movement broadcasts run at roughly 30Hz and always include each player's position, facing, global GCD, visual GCD, special ability states, every hand cooldown/charge field, plus full `groundZones`/`entities` arrays whenever those roots exist. Buffs/HP/shield/combat links and events are appended when gameplay state changes.
+
+**Lessons**:
+- Keep `backend/game/abilities/abilities.ts` as the only live ability table; either delete or quarantine `backend/game/cards/cards.ts` so future work does not accidentally revive stale definitions.
+- Channel teardown should use one helper wherever possible, even from special knockback/interrupt paths, so start-applied buffs and expiration events remain consistent.
+- Per-tick broadcasts should be change-aware for cooldown roots, special ability states, zones, and entities; position/facing are the true high-frequency payloads.
+
 ## In-game warning overlay and controls (2026-05-09)
 
 **Problem set**:
