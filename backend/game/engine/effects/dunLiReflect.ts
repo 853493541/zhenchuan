@@ -9,6 +9,8 @@
 //   3. The whitelist (ability.dunLiWhitelisted === true) skips reflection but
 //      keeps the damage immunity.
 
+import { randomUUID } from "crypto";
+
 export const DUN_LI_REFLECT_EFFECT_TYPE = "DUN_LI_REFLECT";
 
 export function hasDunLiReflectFlag(target: any): boolean {
@@ -24,6 +26,21 @@ export function hasDunLiReflectFlag(target: any): boolean {
 
 export function isAbilityDunLiWhitelisted(ability: any): boolean {
   return !!(ability && (ability as any).dunLiWhitelisted === true);
+}
+
+function pushDunLiCounterSound(state: any, actorUserId: string | undefined, targetUserId: string | undefined) {
+  if (!state || !Array.isArray(state.events) || !actorUserId) return;
+  state.events.push({
+    id: randomUUID(),
+    timestamp: Date.now(),
+    turn: state.turn ?? 0,
+    type: "ABILITY_SOUND",
+    actorUserId,
+    targetUserId,
+    abilityId: "dun_li",
+    abilityName: "盾立",
+    soundPhase: "counter",
+  });
 }
 
 /**
@@ -47,5 +64,6 @@ export function getDunLiReflectVictim(
   if (!reflected) return null;
   // Avoid infinite ping-pong if the original caster also has reflect.
   if (hasDunLiReflectFlag(reflected)) return null;
+  pushDunLiCounterSound(state, victim.userId, sourceUserId);
   return reflected;
 }

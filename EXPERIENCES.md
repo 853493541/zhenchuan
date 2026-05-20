@@ -3,6 +3,214 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Ability-level sound review decisions (2026-05-20)
+
+**Problem set**:
+1. Sound review decisions were still stored and shown per sound file, so multi-sound abilities could be split across columns.
+2. 任驰骋's channel-start sound had been pinned to 0.75s, but the desired behavior is natural full-length playback.
+
+**Fix**:
+- Changed the sound review board to store one decision per ability and show decision buttons in the ability header.
+- Left individual sound rows as playback/duration rows only.
+- Added a migration from old per-sound localStorage reviews to ability-level reviews.
+- Removed 任驰骋's `fitToDurationMs` cue so it plays at natural length.
+
+**Lessons**:
+- Review workflows should key state to the thing being approved; if the user approves abilities, per-file status creates confusing split decisions.
+- For distinctive ability audio, default to natural playback unless the user explicitly prioritizes exact duration.
+
+## Dash-complete sounds without audio speed-up (2026-05-20)
+
+**Problem set**:
+1. Speeding up distinctive ability sounds made them sound like different effects.
+2. 乘黄之威 needed its second sound at actual dash completion while the first sound stayed natural.
+3. 跃潮斩波 was audible twice because it still had cast playback in addition to impact playback.
+4. 任驰骋 needed a longer 0.75s base channel; its sound-length handling was later changed back to natural playback.
+
+**Fix**:
+- Added dash-complete `ABILITY_SOUND` events for 乘黄之威 and 跃潮斩波.
+- Reverted 乘黄之威 and 千蝶吐瑞 speed-up/fit behavior so their audio keeps its natural character.
+- Suppressed 跃潮斩波 cast and per-damage playback; it now plays one impact cue only when the dash lands on at least one target.
+- Updated 任驰骋 channel duration metadata to 750ms in abilities and cards; a 750ms sound fit was tried and later removed.
+
+**Lessons**:
+- Prefer gameplay-timed events over changing playback rate when a sound's identity depends on its original speed.
+- Impact sounds for area hits should be emitted once from the gameplay moment, not inferred from every damage event.
+
+## Targeted and exact-duration ability sounds (2026-05-20)
+
+**Problem set**:
+1. Some ability sounds should not fire at cast time; they belong to dash impact, channel completion, or buff application.
+2. 雾暗迷云 and 鸿蒙天禁 sounds should only be heard by the affected target, not by everyone near the caster.
+3. 笑醉狂 needed audio stretched to match its exact gameplay window; 乘黄之威 and 千蝶吐瑞 were later kept at natural speed after testing.
+4. 御骑's dismount toggle reused the cast event shape and accidentally triggered the mount channel sound.
+
+**Fix**:
+- Added target-only BUFF_APPLIED sound cues for 雾暗迷云 and 鸿蒙天禁, filtered on the frontend by local player id.
+- Moved 跃潮斩波 playback to a dash-impact event and 引窍 playback to channel completion.
+- Fit 笑醉狂 to 9s; 乘黄之威 and 千蝶吐瑞 speed-up was tried but reverted because it changed the sound identity.
+- Required 御骑 sound playback to come from a real channel-start event, so the mounted 下马 toggle stays silent.
+- Removed 幽月轮's extra manifest sound entries and left only its first sound.
+
+**Lessons**:
+- Target-personal sounds should be represented as target-only cues on events that already include `targetUserId`, instead of trying to infer privacy from spatial range.
+- Fit-to-duration playback needs a wider clamp than normal playback, but it should be used only when preserving natural sound identity is less important than exact duration.
+- Channel abilities with one sound may still need completion-only behavior; a single manifest file should not always mean cast/start playback.
+
+## Ability sound special playback rules (2026-05-20)
+
+**Problem set**:
+1. Several two-file abilities needed non-default playback order: chained completion sounds, simultaneous cast/channel sounds, timed overlap, or follow-up attack sounds.
+2. 盾立 needed the second sound to mean `反击` and play only when reflect actually triggers.
+3. Some manifest clips were no longer wanted, and several 气场 skills needed to share 生太极's exact sound files/order.
+4. Zero-sound abilities still needed an obvious ability-level checkbox in the sound review board.
+
+**Fix**:
+- Added cue metadata for delayed, simultaneous, and follow-up sounds in the frontend sound registry/player.
+- Added special rules for 乘黄之威, 穹隆化生, 无间狱, 七星拱瑞, 千蝶吐瑞, 御骑, 真·下车, 盾立, and 风来吴山.
+- Emitted backend `ABILITY_SOUND` counter cues when 盾立 reflect triggers.
+- Removed unused manifest entries for 生死劫's second sound, 七星拱瑞's channeling sound, and 魂压怒涛's second sound.
+- Pointed 冲阴阳, 吞日月, 破苍穹, 碎星辰, and 凌太虚 at 生太极's two sound files so their order and runtime behavior match 生太极.
+- Made sound review ability checkboxes custom and larger so zero-sound ability rows expose the checkbox clearly.
+
+**Lessons**:
+- Ability sound behavior needs cue-level metadata; file order alone cannot represent simultaneous, delayed-overlap, or follow-up-trigger sounds.
+- For reflected abilities, the sound cue belongs at the gameplay reflect event, not at ordinary 盾立 cast/expiration.
+- Sound review counts should distinguish zero-sound ability rows from zero sound rows, otherwise the column header can imply the checkbox row is missing.
+
+## PM2 restart scope for Zhenchuan checks (2026-05-20)
+
+**Problem set**:
+1. Running `pm2 restart all` during Zhenchuan verification also touched unrelated `rencipe-*` PM2 processes.
+2. The unrelated `rencipe-frontend` process produced port `4000` noise/crash-loop signals, distracting from the actual Zhenchuan frontend/backend verification.
+
+**Fix**:
+- Updated project instructions so Zhenchuan checks restart only PM2 apps `frontend` and `backend`.
+- Recorded that `rencipe-*` processes and ports should be left alone unless the user explicitly scopes the task to them.
+
+**Lessons**:
+- PM2 verification should be app-scoped in shared hosts; `pm2 restart all` can destabilize unrelated services and produce misleading startup errors.
+
+## Sound review ability-level judging and channel labels (2026-05-20)
+
+**Problem set**:
+1. Abilities without sound files needed an ability-level checkbox because there are no per-sound rows to judge.
+2. Ability-level checks should mark unjudged sounds good without overwriting existing per-sound judgments.
+3. Needs-work abilities needed a local note field for review notes.
+4. Sound phase labels needed to use the basic line names `释放 / 读条 / 完成`, and `风来吴山` needed its one sound treated as a channel sound that loops until its channel finishes.
+
+**Fix**:
+- Added local ability-level checkbox state to the sound review board and kept existing per-sound review storage intact.
+- Checking an ability now marks only unjudged sounds as good; existing `需要处理` judgments are preserved.
+- Added persisted note text boxes for ability groups in the `需要继续处理` column.
+- Changed review labels from `主音效 / 起手 / 变体` to `释放 / 读条 / 完成`, with `风来吴山` single-sound rows labeled `读条`.
+- Added a scoped `风来吴山` channel-loop cue so its first sound repeats for the remaining channel duration, without affecting other abilities.
+
+**Lessons**:
+- Ability-level review state and sound-level review state should be separate; otherwise zero-sound abilities cannot be represented cleanly.
+- Bulk review controls must only fill undecided rows unless the user explicitly asks to rewrite prior judgments.
+- Special channel sound looping should be driven by cue metadata plus runtime channel/buff duration, not by making all channel-start sounds loop.
+
+## Sound review simplified identity and count filters (2026-05-20)
+
+**Problem set**:
+1. The sound review board was visually noisy because each ability header showed type/target/rarity/school tags and a description snippet.
+2. The per-ability sound count appeared as a separate `1 个` badge instead of being attached to the ability name.
+3. Search was hidden inside collapsed filters, and there was no way to filter abilities by sound count, especially `0` sounds.
+
+**Fix**:
+- Simplified sound review ability headers to icon plus `技能名（音效数量）`, removing visible tags and descriptions.
+- Moved the old separate count badge into the title, so entries render like `回风扫叶（1）`.
+- Added a top-level skill-name search and a custom `音效数量` segmented filter for `全部 / 0 / 1 / >1`.
+- Built sound groups from the full ability snapshot before merging manifest sounds, allowing the `0` filter to show abilities with no sound files.
+
+**Lessons**:
+- A `0` sound-count filter needs the complete ability catalog, not just the sound manifest, because absent manifest rows are the data being searched for.
+- For review-board density, ability identity should stay compact while per-sound decisions carry the actionable controls.
+
+## Sound review live crash and Playwright guard (2026-05-20)
+
+**Problem set**:
+1. The deployed sound review tab on `https://zhenchuan.renstoolbox.com/ability-editor?tab=soundReview` was crashing instead of rendering the grouped review board.
+2. Local source checks were not enough; the regression only became obvious when the deployed bundle was opened and exercised through login.
+3. The repo needed a repeatable live Playwright workflow for protected sound review verification.
+
+**Fix**:
+- Reproduced the issue on the live site after login and traced it to `SoundReviewTab.tsx`, where `SectionHeader` referenced an undefined `active` variable.
+- Removed that bad runtime reference and kept active button coloring inside `IconButton`, where the prop actually exists.
+- Promoted `音效审核` to its own top-level ability editor tab, hid the large editor overview on this tab, and collapsed filters behind a summary so the three decision columns and actions appear in the first viewport.
+- Added `frontend/tests/sound-review.live.spec.ts` and `frontend/tests/SOUND_REVIEW_LIVE_TESTING.md`, then linked that workflow from `.github/copilot-instructions.md`.
+
+**Lessons**:
+- A client-only runtime typo can survive type checks and still kill a deployed page, so protected editor flows need real browser coverage on the deployed host.
+- For live auth verification, store the workflow in-repo but pass credentials through environment variables instead of baking passwords into files.
+
+## Sound review ability editor decision tab (2026-05-20)
+
+**Problem set**:
+1. The sound browser needed to live inside the ability editor instead of remaining a standalone page.
+2. Sound review needed the same three-state workflow as other editor decision tabs: good, needs more work, and undecided.
+3. Multi-sound abilities still needed to stay grouped under ability identity while each sound kept its own decision.
+
+**Fix**:
+- Added an `音效审核` skill sub-tab to the ability editor and routed the old `/sound-browser` page plus the lobby sound button to `/ability-editor?tab=soundReview`.
+- Reworked the sound review UI into three columns: `需要继续处理`, `未决定`, and `音效可用`, matching the Qin Yin Gong Ming decision-board pattern.
+- Preserved per-sound local review state with migration from the previous `bad` value to `needsWork`, while continuing to hide raw sound filenames from the UI.
+
+**Lessons**:
+- A review board can still keep ability-level grouping by duplicating an ability group into status columns when its individual sounds have different decisions.
+- Local review storage keys should stay stable across UI moves so previous review work survives route consolidation.
+
+## Sound browser grouped review UI (2026-05-20)
+
+**Problem set**:
+1. The sound browser listed individual sound files with filenames, making multi-sound abilities hard to review as one skill.
+2. Review needed ability-editor-style filtering by rarity and class/school, plus ability icons.
+3. Sound audition needed a simple way to mark each sound as good or not good.
+
+**Fix**:
+- Reworked `/sound-browser` into ability cards grouped by ability name, with each ability's sounds nested as playable rows.
+- Enriched the page with the ability editor snapshot so sound groups can show ability icons, type/target tags, rarity, and school filters.
+- Removed visible sound filenames and added local `localStorage` review state for pass/reject/clear controls per sound.
+
+**Lessons**:
+- Sound review UI should key visible organization by ability identity, while keeping manifest file keys only as hidden stable storage/playback identifiers.
+- Reusing ability-editor tag metadata avoids drifting rarity/school labels between review tools.
+
+## Ability sound browser, haste playback, and volume settings (2026-05-16)
+
+**Problem set**:
+1. The imported ability sound pack needed an in-app page for auditioning files and seeing each file duration.
+2. Forward-channel start sounds needed to track shortened channel time when haste accelerates the channel.
+3. Skill sounds varied in loudness and needed automatic alignment plus an ESC-panel user volume percentage.
+
+**Fix**:
+- Added a shared sound catalog export and a `/sound-browser` page that lists every imported `.ogg`, loads metadata for duration display, supports search, and plays preview audio.
+- Extended the Web Audio player with `playbackRate` support and BattleArena channel-rate calculation from active-channel or buff-channel runtime duration versus base channel duration.
+- Added RMS-based normalization during decode, clamped to avoid extreme boosts/clipping, and added a persisted `音效音量` range control in the ESC game settings.
+
+**Lessons**:
+- Keep sound-pack listing data in the same registry combat playback uses; duplicating manifest parsing makes later mapping changes easy to miss.
+- Haste-aware audio should use the resolved runtime channel duration, not recalculate haste from stats, because buffs and server rules own the final timing.
+- Lightweight RMS normalization is practical for browser playback; a full LUFS pipeline would be heavier than the current skill-sound need.
+
+## Ability sound playback integration (2026-05-16)
+
+**Problem set**:
+1. Imported ability sounds needed to play from the public sound pack when related skills are used.
+2. Instant casts and channel skills need different timing: cast start for normal skills, channel start plus separate success cue for channels with multiple sound files.
+3. Sound volume needed to respect world distance from the local player instead of playing every remote cast at full volume.
+
+**Fix**:
+- Added a frontend BattleArena sound registry that maps preloaded ability names to the imported `tani-sound-zc-2026-05-15T11-26-31-705Z` manifest and chooses start/complete sounds from each skill folder.
+- Added a lightweight Web Audio player with decoded-buffer caching, first-interaction unlock, repeat suppression, distance falloff, stereo panning, and a `window.__zcAbilitySoundDebug` test log for Playwright verification.
+- Added backend `ABILITY_SOUND` events for active-channel completion and buff-backed channel natural completion, avoiding duplicate visible `PLAY_ABILITY` cards while giving the frontend an authoritative success cue.
+
+**Lessons**:
+- Keep audio triggers event-driven from authoritative server events; button-click sounds would fire on failed casts and desync from channel completion.
+- Use a separate sound-only event for completion cues so combat history and current-action UI do not show fake second casts.
+- For browser audio testing, a debug play log is more reliable than trying to observe OS-level sound output from Playwright.
+
 ## Ability and transmission audit (2026-05-10)
 
 **Problem set**:

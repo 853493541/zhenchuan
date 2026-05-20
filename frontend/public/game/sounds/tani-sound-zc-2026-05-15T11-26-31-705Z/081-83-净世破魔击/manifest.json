@@ -1,0 +1,20 @@
+{
+  "key": "绝境:65087:skill",
+  "name": "83. 净世破魔击",
+  "status": "已确认",
+  "folder": "081-83-净世破魔击",
+  "wems": [
+    {
+      "id": "916670015",
+      "files": {
+        "wem": "081-83-净世破魔击/wem/916670015.wem",
+        "ogg": "081-83-净世破魔击/sound/916670015.ogg"
+      },
+      "source": {
+        "wem": "local-index",
+        "ogg": "local-cache"
+      },
+      "errors": []
+    }
+  ]
+}

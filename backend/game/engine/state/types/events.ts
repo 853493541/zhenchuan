@@ -6,6 +6,7 @@ import { BuffCategory } from "./buffs";
 
 export type GameEventType =
   | "PLAY_ABILITY"
+  | "ABILITY_SOUND"
   | "END_TURN"
   | "DAMAGE"
   | "DODGE"
@@ -31,6 +32,7 @@ export interface GameEvent {
   abilityName?: string;
   abilityInstanceId?: string;
   channelPhase?: "start" | "complete";
+  soundPhase?: "counter" | "dashComplete";
   hideAbilityName?: boolean;
   suppressCritLabel?: boolean;
   displayZeroDamage?: boolean;

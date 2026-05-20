@@ -1,0 +1,20 @@
+{
+  "key": "绝境:65240:skill",
+  "name": "8. 疾",
+  "status": "已确认",
+  "folder": "007-8-疾",
+  "wems": [
+    {
+      "id": "678228934",
+      "files": {
+        "wem": "007-8-疾/wem/678228934.wem",
+        "ogg": "007-8-疾/sound/678228934.ogg"
+      },
+      "source": {
+        "wem": "cdn",
+        "ogg": "cdn"
+      },
+      "errors": []
+    }
+  ]
+}

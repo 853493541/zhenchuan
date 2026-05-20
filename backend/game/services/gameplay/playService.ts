@@ -570,6 +570,7 @@ async function playCastAbility(
         entityName: targetEntity?.abilityName,
         abilityId,
         abilityName: ability.name,
+        abilityInstanceId: played.instanceId,
         channelPhase: player.activeChannel.forwardChannel === true ? "start" : undefined,
       });
 

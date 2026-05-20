@@ -1387,6 +1387,17 @@ export class GameLoop {
         const newFy = -oldFy;
         player.facing = { x: newFx, y: newFy };
         const chwAbility = ABILITIES["cheng_huang_zhi_wei"] as any;
+        this.state.events.push({
+          id: randomUUID(),
+          timestamp: Date.now(),
+          turn: this.state.turn,
+          type: "ABILITY_SOUND",
+          actorUserId: player.userId,
+          targetUserId: player.userId,
+          abilityId: "cheng_huang_zhi_wei",
+          abilityName: chwAbility?.name ?? "乘黄之威",
+          soundPhase: "dashComplete",
+        } as any);
         const coneRadiusWorld = gameplayUnitsToWorldUnits(6, this.state.unitScale);
         const halfAngleCos = Math.cos((120 / 2) * Math.PI / 180); // cos(60°) = 0.5
         for (const enemyP of this.state.players) {
@@ -1581,14 +1592,28 @@ export class GameLoop {
       if (dashAbilityIdBefore === "yue_chao_zhan_bo" && !player.activeDash) {
         const yczbAbility = ABILITIES["yue_chao_zhan_bo"] as any;
         if (yczbAbility) {
-          for (const opp of getMiYunAffectedHostileTargets({
+          const hitTargets = getMiYunAffectedHostileTargets({
             state: this.state,
             source: player as any,
             sourceUserId: player.userId,
             center: player.position,
             storedUnitScale,
             rangeUnits: 8,
-          })) {
+          });
+          if (hitTargets.length > 0) {
+            this.state.events.push({
+              id: randomUUID(),
+              timestamp: Date.now(),
+              turn: this.state.turn,
+              type: "ABILITY_SOUND",
+              actorUserId: player.userId,
+              targetUserId: player.userId,
+              abilityId: "yue_chao_zhan_bo",
+              abilityName: yczbAbility.name,
+              soundPhase: "dashComplete",
+            } as any);
+          }
+          for (const opp of hitTargets) {
             applyDamageToHostileTarget({
               state: this.state,
               source: player as any,
@@ -2677,6 +2702,7 @@ export class GameLoop {
               entityName: targetEntity?.abilityName,
               abilityId: ch.abilityId,
               abilityName: ch.abilityName,
+              abilityInstanceId: ch.instanceId,
               channelPhase: "complete",
             } as any);
             breakStealthOnForwardChannelResolution({
@@ -2684,6 +2710,21 @@ export class GameLoop {
               player: player as any,
             });
           }
+
+          this.state.events.push({
+            id: randomUUID(),
+            timestamp: chNow,
+            turn: this.state.turn,
+            type: "ABILITY_SOUND",
+            actorUserId: player.userId,
+            targetUserId: targetEntity ? undefined : targetPlayer?.userId,
+            entityId: targetEntity?.id,
+            entityName: targetEntity?.abilityName,
+            abilityId: ch.abilityId,
+            abilityName: ch.abilityName,
+            abilityInstanceId: ch.instanceId,
+            channelPhase: "complete",
+          } as any);
 
           cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
@@ -3426,6 +3467,26 @@ export class GameLoop {
       }
       if (naturallyExpired.some((b) => isDisguiseBuff(b as any))) {
         buffsChanged = clearTargetSelectionsTargetingPlayer(this.state, player.userId) || buffsChanged;
+      }
+      for (const expired of naturallyExpired) {
+        const sourceAbility = expired.sourceAbilityId ? ABILITIES[expired.sourceAbilityId] as any : null;
+        if (
+          sourceAbility?.type === "CHANNEL" &&
+          sourceAbility?.channel?.source === "BUFF" &&
+          sourceAbility.channel.buffId === expired.buffId
+        ) {
+          this.state.events.push({
+            id: randomUUID(),
+            timestamp: now,
+            turn: this.state.turn,
+            type: "ABILITY_SOUND",
+            actorUserId: expired.sourceUserId ?? player.userId,
+            targetUserId: player.userId,
+            abilityId: expired.sourceAbilityId,
+            abilityName: expired.sourceAbilityName,
+            channelPhase: "complete",
+          } as any);
+        }
       }
       player.buffs = player.buffs.filter((b) => now < b.expiresAt);
       for (const expired of naturallyExpired) {

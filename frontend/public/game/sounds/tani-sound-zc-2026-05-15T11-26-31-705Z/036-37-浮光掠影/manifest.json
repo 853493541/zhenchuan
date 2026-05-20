@@ -1,0 +1,20 @@
+{
+  "key": "绝境:28631:buff",
+  "name": "37. 浮光掠影",
+  "status": "已确认",
+  "folder": "036-37-浮光掠影",
+  "wems": [
+    {
+      "id": "54653536",
+      "files": {
+        "wem": "036-37-浮光掠影/wem/54653536.wem",
+        "ogg": "036-37-浮光掠影/sound/54653536.ogg"
+      },
+      "source": {
+        "wem": "local-index",
+        "ogg": "local-cache"
+      },
+      "errors": []
+    }
+  ]
+}

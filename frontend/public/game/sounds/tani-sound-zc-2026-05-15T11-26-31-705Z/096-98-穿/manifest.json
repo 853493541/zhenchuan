@@ -1,0 +1,20 @@
+{
+  "key": "绝境:65022:skill",
+  "name": "98. 穿",
+  "status": "已确认",
+  "folder": "096-98-穿",
+  "wems": [
+    {
+      "id": "39771509",
+      "files": {
+        "wem": "096-98-穿/wem/39771509.wem",
+        "ogg": "096-98-穿/sound/39771509.ogg"
+      },
+      "source": {
+        "wem": "cdn",
+        "ogg": "cdn"
+      },
+      "errors": []
+    }
+  ]
+}

@@ -17,6 +17,8 @@ import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z } from './scene/Export
 import { encodeIconPublicPath, getAbilityIconPath } from '@/app/lib/iconPaths';
 import * as THREE from 'three';
 import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
+import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase } from './abilitySoundRegistry';
+import { installAbilityAudioUnlock, playAbilitySound } from './abilitySoundPlayer';
 
 type V3 = { x: number; y: number; z: number };
 type HeartStatKey =
@@ -50,6 +52,10 @@ type GcdVisibilitySettings = {
   base: boolean;
   qinggong: boolean;
   houyao: boolean;
+};
+
+type AbilitySoundSettings = {
+  volumePercent: number;
 };
 
 type InGameWarningEvent = {
@@ -153,6 +159,7 @@ function scaleUiPositions(
 
 const HEART_STAT_STORAGE_KEY = 'zhenchuan-heart-stat-visibility';
 const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
+const ABILITY_SOUND_SETTINGS_STORAGE_KEY = 'zhenchuan-ability-sound-settings-v1';
 const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
@@ -248,6 +255,9 @@ const DEFAULT_GCD_VISIBILITY_SETTINGS: GcdVisibilitySettings = {
   base: true,
   qinggong: false,
   houyao: false,
+};
+const DEFAULT_ABILITY_SOUND_SETTINGS: AbilitySoundSettings = {
+  volumePercent: 100,
 };
 const PLAYER_CHANNEL_BAR_PREVIEW_DATA: ChannelBarData = {
   kind: 'forward',
@@ -360,6 +370,12 @@ function normalizeInGameWarningScale(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return 1;
   return Math.round(Math.max(0.1, Math.min(2, numeric)) * 100) / 100;
+}
+
+function normalizeAbilitySoundVolumePercent(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_ABILITY_SOUND_SETTINGS.volumePercent;
+  return Math.round(Math.max(0, Math.min(100, numeric)));
 }
 
 function getAbilityPanelCssScale(value: number): number {
@@ -1287,6 +1303,122 @@ function clampCameraPitch(pitch: number, mode?: string): number {
    TYPES
    ============================================================ */
 interface Position { x: number; y: number; z?: number; }
+
+function calculateAbilitySoundSpatial(params: {
+  listener?: Position | null;
+  source?: Position | null;
+  ability?: any;
+  phase: AbilitySoundPhase;
+  isSelf: boolean;
+}) {
+  if (params.isSelf || !params.listener || !params.source) {
+    return { volume: 1, pan: 0 };
+  }
+
+  const dx = params.source.x - params.listener.x;
+  const dy = params.source.y - params.listener.y;
+  const distance = Math.hypot(dx, dy);
+  const fullVolumeRange = 8;
+  const audibleRange = getAbilitySoundAudibleRange(params.ability, params.phase);
+
+  if (distance >= audibleRange) {
+    return { volume: 0, pan: 0 };
+  }
+
+  const falloffSpan = Math.max(1, audibleRange - fullVolumeRange);
+  const t = Math.max(0, Math.min(1, (distance - fullVolumeRange) / falloffSpan));
+  const volume = Math.max(0, Math.min(1, Math.pow(1 - t, 1.35)));
+  const pan = Math.max(-0.75, Math.min(0.75, dx / Math.max(audibleRange, 1)));
+
+  return { volume, pan };
+}
+
+function getAbilityChannelBaseDurationMs(ability: any): number | null {
+  const runtimeChannel = getRuntimeAbilityChannel(ability);
+  const durationMs = Number(runtimeChannel?.durationMs ?? ability?.channelDurationMs ?? ability?.channel?.durationMs ?? 0);
+  return Number.isFinite(durationMs) && durationMs > 0 ? durationMs : null;
+}
+
+function getBuffChannelDurationForSound(actor: { buffs?: ActiveBuff[] } | null | undefined, ability: any, abilityId: string) {
+  const runtimeChannel = getRuntimeAbilityChannel(ability);
+  if (!runtimeChannel || runtimeChannel.source !== 'BUFF' || runtimeChannel.mode !== 'FORWARD') return null;
+
+  const buffs = actor?.buffs ?? [];
+  const abilityIdentity = String(ability?.id ?? abilityId);
+  const buff = buffs.find((entry) => {
+    if (typeof runtimeChannel.buffId === 'number' && entry.buffId === runtimeChannel.buffId) return true;
+    return String(entry.sourceAbilityId ?? '') === abilityIdentity;
+  });
+  if (!buff) return null;
+
+  const appliedAt = Number(buff.appliedAt ?? 0);
+  const expiresAt = Number(buff.expiresAt ?? 0);
+  const durationMs = expiresAt > appliedAt ? expiresAt - appliedAt : runtimeChannel.durationMs;
+  return Number.isFinite(durationMs) && durationMs > 0 ? durationMs : null;
+}
+
+function isFenglaiWushanSoundAbility(ability: any, abilityId: string) {
+  const name = String(ability?.name ?? '').replace(/^\s*\d+\.\s*/, '').trim();
+  return abilityId === 'fenglai_wushan' || name === '风来吴山' || name === '风来无山';
+}
+
+function getChannelSoundLoopDurationMs(params: {
+  ability: any;
+  actor: { buffs?: ActiveBuff[] } | null | undefined;
+  abilityId: string;
+  phase: AbilitySoundPhase;
+}) {
+  if (params.phase !== 'channelStart') return undefined;
+  if (!isFenglaiWushanSoundAbility(params.ability, params.abilityId)) return undefined;
+
+  const buff = (params.actor?.buffs ?? []).find((entry: any) => entry.buffId === 1014 || entry.sourceAbilityId === 'fenglai_wushan');
+  if (buff) {
+    const expiresAt = Number(buff.expiresAt);
+    const now = Date.now();
+    if (Number.isFinite(expiresAt) && expiresAt > now) {
+      return Math.max(80, expiresAt - now);
+    }
+
+    const appliedAt = Number(buff.appliedAt);
+    if (Number.isFinite(appliedAt) && Number.isFinite(expiresAt) && expiresAt > appliedAt) {
+      return expiresAt - appliedAt;
+    }
+  }
+
+  return 5000;
+}
+
+function getChannelSoundPlaybackRate(params: {
+  ability: any;
+  actor: { activeChannel?: ActiveChannel; buffs?: ActiveBuff[] } | null | undefined;
+  abilityId: string;
+  abilityInstanceId?: string;
+  phase: AbilitySoundPhase;
+}) {
+  if (params.phase !== 'channelStart') return 1;
+
+  const baseDurationMs = getAbilityChannelBaseDurationMs(params.ability);
+  if (!baseDurationMs) return 1;
+
+  let actualDurationMs: number | null = null;
+  const activeChannel = params.actor?.activeChannel;
+  if (
+    activeChannel
+    && activeChannel.abilityId === params.abilityId
+    && (!params.abilityInstanceId || activeChannel.instanceId === params.abilityInstanceId)
+    && activeChannel.forwardChannel !== false
+  ) {
+    const durationMs = Number(activeChannel.durationMs);
+    actualDurationMs = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : null;
+  }
+
+  actualDurationMs ??= getBuffChannelDurationForSound(params.actor, params.ability, params.abilityId);
+  if (!actualDurationMs) return 1;
+
+  const playbackRate = baseDurationMs / actualDurationMs;
+  if (!Number.isFinite(playbackRate) || playbackRate <= 0) return 1;
+  return Math.max(0.65, Math.min(2.5, playbackRate));
+}
 interface Facing { x: number; y: number; }
 
 interface AbilityInfo {
@@ -2054,6 +2186,9 @@ export default function BattleArena({
     () => worldVisibleOpponentsList.filter((o) => !blocksTargetingClient(o?.buffs)),
     [worldVisibleOpponentsList],
   );
+
+  useEffect(() => installAbilityAudioUnlock(), []);
+
   const visibleEntities = useMemo(
     () => (selfHasHongMengTianJin ? [] : (entities ?? []).filter((entity) => entity.hp > 0)),
     [entities, selfHasHongMengTianJin],
@@ -2160,6 +2295,23 @@ export default function BattleArena({
       localStorage.setItem(GCD_VISIBILITY_STORAGE_KEY, JSON.stringify(gcdVisibilitySettings));
     } catch {}
   }, [gcdVisibilitySettings]);
+  const [abilitySoundSettings, setAbilitySoundSettings] = useState<AbilitySoundSettings>(() => {
+    try {
+      if (typeof window === 'undefined') return DEFAULT_ABILITY_SOUND_SETTINGS;
+      const stored = JSON.parse(localStorage.getItem(ABILITY_SOUND_SETTINGS_STORAGE_KEY) ?? '{}');
+      return {
+        ...DEFAULT_ABILITY_SOUND_SETTINGS,
+        volumePercent: normalizeAbilitySoundVolumePercent(stored.volumePercent),
+      };
+    } catch {
+      return DEFAULT_ABILITY_SOUND_SETTINGS;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(ABILITY_SOUND_SETTINGS_STORAGE_KEY, JSON.stringify(abilitySoundSettings));
+    } catch {}
+  }, [abilitySoundSettings]);
   const [abilityPanelScale, setAbilityPanelScale] = useState(() => {
     try {
       if (typeof window === 'undefined') return 1;
@@ -3879,10 +4031,68 @@ export default function BattleArena({
     if (newEvents.length === 0) return;
 
     const myId = me?.userId;
+    const playSoundForEvent = (evt: any) => {
+      if ((evt.type !== 'PLAY_ABILITY' && evt.type !== 'ABILITY_SOUND' && evt.type !== 'DAMAGE' && evt.type !== 'BUFF_APPLIED') || !evt.abilityId) return;
+      const ability = abilities?.[evt.abilityId];
+      const cue = getAbilitySoundCue(ability, evt);
+      if (!cue) return;
+      if (cue.targetOnly && String(evt.targetUserId ?? '') !== String(myId ?? '')) return;
+
+      const listenerPosition = localPositionRef.current ?? me?.position ?? null;
+      const actorUserId = String(evt.actorUserId ?? '');
+      const actorState = actorUserId === myId
+        ? me
+        : opponentsList.find((opponentEntry) => opponentEntry.userId === actorUserId) ?? null;
+      const sourcePosition = cue.targetOnly
+        ? listenerPosition
+        : actorUserId === myId
+        ? listenerPosition
+        : opponentPositionsRef.current[actorUserId] ?? actorState?.position ?? null;
+      const spatial = cue.targetOnly
+        ? { volume: 1, pan: 0 }
+        : calculateAbilitySoundSpatial({
+            listener: listenerPosition,
+            source: sourcePosition,
+            ability,
+            phase: cue.phase,
+            isSelf: actorUserId === myId,
+          });
+      const playbackRate = getChannelSoundPlaybackRate({
+        ability,
+        actor: actorState,
+        abilityId: evt.abilityId,
+        abilityInstanceId: typeof evt.abilityInstanceId === 'string' ? evt.abilityInstanceId : undefined,
+        phase: cue.phase,
+      });
+      const loopDurationMs = cue.loopDuringChannel
+        ? getChannelSoundLoopDurationMs({
+            ability,
+            actor: actorState,
+            abilityId: evt.abilityId,
+            phase: cue.phase,
+          })
+        : undefined;
+
+      void playAbilitySound({
+        url: cue.url,
+        volume: spatial.volume * (abilitySoundSettings.volumePercent / 100),
+        pan: spatial.pan,
+        abilityId: evt.abilityId,
+        abilityName: ability?.name ?? evt.abilityName,
+        actorUserId,
+        phase: cue.phase,
+        playbackRate: cue.playbackRate ?? playbackRate,
+        fitToDurationMs: cue.fitToDurationMs,
+        loopDurationMs,
+        extraSounds: cue.extraSounds,
+      });
+    };
+
     for (const evt of newEvents) {
       // WS array patches can momentarily produce sparse event slices.
       // Ignore empty/malformed entries instead of crashing the whole arena.
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
+      playSoundForEvent(evt);
       if (evt.type === 'COMBAT_STATUS' && evt.targetUserId === myId) {
         if ((evt as any).combatStatus === 'enter' || (evt as any).inCombat === true) {
           showInGameWarning('进入战斗');
@@ -8896,6 +9106,25 @@ export default function BattleArena({
                               onChange={(e) => setInGameWarningScale(normalizeInGameWarningScale(e.target.value))}
                               className={styles.escRangeInput}
                               aria-label="战斗警告大小"
+                            />
+                          </div>
+                          <div className={styles.escSettingControl}>
+                            <div className={styles.escRangeHeader}>
+                              <span>音效音量</span>
+                              <span>{abilitySoundSettings.volumePercent}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              step="1"
+                              value={abilitySoundSettings.volumePercent}
+                              onChange={(e) => {
+                                const volumePercent = normalizeAbilitySoundVolumePercent(e.target.value);
+                                setAbilitySoundSettings((prev) => ({ ...prev, volumePercent }));
+                              }}
+                              className={styles.escRangeInput}
+                              aria-label="音效音量"
                             />
                           </div>
                           <div className={`${styles.escToggleGroup} ${styles.escSettingControl}`}>

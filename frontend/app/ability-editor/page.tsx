@@ -14,6 +14,7 @@ import ProjectileEditorTab from "./ProjectileEditorTab";
 import DunLiWhitelistTab from "./DunLiWhitelistTab";
 import NoWeaponRequiredTab from "./NoWeaponRequiredTab";
 import QinYinGongMingTab from "./QinYinGongMingTab";
+import SoundReviewTab from "./SoundReviewTab";
 import { usePersistentState } from "./usePersistentState";
 import {
   ABILITY_RARITIES,
@@ -57,7 +58,7 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "adControl" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "qinggong" | "qinggongGcdImmune" | "hasteUnaffected" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "hiddenBuffs";
+type MainTab = "abilities" | "buffs" | "adControl" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "qinggong" | "qinggongGcdImmune" | "hasteUnaffected" | "soundReview" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "hiddenBuffs";
 type EditorTabGroup = "skill" | "buff";
 
 const SKILL_EDITOR_TABS: Array<{ id: MainTab; label: string }> = [
@@ -135,6 +136,8 @@ export default function AbilityEditorPage() {
       setMainTab("qinggongGcdImmune");
     } else if (params.get("tab") === "hasteUnaffected") {
       setMainTab("hasteUnaffected");
+    } else if (params.get("tab") === "soundReview") {
+      setMainTab("soundReview");
     } else if (params.get("tab") === "qinYinGongMing") {
       setMainTab("qinYinGongMing");
     } else if (params.get("tab") === "damageReductionOverride") {
@@ -155,6 +158,14 @@ export default function AbilityEditorPage() {
       url.searchParams.set("tab", mainTab);
     }
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab !== "soundReview") return;
+
+    window.requestAnimationFrame(() => {
+      document.getElementById("sound-review-board")?.scrollIntoView({ block: "start" });
+    });
   }, [mainTab]);
 
   // ── Ability snapshot ──────────────────────────────────────────────────────
@@ -779,7 +790,7 @@ export default function AbilityEditorPage() {
 
   return (
     <div className={styles.page}>
-      <section className={styles.shell}>
+      <section className={`${styles.shell} ${mainTab === "soundReview" ? styles.soundReviewShell : ""}`}>
         <div className={styles.topRow}>
           <Link href="/" className={styles.backLink}>
             返回大厅
@@ -787,16 +798,18 @@ export default function AbilityEditorPage() {
           <div className={styles.updatedAt}>最后保存：{formatUpdatedAt(snapshot?.updatedAt ?? null)}</div>
         </div>
 
-        <div className={styles.headerBlock}>
-          <p className={styles.eyebrow}>Ability Editor</p>
-          <h1 className={styles.title}>能力属性与AD倍率编辑</h1>
-          <p className={styles.subtitle}>
-            总览层只负责浏览。点击技能卡片进入详情页后，再编辑属性、读条、冷却、范围和AD倍率。
-          </p>
-          <div className={styles.summaryRow}>
-            <span className={styles.summaryPill}>技能 {snapshot?.abilities.length ?? 0}</span>
+        {mainTab !== "soundReview" && (
+          <div className={styles.headerBlock}>
+            <p className={styles.eyebrow}>Ability Editor</p>
+            <h1 className={styles.title}>能力属性与AD倍率编辑</h1>
+            <p className={styles.subtitle}>
+              总览层只负责浏览。点击技能卡片进入详情页后，再编辑属性、读条、冷却、范围和AD倍率。
+            </p>
+            <div className={styles.summaryRow}>
+              <span className={styles.summaryPill}>技能 {snapshot?.abilities.length ?? 0}</span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Main tab bar */}
         <div className={styles.mainTabBar}>
@@ -820,6 +833,13 @@ export default function AbilityEditorPage() {
             onClick={() => setMainTab(activeEditorGroup === "skill" ? mainTab : "projectiles")}
           >
             技能
+          </button>
+          <button
+            type="button"
+            className={`${styles.mainTab} ${mainTab === "soundReview" ? styles.mainTabActive : ""}`}
+            onClick={() => setMainTab("soundReview")}
+          >
+            音效审核
           </button>
           <button
             type="button"
@@ -1244,6 +1264,17 @@ export default function AbilityEditorPage() {
             footerText="这里决定哪些读条技能不吃加速率。未排除的技能会按当前规则缩短正读条、逆读条以及持续伤害的总时间和跳间隔；未决定列表只显示带读条的技能。"
             showMetadataRow={false}
             limitUndecidedToChannel
+          />
+        </section>
+      )}
+
+      {mainTab === "soundReview" && (
+        <section id="sound-review-board" className={styles.buffEditorSection}>
+          <SoundReviewTab
+            snapshot={snapshot}
+            loading={loading}
+            errorMessage={errorMessage}
+            onRetry={loadSnapshot}
           />
         </section>
       )}

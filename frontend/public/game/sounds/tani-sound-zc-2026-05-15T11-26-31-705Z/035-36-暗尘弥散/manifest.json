@@ -1,0 +1,20 @@
+{
+  "key": "伪传:28669:buff",
+  "name": "36. 暗尘弥散",
+  "status": "已确认",
+  "folder": "035-36-暗尘弥散",
+  "wems": [
+    {
+      "id": "413330263",
+      "files": {
+        "wem": "035-36-暗尘弥散/wem/413330263.wem",
+        "ogg": "035-36-暗尘弥散/sound/413330263.ogg"
+      },
+      "source": {
+        "wem": "local-index",
+        "ogg": "local-cache"
+      },
+      "errors": []
+    }
+  ]
+}

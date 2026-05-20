@@ -152,6 +152,7 @@ export interface PlayerState {
 
 export type GameEventType =
   | "PLAY_ABILITY"
+  | "ABILITY_SOUND"
   | "DAMAGE"
   | "HEAL"
   | "DODGE"

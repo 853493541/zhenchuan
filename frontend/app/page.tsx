@@ -133,6 +133,10 @@ export default function HomePage() {
     router.push("/ability-editor");
   };
 
+  const openSoundBrowser = () => {
+    router.push("/ability-editor?tab=soundReview");
+  };
+
   const startSelectedMode = () => {
     if (selectedStartMode === 'export-viewer') {
       openExportViewer();
@@ -172,6 +176,12 @@ export default function HomePage() {
             onClick={openAbilityEditor}
           >
             技能编辑
+          </button>
+          <button
+            className={`${styles.createBtn} ${styles.createBtnSoundBrowser}`}
+            onClick={openSoundBrowser}
+          >
+            音效
           </button>
         </div>
         <div className={styles.bigStartWrap}>

@@ -86,6 +86,15 @@ export function applyAbility(
     (castContext as any)?.disableDunLiReflect !== true;
 
   if (shouldReflectToCaster) {
+    pushEvent(state, {
+      turn: state.turn,
+      type: "ABILITY_SOUND",
+      actorUserId: target.userId,
+      targetUserId: source.userId,
+      abilityId: "dun_li",
+      abilityName: "盾立",
+      soundPhase: "counter",
+    } as any);
     applyAbility(
       state,
       ability,

@@ -1,0 +1,32 @@
+{
+  "key": "伪传:28671:buff",
+  "name": "152. 盾立",
+  "status": "已确认",
+  "folder": "148-152-盾立",
+  "wems": [
+    {
+      "id": "916951452",
+      "files": {
+        "wem": "148-152-盾立/wem/916951452.wem",
+        "ogg": "148-152-盾立/sound/916951452.ogg"
+      },
+      "source": {
+        "wem": "local-index",
+        "ogg": "local-cache"
+      },
+      "errors": []
+    },
+    {
+      "id": "697798714",
+      "files": {
+        "wem": "148-152-盾立/wem/697798714.wem",
+        "ogg": "148-152-盾立/sound/697798714.ogg"
+      },
+      "source": {
+        "wem": "cdn",
+        "ogg": "cdn"
+      },
+      "errors": []
+    }
+  ]
+}

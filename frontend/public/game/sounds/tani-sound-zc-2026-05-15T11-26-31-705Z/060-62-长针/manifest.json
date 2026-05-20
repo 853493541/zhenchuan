@@ -1,0 +1,32 @@
+{
+  "key": "绝境:64992:skill",
+  "name": "62. 长针",
+  "status": "已确认",
+  "folder": "060-62-长针",
+  "wems": [
+    {
+      "id": "49267699",
+      "files": {
+        "wem": "060-62-长针/wem/49267699.wem",
+        "ogg": "060-62-长针/sound/49267699.ogg"
+      },
+      "source": {
+        "wem": "cdn",
+        "ogg": "cdn"
+      },
+      "errors": []
+    },
+    {
+      "id": "342270609",
+      "files": {
+        "wem": "060-62-长针/wem/342270609.wem",
+        "ogg": "060-62-长针/sound/342270609.ogg"
+      },
+      "source": {
+        "wem": "cdn",
+        "ogg": "cdn"
+      },
+      "errors": []
+    }
+  ]
+}

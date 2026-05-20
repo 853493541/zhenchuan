@@ -1,0 +1,3529 @@
+{
+  "ok": true,
+  "generatedAt": "2026-05-15T11:26:31.705Z",
+  "packageName": "tani-sound-zc-2026-05-15T11-26-31-705Z",
+  "scope": "zc",
+  "outputPath": "C:\\Users\\Zhibin Ren\\Desktop\\JX3AbilitySoundPackages\\tani-sound-zc-2026-05-15T11-26-31-705Z",
+  "counts": {
+    "abilities": 163,
+    "wemIds": 188,
+    "rawWems": 188,
+    "oggs": 188,
+    "missingRawWems": 0,
+    "missingOggs": 0
+  },
+  "abilities": [
+    {
+      "key": "绝境:37687:skill",
+      "name": "1. 回风扫叶",
+      "status": "已确认",
+      "folder": "001-1-回风扫叶",
+      "wems": [
+        {
+          "id": "684427138",
+          "files": {
+            "wem": "001-1-回风扫叶/wem/684427138.wem",
+            "ogg": "001-1-回风扫叶/sound/684427138.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:37682:skill",
+      "name": "2. 蹑云逐月",
+      "status": "已确认",
+      "folder": "002-2-蹑云逐月",
+      "wems": [
+        {
+          "id": "400132680",
+          "files": {
+            "wem": "002-2-蹑云逐月/wem/400132680.wem",
+            "ogg": "002-2-蹑云逐月/sound/400132680.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:37685:skill",
+      "name": "3. 迎风回浪",
+      "status": "已确认",
+      "folder": "003-3-迎风回浪",
+      "wems": [
+        {
+          "id": "438970123",
+          "files": {
+            "wem": "003-3-迎风回浪/wem/438970123.wem",
+            "ogg": "003-3-迎风回浪/sound/438970123.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:37683:skill",
+      "name": "4. 凌霄揽胜",
+      "status": "已确认",
+      "folder": "004-4-凌霄揽胜",
+      "wems": [
+        {
+          "id": "239862510",
+          "files": {
+            "wem": "004-4-凌霄揽胜/wem/239862510.wem",
+            "ogg": "004-4-凌霄揽胜/sound/239862510.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:37684:skill",
+      "name": "5. 瑶台枕鹤",
+      "status": "已确认",
+      "folder": "005-5-瑶台枕鹤",
+      "wems": [
+        {
+          "id": "239862510",
+          "files": {
+            "wem": "005-5-瑶台枕鹤/wem/239862510.wem",
+            "ogg": "005-5-瑶台枕鹤/sound/239862510.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:37686:skill",
+      "name": "7. 后撤",
+      "status": "已确认",
+      "folder": "006-7-后撤",
+      "wems": [
+        {
+          "id": "438970123",
+          "files": {
+            "wem": "006-7-后撤/wem/438970123.wem",
+            "ogg": "006-7-后撤/sound/438970123.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65240:skill",
+      "name": "8. 疾",
+      "status": "已确认",
+      "folder": "007-8-疾",
+      "wems": [
+        {
+          "id": "678228934",
+          "files": {
+            "wem": "007-8-疾/wem/678228934.wem",
+            "ogg": "007-8-疾/sound/678228934.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "ZC:yuqi:unmatched",
+      "name": "9. 御骑",
+      "status": "已确认",
+      "folder": "008-9-御骑",
+      "wems": [
+        {
+          "id": "66035754",
+          "files": {
+            "wem": "008-9-御骑/wem/66035754.wem",
+            "ogg": "008-9-御骑/sound/66035754.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "631131996",
+          "files": {
+            "wem": "008-9-御骑/wem/631131996.wem",
+            "ogg": "008-9-御骑/sound/631131996.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28647:buff",
+      "name": "10. 任驰骋",
+      "status": "已确认",
+      "folder": "009-10-任驰骋",
+      "wems": [
+        {
+          "id": "1034823760",
+          "files": {
+            "wem": "009-10-任驰骋/wem/1034823760.wem",
+            "ogg": "009-10-任驰骋/sound/1034823760.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "86402225",
+          "files": {
+            "wem": "009-10-任驰骋/wem/86402225.wem",
+            "ogg": "009-10-任驰骋/sound/86402225.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28694:buff",
+      "name": "11. 剑破虚空",
+      "status": "已确认",
+      "folder": "010-11-剑破虚空",
+      "wems": [
+        {
+          "id": "173126276",
+          "files": {
+            "wem": "010-11-剑破虚空/wem/173126276.wem",
+            "ogg": "010-11-剑破虚空/sound/173126276.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65026:skill",
+      "name": "12. 三环套月",
+      "status": "已确认",
+      "folder": "011-12-三环套月",
+      "wems": [
+        {
+          "id": "295546762",
+          "files": {
+            "wem": "011-12-三环套月/wem/295546762.wem",
+            "ogg": "011-12-三环套月/sound/295546762.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65036:skill",
+      "name": "13. 龙吟",
+      "status": "已确认",
+      "folder": "012-13-龙吟",
+      "wems": [
+        {
+          "id": "491484005",
+          "files": {
+            "wem": "012-13-龙吟/wem/491484005.wem",
+            "ogg": "012-13-龙吟/sound/491484005.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65068:skill",
+      "name": "14. 百足",
+      "status": "已确认",
+      "folder": "013-14-百足",
+      "wems": [
+        {
+          "id": "482646056",
+          "files": {
+            "wem": "013-14-百足/wem/482646056.wem",
+            "ogg": "013-14-百足/sound/482646056.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65149:skill",
+      "name": "15. 五方行尽",
+      "status": "已确认",
+      "folder": "014-15-五方行尽",
+      "wems": [
+        {
+          "id": "86733635",
+          "files": {
+            "wem": "014-15-五方行尽/wem/86733635.wem",
+            "ogg": "014-15-五方行尽/sound/86733635.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28639:buff",
+      "name": "16. 棒打狗头",
+      "status": "已确认",
+      "folder": "015-16-棒打狗头",
+      "wems": [
+        {
+          "id": "369499237",
+          "files": {
+            "wem": "015-16-棒打狗头/wem/369499237.wem",
+            "ogg": "015-16-棒打狗头/sound/369499237.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:39492:skill",
+      "name": "17. 截阳",
+      "status": "已确认",
+      "folder": "016-17-截阳",
+      "wems": [
+        {
+          "id": "668699640",
+          "files": {
+            "wem": "016-17-截阳/wem/668699640.wem",
+            "ogg": "016-17-截阳/sound/668699640.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:39494:skill",
+      "name": "18. 风流云散",
+      "status": "已确认",
+      "folder": "017-18-风流云散",
+      "wems": [
+        {
+          "id": "455851133",
+          "files": {
+            "wem": "017-18-风流云散/wem/455851133.wem",
+            "ogg": "017-18-风流云散/sound/455851133.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:39493:skill",
+      "name": "19. 引窍",
+      "status": "已确认",
+      "folder": "018-19-引窍",
+      "wems": [
+        {
+          "id": "866782677",
+          "files": {
+            "wem": "018-19-引窍/wem/866782677.wem",
+            "ogg": "018-19-引窍/sound/866782677.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65669:skill",
+      "name": "20. 龙战于野",
+      "status": "已确认",
+      "folder": "019-20-龙战于野",
+      "wems": [
+        {
+          "id": "704432442",
+          "files": {
+            "wem": "019-20-龙战于野/wem/704432442.wem",
+            "ogg": "019-20-龙战于野/sound/704432442.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65670:skill",
+      "name": "21. 潜龙勿用",
+      "status": "已确认",
+      "folder": "020-21-潜龙勿用",
+      "wems": [
+        {
+          "id": "468067016",
+          "files": {
+            "wem": "020-21-潜龙勿用/wem/468067016.wem",
+            "ogg": "020-21-潜龙勿用/sound/468067016.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28683:buff",
+      "name": "22. 斗转星移",
+      "status": "已确认",
+      "folder": "021-22-斗转星移",
+      "wems": [
+        {
+          "id": "735859637",
+          "files": {
+            "wem": "021-22-斗转星移/wem/735859637.wem",
+            "ogg": "021-22-斗转星移/sound/735859637.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:64901:skill",
+      "name": "23. 守缺式",
+      "status": "已确认",
+      "folder": "022-23-守缺式",
+      "wems": [
+        {
+          "id": "390920500",
+          "files": {
+            "wem": "022-23-守缺式/wem/390920500.wem",
+            "ogg": "022-23-守缺式/sound/390920500.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28642:buff",
+      "name": "24. 捉影式",
+      "status": "已确认",
+      "folder": "023-24-捉影式",
+      "wems": [
+        {
+          "id": "92058000",
+          "files": {
+            "wem": "023-24-捉影式/wem/92058000.wem",
+            "ogg": "023-24-捉影式/sound/92058000.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65098:skill",
+      "name": "25. 摩诃无量",
+      "status": "已确认",
+      "folder": "024-25-摩诃无量",
+      "wems": [
+        {
+          "id": "28830163",
+          "files": {
+            "wem": "024-25-摩诃无量/wem/28830163.wem",
+            "ogg": "024-25-摩诃无量/sound/28830163.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65095:skill",
+      "name": "26. 生死劫",
+      "status": "已确认",
+      "folder": "025-26-生死劫",
+      "wems": [
+        {
+          "id": "1027373319",
+          "files": {
+            "wem": "025-26-生死劫/wem/1027373319.wem",
+            "ogg": "025-26-生死劫/sound/1027373319.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28561:buff",
+      "name": "27. 蟾啸",
+      "status": "已确认",
+      "folder": "026-27-蟾啸",
+      "wems": [
+        {
+          "id": "467733878",
+          "files": {
+            "wem": "026-27-蟾啸/wem/467733878.wem",
+            "ogg": "026-27-蟾啸/sound/467733878.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28590:buff",
+      "name": "28. 大狮子吼",
+      "status": "已确认",
+      "folder": "027-28-大狮子吼",
+      "wems": [
+        {
+          "id": "957865774",
+          "files": {
+            "wem": "027-28-大狮子吼/wem/957865774.wem",
+            "ogg": "027-28-大狮子吼/sound/957865774.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28649:buff",
+      "name": "29. 疾如风",
+      "status": "已确认",
+      "folder": "028-29-疾如风",
+      "wems": [
+        {
+          "id": "43019181",
+          "files": {
+            "wem": "028-29-疾如风/wem/43019181.wem",
+            "ogg": "028-29-疾如风/sound/43019181.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28677:buff",
+      "name": "30. 散流霞",
+      "status": "已确认",
+      "folder": "029-30-散流霞",
+      "wems": [
+        {
+          "id": "5662010",
+          "files": {
+            "wem": "029-30-散流霞/wem/5662010.wem",
+            "ogg": "029-30-散流霞/sound/5662010.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28657:buff",
+      "name": "31. 鹊踏枝",
+      "status": "已确认",
+      "folder": "030-31-鹊踏枝",
+      "wems": [
+        {
+          "id": "199467777",
+          "files": {
+            "wem": "030-31-鹊踏枝/wem/199467777.wem",
+            "ogg": "030-31-鹊踏枝/sound/199467777.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28664:buff",
+      "name": "32. 云栖松",
+      "status": "已确认",
+      "folder": "031-32-云栖松",
+      "wems": [
+        {
+          "id": "138653210",
+          "files": {
+            "wem": "031-32-云栖松/wem/138653210.wem",
+            "ogg": "031-32-云栖松/sound/138653210.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28686:buff",
+      "name": "33. 守如山",
+      "status": "已确认",
+      "folder": "032-33-守如山",
+      "wems": [
+        {
+          "id": "186495262",
+          "files": {
+            "wem": "032-33-守如山/wem/186495262.wem",
+            "ogg": "032-33-守如山/sound/186495262.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28633:buff",
+      "name": "34. 风袖低昂",
+      "status": "已确认",
+      "folder": "033-34-风袖低昂",
+      "wems": [
+        {
+          "id": "186804602",
+          "files": {
+            "wem": "033-34-风袖低昂/wem/186804602.wem",
+            "ogg": "033-34-风袖低昂/sound/186804602.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28693:buff",
+      "name": "35. 穹隆化生",
+      "status": "已确认",
+      "folder": "034-35-穹隆化生",
+      "wems": [
+        {
+          "id": "16601009",
+          "files": {
+            "wem": "034-35-穹隆化生/wem/16601009.wem",
+            "ogg": "034-35-穹隆化生/sound/16601009.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "34175499",
+          "files": {
+            "wem": "034-35-穹隆化生/wem/34175499.wem",
+            "ogg": "034-35-穹隆化生/sound/34175499.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28669:buff",
+      "name": "36. 暗尘弥散",
+      "status": "已确认",
+      "folder": "035-36-暗尘弥散",
+      "wems": [
+        {
+          "id": "413330263",
+          "files": {
+            "wem": "035-36-暗尘弥散/wem/413330263.wem",
+            "ogg": "035-36-暗尘弥散/sound/413330263.ogg"
+          },
+          "source": {
+            "wem": "local-index",
+            "ogg": "local-cache"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28631:buff",
+      "name": "37. 浮光掠影",
+      "status": "已确认",
+      "folder": "036-37-浮光掠影",
+      "wems": [
+        {
+          "id": "54653536",
+          "files": {
+            "wem": "036-37-浮光掠影/wem/54653536.wem",
+            "ogg": "036-37-浮光掠影/sound/54653536.ogg"
+          },
+          "source": {
+            "wem": "local-index",
+            "ogg": "local-cache"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65062:skill",
+      "name": "38. 天地无极",
+      "status": "已确认",
+      "folder": "037-38-天地无极",
+      "wems": [
+        {
+          "id": "252612285",
+          "files": {
+            "wem": "037-38-天地无极/wem/252612285.wem",
+            "ogg": "037-38-天地无极/sound/252612285.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28666:buff",
+      "name": "39. 风来吴山",
+      "status": "已确认",
+      "folder": "038-39-风来吴山",
+      "wems": [
+        {
+          "id": "161340541",
+          "files": {
+            "wem": "038-39-风来吴山/wem/161340541.wem",
+            "ogg": "038-39-风来吴山/sound/161340541.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28702:buff",
+      "name": "40. 无间狱",
+      "status": "已确认",
+      "folder": "039-40-无间狱",
+      "wems": [
+        {
+          "id": "340506192",
+          "files": {
+            "wem": "039-40-无间狱/wem/340506192.wem",
+            "ogg": "039-40-无间狱/sound/340506192.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "87003602",
+          "files": {
+            "wem": "039-40-无间狱/wem/87003602.wem",
+            "ogg": "039-40-无间狱/sound/87003602.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28692:buff",
+      "name": "41. 心诤",
+      "status": "已确认",
+      "folder": "040-41-心诤",
+      "wems": [
+        {
+          "id": "337850833",
+          "files": {
+            "wem": "040-41-心诤/wem/337850833.wem",
+            "ogg": "040-41-心诤/sound/337850833.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "205006700",
+          "files": {
+            "wem": "040-41-心诤/wem/205006700.wem",
+            "ogg": "040-41-心诤/sound/205006700.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65163:skill",
+      "name": "42. 女娲补天",
+      "status": "已确认",
+      "folder": "041-42-女娲补天",
+      "wems": [
+        {
+          "id": "69800972",
+          "files": {
+            "wem": "041-42-女娲补天/wem/69800972.wem",
+            "ogg": "041-42-女娲补天/sound/69800972.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28691:buff",
+      "name": "43. 踏星行",
+      "status": "已确认",
+      "folder": "042-43-踏星行",
+      "wems": [
+        {
+          "id": "901987144",
+          "files": {
+            "wem": "042-43-踏星行/wem/901987144.wem",
+            "ogg": "042-43-踏星行/sound/901987144.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65071:skill",
+      "name": "44. 追命箭",
+      "status": "已确认",
+      "folder": "043-44-追命箭",
+      "wems": [
+        {
+          "id": "184205914",
+          "files": {
+            "wem": "043-44-追命箭/wem/184205914.wem",
+            "ogg": "043-44-追命箭/sound/184205914.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "469981245",
+          "files": {
+            "wem": "043-44-追命箭/wem/469981245.wem",
+            "ogg": "043-44-追命箭/sound/469981245.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65029:skill",
+      "name": "45. 龙牙",
+      "status": "已确认",
+      "folder": "044-45-龙牙",
+      "wems": [
+        {
+          "id": "380889589",
+          "files": {
+            "wem": "044-45-龙牙/wem/380889589.wem",
+            "ogg": "044-45-龙牙/sound/380889589.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65254:skill",
+      "name": "47. 千蝶吐瑞",
+      "status": "已确认",
+      "folder": "045-47-千蝶吐瑞",
+      "wems": [
+        {
+          "id": "829175179",
+          "files": {
+            "wem": "045-47-千蝶吐瑞/wem/829175179.wem",
+            "ogg": "045-47-千蝶吐瑞/sound/829175179.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "80036978",
+          "files": {
+            "wem": "045-47-千蝶吐瑞/wem/80036978.wem",
+            "ogg": "045-47-千蝶吐瑞/sound/80036978.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65672:skill",
+      "name": "48. 笑醉狂",
+      "status": "已确认",
+      "folder": "046-48-笑醉狂",
+      "wems": [
+        {
+          "id": "128409036",
+          "files": {
+            "wem": "046-48-笑醉狂/wem/128409036.wem",
+            "ogg": "046-48-笑醉狂/sound/128409036.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:51847:buff",
+      "name": "49. 狂龙乱舞",
+      "status": "已确认",
+      "folder": "047-49-狂龙乱舞",
+      "wems": [
+        {
+          "id": "358607853",
+          "files": {
+            "wem": "047-49-狂龙乱舞/wem/358607853.wem",
+            "ogg": "047-49-狂龙乱舞/sound/358607853.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28653:buff",
+      "name": "50. 镇山河",
+      "status": "已确认",
+      "folder": "048-50-镇山河",
+      "wems": [
+        {
+          "id": "48443349",
+          "files": {
+            "wem": "048-50-镇山河/wem/48443349.wem",
+            "ogg": "048-50-镇山河/sound/48443349.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65076:skill",
+      "name": "51. 云飞玉皇",
+      "status": "已确认",
+      "folder": "049-51-云飞玉皇",
+      "wems": [
+        {
+          "id": "93452115",
+          "files": {
+            "wem": "049-51-云飞玉皇/wem/93452115.wem",
+            "ogg": "049-51-云飞玉皇/sound/93452115.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "90745220",
+          "files": {
+            "wem": "049-51-云飞玉皇/wem/90745220.wem",
+            "ogg": "049-51-云飞玉皇/sound/90745220.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:51317:buff",
+      "name": "52. 孔雀翎",
+      "status": "已确认",
+      "folder": "050-52-孔雀翎",
+      "wems": [
+        {
+          "id": "958073438",
+          "files": {
+            "wem": "050-52-孔雀翎/wem/958073438.wem",
+            "ogg": "050-52-孔雀翎/sound/958073438.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65097:skill",
+      "name": "53. 韦陀献杵",
+      "status": "已确认",
+      "folder": "051-53-韦陀献杵",
+      "wems": [
+        {
+          "id": "227396769",
+          "files": {
+            "wem": "051-53-韦陀献杵/wem/227396769.wem",
+            "ogg": "051-53-韦陀献杵/sound/227396769.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65165:skill",
+      "name": "54. 雷震子",
+      "status": "已确认",
+      "folder": "052-54-雷震子",
+      "wems": [
+        {
+          "id": "641180650",
+          "files": {
+            "wem": "052-54-雷震子/wem/641180650.wem",
+            "ogg": "052-54-雷震子/sound/641180650.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28688:buff",
+      "name": "55. 转乾坤",
+      "status": "已确认",
+      "folder": "053-55-转乾坤",
+      "wems": [
+        {
+          "id": "796924560",
+          "files": {
+            "wem": "053-55-转乾坤/wem/796924560.wem",
+            "ogg": "053-55-转乾坤/sound/796924560.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28708:buff",
+      "name": "56. 夺命蛊",
+      "status": "已确认",
+      "folder": "054-56-夺命蛊",
+      "wems": [
+        {
+          "id": "121381088",
+          "files": {
+            "wem": "054-56-夺命蛊/wem/121381088.wem",
+            "ogg": "054-56-夺命蛊/sound/121381088.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28650:buff",
+      "name": "57. 紫气东来",
+      "status": "已确认",
+      "folder": "055-57-紫气东来",
+      "wems": [
+        {
+          "id": "294240191",
+          "files": {
+            "wem": "055-57-紫气东来/wem/294240191.wem",
+            "ogg": "055-57-紫气东来/sound/294240191.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65119:skill",
+      "name": "58. 撼如雷",
+      "status": "已确认",
+      "folder": "056-58-撼如雷",
+      "wems": [
+        {
+          "id": "22651465",
+          "files": {
+            "wem": "056-58-撼如雷/wem/22651465.wem",
+            "ogg": "056-58-撼如雷/sound/22651465.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28620:buff",
+      "name": "59. 帝骖龙翔",
+      "status": "已确认",
+      "folder": "057-59-帝骖龙翔",
+      "wems": [
+        {
+          "id": "795435370",
+          "files": {
+            "wem": "057-59-帝骖龙翔/wem/795435370.wem",
+            "ogg": "057-59-帝骖龙翔/sound/795435370.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28706:buff",
+      "name": "60. 花语酥心",
+      "status": "已确认",
+      "folder": "058-60-花语酥心",
+      "wems": [
+        {
+          "id": "306672272",
+          "files": {
+            "wem": "058-60-花语酥心/wem/306672272.wem",
+            "ogg": "058-60-花语酥心/sound/306672272.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28658:buff",
+      "name": "61. 蝶弄足",
+      "status": "已确认",
+      "folder": "059-61-蝶弄足",
+      "wems": [
+        {
+          "id": "712132253",
+          "files": {
+            "wem": "059-61-蝶弄足/wem/712132253.wem",
+            "ogg": "059-61-蝶弄足/sound/712132253.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:64992:skill",
+      "name": "62. 长针",
+      "status": "已确认",
+      "folder": "060-62-长针",
+      "wems": [
+        {
+          "id": "49267699",
+          "files": {
+            "wem": "060-62-长针/wem/49267699.wem",
+            "ogg": "060-62-长针/sound/49267699.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "342270609",
+          "files": {
+            "wem": "060-62-长针/wem/342270609.wem",
+            "ogg": "060-62-长针/sound/342270609.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65107:skill",
+      "name": "63. 星楼月影",
+      "status": "已确认",
+      "folder": "061-63-星楼月影",
+      "wems": [
+        {
+          "id": "315572417",
+          "files": {
+            "wem": "061-63-星楼月影/wem/315572417.wem",
+            "ogg": "061-63-星楼月影/sound/315572417.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28687:buff",
+      "name": "64. 锻骨诀",
+      "status": "已确认",
+      "folder": "062-64-锻骨诀",
+      "wems": [
+        {
+          "id": "541556101",
+          "files": {
+            "wem": "062-64-锻骨诀/wem/541556101.wem",
+            "ogg": "062-64-锻骨诀/sound/541556101.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65154:skill",
+      "name": "65. 坐忘无我",
+      "status": "已确认",
+      "folder": "063-65-坐忘无我",
+      "wems": [
+        {
+          "id": "209352714",
+          "files": {
+            "wem": "063-65-坐忘无我/wem/209352714.wem",
+            "ogg": "063-65-坐忘无我/sound/209352714.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28623:buff",
+      "name": "66. 蛊虫献祭",
+      "status": "已确认",
+      "folder": "064-66-蛊虫献祭",
+      "wems": [
+        {
+          "id": "410215945",
+          "files": {
+            "wem": "064-66-蛊虫献祭/wem/410215945.wem",
+            "ogg": "064-66-蛊虫献祭/sound/410215945.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28565:buff",
+      "name": "67. 化血镖",
+      "status": "已确认",
+      "folder": "065-67-化血镖",
+      "wems": [
+        {
+          "id": "559920750",
+          "files": {
+            "wem": "065-67-化血镖/wem/559920750.wem",
+            "ogg": "065-67-化血镖/sound/559920750.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65105:skill",
+      "name": "68. 春泥护花",
+      "status": "已确认",
+      "folder": "066-68-春泥护花",
+      "wems": [
+        {
+          "id": "70432965",
+          "files": {
+            "wem": "066-68-春泥护花/wem/70432965.wem",
+            "ogg": "066-68-春泥护花/sound/70432965.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65092:skill",
+      "name": "69. 圣明佑",
+      "status": "已确认",
+      "folder": "067-69-圣明佑",
+      "wems": [
+        {
+          "id": "75054615",
+          "files": {
+            "wem": "067-69-圣明佑/wem/75054615.wem",
+            "ogg": "067-69-圣明佑/sound/75054615.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28668:buff",
+      "name": "70. 烟雨行",
+      "status": "已确认",
+      "folder": "068-70-烟雨行",
+      "wems": [
+        {
+          "id": "241742548",
+          "files": {
+            "wem": "068-70-烟雨行/wem/241742548.wem",
+            "ogg": "068-70-烟雨行/sound/241742548.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28629:buff",
+      "name": "71. 太阴指",
+      "status": "已确认",
+      "folder": "069-71-太阴指",
+      "wems": [
+        {
+          "id": "293470965",
+          "files": {
+            "wem": "069-71-太阴指/wem/293470965.wem",
+            "ogg": "069-71-太阴指/sound/293470965.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65061:skill",
+      "name": "72. 万剑归宗",
+      "status": "已确认",
+      "folder": "070-72-万剑归宗",
+      "wems": [
+        {
+          "id": "450639193",
+          "files": {
+            "wem": "070-72-万剑归宗/wem/450639193.wem",
+            "ogg": "070-72-万剑归宗/sound/450639193.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28680:buff",
+      "name": "73. 孤风飒踏",
+      "status": "已确认",
+      "folder": "071-73-孤风飒踏",
+      "wems": [
+        {
+          "id": "62588785",
+          "files": {
+            "wem": "071-73-孤风飒踏/wem/62588785.wem",
+            "ogg": "071-73-孤风飒踏/sound/62588785.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28672:buff",
+      "name": "74. 撼地",
+      "status": "已确认",
+      "folder": "072-74-撼地",
+      "wems": [
+        {
+          "id": "367701865",
+          "files": {
+            "wem": "072-74-撼地/wem/367701865.wem",
+            "ogg": "072-74-撼地/sound/367701865.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28651:buff",
+      "name": "75. 九转归一",
+      "status": "已确认",
+      "folder": "073-75-九转归一",
+      "wems": [
+        {
+          "id": "235665690",
+          "files": {
+            "wem": "073-75-九转归一/wem/235665690.wem",
+            "ogg": "073-75-九转归一/sound/235665690.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28679:buff",
+      "name": "76. 跃潮斩波",
+      "status": "已确认",
+      "folder": "074-76-跃潮斩波",
+      "wems": [
+        {
+          "id": "897349988",
+          "files": {
+            "wem": "074-76-跃潮斩波/wem/897349988.wem",
+            "ogg": "074-76-跃潮斩波/sound/897349988.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65060:skill",
+      "name": "77. 无我无剑",
+      "status": "已确认",
+      "folder": "075-77-无我无剑",
+      "wems": [
+        {
+          "id": "431950557",
+          "files": {
+            "wem": "075-77-无我无剑/wem/431950557.wem",
+            "ogg": "075-77-无我无剑/sound/431950557.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65075:skill",
+      "name": "78. 听雷",
+      "status": "已确认",
+      "folder": "076-78-听雷",
+      "wems": [
+        {
+          "id": "223855778",
+          "files": {
+            "wem": "076-78-听雷/wem/223855778.wem",
+            "ogg": "076-78-听雷/sound/223855778.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:29020:buff",
+      "name": "79. 绛唇珠袖",
+      "status": "已确认",
+      "folder": "077-79-绛唇珠袖",
+      "wems": [
+        {
+          "id": "258176149",
+          "files": {
+            "wem": "077-79-绛唇珠袖/wem/258176149.wem",
+            "ogg": "077-79-绛唇珠袖/sound/258176149.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28578:buff",
+      "name": "80. 鹤归孤山",
+      "status": "已确认",
+      "folder": "078-80-鹤归孤山",
+      "wems": [
+        {
+          "id": "426736700",
+          "files": {
+            "wem": "078-80-鹤归孤山/wem/426736700.wem",
+            "ogg": "078-80-鹤归孤山/sound/426736700.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65160:skill",
+      "name": "81. 天地低昂",
+      "status": "已确认",
+      "folder": "079-81-天地低昂",
+      "wems": [
+        {
+          "id": "676715470",
+          "files": {
+            "wem": "079-81-天地低昂/wem/676715470.wem",
+            "ogg": "079-81-天地低昂/sound/676715470.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28617:buff",
+      "name": "82. 剑转流云",
+      "status": "已确认",
+      "folder": "080-82-剑转流云",
+      "wems": [
+        {
+          "id": "80988625",
+          "files": {
+            "wem": "080-82-剑转流云/wem/80988625.wem",
+            "ogg": "080-82-剑转流云/sound/80988625.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65087:skill",
+      "name": "83. 净世破魔击",
+      "status": "已确认",
+      "folder": "081-83-净世破魔击",
+      "wems": [
+        {
+          "id": "916670015",
+          "files": {
+            "wem": "081-83-净世破魔击/wem/916670015.wem",
+            "ogg": "081-83-净世破魔击/sound/916670015.ogg"
+          },
+          "source": {
+            "wem": "local-index",
+            "ogg": "local-cache"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:64995:skill",
+      "name": "84. 兰摧玉折",
+      "status": "已确认",
+      "folder": "082-84-兰摧玉折",
+      "wems": [
+        {
+          "id": "415407904",
+          "files": {
+            "wem": "082-84-兰摧玉折/wem/415407904.wem",
+            "ogg": "082-84-兰摧玉折/sound/415407904.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "7390771",
+          "files": {
+            "wem": "082-84-兰摧玉折/wem/7390771.wem",
+            "ogg": "082-84-兰摧玉折/sound/7390771.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:51280:buff",
+      "name": "85. 商阳指",
+      "status": "已确认",
+      "folder": "083-85-商阳指",
+      "wems": [
+        {
+          "id": "657996750",
+          "files": {
+            "wem": "083-85-商阳指/wem/657996750.wem",
+            "ogg": "083-85-商阳指/sound/657996750.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:64994:skill",
+      "name": "86. 钟林毓秀",
+      "status": "已确认",
+      "folder": "084-86-钟林毓秀",
+      "wems": [
+        {
+          "id": "68381228",
+          "files": {
+            "wem": "084-86-钟林毓秀/wem/68381228.wem",
+            "ogg": "084-86-钟林毓秀/sound/68381228.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65046:skill",
+      "name": "87. 蛇影",
+      "status": "已确认",
+      "folder": "085-87-蛇影",
+      "wems": [
+        {
+          "id": "384712708",
+          "files": {
+            "wem": "085-87-蛇影/wem/384712708.wem",
+            "ogg": "085-87-蛇影/sound/384712708.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65058:skill",
+      "name": "88. 玉石俱焚",
+      "status": "已确认",
+      "folder": "086-88-玉石俱焚",
+      "wems": [
+        {
+          "id": "149060746",
+          "files": {
+            "wem": "086-88-玉石俱焚/wem/149060746.wem",
+            "ogg": "086-88-玉石俱焚/sound/149060746.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65109:skill",
+      "name": "89. 芙蓉并蒂",
+      "status": "已确认",
+      "folder": "087-89-芙蓉并蒂",
+      "wems": [
+        {
+          "id": "907403389",
+          "files": {
+            "wem": "087-89-芙蓉并蒂/wem/907403389.wem",
+            "ogg": "087-89-芙蓉并蒂/sound/907403389.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65156:skill",
+      "name": "90. 雷霆震怒",
+      "status": "已确认",
+      "folder": "088-90-雷霆震怒",
+      "wems": [
+        {
+          "id": "531511511",
+          "files": {
+            "wem": "088-90-雷霆震怒/wem/531511511.wem",
+            "ogg": "088-90-雷霆震怒/sound/531511511.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28575:buff",
+      "name": "91. 穿心弩",
+      "status": "已确认",
+      "folder": "089-91-穿心弩",
+      "wems": [
+        {
+          "id": "87135144",
+          "files": {
+            "wem": "089-91-穿心弩/wem/87135144.wem",
+            "ogg": "089-91-穿心弩/sound/87135144.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "934807344",
+          "files": {
+            "wem": "089-91-穿心弩/wem/934807344.wem",
+            "ogg": "089-91-穿心弩/sound/934807344.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65145:skill",
+      "name": "92. 三才化生",
+      "status": "已确认",
+      "folder": "090-92-三才化生",
+      "wems": [
+        {
+          "id": "793524874",
+          "files": {
+            "wem": "090-92-三才化生/wem/793524874.wem",
+            "ogg": "090-92-三才化生/sound/793524874.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65090:skill",
+      "name": "93. 银月斩",
+      "status": "已确认",
+      "folder": "091-93-银月斩",
+      "wems": [
+        {
+          "id": "339922410",
+          "files": {
+            "wem": "091-93-银月斩/wem/339922410.wem",
+            "ogg": "091-93-银月斩/sound/339922410.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65089:skill",
+      "name": "94. 烈日斩",
+      "status": "已确认",
+      "folder": "092-94-烈日斩",
+      "wems": [
+        {
+          "id": "173210721",
+          "files": {
+            "wem": "092-94-烈日斩/wem/173210721.wem",
+            "ogg": "092-94-烈日斩/sound/173210721.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:64898:skill",
+      "name": "95. 横扫六合",
+      "status": "已确认",
+      "folder": "093-95-横扫六合",
+      "wems": [
+        {
+          "id": "811042022",
+          "files": {
+            "wem": "093-95-横扫六合/wem/811042022.wem",
+            "ogg": "093-95-横扫六合/sound/811042022.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65146:skill",
+      "name": "96. 七星拱瑞",
+      "status": "已确认",
+      "folder": "094-96-七星拱瑞",
+      "wems": [
+        {
+          "id": "161436720",
+          "files": {
+            "wem": "094-96-七星拱瑞/wem/161436720.wem",
+            "ogg": "094-96-七星拱瑞/sound/161436720.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65250:skill",
+      "name": "97. 啸如虎",
+      "status": "已确认",
+      "folder": "095-97-啸如虎",
+      "wems": [
+        {
+          "id": "117804806",
+          "files": {
+            "wem": "095-97-啸如虎/wem/117804806.wem",
+            "ogg": "095-97-啸如虎/sound/117804806.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65022:skill",
+      "name": "98. 穿",
+      "status": "已确认",
+      "folder": "096-98-穿",
+      "wems": [
+        {
+          "id": "39771509",
+          "files": {
+            "wem": "096-98-穿/wem/39771509.wem",
+            "ogg": "096-98-穿/sound/39771509.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65101:skill",
+      "name": "99. 五蕴皆空",
+      "status": "已确认",
+      "folder": "097-99-五蕴皆空",
+      "wems": [
+        {
+          "id": "157383905",
+          "files": {
+            "wem": "097-99-五蕴皆空/wem/157383905.wem",
+            "ogg": "097-99-五蕴皆空/sound/157383905.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28695:buff",
+      "name": "100. 玄水蛊",
+      "status": "已确认",
+      "folder": "098-100-玄水蛊",
+      "wems": [
+        {
+          "id": "166118585",
+          "files": {
+            "wem": "098-100-玄水蛊/wem/166118585.wem",
+            "ogg": "098-100-玄水蛊/sound/166118585.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28690:buff",
+      "name": "101. 极乐引",
+      "status": "已确认",
+      "folder": "099-101-极乐引",
+      "wems": [
+        {
+          "id": "164321672",
+          "files": {
+            "wem": "099-101-极乐引/wem/164321672.wem",
+            "ogg": "099-101-极乐引/sound/164321672.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28615:buff",
+      "name": "102. 大道无术",
+      "status": "已确认",
+      "folder": "100-102-大道无术",
+      "wems": [
+        {
+          "id": "169319130",
+          "files": {
+            "wem": "100-102-大道无术/wem/169319130.wem",
+            "ogg": "100-102-大道无术/sound/169319130.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28597:buff",
+      "name": "103. 沧月",
+      "status": "已确认",
+      "folder": "101-103-沧月",
+      "wems": [
+        {
+          "id": "380559345",
+          "files": {
+            "wem": "101-103-沧月/wem/380559345.wem",
+            "ogg": "101-103-沧月/sound/380559345.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65096:skill",
+      "name": "104. 驱夜断愁",
+      "status": "已确认",
+      "folder": "102-104-驱夜断愁",
+      "wems": [
+        {
+          "id": "303951196",
+          "files": {
+            "wem": "102-104-驱夜断愁/wem/303951196.wem",
+            "ogg": "102-104-驱夜断愁/sound/303951196.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:28543:buff",
+      "name": "105. 捕风式",
+      "status": "已确认",
+      "folder": "103-105-捕风式",
+      "wems": [
+        {
+          "id": "418339926",
+          "files": {
+            "wem": "103-105-捕风式/wem/418339926.wem",
+            "ogg": "103-105-捕风式/sound/418339926.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65083:skill",
+      "name": "106. 幽月轮",
+      "status": "已确认",
+      "folder": "104-106-幽月轮",
+      "wems": [
+        {
+          "id": "293597586",
+          "files": {
+            "wem": "104-106-幽月轮/wem/293597586.wem",
+            "ogg": "104-106-幽月轮/sound/293597586.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28712:buff",
+      "name": "107. 徐如林",
+      "status": "已确认",
+      "folder": "105-107-徐如林",
+      "wems": [
+        {
+          "id": "307459863",
+          "files": {
+            "wem": "105-107-徐如林/wem/307459863.wem",
+            "ogg": "105-107-徐如林/sound/307459863.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65667:skill",
+      "name": "108. 亢龙有悔",
+      "status": "已确认",
+      "folder": "106-108-亢龙有悔",
+      "wems": [
+        {
+          "id": "600115287",
+          "files": {
+            "wem": "106-108-亢龙有悔/wem/600115287.wem",
+            "ogg": "106-108-亢龙有悔/sound/600115287.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:64900:skill",
+      "name": "109. 抱残式",
+      "status": "已确认",
+      "folder": "107-109-抱残式",
+      "wems": [
+        {
+          "id": "718779610",
+          "files": {
+            "wem": "107-109-抱残式/wem/718779610.wem",
+            "ogg": "107-109-抱残式/sound/718779610.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65024:skill",
+      "name": "110. 太极无极",
+      "status": "已确认",
+      "folder": "108-110-太极无极",
+      "wems": [
+        {
+          "id": "415238227",
+          "files": {
+            "wem": "108-110-太极无极/wem/415238227.wem",
+            "ogg": "108-110-太极无极/sound/415238227.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:64991:skill",
+      "name": "111. 拿云式",
+      "status": "已确认",
+      "folder": "109-111-拿云式",
+      "wems": [
+        {
+          "id": "270289801",
+          "files": {
+            "wem": "109-111-拿云式/wem/270289801.wem",
+            "ogg": "109-111-拿云式/sound/270289801.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28697:buff",
+      "name": "112. 龙啸九天",
+      "status": "已确认",
+      "folder": "110-112-龙啸九天",
+      "wems": [
+        {
+          "id": "206378928",
+          "files": {
+            "wem": "110-112-龙啸九天/wem/206378928.wem",
+            "ogg": "110-112-龙啸九天/sound/206378928.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28699:buff",
+      "name": "113. 驭羽骋风",
+      "status": "已确认",
+      "folder": "111-113-驭羽骋风",
+      "wems": [
+        {
+          "id": "226536459",
+          "files": {
+            "wem": "111-113-驭羽骋风/wem/226536459.wem",
+            "ogg": "111-113-驭羽骋风/sound/226536459.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28655:buff",
+      "name": "114. 梯云纵",
+      "status": "已确认",
+      "folder": "112-114-梯云纵",
+      "wems": [
+        {
+          "id": "440252102",
+          "files": {
+            "wem": "112-114-梯云纵/wem/440252102.wem",
+            "ogg": "112-114-梯云纵/sound/440252102.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28685:buff",
+      "name": "115. 凌然天风",
+      "status": "已确认",
+      "folder": "113-115-凌然天风",
+      "wems": [
+        {
+          "id": "198699810",
+          "files": {
+            "wem": "113-115-凌然天风/wem/198699810.wem",
+            "ogg": "113-115-凌然天风/sound/198699810.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28689:buff",
+      "name": "116. 惊鸿游龙",
+      "status": "已确认",
+      "folder": "114-116-惊鸿游龙",
+      "wems": [
+        {
+          "id": "398995430",
+          "files": {
+            "wem": "114-116-惊鸿游龙/wem/398995430.wem",
+            "ogg": "114-116-惊鸿游龙/sound/398995430.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65113:skill",
+      "name": "117. 傍花随柳",
+      "status": "已确认",
+      "folder": "115-117-傍花随柳",
+      "wems": [
+        {
+          "id": "7390771",
+          "files": {
+            "wem": "115-117-傍花随柳/wem/7390771.wem",
+            "ogg": "115-117-傍花随柳/sound/7390771.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65059:skill",
+      "name": "119. 两仪化形",
+      "status": "已确认",
+      "folder": "116-119-两仪化形",
+      "wems": [
+        {
+          "id": "252763356",
+          "files": {
+            "wem": "116-119-两仪化形/wem/252763356.wem",
+            "ogg": "116-119-两仪化形/sound/252763356.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65108:skill",
+      "name": "120. 少明指",
+      "status": "已确认",
+      "folder": "117-120-少明指",
+      "wems": [
+        {
+          "id": "54914815",
+          "files": {
+            "wem": "117-120-少明指/wem/54914815.wem",
+            "ogg": "117-120-少明指/sound/54914815.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28684:buff",
+      "name": "122. 临时飞爪",
+      "status": "已确认",
+      "folder": "118-122-临时飞爪",
+      "wems": [
+        {
+          "id": "62588785",
+          "files": {
+            "wem": "118-122-临时飞爪/wem/62588785.wem",
+            "ogg": "118-122-临时飞爪/sound/62588785.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65065:skill",
+      "name": "123. 剑主天地",
+      "status": "已确认",
+      "folder": "119-123-剑主天地",
+      "wems": [
+        {
+          "id": "370997661",
+          "files": {
+            "wem": "119-123-剑主天地/wem/370997661.wem",
+            "ogg": "119-123-剑主天地/sound/370997661.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:64996:skill",
+      "name": "124. 破风",
+      "status": "已确认",
+      "folder": "120-124-破风",
+      "wems": [
+        {
+          "id": "780764483",
+          "files": {
+            "wem": "120-124-破风/wem/780764483.wem",
+            "ogg": "120-124-破风/sound/780764483.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65127:skill",
+      "name": "125. 冲阴阳",
+      "status": "已确认",
+      "folder": "121-125-冲阴阳",
+      "wems": [
+        {
+          "id": "45472664",
+          "files": {
+            "wem": "123-127-生太极/wem/45472664.wem",
+            "ogg": "123-127-生太极/sound/45472664.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "34175499",
+          "files": {
+            "wem": "123-127-生太极/wem/34175499.wem",
+            "ogg": "123-127-生太极/sound/34175499.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65138:skill",
+      "name": "126. 凌太虚",
+      "status": "已确认",
+      "folder": "122-126-凌太虚",
+      "wems": [
+        {
+          "id": "45472664",
+          "files": {
+            "wem": "123-127-生太极/wem/45472664.wem",
+            "ogg": "123-127-生太极/sound/45472664.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "34175499",
+          "files": {
+            "wem": "123-127-生太极/wem/34175499.wem",
+            "ogg": "123-127-生太极/sound/34175499.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65142:skill",
+      "name": "127. 生太极",
+      "status": "已确认",
+      "folder": "123-127-生太极",
+      "wems": [
+        {
+          "id": "45472664",
+          "files": {
+            "wem": "123-127-生太极/wem/45472664.wem",
+            "ogg": "123-127-生太极/sound/45472664.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "34175499",
+          "files": {
+            "wem": "123-127-生太极/wem/34175499.wem",
+            "ogg": "123-127-生太极/sound/34175499.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65140:skill",
+      "name": "128. 吞日月",
+      "status": "已确认",
+      "folder": "124-128-吞日月",
+      "wems": [
+        {
+          "id": "45472664",
+          "files": {
+            "wem": "123-127-生太极/wem/45472664.wem",
+            "ogg": "123-127-生太极/sound/45472664.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "34175499",
+          "files": {
+            "wem": "123-127-生太极/wem/34175499.wem",
+            "ogg": "123-127-生太极/sound/34175499.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65150:skill",
+      "name": "129. 人剑合一",
+      "status": "已确认",
+      "folder": "125-129-人剑合一",
+      "wems": [
+        {
+          "id": "31836471",
+          "files": {
+            "wem": "125-129-人剑合一/wem/31836471.wem",
+            "ogg": "125-129-人剑合一/sound/31836471.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28641:buff",
+      "name": "130. 舍身诀",
+      "status": "已确认",
+      "folder": "126-130-舍身诀",
+      "wems": [
+        {
+          "id": "43553148",
+          "files": {
+            "wem": "126-130-舍身诀/wem/43553148.wem",
+            "ogg": "126-130-舍身诀/sound/43553148.ogg"
+          },
+          "source": {
+            "wem": "local-index",
+            "ogg": "local-cache"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65120:skill",
+      "name": "131. 渊",
+      "status": "已确认",
+      "folder": "127-131-渊",
+      "wems": [
+        {
+          "id": "234975435",
+          "files": {
+            "wem": "127-131-渊/wem/234975435.wem",
+            "ogg": "127-131-渊/sound/234975435.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28646:buff",
+      "name": "132. 听风吹雪",
+      "status": "已确认",
+      "folder": "128-132-听风吹雪",
+      "wems": [
+        {
+          "id": "77386871",
+          "files": {
+            "wem": "128-132-听风吹雪/wem/77386871.wem",
+            "ogg": "128-132-听风吹雪/sound/77386871.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65133:skill",
+      "name": "133. 碎星辰",
+      "status": "已确认",
+      "folder": "129-133-碎星辰",
+      "wems": [
+        {
+          "id": "45472664",
+          "files": {
+            "wem": "123-127-生太极/wem/45472664.wem",
+            "ogg": "123-127-生太极/sound/45472664.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "34175499",
+          "files": {
+            "wem": "123-127-生太极/wem/34175499.wem",
+            "ogg": "123-127-生太极/sound/34175499.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65136:skill",
+      "name": "134. 破苍穹",
+      "status": "已确认",
+      "folder": "130-134-破苍穹",
+      "wems": [
+        {
+          "id": "45472664",
+          "files": {
+            "wem": "123-127-生太极/wem/45472664.wem",
+            "ogg": "123-127-生太极/sound/45472664.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "34175499",
+          "files": {
+            "wem": "123-127-生太极/wem/34175499.wem",
+            "ogg": "123-127-生太极/sound/34175499.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65104:skill",
+      "name": "135. 无相诀",
+      "status": "已确认",
+      "folder": "131-135-无相诀",
+      "wems": [
+        {
+          "id": "130631848",
+          "files": {
+            "wem": "131-135-无相诀/wem/130631848.wem",
+            "ogg": "131-135-无相诀/sound/130631848.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28719:buff",
+      "name": "136. 应天授命",
+      "status": "已确认",
+      "folder": "132-136-应天授命",
+      "wems": [
+        {
+          "id": "534065765",
+          "files": {
+            "wem": "132-136-应天授命/wem/534065765.wem",
+            "ogg": "132-136-应天授命/sound/534065765.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28681:buff",
+      "name": "137. 斩无常",
+      "status": "已确认",
+      "folder": "133-137-斩无常",
+      "wems": [
+        {
+          "id": "746207134",
+          "files": {
+            "wem": "133-137-斩无常/wem/746207134.wem",
+            "ogg": "133-137-斩无常/sound/746207134.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:39483:skill",
+      "name": "138. 雾暗迷云",
+      "status": "已确认",
+      "folder": "134-138-雾暗迷云",
+      "wems": [
+        {
+          "id": "170046962",
+          "files": {
+            "wem": "134-138-雾暗迷云/wem/170046962.wem",
+            "ogg": "134-138-雾暗迷云/sound/170046962.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65038:skill",
+      "name": "139. 灭",
+      "status": "已确认",
+      "folder": "135-139-灭",
+      "wems": [
+        {
+          "id": "550005563",
+          "files": {
+            "wem": "135-139-灭/wem/550005563.wem",
+            "ogg": "135-139-灭/sound/550005563.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28673:buff",
+      "name": "140. 孤影化双",
+      "status": "已确认",
+      "folder": "136-140-孤影化双",
+      "wems": [
+        {
+          "id": "1058902080",
+          "files": {
+            "wem": "136-140-孤影化双/wem/1058902080.wem",
+            "ogg": "136-140-孤影化双/sound/1058902080.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28704:buff",
+      "name": "141. 逐云寒蕊",
+      "status": "已确认",
+      "folder": "137-141-逐云寒蕊",
+      "wems": [
+        {
+          "id": "631681103",
+          "files": {
+            "wem": "137-141-逐云寒蕊/wem/631681103.wem",
+            "ogg": "137-141-逐云寒蕊/sound/631681103.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28698:buff",
+      "name": "142. 疾电叱羽",
+      "status": "已确认",
+      "folder": "138-142-疾电叱羽",
+      "wems": [
+        {
+          "id": "377449004",
+          "files": {
+            "wem": "138-142-疾电叱羽/wem/377449004.wem",
+            "ogg": "138-142-疾电叱羽/sound/377449004.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28718:buff",
+      "name": "143. 乘黄之威",
+      "status": "已确认",
+      "folder": "139-143-乘黄之威",
+      "wems": [
+        {
+          "id": "382642492",
+          "files": {
+            "wem": "139-143-乘黄之威/wem/382642492.wem",
+            "ogg": "139-143-乘黄之威/sound/382642492.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "457495140",
+          "files": {
+            "wem": "139-143-乘黄之威/wem/457495140.wem",
+            "ogg": "139-143-乘黄之威/sound/457495140.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28700:buff",
+      "name": "144. 振翅图南",
+      "status": "已确认",
+      "folder": "140-144-振翅图南",
+      "wems": [
+        {
+          "id": "498850934",
+          "files": {
+            "wem": "140-144-振翅图南/wem/498850934.wem",
+            "ogg": "140-144-振翅图南/sound/498850934.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28701:buff",
+      "name": "145. 飞刃回转",
+      "status": "已确认",
+      "folder": "141-145-飞刃回转",
+      "wems": [
+        {
+          "id": "169644474",
+          "files": {
+            "wem": "141-145-飞刃回转/wem/169644474.wem",
+            "ogg": "141-145-飞刃回转/sound/169644474.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28696:buff",
+      "name": "146. 天绝地灭",
+      "status": "已确认",
+      "folder": "142-146-天绝地灭",
+      "wems": [
+        {
+          "id": "41362834",
+          "files": {
+            "wem": "142-146-天绝地灭/wem/41362834.wem",
+            "ogg": "142-146-天绝地灭/sound/41362834.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28717:buff",
+      "name": "147. 游风飘踪",
+      "status": "已确认",
+      "folder": "143-147-游风飘踪",
+      "wems": [
+        {
+          "id": "60595593",
+          "files": {
+            "wem": "143-147-游风飘踪/wem/60595593.wem",
+            "ogg": "143-147-游风飘踪/sound/60595593.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28715:buff",
+      "name": "148. 如意法",
+      "status": "已确认",
+      "folder": "144-148-如意法",
+      "wems": [
+        {
+          "id": "75054615",
+          "files": {
+            "wem": "144-148-如意法/wem/75054615.wem",
+            "ogg": "144-148-如意法/sound/75054615.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28682:buff",
+      "name": "149. 十方玄机",
+      "status": "已确认",
+      "folder": "145-149-十方玄机",
+      "wems": [
+        {
+          "id": "282683530",
+          "files": {
+            "wem": "145-149-十方玄机/wem/282683530.wem",
+            "ogg": "145-149-十方玄机/sound/282683530.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:29158:buff",
+      "name": "150. 蚀心蛊",
+      "status": "已确认",
+      "folder": "146-150-蚀心蛊",
+      "wems": [
+        {
+          "id": "672368473",
+          "files": {
+            "wem": "146-150-蚀心蛊/wem/672368473.wem",
+            "ogg": "146-150-蚀心蛊/sound/672368473.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28703:buff",
+      "name": "151. 鸿蒙天禁",
+      "status": "已确认",
+      "folder": "147-151-鸿蒙天禁",
+      "wems": [
+        {
+          "id": "676761128",
+          "files": {
+            "wem": "147-151-鸿蒙天禁/wem/676761128.wem",
+            "ogg": "147-151-鸿蒙天禁/sound/676761128.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28671:buff",
+      "name": "152. 盾立",
+      "status": "已确认",
+      "folder": "148-152-盾立",
+      "wems": [
+        {
+          "id": "916951452",
+          "files": {
+            "wem": "148-152-盾立/wem/916951452.wem",
+            "ogg": "148-152-盾立/sound/916951452.ogg"
+          },
+          "source": {
+            "wem": "local-index",
+            "ogg": "local-cache"
+          },
+          "errors": []
+        },
+        {
+          "id": "697798714",
+          "files": {
+            "wem": "148-152-盾立/wem/697798714.wem",
+            "ogg": "148-152-盾立/sound/697798714.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65049:skill",
+      "name": "153. 迷心蛊",
+      "status": "已确认",
+      "folder": "149-153-迷心蛊",
+      "wems": [
+        {
+          "id": "166118585",
+          "files": {
+            "wem": "149-153-迷心蛊/wem/166118585.wem",
+            "ogg": "149-153-迷心蛊/sound/166118585.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65050:skill",
+      "name": "154. 枯残蛊",
+      "status": "已确认",
+      "folder": "150-154-枯残蛊",
+      "wems": [
+        {
+          "id": "573915315",
+          "files": {
+            "wem": "150-154-枯残蛊/wem/573915315.wem",
+            "ogg": "150-154-枯残蛊/sound/573915315.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28676:buff",
+      "name": "155. 楚河汉界",
+      "status": "已确认",
+      "folder": "151-155-楚河汉界",
+      "wems": [
+        {
+          "id": "817911493",
+          "files": {
+            "wem": "151-155-楚河汉界/wem/817911493.wem",
+            "ogg": "151-155-楚河汉界/sound/817911493.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28705:buff",
+      "name": "156. 绿野蔓生",
+      "status": "已确认",
+      "folder": "152-156-绿野蔓生",
+      "wems": [
+        {
+          "id": "831605528",
+          "files": {
+            "wem": "152-156-绿野蔓生/wem/831605528.wem",
+            "ogg": "152-156-绿野蔓生/sound/831605528.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28714:buff",
+      "name": "157. 连环弩",
+      "status": "已确认",
+      "folder": "153-157-连环弩",
+      "wems": [
+        {
+          "id": "459546289",
+          "files": {
+            "wem": "153-157-连环弩/wem/459546289.wem",
+            "ogg": "153-157-连环弩/sound/459546289.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28678:buff",
+      "name": "158. 翔极碧落",
+      "status": "已确认",
+      "folder": "154-158-翔极碧落",
+      "wems": [
+        {
+          "id": "390961829",
+          "files": {
+            "wem": "154-158-翔极碧落/wem/390961829.wem",
+            "ogg": "154-158-翔极碧落/sound/390961829.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "绝境:65028:skill",
+      "name": "159. 剑飞惊天",
+      "status": "已确认",
+      "folder": "155-159-剑飞惊天",
+      "wems": [
+        {
+          "id": "294586550",
+          "files": {
+            "wem": "155-159-剑飞惊天/wem/294586550.wem",
+            "ogg": "155-159-剑飞惊天/sound/294586550.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28670:buff",
+      "name": "160. 怖畏暗刑",
+      "status": "已确认",
+      "folder": "156-160-怖畏暗刑",
+      "wems": [
+        {
+          "id": "695637316",
+          "files": {
+            "wem": "156-160-怖畏暗刑/wem/695637316.wem",
+            "ogg": "156-160-怖畏暗刑/sound/695637316.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28665:buff",
+      "name": "161. 霞流宝石",
+      "status": "已确认",
+      "folder": "157-161-霞流宝石",
+      "wems": [
+        {
+          "id": "389359519",
+          "files": {
+            "wem": "157-161-霞流宝石/wem/389359519.wem",
+            "ogg": "157-161-霞流宝石/sound/389359519.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28716:buff",
+      "name": "162. 洗兵雨",
+      "status": "已确认",
+      "folder": "158-162-洗兵雨",
+      "wems": [
+        {
+          "id": "836145145",
+          "files": {
+            "wem": "158-162-洗兵雨/wem/836145145.wem",
+            "ogg": "158-162-洗兵雨/sound/836145145.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "831397256",
+          "files": {
+            "wem": "158-162-洗兵雨/wem/831397256.wem",
+            "ogg": "158-162-洗兵雨/sound/831397256.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28643:buff",
+      "name": "163. 抢珠式",
+      "status": "已确认",
+      "folder": "159-163-抢珠式",
+      "wems": [
+        {
+          "id": "878465710",
+          "files": {
+            "wem": "159-163-抢珠式/wem/878465710.wem",
+            "ogg": "159-163-抢珠式/sound/878465710.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "伪传:28663:buff",
+      "name": "164. 九霄风雷",
+      "status": "已确认",
+      "folder": "160-164-九霄风雷",
+      "wems": [
+        {
+          "id": "217082779",
+          "files": {
+            "wem": "160-164-九霄风雷/wem/217082779.wem",
+            "ogg": "160-164-九霄风雷/sound/217082779.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "ZC:dong_zhu_ji_wei:unmatched",
+      "name": "165. 洞烛机微",
+      "status": "已确认",
+      "folder": "161-165-洞烛机微",
+      "wems": [
+        {
+          "id": "965802463",
+          "files": {
+            "wem": "161-165-洞烛机微/wem/965802463.wem",
+            "ogg": "161-165-洞烛机微/sound/965802463.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "ZC:hun_ya_nu_tao:unmatched",
+      "name": "166. 魂压怒涛",
+      "status": "已确认",
+      "folder": "162-166-魂压怒涛",
+      "wems": [
+        {
+          "id": "934807344",
+          "files": {
+            "wem": "162-166-魂压怒涛/wem/934807344.wem",
+            "ogg": "162-166-魂压怒涛/sound/934807344.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    },
+    {
+      "key": "ZC:zhen_xia_che:unmatched",
+      "name": "167. 真·下车",
+      "status": "已确认",
+      "folder": "163-167-真-下车",
+      "wems": [
+        {
+          "id": "830296830",
+          "files": {
+            "wem": "163-167-真-下车/wem/830296830.wem",
+            "ogg": "163-167-真-下车/sound/830296830.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        },
+        {
+          "id": "217082779",
+          "files": {
+            "wem": "163-167-真-下车/wem/217082779.wem",
+            "ogg": "163-167-真-下车/sound/217082779.ogg"
+          },
+          "source": {
+            "wem": "cdn",
+            "ogg": "cdn"
+          },
+          "errors": []
+        }
+      ]
+    }
+  ]
+}

@@ -19,6 +19,10 @@
   padding-bottom: 18px;
 }
 
+.soundReviewShell {
+  padding-bottom: 6px;
+}
+
 .topRow {
   display: flex;
   align-items: center;
@@ -410,6 +414,23 @@
 @media (max-width: 640px) {
   .page {
     padding: 18px 14px 30px;
+  }
+
+  .soundReviewShell {
+    padding-bottom: 2px;
+  }
+
+  .soundReviewShell .topRow {
+    margin-bottom: 8px;
+  }
+
+  .soundReviewShell .mainTabBar {
+    margin-top: 6px;
+  }
+
+  .soundReviewShell .mainTab {
+    padding: 8px 14px;
+    font-size: 13px;
   }
 
   .topRow {

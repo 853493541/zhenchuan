@@ -1,0 +1,32 @@
+{
+  "key": "伪传:28692:buff",
+  "name": "41. 心诤",
+  "status": "已确认",
+  "folder": "040-41-心诤",
+  "wems": [
+    {
+      "id": "337850833",
+      "files": {
+        "wem": "040-41-心诤/wem/337850833.wem",
+        "ogg": "040-41-心诤/sound/337850833.ogg"
+      },
+      "source": {
+        "wem": "cdn",
+        "ogg": "cdn"
+      },
+      "errors": []
+    },
+    {
+      "id": "205006700",
+      "files": {
+        "wem": "040-41-心诤/wem/205006700.wem",
+        "ogg": "040-41-心诤/sound/205006700.ogg"
+      },
+      "source": {
+        "wem": "cdn",
+        "ogg": "cdn"
+      },
+      "errors": []
+    }
+  ]
+}
