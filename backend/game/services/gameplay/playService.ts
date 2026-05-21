@@ -485,6 +485,13 @@ async function playCastAbility(
     const targetEntity = resolvedEntityTargetId
       ? (state.entities ?? []).find((entity: any) => entity.id === resolvedEntityTargetId) ?? null
       : null;
+    const groundOnlyOpponentCast =
+      ability.target === "OPPONENT" &&
+      (ability as any).allowGroundCastWithoutTarget === true &&
+      groundTarget !== undefined &&
+      !resolvedTargetUserId &&
+      !resolvedEntityTargetId;
+    const eventTargetUserId = targetEntity || groundOnlyOpponentCast ? undefined : target.userId;
 
     // Pure channels are driven by activeChannel in GameLoop and apply cooldown on completion.
     // applyBuffsOnComplete:true marks channel abilities whose buffs[] apply on finish, not on cast.
@@ -511,7 +518,7 @@ async function playCastAbility(
         abilityId,
         abilityName: ability.name,
         instanceId: played.instanceId,
-        targetUserId: targetEntity ? undefined : target.userId,
+        targetUserId: eventTargetUserId,
         entityTargetId: targetEntity?.id,
         startedAt: Date.now(),
         durationMs: getHasteAdjustedTimingMs(rawChannelDurationMs, ability as any),
@@ -565,11 +572,12 @@ async function playCastAbility(
         turn: state.turn,
         type: "PLAY_ABILITY",
         actorUserId: player.userId,
-        targetUserId: targetEntity ? undefined : target.userId,
+        targetUserId: eventTargetUserId,
         entityId: targetEntity?.id,
         entityName: targetEntity?.abilityName,
         abilityId,
         abilityName: ability.name,
+        abilityInstanceId: played.instanceId,
         channelPhase: player.activeChannel.forwardChannel === true ? "start" : undefined,
       });
 
@@ -658,7 +666,7 @@ async function playCastAbility(
         turn: state.turn,
         type: "PLAY_ABILITY",
         actorUserId: player.userId,
-        targetUserId: targetEntity ? undefined : target.userId,
+        targetUserId: eventTargetUserId,
         entityId: targetEntity?.id,
         entityName: targetEntity?.abilityName,
         abilityId,

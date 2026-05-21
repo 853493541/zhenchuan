@@ -42,6 +42,13 @@ export function applyAbility(
   const entityTarget = castContext?.entityTargetId
     ? (state.entities ?? []).find((entity) => entity.id === castContext.entityTargetId) ?? null
     : null;
+  const groundOnlyOpponentCast =
+    ability.target === "OPPONENT" &&
+    (ability as any).allowGroundCastWithoutTarget === true &&
+    castContext?.groundTarget !== undefined &&
+    !castContext?.targetUserId &&
+    !castContext?.entityTargetId;
+  const eventTargetUserId = entityTarget || groundOnlyOpponentCast ? undefined : target.userId;
 
   /**
    * ================= GCD SPEND =================
@@ -52,7 +59,7 @@ export function applyAbility(
     turn: state.turn,
     type: "PLAY_ABILITY",
     actorUserId: source.userId,
-    targetUserId: entityTarget ? undefined : target.userId,
+    targetUserId: eventTargetUserId,
     entityId: entityTarget?.id,
     entityName: entityTarget?.abilityName,
     abilityId: ability.id,
@@ -86,6 +93,15 @@ export function applyAbility(
     (castContext as any)?.disableDunLiReflect !== true;
 
   if (shouldReflectToCaster) {
+    pushEvent(state, {
+      turn: state.turn,
+      type: "ABILITY_SOUND",
+      actorUserId: target.userId,
+      targetUserId: source.userId,
+      abilityId: "dun_li",
+      abilityName: "盾立",
+      soundPhase: "counter",
+    } as any);
     applyAbility(
       state,
       ability,

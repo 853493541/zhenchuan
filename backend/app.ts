@@ -15,6 +15,9 @@ import { requireAuth } from "./middleware/requireAuth";
 import gameRoutes from "./game/routes/game.routes";
 
 const EXPORT_SCAN_DEPTH = 7;
+const FULL_EXPORT_SCAN_CACHE_TTL_MS = 30_000;
+const FULL_EXPORT_FILE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const FULL_EXPORT_LIST_CACHE_CONTROL = "no-cache";
 
 type FullExportPackage = {
    packageName: string;
@@ -23,6 +26,22 @@ type FullExportPackage = {
    stats: Record<string, unknown>;
    packageRoot: string;
 };
+
+type FullExportListItem = {
+   packageName: string;
+   name: string;
+   createdAt: number;
+   stats: Record<string, unknown>;
+};
+
+type FullExportIndexCache = {
+   expiresAt: number;
+   roots: string[];
+   exportsList: FullExportListItem[];
+   packageByName: Map<string, FullExportPackage>;
+};
+
+let fullExportIndexCache: FullExportIndexCache | null = null;
 
 function isDirectory(absPath: string): boolean {
    try {
@@ -160,7 +179,7 @@ function scanRootPackages(root: string): FullExportPackage[] {
    return out;
 }
 
-function listFullExports() {
+function buildFullExportIndexCache(): FullExportIndexCache {
    const roots = resolveExportRoots();
    const found = roots.flatMap((root) => scanRootPackages(root));
 
@@ -185,8 +204,28 @@ function listFullExports() {
       }));
 
    return {
-      exports: exportsList,
+      expiresAt: Date.now() + FULL_EXPORT_SCAN_CACHE_TTL_MS,
       roots,
+      exportsList,
+      packageByName: byName,
+   };
+}
+
+function getFullExportIndexCache(forceRefresh = false): FullExportIndexCache {
+   if (!forceRefresh && fullExportIndexCache && fullExportIndexCache.expiresAt > Date.now()) {
+      return fullExportIndexCache;
+   }
+
+   fullExportIndexCache = buildFullExportIndexCache();
+   return fullExportIndexCache;
+}
+
+function listFullExports() {
+   const cache = getFullExportIndexCache();
+
+   return {
+      exports: cache.exportsList,
+      roots: cache.roots,
    };
 }
 
@@ -205,16 +244,18 @@ function safePathUnder(root: string, relPath: string): string | null {
 }
 
 function resolvePackageByName(packageName: string): FullExportPackage | null {
-   const roots = resolveExportRoots();
-   const found = roots.flatMap((root) => scanRootPackages(root));
+   return getFullExportIndexCache().packageByName.get(packageName) ?? null;
+}
 
-   let latest: FullExportPackage | null = null;
-   for (const pkg of found) {
-      if (pkg.packageName !== packageName) continue;
-      if (!latest || pkg.createdAt > latest.createdAt) latest = pkg;
-   }
+function setFullExportListHeaders(res: express.Response) {
+   res.setHeader("Cache-Control", FULL_EXPORT_LIST_CACHE_CONTROL);
+   res.setHeader("Timing-Allow-Origin", "*");
+}
 
-   return latest;
+function setFullExportFileHeaders(res: express.Response) {
+   res.setHeader("Cache-Control", FULL_EXPORT_FILE_CACHE_CONTROL);
+   res.setHeader("Timing-Allow-Origin", "*");
+   res.setHeader("Vary", "Accept-Encoding");
 }
 
 
@@ -369,6 +410,7 @@ console.log("  ✓ GET /api/test-cors");
 
 app.get("/api/full-exports", (_req, res) => {
    try {
+      setFullExportListHeaders(res);
       res.json(listFullExports());
    } catch (err) {
       res.status(500).json({
@@ -389,6 +431,7 @@ const serveFullExports: express.RequestHandler = (req, res, next) => {
    const relPath = String(req.path || "/");
    if (relPath === "/list" || relPath === "/list/") {
       try {
+         setFullExportListHeaders(res);
          res.json(listFullExports());
       } catch (err) {
          res.status(500).json({
@@ -430,10 +473,22 @@ const serveFullExports: express.RequestHandler = (req, res, next) => {
       return;
    }
 
-   res.sendFile(abs);
+   setFullExportFileHeaders(res);
+   res.sendFile(abs, (err) => {
+      if (err) next(err);
+   });
 };
 
 app.use("/full-exports", serveFullExports);
+
+setTimeout(() => {
+   try {
+      const warmed = getFullExportIndexCache(true);
+      console.log(`✅ Full export index warmed: ${warmed.exportsList.length} packages, ${warmed.roots.length} roots`);
+   } catch (err) {
+      console.warn("⚠️ Full export index warmup failed:", err instanceof Error ? err.message : String(err));
+   }
+}, 0);
 
 console.log("  ✓ GET|HEAD /full-exports/list");
 console.log("  ✓ GET|HEAD /full-exports/<package>/<file>");

@@ -348,6 +348,7 @@ const RU_YI_ATTACK_TRIGGER_EXCLUDED_EFFECT_TYPES = new Set([
   "PERIODIC_DAMAGE",
   "TIMED_AOE_DAMAGE",
   "TIMED_SELF_DAMAGE",
+  "TIMED_SOURCE_CENTER_AOE_DAMAGE",
   "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
 ]);
 
@@ -650,6 +651,7 @@ function isDunyingCompanion(buff: { buffId: number; name?: string; sourceAbility
   return buff.buffId === 1021;
 }
 
+const SANLIU_XIA_BUFF_ID = 1007;
 const FORWARD_CHANNEL_RESOLUTION_STEALTH_BREAK_BUFF_IDS = new Set([1011, 1012, 1013, YUE_YING_SHA_BUFF_ID]);
 
 function isHostileForwardChannelResolution(params: {
@@ -684,6 +686,42 @@ function breakStealthOnForwardChannelResolution(params: {
       continue;
     }
     removedBuffs.push(buff);
+  }
+
+  if (removedBuffs.length === 0) return false;
+
+  player.buffs = remainingBuffs;
+  for (const buff of removedBuffs) {
+    removeLinkedShield(player as any, buff as any);
+    pushBuffExpired(state, {
+      targetUserId: player.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+      sourceUserId: buff.sourceUserId,
+    });
+  }
+  return true;
+}
+
+function breakSanliuXiaOnSuccessfulChannelComplete(params: {
+  state: GameState;
+  player: { userId: string; buffs: any[] };
+}) {
+  const { state, player } = params;
+  if (!Array.isArray(player.buffs) || player.buffs.length === 0) return false;
+
+  const removedBuffs: any[] = [];
+  const remainingBuffs: any[] = [];
+
+  for (const buff of player.buffs) {
+    if (buff.buffId === SANLIU_XIA_BUFF_ID) {
+      removedBuffs.push(buff);
+    } else {
+      remainingBuffs.push(buff);
+    }
   }
 
   if (removedBuffs.length === 0) return false;
@@ -1387,6 +1425,17 @@ export class GameLoop {
         const newFy = -oldFy;
         player.facing = { x: newFx, y: newFy };
         const chwAbility = ABILITIES["cheng_huang_zhi_wei"] as any;
+        this.state.events.push({
+          id: randomUUID(),
+          timestamp: Date.now(),
+          turn: this.state.turn,
+          type: "ABILITY_SOUND",
+          actorUserId: player.userId,
+          targetUserId: player.userId,
+          abilityId: "cheng_huang_zhi_wei",
+          abilityName: chwAbility?.name ?? "乘黄之威",
+          soundPhase: "dashComplete",
+        } as any);
         const coneRadiusWorld = gameplayUnitsToWorldUnits(6, this.state.unitScale);
         const halfAngleCos = Math.cos((120 / 2) * Math.PI / 180); // cos(60°) = 0.5
         for (const enemyP of this.state.players) {
@@ -1523,7 +1572,7 @@ export class GameLoop {
               durationMs: 5_000,
               periodicMs: 1_000,
               periodicStartImmediate: false,
-              breakOnPlay: false,
+              breakOnPlay: true,
               description: "不可选中，移动速度提高20%，首秒无治疗，随后每秒回复2%最大气血",
               effects: [
                 { type: "UNTARGETABLE" },
@@ -1581,14 +1630,28 @@ export class GameLoop {
       if (dashAbilityIdBefore === "yue_chao_zhan_bo" && !player.activeDash) {
         const yczbAbility = ABILITIES["yue_chao_zhan_bo"] as any;
         if (yczbAbility) {
-          for (const opp of getMiYunAffectedHostileTargets({
+          const hitTargets = getMiYunAffectedHostileTargets({
             state: this.state,
             source: player as any,
             sourceUserId: player.userId,
             center: player.position,
             storedUnitScale,
             rangeUnits: 8,
-          })) {
+          });
+          if (hitTargets.length > 0) {
+            this.state.events.push({
+              id: randomUUID(),
+              timestamp: Date.now(),
+              turn: this.state.turn,
+              type: "ABILITY_SOUND",
+              actorUserId: player.userId,
+              targetUserId: player.userId,
+              abilityId: "yue_chao_zhan_bo",
+              abilityName: yczbAbility.name,
+              soundPhase: "dashComplete",
+            } as any);
+          }
+          for (const opp of hitTargets) {
             applyDamageToHostileTarget({
               state: this.state,
               source: player as any,
@@ -2659,6 +2722,11 @@ export class GameLoop {
             }
           }
 
+          breakSanliuXiaOnSuccessfulChannelComplete({
+            state: this.state,
+            player: player as any,
+          });
+
           const hostileForwardResolution = isHostileForwardChannelResolution({
             channel: ch,
             ability: channelAbility as any,
@@ -2677,6 +2745,7 @@ export class GameLoop {
               entityName: targetEntity?.abilityName,
               abilityId: ch.abilityId,
               abilityName: ch.abilityName,
+              abilityInstanceId: ch.instanceId,
               channelPhase: "complete",
             } as any);
             breakStealthOnForwardChannelResolution({
@@ -2684,6 +2753,21 @@ export class GameLoop {
               player: player as any,
             });
           }
+
+          this.state.events.push({
+            id: randomUUID(),
+            timestamp: chNow,
+            turn: this.state.turn,
+            type: "ABILITY_SOUND",
+            actorUserId: player.userId,
+            targetUserId: targetEntity ? undefined : targetPlayer?.userId,
+            entityId: targetEntity?.id,
+            entityName: targetEntity?.abilityName,
+            abilityId: ch.abilityId,
+            abilityName: ch.abilityName,
+            abilityInstanceId: ch.instanceId,
+            channelPhase: "complete",
+          } as any);
 
           cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
@@ -3154,6 +3238,7 @@ export class GameLoop {
             if (
               e.type !== "TIMED_AOE_DAMAGE" &&
               e.type !== "TIMED_SELF_DAMAGE" &&
+              e.type !== "TIMED_SOURCE_CENTER_AOE_DAMAGE" &&
               e.type !== "TIMED_GUAN_TI_HEAL" &&
               e.type !== "PLACE_GROUND_ZONE"
             ) continue;
@@ -3219,6 +3304,76 @@ export class GameLoop {
                 abilityName: buff.sourceAbilityName ?? buff.name,
                 maxTargets: e.maxTargets,
               } as GroundZone);
+              buffsChanged = true;
+              continue;
+            }
+
+            if (e.type === "TIMED_SOURCE_CENTER_AOE_DAMAGE") {
+              const sourcePlayer = this.state.players.find((p) => p.userId === (buff as any).sourceUserId);
+              if (!sourcePlayer) {
+                buffsChanged = true;
+                continue;
+              }
+
+              const triggeredAbility = ABILITIES[buff.sourceAbilityId ?? ""] as any;
+              const center = player.position;
+              const radiusUnits = e.range ?? 6;
+              const radiusWorld = gameplayUnitsToWorldUnits(radiusUnits, storedUnitScale);
+
+              if (!this.state.groundZones) this.state.groundZones = [];
+              this.state.groundZones.push({
+                id: randomUUID(),
+                ownerUserId: sourcePlayer.userId,
+                x: center.x,
+                y: center.y,
+                z: center.z ?? 0,
+                height: gameplayUnitsToWorldUnits(10, storedUnitScale),
+                radius: radiusWorld,
+                expiresAt: now + 1_000,
+                damagePerInterval: 0,
+                intervalMs: 1_000,
+                lastTickAt: now,
+                abilityId: "baizu_marker",
+                abilityName: buff.sourceAbilityName ?? buff.name,
+                maxTargets: 0,
+              });
+
+              this.state.events.push({
+                id: randomUUID(),
+                timestamp: now,
+                turn: this.state.turn,
+                type: "ABILITY_SOUND",
+                actorUserId: sourcePlayer.userId,
+                targetUserId: player.userId,
+                abilityId: buff.sourceAbilityId,
+                abilityName: buff.sourceAbilityName ?? buff.name,
+                soundPhase: "followUp",
+                x: center.x,
+                y: center.y,
+                z: center.z,
+              } as any);
+
+              for (const target of getMiYunAffectedHostileTargets({
+                state: this.state,
+                source: sourcePlayer as any,
+                sourceUserId: sourcePlayer.userId,
+                center,
+                storedUnitScale,
+                rangeUnits: radiusUnits,
+              })) {
+                applyDamageToHostileTarget({
+                  state: this.state,
+                  source: sourcePlayer as any,
+                  target,
+                  baseDamage: e.value ?? 0,
+                  abilityId: buff.sourceAbilityId,
+                  abilityName: buff.sourceAbilityName ?? buff.name,
+                  effectType: "TIMED_SOURCE_CENTER_AOE_DAMAGE",
+                  damageType: triggeredAbility?.damageType,
+                  timestamp: now,
+                });
+              }
+
               buffsChanged = true;
               continue;
             }
@@ -3426,6 +3581,26 @@ export class GameLoop {
       }
       if (naturallyExpired.some((b) => isDisguiseBuff(b as any))) {
         buffsChanged = clearTargetSelectionsTargetingPlayer(this.state, player.userId) || buffsChanged;
+      }
+      for (const expired of naturallyExpired) {
+        const sourceAbility = expired.sourceAbilityId ? ABILITIES[expired.sourceAbilityId] as any : null;
+        if (
+          sourceAbility?.type === "CHANNEL" &&
+          sourceAbility?.channel?.source === "BUFF" &&
+          sourceAbility.channel.buffId === expired.buffId
+        ) {
+          this.state.events.push({
+            id: randomUUID(),
+            timestamp: now,
+            turn: this.state.turn,
+            type: "ABILITY_SOUND",
+            actorUserId: expired.sourceUserId ?? player.userId,
+            targetUserId: player.userId,
+            abilityId: expired.sourceAbilityId,
+            abilityName: expired.sourceAbilityName,
+            channelPhase: "complete",
+          } as any);
+        }
       }
       player.buffs = player.buffs.filter((b) => now < b.expiresAt);
       for (const expired of naturallyExpired) {

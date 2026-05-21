@@ -32,7 +32,7 @@ export function applyAbilityBuffs(params: {
 }) {
   const { state, ability, source, target, entityTarget, abilityDodged, forceEnemyApplied } = params;
 
-  // 百足/五方行尽/棒打狗头/大狮子吼 buff application is handled via custom immediate effect logic.
+  // 百足/五方行尽/棒打狗头/大狮子吼/霞流宝石 buff application is handled via custom immediate effect logic.
   // 撼地 stun is applied by the post-dash GameLoop handler (only when enemy is within AOE range on landing).
   // 九转归一 buffs are applied manually in immediateEffects (KNOCKED_BACK) and GameLoop (羽化 wall stun).
   // 鹤归孤山 stun is applied by the post-dash GameLoop handler; only its own buffs[0] stun is excluded.
@@ -48,6 +48,7 @@ export function applyAbilityBuffs(params: {
   // 破风: buffs 2615/2616 applied in PO_FENG_STRIKE handler (conditional extra bleed stack).
   if (
     ability.id === "baizu" ||
+    ability.id === "xia_liu_bao_shi" ||
     ability.id === "han_di" ||
     ability.id === "jiu_zhuan_gui_yi" ||
     ability.id === "he_gui_gu_shan" ||
@@ -87,6 +88,7 @@ export function applyAbilityBuffs(params: {
     (Array.isArray(ability.effects) &&
       ability.effects.some((e: any) =>
         e.type === "AOE_APPLY_BUFFS" ||
+        e.type === "XIA_LIU_BAO_SHI_AOE" ||
         e.type === "WUFANG_XINGJIN_AOE" ||
         e.type === "BANG_DA_GOU_TOU"
       ))

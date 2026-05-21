@@ -8,11 +8,11 @@
 2. **Always build and restart after changes.**  
    - Backend: `cd /home/ubuntu/zhenchuan/backend && npm run build`  
    - Frontend: `cd /home/ubuntu/zhenchuan/frontend && npm run build`  
-   - Restart: `pm2 restart all` (from `/home/ubuntu/zhenchuan`)  
+   - Restart only this project’s PM2 apps: `pm2 restart frontend backend` (from `/home/ubuntu/zhenchuan`). Do **not** use `pm2 restart all` for Zhenchuan checks, and do **not** restart, stop, or kill `rencipe-*` processes unless the user explicitly asks.  
    - At the end of **each numbered round / point**, run both builds again to check for errors before replying.  
    - PM2 must be restarted only after the newest successful build, and the reply must confirm PM2 is running that newest build with no reported startup errors.  
-   - If port `3000` or `5000` is in use when PM2 starts or restarts, kill the occupying process (`lsof -ti:PORT | xargs kill -9`) and start PM2 again.  
-   - If a different required port is in use: kill the occupying process (`lsof -ti:PORT | xargs kill -9`), *then* do `pm2 restart all`.  
+   - If port `3000` or `5000` is in use when PM2 starts or restarts, kill the occupying process (`lsof -ti:PORT | xargs kill -9`) and restart only `frontend backend` again.  
+   - Ignore unrelated `rencipe-*` PM2 processes and their ports during Zhenchuan verification unless the user explicitly scopes the task to them.  
    - Never skip the build step — ts-node compiles at startup only.
 
 3. **Record experiences.** Every problem solved, unresolved issue, or disproved approach must be written to:  
@@ -74,3 +74,10 @@
 - Always set `Host` header in nginx proxies.  
 - WebSocket proxy needs `http/1.1 + Upgrade` headers.  
 - Mongoose Mixed fields: reassign array elements with spread `{...obj, prop: newVal}` and call `markModified()` before `save()`.
+
+## Live Playwright Verification
+
+- All Playwright/browser verification for this project must run against `https://zhenchuan.renstoolbox.com/` unless the user explicitly asks for a localhost-only check.
+- For auth-protected frontend verification, follow `frontend/tests/SOUND_REVIEW_LIVE_TESTING.md`.
+- Run the live Playwright check against `https://zhenchuan.renstoolbox.com`, not just localhost, whenever you need to verify the sound review UI or similar protected editor flows.
+- Use the designated `catcake` live test username with credentials supplied through local environment variables or the active browser session at runtime; never hardcode the password in repo files or instructions.

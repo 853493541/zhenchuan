@@ -13,7 +13,7 @@ import TargetEntityVisual from './TargetEntityVisual';
 import CameraRig from './CameraRig';
 import type { PickupItem, GroundZone, TargetEntity } from '../../../types';
 import { getMapForMode } from '../worldMap';
-import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF } from './ExportedMapScene';
+import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF, type SceneLoadTimingEvent } from './ExportedMapScene';
 import type { MapCollisionSystem } from './MapCollisionSystem';
 
 // Colors for up to 5 opponents (index 0 = primary, etc.)
@@ -181,7 +181,7 @@ interface ArenaSceneProps {
   selectedEntityId?: string | null;
   onSelectEntity?: (entityId: string) => void;
   myUserId?: string;
-  groundCastPreview?: { x: number; y: number; z?: number; radius: number; label?: string; isValid?: boolean } | null;
+  groundCastPreview?: { x: number; y: number; z?: number; radius: number; label?: string; isValid?: boolean; showPath?: boolean } | null;
   onGroundPointerMove?: (x: number, y: number, worldZ?: number, isHorizontal?: boolean) => void;
   onGroundPointerDown?: (x: number, y: number, worldZ?: number) => void;
   showCollisionShells?: boolean;
@@ -193,14 +193,14 @@ interface ArenaSceneProps {
     supportY: number | null;
   }>;
   onCollisionSystemReady?: (sys: MapCollisionSystem) => void;
-  /** When set, renders a red wireframe box at this AABB's world position for LOS debug. */
-  losBlocker?: string | null;
   /** Hides all visual mesh/terrain; shows only the collision shell wireframe on a black canvas. */
   blueprintMode?: boolean;
   /** Whether LOS to the selected target is currently blocked (for blueprint mode LOS line). */
   losIsBlocked?: boolean;
   /** Proof callback — called once on mount with actual Three.js runtime values */
   onEnvDebug?: (info: EnvDebugInfo) => void;
+  onSceneMetrics?: (metrics: SceneRuntimeMetrics) => void;
+  onSceneLoadTiming?: (event: SceneLoadTimingEvent) => void;
   envToggles?: EnvToggles;
   dirLightConfig?: DirLightConfig;
   /** Hides terrain / houses / world meshes while preserving self and HUD-facing overlays. */
@@ -220,6 +220,22 @@ export interface EnvDebugInfo {
   fog: string | null;
   hasSkyDome: boolean;
   shadowNormalBias: number;
+}
+
+export interface SceneRuntimeMetrics {
+  ts: number;
+  rootChildren: number;
+  objects: number;
+  meshes: number;
+  lights: number;
+  cameras: number;
+  geometries: number;
+  textures: number;
+  programs: number;
+  calls: number;
+  triangles: number;
+  lines: number;
+  points: number;
 }
 
 export interface EnvToggles {
@@ -414,6 +430,44 @@ function EnvProbe({ onEnvDebug }: { onEnvDebug: (info: EnvDebugInfo) => void }) 
   return null;
 }
 
+function SceneMetricsProbe({ onSceneMetrics }: { onSceneMetrics: (metrics: SceneRuntimeMetrics) => void }) {
+  const { scene, gl } = useThree();
+  useEffect(() => {
+    const collect = () => {
+      let objects = 0;
+      let meshes = 0;
+      let lights = 0;
+      let cameras = 0;
+      scene.traverse((object) => {
+        objects += 1;
+        const probe = object as any;
+        if (probe.isMesh) meshes += 1;
+        if (probe.isLight) lights += 1;
+        if (probe.isCamera) cameras += 1;
+      });
+      onSceneMetrics({
+        ts: Date.now(),
+        rootChildren: scene.children.length,
+        objects,
+        meshes,
+        lights,
+        cameras,
+        geometries: gl.info.memory.geometries ?? 0,
+        textures: gl.info.memory.textures ?? 0,
+        programs: gl.info.programs?.length ?? 0,
+        calls: gl.info.render.calls ?? 0,
+        triangles: gl.info.render.triangles ?? 0,
+        lines: gl.info.render.lines ?? 0,
+        points: gl.info.render.points ?? 0,
+      });
+    };
+    collect();
+    const id = window.setInterval(collect, 1000);
+    return () => window.clearInterval(id);
+  }, [gl, scene, onSceneMetrics]);
+  return null;
+}
+
 export default function ArenaScene({
   me,
   allOpponents,
@@ -455,10 +509,11 @@ export default function ArenaScene({
   collisionSystemRef,
   collisionDebugRef,
   onCollisionSystemReady,
-  losBlocker,
   blueprintMode = false,
   losIsBlocked = false,
   onEnvDebug,
+  onSceneMetrics,
+  onSceneLoadTiming,
   envToggles,
   dirLightConfig,
   blindWorldMode = false,
@@ -552,6 +607,7 @@ export default function ArenaScene({
   return (
     <>
       {/* Camera */}
+      {onSceneMetrics && <SceneMetricsProbe onSceneMetrics={onSceneMetrics} />}
       <CameraRig
         localRenderPosRef={localRenderPosRef}
         camYawRef={camYawRef}
@@ -628,6 +684,7 @@ export default function ArenaScene({
               blueprintMode={blueprintMode}
               hideVisuals={blindWorldMode}
               onCollisionSystemReady={onCollisionSystemReady}
+              onLoadTiming={onSceneLoadTiming}
               onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
               onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
             />
@@ -772,29 +829,54 @@ export default function ArenaScene({
       })}
 
       {groundCastPreview && (
-        <AoeZone
-          worldX={groundCastPreview.x}
-          worldY={groundCastPreview.y}
-          worldZ={
-            groundCastPreview.isValid === false
-              ? (groundCastPreview.z ?? 0)  // On a wall: use raw hit Z, no snap
-              : getZoneVisualZ(groundCastPreview.x, groundCastPreview.y, groundCastPreview.z ?? 0)
-          }
-          radius={groundCastPreview.radius}
-          color={
-            groundCastPreview.isValid === false ? '#ff3333'
-            : groundCastPreview.label === '百足' ? '#b06cff'
-            : '#ffd24a'
-          }
-          labelColor={
-            groundCastPreview.isValid === false ? '#ff8888'
-            : groundCastPreview.label === '百足' ? '#d8b6ff'
-            : '#ffe98a'
-          }
-          label={groundCastPreview.label ?? "预览"}
-          worldHalfX={worldHalfX}
-          worldHalfY={worldHalfY}
-        />
+        <>
+          {groundCastPreview.showPath && (
+            <Line
+              points={[
+                [
+                  localRenderPosRef.current.x - worldHalfX,
+                  (localRenderPosRef.current.z ?? 0) + 0.35,
+                  worldHalfY - localRenderPosRef.current.y,
+                ],
+                [
+                  groundCastPreview.x - worldHalfX,
+                  (groundCastPreview.isValid === false
+                    ? (groundCastPreview.z ?? 0)
+                    : getZoneVisualZ(groundCastPreview.x, groundCastPreview.y, groundCastPreview.z ?? 0)) + 0.35,
+                  worldHalfY - groundCastPreview.y,
+                ],
+              ]}
+              color={groundCastPreview.isValid === false ? '#ff3333' : '#ffd24a'}
+              lineWidth={3}
+              transparent
+              opacity={0.95}
+              depthTest={false}
+            />
+          )}
+          <AoeZone
+            worldX={groundCastPreview.x}
+            worldY={groundCastPreview.y}
+            worldZ={
+              groundCastPreview.isValid === false
+                ? (groundCastPreview.z ?? 0)  // On a wall: use raw hit Z, no snap
+                : getZoneVisualZ(groundCastPreview.x, groundCastPreview.y, groundCastPreview.z ?? 0)
+            }
+            radius={groundCastPreview.radius}
+            color={
+              groundCastPreview.isValid === false ? '#ff3333'
+              : groundCastPreview.label === '百足' ? '#b06cff'
+              : '#ffd24a'
+            }
+            labelColor={
+              groundCastPreview.isValid === false ? '#ff8888'
+              : groundCastPreview.label === '百足' ? '#d8b6ff'
+              : '#ffe98a'
+            }
+            label={groundCastPreview.label ?? "预览"}
+            worldHalfX={worldHalfX}
+            worldHalfY={worldHalfY}
+          />
+        </>
       )}
 
       {/* Local player AOE zone */}

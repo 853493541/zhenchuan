@@ -14,6 +14,30 @@ const nextConfig = {
 
   reactStrictMode: true,
 
+  async headers() {
+    const exportedMapAssetHeaders = [
+      {
+        key: 'Cache-Control',
+        value: 'public, max-age=31536000, immutable',
+      },
+      {
+        key: 'Timing-Allow-Origin',
+        value: '*',
+      },
+    ];
+
+    return [
+      {
+        source: '/full-exports/:package/map-data/:path*',
+        headers: exportedMapAssetHeaders,
+      },
+      {
+        source: '/game/exported-maps/:package/map-data/:path*',
+        headers: exportedMapAssetHeaders,
+      },
+    ];
+  },
+
   /**
    * ❗ DO NOT set `outputFileTracing: false`
    * This option DOES NOT EXIST in Next 15.

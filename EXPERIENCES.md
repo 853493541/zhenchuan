@@ -3,6 +3,378 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Exported map cache and warmup optimization (2026-05-21)
+
+**Problem set**:
+1. The load panel showed very slow exported-map resources, including small PNG/JSON files taking many seconds.
+2. `/full-exports/<package>/<file>` resolved packages by scanning export roots for every asset request, multiplying filesystem work across hundreds of map files.
+3. Exported-map assets were served without long-lived immutable cache headers, so repeat loads could still revalidate or redownload stable package files.
+4. The waiting room did not preload the in-game route or warm the browser cache for the official collision-test map before BattleArena mounted.
+5. After the optimization, the load report was useful enough to keep, but the `I` hotkey exposed it too prominently for normal play.
+
+**Fix**:
+- Added a short-lived backend full-export index cache and startup warmup so package lookup is reused across asset requests.
+- Added immutable cache headers and resource timing headers for exported-map package assets while keeping export list responses revalidatable.
+- Added a frontend exported-map warmup helper that fetches manifests, GLBs, textures, terrain files, and collision sidecars with bounded concurrency into the browser HTTP cache.
+- Started route prefetch and map warmup from the room page, and also triggers warmup from the in-game client once `collision-test` mode is known.
+- User reported total scene load improved to about 9 seconds after cache/warmup changes.
+- Removed the `I` hotkey toggle and moved the scene-load report behind ESC → 测试 → 开关 → 场景加载报告.
+
+**Lessons**:
+- Tiny map files taking many seconds can indicate server-side request overhead or queueing, not only bandwidth or asset size.
+- Package-named exports are good candidates for immutable browser caching; list/discovery endpoints should stay revalidatable.
+- Preloading should begin in the waiting room when possible, because warming the cache after the Three scene mounts competes with the real scene loader.
+- Keep deep diagnostics inside the testing panel once the issue is understood; normal hotkeys should stay reserved for gameplay/debug flows players deliberately need.
+
+**Future enhancement options, if load speed becomes a problem again**:
+- Add a service worker or Cache Storage prewarmer for exported-map assets so room warmup can persist and report progress more explicitly.
+- Generate an asset dependency manifest at export/build time so warmup does not need to derive GLB, texture, terrain, and sidecar URLs in the browser.
+- Precompute a collision world-triangle cache for the exact exported map to skip JSON parse/triangle transform work while keeping gameplay geometry unchanged.
+- Add nginx/CDN static serving for `/full-exports` with HTTP/2 or HTTP/3 tuning, Brotli for JSON, and OS file-cache warmup after deployment.
+- Use route-level code splitting to keep non-battle editor/test code out of the first in-game JS path.
+- If quality-preserving asset work is later allowed, test lossless PNG optimization before considering format changes.
+
+## Scene loading timeline report and loader parallelism (2026-05-21)
+
+**Problem set**:
+1. The `I` panel mixed scene loading with element counts, so it did not clearly show total scene load time or per-stage durations.
+2. The first implementation showed page runtime as a loading duration, making old sessions look like very slow scene loads.
+3. The exported map loader fetched unique GLBs, terrain heightmaps, and collision sidecars mostly in serial, which made scene loading vulnerable to long request chains.
+4. Live Playwright report capture was blocked because the browser redirected to `/login` and `ZHENCHUAN_TEST_PASSWORD` was not set in the runtime environment.
+
+**Fix**:
+- Changed the `I` panel to focus on `场景加载`: total scene time, stage durations, browser resource timing groups, slowest resources, and a `复制报告` button.
+- Added exported-map timing events for manifest, entity GLB/texture, terrain, collision sidecar, BVH, and total map stages.
+- Exposed the full report on `window.__zhenchuanLoadReport` for Playwright retrieval after authentication.
+- Parallelized GLB, terrain, and collision sidecar loading with bounded concurrency.
+
+**Lessons**:
+- Loading diagnostics should measure stage start/end times, not how long the page has been open.
+- Browser `PerformanceResourceTiming` is useful for reportable scene-load evidence because it identifies slow resource groups without adding custom network instrumentation.
+- Live Playwright checks that require authentication need runtime credentials or an already-authenticated shared browser page; do not route passwords through chat or logs.
+
+## Channel completion stealth and load diagnostics (2026-05-21)
+
+**Problem set**:
+1. 散流霞 correctly survived forward channel start, but a successful channel finish was still not treated as an action that breaks it.
+2. 任驰骋 needed to be castable while moving during the channel, but only if the caster starts on the ground.
+3. White-screen/crash investigation needed an in-game way to see scene loading stages and whether DOM or Three.js object counts are growing over time.
+
+**Fix**:
+- Added successful channel-completion removal for 散流霞 buff 1007 in the runtime loop, separate from cancel handling.
+- Marked 任驰骋 as `requiresGrounded: true` in canonical and legacy ability data without adding `requiresStanding`, so movement during the channel remains allowed.
+- Added an `I` hotkey load-performance panel showing in-progress scene stages, DOM element/canvas/SVG/image counts, JS heap when available, and Three.js object/geometry/texture/render counts with peak values.
+
+**Lessons**:
+- Channel start, channel cancel, and channel complete need separate buff-break semantics; preserving a buff at start does not imply preserving it at successful resolution.
+- Ground-only casting and movement-lock casting are separate constraints; use `requiresGrounded` for the initial floor check and leave `requiresStanding`/movement lock off when motion is allowed.
+- For intermittent white screens, collect both DOM counts and renderer-side object/memory counts so gradual growth is visible before the browser crashes.
+
+## Ground dash targeting and power lock warnings (2026-05-21)
+
+**Problem set**:
+1. 散流霞's runtime buff was created with `breakOnPlay: false`, so successful casts did not remove it.
+2. Ground dash skills could fall back to selected/opponent/facing targets or clamp to max range, causing the character to land somewhere other than the clicked point.
+3. Ground-only opponent-target casts emitted `PLAY_ABILITY` with the default enemy target from both `playService` and the inner `applyAbility` entry point, so combat status treated the cast as enemy contact.
+4. LOS failures showed both the battle warning and an old debug overlay.
+
+**Fix**:
+- Added 散流霞 buff 1007 to successful-cast break handling while preserving channel-start immunity.
+- Required explicit ground targets for 临时飞爪、撼地、孤风飒踏 and removed backend dash fallback/clamping for those exact-point casts.
+- Suppressed enemy `targetUserId` on both ground-only `PLAY_ABILITY` event emitters.
+- Added 封内/封外 effect types and mapped silence/disarm/inner/outer local/server cast failures to `经脉受损 无法运功`.
+- Replaced the legacy LOS overlay with the battle-warning path only, and added dash hover range filtering plus path-line preview.
+- Changed 散流霞 so forward channel start keeps it, but reverse channel start breaks it like a normal successful cast.
+
+**Lessons**:
+- For mouse-target mobility, backend validation and effect execution must both require the explicit ground point; UI-only checks are not enough.
+- Opponent-target abilities that are actually ground-only should not reuse fallback enemy targets in gameplay events, or secondary systems may infer combat contact.
+- Runtime-applied buffs need break metadata and central break rules aligned; otherwise editor/canonical defaults do not describe the live buff behavior.
+
+## Live ESC sound settings deployment verification (2026-05-21)
+
+**Problem set**:
+1. The local source enabled the ESC `声音设置` tile and moved ability sound controls into a dedicated page, but the live site still showed the tile disabled.
+2. Localhost/browser checks were insufficient because the user was seeing the deployed `https://zhenchuan.renstoolbox.com` build.
+3. The default terminal channel returned stale PM2-path text for unrelated commands, hiding whether builds and restarts actually ran.
+
+**Fix**:
+- Verified the authenticated live game with Playwright and confirmed the deployed `声音设置` button still had the `disabled` attribute.
+- Updated project instructions so all Zhenchuan Playwright/browser verification defaults to the live site and the `catcake` account while keeping credentials runtime-only.
+- Recovered command execution by starting a fresh async terminal and using that terminal ID for build/restart commands.
+
+**Lessons**:
+- For UI complaints seen on the production host, verify `https://zhenchuan.renstoolbox.com` first; a correct source tree does not prove PM2 is serving the newest build.
+- Never write plaintext credentials into repo instructions or logs; use runtime input, local environment variables, or an already-authenticated browser session.
+- If a persistent terminal returns stale output for every command, open a fresh async terminal and continue from the returned terminal ID.
+
+## ESC ability sound settings range and mute (2026-05-21)
+
+**Problem set**:
+1. The ESC panel ability-sound slider needed a clear 0-100% range, but earlier work temporarily raised it to 150%.
+2. The main ESC `声音设置` tile existed but was disabled, so sound controls were hidden inside the general game/interface settings page.
+3. The desired baseline changed to 80%, while preserving explicit stored user sound settings when present.
+4. iPad testing suggested audio may not unlock even though desktop playback works.
+
+**Fix**:
+- Enabled the ESC `声音设置` tile and moved ability sound controls into its own sound settings page.
+- Changed ability sound settings to version 4 with default `volumePercent: 80`; stored explicit values are preserved within the 0-100% range, while the previous auto-default 150% migrates down to 80%.
+- Kept the slider at 0-100% and renamed the checkbox to `关闭音效`.
+- Calibrated the playback multiplier so UI `80%` equals the old `50%` output level, and capped the ability sound player at 100%.
+- Added an iOS-friendly silent AudioContext warmup and broader touch/click unlock listeners for iPad playback.
+
+**Lessons**:
+- Sound setting ranges must be supported in the settings UI, the stored-value normalizer, and the final playback clamp; changing only one side creates a false control.
+- Version localStorage-backed settings when changing defaults so old saved defaults do not mask the new requested baseline.
+- On iOS Safari, `AudioContext.resume()` alone can be insufficient; starting a tiny silent source during the user gesture is a low-risk unlock warmup.
+
+## Browser-like 任驰骋 sound and self-AOE cast readiness (2026-05-20)
+
+**Problem set**:
+1. 任驰骋 still sounded wrong in battle because its channel-start cue either played at natural length and got cut by the 0.75s channel, or could inherit channel playback-rate adjustment that changed the sound character.
+2. Channel-start sounds could keep playing if the channel started and stopped before the frontend observed a stable `activeChannel` snapshot.
+3. Self-centered AOE abilities such as 大狮子吼 and 霞流宝石 could appear uncastable when a selected/fallback target was too far away because frontend readiness still ran opponent range checks for `target: "SELF"` abilities.
+
+**Fix**:
+- Routed 任驰骋 through a pitch-preserving media-element playback path, fitting the cue to 750ms while keeping browser pitch preservation enabled and volume normalization disabled.
+- Let the fitted 任驰骋 start cue finish naturally on normal channel completion, while still allowing cancellation cleanup when the channel ends early.
+- Added channel sound keys immediately when a channel-start cue plays, and included BUFF-backed channel keys in active channel cleanup so canceled channels stop their sound even if the active-channel state was short-lived.
+- Short-circuited BattleArena readiness checks for non-OPPONENT abilities before selected-target distance/facing/LOS checks.
+- Changed `离开战斗` to use the same in-game warning display path as `进入战斗`, instead of the app-level toast.
+
+**Lessons**:
+- WebAudio buffer playback changes pitch when speeding a clip up; use an `HTMLAudioElement` with `preservesPitch` routed through WebAudio when a short channel needs pitch-preserving compression.
+- Channel sound cleanup must track the started sound key as well as the currently visible channel state; otherwise very short-lived channels can miss the cleanup window.
+- A self-centered AOE's `range` is effect radius, not cast distance to the currently selected enemy.
+
+## Carrier-centered 百足 explosion and channel sound teardown (2026-05-20)
+
+**Problem set**:
+1. 百足's delayed ending was modeled as self-only extra damage, but desired gameplay is a second carrier-centered explosion that does not reapply the DOT.
+2. The 百足 follow-up explosion needed to replay the ability sound from the explosion location, not from the original caster.
+3. Reverse/active channel sounds could keep playing after the channel ended because the WebAudio source had no channel lifecycle key.
+4. 霞流宝石 needed to become a self-centered 6-unit AOE instead of requiring a target.
+
+**Fix**:
+- Added `TIMED_SOURCE_CENTER_AOE_DAMAGE` for 百足's delayed carrier-centered explosion, including the short ground marker and a positioned follow-up `ABILITY_SOUND` event.
+- Extended BattleArena sound events with optional `x/y/z` positions and a `followUp` sound phase so 百足 can replay the same cue at the final explosion point.
+- Added channel sound keys to `abilitySoundPlayer` and BattleArena cleanup so channel-start audio stops on completion, cancellation, or unmount.
+- Added `XIA_LIU_BAO_SHI_AOE` to damage, dispel listed BUFF attributes, and apply the disarm debuff to nearby enemies without selecting a target.
+- Synced stale legacy card data for 百足 and 大狮子吼 so older consumers match canonical ability behavior.
+
+**Lessons**:
+- Delayed AOE effects that belong to the original caster need to carry source ownership separately from the buff carrier's position.
+- Sound-only follow-up events need explicit world coordinates when the audible source is not the actor.
+- Long channel sounds should be stoppable by channel identity, not only by guessed duration.
+
+## Ability-level sound review decisions (2026-05-20)
+
+**Problem set**:
+1. Sound review decisions were still stored and shown per sound file, so multi-sound abilities could be split across columns.
+2. 任驰骋's channel-start sound had been pinned to 0.75s, but the desired behavior is natural full-length playback.
+
+**Fix**:
+- Changed the sound review board to store one decision per ability and show decision buttons in the ability header.
+- Left individual sound rows as playback/duration rows only.
+- Added a migration from old per-sound localStorage reviews to ability-level reviews.
+- Removed 任驰骋's `fitToDurationMs` cue so it plays at natural length.
+
+**Lessons**:
+- Review workflows should key state to the thing being approved; if the user approves abilities, per-file status creates confusing split decisions.
+- For distinctive ability audio, default to natural playback unless the user explicitly prioritizes exact duration.
+
+## Dash-complete sounds without audio speed-up (2026-05-20)
+
+**Problem set**:
+1. Speeding up distinctive ability sounds made them sound like different effects.
+2. 乘黄之威 needed its second sound at actual dash completion while the first sound stayed natural.
+3. 跃潮斩波 was audible twice because it still had cast playback in addition to impact playback.
+4. 任驰骋 needed a longer 0.75s base channel; its sound-length handling was later changed back to natural playback.
+
+**Fix**:
+- Added dash-complete `ABILITY_SOUND` events for 乘黄之威 and 跃潮斩波.
+- Reverted 乘黄之威 and 千蝶吐瑞 speed-up/fit behavior so their audio keeps its natural character.
+- Suppressed 跃潮斩波 cast and per-damage playback; it now plays one impact cue only when the dash lands on at least one target.
+- Updated 任驰骋 channel duration metadata to 750ms in abilities and cards; a 750ms sound fit was tried and later removed.
+
+**Lessons**:
+- Prefer gameplay-timed events over changing playback rate when a sound's identity depends on its original speed.
+- Impact sounds for area hits should be emitted once from the gameplay moment, not inferred from every damage event.
+
+## Targeted and exact-duration ability sounds (2026-05-20)
+
+**Problem set**:
+1. Some ability sounds should not fire at cast time; they belong to dash impact, channel completion, or buff application.
+2. 雾暗迷云 and 鸿蒙天禁 sounds should only be heard by the affected target, not by everyone near the caster.
+3. 笑醉狂 needed audio stretched to match its exact gameplay window; 乘黄之威 and 千蝶吐瑞 were later kept at natural speed after testing.
+4. 御骑's dismount toggle reused the cast event shape and accidentally triggered the mount channel sound.
+
+**Fix**:
+- Added target-only BUFF_APPLIED sound cues for 雾暗迷云 and 鸿蒙天禁, filtered on the frontend by local player id.
+- Moved 跃潮斩波 playback to a dash-impact event and 引窍 playback to channel completion.
+- Fit 笑醉狂 to 9s; 乘黄之威 and 千蝶吐瑞 speed-up was tried but reverted because it changed the sound identity.
+- Required 御骑 sound playback to come from a real channel-start event, so the mounted 下马 toggle stays silent.
+- Removed 幽月轮's extra manifest sound entries and left only its first sound.
+
+**Lessons**:
+- Target-personal sounds should be represented as target-only cues on events that already include `targetUserId`, instead of trying to infer privacy from spatial range.
+- Fit-to-duration playback needs a wider clamp than normal playback, but it should be used only when preserving natural sound identity is less important than exact duration.
+- Channel abilities with one sound may still need completion-only behavior; a single manifest file should not always mean cast/start playback.
+
+## Ability sound special playback rules (2026-05-20)
+
+**Problem set**:
+1. Several two-file abilities needed non-default playback order: chained completion sounds, simultaneous cast/channel sounds, timed overlap, or follow-up attack sounds.
+2. 盾立 needed the second sound to mean `反击` and play only when reflect actually triggers.
+3. Some manifest clips were no longer wanted, and several 气场 skills needed to share 生太极's exact sound files/order.
+4. Zero-sound abilities still needed an obvious ability-level checkbox in the sound review board.
+
+**Fix**:
+- Added cue metadata for delayed, simultaneous, and follow-up sounds in the frontend sound registry/player.
+- Added special rules for 乘黄之威, 穹隆化生, 无间狱, 七星拱瑞, 千蝶吐瑞, 御骑, 真·下车, 盾立, and 风来吴山.
+- Emitted backend `ABILITY_SOUND` counter cues when 盾立 reflect triggers.
+- Removed unused manifest entries for 生死劫's second sound, 七星拱瑞's channeling sound, and 魂压怒涛's second sound.
+- Pointed 冲阴阳, 吞日月, 破苍穹, 碎星辰, and 凌太虚 at 生太极's two sound files so their order and runtime behavior match 生太极.
+- Made sound review ability checkboxes custom and larger so zero-sound ability rows expose the checkbox clearly.
+
+**Lessons**:
+- Ability sound behavior needs cue-level metadata; file order alone cannot represent simultaneous, delayed-overlap, or follow-up-trigger sounds.
+- For reflected abilities, the sound cue belongs at the gameplay reflect event, not at ordinary 盾立 cast/expiration.
+- Sound review counts should distinguish zero-sound ability rows from zero sound rows, otherwise the column header can imply the checkbox row is missing.
+
+## PM2 restart scope for Zhenchuan checks (2026-05-20)
+
+**Problem set**:
+1. Running `pm2 restart all` during Zhenchuan verification also touched unrelated `rencipe-*` PM2 processes.
+2. The unrelated `rencipe-frontend` process produced port `4000` noise/crash-loop signals, distracting from the actual Zhenchuan frontend/backend verification.
+
+**Fix**:
+- Updated project instructions so Zhenchuan checks restart only PM2 apps `frontend` and `backend`.
+- Recorded that `rencipe-*` processes and ports should be left alone unless the user explicitly scopes the task to them.
+
+**Lessons**:
+- PM2 verification should be app-scoped in shared hosts; `pm2 restart all` can destabilize unrelated services and produce misleading startup errors.
+
+## Sound review ability-level judging and channel labels (2026-05-20)
+
+**Problem set**:
+1. Abilities without sound files needed an ability-level checkbox because there are no per-sound rows to judge.
+2. Ability-level checks should mark unjudged sounds good without overwriting existing per-sound judgments.
+3. Needs-work abilities needed a local note field for review notes.
+4. Sound phase labels needed to use the basic line names `释放 / 读条 / 完成`, and `风来吴山` needed its one sound treated as a channel sound that loops until its channel finishes.
+
+**Fix**:
+- Added local ability-level checkbox state to the sound review board and kept existing per-sound review storage intact.
+- Checking an ability now marks only unjudged sounds as good; existing `需要处理` judgments are preserved.
+- Added persisted note text boxes for ability groups in the `需要继续处理` column.
+- Changed review labels from `主音效 / 起手 / 变体` to `释放 / 读条 / 完成`, with `风来吴山` single-sound rows labeled `读条`.
+- Added a scoped `风来吴山` channel-loop cue so its first sound repeats for the remaining channel duration, without affecting other abilities.
+
+**Lessons**:
+- Ability-level review state and sound-level review state should be separate; otherwise zero-sound abilities cannot be represented cleanly.
+- Bulk review controls must only fill undecided rows unless the user explicitly asks to rewrite prior judgments.
+- Special channel sound looping should be driven by cue metadata plus runtime channel/buff duration, not by making all channel-start sounds loop.
+
+## Sound review simplified identity and count filters (2026-05-20)
+
+**Problem set**:
+1. The sound review board was visually noisy because each ability header showed type/target/rarity/school tags and a description snippet.
+2. The per-ability sound count appeared as a separate `1 个` badge instead of being attached to the ability name.
+3. Search was hidden inside collapsed filters, and there was no way to filter abilities by sound count, especially `0` sounds.
+
+**Fix**:
+- Simplified sound review ability headers to icon plus `技能名（音效数量）`, removing visible tags and descriptions.
+- Moved the old separate count badge into the title, so entries render like `回风扫叶（1）`.
+- Added a top-level skill-name search and a custom `音效数量` segmented filter for `全部 / 0 / 1 / >1`.
+- Built sound groups from the full ability snapshot before merging manifest sounds, allowing the `0` filter to show abilities with no sound files.
+
+**Lessons**:
+- A `0` sound-count filter needs the complete ability catalog, not just the sound manifest, because absent manifest rows are the data being searched for.
+- For review-board density, ability identity should stay compact while per-sound decisions carry the actionable controls.
+
+## Sound review live crash and Playwright guard (2026-05-20)
+
+**Problem set**:
+1. The deployed sound review tab on `https://zhenchuan.renstoolbox.com/ability-editor?tab=soundReview` was crashing instead of rendering the grouped review board.
+2. Local source checks were not enough; the regression only became obvious when the deployed bundle was opened and exercised through login.
+3. The repo needed a repeatable live Playwright workflow for protected sound review verification.
+
+**Fix**:
+- Reproduced the issue on the live site after login and traced it to `SoundReviewTab.tsx`, where `SectionHeader` referenced an undefined `active` variable.
+- Removed that bad runtime reference and kept active button coloring inside `IconButton`, where the prop actually exists.
+- Promoted `音效审核` to its own top-level ability editor tab, hid the large editor overview on this tab, and collapsed filters behind a summary so the three decision columns and actions appear in the first viewport.
+- Added `frontend/tests/sound-review.live.spec.ts` and `frontend/tests/SOUND_REVIEW_LIVE_TESTING.md`, then linked that workflow from `.github/copilot-instructions.md`.
+
+**Lessons**:
+- A client-only runtime typo can survive type checks and still kill a deployed page, so protected editor flows need real browser coverage on the deployed host.
+- For live auth verification, store the workflow in-repo but pass credentials through environment variables instead of baking passwords into files.
+
+## Sound review ability editor decision tab (2026-05-20)
+
+**Problem set**:
+1. The sound browser needed to live inside the ability editor instead of remaining a standalone page.
+2. Sound review needed the same three-state workflow as other editor decision tabs: good, needs more work, and undecided.
+3. Multi-sound abilities still needed to stay grouped under ability identity while each sound kept its own decision.
+
+**Fix**:
+- Added an `音效审核` skill sub-tab to the ability editor and routed the old `/sound-browser` page plus the lobby sound button to `/ability-editor?tab=soundReview`.
+- Reworked the sound review UI into three columns: `需要继续处理`, `未决定`, and `音效可用`, matching the Qin Yin Gong Ming decision-board pattern.
+- Preserved per-sound local review state with migration from the previous `bad` value to `needsWork`, while continuing to hide raw sound filenames from the UI.
+
+**Lessons**:
+- A review board can still keep ability-level grouping by duplicating an ability group into status columns when its individual sounds have different decisions.
+- Local review storage keys should stay stable across UI moves so previous review work survives route consolidation.
+
+## Sound browser grouped review UI (2026-05-20)
+
+**Problem set**:
+1. The sound browser listed individual sound files with filenames, making multi-sound abilities hard to review as one skill.
+2. Review needed ability-editor-style filtering by rarity and class/school, plus ability icons.
+3. Sound audition needed a simple way to mark each sound as good or not good.
+
+**Fix**:
+- Reworked `/sound-browser` into ability cards grouped by ability name, with each ability's sounds nested as playable rows.
+- Enriched the page with the ability editor snapshot so sound groups can show ability icons, type/target tags, rarity, and school filters.
+- Removed visible sound filenames and added local `localStorage` review state for pass/reject/clear controls per sound.
+
+**Lessons**:
+- Sound review UI should key visible organization by ability identity, while keeping manifest file keys only as hidden stable storage/playback identifiers.
+- Reusing ability-editor tag metadata avoids drifting rarity/school labels between review tools.
+
+## Ability sound browser, haste playback, and volume settings (2026-05-16)
+
+**Problem set**:
+1. The imported ability sound pack needed an in-app page for auditioning files and seeing each file duration.
+2. Forward-channel start sounds needed to track shortened channel time when haste accelerates the channel.
+3. Skill sounds varied in loudness and needed automatic alignment plus an ESC-panel user volume percentage.
+
+**Fix**:
+- Added a shared sound catalog export and a `/sound-browser` page that lists every imported `.ogg`, loads metadata for duration display, supports search, and plays preview audio.
+- Extended the Web Audio player with `playbackRate` support and BattleArena channel-rate calculation from active-channel or buff-channel runtime duration versus base channel duration.
+- Added RMS-based normalization during decode, clamped to avoid extreme boosts/clipping, and added a persisted `音效音量` range control in the ESC game settings.
+
+**Lessons**:
+- Keep sound-pack listing data in the same registry combat playback uses; duplicating manifest parsing makes later mapping changes easy to miss.
+- Haste-aware audio should use the resolved runtime channel duration, not recalculate haste from stats, because buffs and server rules own the final timing.
+- Lightweight RMS normalization is practical for browser playback; a full LUFS pipeline would be heavier than the current skill-sound need.
+
+## Ability sound playback integration (2026-05-16)
+
+**Problem set**:
+1. Imported ability sounds needed to play from the public sound pack when related skills are used.
+2. Instant casts and channel skills need different timing: cast start for normal skills, channel start plus separate success cue for channels with multiple sound files.
+3. Sound volume needed to respect world distance from the local player instead of playing every remote cast at full volume.
+
+**Fix**:
+- Added a frontend BattleArena sound registry that maps preloaded ability names to the imported `tani-sound-zc-2026-05-15T11-26-31-705Z` manifest and chooses start/complete sounds from each skill folder.
+- Added a lightweight Web Audio player with decoded-buffer caching, first-interaction unlock, repeat suppression, distance falloff, stereo panning, and a `window.__zcAbilitySoundDebug` test log for Playwright verification.
+- Added backend `ABILITY_SOUND` events for active-channel completion and buff-backed channel natural completion, avoiding duplicate visible `PLAY_ABILITY` cards while giving the frontend an authoritative success cue.
+
+**Lessons**:
+- Keep audio triggers event-driven from authoritative server events; button-click sounds would fire on failed casts and desync from channel completion.
+- Use a separate sound-only event for completion cues so combat history and current-action UI do not show fake second casts.
+- For browser audio testing, a debug play log is more reliable than trying to observe OS-level sound output from Playwright.
+
 ## Ability and transmission audit (2026-05-10)
 
 **Problem set**:

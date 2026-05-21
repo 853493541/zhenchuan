@@ -141,6 +141,10 @@
   margin-left: auto;
 }
 
+.createBtnSoundBrowser {
+  background: #0f766e;
+}
+
 .createBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;

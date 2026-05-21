@@ -62,6 +62,7 @@ export type EffectType =
   | "CHANNEL_AOE_TICK"
   | "TIMED_AOE_DAMAGE"
   | "TIMED_SELF_DAMAGE"
+  | "TIMED_SOURCE_CENTER_AOE_DAMAGE"
   | "TIMED_SELF_HEAL"
   | "TIMED_AOE_DAMAGE_IF_SELF_HP_GT"
   | "TIMED_GUAN_TI_HEAL"
@@ -69,6 +70,7 @@ export type EffectType =
   | "PLACE_GROUND_ZONE"
   | "PLACE_SHENGTAIJI_ZONE"
   | "BAIZU_AOE"
+  | "XIA_LIU_BAO_SHI_AOE"
   | "WUFANG_XINGJIN_AOE"
   | "BANG_DA_GOU_TOU"
   | "STACK_ON_HIT_DAMAGE"
@@ -191,6 +193,10 @@ export type EffectType =
   | "QIN_YIN_GONG_MING"
   // 缴械: cannot cast abilities unless they are marked 无需武器
   | "DISARM"
+  // 封内: cannot cast 内功 abilities
+  | "INNER_POWER_LOCK"
+  // 封外: cannot cast 外功 abilities
+  | "OUTER_POWER_LOCK"
   // 只能施展轻功，其他招式全部被锁
   | "NON_QINGGONG_LOCK"
   // 恐惧: silence + forced walk away from sourceUserId

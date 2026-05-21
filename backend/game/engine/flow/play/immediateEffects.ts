@@ -393,6 +393,41 @@ function removeImmediateStealthBuffs(state: any, target: any) {
   return removed.length > 0;
 }
 
+function dispelBuffAttributesFromTarget(params: {
+  state: any;
+  target: any;
+  attributes: string[];
+  count: number;
+  buffOverrides: Record<string, any>;
+}) {
+  const { state, target, attributes, count, buffOverrides } = params;
+  if (!target || !Array.isArray(target.buffs) || attributes.length === 0 || count <= 0) return;
+
+  for (const attr of attributes) {
+    let dispelled = 0;
+    while (dispelled < count) {
+      const idx = target.buffs.findIndex((b: any) => {
+        if (b.category !== "BUFF") return false;
+        const entry = buffOverrides[String(b.buffId)];
+        return entry?.attribute === attr;
+      });
+      if (idx === -1) break;
+      const removed = target.buffs[idx];
+      removeLinkedShield(target as any, removed);
+      target.buffs.splice(idx, 1);
+      pushBuffExpired(state, {
+        targetUserId: target.userId,
+        buffId: removed.buffId,
+        buffName: removed.name,
+        buffCategory: removed.category,
+        sourceAbilityId: removed.sourceAbilityId,
+        sourceAbilityName: removed.sourceAbilityName,
+      });
+      dispelled++;
+    }
+  }
+}
+
 function getExplicitEntityTarget(state: any, entityTargetId?: string) {
   if (!entityTargetId || !Array.isArray(state.entities)) return null;
   const entity = state.entities.find((candidate: any) => candidate.id === entityTargetId);
@@ -1473,31 +1508,22 @@ export function applyImmediateEffects(params: {
       }
 
       case "GROUND_TARGET_DASH": {
-        // Compute direction from source to the ground target (or to opponent/entity if no ground target).
-        const oppIdx2 = playerIndex === 0 ? 1 : 0;
-        const oppPos2 = (explicitEntityTarget && enemyApplied)
-          ? explicitEntityTarget.position
-          : state.players[oppIdx2].position;
-        const requiresExplicitGroundTarget = ability.id === "feng_liu_yun_san";
-        const fallbackTargetX = effTarget?.position?.x ?? oppPos2.x ?? source.position.x;
-        const fallbackTargetY = effTarget?.position?.y ?? oppPos2.y ?? source.position.y;
-        const gTargetX = castContext?.groundTarget?.x ?? (requiresExplicitGroundTarget ? source.position.x : fallbackTargetX);
-        const gTargetY = castContext?.groundTarget?.y ?? (requiresExplicitGroundTarget ? source.position.y : fallbackTargetY);
+        // Compute direction from source to the explicit ground target.
+        const gTargetX = castContext?.groundTarget?.x;
+        const gTargetY = castContext?.groundTarget?.y;
+        if (gTargetX === undefined || gTargetY === undefined) break;
         const gDx = gTargetX - source.position.x;
         const gDy = gTargetY - source.position.y;
         const gLen = Math.sqrt(gDx * gDx + gDy * gDy);
         if (gLen > 0.01) {
           source.facing = { x: gDx / gLen, y: gDy / gLen };
         }
-        const dashRangeBonus = getAbilityRangeBonusFromBuffs(source.buffs);
-        const maxDashDistance = Math.max(0, Number(effect.value ?? 20)) + dashRangeBonus;
-        // Cap dash distance: if click is closer than max range, only dash that far
         const clickDistGpu = worldUnitsToGameplayUnits(gLen, state.unitScale);
-        const cappedValue = gLen > 0.01 ? Math.min(maxDashDistance, clickDistGpu) : maxDashDistance;
+        const cappedValue = gLen > 0.01 ? clickDistGpu : 0;
         // Proportional durationTicks at 40 u/sec so short dashes aren't slowed down
         const cappedDurationTicks = Math.max(1, Math.round((cappedValue / 40) * 30));
         const gtdEffect = { ...effect, type: "DIRECTIONAL_DASH" as const, dirMode: "TOWARD" as const, value: cappedValue, durationTicks: cappedDurationTicks };
-        handleDirectionalDash(state, source, oppPos2, ability, gtdEffect);
+        handleDirectionalDash(state, source, { x: gTargetX, y: gTargetY }, ability, gtdEffect);
         // Height targeting: if groundTarget has an explicit Z, force dash to climb/descend to that height
         const gTargetZ = castContext?.groundTarget?.z;
         if (gTargetZ !== undefined && source.activeDash) {
@@ -2046,6 +2072,49 @@ export function applyImmediateEffects(params: {
         break;
       }
 
+      case "XIA_LIU_BAO_SHI_AOE": {
+        const now = Date.now();
+        const radius = gameplayUnitsToWorldUnits(effect.range ?? 6, state.unitScale);
+        const attrs: string[] = (effect as any).attributes ?? ["阳性", "混元", "阴性", "毒性"];
+        const dispelCount: number = (effect as any).count ?? 1;
+        const { overrides: buffOverrides } = loadBuffEditorOverrides();
+        const disarmBuff = Array.isArray(ability.buffs)
+          ? ability.buffs.find((b: any) => b.buffId === 2723 || b.name === "霞流宝石")
+          : null;
+
+        for (const victim of getImmediateEnemyDamageTargets(state, source.userId, source.position, radius)) {
+          applyImmediateDamageToEnemyTarget({
+            state,
+            source,
+            ability,
+            target: victim,
+            baseDamage: effect.value ?? 0,
+            effectType: "DAMAGE",
+            now,
+          });
+
+          dispelBuffAttributesFromTarget({
+            state,
+            target: victim.target,
+            attributes: attrs,
+            count: dispelCount,
+            buffOverrides,
+          });
+
+          if (disarmBuff) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: victim.target.userId,
+              ability,
+              buffTarget: victim.target,
+              buff: disarmBuff,
+            });
+          }
+        }
+        break;
+      }
+
       case "HAN_RU_LEI_AOE": {
         const abilityBuffs = Array.isArray(ability.buffs) ? ability.buffs : [];
         const selfBuffs = abilityBuffs.filter((buffDef: any) => buffDef.applyTo !== "OPPONENT");
@@ -2089,29 +2158,13 @@ export function applyImmediateEffects(params: {
         const { overrides: buffOverrides } = loadBuffEditorOverrides();
         const attrs: string[] = (effect as any).attributes ?? [];
         const dispelCount: number = (effect as any).count ?? 1;
-        for (const attr of attrs) {
-          let dispelled = 0;
-          while (dispelled < dispelCount) {
-            const idx = dispelTarget.buffs.findIndex((b: any) => {
-              if (b.category !== "BUFF") return false;
-              const entry = buffOverrides[String(b.buffId)];
-              return entry?.attribute === attr;
-            });
-            if (idx === -1) break;
-            const removed = dispelTarget.buffs[idx];
-            removeLinkedShield(dispelTarget as any, removed);
-            dispelTarget.buffs.splice(idx, 1);
-            pushBuffExpired(state, {
-              targetUserId: dispelTarget.userId,
-              buffId: removed.buffId,
-              buffName: removed.name,
-              buffCategory: removed.category,
-              sourceAbilityId: removed.sourceAbilityId,
-              sourceAbilityName: removed.sourceAbilityName,
-            });
-            dispelled++;
-          }
-        }
+        dispelBuffAttributesFromTarget({
+          state,
+          target: dispelTarget,
+          attributes: attrs,
+          count: dispelCount,
+          buffOverrides,
+        });
         break;
       }
 
@@ -3454,16 +3507,13 @@ export function applyImmediateEffects(params: {
         // Always use mouse ground-target position — NEVER fall back to opponent position
         const gTargetX2 = castContext?.groundTarget?.x;
         const gTargetY2 = castContext?.groundTarget?.y;
-        const hasGroundTarget = gTargetX2 !== undefined && gTargetY2 !== undefined;
-        const dashRangeBonus2 = getAbilityRangeBonusFromBuffs(source.buffs);
-        const maxDashDistance2 = Math.max(0, Number(effect.value ?? 40)) + dashRangeBonus2;
-        const tX = hasGroundTarget ? gTargetX2! : source.position.x + (source.facing?.x ?? 0) * gameplayUnitsToWorldUnits(maxDashDistance2, state.unitScale);
-        const tY = hasGroundTarget ? gTargetY2! : source.position.y + (source.facing?.y ?? 1) * gameplayUnitsToWorldUnits(maxDashDistance2, state.unitScale);
+        if (gTargetX2 === undefined || gTargetY2 === undefined) break;
+        const tX = gTargetX2;
+        const tY = gTargetY2;
         const gDx2 = tX - source.position.x;
         const gDy2 = tY - source.position.y;
         const gLen2 = Math.sqrt(gDx2 * gDx2 + gDy2 * gDy2);
-        const linMaxDistWorld = gameplayUnitsToWorldUnits(maxDashDistance2, state.unitScale);
-        const linActualWorld = Math.min(linMaxDistWorld, gLen2 > 0.01 ? gLen2 : linMaxDistWorld);
+        const linActualWorld = gLen2;
         if (gLen2 > 0.01) {
           source.facing = { x: gDx2 / gLen2, y: gDy2 / gLen2 };
         }

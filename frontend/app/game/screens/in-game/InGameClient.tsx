@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Home } from "lucide-react";
 import styles from "./styles.module.css";
+import { warmExportedMapAssets } from "@/app/lib/fullExports";
 
 import BattleArena from "./components/BattleArena";
 import { ensureResizeObserverSupport } from "./ensureResizeObserverSupport";
@@ -31,9 +32,10 @@ function getGameErrorText(rawCode: string) {
     case "ERR_NOT_YOUR_TURN":
       return "还没轮到你";
     case "ERR_SILENCED":
-      return "经脉受损，无法运功";
     case "ERR_DISARMED":
-      return "你被缴械，无法施展需要武器的招式";
+    case "ERR_INNER_POWER_LOCKED":
+    case "ERR_OUTER_POWER_LOCKED":
+      return "经脉受损 无法运功";
     case "ERR_NON_QINGGONG_LOCKED":
       return "你当前只能施展轻功招式";
     case "ERR_DISPLACEMENT":
@@ -376,6 +378,12 @@ export default function InGameClient({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (gameMode === 'collision-test') {
+      void warmExportedMapAssets({ concurrency: 3 });
+    }
+  }, [gameMode]);
 
   /* ================= BATTLE COMPLETION ================= */
 

@@ -7,18 +7,213 @@ import WASDButtons from './WASDButtons';
 import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, ChannelBarHost, type ChannelBarData } from './ChannelBar';
-import { ArrowLeft, Gamepad2, Gauge, Keyboard, LayoutGrid, MessageCircle, Puzzle, RotateCcw, Swords, Trash2, Volume2, Wind, X } from 'lucide-react';
+import { ArrowLeft, Clipboard, Gamepad2, Gauge, Keyboard, LayoutGrid, MessageCircle, Puzzle, RotateCcw, Swords, Trash2, Volume2, Wind, X } from 'lucide-react';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
-import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles } from './scene/ArenaScene';
+import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles, type SceneRuntimeMetrics } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
-import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z } from './scene/ExportedMapScene';
+import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, type SceneLoadTimingEvent } from './scene/ExportedMapScene';
 import { encodeIconPublicPath, getAbilityIconPath } from '@/app/lib/iconPaths';
 import * as THREE from 'three';
 import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
+import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase } from './abilitySoundRegistry';
+import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
 
 type V3 = { x: number; y: number; z: number };
+type LoadStageStatus = '完成' | '进行中' | '失败';
+
+type LoadPerformanceStage = {
+  id: string;
+  name: string;
+  status: LoadStageStatus;
+  startedAtMs: number;
+  completedAtMs: number | null;
+  durationMs: number;
+  detail: string;
+  meta?: Record<string, number | string>;
+};
+
+type LoadPerformanceStageState = {
+  id: string;
+  name: string;
+  status: LoadStageStatus;
+  startedAtMs: number;
+  completedAtMs: number | null;
+  detail: string;
+  meta?: Record<string, number | string>;
+  order: number;
+};
+
+type LoadResourceGroup = {
+  label: string;
+  count: number;
+  totalDurationMs: number;
+  maxDurationMs: number;
+  transferSizeBytes: number;
+  encodedBodySizeBytes: number;
+  slowestName: string;
+};
+
+type LoadResourceEntrySummary = {
+  name: string;
+  label: string;
+  durationMs: number;
+  transferSizeBytes: number;
+  encodedBodySizeBytes: number;
+};
+
+type LoadPerformanceSnapshot = {
+  ts: number;
+  startedAtIso: string;
+  totalMs: number;
+  completed: boolean;
+  stages: LoadPerformanceStage[];
+  inProgressStages: LoadPerformanceStage[];
+  resourceGroups: LoadResourceGroup[];
+  slowestResources: LoadResourceEntrySummary[];
+  sceneMetrics: SceneRuntimeMetrics | null;
+  reportText: string;
+  gameCounts: {
+    opponents: number;
+    visibleOpponents: number;
+    entities: number;
+    visibleEntities: number;
+    groundZones: number;
+    pickups: number;
+    events: number;
+    selfBuffs: number;
+    abilities: number;
+  };
+};
+
+const formatLoadPerfNumber = (value: number | null | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+  return value.toLocaleString('zh-CN');
+};
+
+const formatLoadPerfMs = (ms: number | null | undefined) => {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return '-';
+  return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.max(0, Math.round(ms))}ms`;
+};
+
+const formatLoadPerfBytes = (bytes: number | null | undefined) => {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return '-';
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${Math.round(bytes)} B`;
+};
+
+const getSceneResourceLabel = (url: string) => {
+  const path = (() => {
+    try { return new URL(url).pathname; } catch { return url; }
+  })();
+  if (!path.includes('/full-exports/')) return null;
+  if (path.endsWith('.glb')) return 'GLB模型';
+  if (path.includes('/textures/')) return '模型贴图';
+  if (path.includes('/terrain-textures/') && !path.endsWith('/index.json')) return '地形贴图';
+  if (path.includes('/heightmap/')) return '地形高度';
+  if (path.endsWith('.collision.json') || path.endsWith('/mesh-collision-index.json')) return '碰撞数据';
+  if (path.endsWith('.json')) return '地图清单';
+  return '其他地图资源';
+};
+
+const getSceneResourceName = (url: string) => {
+  try {
+    const path = decodeURIComponent(new URL(url).pathname);
+    const parts = path.split('/').filter(Boolean);
+    return parts.slice(-2).join('/');
+  } catch {
+    return url;
+  }
+};
+
+function collectSceneResourceTimings(startedAtMs: number) {
+  const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+  const groups = new Map<string, LoadResourceGroup>();
+  const resources: LoadResourceEntrySummary[] = [];
+
+  for (const entry of entries) {
+    if (entry.startTime + 5 < startedAtMs) continue;
+    const label = getSceneResourceLabel(entry.name);
+    if (!label) continue;
+    const durationMs = Math.max(0, entry.duration || 0);
+    const transferSizeBytes = Number(entry.transferSize ?? 0) || 0;
+    const encodedBodySizeBytes = Number(entry.encodedBodySize ?? 0) || 0;
+    const name = getSceneResourceName(entry.name);
+    resources.push({ name, label, durationMs, transferSizeBytes, encodedBodySizeBytes });
+
+    const group = groups.get(label) ?? {
+      label,
+      count: 0,
+      totalDurationMs: 0,
+      maxDurationMs: 0,
+      transferSizeBytes: 0,
+      encodedBodySizeBytes: 0,
+      slowestName: '',
+    };
+    group.count += 1;
+    group.totalDurationMs += durationMs;
+    group.transferSizeBytes += transferSizeBytes;
+    group.encodedBodySizeBytes += encodedBodySizeBytes;
+    if (durationMs >= group.maxDurationMs) {
+      group.maxDurationMs = durationMs;
+      group.slowestName = name;
+    }
+    groups.set(label, group);
+  }
+
+  return {
+    resourceGroups: Array.from(groups.values()).sort((a, b) => b.maxDurationMs - a.maxDurationMs),
+    slowestResources: resources.sort((a, b) => b.durationMs - a.durationMs).slice(0, 8),
+  };
+}
+
+function buildSceneLoadReport(snapshot: Omit<LoadPerformanceSnapshot, 'reportText'>) {
+  const lines: string[] = [];
+  lines.push('加载性能报告');
+  lines.push(`生成时间: ${new Date(snapshot.ts).toISOString()}`);
+  lines.push(`开始时间: ${snapshot.startedAtIso}`);
+  lines.push(`总场景加载: ${formatLoadPerfMs(snapshot.totalMs)} (${snapshot.completed ? '完成' : '进行中'})`);
+  lines.push('');
+  lines.push('阶段耗时:');
+  for (const stage of snapshot.stages) {
+    const start = formatLoadPerfMs(stage.startedAtMs);
+    const end = stage.completedAtMs === null ? '-' : formatLoadPerfMs(stage.completedAtMs);
+    const meta = stage.meta
+      ? Object.entries(stage.meta).map(([key, value]) => `${key}=${value}`).join(', ')
+      : '';
+    lines.push(`- ${stage.name}: ${stage.status}, ${formatLoadPerfMs(stage.durationMs)} (${start} -> ${end})${stage.detail ? `, ${stage.detail}` : ''}${meta ? `, ${meta}` : ''}`);
+  }
+  lines.push('');
+  lines.push('资源分组:');
+  if (snapshot.resourceGroups.length === 0) {
+    lines.push('- 无 full-exports 资源计时');
+  } else {
+    for (const group of snapshot.resourceGroups) {
+      lines.push(`- ${group.label}: ${group.count} 个, 合计 ${formatLoadPerfMs(group.totalDurationMs)}, 最慢 ${formatLoadPerfMs(group.maxDurationMs)} ${group.slowestName || '-'}, 传输 ${formatLoadPerfBytes(group.transferSizeBytes)}, 编码大小 ${formatLoadPerfBytes(group.encodedBodySizeBytes)}`);
+    }
+  }
+  lines.push('');
+  lines.push('最慢资源:');
+  if (snapshot.slowestResources.length === 0) {
+    lines.push('- 无');
+  } else {
+    for (const resource of snapshot.slowestResources) {
+      lines.push(`- ${resource.label} ${resource.name}: ${formatLoadPerfMs(resource.durationMs)}, 传输 ${formatLoadPerfBytes(resource.transferSizeBytes)}, 编码大小 ${formatLoadPerfBytes(resource.encodedBodySizeBytes)}`);
+    }
+  }
+  lines.push('');
+  lines.push('Three.js:');
+  if (snapshot.sceneMetrics) {
+    lines.push(`- objects=${snapshot.sceneMetrics.objects}, meshes=${snapshot.sceneMetrics.meshes}, lights=${snapshot.sceneMetrics.lights}, geometries=${snapshot.sceneMetrics.geometries}, textures=${snapshot.sceneMetrics.textures}, drawCalls=${snapshot.sceneMetrics.calls}, triangles=${snapshot.sceneMetrics.triangles}`);
+  } else {
+    lines.push('- 未采集到 Three.js 指标');
+  }
+  lines.push('');
+  lines.push(`游戏对象: 敌人 ${snapshot.gameCounts.visibleOpponents}/${snapshot.gameCounts.opponents}, 实体 ${snapshot.gameCounts.visibleEntities}/${snapshot.gameCounts.entities}, 地面区 ${snapshot.gameCounts.groundZones}, 拾取 ${snapshot.gameCounts.pickups}, 事件 ${snapshot.gameCounts.events}, Buff ${snapshot.gameCounts.selfBuffs}, 招式 ${snapshot.gameCounts.abilities}`);
+  return lines.join('\n');
+}
 type HeartStatKey =
   | 'attack'
   | 'maxHp'
@@ -50,6 +245,12 @@ type GcdVisibilitySettings = {
   base: boolean;
   qinggong: boolean;
   houyao: boolean;
+};
+
+type AbilitySoundSettings = {
+  volumePercent: number;
+  disabled: boolean;
+  version: number;
 };
 
 type InGameWarningEvent = {
@@ -153,6 +354,7 @@ function scaleUiPositions(
 
 const HEART_STAT_STORAGE_KEY = 'zhenchuan-heart-stat-visibility';
 const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
+const ABILITY_SOUND_SETTINGS_STORAGE_KEY = 'zhenchuan-ability-sound-settings-v1';
 const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
@@ -160,6 +362,8 @@ const IN_GAME_WARNING_SCALE_STORAGE_KEY = 'zhenchuan-ingame-warning-scale-v1';
 const IN_GAME_WARNING_UI_KEY = 'in-game-warning';
 const IN_GAME_WARNING_DURATION_MS = 1500;
 const IN_GAME_WARNING_PREVIEW_TEXT = '无法施展该招式';
+const REQUIRED_POWER_MISSING_WARNING = '经脉受损 无法运功';
+const DASH_GROUND_TARGET_ABILITY_IDS = new Set(['lin_shi_fei_zhua', 'han_di', 'gu_feng_sa_ta']);
 const LEGACY_PLAYER_STATUS_UI_KEY = 'player-status-bar';
 const PLAYER_BUFF_STATUS_UI_KEY = 'player-buff-status-bar';
 const PLAYER_DEBUFF_STATUS_UI_KEY = 'player-debuff-status-bar';
@@ -249,6 +453,16 @@ const DEFAULT_GCD_VISIBILITY_SETTINGS: GcdVisibilitySettings = {
   qinggong: false,
   houyao: false,
 };
+
+function isDashGroundTargetAbilityId(abilityId: string | null | undefined): boolean {
+  return !!abilityId && DASH_GROUND_TARGET_ABILITY_IDS.has(abilityId);
+}
+const DEFAULT_ABILITY_SOUND_SETTINGS: AbilitySoundSettings = {
+  volumePercent: 80,
+  disabled: false,
+  version: 4,
+};
+const ABILITY_SOUND_VOLUME_OUTPUT_SCALE = 0.625;
 const PLAYER_CHANNEL_BAR_PREVIEW_DATA: ChannelBarData = {
   kind: 'forward',
   name: '引导读条',
@@ -360,6 +574,12 @@ function normalizeInGameWarningScale(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return 1;
   return Math.round(Math.max(0.1, Math.min(2, numeric)) * 100) / 100;
+}
+
+function normalizeAbilitySoundVolumePercent(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_ABILITY_SOUND_SETTINGS.volumePercent;
+  return Math.round(Math.max(0, Math.min(100, numeric)));
 }
 
 function getAbilityPanelCssScale(value: number): number {
@@ -1187,9 +1407,39 @@ function hasDisarmClient(buffs?: ActiveBuff[]): boolean {
   return buffs.some((b: any) => buffHasEffect(b, 'DISARM') || buffNameIncludes(b, '缴械'));
 }
 
+function hasInnerPowerLockClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => buffHasEffect(b, 'INNER_POWER_LOCK') || buffNameIncludes(b, '封内'));
+}
+
+function hasOuterPowerLockClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => buffHasEffect(b, 'OUTER_POWER_LOCK') || buffNameIncludes(b, '封外'));
+}
+
 function hasNonQinggongLockClient(buffs?: ActiveBuff[]): boolean {
   if (!Array.isArray(buffs) || buffs.length === 0) return false;
   return buffs.some((b: any) => buffHasEffect(b, 'NON_QINGGONG_LOCK') || buffNameIncludes(b, '轻功以外'));
+}
+
+function getAbilityDamageTypeClient(ability: any): '内功' | '外功' | undefined {
+  const damageType = ability?.damageType ?? ability?.tags?.damageType;
+  return damageType === '内功' || damageType === '外功' ? damageType : undefined;
+}
+
+function abilityAllowsSilenceClient(ability: any): boolean {
+  return ability?.allowWhileSilenced === true ||
+    (Array.isArray(ability?.effects) && ability.effects.some((effect: any) => effect.allowWhileSilenced === true));
+}
+
+function getPowerLockWarningClient(ability: any, buffs?: ActiveBuff[]): string | null {
+  if (!ability) return null;
+  const damageType = getAbilityDamageTypeClient(ability);
+  if (hasSilenceClient(buffs) && !abilityAllowsSilenceClient(ability)) return REQUIRED_POWER_MISSING_WARNING;
+  if (hasDisarmClient(buffs) && ability.noWeaponRequired !== true) return REQUIRED_POWER_MISSING_WARNING;
+  if (hasInnerPowerLockClient(buffs) && damageType === '内功') return REQUIRED_POWER_MISSING_WARNING;
+  if (hasOuterPowerLockClient(buffs) && damageType === '外功') return REQUIRED_POWER_MISSING_WARNING;
+  return null;
 }
 
 function hasYuqiStateClient(buffs?: ActiveBuff[]): boolean {
@@ -1287,6 +1537,132 @@ function clampCameraPitch(pitch: number, mode?: string): number {
    TYPES
    ============================================================ */
 interface Position { x: number; y: number; z?: number; }
+
+function calculateAbilitySoundSpatial(params: {
+  listener?: Position | null;
+  source?: Position | null;
+  ability?: any;
+  phase: AbilitySoundPhase;
+  isSelf: boolean;
+}) {
+  if (params.isSelf || !params.listener || !params.source) {
+    return { volume: 1, pan: 0 };
+  }
+
+  const dx = params.source.x - params.listener.x;
+  const dy = params.source.y - params.listener.y;
+  const distance = Math.hypot(dx, dy);
+  const fullVolumeRange = 8;
+  const audibleRange = getAbilitySoundAudibleRange(params.ability, params.phase);
+
+  if (distance >= audibleRange) {
+    return { volume: 0, pan: 0 };
+  }
+
+  const falloffSpan = Math.max(1, audibleRange - fullVolumeRange);
+  const t = Math.max(0, Math.min(1, (distance - fullVolumeRange) / falloffSpan));
+  const volume = Math.max(0, Math.min(1, Math.pow(1 - t, 1.35)));
+  const pan = Math.max(-0.75, Math.min(0.75, dx / Math.max(audibleRange, 1)));
+
+  return { volume, pan };
+}
+
+function getAbilityChannelBaseDurationMs(ability: any): number | null {
+  const runtimeChannel = getRuntimeAbilityChannel(ability);
+  const durationMs = Number(runtimeChannel?.durationMs ?? ability?.channelDurationMs ?? ability?.channel?.durationMs ?? 0);
+  return Number.isFinite(durationMs) && durationMs > 0 ? durationMs : null;
+}
+
+function getBuffChannelDurationForSound(actor: { buffs?: ActiveBuff[] } | null | undefined, ability: any, abilityId: string) {
+  const runtimeChannel = getRuntimeAbilityChannel(ability);
+  if (!runtimeChannel || runtimeChannel.source !== 'BUFF' || runtimeChannel.mode !== 'FORWARD') return null;
+
+  const buffs = actor?.buffs ?? [];
+  const abilityIdentity = String(ability?.id ?? abilityId);
+  const buff = buffs.find((entry) => {
+    if (typeof runtimeChannel.buffId === 'number' && entry.buffId === runtimeChannel.buffId) return true;
+    return String(entry.sourceAbilityId ?? '') === abilityIdentity;
+  });
+  if (!buff) return null;
+
+  const appliedAt = Number(buff.appliedAt ?? 0);
+  const expiresAt = Number(buff.expiresAt ?? 0);
+  const durationMs = expiresAt > appliedAt ? expiresAt - appliedAt : runtimeChannel.durationMs;
+  return Number.isFinite(durationMs) && durationMs > 0 ? durationMs : null;
+}
+
+function isFenglaiWushanSoundAbility(ability: any, abilityId: string) {
+  const name = String(ability?.name ?? '').replace(/^\s*\d+\.\s*/, '').trim();
+  return abilityId === 'fenglai_wushan' || name === '风来吴山' || name === '风来无山';
+}
+
+function getChannelSoundLoopDurationMs(params: {
+  ability: any;
+  actor: { buffs?: ActiveBuff[] } | null | undefined;
+  abilityId: string;
+  phase: AbilitySoundPhase;
+}) {
+  if (params.phase !== 'channelStart') return undefined;
+  if (!isFenglaiWushanSoundAbility(params.ability, params.abilityId)) return undefined;
+
+  const buff = (params.actor?.buffs ?? []).find((entry: any) => entry.buffId === 1014 || entry.sourceAbilityId === 'fenglai_wushan');
+  if (buff) {
+    const expiresAt = Number(buff.expiresAt);
+    const now = Date.now();
+    if (Number.isFinite(expiresAt) && expiresAt > now) {
+      return Math.max(80, expiresAt - now);
+    }
+
+    const appliedAt = Number(buff.appliedAt);
+    if (Number.isFinite(appliedAt) && Number.isFinite(expiresAt) && expiresAt > appliedAt) {
+      return expiresAt - appliedAt;
+    }
+  }
+
+  return 5000;
+}
+
+function getChannelSoundPlaybackRate(params: {
+  ability: any;
+  actor: { activeChannel?: ActiveChannel; buffs?: ActiveBuff[] } | null | undefined;
+  abilityId: string;
+  abilityInstanceId?: string;
+  phase: AbilitySoundPhase;
+}) {
+  if (params.phase !== 'channelStart') return 1;
+
+  const baseDurationMs = getAbilityChannelBaseDurationMs(params.ability);
+  if (!baseDurationMs) return 1;
+
+  let actualDurationMs: number | null = null;
+  const activeChannel = params.actor?.activeChannel;
+  if (
+    activeChannel
+    && activeChannel.abilityId === params.abilityId
+    && (!params.abilityInstanceId || activeChannel.instanceId === params.abilityInstanceId)
+    && activeChannel.forwardChannel !== false
+  ) {
+    const durationMs = Number(activeChannel.durationMs);
+    actualDurationMs = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : null;
+  }
+
+  actualDurationMs ??= getBuffChannelDurationForSound(params.actor, params.ability, params.abilityId);
+  if (!actualDurationMs) return 1;
+
+  const playbackRate = baseDurationMs / actualDurationMs;
+  if (!Number.isFinite(playbackRate) || playbackRate <= 0) return 1;
+  return Math.max(0.65, Math.min(2.5, playbackRate));
+}
+
+function getChannelSoundKey(actorUserId: string | undefined, abilityId: string | undefined, abilityInstanceId?: string) {
+  if (!actorUserId || !abilityId) return undefined;
+  return `${actorUserId}:${abilityId}:${abilityInstanceId ?? 'default'}`;
+}
+
+function isChannelStartCue(params: { ability: any; event: any; phase: AbilitySoundPhase }) {
+  if (params.phase !== 'channelStart') return false;
+  return params.event?.channelPhase === 'start' || params.ability?.type === 'CHANNEL' || !!params.ability?.channel;
+}
 interface Facing { x: number; y: number; }
 
 interface AbilityInfo {
@@ -1320,6 +1696,7 @@ interface AbilityInfo {
   requiresStanding?: boolean;
   minSelfHpExclusive?: number;
   minSelfHpPercentExclusive?: number;
+  damageType?: '内功' | '外功';
   noWeaponRequired?: boolean;
   canCastWhileMounted?: boolean;
   qinggong?: boolean;
@@ -1328,6 +1705,7 @@ interface AbilityInfo {
   allowGroundCastWithoutTarget?: boolean;
   losBlocked?: boolean;
   blockedByAntiStealth?: boolean;
+  disabledWarning?: string;
   isSpecialBarAbility?: boolean;
 }
 
@@ -2054,6 +2432,9 @@ export default function BattleArena({
     () => worldVisibleOpponentsList.filter((o) => !blocksTargetingClient(o?.buffs)),
     [worldVisibleOpponentsList],
   );
+
+  useEffect(() => installAbilityAudioUnlock(), []);
+
   const visibleEntities = useMemo(
     () => (selfHasHongMengTianJin ? [] : (entities ?? []).filter((entity) => entity.hp > 0)),
     [entities, selfHasHongMengTianJin],
@@ -2160,6 +2541,33 @@ export default function BattleArena({
       localStorage.setItem(GCD_VISIBILITY_STORAGE_KEY, JSON.stringify(gcdVisibilitySettings));
     } catch {}
   }, [gcdVisibilitySettings]);
+  const [abilitySoundSettings, setAbilitySoundSettings] = useState<AbilitySoundSettings>(() => {
+    try {
+      if (typeof window === 'undefined') return DEFAULT_ABILITY_SOUND_SETTINGS;
+      const stored = JSON.parse(localStorage.getItem(ABILITY_SOUND_SETTINGS_STORAGE_KEY) ?? '{}');
+      const storedVersion = Number(stored.version ?? 0);
+      const hasStoredVolume = stored.volumePercent !== undefined && Number.isFinite(Number(stored.volumePercent));
+      const storedVolumePercent = hasStoredVolume
+        ? normalizeAbilitySoundVolumePercent(stored.volumePercent)
+        : DEFAULT_ABILITY_SOUND_SETTINGS.volumePercent;
+      const previousAutoDefault = storedVersion === 2 && Number(stored.volumePercent) === 150 && stored.disabled !== true;
+      return {
+        ...DEFAULT_ABILITY_SOUND_SETTINGS,
+        volumePercent: hasStoredVolume && !previousAutoDefault
+          ? storedVolumePercent
+          : DEFAULT_ABILITY_SOUND_SETTINGS.volumePercent,
+        disabled: stored.disabled === true,
+        version: DEFAULT_ABILITY_SOUND_SETTINGS.version,
+      };
+    } catch {
+      return DEFAULT_ABILITY_SOUND_SETTINGS;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(ABILITY_SOUND_SETTINGS_STORAGE_KEY, JSON.stringify(abilitySoundSettings));
+    } catch {}
+  }, [abilitySoundSettings]);
   const [abilityPanelScale, setAbilityPanelScale] = useState(() => {
     try {
       if (typeof window === 'undefined') return 1;
@@ -2349,16 +2757,24 @@ export default function BattleArena({
   /* --- Debug position overlay --- */
   const [showDebugGrid, setShowDebugGrid] = useState(false);
   const [showCollisionShells, setShowCollisionShells] = useState(false);
+  const [showUniqueDashRoute, setShowUniqueDashRoute] = useState(false);
   const [blueprintMode, setBlueprintMode] = useState(false);
   const hongMengOverlayActive = selfHasHongMengTianJin && !blueprintMode;
   const [sceneCanvasKey, setSceneCanvasKey] = useState(0);
   const [sceneRecovering, setSceneRecovering] = useState(false);
   const sceneRecoveryTimerRef = useRef<number | null>(null);
   const mainCanvasCleanupRef = useRef<(() => void) | null>(null);
+  const [showLoadPerformancePanel, setShowLoadPerformancePanel] = useState(false);
+  const [loadPerformanceSnapshot, setLoadPerformanceSnapshot] = useState<LoadPerformanceSnapshot | null>(null);
+  const sceneRuntimeMetricsRef = useRef<SceneRuntimeMetrics | null>(null);
+  const loadPerformanceStartedAtRef = useRef(performance.now());
+  const loadPerformanceWallStartedAtRef = useRef(Date.now());
+  const loadPerformanceStagesRef = useRef<Map<string, LoadPerformanceStageState>>(new Map());
+  const loadPerformanceStageOrderRef = useRef(0);
   const [showTestingPanel, setShowTestingPanel] = useState(false);
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
   const [showCameraEventTestingPanel, setShowCameraEventTestingPanel] = useState(false);
-  const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'hotkey-settings'>('main');
+  const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
   const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting'>('switches');
   const [customUiPromptPos, setCustomUiPromptPos] = useState<UiPosition | null>(null);
@@ -2374,6 +2790,102 @@ export default function BattleArena({
     mainCanvasCleanupRef.current?.();
     mainCanvasCleanupRef.current = null;
   }, []);
+
+  const recordLoadStageStart = useCallback((id: string, name: string, at = performance.now(), detail = '') => {
+    const stages = loadPerformanceStagesRef.current;
+    const existing = stages.get(id);
+    if (existing && existing.completedAtMs !== null) return;
+    stages.set(id, {
+      id,
+      name,
+      status: '进行中',
+      startedAtMs: existing?.startedAtMs ?? at,
+      completedAtMs: null,
+      detail: detail || existing?.detail || '',
+      meta: existing?.meta,
+      order: existing?.order ?? loadPerformanceStageOrderRef.current++,
+    });
+  }, []);
+
+  const recordLoadStageEnd = useCallback((
+    id: string,
+    name: string,
+    at = performance.now(),
+    detail = '',
+    meta?: Record<string, number | string>,
+    status: LoadStageStatus = '完成',
+  ) => {
+    const stages = loadPerformanceStagesRef.current;
+    const existing = stages.get(id);
+    stages.set(id, {
+      id,
+      name: existing?.name ?? name,
+      status,
+      startedAtMs: existing?.startedAtMs ?? loadPerformanceStartedAtRef.current,
+      completedAtMs: at,
+      detail: detail || existing?.detail || '',
+      meta: meta ?? existing?.meta,
+      order: existing?.order ?? loadPerformanceStageOrderRef.current++,
+    });
+  }, []);
+
+  const handleSceneLoadTiming = useCallback((event: SceneLoadTimingEvent) => {
+    if (event.type === 'stage-start') {
+      recordLoadStageStart(event.id, event.name, event.at, event.detail ?? '');
+      return;
+    }
+    if (event.type === 'stage-end') {
+      const existing = loadPerformanceStagesRef.current.get(event.id);
+      recordLoadStageEnd(event.id, existing?.name ?? event.id, event.at, event.detail ?? '', event.meta);
+      return;
+    }
+    const existing = loadPerformanceStagesRef.current.get(event.id);
+    recordLoadStageEnd(event.id, existing?.name ?? event.id, event.at, event.detail ?? '', undefined, '失败');
+  }, [recordLoadStageEnd, recordLoadStageStart]);
+
+  const handleSceneMetrics = useCallback((metrics: SceneRuntimeMetrics) => {
+    sceneRuntimeMetricsRef.current = metrics;
+    const alreadyCompleted = loadPerformanceStagesRef.current.get('three-scene-mounted')?.completedAtMs != null;
+    if (!alreadyCompleted) {
+      recordLoadStageEnd(
+        'three-scene-mounted',
+        'Three场景首帧',
+        performance.now(),
+        `${metrics.objects} objects, ${metrics.calls} draw calls`,
+        { objects: metrics.objects, meshes: metrics.meshes, drawCalls: metrics.calls },
+      );
+    }
+  }, [recordLoadStageEnd]);
+
+  const copyLoadPerformanceReport = useCallback(async () => {
+    const report = loadPerformanceSnapshot?.reportText;
+    if (!report) {
+      toastError('没有可复制的加载报告');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(report);
+      toastSuccess('已复制加载报告');
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = report;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (ok) toastSuccess('已复制加载报告');
+      else toastError('复制加载报告失败');
+    }
+  }, [loadPerformanceSnapshot?.reportText]);
+
+  useEffect(() => {
+    if (!loadPerformanceSnapshot?.reportText) return;
+    (window as any).__zhenchuanLoadReport = loadPerformanceSnapshot.reportText;
+    (window as any).__zhenchuanLoadSnapshot = loadPerformanceSnapshot;
+  }, [loadPerformanceSnapshot]);
 
   const handleMainCanvasCreated = useCallback(({ gl }: { gl: THREE.WebGLRenderer }) => {
     mainCanvasCleanupRef.current?.();
@@ -2400,16 +2912,22 @@ export default function BattleArena({
     };
     canvas.addEventListener('webglcontextlost', onContextLost, false);
     canvas.addEventListener('webglcontextrestored', onContextRestored, false);
+    recordLoadStageEnd(
+      'main-canvas-created',
+      '主场景Canvas创建',
+      performance.now(),
+      `${Math.round(canvasSizeRef.current.w)}x${Math.round(canvasSizeRef.current.h)}`,
+    );
     mainCanvasCleanupRef.current = () => {
       clearRecoveryTimer();
       canvas.removeEventListener('webglcontextlost', onContextLost, false);
       canvas.removeEventListener('webglcontextrestored', onContextRestored, false);
     };
   }, []);
+
   const [showMeasurePanel, setShowMeasurePanel] = useState(false);
   const [showJumpDetailsPanel, setShowJumpDetailsPanel] = useState(false);
   const [showGroundDistanceDetail, setShowGroundDistanceDetail] = useState(false);
-  const [losBlocker, setLosBlocker] = useState<string | null>(null);
   const [envDebugInfo, setEnvDebugInfo] = useState<EnvDebugInfo | null>(null);
   const [envToggles, setEnvToggles] = useState<EnvToggles>({
     toneMapping: true, exposure: true, shadows: true,
@@ -2440,17 +2958,11 @@ export default function BattleArena({
   const [cameraDebugEntries, setCameraDebugEntries] = useState<CameraDebugEntry[]>([]);
   const cameraDebugIdRef = useRef(0);
   const cameraEventTestingEnabledRef = useRef(false);
-  const losBlockerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibleVisualGcd = buildVisibleVisualGcd(
     me?.visualGcd ?? null,
     me?.globalGcdTicks,
     gcdVisibilitySettings,
   );
-  const showLOSBlocker = useCallback((msg: string) => {
-    setLosBlocker(msg);
-    if (losBlockerTimerRef.current) clearTimeout(losBlockerTimerRef.current);
-    losBlockerTimerRef.current = setTimeout(() => setLosBlocker(null), 3000);
-  }, []);
   const showInGameWarning = useCallback((text: string) => {
     const nextText = text.trim();
     if (!nextText) return;
@@ -2469,6 +2981,19 @@ export default function BattleArena({
     if (!externalGameWarning?.text) return;
     showInGameWarning(externalGameWarning.text);
   }, [externalGameWarning?.id, externalGameWarning?.text, showInGameWarning]);
+  const showAbilityDisabledWarning = useCallback((ability: AbilityInfo) => {
+    if (ability.blockedByAntiStealth) {
+      showInGameWarning('反隐期间无法施展隐身招式');
+      return;
+    }
+    if (ability.losBlocked) {
+      showInGameWarning('视线被遮挡');
+      return;
+    }
+    if (ability.disabledWarning) {
+      showInGameWarning(ability.disabledWarning);
+    }
+  }, [showInGameWarning]);
   const clearCameraDebugEntries = useCallback(() => {
     cameraDebugIdRef.current = 0;
     setCameraDebugEntries(prev => (prev.length === 0 ? prev : []));
@@ -2584,8 +3109,102 @@ export default function BattleArena({
     bvhCenterYInitRef.current = false; // force sphere center resync on first tick
     collisionReadyRef.current = true;
     setCollisionReady(true);
+    recordLoadStageEnd('collision-ready', '碰撞系统可用', performance.now(), 'collision ready');
     console.log('[BVH] Collision system ready');
-  }, [mapData.height, mapData.width]);
+  }, [mapData.height, mapData.width, recordLoadStageEnd]);
+
+  useEffect(() => {
+    const collect = () => {
+      const now = performance.now();
+      const startedAt = loadPerformanceStartedAtRef.current;
+      const metrics = sceneRuntimeMetricsRef.current;
+
+      recordLoadStageStart('main-canvas-created', '主场景Canvas创建', startedAt, '等待 Canvas');
+      recordLoadStageStart('three-scene-mounted', 'Three场景首帧', startedAt, '等待 renderer');
+      if (mode === 'collision-test') {
+        recordLoadStageStart('collision-ready', '碰撞系统可用', startedAt, collisionReady ? 'collision ready' : '等待 collision ready');
+      }
+      if (sceneRecovering) {
+        recordLoadStageStart('webgl-recovery', 'WebGL恢复', now, 'context恢复中');
+      } else {
+        const recovery = loadPerformanceStagesRef.current.get('webgl-recovery');
+        if (recovery && recovery.completedAtMs === null) {
+          recordLoadStageEnd('webgl-recovery', 'WebGL恢复', now, '恢复完成');
+        }
+      }
+
+      const stageStates = Array.from(loadPerformanceStagesRef.current.values())
+        .sort((a, b) => a.order - b.order);
+      const stages: LoadPerformanceStage[] = stageStates.map((stage) => ({
+        id: stage.id,
+        name: stage.name,
+        status: stage.status,
+        startedAtMs: Math.max(0, stage.startedAtMs - startedAt),
+        completedAtMs: stage.completedAtMs === null ? null : Math.max(0, stage.completedAtMs - startedAt),
+        durationMs: Math.max(0, (stage.completedAtMs ?? now) - stage.startedAtMs),
+        detail: stage.detail,
+        meta: stage.meta,
+      }));
+      const requiredStageIds = mode === 'collision-test'
+        ? ['main-canvas-created', 'three-scene-mounted', 'exported-map-total', 'collision-ready']
+        : ['main-canvas-created', 'three-scene-mounted'];
+      const completed = requiredStageIds.every((id) => {
+        const stage = loadPerformanceStagesRef.current.get(id);
+        return stage?.status === '完成' && stage.completedAtMs !== null;
+      });
+      const totalEnd = completed
+        ? Math.max(...requiredStageIds.map((id) => loadPerformanceStagesRef.current.get(id)?.completedAtMs ?? startedAt))
+        : now;
+      const { resourceGroups, slowestResources } = collectSceneResourceTimings(startedAt);
+      const snapshotBase: Omit<LoadPerformanceSnapshot, 'reportText'> = {
+        ts: Date.now(),
+        startedAtIso: new Date(loadPerformanceWallStartedAtRef.current).toISOString(),
+        totalMs: Math.max(0, totalEnd - startedAt),
+        completed,
+        stages,
+        inProgressStages: stages.filter((stage) => stage.status === '进行中'),
+        resourceGroups,
+        slowestResources,
+        sceneMetrics: metrics,
+        gameCounts: {
+          opponents: worldVisibleOpponentsList.length,
+          visibleOpponents: visibleOpponentsList.length,
+          entities: entities?.length ?? 0,
+          visibleEntities: visibleEntities.length,
+          groundZones: groundZones?.length ?? 0,
+          pickups: modePickups.length,
+          events: events.length,
+          selfBuffs: me.buffs?.length ?? 0,
+          abilities: Object.keys(abilities).length,
+        },
+      };
+
+      setLoadPerformanceSnapshot({
+        ...snapshotBase,
+        reportText: buildSceneLoadReport(snapshotBase),
+      });
+    };
+
+    collect();
+    const id = window.setInterval(collect, 500);
+    return () => window.clearInterval(id);
+  }, [
+    abilities,
+    collisionReady,
+    entities?.length,
+    events.length,
+    groundZones?.length,
+    me.buffs?.length,
+    mode,
+    modePickups.length,
+    recordLoadStageEnd,
+    recordLoadStageStart,
+    sceneRecovering,
+    visibleEntities.length,
+    visibleOpponentsList.length,
+    worldVisibleOpponentsList.length,
+  ]);
+
   const isClientLineBlocked = useCallback((
     from: { x: number; y: number },
     to: { x: number; y: number },
@@ -2820,6 +3439,8 @@ export default function BattleArena({
   const oppFacingRef      = useRef<Facing>({ x: 0, y: 1 });
   const prevActiveChannelRef = useRef<ActiveChannel | null>(null);
   const activeChannelRef = useRef<ActiveChannel | null>(null);
+  const activeChannelSoundKeysRef = useRef<Set<string>>(new Set());
+  const channelSoundFinishAfterCompleteKeysRef = useRef<Set<string>>(new Set());
   const speedSamplePrevRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const speedTestRunRef = useRef({
     active: false,
@@ -3000,6 +3621,30 @@ export default function BattleArena({
     shiXinGuStandstill: false,
   });
 
+  const isGroundCastPointWithinRange = useCallback((ability: AbilityInfo | null | undefined, point: { x: number; y: number; z?: number }) => {
+    if (!ability) return false;
+    const myPos = localPositionRef.current ?? me.position;
+    if (!myPos) return false;
+    const distanceUnits = worldUnitsToNewUnits(Math.hypot(point.x - myPos.x, point.y - myPos.y), mode);
+    const maxRange = typeof ability.range === 'number' ? ability.range : undefined;
+    const minRange = typeof ability.minRange === 'number' ? ability.minRange : undefined;
+    if (maxRange !== undefined && distanceUnits > maxRange) return false;
+    if (minRange !== undefined && distanceUnits < minRange) return false;
+    return true;
+  }, [me.position, mode]);
+
+  const beginPendingGroundCast = useCallback((abilityId: string) => {
+    pendingGroundCastAbilityRef.current = abilityId;
+    setPendingGroundCastAbilityId(abilityId);
+    const ability = abilitiesRef.current.find((candidate) => candidate.id === abilityId);
+    const hoverTarget = mouseWorldPosRef.current;
+    if (ability && hoverTarget && isGroundCastPointWithinRange(ability, hoverTarget)) {
+      setGroundCastPreview({ x: hoverTarget.x, y: hoverTarget.y, z: hoverTarget.z, isValid: true });
+    } else {
+      setGroundCastPreview(null);
+    }
+  }, [isGroundCastPointWithinRange]);
+
   /* --- Channel AOE refs (used in render loop, updated via useEffect) --- */
   const meChannelingRef  = useRef(false);
   const oppChannelingRef = useRef(false);
@@ -3047,31 +3692,38 @@ export default function BattleArena({
       showInGameWarning('反隐期间无法施展隐身招式');
       return;
     }
-    // 孤风飒踏 and 撼地: enter pending ground-cast mode (shows hover circle, click to confirm)
+    if (ability?.disabledWarning) {
+      showInGameWarning(ability.disabledWarning);
+      return;
+    }
+    // Ground-target dashes enter pending mode (shows hover circle/path, click to confirm)
     if (abilityKey === 'feng_liu_yun_san') {
       const hoverTarget = mouseWorldPosRef.current;
       if (!hoverTarget) {
-        setPendingGroundCastAbilityId(id);
-        setGroundCastPreview(null);
+        beginPendingGroundCast(id);
         return;
       }
       const myPos = localPositionRef.current ?? me.position;
       const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
       const targetZ = hoverTarget.z ?? 0;
+      if (!isGroundCastPointWithinRange(ability, hoverTarget)) {
+        beginPendingGroundCast(id);
+        return;
+      }
       if (myPos && isClientLineBlocked(myPos, hoverTarget, myZ, targetZ)) {
-        showLOSBlocker('视线被遮挡');
         showInGameWarning('视线被遮挡');
         return;
       }
       lastFengLiuYunSanCastAtRef.current = performance.now();
       lastCastNameRef.current = ability?.name ?? null;
+      pendingGroundCastAbilityRef.current = null;
       setPendingGroundCastAbilityId(null);
       setGroundCastPreview(null);
       onCastAbility(id, undefined, { x: hoverTarget.x, y: hoverTarget.y, z: hoverTarget.z }, undefined, hasMovementIntent(keysRef.current));
       return;
     }
-    if (abilityKey === 'gu_feng_sa_ta' || abilityKey === 'han_di') {
-      setPendingGroundCastAbilityId(id);
+    if (isDashGroundTargetAbilityId(abilityKey)) {
+      beginPendingGroundCast(id);
       return;
     }
     if (abilityKey === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
@@ -3107,8 +3759,7 @@ export default function BattleArena({
     }
     if (ability?.target === 'OPPONENT' && !selectedTargetIdNow && !selectedEntityIdNow && !selectedSelfNow) {
       if (ability?.allowGroundCastWithoutTarget) {
-        setPendingGroundCastAbilityId(id);
-        setGroundCastPreview(null);
+        beginPendingGroundCast(id);
         return;
       }
       showInGameWarning('请先选择目标');
@@ -3157,8 +3808,7 @@ export default function BattleArena({
     }
     if (ability?.target === 'OPPONENT' && !targetPos) {
       if (ability?.allowGroundCastWithoutTarget) {
-        setPendingGroundCastAbilityId(id);
-        setGroundCastPreview(null);
+        beginPendingGroundCast(id);
         return;
       }
       showInGameWarning('目标不可见或已失去目标');
@@ -3224,7 +3874,6 @@ export default function BattleArena({
       if (myPos && targetPos) {
         const losBlocked = isClientLineBlocked(myPos, targetPos, myZ, tgtZ, selectedEntityIdNow ?? undefined);
         if (losBlocked) {
-          showLOSBlocker('视线被遮挡');
           showInGameWarning('视线被遮挡');
           return;
         }
@@ -3232,6 +3881,7 @@ export default function BattleArena({
     }
     // Stamp the ability name so the damage / heal float can label itself
     lastCastNameRef.current = ability?.name ?? null;
+    pendingGroundCastAbilityRef.current = null;
     setPendingGroundCastAbilityId(null);
     setGroundCastPreview(null);
     // If an entity is selected and ability targets OPPONENT, route as entity attack.
@@ -3257,12 +3907,15 @@ export default function BattleArena({
     const ability = abilitiesRef.current.find((a) => a.id === abilityId);
     if (!ability) return;
     const abilityKey = ability.abilityId ?? ability.id;
+    if (!isGroundCastPointWithinRange(ability, { x, y, z: worldZ })) {
+      setGroundCastPreview(null);
+      return;
+    }
     if (ability.target === 'OPPONENT') {
       const myPos = localPositionRef.current ?? me.position;
       const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
       const targetZ = worldZ ?? 0;
       if (myPos && isClientLineBlocked(myPos, { x, y }, myZ, targetZ)) {
-        showLOSBlocker('视线被遮挡');
         showInGameWarning('视线被遮挡');
         return;
       }
@@ -3275,6 +3928,7 @@ export default function BattleArena({
     if (abilityKey === 'feng_liu_yun_san') {
       lastFengLiuYunSanCastAtRef.current = performance.now();
     }
+    pendingGroundCastAbilityRef.current = null;
     setPendingGroundCastAbilityId(null);
     setGroundCastPreview(null);
     onCastAbility(abilityId, undefined, { x, y, z: worldZ }, undefined, hasMovementIntent(keysRef.current));
@@ -3879,15 +4533,108 @@ export default function BattleArena({
     if (newEvents.length === 0) return;
 
     const myId = me?.userId;
+    const playSoundForEvent = (evt: any) => {
+      if ((evt.type !== 'PLAY_ABILITY' && evt.type !== 'ABILITY_SOUND' && evt.type !== 'DAMAGE' && evt.type !== 'BUFF_APPLIED') || !evt.abilityId) return;
+      const ability = abilities?.[evt.abilityId];
+      const cue = getAbilitySoundCue(ability, evt);
+      if (!cue) return;
+      if (cue.targetOnly && String(evt.targetUserId ?? '') !== String(myId ?? '')) return;
+
+      const listenerPosition = localPositionRef.current ?? me?.position ?? null;
+      const actorUserId = String(evt.actorUserId ?? '');
+      const runtimeChannelForSound = getRuntimeAbilityChannel(ability);
+      const eventChannelSoundKey = getChannelSoundKey(
+        actorUserId,
+        typeof evt.abilityId === 'string' ? evt.abilityId : undefined,
+        runtimeChannelForSound?.source === 'BUFF'
+          ? undefined
+          : typeof evt.abilityInstanceId === 'string' ? evt.abilityInstanceId : undefined,
+      );
+      if ((evt.type === 'PLAY_ABILITY' || evt.type === 'ABILITY_SOUND') && evt.channelPhase === 'complete') {
+        if (eventChannelSoundKey && channelSoundFinishAfterCompleteKeysRef.current.has(eventChannelSoundKey)) {
+          channelSoundFinishAfterCompleteKeysRef.current.delete(eventChannelSoundKey);
+          activeChannelSoundKeysRef.current.delete(eventChannelSoundKey);
+        } else {
+          stopAbilityChannelSound(eventChannelSoundKey);
+        }
+      }
+      const actorState = actorUserId === myId
+        ? me
+        : opponentsList.find((opponentEntry) => opponentEntry.userId === actorUserId) ?? null;
+      const eventSourcePosition = typeof evt.x === 'number' && typeof evt.y === 'number'
+        ? { x: evt.x, y: evt.y, z: typeof evt.z === 'number' ? evt.z : 0 }
+        : null;
+      const sourcePosition = cue.targetOnly
+        ? listenerPosition
+        : eventSourcePosition
+        ? eventSourcePosition
+        : actorUserId === myId
+        ? listenerPosition
+        : opponentPositionsRef.current[actorUserId] ?? actorState?.position ?? null;
+      const spatial = cue.targetOnly
+        ? { volume: 1, pan: 0 }
+        : calculateAbilitySoundSpatial({
+            listener: listenerPosition,
+            source: sourcePosition,
+            ability,
+            phase: cue.phase,
+            isSelf: actorUserId === myId && !eventSourcePosition,
+          });
+      const playbackRate = getChannelSoundPlaybackRate({
+        ability,
+        actor: actorState,
+        abilityId: evt.abilityId,
+        abilityInstanceId: typeof evt.abilityInstanceId === 'string' ? evt.abilityInstanceId : undefined,
+        phase: cue.phase,
+      });
+      const loopDurationMs = cue.loopDuringChannel
+        ? getChannelSoundLoopDurationMs({
+            ability,
+            actor: actorState,
+            abilityId: evt.abilityId,
+            phase: cue.phase,
+          })
+        : undefined;
+      const channelSoundKey = isChannelStartCue({ ability, event: evt, phase: cue.phase })
+        ? eventChannelSoundKey
+        : undefined;
+      if (channelSoundKey) {
+        activeChannelSoundKeysRef.current.add(channelSoundKey);
+        if (cue.finishAfterChannelComplete) {
+          channelSoundFinishAfterCompleteKeysRef.current.add(channelSoundKey);
+        } else {
+          channelSoundFinishAfterCompleteKeysRef.current.delete(channelSoundKey);
+        }
+      }
+
+      void playAbilitySound({
+        url: cue.url,
+        volume: abilitySoundSettings.disabled ? 0 : spatial.volume * (abilitySoundSettings.volumePercent / 100) * ABILITY_SOUND_VOLUME_OUTPUT_SCALE,
+        pan: spatial.pan,
+        abilityId: evt.abilityId,
+        abilityName: ability?.name ?? evt.abilityName,
+        actorUserId,
+        phase: cue.phase,
+        playbackRate: cue.playbackRate ?? playbackRate,
+        fitToDurationMs: cue.fitToDurationMs,
+        preservePitch: cue.preservePitch,
+        normalizeVolume: cue.normalizeVolume,
+        loopDurationMs,
+        extraSounds: cue.extraSounds,
+        channelSoundKey,
+      });
+    };
+
     for (const evt of newEvents) {
       // WS array patches can momentarily produce sparse event slices.
       // Ignore empty/malformed entries instead of crashing the whole arena.
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
+      playSoundForEvent(evt);
       if (evt.type === 'COMBAT_STATUS' && evt.targetUserId === myId) {
         if ((evt as any).combatStatus === 'enter' || (evt as any).inCombat === true) {
           showInGameWarning('进入战斗');
         } else {
-          toastSuccess('离开战斗');
+          showInGameWarning('离开战斗');
         }
       } else if (evt.type === 'PLAY_ABILITY' && evt.abilityId === 'dou_zhuan_xing_yi') {
         lastInstantSwapCastAtRef.current = performance.now();
@@ -3958,6 +4705,44 @@ export default function BattleArena({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, me?.userId, showInGameWarning, visibleOpponentsList]);
+
+  useEffect(() => {
+    const activeKeys = new Set<string>();
+    const collectActiveChannel = (player: { userId?: string; activeChannel?: ActiveChannel; buffs?: ActiveBuff[] } | null | undefined) => {
+      const key = getChannelSoundKey(player?.userId, player?.activeChannel?.abilityId, player?.activeChannel?.instanceId);
+      if (key) activeKeys.add(key);
+
+      for (const buff of player?.buffs ?? []) {
+        const ability = (buff.sourceAbilityId ? abilities?.[buff.sourceAbilityId] : undefined) ?? channelAbilityByBuffId.get(buff.buffId);
+        const channel = getRuntimeAbilityChannel(ability);
+        if (!ability || channel?.source !== 'BUFF') continue;
+        if (typeof channel.buffId === 'number' && channel.buffId !== buff.buffId) continue;
+        const buffKey = getChannelSoundKey(player?.userId, ability.id, undefined);
+        if (buffKey) activeKeys.add(buffKey);
+      }
+    };
+
+    collectActiveChannel(me);
+    for (const opponentEntry of opponentsList) {
+      collectActiveChannel(opponentEntry);
+    }
+
+    for (const previousKey of activeChannelSoundKeysRef.current) {
+      if (!activeKeys.has(previousKey)) {
+        stopAbilityChannelSound(previousKey);
+      }
+    }
+
+    activeChannelSoundKeysRef.current = activeKeys;
+  }, [abilities, channelAbilityByBuffId, me, opponentsList]);
+
+  useEffect(() => () => {
+    for (const key of activeChannelSoundKeysRef.current) {
+      stopAbilityChannelSound(key);
+    }
+    activeChannelSoundKeysRef.current.clear();
+    channelSoundFinishAfterCompleteKeysRef.current.clear();
+  }, []);
 
   // Warn when a targeted channel is interrupted because target became untargetable (e.g. entered stealth).
   useEffect(() => {
@@ -4429,6 +5214,7 @@ export default function BattleArena({
         const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ab.minSelfHpPercentExclusive / 100);
         if ((me?.hp ?? 0) <= requiredHp) return false;
       }
+      if (getPowerLockWarningClient(ab, me.buffs)) return false;
       if (disarmed && ab?.noWeaponRequired !== true) return false;
       if (nonQinggongLocked && !isQinggongLike) return false;
       if (isQinggongLike && qinggongSealed) return false;
@@ -4471,6 +5257,8 @@ export default function BattleArena({
       if (abilityIdForChecks === 'you_feng_piao_zong' && !targetContext.playerTarget) {
         return false;
       }
+
+      if (ab?.target !== 'OPPONENT') return true;
 
       const distanceToTarget = (myPos && targetPos)
         ? worldUnitsToNewUnits(Math.sqrt(
@@ -4545,6 +5333,7 @@ export default function BattleArena({
         const chargeDisplay = getChargeDisplay(ability, instance);
         const isReadyVal = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
+        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         const targetContext = getAbilityTargetContext(ability);
         const losBlockedVal = !isReadyVal && (ability as any)?.target === 'OPPONENT' && !(ability as any)?.friendlyTarget && myPos && targetContext.targetPos
@@ -4586,6 +5375,7 @@ export default function BattleArena({
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           minSelfHpPercentExclusive: typeof (ability as any).minSelfHpPercentExclusive === 'number' ? (ability as any).minSelfHpPercentExclusive : undefined,
+          damageType: getAbilityDamageTypeClient(ability),
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
@@ -4595,6 +5385,7 @@ export default function BattleArena({
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
+          disabledWarning,
         };
       })
       .filter(Boolean) as AbilityInfo[];
@@ -4608,6 +5399,7 @@ export default function BattleArena({
         const chargeDisplay = getChargeDisplay(ability, instance);
         const isReadyVal = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
+        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         return {
           id: ability.id,
@@ -4639,6 +5431,7 @@ export default function BattleArena({
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           minSelfHpPercentExclusive: typeof (ability as any).minSelfHpPercentExclusive === 'number' ? (ability as any).minSelfHpPercentExclusive : undefined,
+          damageType: getAbilityDamageTypeClient(ability),
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
@@ -4648,6 +5441,7 @@ export default function BattleArena({
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
+          disabledWarning,
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
@@ -4664,6 +5458,7 @@ export default function BattleArena({
         const chargeDisplay = getChargeDisplay(ability, instance ?? {});
         const isReadyCom = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
+        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         const targetContext = getAbilityTargetContext(ability);
         const losBlockedCom = !isReadyCom && (ability as any)?.target === 'OPPONENT' && !(ability as any)?.friendlyTarget && myPos && targetContext.targetPos
@@ -4703,6 +5498,7 @@ export default function BattleArena({
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           minSelfHpPercentExclusive: typeof (ability as any).minSelfHpPercentExclusive === 'number' ? (ability as any).minSelfHpPercentExclusive : undefined,
+          damageType: getAbilityDamageTypeClient(ability),
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
@@ -4712,6 +5508,7 @@ export default function BattleArena({
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
+          disabledWarning,
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
@@ -5410,33 +6207,42 @@ export default function BattleArena({
       const drafts = specialBarHotkeysActive
         ? abilitiesRef.current.filter(a => a.isSpecialBarAbility)
         : getHotkeyDraftSlots();
-      if (e.key === '1' && drafts[0]) { setPressedAbilityInput('draft-0'); if (drafts[0].isReady) castAbilityRef.current(drafts[0].id); return; }
-      if (e.key === '2' && drafts[1]) { setPressedAbilityInput('draft-1'); if (drafts[1].isReady) castAbilityRef.current(drafts[1].id); return; }
-      if (e.key === '3' && drafts[2]) { setPressedAbilityInput('draft-2'); if (drafts[2].isReady) castAbilityRef.current(drafts[2].id); return; }
-      if (k === 'q' && !e.altKey && drafts[3]) { setPressedAbilityInput('draft-3'); if (drafts[3].isReady) castAbilityRef.current(drafts[3].id); return; }
+      const triggerAbilityHotkey = (ability: AbilityInfo | undefined, pressedId: string) => {
+        if (!ability) return;
+        setPressedAbilityInput(pressedId);
+        if (ability.isReady && !ability.blockedByAntiStealth) {
+          castAbilityRef.current(ability.id);
+        } else {
+          showAbilityDisabledWarning(ability);
+        }
+      };
+      if (e.key === '1' && drafts[0]) { triggerAbilityHotkey(drafts[0], 'draft-0'); return; }
+      if (e.key === '2' && drafts[1]) { triggerAbilityHotkey(drafts[1], 'draft-1'); return; }
+      if (e.key === '3' && drafts[2]) { triggerAbilityHotkey(drafts[2], 'draft-2'); return; }
+      if (k === 'q' && !e.altKey && drafts[3]) { triggerAbilityHotkey(drafts[3], 'draft-3'); return; }
       // ── Common abilities: X  Alt+A  Alt+D  Alt+S  `  T ──
       const commons = specialBarHotkeysActive ? [] : abilitiesRef.current.filter(a => a.isCommon);
       if (k === 'x' && !e.altKey) {
         // index 0 = 猛虎下山
-        if (commons[0]) { setPressedAbilityInput('common-0'); if (commons[0].isReady) castAbilityRef.current(commons[0].id); }
+        triggerAbilityHotkey(commons[0], 'common-0');
         return;
       }
       if (k === 't' && !e.altKey) {
         // index 7 = 御骑
-        if (commons[7]) { setPressedAbilityInput('common-7'); if (commons[7].isReady) castAbilityRef.current(commons[7].id); }
+        triggerAbilityHotkey(commons[7], 'common-7');
         return;
       }
       if (e.key === '`') {
         // index 6 = 后撤
-        if (commons[6]) { setPressedAbilityInput('common-6'); if (commons[6].isReady) castAbilityRef.current(commons[6].id); }
+        triggerAbilityHotkey(commons[6], 'common-6');
         return;
       }
       if (e.altKey) {
         e.preventDefault(); // suppress browser Alt shortcuts
-        if (k === 'w' && commons[2]) { setPressedAbilityInput('common-2'); if (commons[2].isReady) castAbilityRef.current(commons[2].id); } // 蹑云逐月
-        if (k === 'a' && commons[3]) { setPressedAbilityInput('common-3'); if (commons[3].isReady) castAbilityRef.current(commons[3].id); } // 凌霄揽胜
-        if (k === 'd' && commons[4]) { setPressedAbilityInput('common-4'); if (commons[4].isReady) castAbilityRef.current(commons[4].id); } // 瑶台枕鹤
-        if (k === 's' && commons[5]) { setPressedAbilityInput('common-5'); if (commons[5].isReady) castAbilityRef.current(commons[5].id); } // 迎风回浪
+        if (k === 'w') triggerAbilityHotkey(commons[2], 'common-2'); // 蹑云逐月
+        if (k === 'a') triggerAbilityHotkey(commons[3], 'common-3'); // 凌霄揽胜
+        if (k === 'd') triggerAbilityHotkey(commons[4], 'common-4'); // 瑶台枕鹤
+        if (k === 's') triggerAbilityHotkey(commons[5], 'common-5'); // 迎风回浪
       }
     };
     const onUp = (e: KeyboardEvent) => {
@@ -5468,7 +6274,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode]);
+  }, [tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, showAbilityDisabledWarning]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -7831,12 +8637,7 @@ export default function BattleArena({
                     onClick={() => {
                       if (dragJustEndedRef.current) return;
                       if (!ability.isReady || ability.blockedByAntiStealth) {
-                        if (ability.losBlocked) {
-                          showLOSBlocker('视线被遮挡');
-                        }
-                        if (ability.blockedByAntiStealth) {
-                          showInGameWarning('反隐期间无法施展隐身招式');
-                        }
+                        showAbilityDisabledWarning(ability);
                         return;
                       }
                       castAbilityRef.current(ability.id);
@@ -7911,9 +8712,7 @@ export default function BattleArena({
                   onBlur={closeAbilityHint}
                   onClick={() => {
                     if (!ability.isReady || ability.blockedByAntiStealth) {
-                      if (ability.blockedByAntiStealth) {
-                        showInGameWarning('反隐期间无法施展隐身招式');
-                      }
+                      showAbilityDisabledWarning(ability);
                       return;
                     }
                     castAbilityRef.current(ability.id);
@@ -8230,6 +9029,7 @@ export default function BattleArena({
                 showInGameWarning('目标不可选中');
                 return;
               }
+              pendingGroundCastAbilityRef.current = null;
               setPendingGroundCastAbilityId(null);
               setGroundCastPreview(null);
               setSelectedTargetId(userId);
@@ -8243,6 +9043,7 @@ export default function BattleArena({
             selectedEntityId={selectedEntityId}
             myUserId={me.userId}
             onSelectEntity={(entityId) => {
+              pendingGroundCastAbilityRef.current = null;
               setPendingGroundCastAbilityId(null);
               setGroundCastPreview(null);
               setSelectedEntityId(entityId);
@@ -8298,7 +9099,10 @@ export default function BattleArena({
                   const previewAbility =
                     abilities[previewAbilityId] ??
                     Object.values(abilities).find((c: any) => c.id === previewAbilityId);
-                  const previewRadiusUnits = Array.isArray((previewAbility as any)?.effects)
+                  const isDashGroundTargetPreview = isDashGroundTargetAbilityId(previewAbilityId);
+                  const previewRadiusUnits = isDashGroundTargetPreview
+                    ? 0.8
+                    : Array.isArray((previewAbility as any)?.effects)
                     ? ((previewAbility as any).effects.find((e: any) =>
                         e.type === 'BAIZU_AOE' || e.type === 'WUFANG_XINGJIN_AOE'
                       )?.range ?? 6)
@@ -8310,6 +9114,7 @@ export default function BattleArena({
                     radius: previewRadiusUnits * storedUnitScale,
                     label: previewAbilityInfo?.name ?? previewAbility?.name ?? '范围预览',
                     isValid: groundCastPreview.isValid !== false,
+                    showPath: isDashGroundTargetPreview && showUniqueDashRoute,
                   };
                 }
 
@@ -8321,7 +9126,12 @@ export default function BattleArena({
               mouseWorldPosRef.current = { x, y, z: worldZ };
               // Only update preview state when there is an active pending ground cast
               if (pendingGroundCastAbilityRef.current) {
-                setGroundCastPreview({ x, y, z: worldZ, isValid: isHorizontal !== false });
+                const pendingAbility = abilitiesRef.current.find((a) => a.id === pendingGroundCastAbilityRef.current);
+                setGroundCastPreview(
+                  pendingAbility && isGroundCastPointWithinRange(pendingAbility, { x, y, z: worldZ })
+                    ? { x, y, z: worldZ, isValid: isHorizontal !== false }
+                    : null
+                );
               }
               if (pendingDummySpawnRef.current) {
                 setDummySpawnPreview({ x, y, z: worldZ });
@@ -8353,10 +9163,11 @@ export default function BattleArena({
             collisionDebugRef={collisionDebugRef}
             onCollisionSystemReady={onCollisionSystemReady}
             onCameraDebugEvent={mode === 'collision-test' && showCameraEventTestingPanel ? appendCameraDebugEntry : undefined}
-            losBlocker={losBlocker}
             blueprintMode={blueprintMode}
             losIsBlocked={draftAbilities.some(a => !!a?.losBlocked) || commonAbilities.some(a => a.losBlocked)}
             onEnvDebug={mode === 'collision-test' && lightingControlsOpen ? setEnvDebugInfo : undefined}
+            onSceneMetrics={handleSceneMetrics}
+            onSceneLoadTiming={handleSceneLoadTiming}
             envToggles={mode === 'collision-test' ? envToggles : undefined}
             dirLightConfig={mode === 'collision-test' ? dirLightConfig : undefined}
             blindWorldMode={selfHasHongMengTianJin}
@@ -8594,7 +9405,7 @@ export default function BattleArena({
                         <span className={styles.escMainIcon}><Gamepad2 size={78} strokeWidth={1.6} aria-hidden="true" /></span>
                         <span>游戏设置</span>
                       </button>
-                      <button type="button" className={styles.escMainTile} disabled>
+                      <button type="button" className={styles.escMainTile} onClick={() => setEscPanelPage('sound-settings')}>
                         <span className={styles.escMainIcon}><Volume2 size={78} strokeWidth={1.6} aria-hidden="true" /></span>
                         <span>声音设置</span>
                       </button>
@@ -8673,6 +9484,10 @@ export default function BattleArena({
                               <span>镜头测试</span>
                             </label>
                             <label className={styles.escToggleRow}>
+                              <input type="checkbox" checked={showLoadPerformancePanel} onChange={(e) => setShowLoadPerformancePanel(e.target.checked)} className={styles.escToggleInput} />
+                              <span>场景加载报告</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
                               <input
                                 type="checkbox"
                                 checked={showDebugGrid}
@@ -8686,6 +9501,10 @@ export default function BattleArena({
                             <label className={styles.escToggleRow}>
                               <input type="checkbox" checked={showCollisionShells} onChange={(e) => setShowCollisionShells(e.target.checked)} className={styles.escToggleInput} />
                               <span>显示碰撞线</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
+                              <input type="checkbox" checked={showUniqueDashRoute} onChange={(e) => setShowUniqueDashRoute(e.target.checked)} className={styles.escToggleInput} />
+                              <span>显示位移路线</span>
                             </label>
                             <label className={styles.escToggleRow}>
                               <input type="checkbox" checked={blueprintMode} onChange={(e) => setBlueprintMode(e.target.checked)} className={styles.escToggleInput} />
@@ -8810,12 +9629,12 @@ export default function BattleArena({
                   >
                     <ArrowLeft size={28} strokeWidth={2.3} aria-hidden="true" />
                   </button>
-                  <div className={styles.escWindowTitle}>{escPanelPage === 'hotkey-settings' ? '快捷键设置' : '游戏设置'}</div>
+                  <div className={styles.escWindowTitle}>{escPanelPage === 'hotkey-settings' ? '快捷键设置' : escPanelPage === 'sound-settings' ? '声音设置' : '游戏设置'}</div>
                   <button
                     type="button"
                     onClick={() => setShowTestingPanel(false)}
                     className={styles.escHeaderIconButton}
-                    aria-label={escPanelPage === 'hotkey-settings' ? '关闭快捷键设置' : '关闭游戏设置'}
+                    aria-label={escPanelPage === 'hotkey-settings' ? '关闭快捷键设置' : escPanelPage === 'sound-settings' ? '关闭声音设置' : '关闭游戏设置'}
                   >
                     <X size={28} strokeWidth={2.3} aria-hidden="true" />
                   </button>
@@ -8824,6 +9643,8 @@ export default function BattleArena({
                   <aside className={styles.escSettingsSidebar}>
                     {escPanelPage === 'hotkey-settings' ? (
                       <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>物品快捷栏</button>
+                    ) : escPanelPage === 'sound-settings' ? (
+                      <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>音效</button>
                     ) : (
                       <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>综合</button>
                     )}
@@ -8859,6 +9680,44 @@ export default function BattleArena({
                               className={styles.escRangeInput}
                               aria-label="格子数量"
                             />
+                          </div>
+                        </div>
+                      </>
+                    ) : escPanelPage === 'sound-settings' ? (
+                      <>
+                        <div className={styles.escSectionTitle}><span>声音设置</span></div>
+                        <div className={styles.escSettingsGrid}>
+                          <div className={styles.escSettingControl}>
+                            <div className={styles.escRangeHeader}>
+                              <span>音效音量</span>
+                              <span>{abilitySoundSettings.volumePercent}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              step="1"
+                              value={abilitySoundSettings.volumePercent}
+                              onChange={(e) => {
+                                const volumePercent = normalizeAbilitySoundVolumePercent(e.target.value);
+                                setAbilitySoundSettings((prev) => ({ ...prev, volumePercent }));
+                              }}
+                              className={styles.escRangeInput}
+                              aria-label="音效音量"
+                              disabled={abilitySoundSettings.disabled}
+                            />
+                            <label className={styles.escToggleRow}>
+                              <input
+                                type="checkbox"
+                                checked={abilitySoundSettings.disabled}
+                                onChange={(e) => {
+                                  const disabled = e.target.checked;
+                                  setAbilitySoundSettings((prev) => ({ ...prev, disabled }));
+                                }}
+                                className={styles.escToggleInput}
+                              />
+                              <span>关闭音效</span>
+                            </label>
                           </div>
                         </div>
                       </>
@@ -8989,25 +9848,84 @@ export default function BattleArena({
         </div>
       )}
 
-      {/* ===== LOS BLOCKER DEBUG OVERLAY ===== */}
-      {losBlocker && (
-        <div style={{
-          position: 'absolute',
-          top: 60,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 530,
-          background: 'rgba(180, 0, 0, 0.85)',
-          border: '1px solid #ff4444',
-          color: '#fff',
-          fontSize: 13,
-          padding: '7px 16px',
-          borderRadius: 6,
-          fontFamily: 'monospace',
-          pointerEvents: 'none',
-          textAlign: 'center',
-        }}>
-          {losBlocker}
+      {showLoadPerformancePanel && loadPerformanceSnapshot && (
+        <div className={`${styles.uiFloatingPanel} ${styles.loadPerfPanel}`} data-ui-interactive data-load-performance-panel>
+          <div className={styles.loadPerfHeader}>
+            <div>
+              <div className={styles.uiFloatingTitle}>场景加载</div>
+              <div className={styles.loadPerfSummary}>
+                总耗时 {formatLoadPerfMs(loadPerformanceSnapshot.totalMs)} · {loadPerformanceSnapshot.completed ? '完成' : '进行中'} · {loadPerformanceSnapshot.inProgressStages.length} 项进行中
+              </div>
+            </div>
+            <div className={styles.loadPerfHeaderActions}>
+              <button
+                type="button"
+                className={styles.loadPerfCopyButton}
+                onClick={copyLoadPerformanceReport}
+              >
+                <Clipboard size={13} />
+                <span>复制报告</span>
+              </button>
+              <button
+                type="button"
+                className={styles.loadPerfCloseButton}
+                onClick={() => setShowLoadPerformancePanel(false)}
+                aria-label="关闭场景加载"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+          <div className={styles.loadPerfSection}>
+            <div className={styles.loadPerfSectionTitle}>阶段耗时</div>
+            <div className={styles.loadPerfStageList}>
+              {loadPerformanceSnapshot.stages.map((stage) => (
+                <div key={stage.id} className={styles.loadPerfStageRow}>
+                  <span>{stage.name}</span>
+                  <strong data-status={stage.status}>{stage.status}</strong>
+                  <small>{formatLoadPerfMs(stage.durationMs)} · {formatLoadPerfMs(stage.startedAtMs)}→{stage.completedAtMs === null ? '...' : formatLoadPerfMs(stage.completedAtMs)}</small>
+                  {stage.detail && <em>{stage.detail}</em>}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className={styles.loadPerfSection}>
+            <div className={styles.loadPerfSectionTitle}>资源分组</div>
+            {loadPerformanceSnapshot.resourceGroups.length > 0 ? (
+              <div className={styles.loadPerfStageList}>
+                {loadPerformanceSnapshot.resourceGroups.map((group) => (
+                  <div key={group.label} className={styles.loadPerfResourceRow}>
+                    <span>{group.label}</span>
+                    <strong>{group.count} 个</strong>
+                    <small>最慢 {formatLoadPerfMs(group.maxDurationMs)} · 合计 {formatLoadPerfMs(group.totalDurationMs)}</small>
+                    <em>{group.slowestName || '-'}</em>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.loadPerfEmpty}>无 full-exports 资源计时</div>
+            )}
+          </div>
+          <div className={styles.loadPerfSection}>
+            <div className={styles.loadPerfSectionTitle}>最慢资源</div>
+            {loadPerformanceSnapshot.slowestResources.length > 0 ? (
+              <div className={styles.loadPerfStageList}>
+                {loadPerformanceSnapshot.slowestResources.slice(0, 5).map((resource) => (
+                  <div key={`${resource.label}-${resource.name}`} className={styles.loadPerfResourceRow}>
+                    <span>{resource.label}</span>
+                    <strong>{formatLoadPerfMs(resource.durationMs)}</strong>
+                    <small>{formatLoadPerfBytes(resource.transferSizeBytes)}</small>
+                    <em>{resource.name}</em>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.loadPerfEmpty}>无</div>
+            )}
+          </div>
+          <div className={styles.loadPerfGameCounts}>
+            Three {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.objects)} objects · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.geometries)} geometries · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.textures)} textures · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.calls)} draws
+          </div>
         </div>
       )}
 

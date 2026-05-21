@@ -190,12 +190,13 @@ export const BASE_ABILITIES: AbilityRecord = {
   ren_chi_cheng: {
     id: "ren_chi_cheng",
     name: "任驰骋",
-    description: "运功0.5秒，期间可以移动但跳跃会打断；完成后获得【御骑】、【任驰骋】12秒（攻击力提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
+    description: "需在地面运功0.75秒，期间可以移动但跳跃会打断；完成后获得【御骑】、【任驰骋】12秒（攻击力提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 900,
     gcd: true,
-    channelDurationMs: 500,
+    requiresGrounded: true,
+    channelDurationMs: 750,
     channelCancelOnMove: false,
     channelCancelOnJump: true,
     channelLockMovement: false,
@@ -320,7 +321,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   baizu: {
     id: "baizu",
     name: "百足",
-    description: "可选目标或地面施放（范围6）\n命中后立刻造成3点伤害\n附加【百足】18秒：每3秒造成4点伤害，结束时额外造成3点伤害",
+    description: "可选目标或地面施放（范围6）\n命中后立刻造成3点伤害\n附加【百足】18秒：每3秒造成4点伤害，结束时以携带者为中心再次爆炸，造成3点范围伤害（不再附加百足）",
     type: "ATTACK",
     target: "OPPONENT",
     range: 25,
@@ -336,10 +337,10 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "DEBUFF",
         durationMs: 18_000,
         periodicMs: 3_000,  // fires every 3 seconds
-        description: "每3秒受到4点伤害，结束时额外受到3点伤害",
+        description: "每3秒受到4点伤害，结束时以自身为中心再次爆炸，造成3点范围伤害（不再附加百足）",
         effects: [
           { type: "PERIODIC_DAMAGE", value: 4 },
-          { type: "TIMED_SELF_DAMAGE", value: 3, delayMs: 18_000 },
+          { type: "TIMED_SOURCE_CENTER_AOE_DAMAGE", value: 3, range: 6, delayMs: 18_000 },
         ],
       },
     ],
@@ -2051,10 +2052,10 @@ export const BASE_ABILITIES: AbilityRecord = {
   gu_feng_sa_ta: {
     id: "gu_feng_sa_ta",
     name: "孤风飒踏",
-    description: "可选目标或地面施放\n向目标方向冲刺20尺（0.5秒完成）\n解除控制效果\n不触发GCD",
+    description: "以鼠标指定地面位置施放（射程20）\n向指定位置冲刺20尺（0.5秒完成）\n解除控制效果\n不触发GCD",
     type: "SUPPORT",
     target: "OPPONENT",
-    range: 40,
+    range: 20,
     cooldownTicks: 300,
     gcd: false,
     faceDirection: false,
@@ -2072,7 +2073,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   han_di: {
     id: "han_di",
     name: "撼地",
-    description: "轻功，可选目标或地面施放（射程20）\n向目标方向冲刺20尺（0.5秒完成）\n落地时眩晕5尺范围内的敌人3秒\n触发GCD",
+    description: "轻功，以鼠标指定地面位置施放（射程20）\n向指定位置冲刺20尺（0.5秒完成）\n落地时眩晕5尺范围内的敌人3秒\n触发GCD",
     type: "CONTROL",
     target: "OPPONENT",
     range: 20,
@@ -3421,7 +3422,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   lin_shi_fei_zhua: {
     id: "lin_shi_fei_zhua",
     name: "临时飞爪",
-    description: "轻功，可选目标或地面施放（射程40）。以飞爪冲刺至目标位置，期间可施放技能；冲刺不提供无敌，受到控制立即中断",
+    description: "轻功，以鼠标指定地面位置施放（射程40）。以飞爪冲刺至指定位置，期间可施放技能；冲刺不提供无敌，受到控制立即中断",
     type: "SUPPORT",
     target: "OPPONENT",
     range: 40,
@@ -4762,15 +4763,14 @@ export const BASE_ABILITIES: AbilityRecord = {
   xia_liu_bao_shi: {
     id: "xia_liu_bao_shi",
     name: "霞流宝石",
-    description: "6尺，瞬发，可空中施放，不进入公共冷却\n造成1点伤害，驱散目标身上的阳性、混元、阴性、毒性有利气劲各一个，并使其获得【霞流宝石】4秒：缴械，无法施展需要武器的招式",
+    description: "自身周围6尺，瞬发，可空中施放，不进入公共冷却\n对附近敌人造成1点伤害，驱散其身上的阳性、混元、阴性、毒性有利气劲各一个，并使其获得【霞流宝石】4秒：缴械，无法施展需要武器的招式",
     type: "CONTROL",
-    target: "OPPONENT",
+    target: "SELF",
     range: 6,
     cooldownTicks: 300,
     gcd: false,
     effects: [
-      { type: "DAMAGE", value: 1 },
-      { type: "DISPEL_BUFF_ATTRIBUTE", attributes: ["阳性", "混元", "阴性", "毒性"], count: 1 } as any,
+      { type: "XIA_LIU_BAO_SHI_AOE", value: 1, range: 6, attributes: ["阳性", "混元", "阴性", "毒性"], count: 1 } as any,
     ],
     buffs: [
       {

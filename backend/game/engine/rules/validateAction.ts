@@ -16,6 +16,7 @@ import { hasMiYunConfusion } from "../utils/miyun";
 
 const SHU_SE_BUFF_ID = 2646;
 const REN_CHI_CHENG_ABILITY_ID = "ren_chi_cheng";
+const EXPLICIT_GROUND_DASH_ABILITY_IDS = new Set(["gu_feng_sa_ta", "han_di", "lin_shi_fei_zhua"]);
 
 type ValidateCastOptions = {
   ignoreActiveChannel?: boolean;
@@ -65,6 +66,19 @@ function hasChargeSystem(ability: any): boolean {
 
 function isQinggongAbility(ability: any): boolean {
   return ability?.qinggong === true || ability?.qinggongGcdImmune === true;
+}
+
+function getAbilityDamageType(ability: any): "内功" | "外功" | undefined {
+  const damageType = ability?.damageType ?? ability?.tags?.damageType;
+  return damageType === "内功" || damageType === "外功" ? damageType : undefined;
+}
+
+function abilityAllowsSilence(ability: any): boolean {
+  return (
+    ability?.allowWhileSilenced === true ||
+    (Array.isArray(ability?.effects) &&
+      ability.effects.some((effect: any) => effect.allowWhileSilenced === true))
+  );
 }
 
 function ensureChargeRuntime(instance: any, ability: any) {
@@ -334,7 +348,7 @@ export function validateCastAbility(
     resolvedTargetUserId === player.userId &&
     ((ability as any).canTargetSelf === true || isFriendlyTargetAbility);
 
-  if (ability.id === "feng_liu_yun_san" && !hasGroundTarget) {
+  if ((ability.id === "feng_liu_yun_san" || EXPLICIT_GROUND_DASH_ABILITY_IDS.has(ability.id)) && !hasGroundTarget) {
     throw new Error("ERR_TARGET_UNAVAILABLE");
   }
 
@@ -407,14 +421,16 @@ export function validateCastAbility(
   }
 
   /* ================= SILENCE (Level 3 — not removable) ================= */
-  if (hasEffect(player, "SILENCE")) {
-    const allowsSilence =
-      (ability as any).allowWhileSilenced === true ||
-      (Array.isArray(ability.effects) &&
-        ability.effects.some((e: any) => e.allowWhileSilenced === true));
-    if (!allowsSilence) {
-      throw new Error("ERR_SILENCED");
-    }
+  if (hasEffect(player, "SILENCE") && !abilityAllowsSilence(ability)) {
+    throw new Error("ERR_SILENCED");
+  }
+
+  const abilityDamageType = getAbilityDamageType(ability);
+  if (hasEffect(player, "INNER_POWER_LOCK") && abilityDamageType === "内功") {
+    throw new Error("ERR_INNER_POWER_LOCKED");
+  }
+  if (hasEffect(player, "OUTER_POWER_LOCK") && abilityDamageType === "外功") {
+    throw new Error("ERR_OUTER_POWER_LOCKED");
   }
 
   if (hasEffect(player, "DISARM") && (ability as any).noWeaponRequired !== true) {
@@ -766,14 +782,16 @@ export function validatePlayAbility(
 
   /* ================= SILENCE (Level 3 — not removable) ================= */
 
-  if (hasEffect(player, "SILENCE")) {
-    const allowsSilence =
-      (ability as any).allowWhileSilenced === true ||
-      (Array.isArray(ability.effects) &&
-        ability.effects.some((e) => (e as any).allowWhileSilenced === true));
-    if (!allowsSilence) {
-      throw new Error("ERR_SILENCED");
-    }
+  if (hasEffect(player, "SILENCE") && !abilityAllowsSilence(ability)) {
+    throw new Error("ERR_SILENCED");
+  }
+
+  const abilityDamageType = getAbilityDamageType(ability);
+  if (hasEffect(player, "INNER_POWER_LOCK") && abilityDamageType === "内功") {
+    throw new Error("ERR_INNER_POWER_LOCKED");
+  }
+  if (hasEffect(player, "OUTER_POWER_LOCK") && abilityDamageType === "外功") {
+    throw new Error("ERR_OUTER_POWER_LOCKED");
   }
 
   if (hasEffect(player, "DISARM") && (ability as any).noWeaponRequired !== true) {
