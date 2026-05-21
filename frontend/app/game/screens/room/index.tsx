@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { warmExportedMapAssets } from "@/app/lib/fullExports";
 import styles from "./styles.module.css";
 
 type Me = {
@@ -63,6 +64,12 @@ export default function RoomPage() {
   useEffect(() => {
     fetchMe();
   }, []);
+
+  useEffect(() => {
+    if (!gameId) return;
+    router.prefetch(`/game/in-game?gameId=${gameId}`);
+    void warmExportedMapAssets({ concurrency: 3 });
+  }, [gameId, router]);
 
   useEffect(() => {
     if (!gameId) return;

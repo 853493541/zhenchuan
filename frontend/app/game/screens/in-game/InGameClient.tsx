@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Home } from "lucide-react";
 import styles from "./styles.module.css";
+import { warmExportedMapAssets } from "@/app/lib/fullExports";
 
 import BattleArena from "./components/BattleArena";
 import { ensureResizeObserverSupport } from "./ensureResizeObserverSupport";
@@ -377,6 +378,12 @@ export default function InGameClient({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (gameMode === 'collision-test') {
+      void warmExportedMapAssets({ concurrency: 3 });
+    }
+  }, [gameMode]);
 
   /* ================= BATTLE COMPLETION ================= */
 

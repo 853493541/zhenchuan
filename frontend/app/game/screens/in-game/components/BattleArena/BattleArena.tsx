@@ -6082,14 +6082,6 @@ export default function BattleArena({
         return;
       }
       const k = e.key.toLowerCase();
-      if (k === 'i' && !e.altKey && !e.ctrlKey && !e.metaKey) {
-        const target = e.target as HTMLElement | null;
-        if (!target?.closest('input, textarea, select, [contenteditable="true"]')) {
-          e.preventDefault();
-          if (!e.repeat) setShowLoadPerformancePanel((visible) => !visible);
-          return;
-        }
-      }
       if (['w', 'a', 's', 'd'].includes(k)) {
         e.preventDefault();
 
@@ -9490,6 +9482,10 @@ export default function BattleArena({
                             <label className={styles.escToggleRow}>
                               <input type="checkbox" checked={showCameraEventTestingPanel} onChange={(e) => setShowCameraEventTestingPanel(e.target.checked)} className={styles.escToggleInput} />
                               <span>镜头测试</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
+                              <input type="checkbox" checked={showLoadPerformancePanel} onChange={(e) => setShowLoadPerformancePanel(e.target.checked)} className={styles.escToggleInput} />
+                              <span>场景加载报告</span>
                             </label>
                             <label className={styles.escToggleRow}>
                               <input

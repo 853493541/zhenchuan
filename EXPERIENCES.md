@@ -3,6 +3,37 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Exported map cache and warmup optimization (2026-05-21)
+
+**Problem set**:
+1. The load panel showed very slow exported-map resources, including small PNG/JSON files taking many seconds.
+2. `/full-exports/<package>/<file>` resolved packages by scanning export roots for every asset request, multiplying filesystem work across hundreds of map files.
+3. Exported-map assets were served without long-lived immutable cache headers, so repeat loads could still revalidate or redownload stable package files.
+4. The waiting room did not preload the in-game route or warm the browser cache for the official collision-test map before BattleArena mounted.
+5. After the optimization, the load report was useful enough to keep, but the `I` hotkey exposed it too prominently for normal play.
+
+**Fix**:
+- Added a short-lived backend full-export index cache and startup warmup so package lookup is reused across asset requests.
+- Added immutable cache headers and resource timing headers for exported-map package assets while keeping export list responses revalidatable.
+- Added a frontend exported-map warmup helper that fetches manifests, GLBs, textures, terrain files, and collision sidecars with bounded concurrency into the browser HTTP cache.
+- Started route prefetch and map warmup from the room page, and also triggers warmup from the in-game client once `collision-test` mode is known.
+- User reported total scene load improved to about 9 seconds after cache/warmup changes.
+- Removed the `I` hotkey toggle and moved the scene-load report behind ESC → 测试 → 开关 → 场景加载报告.
+
+**Lessons**:
+- Tiny map files taking many seconds can indicate server-side request overhead or queueing, not only bandwidth or asset size.
+- Package-named exports are good candidates for immutable browser caching; list/discovery endpoints should stay revalidatable.
+- Preloading should begin in the waiting room when possible, because warming the cache after the Three scene mounts competes with the real scene loader.
+- Keep deep diagnostics inside the testing panel once the issue is understood; normal hotkeys should stay reserved for gameplay/debug flows players deliberately need.
+
+**Future enhancement options, if load speed becomes a problem again**:
+- Add a service worker or Cache Storage prewarmer for exported-map assets so room warmup can persist and report progress more explicitly.
+- Generate an asset dependency manifest at export/build time so warmup does not need to derive GLB, texture, terrain, and sidecar URLs in the browser.
+- Precompute a collision world-triangle cache for the exact exported map to skip JSON parse/triangle transform work while keeping gameplay geometry unchanged.
+- Add nginx/CDN static serving for `/full-exports` with HTTP/2 or HTTP/3 tuning, Brotli for JSON, and OS file-cache warmup after deployment.
+- Use route-level code splitting to keep non-battle editor/test code out of the first in-game JS path.
+- If quality-preserving asset work is later allowed, test lossless PNG optimization before considering format changes.
+
 ## Scene loading timeline report and loader parallelism (2026-05-21)
 
 **Problem set**:

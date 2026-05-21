@@ -16,10 +16,10 @@ import { useEffect, useRef, useMemo, useState } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { EXPORTED_MAP_DATA_PATH } from '@/app/lib/fullExports';
 import { MapCollisionSystem } from './MapCollisionSystem';
 
-export const EXPORTED_MAP_PACKAGE_NAME = 'Ctest-2026-04-10T23-11-25-797Z';
-export const EXPORTED_MAP_DATA_PATH = `/full-exports/${encodeURIComponent(EXPORTED_MAP_PACKAGE_NAME)}/map-data`;
+export { EXPORTED_MAP_DATA_PATH } from '@/app/lib/fullExports';
 const DATA_PATH = EXPORTED_MAP_DATA_PATH;
 const LEGACY_COLLISION_TEST_SCALE = 2.2;
 
