@@ -193,6 +193,10 @@ export type EffectType =
   | "QIN_YIN_GONG_MING"
   // 缴械: cannot cast abilities unless they are marked 无需武器
   | "DISARM"
+  // 封内: cannot cast 内功 abilities
+  | "INNER_POWER_LOCK"
+  // 封外: cannot cast 外功 abilities
+  | "OUTER_POWER_LOCK"
   // 只能施展轻功，其他招式全部被锁
   | "NON_QINGGONG_LOCK"
   // 恐惧: silence + forced walk away from sourceUserId

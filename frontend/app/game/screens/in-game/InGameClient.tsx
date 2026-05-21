@@ -31,9 +31,10 @@ function getGameErrorText(rawCode: string) {
     case "ERR_NOT_YOUR_TURN":
       return "还没轮到你";
     case "ERR_SILENCED":
-      return "经脉受损，无法运功";
     case "ERR_DISARMED":
-      return "你被缴械，无法施展需要武器的招式";
+    case "ERR_INNER_POWER_LOCKED":
+    case "ERR_OUTER_POWER_LOCKED":
+      return "经脉受损 无法运功";
     case "ERR_NON_QINGGONG_LOCKED":
       return "你当前只能施展轻功招式";
     case "ERR_DISPLACEMENT":

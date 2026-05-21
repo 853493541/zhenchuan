@@ -1508,31 +1508,22 @@ export function applyImmediateEffects(params: {
       }
 
       case "GROUND_TARGET_DASH": {
-        // Compute direction from source to the ground target (or to opponent/entity if no ground target).
-        const oppIdx2 = playerIndex === 0 ? 1 : 0;
-        const oppPos2 = (explicitEntityTarget && enemyApplied)
-          ? explicitEntityTarget.position
-          : state.players[oppIdx2].position;
-        const requiresExplicitGroundTarget = ability.id === "feng_liu_yun_san";
-        const fallbackTargetX = effTarget?.position?.x ?? oppPos2.x ?? source.position.x;
-        const fallbackTargetY = effTarget?.position?.y ?? oppPos2.y ?? source.position.y;
-        const gTargetX = castContext?.groundTarget?.x ?? (requiresExplicitGroundTarget ? source.position.x : fallbackTargetX);
-        const gTargetY = castContext?.groundTarget?.y ?? (requiresExplicitGroundTarget ? source.position.y : fallbackTargetY);
+        // Compute direction from source to the explicit ground target.
+        const gTargetX = castContext?.groundTarget?.x;
+        const gTargetY = castContext?.groundTarget?.y;
+        if (gTargetX === undefined || gTargetY === undefined) break;
         const gDx = gTargetX - source.position.x;
         const gDy = gTargetY - source.position.y;
         const gLen = Math.sqrt(gDx * gDx + gDy * gDy);
         if (gLen > 0.01) {
           source.facing = { x: gDx / gLen, y: gDy / gLen };
         }
-        const dashRangeBonus = getAbilityRangeBonusFromBuffs(source.buffs);
-        const maxDashDistance = Math.max(0, Number(effect.value ?? 20)) + dashRangeBonus;
-        // Cap dash distance: if click is closer than max range, only dash that far
         const clickDistGpu = worldUnitsToGameplayUnits(gLen, state.unitScale);
-        const cappedValue = gLen > 0.01 ? Math.min(maxDashDistance, clickDistGpu) : maxDashDistance;
+        const cappedValue = gLen > 0.01 ? clickDistGpu : 0;
         // Proportional durationTicks at 40 u/sec so short dashes aren't slowed down
         const cappedDurationTicks = Math.max(1, Math.round((cappedValue / 40) * 30));
         const gtdEffect = { ...effect, type: "DIRECTIONAL_DASH" as const, dirMode: "TOWARD" as const, value: cappedValue, durationTicks: cappedDurationTicks };
-        handleDirectionalDash(state, source, oppPos2, ability, gtdEffect);
+        handleDirectionalDash(state, source, { x: gTargetX, y: gTargetY }, ability, gtdEffect);
         // Height targeting: if groundTarget has an explicit Z, force dash to climb/descend to that height
         const gTargetZ = castContext?.groundTarget?.z;
         if (gTargetZ !== undefined && source.activeDash) {
@@ -3516,16 +3507,13 @@ export function applyImmediateEffects(params: {
         // Always use mouse ground-target position — NEVER fall back to opponent position
         const gTargetX2 = castContext?.groundTarget?.x;
         const gTargetY2 = castContext?.groundTarget?.y;
-        const hasGroundTarget = gTargetX2 !== undefined && gTargetY2 !== undefined;
-        const dashRangeBonus2 = getAbilityRangeBonusFromBuffs(source.buffs);
-        const maxDashDistance2 = Math.max(0, Number(effect.value ?? 40)) + dashRangeBonus2;
-        const tX = hasGroundTarget ? gTargetX2! : source.position.x + (source.facing?.x ?? 0) * gameplayUnitsToWorldUnits(maxDashDistance2, state.unitScale);
-        const tY = hasGroundTarget ? gTargetY2! : source.position.y + (source.facing?.y ?? 1) * gameplayUnitsToWorldUnits(maxDashDistance2, state.unitScale);
+        if (gTargetX2 === undefined || gTargetY2 === undefined) break;
+        const tX = gTargetX2;
+        const tY = gTargetY2;
         const gDx2 = tX - source.position.x;
         const gDy2 = tY - source.position.y;
         const gLen2 = Math.sqrt(gDx2 * gDx2 + gDy2 * gDy2);
-        const linMaxDistWorld = gameplayUnitsToWorldUnits(maxDashDistance2, state.unitScale);
-        const linActualWorld = Math.min(linMaxDistWorld, gLen2 > 0.01 ? gLen2 : linMaxDistWorld);
+        const linActualWorld = gLen2;
         if (gLen2 > 0.01) {
           source.facing = { x: gDx2 / gLen2, y: gDy2 / gLen2 };
         }

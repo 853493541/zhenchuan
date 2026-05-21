@@ -651,6 +651,7 @@ function isDunyingCompanion(buff: { buffId: number; name?: string; sourceAbility
   return buff.buffId === 1021;
 }
 
+const SANLIU_XIA_BUFF_ID = 1007;
 const FORWARD_CHANNEL_RESOLUTION_STEALTH_BREAK_BUFF_IDS = new Set([1011, 1012, 1013, YUE_YING_SHA_BUFF_ID]);
 
 function isHostileForwardChannelResolution(params: {
@@ -685,6 +686,42 @@ function breakStealthOnForwardChannelResolution(params: {
       continue;
     }
     removedBuffs.push(buff);
+  }
+
+  if (removedBuffs.length === 0) return false;
+
+  player.buffs = remainingBuffs;
+  for (const buff of removedBuffs) {
+    removeLinkedShield(player as any, buff as any);
+    pushBuffExpired(state, {
+      targetUserId: player.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+      sourceUserId: buff.sourceUserId,
+    });
+  }
+  return true;
+}
+
+function breakSanliuXiaOnSuccessfulChannelComplete(params: {
+  state: GameState;
+  player: { userId: string; buffs: any[] };
+}) {
+  const { state, player } = params;
+  if (!Array.isArray(player.buffs) || player.buffs.length === 0) return false;
+
+  const removedBuffs: any[] = [];
+  const remainingBuffs: any[] = [];
+
+  for (const buff of player.buffs) {
+    if (buff.buffId === SANLIU_XIA_BUFF_ID) {
+      removedBuffs.push(buff);
+    } else {
+      remainingBuffs.push(buff);
+    }
   }
 
   if (removedBuffs.length === 0) return false;
@@ -1535,7 +1572,7 @@ export class GameLoop {
               durationMs: 5_000,
               periodicMs: 1_000,
               periodicStartImmediate: false,
-              breakOnPlay: false,
+              breakOnPlay: true,
               description: "不可选中，移动速度提高20%，首秒无治疗，随后每秒回复2%最大气血",
               effects: [
                 { type: "UNTARGETABLE" },
@@ -2684,6 +2721,11 @@ export class GameLoop {
               });
             }
           }
+
+          breakSanliuXiaOnSuccessfulChannelComplete({
+            state: this.state,
+            player: player as any,
+          });
 
           const hostileForwardResolution = isHostileForwardChannelResolution({
             channel: ch,

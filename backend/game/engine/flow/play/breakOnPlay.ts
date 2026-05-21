@@ -3,6 +3,7 @@ import { ActiveBuff, Ability } from "../../state/types";
 import { YUE_YING_SHA_BUFF_ID } from "../../utils/yueYingSha";
 
 const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
+const SANLIU_XIA_BUFF_ID = 1007;
 const SHI_FANG_XUAN_JI_KEEP_ABILITIES = new Set([
   "nieyun_zhuyue",
   "yingfeng_huilang",
@@ -66,6 +67,10 @@ function shouldKeepStealthOnPlay(buff: ActiveBuff, ability: Ability): boolean {
     case YUE_YING_SHA_BUFF_ID:
       return isCommon || channelCast;
 
+    // 散流霞: forward channel start does not break it; reverse channel and normal casts do.
+    case SANLIU_XIA_BUFF_ID:
+      return channelCast && isForward;
+
     default:
       return false;
   }
@@ -84,6 +89,7 @@ export function breakOnPlay(source: { buffs?: ActiveBuff[] }, playedAbility: Abi
   breakShiFangXuanJiOnPlay(source, playedAbility);
   const hadFuguangBefore = source.buffs.some((b) => b.buffId === 1012);
   source.buffs = source.buffs.filter((b) => {
+    if (b.buffId === SANLIU_XIA_BUFF_ID) return shouldKeepStealthOnPlay(b, playedAbility);
     if (!b.breakOnPlay) return true;
     if (shouldKeepStealthOnPlay(b, playedAbility)) return true;
     return false;

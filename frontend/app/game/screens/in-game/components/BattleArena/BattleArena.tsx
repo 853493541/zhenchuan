@@ -10,7 +10,7 @@ import { ChannelBar, ChannelBarHost, type ChannelBarData } from './ChannelBar';
 import { ArrowLeft, Gamepad2, Gauge, Keyboard, LayoutGrid, MessageCircle, Puzzle, RotateCcw, Swords, Trash2, Volume2, Wind, X } from 'lucide-react';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
-import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles } from './scene/ArenaScene';
+import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles, type SceneRuntimeMetrics } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
 import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z } from './scene/ExportedMapScene';
@@ -21,6 +21,73 @@ import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase
 import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
 
 type V3 = { x: number; y: number; z: number };
+type LoadStageStatus = '完成' | '进行中';
+
+type LoadPerformanceStage = {
+  name: string;
+  status: LoadStageStatus;
+  detail: string;
+};
+
+type LoadPerformancePeaks = {
+  domElements: number;
+  canvases: number;
+  images: number;
+  svgs: number;
+  threeObjects: number;
+  geometries: number;
+  textures: number;
+};
+
+type LoadPerformanceSnapshot = {
+  ts: number;
+  elapsedMs: number;
+  stages: LoadPerformanceStage[];
+  inProgressStages: LoadPerformanceStage[];
+  domElements: number;
+  canvases: number;
+  images: number;
+  svgs: number;
+  buttons: number;
+  inputs: number;
+  heapUsedMB: number | null;
+  heapLimitMB: number | null;
+  peaks: LoadPerformancePeaks;
+  sceneMetrics: SceneRuntimeMetrics | null;
+  gameCounts: {
+    opponents: number;
+    visibleOpponents: number;
+    entities: number;
+    visibleEntities: number;
+    groundZones: number;
+    pickups: number;
+    events: number;
+    selfBuffs: number;
+    abilities: number;
+  };
+};
+
+const createEmptyLoadPerformancePeaks = (): LoadPerformancePeaks => ({
+  domElements: 0,
+  canvases: 0,
+  images: 0,
+  svgs: 0,
+  threeObjects: 0,
+  geometries: 0,
+  textures: 0,
+});
+
+const toMegabytes = (bytes: unknown): number | null => {
+  const value = Number(bytes);
+  return Number.isFinite(value) && value > 0 ? Math.round((value / 1024 / 1024) * 10) / 10 : null;
+};
+
+const formatLoadPerfNumber = (value: number | null | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+  return value.toLocaleString('zh-CN');
+};
+
+const formatLoadPerfSeconds = (ms: number) => `${Math.max(0, ms / 1000).toFixed(1)}s`;
 type HeartStatKey =
   | 'attack'
   | 'maxHp'
@@ -169,6 +236,8 @@ const IN_GAME_WARNING_SCALE_STORAGE_KEY = 'zhenchuan-ingame-warning-scale-v1';
 const IN_GAME_WARNING_UI_KEY = 'in-game-warning';
 const IN_GAME_WARNING_DURATION_MS = 1500;
 const IN_GAME_WARNING_PREVIEW_TEXT = '无法施展该招式';
+const REQUIRED_POWER_MISSING_WARNING = '经脉受损 无法运功';
+const DASH_GROUND_TARGET_ABILITY_IDS = new Set(['lin_shi_fei_zhua', 'han_di', 'gu_feng_sa_ta']);
 const LEGACY_PLAYER_STATUS_UI_KEY = 'player-status-bar';
 const PLAYER_BUFF_STATUS_UI_KEY = 'player-buff-status-bar';
 const PLAYER_DEBUFF_STATUS_UI_KEY = 'player-debuff-status-bar';
@@ -258,6 +327,10 @@ const DEFAULT_GCD_VISIBILITY_SETTINGS: GcdVisibilitySettings = {
   qinggong: false,
   houyao: false,
 };
+
+function isDashGroundTargetAbilityId(abilityId: string | null | undefined): boolean {
+  return !!abilityId && DASH_GROUND_TARGET_ABILITY_IDS.has(abilityId);
+}
 const DEFAULT_ABILITY_SOUND_SETTINGS: AbilitySoundSettings = {
   volumePercent: 80,
   disabled: false,
@@ -1208,9 +1281,39 @@ function hasDisarmClient(buffs?: ActiveBuff[]): boolean {
   return buffs.some((b: any) => buffHasEffect(b, 'DISARM') || buffNameIncludes(b, '缴械'));
 }
 
+function hasInnerPowerLockClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => buffHasEffect(b, 'INNER_POWER_LOCK') || buffNameIncludes(b, '封内'));
+}
+
+function hasOuterPowerLockClient(buffs?: ActiveBuff[]): boolean {
+  if (!Array.isArray(buffs) || buffs.length === 0) return false;
+  return buffs.some((b: any) => buffHasEffect(b, 'OUTER_POWER_LOCK') || buffNameIncludes(b, '封外'));
+}
+
 function hasNonQinggongLockClient(buffs?: ActiveBuff[]): boolean {
   if (!Array.isArray(buffs) || buffs.length === 0) return false;
   return buffs.some((b: any) => buffHasEffect(b, 'NON_QINGGONG_LOCK') || buffNameIncludes(b, '轻功以外'));
+}
+
+function getAbilityDamageTypeClient(ability: any): '内功' | '外功' | undefined {
+  const damageType = ability?.damageType ?? ability?.tags?.damageType;
+  return damageType === '内功' || damageType === '外功' ? damageType : undefined;
+}
+
+function abilityAllowsSilenceClient(ability: any): boolean {
+  return ability?.allowWhileSilenced === true ||
+    (Array.isArray(ability?.effects) && ability.effects.some((effect: any) => effect.allowWhileSilenced === true));
+}
+
+function getPowerLockWarningClient(ability: any, buffs?: ActiveBuff[]): string | null {
+  if (!ability) return null;
+  const damageType = getAbilityDamageTypeClient(ability);
+  if (hasSilenceClient(buffs) && !abilityAllowsSilenceClient(ability)) return REQUIRED_POWER_MISSING_WARNING;
+  if (hasDisarmClient(buffs) && ability.noWeaponRequired !== true) return REQUIRED_POWER_MISSING_WARNING;
+  if (hasInnerPowerLockClient(buffs) && damageType === '内功') return REQUIRED_POWER_MISSING_WARNING;
+  if (hasOuterPowerLockClient(buffs) && damageType === '外功') return REQUIRED_POWER_MISSING_WARNING;
+  return null;
 }
 
 function hasYuqiStateClient(buffs?: ActiveBuff[]): boolean {
@@ -1467,6 +1570,7 @@ interface AbilityInfo {
   requiresStanding?: boolean;
   minSelfHpExclusive?: number;
   minSelfHpPercentExclusive?: number;
+  damageType?: '内功' | '外功';
   noWeaponRequired?: boolean;
   canCastWhileMounted?: boolean;
   qinggong?: boolean;
@@ -1475,6 +1579,7 @@ interface AbilityInfo {
   allowGroundCastWithoutTarget?: boolean;
   losBlocked?: boolean;
   blockedByAntiStealth?: boolean;
+  disabledWarning?: string;
   isSpecialBarAbility?: boolean;
 }
 
@@ -2526,12 +2631,19 @@ export default function BattleArena({
   /* --- Debug position overlay --- */
   const [showDebugGrid, setShowDebugGrid] = useState(false);
   const [showCollisionShells, setShowCollisionShells] = useState(false);
+  const [showUniqueDashRoute, setShowUniqueDashRoute] = useState(false);
   const [blueprintMode, setBlueprintMode] = useState(false);
   const hongMengOverlayActive = selfHasHongMengTianJin && !blueprintMode;
   const [sceneCanvasKey, setSceneCanvasKey] = useState(0);
   const [sceneRecovering, setSceneRecovering] = useState(false);
   const sceneRecoveryTimerRef = useRef<number | null>(null);
   const mainCanvasCleanupRef = useRef<(() => void) | null>(null);
+  const [mainCanvasReady, setMainCanvasReady] = useState(false);
+  const [showLoadPerformancePanel, setShowLoadPerformancePanel] = useState(false);
+  const [loadPerformanceSnapshot, setLoadPerformanceSnapshot] = useState<LoadPerformanceSnapshot | null>(null);
+  const sceneRuntimeMetricsRef = useRef<SceneRuntimeMetrics | null>(null);
+  const loadPerformanceStartedAtRef = useRef(Date.now());
+  const loadPerformancePeaksRef = useRef<LoadPerformancePeaks>(createEmptyLoadPerformancePeaks());
   const [showTestingPanel, setShowTestingPanel] = useState(false);
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
   const [showCameraEventTestingPanel, setShowCameraEventTestingPanel] = useState(false);
@@ -2550,6 +2662,10 @@ export default function BattleArena({
     }
     mainCanvasCleanupRef.current?.();
     mainCanvasCleanupRef.current = null;
+  }, []);
+
+  const handleSceneMetrics = useCallback((metrics: SceneRuntimeMetrics) => {
+    sceneRuntimeMetricsRef.current = metrics;
   }, []);
 
   const handleMainCanvasCreated = useCallback(({ gl }: { gl: THREE.WebGLRenderer }) => {
@@ -2577,16 +2693,18 @@ export default function BattleArena({
     };
     canvas.addEventListener('webglcontextlost', onContextLost, false);
     canvas.addEventListener('webglcontextrestored', onContextRestored, false);
+    setMainCanvasReady(true);
     mainCanvasCleanupRef.current = () => {
       clearRecoveryTimer();
       canvas.removeEventListener('webglcontextlost', onContextLost, false);
       canvas.removeEventListener('webglcontextrestored', onContextRestored, false);
+      setMainCanvasReady(false);
     };
   }, []);
+
   const [showMeasurePanel, setShowMeasurePanel] = useState(false);
   const [showJumpDetailsPanel, setShowJumpDetailsPanel] = useState(false);
   const [showGroundDistanceDetail, setShowGroundDistanceDetail] = useState(false);
-  const [losBlocker, setLosBlocker] = useState<string | null>(null);
   const [envDebugInfo, setEnvDebugInfo] = useState<EnvDebugInfo | null>(null);
   const [envToggles, setEnvToggles] = useState<EnvToggles>({
     toneMapping: true, exposure: true, shadows: true,
@@ -2617,17 +2735,11 @@ export default function BattleArena({
   const [cameraDebugEntries, setCameraDebugEntries] = useState<CameraDebugEntry[]>([]);
   const cameraDebugIdRef = useRef(0);
   const cameraEventTestingEnabledRef = useRef(false);
-  const losBlockerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibleVisualGcd = buildVisibleVisualGcd(
     me?.visualGcd ?? null,
     me?.globalGcdTicks,
     gcdVisibilitySettings,
   );
-  const showLOSBlocker = useCallback((msg: string) => {
-    setLosBlocker(msg);
-    if (losBlockerTimerRef.current) clearTimeout(losBlockerTimerRef.current);
-    losBlockerTimerRef.current = setTimeout(() => setLosBlocker(null), 3000);
-  }, []);
   const showInGameWarning = useCallback((text: string) => {
     const nextText = text.trim();
     if (!nextText) return;
@@ -2646,6 +2758,19 @@ export default function BattleArena({
     if (!externalGameWarning?.text) return;
     showInGameWarning(externalGameWarning.text);
   }, [externalGameWarning?.id, externalGameWarning?.text, showInGameWarning]);
+  const showAbilityDisabledWarning = useCallback((ability: AbilityInfo) => {
+    if (ability.blockedByAntiStealth) {
+      showInGameWarning('反隐期间无法施展隐身招式');
+      return;
+    }
+    if (ability.losBlocked) {
+      showInGameWarning('视线被遮挡');
+      return;
+    }
+    if (ability.disabledWarning) {
+      showInGameWarning(ability.disabledWarning);
+    }
+  }, [showInGameWarning]);
   const clearCameraDebugEntries = useCallback(() => {
     cameraDebugIdRef.current = 0;
     setCameraDebugEntries(prev => (prev.length === 0 ? prev : []));
@@ -2763,6 +2888,106 @@ export default function BattleArena({
     setCollisionReady(true);
     console.log('[BVH] Collision system ready');
   }, [mapData.height, mapData.width]);
+
+  useEffect(() => {
+    const collect = () => {
+      const metrics = sceneRuntimeMetricsRef.current;
+      const domElements = document.getElementsByTagName('*').length;
+      const canvases = document.getElementsByTagName('canvas').length;
+      const images = document.getElementsByTagName('img').length;
+      const svgs = document.getElementsByTagName('svg').length;
+      const buttons = document.getElementsByTagName('button').length;
+      const inputs = document.getElementsByTagName('input').length;
+      const memory = (performance as any).memory;
+      const collisionStageInProgress = mode === 'collision-test' && !collisionReady;
+      const sceneMetricsReady = !!metrics;
+      const stages: LoadPerformanceStage[] = [
+        {
+          name: '页面组件',
+          status: '完成',
+          detail: `运行 ${formatLoadPerfSeconds(Date.now() - loadPerformanceStartedAtRef.current)}`,
+        },
+        {
+          name: '主场景 Canvas',
+          status: mainCanvasReady ? '完成' : '进行中',
+          detail: canvasSize.w > 0 && canvasSize.h > 0 ? `${Math.round(canvasSize.w)}x${Math.round(canvasSize.h)}` : '等待尺寸',
+        },
+        {
+          name: 'WebGL 场景',
+          status: sceneMetricsReady ? '完成' : '进行中',
+          detail: sceneMetricsReady ? `${formatLoadPerfNumber(metrics?.objects)} objects` : '等待 renderer',
+        },
+        {
+          name: '碰撞场景',
+          status: collisionStageInProgress ? '进行中' : '完成',
+          detail: mode === 'collision-test' ? (collisionReady ? 'collision ready' : 'collision loading') : '非碰撞模式',
+        },
+        {
+          name: '恢复场景',
+          status: sceneRecovering ? '进行中' : '完成',
+          detail: sceneRecovering ? 'WebGL context恢复中' : '空闲',
+        },
+      ];
+
+      const peaks = loadPerformancePeaksRef.current;
+      peaks.domElements = Math.max(peaks.domElements, domElements);
+      peaks.canvases = Math.max(peaks.canvases, canvases);
+      peaks.images = Math.max(peaks.images, images);
+      peaks.svgs = Math.max(peaks.svgs, svgs);
+      peaks.threeObjects = Math.max(peaks.threeObjects, metrics?.objects ?? 0);
+      peaks.geometries = Math.max(peaks.geometries, metrics?.geometries ?? 0);
+      peaks.textures = Math.max(peaks.textures, metrics?.textures ?? 0);
+
+      setLoadPerformanceSnapshot({
+        ts: Date.now(),
+        elapsedMs: Date.now() - loadPerformanceStartedAtRef.current,
+        stages,
+        inProgressStages: stages.filter((stage) => stage.status === '进行中'),
+        domElements,
+        canvases,
+        images,
+        svgs,
+        buttons,
+        inputs,
+        heapUsedMB: toMegabytes(memory?.usedJSHeapSize),
+        heapLimitMB: toMegabytes(memory?.jsHeapSizeLimit),
+        peaks: { ...peaks },
+        sceneMetrics: metrics,
+        gameCounts: {
+          opponents: worldVisibleOpponentsList.length,
+          visibleOpponents: visibleOpponentsList.length,
+          entities: entities?.length ?? 0,
+          visibleEntities: visibleEntities.length,
+          groundZones: groundZones?.length ?? 0,
+          pickups: modePickups.length,
+          events: events.length,
+          selfBuffs: me.buffs?.length ?? 0,
+          abilities: Object.keys(abilities).length,
+        },
+      });
+    };
+
+    collect();
+    const id = window.setInterval(collect, 1000);
+    return () => window.clearInterval(id);
+  }, [
+    abilities,
+    canvasSize.h,
+    canvasSize.w,
+    collisionReady,
+    entities?.length,
+    events.length,
+    groundZones?.length,
+    mainCanvasReady,
+    me.buffs?.length,
+    mode,
+    modePickups.length,
+    sceneRecovering,
+    visibleEntities.length,
+    visibleOpponentsList.length,
+    worldVisibleOpponentsList.length,
+  ]);
+
   const isClientLineBlocked = useCallback((
     from: { x: number; y: number },
     to: { x: number; y: number },
@@ -3179,6 +3404,30 @@ export default function BattleArena({
     shiXinGuStandstill: false,
   });
 
+  const isGroundCastPointWithinRange = useCallback((ability: AbilityInfo | null | undefined, point: { x: number; y: number; z?: number }) => {
+    if (!ability) return false;
+    const myPos = localPositionRef.current ?? me.position;
+    if (!myPos) return false;
+    const distanceUnits = worldUnitsToNewUnits(Math.hypot(point.x - myPos.x, point.y - myPos.y), mode);
+    const maxRange = typeof ability.range === 'number' ? ability.range : undefined;
+    const minRange = typeof ability.minRange === 'number' ? ability.minRange : undefined;
+    if (maxRange !== undefined && distanceUnits > maxRange) return false;
+    if (minRange !== undefined && distanceUnits < minRange) return false;
+    return true;
+  }, [me.position, mode]);
+
+  const beginPendingGroundCast = useCallback((abilityId: string) => {
+    pendingGroundCastAbilityRef.current = abilityId;
+    setPendingGroundCastAbilityId(abilityId);
+    const ability = abilitiesRef.current.find((candidate) => candidate.id === abilityId);
+    const hoverTarget = mouseWorldPosRef.current;
+    if (ability && hoverTarget && isGroundCastPointWithinRange(ability, hoverTarget)) {
+      setGroundCastPreview({ x: hoverTarget.x, y: hoverTarget.y, z: hoverTarget.z, isValid: true });
+    } else {
+      setGroundCastPreview(null);
+    }
+  }, [isGroundCastPointWithinRange]);
+
   /* --- Channel AOE refs (used in render loop, updated via useEffect) --- */
   const meChannelingRef  = useRef(false);
   const oppChannelingRef = useRef(false);
@@ -3226,31 +3475,38 @@ export default function BattleArena({
       showInGameWarning('反隐期间无法施展隐身招式');
       return;
     }
-    // 孤风飒踏 and 撼地: enter pending ground-cast mode (shows hover circle, click to confirm)
+    if (ability?.disabledWarning) {
+      showInGameWarning(ability.disabledWarning);
+      return;
+    }
+    // Ground-target dashes enter pending mode (shows hover circle/path, click to confirm)
     if (abilityKey === 'feng_liu_yun_san') {
       const hoverTarget = mouseWorldPosRef.current;
       if (!hoverTarget) {
-        setPendingGroundCastAbilityId(id);
-        setGroundCastPreview(null);
+        beginPendingGroundCast(id);
         return;
       }
       const myPos = localPositionRef.current ?? me.position;
       const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
       const targetZ = hoverTarget.z ?? 0;
+      if (!isGroundCastPointWithinRange(ability, hoverTarget)) {
+        beginPendingGroundCast(id);
+        return;
+      }
       if (myPos && isClientLineBlocked(myPos, hoverTarget, myZ, targetZ)) {
-        showLOSBlocker('视线被遮挡');
         showInGameWarning('视线被遮挡');
         return;
       }
       lastFengLiuYunSanCastAtRef.current = performance.now();
       lastCastNameRef.current = ability?.name ?? null;
+      pendingGroundCastAbilityRef.current = null;
       setPendingGroundCastAbilityId(null);
       setGroundCastPreview(null);
       onCastAbility(id, undefined, { x: hoverTarget.x, y: hoverTarget.y, z: hoverTarget.z }, undefined, hasMovementIntent(keysRef.current));
       return;
     }
-    if (abilityKey === 'gu_feng_sa_ta' || abilityKey === 'han_di') {
-      setPendingGroundCastAbilityId(id);
+    if (isDashGroundTargetAbilityId(abilityKey)) {
+      beginPendingGroundCast(id);
       return;
     }
     if (abilityKey === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
@@ -3286,8 +3542,7 @@ export default function BattleArena({
     }
     if (ability?.target === 'OPPONENT' && !selectedTargetIdNow && !selectedEntityIdNow && !selectedSelfNow) {
       if (ability?.allowGroundCastWithoutTarget) {
-        setPendingGroundCastAbilityId(id);
-        setGroundCastPreview(null);
+        beginPendingGroundCast(id);
         return;
       }
       showInGameWarning('请先选择目标');
@@ -3336,8 +3591,7 @@ export default function BattleArena({
     }
     if (ability?.target === 'OPPONENT' && !targetPos) {
       if (ability?.allowGroundCastWithoutTarget) {
-        setPendingGroundCastAbilityId(id);
-        setGroundCastPreview(null);
+        beginPendingGroundCast(id);
         return;
       }
       showInGameWarning('目标不可见或已失去目标');
@@ -3403,7 +3657,6 @@ export default function BattleArena({
       if (myPos && targetPos) {
         const losBlocked = isClientLineBlocked(myPos, targetPos, myZ, tgtZ, selectedEntityIdNow ?? undefined);
         if (losBlocked) {
-          showLOSBlocker('视线被遮挡');
           showInGameWarning('视线被遮挡');
           return;
         }
@@ -3411,6 +3664,7 @@ export default function BattleArena({
     }
     // Stamp the ability name so the damage / heal float can label itself
     lastCastNameRef.current = ability?.name ?? null;
+    pendingGroundCastAbilityRef.current = null;
     setPendingGroundCastAbilityId(null);
     setGroundCastPreview(null);
     // If an entity is selected and ability targets OPPONENT, route as entity attack.
@@ -3436,12 +3690,15 @@ export default function BattleArena({
     const ability = abilitiesRef.current.find((a) => a.id === abilityId);
     if (!ability) return;
     const abilityKey = ability.abilityId ?? ability.id;
+    if (!isGroundCastPointWithinRange(ability, { x, y, z: worldZ })) {
+      setGroundCastPreview(null);
+      return;
+    }
     if (ability.target === 'OPPONENT') {
       const myPos = localPositionRef.current ?? me.position;
       const myZ = (myPos as any)?.z ?? localZRef.current ?? 0;
       const targetZ = worldZ ?? 0;
       if (myPos && isClientLineBlocked(myPos, { x, y }, myZ, targetZ)) {
-        showLOSBlocker('视线被遮挡');
         showInGameWarning('视线被遮挡');
         return;
       }
@@ -3454,6 +3711,7 @@ export default function BattleArena({
     if (abilityKey === 'feng_liu_yun_san') {
       lastFengLiuYunSanCastAtRef.current = performance.now();
     }
+    pendingGroundCastAbilityRef.current = null;
     setPendingGroundCastAbilityId(null);
     setGroundCastPreview(null);
     onCastAbility(abilityId, undefined, { x, y, z: worldZ }, undefined, hasMovementIntent(keysRef.current));
@@ -4739,6 +4997,7 @@ export default function BattleArena({
         const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ab.minSelfHpPercentExclusive / 100);
         if ((me?.hp ?? 0) <= requiredHp) return false;
       }
+      if (getPowerLockWarningClient(ab, me.buffs)) return false;
       if (disarmed && ab?.noWeaponRequired !== true) return false;
       if (nonQinggongLocked && !isQinggongLike) return false;
       if (isQinggongLike && qinggongSealed) return false;
@@ -4857,6 +5116,7 @@ export default function BattleArena({
         const chargeDisplay = getChargeDisplay(ability, instance);
         const isReadyVal = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
+        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         const targetContext = getAbilityTargetContext(ability);
         const losBlockedVal = !isReadyVal && (ability as any)?.target === 'OPPONENT' && !(ability as any)?.friendlyTarget && myPos && targetContext.targetPos
@@ -4898,6 +5158,7 @@ export default function BattleArena({
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           minSelfHpPercentExclusive: typeof (ability as any).minSelfHpPercentExclusive === 'number' ? (ability as any).minSelfHpPercentExclusive : undefined,
+          damageType: getAbilityDamageTypeClient(ability),
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
@@ -4907,6 +5168,7 @@ export default function BattleArena({
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
+          disabledWarning,
         };
       })
       .filter(Boolean) as AbilityInfo[];
@@ -4920,6 +5182,7 @@ export default function BattleArena({
         const chargeDisplay = getChargeDisplay(ability, instance);
         const isReadyVal = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
+        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         return {
           id: ability.id,
@@ -4951,6 +5214,7 @@ export default function BattleArena({
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           minSelfHpPercentExclusive: typeof (ability as any).minSelfHpPercentExclusive === 'number' ? (ability as any).minSelfHpPercentExclusive : undefined,
+          damageType: getAbilityDamageTypeClient(ability),
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
@@ -4960,6 +5224,7 @@ export default function BattleArena({
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
+          disabledWarning,
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
@@ -4976,6 +5241,7 @@ export default function BattleArena({
         const chargeDisplay = getChargeDisplay(ability, instance ?? {});
         const isReadyCom = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
+        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         const targetContext = getAbilityTargetContext(ability);
         const losBlockedCom = !isReadyCom && (ability as any)?.target === 'OPPONENT' && !(ability as any)?.friendlyTarget && myPos && targetContext.targetPos
@@ -5015,6 +5281,7 @@ export default function BattleArena({
           faceDirection: requiresFacingByDefault(ability as any),
           minSelfHpExclusive: typeof (ability as any).minSelfHpExclusive === 'number' ? (ability as any).minSelfHpExclusive : undefined,
           minSelfHpPercentExclusive: typeof (ability as any).minSelfHpPercentExclusive === 'number' ? (ability as any).minSelfHpPercentExclusive : undefined,
+          damageType: getAbilityDamageTypeClient(ability),
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
           requiresGrounded: !!(ability as any).requiresGrounded,
@@ -5024,6 +5291,7 @@ export default function BattleArena({
           cannotCastWhileRooted: !!(ability as any).cannotCastWhileRooted,
           allowGroundCastWithoutTarget: !!(ability as any).allowGroundCastWithoutTarget,
           blockedByAntiStealth: antiStealthBlocked,
+          disabledWarning,
         } as AbilityInfo;
       })
       .filter(Boolean) as AbilityInfo[];
@@ -5597,6 +5865,14 @@ export default function BattleArena({
         return;
       }
       const k = e.key.toLowerCase();
+      if (k === 'i' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        const target = e.target as HTMLElement | null;
+        if (!target?.closest('input, textarea, select, [contenteditable="true"]')) {
+          e.preventDefault();
+          if (!e.repeat) setShowLoadPerformancePanel((visible) => !visible);
+          return;
+        }
+      }
       if (['w', 'a', 's', 'd'].includes(k)) {
         e.preventDefault();
 
@@ -5722,33 +5998,42 @@ export default function BattleArena({
       const drafts = specialBarHotkeysActive
         ? abilitiesRef.current.filter(a => a.isSpecialBarAbility)
         : getHotkeyDraftSlots();
-      if (e.key === '1' && drafts[0]) { setPressedAbilityInput('draft-0'); if (drafts[0].isReady) castAbilityRef.current(drafts[0].id); return; }
-      if (e.key === '2' && drafts[1]) { setPressedAbilityInput('draft-1'); if (drafts[1].isReady) castAbilityRef.current(drafts[1].id); return; }
-      if (e.key === '3' && drafts[2]) { setPressedAbilityInput('draft-2'); if (drafts[2].isReady) castAbilityRef.current(drafts[2].id); return; }
-      if (k === 'q' && !e.altKey && drafts[3]) { setPressedAbilityInput('draft-3'); if (drafts[3].isReady) castAbilityRef.current(drafts[3].id); return; }
+      const triggerAbilityHotkey = (ability: AbilityInfo | undefined, pressedId: string) => {
+        if (!ability) return;
+        setPressedAbilityInput(pressedId);
+        if (ability.isReady && !ability.blockedByAntiStealth) {
+          castAbilityRef.current(ability.id);
+        } else {
+          showAbilityDisabledWarning(ability);
+        }
+      };
+      if (e.key === '1' && drafts[0]) { triggerAbilityHotkey(drafts[0], 'draft-0'); return; }
+      if (e.key === '2' && drafts[1]) { triggerAbilityHotkey(drafts[1], 'draft-1'); return; }
+      if (e.key === '3' && drafts[2]) { triggerAbilityHotkey(drafts[2], 'draft-2'); return; }
+      if (k === 'q' && !e.altKey && drafts[3]) { triggerAbilityHotkey(drafts[3], 'draft-3'); return; }
       // ── Common abilities: X  Alt+A  Alt+D  Alt+S  `  T ──
       const commons = specialBarHotkeysActive ? [] : abilitiesRef.current.filter(a => a.isCommon);
       if (k === 'x' && !e.altKey) {
         // index 0 = 猛虎下山
-        if (commons[0]) { setPressedAbilityInput('common-0'); if (commons[0].isReady) castAbilityRef.current(commons[0].id); }
+        triggerAbilityHotkey(commons[0], 'common-0');
         return;
       }
       if (k === 't' && !e.altKey) {
         // index 7 = 御骑
-        if (commons[7]) { setPressedAbilityInput('common-7'); if (commons[7].isReady) castAbilityRef.current(commons[7].id); }
+        triggerAbilityHotkey(commons[7], 'common-7');
         return;
       }
       if (e.key === '`') {
         // index 6 = 后撤
-        if (commons[6]) { setPressedAbilityInput('common-6'); if (commons[6].isReady) castAbilityRef.current(commons[6].id); }
+        triggerAbilityHotkey(commons[6], 'common-6');
         return;
       }
       if (e.altKey) {
         e.preventDefault(); // suppress browser Alt shortcuts
-        if (k === 'w' && commons[2]) { setPressedAbilityInput('common-2'); if (commons[2].isReady) castAbilityRef.current(commons[2].id); } // 蹑云逐月
-        if (k === 'a' && commons[3]) { setPressedAbilityInput('common-3'); if (commons[3].isReady) castAbilityRef.current(commons[3].id); } // 凌霄揽胜
-        if (k === 'd' && commons[4]) { setPressedAbilityInput('common-4'); if (commons[4].isReady) castAbilityRef.current(commons[4].id); } // 瑶台枕鹤
-        if (k === 's' && commons[5]) { setPressedAbilityInput('common-5'); if (commons[5].isReady) castAbilityRef.current(commons[5].id); } // 迎风回浪
+        if (k === 'w') triggerAbilityHotkey(commons[2], 'common-2'); // 蹑云逐月
+        if (k === 'a') triggerAbilityHotkey(commons[3], 'common-3'); // 凌霄揽胜
+        if (k === 'd') triggerAbilityHotkey(commons[4], 'common-4'); // 瑶台枕鹤
+        if (k === 's') triggerAbilityHotkey(commons[5], 'common-5'); // 迎风回浪
       }
     };
     const onUp = (e: KeyboardEvent) => {
@@ -5780,7 +6065,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode]);
+  }, [tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, showAbilityDisabledWarning]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -8143,12 +8428,7 @@ export default function BattleArena({
                     onClick={() => {
                       if (dragJustEndedRef.current) return;
                       if (!ability.isReady || ability.blockedByAntiStealth) {
-                        if (ability.losBlocked) {
-                          showLOSBlocker('视线被遮挡');
-                        }
-                        if (ability.blockedByAntiStealth) {
-                          showInGameWarning('反隐期间无法施展隐身招式');
-                        }
+                        showAbilityDisabledWarning(ability);
                         return;
                       }
                       castAbilityRef.current(ability.id);
@@ -8223,9 +8503,7 @@ export default function BattleArena({
                   onBlur={closeAbilityHint}
                   onClick={() => {
                     if (!ability.isReady || ability.blockedByAntiStealth) {
-                      if (ability.blockedByAntiStealth) {
-                        showInGameWarning('反隐期间无法施展隐身招式');
-                      }
+                      showAbilityDisabledWarning(ability);
                       return;
                     }
                     castAbilityRef.current(ability.id);
@@ -8542,6 +8820,7 @@ export default function BattleArena({
                 showInGameWarning('目标不可选中');
                 return;
               }
+              pendingGroundCastAbilityRef.current = null;
               setPendingGroundCastAbilityId(null);
               setGroundCastPreview(null);
               setSelectedTargetId(userId);
@@ -8555,6 +8834,7 @@ export default function BattleArena({
             selectedEntityId={selectedEntityId}
             myUserId={me.userId}
             onSelectEntity={(entityId) => {
+              pendingGroundCastAbilityRef.current = null;
               setPendingGroundCastAbilityId(null);
               setGroundCastPreview(null);
               setSelectedEntityId(entityId);
@@ -8610,7 +8890,10 @@ export default function BattleArena({
                   const previewAbility =
                     abilities[previewAbilityId] ??
                     Object.values(abilities).find((c: any) => c.id === previewAbilityId);
-                  const previewRadiusUnits = Array.isArray((previewAbility as any)?.effects)
+                  const isDashGroundTargetPreview = isDashGroundTargetAbilityId(previewAbilityId);
+                  const previewRadiusUnits = isDashGroundTargetPreview
+                    ? 0.8
+                    : Array.isArray((previewAbility as any)?.effects)
                     ? ((previewAbility as any).effects.find((e: any) =>
                         e.type === 'BAIZU_AOE' || e.type === 'WUFANG_XINGJIN_AOE'
                       )?.range ?? 6)
@@ -8622,6 +8905,7 @@ export default function BattleArena({
                     radius: previewRadiusUnits * storedUnitScale,
                     label: previewAbilityInfo?.name ?? previewAbility?.name ?? '范围预览',
                     isValid: groundCastPreview.isValid !== false,
+                    showPath: isDashGroundTargetPreview && showUniqueDashRoute,
                   };
                 }
 
@@ -8633,7 +8917,12 @@ export default function BattleArena({
               mouseWorldPosRef.current = { x, y, z: worldZ };
               // Only update preview state when there is an active pending ground cast
               if (pendingGroundCastAbilityRef.current) {
-                setGroundCastPreview({ x, y, z: worldZ, isValid: isHorizontal !== false });
+                const pendingAbility = abilitiesRef.current.find((a) => a.id === pendingGroundCastAbilityRef.current);
+                setGroundCastPreview(
+                  pendingAbility && isGroundCastPointWithinRange(pendingAbility, { x, y, z: worldZ })
+                    ? { x, y, z: worldZ, isValid: isHorizontal !== false }
+                    : null
+                );
               }
               if (pendingDummySpawnRef.current) {
                 setDummySpawnPreview({ x, y, z: worldZ });
@@ -8665,10 +8954,10 @@ export default function BattleArena({
             collisionDebugRef={collisionDebugRef}
             onCollisionSystemReady={onCollisionSystemReady}
             onCameraDebugEvent={mode === 'collision-test' && showCameraEventTestingPanel ? appendCameraDebugEntry : undefined}
-            losBlocker={losBlocker}
             blueprintMode={blueprintMode}
             losIsBlocked={draftAbilities.some(a => !!a?.losBlocked) || commonAbilities.some(a => a.losBlocked)}
             onEnvDebug={mode === 'collision-test' && lightingControlsOpen ? setEnvDebugInfo : undefined}
+            onSceneMetrics={handleSceneMetrics}
             envToggles={mode === 'collision-test' ? envToggles : undefined}
             dirLightConfig={mode === 'collision-test' ? dirLightConfig : undefined}
             blindWorldMode={selfHasHongMengTianJin}
@@ -8998,6 +9287,10 @@ export default function BattleArena({
                             <label className={styles.escToggleRow}>
                               <input type="checkbox" checked={showCollisionShells} onChange={(e) => setShowCollisionShells(e.target.checked)} className={styles.escToggleInput} />
                               <span>显示碰撞线</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
+                              <input type="checkbox" checked={showUniqueDashRoute} onChange={(e) => setShowUniqueDashRoute(e.target.checked)} className={styles.escToggleInput} />
+                              <span>显示位移路线</span>
                             </label>
                             <label className={styles.escToggleRow}>
                               <input type="checkbox" checked={blueprintMode} onChange={(e) => setBlueprintMode(e.target.checked)} className={styles.escToggleInput} />
@@ -9341,25 +9634,97 @@ export default function BattleArena({
         </div>
       )}
 
-      {/* ===== LOS BLOCKER DEBUG OVERLAY ===== */}
-      {losBlocker && (
-        <div style={{
-          position: 'absolute',
-          top: 60,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 530,
-          background: 'rgba(180, 0, 0, 0.85)',
-          border: '1px solid #ff4444',
-          color: '#fff',
-          fontSize: 13,
-          padding: '7px 16px',
-          borderRadius: 6,
-          fontFamily: 'monospace',
-          pointerEvents: 'none',
-          textAlign: 'center',
-        }}>
-          {losBlocker}
+      {showLoadPerformancePanel && loadPerformanceSnapshot && (
+        <div className={`${styles.uiFloatingPanel} ${styles.loadPerfPanel}`} data-ui-interactive>
+          <div className={styles.loadPerfHeader}>
+            <div>
+              <div className={styles.uiFloatingTitle}>加载性能</div>
+              <div className={styles.loadPerfSummary}>
+                进行中 {loadPerformanceSnapshot.inProgressStages.length} / {loadPerformanceSnapshot.stages.length}
+              </div>
+            </div>
+            <button
+              type="button"
+              className={styles.loadPerfCloseButton}
+              onClick={() => setShowLoadPerformancePanel(false)}
+              aria-label="关闭加载性能"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <div className={styles.loadPerfSection}>
+            <div className={styles.loadPerfSectionTitle}>进行中场景</div>
+            {loadPerformanceSnapshot.inProgressStages.length > 0 ? (
+              <div className={styles.loadPerfStageList}>
+                {loadPerformanceSnapshot.inProgressStages.map((stage) => (
+                  <div key={stage.name} className={styles.loadPerfStageRow}>
+                    <span>{stage.name}</span>
+                    <strong>{stage.status}</strong>
+                    <small>{stage.detail}</small>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.loadPerfEmpty}>无</div>
+            )}
+          </div>
+          <div className={styles.loadPerfSection}>
+            <div className={styles.loadPerfSectionTitle}>场景列表</div>
+            <div className={styles.loadPerfStageList}>
+              {loadPerformanceSnapshot.stages.map((stage) => (
+                <div key={stage.name} className={styles.loadPerfStageRow}>
+                  <span>{stage.name}</span>
+                  <strong data-status={stage.status}>{stage.status}</strong>
+                  <small>{stage.detail}</small>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className={styles.loadPerfMetricGrid}>
+            <div className={styles.loadPerfMetricBox}>
+              <span>DOM元素</span>
+              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.domElements)}</strong>
+              <small>峰值 {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.domElements)}</small>
+            </div>
+            <div className={styles.loadPerfMetricBox}>
+              <span>Canvas</span>
+              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.canvases)}</strong>
+              <small>峰值 {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.canvases)}</small>
+            </div>
+            <div className={styles.loadPerfMetricBox}>
+              <span>SVG</span>
+              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.svgs)}</strong>
+              <small>峰值 {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.svgs)}</small>
+            </div>
+            <div className={styles.loadPerfMetricBox}>
+              <span>图片</span>
+              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.images)}</strong>
+              <small>按钮 {formatLoadPerfNumber(loadPerformanceSnapshot.buttons)}</small>
+            </div>
+            <div className={styles.loadPerfMetricBox}>
+              <span>Three对象</span>
+              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.objects)}</strong>
+              <small>峰值 {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.threeObjects)}</small>
+            </div>
+            <div className={styles.loadPerfMetricBox}>
+              <span>几何/贴图</span>
+              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.geometries)} / {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.textures)}</strong>
+              <small>峰值 {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.geometries)} / {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.textures)}</small>
+            </div>
+            <div className={styles.loadPerfMetricBox}>
+              <span>Draw calls</span>
+              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.calls)}</strong>
+              <small>三角 {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.triangles)}</small>
+            </div>
+            <div className={styles.loadPerfMetricBox}>
+              <span>JS Heap</span>
+              <strong>{loadPerformanceSnapshot.heapUsedMB !== null ? `${loadPerformanceSnapshot.heapUsedMB} MB` : '-'}</strong>
+              <small>{loadPerformanceSnapshot.heapLimitMB !== null ? `上限 ${loadPerformanceSnapshot.heapLimitMB} MB` : '不可用'}</small>
+            </div>
+          </div>
+          <div className={styles.loadPerfGameCounts}>
+            敌人 {loadPerformanceSnapshot.gameCounts.visibleOpponents}/{loadPerformanceSnapshot.gameCounts.opponents} · 实体 {loadPerformanceSnapshot.gameCounts.visibleEntities}/{loadPerformanceSnapshot.gameCounts.entities} · 地面区 {loadPerformanceSnapshot.gameCounts.groundZones} · 拾取 {loadPerformanceSnapshot.gameCounts.pickups} · 事件 {loadPerformanceSnapshot.gameCounts.events} · Buff {loadPerformanceSnapshot.gameCounts.selfBuffs} · 招式 {loadPerformanceSnapshot.gameCounts.abilities}
+          </div>
         </div>
       )}
 

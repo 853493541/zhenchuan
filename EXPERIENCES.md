@@ -3,6 +3,44 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Channel completion stealth and load diagnostics (2026-05-21)
+
+**Problem set**:
+1. 散流霞 correctly survived forward channel start, but a successful channel finish was still not treated as an action that breaks it.
+2. 任驰骋 needed to be castable while moving during the channel, but only if the caster starts on the ground.
+3. White-screen/crash investigation needed an in-game way to see scene loading stages and whether DOM or Three.js object counts are growing over time.
+
+**Fix**:
+- Added successful channel-completion removal for 散流霞 buff 1007 in the runtime loop, separate from cancel handling.
+- Marked 任驰骋 as `requiresGrounded: true` in canonical and legacy ability data without adding `requiresStanding`, so movement during the channel remains allowed.
+- Added an `I` hotkey load-performance panel showing in-progress scene stages, DOM element/canvas/SVG/image counts, JS heap when available, and Three.js object/geometry/texture/render counts with peak values.
+
+**Lessons**:
+- Channel start, channel cancel, and channel complete need separate buff-break semantics; preserving a buff at start does not imply preserving it at successful resolution.
+- Ground-only casting and movement-lock casting are separate constraints; use `requiresGrounded` for the initial floor check and leave `requiresStanding`/movement lock off when motion is allowed.
+- For intermittent white screens, collect both DOM counts and renderer-side object/memory counts so gradual growth is visible before the browser crashes.
+
+## Ground dash targeting and power lock warnings (2026-05-21)
+
+**Problem set**:
+1. 散流霞's runtime buff was created with `breakOnPlay: false`, so successful casts did not remove it.
+2. Ground dash skills could fall back to selected/opponent/facing targets or clamp to max range, causing the character to land somewhere other than the clicked point.
+3. Ground-only opponent-target casts emitted `PLAY_ABILITY` with the default enemy target from both `playService` and the inner `applyAbility` entry point, so combat status treated the cast as enemy contact.
+4. LOS failures showed both the battle warning and an old debug overlay.
+
+**Fix**:
+- Added 散流霞 buff 1007 to successful-cast break handling while preserving channel-start immunity.
+- Required explicit ground targets for 临时飞爪、撼地、孤风飒踏 and removed backend dash fallback/clamping for those exact-point casts.
+- Suppressed enemy `targetUserId` on both ground-only `PLAY_ABILITY` event emitters.
+- Added 封内/封外 effect types and mapped silence/disarm/inner/outer local/server cast failures to `经脉受损 无法运功`.
+- Replaced the legacy LOS overlay with the battle-warning path only, and added dash hover range filtering plus path-line preview.
+- Changed 散流霞 so forward channel start keeps it, but reverse channel start breaks it like a normal successful cast.
+
+**Lessons**:
+- For mouse-target mobility, backend validation and effect execution must both require the explicit ground point; UI-only checks are not enough.
+- Opponent-target abilities that are actually ground-only should not reuse fallback enemy targets in gameplay events, or secondary systems may infer combat contact.
+- Runtime-applied buffs need break metadata and central break rules aligned; otherwise editor/canonical defaults do not describe the live buff behavior.
+
 ## Live ESC sound settings deployment verification (2026-05-21)
 
 **Problem set**:

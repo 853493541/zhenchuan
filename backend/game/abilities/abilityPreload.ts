@@ -65,6 +65,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       friendlyTarget: !!(ability as any).friendlyTarget,
       canTargetSelf: !!(ability as any).canTargetSelf,
       effects: ability.effects ?? [],
+      damageType: (ability as any).damageType,
 
       // Range data for client-side ability readiness check
       range:    (ability as any).range,
