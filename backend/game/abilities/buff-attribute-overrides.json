@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updatedAt": "2026-05-06T07:35:28.746Z",
+  "updatedAt": "2026-05-21T06:20:27.969Z",
   "buffs": {
     "1001": {
       "attribute": "毒性"
@@ -19,6 +19,7 @@
     },
     "1007": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "1008": {
@@ -55,6 +56,7 @@
     },
     "1013": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "1014": {
@@ -64,10 +66,12 @@
     },
     "1016": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "1017": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "1019": {
@@ -79,6 +83,7 @@
           "noOverride": true
         }
       ],
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "1020": {
@@ -98,6 +103,7 @@
     },
     "1031": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "1033": {
@@ -113,6 +119,7 @@
     },
     "1310": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "1311": {
@@ -121,6 +128,7 @@
     },
     "1320": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "1321": {
@@ -131,6 +139,7 @@
     },
     "1323": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "1330": {
@@ -167,6 +176,7 @@
     },
     "1343": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "1344": {
@@ -189,6 +199,7 @@
     },
     "1349": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "1350": {
@@ -200,6 +211,7 @@
           "noOverride": false
         }
       ],
+      "qinYinGongMingStealable": true,
       "manualCancelable": true
     },
     "1351": {
@@ -209,6 +221,7 @@
     },
     "1354": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "1355": {
@@ -220,6 +233,7 @@
           "noOverride": false
         }
       ],
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2001": {
@@ -231,10 +245,12 @@
           "noOverride": true
         }
       ],
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2003": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2004": {
@@ -266,6 +282,7 @@
           "noOverride": false
         }
       ],
+      "qinYinGongMingStealable": true,
       "manualCancelable": true
     },
     "2303": {
@@ -281,11 +298,13 @@
           "noOverride": false
         }
       ],
+      "qinYinGongMingStealable": true,
       "manualCancelable": true
     },
     "2305": {
       "attribute": "无",
       "name": "转乾坤·免控",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2306": {
@@ -304,14 +323,17 @@
     },
     "2310": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2311": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2312": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2313": {
@@ -343,6 +365,7 @@
     },
     "2318": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2319": {
@@ -356,6 +379,7 @@
     },
     "2322": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2323": {
@@ -381,10 +405,12 @@
     },
     "2327": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2401": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2402": {
@@ -453,7 +479,9 @@
       "attribute": "无"
     },
     "2602": {
-      "attribute": "无"
+      "attribute": "无",
+      "qinYinGongMingUnstealable": true,
+      "manualCancelExcluded": true
     },
     "2603": {
       "attribute": "无"
@@ -469,6 +497,7 @@
     },
     "2607": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2608": {
@@ -524,6 +553,7 @@
     },
     "2631": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2632": {
@@ -541,6 +571,7 @@
     "2636": {
       "attribute": "无",
       "name": "灵辉",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2637": {
@@ -561,6 +592,7 @@
     },
     "2642": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2643": {
@@ -595,13 +627,16 @@
     },
     "2650": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2652": {
-      "attribute": "无"
+      "attribute": "未选择",
+      "hidden": true
     },
     "2654": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2701": {
@@ -633,18 +668,22 @@
     },
     "2704": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2705": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2706": {
       "attribute": "无",
+      "qinYinGongMingStealable": true,
       "manualCancelable": true
     },
     "2707": {
       "attribute": "无",
+      "qinYinGongMingStealable": true,
       "manualCancelable": true
     },
     "2708": {
@@ -663,6 +702,7 @@
     },
     "2711": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2712": {
@@ -674,10 +714,12 @@
           "noOverride": true
         }
       ],
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2713": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2714": {
@@ -686,11 +728,13 @@
     },
     "2715": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2716": {
       "attribute": "无",
       "name": "逐云寒蕊·藏匿",
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2717": {
@@ -700,6 +744,7 @@
     },
     "2718": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2719": {
@@ -725,14 +770,17 @@
     },
     "2726": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2727": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2728": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2730": {
@@ -810,10 +858,12 @@
     },
     "2738": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2739": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2740": {
@@ -821,14 +871,17 @@
     },
     "2741": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2742": {
       "attribute": "无",
+      "qinYinGongMingStealable": true,
       "manualCancelable": true
     },
     "2743": {
       "attribute": "无",
+      "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2744": {
@@ -847,6 +900,7 @@
     },
     "9002": {
       "attribute": "无",
+      "qinYinGongMingStealable": true,
       "manualCancelable": true
     },
     "9003": {
@@ -859,6 +913,16 @@
     },
     "9202": {
       "attribute": "无"
+    },
+    "980001": {
+      "attribute": "无",
+      "qinYinGongMingUnstealable": true,
+      "manualCancelable": true
+    },
+    "980002": {
+      "attribute": "无",
+      "qinYinGongMingUnstealable": true,
+      "manualCancelable": true
     },
     "990100": {
       "attribute": "未选择",

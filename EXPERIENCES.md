@@ -3,6 +3,22 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## BattleArena camera centering at upward pitch (2026-05-21)
+
+**Problem set**:
+1. In collision-test mode, dragging the camera upward made the local character drift lower on screen.
+2. The camera boom followed the avatar, but the render camera still looked at a forward/up offset target, so pitch changes changed the character's screen position.
+3. After removing the old look-ahead offset, aiming at the upper pivot centered the HP/cap anchor but left the body reading slightly low/high depending on pitch.
+
+**Fix**:
+- Kept the existing camera collision boom pivot unchanged for wall, probe, and ground clamping.
+- Changed the render `lookAt` target to a fixed avatar body-center height so the model itself remains centered as pitch changes.
+- Updated the movement recenter visibility check to use the same visual-center target.
+
+**Lessons**:
+- Camera collision pivots and visual framing targets should be separate; collision can orbit around a stable upper pivot while `lookAt` frames the body center.
+- Playwright canvas screenshots plus pixel checks are useful for confirming visual drift, while live React refs help prove pitch changed during the test.
+
 ## Exported map cache and warmup optimization (2026-05-21)
 
 **Problem set**:

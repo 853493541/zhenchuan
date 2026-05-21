@@ -62,9 +62,7 @@ type CollisionZoomDirection = -1 | 0 | 1;
 
 const CAM_DIST_BACK = 20;
 const CAMERA_PIVOT_HEIGHT = 1.25;
-const LOOK_FORWARD_DIST = 4.5;
-const LOOK_FORWARD_WHEN_UP = 0.9;
-const LOOK_UP_HEIGHT = 18;
+const CAMERA_SCREEN_CENTER_HEIGHT = 0.78;
 const LOOK_UP_OVERFLOW_RANGE = 4;
 const CAMERA_WALL_PADDING = 0.45;
 const CAMERA_MIN_DISTANCE = 0.08;
@@ -75,7 +73,6 @@ const LOOK_UP_LOWERING_SCALE = 0.35;
 const CAMERA_PROBE_SIDE = 0.55;
 const CAMERA_PROBE_UP = 0.36;
 const CAMERA_PROBE_DOWN = 0.24;
-const CAMERA_CLOSE_FOCUS_RANGE = 3.5;
 const CAMERA_STATE_EPSILON = 0.05;
 const CAMERA_DISTANCE_SETTLE_EPSILON = 0.035;
 const CAMERA_COLLISION_DIRECTION_EPSILON = 0.04;
@@ -654,22 +651,8 @@ export default function CameraRig({
     camera.position.copy(_pivot).addScaledVector(_targetCameraDir, smoothedCameraDistanceRef.current);
 
     const visibleLookUpRatio = collisionBlendActiveRef.current ? smoothedLookUpRatioRef.current : lookUpRatio;
-    const effectiveLookUpRatio = recenterLookRef.current ? 0 : visibleLookUpRatio;
     const actualDistanceScene = camera.position.distanceTo(_pivot);
-    const wallFocusRatio = recenterLookRef.current
-      ? 1
-      : THREE.MathUtils.clamp((desiredDistanceScene - actualDistanceScene) / CAMERA_CLOSE_FOCUS_RANGE, 0, 1);
-    const lookForwardDist = recenterLookRef.current
-      ? 0
-      : THREE.MathUtils.lerp(LOOK_FORWARD_DIST, LOOK_FORWARD_WHEN_UP, effectiveLookUpRatio);
-    _lookTarget.set(
-      px + Math.sin(yaw) * lookForwardDist,
-      _pivot.y + THREE.MathUtils.lerp(0, LOOK_UP_HEIGHT, effectiveLookUpRatio),
-      pz + Math.cos(yaw) * lookForwardDist,
-    );
-    if (!recenterLookRef.current && wallFocusRatio > 0) {
-      _lookTarget.lerp(_pivot, wallFocusRatio);
-    }
+    _lookTarget.set(px, py + CAMERA_SCREEN_CENTER_HEIGHT, pz);
     camera.lookAt(_lookTarget);
     camera.updateMatrixWorld();
 
@@ -679,7 +662,7 @@ export default function CameraRig({
       !manualCameraLookActiveRef?.current &&
       actualDistanceScene > AVATAR_HIDDEN_NEAR_DISTANCE
     ) {
-      _avatarNdc.copy(_pivot).project(camera);
+      _avatarNdc.copy(_lookTarget).project(camera);
       const avatarVisible =
         _avatarNdc.z >= -1 &&
         _avatarNdc.z <= 1 &&
@@ -688,7 +671,7 @@ export default function CameraRig({
 
       if (!avatarVisible) {
         recenterLookRef.current = true;
-        _lookTarget.copy(_pivot);
+        _lookTarget.set(px, py + CAMERA_SCREEN_CENTER_HEIGHT, pz);
         camera.lookAt(_lookTarget);
         camera.updateMatrixWorld();
       }
