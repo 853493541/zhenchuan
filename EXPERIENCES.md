@@ -3,6 +3,25 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Scene loading timeline report and loader parallelism (2026-05-21)
+
+**Problem set**:
+1. The `I` panel mixed scene loading with element counts, so it did not clearly show total scene load time or per-stage durations.
+2. The first implementation showed page runtime as a loading duration, making old sessions look like very slow scene loads.
+3. The exported map loader fetched unique GLBs, terrain heightmaps, and collision sidecars mostly in serial, which made scene loading vulnerable to long request chains.
+4. Live Playwright report capture was blocked because the browser redirected to `/login` and `ZHENCHUAN_TEST_PASSWORD` was not set in the runtime environment.
+
+**Fix**:
+- Changed the `I` panel to focus on `场景加载`: total scene time, stage durations, browser resource timing groups, slowest resources, and a `复制报告` button.
+- Added exported-map timing events for manifest, entity GLB/texture, terrain, collision sidecar, BVH, and total map stages.
+- Exposed the full report on `window.__zhenchuanLoadReport` for Playwright retrieval after authentication.
+- Parallelized GLB, terrain, and collision sidecar loading with bounded concurrency.
+
+**Lessons**:
+- Loading diagnostics should measure stage start/end times, not how long the page has been open.
+- Browser `PerformanceResourceTiming` is useful for reportable scene-load evidence because it identifies slow resource groups without adding custom network instrumentation.
+- Live Playwright checks that require authentication need runtime credentials or an already-authenticated shared browser page; do not route passwords through chat or logs.
+
 ## Channel completion stealth and load diagnostics (2026-05-21)
 
 **Problem set**:

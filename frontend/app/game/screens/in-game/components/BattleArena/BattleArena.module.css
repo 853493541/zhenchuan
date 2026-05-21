@@ -1457,6 +1457,12 @@
   gap: 12px;
 }
 
+.loadPerfHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .loadPerfSummary {
   color: #b9c7d4;
   font-size: 12px;
@@ -1476,6 +1482,24 @@
   cursor: pointer;
 }
 
+.loadPerfCopyButton {
+  min-width: 82px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  border-radius: 5px;
+  background: rgba(14, 45, 60, 0.9);
+  color: #dff6ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .loadPerfSection {
   margin-top: 12px;
 }
@@ -1492,7 +1516,8 @@
   gap: 5px;
 }
 
-.loadPerfStageRow {
+.loadPerfStageRow,
+.loadPerfResourceRow {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(82px, 1fr) 54px minmax(92px, 1fr);
@@ -1505,14 +1530,19 @@
 }
 
 .loadPerfStageRow span,
-.loadPerfStageRow small {
+.loadPerfStageRow small,
+.loadPerfStageRow em,
+.loadPerfResourceRow span,
+.loadPerfResourceRow small,
+.loadPerfResourceRow em {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.loadPerfStageRow strong {
+.loadPerfStageRow strong,
+.loadPerfResourceRow strong {
   color: #fbbf24;
   font-size: 11px;
   text-align: right;
@@ -1522,9 +1552,18 @@
   color: #7dd3fc;
 }
 
-.loadPerfStageRow small {
+.loadPerfStageRow small,
+.loadPerfResourceRow small {
   color: #9fb0c3;
   text-align: right;
+}
+
+.loadPerfStageRow em,
+.loadPerfResourceRow em {
+  grid-column: 1 / -1;
+  color: #7f92a5;
+  font-size: 10px;
+  font-style: normal;
 }
 
 .loadPerfEmpty {

@@ -7,13 +7,13 @@ import WASDButtons from './WASDButtons';
 import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, ChannelBarHost, type ChannelBarData } from './ChannelBar';
-import { ArrowLeft, Gamepad2, Gauge, Keyboard, LayoutGrid, MessageCircle, Puzzle, RotateCcw, Swords, Trash2, Volume2, Wind, X } from 'lucide-react';
+import { ArrowLeft, Clipboard, Gamepad2, Gauge, Keyboard, LayoutGrid, MessageCircle, Puzzle, RotateCcw, Swords, Trash2, Volume2, Wind, X } from 'lucide-react';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles, type SceneRuntimeMetrics } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
-import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z } from './scene/ExportedMapScene';
+import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, type SceneLoadTimingEvent } from './scene/ExportedMapScene';
 import { encodeIconPublicPath, getAbilityIconPath } from '@/app/lib/iconPaths';
 import * as THREE from 'three';
 import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
@@ -21,39 +21,59 @@ import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase
 import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
 
 type V3 = { x: number; y: number; z: number };
-type LoadStageStatus = '完成' | '进行中';
+type LoadStageStatus = '完成' | '进行中' | '失败';
 
 type LoadPerformanceStage = {
+  id: string;
   name: string;
   status: LoadStageStatus;
+  startedAtMs: number;
+  completedAtMs: number | null;
+  durationMs: number;
   detail: string;
+  meta?: Record<string, number | string>;
 };
 
-type LoadPerformancePeaks = {
-  domElements: number;
-  canvases: number;
-  images: number;
-  svgs: number;
-  threeObjects: number;
-  geometries: number;
-  textures: number;
+type LoadPerformanceStageState = {
+  id: string;
+  name: string;
+  status: LoadStageStatus;
+  startedAtMs: number;
+  completedAtMs: number | null;
+  detail: string;
+  meta?: Record<string, number | string>;
+  order: number;
+};
+
+type LoadResourceGroup = {
+  label: string;
+  count: number;
+  totalDurationMs: number;
+  maxDurationMs: number;
+  transferSizeBytes: number;
+  encodedBodySizeBytes: number;
+  slowestName: string;
+};
+
+type LoadResourceEntrySummary = {
+  name: string;
+  label: string;
+  durationMs: number;
+  transferSizeBytes: number;
+  encodedBodySizeBytes: number;
 };
 
 type LoadPerformanceSnapshot = {
   ts: number;
-  elapsedMs: number;
+  startedAtIso: string;
+  totalMs: number;
+  completed: boolean;
   stages: LoadPerformanceStage[];
   inProgressStages: LoadPerformanceStage[];
-  domElements: number;
-  canvases: number;
-  images: number;
-  svgs: number;
-  buttons: number;
-  inputs: number;
-  heapUsedMB: number | null;
-  heapLimitMB: number | null;
-  peaks: LoadPerformancePeaks;
+  resourceGroups: LoadResourceGroup[];
+  slowestResources: LoadResourceEntrySummary[];
   sceneMetrics: SceneRuntimeMetrics | null;
+  reportText: string;
   gameCounts: {
     opponents: number;
     visibleOpponents: number;
@@ -67,27 +87,133 @@ type LoadPerformanceSnapshot = {
   };
 };
 
-const createEmptyLoadPerformancePeaks = (): LoadPerformancePeaks => ({
-  domElements: 0,
-  canvases: 0,
-  images: 0,
-  svgs: 0,
-  threeObjects: 0,
-  geometries: 0,
-  textures: 0,
-});
-
-const toMegabytes = (bytes: unknown): number | null => {
-  const value = Number(bytes);
-  return Number.isFinite(value) && value > 0 ? Math.round((value / 1024 / 1024) * 10) / 10 : null;
-};
-
 const formatLoadPerfNumber = (value: number | null | undefined) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
   return value.toLocaleString('zh-CN');
 };
 
-const formatLoadPerfSeconds = (ms: number) => `${Math.max(0, ms / 1000).toFixed(1)}s`;
+const formatLoadPerfMs = (ms: number | null | undefined) => {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return '-';
+  return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.max(0, Math.round(ms))}ms`;
+};
+
+const formatLoadPerfBytes = (bytes: number | null | undefined) => {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return '-';
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${Math.round(bytes)} B`;
+};
+
+const getSceneResourceLabel = (url: string) => {
+  const path = (() => {
+    try { return new URL(url).pathname; } catch { return url; }
+  })();
+  if (!path.includes('/full-exports/')) return null;
+  if (path.endsWith('.glb')) return 'GLB模型';
+  if (path.includes('/textures/')) return '模型贴图';
+  if (path.includes('/terrain-textures/') && !path.endsWith('/index.json')) return '地形贴图';
+  if (path.includes('/heightmap/')) return '地形高度';
+  if (path.endsWith('.collision.json') || path.endsWith('/mesh-collision-index.json')) return '碰撞数据';
+  if (path.endsWith('.json')) return '地图清单';
+  return '其他地图资源';
+};
+
+const getSceneResourceName = (url: string) => {
+  try {
+    const path = decodeURIComponent(new URL(url).pathname);
+    const parts = path.split('/').filter(Boolean);
+    return parts.slice(-2).join('/');
+  } catch {
+    return url;
+  }
+};
+
+function collectSceneResourceTimings(startedAtMs: number) {
+  const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+  const groups = new Map<string, LoadResourceGroup>();
+  const resources: LoadResourceEntrySummary[] = [];
+
+  for (const entry of entries) {
+    if (entry.startTime + 5 < startedAtMs) continue;
+    const label = getSceneResourceLabel(entry.name);
+    if (!label) continue;
+    const durationMs = Math.max(0, entry.duration || 0);
+    const transferSizeBytes = Number(entry.transferSize ?? 0) || 0;
+    const encodedBodySizeBytes = Number(entry.encodedBodySize ?? 0) || 0;
+    const name = getSceneResourceName(entry.name);
+    resources.push({ name, label, durationMs, transferSizeBytes, encodedBodySizeBytes });
+
+    const group = groups.get(label) ?? {
+      label,
+      count: 0,
+      totalDurationMs: 0,
+      maxDurationMs: 0,
+      transferSizeBytes: 0,
+      encodedBodySizeBytes: 0,
+      slowestName: '',
+    };
+    group.count += 1;
+    group.totalDurationMs += durationMs;
+    group.transferSizeBytes += transferSizeBytes;
+    group.encodedBodySizeBytes += encodedBodySizeBytes;
+    if (durationMs >= group.maxDurationMs) {
+      group.maxDurationMs = durationMs;
+      group.slowestName = name;
+    }
+    groups.set(label, group);
+  }
+
+  return {
+    resourceGroups: Array.from(groups.values()).sort((a, b) => b.maxDurationMs - a.maxDurationMs),
+    slowestResources: resources.sort((a, b) => b.durationMs - a.durationMs).slice(0, 8),
+  };
+}
+
+function buildSceneLoadReport(snapshot: Omit<LoadPerformanceSnapshot, 'reportText'>) {
+  const lines: string[] = [];
+  lines.push('加载性能报告');
+  lines.push(`生成时间: ${new Date(snapshot.ts).toISOString()}`);
+  lines.push(`开始时间: ${snapshot.startedAtIso}`);
+  lines.push(`总场景加载: ${formatLoadPerfMs(snapshot.totalMs)} (${snapshot.completed ? '完成' : '进行中'})`);
+  lines.push('');
+  lines.push('阶段耗时:');
+  for (const stage of snapshot.stages) {
+    const start = formatLoadPerfMs(stage.startedAtMs);
+    const end = stage.completedAtMs === null ? '-' : formatLoadPerfMs(stage.completedAtMs);
+    const meta = stage.meta
+      ? Object.entries(stage.meta).map(([key, value]) => `${key}=${value}`).join(', ')
+      : '';
+    lines.push(`- ${stage.name}: ${stage.status}, ${formatLoadPerfMs(stage.durationMs)} (${start} -> ${end})${stage.detail ? `, ${stage.detail}` : ''}${meta ? `, ${meta}` : ''}`);
+  }
+  lines.push('');
+  lines.push('资源分组:');
+  if (snapshot.resourceGroups.length === 0) {
+    lines.push('- 无 full-exports 资源计时');
+  } else {
+    for (const group of snapshot.resourceGroups) {
+      lines.push(`- ${group.label}: ${group.count} 个, 合计 ${formatLoadPerfMs(group.totalDurationMs)}, 最慢 ${formatLoadPerfMs(group.maxDurationMs)} ${group.slowestName || '-'}, 传输 ${formatLoadPerfBytes(group.transferSizeBytes)}, 编码大小 ${formatLoadPerfBytes(group.encodedBodySizeBytes)}`);
+    }
+  }
+  lines.push('');
+  lines.push('最慢资源:');
+  if (snapshot.slowestResources.length === 0) {
+    lines.push('- 无');
+  } else {
+    for (const resource of snapshot.slowestResources) {
+      lines.push(`- ${resource.label} ${resource.name}: ${formatLoadPerfMs(resource.durationMs)}, 传输 ${formatLoadPerfBytes(resource.transferSizeBytes)}, 编码大小 ${formatLoadPerfBytes(resource.encodedBodySizeBytes)}`);
+    }
+  }
+  lines.push('');
+  lines.push('Three.js:');
+  if (snapshot.sceneMetrics) {
+    lines.push(`- objects=${snapshot.sceneMetrics.objects}, meshes=${snapshot.sceneMetrics.meshes}, lights=${snapshot.sceneMetrics.lights}, geometries=${snapshot.sceneMetrics.geometries}, textures=${snapshot.sceneMetrics.textures}, drawCalls=${snapshot.sceneMetrics.calls}, triangles=${snapshot.sceneMetrics.triangles}`);
+  } else {
+    lines.push('- 未采集到 Three.js 指标');
+  }
+  lines.push('');
+  lines.push(`游戏对象: 敌人 ${snapshot.gameCounts.visibleOpponents}/${snapshot.gameCounts.opponents}, 实体 ${snapshot.gameCounts.visibleEntities}/${snapshot.gameCounts.entities}, 地面区 ${snapshot.gameCounts.groundZones}, 拾取 ${snapshot.gameCounts.pickups}, 事件 ${snapshot.gameCounts.events}, Buff ${snapshot.gameCounts.selfBuffs}, 招式 ${snapshot.gameCounts.abilities}`);
+  return lines.join('\n');
+}
 type HeartStatKey =
   | 'attack'
   | 'maxHp'
@@ -2638,12 +2764,13 @@ export default function BattleArena({
   const [sceneRecovering, setSceneRecovering] = useState(false);
   const sceneRecoveryTimerRef = useRef<number | null>(null);
   const mainCanvasCleanupRef = useRef<(() => void) | null>(null);
-  const [mainCanvasReady, setMainCanvasReady] = useState(false);
   const [showLoadPerformancePanel, setShowLoadPerformancePanel] = useState(false);
   const [loadPerformanceSnapshot, setLoadPerformanceSnapshot] = useState<LoadPerformanceSnapshot | null>(null);
   const sceneRuntimeMetricsRef = useRef<SceneRuntimeMetrics | null>(null);
-  const loadPerformanceStartedAtRef = useRef(Date.now());
-  const loadPerformancePeaksRef = useRef<LoadPerformancePeaks>(createEmptyLoadPerformancePeaks());
+  const loadPerformanceStartedAtRef = useRef(performance.now());
+  const loadPerformanceWallStartedAtRef = useRef(Date.now());
+  const loadPerformanceStagesRef = useRef<Map<string, LoadPerformanceStageState>>(new Map());
+  const loadPerformanceStageOrderRef = useRef(0);
   const [showTestingPanel, setShowTestingPanel] = useState(false);
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
   const [showCameraEventTestingPanel, setShowCameraEventTestingPanel] = useState(false);
@@ -2664,9 +2791,101 @@ export default function BattleArena({
     mainCanvasCleanupRef.current = null;
   }, []);
 
+  const recordLoadStageStart = useCallback((id: string, name: string, at = performance.now(), detail = '') => {
+    const stages = loadPerformanceStagesRef.current;
+    const existing = stages.get(id);
+    if (existing && existing.completedAtMs !== null) return;
+    stages.set(id, {
+      id,
+      name,
+      status: '进行中',
+      startedAtMs: existing?.startedAtMs ?? at,
+      completedAtMs: null,
+      detail: detail || existing?.detail || '',
+      meta: existing?.meta,
+      order: existing?.order ?? loadPerformanceStageOrderRef.current++,
+    });
+  }, []);
+
+  const recordLoadStageEnd = useCallback((
+    id: string,
+    name: string,
+    at = performance.now(),
+    detail = '',
+    meta?: Record<string, number | string>,
+    status: LoadStageStatus = '完成',
+  ) => {
+    const stages = loadPerformanceStagesRef.current;
+    const existing = stages.get(id);
+    stages.set(id, {
+      id,
+      name: existing?.name ?? name,
+      status,
+      startedAtMs: existing?.startedAtMs ?? loadPerformanceStartedAtRef.current,
+      completedAtMs: at,
+      detail: detail || existing?.detail || '',
+      meta: meta ?? existing?.meta,
+      order: existing?.order ?? loadPerformanceStageOrderRef.current++,
+    });
+  }, []);
+
+  const handleSceneLoadTiming = useCallback((event: SceneLoadTimingEvent) => {
+    if (event.type === 'stage-start') {
+      recordLoadStageStart(event.id, event.name, event.at, event.detail ?? '');
+      return;
+    }
+    if (event.type === 'stage-end') {
+      const existing = loadPerformanceStagesRef.current.get(event.id);
+      recordLoadStageEnd(event.id, existing?.name ?? event.id, event.at, event.detail ?? '', event.meta);
+      return;
+    }
+    const existing = loadPerformanceStagesRef.current.get(event.id);
+    recordLoadStageEnd(event.id, existing?.name ?? event.id, event.at, event.detail ?? '', undefined, '失败');
+  }, [recordLoadStageEnd, recordLoadStageStart]);
+
   const handleSceneMetrics = useCallback((metrics: SceneRuntimeMetrics) => {
     sceneRuntimeMetricsRef.current = metrics;
-  }, []);
+    const alreadyCompleted = loadPerformanceStagesRef.current.get('three-scene-mounted')?.completedAtMs != null;
+    if (!alreadyCompleted) {
+      recordLoadStageEnd(
+        'three-scene-mounted',
+        'Three场景首帧',
+        performance.now(),
+        `${metrics.objects} objects, ${metrics.calls} draw calls`,
+        { objects: metrics.objects, meshes: metrics.meshes, drawCalls: metrics.calls },
+      );
+    }
+  }, [recordLoadStageEnd]);
+
+  const copyLoadPerformanceReport = useCallback(async () => {
+    const report = loadPerformanceSnapshot?.reportText;
+    if (!report) {
+      toastError('没有可复制的加载报告');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(report);
+      toastSuccess('已复制加载报告');
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = report;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (ok) toastSuccess('已复制加载报告');
+      else toastError('复制加载报告失败');
+    }
+  }, [loadPerformanceSnapshot?.reportText]);
+
+  useEffect(() => {
+    if (!loadPerformanceSnapshot?.reportText) return;
+    (window as any).__zhenchuanLoadReport = loadPerformanceSnapshot.reportText;
+    (window as any).__zhenchuanLoadSnapshot = loadPerformanceSnapshot;
+  }, [loadPerformanceSnapshot]);
 
   const handleMainCanvasCreated = useCallback(({ gl }: { gl: THREE.WebGLRenderer }) => {
     mainCanvasCleanupRef.current?.();
@@ -2693,12 +2912,16 @@ export default function BattleArena({
     };
     canvas.addEventListener('webglcontextlost', onContextLost, false);
     canvas.addEventListener('webglcontextrestored', onContextRestored, false);
-    setMainCanvasReady(true);
+    recordLoadStageEnd(
+      'main-canvas-created',
+      '主场景Canvas创建',
+      performance.now(),
+      `${Math.round(canvasSizeRef.current.w)}x${Math.round(canvasSizeRef.current.h)}`,
+    );
     mainCanvasCleanupRef.current = () => {
       clearRecoveryTimer();
       canvas.removeEventListener('webglcontextlost', onContextLost, false);
       canvas.removeEventListener('webglcontextrestored', onContextRestored, false);
-      setMainCanvasReady(false);
     };
   }, []);
 
@@ -2886,72 +3109,62 @@ export default function BattleArena({
     bvhCenterYInitRef.current = false; // force sphere center resync on first tick
     collisionReadyRef.current = true;
     setCollisionReady(true);
+    recordLoadStageEnd('collision-ready', '碰撞系统可用', performance.now(), 'collision ready');
     console.log('[BVH] Collision system ready');
-  }, [mapData.height, mapData.width]);
+  }, [mapData.height, mapData.width, recordLoadStageEnd]);
 
   useEffect(() => {
     const collect = () => {
+      const now = performance.now();
+      const startedAt = loadPerformanceStartedAtRef.current;
       const metrics = sceneRuntimeMetricsRef.current;
-      const domElements = document.getElementsByTagName('*').length;
-      const canvases = document.getElementsByTagName('canvas').length;
-      const images = document.getElementsByTagName('img').length;
-      const svgs = document.getElementsByTagName('svg').length;
-      const buttons = document.getElementsByTagName('button').length;
-      const inputs = document.getElementsByTagName('input').length;
-      const memory = (performance as any).memory;
-      const collisionStageInProgress = mode === 'collision-test' && !collisionReady;
-      const sceneMetricsReady = !!metrics;
-      const stages: LoadPerformanceStage[] = [
-        {
-          name: '页面组件',
-          status: '完成',
-          detail: `运行 ${formatLoadPerfSeconds(Date.now() - loadPerformanceStartedAtRef.current)}`,
-        },
-        {
-          name: '主场景 Canvas',
-          status: mainCanvasReady ? '完成' : '进行中',
-          detail: canvasSize.w > 0 && canvasSize.h > 0 ? `${Math.round(canvasSize.w)}x${Math.round(canvasSize.h)}` : '等待尺寸',
-        },
-        {
-          name: 'WebGL 场景',
-          status: sceneMetricsReady ? '完成' : '进行中',
-          detail: sceneMetricsReady ? `${formatLoadPerfNumber(metrics?.objects)} objects` : '等待 renderer',
-        },
-        {
-          name: '碰撞场景',
-          status: collisionStageInProgress ? '进行中' : '完成',
-          detail: mode === 'collision-test' ? (collisionReady ? 'collision ready' : 'collision loading') : '非碰撞模式',
-        },
-        {
-          name: '恢复场景',
-          status: sceneRecovering ? '进行中' : '完成',
-          detail: sceneRecovering ? 'WebGL context恢复中' : '空闲',
-        },
-      ];
 
-      const peaks = loadPerformancePeaksRef.current;
-      peaks.domElements = Math.max(peaks.domElements, domElements);
-      peaks.canvases = Math.max(peaks.canvases, canvases);
-      peaks.images = Math.max(peaks.images, images);
-      peaks.svgs = Math.max(peaks.svgs, svgs);
-      peaks.threeObjects = Math.max(peaks.threeObjects, metrics?.objects ?? 0);
-      peaks.geometries = Math.max(peaks.geometries, metrics?.geometries ?? 0);
-      peaks.textures = Math.max(peaks.textures, metrics?.textures ?? 0);
+      recordLoadStageStart('main-canvas-created', '主场景Canvas创建', startedAt, '等待 Canvas');
+      recordLoadStageStart('three-scene-mounted', 'Three场景首帧', startedAt, '等待 renderer');
+      if (mode === 'collision-test') {
+        recordLoadStageStart('collision-ready', '碰撞系统可用', startedAt, collisionReady ? 'collision ready' : '等待 collision ready');
+      }
+      if (sceneRecovering) {
+        recordLoadStageStart('webgl-recovery', 'WebGL恢复', now, 'context恢复中');
+      } else {
+        const recovery = loadPerformanceStagesRef.current.get('webgl-recovery');
+        if (recovery && recovery.completedAtMs === null) {
+          recordLoadStageEnd('webgl-recovery', 'WebGL恢复', now, '恢复完成');
+        }
+      }
 
-      setLoadPerformanceSnapshot({
+      const stageStates = Array.from(loadPerformanceStagesRef.current.values())
+        .sort((a, b) => a.order - b.order);
+      const stages: LoadPerformanceStage[] = stageStates.map((stage) => ({
+        id: stage.id,
+        name: stage.name,
+        status: stage.status,
+        startedAtMs: Math.max(0, stage.startedAtMs - startedAt),
+        completedAtMs: stage.completedAtMs === null ? null : Math.max(0, stage.completedAtMs - startedAt),
+        durationMs: Math.max(0, (stage.completedAtMs ?? now) - stage.startedAtMs),
+        detail: stage.detail,
+        meta: stage.meta,
+      }));
+      const requiredStageIds = mode === 'collision-test'
+        ? ['main-canvas-created', 'three-scene-mounted', 'exported-map-total', 'collision-ready']
+        : ['main-canvas-created', 'three-scene-mounted'];
+      const completed = requiredStageIds.every((id) => {
+        const stage = loadPerformanceStagesRef.current.get(id);
+        return stage?.status === '完成' && stage.completedAtMs !== null;
+      });
+      const totalEnd = completed
+        ? Math.max(...requiredStageIds.map((id) => loadPerformanceStagesRef.current.get(id)?.completedAtMs ?? startedAt))
+        : now;
+      const { resourceGroups, slowestResources } = collectSceneResourceTimings(startedAt);
+      const snapshotBase: Omit<LoadPerformanceSnapshot, 'reportText'> = {
         ts: Date.now(),
-        elapsedMs: Date.now() - loadPerformanceStartedAtRef.current,
+        startedAtIso: new Date(loadPerformanceWallStartedAtRef.current).toISOString(),
+        totalMs: Math.max(0, totalEnd - startedAt),
+        completed,
         stages,
         inProgressStages: stages.filter((stage) => stage.status === '进行中'),
-        domElements,
-        canvases,
-        images,
-        svgs,
-        buttons,
-        inputs,
-        heapUsedMB: toMegabytes(memory?.usedJSHeapSize),
-        heapLimitMB: toMegabytes(memory?.jsHeapSizeLimit),
-        peaks: { ...peaks },
+        resourceGroups,
+        slowestResources,
         sceneMetrics: metrics,
         gameCounts: {
           opponents: worldVisibleOpponentsList.length,
@@ -2964,24 +3177,28 @@ export default function BattleArena({
           selfBuffs: me.buffs?.length ?? 0,
           abilities: Object.keys(abilities).length,
         },
+      };
+
+      setLoadPerformanceSnapshot({
+        ...snapshotBase,
+        reportText: buildSceneLoadReport(snapshotBase),
       });
     };
 
     collect();
-    const id = window.setInterval(collect, 1000);
+    const id = window.setInterval(collect, 500);
     return () => window.clearInterval(id);
   }, [
     abilities,
-    canvasSize.h,
-    canvasSize.w,
     collisionReady,
     entities?.length,
     events.length,
     groundZones?.length,
-    mainCanvasReady,
     me.buffs?.length,
     mode,
     modePickups.length,
+    recordLoadStageEnd,
+    recordLoadStageStart,
     sceneRecovering,
     visibleEntities.length,
     visibleOpponentsList.length,
@@ -8958,6 +9175,7 @@ export default function BattleArena({
             losIsBlocked={draftAbilities.some(a => !!a?.losBlocked) || commonAbilities.some(a => a.losBlocked)}
             onEnvDebug={mode === 'collision-test' && lightingControlsOpen ? setEnvDebugInfo : undefined}
             onSceneMetrics={handleSceneMetrics}
+            onSceneLoadTiming={handleSceneLoadTiming}
             envToggles={mode === 'collision-test' ? envToggles : undefined}
             dirLightConfig={mode === 'collision-test' ? dirLightConfig : undefined}
             blindWorldMode={selfHasHongMengTianJin}
@@ -9635,32 +9853,73 @@ export default function BattleArena({
       )}
 
       {showLoadPerformancePanel && loadPerformanceSnapshot && (
-        <div className={`${styles.uiFloatingPanel} ${styles.loadPerfPanel}`} data-ui-interactive>
+        <div className={`${styles.uiFloatingPanel} ${styles.loadPerfPanel}`} data-ui-interactive data-load-performance-panel>
           <div className={styles.loadPerfHeader}>
             <div>
-              <div className={styles.uiFloatingTitle}>加载性能</div>
+              <div className={styles.uiFloatingTitle}>场景加载</div>
               <div className={styles.loadPerfSummary}>
-                进行中 {loadPerformanceSnapshot.inProgressStages.length} / {loadPerformanceSnapshot.stages.length}
+                总耗时 {formatLoadPerfMs(loadPerformanceSnapshot.totalMs)} · {loadPerformanceSnapshot.completed ? '完成' : '进行中'} · {loadPerformanceSnapshot.inProgressStages.length} 项进行中
               </div>
             </div>
-            <button
-              type="button"
-              className={styles.loadPerfCloseButton}
-              onClick={() => setShowLoadPerformancePanel(false)}
-              aria-label="关闭加载性能"
-            >
-              <X size={14} />
-            </button>
+            <div className={styles.loadPerfHeaderActions}>
+              <button
+                type="button"
+                className={styles.loadPerfCopyButton}
+                onClick={copyLoadPerformanceReport}
+              >
+                <Clipboard size={13} />
+                <span>复制报告</span>
+              </button>
+              <button
+                type="button"
+                className={styles.loadPerfCloseButton}
+                onClick={() => setShowLoadPerformancePanel(false)}
+                aria-label="关闭场景加载"
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
           <div className={styles.loadPerfSection}>
-            <div className={styles.loadPerfSectionTitle}>进行中场景</div>
-            {loadPerformanceSnapshot.inProgressStages.length > 0 ? (
+            <div className={styles.loadPerfSectionTitle}>阶段耗时</div>
+            <div className={styles.loadPerfStageList}>
+              {loadPerformanceSnapshot.stages.map((stage) => (
+                <div key={stage.id} className={styles.loadPerfStageRow}>
+                  <span>{stage.name}</span>
+                  <strong data-status={stage.status}>{stage.status}</strong>
+                  <small>{formatLoadPerfMs(stage.durationMs)} · {formatLoadPerfMs(stage.startedAtMs)}→{stage.completedAtMs === null ? '...' : formatLoadPerfMs(stage.completedAtMs)}</small>
+                  {stage.detail && <em>{stage.detail}</em>}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className={styles.loadPerfSection}>
+            <div className={styles.loadPerfSectionTitle}>资源分组</div>
+            {loadPerformanceSnapshot.resourceGroups.length > 0 ? (
               <div className={styles.loadPerfStageList}>
-                {loadPerformanceSnapshot.inProgressStages.map((stage) => (
-                  <div key={stage.name} className={styles.loadPerfStageRow}>
-                    <span>{stage.name}</span>
-                    <strong>{stage.status}</strong>
-                    <small>{stage.detail}</small>
+                {loadPerformanceSnapshot.resourceGroups.map((group) => (
+                  <div key={group.label} className={styles.loadPerfResourceRow}>
+                    <span>{group.label}</span>
+                    <strong>{group.count} 个</strong>
+                    <small>最慢 {formatLoadPerfMs(group.maxDurationMs)} · 合计 {formatLoadPerfMs(group.totalDurationMs)}</small>
+                    <em>{group.slowestName || '-'}</em>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.loadPerfEmpty}>无 full-exports 资源计时</div>
+            )}
+          </div>
+          <div className={styles.loadPerfSection}>
+            <div className={styles.loadPerfSectionTitle}>最慢资源</div>
+            {loadPerformanceSnapshot.slowestResources.length > 0 ? (
+              <div className={styles.loadPerfStageList}>
+                {loadPerformanceSnapshot.slowestResources.slice(0, 5).map((resource) => (
+                  <div key={`${resource.label}-${resource.name}`} className={styles.loadPerfResourceRow}>
+                    <span>{resource.label}</span>
+                    <strong>{formatLoadPerfMs(resource.durationMs)}</strong>
+                    <small>{formatLoadPerfBytes(resource.transferSizeBytes)}</small>
+                    <em>{resource.name}</em>
                   </div>
                 ))}
               </div>
@@ -9668,62 +9927,8 @@ export default function BattleArena({
               <div className={styles.loadPerfEmpty}>无</div>
             )}
           </div>
-          <div className={styles.loadPerfSection}>
-            <div className={styles.loadPerfSectionTitle}>场景列表</div>
-            <div className={styles.loadPerfStageList}>
-              {loadPerformanceSnapshot.stages.map((stage) => (
-                <div key={stage.name} className={styles.loadPerfStageRow}>
-                  <span>{stage.name}</span>
-                  <strong data-status={stage.status}>{stage.status}</strong>
-                  <small>{stage.detail}</small>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className={styles.loadPerfMetricGrid}>
-            <div className={styles.loadPerfMetricBox}>
-              <span>DOM元素</span>
-              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.domElements)}</strong>
-              <small>峰值 {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.domElements)}</small>
-            </div>
-            <div className={styles.loadPerfMetricBox}>
-              <span>Canvas</span>
-              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.canvases)}</strong>
-              <small>峰值 {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.canvases)}</small>
-            </div>
-            <div className={styles.loadPerfMetricBox}>
-              <span>SVG</span>
-              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.svgs)}</strong>
-              <small>峰值 {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.svgs)}</small>
-            </div>
-            <div className={styles.loadPerfMetricBox}>
-              <span>图片</span>
-              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.images)}</strong>
-              <small>按钮 {formatLoadPerfNumber(loadPerformanceSnapshot.buttons)}</small>
-            </div>
-            <div className={styles.loadPerfMetricBox}>
-              <span>Three对象</span>
-              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.objects)}</strong>
-              <small>峰值 {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.threeObjects)}</small>
-            </div>
-            <div className={styles.loadPerfMetricBox}>
-              <span>几何/贴图</span>
-              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.geometries)} / {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.textures)}</strong>
-              <small>峰值 {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.geometries)} / {formatLoadPerfNumber(loadPerformanceSnapshot.peaks.textures)}</small>
-            </div>
-            <div className={styles.loadPerfMetricBox}>
-              <span>Draw calls</span>
-              <strong>{formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.calls)}</strong>
-              <small>三角 {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.triangles)}</small>
-            </div>
-            <div className={styles.loadPerfMetricBox}>
-              <span>JS Heap</span>
-              <strong>{loadPerformanceSnapshot.heapUsedMB !== null ? `${loadPerformanceSnapshot.heapUsedMB} MB` : '-'}</strong>
-              <small>{loadPerformanceSnapshot.heapLimitMB !== null ? `上限 ${loadPerformanceSnapshot.heapLimitMB} MB` : '不可用'}</small>
-            </div>
-          </div>
           <div className={styles.loadPerfGameCounts}>
-            敌人 {loadPerformanceSnapshot.gameCounts.visibleOpponents}/{loadPerformanceSnapshot.gameCounts.opponents} · 实体 {loadPerformanceSnapshot.gameCounts.visibleEntities}/{loadPerformanceSnapshot.gameCounts.entities} · 地面区 {loadPerformanceSnapshot.gameCounts.groundZones} · 拾取 {loadPerformanceSnapshot.gameCounts.pickups} · 事件 {loadPerformanceSnapshot.gameCounts.events} · Buff {loadPerformanceSnapshot.gameCounts.selfBuffs} · 招式 {loadPerformanceSnapshot.gameCounts.abilities}
+            Three {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.objects)} objects · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.geometries)} geometries · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.textures)} textures · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.calls)} draws
           </div>
         </div>
       )}

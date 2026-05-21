@@ -13,7 +13,7 @@ import TargetEntityVisual from './TargetEntityVisual';
 import CameraRig from './CameraRig';
 import type { PickupItem, GroundZone, TargetEntity } from '../../../types';
 import { getMapForMode } from '../worldMap';
-import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF } from './ExportedMapScene';
+import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF, type SceneLoadTimingEvent } from './ExportedMapScene';
 import type { MapCollisionSystem } from './MapCollisionSystem';
 
 // Colors for up to 5 opponents (index 0 = primary, etc.)
@@ -200,6 +200,7 @@ interface ArenaSceneProps {
   /** Proof callback — called once on mount with actual Three.js runtime values */
   onEnvDebug?: (info: EnvDebugInfo) => void;
   onSceneMetrics?: (metrics: SceneRuntimeMetrics) => void;
+  onSceneLoadTiming?: (event: SceneLoadTimingEvent) => void;
   envToggles?: EnvToggles;
   dirLightConfig?: DirLightConfig;
   /** Hides terrain / houses / world meshes while preserving self and HUD-facing overlays. */
@@ -512,6 +513,7 @@ export default function ArenaScene({
   losIsBlocked = false,
   onEnvDebug,
   onSceneMetrics,
+  onSceneLoadTiming,
   envToggles,
   dirLightConfig,
   blindWorldMode = false,
@@ -682,6 +684,7 @@ export default function ArenaScene({
               blueprintMode={blueprintMode}
               hideVisuals={blindWorldMode}
               onCollisionSystemReady={onCollisionSystemReady}
+              onLoadTiming={onSceneLoadTiming}
               onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
               onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
             />

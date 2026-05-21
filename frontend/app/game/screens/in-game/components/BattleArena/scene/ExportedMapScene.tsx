@@ -26,6 +26,9 @@ const LEGACY_COLLISION_TEST_SCALE = 2.2;
 const SF = 0.005557531566779299;
 const MAP_SCALE = 3.6;  // 2.4 × 1.5 — map scaled up 50%
 export const RENDER_SF = (SF * MAP_SCALE) / LEGACY_COLLISION_TEST_SCALE;
+const GLB_LOAD_CONCURRENCY = 4;
+const TERRAIN_LOAD_CONCURRENCY = 6;
+const COLLISION_LOAD_CONCURRENCY = 8;
 
 // Alignment: game coord (gx,gy) in Three.js = (gx - width/2, 0, height/2 - gy)  [z-flip removed]
 // Export entity at (ex, ey, ez_rh) in Three.js = (ex*RENDER_SF + GROUP_POS_X, ey*RENDER_SF + GROUP_POS_Y, ez_rh*RENDER_SF + GROUP_POS_Z)
@@ -43,9 +46,15 @@ interface ExportedMapSceneProps {
   /** Hides terrain / GLB visuals while keeping pointer hits active. */
   hideVisuals?: boolean;
   onCollisionSystemReady?: (sys: MapCollisionSystem) => void;
+  onLoadTiming?: (event: SceneLoadTimingEvent) => void;
   onPointerMove?: (e: any) => void;
   onPointerDown?: (e: any) => void;
 }
+
+export type SceneLoadTimingEvent =
+  | { type: 'stage-start'; id: string; name: string; at: number; detail?: string }
+  | { type: 'stage-end'; id: string; at: number; detail?: string; meta?: Record<string, number | string> }
+  | { type: 'stage-error'; id: string; at: number; detail?: string };
 
 /* ────────────────────── Texture caches (module-level singletons) ────────────────────── */
 const textureLoader = new THREE.TextureLoader();
@@ -127,6 +136,24 @@ function encodePathSegments(pathLike: string): string {
     .join('/');
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }));
+  return results;
+}
+
 /* ────────────────────── Main Component ────────────────────── */
 
 export default function ExportedMapScene({
@@ -136,6 +163,7 @@ export default function ExportedMapScene({
   blueprintMode = false,
   hideVisuals = false,
   onCollisionSystemReady,
+  onLoadTiming,
   onPointerMove,
   onPointerDown,
 }: ExportedMapSceneProps) {
@@ -148,8 +176,10 @@ export default function ExportedMapScene({
   // Keep latest callbacks in refs so the canvas event listener doesn't need to re-register
   const onPointerMoveRef = useRef(onPointerMove);
   const onPointerDownRef = useRef(onPointerDown);
+  const onLoadTimingRef = useRef(onLoadTiming);
   useEffect(() => { onPointerMoveRef.current = onPointerMove; });
   useEffect(() => { onPointerDownRef.current = onPointerDown; });
+  useEffect(() => { onLoadTimingRef.current = onLoadTiming; });
 
   // Blueprint mode: hide content; collision lines are built lazily below.
   useEffect(() => {
@@ -257,24 +287,75 @@ export default function ExportedMapScene({
     scene.add(group);
 
     let disposed = false;
+    const emitStart = (id: string, name: string, detail?: string) => {
+      onLoadTimingRef.current?.({ type: 'stage-start', id, name, at: performance.now(), detail });
+    };
+    const emitEnd = (id: string, detail?: string, meta?: Record<string, number | string>) => {
+      onLoadTimingRef.current?.({ type: 'stage-end', id, at: performance.now(), detail, meta });
+    };
+    const emitError = (id: string, detail?: string) => {
+      onLoadTimingRef.current?.({ type: 'stage-error', id, at: performance.now(), detail });
+    };
+    const trackStage = async <T,>(
+      id: string,
+      name: string,
+      work: () => Promise<T>,
+      detailForResult?: (result: T) => string,
+      metaForResult?: (result: T) => Record<string, number | string>,
+    ): Promise<T> => {
+      emitStart(id, name);
+      try {
+        const result = await work();
+        emitEnd(id, detailForResult?.(result), metaForResult?.(result));
+        return result;
+      } catch (err) {
+        emitError(id, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+    };
 
     (async () => {
       try {
+        emitStart('exported-map-total', '导出地图总加载');
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         if (disposed) return;
 
-        const [entities, meshMap, mapConfig, textureMap, terrainTexIndex] = await Promise.all([
-          fetchJson(`${DATA_PATH}/entities/full.rh.json`),
-          fetchJson(`${DATA_PATH}/mesh-map.json`),
-          fetchJson(`${DATA_PATH}/map-config.json`),
-          fetchJson(`${DATA_PATH}/texture-map.json`).catch(() => null),
-          fetchJson(`${DATA_PATH}/terrain-textures/index.json`).catch(() => null),
-        ]);
+        const [entities, meshMap, mapConfig, textureMap, terrainTexIndex] = await trackStage(
+          'map-manifest',
+          '地图资源清单',
+          () => Promise.all([
+            fetchJson(`${DATA_PATH}/entities/full.rh.json`),
+            fetchJson(`${DATA_PATH}/mesh-map.json`),
+            fetchJson(`${DATA_PATH}/map-config.json`),
+            fetchJson(`${DATA_PATH}/texture-map.json`).catch(() => null),
+            fetchJson(`${DATA_PATH}/terrain-textures/index.json`).catch(() => null),
+          ]),
+          () => '5 files',
+          ([loadedEntities]) => ({ entities: Array.isArray(loadedEntities) ? loadedEntities.length : 0 }),
+        );
         if (disposed) return;
 
-        const entityStatsPromise = loadEntities(contentGroup, entities, meshMap, textureMap, disposed);
-        const terrainResultPromise = loadTerrain(contentGroup, mapConfig, terrainTexIndex, disposed);
-        const collisionResultPromise = loadCollision(entities, disposed);
+        const entityStatsPromise = trackStage(
+          'map-entities',
+          '实体GLB与贴图',
+          () => loadEntities(contentGroup, entities, meshMap, textureMap, disposed),
+          (stats) => `${stats.glbs} GLBs, ${stats.instances} instances, ${stats.submeshes} submeshes`,
+          (stats) => ({ glbs: stats.glbs, instances: stats.instances, submeshes: stats.submeshes }),
+        );
+        const terrainResultPromise = trackStage(
+          'map-terrain',
+          '地形高度与贴图',
+          () => loadTerrain(contentGroup, mapConfig, terrainTexIndex, disposed),
+          (result) => `${result.stats.tiles} tiles, ${result.stats.textured} textured`,
+          (result) => ({ tiles: result.stats.tiles, textured: result.stats.textured, heightmaps: result.heightmaps.size }),
+        );
+        const collisionResultPromise = trackStage(
+          'map-collision-sidecars',
+          '碰撞sidecar与三角',
+          () => loadCollision(entities, disposed),
+          (result) => `${result.stats.sidecars} sidecars, ${result.stats.shells} shell tris`,
+          (result) => ({ sidecars: result.stats.sidecars, shellTriangles: result.stats.shells, partBoxes: result.stats.partBoxes }),
+        );
 
         const [terrainResult, collisionResult] = await Promise.all([
           terrainResultPromise,
@@ -284,6 +365,7 @@ export default function ExportedMapScene({
 
         // Build collision system (BVH + terrain)
         if (collisionResult.worldTrianglesFlat.length > 0) {
+          emitStart('map-collision-bvh', '碰撞BVH构建');
           collisionWorldTrianglesRef.current = collisionResult.worldTrianglesFlat;
           setCollisionVisualVersion((value) => value + 1);
           const collisionSystem = new MapCollisionSystem();
@@ -309,11 +391,22 @@ export default function ExportedMapScene({
           console.log('[ExportedMapScene] BVH collision system ready —',
             collisionResult.stats.shells, 'shell tris,',
             terrainResult.heightmaps.size, 'terrain tiles');
+          emitEnd('map-collision-bvh', `${collisionResult.stats.shells} shell tris`, {
+            shellTriangles: collisionResult.stats.shells,
+            terrainTiles: terrainResult.heightmaps.size,
+          });
           onCollisionSystemReady?.(collisionSystem);
         }
 
         const entityStats = await entityStatsPromise;
         if (disposed) return;
+        emitEnd('exported-map-total', `${entityStats.glbs} GLBs, ${terrainResult.stats.tiles} terrain tiles`, {
+          glbs: entityStats.glbs,
+          instances: entityStats.instances,
+          terrainTiles: terrainResult.stats.tiles,
+          collisionSidecars: collisionResult.stats.sidecars,
+          shellTriangles: collisionResult.stats.shells,
+        });
 
         console.log(
           `[ExportedMapScene] LOADED — ` +
@@ -458,82 +551,85 @@ async function loadEntities(
   type MeshPart = { geometry: THREE.BufferGeometry; material: THREE.Material };
   const glbCache = new Map<string, MeshPart[]>();
 
+  await mapWithConcurrency(Array.from(glbGroups.keys()), GLB_LOAD_CONCURRENCY, async (glbPath) => {
+    if (disposed) return;
+    try {
+      const glbName = glbPath.split('/').pop() || '';
+      const texInfo = textureMap ? textureMap[glbName] : null;
+      const subsetTextures = texInfo?.subsets as any[] | undefined;
+
+      const gltf = await loadGLTF(loader, glbPath);
+      if (disposed) return;
+      const parts: MeshPart[] = [];
+      let meshIdx = 0;
+
+      gltf.scene.traverse((child: any) => {
+        if (!child.isMesh) return;
+        const geometry = child.geometry as THREE.BufferGeometry;
+        if (!isValidGeometry(geometry)) { meshIdx++; return; }
+
+        // Determine texture set for this primitive (per-subset or global)
+        const subTex = (subsetTextures && meshIdx < subsetTextures.length)
+          ? subsetTextures[meshIdx]
+          : texInfo;
+
+        const hasColors = geometry.hasAttribute('color');
+        const matOpts: any = {
+          color: hasColors ? 0xffffff : 0xccbbaa,
+          vertexColors: hasColors,
+          roughness: 0.7,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+        };
+
+        if (subTex) {
+          if (subTex.albedo) {
+            matOpts.map = loadTextureCached(subTex.albedo);
+            matOpts.color = 0xffffff;
+            matOpts.vertexColors = false;
+          }
+          if (subTex.mre) {
+            const mreTex = loadMRECached(subTex.mre);
+            matOpts.roughnessMap = mreTex;
+            matOpts.metalnessMap = mreTex;
+            matOpts.roughness = 1.0;
+            matOpts.metalness = 1.0;
+          }
+          if (subTex.normal) {
+            matOpts.normalMap = loadTextureCachedLinear(subTex.normal);
+            matOpts.normalScale = new THREE.Vector2(1, -1);
+          }
+
+          const blendMode = subTex.blendMode || texInfo?.blendMode || 0;
+          if (blendMode === 1 && matOpts.map) {
+            const alphaRef = subTex.alphaRef != null ? subTex.alphaRef : 128;
+            matOpts.alphaTest = alphaRef / 255.0;
+            matOpts.transparent = false;
+            matOpts.side = THREE.DoubleSide;
+          } else if (blendMode === 2 && matOpts.map) {
+            matOpts.transparent = true;
+            matOpts.blending = THREE.AdditiveBlending;
+            matOpts.depthWrite = false;
+          }
+        }
+
+        const material = new THREE.MeshStandardMaterial(matOpts);
+        parts.push({ geometry, material });
+        meshIdx++;
+      });
+
+      glbCache.set(glbPath, parts);
+      stats.glbs++;
+    } catch {
+      // Skip broken GLBs
+    }
+  });
+
   for (const [glbPath, instances] of glbGroups) {
     if (disposed) return stats;
 
     try {
-      let meshParts: MeshPart[];
-
-      if (glbCache.has(glbPath)) {
-        meshParts = glbCache.get(glbPath)!;
-      } else {
-        const glbName = glbPath.split('/').pop() || '';
-        const texInfo = textureMap ? textureMap[glbName] : null;
-        const subsetTextures = texInfo?.subsets as any[] | undefined;
-
-        const gltf = await loadGLTF(loader, glbPath);
-        const parts: MeshPart[] = [];
-        let meshIdx = 0;
-
-        gltf.scene.traverse((child: any) => {
-          if (!child.isMesh) return;
-          const geometry = child.geometry as THREE.BufferGeometry;
-          if (!isValidGeometry(geometry)) { meshIdx++; return; }
-
-          // Determine texture set for this primitive (per-subset or global)
-          const subTex = (subsetTextures && meshIdx < subsetTextures.length)
-            ? subsetTextures[meshIdx]
-            : texInfo;
-
-          const hasColors = geometry.hasAttribute('color');
-          const matOpts: any = {
-            color: hasColors ? 0xffffff : 0xccbbaa,
-            vertexColors: hasColors,
-            roughness: 0.7,
-            metalness: 0.0,
-            side: THREE.DoubleSide,
-          };
-
-          if (subTex) {
-            if (subTex.albedo) {
-              matOpts.map = loadTextureCached(subTex.albedo);
-              matOpts.color = 0xffffff;
-              matOpts.vertexColors = false;
-            }
-            if (subTex.mre) {
-              const mreTex = loadMRECached(subTex.mre);
-              matOpts.roughnessMap = mreTex;
-              matOpts.metalnessMap = mreTex;
-              matOpts.roughness = 1.0;
-              matOpts.metalness = 1.0;
-            }
-            if (subTex.normal) {
-              matOpts.normalMap = loadTextureCachedLinear(subTex.normal);
-              matOpts.normalScale = new THREE.Vector2(1, -1);
-            }
-
-            const blendMode = subTex.blendMode || texInfo?.blendMode || 0;
-            if (blendMode === 1 && matOpts.map) {
-              const alphaRef = subTex.alphaRef != null ? subTex.alphaRef : 128;
-              matOpts.alphaTest = alphaRef / 255.0;
-              matOpts.transparent = false;
-              matOpts.side = THREE.DoubleSide;
-            } else if (blendMode === 2 && matOpts.map) {
-              matOpts.transparent = true;
-              matOpts.blending = THREE.AdditiveBlending;
-              matOpts.depthWrite = false;
-            }
-          }
-
-          const material = new THREE.MeshStandardMaterial(matOpts);
-          parts.push({ geometry, material });
-          meshIdx++;
-        });
-
-        glbCache.set(glbPath, parts);
-        meshParts = parts;
-        stats.glbs++;
-      }
+      const meshParts = glbCache.get(glbPath) ?? [];
 
       if (meshParts.length === 0) continue;
 
@@ -605,120 +701,131 @@ async function loadTerrain(
     for (const key of Object.keys(terrainTexIndex.regions)) validRegions.add(key);
   }
 
+  const regionTasks: Array<{ rx: number; ry: number }> = [];
   for (let ry = 0; ry < gy; ry++) {
     for (let rx = 0; rx < gx; rx++) {
-      if (disposed) return { stats, heightmaps };
       const regionKey = `${rx}_${ry}`;
-      // Skip regions without terrain data to avoid 404 noise
       if (validRegions.size > 0 && !validRegions.has(regionKey)) continue;
-
-      const key = `${String(rx).padStart(3, '0')}_${String(ry).padStart(3, '0')}`;
-      const binName = `${mapName}_${key}.bin`;
-      try {
-        const res = await fetch(`${DATA_PATH}/heightmap/${encodeURIComponent(binName)}`);
-        if (!res.ok) continue;
-        const buf = await res.arrayBuffer();
-        const hd = new Float32Array(buf);
-        heightmaps.set(`${rx}_${ry}`, hd);
-
-        const regionOriginX = cfg.worldOriginX + rx * regionWorldSize;
-        const regionOriginZ = cfg.worldOriginY + ry * regionWorldSize;
-
-        const positions = new Float32Array(gridSize * gridSize * 3);
-        const uvs = new Float32Array(gridSize * gridSize * 2);
-
-        let vi = 0;
-        for (let gy2 = 0; gy2 < gridSize; gy2++) {
-          for (let gx2 = 0; gx2 < gridSize; gx2++) {
-            const hmX = Math.min(gx2 * step, hmRes - 1);
-            const hmY = Math.min(gy2 * step, hmRes - 1);
-            const heightNorm = hd[hmY * hmRes + hmX];
-            const height = heightNorm * (cfg.heightMax - cfg.heightMin) + cfg.heightMin;
-            const worldX = regionOriginX + hmX * cfg.unitScaleX;
-            const worldZ = regionOriginZ + hmY * cfg.unitScaleY;
-
-            positions[vi * 3] = worldX;
-            positions[vi * 3 + 1] = height;
-            positions[vi * 3 + 2] = -worldZ; // LH→RH: negate Z
-
-            // UV: per-region 0..1 (matches terrain.js per-tile texture)
-            uvs[vi * 2] = hmX / (hmRes - 1);
-            uvs[vi * 2 + 1] = hmY / (hmRes - 1);
-            vi++;
-          }
-        }
-
-        // Height-based vertex colors (fallback)
-        const colors = new Float32Array(gridSize * gridSize * 3);
-        for (let i = 0; i < gridSize * gridSize; i++) {
-          const h = positions[i * 3 + 1];
-          let r: number, g: number, b: number;
-          if (h < -500) { r = 0.45; g = 0.42; b = 0.35; }
-          else if (h < 200) { const t = (h + 500) / 700; r = 0.45 + t * 0.30; g = 0.42 + t * 0.20; b = 0.35 + t * 0.05; }
-          else if (h < 1000) { const t = (h - 200) / 800; r = 0.75 + t * 0.08; g = 0.62 + t * 0.05; b = 0.40 - t * 0.02; }
-          else if (h < 3000) { const t = (h - 1000) / 2000; r = 0.83 - t * 0.20; g = 0.67 - t * 0.15; b = 0.38 - t * 0.03; }
-          else { r = 0.55; g = 0.50; b = 0.45; }
-          colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
-        }
-
-        const indices: number[] = [];
-        for (let gy3 = 0; gy3 < gridSize - 1; gy3++) {
-          for (let gx3 = 0; gx3 < gridSize - 1; gx3++) {
-            const a = gy3 * gridSize + gx3;
-            const b2 = a + 1;
-            const c = (gy3 + 1) * gridSize + gx3;
-            const d = c + 1;
-            indices.push(a, b2, c);
-            indices.push(b2, d, c);
-          }
-        }
-
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        geometry.setIndex(indices);
-        geometry.computeVertexNormals();
-
-        // Use pre-baked terrain texture if available (matches terrain.js createTerrainMaterial)
-        const texInfo = terrainTexIndex?.regions?.[regionKey];
-        let material: THREE.MeshStandardMaterial;
-
-        if (texInfo?.color) {
-          const texPath = `${DATA_PATH}/terrain-textures/${encodeURIComponent(texInfo.color)}`;
-          const texture = textureLoader.load(texPath);
-          texture.wrapS = THREE.ClampToEdgeWrapping;
-          texture.wrapT = THREE.ClampToEdgeWrapping;
-          texture.minFilter = THREE.LinearMipmapLinearFilter;
-          texture.magFilter = THREE.LinearFilter;
-          texture.colorSpace = THREE.SRGBColorSpace;
-          texture.generateMipmaps = true;
-          material = new THREE.MeshStandardMaterial({
-            map: texture,
-            roughness: 0.85,
-            metalness: 0.0,
-            side: THREE.DoubleSide,
-            flatShading: false,
-          });
-          stats.textured++;
-        } else {
-          material = new THREE.MeshStandardMaterial({
-            vertexColors: true,
-            roughness: 0.85,
-            metalness: 0.0,
-            side: THREE.DoubleSide,
-            flatShading: false,
-          });
-        }
-
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.receiveShadow = true;
-        group.add(mesh);
-        stats.tiles++;
-      } catch {
-        // Skip missing terrain tiles
-      }
+      regionTasks.push({ rx, ry });
     }
+  }
+
+  const regionResults = await mapWithConcurrency(regionTasks, TERRAIN_LOAD_CONCURRENCY, async ({ rx, ry }) => {
+    if (disposed) return null;
+    const regionKey = `${rx}_${ry}`;
+    const key = `${String(rx).padStart(3, '0')}_${String(ry).padStart(3, '0')}`;
+    const binName = `${mapName}_${key}.bin`;
+    try {
+      const res = await fetch(`${DATA_PATH}/heightmap/${encodeURIComponent(binName)}`);
+      if (!res.ok || disposed) return null;
+      const buf = await res.arrayBuffer();
+      const hd = new Float32Array(buf);
+
+      const regionOriginX = cfg.worldOriginX + rx * regionWorldSize;
+      const regionOriginZ = cfg.worldOriginY + ry * regionWorldSize;
+
+      const positions = new Float32Array(gridSize * gridSize * 3);
+      const uvs = new Float32Array(gridSize * gridSize * 2);
+
+      let vi = 0;
+      for (let gy2 = 0; gy2 < gridSize; gy2++) {
+        for (let gx2 = 0; gx2 < gridSize; gx2++) {
+          const hmX = Math.min(gx2 * step, hmRes - 1);
+          const hmY = Math.min(gy2 * step, hmRes - 1);
+          const heightNorm = hd[hmY * hmRes + hmX];
+          const height = heightNorm * (cfg.heightMax - cfg.heightMin) + cfg.heightMin;
+          const worldX = regionOriginX + hmX * cfg.unitScaleX;
+          const worldZ = regionOriginZ + hmY * cfg.unitScaleY;
+
+          positions[vi * 3] = worldX;
+          positions[vi * 3 + 1] = height;
+          positions[vi * 3 + 2] = -worldZ; // LH→RH: negate Z
+
+          // UV: per-region 0..1 (matches terrain.js per-tile texture)
+          uvs[vi * 2] = hmX / (hmRes - 1);
+          uvs[vi * 2 + 1] = hmY / (hmRes - 1);
+          vi++;
+        }
+      }
+
+      // Height-based vertex colors (fallback)
+      const colors = new Float32Array(gridSize * gridSize * 3);
+      for (let i = 0; i < gridSize * gridSize; i++) {
+        const h = positions[i * 3 + 1];
+        let r: number, g: number, b: number;
+        if (h < -500) { r = 0.45; g = 0.42; b = 0.35; }
+        else if (h < 200) { const t = (h + 500) / 700; r = 0.45 + t * 0.30; g = 0.42 + t * 0.20; b = 0.35 + t * 0.05; }
+        else if (h < 1000) { const t = (h - 200) / 800; r = 0.75 + t * 0.08; g = 0.62 + t * 0.05; b = 0.40 - t * 0.02; }
+        else if (h < 3000) { const t = (h - 1000) / 2000; r = 0.83 - t * 0.20; g = 0.67 - t * 0.15; b = 0.38 - t * 0.03; }
+        else { r = 0.55; g = 0.50; b = 0.45; }
+        colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
+      }
+
+      const indices: number[] = [];
+      for (let gy3 = 0; gy3 < gridSize - 1; gy3++) {
+        for (let gx3 = 0; gx3 < gridSize - 1; gx3++) {
+          const a = gy3 * gridSize + gx3;
+          const b2 = a + 1;
+          const c = (gy3 + 1) * gridSize + gx3;
+          const d = c + 1;
+          indices.push(a, b2, c);
+          indices.push(b2, d, c);
+        }
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+
+      // Use pre-baked terrain texture if available (matches terrain.js createTerrainMaterial)
+      const texInfo = terrainTexIndex?.regions?.[regionKey];
+      let material: THREE.MeshStandardMaterial;
+      let textured = false;
+
+      if (texInfo?.color) {
+        const texPath = `${DATA_PATH}/terrain-textures/${encodeURIComponent(texInfo.color)}`;
+        const texture = textureLoader.load(texPath);
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.generateMipmaps = true;
+        material = new THREE.MeshStandardMaterial({
+          map: texture,
+          roughness: 0.85,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+          flatShading: false,
+        });
+        textured = true;
+      } else {
+        material = new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          roughness: 0.85,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+          flatShading: false,
+        });
+      }
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.receiveShadow = true;
+      return { regionKey, heightmap: hd, mesh, textured };
+    } catch {
+      return null;
+    }
+  });
+
+  for (const result of regionResults) {
+    if (!result) continue;
+    heightmaps.set(result.regionKey, result.heightmap);
+    group.add(result.mesh);
+    stats.tiles++;
+    if (result.textured) stats.textured++;
   }
 
   return { stats, heightmaps };
@@ -767,8 +874,8 @@ async function loadCollision(
   type SidecarData = { trianglesFlat: number[]; partBoxes: Array<{ cx: number; cz: number; w: number; d: number; baseY: number; topY: number }> };
   const sidecarDataByKey = new Map<string, SidecarData>();
 
-  for (const meshKey of entityByMesh.keys()) {
-    if (disposed) return { stats, worldTrianglesFlat: [] as number[] };
+  const sidecarResults = await mapWithConcurrency(Array.from(entityByMesh.keys()), COLLISION_LOAD_CONCURRENCY, async (meshKey) => {
+    if (disposed) return null;
     const entitiesForMesh = entityByMesh.get(meshKey)!;
     const meshName = normalizeMeshName(entitiesForMesh[0].mesh);
     const fromIndex = sidecarPathByKey.get(meshKey);
@@ -777,12 +884,19 @@ async function loadCollision(
 
     try {
       const sidecarJson = await fetchJson(sidecarUrl);
+      if (disposed) return null;
       const parsed = extractSidecarData(sidecarJson);
       if (parsed.trianglesFlat.length > 0 || parsed.partBoxes.length > 0) {
-        sidecarDataByKey.set(meshKey, parsed);
-        stats.sidecars++;
+        return { meshKey, parsed };
       }
     } catch { /* skip missing */ }
+    return null;
+  });
+
+  for (const result of sidecarResults) {
+    if (!result) continue;
+    sidecarDataByKey.set(result.meshKey, result.parsed);
+    stats.sidecars++;
   }
 
   // Transform collision data by entity matrices and accumulate world-space geometry
