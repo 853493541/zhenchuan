@@ -18,7 +18,7 @@ import { encodeIconPublicPath, getAbilityIconPath } from '@/app/lib/iconPaths';
 import * as THREE from 'three';
 import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
 import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase } from './abilitySoundRegistry';
-import { installAbilityAudioUnlock, playAbilitySound } from './abilitySoundPlayer';
+import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
 
 type V3 = { x: number; y: number; z: number };
 type HeartStatKey =
@@ -56,6 +56,8 @@ type GcdVisibilitySettings = {
 
 type AbilitySoundSettings = {
   volumePercent: number;
+  disabled: boolean;
+  version: number;
 };
 
 type InGameWarningEvent = {
@@ -257,8 +259,11 @@ const DEFAULT_GCD_VISIBILITY_SETTINGS: GcdVisibilitySettings = {
   houyao: false,
 };
 const DEFAULT_ABILITY_SOUND_SETTINGS: AbilitySoundSettings = {
-  volumePercent: 100,
+  volumePercent: 80,
+  disabled: false,
+  version: 4,
 };
+const ABILITY_SOUND_VOLUME_OUTPUT_SCALE = 0.625;
 const PLAYER_CHANNEL_BAR_PREVIEW_DATA: ChannelBarData = {
   kind: 'forward',
   name: '引导读条',
@@ -1419,6 +1424,16 @@ function getChannelSoundPlaybackRate(params: {
   if (!Number.isFinite(playbackRate) || playbackRate <= 0) return 1;
   return Math.max(0.65, Math.min(2.5, playbackRate));
 }
+
+function getChannelSoundKey(actorUserId: string | undefined, abilityId: string | undefined, abilityInstanceId?: string) {
+  if (!actorUserId || !abilityId) return undefined;
+  return `${actorUserId}:${abilityId}:${abilityInstanceId ?? 'default'}`;
+}
+
+function isChannelStartCue(params: { ability: any; event: any; phase: AbilitySoundPhase }) {
+  if (params.phase !== 'channelStart') return false;
+  return params.event?.channelPhase === 'start' || params.ability?.type === 'CHANNEL' || !!params.ability?.channel;
+}
 interface Facing { x: number; y: number; }
 
 interface AbilityInfo {
@@ -2299,9 +2314,19 @@ export default function BattleArena({
     try {
       if (typeof window === 'undefined') return DEFAULT_ABILITY_SOUND_SETTINGS;
       const stored = JSON.parse(localStorage.getItem(ABILITY_SOUND_SETTINGS_STORAGE_KEY) ?? '{}');
+      const storedVersion = Number(stored.version ?? 0);
+      const hasStoredVolume = stored.volumePercent !== undefined && Number.isFinite(Number(stored.volumePercent));
+      const storedVolumePercent = hasStoredVolume
+        ? normalizeAbilitySoundVolumePercent(stored.volumePercent)
+        : DEFAULT_ABILITY_SOUND_SETTINGS.volumePercent;
+      const previousAutoDefault = storedVersion === 2 && Number(stored.volumePercent) === 150 && stored.disabled !== true;
       return {
         ...DEFAULT_ABILITY_SOUND_SETTINGS,
-        volumePercent: normalizeAbilitySoundVolumePercent(stored.volumePercent),
+        volumePercent: hasStoredVolume && !previousAutoDefault
+          ? storedVolumePercent
+          : DEFAULT_ABILITY_SOUND_SETTINGS.volumePercent,
+        disabled: stored.disabled === true,
+        version: DEFAULT_ABILITY_SOUND_SETTINGS.version,
       };
     } catch {
       return DEFAULT_ABILITY_SOUND_SETTINGS;
@@ -2510,7 +2535,7 @@ export default function BattleArena({
   const [showTestingPanel, setShowTestingPanel] = useState(false);
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
   const [showCameraEventTestingPanel, setShowCameraEventTestingPanel] = useState(false);
-  const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'hotkey-settings'>('main');
+  const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
   const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting'>('switches');
   const [customUiPromptPos, setCustomUiPromptPos] = useState<UiPosition | null>(null);
@@ -2972,6 +2997,8 @@ export default function BattleArena({
   const oppFacingRef      = useRef<Facing>({ x: 0, y: 1 });
   const prevActiveChannelRef = useRef<ActiveChannel | null>(null);
   const activeChannelRef = useRef<ActiveChannel | null>(null);
+  const activeChannelSoundKeysRef = useRef<Set<string>>(new Set());
+  const channelSoundFinishAfterCompleteKeysRef = useRef<Set<string>>(new Set());
   const speedSamplePrevRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const speedTestRunRef = useRef({
     active: false,
@@ -4040,11 +4067,32 @@ export default function BattleArena({
 
       const listenerPosition = localPositionRef.current ?? me?.position ?? null;
       const actorUserId = String(evt.actorUserId ?? '');
+      const runtimeChannelForSound = getRuntimeAbilityChannel(ability);
+      const eventChannelSoundKey = getChannelSoundKey(
+        actorUserId,
+        typeof evt.abilityId === 'string' ? evt.abilityId : undefined,
+        runtimeChannelForSound?.source === 'BUFF'
+          ? undefined
+          : typeof evt.abilityInstanceId === 'string' ? evt.abilityInstanceId : undefined,
+      );
+      if ((evt.type === 'PLAY_ABILITY' || evt.type === 'ABILITY_SOUND') && evt.channelPhase === 'complete') {
+        if (eventChannelSoundKey && channelSoundFinishAfterCompleteKeysRef.current.has(eventChannelSoundKey)) {
+          channelSoundFinishAfterCompleteKeysRef.current.delete(eventChannelSoundKey);
+          activeChannelSoundKeysRef.current.delete(eventChannelSoundKey);
+        } else {
+          stopAbilityChannelSound(eventChannelSoundKey);
+        }
+      }
       const actorState = actorUserId === myId
         ? me
         : opponentsList.find((opponentEntry) => opponentEntry.userId === actorUserId) ?? null;
+      const eventSourcePosition = typeof evt.x === 'number' && typeof evt.y === 'number'
+        ? { x: evt.x, y: evt.y, z: typeof evt.z === 'number' ? evt.z : 0 }
+        : null;
       const sourcePosition = cue.targetOnly
         ? listenerPosition
+        : eventSourcePosition
+        ? eventSourcePosition
         : actorUserId === myId
         ? listenerPosition
         : opponentPositionsRef.current[actorUserId] ?? actorState?.position ?? null;
@@ -4055,7 +4103,7 @@ export default function BattleArena({
             source: sourcePosition,
             ability,
             phase: cue.phase,
-            isSelf: actorUserId === myId,
+            isSelf: actorUserId === myId && !eventSourcePosition,
           });
       const playbackRate = getChannelSoundPlaybackRate({
         ability,
@@ -4072,10 +4120,21 @@ export default function BattleArena({
             phase: cue.phase,
           })
         : undefined;
+      const channelSoundKey = isChannelStartCue({ ability, event: evt, phase: cue.phase })
+        ? eventChannelSoundKey
+        : undefined;
+      if (channelSoundKey) {
+        activeChannelSoundKeysRef.current.add(channelSoundKey);
+        if (cue.finishAfterChannelComplete) {
+          channelSoundFinishAfterCompleteKeysRef.current.add(channelSoundKey);
+        } else {
+          channelSoundFinishAfterCompleteKeysRef.current.delete(channelSoundKey);
+        }
+      }
 
       void playAbilitySound({
         url: cue.url,
-        volume: spatial.volume * (abilitySoundSettings.volumePercent / 100),
+        volume: abilitySoundSettings.disabled ? 0 : spatial.volume * (abilitySoundSettings.volumePercent / 100) * ABILITY_SOUND_VOLUME_OUTPUT_SCALE,
         pan: spatial.pan,
         abilityId: evt.abilityId,
         abilityName: ability?.name ?? evt.abilityName,
@@ -4083,8 +4142,11 @@ export default function BattleArena({
         phase: cue.phase,
         playbackRate: cue.playbackRate ?? playbackRate,
         fitToDurationMs: cue.fitToDurationMs,
+        preservePitch: cue.preservePitch,
+        normalizeVolume: cue.normalizeVolume,
         loopDurationMs,
         extraSounds: cue.extraSounds,
+        channelSoundKey,
       });
     };
 
@@ -4097,7 +4159,7 @@ export default function BattleArena({
         if ((evt as any).combatStatus === 'enter' || (evt as any).inCombat === true) {
           showInGameWarning('进入战斗');
         } else {
-          toastSuccess('离开战斗');
+          showInGameWarning('离开战斗');
         }
       } else if (evt.type === 'PLAY_ABILITY' && evt.abilityId === 'dou_zhuan_xing_yi') {
         lastInstantSwapCastAtRef.current = performance.now();
@@ -4168,6 +4230,44 @@ export default function BattleArena({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, me?.userId, showInGameWarning, visibleOpponentsList]);
+
+  useEffect(() => {
+    const activeKeys = new Set<string>();
+    const collectActiveChannel = (player: { userId?: string; activeChannel?: ActiveChannel; buffs?: ActiveBuff[] } | null | undefined) => {
+      const key = getChannelSoundKey(player?.userId, player?.activeChannel?.abilityId, player?.activeChannel?.instanceId);
+      if (key) activeKeys.add(key);
+
+      for (const buff of player?.buffs ?? []) {
+        const ability = (buff.sourceAbilityId ? abilities?.[buff.sourceAbilityId] : undefined) ?? channelAbilityByBuffId.get(buff.buffId);
+        const channel = getRuntimeAbilityChannel(ability);
+        if (!ability || channel?.source !== 'BUFF') continue;
+        if (typeof channel.buffId === 'number' && channel.buffId !== buff.buffId) continue;
+        const buffKey = getChannelSoundKey(player?.userId, ability.id, undefined);
+        if (buffKey) activeKeys.add(buffKey);
+      }
+    };
+
+    collectActiveChannel(me);
+    for (const opponentEntry of opponentsList) {
+      collectActiveChannel(opponentEntry);
+    }
+
+    for (const previousKey of activeChannelSoundKeysRef.current) {
+      if (!activeKeys.has(previousKey)) {
+        stopAbilityChannelSound(previousKey);
+      }
+    }
+
+    activeChannelSoundKeysRef.current = activeKeys;
+  }, [abilities, channelAbilityByBuffId, me, opponentsList]);
+
+  useEffect(() => () => {
+    for (const key of activeChannelSoundKeysRef.current) {
+      stopAbilityChannelSound(key);
+    }
+    activeChannelSoundKeysRef.current.clear();
+    channelSoundFinishAfterCompleteKeysRef.current.clear();
+  }, []);
 
   // Warn when a targeted channel is interrupted because target became untargetable (e.g. entered stealth).
   useEffect(() => {
@@ -4681,6 +4781,8 @@ export default function BattleArena({
       if (abilityIdForChecks === 'you_feng_piao_zong' && !targetContext.playerTarget) {
         return false;
       }
+
+      if (ab?.target !== 'OPPONENT') return true;
 
       const distanceToTarget = (myPos && targetPos)
         ? worldUnitsToNewUnits(Math.sqrt(
@@ -8804,7 +8906,7 @@ export default function BattleArena({
                         <span className={styles.escMainIcon}><Gamepad2 size={78} strokeWidth={1.6} aria-hidden="true" /></span>
                         <span>游戏设置</span>
                       </button>
-                      <button type="button" className={styles.escMainTile} disabled>
+                      <button type="button" className={styles.escMainTile} onClick={() => setEscPanelPage('sound-settings')}>
                         <span className={styles.escMainIcon}><Volume2 size={78} strokeWidth={1.6} aria-hidden="true" /></span>
                         <span>声音设置</span>
                       </button>
@@ -9020,12 +9122,12 @@ export default function BattleArena({
                   >
                     <ArrowLeft size={28} strokeWidth={2.3} aria-hidden="true" />
                   </button>
-                  <div className={styles.escWindowTitle}>{escPanelPage === 'hotkey-settings' ? '快捷键设置' : '游戏设置'}</div>
+                  <div className={styles.escWindowTitle}>{escPanelPage === 'hotkey-settings' ? '快捷键设置' : escPanelPage === 'sound-settings' ? '声音设置' : '游戏设置'}</div>
                   <button
                     type="button"
                     onClick={() => setShowTestingPanel(false)}
                     className={styles.escHeaderIconButton}
-                    aria-label={escPanelPage === 'hotkey-settings' ? '关闭快捷键设置' : '关闭游戏设置'}
+                    aria-label={escPanelPage === 'hotkey-settings' ? '关闭快捷键设置' : escPanelPage === 'sound-settings' ? '关闭声音设置' : '关闭游戏设置'}
                   >
                     <X size={28} strokeWidth={2.3} aria-hidden="true" />
                   </button>
@@ -9034,6 +9136,8 @@ export default function BattleArena({
                   <aside className={styles.escSettingsSidebar}>
                     {escPanelPage === 'hotkey-settings' ? (
                       <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>物品快捷栏</button>
+                    ) : escPanelPage === 'sound-settings' ? (
+                      <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>音效</button>
                     ) : (
                       <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>综合</button>
                     )}
@@ -9072,6 +9176,44 @@ export default function BattleArena({
                           </div>
                         </div>
                       </>
+                    ) : escPanelPage === 'sound-settings' ? (
+                      <>
+                        <div className={styles.escSectionTitle}><span>声音设置</span></div>
+                        <div className={styles.escSettingsGrid}>
+                          <div className={styles.escSettingControl}>
+                            <div className={styles.escRangeHeader}>
+                              <span>音效音量</span>
+                              <span>{abilitySoundSettings.volumePercent}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              step="1"
+                              value={abilitySoundSettings.volumePercent}
+                              onChange={(e) => {
+                                const volumePercent = normalizeAbilitySoundVolumePercent(e.target.value);
+                                setAbilitySoundSettings((prev) => ({ ...prev, volumePercent }));
+                              }}
+                              className={styles.escRangeInput}
+                              aria-label="音效音量"
+                              disabled={abilitySoundSettings.disabled}
+                            />
+                            <label className={styles.escToggleRow}>
+                              <input
+                                type="checkbox"
+                                checked={abilitySoundSettings.disabled}
+                                onChange={(e) => {
+                                  const disabled = e.target.checked;
+                                  setAbilitySoundSettings((prev) => ({ ...prev, disabled }));
+                                }}
+                                className={styles.escToggleInput}
+                              />
+                              <span>关闭音效</span>
+                            </label>
+                          </div>
+                        </div>
+                      </>
                     ) : (
                       <>
                         <div className={styles.escSectionTitle}><span>界面设置</span></div>
@@ -9106,25 +9248,6 @@ export default function BattleArena({
                               onChange={(e) => setInGameWarningScale(normalizeInGameWarningScale(e.target.value))}
                               className={styles.escRangeInput}
                               aria-label="战斗警告大小"
-                            />
-                          </div>
-                          <div className={styles.escSettingControl}>
-                            <div className={styles.escRangeHeader}>
-                              <span>音效音量</span>
-                              <span>{abilitySoundSettings.volumePercent}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              step="1"
-                              value={abilitySoundSettings.volumePercent}
-                              onChange={(e) => {
-                                const volumePercent = normalizeAbilitySoundVolumePercent(e.target.value);
-                                setAbilitySoundSettings((prev) => ({ ...prev, volumePercent }));
-                              }}
-                              className={styles.escRangeInput}
-                              aria-label="音效音量"
                             />
                           </div>
                           <div className={`${styles.escToggleGroup} ${styles.escSettingControl}`}>

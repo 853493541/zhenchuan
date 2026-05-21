@@ -10,8 +10,11 @@ type PlayAbilitySoundParams = {
   phase: AbilitySoundPhase;
   playbackRate?: number;
   fitToDurationMs?: number;
+  preservePitch?: boolean;
+  normalizeVolume?: boolean;
   loopDurationMs?: number;
   extraSounds?: AbilitySoundExtraCue[];
+  channelSoundKey?: string;
 };
 
 type AbilitySoundDebugEntry = {
@@ -26,7 +29,10 @@ type AbilitySoundDebugEntry = {
   phase: AbilitySoundPhase;
   playbackRate?: number;
   fitToDurationMs?: number;
+  preservePitch?: boolean;
+  normalizeVolume?: boolean;
   loopDurationMs?: number;
+  channelSoundKey?: string;
   normalizationGain?: number;
   rms?: number;
   skipped?: string;
@@ -40,9 +46,13 @@ type LoadedAbilitySound = {
 };
 
 type ActiveAbilitySoundSource = {
-  source: AudioBufferSourceNode;
+  source?: AudioBufferSourceNode;
+  mediaElement?: HTMLAudioElement;
+  disconnectNodes?: AudioNode[];
   startedAt: number;
   stopTimer?: ReturnType<typeof setTimeout>;
+  extraTimers?: ReturnType<typeof setTimeout>[];
+  channelSoundKey?: string;
 };
 
 declare global {
@@ -66,6 +76,47 @@ let audioContext: AudioContext | null = null;
 const bufferCache = new Map<string, Promise<LoadedAbilitySound>>();
 const activeSources: ActiveAbilitySoundSource[] = [];
 const lastPlayAtByKey = new Map<string, number>();
+const stoppedChannelSoundKeys = new Set<string>();
+let audioUnlockWarmupDone = false;
+
+function stopActiveSource(entry: ActiveAbilitySoundSource) {
+  if (entry.stopTimer) {
+    clearTimeout(entry.stopTimer);
+    entry.stopTimer = undefined;
+  }
+  for (const timer of entry.extraTimers ?? []) {
+    clearTimeout(timer);
+  }
+  entry.extraTimers = undefined;
+  try {
+    entry.source?.stop();
+  } catch {
+    // Source may already have ended.
+  }
+  if (entry.mediaElement) {
+    entry.mediaElement.pause();
+    entry.mediaElement.removeAttribute('src');
+    entry.mediaElement.load();
+  }
+  for (const node of entry.disconnectNodes ?? []) {
+    try {
+      node.disconnect();
+    } catch {
+      // Node may already be disconnected.
+    }
+  }
+  entry.disconnectNodes = undefined;
+}
+
+export function stopAbilityChannelSound(channelSoundKey: string | undefined) {
+  if (!channelSoundKey) return;
+  stoppedChannelSoundKeys.add(channelSoundKey);
+
+  for (const entry of [...activeSources]) {
+    if (entry.channelSoundKey !== channelSoundKey) continue;
+    stopActiveSource(entry);
+  }
+}
 
 function normalizePlaybackRate(value: unknown, min = 0.5, max = 3) {
   return Math.max(min, Math.min(max, Number(value ?? 1) || 1));
@@ -77,6 +128,29 @@ function getPlaybackRate(params: { playbackRate?: number; fitToDurationMs?: numb
     return normalizePlaybackRate((buffer.duration * 1000) / fitToDurationMs, 0.1, 8);
   }
   return normalizePlaybackRate(params.playbackRate);
+}
+
+function setMediaElementPreservePitch(audio: HTMLAudioElement, preservePitch: boolean) {
+  (audio as any).preservesPitch = preservePitch;
+  (audio as any).mozPreservesPitch = preservePitch;
+  (audio as any).webkitPreservesPitch = preservePitch;
+}
+
+function removeActiveSource(entry: ActiveAbilitySoundSource) {
+  if (entry.stopTimer) {
+    clearTimeout(entry.stopTimer);
+    entry.stopTimer = undefined;
+  }
+  const idx = activeSources.indexOf(entry);
+  if (idx >= 0) activeSources.splice(idx, 1);
+  for (const node of entry.disconnectNodes ?? []) {
+    try {
+      node.disconnect();
+    } catch {
+      // Node may already be disconnected.
+    }
+  }
+  entry.disconnectNodes = undefined;
 }
 
 function getDebugState() {
@@ -102,6 +176,31 @@ function getAudioContext() {
   const AudioContextCtor = window.AudioContext ?? (window as any).webkitAudioContext;
   audioContext = new AudioContextCtor();
   return audioContext;
+}
+
+function warmUpAudioContext(context: AudioContext) {
+  if (audioUnlockWarmupDone) return;
+  try {
+    const buffer = context.createBuffer(1, 1, Math.max(1, context.sampleRate));
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0, context.currentTime);
+    source.buffer = buffer;
+    source.connect(gain);
+    gain.connect(context.destination);
+    source.onended = () => {
+      try {
+        source.disconnect();
+        gain.disconnect();
+      } catch {
+        // Already disconnected.
+      }
+    };
+    source.start(0);
+    audioUnlockWarmupDone = true;
+  } catch {
+    audioUnlockWarmupDone = false;
+  }
 }
 
 async function loadAudioBuffer(context: AudioContext, url: string) {
@@ -159,6 +258,7 @@ function analyzeAudioBuffer(buffer: AudioBuffer): Pick<LoadedAbilitySound, 'norm
 export async function unlockAbilityAudio() {
   if (typeof window === 'undefined') return false;
   const context = getAudioContext();
+  warmUpAudioContext(context);
   if (context.state === 'suspended') {
     await context.resume();
   }
@@ -176,18 +276,25 @@ export function installAbilityAudioUnlock() {
   };
 
   window.addEventListener('pointerdown', unlock, { capture: true, passive: true });
+  window.addEventListener('pointerup', unlock, { capture: true, passive: true });
+  window.addEventListener('click', unlock, { capture: true, passive: true });
   window.addEventListener('keydown', unlock, { capture: true });
   window.addEventListener('touchstart', unlock, { capture: true, passive: true });
+  window.addEventListener('touchend', unlock, { capture: true, passive: true });
 
   return () => {
     window.removeEventListener('pointerdown', unlock, { capture: true });
+    window.removeEventListener('pointerup', unlock, { capture: true });
+    window.removeEventListener('click', unlock, { capture: true });
     window.removeEventListener('keydown', unlock, { capture: true });
     window.removeEventListener('touchstart', unlock, { capture: true });
+    window.removeEventListener('touchend', unlock, { capture: true });
   };
 }
 
 export async function playAbilitySound(params: PlayAbilitySoundParams) {
   if (typeof window === 'undefined') return false;
+  if (params.channelSoundKey) stoppedChannelSoundKeys.delete(params.channelSoundKey);
 
   const volume = Math.max(0, Math.min(1, params.volume));
   const requestedPlaybackRate = normalizePlaybackRate(params.playbackRate);
@@ -214,56 +321,87 @@ export async function playAbilitySound(params: PlayAbilitySoundParams) {
     }
 
     const loadedSound = await loadAudioBuffer(context, params.url);
-  const playbackRate = getPlaybackRate(params, loadedSound.buffer);
-    const source = context.createBufferSource();
-    source.buffer = loadedSound.buffer;
-    source.loop = shouldLoop;
-    source.playbackRate.setValueAtTime(playbackRate, context.currentTime);
+    if (params.channelSoundKey && stoppedChannelSoundKeys.has(params.channelSoundKey)) {
+      recordDebug({ ...params, at: Date.now(), volume, playbackRate: requestedPlaybackRate, skipped: 'channel-ended' });
+      return false;
+    }
 
-    const effectiveVolume = Math.max(0, Math.min(2, volume * loadedSound.normalizationGain));
+    const playbackRate = getPlaybackRate(params, loadedSound.buffer);
+    const normalizationGain = params.normalizeVolume === false ? 1 : loadedSound.normalizationGain;
+    const effectiveVolume = Math.max(0, Math.min(2, volume * normalizationGain));
     const gain = context.createGain();
     gain.gain.setValueAtTime(effectiveVolume, context.currentTime);
+
+    const disconnectNodes: AudioNode[] = [gain];
+    let source: AudioBufferSourceNode | undefined;
+    let mediaElement: HTMLAudioElement | undefined;
+
+    const connectSourceTo = (destination: AudioNode) => {
+      if (params.preservePitch === true) {
+        mediaElement = new Audio(params.url);
+        mediaElement.preload = 'auto';
+        mediaElement.loop = shouldLoop;
+        mediaElement.playbackRate = playbackRate;
+        (mediaElement as any).playsInline = true;
+        setMediaElementPreservePitch(mediaElement, true);
+        const mediaSource = context.createMediaElementSource(mediaElement);
+        disconnectNodes.push(mediaSource);
+        mediaSource.connect(destination);
+        return;
+      }
+
+      source = context.createBufferSource();
+      source.buffer = loadedSound.buffer;
+      source.loop = shouldLoop;
+      source.playbackRate.setValueAtTime(playbackRate, context.currentTime);
+      source.connect(destination);
+    };
 
     if ('StereoPannerNode' in window) {
       const panner = new StereoPannerNode(context, {
         pan: Math.max(-1, Math.min(1, params.pan)),
       });
-      source.connect(panner);
+      disconnectNodes.push(panner);
+      connectSourceTo(panner);
       panner.connect(gain);
     } else {
-      source.connect(gain);
+      connectSourceTo(gain);
     }
     gain.connect(context.destination);
 
     while (activeSources.length >= MAX_ACTIVE_SOURCES) {
       const oldest = activeSources.shift();
-      if (oldest?.stopTimer) clearTimeout(oldest.stopTimer);
-      try {
-        oldest?.source.stop();
-      } catch {
-        // Source may already have ended.
-      }
+      if (oldest) stopActiveSource(oldest);
     }
 
-    const activeEntry: ActiveAbilitySoundSource = { source, startedAt: now };
+    const activeEntry: ActiveAbilitySoundSource = { source, mediaElement, disconnectNodes, startedAt: now, channelSoundKey: params.channelSoundKey };
     activeSources.push(activeEntry);
-    source.onended = () => {
-      if (activeEntry.stopTimer) {
-        clearTimeout(activeEntry.stopTimer);
-        activeEntry.stopTimer = undefined;
-      }
-      const idx = activeSources.indexOf(activeEntry);
-      if (idx >= 0) activeSources.splice(idx, 1);
-    };
+    if (source) source.onended = () => removeActiveSource(activeEntry);
+    if (mediaElement) mediaElement.onended = () => removeActiveSource(activeEntry);
 
-    source.start();
+    if (source) {
+      source.start();
+    } else if (mediaElement) {
+      try {
+        await mediaElement.play();
+      } catch (error) {
+        stopActiveSource(activeEntry);
+        removeActiveSource(activeEntry);
+        throw error;
+      }
+    }
     if (shouldLoop) {
       activeEntry.stopTimer = setTimeout(() => {
         activeEntry.stopTimer = undefined;
         try {
-          source.stop();
+          source?.stop();
         } catch {
           // Source may already have ended.
+        }
+        if (mediaElement) {
+          mediaElement.pause();
+          mediaElement.removeAttribute('src');
+          mediaElement.load();
         }
       }, Math.max(80, loopDurationMs));
     }
@@ -271,7 +409,8 @@ export async function playAbilitySound(params: PlayAbilitySoundParams) {
       const delayMs = extraSound.playAfterCurrentEnds
         ? (loadedSound.buffer.duration * 1000) / playbackRate
         : Math.max(0, Number(extraSound.delayMs ?? 0) || 0);
-      setTimeout(() => {
+      const extraTimer = setTimeout(() => {
+        if (params.channelSoundKey && stoppedChannelSoundKeys.has(params.channelSoundKey)) return;
         void playAbilitySound({
           url: extraSound.url,
           volume,
@@ -282,9 +421,14 @@ export async function playAbilitySound(params: PlayAbilitySoundParams) {
           phase: extraSound.phase,
           playbackRate: extraSound.playbackRate ?? params.playbackRate,
           fitToDurationMs: extraSound.fitToDurationMs,
+          preservePitch: extraSound.preservePitch ?? params.preservePitch,
+          normalizeVolume: params.normalizeVolume,
           loopDurationMs: extraSound.loopDurationMs,
+          channelSoundKey: params.channelSoundKey,
         });
       }, delayMs);
+      activeEntry.extraTimers ??= [];
+      activeEntry.extraTimers.push(extraTimer);
     }
     recordDebug({
       ...params,
@@ -292,7 +436,7 @@ export async function playAbilitySound(params: PlayAbilitySoundParams) {
       volume,
       effectiveVolume,
       playbackRate,
-      normalizationGain: loadedSound.normalizationGain,
+      normalizationGain,
       rms: loadedSound.rms,
       pan: Math.max(-1, Math.min(1, params.pan)),
     });

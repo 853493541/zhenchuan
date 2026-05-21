@@ -77,6 +77,7 @@
 
 ## Live Playwright Verification
 
+- All Playwright/browser verification for this project must run against `https://zhenchuan.renstoolbox.com/` unless the user explicitly asks for a localhost-only check.
 - For auth-protected frontend verification, follow `frontend/tests/SOUND_REVIEW_LIVE_TESTING.md`.
 - Run the live Playwright check against `https://zhenchuan.renstoolbox.com`, not just localhost, whenever you need to verify the sound review UI or similar protected editor flows.
-- Use the designated `catcake` live test username with credentials supplied through local environment variables at runtime; never hardcode the password in repo files.
+- Use the designated `catcake` live test username with credentials supplied through local environment variables or the active browser session at runtime; never hardcode the password in repo files or instructions.

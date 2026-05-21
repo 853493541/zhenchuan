@@ -393,6 +393,41 @@ function removeImmediateStealthBuffs(state: any, target: any) {
   return removed.length > 0;
 }
 
+function dispelBuffAttributesFromTarget(params: {
+  state: any;
+  target: any;
+  attributes: string[];
+  count: number;
+  buffOverrides: Record<string, any>;
+}) {
+  const { state, target, attributes, count, buffOverrides } = params;
+  if (!target || !Array.isArray(target.buffs) || attributes.length === 0 || count <= 0) return;
+
+  for (const attr of attributes) {
+    let dispelled = 0;
+    while (dispelled < count) {
+      const idx = target.buffs.findIndex((b: any) => {
+        if (b.category !== "BUFF") return false;
+        const entry = buffOverrides[String(b.buffId)];
+        return entry?.attribute === attr;
+      });
+      if (idx === -1) break;
+      const removed = target.buffs[idx];
+      removeLinkedShield(target as any, removed);
+      target.buffs.splice(idx, 1);
+      pushBuffExpired(state, {
+        targetUserId: target.userId,
+        buffId: removed.buffId,
+        buffName: removed.name,
+        buffCategory: removed.category,
+        sourceAbilityId: removed.sourceAbilityId,
+        sourceAbilityName: removed.sourceAbilityName,
+      });
+      dispelled++;
+    }
+  }
+}
+
 function getExplicitEntityTarget(state: any, entityTargetId?: string) {
   if (!entityTargetId || !Array.isArray(state.entities)) return null;
   const entity = state.entities.find((candidate: any) => candidate.id === entityTargetId);
@@ -2046,6 +2081,49 @@ export function applyImmediateEffects(params: {
         break;
       }
 
+      case "XIA_LIU_BAO_SHI_AOE": {
+        const now = Date.now();
+        const radius = gameplayUnitsToWorldUnits(effect.range ?? 6, state.unitScale);
+        const attrs: string[] = (effect as any).attributes ?? ["阳性", "混元", "阴性", "毒性"];
+        const dispelCount: number = (effect as any).count ?? 1;
+        const { overrides: buffOverrides } = loadBuffEditorOverrides();
+        const disarmBuff = Array.isArray(ability.buffs)
+          ? ability.buffs.find((b: any) => b.buffId === 2723 || b.name === "霞流宝石")
+          : null;
+
+        for (const victim of getImmediateEnemyDamageTargets(state, source.userId, source.position, radius)) {
+          applyImmediateDamageToEnemyTarget({
+            state,
+            source,
+            ability,
+            target: victim,
+            baseDamage: effect.value ?? 0,
+            effectType: "DAMAGE",
+            now,
+          });
+
+          dispelBuffAttributesFromTarget({
+            state,
+            target: victim.target,
+            attributes: attrs,
+            count: dispelCount,
+            buffOverrides,
+          });
+
+          if (disarmBuff) {
+            addBuff({
+              state,
+              sourceUserId: source.userId,
+              targetUserId: victim.target.userId,
+              ability,
+              buffTarget: victim.target,
+              buff: disarmBuff,
+            });
+          }
+        }
+        break;
+      }
+
       case "HAN_RU_LEI_AOE": {
         const abilityBuffs = Array.isArray(ability.buffs) ? ability.buffs : [];
         const selfBuffs = abilityBuffs.filter((buffDef: any) => buffDef.applyTo !== "OPPONENT");
@@ -2089,29 +2167,13 @@ export function applyImmediateEffects(params: {
         const { overrides: buffOverrides } = loadBuffEditorOverrides();
         const attrs: string[] = (effect as any).attributes ?? [];
         const dispelCount: number = (effect as any).count ?? 1;
-        for (const attr of attrs) {
-          let dispelled = 0;
-          while (dispelled < dispelCount) {
-            const idx = dispelTarget.buffs.findIndex((b: any) => {
-              if (b.category !== "BUFF") return false;
-              const entry = buffOverrides[String(b.buffId)];
-              return entry?.attribute === attr;
-            });
-            if (idx === -1) break;
-            const removed = dispelTarget.buffs[idx];
-            removeLinkedShield(dispelTarget as any, removed);
-            dispelTarget.buffs.splice(idx, 1);
-            pushBuffExpired(state, {
-              targetUserId: dispelTarget.userId,
-              buffId: removed.buffId,
-              buffName: removed.name,
-              buffCategory: removed.category,
-              sourceAbilityId: removed.sourceAbilityId,
-              sourceAbilityName: removed.sourceAbilityName,
-            });
-            dispelled++;
-          }
-        }
+        dispelBuffAttributesFromTarget({
+          state,
+          target: dispelTarget,
+          attributes: attrs,
+          count: dispelCount,
+          buffOverrides,
+        });
         break;
       }
 

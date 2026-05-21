@@ -16,6 +16,7 @@ export type AbilitySoundExtraCue = {
   playAfterCurrentEnds?: boolean;
   playbackRate?: number;
   fitToDurationMs?: number;
+  preservePitch?: boolean;
   loopDurationMs?: number;
 };
 
@@ -26,7 +27,7 @@ type AbilitySoundEvent = {
   targetUserId?: string;
   channelPhase?: 'start' | 'complete';
   effectType?: string;
-  soundPhase?: 'counter' | 'dashComplete';
+  soundPhase?: 'counter' | 'dashComplete' | 'followUp';
   buffId?: number;
 };
 
@@ -58,6 +59,9 @@ type AbilitySoundCue = {
   phase: AbilitySoundPhase;
   playbackRate?: number;
   fitToDurationMs?: number;
+  preservePitch?: boolean;
+  finishAfterChannelComplete?: boolean;
+  normalizeVolume?: boolean;
   loopDuringChannel?: boolean;
   extraSounds?: AbilitySoundExtraCue[];
   targetOnly?: boolean;
@@ -159,6 +163,7 @@ function getSoundPhase(event: AbilitySoundEvent, ability: AbilityLike | undefine
   if (event.type === 'ABILITY_SOUND') {
     if (event.soundPhase === 'counter') return 'counter';
     if (event.soundPhase === 'dashComplete') return 'impact';
+    if (event.soundPhase === 'followUp') return 'followUp';
     return event.channelPhase === 'complete' ? 'channelComplete' : null;
   }
 
@@ -219,6 +224,10 @@ export function getAbilitySoundCue(
     return urls[1] ? { url: urls[1], phase: 'followUp' } : null;
   }
 
+  if (matchesAbility(ability, event, ['baizu'], ['百足']) && event.type === 'ABILITY_SOUND' && event.soundPhase === 'followUp') {
+    return { url: urls[0], phase: 'followUp' };
+  }
+
   const phase = getSoundPhase(event, ability);
   if (!phase) return null;
 
@@ -274,7 +283,7 @@ export function getAbilitySoundCue(
   }
 
   if (matchesAbility(ability, event, ['ren_chi_cheng'], ['任驰骋']) && phase === 'channelStart') {
-    return { url: urls[0], phase };
+    return { url: urls[0], phase, fitToDurationMs: 750, preservePitch: true, finishAfterChannelComplete: true, normalizeVolume: false };
   }
 
   if (matchesAbility(ability, event, ['xiao_zui_kuang'], ['笑醉狂'])) {

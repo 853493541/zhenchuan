@@ -3,6 +3,82 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Live ESC sound settings deployment verification (2026-05-21)
+
+**Problem set**:
+1. The local source enabled the ESC `声音设置` tile and moved ability sound controls into a dedicated page, but the live site still showed the tile disabled.
+2. Localhost/browser checks were insufficient because the user was seeing the deployed `https://zhenchuan.renstoolbox.com` build.
+3. The default terminal channel returned stale PM2-path text for unrelated commands, hiding whether builds and restarts actually ran.
+
+**Fix**:
+- Verified the authenticated live game with Playwright and confirmed the deployed `声音设置` button still had the `disabled` attribute.
+- Updated project instructions so all Zhenchuan Playwright/browser verification defaults to the live site and the `catcake` account while keeping credentials runtime-only.
+- Recovered command execution by starting a fresh async terminal and using that terminal ID for build/restart commands.
+
+**Lessons**:
+- For UI complaints seen on the production host, verify `https://zhenchuan.renstoolbox.com` first; a correct source tree does not prove PM2 is serving the newest build.
+- Never write plaintext credentials into repo instructions or logs; use runtime input, local environment variables, or an already-authenticated browser session.
+- If a persistent terminal returns stale output for every command, open a fresh async terminal and continue from the returned terminal ID.
+
+## ESC ability sound settings range and mute (2026-05-21)
+
+**Problem set**:
+1. The ESC panel ability-sound slider needed a clear 0-100% range, but earlier work temporarily raised it to 150%.
+2. The main ESC `声音设置` tile existed but was disabled, so sound controls were hidden inside the general game/interface settings page.
+3. The desired baseline changed to 80%, while preserving explicit stored user sound settings when present.
+4. iPad testing suggested audio may not unlock even though desktop playback works.
+
+**Fix**:
+- Enabled the ESC `声音设置` tile and moved ability sound controls into its own sound settings page.
+- Changed ability sound settings to version 4 with default `volumePercent: 80`; stored explicit values are preserved within the 0-100% range, while the previous auto-default 150% migrates down to 80%.
+- Kept the slider at 0-100% and renamed the checkbox to `关闭音效`.
+- Calibrated the playback multiplier so UI `80%` equals the old `50%` output level, and capped the ability sound player at 100%.
+- Added an iOS-friendly silent AudioContext warmup and broader touch/click unlock listeners for iPad playback.
+
+**Lessons**:
+- Sound setting ranges must be supported in the settings UI, the stored-value normalizer, and the final playback clamp; changing only one side creates a false control.
+- Version localStorage-backed settings when changing defaults so old saved defaults do not mask the new requested baseline.
+- On iOS Safari, `AudioContext.resume()` alone can be insufficient; starting a tiny silent source during the user gesture is a low-risk unlock warmup.
+
+## Browser-like 任驰骋 sound and self-AOE cast readiness (2026-05-20)
+
+**Problem set**:
+1. 任驰骋 still sounded wrong in battle because its channel-start cue either played at natural length and got cut by the 0.75s channel, or could inherit channel playback-rate adjustment that changed the sound character.
+2. Channel-start sounds could keep playing if the channel started and stopped before the frontend observed a stable `activeChannel` snapshot.
+3. Self-centered AOE abilities such as 大狮子吼 and 霞流宝石 could appear uncastable when a selected/fallback target was too far away because frontend readiness still ran opponent range checks for `target: "SELF"` abilities.
+
+**Fix**:
+- Routed 任驰骋 through a pitch-preserving media-element playback path, fitting the cue to 750ms while keeping browser pitch preservation enabled and volume normalization disabled.
+- Let the fitted 任驰骋 start cue finish naturally on normal channel completion, while still allowing cancellation cleanup when the channel ends early.
+- Added channel sound keys immediately when a channel-start cue plays, and included BUFF-backed channel keys in active channel cleanup so canceled channels stop their sound even if the active-channel state was short-lived.
+- Short-circuited BattleArena readiness checks for non-OPPONENT abilities before selected-target distance/facing/LOS checks.
+- Changed `离开战斗` to use the same in-game warning display path as `进入战斗`, instead of the app-level toast.
+
+**Lessons**:
+- WebAudio buffer playback changes pitch when speeding a clip up; use an `HTMLAudioElement` with `preservesPitch` routed through WebAudio when a short channel needs pitch-preserving compression.
+- Channel sound cleanup must track the started sound key as well as the currently visible channel state; otherwise very short-lived channels can miss the cleanup window.
+- A self-centered AOE's `range` is effect radius, not cast distance to the currently selected enemy.
+
+## Carrier-centered 百足 explosion and channel sound teardown (2026-05-20)
+
+**Problem set**:
+1. 百足's delayed ending was modeled as self-only extra damage, but desired gameplay is a second carrier-centered explosion that does not reapply the DOT.
+2. The 百足 follow-up explosion needed to replay the ability sound from the explosion location, not from the original caster.
+3. Reverse/active channel sounds could keep playing after the channel ended because the WebAudio source had no channel lifecycle key.
+4. 霞流宝石 needed to become a self-centered 6-unit AOE instead of requiring a target.
+
+**Fix**:
+- Added `TIMED_SOURCE_CENTER_AOE_DAMAGE` for 百足's delayed carrier-centered explosion, including the short ground marker and a positioned follow-up `ABILITY_SOUND` event.
+- Extended BattleArena sound events with optional `x/y/z` positions and a `followUp` sound phase so 百足 can replay the same cue at the final explosion point.
+- Added channel sound keys to `abilitySoundPlayer` and BattleArena cleanup so channel-start audio stops on completion, cancellation, or unmount.
+- Added `XIA_LIU_BAO_SHI_AOE` to damage, dispel listed BUFF attributes, and apply the disarm debuff to nearby enemies without selecting a target.
+- Synced stale legacy card data for 百足 and 大狮子吼 so older consumers match canonical ability behavior.
+
+**Lessons**:
+- Delayed AOE effects that belong to the original caster need to carry source ownership separately from the buff carrier's position.
+- Sound-only follow-up events need explicit world coordinates when the audible source is not the actor.
+- Long channel sounds should be stoppable by channel identity, not only by guessed duration.
+
 ## Ability-level sound review decisions (2026-05-20)
 
 **Problem set**:

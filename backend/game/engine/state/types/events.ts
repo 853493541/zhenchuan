@@ -32,7 +32,10 @@ export interface GameEvent {
   abilityName?: string;
   abilityInstanceId?: string;
   channelPhase?: "start" | "complete";
-  soundPhase?: "counter" | "dashComplete";
+  soundPhase?: "counter" | "dashComplete" | "followUp";
+  x?: number;
+  y?: number;
+  z?: number;
   hideAbilityName?: boolean;
   suppressCritLabel?: boolean;
   displayZeroDamage?: boolean;

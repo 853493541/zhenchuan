@@ -231,21 +231,27 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   baizu: {
     id: "baizu",
     name: "百足",
-    description: "造成3点伤害\n每3秒受到8点伤害，持续15秒",
+    description: "可选目标或地面施放（范围6）\n命中后立刻造成3点伤害\n附加【百足】18秒：每3秒造成4点伤害，结束时以携带者为中心再次爆炸，造成3点范围伤害（不再附加百足）",
     type: "ATTACK",
     target: "OPPONENT",
+    range: 25,
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "DAMAGE", value: 3 }],
+    faceDirection: false,
+    allowGroundCastWithoutTarget: true,
+    effects: [{ type: "BAIZU_AOE", value: 3, range: 6 }],
     buffs: [
       {
         buffId: 1001,
         name: "百足",
         category: "DEBUFF",
-        durationMs: 15_000, // 15 seconds
+        durationMs: 18_000,
         periodicMs: 3_000,  // fires every 3 seconds
-        description: "每3秒受到8点伤害",
-        effects: [{ type: "PERIODIC_DAMAGE", value: 8 }],
+        description: "每3秒受到4点伤害，结束时以自身为中心再次爆炸，造成3点范围伤害（不再附加百足）",
+        effects: [
+          { type: "PERIODIC_DAMAGE", value: 4 },
+          { type: "TIMED_SOURCE_CENTER_AOE_DAMAGE", value: 3, range: 6, delayMs: 18_000 },
+        ],
       },
     ],
   },
@@ -335,22 +341,23 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   da_shizi_hou: {
     id: "da_shizi_hou",
     name: "大狮子吼",
-    description: "眩晕目标5秒",
+    description: "怒吼震慑周围8尺敌人，眩晕5秒并降低其技能冷却回复50%",
     type: "CONTROL",
-    target: "OPPONENT",
+    target: "SELF",
+    range: 8,
     cooldownTicks: 300,
     gcd: true,
-    effects: [],
+    effects: [{ type: "AOE_APPLY_BUFFS", range: 8 }],
     buffs: [
       {
         buffId: 1005,
         name: "大狮子吼",
         category: "DEBUFF",
         durationMs: 5_000, // 5 seconds
-        description: "眩晕5秒",
+        description: "眩晕5秒，冷却回复速度降低50%",
         effects: [
           { type: "CONTROL" },
-          { type: "DRAW_REDUCTION", value: 1 },
+          { type: "COOLDOWN_SLOW", value: 0.5 },
         ],
       },
     ],

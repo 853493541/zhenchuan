@@ -348,6 +348,7 @@ const RU_YI_ATTACK_TRIGGER_EXCLUDED_EFFECT_TYPES = new Set([
   "PERIODIC_DAMAGE",
   "TIMED_AOE_DAMAGE",
   "TIMED_SELF_DAMAGE",
+  "TIMED_SOURCE_CENTER_AOE_DAMAGE",
   "TIMED_AOE_DAMAGE_IF_SELF_HP_GT",
 ]);
 
@@ -3195,6 +3196,7 @@ export class GameLoop {
             if (
               e.type !== "TIMED_AOE_DAMAGE" &&
               e.type !== "TIMED_SELF_DAMAGE" &&
+              e.type !== "TIMED_SOURCE_CENTER_AOE_DAMAGE" &&
               e.type !== "TIMED_GUAN_TI_HEAL" &&
               e.type !== "PLACE_GROUND_ZONE"
             ) continue;
@@ -3260,6 +3262,76 @@ export class GameLoop {
                 abilityName: buff.sourceAbilityName ?? buff.name,
                 maxTargets: e.maxTargets,
               } as GroundZone);
+              buffsChanged = true;
+              continue;
+            }
+
+            if (e.type === "TIMED_SOURCE_CENTER_AOE_DAMAGE") {
+              const sourcePlayer = this.state.players.find((p) => p.userId === (buff as any).sourceUserId);
+              if (!sourcePlayer) {
+                buffsChanged = true;
+                continue;
+              }
+
+              const triggeredAbility = ABILITIES[buff.sourceAbilityId ?? ""] as any;
+              const center = player.position;
+              const radiusUnits = e.range ?? 6;
+              const radiusWorld = gameplayUnitsToWorldUnits(radiusUnits, storedUnitScale);
+
+              if (!this.state.groundZones) this.state.groundZones = [];
+              this.state.groundZones.push({
+                id: randomUUID(),
+                ownerUserId: sourcePlayer.userId,
+                x: center.x,
+                y: center.y,
+                z: center.z ?? 0,
+                height: gameplayUnitsToWorldUnits(10, storedUnitScale),
+                radius: radiusWorld,
+                expiresAt: now + 1_000,
+                damagePerInterval: 0,
+                intervalMs: 1_000,
+                lastTickAt: now,
+                abilityId: "baizu_marker",
+                abilityName: buff.sourceAbilityName ?? buff.name,
+                maxTargets: 0,
+              });
+
+              this.state.events.push({
+                id: randomUUID(),
+                timestamp: now,
+                turn: this.state.turn,
+                type: "ABILITY_SOUND",
+                actorUserId: sourcePlayer.userId,
+                targetUserId: player.userId,
+                abilityId: buff.sourceAbilityId,
+                abilityName: buff.sourceAbilityName ?? buff.name,
+                soundPhase: "followUp",
+                x: center.x,
+                y: center.y,
+                z: center.z,
+              } as any);
+
+              for (const target of getMiYunAffectedHostileTargets({
+                state: this.state,
+                source: sourcePlayer as any,
+                sourceUserId: sourcePlayer.userId,
+                center,
+                storedUnitScale,
+                rangeUnits: radiusUnits,
+              })) {
+                applyDamageToHostileTarget({
+                  state: this.state,
+                  source: sourcePlayer as any,
+                  target,
+                  baseDamage: e.value ?? 0,
+                  abilityId: buff.sourceAbilityId,
+                  abilityName: buff.sourceAbilityName ?? buff.name,
+                  effectType: "TIMED_SOURCE_CENTER_AOE_DAMAGE",
+                  damageType: triggeredAbility?.damageType,
+                  timestamp: now,
+                });
+              }
+
               buffsChanged = true;
               continue;
             }
