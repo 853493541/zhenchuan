@@ -3,6 +3,59 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Qi-field channel timing, sound, and terrain visibility (2026-05-21)
+
+**Problem set**:
+1. Channeling 气场 fields had mixed base channel times: 冲阴阳、凌太虚、生太极、吞日月 were 1.0s, while 碎星辰、破苍穹 were 0.5s.
+2. The shared 气场 channel-start sound could be playback-rate shortened by haste/channel duration and then stopped on completion, which made the same OGG sound different in battle.
+3. Flat AOE/field discs could be partially hidden by uphill terrain because their material still depth-tested against the terrain mesh.
+
+**Fix / verification**:
+- Set the six channeling 气场 skills to a 1.5s base channel. With the current haste timing factor, they adjust to 1257ms, still longer than their old base times.
+- Left 镇山河 listed as an instant 气场 because it has no channel in canonical data.
+- Routed the shared 气场 channel-start cue at natural playback rate with pitch preservation and allowed it to finish naturally on successful channel completion.
+- Made `AoeZone` fill/ring materials render without depth testing and with stable render order so terrain cannot hide the displayed area.
+- Verified with TypeScript diagnostics, a canonical timing/haste audit script, and static sound/zone material checks.
+
+**Lessons**:
+- When channel sounds are tied to gameplay duration, haste can change audio character unless pitch and cutoff behavior are handled explicitly.
+- For gameplay readability, ground-zone indicators should not depth-test against uneven terrain; the server range is flat/cylindrical, and the visual indicator should remain fully visible.
+
+## Qi-field ground placement and owner colors (2026-05-21)
+
+**Problem set**:
+1. 穹隆化生's generated 生太极 zone used the player's current Z at dash end, so ending in the air could place the field in the air instead of on the ground below.
+2. That special 生太极 needed a much taller vertical reach than normal range-relative zones.
+3. 碎星辰 and 破苍穹 were forced red in the frontend renderer, so the owner could see their own 气场 as enemy-colored.
+4. Canonical 气场 `zoneHeight` values still said 10 even when the actual intended radius/height was 8 or 15.
+
+**Fix / verification**:
+- Snapped 穹隆化生's generated 生太极 zone Z to `getGroundHeightForMap` at dash end and set its height to 99 world units while keeping its radius 8.
+- Removed the forced-red frontend override for 碎星辰/破苍穹 so normal owner-relative coloring applies: owner blue, enemy red.
+- Updated canonical 气场 height data: 镇山河 8, and 冲阴阳、凌太虚、生太极、吞日月、碎星辰、破苍穹 15.
+- Verified with TypeScript diagnostics, a canonical 气场 height audit script, and a static frontend color-branch check.
+
+**Lessons**:
+- Ground fields cast while airborne should store ground Z for placement, then use `height` for vertical reach; storing player-air Z changes both visuals and enter/exit checks.
+- Avoid ability-specific color overrides for team-readable field visuals unless the owner/enemy relationship is still applied.
+
+## AoE vertical cylinder hit range (2026-05-21)
+
+**Problem set**:
+1. Several AoE target filters used horizontal-only range checks, so targets far above or below the caster/area could still be hit if their X/Y position was inside the radius.
+2. Timed/channel AoEs used sphere-style distance in shared loop helpers, which did not match the requested cylinder rule of horizontal radius plus the same amount above/below.
+3. Persistent ground zones had old independent height fallbacks such as 10 or 2, instead of deriving vertical half-height from each zone radius/range.
+4. Mi Yun retargeting could choose candidates from a wider vertical space than the original AoE.
+
+**Fix / verification**:
+- Changed immediate AoE damage/buff helpers, loop timed/channel AoE helpers, Mi Yun area candidate/reroll helpers, and ground-zone creation/tick paths to use a cylinder: XY radius equals AoE range and vertical half-height equals the same range.
+- Kept entity radius tolerance in both planar and vertical checks so summoned/entity targets still behave consistently at boundaries.
+- Verified with backend checks for 魂压怒涛, 横扫六合, 大狮子吼, 五方行尽, shared Mi Yun/loop area selection, and persistent zone height/radius parity for 镇山河、极点迟御、振翅图南、天绝地灭、绿野蔓生、洗兵雨.
+
+**Lessons**:
+- AoE retarget pools must use the same 3D volume as the original effect, or confusion effects can create illegal hits.
+- For gameplay AoEs, persistent zone `height` should be treated as vertical half-height and kept equal to `radius` unless an ability intentionally defines a different volume later.
+
 ## Jump branch verification and Jiu Xiao cast sound (2026-05-21)
 
 **Problem set**:

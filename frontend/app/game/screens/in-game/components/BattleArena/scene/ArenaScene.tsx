@@ -736,8 +736,6 @@ export default function ArenaScene({
         const isXiBingYuTarget = zone.pickupTargetUserId === me.userId;
         const color = isXiBingYu
           ? (isXiBingYuTarget ? '#4488ff' : '#ff3333')
-          : (isSuiXingChen || isPoCangQiong)
-          ? '#ff3333'
           : isBaizuMarker
           ? (isOwn ? '#b06cff' : '#ff3333')
           : (isOwn ? '#4488ff' : '#ff3333');

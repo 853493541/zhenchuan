@@ -276,6 +276,29 @@ function getHostileDamageTargetRangeDistance(
   return Math.max(0, rawDistance - ((target.target.radius ?? 0) / Math.max(0.0001, storedUnitScale)));
 }
 
+function getHostileDamageTargetPlanarRangeDistanceWorld(
+  center: { x: number; y: number },
+  target: HostileDamageTarget,
+) {
+  const targetPosition = getHostileDamageTargetPosition(target);
+  const rawDistance = Math.hypot(targetPosition.x - center.x, targetPosition.y - center.y);
+  if (target.kind !== "entity") return rawDistance;
+  return Math.max(0, rawDistance - Math.max(0, Number(target.target.radius ?? 0)));
+}
+
+function isHostileDamageTargetInsideAoeCylinder(params: {
+  center: { x: number; y: number; z?: number };
+  target: HostileDamageTarget;
+  radiusWorld: number;
+  verticalHalfHeightWorld?: number;
+}) {
+  const { center, target, radiusWorld, verticalHalfHeightWorld = radiusWorld } = params;
+  if (getHostileDamageTargetPlanarRangeDistanceWorld(center, target) > radiusWorld) return false;
+  const targetPosition = getHostileDamageTargetPosition(target);
+  const targetRadius = target.kind === "entity" ? Math.max(0, Number(target.target.radius ?? 0)) : 0;
+  return Math.abs(Number(targetPosition.z ?? 0) - Number(center.z ?? 0)) <= verticalHalfHeightWorld + targetRadius;
+}
+
 function getMiYunAffectedHostileTargets(params: {
   state: GameState;
   source: { userId: string; buffs?: any[]; facing?: { x: number; y: number } | null } | null | undefined;
@@ -305,7 +328,7 @@ function getMiYunAffectedHostileTargets(params: {
 
   const hostiles = getHostileDamageTargets(state, sourceUserId).filter((target) => {
     if (blocksEnemyTargeting(target.target as any)) return false;
-    if (getHostileDamageTargetRangeDistance(center, target, storedUnitScale) > resolvedRangeUnits) return false;
+    if (!isHostileDamageTargetInsideAoeCylinder({ center, target, radiusWorld: resolvedRadiusWorld })) return false;
     if (halfAngleCos === null) return true;
 
     const targetPos = getHostileDamageTargetPosition(target);
@@ -1537,14 +1560,17 @@ export class GameLoop {
         }
 
         if (!this.state.groundZones) this.state.groundZones = [];
+        const shengTaiJiRadius = gameplayUnitsToWorldUnits(8, storedUnitScale);
+        const shengTaiJiGroundZ = getGroundHeightForMap(player.position.x, player.position.y, player.position.z ?? 0, this.mapCtx);
+        const qionglongShengTaiJiHeight = gameplayUnitsToWorldUnits(99, storedUnitScale);
         this.state.groundZones.push({
           id: randomUUID(),
           ownerUserId: player.userId,
           x: player.position.x,
           y: player.position.y,
-          z: player.position.z ?? 0,
-          height: gameplayUnitsToWorldUnits(10, storedUnitScale),
-          radius: gameplayUnitsToWorldUnits(8, storedUnitScale),
+          z: shengTaiJiGroundZ,
+          height: qionglongShengTaiJiHeight,
+          radius: shengTaiJiRadius,
           expiresAt: dashEndNow + 24_000,
           damagePerInterval: 0,
           intervalMs: 3_000,
@@ -2293,12 +2319,17 @@ export class GameLoop {
               }
             } else if (e.type === "TIMED_AOE_DAMAGE") {
               const range = e.range ?? 50;
-              const dist = Math.max(
-                0,
-                calculateDistance(player.position, targetPosition, storedUnitScale) -
-                  (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
-              );
-              if (dist <= range && (targetEntity?.hp ?? targetPlayer?.hp ?? 0) > 0) {
+              const targetForAoe = targetEntity
+                ? ({ kind: "entity", target: targetEntity } as HostileDamageTarget)
+                : targetPlayer
+                  ? ({ kind: "player", target: targetPlayer } as HostileDamageTarget)
+                  : null;
+              const radiusWorld = gameplayUnitsToWorldUnits(range, storedUnitScale);
+              if (
+                targetForAoe &&
+                isHostileDamageTargetInsideAoeCylinder({ center: player.position, target: targetForAoe, radiusWorld }) &&
+                (targetEntity?.hp ?? targetPlayer?.hp ?? 0) > 0
+              ) {
                 if (targetPlayer && blocksEnemyTargeting(targetPlayer as any)) {
                   channelEffectDodged = true;
                   continue;
@@ -2351,12 +2382,17 @@ export class GameLoop {
               if (Number.isFinite(thresholdTargetMaxHpPct) && thresholdTargetMaxHpPct > 0) {
                 if (completionTargetHp <= completionTargetMaxHp * (thresholdTargetMaxHpPct / 100)) continue;
               } else if (completionSelfHp <= threshold) continue;
-              const dist = Math.max(
-                0,
-                calculateDistance(player.position, targetPosition, storedUnitScale) -
-                  (targetEntity ? ((targetEntity.radius ?? 0) / Math.max(0.0001, storedUnitScale)) : 0)
-              );
-              if (dist > range || (targetEntity?.hp ?? targetPlayer?.hp ?? 0) <= 0) continue;
+              const targetForAoe = targetEntity
+                ? ({ kind: "entity", target: targetEntity } as HostileDamageTarget)
+                : targetPlayer
+                  ? ({ kind: "player", target: targetPlayer } as HostileDamageTarget)
+                  : null;
+              const radiusWorld = gameplayUnitsToWorldUnits(range, storedUnitScale);
+              if (
+                !targetForAoe ||
+                !isHostileDamageTargetInsideAoeCylinder({ center: player.position, target: targetForAoe, radiusWorld }) ||
+                (targetEntity?.hp ?? targetPlayer?.hp ?? 0) <= 0
+              ) continue;
               if (targetPlayer && blocksEnemyTargeting(targetPlayer as any)) continue;
               // NOTE: DAMAGE_IMMUNE + 盾立 reflect handled inside applyDamageToHostileTarget.
               // PROJECTILE_IMMUNE: block bonus channel-completion damage from projectile abilities
@@ -2625,6 +2661,7 @@ export class GameLoop {
               const zoneX = player.position.x + facing.x * zoneOffset;
               const zoneY = player.position.y + facing.y * zoneOffset;
               const zoneZ = getGroundHeightForMap(zoneX, zoneY, player.position.z ?? 0, this.mapCtx);
+              const zoneRadius = gameplayUnitsToWorldUnits(e.range ?? 8, storedUnitScale);
               if (!this.state.groundZones) this.state.groundZones = [];
               this.state.groundZones.push({
                 id: randomUUID(),
@@ -2632,8 +2669,8 @@ export class GameLoop {
                 x: zoneX,
                 y: zoneY,
                 z: zoneZ,
-                height: gameplayUnitsToWorldUnits(e.zoneHeight ?? 10, storedUnitScale),
-                radius: gameplayUnitsToWorldUnits(e.range ?? 8, storedUnitScale),
+                height: zoneRadius,
+                radius: zoneRadius,
                 expiresAt: chNow + (e.zoneDurationMs ?? 6_000),
                 damagePerInterval: e.value ?? 4,
                 intervalMs: e.zoneIntervalMs ?? 500,
@@ -3097,14 +3134,15 @@ export class GameLoop {
                     });
                 };
                 const baseTargets = getHostileDamageTargets(this.state, player.userId).filter((target) => {
-                  const dist = getHostileDamageTargetRangeDistance(player.position, target, storedUnitScale);
-                  if (dist > range) return false;
+                  const radiusWorld = gameplayUnitsToWorldUnits(range, storedUnitScale);
+                  if (!isHostileDamageTargetInsideAoeCylinder({ center: player.position, target, radiusWorld })) return false;
                   if (blocksEnemyTargeting(target.target as any)) return false;
-                  if (angle < 360 && dist > 0) {
+                  if (angle < 360) {
                     const facing = player.facing ?? { x: 0, y: 1 };
                     const dx = getHostileDamageTargetPosition(target).x - player.position.x;
                     const dy = getHostileDamageTargetPosition(target).y - player.position.y;
                     const planarDist = Math.sqrt(dx * dx + dy * dy);
+                    if (planarDist <= 0) return true;
                     const dot = planarDist > 0.0001 ? (facing.x * dx + facing.y * dy) / planarDist : 1;
                     const halfAngleRad = (angle / 2) * (Math.PI / 180);
                     if (dot < Math.cos(halfAngleRad)) {
@@ -3120,6 +3158,7 @@ export class GameLoop {
                     sourceUserId: player.userId,
                     center: player.position,
                     radiusWorld: gameplayUnitsToWorldUnits(range, storedUnitScale),
+                    verticalHalfHeightWorld: gameplayUnitsToWorldUnits(range, storedUnitScale),
                     coneAngleDeg: angle < 360 ? angle : undefined,
                     facing: player.facing ?? null,
                   }).filter((candidate) => !isLosBlockedTick(candidate as HostileDamageTarget));
@@ -3287,6 +3326,7 @@ export class GameLoop {
               const zoneX = player.position.x + facing.x * zoneOffset;
               const zoneY = player.position.y + facing.y * zoneOffset;
               const zoneZ = getGroundHeightForMap(zoneX, zoneY, player.position.z ?? 0, this.mapCtx);
+              const zoneRadius = gameplayUnitsToWorldUnits(e.range ?? 8, storedUnitScale);
               if (!this.state.groundZones) this.state.groundZones = [];
               this.state.groundZones.push({
                 id: randomUUID(),
@@ -3294,8 +3334,8 @@ export class GameLoop {
                 x: zoneX,
                 y: zoneY,
                 z: zoneZ,
-                height: gameplayUnitsToWorldUnits(e.zoneHeight ?? 10, storedUnitScale),
-                radius: gameplayUnitsToWorldUnits(e.range ?? 8, storedUnitScale),
+                height: zoneRadius,
+                radius: zoneRadius,
                 expiresAt: now + (e.zoneDurationMs ?? 6_000),
                 damagePerInterval: e.value ?? 4,
                 intervalMs: e.zoneIntervalMs ?? 500,
@@ -3327,7 +3367,7 @@ export class GameLoop {
                 x: center.x,
                 y: center.y,
                 z: center.z ?? 0,
-                height: gameplayUnitsToWorldUnits(10, storedUnitScale),
+                height: radiusWorld,
                 radius: radiusWorld,
                 expiresAt: now + 1_000,
                 damagePerInterval: 0,
@@ -3887,6 +3927,7 @@ export class GameLoop {
           const growMs = (zone as any).growDurationMs ?? 1;
           const t = Math.min(1, Math.max(0, (now - startedAt) / growMs));
           zone.radius = (zone as any).growStartRadius + ((zone as any).growEndRadius - (zone as any).growStartRadius) * t;
+          zone.height = zone.radius;
         }
         if (zone.abilityId === LV_YE_MAN_SHENG_ABILITY_ID) {
           const lvYeTargetUserId = (zone as any).followTargetUserId ?? zone.ownerUserId;
@@ -4042,7 +4083,7 @@ export class GameLoop {
             ? this.state.players.find((player) => player.userId === pickupTargetUserId)
             : undefined;
           const zoneZ = zone.z ?? 0;
-          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(2, storedUnitScale);
+          const zoneHeight = zone.height ?? zone.radius;
           let zoneConsumed = false;
 
           if (pickupTarget && pickupTarget.hp > 0) {
@@ -4133,7 +4174,7 @@ export class GameLoop {
         if (zone.abilityId === SHENGTAIJI_ZONE_ID || zone.abilityId === "sheng_tai_ji") {
           const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
           const zoneZ = zone.z ?? 0;
-          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          const zoneHeight = zone.height ?? zone.radius;
           const isInsideZone = (p: any) => {
             const dx = p.position.x - zone.x;
             const dy = p.position.y - zone.y;
@@ -4250,7 +4291,7 @@ export class GameLoop {
         if (zone.abilityId === "chong_yin_yang") {
           const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
           const zoneZ = zone.z ?? 0;
-          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          const zoneHeight = zone.height ?? zone.radius;
           if (owner && owner.hp > 0) {
             const dx = owner.position.x - zone.x;
             const dy = owner.position.y - zone.y;
@@ -4295,7 +4336,7 @@ export class GameLoop {
         if (zone.abilityId === "ling_tai_xu") {
           const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
           const zoneZ = zone.z ?? 0;
-          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          const zoneHeight = zone.height ?? zone.radius;
           if (owner && owner.hp > 0) {
             const dx = owner.position.x - zone.x;
             const dy = owner.position.y - zone.y;
@@ -4340,7 +4381,7 @@ export class GameLoop {
         if (zone.abilityId === "sui_xing_chen") {
           const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
           const zoneZ = zone.z ?? 0;
-          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          const zoneHeight = zone.height ?? zone.radius;
           if (owner && owner.hp > 0) {
             const dx = owner.position.x - zone.x;
             const dy = owner.position.y - zone.y;
@@ -4388,7 +4429,7 @@ export class GameLoop {
         if (zone.abilityId === "po_cang_qiong") {
           const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
           const zoneZ = zone.z ?? 0;
-          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          const zoneHeight = zone.height ?? zone.radius;
           if (owner && owner.hp > 0) {
             const dx = owner.position.x - zone.x;
             const dy = owner.position.y - zone.y;
@@ -4435,7 +4476,7 @@ export class GameLoop {
         // 吞日月: enemies inside → 封轻功; outside → remove
         if (zone.abilityId === "tun_ri_yue") {
           const zoneZ = zone.z ?? 0;
-          const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+          const zoneHeight = zone.height ?? zone.radius;
           for (const target of this.state.players) {
             if (target.userId === zone.ownerUserId) continue;
             if (target.hp <= 0) continue;
@@ -4486,7 +4527,7 @@ export class GameLoop {
             const owner = this.state.players.find((p) => p.userId === zone.ownerUserId);
             const zhenShanHeAbility = ABILITIES[ZHEN_SHAN_HE_ABILITY_ID];
             const zoneZ = zone.z ?? 0;
-            const zoneHeight = zone.height ?? gameplayUnitsToWorldUnits(10, storedUnitScale);
+            const zoneHeight = zone.height ?? zone.radius;
 
             if (owner && zhenShanHeAbility && owner.hp > 0) {
               const dx = owner.position.x - zone.x;
@@ -4554,8 +4595,9 @@ export class GameLoop {
             const candidatePool = getMiYunAreaCandidates({
               state: this.state,
               sourceUserId: zone.ownerUserId,
-              center: { x: zone.x, y: zone.y },
+              center: { x: zone.x, y: zone.y, z: zone.z },
               radiusWorld: zone.radius,
+              verticalHalfHeightWorld: zone.height ?? zone.radius,
             }).filter((candidate) => {
               if (zone.height === undefined) return true;
               const targetZ = getHostileDamageTargetPosition(candidate as HostileDamageTarget).z ?? 0;
