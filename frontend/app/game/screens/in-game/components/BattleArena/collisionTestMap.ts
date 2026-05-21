@@ -5,6 +5,7 @@
 import type { MapObject } from "./worldMap";
 
 const LEGACY_COLLISION_TEST_SCALE = 2.2;
+const HORIZONTAL_FOOTPRINT_SCALE = 1.125;
 const RAW_COLLISION_TEST_MAP_WIDTH  = 819;  // 546 × 1.5 — map scaled up 50%
 const RAW_COLLISION_TEST_MAP_HEIGHT = 828;  // 552 × 1.5 — map scaled up 50%
 
@@ -154,17 +155,21 @@ function toCollisionTestUnits(value: number): number {
   return value / LEGACY_COLLISION_TEST_SCALE;
 }
 
+function toCollisionTestHorizontalUnits(value: number): number {
+  return toCollisionTestUnits(value) * HORIZONTAL_FOOTPRINT_SCALE;
+}
+
 function scaleMapObject(obj: MapObject): MapObject {
   return {
     ...obj,
-    x: toCollisionTestUnits(obj.x),
-    y: toCollisionTestUnits(obj.y),
-    w: toCollisionTestUnits(obj.w),
-    d: toCollisionTestUnits(obj.d),
+    x: toCollisionTestHorizontalUnits(obj.x),
+    y: toCollisionTestHorizontalUnits(obj.y),
+    w: toCollisionTestHorizontalUnits(obj.w),
+    d: toCollisionTestHorizontalUnits(obj.d),
     h: toCollisionTestUnits(obj.h),
   };
 }
 
-export const COLLISION_TEST_MAP_WIDTH = toCollisionTestUnits(RAW_COLLISION_TEST_MAP_WIDTH);
-export const COLLISION_TEST_MAP_HEIGHT = toCollisionTestUnits(RAW_COLLISION_TEST_MAP_HEIGHT);
+export const COLLISION_TEST_MAP_WIDTH = toCollisionTestHorizontalUnits(RAW_COLLISION_TEST_MAP_WIDTH);
+export const COLLISION_TEST_MAP_HEIGHT = toCollisionTestHorizontalUnits(RAW_COLLISION_TEST_MAP_HEIGHT);
 export const collisionTestMapObjects: MapObject[] = rawCollisionTestMapObjects.map(scaleMapObject);

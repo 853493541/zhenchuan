@@ -13,7 +13,7 @@ import TargetEntityVisual from './TargetEntityVisual';
 import CameraRig from './CameraRig';
 import type { PickupItem, GroundZone, TargetEntity } from '../../../types';
 import { getMapForMode } from '../worldMap';
-import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF, type SceneLoadTimingEvent } from './ExportedMapScene';
+import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF_XZ, RENDER_SF_Y, type SceneLoadTimingEvent } from './ExportedMapScene';
 import type { MapCollisionSystem } from './MapCollisionSystem';
 
 // Colors for up to 5 opponents (index 0 = primary, etc.)
@@ -581,13 +581,13 @@ export default function ArenaScene({
     if (isCollisionTest && collisionSystemRef?.current) {
       const probe = zoneProbeRef.current;
       probe.set(
-        (worldX - worldHalfX - GROUP_POS_X) / RENDER_SF,
+        (worldX - worldHalfX - GROUP_POS_X) / RENDER_SF_XZ,
         5000,
-        (worldHalfY - worldY - GROUP_POS_Z) / RENDER_SF,
+        (worldHalfY - worldY - GROUP_POS_Z) / RENDER_SF_XZ,
       );
       const supportY = collisionSystemRef.current.getSupportGroundY(probe);
       if (supportY !== null) {
-        groundZ = supportY * RENDER_SF + GROUP_POS_Y;
+        groundZ = supportY * RENDER_SF_Y + GROUP_POS_Y;
       }
     } else {
       for (const obj of mapObjects) {
@@ -992,9 +992,9 @@ function CollisionProbeOverlay({
       probeRef.current.visible = debug.enabled;
       if (debug.enabled) {
         probeRef.current.position.set(
-          debug.center.x * RENDER_SF + GROUP_POS_X,
-          debug.center.y * RENDER_SF + GROUP_POS_Y,
-          debug.center.z * RENDER_SF + GROUP_POS_Z,
+          debug.center.x * RENDER_SF_XZ + GROUP_POS_X,
+          debug.center.y * RENDER_SF_Y + GROUP_POS_Y,
+          debug.center.z * RENDER_SF_XZ + GROUP_POS_Z,
         );
       }
     }
@@ -1003,9 +1003,9 @@ function CollisionProbeOverlay({
       groundRef.current.visible = visible;
       if (visible) {
         groundRef.current.position.set(
-          debug.center.x * RENDER_SF + GROUP_POS_X,
-          debug.supportY! * RENDER_SF + GROUP_POS_Y,
-          debug.center.z * RENDER_SF + GROUP_POS_Z,
+          debug.center.x * RENDER_SF_XZ + GROUP_POS_X,
+          debug.supportY! * RENDER_SF_Y + GROUP_POS_Y,
+          debug.center.z * RENDER_SF_XZ + GROUP_POS_Z,
         );
       }
     }

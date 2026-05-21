@@ -25,17 +25,20 @@ const LEGACY_COLLISION_TEST_SCALE = 2.2;
 
 const SF = 0.005557531566779299;
 const MAP_SCALE = 3.6;  // 2.4 × 1.5 — map scaled up 50%
-export const RENDER_SF = (SF * MAP_SCALE) / LEGACY_COLLISION_TEST_SCALE;
+export const HORIZONTAL_FOOTPRINT_SCALE = 1.125;
+export const RENDER_SF_Y = (SF * MAP_SCALE) / LEGACY_COLLISION_TEST_SCALE;
+export const RENDER_SF_XZ = RENDER_SF_Y * HORIZONTAL_FOOTPRINT_SCALE;
+export const RENDER_SF = RENDER_SF_Y;
 const GLB_LOAD_CONCURRENCY = 4;
 const TERRAIN_LOAD_CONCURRENCY = 6;
 const COLLISION_LOAD_CONCURRENCY = 8;
 
 // Alignment: game coord (gx,gy) in Three.js = (gx - width/2, 0, height/2 - gy)  [z-flip removed]
-// Export entity at (ex, ey, ez_rh) in Three.js = (ex*RENDER_SF + GROUP_POS_X, ey*RENDER_SF + GROUP_POS_Y, ez_rh*RENDER_SF + GROUP_POS_Z)
+// Export entity at (ex, ey, ez_rh) in Three.js = (ex*RENDER_SF_XZ + GROUP_POS_X, ey*RENDER_SF_Y + GROUP_POS_Y, ez_rh*RENDER_SF_XZ + GROUP_POS_Z)
 // GROUP_POS derived from median entity (18664.5, _, -122778.5) → game (214, 228); scaled ×1.5 from MAP_SCALE=2.4 reference
-export const GROUP_POS_X = -462.66 / LEGACY_COLLISION_TEST_SCALE;
+export const GROUP_POS_X = (-462.66 * HORIZONTAL_FOOTPRINT_SCALE) / LEGACY_COLLISION_TEST_SCALE;
 export const GROUP_POS_Y = -4.515 / LEGACY_COLLISION_TEST_SCALE;   // Terrain at city center (game 214,228) → y=0
-export const GROUP_POS_Z = 2524.065 / LEGACY_COLLISION_TEST_SCALE;  // No Z-flip: entities at native RH z, aligned with worldHalf-gy
+export const GROUP_POS_Z = (2524.065 * HORIZONTAL_FOOTPRINT_SCALE) / LEGACY_COLLISION_TEST_SCALE;  // No Z-flip: entities at native RH z, aligned with worldHalf-gy
 
 interface ExportedMapSceneProps {
   worldWidth: number;
@@ -275,7 +278,7 @@ export default function ExportedMapScene({
   useEffect(() => {
     const group = new THREE.Group();
     group.name = 'exported-map';
-    group.scale.setScalar(RENDER_SF);  // Uniform scale, no Z-flip (data is already RH)
+    group.scale.set(RENDER_SF_XZ, RENDER_SF_Y, RENDER_SF_XZ);  // Horizontal calibration; height scale stays unchanged.
     group.position.set(GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z);
     groupRef.current = group;
 

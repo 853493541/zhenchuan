@@ -13,7 +13,7 @@ import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity, T
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles, type SceneRuntimeMetrics } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
-import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, type SceneLoadTimingEvent } from './scene/ExportedMapScene';
+import { RENDER_SF_XZ, RENDER_SF_Y, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, type SceneLoadTimingEvent } from './scene/ExportedMapScene';
 import { encodeIconPublicPath, getAbilityIconPath } from '@/app/lib/iconPaths';
 import * as THREE from 'three';
 import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
@@ -253,6 +253,12 @@ type AbilitySoundSettings = {
   version: number;
 };
 
+type CameraSettings = {
+  maxDistance: number;
+  followMode: 'never';
+  version: number;
+};
+
 type InGameWarningEvent = {
   id: number;
   text: string;
@@ -355,6 +361,7 @@ function scaleUiPositions(
 const HEART_STAT_STORAGE_KEY = 'zhenchuan-heart-stat-visibility';
 const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
 const ABILITY_SOUND_SETTINGS_STORAGE_KEY = 'zhenchuan-ability-sound-settings-v1';
+const CAMERA_SETTINGS_STORAGE_KEY = 'zhenchuan-camera-settings-v1';
 const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
@@ -462,6 +469,11 @@ const DEFAULT_ABILITY_SOUND_SETTINGS: AbilitySoundSettings = {
   disabled: false,
   version: 4,
 };
+const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
+  maxDistance: 24,
+  followMode: 'never',
+  version: 2,
+};
 const ABILITY_SOUND_VOLUME_OUTPUT_SCALE = 0.625;
 const PLAYER_CHANNEL_BAR_PREVIEW_DATA: ChannelBarData = {
   kind: 'forward',
@@ -503,9 +515,11 @@ const ARENA_WIDTH_SMALL  = 200;
 const ARENA_HEIGHT_SMALL = 200;
 const DASH_ANIM_MS = 1500; // ms — cosmetic dash travel animation
 const CAMERA_FOV = 72;
-const DEFAULT_CAMERA_ZOOM = 0.7;
-const CAMERA_ZOOM_MAX = 0.7;
-const CAMERA_ZOOM_OVER_MAX = 2.5;
+const CAMERA_BASE_DISTANCE = 24;
+const CAMERA_DISTANCE_MIN = 8;
+const CAMERA_DISTANCE_MAX = 24;
+const DEFAULT_CAMERA_ZOOM = DEFAULT_CAMERA_SETTINGS.maxDistance / CAMERA_BASE_DISTANCE;
+const CAMERA_ZOOM_MIN = CAMERA_DISTANCE_MIN / CAMERA_BASE_DISTANCE;
 const DEFAULT_PLAYER_RADIUS = 2; // must match backend
 const COLLISION_TEST_PLAYER_RADIUS = 0.384;
 const LEGACY_STORED_UNIT_SCALE = 2.2;
@@ -580,6 +594,39 @@ function normalizeAbilitySoundVolumePercent(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return DEFAULT_ABILITY_SOUND_SETTINGS.volumePercent;
   return Math.round(Math.max(0, Math.min(100, numeric)));
+}
+
+function normalizeCameraMaxDistance(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_CAMERA_SETTINGS.maxDistance;
+  return Math.round(Math.max(CAMERA_DISTANCE_MIN, Math.min(CAMERA_DISTANCE_MAX, numeric)) * 100) / 100;
+}
+
+function cameraDistanceToZoom(distance: unknown): number {
+  return normalizeCameraMaxDistance(distance) / CAMERA_BASE_DISTANCE;
+}
+
+function cameraZoomToDistance(zoom: unknown): number {
+  const numeric = typeof zoom === 'number' ? zoom : Number(zoom);
+  if (!Number.isFinite(numeric)) return DEFAULT_CAMERA_SETTINGS.maxDistance;
+  return normalizeCameraMaxDistance(numeric * CAMERA_BASE_DISTANCE);
+}
+
+function loadCameraSettings(): CameraSettings {
+  try {
+    if (typeof window === 'undefined') return DEFAULT_CAMERA_SETTINGS;
+    const stored = JSON.parse(localStorage.getItem(CAMERA_SETTINGS_STORAGE_KEY) ?? '{}');
+    const storedVersion = Number(stored.version ?? 0);
+    if (storedVersion < DEFAULT_CAMERA_SETTINGS.version) return DEFAULT_CAMERA_SETTINGS;
+    return {
+      ...DEFAULT_CAMERA_SETTINGS,
+      maxDistance: normalizeCameraMaxDistance(stored.maxDistance),
+      followMode: 'never',
+      version: DEFAULT_CAMERA_SETTINGS.version,
+    };
+  } catch {
+    return DEFAULT_CAMERA_SETTINGS;
+  }
 }
 
 function getAbilityPanelCssScale(value: number): number {
@@ -902,9 +949,9 @@ const _bvhCenter = new THREE.Vector3();
 const _bvhVelocity = new THREE.Vector3();
 // Cylinder collision shape: horizontal radius + half-height tracked separately.
 // _bvhCenter.y is always the CYLINDER CENTRE (feet + half-height), never sphere-bottom.
-const EXPORT_CYL_RADIUS = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF;
+const EXPORT_CYL_RADIUS = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF_XZ;
 const CYL_HALF_HEIGHT_GAME = 0.75;
-const EXPORT_CYL_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / RENDER_SF;
+const EXPORT_CYL_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / RENDER_SF_Y;
 const BVH_STEP_UP_EXPORT = 56;
 
 function getBvhGroundProbeOriginY(centerY: number): number {
@@ -936,17 +983,18 @@ function clientCheckLOS(
   halfW: number, halfH: number,
 ): boolean {
   if (!sys.shellBVH) return false;
-  const sf = RENDER_SF;
+  const sfXZ = RENDER_SF_XZ;
+  const sfY = RENDER_SF_Y;
   const gx = GROUP_POS_X, gy = GROUP_POS_Y, gz = GROUP_POS_Z;
   _losFrom.set(
-    (ax - halfW - gx) / sf,
-    (az + LOS_EYE_HEIGHT_GAME - gy) / sf,
-    (halfH - ay - gz) / sf,
+    (ax - halfW - gx) / sfXZ,
+    (az + LOS_EYE_HEIGHT_GAME - gy) / sfY,
+    (halfH - ay - gz) / sfXZ,
   );
   _losTo.set(
-    (bx - halfW - gx) / sf,
-    (bz + LOS_EYE_HEIGHT_GAME - gy) / sf,
-    (halfH - by - gz) / sf,
+    (bx - halfW - gx) / sfXZ,
+    (bz + LOS_EYE_HEIGHT_GAME - gy) / sfY,
+    (halfH - by - gz) / sfXZ,
   );
   return sys.checkLOS(_losFrom, _losTo, EXPORT_CYL_RADIUS);
 }
@@ -2568,6 +2616,12 @@ export default function BattleArena({
       localStorage.setItem(ABILITY_SOUND_SETTINGS_STORAGE_KEY, JSON.stringify(abilitySoundSettings));
     } catch {}
   }, [abilitySoundSettings]);
+  const [cameraSettings, setCameraSettings] = useState<CameraSettings>(() => loadCameraSettings());
+  useEffect(() => {
+    try {
+      localStorage.setItem(CAMERA_SETTINGS_STORAGE_KEY, JSON.stringify(cameraSettings));
+    } catch {}
+  }, [cameraSettings]);
   const [abilityPanelScale, setAbilityPanelScale] = useState(() => {
     try {
       if (typeof window === 'undefined') return 1;
@@ -2953,8 +3007,7 @@ export default function BattleArena({
     stencil: false,
     depth: true,
   }), [isMobileDevice]);
-  const [cameraZoomLevel, setCameraZoomLevel] = useState(DEFAULT_CAMERA_ZOOM);
-  const [allowOverrangeCameraZoom, setAllowOverrangeCameraZoom] = useState(false);
+  const [cameraZoomLevel, setCameraZoomLevel] = useState(() => cameraDistanceToZoom(cameraSettings.maxDistance));
   const [cameraDebugEntries, setCameraDebugEntries] = useState<CameraDebugEntry[]>([]);
   const cameraDebugIdRef = useRef(0);
   const cameraEventTestingEnabledRef = useRef(false);
@@ -3086,9 +3139,9 @@ export default function BattleArena({
     const halfW = mapData.width / 2;
     const halfH = mapData.height / 2;
     const tmpCenter = new THREE.Vector3(
-      (pos.x - halfW - GROUP_POS_X) / RENDER_SF,
+      (pos.x - halfW - GROUP_POS_X) / RENDER_SF_XZ,
       5000,
-      (halfH - pos.y - GROUP_POS_Z) / RENDER_SF,
+      (halfH - pos.y - GROUP_POS_Z) / RENDER_SF_XZ,
     );
     const groundY = getBvhGroundSupportY(sys, tmpCenter);
     collisionDebugRef.current = {
@@ -3097,7 +3150,7 @@ export default function BattleArena({
       supportY: groundY,
     };
     if (groundY !== null) {
-      const feetGameZ = groundY * RENDER_SF + GROUP_POS_Y;
+      const feetGameZ = groundY * RENDER_SF_Y + GROUP_POS_Y;
       localZRef.current = feetGameZ;
       localVzRef.current = 0;
       groundBaseRef.current = feetGameZ;
@@ -3464,7 +3517,7 @@ export default function BattleArena({
   const charYawRef     = useRef(0);             // character facing yaw (radians, 0 = facing +Y)
   const camYawRef      = useRef(0);             // camera yaw
   const camPitchRef    = useRef(DEFAULT_PITCH); // camera pitch angle (radians)
-  const camZoomRef     = useRef(DEFAULT_CAMERA_ZOOM);           // zoom multiplier (scroll wheel)
+  const camZoomRef     = useRef(cameraZoomLevel);           // zoom multiplier (scroll wheel)
   const cameraMoveCommandActiveRef = useRef(false);
   const cameraLookInputVersionRef = useRef(0);
   const manualCameraLookActiveRef = useRef(false);
@@ -3663,6 +3716,13 @@ export default function BattleArena({
   }, []);
   const setConsumableBarSlotCount = useCallback((slotCount: unknown) => {
     setConsumableBarSettings((prev) => ({ ...prev, slotCount: normalizeConsumableSlotCount(slotCount) }));
+  }, []);
+  const setCameraMaxDistance = useCallback((value: unknown) => {
+    const maxDistance = normalizeCameraMaxDistance(value);
+    setCameraSettings((prev) => ({ ...prev, maxDistance, followMode: 'never', version: DEFAULT_CAMERA_SETTINGS.version }));
+    const nextZoom = cameraDistanceToZoom(maxDistance);
+    camZoomRef.current = nextZoom;
+    setCameraZoomLevel(nextZoom);
   }, []);
   const moveConsumableSlot = useCallback((fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex) return;
@@ -6508,8 +6568,8 @@ export default function BattleArena({
       if ((e.target as HTMLElement | null)?.closest(`[data-testing-panel], input, select, textarea, [data-ui-interactive], .${styles.escOverlay}`)) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.12 : -0.12;
-      const zoomMax = allowOverrangeCameraZoom ? CAMERA_ZOOM_OVER_MAX : CAMERA_ZOOM_MAX;
-      camZoomRef.current = Math.max(0.4, Math.min(zoomMax, camZoomRef.current + delta));
+      const zoomMax = cameraDistanceToZoom(cameraSettings.maxDistance);
+      camZoomRef.current = Math.max(CAMERA_ZOOM_MIN, Math.min(zoomMax, camZoomRef.current + delta));
       setCameraZoomLevel(camZoomRef.current);
     };
     // Use capture phase so we intercept BEFORE the browser's own navigation handlers
@@ -6530,7 +6590,7 @@ export default function BattleArena({
       window.removeEventListener('wheel',       onWheel,       { capture: true } as EventListenerOptions);
       window.removeEventListener('blur',        resetMouseButtons);
     };
-  }, [allowOverrangeCameraZoom, clearTargetSelection, customUiMode]);
+  }, [cameraSettings.maxDistance, clearTargetSelection, customUiMode]);
 
   // ── Touch camera rotation (mobile/iPad) ──────────────────────────────────
   // A single touch that starts on the 3D canvas (wrapRef) rotates camera + player
@@ -6714,15 +6774,15 @@ export default function BattleArena({
         const halfW = ARENA_WIDTH / 2;
         const halfH = ARENA_HEIGHT / 2;
         _bvhCenter.set(
-          (pos.x - halfW - GROUP_POS_X) / RENDER_SF,
-          (localZRef.current - GROUP_POS_Y) / RENDER_SF + EXPORT_CYL_HALF_HEIGHT,
-          (halfH - pos.y - GROUP_POS_Z) / RENDER_SF,
+          (pos.x - halfW - GROUP_POS_X) / RENDER_SF_XZ,
+          (localZRef.current - GROUP_POS_Y) / RENDER_SF_Y + EXPORT_CYL_HALF_HEIGHT,
+          (halfH - pos.y - GROUP_POS_Z) / RENDER_SF_XZ,
         );
         const supportY = getBvhGroundSupportY(sys, _bvhCenter);
         if (supportY === null) {
           return 0;
         }
-        return supportY * RENDER_SF + GROUP_POS_Y;
+        return supportY * RENDER_SF_Y + GROUP_POS_Y;
       })();
       const tickGroundH = rawTickGroundH;
       const airborne = localZRef.current > tickGroundH + 0.01;
@@ -6973,26 +7033,26 @@ export default function BattleArena({
         // ── Cylinder horizontal pass ──
         // _bvhCenter.y = cylinder centre (feet + half-height); preserved between ticks.
         // Only update X/Z for horizontal movement; Y is owned by the vertical pass.
-        _bvhCenter.x = (newPx - halfW - GROUP_POS_X) / RENDER_SF;
-        _bvhCenter.z = (halfH - newPy - GROUP_POS_Z) / RENDER_SF;
+        _bvhCenter.x = (newPx - halfW - GROUP_POS_X) / RENDER_SF_XZ;
+        _bvhCenter.z = (halfH - newPy - GROUP_POS_Z) / RENDER_SF_XZ;
         if (!bvhCenterYInitRef.current) {
           // First tick after spawn/teleport: set centre from current feet position.
-          _bvhCenter.y = (localZRef.current - GROUP_POS_Y) / RENDER_SF + EXPORT_CYL_HALF_HEIGHT;
+          _bvhCenter.y = (localZRef.current - GROUP_POS_Y) / RENDER_SF_Y + EXPORT_CYL_HALF_HEIGHT;
           bvhCenterYInitRef.current = true;
         }
         // Sphere at cylinder centre provides correct horizontal wall push (push.y=0 for walls)
         _bvhVelocity.set(
-          (vel.x + nudgeX) / RENDER_SF,
+          (vel.x + nudgeX) / RENDER_SF_XZ,
           0, // vertical handled separately; don't let wall contacts corrupt Vz
-          -(vel.y + nudgeY) / RENDER_SF,
+          -(vel.y + nudgeY) / RENDER_SF_XZ,
         );
         sys.resolveSphereCollision(_bvhCenter, EXPORT_CYL_RADIUS, _bvhVelocity);
 
         // Convert back → game horizontal (clamp to arena bounds)
         newPx = Math.max(playerRadius, Math.min(ARENA_WIDTH - playerRadius,
-          _bvhCenter.x * RENDER_SF + GROUP_POS_X + halfW));
+          _bvhCenter.x * RENDER_SF_XZ + GROUP_POS_X + halfW));
         newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius,
-          halfH - (_bvhCenter.z * RENDER_SF + GROUP_POS_Z)));
+          halfH - (_bvhCenter.z * RENDER_SF_XZ + GROUP_POS_Z)));
         // Do NOT read _bvhVelocity.y here — vertical velocity is managed by the vertical pass.
       } else {
         for (const obj of objs) {
@@ -7089,9 +7149,24 @@ export default function BattleArena({
               : isMultiJump && !hasFuyaoBuffRef.current
                 ? MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE
               : DIRECTIONAL_JUMP_DISTANCE;
+        const usesWalkMatchedBudget =
+          !isBackpedalAirJump &&
+          !usePowerDirectionalBudget &&
+          !movementControlStateRef.current.tiYunZongActive &&
+          !hadPowerJumpAirtime &&
+          !isMultiJump;
         hasFuyaoBuffRef.current   = false;
         const jumpVzScale = movementControlStateRef.current.jumpVzScale ?? 1;
         if (jumpVzScale < 1) jumpVz *= jumpVzScale;
+        const jumpTravelTicks = estimateAirborneTicks(
+          heightAboveGround,
+          jumpVz,
+          jumpGravityUp,
+          jumpGravityDown,
+        );
+        const jumpTravelDistance = usesWalkMatchedBudget
+          ? Math.max(0, jumpSpeedSource) * jumpTravelTicks
+          : directionalJumpDistance * Math.max(0, jumpSpeedScale);
         localVzRef.current        = jumpVz;
         vel.x = 0;
         vel.y = 0;
@@ -7112,7 +7187,7 @@ export default function BattleArena({
             x: localPositionRef.current?.x ?? pos.x,
             y: localPositionRef.current?.y ?? pos.y,
           },
-          expectedLandWorld: jumpDir ? directionalJumpDistance * Math.max(0, jumpSpeedScale) : 0,
+          expectedLandWorld: jumpDir ? jumpTravelDistance : 0,
           startSpeedUnitsPerSec: (jumpSpeedSource * CLIENT_TICK_HZ) / UNIT_SCALE,
           jumpPhase: nextJumpPhase,
           mode: jumpDir ? 'directional' : 'upward',
@@ -7124,13 +7199,8 @@ export default function BattleArena({
         airDirectionLockedRef.current = false;
 
         if (jumpDir) {
-          airNudgeRemainingRef.current = directionalJumpDistance * Math.max(0, jumpSpeedScale);
-          airNudgeTicksRemainingRef.current = estimateAirborneTicks(
-            heightAboveGround,
-            jumpVz,
-            jumpGravityUp,
-            jumpGravityDown,
-          );
+          airNudgeRemainingRef.current = jumpTravelDistance;
+          airNudgeTicksRemainingRef.current = jumpTravelTicks;
           airNudgeDirRef.current = jumpDir;
           airDirectionLockedRef.current = true;
           if (!isBackpedalAirJump) {
@@ -7160,7 +7230,7 @@ export default function BattleArena({
         const sys = collisionSysRef.current!;
         // ── Cylinder vertical pass ──
         // Apply gravity to cylinder centre (feet + halfHeight).
-        _bvhCenter.y += localVzRef.current / RENDER_SF;
+        _bvhCenter.y += localVzRef.current / RENDER_SF_Y;
 
         const ceilingExportY = getBvhCeilingY(sys, _bvhCenter);
         const headExportY = _bvhCenter.y + EXPORT_CYL_HALF_HEIGHT;
@@ -7206,11 +7276,11 @@ export default function BattleArena({
         };
 
         // Feet = cylinder bottom = exact terrain surface when grounded (no slope float)
-        const feetGameZ = (_bvhCenter.y - EXPORT_CYL_HALF_HEIGHT) * RENDER_SF + GROUP_POS_Y;
+        const feetGameZ = (_bvhCenter.y - EXPORT_CYL_HALF_HEIGHT) * RENDER_SF_Y + GROUP_POS_Y;
         localZRef.current = feetGameZ;
         rawClientGroundH = bvhOnGround
           ? feetGameZ
-          : (groundExportY !== null ? groundExportY * RENDER_SF + GROUP_POS_Y : feetGameZ);
+          : (groundExportY !== null ? groundExportY * RENDER_SF_Y + GROUP_POS_Y : feetGameZ);
       } else {
         rawClientGroundH = getGroundHeightClient(localPositionRef.current.x, localPositionRef.current.y, localZRef.current, objs, playerRadius);
         localZRef.current = Math.max(rawClientGroundH, localZRef.current + localVzRef.current);
@@ -9002,7 +9072,7 @@ export default function BattleArena({
       <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
         <Canvas
           key={sceneCanvasKey}
-          camera={{ fov: 72, near: 0.5, far: 2000 }}
+          camera={{ fov: CAMERA_FOV, near: 0.5, far: 2000 }}
           style={{ background: blueprintMode ? '#000010' : selfHasHongMengTianJin ? '#000000' : '#888888' }}
           dpr={sceneCanvasDpr}
           gl={sceneCanvasGl}
@@ -9189,7 +9259,7 @@ export default function BattleArena({
       <div className={`${styles.hongMengBlackout} ${hongMengOverlayActive ? styles.hongMengOverlayVisible : ''}`} aria-hidden="true" />
       {hongMengOverlayActive && <div className={`${styles.hongMengSelfCanvas} ${styles.hongMengOverlayVisible}`} aria-hidden="true">
         <Canvas
-          camera={{ fov: 72, near: 0.5, far: 2000 }}
+          camera={{ fov: CAMERA_FOV, near: 0.5, far: 2000 }}
           style={{ background: 'transparent' }}
           frameloop="always"
           dpr={sceneCanvasDpr}
@@ -9236,7 +9306,7 @@ export default function BattleArena({
           <div className={styles.uiFloatingTitle}>角色状态</div>
           <div className={styles.uiInfoValue}>位置 {localRenderPosRef.current.x.toFixed(1)}, {localRenderPosRef.current.y.toFixed(1)}</div>
           <div className={styles.uiInfoValue}>移速 {effectiveMoveSpeedUnitsPerSec.toFixed(2)}</div>
-          <div className={styles.uiInfoValue}>镜头距离 {cameraZoomLevel.toFixed(2)}</div>
+          <div className={styles.uiInfoValue}>镜头距离 {cameraZoomToDistance(cameraZoomLevel).toFixed(2)}</div>
           <div className={styles.uiInfoValue}>广角 {CAMERA_FOV}</div>
         </div>
       )}
@@ -9527,22 +9597,6 @@ export default function BattleArena({
                               />
                               <span>跳跃细节和地面距离</span>
                             </label>
-                            <label className={styles.escToggleRow}>
-                              <input
-                                type="checkbox"
-                                checked={allowOverrangeCameraZoom}
-                                onChange={(e) => {
-                                  const next = e.target.checked;
-                                  setAllowOverrangeCameraZoom(next);
-                                  if (!next) {
-                                    camZoomRef.current = Math.min(camZoomRef.current, CAMERA_ZOOM_MAX);
-                                    setCameraZoomLevel(camZoomRef.current);
-                                  }
-                                }}
-                                className={styles.escToggleInput}
-                              />
-                              <span>允许超距镜头</span>
-                            </label>
                           </div>
                         ) : (
                           <div className={styles.escLightingPanel}>
@@ -9723,6 +9777,46 @@ export default function BattleArena({
                       </>
                     ) : (
                       <>
+                        <div className={styles.escSectionTitle}><span>镜头设置</span></div>
+                        <div className={`${styles.escSettingsGrid} ${styles.escCameraSettingsGrid}`}>
+                          <div className={`${styles.escSettingControl} ${styles.escCameraModeControl}`}>
+                            <div className={styles.escCameraFieldLabel}>镜头类型</div>
+                            <div className={styles.escCameraModeRow} role="radiogroup" aria-label="镜头类型">
+                              <button
+                                type="button"
+                                className={`${styles.escCameraModeButton} ${styles.escCameraModeButtonActive}`}
+                                aria-pressed="true"
+                              >
+                                <span className={styles.escCameraRadio} aria-hidden="true" />
+                                <span>从不追随</span>
+                              </button>
+                              <button type="button" className={styles.escCameraModeButton} disabled aria-pressed="false">
+                                <span className={styles.escCameraRadio} aria-hidden="true" />
+                                <span>总是追随</span>
+                              </button>
+                              <button type="button" className={styles.escCameraModeButton} disabled aria-pressed="false">
+                                <span className={styles.escCameraRadio} aria-hidden="true" />
+                                <span>智能追随</span>
+                              </button>
+                            </div>
+                          </div>
+                          <div className={styles.escSettingControl}>
+                            <div className={styles.escRangeHeader}>
+                              <span>镜头最大距离</span>
+                              <span>{cameraSettings.maxDistance.toFixed(2)}</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={CAMERA_DISTANCE_MIN}
+                              max={CAMERA_DISTANCE_MAX}
+                              step="0.01"
+                              value={cameraSettings.maxDistance}
+                              onChange={(e) => setCameraMaxDistance(e.target.value)}
+                              className={styles.escRangeInput}
+                              aria-label="镜头最大距离"
+                            />
+                          </div>
+                        </div>
                         <div className={styles.escSectionTitle}><span>界面设置</span></div>
                         <div className={styles.escSettingsGrid}>
                           <div className={styles.escSettingControl}>

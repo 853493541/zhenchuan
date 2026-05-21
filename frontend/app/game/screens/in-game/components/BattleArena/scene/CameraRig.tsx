@@ -4,7 +4,7 @@ import { useRef, type MutableRefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { MapCollisionSystem } from './MapCollisionSystem';
-import { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF } from './ExportedMapScene';
+import { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF_XZ, RENDER_SF_Y } from './ExportedMapScene';
 
 interface CameraRigProps {
   localRenderPosRef: MutableRefObject<{ x: number; y: number; z: number }>;
@@ -175,17 +175,17 @@ const _probeAllowedDistances: number[] = [];
 
 function sceneToExport(scenePos: THREE.Vector3, out: THREE.Vector3) {
   out.set(
-    (scenePos.x - GROUP_POS_X) / RENDER_SF,
-    (scenePos.y - GROUP_POS_Y) / RENDER_SF,
-    (scenePos.z - GROUP_POS_Z) / RENDER_SF,
+    (scenePos.x - GROUP_POS_X) / RENDER_SF_XZ,
+    (scenePos.y - GROUP_POS_Y) / RENDER_SF_Y,
+    (scenePos.z - GROUP_POS_Z) / RENDER_SF_XZ,
   );
 }
 
 function exportToScene(exportPos: THREE.Vector3, out: THREE.Vector3) {
   out.set(
-    exportPos.x * RENDER_SF + GROUP_POS_X,
-    exportPos.y * RENDER_SF + GROUP_POS_Y,
-    exportPos.z * RENDER_SF + GROUP_POS_Z,
+    exportPos.x * RENDER_SF_XZ + GROUP_POS_X,
+    exportPos.y * RENDER_SF_Y + GROUP_POS_Y,
+    exportPos.z * RENDER_SF_XZ + GROUP_POS_Z,
   );
 }
 
@@ -295,7 +295,7 @@ export default function CameraRig({
 
       const desiredDistance = _cameraDirExport.length();
       if (desiredDistance > 1e-4) {
-        const minDistance = CAMERA_MIN_DISTANCE / RENDER_SF;
+        const minDistance = CAMERA_MIN_DISTANCE / RENDER_SF_XZ;
         _centerDirExport.copy(_cameraDirExport).multiplyScalar(1 / desiredDistance);
         let wallClampedDistance = desiredDistance;
 
@@ -322,8 +322,8 @@ export default function CameraRig({
               ? sample.y * CAMERA_WALL_SUPPORT_UP
               : sample.y * CAMERA_WALL_SUPPORT_DOWN;
             _probeTargetExport.copy(_desiredCameraExport)
-              .addScaledVector(_cameraRightExport, offsetX / RENDER_SF)
-              .addScaledVector(_cameraUpExport, offsetY / RENDER_SF);
+              .addScaledVector(_cameraRightExport, offsetX / RENDER_SF_XZ)
+              .addScaledVector(_cameraUpExport, offsetY / RENDER_SF_Y);
 
             _probeDirExport.subVectors(_probeTargetExport, _pivotExport);
             const supportDistance = _probeDirExport.length();
@@ -341,11 +341,11 @@ export default function CameraRig({
 
             const allowedDistance = Math.max(
               minDistance,
-              (supportHitDistance - CAMERA_WALL_PADDING / RENDER_SF) * (desiredDistance / supportDistance),
+              (supportHitDistance - CAMERA_WALL_PADDING / RENDER_SF_XZ) * (desiredDistance / supportDistance),
             );
             _wallAllowedDistances.push(allowedDistance);
 
-            const allowedDistanceScene = allowedDistance * RENDER_SF;
+            const allowedDistanceScene = allowedDistance * RENDER_SF_XZ;
             wallHitCount += 1;
             wallHitMask = wallHitMask ? `${wallHitMask},${sample.label}` : sample.label;
             wallMinDistanceScene = wallMinDistanceScene === null ? allowedDistanceScene : Math.min(wallMinDistanceScene, allowedDistanceScene);
@@ -382,7 +382,7 @@ export default function CameraRig({
           if (wallHasBroadHorizontalCoverage && _wallAllowedDistances.length >= wallMinReliableHits) {
             _wallAllowedDistances.sort((a, b) => a - b);
             const reliableWallDistance = _wallAllowedDistances[Math.min(wallReliableHitIndex, _wallAllowedDistances.length - 1)];
-            if (desiredDistance - reliableWallDistance > CAMERA_WALL_MIN_REDUCTION / RENDER_SF) {
+            if (desiredDistance - reliableWallDistance > CAMERA_WALL_MIN_REDUCTION / RENDER_SF_XZ) {
               wallClampedDistance = reliableWallDistance;
             }
           }
@@ -391,8 +391,8 @@ export default function CameraRig({
 
           for (const sample of probeSamples) {
             _probeTargetExport.copy(_desiredCameraExport)
-              .addScaledVector(_cameraRightExport, (sample.x * CAMERA_PROBE_SIDE) / RENDER_SF)
-              .addScaledVector(_cameraUpExport, ((sample.y > 0 ? CAMERA_PROBE_UP : CAMERA_PROBE_DOWN) * sample.y) / RENDER_SF);
+              .addScaledVector(_cameraRightExport, (sample.x * CAMERA_PROBE_SIDE) / RENDER_SF_XZ)
+              .addScaledVector(_cameraUpExport, ((sample.y > 0 ? CAMERA_PROBE_UP : CAMERA_PROBE_DOWN) * sample.y) / RENDER_SF_Y);
 
             _probeDirExport.subVectors(_probeTargetExport, _pivotExport);
             const probeDistance = _probeDirExport.length();
@@ -410,11 +410,11 @@ export default function CameraRig({
 
             const allowedDistance = Math.max(
               minDistance,
-              (probeHitDistance - CAMERA_WALL_PADDING / RENDER_SF) * (desiredDistance / probeDistance),
+              (probeHitDistance - CAMERA_WALL_PADDING / RENDER_SF_XZ) * (desiredDistance / probeDistance),
             );
             _probeAllowedDistances.push(allowedDistance);
 
-            const allowedDistanceScene = allowedDistance * RENDER_SF;
+            const allowedDistanceScene = allowedDistance * RENDER_SF_XZ;
             probeHitCount += 1;
             probeHitMask = probeHitMask ? `${probeHitMask},${sample.label}` : sample.label;
             probeMinDistanceScene = probeMinDistanceScene === null ? allowedDistanceScene : Math.min(probeMinDistanceScene, allowedDistanceScene);
@@ -424,13 +424,13 @@ export default function CameraRig({
           if (_probeAllowedDistances.length >= probeMinReliableHits) {
             _probeAllowedDistances.sort((a, b) => a - b);
             const reliableProbeDistance = _probeAllowedDistances[Math.min(probeReliableHitIndex, _probeAllowedDistances.length - 1)];
-            if (wallClampedDistance - reliableProbeDistance > CAMERA_PROBE_MIN_REDUCTION / RENDER_SF) {
-              rawReliableProbeDistanceScene = reliableProbeDistance * RENDER_SF;
+            if (wallClampedDistance - reliableProbeDistance > CAMERA_PROBE_MIN_REDUCTION / RENDER_SF_XZ) {
+              rawReliableProbeDistanceScene = reliableProbeDistance * RENDER_SF_XZ;
             }
           }
         }
 
-        rawWallClampDistanceScene = wallClampedDistance * RENDER_SF;
+        rawWallClampDistanceScene = wallClampedDistance * RENDER_SF_XZ;
         const rawWallClampActive = rawWallClampDistanceScene + CAMERA_STATE_EPSILON < desiredDistanceScene;
         if (rawWallClampActive) {
           lastWallClampHitAtRef.current = nowMs;
@@ -470,7 +470,7 @@ export default function CameraRig({
         }
 
         centerClampDistanceScene = retainedWallClampDistanceSceneRef.current ?? rawWallClampDistanceScene;
-        let clampedDistance = centerClampDistanceScene / RENDER_SF;
+        let clampedDistance = centerClampDistanceScene / RENDER_SF_XZ;
 
         actualClampDistanceScene = centerClampDistanceScene;
         targetWallClampActive = centerClampDistanceScene + CAMERA_STATE_EPSILON < desiredDistanceScene;
@@ -514,15 +514,15 @@ export default function CameraRig({
 
           if (retainedProbeDistanceSceneRef.current !== null) {
             actualClampDistanceScene = Math.min(centerClampDistanceScene, retainedProbeDistanceSceneRef.current);
-            clampedDistance = actualClampDistanceScene / RENDER_SF;
+            clampedDistance = actualClampDistanceScene / RENDER_SF_XZ;
           }
         } else {
           retainedProbeDistanceSceneRef.current = null;
         }
 
-        actualClampDistanceScene = clampedDistance * RENDER_SF;
+        actualClampDistanceScene = clampedDistance * RENDER_SF_XZ;
 
-        if (clampedDistance + CAMERA_STATE_EPSILON / RENDER_SF < desiredDistance) {
+        if (clampedDistance + CAMERA_STATE_EPSILON / RENDER_SF_XZ < desiredDistance) {
           _desiredCameraExport.copy(_pivotExport).addScaledVector(_centerDirExport, clampedDistance);
           exportToScene(_desiredCameraExport, _desiredCamera);
         }
@@ -531,10 +531,10 @@ export default function CameraRig({
       sceneToExport(_desiredCamera, _desiredCameraExport);
       const groundY = collisionSystemRef.current.getSupportGroundY(
         _desiredCameraExport,
-        _desiredCameraExport.y + CAMERA_GROUND_PROBE_RISE / RENDER_SF,
+        _desiredCameraExport.y + CAMERA_GROUND_PROBE_RISE / RENDER_SF_Y,
       );
       if (groundY !== null) {
-        const minCameraY = groundY * RENDER_SF + GROUP_POS_Y + CAMERA_GROUND_CLEARANCE;
+        const minCameraY = groundY * RENDER_SF_Y + GROUP_POS_Y + CAMERA_GROUND_CLEARANCE;
         const roofLikeGroundWhileBlocked =
           (targetWallClampActive || probeClampActive) &&
           minCameraY > py + CAMERA_GROUND_CLAMP_MAX_ABOVE_PLAYER;

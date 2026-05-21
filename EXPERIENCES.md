@@ -3,6 +3,79 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Jump branch verification and Jiu Xiao cast sound (2026-05-21)
+
+**Problem set**:
+1. After changing normal directional jump distance to match walking progress, all special jump branches needed a quick regression check.
+2. 九霄风雷 had an on-cast/channel-start sound that needed to be removed without deleting its manifest asset or affecting other abilities.
+
+**Fix / verification**:
+- Ran backend `applyMovement` checks for normal first jump, normal double jump, backpedal double jump, JUMP_BOOST power jump, power-air double jump, MULTI_JUMP, MULTI_JUMP + JUMP_BOOST, TI_YUN_ZONG_JUMP, upward delayed drift, and Ling Ran directional/upward special jumps.
+- Verified normal and speed-buffed cases still scale correctly, and special fixed-budget jumps still resolve to their expected existing distances.
+- Suppressed only `jiu_xiao_feng_lei` at the ability sound registry `channelStart` phase, leaving any later channel-complete behavior untouched.
+
+**Lessons**:
+- Movement formula changes should be checked through `applyMovement` itself, not only with standalone arithmetic, so buff effects and branch gates are exercised.
+- Channel abilities use the `channelStart` phase as their on-cast sound in the frontend registry.
+
+## Camera distance display remap and jump parity research (2026-05-21)
+
+**Problem set**:
+1. The camera view that visually matched the reference game was the real 20-unit camera distance, but the in-game reference labels that as 24.
+2. The ESC camera setting needed to show and cap at `24.00` without changing the actual camera view angle/distance.
+3. Repeated normal forward jumps felt slower than walking forward, even though normal walking speed itself is correct.
+
+**Fix / finding**:
+- Remapped camera setting display so `24.00` maps to the same real camera distance as the previous 20-unit view, leaving `CameraRig`'s real `CAM_DIST_BACK = 20` unchanged.
+- Capped the camera setting at `24.00` and versioned the stored camera preference so the old 22/30 defaults migrate to the new reference scale.
+- Researched jump math: normal directional jump was traveling a fixed 6 units over about 51 ticks, while walking for the same ticks travels about 8.5 units at 30Hz.
+
+**Jump fix**:
+- Keep walking speed, jump height, gravity, and airtime unchanged.
+- For normal forward directional jumps only, replaced the fixed 6-unit horizontal budget with `jumpStartPlanarSpeed * estimatedAirborneTicks` on backend and mirrored it in frontend prediction.
+- Verified the same formula at normal and double movement speed: 2x movement speed produces 2x jump-forward travel over the same airtime, matching 2x walking.
+- Left special jump budgets (power jump, multi-jump, backpedal, Ling Ran special jump) separate unless they are intentionally recalibrated later.
+
+**Lessons**:
+- Camera setting labels can be remapped independently from physical camera distance when matching another game's UI scale.
+- A fixed jump horizontal distance becomes slower than walking whenever airtime exceeds `distance / walkSpeed`; at 5 units/sec, 6 units only equals 36 ticks, not a full normal jump arc.
+- Backend movement and BattleArena prediction must be changed together for jump horizontal parity, or the client will predict a different landing point from the server.
+
+## ESC camera settings for game matching (2026-05-21)
+
+**Problem set**:
+1. Camera tuning lived behind mouse-wheel zoom and a test-only overrange toggle, so there was no normal ESC game setting matching the reference camera panel.
+2. The default camera distance was still based on the old `0.7` zoom multiplier, giving a much shorter starting camera than the requested 22-unit reference.
+3. Follow-mode options are not implemented in the battle camera, but the UI needed to show the same three camera-type slots with only `从不追随` selectable.
+
+**Fix**:
+- Added ESC → 游戏设置 → 综合 → 镜头设置 with locked camera type options and a `镜头最大距离` range control.
+- Persisted camera settings in localStorage with default distance `22.00`, max `30.00`, and live camera update when the slider changes.
+- Removed the old test-only overrange camera toggle so max camera distance has one visible source of truth.
+- Confirmed the deployed live chunk contains the new settings UI and values; full ESC visual verification needs an active authenticated battle canvas.
+
+**Lessons**:
+- Settings that tune live camera feel should update both the persistent preference and the ref read by the render loop immediately.
+- If follow modes are not implemented, disabled placeholders are safer than exposing inactive choices.
+- A deployed static chunk marker check can confirm live bundle rollout when a full authenticated match cannot be opened from the current browser session.
+
+## Horizontal-only exported map footprint scale (2026-05-21)
+
+**Problem set**:
+1. Building footprint measurements in collision-test mode were too small horizontally: examples were about 18.4 vs expected 20.9 and 22.8 vs expected 25.4.
+2. Vertical height already matched, so increasing the uniform exported-map scale would have broken height calibration.
+3. Frontend prediction, backend authoritative BVH collision, LOS, camera collision, map bounds, spawns, and fallback AABBs all depended on the old uniform scale.
+
+**Fix**:
+- Added a `1.125` horizontal footprint multiplier and split exported-map scale into X/Z and Y components.
+- Kept Y/height conversion unchanged while scaling X/Z render transforms, group X/Z offsets, collision radius, LOS, camera conversion, frontend prediction, backend movement collision, map bounds, spawns, and fallback object footprints.
+- Verified backend and frontend builds, restarted only PM2 `frontend` and `backend`, and confirmed the live in-game bundle contains the new horizontal scale marker. Full live battle canvas verification was blocked because the created room waited for a second player.
+
+**Lessons**:
+- When height is correct but footprint is short, split horizontal and vertical calibration instead of changing the global map scale.
+- Scaling exported map X/Z from the same origin as map bounds keeps visual world coordinates, server collision, spawns, and ruler distances aligned.
+- Every exported-map conversion must be mirrored across backend and frontend; updating only the visual mesh would make range tools look different from collision and prediction.
+
 ## BattleArena camera centering at upward pitch (2026-05-21)
 
 **Problem set**:

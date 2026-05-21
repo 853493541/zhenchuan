@@ -231,6 +231,10 @@ export function getAbilitySoundCue(
   const phase = getSoundPhase(event, ability);
   if (!phase) return null;
 
+  if (matchesAbility(ability, event, ['jiu_xiao_feng_lei'], ['九霄风雷']) && phase === 'channelStart') {
+    return null;
+  }
+
   if (matchesAbility(ability, event, ['dun_li'], ['盾立']) && phase === 'counter') {
     return urls[1] ? { url: urls[1], phase: 'counter' } : null;
   }

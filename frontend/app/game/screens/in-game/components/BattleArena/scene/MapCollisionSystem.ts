@@ -7,7 +7,7 @@
  *   - getSupportGroundY(center) — downward raycast + terrain heightmap
  *
  * Callers must convert between game coordinates and export coordinates using
- * the RENDER_SF / GROUP_POS constants exported from ExportedMapScene.
+ * the RENDER_SF_XZ / RENDER_SF_Y / GROUP_POS constants exported from ExportedMapScene.
  */
 
 import * as THREE from 'three';

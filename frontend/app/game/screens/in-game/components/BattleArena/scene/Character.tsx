@@ -5,7 +5,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { EXPORTED_MAP_DATA_PATH, RENDER_SF } from './ExportedMapScene';
+import { EXPORTED_MAP_DATA_PATH, RENDER_SF_XZ, RENDER_SF_Y } from './ExportedMapScene';
 
 const CHAR_RADIUS = 0.42;
 const CHAR_HEIGHT = 1.5;
@@ -187,8 +187,8 @@ function cloneDisguiseCartModel(prototype: THREE.Group): THREE.Group {
   const model = prototype.clone(true);
   const box = new THREE.Box3().setFromObject(model);
   const center = box.getCenter(new THREE.Vector3());
-  model.scale.setScalar(RENDER_SF);
-  model.position.set(-center.x * RENDER_SF, -box.min.y * RENDER_SF, -center.z * RENDER_SF);
+  model.scale.set(RENDER_SF_XZ, RENDER_SF_Y, RENDER_SF_XZ);
+  model.position.set(-center.x * RENDER_SF_XZ, -box.min.y * RENDER_SF_Y, -center.z * RENDER_SF_XZ);
   model.traverse((child: any) => {
     if (!child?.isMesh) return;
     child.castShadow = true;
