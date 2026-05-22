@@ -1363,6 +1363,79 @@
   align-items: start;
 }
 
+.escHotkeyGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 7px 18px;
+  margin-bottom: 17px;
+}
+
+.escHotkeyRow {
+  min-width: 0;
+  min-height: 31px;
+  display: grid;
+  grid-template-columns: minmax(68px, 1fr) minmax(82px, 104px) 45px;
+  align-items: center;
+  gap: 7px;
+}
+
+.escHotkeyLabel {
+  min-width: 0;
+  color: #edf2ef;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.escHotkeyButton,
+.escHotkeyClearButton {
+  min-width: 0;
+  height: 25px;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.escHotkeyButton {
+  padding: 0 7px;
+  border: 1px solid rgba(111, 193, 179, 0.44);
+  background: rgba(23, 46, 51, 0.82);
+  color: #efff5f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.escHotkeyButton:hover,
+.escHotkeyButtonCapturing {
+  border-color: rgba(239, 255, 95, 0.72);
+  background: rgba(49, 113, 105, 0.9);
+}
+
+.escHotkeyClearButton {
+  padding: 0 6px;
+  border: 1px solid rgba(111, 193, 179, 0.24);
+  background: rgba(28, 43, 49, 0.66);
+  color: #d7e0ea;
+}
+
+.escHotkeyClearButton:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.escHotkeyActions {
+  display: flex;
+  justify-content: flex-end;
+  margin: -4px 0 17px;
+}
+
 .escCameraSettingsGrid {
   margin-bottom: 18px;
 }
@@ -2280,6 +2353,7 @@
   }
 
   .escSettingsGrid,
+  .escHotkeyGrid,
   .escTestGrid,
   .escLightingToggleGrid {
     grid-template-columns: 1fr;
@@ -3195,8 +3269,25 @@
   }
 
   .abilityBtn {
-    width: calc(30px * var(--ability-panel-scale, 1));
-    height: calc(30px * var(--ability-panel-scale, 1));
+    width: calc(34px * var(--ability-panel-scale, 1));
+    height: calc(34px * var(--ability-panel-scale, 1));
+  }
+
+  .itemBar {
+    --item-slot-size: calc(34px * var(--ability-panel-scale, 1));
+  }
+
+  .abilityKey {
+    font-size: max(10px, calc(10px * var(--ability-panel-scale, 1)));
+  }
+
+  .cdNum,
+  .consumableCooldown {
+    font-size: max(10px, calc(10px * var(--ability-panel-scale, 1)));
+  }
+
+  .consumableCount {
+    font-size: max(9px, calc(9px * var(--ability-panel-scale, 1)));
   }
 
   .wasdWrap,

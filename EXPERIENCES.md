@@ -3,6 +3,53 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Ability grayout combat warnings (2026-05-22)
+
+**Implemented**:
+- Centralized BattleArena hotbar grayout reasons so disabled draft/common/special ability buttons keep a concrete `disabledWarning` string.
+- Routed disabled hotbar clicks and hotkeys through the existing 战斗警告 overlay instead of silently doing nothing for cooldown, GCD, channeling, power locks, control states, targeting, range, facing, and line-of-sight failures.
+
+**Lesson**:
+- Ability readiness and disabled-click feedback must share the same predicate path. If `isReady` only returns a boolean, the UI can gray an icon without knowing what message to show when the player tries to use it.
+
+## Common qinggong stale displacement grayout (2026-05-22)
+
+**Finding / fix**:
+- Common directional qinggong applies a short Dash Runtime buff with `DISPLACEMENT`; if the frontend state still contains that buff after its `expiresAt`, BattleArena's grayout predicates treated it as active and could lock most/all abilities with qinggong/displacement warnings.
+- Added a shared active-buff filter for BattleArena client predicates so expired player buffs are ignored locally even before the next `/players/*/buffs` patch removes them from React state.
+
+**Lesson**:
+- Frontend gameplay gates must not treat a buff array entry as active solely because it is still present in client state. Always apply the `expiresAt` guard locally for lock, control, targeting, range, and visibility predicates; compact state diffs can arrive after wall-clock expiry.
+
+## Resource pack predownload and cache service (2026-05-22)
+
+**Implemented**:
+- Added a standalone `/resource-pack` page reachable from the lobby so players can warm local browser cache before entering a game.
+- Added `/resource-pack/manifest` outside `/api` because this project's Next `/api/*` paths are proxied to the backend before frontend route handlers.
+- Added a Cache Storage + service worker resource pack for normal game URLs: icons, fonts, game audio/assets, exported map files, and Next static chunks.
+- Moved lobby actions to `开始` → `下载资源包` → `校验`, with query actions that open the resource-pack flow directly.
+- Changed the lobby `下载资源包` / `校验` actions to open an embedded same-origin modal instead of navigating away from the lobby; the resource-pack route uses its own page chrome and hides the global top bar.
+- Added a download/check modal with file progress, cache completeness, live download speed, estimated remaining time, and last verification timestamp.
+- Added exported-map asset discovery so GLBs, textures, terrain textures, heightmaps, and collision sidecars are included without manual upload.
+- Made service-worker registration best-effort with a timeout and populated the manifest list before registration, preventing the page from staying at `0 / 0` if a browser's service-worker registration stalls.
+- Switched the resource-pack manifest to include the real `/full-exports/...` game URLs with file sizes instead of adding zero-sized map URLs client-side.
+
+**Lesson**:
+- A zip file alone cannot make existing `<img>`, audio, GLB loaders, and `fetch()` calls read local resources. Browser predownload should use Cache Storage and a service worker so the original URLs resolve from local cache during play.
+- Do not block the resource-pack UI on service-worker readiness; load and show the manifest first, then report cache-service availability separately.
+- `校验` should be an actual Cache Storage scan against the current manifest. If every URL is present, set a completion/verification marker and show `已完成`; otherwise clear the ready marker so stale or partial packs are not trusted.
+- Zip delivery can reduce request count and compress large JSON, but it is not directly usable by the game. A zip option must download once, stream-unzip client-side, and write each original URL into Cache Storage; otherwise normal icon/audio/GLB/map fetches cannot read it.
+- Live cold-vs-pack test showed the pack works at the transport layer: cold game load fetched about 101 MB of icon/map/GLB resources from network with map asset responseEnd around 5s; after resource-pack download, game load used Cache Storage for icons/map/GLBs with about 37 KB transfer and map asset responseEnd around 1s. If `场景加载中` remains afterward, investigate map parse/render readiness separately from resource download.
+
+## Ability and item bar minimum readable size (2026-05-22)
+
+**Implemented**:
+- Raised the minimum stored `技能栏大小` from 0.5 to 0.85 and updated the ESC slider minimum so old tiny saved values normalize upward.
+- Increased small-screen ability/item slot base size from 30px to 34px and enforced readable minimum hotkey/cooldown/count text sizes.
+
+**Lesson**:
+- Combining a very low saved UI scale with mobile CSS reductions can make ability and item bars unusably small on some screens. Clamp the setting to a playable minimum and test with old stored values like `0.5`, not only the default scale.
+
 ## Network diagnostics flight recorder for China-to-US testing (2026-05-22)
 
 **Implemented**:

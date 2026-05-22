@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
 import styles from "./page.module.css";
 
 type StartMode = 'collision-test' | 'pubg' | 'arena' | 'export-viewer';
@@ -22,6 +23,7 @@ export default function HomePage() {
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [selectedStartMode, setSelectedStartMode] = useState<StartMode>('collision-test');
+  const [resourcePackOverlay, setResourcePackOverlay] = useState<{ action: "download" | "check"; nonce: number } | null>(null);
   const previousGameIds = useRef<Set<string>>(new Set());
   const hasAutoJoined = useRef(false);
   // Keep me in a ref so the polling closure always sees the latest value
@@ -141,6 +143,10 @@ export default function HomePage() {
     router.push("/network-diagnostics");
   };
 
+  const openResourcePack = (action: "download" | "check") => {
+    setResourcePackOverlay({ action, nonce: Date.now() });
+  };
+
   const startSelectedMode = () => {
     if (selectedStartMode === 'export-viewer') {
       openExportViewer();
@@ -176,6 +182,18 @@ export default function HomePage() {
             {loading ? "创建中…" : "开始"}
           </button>
           <button
+            className={`${styles.createBtn} ${styles.createBtnResourcePack}`}
+            onClick={() => openResourcePack("download")}
+          >
+            下载资源包
+          </button>
+          <button
+            className={`${styles.createBtn} ${styles.createBtnResourceCheck}`}
+            onClick={() => openResourcePack("check")}
+          >
+            校验
+          </button>
+          <button
             className={`${styles.createBtn} ${styles.createBtnAbilityEditor}`}
             onClick={openAbilityEditor}
           >
@@ -204,6 +222,27 @@ export default function HomePage() {
           </button>
         </div>
       </div>
+
+      {resourcePackOverlay && (
+        <div className={styles.resourcePackOverlay} role="presentation">
+          <section className={styles.resourcePackPanel} role="dialog" aria-modal="true" aria-label={resourcePackOverlay.action === "download" ? "下载资源包" : "校验资源包"}>
+            <button
+              type="button"
+              className={styles.resourcePackClose}
+              onClick={() => setResourcePackOverlay(null)}
+              aria-label="关闭资源包窗口"
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+            <iframe
+              key={`${resourcePackOverlay.action}-${resourcePackOverlay.nonce}`}
+              className={styles.resourcePackFrame}
+              title={resourcePackOverlay.action === "download" ? "下载资源包" : "校验资源包"}
+              src={`/resource-pack?action=${resourcePackOverlay.action}&embed=1&from=lobby&v=${resourcePackOverlay.nonce}`}
+            />
+          </section>
+        </div>
+      )}
 
       <div className={styles.list}>
         {waitingGames.length === 0 && (

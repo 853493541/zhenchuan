@@ -22,6 +22,10 @@ type NetworkSessionSummary = {
   updatedAt: number | null;
   firstSeenAt: number | null;
   lastSeenAt: number | null;
+  connectedClientCount: number;
+  connectedPlayerIds: string[];
+  recordingActive: boolean;
+  recordingStoppedReason: string | null;
   starred: boolean;
   sampleCount: number;
   payloadBytes: number;
@@ -133,6 +137,9 @@ const DETAIL_LABELS: Record<string, string> = {
   jump: "跳跃",
   operation: "操作",
   type: "类型",
+  reason: "原因",
+  stateVersion: "版本",
+  disconnectedPlayers: "断线玩家",
 };
 
 function shortId(gameId: string) {
@@ -181,6 +188,14 @@ function formatDetailValue(key: string, value: unknown) {
 
 function playerName(summary: NetworkSessionSummary | null | undefined, userId: string, fallback?: string | null) {
   return fallback || summary?.playerNames?.[userId] || `玩家 ${userId.slice(-4)}`;
+}
+
+function sessionStatusText(session: NetworkSessionSummary) {
+  if (session.gameOver) return "已结束";
+  if (session.recordingStoppedReason === "all-players-disconnected") return "无人连接";
+  if (session.recordingActive) return "记录中";
+  if (session.started) return "战斗中";
+  return "未开始";
 }
 
 function toneForMs(value: number | null | undefined, warn: number, bad: number) {
@@ -587,6 +602,7 @@ export default function NetworkDiagnosticsPage() {
                 <span className={styles.sessionMetrics}>
                   <span data-tone={rttTone}>P95 {formatMs(session.rtt.p95)}</span>
                   <span>{formatCount(session.sampleCount)} 样本</span>
+                  <span>{sessionStatusText(session)}</span>
                   <span data-tone={toneForRate(issueRate, 0.05, 0.12)}>{formatPercent(issueRate)} 异常</span>
                 </span>
                 <span className={styles.sessionTime}>{formatTime(session.lastSeenAt ?? session.updatedAt)}</span>
@@ -605,7 +621,8 @@ export default function NetworkDiagnosticsPage() {
                   <h2>{MODE_LABELS[selectedSummary.mode ?? ""] ?? selectedSummary.mode ?? "网络记录"}</h2>
                   <div className={styles.reportSubline}>
                     <span>{formatTime(selectedSummary.firstSeenAt ?? selectedSummary.createdAt)}</span>
-                    <span>{selectedSummary.gameOver ? "已结束" : selectedSummary.started ? "战斗中" : "未开始"}</span>
+                    <span>{sessionStatusText(selectedSummary)}</span>
+                    <span>{selectedSummary.connectedPlayerIds.length} / {selectedSummary.playerIds.length} 在线</span>
                     <span>{formatBytes(selectedSummary.payloadBytes)}</span>
                   </div>
                 </div>

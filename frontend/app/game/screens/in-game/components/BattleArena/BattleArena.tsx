@@ -420,6 +420,7 @@ const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
 const ABILITY_SOUND_SETTINGS_STORAGE_KEY = 'zhenchuan-ability-sound-settings-v1';
 const CAMERA_SETTINGS_STORAGE_KEY = 'zhenchuan-camera-settings-v1';
 const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
+const ABILITY_PANEL_MIN_SCALE = 0.85;
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
 const IN_GAME_WARNING_SCALE_STORAGE_KEY = 'zhenchuan-ingame-warning-scale-v1';
@@ -638,7 +639,7 @@ function getBackpedalDoubleJumpDistance(mode?: string): number {
 function normalizeAbilityPanelScale(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return 1;
-  return Math.round(Math.max(0.5, Math.min(2, numeric)) * 100) / 100;
+  return Math.round(Math.max(ABILITY_PANEL_MIN_SCALE, Math.min(2, numeric)) * 100) / 100;
 }
 
 function normalizeInGameWarningScale(value: unknown): number {
@@ -695,11 +696,11 @@ function getAbilityPanelCssScale(value: number): number {
 }
 
 function hasLegacyChannelJumpLock(buffs?: ActiveBuff[]): boolean {
-  return Array.isArray(buffs) && buffs.some((buff) => LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS.has(buff.buffId));
+  return activeBuffsClient(buffs).some((buff) => LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS.has(buff.buffId));
 }
 
 function hasLingRanTianFengStateClient(buffs?: ActiveBuff[]): boolean {
-  return Array.isArray(buffs) && buffs.some((buff: any) =>
+  return activeBuffsClient(buffs).some((buff: any) =>
     (buff.effects ?? []).some((effect: any) => effect?.type === 'LING_RAN_TIAN_FENG_STATE')
   );
 }
@@ -710,7 +711,7 @@ function isLingRanSpecialJumpActiveClient(player?: any): boolean {
 }
 
 function hasLingRanSpecialJumpRefillBuffClient(buffs?: ActiveBuff[]): boolean {
-  return Array.isArray(buffs) && buffs.some((buff) => buff.buffId === 1014 || buff.buffId === 2712);
+  return activeBuffsClient(buffs).some((buff) => buff.buffId === 1014 || buff.buffId === 2712);
 }
 
 function getRuntimeAbilityChannel(ability: any): RuntimeAbilityChannel | null {
@@ -1170,7 +1171,7 @@ const CHU_HE_HAN_JIE_COLLIDER_HEIGHT = 1.5;
 const CHU_HE_HAN_JIE_WALL_KIND = 'chu_he_han_jie_wall';
 
 function getAbilityRangeBonusClient(buffs?: ActiveBuff[]): number {
-  return (buffs ?? []).reduce((sum, buff) => {
+  return activeBuffsClient(buffs).reduce((sum, buff) => {
     const bonus = (buff.effects ?? []).reduce((effectSum, effect) => {
       if (effect.type !== 'RANGE_BOOST') return effectSum;
       return effectSum + Math.max(0, Number((effect as any).value ?? 0));
@@ -1403,9 +1404,20 @@ function buffNameIncludes(buff: ActiveBuff | any, token: string): boolean {
   return typeof buff?.name === 'string' && buff.name.includes(token);
 }
 
+function isActiveBuffClient(buff: ActiveBuff | any, now = Date.now()): boolean {
+  const expiresAt = Number(buff?.expiresAt ?? 0);
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) return true;
+  return expiresAt > now;
+}
+
+function activeBuffsClient(buffs?: ActiveBuff[]): ActiveBuff[] {
+  if (!Array.isArray(buffs) || buffs.length === 0) return [];
+  const now = Date.now();
+  return buffs.filter((buff) => isActiveBuffClient(buff, now));
+}
+
 function hasStealthClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     buffHasEffect(b, 'STEALTH') ||
     STEALTH_BUFF_IDS.has(b.buffId) ||
     buffNameIncludes(b, '隐身') ||
@@ -1414,8 +1426,7 @@ function hasStealthClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasDisguiseClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     DISGUISE_BUFF_IDS.has(b.buffId) ||
     buffHasEffect(b, 'DISGUISE') ||
     buffNameIncludes(b, '伪装')
@@ -1423,8 +1434,7 @@ function hasDisguiseClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasAntiStealthClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     buffHasEffect(b, 'ANTI_STEALTH') ||
     buffNameIncludes(b, '反隐')
   );
@@ -1447,13 +1457,11 @@ function abilityUsesStealthClient(ability?: any): boolean {
 }
 
 function hasSanliuXiaClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => SANLIU_XIA_BUFF_IDS.has(b.buffId) || buffNameIncludes(b, '散流霞'));
+  return activeBuffsClient(buffs).some((b: any) => SANLIU_XIA_BUFF_IDS.has(b.buffId) || buffNameIncludes(b, '散流霞'));
 }
 
 function hasHongMengTianJinClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     HONG_MENG_TIAN_JIN_BUFF_IDS.has(b.buffId) ||
     buffHasEffect(b, 'HONG_MENG_TIAN_JIN') ||
     buffNameIncludes(b, '鸿蒙天禁')
@@ -1461,8 +1469,7 @@ function hasHongMengTianJinClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasShuSeClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     SHU_SE_BUFF_IDS.has(b.buffId) ||
     buffHasEffect(b, 'HONG_MENG_TIAN_JIN_IMMUNE') ||
     buffNameIncludes(b, '曙色')
@@ -1470,8 +1477,7 @@ function hasShuSeClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasMianLaClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'KNOCKBACK_IMMUNE'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'KNOCKBACK_IMMUNE'));
 }
 
 function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
@@ -1479,8 +1485,7 @@ function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
 }
 
 function blocksTargetingClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     buffHasEffect(b, 'STEALTH') ||
     buffHasEffect(b, 'DISGUISE') ||
     buffHasEffect(b, 'UNTARGETABLE') ||
@@ -1494,8 +1499,7 @@ function blocksTargetingClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasQinggongSealClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     buffHasEffect(b, 'DISPLACEMENT') ||
     buffHasEffect(b, 'QINGGONG_SEAL') ||
     buffNameIncludes(b, '封轻功')
@@ -1503,28 +1507,23 @@ function hasQinggongSealClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasSilenceClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'SILENCE') || buffNameIncludes(b, '沉默'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'SILENCE') || buffNameIncludes(b, '沉默'));
 }
 
 function hasDisarmClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'DISARM') || buffNameIncludes(b, '缴械'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'DISARM') || buffNameIncludes(b, '缴械'));
 }
 
 function hasInnerPowerLockClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'INNER_POWER_LOCK') || buffNameIncludes(b, '封内'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'INNER_POWER_LOCK') || buffNameIncludes(b, '封内'));
 }
 
 function hasOuterPowerLockClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'OUTER_POWER_LOCK') || buffNameIncludes(b, '封外'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'OUTER_POWER_LOCK') || buffNameIncludes(b, '封外'));
 }
 
 function hasNonQinggongLockClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'NON_QINGGONG_LOCK') || buffNameIncludes(b, '轻功以外'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'NON_QINGGONG_LOCK') || buffNameIncludes(b, '轻功以外'));
 }
 
 function getAbilityDamageTypeClient(ability: any): '内功' | '外功' | undefined {
@@ -1548,24 +1547,19 @@ function getPowerLockWarningClient(ability: any, buffs?: ActiveBuff[]): string |
 }
 
 function hasYuqiStateClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  const now = Date.now();
-  return buffs.some((b: any) => b.buffId === 2741 && (b.expiresAt ?? 0) > now);
+  return activeBuffsClient(buffs).some((b: any) => b.buffId === 2741);
 }
 
 function hasDisplacementClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'DISPLACEMENT'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'DISPLACEMENT'));
 }
 
 function hasDashTurnOverrideClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'DASH_TURN_OVERRIDE'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'DASH_TURN_OVERRIDE'));
 }
 
 function buffsHaveAnyEffect(buffs: ActiveBuff[] | undefined, effectTypes: string[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => effectTypes.some((effectType) => buffHasEffect(b, effectType)));
+  return activeBuffsClient(buffs).some((b: any) => effectTypes.some((effectType) => buffHasEffect(b, effectType)));
 }
 
 function getSpecialAbilityBarIdsClient(buffs: ActiveBuff[] | undefined): string[] {
@@ -3169,6 +3163,10 @@ export default function BattleArena({
     showInGameWarning(externalGameWarning.text);
   }, [externalGameWarning?.id, externalGameWarning?.text, showInGameWarning]);
   const showAbilityDisabledWarning = useCallback((ability: AbilityInfo) => {
+    if (ability.disabledWarning) {
+      showInGameWarning(ability.disabledWarning);
+      return;
+    }
     if (ability.blockedByAntiStealth) {
       showInGameWarning('反隐期间无法施展隐身招式');
       return;
@@ -3177,9 +3175,7 @@ export default function BattleArena({
       showInGameWarning('视线被遮挡');
       return;
     }
-    if (ability.disabledWarning) {
-      showInGameWarning(ability.disabledWarning);
-    }
+    showInGameWarning(IN_GAME_WARNING_PREVIEW_TEXT);
   }, [showInGameWarning]);
   const clearCameraDebugEntries = useCallback(() => {
     cameraDebugIdRef.current = 0;
@@ -5556,12 +5552,21 @@ export default function BattleArena({
     const myPos = me.position ?? localPositionRef.current;
     const myFacing = me.facing ?? meFacingRef.current;
     const qinggongSealed = hasQinggongSealClient(me.buffs);
-    const disarmed = hasDisarmClient(me.buffs);
     const nonQinggongLocked = hasNonQinggongLockClient(me.buffs);
     const rootedByDebuff = buffsHaveAnyEffect(me.buffs, ['ROOT']);
+    const displaced = hasDisplacementClient(me.buffs);
+    const knockedBack = buffsHaveAnyEffect(me.buffs, ['KNOCKED_BACK']);
+    const pulled = buffsHaveAnyEffect(me.buffs, ['PULLED']);
+    const controlled = buffsHaveAnyEffect(me.buffs, ['CONTROL', 'ATTACK_LOCK']);
     const yuqiMounted = hasYuqiStateClient(me.buffs);
 
-    const isAbilityReady = (ab: any, instance: any): boolean => {
+    const abilityAllowsRuntimeBlockClient = (ab: any, flag: string): boolean => (
+      ab?.[flag] === true ||
+      (Array.isArray(ab?.effects) && ab.effects.some((effect: any) => effect?.[flag] === true))
+    );
+
+    const getAbilityDisabledWarning = (ab: any, instance: any): string | undefined => {
+      if (!ab) return '技能配置不存在';
       const targetContext = getAbilityTargetContext(ab);
       const targetForChecks = targetContext.targetForChecks;
       const targetPos = targetContext.targetPos;
@@ -5572,74 +5577,87 @@ export default function BattleArena({
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       if (maxCharges > 1) {
         const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
-        const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0), sharedGcdTicks);
-        if (chargeLockTicks > 0) return false;
-        if (chargeCount <= 0) return false;
-      } else if (Math.max(0, Number(instance?.cooldown ?? 0), sharedGcdTicks) > 0) {
-        return false;
+        const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0));
+        if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
+        if (chargeLockTicks > 0) return '这个能力正在冷却';
+        if (chargeCount <= 0) return '招式层数正在恢复';
+      } else {
+        const instanceCooldown = Math.max(0, Number(instance?.cooldown ?? 0));
+        if (instanceCooldown > 0) return '这个能力正在冷却';
+        if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
       }
+
       const airborneLockedLocal =
         jumpLocalRef.current ||
         jumpSendRef.current ||
         localJumpCountRef.current > 0 ||
         Math.abs(localVzRef.current) > 0.01;
-      if (ab?.requiresGrounded && airborneLockedLocal) return false;
-      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return false;
+      if (isQinggongLike && qinggongSealed) return '你被封轻功，无法施放轻功技能';
+      if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
+        return '凌然天风特殊跳跃中无法施展任驰骋';
+      }
+      if (me?.activeChannel) return '正在进行其他动作';
+      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '御骑状态下无法施展该招式';
+      const powerLockWarning = getPowerLockWarningClient(ab, me.buffs);
+      if (powerLockWarning) return powerLockWarning;
+      if (nonQinggongLocked && !isQinggongLike) return '你当前只能施展轻功招式';
+      if (displaced && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileDisplaced')) return '该招式无法在位移时施展';
+      if (knockedBack && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileKnockedBack')) return '你被击退，无法行动';
+      if (pulled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhilePulled')) return '你被拉拽，无法行动';
+      if (controlled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileControlled')) return '你被控制，无法行动';
+      if (ab?.cannotCastWhileRooted && rootedByDebuff) return '你被锁足，无法施展该招式';
+      if (ab?.requiresGrounded && airborneLockedLocal && !mountedYuqiToggle) return '该技能需要落地后施放';
       if (requiresStandingAtCastClient(ab) && !mountedYuqiToggle) {
-        if (isStandingCastBlocked(wasdKeys)) return false;
+        if (isStandingCastBlocked(wasdKeys)) return '该技能需要站立后施放';
       }
       if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
-        return false;
+        return `当前气血必须大于${ab.minSelfHpExclusive}才能施放`;
       }
       if (typeof ab?.minSelfHpPercentExclusive === 'number') {
         const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ab.minSelfHpPercentExclusive / 100);
-        if ((me?.hp ?? 0) <= requiredHp) return false;
+        if ((me?.hp ?? 0) <= requiredHp) return `当前气血必须大于${ab.minSelfHpPercentExclusive}%才能施放`;
       }
-      if (getPowerLockWarningClient(ab, me.buffs)) return false;
-      if (disarmed && ab?.noWeaponRequired !== true) return false;
-      if (nonQinggongLocked && !isQinggongLike) return false;
-      if (isQinggongLike && qinggongSealed) return false;
-      if (ab?.cannotCastWhileRooted && rootedByDebuff) return false;
-      if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) return false;
+
+      // Ground-target abilities stay available after caster-state checks.
+      if (ab?.target === 'OPPONENT' && !!ab?.allowGroundCastWithoutTarget) return undefined;
+
+      const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
+      if (needsSelectedTarget && selectedSelf && !targetContext.friendlyTarget && !ab?.canTargetSelf) {
+        return '该技能不能以自己为目标';
+      }
+      if (needsSelectedTarget && targetContext.friendlyTarget && !targetContext.hasSelectedTarget) return '请先选择友方目标';
+      if (needsSelectedTarget && !targetPos) return targetContext.friendlyTarget ? '请先选择友方目标' : '请先选择目标';
 
       // 拿云式: target HP must be < 30%
       if (ab?.id === 'na_yun_shi' || instance?.abilityId === 'na_yun_shi') {
         const tgtHp = (targetForChecks as any)?.hp ?? Infinity;
         const tgtMaxHp = Math.max(1, Number((targetForChecks as any)?.maxHp ?? 100));
-        if (tgtHp >= tgtMaxHp * 0.3) return false;
+        if (tgtHp >= tgtMaxHp * 0.3) return '目标气血过高，无法施放';
       }
       // 梯云纵 / 扶摇直上 mutual exclusion (mirrors backend gate)
       if (ab?.id === 'ti_yun_zong' || instance?.abilityId === 'ti_yun_zong') {
         const now = Date.now();
-        if ((me.buffs ?? []).some((b: any) => b.buffId === 9001 && b.expiresAt > now)) return false;
+        if ((me.buffs ?? []).some((b: any) => b.buffId === 9001 && b.expiresAt > now)) return '该招式被当前气劲阻止';
       }
       if (ab?.id === 'fuyao_zhishang' || instance?.abilityId === 'fuyao_zhishang') {
         const now = Date.now();
-        if ((me.buffs ?? []).some((b: any) => b.buffId === 9003 && b.expiresAt > now)) return false;
+        if ((me.buffs ?? []).some((b: any) => b.buffId === 9003 && b.expiresAt > now)) return '该招式被当前气劲阻止';
       }
-
-      // Ground-target abilities always ready regardless of target selection or range
-      if (ab?.target === 'OPPONENT' && !!ab?.allowGroundCastWithoutTarget) return true;
-
-      const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
-      if (needsSelectedTarget && targetContext.selfTarget && !targetContext.friendlyTarget && !ab?.canTargetSelf) return false;
-      if (needsSelectedTarget && targetContext.friendlyTarget && !targetContext.hasSelectedTarget) return false;
-      if (needsSelectedTarget && !targetPos) return false;
       if ((ab?.id === 'hong_meng_tian_jin' || instance?.abilityId === 'hong_meng_tian_jin') && hasShuSeClient((targetForChecks as any)?.buffs)) {
-        return false;
+        return '目标已受曙色影响';
       }
       if (ab?.id === 'dou_zhuan_xing_yi' || instance?.abilityId === 'dou_zhuan_xing_yi') {
-        if (targetContext.entityTarget) return false;
-        if (hasMianLaClient((targetForChecks as any)?.buffs)) return false;
+        if (targetContext.entityTarget) return '该技能只能对敌方玩家施放';
+        if (hasMianLaClient((targetForChecks as any)?.buffs)) return '目标处于免拉状态';
       }
       if (ab?.id === 'qin_yin_gong_ming' || instance?.abilityId === 'qin_yin_gong_ming') {
-        if (targetContext.entityTarget) return false;
+        if (targetContext.entityTarget) return '该技能只能对敌方玩家施放';
       }
       if (abilityIdForChecks === 'you_feng_piao_zong' && !targetContext.playerTarget) {
-        return false;
+        return '请先选择敌方目标';
       }
 
-      if (ab?.target !== 'OPPONENT') return true;
+      if (ab?.target !== 'OPPONENT') return undefined;
 
       const distanceToTarget = (myPos && targetPos)
         ? worldUnitsToNewUnits(Math.sqrt(
@@ -5649,24 +5667,27 @@ export default function BattleArena({
           ), mode)
         : Infinity;
       const effectiveRange = getEffectiveAbilityRangeClient(ab, me?.buffs);
-      const inMaxRange = !effectiveRange || distanceToTarget <= effectiveRange;
-      const inMinRange = !ab?.minRange || distanceToTarget >= ab.minRange;
-      if (!inMaxRange || !inMinRange) return false;
+      const inMaxRange = typeof effectiveRange !== 'number' || distanceToTarget <= effectiveRange;
+      const inMinRange = typeof ab?.minRange !== 'number' || distanceToTarget >= ab.minRange;
+      if (!inMaxRange) return '距离太远，无法释放该能力';
+      if (!inMinRange) return '距离太近，无法释放该能力';
 
       if (ab?.target === 'OPPONENT' && myPos && targetPos && !targetContext.selfTarget && !targetContext.friendlyTarget) {
         if (requiresFacingByDefault(ab) && myFacing) {
           const dx = targetPos.x - myPos.x;
           const dy = targetPos.y - myPos.y;
-          if (myFacing.x * dx + myFacing.y * dy < 0) return false;
+          if (myFacing.x * dx + myFacing.y * dy < 0) return '目标不在面朝方向内';
         }
           const myZ2 = (myPos as any)?.z ?? localZRef.current ?? 0;
           const tgtZ2 = (targetPos as any)?.z ?? 0;
           if (isClientLineBlocked(myPos, targetPos, myZ2, tgtZ2, targetContext.entityTarget?.id)) {
-            return false;
+            return '视线被遮挡';
           }
       }
-      return true;
+      return undefined;
     };
+
+    const isAbilityReady = (ab: any, instance: any): boolean => !getAbilityDisabledWarning(ab, instance);
 
     const antiStealthActive = hasAntiStealthClient(me?.buffs);
 
@@ -5709,23 +5730,17 @@ export default function BattleArena({
             qinggongGcdImmune: false,
             cannotCastWhileRooted: false,
             allowGroundCastWithoutTarget: false,
+            disabledWarning: getAbilityDisabledWarning(ability, instance),
           };
         }
         const chargeDisplay = getChargeDisplay(ability, instance);
-        const isReadyVal = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
-        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
+        const disabledWarning = antiStealthBlocked
+          ? '反隐期间无法施展隐身招式'
+          : getAbilityDisabledWarning(ability, instance);
+        const isReadyVal = !disabledWarning;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
-        const targetContext = getAbilityTargetContext(ability);
-        const losBlockedVal = !isReadyVal && (ability as any)?.target === 'OPPONENT' && !(ability as any)?.friendlyTarget && myPos && targetContext.targetPos
-          ? isClientLineBlocked(
-              myPos,
-              targetContext.targetPos,
-              (myPos as any)?.z ?? localZRef.current ?? 0,
-              (targetContext.targetPos as any)?.z ?? 0,
-              targetContext.entityTarget?.id,
-            )
-          : false;
+        const losBlockedVal = disabledWarning === '视线被遮挡';
         return {
           id:          instanceId,
           abilityId:      ability.id,
@@ -5778,9 +5793,11 @@ export default function BattleArena({
         if (!ability) return null;
         const instance = me?.specialAbilityStates?.[ability.id] ?? { instanceId: ability.id, abilityId: ability.id, cooldown: 0 };
         const chargeDisplay = getChargeDisplay(ability, instance);
-        const isReadyVal = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
-        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
+        const disabledWarning = antiStealthBlocked
+          ? '反隐期间无法施展隐身招式'
+          : getAbilityDisabledWarning(ability, instance);
+        const isReadyVal = !disabledWarning;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         return {
           id: ability.id,
@@ -5803,7 +5820,7 @@ export default function BattleArena({
           chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
           chargeLockTicks: chargeDisplay.chargeLockTicks,
           isReady: isReadyVal,
-          losBlocked: false,
+          losBlocked: disabledWarning === '视线被遮挡',
           isCommon: false,
           isSpecialBarAbility: true,
           target: (ability.target as 'SELF' | 'OPPONENT') ?? 'SELF',
@@ -5837,20 +5854,13 @@ export default function BattleArena({
           (h: any) => (h.abilityId ?? h.id) === ability.id
         );
         const chargeDisplay = getChargeDisplay(ability, instance ?? {});
-        const isReadyCom = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
-        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
+        const disabledWarning = antiStealthBlocked
+          ? '反隐期间无法施展隐身招式'
+          : getAbilityDisabledWarning(ability, instance);
+        const isReadyCom = !disabledWarning;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
-        const targetContext = getAbilityTargetContext(ability);
-        const losBlockedCom = !isReadyCom && (ability as any)?.target === 'OPPONENT' && !(ability as any)?.friendlyTarget && myPos && targetContext.targetPos
-          ? isClientLineBlocked(
-              myPos,
-              targetContext.targetPos,
-              (myPos as any)?.z ?? localZRef.current ?? 0,
-              (targetContext.targetPos as any)?.z ?? 0,
-              targetContext.entityTarget?.id,
-            )
-          : false;
+        const losBlockedCom = disabledWarning === '视线被遮挡';
         return {
           id:          ability.id,
           abilityId:      ability.id,
@@ -5919,10 +5929,16 @@ export default function BattleArena({
     me.hp,
     me.position,
     me.facing,
+    me.activeChannel,
     selectedTargetId,
+    selectedEntityId,
+    selectedSelf,
     targetableOpponentsList,
+    targetableEntityList,
+    visibleEntities,
     distance,
     abilities,
+    mode,
     wasdKeys,
     hasMovementIntent,
     isStandingCastBlocked,
@@ -10151,7 +10167,7 @@ export default function BattleArena({
                             </div>
                             <input
                               type="range"
-                              min="0.5"
+                              min={ABILITY_PANEL_MIN_SCALE}
                               max="2"
                               step="0.01"
                               value={abilityPanelScale}

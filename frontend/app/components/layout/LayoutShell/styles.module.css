@@ -68,6 +68,16 @@
   background: #010409;
 }
 
+.mainEmbeddedNoTopbar {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 100dvh;
+  padding: 0;
+  overflow: auto;
+  background: #ffffff;
+}
+
 @media (max-width: 768px) {
   .main {
     padding-left: max(16px, env(safe-area-inset-left));

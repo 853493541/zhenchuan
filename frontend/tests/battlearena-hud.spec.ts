@@ -53,6 +53,23 @@ function cssBlock(css: string, selector: string) {
   return match?.[1] ?? '';
 }
 
+function sourceFunction(source: string, name: string) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = source.match(new RegExp(`function ${escaped}\\([^)]*\\)[^{]*\\{([\\s\\S]*?)\\n\\}`, 'm'));
+  expect(match, `${name} should exist`).not.toBeNull();
+  return match?.[1] ?? '';
+}
+
+test('BattleArena buff lock predicates ignore expired player buffs', async () => {
+  const battleArenaTsx = readFile(battleArenaTsxPath);
+
+  expect(sourceFunction(battleArenaTsx, 'isActiveBuffClient')).toContain('expiresAt > now');
+  expect(sourceFunction(battleArenaTsx, 'activeBuffsClient')).toContain('isActiveBuffClient(buff, now)');
+  expect(sourceFunction(battleArenaTsx, 'hasQinggongSealClient')).toContain('activeBuffsClient(buffs).some');
+  expect(sourceFunction(battleArenaTsx, 'hasDisplacementClient')).toContain('activeBuffsClient(buffs).some');
+  expect(sourceFunction(battleArenaTsx, 'buffsHaveAnyEffect')).toContain('activeBuffsClient(buffs).some');
+});
+
 test('source guards cover BattleArena HUD regression points', async () => {
   const battleArenaTsx = readFile(battleArenaTsxPath);
   const battleArenaCss = readFile(battleArenaCssPath);

@@ -155,6 +155,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const meIndexRef = useRef<number>(-1); // set once when game loads, never changes
   // Stable index→userId mapping so WS handler can resolve opponents without stale closure
   const playerIdsRef = useRef<string[]>([]);
+  const disconnectedPlayerIdsRef = useRef<Set<string>>(new Set());
+  const latencyRecordingStoppedRef = useRef(false);
   const rttRef = useRef<number | null>(null);
   const serverTimeOffsetRef = useRef<number>(0);
   const hasServerTimeSyncRef = useRef<boolean>(false);
@@ -211,12 +213,52 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     });
   }, [gameId]);
 
+  const markPlayerConnectedForDiagnostics = useCallback((userId?: string | null) => {
+    if (!userId) return;
+    disconnectedPlayerIdsRef.current.delete(userId);
+    if (latencyRecordingStoppedRef.current) {
+      latencyRecordingStoppedRef.current = false;
+      latencyRecorderRef.current.startSession({
+        gameId,
+        userId: selfUserId,
+        route: typeof window !== "undefined" ? window.location.pathname : "/game/in-game",
+        stateVersion: versionRef.current,
+        playerCount: playerIdsRef.current.length || undefined,
+      });
+    }
+  }, [gameId, selfUserId]);
+
+  const stopLatencyRecordingIfAllPlayersGone = useCallback((reason: string, extra?: Record<string, unknown>) => {
+    const playerIds = [...new Set(playerIdsRef.current.filter((id): id is string => typeof id === "string" && id.length > 0))];
+    if (playerIds.length < 2) return;
+    const disconnectedIds = disconnectedPlayerIdsRef.current;
+    const allPlayersGone = playerIds.every((playerId) => disconnectedIds.has(playerId));
+    if (!allPlayersGone || latencyRecordingStoppedRef.current) return;
+
+    latencyRecordingStoppedRef.current = true;
+    latencyRecorderRef.current.stopSession("all-players-disconnected", {
+      reason,
+      playerIds,
+      disconnectedPlayerIds: [...disconnectedIds].filter((playerId) => playerIds.includes(playerId)),
+      stateVersion: versionRef.current,
+      ...extra,
+    });
+  }, []);
+
+  const markPlayerDisconnectedForDiagnostics = useCallback((userId?: string | null, reason = "unknown", extra?: Record<string, unknown>) => {
+    if (!userId) return;
+    disconnectedPlayerIdsRef.current.add(userId);
+    stopLatencyRecordingIfAllPlayersGone(reason, extra);
+  }, [stopLatencyRecordingIfAllPlayersGone]);
+
   useEffect(() => {
     crashRecorderRef.current.startSession({
       gameId,
       userId: selfUserId,
       route: typeof window !== "undefined" ? window.location.pathname : "/game/in-game",
     });
+    disconnectedPlayerIdsRef.current = new Set();
+    latencyRecordingStoppedRef.current = false;
     latencyRecorderRef.current.startSession({
       gameId,
       userId: selfUserId,
@@ -280,6 +322,12 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     versionRef.current = normalizedFull.state.version ?? 0;
     const meIndex = normalizedFull.state.players.findIndex((p: any) => p.userId === selfUserId);
     const playerIds = normalizedFull.state.players.map((p: any) => p.userId as string);
+    disconnectedPlayerIdsRef.current = new Set([...disconnectedPlayerIdsRef.current].filter((playerId) => playerIds.includes(playerId)));
+    if (normalizedFull.state.leaveNotice?.userId) {
+      markPlayerDisconnectedForDiagnostics(normalizedFull.state.leaveNotice.userId, "leave-notice", {
+        endsAt: normalizedFull.state.leaveNotice.endsAt,
+      });
+    }
     crashRecorderRef.current.updateContext({
       gameId,
       userId: selfUserId,
@@ -315,6 +363,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     // Compute and cache meIndex + playerIds so WS handler can identify opponent patches
     meIndexRef.current = meIndex;
     playerIdsRef.current = playerIds;
+    stopLatencyRecordingIfAllPlayersGone("snapshot", { hasSelf: meIndex !== -1 });
     setGame(normalizedFull);
     setLoadError(null);
     setLoading(false);
@@ -441,7 +490,15 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       console.log("[WS] 6️⃣✅ WebSocket OPENED successfully!");
       console.log("[WS] Connection established - readyState:", ws.readyState);
       wsRef.current = ws;
+      markPlayerConnectedForDiagnostics(selfUserId);
       crashRecorderRef.current.recordWebSocketEvent("open", { gameId, readyState: ws.readyState });
+      latencyRecorderRef.current.startSession({
+        gameId,
+        userId: selfUserId,
+        route: typeof window !== "undefined" ? window.location.pathname : "/game/in-game",
+        stateVersion: versionRef.current,
+        playerCount: playerIdsRef.current.length || undefined,
+      });
       latencyRecorderRef.current.recordWebSocketLifecycle("open", { gameId, readyState: ws.readyState });
       crashRecorderRef.current.recordConnectionChecklist("ws-open", { gameId, readyState: ws.readyState, version: versionRef.current }, true);
 
@@ -543,6 +600,10 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         }
 
         if (message.type === "PLAYER_DISCONNECTED") {
+          markPlayerDisconnectedForDiagnostics(message.userId, "player-disconnected", {
+            username: message.username,
+            endsAt: message.endsAt,
+          });
           crashRecorderRef.current.recordWebSocketEvent("player-disconnected", {
             gameId,
             userId: message.userId,
@@ -561,6 +622,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         }
 
         if (message.type === "PLAYER_RECONNECTED") {
+          markPlayerConnectedForDiagnostics(message.userId);
           crashRecorderRef.current.recordWebSocketEvent("player-reconnected", {
             gameId,
             userId: message.userId,
@@ -597,6 +659,14 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             ? serverTimeOffsetRef.current
             : updateServerTimeOffset(message.timestamp, receiveDateNow);
           const normalizedDiff = normalizeDiffTimestamps(message.diff, offsetMs);
+          for (const patch of normalizedDiff) {
+            if (patch.path === "/leaveNotice" && patch.value?.userId) {
+              markPlayerDisconnectedForDiagnostics(patch.value.userId, "leave-notice", {
+                username: patch.value.username,
+                endsAt: patch.value.endsAt,
+              });
+            }
+          }
           const previousDiffAt = lastStateDiffReceiveAtRef.current;
           lastStateDiffReceiveAtRef.current = receiveDateNow;
           const serverMessageAt = typeof message.timestamp === "number" ? message.timestamp : undefined;
@@ -751,6 +821,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         wasClean: event.wasClean,
         readyState: ws.readyState,
       });
+      markPlayerDisconnectedForDiagnostics(selfUserId, "ws-close", {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+      });
       crashRecorderRef.current.recordConnectionChecklist("ws-close", {
         gameId,
         code: event.code,
@@ -777,7 +852,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         }, 2000);
       }
     };
-  }, [gameId, initialAuthToken, fetchInitialGame, selfUserId, updateServerTimeOffset]);
+  }, [gameId, initialAuthToken, fetchInitialGame, selfUserId, updateServerTimeOffset, markPlayerConnectedForDiagnostics, markPlayerDisconnectedForDiagnostics]);
 
   // Connect WebSocket when game is loaded — connect once, keep alive, only close on unmount
   useEffect(() => {

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import GameSession from "../models/GameSession";
+import { subscriptionManager } from "../../websocket/GameSubscriptionManager";
 
 type JsonObject = Record<string, any>;
 
@@ -105,6 +106,10 @@ export type NetworkSessionSummary = {
   updatedAt: number | null;
   firstSeenAt: number | null;
   lastSeenAt: number | null;
+  connectedClientCount: number;
+  connectedPlayerIds: string[];
+  recordingActive: boolean;
+  recordingStoppedReason: string | null;
   starred: boolean;
   sampleCount: number;
   payloadBytes: number;
@@ -376,6 +381,14 @@ function compactSampleDetail(kind: string, data: JsonObject): Record<string, unk
       serverMs: roundNonNegativeMs(data.serverProcessingMs),
     };
   }
+  if (kind === "lifecycle") {
+    return {
+      type: data.type,
+      reason: data.reason,
+      stateVersion: data.stateVersion,
+      disconnectedPlayers: Array.isArray(data.disconnectedPlayerIds) ? data.disconnectedPlayerIds.length : undefined,
+    };
+  }
   return { type: data.type };
 }
 
@@ -549,16 +562,28 @@ function summaryFromAccumulator(game: GameAccumulator, starred: Set<string>, doc
   }
   const docPlayers = Array.isArray(doc?.players) ? doc.players.map(String) : [];
   const playerIds = [...new Set([...docPlayers, ...game.playerIds])];
+  const connectedClientCount = subscriptionManager.getGameClientCount(game.gameId);
+  const connectedPlayerIds = playerIds.filter((userId) => subscriptionManager.isConnected(game.gameId, userId));
+  const gameOver = typeof doc?.state?.gameOver === "boolean" ? doc.state.gameOver : null;
+  const started = typeof doc?.started === "boolean" ? doc.started : null;
+  const recordingActive = connectedPlayerIds.length > 0 && gameOver !== true;
+  const recordingStoppedReason = started === true && gameOver !== true && playerIds.length >= 2 && connectedPlayerIds.length === 0
+    ? "all-players-disconnected"
+    : null;
 
   return {
     gameId: game.gameId,
     mode: asString(doc?.mode) ?? game.mode,
-    started: typeof doc?.started === "boolean" ? doc.started : null,
-    gameOver: typeof doc?.state?.gameOver === "boolean" ? doc.state.gameOver : null,
+    started,
+    gameOver,
     createdAt: toEpoch(doc?.createdAt),
     updatedAt: toEpoch(doc?.updatedAt),
     firstSeenAt: game.firstSeenAt,
     lastSeenAt: game.lastSeenAt ?? toEpoch(doc?.updatedAt),
+    connectedClientCount,
+    connectedPlayerIds,
+    recordingActive,
+    recordingStoppedReason,
     starred: starred.has(game.gameId),
     sampleCount: game.sampleCount,
     payloadBytes: game.payloadBytes,

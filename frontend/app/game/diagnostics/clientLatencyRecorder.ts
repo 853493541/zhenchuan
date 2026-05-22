@@ -260,6 +260,7 @@ class ClientLatencyRecorder {
   private maxStateDiffGapMs: number | null = null;
   private movementDurations: number[] = [];
   private movementRequestCount = 0;
+  private stoppingSession = false;
 
   startSession(context: LatencyRecorderContext) {
     if (typeof window === "undefined") return;
@@ -282,6 +283,7 @@ class ClientLatencyRecorder {
     this.maxStateDiffGapMs = null;
     this.movementDurations = [];
     this.movementRequestCount = 0;
+    this.stoppingSession = false;
     this.uploadStatus = { status: "idle" };
     this.activeSession = {
       schemaVersion: 1,
@@ -301,6 +303,26 @@ class ClientLatencyRecorder {
     if (this.activeSession) {
       this.activeSession.context = { ...this.activeSession.context, ...this.context };
     }
+  }
+
+  stopSession(reason: string, data?: unknown) {
+    if (!this.activeSession || this.stoppingSession || typeof window === "undefined") return;
+    const sessionId = this.activeSession.sessionId;
+    this.recordWebSocketLifecycle("session-stop", { reason, ...this.toObject(data) });
+    this.stoppingSession = true;
+
+    if (this.flushTimer !== null) {
+      window.clearInterval(this.flushTimer);
+      this.flushTimer = null;
+    }
+
+    void this.flushSamples(`session-stop:${reason}`).catch(() => undefined).finally(() => {
+      if (this.activeSession?.sessionId === sessionId) {
+        this.activeSession = null;
+        this.pendingSamples = [];
+      }
+      this.stoppingSession = false;
+    });
   }
 
   recordWebSocketLifecycle(type: string, data?: unknown) {
@@ -467,7 +489,7 @@ class ClientLatencyRecorder {
   }
 
   private recordSample(kind: LatencySampleKind, data?: unknown) {
-    if (!this.activeSession) return;
+    if (!this.activeSession || this.stoppingSession) return;
     const now = Date.now();
 
     this.updateStats(kind, data);
