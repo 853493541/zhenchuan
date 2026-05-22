@@ -614,6 +614,7 @@ export default function InGameClient({
             mode={gameMode ?? 'arena'}
             onLeaveGame={() => leaveGameAndReturnHome('EscExitButton')}
             onMovementRecover={refetch}
+            rtt={rtt}
             onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId, movementIntent) => {
               crashRecorder.recordBehavior("cast-api-request", {
                 abilityInstanceId,

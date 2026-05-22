@@ -20,6 +20,7 @@ import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
 import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase } from './abilitySoundRegistry';
 import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
 import { formatCrashDiagnosticsReport, getClientCrashRecorder, type CrashRecorderSummary } from '@/app/game/diagnostics/clientCrashRecorder';
+import { getClientLatencyRecorder } from '@/app/game/diagnostics/clientLatencyRecorder';
 
 type V3 = { x: number; y: number; z: number };
 type LoadStageStatus = '完成' | '进行中' | '失败';
@@ -41,6 +42,46 @@ function createMovementClientSession() {
     ? cryptoObj.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return { id, startedAt: Date.now() };
+}
+
+type MovementDirectionPayload =
+  | { dx: number; dy: number; jump: boolean; backpedalOnly?: boolean }
+  | { up: boolean; down: boolean; left: boolean; right: boolean; jump: boolean }
+  | null;
+
+const MOVEMENT_ACTIVE_REFRESH_MS = 250;
+const MOVEMENT_IDLE_REFRESH_MS = 1_000;
+const MOVEMENT_SIGNATURE_PRECISION = 1_000;
+
+function quantizeMovementValue(value: number) {
+  return Math.round(value * MOVEMENT_SIGNATURE_PRECISION) / MOVEMENT_SIGNATURE_PRECISION;
+}
+
+function movementPayloadSignature(direction: MovementDirectionPayload, facing: { x: number; y: number }) {
+  const normalizedDirection = direction
+    ? ('dx' in direction || 'dy' in direction)
+      ? {
+          dx: quantizeMovementValue(direction.dx ?? 0),
+          dy: quantizeMovementValue(direction.dy ?? 0),
+          jump: direction.jump === true,
+          backpedalOnly: direction.backpedalOnly === true,
+        }
+      : {
+          up: direction.up === true,
+          down: direction.down === true,
+          left: direction.left === true,
+          right: direction.right === true,
+          jump: direction.jump === true,
+        }
+    : null;
+
+  return JSON.stringify({
+    direction: normalizedDirection,
+    facing: {
+      x: quantizeMovementValue(facing.x),
+      y: quantizeMovementValue(facing.y),
+    },
+  });
 }
 
 type LoadPerformanceStageState = {
@@ -2353,6 +2394,7 @@ interface BattleArenaProps {
   externalGameWarning?: InGameWarningEvent | null;
   onLeaveGame?: () => Promise<void> | void;
   onMovementRecover?: () => void;
+  rtt?: number | null;
   distance: number;
   maxHp: number;
   abilities: Record<string, any>;
@@ -2387,6 +2429,7 @@ export default function BattleArena({
   externalGameWarning = null,
   onLeaveGame,
   onMovementRecover,
+  rtt = null,
   distance,
   maxHp,
   abilities,
@@ -2405,6 +2448,7 @@ export default function BattleArena({
   ensureResizeObserverSupport();
 
   const crashRecorder = useMemo(() => getClientCrashRecorder(), []);
+  const latencyRecorder = useMemo(() => getClientLatencyRecorder(), []);
   const storedUnitScale = getStoredUnitScale(mode);
   const modePickups = useMemo(() => (mode === 'collision-test' ? [] : pickups), [mode, pickups]);
   const channelAbilityByBuffId = useMemo(() => {
@@ -2515,7 +2559,6 @@ export default function BattleArena({
   const [handAbilities,    setHandAbilities]    = useState<AbilityInfo[]>([]);
   const [activeAbilityHint, setActiveAbilityHint] = useState<AbilityHintState | null>(null);
   const abilityDragActiveRef = useRef(false);
-  const [rtt,              setRtt]              = useState<number | null>(null);
   const [renderFps,        setRenderFps]        = useState<number | null>(null);
   const [systemTime,       setSystemTime]       = useState(() => new Date());
   const [wasdKeys,         setWasdKeys]         = useState({ w: false, a: false, s: false, d: false });
@@ -3565,6 +3608,8 @@ export default function BattleArena({
   }
   const lastMovementRecoverAtRef = useRef(0);
   const lastMovementOkLogAtRef = useRef(0);
+  const lastMovementSendRef = useRef<{ signature: string; sentAt: number } | null>(null);
+  const skippedMovementFramesRef = useRef(0);
 
   /* --- Jump / Z refs --- */
   const jumpLocalRef      = useRef(false); // drives local Z prediction
@@ -4977,10 +5022,7 @@ export default function BattleArena({
     const dashFacingLocked = !!meActiveDashRef.current && !dashTurnOverrideRef.current;
     const facingInputLocked = movementControlStateRef.current.fullyLocked || movementControlStateRef.current.rooted;
     let facingPayload = { ...meFacingRef.current };
-    let directionPayload:
-      | { dx: number; dy: number; jump: boolean; backpedalOnly?: boolean }
-      | { up: boolean; down: boolean; left: boolean; right: boolean; jump: boolean }
-      | null = null;
+    let directionPayload: MovementDirectionPayload = null;
 
     const fearedSourceUserId = movementControlStateRef.current.fearedSourceUserId;
     const fearedSourcePos = fearedSourceUserId ? opponentPositionsRef.current[fearedSourceUserId] : null;
@@ -5066,6 +5108,34 @@ export default function BattleArena({
     if (!facingInputLocked) {
       meFacingRef.current = facingPayload;
     }
+
+    const movementSignature = movementPayloadSignature(directionPayload, facingPayload);
+    const movementNow = Date.now();
+    const lastMovementSend = lastMovementSendRef.current;
+    const movementChanged = !lastMovementSend || lastMovementSend.signature !== movementSignature;
+    const movementRefreshMs = directionPayload !== null ? MOVEMENT_ACTIVE_REFRESH_MS : MOVEMENT_IDLE_REFRESH_MS;
+    const movementDue = shouldJump
+      || movementChanged
+      || !lastMovementSend
+      || movementNow - lastMovementSend.sentAt >= movementRefreshMs;
+
+    if (!movementDue) {
+      skippedMovementFramesRef.current += 1;
+      return;
+    }
+
+    const skippedBeforeSend = skippedMovementFramesRef.current;
+    skippedMovementFramesRef.current = 0;
+    const timeSinceLastMovementSendMs = lastMovementSend ? movementNow - lastMovementSend.sentAt : null;
+    const movementSendReason = shouldJump
+      ? 'jump'
+      : !lastMovementSend
+      ? 'initial'
+      : movementChanged
+      ? 'changed'
+      : 'heartbeat';
+    lastMovementSendRef.current = { signature: movementSignature, sentAt: movementNow };
+
     const seq = ++movementSeqRef.current;
     const movementClientSession = movementClientSessionRef.current;
     crashRecorder.recordMovementSample({
@@ -5079,6 +5149,11 @@ export default function BattleArena({
       keys: { ...k },
       controlMode: controlModeRef.current,
       mouseLook,
+      movementSendReason,
+      movementChanged,
+      skippedBeforeSend,
+      timeSinceLastMovementSendMs,
+      movementRefreshMs,
       position: localPositionRef.current,
       z: localZRef.current,
       locks: {
@@ -5089,6 +5164,8 @@ export default function BattleArena({
         shiXinGu: !!shiXinGuDirection || shiXinGuStandstill,
       },
     }, shouldJump || directionPayload !== null);
+    const movementRequestStartedAt = movementNow;
+    const movementRequestStartedPerf = performance.now();
     try {
       const res = await fetch('/api/game/movement', {
         method:      'POST',
@@ -5110,6 +5187,24 @@ export default function BattleArena({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
+        latencyRecorder.recordMovementRequest({
+          gameId,
+          seq,
+          ok: false,
+          status: res.status,
+          error: err,
+          clientStartedAt: movementRequestStartedAt,
+          clientCompletedAt: Date.now(),
+          durationMs: performance.now() - movementRequestStartedPerf,
+          shouldJump,
+          hasDirection: directionPayload !== null,
+          movementSendReason,
+          movementChanged,
+          skippedBeforeSend,
+          timeSinceLastMovementSendMs,
+          movementRefreshMs,
+          movementClientSessionId: movementClientSession?.id,
+        });
         crashRecorder.recordBehavior('movement-failed', { gameId, seq, status: res.status, error: err });
         const now = Date.now();
         if (now - lastMovementRecoverAtRef.current > 2000) {
@@ -5120,6 +5215,29 @@ export default function BattleArena({
       } else {
         const ack = await res.json().catch(() => null);
         const now = Date.now();
+        latencyRecorder.recordMovementRequest({
+          gameId,
+          seq,
+          ok: true,
+          status: res.status,
+          accepted: ack?.accepted,
+          ackSeq: ack?.seq,
+          clientStartedAt: movementRequestStartedAt,
+          clientCompletedAt: now,
+          durationMs: performance.now() - movementRequestStartedPerf,
+          shouldJump,
+          hasDirection: directionPayload !== null,
+          movementSendReason,
+          movementChanged,
+          skippedBeforeSend,
+          timeSinceLastMovementSendMs,
+          movementRefreshMs,
+          movementClientSessionId: movementClientSession?.id,
+          serverReceivedAt: ack?.serverReceivedAt,
+          serverRespondedAt: ack?.serverRespondedAt,
+          serverTimestamp: ack?.serverTimestamp,
+          serverProcessingMs: ack?.serverProcessingMs,
+        });
         if (shouldJump || now - lastMovementOkLogAtRef.current >= 2_000) {
           lastMovementOkLogAtRef.current = now;
           crashRecorder.recordConnectionChecklist('movement-ok', {
@@ -5129,6 +5247,11 @@ export default function BattleArena({
             accepted: ack?.accepted,
             hasDirection: directionPayload !== null,
             shouldJump,
+            movementSendReason,
+            movementChanged,
+            skippedBeforeSend,
+            timeSinceLastMovementSendMs,
+            movementRefreshMs,
             serverPosition: ack?.position,
             serverVelocity: ack?.velocity,
             returnedInput: ack?.input,
@@ -5136,9 +5259,26 @@ export default function BattleArena({
         }
       }
     } catch (err) {
+      latencyRecorder.recordMovementRequest({
+        gameId,
+        seq,
+        ok: false,
+        error: err,
+        clientStartedAt: movementRequestStartedAt,
+        clientCompletedAt: Date.now(),
+        durationMs: performance.now() - movementRequestStartedPerf,
+        shouldJump,
+        hasDirection: directionPayload !== null,
+        movementSendReason,
+        movementChanged,
+        skippedBeforeSend,
+        timeSinceLastMovementSendMs,
+        movementRefreshMs,
+        movementClientSessionId: movementClientSession?.id,
+      });
       crashRecorder.recordBehavior('movement-error', { gameId, seq, error: err });
     }
-  }, [crashRecorder, gameId, onMovementRecover]);
+  }, [crashRecorder, gameId, latencyRecorder, onMovementRecover]);
 
   useEffect(() => {
     if (me?.position && !initializedRef.current) {
@@ -7530,20 +7670,6 @@ export default function BattleArena({
     const id = setInterval(sendMovement, 1000 / 30);
     return () => { clearInterval(id); };
   }, [sendMovement]);
-
-  useEffect(() => {
-    const id = setInterval(async () => {
-      const t0 = performance.now();
-      try {
-        await fetch('/api/game/ping', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', body: JSON.stringify({ gameId }),
-        });
-        setRtt(Math.round(performance.now() - t0));
-      } catch { /* ignore */ }
-    }, 2000);
-    return () => clearInterval(id);
-  }, [gameId]);
 
   /* ========================= HUD DATA ========================= */
   const myMaxHp = me?.maxHp ?? maxHp;

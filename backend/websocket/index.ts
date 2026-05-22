@@ -103,17 +103,24 @@ export function setupWebSocket(server: HTTPServer) {
     ws.on("message", (data: Buffer) => {
       try {
         const message = JSON.parse(data.toString());
+        const serverReceivedAt = Date.now();
 
         switch (message.type) {
-          case "PING":
-            // Echo back PONG with the same client timestamp and the current server timestamp.
+          case "PING": {
+            const serverSentAt = Date.now();
             ws.send(JSON.stringify({
               type: "PONG",
               timestamp: message.timestamp,
-              serverTimestamp: Date.now(),
+              clientSentAt: typeof message.clientSentAt === "number" ? message.clientSentAt : message.timestamp,
+              sequence: typeof message.sequence === "number" ? message.sequence : undefined,
+              serverReceivedAt,
+              serverSentAt,
+              serverTimestamp: serverSentAt,
+              serverProcessingMs: serverSentAt - serverReceivedAt,
             }));
             ws.isAlive = true;
             break;
+          }
 
           default:
             wsLog(`[WS] Unknown message type: ${message.type}`);

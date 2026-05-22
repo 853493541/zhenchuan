@@ -2,11 +2,20 @@ import express from "express";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import {
+  LATENCY_LOG_DIR,
+  getNetworkSessionDetail,
+  getNetworkSessionSummaries,
+  pruneLatencyLogs,
+  setNetworkSessionStar,
+} from "../services/networkDiagnostics";
 
 const router = express.Router();
 
 const MAX_REPORT_BYTES = 1_500_000;
 const MAX_FRONTEND_LOG_BYTES = 1_000_000;
+const MAX_LATENCY_BATCH_BYTES = 1_000_000;
+const MAX_LATENCY_REPORT_BYTES = 1_800_000;
 const MAX_STRING_LENGTH = 4_000;
 const MAX_ARRAY_LENGTH = 120;
 const MAX_OBJECT_KEYS = 160;
@@ -29,7 +38,8 @@ function sanitizeString(value: string) {
 function sanitize(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
   if (value === null || value === undefined) return value;
   if (typeof value === "string") return sanitizeString(value);
-  if (typeof value === "number" || typeof value === "boolean") return Number.isFinite(value as number) ? value : String(value);
+  if (typeof value === "number") return Number.isFinite(value) ? value : String(value);
+  if (typeof value === "boolean") return value;
   if (typeof value === "bigint") return value.toString();
   if (typeof value !== "object") return String(value);
   if (seen.has(value as object)) return "[circular]";
@@ -182,6 +192,117 @@ router.post("/client-frontend-log", async (req, res) => {
   } catch (err) {
     console.error("[Diagnostics] Failed to write frontend log batch:", err instanceof Error ? err.message : String(err));
     res.status(500).json({ error: "ERR_FRONTEND_LOG_WRITE_FAILED" });
+  }
+});
+
+router.post("/client-latency-batch", async (req, res) => {
+  try {
+    const payloadBytes = getPayloadBytes(req.body);
+    if (payloadBytes > MAX_LATENCY_BATCH_BYTES) {
+      return res.status(413).json({ error: "ERR_LATENCY_BATCH_TOO_LARGE", maxBytes: MAX_LATENCY_BATCH_BYTES });
+    }
+
+    const receivedAt = Date.now();
+    const latencyBatchId = crypto.randomUUID();
+    const entry = {
+      latencyBatchId,
+      receivedAt,
+      receivedAtIso: new Date(receivedAt).toISOString(),
+      payloadBytes,
+      user: req.auth ? {
+        uid: req.auth.uid,
+        username: req.auth.username,
+      } : null,
+      request: {
+        userAgent: sanitizeString(req.get("user-agent") ?? ""),
+        origin: sanitizeString(req.get("origin") ?? ""),
+        referer: sanitizeString(req.get("referer") ?? ""),
+      },
+      latencyBatch: sanitize(req.body),
+    };
+
+    await appendJsonl(LATENCY_LOG_DIR, receivedAt, entry);
+    void pruneLatencyLogs().catch((err) => {
+      console.error("[Diagnostics] Failed to prune latency logs:", err instanceof Error ? err.message : String(err));
+    });
+
+    res.json({ ok: true, latencyBatchId, receivedAt });
+  } catch (err) {
+    console.error("[Diagnostics] Failed to write latency batch:", err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: "ERR_CLIENT_LATENCY_BATCH_WRITE_FAILED" });
+  }
+});
+
+router.post("/client-latency-report", async (req, res) => {
+  try {
+    const payloadBytes = getPayloadBytes(req.body);
+    if (payloadBytes > MAX_LATENCY_REPORT_BYTES) {
+      return res.status(413).json({ error: "ERR_LATENCY_REPORT_TOO_LARGE", maxBytes: MAX_LATENCY_REPORT_BYTES });
+    }
+
+    const receivedAt = Date.now();
+    const latencyReportId = crypto.randomUUID();
+    const entry = {
+      latencyReportId,
+      receivedAt,
+      receivedAtIso: new Date(receivedAt).toISOString(),
+      payloadBytes,
+      user: req.auth ? {
+        uid: req.auth.uid,
+        username: req.auth.username,
+      } : null,
+      request: {
+        userAgent: sanitizeString(req.get("user-agent") ?? ""),
+        origin: sanitizeString(req.get("origin") ?? ""),
+        referer: sanitizeString(req.get("referer") ?? ""),
+      },
+      latencyReport: sanitize(req.body),
+    };
+
+    await appendJsonl(LATENCY_LOG_DIR, receivedAt, entry);
+    void pruneLatencyLogs().catch((err) => {
+      console.error("[Diagnostics] Failed to prune latency logs:", err instanceof Error ? err.message : String(err));
+    });
+
+    res.json({ ok: true, latencyReportId, receivedAt });
+  } catch (err) {
+    console.error("[Diagnostics] Failed to write latency report:", err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: "ERR_CLIENT_LATENCY_REPORT_WRITE_FAILED" });
+  }
+});
+
+router.get("/network-sessions", async (_req, res) => {
+  try {
+    res.json(await getNetworkSessionSummaries());
+  } catch (err) {
+    console.error("[Diagnostics] Failed to read network sessions:", err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: "ERR_NETWORK_DIAGNOSTICS_READ_FAILED" });
+  }
+});
+
+router.get("/network-sessions/:gameId", async (req, res) => {
+  try {
+    const gameId = String(req.params.gameId ?? "").trim();
+    if (!gameId) return res.status(400).json({ error: "ERR_INVALID_GAME_ID" });
+
+    const detail = await getNetworkSessionDetail(gameId);
+    if (!detail) return res.status(404).json({ error: "ERR_NETWORK_SESSION_NOT_FOUND" });
+    res.json(detail);
+  } catch (err) {
+    console.error("[Diagnostics] Failed to read network session detail:", err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: "ERR_NETWORK_DIAGNOSTICS_DETAIL_FAILED" });
+  }
+});
+
+router.post("/network-sessions/:gameId/star", async (req, res) => {
+  try {
+    const gameId = String(req.params.gameId ?? "").trim();
+    if (!gameId) return res.status(400).json({ error: "ERR_INVALID_GAME_ID" });
+    const starred = req.body?.starred !== false;
+    res.json({ ok: true, ...(await setNetworkSessionStar(gameId, starred)) });
+  } catch (err) {
+    console.error("[Diagnostics] Failed to update network session star:", err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: "ERR_NETWORK_DIAGNOSTICS_STAR_FAILED" });
   }
 });
 

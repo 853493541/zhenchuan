@@ -3,6 +3,28 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Network diagnostics flight recorder for China-to-US testing (2026-05-22)
+
+**Implemented**:
+- Added authenticated latency diagnostics endpoints that write sanitized JSONL batches/reports under `/home/ubuntu/zhenchuan/logs/latency/`.
+- Added a client latency recorder that auto-starts during in-game sessions and batches samples while the tester plays.
+- Added `/network-diagnostics` as the standalone 网络诊断 page with recent/starred game selection, player tabs, metric cards, slow-transfer rows, and readable timelines.
+- Added a compact 快速诊断 panel that uses the best/catcake player as the baseline, compares latency/state/movement/HTTP/transfer symptoms, and suggests whether to fix player network path, WebSocket/diff payload, `/movement`, nginx, or backend processing first.
+- Tightened 快速诊断 reliability: one-way up/down estimates from client/server timestamps are treated as clock-derived estimates, not decisive slow-transfer evidence; RTT needs sustained average/latest evidence or corroborating state/movement problems before blaming a player connection.
+- Display detailed outliers as 异常样本 rate instead of a raw scary slow-count, so rare tail spikes do not contradict a healthy quick diagnosis.
+- Measured existing latency reports and found the real gameplay transport waste was not the report reader: movement input was POSTed every 33ms even when unchanged, BattleArena also ran a duplicate HTTP ping loop despite WebSocket RTT pings, and server WebSocket broadcasts included many unchanged state patches.
+- Reduced real gameplay traffic without hiding diagnostics: full latency sample rows are kept, movement POSTs now send on input/facing change, jump, or a safety heartbeat, the duplicate HTTP ping loop was removed, WebSocket RTT feeds the HUD, and unchanged server state patches are filtered before broadcast.
+- Fixed diagnostics sanitizers to preserve boolean values; stringifying `true`/`false` made later analysis of idle movement, jumps, accepted flags, and failures unreliable.
+- Removed the in-game latency upload/download controls; gameplay UI should only record silently, not host the report reader.
+- Captured WebSocket PING/PONG RTT, server receive/send timestamps, state-diff cadence/payload sizes, snapshot/action HTTP timings, and movement POST timings with backend receive/respond timestamps.
+- Retains the latest 5 unstarred recorded games plus any starred games, and ignores generated `logs/latency/*.jsonl` / starred-store files alongside the existing diagnostics logs.
+
+**Lesson**:
+- For remote latency tests, record both client-observed timings and server timestamps, then read them from a separate diagnostics surface. RTT alone cannot distinguish China-to-US network delay, server processing time, state-diff jitter, HTTP input ACK delay, or reconnect gaps.
+- Long telemetry lists are hard to act on; always put a baseline-based summary and fix suggestion above raw timelines so a quick scan says whether the likely problem is player route, transmission direction, WebSocket state sync, movement HTTP, or backend processing.
+- Do not diagnose a nearby/same-network device as bad from P95-only or one-way timestamp estimates. Prefer reliable client-observed intervals/durations, server processing time, and multi-signal corroboration; show low-confidence observations separately.
+- Do not solve gameplay latency investigations by hiding diagnostic samples. First inspect the actual transport path: in this app, player movement upload is `/api/game/movement` HTTP, WebSocket client upload is mostly PING, and server WebSocket download can waste bandwidth by resending unchanged patches.
+
 ## Generated crash/frontend logs should stay untracked (2026-05-22)
 
 **Finding**:

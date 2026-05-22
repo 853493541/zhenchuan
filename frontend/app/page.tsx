@@ -137,6 +137,10 @@ export default function HomePage() {
     router.push("/ability-editor?tab=soundReview");
   };
 
+  const openNetworkDiagnostics = () => {
+    router.push("/network-diagnostics");
+  };
+
   const startSelectedMode = () => {
     if (selectedStartMode === 'export-viewer') {
       openExportViewer();
@@ -182,6 +186,12 @@ export default function HomePage() {
             onClick={openSoundBrowser}
           >
             音效
+          </button>
+          <button
+            className={`${styles.createBtn} ${styles.createBtnNetworkDiagnostics}`}
+            onClick={openNetworkDiagnostics}
+          >
+            网络诊断
           </button>
         </div>
         <div className={styles.bigStartWrap}>

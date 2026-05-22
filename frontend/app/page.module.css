@@ -145,6 +145,10 @@
   background: #0f766e;
 }
 
+.createBtnNetworkDiagnostics {
+  background: #1d4ed8;
+}
+
 .createBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;

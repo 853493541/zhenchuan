@@ -5181,30 +5181,25 @@ export class GameLoop {
       
       // Send position + facing + cooldown changes (lightweight diff)
       const diff: Array<{ path: string; value: any }> = [];
+      const lastBroadcastSignatures = ((this as any)._lastBroadcastSignatures ??= {} as Record<string, string>);
+      const pushPatchIfChanged = (path: string, value: any) => {
+        const signature = JSON.stringify(value ?? null);
+        if (lastBroadcastSignatures[path] === signature) return;
+        lastBroadcastSignatures[path] = signature;
+        diff.push({ path, value });
+      };
       this.state.players.forEach((p, pidx) => {
-        diff.push({
-          path: `/players/${pidx}/position`,
-          value: p.position,
-        });
+        pushPatchIfChanged(`/players/${pidx}/position`, p.position);
         // Include facing in compact movement updates so clients can render
         // authoritative direction indicators for both players in real time.
-        diff.push({
-          path: `/players/${pidx}/facing`,
-          value: p.facing ?? { x: 0, y: 1 },
-        });
+        pushPatchIfChanged(`/players/${pidx}/facing`, p.facing ?? { x: 0, y: 1 });
         // Include activeDash only when active OR transitioning to null
         if (p.activeDash) {
-          diff.push({
-            path: `/players/${pidx}/activeDash`,
-            value: p.activeDash,
-          });
+          pushPatchIfChanged(`/players/${pidx}/activeDash`, p.activeDash);
           (this as any)._hadActiveDash = (this as any)._hadActiveDash ?? {};
           (this as any)._hadActiveDash[pidx] = true;
         } else if ((this as any)._hadActiveDash?.[pidx]) {
-          diff.push({
-            path: `/players/${pidx}/activeDash`,
-            value: null,
-          });
+          pushPatchIfChanged(`/players/${pidx}/activeDash`, null);
           (this as any)._hadActiveDash[pidx] = false;
         }
         // Keep channel UI in sync, but only send when channel payload actually changes.
@@ -5214,67 +5209,43 @@ export class GameLoop {
         const nextChannelSig = p.activeChannel ? JSON.stringify(p.activeChannel) : null;
 
         if (nextChannelSig !== prevChannelSig) {
-          diff.push({
-            path: `/players/${pidx}/activeChannel`,
-            value: p.activeChannel ?? null,
-          });
+          pushPatchIfChanged(`/players/${pidx}/activeChannel`, p.activeChannel ?? null);
           (this as any)._lastActiveChannelSig[pidx] = nextChannelSig;
         }
       });
       // Append per-ability cooldown patches so clients stay in sync
       this.state.players.forEach((p, pidx) => {
-        diff.push({
-          path: `/players/${pidx}/globalGcdTicks`,
-          value: (p as any).globalGcdTicks ?? 0,
-        });
-        diff.push({
-          path: `/players/${pidx}/visualGcd`,
-          value: (p as any).visualGcd ?? null,
-        });
-        diff.push({
-          path: `/players/${pidx}/specialAbilityStates`,
-          value: (p as any).specialAbilityStates ?? {},
-        });
+        pushPatchIfChanged(`/players/${pidx}/globalGcdTicks`, (p as any).globalGcdTicks ?? 0);
+        pushPatchIfChanged(`/players/${pidx}/visualGcd`, (p as any).visualGcd ?? null);
+        pushPatchIfChanged(`/players/${pidx}/specialAbilityStates`, (p as any).specialAbilityStates ?? {});
         p.hand.forEach((ability, cidx) => {
-          diff.push({
-            path: `/players/${pidx}/hand/${cidx}/cooldown`,
-            value: ability.cooldown,
-          });
+          pushPatchIfChanged(`/players/${pidx}/hand/${cidx}/cooldown`, ability.cooldown);
           if ((ability as any).chargeCount !== undefined) {
-            diff.push({
-              path: `/players/${pidx}/hand/${cidx}/chargeCount`,
-              value: (ability as any).chargeCount,
-            });
+            pushPatchIfChanged(`/players/${pidx}/hand/${cidx}/chargeCount`, (ability as any).chargeCount);
           }
           if ((ability as any).chargeRegenTicksRemaining !== undefined) {
-            diff.push({
-              path: `/players/${pidx}/hand/${cidx}/chargeRegenTicksRemaining`,
-              value: (ability as any).chargeRegenTicksRemaining,
-            });
+            pushPatchIfChanged(`/players/${pidx}/hand/${cidx}/chargeRegenTicksRemaining`, (ability as any).chargeRegenTicksRemaining);
           }
           if ((ability as any).chargeLockTicks !== undefined) {
-            diff.push({
-              path: `/players/${pidx}/hand/${cidx}/chargeLockTicks`,
-              value: (ability as any).chargeLockTicks,
-            });
+            pushPatchIfChanged(`/players/${pidx}/hand/${cidx}/chargeLockTicks`, (ability as any).chargeLockTicks);
           }
         });
       });
 
       // Append safe zone state so frontend can render the shrinking boundary
       if (this.state.safeZone) {
-        diff.push({ path: "/safeZone", value: this.state.safeZone });
+        pushPatchIfChanged("/safeZone", this.state.safeZone);
       }
 
       // Append ground zones so frontend can render persistent damage areas
       if (this.state.groundZones !== undefined) {
-        diff.push({ path: "/groundZones", value: this.state.groundZones });
+        pushPatchIfChanged("/groundZones", this.state.groundZones);
       }
 
       // Append targetable entities so frontend stays in sync on creation,
       // HP loss, natural expiry (12s), and destruction.
       if (this.state.entities !== undefined) {
-        diff.push({ path: "/entities", value: this.state.entities });
+        pushPatchIfChanged("/entities", this.state.entities);
       }
 
       // Append buff arrays whenever they changed (expiry or periodic effects)
@@ -5283,17 +5254,14 @@ export class GameLoop {
       const eventsPruned = this.pruneEventHistoryForBroadcast();
       if (buffsChanged || hasNewEvents || channelStateChanged || eventsPruned || combatStatusChanged) {
         this.state.players.forEach((p, pidx) => {
-          diff.push({
-            path: `/players/${pidx}/buffs`,
-            value: p.buffs,
-          });
+          pushPatchIfChanged(`/players/${pidx}/buffs`, p.buffs);
         });
         // Also push hp patches if periodic effects changed them
         this.state.players.forEach((p, pidx) => {
-          diff.push({ path: `/players/${pidx}/hp`, value: p.hp });
-          diff.push({ path: `/players/${pidx}/shield`, value: p.shield ?? 0 });
-          diff.push({ path: `/players/${pidx}/inCombat`, value: p.inCombat === true });
-          diff.push({ path: `/players/${pidx}/combatLinks`, value: (p as any).combatLinks ?? {} });
+          pushPatchIfChanged(`/players/${pidx}/hp`, p.hp);
+          pushPatchIfChanged(`/players/${pidx}/shield`, p.shield ?? 0);
+          pushPatchIfChanged(`/players/${pidx}/inCombat`, p.inCombat === true);
+          pushPatchIfChanged(`/players/${pidx}/combatLinks`, (p as any).combatLinks ?? {});
         });
 
         if (eventsPruned) {
@@ -5307,35 +5275,37 @@ export class GameLoop {
         }
       }
       
-      // During gameplay, send compact movement-only broadcasts
-      if (!this.state.gameOver) {
-        broadcastGameUpdate({
-          gameId: this.gameId,
-          version: this.state.version,
-          diff,
-          isMovementOnly: true, // Compact format - skip events/timestamp for speed
-        });
-      } else {
-        // Add gameOver + winnerUserId into the diff so frontend state.gameOver updates immediately via WS
-        diff.push({ path: "/gameOver", value: true });
-        if (this.state.winnerUserId) {
-          diff.push({ path: "/winnerUserId", value: this.state.winnerUserId });
+      if (diff.length > 0 || this.state.gameOver) {
+        // During gameplay, send compact movement-only broadcasts
+        if (!this.state.gameOver) {
+          broadcastGameUpdate({
+            gameId: this.gameId,
+            version: this.state.version,
+            diff,
+            isMovementOnly: true, // Compact format - skip events/timestamp for speed
+          });
+        } else {
+          // Add gameOver + winnerUserId into the diff so frontend state.gameOver updates immediately via WS
+          diff.push({ path: "/gameOver", value: true });
+          if (this.state.winnerUserId) {
+            diff.push({ path: "/winnerUserId", value: this.state.winnerUserId });
+          }
+          // Capture broadcast payload before the async save so we close over the
+          // correct values even if the loop is stopped/cleared before .then() fires.
+          const broadcastPayload = {
+            gameId:       this.gameId,
+            version:      this.state.version,
+            diff,
+            gameOver:     this.state.gameOver,
+            winnerUserId: this.state.winnerUserId,
+            timestamp:    Date.now(),
+          };
+          // Save to DB FIRST, then broadcast. This guarantees battle/complete can
+          // read gameOver=true from DB before the frontend even receives the WS message.
+          this.saveToDB()
+            .then(()  => broadcastGameUpdate(broadcastPayload))
+            .catch(() => broadcastGameUpdate(broadcastPayload)); // broadcast even if save fails
         }
-        // Capture broadcast payload before the async save so we close over the
-        // correct values even if the loop is stopped/cleared before .then() fires.
-        const broadcastPayload = {
-          gameId:       this.gameId,
-          version:      this.state.version,
-          diff,
-          gameOver:     this.state.gameOver,
-          winnerUserId: this.state.winnerUserId,
-          timestamp:    Date.now(),
-        };
-        // Save to DB FIRST, then broadcast. This guarantees battle/complete can
-        // read gameOver=true from DB before the frontend even receives the WS message.
-        this.saveToDB()
-          .then(()  => broadcastGameUpdate(broadcastPayload))
-          .catch(() => broadcastGameUpdate(broadcastPayload)); // broadcast even if save fails
       }
       
       broadcastTime = performance.now() - bcastStart;
