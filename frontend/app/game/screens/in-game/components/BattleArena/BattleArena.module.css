@@ -1363,6 +1363,10 @@
   align-items: start;
 }
 
+.escCameraSettingsGrid {
+  margin-bottom: 18px;
+}
+
 .escSettingControl {
   min-height: 46px;
   padding: 0;
@@ -1444,6 +1448,16 @@
   top: 72px;
   right: 16px;
   width: min(430px, calc(100vw - 24px));
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  border-radius: 8px;
+  background: rgba(12, 18, 24, 0.96);
+}
+
+.crashDiagPanel {
+  top: 72px;
+  left: 16px;
+  width: min(460px, calc(100vw - 24px));
   max-height: calc(100vh - 96px);
   overflow: auto;
   border-radius: 8px;
@@ -1622,6 +1636,49 @@
   line-height: 1.5;
 }
 
+.crashDiagGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.crashDiagGrid div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 5px;
+  background: rgba(27, 37, 48, 0.86);
+  font-size: 11px;
+}
+
+.crashDiagGrid span {
+  color: #9fb0c3;
+}
+
+.crashDiagGrid strong {
+  min-width: 0;
+  color: #f8fafc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crashDiagRelation,
+.crashDiagUploadLine {
+  margin-top: 8px;
+  padding: 7px 8px;
+  border-radius: 5px;
+  background: rgba(27, 37, 48, 0.66);
+  color: #a9b7c6;
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
 .uiCheckboxRow,
 .escToggleRow {
   display: flex;
@@ -1719,6 +1776,73 @@
   margin: 0;
   accent-color: #43b8a5;
   cursor: pointer;
+}
+
+.escCameraModeControl {
+  grid-column: 1 / -1;
+  min-height: 74px;
+  display: grid;
+  gap: 12px;
+}
+
+.escCameraFieldLabel {
+  color: #fff8a8;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.escCameraModeRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.escCameraModeButton {
+  min-width: 0;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #f0f2ef;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: default;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.escCameraModeButton:disabled {
+  color: rgba(221, 229, 226, 0.58);
+}
+
+.escCameraRadio {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid rgba(10, 28, 31, 0.92);
+  background: rgba(19, 36, 40, 0.95);
+  box-shadow: 0 0 0 2px rgba(111, 139, 143, 0.24), inset 0 0 0 2px rgba(0, 0, 0, 0.26);
+}
+
+.escCameraModeButtonActive .escCameraRadio::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #41b7a8;
+  box-shadow: 0 0 8px rgba(65, 183, 168, 0.65);
+}
+
+.escCameraModeButton:disabled .escCameraRadio {
+  background: rgba(14, 29, 33, 0.88);
+  box-shadow: 0 0 0 2px rgba(105, 127, 130, 0.16), inset 0 0 0 2px rgba(0, 0, 0, 0.28);
 }
 
 .escRangeGroup {
@@ -2159,6 +2283,11 @@
   .escTestGrid,
   .escLightingToggleGrid {
     grid-template-columns: 1fr;
+  }
+
+  .escCameraModeRow {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .escTestLayout {

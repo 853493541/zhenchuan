@@ -13,7 +13,8 @@ import {
   EXPORTED_COLLISION_GROUP_POS_Y,
   EXPORTED_COLLISION_GROUP_POS_Z,
   EXPORTED_COLLISION_RADIUS,
-  EXPORTED_COLLISION_RENDER_SF,
+  EXPORTED_COLLISION_RENDER_SF_XZ,
+  EXPORTED_COLLISION_RENDER_SF_Y,
   type ExportedMapCollisionSystem,
 } from "../../map/exportedMapCollision";
 import {
@@ -47,7 +48,7 @@ const BVH_RECOVERY_DROP = 3500;
 const BVH_RECOVERY_LIFT = 120;
 // Cylinder collision: half-height in game units (character 1.5 units tall)
 const CYL_HALF_HEIGHT_GAME = 0.75;
-const EXPORTED_CYLINDER_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / EXPORTED_COLLISION_RENDER_SF;
+const EXPORTED_CYLINDER_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / EXPORTED_COLLISION_RENDER_SF_Y;
 const _bvhCenter = new THREE.Vector3();
 const _bvhVelocity = new THREE.Vector3();
 
@@ -159,10 +160,10 @@ function syncExportCenter(px: number, py: number, pz: number, arenaW: number, ar
   const halfW = arenaW / 2;
   const halfH = arenaH / 2;
   _bvhCenter.set(
-    (px - halfW - EXPORTED_COLLISION_GROUP_POS_X) / EXPORTED_COLLISION_RENDER_SF,
+    (px - halfW - EXPORTED_COLLISION_GROUP_POS_X) / EXPORTED_COLLISION_RENDER_SF_XZ,
     // Cylinder centre = feetY + half-height (not feetY + sphere radius)
-    (pz - EXPORTED_COLLISION_GROUP_POS_Y) / EXPORTED_COLLISION_RENDER_SF + EXPORTED_CYLINDER_HALF_HEIGHT,
-    (halfH - py - EXPORTED_COLLISION_GROUP_POS_Z) / EXPORTED_COLLISION_RENDER_SF,
+    (pz - EXPORTED_COLLISION_GROUP_POS_Y) / EXPORTED_COLLISION_RENDER_SF_Y + EXPORTED_CYLINDER_HALF_HEIGHT,
+    (halfH - py - EXPORTED_COLLISION_GROUP_POS_Z) / EXPORTED_COLLISION_RENDER_SF_XZ,
   );
   return _bvhCenter;
 }
@@ -196,11 +197,11 @@ function applyHorizontalFromExportCenter(
   const halfH = arenaH / 2;
   player.position.x = Math.max(
     playerRadius,
-    Math.min(arenaW - playerRadius, center.x * EXPORTED_COLLISION_RENDER_SF + EXPORTED_COLLISION_GROUP_POS_X + halfW),
+    Math.min(arenaW - playerRadius, center.x * EXPORTED_COLLISION_RENDER_SF_XZ + EXPORTED_COLLISION_GROUP_POS_X + halfW),
   );
   player.position.y = Math.max(
     playerRadius,
-    Math.min(arenaH - playerRadius, halfH - (center.z * EXPORTED_COLLISION_RENDER_SF + EXPORTED_COLLISION_GROUP_POS_Z)),
+    Math.min(arenaH - playerRadius, halfH - (center.z * EXPORTED_COLLISION_RENDER_SF_XZ + EXPORTED_COLLISION_GROUP_POS_Z)),
   );
 }
 
@@ -217,7 +218,7 @@ function getExportedGroundHeight(
   const groundExportY = getExportedGroundSupportY(center, collisionSystem);
   return groundExportY === null
     ? 0
-    : groundExportY * EXPORTED_COLLISION_RENDER_SF + EXPORTED_COLLISION_GROUP_POS_Y;
+    : groundExportY * EXPORTED_COLLISION_RENDER_SF_Y + EXPORTED_COLLISION_GROUP_POS_Y;
 }
 
 export function getGroundHeightForMap(
@@ -300,13 +301,13 @@ function resolveExportedVerticalCollision(
   }
 
   // Feet = cylinder bottom → exact terrain surface, no slope offset
-  player.position.z = (center.y - EXPORTED_CYLINDER_HALF_HEIGHT) * EXPORTED_COLLISION_RENDER_SF + EXPORTED_COLLISION_GROUP_POS_Y;
+  player.position.z = (center.y - EXPORTED_CYLINDER_HALF_HEIGHT) * EXPORTED_COLLISION_RENDER_SF_Y + EXPORTED_COLLISION_GROUP_POS_Y;
 
   // Return postMoveGroundH for caller's landing check: player.position.z <= postMoveGroundH
   return bvhOnGround
     ? player.position.z
     : groundExportY !== null
-      ? groundExportY * EXPORTED_COLLISION_RENDER_SF + EXPORTED_COLLISION_GROUP_POS_Y
+      ? groundExportY * EXPORTED_COLLISION_RENDER_SF_Y + EXPORTED_COLLISION_GROUP_POS_Y
       : player.position.z;
 }
 
@@ -326,7 +327,7 @@ function resolveExportedRecovery(
   const groundExportY = getExportedGroundSupportY(center, collisionSystem);
   if (groundExportY === null) return;
 
-  const groundH = groundExportY * EXPORTED_COLLISION_RENDER_SF + EXPORTED_COLLISION_GROUP_POS_Y;
+  const groundH = groundExportY * EXPORTED_COLLISION_RENDER_SF_Y + EXPORTED_COLLISION_GROUP_POS_Y;
   if ((player.position.z ?? 0) <= groundH + 0.25 && (player.velocity.vz ?? 0) <= 0) {
     player.position.z = groundH;
     player.velocity.vz = 0;
@@ -1095,6 +1096,12 @@ export function applyMovement(
         const speedScale = baseMoveSpeedPerTick > 0.0001
           ? jumpStartPlanarSpeed / baseMoveSpeedPerTick
           : 0;
+        const usesWalkMatchedBudget =
+          !isBackpedalAirJump &&
+          boostIdx < 0 &&
+          !tiYunZongActive &&
+          !hadPowerJumpAirtime &&
+          !isMultiJump;
         const directionalJumpDistance = isBackpedalAirJump
           ? BACKPEDAL_DOUBLE_JUMP_DISTANCE
           : boostIdx >= 0
@@ -1110,10 +1117,13 @@ export function applyMovement(
           jumpGravityUp,
           jumpGravityDown,
         );
+        const jumpTravelDistance = usesWalkMatchedBudget
+          ? Math.max(0, jumpStartPlanarSpeed) * jumpTravelTicks
+          : directionalJumpDistance * Math.max(0, speedScale);
         startAirShift(
           player,
           jumpDir,
-          directionalJumpDistance * Math.max(0, speedScale),
+          jumpTravelDistance,
           jumpTravelTicks,
         );
         if (!isBackpedalAirJump) {

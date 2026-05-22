@@ -201,7 +201,7 @@ function clearDestroyedGroundZoneBuffs(state: any, zone: any) {
 function destroyGroundZonesInRange(params: {
   state: any;
   sourceUserId: string;
-  center: { x: number; y: number };
+  center: { x: number; y: number; z?: number };
   radius: number;
   ownerMode: "enemy-only" | "ally-only" | "any";
   destroyQiFields: boolean;
@@ -239,6 +239,10 @@ function destroyGroundZonesInRange(params: {
     const dx = (zone.x ?? 0) - center.x;
     const dy = (zone.y ?? 0) - center.y;
     if (Math.hypot(dx, dy) > radius) {
+      keptZones.push(zone);
+      continue;
+    }
+    if (Math.abs(Number(zone.z ?? 0) - Number(center.z ?? 0)) > radius) {
       keptZones.push(zone);
       continue;
     }
@@ -314,10 +318,25 @@ function getImmediateEnemyStatusTargetDistance(
   return Math.max(0, rawDistance - Math.max(0, Number(target.target.radius ?? 0)));
 }
 
+function getImmediateEnemyTargetVerticalAllowance(target: ImmediateEnemyDamageTarget, radius: number) {
+  return radius + (target.kind === "entity" ? Math.max(0, Number(target.target.radius ?? 0)) : 0);
+}
+
+function isImmediateEnemyTargetInsideAoeCylinder(
+  center: { x: number; y: number; z?: number },
+  target: ImmediateEnemyDamageTarget,
+  radius: number,
+) {
+  if (getImmediateEnemyStatusTargetDistance(center, target) > radius) return false;
+  const centerZ = Number(center.z ?? 0);
+  const targetZ = Number(target.target.position?.z ?? 0);
+  return Math.abs(targetZ - centerZ) <= getImmediateEnemyTargetVerticalAllowance(target, radius);
+}
+
 function getImmediateEnemyBuffTargets(
   state: any,
   sourceUserId: string,
-  center: { x: number; y: number },
+  center: { x: number; y: number; z?: number },
   radius: number,
   rerollForMiYun: boolean = true,
 ): ImmediateEnemyDamageTarget[] {
@@ -327,16 +346,18 @@ function getImmediateEnemyBuffTargets(
     if (victim.userId === sourceUserId) continue;
     if ((victim.hp ?? 0) <= 0) continue;
     if (blocksEnemyTargeting(victim)) continue;
-    if (getImmediateEnemyStatusTargetDistance(center, { kind: "player", target: victim }) > radius) continue;
-    targets.push({ kind: "player", target: victim });
+    const target = { kind: "player", target: victim } satisfies ImmediateEnemyDamageTarget;
+    if (!isImmediateEnemyTargetInsideAoeCylinder(center, target, radius)) continue;
+    targets.push(target);
   }
 
   for (const entity of state.entities ?? []) {
     if ((entity.hp ?? 0) <= 0) continue;
     if (entity.ownerUserId === sourceUserId) continue;
     if (blocksEnemyTargeting(entity as any)) continue;
-    if (getImmediateEnemyStatusTargetDistance(center, { kind: "entity", target: entity }) > radius) continue;
-    targets.push({ kind: "entity", target: entity });
+    const target = { kind: "entity", target: entity } satisfies ImmediateEnemyDamageTarget;
+    if (!isImmediateEnemyTargetInsideAoeCylinder(center, target, radius)) continue;
+    targets.push(target);
   }
 
   if (!rerollForMiYun) return targets;
@@ -349,6 +370,7 @@ function getImmediateEnemyBuffTargets(
     originalSlotCount: targets.length,
     center,
     radiusWorld: radius,
+    verticalHalfHeightWorld: radius,
   });
   return (rerolledTargets as ImmediateEnemyDamageTarget[] | null) ?? targets;
 }
@@ -611,6 +633,7 @@ function getForwardConeEnemyTargets(params: {
     originalSlotCount: coneTargets.length,
     center: source.position,
     radiusWorld: radius,
+    verticalHalfHeightWorld: radius,
     coneAngleDeg,
     facing,
   });
@@ -953,7 +976,7 @@ function applyCapturedControlsToPlayerTarget(params: {
 function getImmediateEnemyDamageTargets(
   state: any,
   sourceUserId: string,
-  center: { x: number; y: number },
+  center: { x: number; y: number; z?: number },
   radius: number
 ): ImmediateEnemyDamageTarget[] {
   const targets: ImmediateEnemyDamageTarget[] = [];
@@ -963,10 +986,9 @@ function getImmediateEnemyDamageTargets(
     if ((victim.hp ?? 0) <= 0) continue;
     if (blocksEnemyTargeting(victim)) continue;
 
-    const dx = (victim.position?.x ?? 0) - center.x;
-    const dy = (victim.position?.y ?? 0) - center.y;
-    if (Math.hypot(dx, dy) > radius) continue;
-    targets.push({ kind: "player", target: victim });
+    const target = { kind: "player", target: victim } satisfies ImmediateEnemyDamageTarget;
+    if (!isImmediateEnemyTargetInsideAoeCylinder(center, target, radius)) continue;
+    targets.push(target);
   }
 
   for (const entity of state.entities ?? []) {
@@ -974,10 +996,9 @@ function getImmediateEnemyDamageTargets(
     if (entity.ownerUserId === sourceUserId) continue;
     if (blocksEnemyTargeting(entity as any)) continue;
 
-    const dx = (entity.position?.x ?? 0) - center.x;
-    const dy = (entity.position?.y ?? 0) - center.y;
-    if (Math.hypot(dx, dy) > radius + Math.max(0, Number(entity.radius ?? 0))) continue;
-    targets.push({ kind: "entity", target: entity });
+    const target = { kind: "entity", target: entity } satisfies ImmediateEnemyDamageTarget;
+    if (!isImmediateEnemyTargetInsideAoeCylinder(center, target, radius)) continue;
+    targets.push(target);
   }
 
   const source = (state.players ?? []).find((candidate: any) => candidate.userId === sourceUserId);
@@ -988,6 +1009,7 @@ function getImmediateEnemyDamageTargets(
     originalSlotCount: targets.length,
     center,
     radiusWorld: radius,
+    verticalHalfHeightWorld: radius,
   });
   return (rerolledTargets as ImmediateEnemyDamageTarget[] | null) ?? targets;
 }
@@ -1642,10 +1664,10 @@ export function applyImmediateEffects(params: {
       case "BAIZU_AOE": {
         const now = Date.now();
         const center = castContext?.groundTarget
-          ? { x: castContext.groundTarget.x, y: castContext.groundTarget.y }
+          ? { x: castContext.groundTarget.x, y: castContext.groundTarget.y, z: castContext.groundTarget.z ?? source.position?.z ?? 0 }
           : (explicitEntityTarget
-            ? { x: explicitEntityTarget.position.x, y: explicitEntityTarget.position.y }
-            : { x: target.position.x, y: target.position.y });
+            ? { x: explicitEntityTarget.position.x, y: explicitEntityTarget.position.y, z: explicitEntityTarget.position.z ?? 0 }
+            : { x: target.position.x, y: target.position.y, z: target.position.z ?? 0 });
         const storedUnitScale = state.unitScale;
         const radius = gameplayUnitsToWorldUnits(effect.range ?? 6, storedUnitScale);
         const baizuBuff = Array.isArray(ability.buffs)
@@ -1658,10 +1680,8 @@ export function applyImmediateEffects(params: {
           ownerUserId: source.userId,
           x: center.x,
           y: center.y,
-          z: castContext?.groundTarget
-            ? (source.position?.z ?? 0)
-            : (explicitEntityTarget ? (explicitEntityTarget.position?.z ?? 0) : (target.position?.z ?? 0)),
-          height: gameplayUnitsToWorldUnits(10, storedUnitScale),
+          z: center.z ?? 0,
+          height: radius,
           radius,
           expiresAt: now + 1_000,
           damagePerInterval: 0,
@@ -1700,10 +1720,10 @@ export function applyImmediateEffects(params: {
       case "WUFANG_XINGJIN_AOE": {
         const now = Date.now();
         const center = castContext?.groundTarget
-          ? { x: castContext.groundTarget.x, y: castContext.groundTarget.y }
+          ? { x: castContext.groundTarget.x, y: castContext.groundTarget.y, z: castContext.groundTarget.z ?? source.position?.z ?? 0 }
           : (explicitEntityTarget
-            ? { x: explicitEntityTarget.position.x, y: explicitEntityTarget.position.y }
-            : { x: target.position.x, y: target.position.y });
+            ? { x: explicitEntityTarget.position.x, y: explicitEntityTarget.position.y, z: explicitEntityTarget.position.z ?? 0 }
+            : { x: target.position.x, y: target.position.y, z: target.position.z ?? 0 });
         const storedUnitScale = state.unitScale;
         const radius = gameplayUnitsToWorldUnits(effect.range ?? 6, storedUnitScale);
         const rootBuff = Array.isArray(ability.buffs)
@@ -1726,10 +1746,8 @@ export function applyImmediateEffects(params: {
           ownerUserId: source.userId,
           x: center.x,
           y: center.y,
-          z: castContext?.groundTarget
-            ? (source.position?.z ?? 0)
-            : (explicitEntityTarget ? (explicitEntityTarget.position?.z ?? 0) : (target.position?.z ?? 0)),
-          height: gameplayUnitsToWorldUnits(10, storedUnitScale),
+          z: center.z ?? 0,
+          height: radius,
           radius,
           expiresAt: now + 1_000,
           damagePerInterval: 0,
@@ -1984,6 +2002,7 @@ export function applyImmediateEffects(params: {
               y: (source.position?.y ?? 0) + facing.y * zoneOffset,
             };
         const zoneZ = getGroundHeightForMap(center.x, center.y, source.position?.z ?? 0, mapCtx);
+        const zoneRadius = gameplayUnitsToWorldUnits(effect.range ?? 8, storedUnitScale);
         if (!state.groundZones) state.groundZones = [];
         state.groundZones.push({
           id: randomUUID(),
@@ -1991,8 +2010,8 @@ export function applyImmediateEffects(params: {
           x: center.x,
           y: center.y,
           z: zoneZ,
-          height: gameplayUnitsToWorldUnits(effect.zoneHeight ?? 10, storedUnitScale),
-          radius: gameplayUnitsToWorldUnits(effect.range ?? 8, storedUnitScale),
+          height: zoneRadius,
+          radius: zoneRadius,
           expiresAt: now + (effect.zoneDurationMs ?? 6_000),
           damagePerInterval: effect.value ?? 4,
           intervalMs: effect.zoneIntervalMs ?? 500,
@@ -2032,6 +2051,7 @@ export function applyImmediateEffects(params: {
                   y: zoneTarget.position.y + Math.sin(randomAngle) * offsetDistance,
                 };
                 const zoneZ = getGroundHeightForMap(center.x, center.y, zoneTarget.position?.z ?? source.position?.z ?? 0, mapCtx);
+                const zoneRadius = gameplayUnitsToWorldUnits(effect.range ?? 1, storedUnitScale);
 
                 if (!state.groundZones) state.groundZones = [];
                 state.groundZones.push({
@@ -2040,8 +2060,8 @@ export function applyImmediateEffects(params: {
                   x: center.x,
                   y: center.y,
                   z: zoneZ,
-                  height: gameplayUnitsToWorldUnits(effect.zoneHeight ?? 2, storedUnitScale),
-                  radius: gameplayUnitsToWorldUnits(effect.range ?? 1, storedUnitScale),
+                  height: zoneRadius,
+                  radius: zoneRadius,
                   expiresAt: now + (effect.zoneDurationMs ?? 5_000),
                   damagePerInterval: 0,
                   intervalMs: 1_000,
@@ -2625,7 +2645,7 @@ export function applyImmediateEffects(params: {
         const aoeRadius = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.range ?? 6)), storedUnitScale);
         const kbDistance = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.value ?? 30)), storedUnitScale);
         const kbTicks = Math.max(1, Number(effect.durationTicks ?? 30));
-        const center = { x: primary.position.x, y: primary.position.y };
+        const center = { x: primary.position.x, y: primary.position.y, z: primary.position.z ?? 0 };
         for (const candidate of getImmediateEnemyBuffTargets(state, source.userId, center, aoeRadius)) {
           const t: any = candidate.target;
           if (t === primary) continue; // exclude primary
@@ -2821,6 +2841,7 @@ export function applyImmediateEffects(params: {
         const storedUnitScale = state.unitScale;
         const hpVal = Math.max(1, Number(effect.value ?? 40));
         const rangeUnits = Number((effect as any).range ?? 8);
+        const radius = gameplayUnitsToWorldUnits(rangeUnits, storedUnitScale);
         const durationMs = Number((effect as any).zoneDurationMs ?? 8_000);
         if (!state.groundZones) state.groundZones = [];
         const zoneId = randomUUID();
@@ -2830,8 +2851,8 @@ export function applyImmediateEffects(params: {
           x: source.position.x,
           y: source.position.y,
           z: source.position.z ?? 0,
-          height: gameplayUnitsToWorldUnits(20, storedUnitScale),
-          radius: gameplayUnitsToWorldUnits(rangeUnits, storedUnitScale),
+          height: radius,
+          radius,
           expiresAt: now + durationMs,
           damagePerInterval: 0,
           intervalMs: 200,
@@ -3073,6 +3094,7 @@ export function applyImmediateEffects(params: {
         const storedUnitScale = state.unitScale;
         const dmg = Math.max(0, Number(effect.value ?? 1));
         const rangeUnits = Number((effect as any).range ?? 5);
+        const radius = gameplayUnitsToWorldUnits(rangeUnits, storedUnitScale);
         const durationMs = Number((effect as any).zoneDurationMs ?? 6_000);
         const intervalMs = Number((effect as any).zoneIntervalMs ?? 500);
         const followSpeedUnitsPerSec = Number((effect as any).followSpeedUnitsPerSec ?? 5);
@@ -3109,8 +3131,8 @@ export function applyImmediateEffects(params: {
           x: cx,
           y: cy,
           z: cz,
-          height: gameplayUnitsToWorldUnits(10, storedUnitScale),
-          radius: gameplayUnitsToWorldUnits(rangeUnits, storedUnitScale),
+          height: radius,
+          radius,
           expiresAt: now + durationMs,
           damagePerInterval: dmg,
           intervalMs,
@@ -3130,6 +3152,8 @@ export function applyImmediateEffects(params: {
         const explodeDmg = Math.max(0, Number(effect.value ?? 10));
         const startUnits = Number((effect as any).range ?? 6);
         const endUnits = Number((effect as any).maxRange ?? 15);
+        const startRadius = gameplayUnitsToWorldUnits(startUnits, storedUnitScale);
+        const endRadius = gameplayUnitsToWorldUnits(endUnits, storedUnitScale);
         const durationMs = Number((effect as any).zoneDurationMs ?? 9_000);
         const growUnitsPerSec = Number((effect as any).growUnitsPerSec ?? 4);
         const growDurationMs = Math.max(1, ((endUnits - startUnits) / growUnitsPerSec) * 1000);
@@ -3160,16 +3184,16 @@ export function applyImmediateEffects(params: {
           x: cx,
           y: cy,
           z: cz,
-          height: gameplayUnitsToWorldUnits(20, storedUnitScale),
-          radius: gameplayUnitsToWorldUnits(startUnits, storedUnitScale),
+          height: startRadius,
+          radius: startRadius,
           expiresAt: now + durationMs,
           damagePerInterval: 0,
           intervalMs: 1_000,
           lastTickAt: now,
           abilityId: "tian_jue_di_mie",
           abilityName: "天绝地灭",
-          growStartRadius: gameplayUnitsToWorldUnits(startUnits, storedUnitScale),
-          growEndRadius: gameplayUnitsToWorldUnits(endUnits, storedUnitScale),
+          growStartRadius: startRadius,
+          growEndRadius: endRadius,
           growStartedAt: now,
           growDurationMs,
           explodeOnExpire: true,
@@ -3963,6 +3987,7 @@ export function applyImmediateEffects(params: {
       case "PLACE_LV_YE_MAN_SHENG_FIELD": {
         const now = Date.now();
         const storedUnitScale = state.unitScale;
+        const radius = gameplayUnitsToWorldUnits(6, storedUnitScale);
         if (!state.groundZones) state.groundZones = [];
         state.groundZones.push({
           id: randomUUID(),
@@ -3970,8 +3995,8 @@ export function applyImmediateEffects(params: {
           x: source.position.x,
           y: source.position.y,
           z: source.position.z ?? 0,
-          height: gameplayUnitsToWorldUnits(10, storedUnitScale),
-          radius: gameplayUnitsToWorldUnits(6, storedUnitScale),
+          height: radius,
+          radius,
           expiresAt: now + 6_000,
           damagePerInterval: 0,
           intervalMs: 250,

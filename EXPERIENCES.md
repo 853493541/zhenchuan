@@ -3,6 +3,238 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Generated crash/frontend logs should stay untracked (2026-05-22)
+
+**Finding**:
+- GitHub rejected a push because `logs/client-crashes/2026-05-22.jsonl` had grown to 121 MB and the repo was already tracking generated diagnostics JSONL files under `logs/client-crashes/` and `logs/frontend/`.
+
+**Fix / lesson**:
+- Added git ignore rules for generated diagnostics JSONL logs and removed the tracked log files from the Git index without deleting the local copies.
+- Crash/frontend recorder outputs are runtime evidence, not source artifacts; they should stay local or be archived outside Git.
+
+## Refresh movement sequence reset (2026-05-22)
+
+**Finding**:
+- Real post-refresh logs showed W key events, direction payloads, and successful `/api/game/movement` HTTP responses, but the authoritative position and velocity stayed unchanged before snapping the locally predicted player back.
+- The frontend movement sequence starts at `1` after page refresh, while the live backend `GameLoop` kept the old high `playerInputSeq` for that player. `setPlayerInput` silently ignored every lower post-refresh seq, and the route still returned `success: true`, making the ACK misleading.
+
+**Fix / lesson**:
+- Movement POSTs now include a per-page movement client session id and start timestamp. `GameLoop` tracks that session per player, resets the sequence guard when a newer page session appears, and rejects older page sessions/stale seqs with `accepted: false`.
+- The movement route returns `accepted` so diagnostics can distinguish transport success from authoritative input acceptance.
+- The refresh regression test now primes a high backend movement seq before reload, then verifies the refreshed page's low seq movement changes the backend position. Refresh reconnect tests must reproduce sequence history, not just reload a fresh low-seq page.
+
+## Crash recorder normal-end cleanup and refresh checklist (2026-05-22)
+
+**Finding**:
+- Treating `InGameClient` unmount as a clean exit is wrong because refresh, route replacement during a broken reconnect, and tab destruction all unmount the component without proving the game ended normally.
+- The refresh/reconnect bug needs an initial-start checklist and an after-refresh checklist that includes snapshot, WebSocket open/close, PONG, state diff progress, and backend movement acknowledgement; visual local walking alone does not prove the backend accepted movement.
+- Live refresh testing with `catcake` showed snapshot, WebSocket, PONG, state diffs, and movement requests were alive after reload, but W movement rehydrated through the wrong facing/yaw convention. `me.facing` was converted with `atan2(f.x, f.y)` while movement/camera code uses `atan2(f.x, -f.y)`, so post-refresh W could point into collision and appear like backend movement was not reconnecting.
+
+**Fix / lesson**:
+- Normal diagnostic cleanup is now limited to explicit leave and true game-over paths. Refresh/unmount keeps crash evidence and records a warning breadcrumb instead of marking a clean exit.
+- Added a session-scoped cleanup endpoint that removes only matching JSONL entries for the authenticated user/game/session after a normal ending, preserving abnormal sessions.
+- Added compact connection-checklist breadcrumbs and a live two-player Playwright regression test that verifies backend position changes before and after refreshing the in-game page.
+- Rehydrate BattleArena yaw through the shared `facingToYaw` helper; duplicating coordinate conversions is exactly how refresh-only movement drift appears.
+
+## PC hard-disconnect finding after state-diff sampling (2026-05-21)
+
+**Finding**:
+- The follow-up crash for PC user `catcake` in game `6a0f8d643edda46d6c578aba` still did not emit a browser fatal error, unhandled rejection, WebGL context loss, pagehide, beforeunload, or frontend/backend PM2 process crash.
+- The state-diff sampling fix worked: frontend batches were small, had no dropped entries, and showed `skippedSinceLastLog` summaries instead of tick-rate persistent writes.
+- PC Chrome's last uploaded heartbeat/logs were normal (`visible`, online, one canvas, stable scene counts, roughly 100 MB heap). The last PC frontend entry was a sampled `STATE_DIFF` at `2026-05-21T23:04:25.964Z`; the survivor saw `PLAYER_DISCONNECTED` for `catcake` at `2026-05-21T23:04:29.610Z`.
+- Server logs only said the PC WebSocket unsubscribed, so the next missing evidence is the WebSocket close code/reason and whether the server heartbeat terminated a dead socket.
+
+**Action / lesson**:
+- Added backend WebSocket close-code logging and heartbeat-termination logging so the next hard disappearance distinguishes browser abnormal close, network drop, and server heartbeat cleanup.
+- When no client fatal/page lifecycle event is captured and the socket simply disappears, treat it as a renderer/browser/network-level loss until close-code evidence says otherwise.
+
+## PC crash diagnostics overhead finding (2026-05-21)
+
+**Finding**:
+- The Safari guest `GAME_OVER` / root-route clean exit was expected behavior and was not the PC crash. The useful survivor-side clue was `PLAYER_DISCONNECTED` for PC user `catcake` at `2026-05-21T19:18:55.854Z`.
+- PC Chrome remained visible/online with normal heap, DOM, canvas, and scene metrics in the last heartbeat/log batches. There was no captured uncaught fatal error, WebGL context loss, or PM2 backend/frontend process crash.
+- The frontend recorder was persisting every 30 Hz `STATE_DIFF` message as a breadcrumb. Each breadcrumb appended to the durable frontend log queue with synchronous localStorage parse/stringify, creating avoidable main-thread work and causing uploaded batches to lag behind real time.
+
+**Fix / lesson**:
+- Coalesce high-frequency `STATE_DIFF` diagnostics: keep the latest state version current, persist a sampled breadcrumb every few seconds, and include a skipped-count summary instead of writing every tick.
+- Diagnostics for renderer crashes must never add per-frame or per-tick synchronous storage work; keep persistent logs focused on fatal/error/lifecycle events plus sampled health breadcrumbs.
+
+## Random white-screen crash recorder implementation (2026-05-21)
+
+**Follow-up correction**:
+- ESC diagnostics are only useful while the UI is still alive. Added an automatic frontend log stream at `/api/diagnostics/client-frontend-log` that writes sanitized JSONL batches under `/home/ubuntu/zhenchuan/logs/frontend/` during play.
+- The recorder now keeps a bounded frontend-log queue across refresh, uploads it every few seconds, and forces keepalive/beacon uploads on page hide, unload, disconnect-style major events, WebGL loss, and fatal errors.
+
+**Lesson**:
+- For a true white-screen or renderer crash, the primary evidence must already be in backend frontend logs before the crash; localStorage recovery and ESC copy/upload are fallback/convenience paths, not the main path.
+
+**Implemented**:
+- Added a frontend crash recorder with durable localStorage session/breadcrumb buffers, global error/unhandled-rejection hooks, console warn/error capture, page lifecycle capture, heartbeat uploads, previous unclean-session upload, and redaction for token/cookie/password-like fields.
+- Added a React crash boundary around the in-game battle view so render/runtime errors upload a report and show a solid fallback instead of a plain white screen.
+- Added an authenticated backend endpoint at `/api/diagnostics/client-crash-report` that writes sanitized JSONL entries under `/home/ubuntu/zhenchuan/logs/client-crashes/`.
+- Wired WebSocket connect/error/close/reconnect messages and player disconnect/reconnect messages into the recorder, including last disconnect time and crash/event-to-disconnect relation.
+- Wired BattleArena behavior breadcrumbs: movement samples, jump attempts, ability casts, ground casts, keyboard inputs, mouse/touch camera actions, movement failures, scene metrics, WebGL context loss/restoration, and ESC -> 测试 -> 崩溃诊断 copy/download/upload controls.
+- Removed token-bearing WebSocket debug output from browser console logs while preserving redacted connection context.
+
+**Verification plan**:
+- Build backend/frontend, restart only `frontend` and `backend`, then use the diagnostics panel or `window.__zhenchuanCrashRecorder` to upload a manual report and confirm JSONL output.
+
+**Lesson**:
+- Crash logging must explicitly record the timing relationship between behavior, heartbeat, WebSocket disconnect, reconnect, and fatal/error events; otherwise delayed white-screen failures are almost impossible to separate from network drops.
+
+## Random white-screen crash investigation plan (2026-05-21)
+
+**Unresolved issue**:
+- The live game can randomly collapse into a white screen after running for a while, and DevTools/F12 may not be usable afterward. This suggests console-only debugging is not enough and the failure may be renderer-process, WebGL/GPU, memory, or fatal runtime related.
+
+**Plan recorded**:
+- Added `CRASH_DIAGNOSTICS_PLAN.md` with a flight-recorder approach: durable frontend ring buffer, IndexedDB/localStorage fallback, backend JSONL crash-report endpoint, heartbeat snapshots, WebGL/context-loss metrics, an in-game diagnostics panel, and a live Playwright soak test plan.
+
+**Lesson**:
+- Random delayed white screens should be debugged with evidence captured before the crash, not by relying on post-crash DevTools access.
+
+## Qi-field channel timing, sound, and terrain visibility (2026-05-21)
+
+**Problem set**:
+1. Channeling 气场 fields had mixed base channel times: 冲阴阳、凌太虚、生太极、吞日月 were 1.0s, while 碎星辰、破苍穹 were 0.5s.
+2. The shared 气场 channel-start sound could be playback-rate shortened by haste/channel duration and then stopped on completion, which made the same OGG sound different in battle.
+3. Flat AOE/field discs could be partially hidden by uphill terrain because their material still depth-tested against the terrain mesh.
+
+**Fix / verification**:
+- Set the six channeling 气场 skills to a 1.5s base channel. With the current haste timing factor, they adjust to 1257ms, still longer than their old base times.
+- Left 镇山河 listed as an instant 气场 because it has no channel in canonical data.
+- Routed the shared 气场 channel-start cue at natural playback rate with pitch preservation and allowed it to finish naturally on successful channel completion.
+- Made `AoeZone` fill/ring materials render without depth testing and with stable render order so terrain cannot hide the displayed area.
+- Verified with TypeScript diagnostics, a canonical timing/haste audit script, and static sound/zone material checks.
+
+**Lessons**:
+- When channel sounds are tied to gameplay duration, haste can change audio character unless pitch and cutoff behavior are handled explicitly.
+- For gameplay readability, ground-zone indicators should not depth-test against uneven terrain; the server range is flat/cylindrical, and the visual indicator should remain fully visible.
+
+## Qi-field ground placement and owner colors (2026-05-21)
+
+**Problem set**:
+1. 穹隆化生's generated 生太极 zone used the player's current Z at dash end, so ending in the air could place the field in the air instead of on the ground below.
+2. That special 生太极 needed a much taller vertical reach than normal range-relative zones.
+3. 碎星辰 and 破苍穹 were forced red in the frontend renderer, so the owner could see their own 气场 as enemy-colored.
+4. Canonical 气场 `zoneHeight` values still said 10 even when the actual intended radius/height was 8 or 15.
+
+**Fix / verification**:
+- Snapped 穹隆化生's generated 生太极 zone Z to `getGroundHeightForMap` at dash end and set its height to 99 world units while keeping its radius 8.
+- Removed the forced-red frontend override for 碎星辰/破苍穹 so normal owner-relative coloring applies: owner blue, enemy red.
+- Updated canonical 气场 height data: 镇山河 8, and 冲阴阳、凌太虚、生太极、吞日月、碎星辰、破苍穹 15.
+- Verified with TypeScript diagnostics, a canonical 气场 height audit script, and a static frontend color-branch check.
+
+**Lessons**:
+- Ground fields cast while airborne should store ground Z for placement, then use `height` for vertical reach; storing player-air Z changes both visuals and enter/exit checks.
+- Avoid ability-specific color overrides for team-readable field visuals unless the owner/enemy relationship is still applied.
+
+## AoE vertical cylinder hit range (2026-05-21)
+
+**Problem set**:
+1. Several AoE target filters used horizontal-only range checks, so targets far above or below the caster/area could still be hit if their X/Y position was inside the radius.
+2. Timed/channel AoEs used sphere-style distance in shared loop helpers, which did not match the requested cylinder rule of horizontal radius plus the same amount above/below.
+3. Persistent ground zones had old independent height fallbacks such as 10 or 2, instead of deriving vertical half-height from each zone radius/range.
+4. Mi Yun retargeting could choose candidates from a wider vertical space than the original AoE.
+
+**Fix / verification**:
+- Changed immediate AoE damage/buff helpers, loop timed/channel AoE helpers, Mi Yun area candidate/reroll helpers, and ground-zone creation/tick paths to use a cylinder: XY radius equals AoE range and vertical half-height equals the same range.
+- Kept entity radius tolerance in both planar and vertical checks so summoned/entity targets still behave consistently at boundaries.
+- Verified with backend checks for 魂压怒涛, 横扫六合, 大狮子吼, 五方行尽, shared Mi Yun/loop area selection, and persistent zone height/radius parity for 镇山河、极点迟御、振翅图南、天绝地灭、绿野蔓生、洗兵雨.
+
+**Lessons**:
+- AoE retarget pools must use the same 3D volume as the original effect, or confusion effects can create illegal hits.
+- For gameplay AoEs, persistent zone `height` should be treated as vertical half-height and kept equal to `radius` unless an ability intentionally defines a different volume later.
+
+## Jump branch verification and Jiu Xiao cast sound (2026-05-21)
+
+**Problem set**:
+1. After changing normal directional jump distance to match walking progress, all special jump branches needed a quick regression check.
+2. 九霄风雷 had an on-cast/channel-start sound that needed to be removed without deleting its manifest asset or affecting other abilities.
+
+**Fix / verification**:
+- Ran backend `applyMovement` checks for normal first jump, normal double jump, backpedal double jump, JUMP_BOOST power jump, power-air double jump, MULTI_JUMP, MULTI_JUMP + JUMP_BOOST, TI_YUN_ZONG_JUMP, upward delayed drift, and Ling Ran directional/upward special jumps.
+- Verified normal and speed-buffed cases still scale correctly, and special fixed-budget jumps still resolve to their expected existing distances.
+- Suppressed only `jiu_xiao_feng_lei` at the ability sound registry `channelStart` phase, leaving any later channel-complete behavior untouched.
+
+**Lessons**:
+- Movement formula changes should be checked through `applyMovement` itself, not only with standalone arithmetic, so buff effects and branch gates are exercised.
+- Channel abilities use the `channelStart` phase as their on-cast sound in the frontend registry.
+
+## Camera distance display remap and jump parity research (2026-05-21)
+
+**Problem set**:
+1. The camera view that visually matched the reference game was the real 20-unit camera distance, but the in-game reference labels that as 24.
+2. The ESC camera setting needed to show and cap at `24.00` without changing the actual camera view angle/distance.
+3. Repeated normal forward jumps felt slower than walking forward, even though normal walking speed itself is correct.
+
+**Fix / finding**:
+- Remapped camera setting display so `24.00` maps to the same real camera distance as the previous 20-unit view, leaving `CameraRig`'s real `CAM_DIST_BACK = 20` unchanged.
+- Capped the camera setting at `24.00` and versioned the stored camera preference so the old 22/30 defaults migrate to the new reference scale.
+- Researched jump math: normal directional jump was traveling a fixed 6 units over about 51 ticks, while walking for the same ticks travels about 8.5 units at 30Hz.
+
+**Jump fix**:
+- Keep walking speed, jump height, gravity, and airtime unchanged.
+- For normal forward directional jumps only, replaced the fixed 6-unit horizontal budget with `jumpStartPlanarSpeed * estimatedAirborneTicks` on backend and mirrored it in frontend prediction.
+- Verified the same formula at normal and double movement speed: 2x movement speed produces 2x jump-forward travel over the same airtime, matching 2x walking.
+- Left special jump budgets (power jump, multi-jump, backpedal, Ling Ran special jump) separate unless they are intentionally recalibrated later.
+
+**Lessons**:
+- Camera setting labels can be remapped independently from physical camera distance when matching another game's UI scale.
+- A fixed jump horizontal distance becomes slower than walking whenever airtime exceeds `distance / walkSpeed`; at 5 units/sec, 6 units only equals 36 ticks, not a full normal jump arc.
+- Backend movement and BattleArena prediction must be changed together for jump horizontal parity, or the client will predict a different landing point from the server.
+
+## ESC camera settings for game matching (2026-05-21)
+
+**Problem set**:
+1. Camera tuning lived behind mouse-wheel zoom and a test-only overrange toggle, so there was no normal ESC game setting matching the reference camera panel.
+2. The default camera distance was still based on the old `0.7` zoom multiplier, giving a much shorter starting camera than the requested 22-unit reference.
+3. Follow-mode options are not implemented in the battle camera, but the UI needed to show the same three camera-type slots with only `从不追随` selectable.
+
+**Fix**:
+- Added ESC → 游戏设置 → 综合 → 镜头设置 with locked camera type options and a `镜头最大距离` range control.
+- Persisted camera settings in localStorage with default distance `22.00`, max `30.00`, and live camera update when the slider changes.
+- Removed the old test-only overrange camera toggle so max camera distance has one visible source of truth.
+- Confirmed the deployed live chunk contains the new settings UI and values; full ESC visual verification needs an active authenticated battle canvas.
+
+**Lessons**:
+- Settings that tune live camera feel should update both the persistent preference and the ref read by the render loop immediately.
+- If follow modes are not implemented, disabled placeholders are safer than exposing inactive choices.
+- A deployed static chunk marker check can confirm live bundle rollout when a full authenticated match cannot be opened from the current browser session.
+
+## Horizontal-only exported map footprint scale (2026-05-21)
+
+**Problem set**:
+1. Building footprint measurements in collision-test mode were too small horizontally: examples were about 18.4 vs expected 20.9 and 22.8 vs expected 25.4.
+2. Vertical height already matched, so increasing the uniform exported-map scale would have broken height calibration.
+3. Frontend prediction, backend authoritative BVH collision, LOS, camera collision, map bounds, spawns, and fallback AABBs all depended on the old uniform scale.
+
+**Fix**:
+- Added a `1.125` horizontal footprint multiplier and split exported-map scale into X/Z and Y components.
+- Kept Y/height conversion unchanged while scaling X/Z render transforms, group X/Z offsets, collision radius, LOS, camera conversion, frontend prediction, backend movement collision, map bounds, spawns, and fallback object footprints.
+- Verified backend and frontend builds, restarted only PM2 `frontend` and `backend`, and confirmed the live in-game bundle contains the new horizontal scale marker. Full live battle canvas verification was blocked because the created room waited for a second player.
+
+**Lessons**:
+- When height is correct but footprint is short, split horizontal and vertical calibration instead of changing the global map scale.
+- Scaling exported map X/Z from the same origin as map bounds keeps visual world coordinates, server collision, spawns, and ruler distances aligned.
+- Every exported-map conversion must be mirrored across backend and frontend; updating only the visual mesh would make range tools look different from collision and prediction.
+
+## BattleArena camera centering at upward pitch (2026-05-21)
+
+**Problem set**:
+1. In collision-test mode, dragging the camera upward made the local character drift lower on screen.
+2. The camera boom followed the avatar, but the render camera still looked at a forward/up offset target, so pitch changes changed the character's screen position.
+3. After removing the old look-ahead offset, aiming at the upper pivot centered the HP/cap anchor but left the body reading slightly low/high depending on pitch.
+
+**Fix**:
+- Kept the existing camera collision boom pivot unchanged for wall, probe, and ground clamping.
+- Changed the render `lookAt` target to a fixed avatar body-center height so the model itself remains centered as pitch changes.
+- Updated the movement recenter visibility check to use the same visual-center target.
+
+**Lessons**:
+- Camera collision pivots and visual framing targets should be separate; collision can orbit around a stable upper pivot while `lookAt` frames the body center.
+- Playwright canvas screenshots plus pixel checks are useful for confirming visual drift, while live React refs help prove pitch changed during the test.
+
 ## Exported map cache and warmup optimization (2026-05-21)
 
 **Problem set**:

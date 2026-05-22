@@ -50,6 +50,23 @@ export function getMiYunTargetDistance(
   return Math.max(0, rawDistance - Math.max(0, Number(target.target.radius ?? 0)));
 }
 
+function getMiYunTargetVerticalAllowance(target: MiYunSelectableTarget, radiusWorld: number) {
+  return radiusWorld + (target.kind === "entity" ? Math.max(0, Number(target.target.radius ?? 0)) : 0);
+}
+
+function isMiYunTargetInsideAoeCylinder(params: {
+  center: { x: number; y: number; z?: number };
+  target: MiYunSelectableTarget;
+  radiusWorld: number;
+  verticalHalfHeightWorld?: number;
+}) {
+  const { center, target, radiusWorld, verticalHalfHeightWorld = radiusWorld } = params;
+  if (getMiYunTargetDistance(center, target) > radiusWorld) return false;
+  const centerZ = Number(center.z ?? 0);
+  const targetZ = Number(target.target.position?.z ?? 0);
+  return Math.abs(targetZ - centerZ) <= getMiYunTargetVerticalAllowance(target, verticalHalfHeightWorld);
+}
+
 function isWithinCone(params: {
   center: { x: number; y: number };
   targetPosition: { x: number; y: number };
@@ -75,12 +92,13 @@ function isWithinCone(params: {
 export function getMiYunAreaCandidates(params: {
   state: GameState;
   sourceUserId: string;
-  center: { x: number; y: number };
+  center: { x: number; y: number; z?: number };
   radiusWorld: number;
+  verticalHalfHeightWorld?: number;
   coneAngleDeg?: number;
   facing?: { x: number; y: number } | null;
 }) {
-  const { state, sourceUserId, center, radiusWorld, coneAngleDeg, facing } = params;
+  const { state, sourceUserId, center, radiusWorld, verticalHalfHeightWorld = radiusWorld, coneAngleDeg, facing } = params;
   const candidates: MiYunSelectableTarget[] = [];
 
   for (const victim of state.players ?? []) {
@@ -88,7 +106,7 @@ export function getMiYunAreaCandidates(params: {
     if ((victim.hp ?? 0) <= 0) continue;
     if (blocksCardTargeting(victim as any)) continue;
     const candidate = { kind: "player", target: victim } satisfies MiYunSelectableTarget;
-    if (getMiYunTargetDistance(center, candidate) > radiusWorld) continue;
+    if (!isMiYunTargetInsideAoeCylinder({ center, target: candidate, radiusWorld, verticalHalfHeightWorld })) continue;
     if (!isWithinCone({ center, targetPosition: getMiYunTargetPosition(candidate), facing, coneAngleDeg })) continue;
     candidates.push(candidate);
   }
@@ -97,7 +115,7 @@ export function getMiYunAreaCandidates(params: {
     if ((entity.hp ?? 0) <= 0) continue;
     if (blocksEnemyTargeting(entity as any)) continue;
     const candidate = { kind: "entity", target: entity } satisfies MiYunSelectableTarget;
-    if (getMiYunTargetDistance(center, candidate) > radiusWorld) continue;
+    if (!isMiYunTargetInsideAoeCylinder({ center, target: candidate, radiusWorld, verticalHalfHeightWorld })) continue;
     if (!isWithinCone({ center, targetPosition: getMiYunTargetPosition(candidate), facing, coneAngleDeg })) continue;
     candidates.push(candidate);
   }
@@ -110,12 +128,13 @@ export function rerollMiYunAreaTargets(params: {
   source: BuffCarrier | null | undefined;
   sourceUserId: string;
   originalSlotCount: number;
-  center: { x: number; y: number };
+  center: { x: number; y: number; z?: number };
   radiusWorld: number;
+  verticalHalfHeightWorld?: number;
   coneAngleDeg?: number;
   facing?: { x: number; y: number } | null;
 }) {
-  const { state, source, sourceUserId, originalSlotCount, center, radiusWorld, coneAngleDeg, facing } = params;
+  const { state, source, sourceUserId, originalSlotCount, center, radiusWorld, verticalHalfHeightWorld = radiusWorld, coneAngleDeg, facing } = params;
   if (originalSlotCount <= 0 || !hasMiYunConfusion(source)) return null;
 
   const candidates = getMiYunAreaCandidates({
@@ -123,6 +142,7 @@ export function rerollMiYunAreaTargets(params: {
     sourceUserId,
     center,
     radiusWorld,
+    verticalHalfHeightWorld,
     coneAngleDeg,
     facing,
   });

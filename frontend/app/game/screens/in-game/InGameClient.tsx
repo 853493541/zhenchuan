@@ -11,6 +11,8 @@ import { ensureResizeObserverSupport } from "./ensureResizeObserverSupport";
 import GameOverModal from "./components/GameBoard/components/GameOverModal";
 import DraftScreen from "./components/DraftScreen";
 import { toastError, toastSuccess } from "@/app/components/toast/toast";
+import ClientCrashBoundary from "@/app/game/diagnostics/ClientCrashBoundary";
+import { getClientCrashRecorder, type CrashRecorderContext } from "@/app/game/diagnostics/clientCrashRecorder";
 import { useGameState } from "./hooks/useGameState";
 import {
   GamePreloadProvider,
@@ -139,11 +141,13 @@ type Props = {
 export default function InGameClient({
   gameId,
   selfUserId,
+  selfUsername,
   authToken,
 }: Props) {
   ensureResizeObserverSupport();
 
   const router = useRouter();
+  const crashRecorder = useMemo(() => getClientCrashRecorder(), []);
 
   const {
     loading,
@@ -181,6 +185,49 @@ export default function InGameClient({
   const [dismissedLeaveNoticeKey, setDismissedLeaveNoticeKey] = useState<string | null>(null);
   const [battleWarningEvent, setBattleWarningEvent] = useState<{ id: number; text: string } | null>(null);
 
+  const crashContext: CrashRecorderContext = useMemo(() => ({
+    gameId,
+    userId: selfUserId,
+    username: selfUsername,
+    route: typeof window !== "undefined" ? window.location.pathname : "/game/in-game",
+    gameMode,
+    tournamentPhase: tournament?.phase,
+    battleNumber: tournament?.battleNumber,
+    stateVersion: (state as any)?.version,
+    playerCount: state?.players?.length,
+    selfHp: me?.hp,
+    selfMaxHp: me?.maxHp,
+    selfPosition: me?.position,
+  }), [
+    gameId,
+    gameMode,
+    me?.hp,
+    me?.maxHp,
+    me?.position?.x,
+    me?.position?.y,
+    me?.position?.z,
+    selfUserId,
+    selfUsername,
+    (state as any)?.version,
+    state?.players?.length,
+    tournament?.battleNumber,
+    tournament?.phase,
+  ]);
+
+  useEffect(() => {
+    crashRecorder.startSession({
+      gameId,
+      userId: selfUserId,
+      username: selfUsername,
+      route: typeof window !== "undefined" ? window.location.pathname : "/game/in-game",
+    });
+    return () => crashRecorder.markSessionUnmount("in-game-unmount");
+  }, [crashRecorder, gameId, selfUserId, selfUsername]);
+
+  useEffect(() => {
+    crashRecorder.updateContext(crashContext);
+  }, [crashContext, crashRecorder]);
+
   const pushBattleWarning = (text: string) => {
     const nextText = text.trim();
     if (!nextText) return;
@@ -206,6 +253,7 @@ export default function InGameClient({
   }, [disconnectPrompt, dismissedLeaveNoticeKey, leaveNotice, leaveNoticeKey, selfUserId]);
 
   const leaveGameAndReturnHome = async (source: string) => {
+    crashRecorder.recordBehavior("leave-game-request", { source, gameId });
     clearDisconnectPrompt();
     try {
       const res = await fetch('/api/game/end', {
@@ -221,6 +269,7 @@ export default function InGameClient({
     } catch (err) {
       console.error(`[${source}] /game/end failed:`, err);
     }
+    crashRecorder.endSession(`leave-game:${source}`, { clearUploadedLogs: true });
     router.replace('/');
   };
 
@@ -265,9 +314,16 @@ export default function InGameClient({
 
   useEffect(() => {
     if (state?.gameOver && !state?.winnerUserId) {
+      crashRecorder.endSession("game-over-no-winner", { clearUploadedLogs: true });
       router.replace("/game");
     }
-  }, [router, state?.gameOver, state?.winnerUserId]);
+  }, [crashRecorder, router, state?.gameOver, state?.winnerUserId]);
+
+  useEffect(() => {
+    if (tournament?.phase === "GAME_OVER") {
+      crashRecorder.endSession("game-over", { clearUploadedLogs: true });
+    }
+  }, [crashRecorder, tournament?.phase]);
 
   useEffect(() => {
     const notice = state?.leaveNotice;
@@ -289,6 +345,12 @@ export default function InGameClient({
       disconnectAutoLeaveKeyRef.current = null;
       return;
     }
+    crashRecorder.recordBehavior("exit-prompt-visible", {
+      reason: exitPrompt.reason,
+      userId: exitPrompt.userId,
+      username: exitPrompt.username,
+      endsAt: exitPrompt.endsAt,
+    });
 
     const updateCountdown = () => {
       setDisconnectCountdown(Math.max(0, Math.ceil((exitPrompt.endsAt - Date.now()) / 1000)));
@@ -296,7 +358,7 @@ export default function InGameClient({
     updateCountdown();
     const intervalId = window.setInterval(updateCountdown, 250);
     return () => window.clearInterval(intervalId);
-  }, [exitPrompt]);
+  }, [crashRecorder, exitPrompt]);
 
   useEffect(() => {
     if (!exitPrompt || disconnectCountdown > 0) return;
@@ -533,25 +595,33 @@ export default function InGameClient({
           <Home size={27} strokeWidth={2.4} aria-hidden="true" />
         </button>
 
-        <BattleArena
-          me={mePlayer}
-          opponent={primaryOpponent}
-          opponents={normalizedOpponents}
-          externalGameWarning={battleWarningEvent}
-          gameId={gameId}
-          distance={distance}
-          maxHp={me.maxHp ?? 100}
-          abilities={preload.abilityMap}
-          events={state?.events ?? []}
-          pickups={state?.pickups ?? []}
-          safeZone={state?.safeZone}
-          groundZones={state?.groundZones}
-          entities={state?.entities}
-          opponentPositionBufferRef={opponentPositionBufferRef}
-          mode={gameMode ?? 'arena'}
-          onLeaveGame={() => leaveGameAndReturnHome('EscExitButton')}
-          onMovementRecover={refetch}
-          onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId, movementIntent) => {
+        <ClientCrashBoundary context={crashContext}>
+          <BattleArena
+            me={mePlayer}
+            opponent={primaryOpponent}
+            opponents={normalizedOpponents}
+            externalGameWarning={battleWarningEvent}
+            gameId={gameId}
+            distance={distance}
+            maxHp={me.maxHp ?? 100}
+            abilities={preload.abilityMap}
+            events={state?.events ?? []}
+            pickups={state?.pickups ?? []}
+            safeZone={state?.safeZone}
+            groundZones={state?.groundZones}
+            entities={state?.entities}
+            opponentPositionBufferRef={opponentPositionBufferRef}
+            mode={gameMode ?? 'arena'}
+            onLeaveGame={() => leaveGameAndReturnHome('EscExitButton')}
+            onMovementRecover={refetch}
+            onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId, movementIntent) => {
+              crashRecorder.recordBehavior("cast-api-request", {
+                abilityInstanceId,
+                targetUserId,
+                groundTarget,
+                entityTargetId,
+                movementIntent,
+              });
             // Find by instanceId (normal drafted abilities) or by abilityId (common abilities)
             const cardInstance =
               me.hand.find((c) => c.instanceId === abilityInstanceId) ??
@@ -559,6 +629,7 @@ export default function InGameClient({
               ({ instanceId: abilityInstanceId } as any); // synthetic stub — backend validates
             const res = await playAbility(cardInstance, targetUserId, groundTarget, entityTargetId, movementIntent);
             if (!res.ok && res.error) {
+              crashRecorder.recordBehavior("cast-api-failed", { abilityInstanceId, error: res.error });
               console.error("[CastAbility] Error response:", res.error);
               if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
                 router.replace("/game");
@@ -566,49 +637,61 @@ export default function InGameClient({
               }
               pushBattleWarning(getGameErrorText(res.error));
             }
-          }}
-          onCancelChannel={async () => {
+            }}
+            onCancelChannel={async () => {
+              crashRecorder.recordBehavior("cancel-channel-request", { gameId });
             const res = await cancelChannel();
             if (!res.ok && res.error) {
+              crashRecorder.recordBehavior("cancel-channel-failed", { error: res.error });
               if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
                 router.replace("/game");
                 return;
               }
               pushBattleWarning(getGameErrorText(res.error));
             }
-          }}
-          onUseConsumable={async (consumableId) => {
+            }}
+            onUseConsumable={async (consumableId) => {
+              crashRecorder.recordBehavior("consumable-request", { consumableId });
             const res = await useConsumable(consumableId);
             if (!res.ok && res.error) {
+              crashRecorder.recordBehavior("consumable-failed", { consumableId, error: res.error });
               if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
                 router.replace("/game");
                 return;
               }
               pushBattleWarning(getGameErrorText(res.error));
             }
-          }}
-          onTargetSelection={async (selection) => {
+            }}
+            onTargetSelection={async (selection) => {
+              crashRecorder.recordBehavior("target-selection-request", { selection });
             const res = await updateTargetSelection(selection);
             if (!res.ok && res.error) {
+              crashRecorder.recordBehavior("target-selection-failed", { selection, error: res.error });
               console.error("[TargetSelection] Error response:", res.error);
             }
-          }}
-          onCancelBuff={async (buffId, options) => {
+            }}
+            onCancelBuff={async (buffId, options) => {
+              crashRecorder.recordBehavior("cancel-buff-request", { buffId, options });
             const res = await cancelBuff(buffId, options);
             if (!res.ok && res.error) {
+              crashRecorder.recordBehavior("cancel-buff-failed", { buffId, error: res.error });
               if (res.error === "ERR_BATTLE_NOT_IN_PROGRESS" || res.error === "ERR_NOT_IN_GAME") {
                 router.replace("/game");
                 return;
               }
               pushBattleWarning(getGameErrorText(res.error));
             }
-          }}
-        />
+            }}
+          />
+        </ClientCrashBoundary>
 
         {tournament?.phase === "GAME_OVER" && (
           <GameOverModal
             isWinner={isWinner}
-            onExit={() => router.push("/game")}
+            onExit={() => {
+              crashRecorder.endSession("game-over-modal-exit", { clearUploadedLogs: true });
+              router.push("/game");
+            }}
           />
         )}
 

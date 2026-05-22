@@ -6,6 +6,7 @@
 import type { WorldMap, MapObject } from "../engine/state/types/map";
 import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types/position";
 
+const HORIZONTAL_FOOTPRINT_SCALE = 1.125;
 const RAW_EXPORTED_MAP_WIDTH = 819;  // 546 × 1.5 — map scaled up 50%
 const RAW_EXPORTED_MAP_HEIGHT = 828;  // 552 × 1.5 — map scaled up 50%
 
@@ -161,21 +162,25 @@ function toCollisionTestUnits(value: number): number {
   return value / NEW_WORLD_UNIT_SCALE;
 }
 
+function toCollisionTestHorizontalUnits(value: number): number {
+  return toCollisionTestUnits(value) * HORIZONTAL_FOOTPRINT_SCALE;
+}
+
 function scaleMapObject(obj: MapObject): MapObject {
   return {
     ...obj,
-    x: toCollisionTestUnits(obj.x),
-    y: toCollisionTestUnits(obj.y),
-    w: toCollisionTestUnits(obj.w),
-    d: toCollisionTestUnits(obj.d),
+    x: toCollisionTestHorizontalUnits(obj.x),
+    y: toCollisionTestHorizontalUnits(obj.y),
+    w: toCollisionTestHorizontalUnits(obj.w),
+    d: toCollisionTestHorizontalUnits(obj.d),
     h: toCollisionTestUnits(obj.h),
   };
 }
 
-export const EXPORTED_MAP_WIDTH = toCollisionTestUnits(RAW_EXPORTED_MAP_WIDTH);
-export const EXPORTED_MAP_HEIGHT = toCollisionTestUnits(RAW_EXPORTED_MAP_HEIGHT);
+export const EXPORTED_MAP_WIDTH = toCollisionTestHorizontalUnits(RAW_EXPORTED_MAP_WIDTH);
+export const EXPORTED_MAP_HEIGHT = toCollisionTestHorizontalUnits(RAW_EXPORTED_MAP_HEIGHT);
 export const EXPORTED_MAP_SPAWN_POSITIONS: Array<{ x: number; y: number }> = RAW_EXPORTED_MAP_SPAWN_POSITIONS.map(
-  (spawn) => ({ x: toCollisionTestUnits(spawn.x), y: toCollisionTestUnits(spawn.y) })
+  (spawn) => ({ x: toCollisionTestHorizontalUnits(spawn.x), y: toCollisionTestHorizontalUnits(spawn.y) })
 );
 
 const objects: MapObject[] = rawObjects.map(scaleMapObject);

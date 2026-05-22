@@ -74,14 +74,14 @@ export default function AoeZone({
   return (
     <group ref={groupRef} position={[x, worldZ + 0.04, z]}>
       {/* Ground fill disc */}
-      <mesh ref={fillRef} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh ref={fillRef} rotation={[-Math.PI / 2, 0, 0]} renderOrder={30}>
         <circleGeometry args={[radius, 48]} />
-        <meshBasicMaterial color={color} transparent opacity={0.12} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial color={color} transparent opacity={0.12} side={THREE.DoubleSide} depthTest={false} depthWrite={false} />
       </mesh>
       {/* Ground ring */}
-      <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} renderOrder={31}>
         <ringGeometry args={[Math.max(0, radius - resolvedRingThickness), radius, 48]} />
-        <meshBasicMaterial color={color} transparent opacity={0.7} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial color={color} transparent opacity={0.7} side={THREE.DoubleSide} depthTest={false} depthWrite={false} />
       </mesh>
       {/* Label — always faces camera via Billboard, centred just above the ground */}
       {label && (

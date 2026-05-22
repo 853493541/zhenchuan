@@ -9,13 +9,16 @@ const EXPORT_SCAN_DEPTH = 7;
 const PACKAGE_NAME = "Ctest-2026-04-10T23-11-25-797Z";
 const BASE_RENDER_SF = 0.005557531566779299;
 const MAP_SCALE = 3.6;  // 2.4 × 1.5 — map scaled up 50%
+const HORIZONTAL_FOOTPRINT_SCALE = 1.125;
 
-export const EXPORTED_COLLISION_RENDER_SF = (BASE_RENDER_SF * MAP_SCALE) / NEW_WORLD_UNIT_SCALE;
-export const EXPORTED_COLLISION_GROUP_POS_X = -462.66 / NEW_WORLD_UNIT_SCALE;
+export const EXPORTED_COLLISION_RENDER_SF_Y = (BASE_RENDER_SF * MAP_SCALE) / NEW_WORLD_UNIT_SCALE;
+export const EXPORTED_COLLISION_RENDER_SF_XZ = EXPORTED_COLLISION_RENDER_SF_Y * HORIZONTAL_FOOTPRINT_SCALE;
+export const EXPORTED_COLLISION_RENDER_SF = EXPORTED_COLLISION_RENDER_SF_Y;
+export const EXPORTED_COLLISION_GROUP_POS_X = (-462.66 * HORIZONTAL_FOOTPRINT_SCALE) / NEW_WORLD_UNIT_SCALE;
 export const EXPORTED_COLLISION_GROUP_POS_Y = -4.515 / NEW_WORLD_UNIT_SCALE;
-export const EXPORTED_COLLISION_GROUP_POS_Z = 2524.065 / NEW_WORLD_UNIT_SCALE;
+export const EXPORTED_COLLISION_GROUP_POS_Z = (2524.065 * HORIZONTAL_FOOTPRINT_SCALE) / NEW_WORLD_UNIT_SCALE;
 export const COLLISION_TEST_PLAYER_RADIUS = 0.384;
-export const EXPORTED_COLLISION_RADIUS = COLLISION_TEST_PLAYER_RADIUS / EXPORTED_COLLISION_RENDER_SF;
+export const EXPORTED_COLLISION_RADIUS = COLLISION_TEST_PLAYER_RADIUS / EXPORTED_COLLISION_RENDER_SF_XZ;
 
 interface HeightmapConfig {
   worldOriginX: number;
@@ -71,19 +74,20 @@ export class ExportedMapCollisionSystem {
     if (!this.shellBVH) return false;
     const halfW = arenaW / 2;
     const halfH = arenaH / 2;
-    const sf = EXPORTED_COLLISION_RENDER_SF;
+    const sfXZ = EXPORTED_COLLISION_RENDER_SF_XZ;
+    const sfY = EXPORTED_COLLISION_RENDER_SF_Y;
     const gx = EXPORTED_COLLISION_GROUP_POS_X;
     const gy = EXPORTED_COLLISION_GROUP_POS_Y;
     const gz = EXPORTED_COLLISION_GROUP_POS_Z;
     // world → BVH coords (same as syncExportCenter, at eye height)
     this._losOrigin.set(
-      (ax - halfW - gx) / sf,
-      (az + eyeHeight - gy) / sf,
-      (halfH - ay - gz) / sf,
+      (ax - halfW - gx) / sfXZ,
+      (az + eyeHeight - gy) / sfY,
+      (halfH - ay - gz) / sfXZ,
     );
-    const tbx = (bx - halfW - gx) / sf;
-    const tby = (bz + eyeHeight - gy) / sf;
-    const tbz = (halfH - by - gz) / sf;
+    const tbx = (bx - halfW - gx) / sfXZ;
+    const tby = (bz + eyeHeight - gy) / sfY;
+    const tbz = (halfH - by - gz) / sfXZ;
     this._losDir.set(tbx - this._losOrigin.x, tby - this._losOrigin.y, tbz - this._losOrigin.z);
     const dist = this._losDir.length();
     if (dist < 1e-4) return false;

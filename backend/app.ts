@@ -13,6 +13,7 @@ import { requireAuth } from "./middleware/requireAuth";
 
 // GAME
 import gameRoutes from "./game/routes/game.routes";
+import diagnosticsRoutes from "./game/routes/diagnostics.routes";
 
 const EXPORT_SCAN_DEPTH = 7;
 const FULL_EXPORT_SCAN_CACHE_TTL_MS = 30_000;
@@ -496,6 +497,9 @@ console.log("  ✓ GET|HEAD /full-exports/<package>/<file>");
 // Auth routes
 console.log("🔓 Registering auth routes...");
 app.use("/api/auth", authRoutes);
+
+console.log("🧾 Registering diagnostics routes...");
+app.use("/api/diagnostics", requireAuth, diagnosticsRoutes);
 
 /* =====================================================
    🎮 GAME API ROUTES

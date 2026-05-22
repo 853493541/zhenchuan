@@ -83,6 +83,22 @@ function isFenglaiWushan(ability: AbilityLike | undefined, event: AbilitySoundEv
   return abilityId === 'fenglai_wushan' || abilityName === '风来吴山' || abilityName === '风来无山';
 }
 
+const QI_FIELD_CHANNEL_SOUND_IDS = new Set([
+  'chong_yin_yang',
+  'ling_tai_xu',
+  'sheng_tai_ji',
+  'tun_ri_yue',
+  'sui_xing_chen',
+  'po_cang_qiong',
+]);
+
+const QI_FIELD_CHANNEL_SOUND_NAMES = new Set(['冲阴阳', '凌太虚', '生太极', '吞日月', '碎星辰', '破苍穹']);
+
+function isQiFieldChannelSoundAbility(ability: AbilityLike | undefined, event: AbilitySoundEvent) {
+  const identity = getAbilityIdentity(ability, event);
+  return QI_FIELD_CHANNEL_SOUND_IDS.has(identity.id) || QI_FIELD_CHANNEL_SOUND_NAMES.has(identity.name);
+}
+
 function getAbilityIdentity(ability: AbilityLike | undefined, event: AbilitySoundEvent) {
   return {
     id: String(ability?.id ?? event.abilityId ?? ''),
@@ -231,6 +247,10 @@ export function getAbilitySoundCue(
   const phase = getSoundPhase(event, ability);
   if (!phase) return null;
 
+  if (matchesAbility(ability, event, ['jiu_xiao_feng_lei'], ['九霄风雷']) && phase === 'channelStart') {
+    return null;
+  }
+
   if (matchesAbility(ability, event, ['dun_li'], ['盾立']) && phase === 'counter') {
     return urls[1] ? { url: urls[1], phase: 'counter' } : null;
   }
@@ -306,6 +326,10 @@ export function getAbilitySoundCue(
       fitToDurationMs: 2000,
       extraSounds: [{ url: urls[1], phase: 'channelComplete', playAfterCurrentEnds: true }],
     };
+  }
+
+  if (isQiFieldChannelSoundAbility(ability, event) && phase === 'channelStart') {
+    return { url: urls[0], phase, playbackRate: 1, preservePitch: true, finishAfterChannelComplete: true };
   }
 
   if (phase === 'channelComplete') {

@@ -7,18 +7,19 @@ import WASDButtons from './WASDButtons';
 import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, ChannelBarHost, type ChannelBarData } from './ChannelBar';
-import { ArrowLeft, Clipboard, Gamepad2, Gauge, Keyboard, LayoutGrid, MessageCircle, Puzzle, RotateCcw, Swords, Trash2, Volume2, Wind, X } from 'lucide-react';
+import { ArrowLeft, Clipboard, Download, Gamepad2, Gauge, Keyboard, LayoutGrid, MessageCircle, Puzzle, RotateCcw, Swords, Trash2, UploadCloud, Volume2, Wind, X } from 'lucide-react';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles, type SceneRuntimeMetrics } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
-import { RENDER_SF, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, type SceneLoadTimingEvent } from './scene/ExportedMapScene';
+import { RENDER_SF_XZ, RENDER_SF_Y, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, type SceneLoadTimingEvent } from './scene/ExportedMapScene';
 import { encodeIconPublicPath, getAbilityIconPath } from '@/app/lib/iconPaths';
 import * as THREE from 'three';
 import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
 import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase } from './abilitySoundRegistry';
 import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
+import { formatCrashDiagnosticsReport, getClientCrashRecorder, type CrashRecorderSummary } from '@/app/game/diagnostics/clientCrashRecorder';
 
 type V3 = { x: number; y: number; z: number };
 type LoadStageStatus = '完成' | '进行中' | '失败';
@@ -33,6 +34,14 @@ type LoadPerformanceStage = {
   detail: string;
   meta?: Record<string, number | string>;
 };
+
+function createMovementClientSession() {
+  const cryptoObj = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+  const id = typeof cryptoObj?.randomUUID === 'function'
+    ? cryptoObj.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return { id, startedAt: Date.now() };
+}
 
 type LoadPerformanceStageState = {
   id: string;
@@ -102,6 +111,13 @@ const formatLoadPerfBytes = (bytes: number | null | undefined) => {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${Math.round(bytes)} B`;
+};
+
+const formatCrashDiagTime = (ts: number | null | undefined) => {
+  if (!ts) return '-';
+  const date = new Date(ts);
+  const time = date.toLocaleTimeString('en-GB', { hour12: false });
+  return `${time}.${String(ts % 1000).padStart(3, '0')}`;
 };
 
 const getSceneResourceLabel = (url: string) => {
@@ -253,6 +269,12 @@ type AbilitySoundSettings = {
   version: number;
 };
 
+type CameraSettings = {
+  maxDistance: number;
+  followMode: 'never';
+  version: number;
+};
+
 type InGameWarningEvent = {
   id: number;
   text: string;
@@ -355,6 +377,7 @@ function scaleUiPositions(
 const HEART_STAT_STORAGE_KEY = 'zhenchuan-heart-stat-visibility';
 const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
 const ABILITY_SOUND_SETTINGS_STORAGE_KEY = 'zhenchuan-ability-sound-settings-v1';
+const CAMERA_SETTINGS_STORAGE_KEY = 'zhenchuan-camera-settings-v1';
 const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
@@ -462,6 +485,11 @@ const DEFAULT_ABILITY_SOUND_SETTINGS: AbilitySoundSettings = {
   disabled: false,
   version: 4,
 };
+const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
+  maxDistance: 24,
+  followMode: 'never',
+  version: 2,
+};
 const ABILITY_SOUND_VOLUME_OUTPUT_SCALE = 0.625;
 const PLAYER_CHANNEL_BAR_PREVIEW_DATA: ChannelBarData = {
   kind: 'forward',
@@ -503,9 +531,11 @@ const ARENA_WIDTH_SMALL  = 200;
 const ARENA_HEIGHT_SMALL = 200;
 const DASH_ANIM_MS = 1500; // ms — cosmetic dash travel animation
 const CAMERA_FOV = 72;
-const DEFAULT_CAMERA_ZOOM = 0.7;
-const CAMERA_ZOOM_MAX = 0.7;
-const CAMERA_ZOOM_OVER_MAX = 2.5;
+const CAMERA_BASE_DISTANCE = 24;
+const CAMERA_DISTANCE_MIN = 8;
+const CAMERA_DISTANCE_MAX = 24;
+const DEFAULT_CAMERA_ZOOM = DEFAULT_CAMERA_SETTINGS.maxDistance / CAMERA_BASE_DISTANCE;
+const CAMERA_ZOOM_MIN = CAMERA_DISTANCE_MIN / CAMERA_BASE_DISTANCE;
 const DEFAULT_PLAYER_RADIUS = 2; // must match backend
 const COLLISION_TEST_PLAYER_RADIUS = 0.384;
 const LEGACY_STORED_UNIT_SCALE = 2.2;
@@ -580,6 +610,39 @@ function normalizeAbilitySoundVolumePercent(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return DEFAULT_ABILITY_SOUND_SETTINGS.volumePercent;
   return Math.round(Math.max(0, Math.min(100, numeric)));
+}
+
+function normalizeCameraMaxDistance(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_CAMERA_SETTINGS.maxDistance;
+  return Math.round(Math.max(CAMERA_DISTANCE_MIN, Math.min(CAMERA_DISTANCE_MAX, numeric)) * 100) / 100;
+}
+
+function cameraDistanceToZoom(distance: unknown): number {
+  return normalizeCameraMaxDistance(distance) / CAMERA_BASE_DISTANCE;
+}
+
+function cameraZoomToDistance(zoom: unknown): number {
+  const numeric = typeof zoom === 'number' ? zoom : Number(zoom);
+  if (!Number.isFinite(numeric)) return DEFAULT_CAMERA_SETTINGS.maxDistance;
+  return normalizeCameraMaxDistance(numeric * CAMERA_BASE_DISTANCE);
+}
+
+function loadCameraSettings(): CameraSettings {
+  try {
+    if (typeof window === 'undefined') return DEFAULT_CAMERA_SETTINGS;
+    const stored = JSON.parse(localStorage.getItem(CAMERA_SETTINGS_STORAGE_KEY) ?? '{}');
+    const storedVersion = Number(stored.version ?? 0);
+    if (storedVersion < DEFAULT_CAMERA_SETTINGS.version) return DEFAULT_CAMERA_SETTINGS;
+    return {
+      ...DEFAULT_CAMERA_SETTINGS,
+      maxDistance: normalizeCameraMaxDistance(stored.maxDistance),
+      followMode: 'never',
+      version: DEFAULT_CAMERA_SETTINGS.version,
+    };
+  } catch {
+    return DEFAULT_CAMERA_SETTINGS;
+  }
 }
 
 function getAbilityPanelCssScale(value: number): number {
@@ -902,9 +965,9 @@ const _bvhCenter = new THREE.Vector3();
 const _bvhVelocity = new THREE.Vector3();
 // Cylinder collision shape: horizontal radius + half-height tracked separately.
 // _bvhCenter.y is always the CYLINDER CENTRE (feet + half-height), never sphere-bottom.
-const EXPORT_CYL_RADIUS = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF;
+const EXPORT_CYL_RADIUS = COLLISION_TEST_PLAYER_RADIUS / RENDER_SF_XZ;
 const CYL_HALF_HEIGHT_GAME = 0.75;
-const EXPORT_CYL_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / RENDER_SF;
+const EXPORT_CYL_HALF_HEIGHT = CYL_HALF_HEIGHT_GAME / RENDER_SF_Y;
 const BVH_STEP_UP_EXPORT = 56;
 
 function getBvhGroundProbeOriginY(centerY: number): number {
@@ -936,17 +999,18 @@ function clientCheckLOS(
   halfW: number, halfH: number,
 ): boolean {
   if (!sys.shellBVH) return false;
-  const sf = RENDER_SF;
+  const sfXZ = RENDER_SF_XZ;
+  const sfY = RENDER_SF_Y;
   const gx = GROUP_POS_X, gy = GROUP_POS_Y, gz = GROUP_POS_Z;
   _losFrom.set(
-    (ax - halfW - gx) / sf,
-    (az + LOS_EYE_HEIGHT_GAME - gy) / sf,
-    (halfH - ay - gz) / sf,
+    (ax - halfW - gx) / sfXZ,
+    (az + LOS_EYE_HEIGHT_GAME - gy) / sfY,
+    (halfH - ay - gz) / sfXZ,
   );
   _losTo.set(
-    (bx - halfW - gx) / sf,
-    (bz + LOS_EYE_HEIGHT_GAME - gy) / sf,
-    (halfH - by - gz) / sf,
+    (bx - halfW - gx) / sfXZ,
+    (bz + LOS_EYE_HEIGHT_GAME - gy) / sfY,
+    (halfH - by - gz) / sfXZ,
   );
   return sys.checkLOS(_losFrom, _losTo, EXPORT_CYL_RADIUS);
 }
@@ -2340,6 +2404,7 @@ export default function BattleArena({
   const playerRadius = mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : DEFAULT_PLAYER_RADIUS;
   ensureResizeObserverSupport();
 
+  const crashRecorder = useMemo(() => getClientCrashRecorder(), []);
   const storedUnitScale = getStoredUnitScale(mode);
   const modePickups = useMemo(() => (mode === 'collision-test' ? [] : pickups), [mode, pickups]);
   const channelAbilityByBuffId = useMemo(() => {
@@ -2568,6 +2633,12 @@ export default function BattleArena({
       localStorage.setItem(ABILITY_SOUND_SETTINGS_STORAGE_KEY, JSON.stringify(abilitySoundSettings));
     } catch {}
   }, [abilitySoundSettings]);
+  const [cameraSettings, setCameraSettings] = useState<CameraSettings>(() => loadCameraSettings());
+  useEffect(() => {
+    try {
+      localStorage.setItem(CAMERA_SETTINGS_STORAGE_KEY, JSON.stringify(cameraSettings));
+    } catch {}
+  }, [cameraSettings]);
   const [abilityPanelScale, setAbilityPanelScale] = useState(() => {
     try {
       if (typeof window === 'undefined') return 1;
@@ -2765,7 +2836,9 @@ export default function BattleArena({
   const sceneRecoveryTimerRef = useRef<number | null>(null);
   const mainCanvasCleanupRef = useRef<(() => void) | null>(null);
   const [showLoadPerformancePanel, setShowLoadPerformancePanel] = useState(false);
+  const [showCrashDiagnosticsPanel, setShowCrashDiagnosticsPanel] = useState(false);
   const [loadPerformanceSnapshot, setLoadPerformanceSnapshot] = useState<LoadPerformanceSnapshot | null>(null);
+  const [crashDiagnosticsSummary, setCrashDiagnosticsSummary] = useState<CrashRecorderSummary>(() => crashRecorder.getSummary());
   const sceneRuntimeMetricsRef = useRef<SceneRuntimeMetrics | null>(null);
   const loadPerformanceStartedAtRef = useRef(performance.now());
   const loadPerformanceWallStartedAtRef = useRef(Date.now());
@@ -2845,6 +2918,7 @@ export default function BattleArena({
 
   const handleSceneMetrics = useCallback((metrics: SceneRuntimeMetrics) => {
     sceneRuntimeMetricsRef.current = metrics;
+    crashRecorder.updateSceneMetrics(metrics as unknown as Record<string, unknown>);
     const alreadyCompleted = loadPerformanceStagesRef.current.get('three-scene-mounted')?.completedAtMs != null;
     if (!alreadyCompleted) {
       recordLoadStageEnd(
@@ -2855,7 +2929,7 @@ export default function BattleArena({
         { objects: metrics.objects, meshes: metrics.meshes, drawCalls: metrics.calls },
       );
     }
-  }, [recordLoadStageEnd]);
+  }, [crashRecorder, recordLoadStageEnd]);
 
   const copyLoadPerformanceReport = useCallback(async () => {
     const report = loadPerformanceSnapshot?.reportText;
@@ -2882,10 +2956,75 @@ export default function BattleArena({
   }, [loadPerformanceSnapshot?.reportText]);
 
   useEffect(() => {
+    const updateSummary = () => setCrashDiagnosticsSummary(crashRecorder.getSummary());
+    updateSummary();
+    const id = window.setInterval(updateSummary, 1000);
+    return () => window.clearInterval(id);
+  }, [crashRecorder]);
+
+  const copyCrashDiagnosticsReport = useCallback(async () => {
+    const reportText = crashRecorder.getReportText('manual');
+    try {
+      await navigator.clipboard.writeText(reportText);
+      toastSuccess('已复制崩溃诊断');
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = reportText;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (ok) toastSuccess('已复制崩溃诊断');
+      else toastError('复制崩溃诊断失败');
+    }
+    setCrashDiagnosticsSummary(crashRecorder.getSummary());
+  }, [crashRecorder]);
+
+  const uploadCrashDiagnosticsReport = useCallback(async () => {
+    try {
+      const data = await crashRecorder.uploadReport('manual', { compact: false });
+      setCrashDiagnosticsSummary(crashRecorder.getSummary());
+      toastSuccess(data?.reportId ? `已上传诊断 ${data.reportId}` : '已上传诊断');
+    } catch {
+      setCrashDiagnosticsSummary(crashRecorder.getSummary());
+      toastError('上传诊断失败，已保存在本机队列');
+    }
+  }, [crashRecorder]);
+
+  const downloadCrashDiagnosticsReport = useCallback(() => {
+    const report = crashRecorder.buildReport('manual', { compact: false });
+    const reportText = formatCrashDiagnosticsReport(report);
+    const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `zhenchuan-crash-${Date.now()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setCrashDiagnosticsSummary(crashRecorder.getSummary());
+  }, [crashRecorder]);
+
+  useEffect(() => {
     if (!loadPerformanceSnapshot?.reportText) return;
     (window as any).__zhenchuanLoadReport = loadPerformanceSnapshot.reportText;
     (window as any).__zhenchuanLoadSnapshot = loadPerformanceSnapshot;
-  }, [loadPerformanceSnapshot]);
+    crashRecorder.updateGameSnapshot({
+      gameId,
+      gameMode: mode,
+      selfHp: me.hp,
+      selfMaxHp: me.maxHp ?? maxHp,
+      selfPosition: localPositionRef.current ?? me.position,
+      loadCompleted: loadPerformanceSnapshot.completed,
+      loadTotalMs: loadPerformanceSnapshot.totalMs,
+      gameCounts: loadPerformanceSnapshot.gameCounts,
+      sceneMetrics: loadPerformanceSnapshot.sceneMetrics,
+    });
+  }, [crashRecorder, gameId, loadPerformanceSnapshot, maxHp, me.hp, me.maxHp, me.position, mode]);
 
   const handleMainCanvasCreated = useCallback(({ gl }: { gl: THREE.WebGLRenderer }) => {
     mainCanvasCleanupRef.current?.();
@@ -2899,10 +3038,16 @@ export default function BattleArena({
     const onContextLost = (event: Event) => {
       event.preventDefault();
       clearRecoveryTimer();
+      crashRecorder.recordWebGLContextLost({
+        gameId,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+      });
       setSceneRecovering(true);
     };
     const onContextRestored = () => {
       clearRecoveryTimer();
+      crashRecorder.recordWebGLContextRestored({ gameId });
       setSceneRecovering(true);
       sceneRecoveryTimerRef.current = window.setTimeout(() => {
         setSceneCanvasKey((value) => value + 1);
@@ -2923,7 +3068,7 @@ export default function BattleArena({
       canvas.removeEventListener('webglcontextlost', onContextLost, false);
       canvas.removeEventListener('webglcontextrestored', onContextRestored, false);
     };
-  }, []);
+  }, [crashRecorder, gameId]);
 
   const [showMeasurePanel, setShowMeasurePanel] = useState(false);
   const [showJumpDetailsPanel, setShowJumpDetailsPanel] = useState(false);
@@ -2953,8 +3098,7 @@ export default function BattleArena({
     stencil: false,
     depth: true,
   }), [isMobileDevice]);
-  const [cameraZoomLevel, setCameraZoomLevel] = useState(DEFAULT_CAMERA_ZOOM);
-  const [allowOverrangeCameraZoom, setAllowOverrangeCameraZoom] = useState(false);
+  const [cameraZoomLevel, setCameraZoomLevel] = useState(() => cameraDistanceToZoom(cameraSettings.maxDistance));
   const [cameraDebugEntries, setCameraDebugEntries] = useState<CameraDebugEntry[]>([]);
   const cameraDebugIdRef = useRef(0);
   const cameraEventTestingEnabledRef = useRef(false);
@@ -3086,9 +3230,9 @@ export default function BattleArena({
     const halfW = mapData.width / 2;
     const halfH = mapData.height / 2;
     const tmpCenter = new THREE.Vector3(
-      (pos.x - halfW - GROUP_POS_X) / RENDER_SF,
+      (pos.x - halfW - GROUP_POS_X) / RENDER_SF_XZ,
       5000,
-      (halfH - pos.y - GROUP_POS_Z) / RENDER_SF,
+      (halfH - pos.y - GROUP_POS_Z) / RENDER_SF_XZ,
     );
     const groundY = getBvhGroundSupportY(sys, tmpCenter);
     collisionDebugRef.current = {
@@ -3097,7 +3241,7 @@ export default function BattleArena({
       supportY: groundY,
     };
     if (groundY !== null) {
-      const feetGameZ = groundY * RENDER_SF + GROUP_POS_Y;
+      const feetGameZ = groundY * RENDER_SF_Y + GROUP_POS_Y;
       localZRef.current = feetGameZ;
       localVzRef.current = 0;
       groundBaseRef.current = feetGameZ;
@@ -3415,7 +3559,12 @@ export default function BattleArena({
   const localVelocityRef = useRef({ x: 0, y: 0 });
   const initializedRef   = useRef(false);
   const movementSeqRef   = useRef(0);
+  const movementClientSessionRef = useRef<{ id: string; startedAt: number } | null>(null);
+  if (!movementClientSessionRef.current) {
+    movementClientSessionRef.current = createMovementClientSession();
+  }
   const lastMovementRecoverAtRef = useRef(0);
+  const lastMovementOkLogAtRef = useRef(0);
 
   /* --- Jump / Z refs --- */
   const jumpLocalRef      = useRef(false); // drives local Z prediction
@@ -3464,7 +3613,7 @@ export default function BattleArena({
   const charYawRef     = useRef(0);             // character facing yaw (radians, 0 = facing +Y)
   const camYawRef      = useRef(0);             // camera yaw
   const camPitchRef    = useRef(DEFAULT_PITCH); // camera pitch angle (radians)
-  const camZoomRef     = useRef(DEFAULT_CAMERA_ZOOM);           // zoom multiplier (scroll wheel)
+  const camZoomRef     = useRef(cameraZoomLevel);           // zoom multiplier (scroll wheel)
   const cameraMoveCommandActiveRef = useRef(false);
   const cameraLookInputVersionRef = useRef(0);
   const manualCameraLookActiveRef = useRef(false);
@@ -3664,6 +3813,13 @@ export default function BattleArena({
   const setConsumableBarSlotCount = useCallback((slotCount: unknown) => {
     setConsumableBarSettings((prev) => ({ ...prev, slotCount: normalizeConsumableSlotCount(slotCount) }));
   }, []);
+  const setCameraMaxDistance = useCallback((value: unknown) => {
+    const maxDistance = normalizeCameraMaxDistance(value);
+    setCameraSettings((prev) => ({ ...prev, maxDistance, followMode: 'never', version: DEFAULT_CAMERA_SETTINGS.version }));
+    const nextZoom = cameraDistanceToZoom(maxDistance);
+    camZoomRef.current = nextZoom;
+    setCameraZoomLevel(nextZoom);
+  }, []);
   const moveConsumableSlot = useCallback((fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex) return;
     setConsumableBarSettings((prev) => {
@@ -3688,6 +3844,16 @@ export default function BattleArena({
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
     const abilityKey = ability?.abilityId ?? ability?.id;
+    crashRecorder.recordBehavior('ability-input', {
+      id,
+      abilityId: abilityKey,
+      abilityName: ability?.name,
+      selectedTargetId: selectedTargetRef.current,
+      selectedEntityId: selectedEntityRef.current,
+      selectedSelf: selectedSelfRef.current,
+      position: localPositionRef.current ?? me.position,
+      z: localZRef.current,
+    });
     if (ability?.blockedByAntiStealth) {
       showInGameWarning('反隐期间无法施展隐身招式');
       return;
@@ -3907,6 +4073,12 @@ export default function BattleArena({
     const ability = abilitiesRef.current.find((a) => a.id === abilityId);
     if (!ability) return;
     const abilityKey = ability.abilityId ?? ability.id;
+    crashRecorder.recordBehavior('ground-cast-confirm', {
+      abilityId: abilityKey,
+      abilityName: ability.name,
+      target: { x, y, z: worldZ },
+      position: localPositionRef.current ?? me.position,
+    });
     if (!isGroundCastPointWithinRange(ability, { x, y, z: worldZ })) {
       setGroundCastPreview(null);
       return;
@@ -4075,7 +4247,10 @@ export default function BattleArena({
   }, []);
 
   const tryQueueLocalJump = useCallback(() => {
-    if (meActiveDashRef.current) return;
+    if (meActiveDashRef.current) {
+      crashRecorder.recordBehavior('jump-blocked', { reason: 'active-dash', position: localPositionRef.current ?? me.position });
+      return;
+    }
     const lingRanJumpLockImmune = lingRanTianFengActiveRef.current;
     if (
       jumpLockedRef.current ||
@@ -4085,12 +4260,19 @@ export default function BattleArena({
         buffsHaveAnyEffect(me?.buffs, ['NO_JUMP'])
       ))
     ) {
+      crashRecorder.recordBehavior('jump-blocked', {
+        reason: 'locked-or-channeling',
+        jumpLocked: jumpLockedRef.current,
+        activeChannel: !!me?.activeChannel,
+        position: localPositionRef.current ?? me.position,
+      });
       return;
     }
     if (lingRanTianFengActiveRef.current) {
       if (lingRanTianFengChargeRef.current <= 0) {
         jumpLocalRef.current = false;
         jumpSendRef.current = false;
+        crashRecorder.recordBehavior('jump-blocked', { reason: 'ling-ran-no-charge', position: localPositionRef.current ?? me.position });
         return;
       }
       const keepLingRanCharge = hasLingRanSpecialJumpRefillBuffClient(me?.buffs);
@@ -4098,24 +4280,39 @@ export default function BattleArena({
       jumpLocalRef.current = false;
       jumpSendRef.current = true;
       lingRanTianFengChargeRef.current = keepLingRanCharge ? 1 : 0;
+      crashRecorder.recordBehavior('jump-queued', {
+        kind: 'ling-ran-special',
+        keepCharge: keepLingRanCharge,
+        position: localPositionRef.current ?? me.position,
+      });
       return;
     }
     const queuedYuqiJumpDir = getQueuedYuqiMountedJumpDirection();
     if (!canUseYuqiMountedJumpClient(queuedYuqiJumpDir)) {
       jumpLocalRef.current = false;
       jumpSendRef.current = false;
+      crashRecorder.recordBehavior('jump-blocked', { reason: 'yuqi-direction', queuedYuqiJumpDir, position: localPositionRef.current ?? me.position });
       return;
     }
     const maxJumps = getEffectiveMaxJumps();
     if (localJumpCountRef.current >= maxJumps) {
       jumpLocalRef.current = false;
       jumpSendRef.current = false;
+      crashRecorder.recordBehavior('jump-blocked', { reason: 'max-jumps', localJumpCount: localJumpCountRef.current, maxJumps, position: localPositionRef.current ?? me.position });
       return;
     }
     lastJumpInputAtRef.current = performance.now();
     jumpLocalRef.current = true;
     jumpSendRef.current = true;
-  }, [canUseYuqiMountedJumpClient, getEffectiveMaxJumps, getQueuedYuqiMountedJumpDirection, me?.activeChannel, me?.buffs]);
+    crashRecorder.recordBehavior('jump-queued', {
+      kind: 'normal',
+      localJumpCount: localJumpCountRef.current,
+      maxJumps,
+      direction: queuedYuqiJumpDir,
+      position: localPositionRef.current ?? me.position,
+      z: localZRef.current,
+    });
+  }, [canUseYuqiMountedJumpClient, crashRecorder, getEffectiveMaxJumps, getQueuedYuqiMountedJumpDirection, me?.activeChannel, me?.buffs, me.position]);
 
   // Keep local movement-speed prediction aligned with backend movement.ts
   useEffect(() => {
@@ -4212,7 +4409,7 @@ export default function BattleArena({
       meFacingRef.current = { x: f.x, y: f.y };
       if (!facingInitRef.current) {
         localFacingRef.current = { x: f.x, y: f.y };
-        const yaw = Math.atan2(f.x, f.y);
+        const yaw = facingToYaw(f);
         charYawRef.current = yaw;
         camYawRef.current = yaw;
         facingInitRef.current = true;
@@ -4870,6 +5067,28 @@ export default function BattleArena({
       meFacingRef.current = facingPayload;
     }
     const seq = ++movementSeqRef.current;
+    const movementClientSession = movementClientSessionRef.current;
+    crashRecorder.recordMovementSample({
+      gameId,
+      seq,
+      movementClientSessionId: movementClientSession?.id,
+      movementClientStartedAt: movementClientSession?.startedAt,
+      direction: directionPayload,
+      facing: facingPayload,
+      shouldJump,
+      keys: { ...k },
+      controlMode: controlModeRef.current,
+      mouseLook,
+      position: localPositionRef.current,
+      z: localZRef.current,
+      locks: {
+        dashFacingLocked,
+        facingInputLocked,
+        channelMovementLocked,
+        feared: !!fearedDirection,
+        shiXinGu: !!shiXinGuDirection || shiXinGuStandstill,
+      },
+    }, shouldJump || directionPayload !== null);
     try {
       const res = await fetch('/api/game/movement', {
         method:      'POST',
@@ -4878,6 +5097,8 @@ export default function BattleArena({
         body: JSON.stringify({
           gameId,
           seq,
+          movementClientSessionId: movementClientSession?.id,
+          movementClientStartedAt: movementClientSession?.startedAt,
           // Server-facing is authoritative for ability logic and stays camera-forward
           // during RMB strafing / RMB diagonals even if the local avatar is rendered sideways.
           facing: {
@@ -4889,15 +5110,35 @@ export default function BattleArena({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
+        crashRecorder.recordBehavior('movement-failed', { gameId, seq, status: res.status, error: err });
         const now = Date.now();
         if (now - lastMovementRecoverAtRef.current > 2000) {
           lastMovementRecoverAtRef.current = now;
           console.warn('[BattleArena] movement update failed; requesting fresh snapshot', err ?? res.status);
           onMovementRecover?.();
         }
+      } else {
+        const ack = await res.json().catch(() => null);
+        const now = Date.now();
+        if (shouldJump || now - lastMovementOkLogAtRef.current >= 2_000) {
+          lastMovementOkLogAtRef.current = now;
+          crashRecorder.recordConnectionChecklist('movement-ok', {
+            gameId,
+            seq,
+            ackSeq: ack?.seq,
+            accepted: ack?.accepted,
+            hasDirection: directionPayload !== null,
+            shouldJump,
+            serverPosition: ack?.position,
+            serverVelocity: ack?.velocity,
+            returnedInput: ack?.input,
+          });
+        }
       }
-    } catch { /* AbortError expected */ }
-  }, [gameId, onMovementRecover]);
+    } catch (err) {
+      crashRecorder.recordBehavior('movement-error', { gameId, seq, error: err });
+    }
+  }, [crashRecorder, gameId, onMovementRecover]);
 
   useEffect(() => {
     if (me?.position && !initializedRef.current) {
@@ -6049,8 +6290,12 @@ export default function BattleArena({
       setAutoForward(false);
       keysRef.current = { w: false, a: false, s: false, d: false };
       setWasdKeys({ w: false, a: false, s: false, d: false });
+      crashRecorder.recordBehavior('movement-reset', { reason: document.hidden ? 'hidden' : 'blur' });
     };
     const onDown = (e: KeyboardEvent) => {
+      if (!e.repeat) {
+        crashRecorder.recordBehavior('key-down', { key: e.key, code: e.code, altKey: e.altKey, ctrlKey: e.ctrlKey });
+      }
       if (e.key === 'Escape') {
         e.preventDefault();
         if (customUiMode) {
@@ -6093,6 +6338,7 @@ export default function BattleArena({
         }
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = true;
         setWasdKeys(prev => ({ ...prev, [k]: true }));
+        crashRecorder.recordBehavior('movement-key-down', { key: k, keys: { ...keysRef.current }, autoForward: autoForwardRef.current });
 
         // Movement breaks channeling
         if (channelPickupIdRef.current) {
@@ -6109,6 +6355,7 @@ export default function BattleArena({
       if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
         if (e.repeat) return;
+        crashRecorder.recordBehavior('jump-key', { keys: { ...keysRef.current }, z: localZRef.current });
         if (keysRef.current.s) {
           const commons = abilitiesRef.current.filter(a => a.isCommon);
           const backstep = commons.find(a => a.abilityId === 'houyao');
@@ -6133,6 +6380,7 @@ export default function BattleArena({
           setAutoForward(true);
           keysRef.current.w = true;
           setWasdKeys(prev => ({ ...prev, w: true }));
+          crashRecorder.recordBehavior('auto-forward-on', { keys: { ...keysRef.current } });
           toastSuccess('自动前行已开启（按 S 停止）');
         }
         return;
@@ -6198,6 +6446,7 @@ export default function BattleArena({
           setSelectedTargetId(null);
           selectedTargetRef.current = null;
         }
+        crashRecorder.recordBehavior('target-selected-hotkey', { kind: nearest.kind, id: nearest.id });
         setSelectedSelf(false);
         selectedSelfRef.current = false;
         return;
@@ -6254,6 +6503,7 @@ export default function BattleArena({
         }
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = false;
         setWasdKeys(prev => ({ ...prev, [k]: false }));
+        crashRecorder.recordBehavior('movement-key-up', { key: k, keys: { ...keysRef.current }, autoForward: autoForwardRef.current });
         const nextKeys = { ...keysRef.current };
         if (!hasMovementIntent(nextKeys)) {
           localVelocityRef.current = { x: 0, y: 0 };
@@ -6274,7 +6524,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, showAbilityDisabledWarning]);
+  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, showAbilityDisabledWarning]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -6358,6 +6608,7 @@ export default function BattleArena({
         resetMouseButtons();
         return;
       }
+      crashRecorder.recordBehavior('mouse-down', { button: e.button, x: e.clientX, y: e.clientY });
       // Left button — start camera drag
       if (e.button === 0) {
         // Only start drag if not clicking a UI button or a draggable panel
@@ -6406,6 +6657,7 @@ export default function BattleArena({
       }
     };
     const onMouseUp = (e: MouseEvent) => {
+      crashRecorder.recordBehavior('mouse-up', { button: e.button, x: e.clientX, y: e.clientY });
       if (e.button === 0) {
         const ms = mouseStateRef.current;
         const wasLeftDown = ms.isLeft;
@@ -6508,9 +6760,10 @@ export default function BattleArena({
       if ((e.target as HTMLElement | null)?.closest(`[data-testing-panel], input, select, textarea, [data-ui-interactive], .${styles.escOverlay}`)) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.12 : -0.12;
-      const zoomMax = allowOverrangeCameraZoom ? CAMERA_ZOOM_OVER_MAX : CAMERA_ZOOM_MAX;
-      camZoomRef.current = Math.max(0.4, Math.min(zoomMax, camZoomRef.current + delta));
+      const zoomMax = cameraDistanceToZoom(cameraSettings.maxDistance);
+      camZoomRef.current = Math.max(CAMERA_ZOOM_MIN, Math.min(zoomMax, camZoomRef.current + delta));
       setCameraZoomLevel(camZoomRef.current);
+      crashRecorder.recordBehavior('camera-wheel', { deltaY: e.deltaY, zoom: camZoomRef.current, zoomMax });
     };
     // Use capture phase so we intercept BEFORE the browser's own navigation handlers
     window.addEventListener('mousedown',   onMouseDown,   { capture: true });
@@ -6530,7 +6783,7 @@ export default function BattleArena({
       window.removeEventListener('wheel',       onWheel,       { capture: true } as EventListenerOptions);
       window.removeEventListener('blur',        resetMouseButtons);
     };
-  }, [allowOverrangeCameraZoom, clearTargetSelection, customUiMode]);
+  }, [cameraSettings.maxDistance, clearTargetSelection, crashRecorder, customUiMode]);
 
   // ── Touch camera rotation (mobile/iPad) ──────────────────────────────────
   // A single touch that starts on the 3D canvas (wrapRef) rotates camera + player
@@ -6555,6 +6808,7 @@ export default function BattleArena({
       camTouchRef.lastX = touch.clientX;
       camTouchRef.lastY = touch.clientY;
       manualCameraLookActiveRef.current = true;
+      crashRecorder.recordBehavior('touch-camera-start', { x: touch.clientX, y: touch.clientY });
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -6589,6 +6843,7 @@ export default function BattleArena({
       if (touch) {
         camTouchRef.id = null;
         manualCameraLookActiveRef.current = false;
+        crashRecorder.recordBehavior('touch-camera-end', { x: touch.clientX, y: touch.clientY });
       }
     };
 
@@ -6602,7 +6857,7 @@ export default function BattleArena({
       window.removeEventListener('touchend',   onTouchEnd);
       window.removeEventListener('touchcancel',onTouchEnd);
     };
-  }, [customUiMode]);
+  }, [crashRecorder, customUiMode]);
 
   const handleJoystickDirection = useCallback(
     (keys: { w: boolean; a: boolean; s: boolean; d: boolean }) => {
@@ -6714,15 +6969,15 @@ export default function BattleArena({
         const halfW = ARENA_WIDTH / 2;
         const halfH = ARENA_HEIGHT / 2;
         _bvhCenter.set(
-          (pos.x - halfW - GROUP_POS_X) / RENDER_SF,
-          (localZRef.current - GROUP_POS_Y) / RENDER_SF + EXPORT_CYL_HALF_HEIGHT,
-          (halfH - pos.y - GROUP_POS_Z) / RENDER_SF,
+          (pos.x - halfW - GROUP_POS_X) / RENDER_SF_XZ,
+          (localZRef.current - GROUP_POS_Y) / RENDER_SF_Y + EXPORT_CYL_HALF_HEIGHT,
+          (halfH - pos.y - GROUP_POS_Z) / RENDER_SF_XZ,
         );
         const supportY = getBvhGroundSupportY(sys, _bvhCenter);
         if (supportY === null) {
           return 0;
         }
-        return supportY * RENDER_SF + GROUP_POS_Y;
+        return supportY * RENDER_SF_Y + GROUP_POS_Y;
       })();
       const tickGroundH = rawTickGroundH;
       const airborne = localZRef.current > tickGroundH + 0.01;
@@ -6973,26 +7228,26 @@ export default function BattleArena({
         // ── Cylinder horizontal pass ──
         // _bvhCenter.y = cylinder centre (feet + half-height); preserved between ticks.
         // Only update X/Z for horizontal movement; Y is owned by the vertical pass.
-        _bvhCenter.x = (newPx - halfW - GROUP_POS_X) / RENDER_SF;
-        _bvhCenter.z = (halfH - newPy - GROUP_POS_Z) / RENDER_SF;
+        _bvhCenter.x = (newPx - halfW - GROUP_POS_X) / RENDER_SF_XZ;
+        _bvhCenter.z = (halfH - newPy - GROUP_POS_Z) / RENDER_SF_XZ;
         if (!bvhCenterYInitRef.current) {
           // First tick after spawn/teleport: set centre from current feet position.
-          _bvhCenter.y = (localZRef.current - GROUP_POS_Y) / RENDER_SF + EXPORT_CYL_HALF_HEIGHT;
+          _bvhCenter.y = (localZRef.current - GROUP_POS_Y) / RENDER_SF_Y + EXPORT_CYL_HALF_HEIGHT;
           bvhCenterYInitRef.current = true;
         }
         // Sphere at cylinder centre provides correct horizontal wall push (push.y=0 for walls)
         _bvhVelocity.set(
-          (vel.x + nudgeX) / RENDER_SF,
+          (vel.x + nudgeX) / RENDER_SF_XZ,
           0, // vertical handled separately; don't let wall contacts corrupt Vz
-          -(vel.y + nudgeY) / RENDER_SF,
+          -(vel.y + nudgeY) / RENDER_SF_XZ,
         );
         sys.resolveSphereCollision(_bvhCenter, EXPORT_CYL_RADIUS, _bvhVelocity);
 
         // Convert back → game horizontal (clamp to arena bounds)
         newPx = Math.max(playerRadius, Math.min(ARENA_WIDTH - playerRadius,
-          _bvhCenter.x * RENDER_SF + GROUP_POS_X + halfW));
+          _bvhCenter.x * RENDER_SF_XZ + GROUP_POS_X + halfW));
         newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius,
-          halfH - (_bvhCenter.z * RENDER_SF + GROUP_POS_Z)));
+          halfH - (_bvhCenter.z * RENDER_SF_XZ + GROUP_POS_Z)));
         // Do NOT read _bvhVelocity.y here — vertical velocity is managed by the vertical pass.
       } else {
         for (const obj of objs) {
@@ -7089,9 +7344,24 @@ export default function BattleArena({
               : isMultiJump && !hasFuyaoBuffRef.current
                 ? MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE
               : DIRECTIONAL_JUMP_DISTANCE;
+        const usesWalkMatchedBudget =
+          !isBackpedalAirJump &&
+          !usePowerDirectionalBudget &&
+          !movementControlStateRef.current.tiYunZongActive &&
+          !hadPowerJumpAirtime &&
+          !isMultiJump;
         hasFuyaoBuffRef.current   = false;
         const jumpVzScale = movementControlStateRef.current.jumpVzScale ?? 1;
         if (jumpVzScale < 1) jumpVz *= jumpVzScale;
+        const jumpTravelTicks = estimateAirborneTicks(
+          heightAboveGround,
+          jumpVz,
+          jumpGravityUp,
+          jumpGravityDown,
+        );
+        const jumpTravelDistance = usesWalkMatchedBudget
+          ? Math.max(0, jumpSpeedSource) * jumpTravelTicks
+          : directionalJumpDistance * Math.max(0, jumpSpeedScale);
         localVzRef.current        = jumpVz;
         vel.x = 0;
         vel.y = 0;
@@ -7112,7 +7382,7 @@ export default function BattleArena({
             x: localPositionRef.current?.x ?? pos.x,
             y: localPositionRef.current?.y ?? pos.y,
           },
-          expectedLandWorld: jumpDir ? directionalJumpDistance * Math.max(0, jumpSpeedScale) : 0,
+          expectedLandWorld: jumpDir ? jumpTravelDistance : 0,
           startSpeedUnitsPerSec: (jumpSpeedSource * CLIENT_TICK_HZ) / UNIT_SCALE,
           jumpPhase: nextJumpPhase,
           mode: jumpDir ? 'directional' : 'upward',
@@ -7124,13 +7394,8 @@ export default function BattleArena({
         airDirectionLockedRef.current = false;
 
         if (jumpDir) {
-          airNudgeRemainingRef.current = directionalJumpDistance * Math.max(0, jumpSpeedScale);
-          airNudgeTicksRemainingRef.current = estimateAirborneTicks(
-            heightAboveGround,
-            jumpVz,
-            jumpGravityUp,
-            jumpGravityDown,
-          );
+          airNudgeRemainingRef.current = jumpTravelDistance;
+          airNudgeTicksRemainingRef.current = jumpTravelTicks;
           airNudgeDirRef.current = jumpDir;
           airDirectionLockedRef.current = true;
           if (!isBackpedalAirJump) {
@@ -7160,7 +7425,7 @@ export default function BattleArena({
         const sys = collisionSysRef.current!;
         // ── Cylinder vertical pass ──
         // Apply gravity to cylinder centre (feet + halfHeight).
-        _bvhCenter.y += localVzRef.current / RENDER_SF;
+        _bvhCenter.y += localVzRef.current / RENDER_SF_Y;
 
         const ceilingExportY = getBvhCeilingY(sys, _bvhCenter);
         const headExportY = _bvhCenter.y + EXPORT_CYL_HALF_HEIGHT;
@@ -7206,11 +7471,11 @@ export default function BattleArena({
         };
 
         // Feet = cylinder bottom = exact terrain surface when grounded (no slope float)
-        const feetGameZ = (_bvhCenter.y - EXPORT_CYL_HALF_HEIGHT) * RENDER_SF + GROUP_POS_Y;
+        const feetGameZ = (_bvhCenter.y - EXPORT_CYL_HALF_HEIGHT) * RENDER_SF_Y + GROUP_POS_Y;
         localZRef.current = feetGameZ;
         rawClientGroundH = bvhOnGround
           ? feetGameZ
-          : (groundExportY !== null ? groundExportY * RENDER_SF + GROUP_POS_Y : feetGameZ);
+          : (groundExportY !== null ? groundExportY * RENDER_SF_Y + GROUP_POS_Y : feetGameZ);
       } else {
         rawClientGroundH = getGroundHeightClient(localPositionRef.current.x, localPositionRef.current.y, localZRef.current, objs, playerRadius);
         localZRef.current = Math.max(rawClientGroundH, localZRef.current + localVzRef.current);
@@ -9002,7 +9267,7 @@ export default function BattleArena({
       <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
         <Canvas
           key={sceneCanvasKey}
-          camera={{ fov: 72, near: 0.5, far: 2000 }}
+          camera={{ fov: CAMERA_FOV, near: 0.5, far: 2000 }}
           style={{ background: blueprintMode ? '#000010' : selfHasHongMengTianJin ? '#000000' : '#888888' }}
           dpr={sceneCanvasDpr}
           gl={sceneCanvasGl}
@@ -9189,7 +9454,7 @@ export default function BattleArena({
       <div className={`${styles.hongMengBlackout} ${hongMengOverlayActive ? styles.hongMengOverlayVisible : ''}`} aria-hidden="true" />
       {hongMengOverlayActive && <div className={`${styles.hongMengSelfCanvas} ${styles.hongMengOverlayVisible}`} aria-hidden="true">
         <Canvas
-          camera={{ fov: 72, near: 0.5, far: 2000 }}
+          camera={{ fov: CAMERA_FOV, near: 0.5, far: 2000 }}
           style={{ background: 'transparent' }}
           frameloop="always"
           dpr={sceneCanvasDpr}
@@ -9236,7 +9501,7 @@ export default function BattleArena({
           <div className={styles.uiFloatingTitle}>角色状态</div>
           <div className={styles.uiInfoValue}>位置 {localRenderPosRef.current.x.toFixed(1)}, {localRenderPosRef.current.y.toFixed(1)}</div>
           <div className={styles.uiInfoValue}>移速 {effectiveMoveSpeedUnitsPerSec.toFixed(2)}</div>
-          <div className={styles.uiInfoValue}>镜头距离 {cameraZoomLevel.toFixed(2)}</div>
+          <div className={styles.uiInfoValue}>镜头距离 {cameraZoomToDistance(cameraZoomLevel).toFixed(2)}</div>
           <div className={styles.uiInfoValue}>广角 {CAMERA_FOV}</div>
         </div>
       )}
@@ -9488,6 +9753,10 @@ export default function BattleArena({
                               <span>场景加载报告</span>
                             </label>
                             <label className={styles.escToggleRow}>
+                              <input type="checkbox" checked={showCrashDiagnosticsPanel} onChange={(e) => setShowCrashDiagnosticsPanel(e.target.checked)} className={styles.escToggleInput} />
+                              <span>崩溃诊断</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
                               <input
                                 type="checkbox"
                                 checked={showDebugGrid}
@@ -9526,22 +9795,6 @@ export default function BattleArena({
                                 className={styles.escToggleInput}
                               />
                               <span>跳跃细节和地面距离</span>
-                            </label>
-                            <label className={styles.escToggleRow}>
-                              <input
-                                type="checkbox"
-                                checked={allowOverrangeCameraZoom}
-                                onChange={(e) => {
-                                  const next = e.target.checked;
-                                  setAllowOverrangeCameraZoom(next);
-                                  if (!next) {
-                                    camZoomRef.current = Math.min(camZoomRef.current, CAMERA_ZOOM_MAX);
-                                    setCameraZoomLevel(camZoomRef.current);
-                                  }
-                                }}
-                                className={styles.escToggleInput}
-                              />
-                              <span>允许超距镜头</span>
                             </label>
                           </div>
                         ) : (
@@ -9723,6 +9976,46 @@ export default function BattleArena({
                       </>
                     ) : (
                       <>
+                        <div className={styles.escSectionTitle}><span>镜头设置</span></div>
+                        <div className={`${styles.escSettingsGrid} ${styles.escCameraSettingsGrid}`}>
+                          <div className={`${styles.escSettingControl} ${styles.escCameraModeControl}`}>
+                            <div className={styles.escCameraFieldLabel}>镜头类型</div>
+                            <div className={styles.escCameraModeRow} role="radiogroup" aria-label="镜头类型">
+                              <button
+                                type="button"
+                                className={`${styles.escCameraModeButton} ${styles.escCameraModeButtonActive}`}
+                                aria-pressed="true"
+                              >
+                                <span className={styles.escCameraRadio} aria-hidden="true" />
+                                <span>从不追随</span>
+                              </button>
+                              <button type="button" className={styles.escCameraModeButton} disabled aria-pressed="false">
+                                <span className={styles.escCameraRadio} aria-hidden="true" />
+                                <span>总是追随</span>
+                              </button>
+                              <button type="button" className={styles.escCameraModeButton} disabled aria-pressed="false">
+                                <span className={styles.escCameraRadio} aria-hidden="true" />
+                                <span>智能追随</span>
+                              </button>
+                            </div>
+                          </div>
+                          <div className={styles.escSettingControl}>
+                            <div className={styles.escRangeHeader}>
+                              <span>镜头最大距离</span>
+                              <span>{cameraSettings.maxDistance.toFixed(2)}</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={CAMERA_DISTANCE_MIN}
+                              max={CAMERA_DISTANCE_MAX}
+                              step="0.01"
+                              value={cameraSettings.maxDistance}
+                              onChange={(e) => setCameraMaxDistance(e.target.value)}
+                              className={styles.escRangeInput}
+                              aria-label="镜头最大距离"
+                            />
+                          </div>
+                        </div>
                         <div className={styles.escSectionTitle}><span>界面设置</span></div>
                         <div className={styles.escSettingsGrid}>
                           <div className={styles.escSettingControl}>
@@ -9925,6 +10218,65 @@ export default function BattleArena({
           </div>
           <div className={styles.loadPerfGameCounts}>
             Three {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.objects)} objects · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.geometries)} geometries · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.textures)} textures · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.calls)} draws
+          </div>
+        </div>
+      )}
+
+      {showCrashDiagnosticsPanel && (
+        <div className={`${styles.uiFloatingPanel} ${styles.crashDiagPanel}`} data-ui-interactive data-crash-diagnostics-panel>
+          <div className={styles.loadPerfHeader}>
+            <div>
+              <div className={styles.uiFloatingTitle}>崩溃诊断</div>
+              <div className={styles.loadPerfSummary}>
+                行为 {crashDiagnosticsSummary.breadcrumbCount} 条 · 断线 {crashDiagnosticsSummary.disconnectCount} 次 · {crashDiagnosticsSummary.lastUploadStatus}
+              </div>
+            </div>
+            <div className={styles.loadPerfHeaderActions}>
+              <button
+                type="button"
+                className={styles.loadPerfCopyButton}
+                onClick={copyCrashDiagnosticsReport}
+              >
+                <Clipboard size={13} />
+                <span>复制</span>
+              </button>
+              <button
+                type="button"
+                className={styles.loadPerfCopyButton}
+                onClick={downloadCrashDiagnosticsReport}
+              >
+                <Download size={13} />
+                <span>下载</span>
+              </button>
+              <button
+                type="button"
+                className={styles.loadPerfCopyButton}
+                onClick={() => void uploadCrashDiagnosticsReport()}
+              >
+                <UploadCloud size={13} />
+                <span>上传</span>
+              </button>
+              <button
+                type="button"
+                className={styles.loadPerfCloseButton}
+                onClick={() => setShowCrashDiagnosticsPanel(false)}
+                aria-label="关闭崩溃诊断"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+          <div className={styles.crashDiagGrid}>
+            <div><span>Session</span><strong>{crashDiagnosticsSummary.sessionId?.slice(0, 8) ?? '-'}</strong></div>
+            <div><span>启动</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.startedAt)}</strong></div>
+            <div><span>心跳</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastHeartbeatAt)}</strong></div>
+            <div><span>断线</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastDisconnectAt)}</strong></div>
+            <div><span>重连</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastReconnectAt)}</strong></div>
+            <div><span>致命</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastFatalAt)}</strong></div>
+          </div>
+          <div className={styles.crashDiagRelation}>{crashDiagnosticsSummary.relationSummary}</div>
+          <div className={styles.crashDiagUploadLine}>
+            报告 {crashDiagnosticsSummary.lastReportId ?? '-'} · {crashDiagnosticsSummary.lastUploadError ?? 'ready'}
           </div>
         </div>
       )}
