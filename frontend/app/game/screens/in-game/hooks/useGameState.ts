@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getClientCrashRecorder } from "@/app/game/diagnostics/clientCrashRecorder";
 import type { AbilityInstance, GameResponse, TargetSelection } from "../types";
 
 /* ================= DIFF APPLY ================= */
@@ -156,6 +157,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastChecklistPongAtRef = useRef<number>(0);
+  const lastChecklistDiffAtRef = useRef<number>(0);
+  const crashRecorderRef = useRef(getClientCrashRecorder());
 
   const updateServerTimeOffset = useCallback((serverTimestamp?: number, clientReceivedAt = Date.now()) => {
     if (typeof serverTimestamp !== "number" || !Number.isFinite(serverTimestamp)) {
@@ -178,15 +182,27 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     return serverTimeOffsetRef.current;
   }, []);
 
+  useEffect(() => {
+    crashRecorderRef.current.startSession({
+      gameId,
+      userId: selfUserId,
+      route: typeof window !== "undefined" ? window.location.pathname : "/game/in-game",
+    });
+    crashRecorderRef.current.recordConnectionChecklist("session-start", { gameId, userId: selfUserId }, true);
+  }, [gameId, selfUserId]);
+
   /* ================= INITIAL SNAPSHOT ================= */
 
   const fetchInitialGame = useCallback(async () => {
+    crashRecorderRef.current.recordBehavior("snapshot-fetch-start", { gameId });
     const res = await fetch(`/api/game/${gameId}`, {
       credentials: "include",
     });
 
     if (!res.ok) {
-      setLoadError(await readBackendError(res));
+      const error = await readBackendError(res);
+      crashRecorderRef.current.recordBehavior("snapshot-fetch-failed", { gameId, status: res.status, error });
+      setLoadError(error);
       setGame(null);
       setLoading(false);
       return;
@@ -204,9 +220,34 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     });
 
     versionRef.current = normalizedFull.state.version ?? 0;
+    const meIndex = normalizedFull.state.players.findIndex((p: any) => p.userId === selfUserId);
+    const playerIds = normalizedFull.state.players.map((p: any) => p.userId as string);
+    crashRecorderRef.current.updateContext({
+      gameId,
+      userId: selfUserId,
+      gameMode: normalizedFull.mode,
+      tournamentPhase: normalizedFull.tournament?.phase,
+      battleNumber: normalizedFull.tournament?.battleNumber,
+      stateVersion: versionRef.current,
+      playerCount: normalizedFull.state.players.length,
+    });
+    crashRecorderRef.current.recordBehavior("snapshot-fetch-ok", {
+      gameId,
+      version: versionRef.current,
+      phase: normalizedFull.tournament?.phase,
+      playerCount: normalizedFull.state.players.length,
+    });
+    crashRecorderRef.current.recordConnectionChecklist("snapshot-ok", {
+      gameId,
+      version: versionRef.current,
+      phase: normalizedFull.tournament?.phase,
+      playerCount: normalizedFull.state.players.length,
+      meIndex,
+      hasSelf: meIndex !== -1,
+    }, true);
     // Compute and cache meIndex + playerIds so WS handler can identify opponent patches
-    meIndexRef.current = normalizedFull.state.players.findIndex((p: any) => p.userId === selfUserId);
-    playerIdsRef.current = normalizedFull.state.players.map((p: any) => p.userId as string);
+    meIndexRef.current = meIndex;
+    playerIdsRef.current = playerIds;
     setGame(normalizedFull);
     setLoadError(null);
     setLoading(false);
@@ -227,6 +268,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     if (!token) {
       try {
         console.log("[WS] 1️⃣ Fetching token from /api/auth/token...");
+        crashRecorderRef.current.recordWebSocketEvent("token-fetch-start", { gameId });
         const res = await fetch("/api/auth/token", {
           credentials: "include",
         });
@@ -236,6 +278,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         if (!res.ok) {
           const err = await res.text();
           console.error("[WS] ❌ Token endpoint failed:", res.status, err);
+          crashRecorderRef.current.recordWebSocketEvent("token-fetch-failed", { gameId, status: res.status, error: err });
           // Retry after delay
           if (!reconnectTimeoutRef.current) {
             reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2000);
@@ -248,11 +291,14 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
         if (!token) {
           console.error("[WS] ❌ No token in response:", data);
+          crashRecorderRef.current.recordWebSocketEvent("token-missing", { gameId });
           return;
         }
-        console.log(`[WS] 3️⃣ Got token: ${token.substring(0, 30)}...`);
+        console.log("[WS] 3️⃣ Got token from endpoint");
+        crashRecorderRef.current.recordWebSocketEvent("token-fetch-ok", { gameId });
       } catch (err) {
         console.error("[WS] ❌ Failed to fetch token:", err);
+        crashRecorderRef.current.recordWebSocketEvent("token-fetch-error", { gameId, error: err });
         // Retry after delay
         if (!reconnectTimeoutRef.current) {
           reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2000);
@@ -264,20 +310,26 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     // Build WebSocket URL
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     const wsUrl = `${protocol}://${window.location.host}/ws?gameId=${gameId}&token=${token}`;
+    const safeWsUrl = `${protocol}://${window.location.host}/ws?gameId=${gameId}&token=[redacted]`;
 
     console.log(`[WS] 4️⃣ Creating WebSocket connection`);
     console.log(`[WS] Protocol: ${protocol}`);
     console.log(`[WS] Host: ${window.location.host}`);
     console.log(`[WS] GameID: ${gameId}`);
-    console.log(`[WS] URL: ${wsUrl.substring(0, 100)}...`);
+    console.log(`[WS] URL: ${safeWsUrl}`);
+    crashRecorderRef.current.recordWebSocketEvent("connecting", {
+      gameId,
+      protocol,
+      host: window.location.host,
+    });
 
     const ws = new WebSocket(wsUrl);
 
     console.log(`[WS] 5️⃣ WebSocket object created, readyState: ${ws.readyState}`);
     console.log(`[WS] Initial state check - ReadyState ${ws.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)`);
-    console.log(`[WS] URL being attempted:`, wsUrl);
+    console.log(`[WS] URL being attempted:`, safeWsUrl);
     console.log(`[WS] Full request details:`, {
-      url: wsUrl,
+      url: safeWsUrl,
       protocol: protocol,
       host: window.location.host,
       secured: window.location.protocol === "https:"
@@ -294,9 +346,10 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     // Set a timeout to see if connection never opens
     const connectionTimeoutRef = setTimeout(() => {
       console.error(`[WS] ❌ Connection timeout after 5 seconds - readyState: ${ws.readyState}`);
-      console.error(`[WS] URL was: ${wsUrl}`);
+      console.error(`[WS] URL was: ${safeWsUrl}`);
       console.error(`[WS] If readyState=0, connection is stuck in CONNECTING state`);
       console.error(`[WS] If readyState=3, connection was closed`);
+      crashRecorderRef.current.recordWebSocketEvent("connect-timeout", { gameId, readyState: ws.readyState });
     }, 5000);
 
     ws.onopen = () => {
@@ -305,6 +358,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       console.log("[WS] 6️⃣✅ WebSocket OPENED successfully!");
       console.log("[WS] Connection established - readyState:", ws.readyState);
       wsRef.current = ws;
+      crashRecorderRef.current.recordWebSocketEvent("open", { gameId, readyState: ws.readyState });
+      crashRecorderRef.current.recordConnectionChecklist("ws-open", { gameId, readyState: ws.readyState, version: versionRef.current }, true);
 
       // Clear reconnect timeout if it was set
       if (reconnectTimeoutRef.current) {
@@ -334,10 +389,26 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             setRtt((prev) => (prev === rttValue ? prev : rttValue));
           }
           updateServerTimeOffset(message.serverTimestamp, receiveDateNow);
+          crashRecorderRef.current.recordWebSocketMessage({ type: "PONG", version: versionRef.current });
+          if (receiveDateNow - lastChecklistPongAtRef.current >= 10_000) {
+            lastChecklistPongAtRef.current = receiveDateNow;
+            crashRecorderRef.current.recordConnectionChecklist("pong", {
+              gameId,
+              rtt: rttRef.current,
+              version: versionRef.current,
+              readyState: ws.readyState,
+            });
+          }
           return;
         }
 
         if (message.type === "PLAYER_DISCONNECTED") {
+          crashRecorderRef.current.recordWebSocketEvent("player-disconnected", {
+            gameId,
+            userId: message.userId,
+            username: message.username,
+            endsAt: message.endsAt,
+          });
           if (message.userId && message.userId !== selfUserId) {
             const promptEndsAt = Date.now() + 5_000;
             setDisconnectPrompt({
@@ -350,6 +421,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         }
 
         if (message.type === "PLAYER_RECONNECTED") {
+          crashRecorderRef.current.recordWebSocketEvent("player-reconnected", {
+            gameId,
+            userId: message.userId,
+            username: message.username,
+          });
           if (message.userId) {
             setDisconnectPrompt((prev) => prev?.userId === message.userId ? null : prev);
           }
@@ -358,6 +434,24 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
         if (message.type === "STATE_DIFF" || message.type === "GAME_OVER") {
           if (!message.diff || message.diff.length === 0) return;
+          crashRecorderRef.current.recordWebSocketMessage({
+            type: message.type,
+            version: message.version,
+            diffCount: message.diff.length,
+            eventCount: message.events?.length,
+            samplePaths: message.diff.slice(0, 8).map((patch) => patch.path),
+          });
+          if (message.type === "GAME_OVER" || receiveDateNow - lastChecklistDiffAtRef.current >= 5_000) {
+            lastChecklistDiffAtRef.current = receiveDateNow;
+            crashRecorderRef.current.recordConnectionChecklist("state-diff", {
+              gameId,
+              type: message.type,
+              version: message.version,
+              diffCount: message.diff.length,
+              eventCount: message.events?.length,
+              readyState: ws.readyState,
+            }, message.type === "GAME_OVER");
+          }
 
           const offsetMs = hasServerTimeSyncRef.current
             ? serverTimeOffsetRef.current
@@ -386,6 +480,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
           }
 
           versionRef.current = message.version ?? 0;
+          crashRecorderRef.current.updateContext({ stateVersion: versionRef.current });
 
           setGame((prev) => {
             if (!prev) return prev;
@@ -430,6 +525,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         }
       } catch (err) {
         console.error("[WS] Failed to parse message:", err);
+        crashRecorderRef.current.recordWebSocketEvent("message-parse-error", { gameId, error: err });
       }
     };
 
@@ -441,9 +537,14 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       console.error("  - Error object:", err);
       console.error("  - Error message:", (err as any)?.message);
       console.error("  - ReadyState:", ws.readyState, "(0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)");
-      console.error("  - URL:", ws.url);
+      console.error("  - URL:", safeWsUrl);
       console.error("  - Protocol negotiated:", ws.protocol);
       console.error("  - Extensions:", (ws as any).extensions);
+      crashRecorderRef.current.recordWebSocketEvent("error", {
+        gameId,
+        readyState: ws.readyState,
+        message: (err as any)?.message,
+      });
       
       // Check if it's a network error
       if ((err as any)?.code === 'ECONNREFUSED' || (err as any)?.message?.includes('refused')) {
@@ -451,18 +552,18 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       clearTimeout(connectionTimeoutRef);
       clearInterval(stateCheckInterval);
       console.log("[WS] 8️⃣ WebSocket CLOSE event fired");
       console.log("[WS] Closure details:", {
-        code: (ws as any).code,
-        reason: (ws as any).reason,
-        wasClean: (ws as any).wasClean,
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
         readyState: ws.readyState
       });
       console.log("[WS] Closure reason explanation:");
-      const code = (ws as any).code;
+      const code = event.code;
       if (code === 1000) console.log("  - Normal closure");
       else if (code === 1001) console.log("  - Going away");
       else if (code === 1002) console.log("  - Protocol error");
@@ -472,6 +573,21 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       else if (code === 1008) console.log("  - Policy violation");
       else if (code === 1011) console.log("  - Unexpected error on server");
       else console.log(`  - Unknown code: ${code}`);
+      crashRecorderRef.current.recordDisconnect({
+        gameId,
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        readyState: ws.readyState,
+      });
+      crashRecorderRef.current.recordConnectionChecklist("ws-close", {
+        gameId,
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        readyState: ws.readyState,
+        version: versionRef.current,
+      }, true);
       
       wsRef.current = null;
 
@@ -504,6 +620,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   useEffect(() => {
     return () => {
       if (wsRef.current) {
+        crashRecorderRef.current.recordWebSocketEvent("cleanup-close", { gameId, readyState: wsRef.current.readyState });
         wsRef.current.close();
         wsRef.current = null;
       }

@@ -1079,6 +1079,7 @@ export class GameLoop {
   private tickInterval: any;
   private playerInputs: Map<number, MovementInput | null> = new Map();
   private playerInputSeq: Map<number, number> = new Map();
+  private playerInputClientSessions: Map<number, { id: string; startedAt: number }> = new Map();
   private lastBroadcast = 0;
   private ticksSinceBroadcast = 0;
   // Broadcast cadence in ticks. Derived from tickRate to keep roughly 30Hz net updates.
@@ -1237,11 +1238,32 @@ export class GameLoop {
    * Queue player movement input
    * Called when client sends WASD input
    */
-  setPlayerInput(playerIndex: number, input: MovementInput | null, seq?: number) {
+  setPlayerInput(
+    playerIndex: number,
+    input: MovementInput | null,
+    seq?: number,
+    clientSession?: { id: string; startedAt: number },
+  ) {
+    if (clientSession?.id) {
+      const currentSession = this.playerInputClientSessions.get(playerIndex);
+      if (!currentSession || currentSession.id !== clientSession.id) {
+        if (
+          currentSession &&
+          Number.isFinite(currentSession.startedAt) &&
+          Number.isFinite(clientSession.startedAt) &&
+          clientSession.startedAt < currentSession.startedAt
+        ) {
+          return false;
+        }
+        this.playerInputClientSessions.set(playerIndex, clientSession);
+        this.playerInputSeq.delete(playerIndex);
+      }
+    }
+
     if (typeof seq === "number") {
       const lastSeq = this.playerInputSeq.get(playerIndex);
       if (typeof lastSeq === "number" && seq < lastSeq) {
-        return;
+        return false;
       }
       this.playerInputSeq.set(playerIndex, seq);
     }
@@ -1266,6 +1288,7 @@ export class GameLoop {
       }
     }
     this.playerInputs.set(playerIndex, nextInput);
+    return true;
   }
 
   hasPendingJump(playerIndex: number): boolean {

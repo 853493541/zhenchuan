@@ -1454,6 +1454,16 @@
   background: rgba(12, 18, 24, 0.96);
 }
 
+.crashDiagPanel {
+  top: 72px;
+  left: 16px;
+  width: min(460px, calc(100vw - 24px));
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  border-radius: 8px;
+  background: rgba(12, 18, 24, 0.96);
+}
+
 .loadPerfHeader {
   display: flex;
   align-items: flex-start;
@@ -1624,6 +1634,49 @@
   color: #a9b7c6;
   font-size: 11px;
   line-height: 1.5;
+}
+
+.crashDiagGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.crashDiagGrid div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 5px;
+  background: rgba(27, 37, 48, 0.86);
+  font-size: 11px;
+}
+
+.crashDiagGrid span {
+  color: #9fb0c3;
+}
+
+.crashDiagGrid strong {
+  min-width: 0;
+  color: #f8fafc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crashDiagRelation,
+.crashDiagUploadLine {
+  margin-top: 8px;
+  padding: 7px 8px;
+  border-radius: 5px;
+  background: rgba(27, 37, 48, 0.66);
+  color: #a9b7c6;
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-word;
 }
 
 .uiCheckboxRow,

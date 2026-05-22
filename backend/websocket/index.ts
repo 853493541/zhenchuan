@@ -13,6 +13,7 @@ export interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
   gameId?: string;
   isAlive?: boolean;
+  terminatedByHeartbeat?: boolean;
 }
 
 const WS_DEBUG_LOGS = process.env.WS_DEBUG_LOGS === "1";
@@ -128,9 +129,15 @@ export function setupWebSocket(server: HTTPServer) {
     });
 
     // Handle disconnect
-    ws.on("close", () => {
-      wsLog(
-        `[WS] User ${ws.userId} disconnected from game ${ws.gameId}`
+    ws.on("close", (code: number, reason: Buffer) => {
+      console.warn(
+        `[WS] User ${ws.userId} disconnected from game ${ws.gameId}`,
+        {
+          code,
+          reason: reason.toString("utf8").slice(0, 120),
+          wasAlive: ws.isAlive === true,
+          terminatedByHeartbeat: ws.terminatedByHeartbeat === true,
+        }
       );
       subscriptionManager.unsubscribe(ws);
     });
@@ -154,8 +161,9 @@ export function setupWebSocket(server: HTTPServer) {
   const heartbeat = setInterval(() => {
     wss.clients.forEach((ws: AuthenticatedWebSocket) => {
       if (ws.isAlive === false) {
+        ws.terminatedByHeartbeat = true;
+        console.warn(`[WS] Terminating inactive client ${ws.userId} for game ${ws.gameId}`);
         ws.terminate();
-        subscriptionManager.unsubscribe(ws);
         return;
       }
 

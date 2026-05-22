@@ -3,6 +3,96 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Generated crash/frontend logs should stay untracked (2026-05-22)
+
+**Finding**:
+- GitHub rejected a push because `logs/client-crashes/2026-05-22.jsonl` had grown to 121 MB and the repo was already tracking generated diagnostics JSONL files under `logs/client-crashes/` and `logs/frontend/`.
+
+**Fix / lesson**:
+- Added git ignore rules for generated diagnostics JSONL logs and removed the tracked log files from the Git index without deleting the local copies.
+- Crash/frontend recorder outputs are runtime evidence, not source artifacts; they should stay local or be archived outside Git.
+
+## Refresh movement sequence reset (2026-05-22)
+
+**Finding**:
+- Real post-refresh logs showed W key events, direction payloads, and successful `/api/game/movement` HTTP responses, but the authoritative position and velocity stayed unchanged before snapping the locally predicted player back.
+- The frontend movement sequence starts at `1` after page refresh, while the live backend `GameLoop` kept the old high `playerInputSeq` for that player. `setPlayerInput` silently ignored every lower post-refresh seq, and the route still returned `success: true`, making the ACK misleading.
+
+**Fix / lesson**:
+- Movement POSTs now include a per-page movement client session id and start timestamp. `GameLoop` tracks that session per player, resets the sequence guard when a newer page session appears, and rejects older page sessions/stale seqs with `accepted: false`.
+- The movement route returns `accepted` so diagnostics can distinguish transport success from authoritative input acceptance.
+- The refresh regression test now primes a high backend movement seq before reload, then verifies the refreshed page's low seq movement changes the backend position. Refresh reconnect tests must reproduce sequence history, not just reload a fresh low-seq page.
+
+## Crash recorder normal-end cleanup and refresh checklist (2026-05-22)
+
+**Finding**:
+- Treating `InGameClient` unmount as a clean exit is wrong because refresh, route replacement during a broken reconnect, and tab destruction all unmount the component without proving the game ended normally.
+- The refresh/reconnect bug needs an initial-start checklist and an after-refresh checklist that includes snapshot, WebSocket open/close, PONG, state diff progress, and backend movement acknowledgement; visual local walking alone does not prove the backend accepted movement.
+- Live refresh testing with `catcake` showed snapshot, WebSocket, PONG, state diffs, and movement requests were alive after reload, but W movement rehydrated through the wrong facing/yaw convention. `me.facing` was converted with `atan2(f.x, f.y)` while movement/camera code uses `atan2(f.x, -f.y)`, so post-refresh W could point into collision and appear like backend movement was not reconnecting.
+
+**Fix / lesson**:
+- Normal diagnostic cleanup is now limited to explicit leave and true game-over paths. Refresh/unmount keeps crash evidence and records a warning breadcrumb instead of marking a clean exit.
+- Added a session-scoped cleanup endpoint that removes only matching JSONL entries for the authenticated user/game/session after a normal ending, preserving abnormal sessions.
+- Added compact connection-checklist breadcrumbs and a live two-player Playwright regression test that verifies backend position changes before and after refreshing the in-game page.
+- Rehydrate BattleArena yaw through the shared `facingToYaw` helper; duplicating coordinate conversions is exactly how refresh-only movement drift appears.
+
+## PC hard-disconnect finding after state-diff sampling (2026-05-21)
+
+**Finding**:
+- The follow-up crash for PC user `catcake` in game `6a0f8d643edda46d6c578aba` still did not emit a browser fatal error, unhandled rejection, WebGL context loss, pagehide, beforeunload, or frontend/backend PM2 process crash.
+- The state-diff sampling fix worked: frontend batches were small, had no dropped entries, and showed `skippedSinceLastLog` summaries instead of tick-rate persistent writes.
+- PC Chrome's last uploaded heartbeat/logs were normal (`visible`, online, one canvas, stable scene counts, roughly 100 MB heap). The last PC frontend entry was a sampled `STATE_DIFF` at `2026-05-21T23:04:25.964Z`; the survivor saw `PLAYER_DISCONNECTED` for `catcake` at `2026-05-21T23:04:29.610Z`.
+- Server logs only said the PC WebSocket unsubscribed, so the next missing evidence is the WebSocket close code/reason and whether the server heartbeat terminated a dead socket.
+
+**Action / lesson**:
+- Added backend WebSocket close-code logging and heartbeat-termination logging so the next hard disappearance distinguishes browser abnormal close, network drop, and server heartbeat cleanup.
+- When no client fatal/page lifecycle event is captured and the socket simply disappears, treat it as a renderer/browser/network-level loss until close-code evidence says otherwise.
+
+## PC crash diagnostics overhead finding (2026-05-21)
+
+**Finding**:
+- The Safari guest `GAME_OVER` / root-route clean exit was expected behavior and was not the PC crash. The useful survivor-side clue was `PLAYER_DISCONNECTED` for PC user `catcake` at `2026-05-21T19:18:55.854Z`.
+- PC Chrome remained visible/online with normal heap, DOM, canvas, and scene metrics in the last heartbeat/log batches. There was no captured uncaught fatal error, WebGL context loss, or PM2 backend/frontend process crash.
+- The frontend recorder was persisting every 30 Hz `STATE_DIFF` message as a breadcrumb. Each breadcrumb appended to the durable frontend log queue with synchronous localStorage parse/stringify, creating avoidable main-thread work and causing uploaded batches to lag behind real time.
+
+**Fix / lesson**:
+- Coalesce high-frequency `STATE_DIFF` diagnostics: keep the latest state version current, persist a sampled breadcrumb every few seconds, and include a skipped-count summary instead of writing every tick.
+- Diagnostics for renderer crashes must never add per-frame or per-tick synchronous storage work; keep persistent logs focused on fatal/error/lifecycle events plus sampled health breadcrumbs.
+
+## Random white-screen crash recorder implementation (2026-05-21)
+
+**Follow-up correction**:
+- ESC diagnostics are only useful while the UI is still alive. Added an automatic frontend log stream at `/api/diagnostics/client-frontend-log` that writes sanitized JSONL batches under `/home/ubuntu/zhenchuan/logs/frontend/` during play.
+- The recorder now keeps a bounded frontend-log queue across refresh, uploads it every few seconds, and forces keepalive/beacon uploads on page hide, unload, disconnect-style major events, WebGL loss, and fatal errors.
+
+**Lesson**:
+- For a true white-screen or renderer crash, the primary evidence must already be in backend frontend logs before the crash; localStorage recovery and ESC copy/upload are fallback/convenience paths, not the main path.
+
+**Implemented**:
+- Added a frontend crash recorder with durable localStorage session/breadcrumb buffers, global error/unhandled-rejection hooks, console warn/error capture, page lifecycle capture, heartbeat uploads, previous unclean-session upload, and redaction for token/cookie/password-like fields.
+- Added a React crash boundary around the in-game battle view so render/runtime errors upload a report and show a solid fallback instead of a plain white screen.
+- Added an authenticated backend endpoint at `/api/diagnostics/client-crash-report` that writes sanitized JSONL entries under `/home/ubuntu/zhenchuan/logs/client-crashes/`.
+- Wired WebSocket connect/error/close/reconnect messages and player disconnect/reconnect messages into the recorder, including last disconnect time and crash/event-to-disconnect relation.
+- Wired BattleArena behavior breadcrumbs: movement samples, jump attempts, ability casts, ground casts, keyboard inputs, mouse/touch camera actions, movement failures, scene metrics, WebGL context loss/restoration, and ESC -> 测试 -> 崩溃诊断 copy/download/upload controls.
+- Removed token-bearing WebSocket debug output from browser console logs while preserving redacted connection context.
+
+**Verification plan**:
+- Build backend/frontend, restart only `frontend` and `backend`, then use the diagnostics panel or `window.__zhenchuanCrashRecorder` to upload a manual report and confirm JSONL output.
+
+**Lesson**:
+- Crash logging must explicitly record the timing relationship between behavior, heartbeat, WebSocket disconnect, reconnect, and fatal/error events; otherwise delayed white-screen failures are almost impossible to separate from network drops.
+
+## Random white-screen crash investigation plan (2026-05-21)
+
+**Unresolved issue**:
+- The live game can randomly collapse into a white screen after running for a while, and DevTools/F12 may not be usable afterward. This suggests console-only debugging is not enough and the failure may be renderer-process, WebGL/GPU, memory, or fatal runtime related.
+
+**Plan recorded**:
+- Added `CRASH_DIAGNOSTICS_PLAN.md` with a flight-recorder approach: durable frontend ring buffer, IndexedDB/localStorage fallback, backend JSONL crash-report endpoint, heartbeat snapshots, WebGL/context-loss metrics, an in-game diagnostics panel, and a live Playwright soak test plan.
+
+**Lesson**:
+- Random delayed white screens should be debugged with evidence captured before the crash, not by relying on post-crash DevTools access.
+
 ## Qi-field channel timing, sound, and terrain visibility (2026-05-21)
 
 **Problem set**:

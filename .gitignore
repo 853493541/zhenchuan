@@ -61,6 +61,8 @@ __pycache__/
 .DS_Store
 *.bak
 *.swp
+logs/client-crashes/*.jsonl
+logs/frontend/*.jsonl
 
 # ESLint cache
 .eslintcache

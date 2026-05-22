@@ -7,7 +7,7 @@ import WASDButtons from './WASDButtons';
 import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, ChannelBarHost, type ChannelBarData } from './ChannelBar';
-import { ArrowLeft, Clipboard, Gamepad2, Gauge, Keyboard, LayoutGrid, MessageCircle, Puzzle, RotateCcw, Swords, Trash2, Volume2, Wind, X } from 'lucide-react';
+import { ArrowLeft, Clipboard, Download, Gamepad2, Gauge, Keyboard, LayoutGrid, MessageCircle, Puzzle, RotateCcw, Swords, Trash2, UploadCloud, Volume2, Wind, X } from 'lucide-react';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles, type SceneRuntimeMetrics } from './scene/ArenaScene';
@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
 import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase } from './abilitySoundRegistry';
 import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
+import { formatCrashDiagnosticsReport, getClientCrashRecorder, type CrashRecorderSummary } from '@/app/game/diagnostics/clientCrashRecorder';
 
 type V3 = { x: number; y: number; z: number };
 type LoadStageStatus = '完成' | '进行中' | '失败';
@@ -33,6 +34,14 @@ type LoadPerformanceStage = {
   detail: string;
   meta?: Record<string, number | string>;
 };
+
+function createMovementClientSession() {
+  const cryptoObj = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+  const id = typeof cryptoObj?.randomUUID === 'function'
+    ? cryptoObj.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return { id, startedAt: Date.now() };
+}
 
 type LoadPerformanceStageState = {
   id: string;
@@ -102,6 +111,13 @@ const formatLoadPerfBytes = (bytes: number | null | undefined) => {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${Math.round(bytes)} B`;
+};
+
+const formatCrashDiagTime = (ts: number | null | undefined) => {
+  if (!ts) return '-';
+  const date = new Date(ts);
+  const time = date.toLocaleTimeString('en-GB', { hour12: false });
+  return `${time}.${String(ts % 1000).padStart(3, '0')}`;
 };
 
 const getSceneResourceLabel = (url: string) => {
@@ -2388,6 +2404,7 @@ export default function BattleArena({
   const playerRadius = mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : DEFAULT_PLAYER_RADIUS;
   ensureResizeObserverSupport();
 
+  const crashRecorder = useMemo(() => getClientCrashRecorder(), []);
   const storedUnitScale = getStoredUnitScale(mode);
   const modePickups = useMemo(() => (mode === 'collision-test' ? [] : pickups), [mode, pickups]);
   const channelAbilityByBuffId = useMemo(() => {
@@ -2819,7 +2836,9 @@ export default function BattleArena({
   const sceneRecoveryTimerRef = useRef<number | null>(null);
   const mainCanvasCleanupRef = useRef<(() => void) | null>(null);
   const [showLoadPerformancePanel, setShowLoadPerformancePanel] = useState(false);
+  const [showCrashDiagnosticsPanel, setShowCrashDiagnosticsPanel] = useState(false);
   const [loadPerformanceSnapshot, setLoadPerformanceSnapshot] = useState<LoadPerformanceSnapshot | null>(null);
+  const [crashDiagnosticsSummary, setCrashDiagnosticsSummary] = useState<CrashRecorderSummary>(() => crashRecorder.getSummary());
   const sceneRuntimeMetricsRef = useRef<SceneRuntimeMetrics | null>(null);
   const loadPerformanceStartedAtRef = useRef(performance.now());
   const loadPerformanceWallStartedAtRef = useRef(Date.now());
@@ -2899,6 +2918,7 @@ export default function BattleArena({
 
   const handleSceneMetrics = useCallback((metrics: SceneRuntimeMetrics) => {
     sceneRuntimeMetricsRef.current = metrics;
+    crashRecorder.updateSceneMetrics(metrics as unknown as Record<string, unknown>);
     const alreadyCompleted = loadPerformanceStagesRef.current.get('three-scene-mounted')?.completedAtMs != null;
     if (!alreadyCompleted) {
       recordLoadStageEnd(
@@ -2909,7 +2929,7 @@ export default function BattleArena({
         { objects: metrics.objects, meshes: metrics.meshes, drawCalls: metrics.calls },
       );
     }
-  }, [recordLoadStageEnd]);
+  }, [crashRecorder, recordLoadStageEnd]);
 
   const copyLoadPerformanceReport = useCallback(async () => {
     const report = loadPerformanceSnapshot?.reportText;
@@ -2936,10 +2956,75 @@ export default function BattleArena({
   }, [loadPerformanceSnapshot?.reportText]);
 
   useEffect(() => {
+    const updateSummary = () => setCrashDiagnosticsSummary(crashRecorder.getSummary());
+    updateSummary();
+    const id = window.setInterval(updateSummary, 1000);
+    return () => window.clearInterval(id);
+  }, [crashRecorder]);
+
+  const copyCrashDiagnosticsReport = useCallback(async () => {
+    const reportText = crashRecorder.getReportText('manual');
+    try {
+      await navigator.clipboard.writeText(reportText);
+      toastSuccess('已复制崩溃诊断');
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = reportText;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (ok) toastSuccess('已复制崩溃诊断');
+      else toastError('复制崩溃诊断失败');
+    }
+    setCrashDiagnosticsSummary(crashRecorder.getSummary());
+  }, [crashRecorder]);
+
+  const uploadCrashDiagnosticsReport = useCallback(async () => {
+    try {
+      const data = await crashRecorder.uploadReport('manual', { compact: false });
+      setCrashDiagnosticsSummary(crashRecorder.getSummary());
+      toastSuccess(data?.reportId ? `已上传诊断 ${data.reportId}` : '已上传诊断');
+    } catch {
+      setCrashDiagnosticsSummary(crashRecorder.getSummary());
+      toastError('上传诊断失败，已保存在本机队列');
+    }
+  }, [crashRecorder]);
+
+  const downloadCrashDiagnosticsReport = useCallback(() => {
+    const report = crashRecorder.buildReport('manual', { compact: false });
+    const reportText = formatCrashDiagnosticsReport(report);
+    const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `zhenchuan-crash-${Date.now()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setCrashDiagnosticsSummary(crashRecorder.getSummary());
+  }, [crashRecorder]);
+
+  useEffect(() => {
     if (!loadPerformanceSnapshot?.reportText) return;
     (window as any).__zhenchuanLoadReport = loadPerformanceSnapshot.reportText;
     (window as any).__zhenchuanLoadSnapshot = loadPerformanceSnapshot;
-  }, [loadPerformanceSnapshot]);
+    crashRecorder.updateGameSnapshot({
+      gameId,
+      gameMode: mode,
+      selfHp: me.hp,
+      selfMaxHp: me.maxHp ?? maxHp,
+      selfPosition: localPositionRef.current ?? me.position,
+      loadCompleted: loadPerformanceSnapshot.completed,
+      loadTotalMs: loadPerformanceSnapshot.totalMs,
+      gameCounts: loadPerformanceSnapshot.gameCounts,
+      sceneMetrics: loadPerformanceSnapshot.sceneMetrics,
+    });
+  }, [crashRecorder, gameId, loadPerformanceSnapshot, maxHp, me.hp, me.maxHp, me.position, mode]);
 
   const handleMainCanvasCreated = useCallback(({ gl }: { gl: THREE.WebGLRenderer }) => {
     mainCanvasCleanupRef.current?.();
@@ -2953,10 +3038,16 @@ export default function BattleArena({
     const onContextLost = (event: Event) => {
       event.preventDefault();
       clearRecoveryTimer();
+      crashRecorder.recordWebGLContextLost({
+        gameId,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+      });
       setSceneRecovering(true);
     };
     const onContextRestored = () => {
       clearRecoveryTimer();
+      crashRecorder.recordWebGLContextRestored({ gameId });
       setSceneRecovering(true);
       sceneRecoveryTimerRef.current = window.setTimeout(() => {
         setSceneCanvasKey((value) => value + 1);
@@ -2977,7 +3068,7 @@ export default function BattleArena({
       canvas.removeEventListener('webglcontextlost', onContextLost, false);
       canvas.removeEventListener('webglcontextrestored', onContextRestored, false);
     };
-  }, []);
+  }, [crashRecorder, gameId]);
 
   const [showMeasurePanel, setShowMeasurePanel] = useState(false);
   const [showJumpDetailsPanel, setShowJumpDetailsPanel] = useState(false);
@@ -3468,7 +3559,12 @@ export default function BattleArena({
   const localVelocityRef = useRef({ x: 0, y: 0 });
   const initializedRef   = useRef(false);
   const movementSeqRef   = useRef(0);
+  const movementClientSessionRef = useRef<{ id: string; startedAt: number } | null>(null);
+  if (!movementClientSessionRef.current) {
+    movementClientSessionRef.current = createMovementClientSession();
+  }
   const lastMovementRecoverAtRef = useRef(0);
+  const lastMovementOkLogAtRef = useRef(0);
 
   /* --- Jump / Z refs --- */
   const jumpLocalRef      = useRef(false); // drives local Z prediction
@@ -3748,6 +3844,16 @@ export default function BattleArena({
   castAbilityRef.current = (id: string) => {
     const ability = abilitiesRef.current.find(a => a.id === id);
     const abilityKey = ability?.abilityId ?? ability?.id;
+    crashRecorder.recordBehavior('ability-input', {
+      id,
+      abilityId: abilityKey,
+      abilityName: ability?.name,
+      selectedTargetId: selectedTargetRef.current,
+      selectedEntityId: selectedEntityRef.current,
+      selectedSelf: selectedSelfRef.current,
+      position: localPositionRef.current ?? me.position,
+      z: localZRef.current,
+    });
     if (ability?.blockedByAntiStealth) {
       showInGameWarning('反隐期间无法施展隐身招式');
       return;
@@ -3967,6 +4073,12 @@ export default function BattleArena({
     const ability = abilitiesRef.current.find((a) => a.id === abilityId);
     if (!ability) return;
     const abilityKey = ability.abilityId ?? ability.id;
+    crashRecorder.recordBehavior('ground-cast-confirm', {
+      abilityId: abilityKey,
+      abilityName: ability.name,
+      target: { x, y, z: worldZ },
+      position: localPositionRef.current ?? me.position,
+    });
     if (!isGroundCastPointWithinRange(ability, { x, y, z: worldZ })) {
       setGroundCastPreview(null);
       return;
@@ -4135,7 +4247,10 @@ export default function BattleArena({
   }, []);
 
   const tryQueueLocalJump = useCallback(() => {
-    if (meActiveDashRef.current) return;
+    if (meActiveDashRef.current) {
+      crashRecorder.recordBehavior('jump-blocked', { reason: 'active-dash', position: localPositionRef.current ?? me.position });
+      return;
+    }
     const lingRanJumpLockImmune = lingRanTianFengActiveRef.current;
     if (
       jumpLockedRef.current ||
@@ -4145,12 +4260,19 @@ export default function BattleArena({
         buffsHaveAnyEffect(me?.buffs, ['NO_JUMP'])
       ))
     ) {
+      crashRecorder.recordBehavior('jump-blocked', {
+        reason: 'locked-or-channeling',
+        jumpLocked: jumpLockedRef.current,
+        activeChannel: !!me?.activeChannel,
+        position: localPositionRef.current ?? me.position,
+      });
       return;
     }
     if (lingRanTianFengActiveRef.current) {
       if (lingRanTianFengChargeRef.current <= 0) {
         jumpLocalRef.current = false;
         jumpSendRef.current = false;
+        crashRecorder.recordBehavior('jump-blocked', { reason: 'ling-ran-no-charge', position: localPositionRef.current ?? me.position });
         return;
       }
       const keepLingRanCharge = hasLingRanSpecialJumpRefillBuffClient(me?.buffs);
@@ -4158,24 +4280,39 @@ export default function BattleArena({
       jumpLocalRef.current = false;
       jumpSendRef.current = true;
       lingRanTianFengChargeRef.current = keepLingRanCharge ? 1 : 0;
+      crashRecorder.recordBehavior('jump-queued', {
+        kind: 'ling-ran-special',
+        keepCharge: keepLingRanCharge,
+        position: localPositionRef.current ?? me.position,
+      });
       return;
     }
     const queuedYuqiJumpDir = getQueuedYuqiMountedJumpDirection();
     if (!canUseYuqiMountedJumpClient(queuedYuqiJumpDir)) {
       jumpLocalRef.current = false;
       jumpSendRef.current = false;
+      crashRecorder.recordBehavior('jump-blocked', { reason: 'yuqi-direction', queuedYuqiJumpDir, position: localPositionRef.current ?? me.position });
       return;
     }
     const maxJumps = getEffectiveMaxJumps();
     if (localJumpCountRef.current >= maxJumps) {
       jumpLocalRef.current = false;
       jumpSendRef.current = false;
+      crashRecorder.recordBehavior('jump-blocked', { reason: 'max-jumps', localJumpCount: localJumpCountRef.current, maxJumps, position: localPositionRef.current ?? me.position });
       return;
     }
     lastJumpInputAtRef.current = performance.now();
     jumpLocalRef.current = true;
     jumpSendRef.current = true;
-  }, [canUseYuqiMountedJumpClient, getEffectiveMaxJumps, getQueuedYuqiMountedJumpDirection, me?.activeChannel, me?.buffs]);
+    crashRecorder.recordBehavior('jump-queued', {
+      kind: 'normal',
+      localJumpCount: localJumpCountRef.current,
+      maxJumps,
+      direction: queuedYuqiJumpDir,
+      position: localPositionRef.current ?? me.position,
+      z: localZRef.current,
+    });
+  }, [canUseYuqiMountedJumpClient, crashRecorder, getEffectiveMaxJumps, getQueuedYuqiMountedJumpDirection, me?.activeChannel, me?.buffs, me.position]);
 
   // Keep local movement-speed prediction aligned with backend movement.ts
   useEffect(() => {
@@ -4272,7 +4409,7 @@ export default function BattleArena({
       meFacingRef.current = { x: f.x, y: f.y };
       if (!facingInitRef.current) {
         localFacingRef.current = { x: f.x, y: f.y };
-        const yaw = Math.atan2(f.x, f.y);
+        const yaw = facingToYaw(f);
         charYawRef.current = yaw;
         camYawRef.current = yaw;
         facingInitRef.current = true;
@@ -4930,6 +5067,28 @@ export default function BattleArena({
       meFacingRef.current = facingPayload;
     }
     const seq = ++movementSeqRef.current;
+    const movementClientSession = movementClientSessionRef.current;
+    crashRecorder.recordMovementSample({
+      gameId,
+      seq,
+      movementClientSessionId: movementClientSession?.id,
+      movementClientStartedAt: movementClientSession?.startedAt,
+      direction: directionPayload,
+      facing: facingPayload,
+      shouldJump,
+      keys: { ...k },
+      controlMode: controlModeRef.current,
+      mouseLook,
+      position: localPositionRef.current,
+      z: localZRef.current,
+      locks: {
+        dashFacingLocked,
+        facingInputLocked,
+        channelMovementLocked,
+        feared: !!fearedDirection,
+        shiXinGu: !!shiXinGuDirection || shiXinGuStandstill,
+      },
+    }, shouldJump || directionPayload !== null);
     try {
       const res = await fetch('/api/game/movement', {
         method:      'POST',
@@ -4938,6 +5097,8 @@ export default function BattleArena({
         body: JSON.stringify({
           gameId,
           seq,
+          movementClientSessionId: movementClientSession?.id,
+          movementClientStartedAt: movementClientSession?.startedAt,
           // Server-facing is authoritative for ability logic and stays camera-forward
           // during RMB strafing / RMB diagonals even if the local avatar is rendered sideways.
           facing: {
@@ -4949,15 +5110,35 @@ export default function BattleArena({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
+        crashRecorder.recordBehavior('movement-failed', { gameId, seq, status: res.status, error: err });
         const now = Date.now();
         if (now - lastMovementRecoverAtRef.current > 2000) {
           lastMovementRecoverAtRef.current = now;
           console.warn('[BattleArena] movement update failed; requesting fresh snapshot', err ?? res.status);
           onMovementRecover?.();
         }
+      } else {
+        const ack = await res.json().catch(() => null);
+        const now = Date.now();
+        if (shouldJump || now - lastMovementOkLogAtRef.current >= 2_000) {
+          lastMovementOkLogAtRef.current = now;
+          crashRecorder.recordConnectionChecklist('movement-ok', {
+            gameId,
+            seq,
+            ackSeq: ack?.seq,
+            accepted: ack?.accepted,
+            hasDirection: directionPayload !== null,
+            shouldJump,
+            serverPosition: ack?.position,
+            serverVelocity: ack?.velocity,
+            returnedInput: ack?.input,
+          });
+        }
       }
-    } catch { /* AbortError expected */ }
-  }, [gameId, onMovementRecover]);
+    } catch (err) {
+      crashRecorder.recordBehavior('movement-error', { gameId, seq, error: err });
+    }
+  }, [crashRecorder, gameId, onMovementRecover]);
 
   useEffect(() => {
     if (me?.position && !initializedRef.current) {
@@ -6109,8 +6290,12 @@ export default function BattleArena({
       setAutoForward(false);
       keysRef.current = { w: false, a: false, s: false, d: false };
       setWasdKeys({ w: false, a: false, s: false, d: false });
+      crashRecorder.recordBehavior('movement-reset', { reason: document.hidden ? 'hidden' : 'blur' });
     };
     const onDown = (e: KeyboardEvent) => {
+      if (!e.repeat) {
+        crashRecorder.recordBehavior('key-down', { key: e.key, code: e.code, altKey: e.altKey, ctrlKey: e.ctrlKey });
+      }
       if (e.key === 'Escape') {
         e.preventDefault();
         if (customUiMode) {
@@ -6153,6 +6338,7 @@ export default function BattleArena({
         }
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = true;
         setWasdKeys(prev => ({ ...prev, [k]: true }));
+        crashRecorder.recordBehavior('movement-key-down', { key: k, keys: { ...keysRef.current }, autoForward: autoForwardRef.current });
 
         // Movement breaks channeling
         if (channelPickupIdRef.current) {
@@ -6169,6 +6355,7 @@ export default function BattleArena({
       if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
         if (e.repeat) return;
+        crashRecorder.recordBehavior('jump-key', { keys: { ...keysRef.current }, z: localZRef.current });
         if (keysRef.current.s) {
           const commons = abilitiesRef.current.filter(a => a.isCommon);
           const backstep = commons.find(a => a.abilityId === 'houyao');
@@ -6193,6 +6380,7 @@ export default function BattleArena({
           setAutoForward(true);
           keysRef.current.w = true;
           setWasdKeys(prev => ({ ...prev, w: true }));
+          crashRecorder.recordBehavior('auto-forward-on', { keys: { ...keysRef.current } });
           toastSuccess('自动前行已开启（按 S 停止）');
         }
         return;
@@ -6258,6 +6446,7 @@ export default function BattleArena({
           setSelectedTargetId(null);
           selectedTargetRef.current = null;
         }
+        crashRecorder.recordBehavior('target-selected-hotkey', { kind: nearest.kind, id: nearest.id });
         setSelectedSelf(false);
         selectedSelfRef.current = false;
         return;
@@ -6314,6 +6503,7 @@ export default function BattleArena({
         }
         keysRef.current[k as 'w' | 'a' | 's' | 'd'] = false;
         setWasdKeys(prev => ({ ...prev, [k]: false }));
+        crashRecorder.recordBehavior('movement-key-up', { key: k, keys: { ...keysRef.current }, autoForward: autoForwardRef.current });
         const nextKeys = { ...keysRef.current };
         if (!hasMovementIntent(nextKeys)) {
           localVelocityRef.current = { x: 0, y: 0 };
@@ -6334,7 +6524,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, showAbilityDisabledWarning]);
+  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, showAbilityDisabledWarning]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -6418,6 +6608,7 @@ export default function BattleArena({
         resetMouseButtons();
         return;
       }
+      crashRecorder.recordBehavior('mouse-down', { button: e.button, x: e.clientX, y: e.clientY });
       // Left button — start camera drag
       if (e.button === 0) {
         // Only start drag if not clicking a UI button or a draggable panel
@@ -6466,6 +6657,7 @@ export default function BattleArena({
       }
     };
     const onMouseUp = (e: MouseEvent) => {
+      crashRecorder.recordBehavior('mouse-up', { button: e.button, x: e.clientX, y: e.clientY });
       if (e.button === 0) {
         const ms = mouseStateRef.current;
         const wasLeftDown = ms.isLeft;
@@ -6571,6 +6763,7 @@ export default function BattleArena({
       const zoomMax = cameraDistanceToZoom(cameraSettings.maxDistance);
       camZoomRef.current = Math.max(CAMERA_ZOOM_MIN, Math.min(zoomMax, camZoomRef.current + delta));
       setCameraZoomLevel(camZoomRef.current);
+      crashRecorder.recordBehavior('camera-wheel', { deltaY: e.deltaY, zoom: camZoomRef.current, zoomMax });
     };
     // Use capture phase so we intercept BEFORE the browser's own navigation handlers
     window.addEventListener('mousedown',   onMouseDown,   { capture: true });
@@ -6590,7 +6783,7 @@ export default function BattleArena({
       window.removeEventListener('wheel',       onWheel,       { capture: true } as EventListenerOptions);
       window.removeEventListener('blur',        resetMouseButtons);
     };
-  }, [cameraSettings.maxDistance, clearTargetSelection, customUiMode]);
+  }, [cameraSettings.maxDistance, clearTargetSelection, crashRecorder, customUiMode]);
 
   // ── Touch camera rotation (mobile/iPad) ──────────────────────────────────
   // A single touch that starts on the 3D canvas (wrapRef) rotates camera + player
@@ -6615,6 +6808,7 @@ export default function BattleArena({
       camTouchRef.lastX = touch.clientX;
       camTouchRef.lastY = touch.clientY;
       manualCameraLookActiveRef.current = true;
+      crashRecorder.recordBehavior('touch-camera-start', { x: touch.clientX, y: touch.clientY });
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -6649,6 +6843,7 @@ export default function BattleArena({
       if (touch) {
         camTouchRef.id = null;
         manualCameraLookActiveRef.current = false;
+        crashRecorder.recordBehavior('touch-camera-end', { x: touch.clientX, y: touch.clientY });
       }
     };
 
@@ -6662,7 +6857,7 @@ export default function BattleArena({
       window.removeEventListener('touchend',   onTouchEnd);
       window.removeEventListener('touchcancel',onTouchEnd);
     };
-  }, [customUiMode]);
+  }, [crashRecorder, customUiMode]);
 
   const handleJoystickDirection = useCallback(
     (keys: { w: boolean; a: boolean; s: boolean; d: boolean }) => {
@@ -9558,6 +9753,10 @@ export default function BattleArena({
                               <span>场景加载报告</span>
                             </label>
                             <label className={styles.escToggleRow}>
+                              <input type="checkbox" checked={showCrashDiagnosticsPanel} onChange={(e) => setShowCrashDiagnosticsPanel(e.target.checked)} className={styles.escToggleInput} />
+                              <span>崩溃诊断</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
                               <input
                                 type="checkbox"
                                 checked={showDebugGrid}
@@ -10019,6 +10218,65 @@ export default function BattleArena({
           </div>
           <div className={styles.loadPerfGameCounts}>
             Three {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.objects)} objects · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.geometries)} geometries · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.textures)} textures · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.calls)} draws
+          </div>
+        </div>
+      )}
+
+      {showCrashDiagnosticsPanel && (
+        <div className={`${styles.uiFloatingPanel} ${styles.crashDiagPanel}`} data-ui-interactive data-crash-diagnostics-panel>
+          <div className={styles.loadPerfHeader}>
+            <div>
+              <div className={styles.uiFloatingTitle}>崩溃诊断</div>
+              <div className={styles.loadPerfSummary}>
+                行为 {crashDiagnosticsSummary.breadcrumbCount} 条 · 断线 {crashDiagnosticsSummary.disconnectCount} 次 · {crashDiagnosticsSummary.lastUploadStatus}
+              </div>
+            </div>
+            <div className={styles.loadPerfHeaderActions}>
+              <button
+                type="button"
+                className={styles.loadPerfCopyButton}
+                onClick={copyCrashDiagnosticsReport}
+              >
+                <Clipboard size={13} />
+                <span>复制</span>
+              </button>
+              <button
+                type="button"
+                className={styles.loadPerfCopyButton}
+                onClick={downloadCrashDiagnosticsReport}
+              >
+                <Download size={13} />
+                <span>下载</span>
+              </button>
+              <button
+                type="button"
+                className={styles.loadPerfCopyButton}
+                onClick={() => void uploadCrashDiagnosticsReport()}
+              >
+                <UploadCloud size={13} />
+                <span>上传</span>
+              </button>
+              <button
+                type="button"
+                className={styles.loadPerfCloseButton}
+                onClick={() => setShowCrashDiagnosticsPanel(false)}
+                aria-label="关闭崩溃诊断"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+          <div className={styles.crashDiagGrid}>
+            <div><span>Session</span><strong>{crashDiagnosticsSummary.sessionId?.slice(0, 8) ?? '-'}</strong></div>
+            <div><span>启动</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.startedAt)}</strong></div>
+            <div><span>心跳</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastHeartbeatAt)}</strong></div>
+            <div><span>断线</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastDisconnectAt)}</strong></div>
+            <div><span>重连</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastReconnectAt)}</strong></div>
+            <div><span>致命</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastFatalAt)}</strong></div>
+          </div>
+          <div className={styles.crashDiagRelation}>{crashDiagnosticsSummary.relationSummary}</div>
+          <div className={styles.crashDiagUploadLine}>
+            报告 {crashDiagnosticsSummary.lastReportId ?? '-'} · {crashDiagnosticsSummary.lastUploadError ?? 'ready'}
           </div>
         </div>
       )}

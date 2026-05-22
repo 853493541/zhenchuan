@@ -507,13 +507,27 @@ router.post("/movement", async (req, res) => {
       }
 
       const seq = typeof req.body.seq === 'number' ? req.body.seq : undefined;
-      loop.setPlayerInput(playerIndex, input, seq);
+      const movementClientSessionId = typeof req.body.movementClientSessionId === 'string'
+        ? req.body.movementClientSessionId.slice(0, 128)
+        : undefined;
+      const movementClientStartedAt = typeof req.body.movementClientStartedAt === 'number' && Number.isFinite(req.body.movementClientStartedAt)
+        ? req.body.movementClientStartedAt
+        : undefined;
+      const accepted = loop.setPlayerInput(
+        playerIndex,
+        input,
+        seq,
+        movementClientSessionId
+          ? { id: movementClientSessionId, startedAt: movementClientStartedAt ?? 0 }
+          : undefined,
+      );
       
       // Return current position immediately so client can update without waiting for broadcast
       // Also include any pending input so client can predict the next position
       const player = state.players[playerIndex];
       res.json({ 
         success: true,
+        accepted,
         seq,
         position: player.position,
         velocity: player.velocity,
