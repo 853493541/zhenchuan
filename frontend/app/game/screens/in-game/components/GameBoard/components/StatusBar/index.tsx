@@ -27,6 +27,7 @@ type Props = {
   borderlessIcons?: boolean;
   maxPerRow?: number;
   categoryFilter?: "BUFF" | "DEBUFF";
+  visibilityMode?: "visible" | "hidden-only";
 };
 
 type ResolvedBuff = {
@@ -90,6 +91,7 @@ export default function StatusBar({
   borderlessIcons = false,
   maxPerRow = 10,
   categoryFilter,
+  visibilityMode = "visible",
 }: Props) {
   const preload = useGamePreload();
   const [activeHint, setActiveHint] = useState<ActiveHint | null>(null);
@@ -140,7 +142,9 @@ export default function StatusBar({
     .map((b, originalOrder) => {
       const meta = preload?.buffMap?.[b.buffId];
       if (!meta) return null;
-      if (meta.hiddenInStatusBar === true) return null;
+      const hiddenInStatusBar = meta.hiddenInStatusBar === true;
+      if (visibilityMode === "visible" && hiddenInStatusBar) return null;
+      if (visibilityMode === "hidden-only" && !hiddenInStatusBar) return null;
       const shortName = meta.name.length > 2 ? meta.name.slice(0, 2) : meta.name;
       const attribute = typeof meta.attribute === "string" && meta.attribute !== "未选择" && meta.attribute !== "无"
         ? meta.attribute

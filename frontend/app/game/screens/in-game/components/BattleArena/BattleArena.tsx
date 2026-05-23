@@ -466,6 +466,9 @@ const CATCAKE_DEFAULT_UI_POSITIONS: Record<string, UiPosition> = {
 const DRAFT_ABILITY_SLOT_COUNT = 6;
 const ITEM_BAR_SLOT_COUNT = 14;
 const CONSUMABLE_BAR_STORAGE_KEY = 'zhenchuan-consumable-bar-settings-v1';
+const HOTKEY_SETTINGS_STORAGE_KEY = 'zhenchuan-hotkey-settings-v1';
+const HOTKEY_SETTINGS_VERSION = 1;
+const HOTKEY_MAX_BINDINGS_PER_ACTION = 2;
 const CONSUMABLE_BAR_MIN_SLOTS = 12;
 const CONSUMABLE_BAR_MAX_SLOTS = 16;
 const CONSUMABLE_BAR_DEFAULT_SLOTS = 12;
@@ -1854,6 +1857,238 @@ type ConsumableBarSettings = {
   slots: ConsumableSlotId[];
 };
 
+type HotkeyTabId = 'character-action' | 'interface-toggle' | 'ability' | 'common' | 'consumable';
+type HotkeyActionKind = 'interface' | 'draft' | 'common' | 'consumable';
+type HotkeySettings = Record<string, string[]>;
+type HotkeyBinding = { id: string; label: string };
+type HotkeyCaptureTarget = { actionId: string; bindingIndex: number } | null;
+type HotkeySettingsRow = { actionId: string; label: string; locked?: boolean; bindings?: string[] };
+
+const HOTKEY_SETTINGS_TABS: Array<{ id: HotkeyTabId; label: string }> = [
+  { id: 'character-action', label: '角色动作' },
+  { id: 'interface-toggle', label: '界面开关' },
+  { id: 'ability', label: '技能栏' },
+  { id: 'common', label: '通用栏' },
+  { id: 'consumable', label: '物品栏' },
+];
+
+const LOCKED_CHARACTER_ACTION_HOTKEY_ROWS: HotkeySettingsRow[] = [
+  { actionId: 'character-action:forward', label: '前进', locked: true, bindings: ['W', 'DOWN'] },
+  { actionId: 'character-action:backward', label: '后退', locked: true, bindings: ['S', 'UP'] },
+  { actionId: 'character-action:turn-left', label: '左转', locked: true, bindings: ['A', 'RIGHT'] },
+  { actionId: 'character-action:turn-right', label: '右转', locked: true, bindings: ['D', 'LEFT'] },
+  { actionId: 'character-action:strafe-left', label: '左平移', locked: true, bindings: [] },
+  { actionId: 'character-action:strafe-right', label: '右平移', locked: true, bindings: [] },
+  { actionId: 'character-action:jump', label: '跳跃', locked: true, bindings: ['SPACE'] },
+  { actionId: 'character-action:mount', label: '骑乘', locked: true, bindings: ['T'] },
+];
+
+const INTERFACE_HOTKEY_ROWS: HotkeySettingsRow[] = [
+  { actionId: 'interface:0', label: '人物属性' },
+  { actionId: 'interface:1', label: '技能界面' },
+];
+
+const RESERVED_CHARACTER_ACTION_BINDINGS = new Set(
+  LOCKED_CHARACTER_ACTION_HOTKEY_ROWS.flatMap((row) => row.bindings ?? []),
+);
+
+const HOTKEY_ACTION_IDS = [
+  ...INTERFACE_HOTKEY_ROWS.map((row) => row.actionId),
+  ...Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }, (_, index) => `draft:${index}`),
+  ...Array.from({ length: 8 }, (_, index) => `common:${index}`),
+  ...Array.from({ length: CONSUMABLE_BAR_MAX_SLOTS }, (_, index) => `consumable:${index}`),
+];
+
+const DEFAULT_HOTKEY_BINDINGS: HotkeySettings = {
+  'interface:0': ['C'],
+  'interface:1': ['P'],
+  'draft:0': ['1'],
+  'draft:1': ['2'],
+  'draft:2': ['3'],
+  'draft:3': ['Q'],
+  'draft:4': ['XB2'],
+  'draft:5': ['XB1'],
+  'common:0': ['X'],
+  'common:1': ['MB3'],
+  'common:2': ['A+W'],
+  'common:3': ['A+A'],
+  'common:4': ['A+D'],
+  'common:5': ['A+S'],
+  'common:6': ['`'],
+};
+
+function isHotkeyActionId(actionId: string): boolean {
+  return HOTKEY_ACTION_IDS.includes(actionId);
+}
+
+function buildDefaultHotkeySettings(): HotkeySettings {
+  const settings: HotkeySettings = {};
+  HOTKEY_ACTION_IDS.forEach((actionId) => {
+    settings[actionId] = [...(DEFAULT_HOTKEY_BINDINGS[actionId] ?? [])];
+  });
+  return settings;
+}
+
+function normalizeHotkeyBindingId(value: unknown): string | null {
+  const bindingId = String(value ?? '').trim().toUpperCase();
+  if (!bindingId) return null;
+  return bindingId;
+}
+
+function isReservedCharacterActionBinding(bindingId: string): boolean {
+  const normalizedBinding = normalizeHotkeyBindingId(bindingId);
+  return !!normalizedBinding && RESERVED_CHARACTER_ACTION_BINDINGS.has(normalizedBinding);
+}
+
+function normalizeHotkeyBindingList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const next: string[] = [];
+  value.forEach((entry) => {
+    const bindingId = normalizeHotkeyBindingId(entry);
+    if (!bindingId || next.includes(bindingId)) return;
+    next.push(bindingId);
+  });
+  return next.slice(0, HOTKEY_MAX_BINDINGS_PER_ACTION);
+}
+
+function normalizeHotkeySettings(raw: unknown): HotkeySettings {
+  const defaults = buildDefaultHotkeySettings();
+  const bindings = raw && typeof raw === 'object' && 'bindings' in raw
+    ? (raw as { bindings?: unknown }).bindings
+    : raw;
+  if (!bindings || typeof bindings !== 'object') return defaults;
+  HOTKEY_ACTION_IDS.forEach((actionId) => {
+    if (Object.prototype.hasOwnProperty.call(bindings, actionId)) {
+      defaults[actionId] = normalizeHotkeyBindingList((bindings as Record<string, unknown>)[actionId])
+        .filter((bindingId) => !isReservedCharacterActionBinding(bindingId));
+    }
+  });
+  return defaults;
+}
+
+function loadHotkeySettings(): HotkeySettings {
+  if (typeof window === 'undefined') return buildDefaultHotkeySettings();
+  try {
+    const raw = window.localStorage.getItem(HOTKEY_SETTINGS_STORAGE_KEY);
+    if (!raw) return buildDefaultHotkeySettings();
+    return normalizeHotkeySettings(JSON.parse(raw));
+  } catch {
+    return buildDefaultHotkeySettings();
+  }
+}
+
+function getHotkeyActionBindingLabels(settings: HotkeySettings, actionId: string): string[] {
+  return (settings[actionId] ?? []).slice(0, HOTKEY_MAX_BINDINGS_PER_ACTION);
+}
+
+function formatHotkeyBindingLabel(bindingId: string): string {
+  const parts = bindingId.split('+').filter(Boolean);
+  const base = parts.pop();
+  if (!base) return '';
+  const modifierLabels: Record<string, string> = {
+    C: 'Ctrl',
+    A: 'Alt',
+    S: 'Shift',
+    M: 'Meta',
+  };
+  const baseLabels: Record<string, string> = {
+    SPACE: 'Space',
+    UP: 'Up',
+    DOWN: 'Down',
+    LEFT: 'Left',
+    RIGHT: 'Right',
+    WU: 'MouseWheelUp',
+    WD: 'MouseWheelDown',
+    MB1: 'MouseButton1',
+    MB2: 'MouseButton2',
+    MB3: 'MouseButton3',
+    XB1: 'XButton1',
+    XB2: 'XButton2',
+  };
+  return [
+    ...parts.map((part) => modifierLabels[part] ?? part),
+    baseLabels[base] ?? base,
+  ].join('+');
+}
+
+function findHotkeyActionByBinding(settings: HotkeySettings, bindingId: string): string | null {
+  const normalizedBinding = normalizeHotkeyBindingId(bindingId);
+  if (!normalizedBinding) return null;
+  for (const actionId of HOTKEY_ACTION_IDS) {
+    if ((settings[actionId] ?? []).includes(normalizedBinding)) return actionId;
+  }
+  return null;
+}
+
+function parseHotkeyActionId(actionId: string): { kind: HotkeyActionKind; index: number } | null {
+  const [kind, indexRaw] = actionId.split(':');
+  const index = Number(indexRaw);
+  if ((kind === 'interface' || kind === 'draft' || kind === 'common' || kind === 'consumable') && Number.isInteger(index) && index >= 0) {
+    return { kind, index };
+  }
+  return null;
+}
+
+function normalizeKeyboardHotkey(event: { key: string; code: string; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean }): HotkeyBinding | null {
+  if (event.key === 'Escape') return null;
+  if (event.key === 'Control' || event.key === 'Alt' || event.key === 'Shift' || event.key === 'Meta') return null;
+
+  let base = '';
+  if (/^Key[A-Z]$/.test(event.code)) base = event.code.slice(3);
+  else if (/^Digit[0-9]$/.test(event.code)) base = event.code.slice(5);
+  else if (/^Numpad[0-9]$/.test(event.code)) base = `NUM${event.code.slice(6)}`;
+  else if (/^F\d{1,2}$/i.test(event.key)) base = event.key.toUpperCase();
+  else if (event.code === 'Space') base = 'SPACE';
+  else if (event.code === 'ArrowUp') base = 'UP';
+  else if (event.code === 'ArrowDown') base = 'DOWN';
+  else if (event.code === 'ArrowLeft') base = 'LEFT';
+  else if (event.code === 'ArrowRight') base = 'RIGHT';
+  else if (event.code === 'Backquote') base = '`';
+  else if (event.code === 'Minus') base = '-';
+  else if (event.code === 'Equal') base = '=';
+  else if (event.code === 'BracketLeft') base = '[';
+  else if (event.code === 'BracketRight') base = ']';
+  else if (event.code === 'Semicolon') base = ';';
+  else if (event.code === 'Quote') base = "'";
+  else if (event.code === 'Comma') base = ',';
+  else if (event.code === 'Period') base = '.';
+  else if (event.code === 'Slash') base = '/';
+  else if (event.code === 'Backslash') base = '\\';
+  else if (event.key.length === 1) base = event.key.toUpperCase();
+  else base = event.key.toUpperCase().replace(/\s+/g, '');
+
+  if (!base || base === 'ESCAPE') return null;
+  const parts: string[] = [];
+  if (event.ctrlKey) parts.push('C');
+  if (event.altKey) parts.push('A');
+  if (event.shiftKey) parts.push('S');
+  if (event.metaKey) parts.push('M');
+  parts.push(base.toUpperCase());
+  const label = parts.join('+');
+  return { id: label, label };
+}
+
+function normalizeMouseHotkey(button: number): HotkeyBinding | null {
+  const label = button === 0
+    ? 'MB1'
+    : button === 2
+      ? 'MB2'
+      : button === 1
+        ? 'MB3'
+        : button === 3
+          ? 'XB1'
+          : button === 4
+            ? 'XB2'
+            : '';
+  return label ? { id: label, label } : null;
+}
+
+function normalizeWheelHotkey(deltaY: number): HotkeyBinding | null {
+  if (deltaY === 0) return null;
+  const label = deltaY < 0 ? 'WU' : 'WD';
+  return { id: label, label };
+}
+
 const CONSUMABLE_ITEM_BY_ID = new Map<ConsumableItemId, ConsumableItem>(
   CONSUMABLE_ITEMS.map((item) => [item.id, item] as [ConsumableItemId, ConsumableItem]),
 );
@@ -2747,6 +2982,9 @@ export default function BattleArena({
   const [itemBarAbilities, setItemBarAbilities] = useState<Array<AbilityInfo | undefined>>(() => createEmptyItemBarSlots());
   const itemBarAbilitiesRef = useRef<Array<AbilityInfo | undefined>>(createEmptyItemBarSlots());
   const [consumableBarSettings, setConsumableBarSettings] = useState<ConsumableBarSettings>(() => loadConsumableBarSettings());
+  const [hotkeySettings, setHotkeySettings] = useState<HotkeySettings>(() => loadHotkeySettings());
+  const [hotkeySettingsTab, setHotkeySettingsTab] = useState<HotkeyTabId>('character-action');
+  const [capturingHotkey, setCapturingHotkey] = useState<HotkeyCaptureTarget>(null);
   const [draggingConsumableIndex, setDraggingConsumableIndex] = useState<number | null>(null);
   const [dragHoverConsumableIndex, setDragHoverConsumableIndex] = useState<number | null>(null);
   const consumableDragIndexRef = useRef<number | null>(null);
@@ -2763,6 +3001,12 @@ export default function BattleArena({
       localStorage.setItem(CONSUMABLE_BAR_STORAGE_KEY, JSON.stringify(consumableBarSettings));
     } catch {}
   }, [consumableBarSettings]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HOTKEY_SETTINGS_STORAGE_KEY, JSON.stringify({ version: HOTKEY_SETTINGS_VERSION, bindings: hotkeySettings }));
+    } catch {}
+  }, [hotkeySettings]);
 
   /* --- Pickup interaction state --- */
   const [nearbyPickupIds,   setNearbyPickupIds]   = useState<string[]>([]);         // sorted closest-first
@@ -2884,6 +3128,7 @@ export default function BattleArena({
   const [showTestingPanel, setShowTestingPanel] = useState(false);
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
   const [showCameraEventTestingPanel, setShowCameraEventTestingPanel] = useState(false);
+  const [showHiddenBuffStatusBar, setShowHiddenBuffStatusBar] = useState(false);
   const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
   const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting'>('switches');
@@ -3848,6 +4093,124 @@ export default function BattleArena({
   useConsumableRef.current = (id: ConsumableItemId) => {
     void onUseConsumable?.(id);
   };
+  const getHotkeyDraftSlots = useCallback(() => {
+    const heldItemIds = new Set(itemBarAbilitiesRef.current.filter(Boolean).map((ability) => ability!.id));
+    return buildDraftAbilitySlots(
+      abilitiesRef.current
+        .filter((ability) => !ability.isCommon && !ability.isSpecialBarAbility && !heldItemIds.has(ability.id))
+        .map((ability) => {
+          const overrideSlotIndex = draftSlotOverridesRef.current[ability.id];
+          return typeof overrideSlotIndex === 'number'
+            ? { ...ability, slotIndex: normalizeDraftSlotIndex(overrideSlotIndex, overrideSlotIndex) }
+            : ability;
+        })
+    );
+  }, []);
+  const triggerAbilityHotkey = useCallback((ability: AbilityInfo | undefined, pressedId: string) => {
+    if (!ability) return false;
+    if (!ability.isReady || ability.blockedByAntiStealth) {
+      showAbilityDisabledWarning(ability);
+      return true;
+    }
+    setPressedAbilityInput(pressedId);
+    castAbilityRef.current(ability.id);
+    return true;
+  }, [showAbilityDisabledWarning]);
+  const triggerHotkeyBinding = useCallback((bindingId: string) => {
+    const actionId = findHotkeyActionByBinding(hotkeySettings, bindingId);
+    if (!actionId) return false;
+    const parsed = parseHotkeyActionId(actionId);
+    if (!parsed) return false;
+
+    if (parsed.kind === 'interface') {
+      if (parsed.index === 0) {
+        setShowHeartDetailsPanel((visible) => !visible);
+        return true;
+      }
+      if (parsed.index === 1) {
+        setShowCheatWindow((visible) => !visible);
+        return true;
+      }
+      return false;
+    }
+
+    if (parsed.kind === 'draft') {
+      const specialBarHotkeysActive = abilitiesRef.current.some((ability) => ability.isSpecialBarAbility);
+      const drafts = specialBarHotkeysActive
+        ? abilitiesRef.current.filter((ability) => ability.isSpecialBarAbility)
+        : getHotkeyDraftSlots();
+      return triggerAbilityHotkey(drafts[parsed.index], `draft-${parsed.index}`);
+    }
+
+    if (parsed.kind === 'common') {
+      if (abilitiesRef.current.some((ability) => ability.isSpecialBarAbility)) return true;
+      const commons = abilitiesRef.current.filter((ability) => ability.isCommon);
+      return triggerAbilityHotkey(commons[parsed.index], `common-${parsed.index}`);
+    }
+
+    const consumableId = consumableBarSettings.slots[parsed.index];
+    const consumable = consumableId ? CONSUMABLE_ITEM_BY_ID.get(consumableId) : undefined;
+    if (!consumableBarSettings.enabled) {
+      showInGameWarning('物品栏已关闭');
+      return true;
+    }
+    if (!consumable) {
+      showInGameWarning('该物品格为空');
+      return true;
+    }
+    if (consumable.implemented !== true) {
+      showInGameWarning('该物品暂未开放');
+      return true;
+    }
+    const count = Number(me.consumableCounts?.[consumable.id] ?? consumable.startingCount ?? 0);
+    if (count <= 0) {
+      showInGameWarning('该物品已用完');
+      return true;
+    }
+    const cooldownExpiresAt = Number(me.consumableCooldowns?.[consumable.id]?.expiresAt ?? 0);
+    if (cooldownExpiresAt > Date.now()) {
+      showInGameWarning('物品调息中');
+      return true;
+    }
+    useConsumableRef.current(consumable.id);
+    return true;
+  }, [consumableBarSettings, getHotkeyDraftSlots, hotkeySettings, me.consumableCooldowns, me.consumableCounts, showAbilityDisabledWarning, showInGameWarning, triggerAbilityHotkey]);
+
+  const captureHotkeyBinding = useCallback((target: HotkeyCaptureTarget, binding: HotkeyBinding | null) => {
+    if (!target || !binding || !isHotkeyActionId(target.actionId)) return;
+    if (isReservedCharacterActionBinding(binding.id)) {
+      toastError('角色动作按键不可占用');
+      return;
+    }
+    setHotkeySettings((current) => {
+      const next: HotkeySettings = {};
+      HOTKEY_ACTION_IDS.forEach((actionId) => {
+        next[actionId] = [...(current[actionId] ?? [])].filter((existing) => existing !== binding.id);
+      });
+      const list = [...(next[target.actionId] ?? [])];
+      list[target.bindingIndex] = binding.id;
+      next[target.actionId] = list.filter(Boolean).slice(0, HOTKEY_MAX_BINDINGS_PER_ACTION);
+      return next;
+    });
+    setCapturingHotkey(null);
+  }, []);
+
+  const clearHotkeyBinding = useCallback((actionId: string, bindingIndex: number) => {
+    if (!isHotkeyActionId(actionId)) return;
+    setHotkeySettings((current) => {
+      const next: HotkeySettings = {};
+      HOTKEY_ACTION_IDS.forEach((id) => {
+        next[id] = [...(current[id] ?? [])];
+      });
+      next[actionId] = (next[actionId] ?? []).filter((_, index) => index !== bindingIndex);
+      return next;
+    });
+  }, []);
+
+  const resetHotkeySettings = useCallback(() => {
+    setHotkeySettings(buildDefaultHotkeySettings());
+    setCapturingHotkey(null);
+  }, []);
   const setConsumableBarEnabled = useCallback((enabled: boolean) => {
     setConsumableBarSettings((prev) => ({ ...prev, enabled }));
   }, []);
@@ -4175,14 +4538,17 @@ export default function BattleArena({
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
         const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
         const forcedRenderDisplacement = forcedDisplacementRef.current;
+        const justJumpedRender = frameNow - lastJumpInputAtRef.current < 320;
         const recentDashSnap =
-          frameNow - lastObservedServerDashAtRef.current < 400 ||
-          frameNow - lastFengLiuYunSanCastAtRef.current < 700;
+          !justJumpedRender &&
+          (
+            frameNow - lastObservedServerDashAtRef.current < 400 ||
+            frameNow - lastFengLiuYunSanCastAtRef.current < 700
+          );
         const airborneRender =
           localJumpCountRef.current > 0 ||
           Math.abs(localVzRef.current) > 0.01 ||
           tz > groundHRef.current + 0.05;
-        const justJumpedRender = frameNow - lastJumpInputAtRef.current < 320;
 
         // During server-authoritative dash: HARD SNAP to server position.
         // Do NOT lerp — any lerp causes the visual to lag behind the server,
@@ -5303,6 +5669,7 @@ export default function BattleArena({
         localPositionRef.current = { ...me.position };
         localZRef.current  = (me.position as any).z ?? 0;
         localVzRef.current = 0;
+        airborneSpeedCarryRef.current = 0;
         bvhCenterYInitRef.current = false; // resync cylinder center after dash
         return;
       }
@@ -5329,6 +5696,7 @@ export default function BattleArena({
       localPositionRef.current = { ...me.position };
       localZRef.current = serverZ;
       localVzRef.current = 0;
+      airborneSpeedCarryRef.current = 0;
       localDashAnimRef.current = null;
       localRenderPosRef.current = {
         x: me.position.x,
@@ -5355,9 +5723,13 @@ export default function BattleArena({
       return;
     }
 
+    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 260;
     const recentDashSnap =
-      performance.now() - lastObservedServerDashAtRef.current < 400 ||
-      performance.now() - lastFengLiuYunSanCastAtRef.current < 700;
+      !justJumpedLocally &&
+      (
+        performance.now() - lastObservedServerDashAtRef.current < 400 ||
+        performance.now() - lastFengLiuYunSanCastAtRef.current < 700
+      );
 
     // During active dash: server owns position — hard-snap XY + Z
     // Check me.activeDash directly (not ref) so this works even before React
@@ -5367,6 +5739,7 @@ export default function BattleArena({
       localPositionRef.current = { ...me.position };
       localZRef.current  = (me.position as any).z ?? 0;
       localVzRef.current = 0;
+      airborneSpeedCarryRef.current = 0;
       return;
     }
 
@@ -5407,7 +5780,6 @@ export default function BattleArena({
       localJumpCountRef.current > 0 ||
       Math.abs(localVzRef.current) > 0.01 ||
       localZ > groundHRef.current + 0.05;
-    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 260;
     const hardSnapThreshold = airborneLocal ? (justJumpedLocally ? 6.6 : 4.4) : 2.64;
     const settleThreshold = airborneLocal ? 0.132 : 0.044;
     const zBlend = airborneLocal ? (justJumpedLocally ? 0.08 : 0.16) : 0.35;
@@ -6428,19 +6800,6 @@ export default function BattleArena({
 
   // ── Keyboard input ──
   useEffect(() => {
-    const getHotkeyDraftSlots = () => {
-      const heldItemIds = new Set(itemBarAbilitiesRef.current.filter(Boolean).map((ability) => ability!.id));
-      return buildDraftAbilitySlots(
-        abilitiesRef.current
-          .filter(a => !a.isCommon && !a.isSpecialBarAbility && !heldItemIds.has(a.id))
-          .map((ability) => {
-            const overrideSlotIndex = draftSlotOverridesRef.current[ability.id];
-            return typeof overrideSlotIndex === 'number'
-              ? { ...ability, slotIndex: normalizeDraftSlotIndex(overrideSlotIndex, overrideSlotIndex) }
-              : ability;
-          }),
-      );
-    };
     const resetMovementKeys = () => {
       autoForwardRef.current = false;
       setAutoForward(false);
@@ -6541,11 +6900,6 @@ export default function BattleArena({
         }
         return;
       }
-      if (k === 'c' && !e.altKey) {
-        e.preventDefault();
-        if (!e.repeat) setShowHeartDetailsPanel(v => !v);
-        return;
-      }
       // Tab / F1 — select the nearest currently targetable enemy player or entity.
       // Rules:
       //   - Only consider targets within ±90° of facing (180° front cone).
@@ -6607,47 +6961,10 @@ export default function BattleArena({
         selectedSelfRef.current = false;
         return;
       }
-      // ── Draft slots: 1  2  3  Q ──
-      const specialBarHotkeysActive = abilitiesRef.current.some(a => a.isSpecialBarAbility);
-      const drafts = specialBarHotkeysActive
-        ? abilitiesRef.current.filter(a => a.isSpecialBarAbility)
-        : getHotkeyDraftSlots();
-      const triggerAbilityHotkey = (ability: AbilityInfo | undefined, pressedId: string) => {
-        if (!ability) return;
-        setPressedAbilityInput(pressedId);
-        if (ability.isReady && !ability.blockedByAntiStealth) {
-          castAbilityRef.current(ability.id);
-        } else {
-          showAbilityDisabledWarning(ability);
-        }
-      };
-      if (e.key === '1' && drafts[0]) { triggerAbilityHotkey(drafts[0], 'draft-0'); return; }
-      if (e.key === '2' && drafts[1]) { triggerAbilityHotkey(drafts[1], 'draft-1'); return; }
-      if (e.key === '3' && drafts[2]) { triggerAbilityHotkey(drafts[2], 'draft-2'); return; }
-      if (k === 'q' && !e.altKey && drafts[3]) { triggerAbilityHotkey(drafts[3], 'draft-3'); return; }
-      // ── Common abilities: X  Alt+A  Alt+D  Alt+S  `  T ──
-      const commons = specialBarHotkeysActive ? [] : abilitiesRef.current.filter(a => a.isCommon);
-      if (k === 'x' && !e.altKey) {
-        // index 0 = 猛虎下山
-        triggerAbilityHotkey(commons[0], 'common-0');
+      const pressedHotkey = normalizeKeyboardHotkey(e);
+      if (pressedHotkey && triggerHotkeyBinding(pressedHotkey.id)) {
+        e.preventDefault();
         return;
-      }
-      if (k === 't' && !e.altKey) {
-        // index 7 = 御骑
-        triggerAbilityHotkey(commons[7], 'common-7');
-        return;
-      }
-      if (e.key === '`') {
-        // index 6 = 后撤
-        triggerAbilityHotkey(commons[6], 'common-6');
-        return;
-      }
-      if (e.altKey) {
-        e.preventDefault(); // suppress browser Alt shortcuts
-        if (k === 'w') triggerAbilityHotkey(commons[2], 'common-2'); // 蹑云逐月
-        if (k === 'a') triggerAbilityHotkey(commons[3], 'common-3'); // 凌霄揽胜
-        if (k === 'd') triggerAbilityHotkey(commons[4], 'common-4'); // 瑶台枕鹤
-        if (k === 's') triggerAbilityHotkey(commons[5], 'common-5'); // 迎风回浪
       }
     };
     const onUp = (e: KeyboardEvent) => {
@@ -6680,7 +6997,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, showAbilityDisabledWarning]);
+  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, triggerHotkeyBinding]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -6754,6 +7071,9 @@ export default function BattleArena({
       manualCameraLookActiveRef.current = false;
       setPressedAbilityInput(null);
     };
+    const isMouseUiTarget = (target: EventTarget | null) => {
+      return !!(target as HTMLElement | null)?.closest(`button, input, select, textarea, label, [data-ui-drag], [data-ui-interactive], .${styles.escOverlay}`);
+    };
 
     const onMouseDown = (e: MouseEvent) => {
       if (customUiMode) {
@@ -6765,10 +7085,16 @@ export default function BattleArena({
         return;
       }
       crashRecorder.recordBehavior('mouse-down', { button: e.button, x: e.clientX, y: e.clientY });
+      const mouseHotkey = normalizeMouseHotkey(e.button);
+      if (mouseHotkey && !isMouseUiTarget(e.target) && triggerHotkeyBinding(mouseHotkey.id)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       // Left button — start camera drag
       if (e.button === 0) {
         // Only start drag if not clicking a UI button or a draggable panel
-        if ((e.target as HTMLElement).closest(`button, input, select, textarea, label, [data-ui-drag], [data-ui-interactive], .${styles.escOverlay}`)) return;
+        if (isMouseUiTarget(e.target)) return;
         mouseStateRef.current.isLeft = true;
         manualCameraLookActiveRef.current = true;
         mouseStateRef.current.lastX  = e.clientX;
@@ -6790,30 +7116,14 @@ export default function BattleArena({
         mouseStateRef.current.lastY   = e.clientY;
         return;
       }
-      if (e.button === 1) {
+      if (e.button === 1 || e.button === 3 || e.button === 4) {
         e.preventDefault();
         e.stopPropagation();
-        const ab = abilitiesRef.current.filter(a => a.isCommon)[1]; // 扶摇直上
-        if (ab?.isReady) { setPressedAbilityInput('common-1'); castAbilityRef.current(ab.id); }
-        return;
-      }
-      if (e.button === 3) {
-        e.preventDefault();
-        e.stopPropagation();
-        const ab = getHotkeyDraftSlots()[5]; // draft slot 6 (XB1)
-        if (ab?.isReady) { setPressedAbilityInput('draft-5'); castAbilityRef.current(ab.id); }
-        return;
-      }
-      if (e.button === 4) {
-        e.preventDefault();
-        e.stopPropagation();
-        const ab = getHotkeyDraftSlots()[4]; // draft slot 5 (XB2)
-        if (ab?.isReady) { setPressedAbilityInput('draft-4'); castAbilityRef.current(ab.id); }
-        return;
       }
     };
     const onMouseUp = (e: MouseEvent) => {
       crashRecorder.recordBehavior('mouse-up', { button: e.button, x: e.clientX, y: e.clientY });
+      setPressedAbilityInput(null);
       if (e.button === 0) {
         const ms = mouseStateRef.current;
         const wasLeftDown = ms.isLeft;
@@ -6849,13 +7159,11 @@ export default function BattleArena({
       if (e.button === 1) {
         e.preventDefault();
         e.stopPropagation();
-        setPressedAbilityInput(null);
         return;
       }
       if (e.button === 3 || e.button === 4) {
         e.preventDefault();
         e.stopPropagation();
-        setPressedAbilityInput(null);
       }
     };
     const onMouseMove = (e: MouseEvent) => {
@@ -6914,6 +7222,11 @@ export default function BattleArena({
     const onWheel = (e: WheelEvent) => {
       if (customUiMode) return;
       if ((e.target as HTMLElement | null)?.closest(`[data-testing-panel], input, select, textarea, [data-ui-interactive], .${styles.escOverlay}`)) return;
+      const wheelHotkey = normalizeWheelHotkey(e.deltaY);
+      if (wheelHotkey && triggerHotkeyBinding(wheelHotkey.id)) {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.12 : -0.12;
       const zoomMax = cameraDistanceToZoom(cameraSettings.maxDistance);
@@ -6939,7 +7252,7 @@ export default function BattleArena({
       window.removeEventListener('wheel',       onWheel,       { capture: true } as EventListenerOptions);
       window.removeEventListener('blur',        resetMouseButtons);
     };
-  }, [cameraSettings.maxDistance, clearTargetSelection, crashRecorder, customUiMode]);
+  }, [cameraSettings.maxDistance, clearTargetSelection, crashRecorder, customUiMode, triggerHotkeyBinding]);
 
   // ── Touch camera rotation (mobile/iPad) ──────────────────────────────────
   // A single touch that starts on the 3D canvas (wrapRef) rotates camera + player
@@ -7095,6 +7408,7 @@ export default function BattleArena({
         jumpLocalRef.current = false;
         // Post-dash jump allowance: MULTI_JUMP → full reset, normal → 1 jump only
         localJumpCountRef.current = effectiveMaxJumps > 2 ? 0 : 1;
+        airborneSpeedCarryRef.current = 0;
         airNudgeRemainingRef.current = 0;
         airNudgeTicksRemainingRef.current = 0;
         airNudgeDirRef.current = null;
@@ -8614,6 +8928,7 @@ export default function BattleArena({
           allowAnyCancel={allowAnyCancel}
           playerScale={debugLabel === 'me'}
           categoryFilter={categoryFilter}
+          visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
         />
         {customUiMode && (
           <div className={styles.customUiStatusGuide} aria-hidden="true">
@@ -8703,6 +9018,7 @@ export default function BattleArena({
             compact
             borderlessIcons
             maxPerRow={3}
+            visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
           />
         </div>
       </div>
@@ -8858,6 +9174,115 @@ export default function BattleArena({
     );
   };
 
+  const getHotkeySettingsRows = (): HotkeySettingsRow[] => {
+    if (hotkeySettingsTab === 'character-action') {
+      return LOCKED_CHARACTER_ACTION_HOTKEY_ROWS;
+    }
+    if (hotkeySettingsTab === 'interface-toggle') {
+      return INTERFACE_HOTKEY_ROWS;
+    }
+    if (hotkeySettingsTab === 'ability') {
+      return Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }, (_, index) => ({
+        actionId: `draft:${index}`,
+        label: draftAbilities[index]?.name ?? `技能格 ${index + 1}`,
+      }));
+    }
+    if (hotkeySettingsTab === 'common') {
+      return Array.from({ length: COMMON_ABILITY_ORDER.length }, (_, index) => {
+        const abilityId = COMMON_ABILITY_ORDER[index];
+        const meta = abilities[abilityId];
+        return {
+          actionId: `common:${index}`,
+          label: commonAbilities[index]?.name ?? meta?.name ?? `通用格 ${index + 1}`,
+        };
+      });
+    }
+    return Array.from({ length: consumableBarSettings.slotCount }, (_, index) => {
+      const consumableId = consumableBarSettings.slots[index];
+      const consumable = consumableId ? CONSUMABLE_ITEM_BY_ID.get(consumableId) : undefined;
+      return {
+        actionId: `consumable:${index}`,
+        label: consumable?.name ?? `物品格 ${index + 1}`,
+      };
+    });
+  };
+
+  const renderHotkeyBindingButton = (row: HotkeySettingsRow, bindingIndex: number) => {
+    const actionId = row.actionId;
+    const bindings = row.locked ? (row.bindings ?? []) : getHotkeyActionBindingLabels(hotkeySettings, actionId);
+    const isCapturing = !row.locked && capturingHotkey?.actionId === actionId && capturingHotkey.bindingIndex === bindingIndex;
+    const bindingId = bindings[bindingIndex];
+    const label = bindingId ? formatHotkeyBindingLabel(bindingId) : '';
+    return (
+      <div className={styles.escHotkeyBindingCell} key={`${actionId}-${bindingIndex}`}>
+        <button
+          type="button"
+          data-ui-interactive="true"
+          className={`${styles.escHotkeyButton} ${row.locked ? styles.escHotkeyButtonLocked : ''} ${isCapturing ? styles.escHotkeyButtonCapturing : ''}`}
+          disabled={row.locked}
+          aria-label={`${row.label}快捷键${bindingIndex + 1}`}
+          onClick={() => {
+            if (row.locked || isCapturing) return;
+            setCapturingHotkey({ actionId, bindingIndex });
+          }}
+          onKeyDown={(event) => {
+            if (row.locked || !isCapturing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.key === 'Escape') {
+              setCapturingHotkey(null);
+              return;
+            }
+            captureHotkeyBinding(capturingHotkey, normalizeKeyboardHotkey(event));
+          }}
+          onMouseDown={(event) => {
+            if (row.locked) return;
+            if (event.button === 2) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (isCapturing) {
+                setCapturingHotkey(null);
+              } else if (bindingId) {
+                clearHotkeyBinding(actionId, bindingIndex);
+              }
+              return;
+            }
+            if (!isCapturing || event.button === 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            captureHotkeyBinding(capturingHotkey, normalizeMouseHotkey(event.button));
+          }}
+          onWheel={(event) => {
+            if (row.locked || !isCapturing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            captureHotkeyBinding(capturingHotkey, normalizeWheelHotkey(event.deltaY));
+          }}
+          onContextMenu={(event) => {
+            if (row.locked) return;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          {label}
+        </button>
+      </div>
+    );
+  };
+
+  const renderHotkeySettingsRows = () => (
+    <div className={styles.escHotkeyGrid}>
+      {getHotkeySettingsRows().map((row) => (
+        <div className={styles.escHotkeyRow} key={row.actionId}>
+          <div className={styles.escHotkeyLabel}>{row.label}</div>
+          <div className={styles.escHotkeyBindings}>
+            {Array.from({ length: HOTKEY_MAX_BINDINGS_PER_ACTION }, (_, index) => renderHotkeyBindingButton(row, index))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   const renderItemBar = () => {
     const consumableNowMs = systemTime.getTime();
     const visibleConsumableSlots = consumableBarSettings.enabled
@@ -8873,6 +9298,7 @@ export default function BattleArena({
         const remainingCount = consumable ? getConsumableRemainingCount(me, consumable) : 0;
         const unavailable = !!consumable && consumable.implemented !== true;
         const depleted = !!consumable && consumable.implemented === true && remainingCount <= 0;
+        const hotkeyLabel = getHotkeyActionBindingLabels(hotkeySettings, `consumable:${index}`)[0] ?? '';
         return (
           <button
             key={`consumable-slot-${index}-${consumable?.id ?? 'empty'}`}
@@ -8912,7 +9338,7 @@ export default function BattleArena({
               event.stopPropagation();
               const rawSourceIndex = event.dataTransfer.getData('application/x-zhenchuan-consumable-slot');
               const sourceIndex = rawSourceIndex !== '' ? Number(rawSourceIndex) : consumableDragIndexRef.current;
-              if (Number.isInteger(sourceIndex)) {
+              if (typeof sourceIndex === 'number' && Number.isInteger(sourceIndex)) {
                 moveConsumableSlot(sourceIndex, index);
               }
               consumableDragIndexRef.current = null;
@@ -8934,6 +9360,7 @@ export default function BattleArena({
               <img src={getConsumableIconPath(consumable.name)} alt={consumable.name} className={styles.consumableIcon} draggable={false} />
             )}
             {consumable?.implemented === true && <span className={styles.consumableCount}>{remainingCount}</span>}
+            {hotkeyLabel && <span className={styles.consumableHotkey}>{hotkeyLabel}</span>}
             {cooldownMs > 0 && <span className={styles.consumableCooldown}>{cooldownLabel}</span>}
           </button>
         );
@@ -8953,7 +9380,7 @@ export default function BattleArena({
     >
       {showInlinePlayerStatus && (
         <div className={styles.playerBuffRow}>
-          <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} playerScale />
+          <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} playerScale visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'} />
         </div>
       )}
 
@@ -8981,7 +9408,7 @@ export default function BattleArena({
 
       <div className={styles.hotbar}>
         {(specialBarActive ? draftAbilities : Array.from({ length: 6 }, (_, idx) => draftAbilities[idx])).map((ability, idx) => {
-          const keyHint = ['1', '2', '3', 'Q', 'XB2', 'XB1'][idx];
+          const keyHint = getHotkeyActionBindingLabels(hotkeySettings, `draft:${idx}`)[0] ?? '';
           return (
             <div
               data-draft-slot-index={idx}
@@ -9090,8 +9517,7 @@ export default function BattleArena({
       {!specialBarActive && (
         <div className={styles.commonBar}>
           {commonAbilities.map((ability, idx) => {
-            const COMMON_KEY_HINTS = ['X', 'MD', 'MU', 'A+A', 'A+D', 'A+S', '`', 'T'] as const;
-            const keyHint = COMMON_KEY_HINTS[idx] ?? '';
+            const keyHint = getHotkeyActionBindingLabels(hotkeySettings, `common:${idx}`)[0] ?? '';
             const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
             const cdLabel = formatHudCooldownText(ability.cooldown / 30);
             const minuteCooldown = cdLabel.endsWith('m');
@@ -9899,6 +10325,10 @@ export default function BattleArena({
                               <span>崩溃诊断</span>
                             </label>
                             <label className={styles.escToggleRow}>
+                              <input type="checkbox" checked={showHiddenBuffStatusBar} onChange={(e) => setShowHiddenBuffStatusBar(e.target.checked)} className={styles.escToggleInput} />
+                              <span>显示隐藏buff</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
                               <input
                                 type="checkbox"
                                 checked={showDebugGrid}
@@ -10037,7 +10467,16 @@ export default function BattleArena({
                 <div className={styles.escSettingsBody}>
                   <aside className={styles.escSettingsSidebar}>
                     {escPanelPage === 'hotkey-settings' ? (
-                      <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>物品快捷栏</button>
+                      HOTKEY_SETTINGS_TABS.map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          className={`${styles.escSettingsNavButton} ${hotkeySettingsTab === tab.id ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => setHotkeySettingsTab(tab.id)}
+                        >
+                          {tab.label}
+                        </button>
+                      ))
                     ) : escPanelPage === 'sound-settings' ? (
                       <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>音效</button>
                     ) : (
@@ -10047,6 +10486,11 @@ export default function BattleArena({
                   <section className={styles.escSettingsContent}>
                     {escPanelPage === 'hotkey-settings' ? (
                       <>
+                        <div className={styles.escSectionTitle}><span>{HOTKEY_SETTINGS_TABS.find((tab) => tab.id === hotkeySettingsTab)?.label ?? '快捷键'}</span></div>
+                        {renderHotkeySettingsRows()}
+                        <div className={styles.escHotkeyActions}>
+                          <button type="button" className={styles.escFooterButton} onClick={resetHotkeySettings}>恢复默认</button>
+                        </div>
                         <div className={styles.escSectionTitle}><span>物品快捷栏</span></div>
                         <div className={styles.escSettingsGrid}>
                           <div className={`${styles.escToggleGroup} ${styles.escSettingControl}`}>
@@ -10694,6 +11138,7 @@ export default function BattleArena({
                   <StatusBar
                     buffs={targetBuffs}
                     debugLabel={isSelf ? 'me-target' : 'opp'}
+                    visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
                     allowAnyCancel={!isSelf && isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally'}
                     onCancelBuff={
                       isSelf

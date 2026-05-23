@@ -70,6 +70,42 @@ test('BattleArena buff lock predicates ignore expired player buffs', async () =>
   expect(sourceFunction(battleArenaTsx, 'buffsHaveAnyEffect')).toContain('activeBuffsClient(buffs).some');
 });
 
+test('BattleArena post-dash jump prediction does not inherit dash carry', async () => {
+  const battleArenaTsx = readFile(battleArenaTsxPath);
+
+  expect(battleArenaTsx).toMatch(/const justJumpedRender = frameNow - lastJumpInputAtRef\.current < 320;[\s\S]*const recentDashSnap =\s*!justJumpedRender/);
+  expect(battleArenaTsx).toMatch(/const justJumpedLocally = performance\.now\(\) - lastJumpInputAtRef\.current < 260;[\s\S]*const recentDashSnap =\s*!justJumpedLocally/);
+  expect(battleArenaTsx).toMatch(/if \(meActiveDashRef\.current\) \{[\s\S]*airborneSpeedCarryRef\.current = 0;[\s\S]*airNudgeRemainingRef\.current = 0;/);
+  expect(battleArenaTsx).toMatch(/if \(activeDash && activeDash\.ticksRemaining > 0\) \{[\s\S]*airborneSpeedCarryRef\.current = 0;[\s\S]*return;/);
+});
+
+test('BattleArena test tab can switch status bars to hidden buffs only', async () => {
+  const battleArenaTsx = readFile(battleArenaTsxPath);
+  const statusBarIndex = readFile(statusBarIndexPath);
+
+  expect(battleArenaTsx).toContain("const [showHiddenBuffStatusBar, setShowHiddenBuffStatusBar] = useState(false)");
+  expect(battleArenaTsx).toContain('显示隐藏buff');
+  expect(battleArenaTsx).toContain("visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}");
+  expect(statusBarIndex).toContain('visibilityMode?: "visible" | "hidden-only"');
+  expect(statusBarIndex).toMatch(/if \(visibilityMode === "visible" && hiddenInStatusBar\) return null;/);
+  expect(statusBarIndex).toMatch(/if \(visibilityMode === "hidden-only" && !hiddenInStatusBar\) return null;/);
+});
+
+test('BattleArena hotkey settings preserve existing defaults and support two bindings', async () => {
+  const battleArenaTsx = readFile(battleArenaTsxPath);
+
+  expect(battleArenaTsx).toContain("const HOTKEY_MAX_BINDINGS_PER_ACTION = 2");
+  expect(battleArenaTsx).toContain("{ id: 'ability', label: '技能栏' }");
+  expect(battleArenaTsx).toContain("{ id: 'common', label: '通用栏' }");
+  expect(battleArenaTsx).toContain("{ id: 'consumable', label: '物品栏' }");
+  expect(battleArenaTsx).toContain("'draft:0': ['1']");
+  expect(battleArenaTsx).toContain("'draft:5': ['XB1']");
+  expect(battleArenaTsx).toContain("'common:2': ['A+W']");
+  expect(battleArenaTsx).toContain("'common:5': ['A+S']");
+  expect(sourceFunction(battleArenaTsx, 'normalizeWheelHotkey')).toContain("deltaY < 0 ? 'WU' : 'WD'");
+  expect(battleArenaTsx).toMatch(/next\[actionId\] = \[\.\.\.\(current\[actionId\] \?\? \[\]\)\]\.filter\(\(existing\) => existing !== binding\.id\)/);
+});
+
 test('source guards cover BattleArena HUD regression points', async () => {
   const battleArenaTsx = readFile(battleArenaTsxPath);
   const battleArenaCss = readFile(battleArenaCssPath);

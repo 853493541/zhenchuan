@@ -3,6 +3,36 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## China VM deployment planning (2026-05-23)
+
+**Planning / finding**:
+- Current production shape is two PM2 Node processes: Next frontend on `3000` and compiled Express/WebSocket backend on `5000`, with MongoDB via `MONGO_URI` and `/ws` proxied to the backend.
+- A first mainland China deployment should start around `4 vCPU / 8 GB RAM / 80 GB SSD / 10-20 Mbps`; use `16 GB` if MongoDB is local, multiple 5-player rooms are expected, or build/install work must happen on the VM under pressure.
+- Five-player gameplay is not just infrastructure: `startGame` allows up to 5, but `joinGame` still caps rooms at 2 and backend loop/channel logic still has some 2-player assumptions.
+- Mainland VMs generally support SSH and VS Code Remote SSH, but ICP/domain rules, provider security groups, China-side npm/GitHub speed, and same-region MongoDB matter for a smooth launch.
+
+**Follow-up correction**:
+- For a tighter budget, `2 vCPU / 16 GB RAM` is a more realistic floor than insisting on `4 vCPU`. The backend is a single Node process, so extra cores are mainly headroom for frontend/nginx/Mongo contention rather than an absolute requirement for one active room.
+- `80 GB` disk is comfort, not a hard floor. Shipping built artifacts from the dev machine can fit into `40-60 GB` if MongoDB is external and logs are managed.
+- If the app VM is in mainland China but MongoDB Atlas stays in the US, cross-border DB latency and route instability are likely a bigger operational risk than raw VM size. For this scale, a local MongoDB on the VM is acceptable if it binds to localhost, has backups, and the VM keeps enough RAM headroom.
+- Oracle's public OCI pricing pages state pricing is globally consistent across locations, and Oracle lists Japan as a country with two cloud regions. Using the higher public hourly rate for budgeting, an x86 E4 VM at `1 OCPU / 16 GB` (`2 vCPU / 16 GB`) is about `$36/month` before storage, `2 OCPU / 16 GB` (`4 vCPU / 16 GB`) is about `$54/month`, and `40-60 GB` block storage adds only about `$1.02-$1.53/month`.
+- Oracle's Ampere A1 free tier is unusually attractive for low-budget deployment: up to `3,000 OCPU hours`, `18,000 GB hours`, and `200 GB` block storage monthly. In practice that can cover one `4-core / 24 GB` Arm VM if the chosen signup region has capacity, but it should be treated as best-effort capacity rather than a guaranteed production baseline.
+
+**Lesson**:
+- For this app, a China deployment runbook must cover nginx WebSocket proxying, same-region MongoDB, PM2 process scoping, fresh VM env files, and asset/build shipping. A copied `.next` directory alone is not enough because the frontend is not using Next standalone output.
+- Oracle is a strong cost candidate when the goal is low monthly spend, but the real comparison is not only VM list price: x86 gives the least deployment friction, while Arm/free-tier value is better only if region capacity and package compatibility cooperate.
+
+## Shortcut locked role actions and backend storage audit (2026-05-23)
+
+**Implemented / checked**:
+- Added locked, gray ESC 快捷键 rows for 角色动作 and made the exact W/S/A/D, arrow, Space, and T bindings unavailable to editable shortcut tabs.
+- Added 界面开关 shortcut rows for 人物属性 (`C`) and 技能界面 (`P`), with 技能界面 toggling the existing 添加技能 panel.
+- Replaced per-row 清除 buttons with right-click behavior: right-click while editing cancels capture; right-click while not editing clears the binding.
+- Confirmed live MongoDB connection uses database `baizhan_V2`; current backend code writes account/profile data to `users` and game sessions to `gamesessions`, while editor override JSON and diagnostics JSONL logs live under `/home/ubuntu/zhenchuan`.
+
+**Lesson**:
+- Role/movement keys need a reserved binding layer before user-editable shortcuts are normalized or captured. Otherwise old browser-local shortcut saves can silently steal movement keys even after the UI displays them as locked.
+
 ## Ability grayout combat warnings (2026-05-22)
 
 **Implemented**:
@@ -20,6 +50,26 @@ Each entry goes under its relevant section header.
 
 **Lesson**:
 - Frontend gameplay gates must not treat a buff array entry as active solely because it is still present in client state. Always apply the `expiresAt` guard locally for lock, control, targeting, range, and visibility predicates; compact state diffs can arrive after wall-clock expiry.
+
+## Post-dash jump prediction hitch (2026-05-22)
+
+**Finding / fix**:
+- Backend dash movement clears air-shift and airborne speed carry at dash start/end so the next jump does not inherit dash or stale airborne speed.
+- BattleArena's local active-dash prediction cleared velocity and air-shift but did not clear `airborneSpeedCarryRef`, so the first jump after dash could predict a longer travel budget than the server and then visibly reconcile.
+- Cleared frontend airborne speed carry during server-authoritative dash/recent dash snap, and made the recent-dash hard-snap window yield to a freshly queued local jump.
+
+**Lesson**:
+- For movement prediction, mirror not only position/velocity constants but also transient carry-state cleanup. A stale local carry value after dash can look like network or frame lag because the next jump is locally overpredicted and then corrected by server state.
+
+## Hidden buff display and shortcut settings (2026-05-23)
+
+**Implemented / checked**:
+- Added an ESC 测试 switch that leaves normal status bars unchanged by default and can flip StatusBar into a hidden-only mode using existing `hiddenInStatusBar` preload metadata.
+- Rebuilt ESC 快捷键设置 with 技能栏、通用栏、物品栏 tabs, two bindings per row, global binding uniqueness, keyboard Ctrl/Alt combos, mouse buttons, and wheel up/down capture while preserving the existing default bindings.
+- Confirmed accounts are stored by the backend `User` mongoose model in MongoDB database `baizhan_V2`, collection `users`; no `copilit`/`copilot` prefixed accounts existed in the active store, so the strict delete matched zero accounts.
+
+**Lesson**:
+- Debug visibility for hidden buffs should be a display-mode switch in StatusBar, not a mutation of buff metadata. Shortcut customization should layer over the existing defaults so camera/movement behavior remains unchanged until a user explicitly binds a conflicting mouse or wheel input.
 
 ## Resource pack predownload and cache service (2026-05-22)
 
