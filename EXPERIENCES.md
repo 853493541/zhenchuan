@@ -24,6 +24,11 @@ Each entry goes under its relevant section header.
 - Completed a micro-visual follow-up: reduced the 收藏红色减号 badge footprint by 20% and tightened 预设页 six-slot gap spacing by 30% for a denser card layout.
 - Completed a follow-up correction: 收藏红色减号 now renders only while 收藏模式 is active, and the badge was reduced again to a much smaller footprint for a clearly visible difference from the previous pass.
 - Completed another visual correction: increased 收藏红色减号 from ultra-small to a clearer medium-small size, and strengthened 收藏模式非收藏项 gray-out (higher grayscale, lower saturation/opacity) to make favorites stand out more.
+- Completed a responsive 武学界面 correction: missing size settings now fall back to intended defaults instead of the 0.1 minimum, and ability columns/visible rows, icon sizes, gaps, footer height, bottom learned/buff slots, and preset card density derive from the actual panel dimensions so lower-height PC windows do not crush the ability list into the bottom strip.
+- Completed the ESC 快捷键设置 polish pass: shortcut actions now render one per row with two binding boxes, skill/common/item rows use generic slot labels, 骑乘 has no default T binding, right-click clearing runs through context-menu handling, hotkey edits are staged behind 确定/取消/应用, 恢复配置/清除 moved to the footer, 物品栏 settings moved under 游戏设置, and ESC 测试 martial size sliders now start from system defaults instead of per-browser saved values.
+- Completed a follow-up hotkey readability pass: 技能栏 shortcut boxes now sit directly next to their row labels instead of stretching to the far right, row spacing/height was tightened, item-bar hotkey text is 30% larger in white, and wheel bindings now render as MU/MD on the in-game skill/item bars instead of raw WU/WD.
+- Completed a follow-up alignment correction: hotkey rows now use a fixed label column plus an explicit label-to-box gap so longer labels no longer push binding boxes sideways, and each shortcut binding box was widened by about 30% for a more even desktop layout.
+- Completed a final hotkey color adjustment: the displayed shortcut text inside ESC shortcut binding boxes now renders in white instead of yellow for better consistency with the rest of the settings panel.
 
 **Lesson**:
 - Large new UI features should first trace the full existing gameplay, slot, route, and custom UI systems before implementation so the official surface shares live state instead of duplicating it.
@@ -36,6 +41,13 @@ Each entry goes under its relevant section header.
 - 收藏/置顶 style ordering should be a display-order layer over the canonical ability list. Keep the user's favorite order separate from school/rarity/search filters so favorites stay easy to find without mutating ability definitions or live draft slots.
 - For desktop-only game panels, prefer viewport-ratio defaults multiplied by user scale settings over fixed pixel defaults; this keeps the same screen footprint across different PC resolutions while still preserving custom sizing.
 - When a toggle has both hover and active states, keep them visually distinct; sharing the same color creates false-state confusion when the pointer is still over the control.
+- For 武学界面-style panels, derive not only outer size but also visible row count, grid columns, slots, card count, and toolbar widths from the rendered dimensions; a fixed 8x3 grid plus fixed bottom strip will overlap as soon as viewport height drops.
+- LocalStorage numeric settings need explicit null/empty handling before `Number(value)`. `Number(null)` becomes `0`, which silently clamps absent martial size settings to the minimum instead of the default.
+- Shortcut settings should stage edits separately from the saved binding profile when the UI exposes 确定/取消/应用. Immediate localStorage writes make a disabled/enabled Apply button and cancel behavior impossible to reason about.
+- For compact in-game panels, clipping overflowing labels is preferable to adding ellipsis; the dots consume scarce horizontal space without making the control clearer.
+- For hotkey-setting rows, avoid flexible full-width binding columns when the intended layout is label-plus-inputs. A max-content row track plus fixed-width binding cells keeps the two shortcut boxes visually attached to the label instead of drifting to the right edge.
+- When labels and inputs must align in a settings grid, keep the label column fixed to the longest expected label width. Using content-sized label tracks makes every row start at a different X position as soon as one label is longer than the rest.
+- For dense ESC settings panels, keep the editable shortcut text color consistent with other neutral UI labels unless a specific warning or capture state needs a highlight color.
 
 ## China VM deployment planning (2026-05-23)
 

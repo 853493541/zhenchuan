@@ -1115,23 +1115,23 @@
 
 .escMainTabs {
   position: absolute;
-  top: 28px;
+  top: 24px;
   left: 16px;
   z-index: 1;
   display: inline-flex;
-  gap: 3px;
+  gap: 5px;
 }
 
 .escMainTabButton {
-  min-width: 38px;
-  height: 18px;
-  padding: 0 7px;
+  min-width: 52px;
+  height: 24px;
+  padding: 0 11px;
   border: 1px solid rgba(121, 174, 164, 0.28);
   border-radius: 3px;
   background: rgba(31, 49, 55, 0.72);
   color: #d7e5df;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   cursor: pointer;
 }
@@ -1365,18 +1365,19 @@
 
 .escHotkeyGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(180px, 1fr));
-  gap: 7px 18px;
-  margin-bottom: 17px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  margin-bottom: 12px;
 }
 
 .escHotkeyRow {
   min-width: 0;
-  min-height: 54px;
+  min-height: 25px;
   display: grid;
-  grid-template-columns: minmax(72px, 1fr) minmax(176px, 230px);
-  align-items: start;
-  gap: 7px;
+  grid-template-columns: 94px max-content;
+  align-items: center;
+  justify-content: start;
+  gap: 14px;
 }
 
 .escHotkeyLabel {
@@ -1387,13 +1388,13 @@
   line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .escHotkeyBindings {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, 140px);
+  justify-self: start;
   gap: 5px;
 }
 
@@ -1405,6 +1406,7 @@
 
 .escHotkeyButton,
 .escHotkeyClearButton {
+  width: 100%;
   min-width: 0;
   height: 25px;
   border-radius: 3px;
@@ -1419,9 +1421,8 @@
   padding: 0 7px;
   border: 1px solid rgba(111, 193, 179, 0.44);
   background: rgba(23, 46, 51, 0.82);
-  color: #efff5f;
+  color: #ffffff;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1464,12 +1465,6 @@
   opacity: 0.45;
 }
 
-.escHotkeyActions {
-  display: flex;
-  justify-content: flex-end;
-  margin: -4px 0 17px;
-}
-
 .escCameraSettingsGrid {
   margin-bottom: 18px;
 }
@@ -1483,6 +1478,13 @@
 }
 
 .escSettingsFooterRight {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.escSettingsFooterLeft {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -1658,7 +1660,6 @@
 .loadPerfResourceRow em {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1716,7 +1717,6 @@
 .loadPerfMetricBox small {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1770,7 +1770,6 @@
   min-width: 0;
   color: #f8fafc;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2327,10 +2326,49 @@
 
 .martialPanel {
   --martial-panel-scale: 1;
-  --martial-ability-icon-size: clamp(34px, calc(42px * var(--martial-panel-scale)), 42px);
-  --martial-active-icon-size: clamp(32px, calc(38px * var(--martial-panel-scale)), 38px);
+  --martial-panel-header-height: 32px;
+  --martial-panel-tabs-height: 38px;
+  --martial-panel-filters-height: 44px;
+  --martial-panel-footer-height: 38px;
+  --martial-ability-columns: 8;
+  --martial-ability-icon-size: 42px;
+  --martial-ability-cell-width: 84px;
+  --martial-ability-row-height: 67px;
+  --martial-ability-column-gap: 18px;
+  --martial-ability-row-gap: 24px;
+  --martial-ability-pad-x: 28px;
+  --martial-ability-pad-y: 16px;
+  --martial-ability-name-font: 13px;
+  --martial-ability-item-gap: 5px;
+  --martial-filter-height: 29px;
+  --martial-filter-gap: 6px;
+  --martial-filter-pad-x: 9px;
+  --martial-filter-font-size: 13px;
+  --martial-search-width: 164px;
+  --martial-school-filter-width: 101px;
+  --martial-rarity-filter-width: 126px;
+  --martial-toggle-width: 90px;
+  --martial-favorite-width: 88px;
+  --martial-footer-font-size: 14px;
+  --martial-footer-button-height: 28px;
+  --martial-footer-button-pad-x: 9px;
+  --martial-active-panel-height: 92px;
+  --martial-active-buff-flex: 2fr;
+  --martial-active-learned-flex: 3fr;
+  --martial-active-tab-width: 31px;
+  --martial-active-icon-size: 38px;
+  --martial-active-slot-width: 50px;
+  --martial-active-slot-height: 62px;
+  --martial-active-gap: 8px;
+  --martial-active-buff-gap: 6px;
+  --martial-active-pad-x: 10px;
+  --martial-active-buff-pad-x: 8px;
+  --martial-active-pad-y: 9px;
+  --martial-active-name-font: 11px;
+  --martial-active-empty-font: 22px;
+  box-sizing: border-box;
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: var(--martial-panel-header-height) var(--martial-panel-tabs-height) var(--martial-panel-filters-height) minmax(0, 1fr) var(--martial-panel-footer-height) var(--martial-active-panel-height);
   align-content: stretch;
   overflow: hidden;
   border: 1px solid rgba(112, 167, 166, 0.72);
@@ -2350,10 +2388,12 @@
 
 .martialPanelHeader {
   position: relative;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
+  min-height: 0;
+  height: var(--martial-panel-header-height);
   padding: 5px 36px 4px;
   border-bottom: 1px solid rgba(125, 183, 181, 0.28);
   background: linear-gradient(90deg, rgba(39, 80, 79, 0.52), rgba(27, 46, 52, 0.82), rgba(39, 80, 79, 0.52));
@@ -2386,11 +2426,13 @@
 }
 
 .martialTabs {
+  box-sizing: border-box;
   display: flex;
   align-items: stretch;
   justify-content: flex-start;
   gap: 0;
-  min-height: 38px;
+  min-height: 0;
+  height: var(--martial-panel-tabs-height);
   padding: 0 20px;
   border-bottom: 1px solid rgba(125, 183, 181, 0.22);
 }
@@ -2401,7 +2443,7 @@
   border-right: 1px solid rgba(125, 183, 181, 0.2);
   background: rgba(28, 45, 52, 0.78);
   color: rgba(234, 244, 237, 0.74);
-  font-size: 14px;
+  font-size: clamp(12px, var(--martial-footer-font-size), 14px);
   font-weight: 800;
   cursor: pointer;
   width: 128px;
@@ -2418,11 +2460,15 @@
 }
 
 .martialFilters {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 6px;
-  padding: 7px 9px;
+  gap: var(--martial-filter-gap);
+  min-width: 0;
+  min-height: 0;
+  height: var(--martial-panel-filters-height);
+  padding: 0 var(--martial-filter-pad-x);
   border-bottom: 1px solid rgba(125, 183, 181, 0.22);
   background: rgba(12, 23, 28, 0.48);
 }
@@ -2432,9 +2478,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  width: clamp(132px, 18%, 164px);
-  min-width: 132px;
-  height: 29px;
+  width: var(--martial-search-width);
+  min-width: 0;
+  flex: 0 1 var(--martial-search-width);
+  height: var(--martial-filter-height);
   padding: 0 9px;
   border: 1px solid rgba(110, 172, 171, 0.5);
   border-radius: 2px;
@@ -2451,7 +2498,7 @@
   background: transparent;
   color: #edf6ef;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--martial-filter-font-size);
 }
 
 .martialSearchBox input::placeholder {
@@ -2460,14 +2507,16 @@
 
 .martialFilterMenu {
   position: relative;
-  width: 101px;
-  min-width: 101px;
-  height: 29px;
+  width: var(--martial-school-filter-width);
+  min-width: 0;
+  flex: 0 1 var(--martial-school-filter-width);
+  height: var(--martial-filter-height);
 }
 
 .martialRarityFilterMenu {
-  width: 126px;
-  min-width: 126px;
+  width: var(--martial-rarity-filter-width);
+  flex-basis: var(--martial-rarity-filter-width);
+  min-width: 0;
 }
 
 .martialFilterButton {
@@ -2476,14 +2525,14 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  height: 29px;
+  height: var(--martial-filter-height);
   gap: 6px;
   padding: 0 8px;
   border: 1px solid rgba(110, 172, 171, 0.5);
   border-radius: 2px;
   background: rgba(16, 31, 37, 0.9);
   color: #e9f3ed;
-  font-size: 13px;
+  font-size: var(--martial-filter-font-size);
   font-weight: 800;
   cursor: pointer;
 }
@@ -2492,7 +2541,6 @@
   min-width: 0;
   color: var(--martial-filter-color, #e9f3ed);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2540,20 +2588,22 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 29px;
+  width: var(--martial-toggle-width);
+  min-width: 0;
+  height: var(--martial-filter-height);
   padding: 0 9px;
   border: 1px solid rgba(110, 172, 171, 0.46);
   border-radius: 2px;
   background: rgba(16, 31, 37, 0.82);
   color: #dcefed;
-  font-size: 13px;
+  font-size: var(--martial-filter-font-size);
   font-weight: 800;
   white-space: nowrap;
 }
 
 .martialFilterSpacer {
   flex: 1 1 auto;
-  min-width: 8px;
+  min-width: 0;
 }
 
 .martialFavoriteModeButton {
@@ -2562,14 +2612,15 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  height: 29px;
-  min-width: 88px;
-  padding: 0 9px;
+  width: var(--martial-favorite-width);
+  min-width: 0;
+  height: var(--martial-filter-height);
+  padding: 0 7px;
   border: 1px solid rgba(144, 225, 208, 0.55);
   border-radius: 4px;
   background: rgba(18, 38, 42, 0.9);
   color: #e8f5ef;
-  font-size: 13px;
+  font-size: var(--martial-filter-font-size);
   font-weight: 900;
   white-space: nowrap;
   cursor: pointer;
@@ -2600,6 +2651,20 @@
   opacity: 0.52;
 }
 
+.martialEmpoweredToggle span,
+.martialFavoriteModeButton span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.martialEmpoweredToggle input,
+.martialFavoriteModeButton svg,
+.martialFilterButton svg,
+.martialSearchBox svg {
+  flex: 0 0 auto;
+}
+
 .martialEmpoweredToggle input {
   width: 13px;
   height: 13px;
@@ -2609,8 +2674,8 @@
 
 .martialAbilityViewport {
   position: relative;
-  height: auto;
-  min-height: 249px;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   background:
     radial-gradient(circle at 68% 48%, rgba(226, 210, 169, 0.14), transparent 34%),
@@ -2618,14 +2683,15 @@
 }
 
 .martialAbilityGrid {
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: repeat(8, minmax(var(--martial-ability-icon-size), 1fr));
-  grid-auto-rows: clamp(48px, calc(67px * var(--martial-panel-scale)), 67px);
+  grid-template-columns: repeat(var(--martial-ability-columns), var(--martial-ability-cell-width));
+  grid-auto-rows: var(--martial-ability-row-height);
   align-content: start;
-  justify-content: stretch;
-  gap: clamp(10px, calc(24px * var(--martial-panel-scale)), 24px) clamp(8px, calc(18px * var(--martial-panel-scale)), 18px);
+  justify-content: center;
+  gap: var(--martial-ability-row-gap) var(--martial-ability-column-gap);
   height: 100%;
-  padding: clamp(10px, calc(16px * var(--martial-panel-scale)), 16px) clamp(16px, calc(28px * var(--martial-panel-scale)), 28px) clamp(8px, calc(12px * var(--martial-panel-scale)), 12px);
+  padding: var(--martial-ability-pad-y) var(--martial-ability-pad-x);
   overflow: hidden;
 }
 
@@ -2663,10 +2729,11 @@
 .martialAbilityItem {
   appearance: none;
   display: grid;
-  grid-template-rows: 42px auto;
+  grid-template-rows: var(--martial-ability-icon-size) auto;
   justify-items: center;
-  gap: 5px;
+  gap: var(--martial-ability-item-gap);
   min-width: 0;
+  width: var(--martial-ability-cell-width);
   padding: 0;
   border: 0;
   outline: 0;
@@ -2766,9 +2833,9 @@
 
 .martialAbilityName {
   width: 100%;
-  max-width: 70px;
+  max-width: min(70px, var(--martial-ability-cell-width));
   color: #f1f5ee;
-  font-size: clamp(11px, calc(13px * var(--martial-panel-scale)), 13px);
+  font-size: var(--martial-ability-name-font);
   font-weight: 700;
   line-height: 1.15;
   text-align: center;
@@ -2834,21 +2901,25 @@
 }
 
 .martialPanelFooterRow {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 38px;
-  padding: 6px 10px;
+  min-height: 0;
+  height: var(--martial-panel-footer-height);
+  padding: 0 10px;
   border-top: 1px solid rgba(125, 183, 181, 0.24);
   background: rgba(18, 31, 37, 0.9);
 }
 
 .martialPanelHint {
+  flex: 1 1 auto;
   min-width: 0;
   color: #eff7f0;
-  font-size: 14px;
+  font-size: var(--martial-footer-font-size);
   font-weight: 800;
+  overflow: hidden;
   white-space: nowrap;
 }
 
@@ -2869,13 +2940,13 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  min-height: 28px;
-  padding: 0 9px;
+  min-height: var(--martial-footer-button-height);
+  padding: 0 var(--martial-footer-button-pad-x);
   border: 1px solid rgba(144, 225, 208, 0.55);
   border-radius: 4px;
   background: linear-gradient(180deg, rgba(58, 128, 112, 0.92), rgba(38, 89, 85, 0.92));
   color: #f3fbf5;
-  font-size: 13px;
+  font-size: var(--martial-footer-font-size);
   font-weight: 900;
   cursor: pointer;
 }
@@ -2886,17 +2957,19 @@
 }
 
 .martialActivePanel {
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  grid-template-columns: minmax(0, var(--martial-active-buff-flex)) minmax(0, var(--martial-active-learned-flex));
   align-items: stretch;
-  min-height: 92px;
+  min-height: 0;
+  height: var(--martial-active-panel-height);
   border-top: 1px solid rgba(125, 183, 181, 0.24);
   background: rgba(39, 55, 58, 0.8);
 }
 
 .martialActiveSection {
   display: grid;
-  grid-template-columns: 31px minmax(0, 1fr);
+  grid-template-columns: var(--martial-active-tab-width) minmax(0, 1fr);
   min-width: 0;
 }
 
@@ -2910,15 +2983,16 @@
 }
 
 .martialActiveTab {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 31px;
+  width: var(--martial-active-tab-width);
   padding: 4px 3px;
   border-right: 1px solid rgba(125, 183, 181, 0.28);
   background: rgba(20, 55, 85, 0.72);
   color: #fff;
-  font-size: 12px;
+  font-size: clamp(10px, var(--martial-active-name-font), 12px);
   font-weight: 900;
   line-height: 1;
   text-align: center;
@@ -2932,22 +3006,24 @@
 }
 
 .martialActiveSlots {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-evenly;
-  gap: 8px;
-  padding: 9px 10px;
+  gap: var(--martial-active-gap);
+  padding: var(--martial-active-pad-y) var(--martial-active-pad-x);
   min-width: 0;
+  overflow: hidden;
 }
 
 .martialBuffSlots {
-  gap: 6px;
-  padding-inline: 8px;
+  gap: var(--martial-active-buff-gap);
+  padding-inline: var(--martial-active-buff-pad-x);
 }
 
 .martialActiveSlot {
-  width: 54px;
-  height: 62px;
+  width: var(--martial-active-slot-width);
+  height: var(--martial-active-slot-height);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -2972,10 +3048,10 @@
 .martialActiveAbility {
   appearance: none;
   display: grid;
-  grid-template-rows: 38px auto;
+  grid-template-rows: var(--martial-active-icon-size) auto;
   justify-items: center;
-  gap: 4px;
-  width: 54px;
+  gap: 3px;
+  width: var(--martial-active-slot-width);
   min-width: 0;
   padding: 0;
   border: 0;
@@ -2992,7 +3068,8 @@
 
 .martialActiveAbility span {
   min-width: 0;
-  font-size: 11px;
+  max-width: var(--martial-active-slot-width);
+  font-size: var(--martial-active-name-font);
   font-weight: 800;
   line-height: 1.15;
   text-align: center;
@@ -3025,8 +3102,8 @@
 
 .martialBuffIconSlot {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: var(--martial-active-icon-size);
+  height: var(--martial-active-icon-size);
   border: 2px solid rgba(126, 177, 170, 0.72);
   border-radius: 5px;
   background-color: rgba(8, 18, 22, 0.86);
@@ -3061,7 +3138,7 @@
   align-items: center;
   justify-content: center;
   color: rgba(209, 230, 226, 0.42);
-  font-size: 22px;
+  font-size: var(--martial-active-empty-font);
   font-weight: 700;
 }
 
@@ -3070,6 +3147,27 @@
 }
 
 .martialPresetPanel {
+  --martial-preset-visible-plans: 4;
+  --martial-preset-header-height: 39px;
+  --martial-preset-title-font: 14px;
+  --martial-preset-icon-button-size: 28px;
+  --martial-preset-list-pad-top: 12px;
+  --martial-preset-list-pad-right: 20px;
+  --martial-preset-list-pad-bottom: 12px;
+  --martial-preset-list-pad-left: 12px;
+  --martial-preset-list-gap: 12px;
+  --martial-preset-card-pad-x: 9px;
+  --martial-preset-card-pad-y: 8px;
+  --martial-preset-card-gap: 7px;
+  --martial-preset-card-header-font: 14px;
+  --martial-preset-slot-width: 44px;
+  --martial-preset-slot-height: 58px;
+  --martial-preset-slot-gap: 3.5px;
+  --martial-preset-icon-size: 38px;
+  --martial-preset-name-font: 10px;
+  --martial-preset-enable-width: 58px;
+  --martial-preset-enable-height: 25px;
+  --martial-preset-top-button-size: 25px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
@@ -3082,11 +3180,13 @@
 }
 
 .martialPresetPanelHeader {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 39px;
-  padding: 5px 8px 4px 12px;
+  min-height: 0;
+  height: var(--martial-preset-header-height);
+  padding: 0 8px 0 12px;
   border-bottom: 1px solid rgba(125, 183, 181, 0.28);
   background: linear-gradient(90deg, rgba(39, 80, 79, 0.62), rgba(27, 46, 52, 0.86));
 }
@@ -3101,10 +3201,9 @@
 .martialPresetPanelTitle {
   min-width: 0;
   color: #f5f2da;
-  font-size: 14px;
+  font-size: var(--martial-preset-title-font);
   font-weight: 900;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -3119,8 +3218,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--martial-preset-icon-button-size);
+  height: var(--martial-preset-icon-button-size);
   padding: 0;
   border: 1px solid rgba(144, 206, 200, 0.36);
   border-radius: 4px;
@@ -3136,25 +3235,27 @@
 
 .martialPresetList {
   position: relative;
+  box-sizing: border-box;
   min-height: 0;
-  padding: 12px 20px 12px 12px;
+  padding: var(--martial-preset-list-pad-top) var(--martial-preset-list-pad-right) var(--martial-preset-list-pad-bottom) var(--martial-preset-list-pad-left);
   overflow: hidden;
 }
 
 .martialPresetListItems {
   display: grid;
-  grid-template-rows: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-rows: repeat(var(--martial-preset-visible-plans), minmax(0, 1fr));
+  gap: var(--martial-preset-list-gap);
   height: 100%;
   min-height: 0;
 }
 
 .martialPresetCard {
+  box-sizing: border-box;
   min-height: 0;
   display: grid;
   grid-template-rows: auto auto;
-  gap: 7px;
-  padding: 8px 9px;
+  gap: var(--martial-preset-card-gap);
+  padding: var(--martial-preset-card-pad-y) var(--martial-preset-card-pad-x);
   border: 1px solid rgba(94, 135, 140, 0.42);
   border-radius: 4px;
   background: rgba(13, 24, 29, 0.7);
@@ -3167,7 +3268,7 @@
   justify-content: space-between;
   gap: 8px;
   color: #f3f6ee;
-  font-size: 14px;
+  font-size: var(--martial-preset-card-header-font);
   font-weight: 900;
 }
 
@@ -3188,20 +3289,20 @@
 .martialPresetNameRow > span {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .martialPresetSlots {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 3.5px;
+  grid-template-columns: repeat(6, var(--martial-preset-slot-width));
+  gap: var(--martial-preset-slot-gap);
+  justify-content: space-between;
   justify-items: center;
 }
 
 .martialPresetSlot {
-  width: 44px;
-  min-height: 58px;
+  width: var(--martial-preset-slot-width);
+  min-height: var(--martial-preset-slot-height);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -3209,20 +3310,20 @@
 }
 
 .martialPresetSlot .martialAbilityItem {
-  grid-template-rows: 38px auto;
-  width: 44px;
+  grid-template-rows: var(--martial-preset-icon-size) auto;
+  width: var(--martial-preset-slot-width);
   gap: 3px;
   cursor: default;
 }
 
 .martialPresetSlot .martialAbilityIconFrame {
-  width: 38px;
-  height: 38px;
+  width: var(--martial-preset-icon-size);
+  height: var(--martial-preset-icon-size);
 }
 
 .martialPresetSlot .martialAbilityName {
-  max-width: 42px;
-  font-size: 10px;
+  max-width: var(--martial-preset-slot-width);
+  font-size: var(--martial-preset-name-font);
 }
 
 .martialPresetSlotHover {
@@ -3231,8 +3332,8 @@
 
 .martialPresetEmptySlot {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: var(--martial-preset-icon-size);
+  height: var(--martial-preset-icon-size);
   border: 2px solid rgba(114, 130, 135, 0.62);
   border-radius: 4px;
   background: rgba(15, 27, 32, 0.62);
@@ -3240,13 +3341,13 @@
 
 .martialPresetEnableButton {
   justify-self: end;
-  min-width: 58px;
-  min-height: 25px;
+  min-width: var(--martial-preset-enable-width);
+  min-height: var(--martial-preset-enable-height);
   border: 1px solid rgba(144, 225, 208, 0.55);
   border-radius: 4px;
   background: linear-gradient(180deg, rgba(58, 128, 112, 0.92), rgba(38, 89, 85, 0.92));
   color: #f3fbf5;
-  font-size: 12px;
+  font-size: var(--martial-preset-name-font);
   font-weight: 900;
   cursor: pointer;
 }
@@ -3255,8 +3356,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 25px;
-  height: 25px;
+  width: var(--martial-preset-top-button-size);
+  height: var(--martial-preset-top-button-size);
   padding: 0;
   border: 1px solid rgba(144, 225, 208, 0.5);
   border-radius: 4px;
@@ -3500,6 +3601,11 @@
     font-size: 11px;
   }
 
+  .escHotkeyRow {
+    grid-template-columns: 94px max-content;
+    gap: 14px;
+  }
+
   .escSettingsGrid,
   .escHotkeyGrid,
   .escTestGrid,
@@ -3527,17 +3633,6 @@
 
   .martialFilters {
     flex-wrap: wrap;
-  }
-
-  .martialAbilityGrid {
-    grid-template-columns: repeat(8, 64px);
-    gap: 24px 12px;
-    padding: 16px 22px 12px;
-  }
-
-  .martialPanelFooterRow {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .martialActivePanel {
@@ -3570,6 +3665,22 @@
 
   .escSettingsSidebar {
     display: none;
+  }
+
+  .escHotkeyRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .escSettingsFooter {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    padding-inline: 18px;
+  }
+
+  .escSettingsFooterLeft,
+  .escSettingsFooterRight {
+    flex-wrap: wrap;
   }
 }
 
@@ -4104,16 +4215,15 @@
   top: 1px;
   z-index: 9;
   max-width: calc(100% - 2px);
-  color: #efff5f;
+  color: #ffffff;
   font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-  font-size: calc(8px * var(--ability-panel-scale, 1));
+  font-size: calc(10.4px * var(--ability-panel-scale, 1));
   font-weight: 800;
   line-height: 1;
   text-align: left;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.86);
   pointer-events: none;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -4534,7 +4644,7 @@
   }
 
   .consumableHotkey {
-    font-size: max(8px, calc(8px * var(--ability-panel-scale, 1)));
+    font-size: max(10px, calc(10.4px * var(--ability-panel-scale, 1)));
   }
 
   .wasdWrap,

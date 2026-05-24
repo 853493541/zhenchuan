@@ -423,12 +423,7 @@ const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
 const ABILITY_PANEL_MIN_SCALE = 0.85;
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
-const MARTIAL_PANEL_WIDTH_STORAGE_KEY = 'zhenchuan-martial-panel-width-v2';
-const MARTIAL_PANEL_HEIGHT_STORAGE_KEY = 'zhenchuan-martial-panel-height-v2';
-const MARTIAL_PRESET_PANEL_WIDTH_STORAGE_KEY = 'zhenchuan-martial-preset-panel-width-v2';
 const MARTIAL_PRESET_PANEL_OPEN_STORAGE_KEY = 'zhenchuan-martial-preset-panel-open-v1';
-const MARTIAL_MODAL_WIDTH_STORAGE_KEY = 'zhenchuan-martial-modal-width-v2';
-const MARTIAL_MODAL_HEIGHT_STORAGE_KEY = 'zhenchuan-martial-modal-height-v2';
 const MARTIAL_FAVORITE_ORDER_STORAGE_KEY = 'zhenchuan-martial-favorite-order-v1';
 const MARTIAL_PANEL_TAB_STORAGE_KEY = 'zhenchuan-martial-panel-tab-v1';
 const MARTIAL_SETTING_MIN_SCALE = 0.1;
@@ -462,6 +457,8 @@ const MARTIAL_PRESET_LIMIT = 8;
 const MARTIAL_PRESET_VISIBLE_PLANS = 4;
 const MARTIAL_VISIBLE_COLUMNS = 8;
 const MARTIAL_VISIBLE_ROWS = 3;
+const MARTIAL_COMPACT_COLUMNS = 6;
+const MARTIAL_NARROW_COLUMNS = 4;
 const IN_GAME_WARNING_SCALE_STORAGE_KEY = 'zhenchuan-ingame-warning-scale-v1';
 const IN_GAME_WARNING_UI_KEY = 'in-game-warning';
 const IN_GAME_WARNING_DURATION_MS = 1500;
@@ -687,6 +684,7 @@ function normalizeAbilityPanelScale(value: unknown): number {
 }
 
 function normalizeNumberInRange(value: unknown, fallback: number, min: number, max: number): number {
+  if (value === null || value === undefined || value === '') return fallback;
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.round(Math.max(min, Math.min(max, numeric)));
@@ -720,6 +718,397 @@ function normalizeMartialSettingScale(value: unknown): number {
 
 function getMartialSettingScale(value: number, base: number): number {
   return normalizeMartialSettingScale(value / base);
+}
+
+type MartialPanelDimensions = {
+  panelWidth: number;
+  panelHeight: number;
+  presetPanelWidth: number;
+  presetPanelGap: number;
+  bundleWidth: number;
+  panelResponsiveScale: number;
+};
+
+type MartialResponsiveLayout = {
+  abilityColumns: number;
+  abilityVisibleRows: number;
+  abilityIconSize: number;
+  abilityCellWidth: number;
+  abilityRowHeight: number;
+  abilityColumnGap: number;
+  abilityRowGap: number;
+  abilityPaddingX: number;
+  abilityPaddingY: number;
+  abilityNameFontSize: number;
+  abilityItemGap: number;
+  headerHeight: number;
+  tabsHeight: number;
+  filtersHeight: number;
+  filterHeight: number;
+  filterGap: number;
+  filterPaddingX: number;
+  filterFontSize: number;
+  searchWidth: number;
+  schoolFilterWidth: number;
+  rarityFilterWidth: number;
+  toggleWidth: number;
+  favoriteWidth: number;
+  footerHeight: number;
+  footerFontSize: number;
+  footerButtonHeight: number;
+  footerButtonPaddingX: number;
+  activePanelHeight: number;
+  activeBuffFlex: string;
+  activeLearnedFlex: string;
+  activeTabWidth: number;
+  activeIconSize: number;
+  activeSlotWidth: number;
+  activeSlotHeight: number;
+  activeGap: number;
+  activeBuffGap: number;
+  activePaddingX: number;
+  activeBuffPaddingX: number;
+  activePaddingY: number;
+  activeNameFontSize: number;
+  activeEmptyFontSize: number;
+  presetVisiblePlans: number;
+  presetHeaderHeight: number;
+  presetTitleFontSize: number;
+  presetIconButtonSize: number;
+  presetListPaddingTop: number;
+  presetListPaddingRight: number;
+  presetListPaddingBottom: number;
+  presetListPaddingLeft: number;
+  presetListGap: number;
+  presetCardPaddingX: number;
+  presetCardPaddingY: number;
+  presetCardGap: number;
+  presetCardHeaderFontSize: number;
+  presetSlotWidth: number;
+  presetSlotHeight: number;
+  presetSlotGap: number;
+  presetIconSize: number;
+  presetNameFontSize: number;
+  presetEnableWidth: number;
+  presetEnableHeight: number;
+  presetTopButtonSize: number;
+};
+
+function clampRatio(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function computeMartialPanelDimensions({
+  viewportWidth,
+  viewportHeight,
+  martialPanelWidth,
+  martialPanelHeight,
+  martialPresetPanelWidth,
+  showMartialPresetPanel,
+  isJujingTab,
+  preview,
+}: {
+  viewportWidth: number;
+  viewportHeight: number;
+  martialPanelWidth: number;
+  martialPanelHeight: number;
+  martialPresetPanelWidth: number;
+  showMartialPresetPanel: boolean;
+  isJujingTab: boolean;
+  preview: boolean;
+}): MartialPanelDimensions {
+  const panelWidthScale = getMartialSettingScale(martialPanelWidth, MARTIAL_PANEL_BASE_WIDTH);
+  const panelHeightScale = getMartialSettingScale(martialPanelHeight, MARTIAL_PANEL_BASE_HEIGHT);
+  const presetPanelWidthScale = getMartialSettingScale(martialPresetPanelWidth, MARTIAL_PRESET_PANEL_BASE_WIDTH);
+  const maxBundleWidth = Math.max(240, viewportWidth - 24);
+  const maxPanelHeight = Math.max(160, viewportHeight - 48);
+  let panelWidth = Math.round(viewportWidth * MARTIAL_PANEL_VIEWPORT_WIDTH_RATIO * panelWidthScale);
+  let panelHeight = Math.round(viewportHeight * MARTIAL_PANEL_VIEWPORT_HEIGHT_RATIO * panelHeightScale);
+  let presetPanelWidth = showMartialPresetPanel && !preview && isJujingTab
+    ? Math.round(viewportWidth * MARTIAL_PRESET_PANEL_VIEWPORT_WIDTH_RATIO * presetPanelWidthScale)
+    : 0;
+  const desiredBundleWidth = panelWidth + presetPanelWidth + (presetPanelWidth > 0 ? 2 : 0);
+  if (desiredBundleWidth > maxBundleWidth) {
+    const shrinkRatio = maxBundleWidth / desiredBundleWidth;
+    panelWidth = Math.max(220, Math.round(panelWidth * shrinkRatio));
+    presetPanelWidth = presetPanelWidth > 0 ? Math.max(120, Math.round(presetPanelWidth * shrinkRatio)) : 0;
+  }
+  panelHeight = Math.max(160, Math.min(maxPanelHeight, panelHeight));
+  const presetPanelGap = presetPanelWidth > 0 ? 2 : 0;
+  const bundleWidth = panelWidth + presetPanelWidth + presetPanelGap;
+  const panelResponsiveScale = Math.max(0.58, Math.min(1, panelWidth / MARTIAL_PANEL_BASE_WIDTH, panelHeight / MARTIAL_PANEL_BASE_HEIGHT));
+  return { panelWidth, panelHeight, presetPanelWidth, presetPanelGap, bundleWidth, panelResponsiveScale };
+}
+
+function pickMartialAbilityColumns(panelWidth: number): number {
+  if (panelWidth < 430) return MARTIAL_NARROW_COLUMNS;
+  if (panelWidth < 560) return MARTIAL_COMPACT_COLUMNS;
+  return MARTIAL_VISIBLE_COLUMNS;
+}
+
+function pickVisibleCount(availableHeight: number, maxCount: number, minItemHeight: number, gap: number): number {
+  for (let count = maxCount; count > 1; count -= 1) {
+    if (availableHeight >= (count * minItemHeight) + ((count - 1) * gap)) return count;
+  }
+  return 1;
+}
+
+function px(value: number): string {
+  return `${Math.round(value)}px`;
+}
+
+function computeMartialResponsiveLayout(dimensions: MartialPanelDimensions): MartialResponsiveLayout {
+  const { panelWidth, panelHeight, presetPanelWidth } = dimensions;
+  const widthRatio = clampRatio((panelWidth - 420) / (MARTIAL_PANEL_BASE_WIDTH - 420));
+  const heightRatio = clampRatio((panelHeight - 320) / (MARTIAL_PANEL_BASE_HEIGHT - 320));
+  const compactRatio = Math.min(widthRatio, heightRatio);
+
+  const headerHeight = Math.round(28 + 4 * heightRatio);
+  const tabsHeight = Math.round(32 + 6 * heightRatio);
+  const filtersHeight = Math.round(35 + 9 * heightRatio);
+  const footerHeight = Math.round(31 + 7 * heightRatio);
+  const activePanelHeight = Math.round(66 + 26 * heightRatio);
+  const availableAbilityHeight = Math.max(44, panelHeight - headerHeight - tabsHeight - filtersHeight - footerHeight - activePanelHeight);
+
+  let abilityColumns = pickMartialAbilityColumns(panelWidth);
+  const minAbilityIconSize = 32;
+  const minAbilityColumnGap = 4;
+  const minAbilityPaddingX = 8;
+  while (abilityColumns > MARTIAL_NARROW_COLUMNS) {
+    const minimumGridWidth = (abilityColumns * minAbilityIconSize) + ((abilityColumns - 1) * minAbilityColumnGap) + (minAbilityPaddingX * 2) + 16;
+    if (panelWidth >= minimumGridWidth) break;
+    abilityColumns = abilityColumns === MARTIAL_VISIBLE_COLUMNS ? MARTIAL_COMPACT_COLUMNS : MARTIAL_NARROW_COLUMNS;
+  }
+
+  const baseAbilityIconSize = Math.round(34 + 8 * compactRatio);
+  const baseAbilityNameFontSize = Math.round(11 + 2 * compactRatio);
+  const baseAbilityItemGap = Math.round(3 + 2 * compactRatio);
+  const baseAbilityRowHeight = Math.round(50 + 17 * compactRatio);
+  const baseAbilityRowGap = Math.round(5 + 19 * heightRatio);
+  const baseAbilityPaddingY = Math.round(6 + 10 * heightRatio);
+  const minAbilityRowHeight = minAbilityIconSize + 17;
+  let abilityVisibleRows = MARTIAL_VISIBLE_ROWS;
+  while (abilityVisibleRows > 1) {
+    const minimumHeight = (minAbilityRowHeight * abilityVisibleRows) + (minAbilityColumnGap * (abilityVisibleRows - 1)) + 10;
+    if (availableAbilityHeight >= minimumHeight) break;
+    abilityVisibleRows -= 1;
+  }
+  const minimumAbilityHeight = (minAbilityRowHeight * abilityVisibleRows) + (minAbilityColumnGap * (abilityVisibleRows - 1)) + 10;
+  const desiredAbilityHeight = (baseAbilityRowHeight * abilityVisibleRows) + (baseAbilityRowGap * (abilityVisibleRows - 1)) + (baseAbilityPaddingY * 2);
+  const heightFitRatio = desiredAbilityHeight === minimumAbilityHeight
+    ? 1
+    : clampRatio((availableAbilityHeight - minimumAbilityHeight) / (desiredAbilityHeight - minimumAbilityHeight));
+  const abilityIconSize = Math.round(minAbilityIconSize + (baseAbilityIconSize - minAbilityIconSize) * heightFitRatio);
+  const abilityNameFontSize = Math.round(10 + (baseAbilityNameFontSize - 10) * heightFitRatio);
+  const abilityItemGap = Math.round(3 + (baseAbilityItemGap - 3) * heightFitRatio);
+  const abilityRowGap = Math.round(minAbilityColumnGap + (baseAbilityRowGap - minAbilityColumnGap) * heightFitRatio);
+  const abilityPaddingY = Math.round(5 + (baseAbilityPaddingY - 5) * heightFitRatio);
+  const abilityRowHeight = Math.max(
+    minAbilityRowHeight,
+    Math.min(
+      baseAbilityRowHeight,
+      Math.floor((availableAbilityHeight - (abilityPaddingY * 2) - (abilityRowGap * (abilityVisibleRows - 1))) / abilityVisibleRows),
+    ),
+  );
+  const abilityColumnGap = Math.round(minAbilityColumnGap + (18 - minAbilityColumnGap) * widthRatio);
+  const abilityPaddingX = Math.round(minAbilityPaddingX + (28 - minAbilityPaddingX) * widthRatio);
+  const abilityGridWidth = Math.max(
+    abilityColumns * abilityIconSize,
+    panelWidth - (abilityPaddingX * 2) - 18,
+  );
+  const abilityCellWidth = Math.max(
+    abilityIconSize,
+    Math.floor((abilityGridWidth - (abilityColumnGap * (abilityColumns - 1))) / abilityColumns),
+  );
+
+  const filterHeight = Math.round(27 + 2 * compactRatio);
+  const filterGap = Math.round(4 + 2 * widthRatio);
+  const filterPaddingX = Math.round(7 + 2 * widthRatio);
+  const filterFontSize = Math.round(12 + compactRatio);
+  const filterWidthRatio = clampRatio((panelWidth - 430) / 450);
+  const searchWidth = Math.round(92 + 72 * filterWidthRatio);
+  const schoolFilterWidth = Math.round(78 + 23 * filterWidthRatio);
+  const rarityFilterWidth = Math.round(90 + 36 * filterWidthRatio);
+  const toggleWidth = Math.round(94 + 10 * filterWidthRatio);
+  const favoriteWidth = Math.round(82 + 14 * filterWidthRatio);
+
+  const activeWidthRatio = clampRatio((panelWidth - 360) / 520);
+  const useEvenActiveSections = panelWidth < 700;
+  const activeSmallSectionRatio = useEvenActiveSections ? 0.5 : 0.4;
+  const activeDesiredIconSize = Math.round(28 + 10 * Math.min(activeWidthRatio, heightRatio));
+  const activeTabWidth = Math.round(24 + 7 * activeWidthRatio);
+  const activeGap = Math.round(3 + 5 * activeWidthRatio);
+  const activePaddingX = Math.round(5 + 5 * activeWidthRatio);
+  const activePaddingY = Math.round(5 + 4 * heightRatio);
+  const activeSmallSectionInnerWidth = (panelWidth * activeSmallSectionRatio) - activeTabWidth - (activePaddingX * 2) - (activeGap * 5);
+  const activeSlotWidthLimit = Math.floor(activeSmallSectionInnerWidth / 6);
+  const activeSlotWidth = Math.max(24, Math.min(activeDesiredIconSize + 12, activeSlotWidthLimit));
+  const activeIconSize = Math.max(22, Math.min(activeDesiredIconSize, activeSlotWidth - 8));
+  const activeSlotHeight = Math.max(activeIconSize + 16, activePanelHeight - (activePaddingY * 2));
+  const activeNameFontSize = Math.round(10 + Math.min(activeWidthRatio, heightRatio));
+  const activeBuffGap = Math.max(2, Math.round(activeGap * 0.75));
+  const activeBuffPaddingX = Math.max(4, Math.round(activePaddingX * 0.8));
+  const activeEmptyFontSize = Math.round(18 + 4 * Math.min(activeWidthRatio, heightRatio));
+
+  const presetWidthRatio = clampRatio((presetPanelWidth - 180) / (MARTIAL_PRESET_PANEL_BASE_WIDTH - 180));
+  const presetHeaderHeight = Math.round(31 + 8 * Math.min(presetWidthRatio, heightRatio));
+  const presetListPaddingTop = Math.round(7 + 5 * heightRatio);
+  const presetListPaddingBottom = Math.round(7 + 5 * heightRatio);
+  const presetListPaddingLeft = Math.round(8 + 4 * presetWidthRatio);
+  const presetListPaddingRight = Math.round(10 + 10 * presetWidthRatio);
+  const presetListGap = Math.round(6 + 6 * heightRatio);
+  const presetAvailableListHeight = Math.max(60, panelHeight - presetHeaderHeight - presetListPaddingTop - presetListPaddingBottom);
+  const presetVisiblePlans = presetPanelWidth > 0
+    ? pickVisibleCount(presetAvailableListHeight, MARTIAL_PRESET_VISIBLE_PLANS, 94, presetListGap)
+    : MARTIAL_PRESET_VISIBLE_PLANS;
+  const presetCardPaddingX = Math.round(5 + 4 * presetWidthRatio);
+  const presetCardPaddingY = Math.round(5 + 3 * heightRatio);
+  const presetCardGap = Math.round(4 + 3 * heightRatio);
+  const presetInnerWidth = Math.max(150, presetPanelWidth - presetListPaddingLeft - presetListPaddingRight - (presetCardPaddingX * 2) - 8);
+  const presetSlotGap = Math.max(2, Math.round(2 + 2 * presetWidthRatio));
+  const presetSlotWidth = Math.max(26, Math.floor((presetInnerWidth - (presetSlotGap * 5)) / 6));
+  const presetIconSize = Math.max(24, Math.min(38, presetSlotWidth - 5));
+  const presetSlotHeight = presetIconSize + Math.round(15 + 5 * heightRatio);
+  const presetIconButtonSize = Math.round(22 + 6 * Math.min(presetWidthRatio, heightRatio));
+  const presetEnableHeight = Math.round(22 + 3 * Math.min(presetWidthRatio, heightRatio));
+  const presetEnableWidth = Math.round(46 + 12 * presetWidthRatio);
+  const presetTopButtonSize = Math.round(22 + 3 * Math.min(presetWidthRatio, heightRatio));
+
+  return {
+    abilityColumns,
+    abilityVisibleRows,
+    abilityIconSize,
+    abilityCellWidth,
+    abilityRowHeight,
+    abilityColumnGap,
+    abilityRowGap,
+    abilityPaddingX,
+    abilityPaddingY,
+    abilityNameFontSize,
+    abilityItemGap,
+    headerHeight,
+    tabsHeight,
+    filtersHeight,
+    filterHeight,
+    filterGap,
+    filterPaddingX,
+    filterFontSize,
+    searchWidth,
+    schoolFilterWidth,
+    rarityFilterWidth,
+    toggleWidth,
+    favoriteWidth,
+    footerHeight,
+    footerFontSize: Math.round(13 + compactRatio),
+    footerButtonHeight: Math.round(26 + 2 * compactRatio),
+    footerButtonPaddingX: Math.round(7 + 2 * widthRatio),
+    activePanelHeight,
+    activeBuffFlex: useEvenActiveSections ? '1fr' : '2fr',
+    activeLearnedFlex: useEvenActiveSections ? '1fr' : '3fr',
+    activeTabWidth,
+    activeIconSize,
+    activeSlotWidth,
+    activeSlotHeight,
+    activeGap,
+    activeBuffGap,
+    activePaddingX,
+    activeBuffPaddingX,
+    activePaddingY,
+    activeNameFontSize,
+    activeEmptyFontSize,
+    presetVisiblePlans,
+    presetHeaderHeight,
+    presetTitleFontSize: Math.round(12 + 2 * presetWidthRatio),
+    presetIconButtonSize,
+    presetListPaddingTop,
+    presetListPaddingRight,
+    presetListPaddingBottom,
+    presetListPaddingLeft,
+    presetListGap,
+    presetCardPaddingX,
+    presetCardPaddingY,
+    presetCardGap,
+    presetCardHeaderFontSize: Math.round(12 + 2 * Math.min(presetWidthRatio, heightRatio)),
+    presetSlotWidth,
+    presetSlotHeight,
+    presetSlotGap,
+    presetIconSize,
+    presetNameFontSize: Math.round(9 + Math.min(presetWidthRatio, heightRatio)),
+    presetEnableWidth,
+    presetEnableHeight,
+    presetTopButtonSize,
+  };
+}
+
+function getMartialLayoutStyle(layout: MartialResponsiveLayout): React.CSSProperties {
+  return {
+    '--martial-panel-header-height': px(layout.headerHeight),
+    '--martial-panel-tabs-height': px(layout.tabsHeight),
+    '--martial-panel-filters-height': px(layout.filtersHeight),
+    '--martial-panel-footer-height': px(layout.footerHeight),
+    '--martial-ability-columns': layout.abilityColumns,
+    '--martial-ability-icon-size': px(layout.abilityIconSize),
+    '--martial-ability-cell-width': px(layout.abilityCellWidth),
+    '--martial-ability-row-height': px(layout.abilityRowHeight),
+    '--martial-ability-column-gap': px(layout.abilityColumnGap),
+    '--martial-ability-row-gap': px(layout.abilityRowGap),
+    '--martial-ability-pad-x': px(layout.abilityPaddingX),
+    '--martial-ability-pad-y': px(layout.abilityPaddingY),
+    '--martial-ability-name-font': px(layout.abilityNameFontSize),
+    '--martial-ability-item-gap': px(layout.abilityItemGap),
+    '--martial-filter-height': px(layout.filterHeight),
+    '--martial-filter-gap': px(layout.filterGap),
+    '--martial-filter-pad-x': px(layout.filterPaddingX),
+    '--martial-filter-font-size': px(layout.filterFontSize),
+    '--martial-search-width': px(layout.searchWidth),
+    '--martial-school-filter-width': px(layout.schoolFilterWidth),
+    '--martial-rarity-filter-width': px(layout.rarityFilterWidth),
+    '--martial-toggle-width': px(layout.toggleWidth),
+    '--martial-favorite-width': px(layout.favoriteWidth),
+    '--martial-footer-font-size': px(layout.footerFontSize),
+    '--martial-footer-button-height': px(layout.footerButtonHeight),
+    '--martial-footer-button-pad-x': px(layout.footerButtonPaddingX),
+    '--martial-active-panel-height': px(layout.activePanelHeight),
+    '--martial-active-buff-flex': layout.activeBuffFlex,
+    '--martial-active-learned-flex': layout.activeLearnedFlex,
+    '--martial-active-tab-width': px(layout.activeTabWidth),
+    '--martial-active-icon-size': px(layout.activeIconSize),
+    '--martial-active-slot-width': px(layout.activeSlotWidth),
+    '--martial-active-slot-height': px(layout.activeSlotHeight),
+    '--martial-active-gap': px(layout.activeGap),
+    '--martial-active-buff-gap': px(layout.activeBuffGap),
+    '--martial-active-pad-x': px(layout.activePaddingX),
+    '--martial-active-buff-pad-x': px(layout.activeBuffPaddingX),
+    '--martial-active-pad-y': px(layout.activePaddingY),
+    '--martial-active-name-font': px(layout.activeNameFontSize),
+    '--martial-active-empty-font': px(layout.activeEmptyFontSize),
+  } as React.CSSProperties;
+}
+
+function getMartialPresetLayoutStyle(layout: MartialResponsiveLayout): React.CSSProperties {
+  return {
+    '--martial-preset-visible-plans': layout.presetVisiblePlans,
+    '--martial-preset-header-height': px(layout.presetHeaderHeight),
+    '--martial-preset-title-font': px(layout.presetTitleFontSize),
+    '--martial-preset-icon-button-size': px(layout.presetIconButtonSize),
+    '--martial-preset-list-pad-top': px(layout.presetListPaddingTop),
+    '--martial-preset-list-pad-right': px(layout.presetListPaddingRight),
+    '--martial-preset-list-pad-bottom': px(layout.presetListPaddingBottom),
+    '--martial-preset-list-pad-left': px(layout.presetListPaddingLeft),
+    '--martial-preset-list-gap': px(layout.presetListGap),
+    '--martial-preset-card-pad-x': px(layout.presetCardPaddingX),
+    '--martial-preset-card-pad-y': px(layout.presetCardPaddingY),
+    '--martial-preset-card-gap': px(layout.presetCardGap),
+    '--martial-preset-card-header-font': px(layout.presetCardHeaderFontSize),
+    '--martial-preset-slot-width': px(layout.presetSlotWidth),
+    '--martial-preset-slot-height': px(layout.presetSlotHeight),
+    '--martial-preset-slot-gap': px(layout.presetSlotGap),
+    '--martial-preset-icon-size': px(layout.presetIconSize),
+    '--martial-preset-name-font': px(layout.presetNameFontSize),
+    '--martial-preset-enable-width': px(layout.presetEnableWidth),
+    '--martial-preset-enable-height': px(layout.presetEnableHeight),
+    '--martial-preset-top-button-size': px(layout.presetTopButtonSize),
+  } as React.CSSProperties;
 }
 
 function formatMartialSettingScale(value: number): string {
@@ -2033,6 +2422,7 @@ type ConsumableBarSettings = {
 };
 
 type HotkeyTabId = 'character-action' | 'interface-toggle' | 'ability' | 'common' | 'consumable';
+type GameSettingsTabId = 'general' | 'items';
 type HotkeyActionKind = 'interface' | 'draft' | 'common' | 'consumable';
 type HotkeySettings = Record<string, string[]>;
 type HotkeyBinding = { id: string; label: string };
@@ -2055,7 +2445,7 @@ const LOCKED_CHARACTER_ACTION_HOTKEY_ROWS: HotkeySettingsRow[] = [
   { actionId: 'character-action:strafe-left', label: '左平移', locked: true, bindings: [] },
   { actionId: 'character-action:strafe-right', label: '右平移', locked: true, bindings: [] },
   { actionId: 'character-action:jump', label: '跳跃', locked: true, bindings: ['SPACE'] },
-  { actionId: 'character-action:mount', label: '骑乘', locked: true, bindings: ['T'] },
+  { actionId: 'character-action:mount', label: '骑乘', locked: true, bindings: [] },
 ];
 
 const INTERFACE_HOTKEY_ROWS: HotkeySettingsRow[] = [
@@ -2152,6 +2542,25 @@ function loadHotkeySettings(): HotkeySettings {
   }
 }
 
+function serializeHotkeySettings(settings: HotkeySettings): string {
+  const normalized = normalizeHotkeySettings(settings);
+  return JSON.stringify(HOTKEY_ACTION_IDS.map((actionId) => [actionId, normalized[actionId] ?? []]));
+}
+
+function areHotkeySettingsEqual(left: HotkeySettings, right: HotkeySettings): boolean {
+  return serializeHotkeySettings(left) === serializeHotkeySettings(right);
+}
+
+function persistHotkeySettings(settings: HotkeySettings): HotkeySettings {
+  const normalized = normalizeHotkeySettings(settings);
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(HOTKEY_SETTINGS_STORAGE_KEY, JSON.stringify({ version: HOTKEY_SETTINGS_VERSION, bindings: normalized }));
+    } catch {}
+  }
+  return normalized;
+}
+
 function getHotkeyActionBindingLabels(settings: HotkeySettings, actionId: string): string[] {
   return (settings[actionId] ?? []).slice(0, HOTKEY_MAX_BINDINGS_PER_ACTION);
 }
@@ -2184,6 +2593,22 @@ function formatHotkeyBindingLabel(bindingId: string): string {
     ...parts.map((part) => modifierLabels[part] ?? part),
     baseLabels[base] ?? base,
   ].join('+');
+}
+
+function formatHotkeyHintLabel(bindingId: string): string {
+  const normalized = normalizeHotkeyBindingId(bindingId);
+  if (!normalized) return '';
+  return normalized
+    .split('+')
+    .filter(Boolean)
+    .map((part, index, parts) => {
+      if (index === parts.length - 1) {
+        if (part === 'WU') return 'MU';
+        if (part === 'WD') return 'MD';
+      }
+      return part;
+    })
+    .join('+');
 }
 
 function findHotkeyActionByBinding(settings: HotkeySettings, bindingId: string): string | null {
@@ -3191,71 +3616,11 @@ export default function BattleArena({
       localStorage.setItem(ABILITY_PANEL_SCALE_STORAGE_KEY, abilityPanelScale.toFixed(2));
     } catch {}
   }, [abilityPanelScale]);
-  const [martialPanelWidth, setMartialPanelWidth] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return MARTIAL_PANEL_DEFAULT_WIDTH;
-      return normalizeMartialPanelWidth(localStorage.getItem(MARTIAL_PANEL_WIDTH_STORAGE_KEY));
-    } catch {
-      return MARTIAL_PANEL_DEFAULT_WIDTH;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(MARTIAL_PANEL_WIDTH_STORAGE_KEY, String(martialPanelWidth));
-    } catch {}
-  }, [martialPanelWidth]);
-  const [martialPanelHeight, setMartialPanelHeight] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return MARTIAL_PANEL_DEFAULT_HEIGHT;
-      return normalizeMartialPanelHeight(localStorage.getItem(MARTIAL_PANEL_HEIGHT_STORAGE_KEY));
-    } catch {
-      return MARTIAL_PANEL_DEFAULT_HEIGHT;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(MARTIAL_PANEL_HEIGHT_STORAGE_KEY, String(martialPanelHeight));
-    } catch {}
-  }, [martialPanelHeight]);
-  const [martialPresetPanelWidth, setMartialPresetPanelWidth] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return MARTIAL_PRESET_PANEL_DEFAULT_WIDTH;
-      return normalizeMartialPresetPanelWidth(localStorage.getItem(MARTIAL_PRESET_PANEL_WIDTH_STORAGE_KEY));
-    } catch {
-      return MARTIAL_PRESET_PANEL_DEFAULT_WIDTH;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(MARTIAL_PRESET_PANEL_WIDTH_STORAGE_KEY, String(martialPresetPanelWidth));
-    } catch {}
-  }, [martialPresetPanelWidth]);
-  const [martialModalWidth, setMartialModalWidth] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return MARTIAL_MODAL_DEFAULT_WIDTH;
-      return normalizeMartialModalWidth(localStorage.getItem(MARTIAL_MODAL_WIDTH_STORAGE_KEY));
-    } catch {
-      return MARTIAL_MODAL_DEFAULT_WIDTH;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(MARTIAL_MODAL_WIDTH_STORAGE_KEY, String(martialModalWidth));
-    } catch {}
-  }, [martialModalWidth]);
-  const [martialModalHeight, setMartialModalHeight] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return MARTIAL_MODAL_DEFAULT_HEIGHT;
-      return normalizeMartialModalHeight(localStorage.getItem(MARTIAL_MODAL_HEIGHT_STORAGE_KEY));
-    } catch {
-      return MARTIAL_MODAL_DEFAULT_HEIGHT;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(MARTIAL_MODAL_HEIGHT_STORAGE_KEY, String(martialModalHeight));
-    } catch {}
-  }, [martialModalHeight]);
+  const [martialPanelWidth, setMartialPanelWidth] = useState(MARTIAL_PANEL_DEFAULT_WIDTH);
+  const [martialPanelHeight, setMartialPanelHeight] = useState(MARTIAL_PANEL_DEFAULT_HEIGHT);
+  const [martialPresetPanelWidth, setMartialPresetPanelWidth] = useState(MARTIAL_PRESET_PANEL_DEFAULT_WIDTH);
+  const [martialModalWidth, setMartialModalWidth] = useState(MARTIAL_MODAL_DEFAULT_WIDTH);
+  const [martialModalHeight, setMartialModalHeight] = useState(MARTIAL_MODAL_DEFAULT_HEIGHT);
   const martialFavoriteStorageKey = useMemo(
     () => `${MARTIAL_FAVORITE_ORDER_STORAGE_KEY}:${me.userId || 'guest'}`,
     [me.userId],
@@ -3376,6 +3741,7 @@ export default function BattleArena({
   const itemBarAbilitiesRef = useRef<Array<AbilityInfo | undefined>>(createEmptyItemBarSlots());
   const [stableLearnedDraftAbilities, setStableLearnedDraftAbilities] = useState<Array<AbilityInfo | undefined>>(() => Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }));
   const [consumableBarSettings, setConsumableBarSettings] = useState<ConsumableBarSettings>(() => loadConsumableBarSettings());
+  const [savedHotkeySettings, setSavedHotkeySettings] = useState<HotkeySettings>(() => loadHotkeySettings());
   const [hotkeySettings, setHotkeySettings] = useState<HotkeySettings>(() => loadHotkeySettings());
   const [hotkeySettingsTab, setHotkeySettingsTab] = useState<HotkeyTabId>('character-action');
   const [capturingHotkey, setCapturingHotkey] = useState<HotkeyCaptureTarget>(null);
@@ -3395,12 +3761,6 @@ export default function BattleArena({
       localStorage.setItem(CONSUMABLE_BAR_STORAGE_KEY, JSON.stringify(consumableBarSettings));
     } catch {}
   }, [consumableBarSettings]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(HOTKEY_SETTINGS_STORAGE_KEY, JSON.stringify({ version: HOTKEY_SETTINGS_VERSION, bindings: hotkeySettings }));
-    } catch {}
-  }, [hotkeySettings]);
 
   /* --- Pickup interaction state --- */
   const [nearbyPickupIds,   setNearbyPickupIds]   = useState<string[]>([]);         // sorted closest-first
@@ -3526,6 +3886,7 @@ export default function BattleArena({
   const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
   const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'martial'>('switches');
+  const [gameSettingsTab, setGameSettingsTab] = useState<GameSettingsTabId>('general');
   const [customUiPromptPos, setCustomUiPromptPos] = useState<UiPosition | null>(null);
   const lightingControlsOpen = showTestingPanel && escMainTab === 'test' && escTestPage === 'lighting';
 
@@ -4631,6 +4992,37 @@ export default function BattleArena({
     setHotkeySettings(buildDefaultHotkeySettings());
     setCapturingHotkey(null);
   }, []);
+
+  const hotkeySettingsDirty = !areHotkeySettingsEqual(hotkeySettings, savedHotkeySettings);
+
+  const applyHotkeySettings = useCallback(() => {
+    const normalized = persistHotkeySettings(hotkeySettings);
+    setHotkeySettings(normalized);
+    setSavedHotkeySettings(normalized);
+    setCapturingHotkey(null);
+  }, [hotkeySettings]);
+
+  const applyEscSettings = useCallback(() => {
+    if (escPanelPage === 'hotkey-settings' && hotkeySettingsDirty) {
+      applyHotkeySettings();
+    }
+  }, [applyHotkeySettings, escPanelPage, hotkeySettingsDirty]);
+
+  const confirmEscSettings = useCallback(() => {
+    if (escPanelPage === 'hotkey-settings' && hotkeySettingsDirty) {
+      applyHotkeySettings();
+    }
+    setShowTestingPanel(false);
+  }, [applyHotkeySettings, escPanelPage, hotkeySettingsDirty]);
+
+  const cancelEscSettings = useCallback(() => {
+    if (escPanelPage === 'hotkey-settings') {
+      setHotkeySettings(savedHotkeySettings);
+      setCapturingHotkey(null);
+    }
+    setShowTestingPanel(false);
+  }, [escPanelPage, savedHotkeySettings]);
+
   const setConsumableBarEnabled = useCallback((enabled: boolean) => {
     setConsumableBarSettings((prev) => ({ ...prev, enabled }));
   }, []);
@@ -8840,6 +9232,19 @@ export default function BattleArena({
     { id: 'all', label: '全部门派', optionLabel: '全部', color: '#8aa3a1' },
     ...SCHOOL_TAGS_BA.map((school) => ({ id: school, label: school, color: SCHOOL_COLOR[school] ?? '#8a9297' })),
   ];
+  const martialViewportWidth = Math.max(1, Math.round(canvasSizeRef.current.w || canvasSize.w || 1200));
+  const martialViewportHeight = Math.max(1, Math.round(canvasSizeRef.current.h || canvasSize.h || 800));
+  const martialPanelDimensions = computeMartialPanelDimensions({
+    viewportWidth: martialViewportWidth,
+    viewportHeight: martialViewportHeight,
+    martialPanelWidth,
+    martialPanelHeight,
+    martialPresetPanelWidth,
+    showMartialPresetPanel,
+    isJujingTab: martialPanelTab === 'jujing',
+    preview: false,
+  });
+  const martialResponsiveLayout = computeMartialResponsiveLayout(martialPanelDimensions);
   const filteredMartialAbilities = useMemo(() => {
     if (martialPanelTab !== 'jujing') return [];
     if (martialEmpoweredOnly) return [];
@@ -8866,8 +9271,8 @@ export default function BattleArena({
       })
       .map((entry) => entry.ability);
   }, [cheatAbilities, martialEmpoweredOnly, martialFavoriteOrder, martialPanelTab, martialRarityFilter, martialSchoolFilter, martialSearch]);
-  const martialTotalRows = Math.max(1, Math.ceil(filteredMartialAbilities.length / MARTIAL_VISIBLE_COLUMNS));
-  const martialMaxRowOffset = Math.max(0, martialTotalRows - MARTIAL_VISIBLE_ROWS);
+  const martialTotalRows = Math.max(1, Math.ceil(filteredMartialAbilities.length / martialResponsiveLayout.abilityColumns));
+  const martialMaxRowOffset = Math.max(0, martialTotalRows - martialResponsiveLayout.abilityVisibleRows);
   useEffect(() => {
     setMartialAbilityRowOffset(0);
   }, [martialEmpoweredOnly, martialFavoriteOrder, martialPanelTab, martialRarityFilter, martialSchoolFilter, martialSearch]);
@@ -8875,10 +9280,10 @@ export default function BattleArena({
     setMartialAbilityRowOffset((offset) => Math.min(offset, martialMaxRowOffset));
   }, [martialMaxRowOffset]);
   const visibleMartialAbilities = useMemo(() => {
-    const startIndex = martialAbilityRowOffset * MARTIAL_VISIBLE_COLUMNS;
-    return filteredMartialAbilities.slice(startIndex, startIndex + MARTIAL_VISIBLE_COLUMNS * MARTIAL_VISIBLE_ROWS);
-  }, [filteredMartialAbilities, martialAbilityRowOffset]);
-  const martialPresetMaxPlanOffset = Math.max(0, martialPresetPlans.length - MARTIAL_PRESET_VISIBLE_PLANS);
+    const startIndex = martialAbilityRowOffset * martialResponsiveLayout.abilityColumns;
+    return filteredMartialAbilities.slice(startIndex, startIndex + martialResponsiveLayout.abilityColumns * martialResponsiveLayout.abilityVisibleRows);
+  }, [filteredMartialAbilities, martialAbilityRowOffset, martialResponsiveLayout.abilityColumns, martialResponsiveLayout.abilityVisibleRows]);
+  const martialPresetMaxPlanOffset = Math.max(0, martialPresetPlans.length - martialResponsiveLayout.presetVisiblePlans);
   useEffect(() => {
     setMartialPresetPlanOffset((offset) => Math.min(offset, martialPresetMaxPlanOffset));
   }, [martialPresetMaxPlanOffset]);
@@ -9964,29 +10369,21 @@ export default function BattleArena({
     const selectedRarity = martialRarityOptions.find((option) => option.id === martialRarityFilter) ?? martialRarityOptions[0];
     const selectedSchool = martialSchoolOptions.find((option) => option.id === martialSchoolFilter) ?? martialSchoolOptions[0];
     const isJujingTab = martialPanelTab === 'jujing';
-    const viewportWidth = Math.max(1, Math.round(canvasSizeRef.current.w || canvasSize.w || 1200));
-    const viewportHeight = Math.max(1, Math.round(canvasSizeRef.current.h || canvasSize.h || 800));
-    const panelWidthScale = getMartialSettingScale(martialPanelWidth, MARTIAL_PANEL_BASE_WIDTH);
-    const panelHeightScale = getMartialSettingScale(martialPanelHeight, MARTIAL_PANEL_BASE_HEIGHT);
-    const presetPanelWidthScale = getMartialSettingScale(martialPresetPanelWidth, MARTIAL_PRESET_PANEL_BASE_WIDTH);
-    const maxBundleWidth = Math.max(240, viewportWidth - 24);
-    const maxPanelHeight = Math.max(160, viewportHeight - 48);
-    let panelWidth = Math.round(viewportWidth * MARTIAL_PANEL_VIEWPORT_WIDTH_RATIO * panelWidthScale);
-    let panelHeight = Math.round(viewportHeight * MARTIAL_PANEL_VIEWPORT_HEIGHT_RATIO * panelHeightScale);
-    let presetPanelWidth = showMartialPresetPanel && !preview && isJujingTab
-      ? Math.round(viewportWidth * MARTIAL_PRESET_PANEL_VIEWPORT_WIDTH_RATIO * presetPanelWidthScale)
-      : 0;
-    const desiredBundleWidth = panelWidth + presetPanelWidth + (presetPanelWidth > 0 ? 2 : 0);
-    if (desiredBundleWidth > maxBundleWidth) {
-      const shrinkRatio = maxBundleWidth / desiredBundleWidth;
-      panelWidth = Math.max(220, Math.round(panelWidth * shrinkRatio));
-      presetPanelWidth = presetPanelWidth > 0 ? Math.max(120, Math.round(presetPanelWidth * shrinkRatio)) : 0;
-    }
-    panelHeight = Math.max(160, Math.min(maxPanelHeight, panelHeight));
-    const presetPanelGap = presetPanelWidth > 0 ? 2 : 0;
-    const bundleWidth = panelWidth + presetPanelWidth + presetPanelGap;
-    const panelResponsiveScale = Math.max(0.58, Math.min(1, panelWidth / MARTIAL_PANEL_BASE_WIDTH, panelHeight / MARTIAL_PANEL_BASE_HEIGHT));
-    const scrollbarThumbHeight = Math.max(24, Math.min(100, (MARTIAL_VISIBLE_ROWS / martialTotalRows) * 100));
+    const dimensions = preview
+      ? computeMartialPanelDimensions({
+          viewportWidth: martialViewportWidth,
+          viewportHeight: martialViewportHeight,
+          martialPanelWidth,
+          martialPanelHeight,
+          martialPresetPanelWidth,
+          showMartialPresetPanel,
+          isJujingTab,
+          preview,
+        })
+      : martialPanelDimensions;
+    const responsiveLayout = preview ? computeMartialResponsiveLayout(dimensions) : martialResponsiveLayout;
+    const { panelWidth, panelHeight, presetPanelWidth, bundleWidth, panelResponsiveScale } = dimensions;
+    const scrollbarThumbHeight = Math.max(24, Math.min(100, (responsiveLayout.abilityVisibleRows / martialTotalRows) * 100));
     const scrollbarTravel = Math.max(0, 100 - scrollbarThumbHeight);
     const scrollbarThumbTop = martialMaxRowOffset > 0 ? (martialAbilityRowOffset / martialMaxRowOffset) * scrollbarTravel : 0;
 
@@ -10201,12 +10598,17 @@ export default function BattleArena({
 
     const renderPresetPanel = () => presetPanelWidth > 0 && (
       (() => {
-        const visiblePlans = martialPresetPlans.slice(martialPresetPlanOffset, martialPresetPlanOffset + MARTIAL_PRESET_VISIBLE_PLANS);
-        const presetScrollbarThumbHeight = Math.max(24, Math.min(100, (MARTIAL_PRESET_VISIBLE_PLANS / Math.max(1, martialPresetPlans.length)) * 100));
+        const visiblePlans = martialPresetPlans.slice(martialPresetPlanOffset, martialPresetPlanOffset + responsiveLayout.presetVisiblePlans);
+        const presetScrollbarThumbHeight = Math.max(24, Math.min(100, (responsiveLayout.presetVisiblePlans / Math.max(1, martialPresetPlans.length)) * 100));
         const presetScrollbarTravel = Math.max(0, 100 - presetScrollbarThumbHeight);
         const presetScrollbarThumbTop = martialPresetMaxPlanOffset > 0 ? (martialPresetPlanOffset / martialPresetMaxPlanOffset) * presetScrollbarTravel : 0;
+        const presetPanelStyle = {
+          width: presetPanelWidth,
+          height: panelHeight,
+          ...getMartialPresetLayoutStyle(responsiveLayout),
+        } as React.CSSProperties;
         return (
-      <aside className={styles.martialPresetPanel} style={{ width: presetPanelWidth, height: panelHeight }} aria-label="预设招式">
+      <aside className={styles.martialPresetPanel} style={presetPanelStyle} aria-label="预设招式">
         <div className={styles.martialPresetPanelHeader}>
           <div className={styles.martialPresetTitleRow}>
             <div className={styles.martialPresetPanelTitle}>预设招式({martialPresetPlans.length}/{MARTIAL_PRESET_LIMIT})</div>
@@ -10267,11 +10669,18 @@ export default function BattleArena({
       })()
     );
 
+    const panelStyle = {
+      width: panelWidth,
+      height: panelHeight,
+      '--martial-panel-scale': panelResponsiveScale,
+      ...getMartialLayoutStyle(responsiveLayout),
+    } as React.CSSProperties;
+
     return (
       <div className={styles.martialPanelBundle} style={{ width: bundleWidth, height: panelHeight }}>
         <div
           className={`${styles.martialPanel} ${preview ? styles.martialPanelPreview : ''}`}
-          style={{ width: panelWidth, height: panelHeight, '--martial-panel-scale': panelResponsiveScale } as React.CSSProperties}
+          style={panelStyle}
           aria-label="武学界面"
         >
         <div className={styles.martialPanelHeader} onMouseDown={!panelLocked ? (event) => startMartialPanelTemporaryDrag(event, martialPanelDisplayPos, { width: bundleWidth, height: panelHeight }) : undefined}>
@@ -10600,27 +11009,19 @@ export default function BattleArena({
     if (hotkeySettingsTab === 'ability') {
       return Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }, (_, index) => ({
         actionId: `draft:${index}`,
-        label: draftAbilities[index]?.name ?? `技能格 ${index + 1}`,
+        label: `技能${index + 1}`,
       }));
     }
     if (hotkeySettingsTab === 'common') {
-      return Array.from({ length: COMMON_ABILITY_ORDER.length }, (_, index) => {
-        const abilityId = COMMON_ABILITY_ORDER[index];
-        const meta = abilities[abilityId];
-        return {
-          actionId: `common:${index}`,
-          label: commonAbilities[index]?.name ?? meta?.name ?? `通用格 ${index + 1}`,
-        };
-      });
+      return Array.from({ length: COMMON_ABILITY_ORDER.length }, (_, index) => ({
+        actionId: `common:${index}`,
+        label: `技能${index + 1}`,
+      }));
     }
-    return Array.from({ length: consumableBarSettings.slotCount }, (_, index) => {
-      const consumableId = consumableBarSettings.slots[index];
-      const consumable = consumableId ? CONSUMABLE_ITEM_BY_ID.get(consumableId) : undefined;
-      return {
-        actionId: `consumable:${index}`,
-        label: consumable?.name ?? `物品格 ${index + 1}`,
-      };
-    });
+    return Array.from({ length: consumableBarSettings.slotCount }, (_, index) => ({
+      actionId: `consumable:${index}`,
+      label: `物品${index + 1}`,
+    }));
   };
 
   const renderHotkeyBindingButton = (row: HotkeySettingsRow, bindingIndex: number) => {
@@ -10656,11 +11057,6 @@ export default function BattleArena({
             if (event.button === 2) {
               event.preventDefault();
               event.stopPropagation();
-              if (isCapturing) {
-                setCapturingHotkey(null);
-              } else if (bindingId) {
-                clearHotkeyBinding(actionId, bindingIndex);
-              }
               return;
             }
             if (!isCapturing || event.button === 0) return;
@@ -10678,6 +11074,11 @@ export default function BattleArena({
             if (row.locked) return;
             event.preventDefault();
             event.stopPropagation();
+            if (isCapturing) {
+              setCapturingHotkey(null);
+            } else if (bindingId) {
+              clearHotkeyBinding(actionId, bindingIndex);
+            }
           }}
         >
           {label}
@@ -10699,6 +11100,38 @@ export default function BattleArena({
     </div>
   );
 
+  const renderConsumableBarSettings = () => (
+    <div className={styles.escSettingsGrid}>
+      <div className={`${styles.escToggleGroup} ${styles.escSettingControl}`}>
+        <label className={styles.escToggleGroupHeader}>
+          <input
+            type="checkbox"
+            checked={!consumableBarSettings.enabled}
+            onChange={(e) => setConsumableBarEnabled(!e.target.checked)}
+            className={styles.escToggleInput}
+          />
+          <span>关闭</span>
+        </label>
+      </div>
+      <div className={styles.escSettingControl}>
+        <div className={styles.escRangeHeader}>
+          <span>格子数量</span>
+          <span>{consumableBarSettings.slotCount}</span>
+        </div>
+        <input
+          type="range"
+          min={CONSUMABLE_BAR_MIN_SLOTS}
+          max={CONSUMABLE_BAR_MAX_SLOTS}
+          step="1"
+          value={consumableBarSettings.slotCount}
+          onChange={(e) => setConsumableBarSlotCount(e.target.value)}
+          className={styles.escRangeInput}
+          aria-label="格子数量"
+        />
+      </div>
+    </div>
+  );
+
   const renderItemBar = () => {
     const consumableNowMs = systemTime.getTime();
     const visibleConsumableSlots = consumableBarSettings.enabled
@@ -10714,7 +11147,7 @@ export default function BattleArena({
         const remainingCount = consumable ? getConsumableRemainingCount(me, consumable) : 0;
         const unavailable = !!consumable && consumable.implemented !== true;
         const depleted = !!consumable && consumable.implemented === true && remainingCount <= 0;
-        const hotkeyLabel = getHotkeyActionBindingLabels(hotkeySettings, `consumable:${index}`)[0] ?? '';
+        const hotkeyLabel = formatHotkeyHintLabel(getHotkeyActionBindingLabels(hotkeySettings, `consumable:${index}`)[0] ?? '');
         return (
           <button
             key={`consumable-slot-${index}-${consumable?.id ?? 'empty'}`}
@@ -10825,7 +11258,7 @@ export default function BattleArena({
 
       <div className={styles.hotbar}>
         {(specialBarActive ? draftAbilities : Array.from({ length: 6 }, (_, idx) => draftAbilities[idx])).map((ability, idx) => {
-          const keyHint = getHotkeyActionBindingLabels(hotkeySettings, `draft:${idx}`)[0] ?? '';
+          const keyHint = formatHotkeyHintLabel(getHotkeyActionBindingLabels(hotkeySettings, `draft:${idx}`)[0] ?? '');
           return (
             <div
               data-draft-slot-index={idx}
@@ -10935,7 +11368,7 @@ export default function BattleArena({
       {!specialBarActive && (
         <div className={styles.commonBar}>
           {commonAbilities.map((ability, idx) => {
-            const keyHint = getHotkeyActionBindingLabels(hotkeySettings, `common:${idx}`)[0] ?? '';
+            const keyHint = formatHotkeyHintLabel(getHotkeyActionBindingLabels(hotkeySettings, `common:${idx}`)[0] ?? '');
             const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
             const cdLabel = formatHudCooldownText(ability.cooldown / 30);
             const minuteCooldown = cdLabel.endsWith('m');
@@ -11973,7 +12406,7 @@ export default function BattleArena({
                   <div className={styles.escWindowTitle}>{escPanelPage === 'hotkey-settings' ? '快捷键设置' : escPanelPage === 'sound-settings' ? '声音设置' : '游戏设置'}</div>
                   <button
                     type="button"
-                    onClick={() => setShowTestingPanel(false)}
+                    onClick={cancelEscSettings}
                     className={styles.escHeaderIconButton}
                     aria-label={escPanelPage === 'hotkey-settings' ? '关闭快捷键设置' : escPanelPage === 'sound-settings' ? '关闭声音设置' : '关闭游戏设置'}
                   >
@@ -11996,7 +12429,22 @@ export default function BattleArena({
                     ) : escPanelPage === 'sound-settings' ? (
                       <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>音效</button>
                     ) : (
-                      <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>综合</button>
+                      <>
+                        <button
+                          type="button"
+                          className={`${styles.escSettingsNavButton} ${gameSettingsTab === 'general' ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => setGameSettingsTab('general')}
+                        >
+                          综合
+                        </button>
+                        <button
+                          type="button"
+                          className={`${styles.escSettingsNavButton} ${gameSettingsTab === 'items' ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => setGameSettingsTab('items')}
+                        >
+                          物品栏
+                        </button>
+                      </>
                     )}
                   </aside>
                   <section className={styles.escSettingsContent}>
@@ -12004,39 +12452,6 @@ export default function BattleArena({
                       <>
                         <div className={styles.escSectionTitle}><span>{HOTKEY_SETTINGS_TABS.find((tab) => tab.id === hotkeySettingsTab)?.label ?? '快捷键'}</span></div>
                         {renderHotkeySettingsRows()}
-                        <div className={styles.escHotkeyActions}>
-                          <button type="button" className={styles.escFooterButton} onClick={resetHotkeySettings}>恢复默认</button>
-                        </div>
-                        <div className={styles.escSectionTitle}><span>物品快捷栏</span></div>
-                        <div className={styles.escSettingsGrid}>
-                          <div className={`${styles.escToggleGroup} ${styles.escSettingControl}`}>
-                            <label className={styles.escToggleGroupHeader}>
-                              <input
-                                type="checkbox"
-                                checked={!consumableBarSettings.enabled}
-                                onChange={(e) => setConsumableBarEnabled(!e.target.checked)}
-                                className={styles.escToggleInput}
-                              />
-                              <span>关闭</span>
-                            </label>
-                          </div>
-                          <div className={styles.escSettingControl}>
-                            <div className={styles.escRangeHeader}>
-                              <span>格子数量</span>
-                              <span>{consumableBarSettings.slotCount}</span>
-                            </div>
-                            <input
-                              type="range"
-                              min={CONSUMABLE_BAR_MIN_SLOTS}
-                              max={CONSUMABLE_BAR_MAX_SLOTS}
-                              step="1"
-                              value={consumableBarSettings.slotCount}
-                              onChange={(e) => setConsumableBarSlotCount(e.target.value)}
-                              className={styles.escRangeInput}
-                              aria-label="格子数量"
-                            />
-                          </div>
-                        </div>
                       </>
                     ) : escPanelPage === 'sound-settings' ? (
                       <>
@@ -12075,6 +12490,11 @@ export default function BattleArena({
                             </label>
                           </div>
                         </div>
+                      </>
+                    ) : gameSettingsTab === 'items' ? (
+                      <>
+                        <div className={styles.escSectionTitle}><span>物品栏</span></div>
+                        {renderConsumableBarSettings()}
                       </>
                     ) : (
                       <>
@@ -12212,9 +12632,18 @@ export default function BattleArena({
                   </section>
                 </div>
                 <div className={styles.escSettingsFooter}>
+                  <div className={styles.escSettingsFooterLeft}>
+                    {escPanelPage === 'hotkey-settings' && (
+                      <>
+                        <button type="button" className={styles.escFooterButton} onClick={resetHotkeySettings}>恢复配置</button>
+                        <button type="button" className={styles.escFooterButton} disabled>清除</button>
+                      </>
+                    )}
+                  </div>
                   <div className={styles.escSettingsFooterRight}>
-                    <button type="button" className={styles.escFooterButton} onClick={() => setShowTestingPanel(false)}>确定</button>
-                    <button type="button" className={styles.escFooterButton} onClick={() => setEscPanelPage('main')}>取消</button>
+                    <button type="button" className={styles.escFooterButton} onClick={confirmEscSettings}>确定</button>
+                    <button type="button" className={styles.escFooterButton} onClick={cancelEscSettings}>取消</button>
+                    <button type="button" className={styles.escFooterButton} disabled={escPanelPage !== 'hotkey-settings' || !hotkeySettingsDirty} onClick={applyEscSettings}>应用</button>
                   </div>
                 </div>
               </>
