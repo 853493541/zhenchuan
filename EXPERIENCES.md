@@ -3,6 +3,52 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Alpha passed / beta stage start (2026-05-24)
+
+**Milestone**:
+- The project officially passed alpha stage on 2026-05-23 and is now moving into beta-stage feature work.
+- Beta work begins with the official `P` 武学界面 / 绝境武学 ability panel, replacing the ad hoc 添加技能 flow with a player-facing panel that stays synced with the six-slot 技能栏.
+
+**Implemented**:
+- Added the official 武学界面 with 江湖/绝境 tabs, default 绝境 open state, search, 门派/稀有度 custom filters, 8-column ability grid, rarity icon borders, active six-slot strip, right-click add/remove, drag-to-slot, drag-swap, and local preset save/load controls.
+- Reused the same draft ability state and reorder/discard routes as 技能栏; extended add-ability with an optional target `slotIndex` so list-to-slot dragging can place a new ability directly into a chosen active slot.
+- Added 武学界面 to custom UI positioning and an ESC 测试 slider for temporary panel size tuning.
+- Refined the beta 武学界面 to match the reference layout more closely: separate ESC width/height controls, left-aligned tabs/filters, 8x3 instant row-wheel list scrolling with a custom scrollbar, same-style active slots, account-backed six-slot preset plans, save/rename modals, attached preset side panel, and temporary title-bar dragging.
+- Hardened the beta 武学界面 slot semantics: active slots and preset plans now reject duplicate ability ids, dragging a checked library ability moves its existing slot, checked abilities show a green check badge, right-clicking a checked library tile removes the learned ability, and preset slots swap existing entries instead of repeating them.
+- Split 江湖 into a display-only page with 防身武艺、基础招式、江湖轻功、奇穴 rows; moved all 武学界面 size controls into a dedicated ESC 测试 tab; added a modal-size setting; and polished the panel defaults, active strip, preset side panel, custom scrollbar visibility, filter controls, and input isolation.
+- Completed a fourth beta polish pass: no-slot add-ability now appends to the next open learned slot instead of slot 1, checked library tiles keep only the top-right badge, filter/search/scrollbar/preset spacing was tuned, the last martial tab is remembered, 江湖奇穴 sits shorter at the bottom, active/preset slot sizes were aligned, the 绝境 bottom strip now has 已学习招式 and 已激活增益 sections, learned abilities can be dragged back to the library to unlearn, ESC closes the martial panel first, bottom-right ESC/C/P icon toggles were added, and the legacy 添加技能 test picker is hidden behind an ESC 测试 switch by default.
+- Completed the next beta 武学界面 refinement pass: split 门派/稀有度 filter widths, reduced the main/preset panel gap to 2px, moved the ESC quick button to the rightmost gear icon and changed the stats quick icon to a person icon, rebased the preset modal to a smaller 0.5-1.0 scale with responsive internals, made preset plans scroll four-at-a-time by one plan per wheel step, removed discard/delete success toasts, turned 已激活增益 back into a placeholder area, moved 已学习招式 to the right side, and decoupled learned slots from temporary special hotbars/hover state.
+- Completed a follow-up beta 武学界面 refinement pass: neutralized selected filter button border/arrow color while keeping option colors, aligned filter row heights, kept bottom-right quick buttons visually neutral when open, restored preset modal horizontal layout with separate ESC width/height controls, added preset-plan 置顶, added placeholder hover on 已激活增益, preserved learned-slot display through temporary special hotbars, added 收藏技能 ordering mode, and improved panel/grid responsiveness on smaller PC viewports.
+- Completed another 武学界面 refinement pass: selected dropdown text keeps its rarity/school color while borders/arrows stay neutral, 收藏模式 uses lighter grayscale and hides learned check badges, 收藏模式 helper text is yellow with clarified copy, the preset modal's old 0.6 size became the new 1.0 with responsive internals, ability hover hints close when P closes, the P/preset panels now render from viewport proportions plus scale settings, preset drag-hover boxes were removed, plan/learned/placeholder slots share the same hover glow, and the checked badge border was reduced.
+- Completed a focused 收藏/预设 polish pass: 收藏模式 hover and active visuals are now distinct (no more hover-looking active confusion), favorited skills show a red top-right minus badge for direct un-favorite, favorite ordering storage is now account-scoped with legacy migration to the logged-in user key, and 保存预设 modal now keeps prompt text and target buttons on separate rows.
+- Completed a micro-visual follow-up: reduced the 收藏红色减号 badge footprint by 20% and tightened 预设页 six-slot gap spacing by 30% for a denser card layout.
+- Completed a follow-up correction: 收藏红色减号 now renders only while 收藏模式 is active, and the badge was reduced again to a much smaller footprint for a clearly visible difference from the previous pass.
+- Completed another visual correction: increased 收藏红色减号 from ultra-small to a clearer medium-small size, and strengthened 收藏模式非收藏项 gray-out (higher grayscale, lower saturation/opacity) to make favorites stand out more.
+- Completed a responsive 武学界面 correction: missing size settings now fall back to intended defaults instead of the 0.1 minimum, and ability columns/visible rows, icon sizes, gaps, footer height, bottom learned/buff slots, and preset card density derive from the actual panel dimensions so lower-height PC windows do not crush the ability list into the bottom strip.
+- Completed the ESC 快捷键设置 polish pass: shortcut actions now render one per row with two binding boxes, skill/common/item rows use generic slot labels, 骑乘 has no default T binding, right-click clearing runs through context-menu handling, hotkey edits are staged behind 确定/取消/应用, 恢复配置/清除 moved to the footer, 物品栏 settings moved under 游戏设置, and ESC 测试 martial size sliders now start from system defaults instead of per-browser saved values.
+- Completed a follow-up hotkey readability pass: 技能栏 shortcut boxes now sit directly next to their row labels instead of stretching to the far right, row spacing/height was tightened, item-bar hotkey text is 30% larger in white, and wheel bindings now render as MU/MD on the in-game skill/item bars instead of raw WU/WD.
+- Completed a follow-up alignment correction: hotkey rows now use a fixed label column plus an explicit label-to-box gap so longer labels no longer push binding boxes sideways, and each shortcut binding box was widened by about 30% for a more even desktop layout.
+- Completed a final hotkey color adjustment: the displayed shortcut text inside ESC shortcut binding boxes now renders in white instead of yellow for better consistency with the rest of the settings panel.
+
+**Lesson**:
+- Large new UI features should first trace the full existing gameplay, slot, route, and custom UI systems before implementation so the official surface shares live state instead of duplicating it.
+- When two UI surfaces represent the same combat slots, render both from the same slot array and route all changes through the same live-state endpoints; otherwise hotbar/panel drift is almost guaranteed.
+- Preset-like combat UI should save complete slot arrays, including empty slots, so applying a plan is deterministic instead of compacting abilities into earlier slots.
+- Scrollable combat panels should avoid browser-native scrollbars; custom row paging gives better speed control and a more consistent in-game look.
+- Duplicate prevention for combat slot UIs must live in backend routes as well as frontend affordances. UI checks make the interaction feel right, but route-level de-duping keeps account presets, live hand state, and pickup/draft edge cases from drifting back into invalid repeated slots.
+- Optional slot parameters need explicit null handling. Passing no slot must not flow through numeric normalization as `0`, or append-style UI actions can silently become front-insert/swap actions.
+- Keep permanent learned-slot state separate from temporary special ability bars. Short-lived replacement hotbars should not change preset saves, learned-slot rendering, or hover feedback in the 武学界面.
+- 收藏/置顶 style ordering should be a display-order layer over the canonical ability list. Keep the user's favorite order separate from school/rarity/search filters so favorites stay easy to find without mutating ability definitions or live draft slots.
+- For desktop-only game panels, prefer viewport-ratio defaults multiplied by user scale settings over fixed pixel defaults; this keeps the same screen footprint across different PC resolutions while still preserving custom sizing.
+- When a toggle has both hover and active states, keep them visually distinct; sharing the same color creates false-state confusion when the pointer is still over the control.
+- For 武学界面-style panels, derive not only outer size but also visible row count, grid columns, slots, card count, and toolbar widths from the rendered dimensions; a fixed 8x3 grid plus fixed bottom strip will overlap as soon as viewport height drops.
+- LocalStorage numeric settings need explicit null/empty handling before `Number(value)`. `Number(null)` becomes `0`, which silently clamps absent martial size settings to the minimum instead of the default.
+- Shortcut settings should stage edits separately from the saved binding profile when the UI exposes 确定/取消/应用. Immediate localStorage writes make a disabled/enabled Apply button and cancel behavior impossible to reason about.
+- For compact in-game panels, clipping overflowing labels is preferable to adding ellipsis; the dots consume scarce horizontal space without making the control clearer.
+- For hotkey-setting rows, avoid flexible full-width binding columns when the intended layout is label-plus-inputs. A max-content row track plus fixed-width binding cells keeps the two shortcut boxes visually attached to the label instead of drifting to the right edge.
+- When labels and inputs must align in a settings grid, keep the label column fixed to the longest expected label width. Using content-sized label tracks makes every row start at a different X position as soon as one label is longer than the rest.
+- For dense ESC settings panels, keep the editable shortcut text color consistent with other neutral UI labels unless a specific warning or capture state needs a highlight color.
+
 ## China VM deployment planning (2026-05-23)
 
 **Planning / finding**:

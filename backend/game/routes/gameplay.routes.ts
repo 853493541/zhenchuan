@@ -118,6 +118,16 @@ type UiLayoutPayload = {
   viewport: UiLayoutViewport | null;
 };
 
+type MartialPresetPlan = {
+  id: string;
+  name: string;
+  slots: Array<string | null>;
+  updatedAt: string;
+};
+
+const MARTIAL_PRESET_LIMIT = 8;
+const MARTIAL_PRESET_SLOT_COUNT = 6;
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -161,6 +171,42 @@ function sanitizeUiLayoutPayload(raw: unknown): UiLayoutPayload {
   return { positions, viewport };
 }
 
+function sanitizeMartialPresetName(value: unknown, fallback: string): string {
+  const name = typeof value === "string" ? Array.from(value.trim()).slice(0, 8).join("") : "";
+  return name || fallback;
+}
+
+function sanitizeMartialPresetSlots(raw: unknown): Array<string | null> {
+  const source = Array.isArray(raw) ? raw : [];
+  const seen = new Set<string>();
+  return Array.from({ length: MARTIAL_PRESET_SLOT_COUNT }, (_, index) => {
+    const value = source[index];
+    if (typeof value !== "string") return null;
+    const abilityId = value.trim();
+    if (!abilityId || seen.has(abilityId)) return null;
+    seen.add(abilityId);
+    return abilityId ? abilityId : null;
+  });
+}
+
+function sanitizeMartialPresetsPayload(raw: unknown): MartialPresetPlan[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MARTIAL_PRESET_LIMIT).map((entry, index) => {
+    const plan = entry && typeof entry === "object" && !Array.isArray(entry) ? entry as Record<string, unknown> : {};
+    const id = typeof plan.id === "string" && plan.id.trim() ? plan.id.trim().slice(0, 64) : randomUUID();
+    const fallbackName = `预设${index + 1}`;
+    const updatedAtCandidate = typeof plan.updatedAt === "string" && !Number.isNaN(Date.parse(plan.updatedAt))
+      ? plan.updatedAt
+      : new Date().toISOString();
+    return {
+      id,
+      name: sanitizeMartialPresetName(plan.name, fallbackName),
+      slots: sanitizeMartialPresetSlots(plan.slots),
+      updatedAt: updatedAtCandidate,
+    };
+  });
+}
+
 router.get("/ui-layout", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
@@ -198,6 +244,43 @@ router.put("/ui-layout", async (req, res) => {
   } catch (err: any) {
     console.error(`[UI_LAYOUT_PUT] ❌ ERROR: ${err.message}`);
     console.error(`[UI_LAYOUT_PUT] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err);
+  }
+});
+
+router.get("/martial-presets", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const user = await User.findById(userId).select("battleArenaMartialPresets");
+    if (!user) {
+      return sendGameError(res, 401, "ERR_NOT_AUTHENTICATED");
+    }
+
+    return res.json({ plans: sanitizeMartialPresetsPayload((user as any).battleArenaMartialPresets) });
+  } catch (err: any) {
+    console.error(`[MARTIAL_PRESETS_GET] ❌ ERROR: ${err.message}`);
+    console.error(`[MARTIAL_PRESETS_GET] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err, 401);
+  }
+});
+
+router.put("/martial-presets", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const user = await User.findById(userId).select("battleArenaMartialPresets");
+    if (!user) {
+      return sendGameError(res, 401, "ERR_NOT_AUTHENTICATED");
+    }
+
+    const plans = sanitizeMartialPresetsPayload((req.body as any)?.plans);
+    (user as any).battleArenaMartialPresets = plans;
+    user.markModified("battleArenaMartialPresets");
+    await user.save();
+
+    return res.json({ plans });
+  } catch (err: any) {
+    console.error(`[MARTIAL_PRESETS_PUT] ❌ ERROR: ${err.message}`);
+    console.error(`[MARTIAL_PRESETS_PUT] Stack: ${err.stack}`);
     return sendCaughtGameError(res, err);
   }
 });
@@ -572,6 +655,22 @@ function isCommonAbilityCard(card: any): boolean {
   return !!card?.isCommon;
 }
 
+function getDraftCardAbilityId(card: any): string | null {
+  const abilityId = card?.abilityId ?? card?.id;
+  return typeof abilityId === "string" && abilityId.trim() ? abilityId.trim() : null;
+}
+
+function dedupeDraftCardsByAbility<T extends Record<string, any>>(cards: T[]): T[] {
+  const seen = new Set<string>();
+  return cards.filter((card) => {
+    const abilityId = getDraftCardAbilityId(card);
+    if (!abilityId) return true;
+    if (seen.has(abilityId)) return false;
+    seen.add(abilityId);
+    return true;
+  });
+}
+
 function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return Math.max(0, Math.min(MAX_DRAFT_HAND - 1, fallback));
@@ -581,7 +680,7 @@ function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
 function normalizeDraftCardSlots<T extends Record<string, any>>(cards: T[]): T[] {
   const assigned: Array<T | undefined> = Array.from({ length: MAX_DRAFT_HAND });
   const pending: T[] = [];
-  cards.forEach((card, fallbackIndex) => {
+  dedupeDraftCardsByAbility(cards).forEach((card, fallbackIndex) => {
     const hasExplicitSlot = card?.slotIndex !== undefined && Number.isFinite(Number(card.slotIndex));
     const slotIndex = normalizeDraftSlotIndex(card?.slotIndex, fallbackIndex);
     if (hasExplicitSlot && !assigned[slotIndex]) {
@@ -712,6 +811,9 @@ router.post("/pickup/claim", async (req, res) => {
 
     const draftCards = player.hand.filter((card: any) => !isCommonAbilityCard(card));
     const commonCards = player.hand.filter((card: any) => isCommonAbilityCard(card));
+    if (draftCards.some((card: any) => getDraftCardAbilityId(card) === pickup.abilityId)) {
+      return sendGameError(res, 400, "ERR_PICKUP_ALREADY_LEARNED");
+    }
     const firstOpenSlot = getFirstAvailableDraftSlot(draftCards);
     if (firstOpenSlot === null) {
       return sendGameError(res, 400, "ERR_PICKUP_HAND_FULL");
