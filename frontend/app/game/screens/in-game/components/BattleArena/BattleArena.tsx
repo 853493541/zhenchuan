@@ -7,7 +7,7 @@ import WASDButtons from './WASDButtons';
 import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, ChannelBarHost, type ChannelBarData } from './ChannelBar';
-import { ArrowLeft, Clipboard, Download, Gamepad2, Gauge, Keyboard, LayoutGrid, MessageCircle, Puzzle, RotateCcw, Swords, Trash2, UploadCloud, Volume2, Wind, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Clipboard, Download, Gamepad2, Gauge, Keyboard, LayoutGrid, ListChecks, MessageCircle, Pencil, Plus, Puzzle, RotateCcw, Save, Search, Swords, Trash2, UploadCloud, Volume2, Wind, X } from 'lucide-react';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
 import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles, type SceneRuntimeMetrics } from './scene/ArenaScene';
@@ -15,6 +15,7 @@ import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
 import { RENDER_SF_XZ, RENDER_SF_Y, GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, type SceneLoadTimingEvent } from './scene/ExportedMapScene';
 import { encodeIconPublicPath, getAbilityIconPath } from '@/app/lib/iconPaths';
+import { getBuffIconBackgroundImage } from '@/app/lib/buffIcons';
 import * as THREE from 'three';
 import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
 import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase } from './abilitySoundRegistry';
@@ -423,6 +424,27 @@ const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
 const ABILITY_PANEL_MIN_SCALE = 0.85;
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
+const MARTIAL_PANEL_WIDTH_STORAGE_KEY = 'zhenchuan-martial-panel-width-v2';
+const MARTIAL_PANEL_HEIGHT_STORAGE_KEY = 'zhenchuan-martial-panel-height-v2';
+const MARTIAL_PRESET_PANEL_WIDTH_STORAGE_KEY = 'zhenchuan-martial-preset-panel-width-v2';
+const MARTIAL_PRESET_PANEL_OPEN_STORAGE_KEY = 'zhenchuan-martial-preset-panel-open-v1';
+const MARTIAL_MODAL_SCALE_STORAGE_KEY = 'zhenchuan-martial-modal-scale-v1';
+const MARTIAL_PANEL_TAB_STORAGE_KEY = 'zhenchuan-martial-panel-tab-v1';
+const MARTIAL_PANEL_MIN_WIDTH = 720;
+const MARTIAL_PANEL_MAX_WIDTH = 1180;
+const MARTIAL_PANEL_DEFAULT_WIDTH = 870;
+const MARTIAL_PANEL_MIN_HEIGHT = 470;
+const MARTIAL_PANEL_MAX_HEIGHT = 760;
+const MARTIAL_PANEL_DEFAULT_HEIGHT = 600;
+const MARTIAL_PRESET_PANEL_MIN_WIDTH = 270;
+const MARTIAL_PRESET_PANEL_MAX_WIDTH = 460;
+const MARTIAL_PRESET_PANEL_DEFAULT_WIDTH = 320;
+const MARTIAL_MODAL_MIN_SCALE = 0.75;
+const MARTIAL_MODAL_MAX_SCALE = 1.3;
+const MARTIAL_MODAL_DEFAULT_SCALE = 0.92;
+const MARTIAL_PRESET_LIMIT = 8;
+const MARTIAL_VISIBLE_COLUMNS = 8;
+const MARTIAL_VISIBLE_ROWS = 3;
 const IN_GAME_WARNING_SCALE_STORAGE_KEY = 'zhenchuan-ingame-warning-scale-v1';
 const IN_GAME_WARNING_UI_KEY = 'in-game-warning';
 const IN_GAME_WARNING_DURATION_MS = 1500;
@@ -445,6 +467,7 @@ const HEIGHT_COUNTER_UI_KEY = 'height-counter';
 const DISTANCE_INDICATOR_UI_KEY = 'distance-indicator';
 const HEART_STATS_UI_KEY = 'heart-stats-bar';
 const ITEM_BAR_UI_KEY = 'item-bar';
+const MARTIAL_PANEL_UI_KEY = 'martial-panel';
 const CATCAKE_DEFAULT_UI_VIEWPORT: UiViewportSize = { w: 1920, h: 945 };
 const CATCAKE_DEFAULT_UI_POSITIONS: Record<string, UiPosition> = {
   [PLAYER_ICON_BAR_UI_KEY]: { left: 457, top: 463 },
@@ -462,6 +485,7 @@ const CATCAKE_DEFAULT_UI_POSITIONS: Record<string, UiPosition> = {
   [IN_GAME_WARNING_UI_KEY]: { left: 960, top: 151 },
   [ITEM_BAR_UI_KEY]: { left: 647, top: 751 },
   [HEART_STATS_UI_KEY]: { left: 194, top: 466 },
+  [MARTIAL_PANEL_UI_KEY]: { left: 24, top: 88 },
 };
 const DRAFT_ABILITY_SLOT_COUNT = 6;
 const ITEM_BAR_SLOT_COUNT = 14;
@@ -643,6 +667,72 @@ function normalizeAbilityPanelScale(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return 1;
   return Math.round(Math.max(ABILITY_PANEL_MIN_SCALE, Math.min(2, numeric)) * 100) / 100;
+}
+
+function normalizeNumberInRange(value: unknown, fallback: number, min: number, max: number): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.round(Math.max(min, Math.min(max, numeric)));
+}
+
+function normalizeMartialPanelWidth(value: unknown): number {
+  return normalizeNumberInRange(value, MARTIAL_PANEL_DEFAULT_WIDTH, MARTIAL_PANEL_MIN_WIDTH, MARTIAL_PANEL_MAX_WIDTH);
+}
+
+function normalizeMartialPanelHeight(value: unknown): number {
+  return normalizeNumberInRange(value, MARTIAL_PANEL_DEFAULT_HEIGHT, MARTIAL_PANEL_MIN_HEIGHT, MARTIAL_PANEL_MAX_HEIGHT);
+}
+
+function normalizeMartialPresetPanelWidth(value: unknown): number {
+  return normalizeNumberInRange(value, MARTIAL_PRESET_PANEL_DEFAULT_WIDTH, MARTIAL_PRESET_PANEL_MIN_WIDTH, MARTIAL_PRESET_PANEL_MAX_WIDTH);
+}
+
+function normalizeMartialModalScale(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return MARTIAL_MODAL_DEFAULT_SCALE;
+  return Math.round(Math.max(MARTIAL_MODAL_MIN_SCALE, Math.min(MARTIAL_MODAL_MAX_SCALE, numeric)) * 100) / 100;
+}
+
+const MARTIAL_PLAN_NUMBER_TEXT = ['一', '二', '三', '四', '五', '六', '七', '八'];
+
+function getDefaultMartialPlanName(index: number): string {
+  return `预设${MARTIAL_PLAN_NUMBER_TEXT[index] ?? index + 1}`;
+}
+
+function sanitizeMartialPlanName(value: string, fallback: string): string {
+  const name = Array.from(value.trim()).slice(0, 8).join('');
+  return name || fallback;
+}
+
+function normalizeMartialPresetSlots(slots: unknown): Array<string | null> {
+  const source = Array.isArray(slots) ? slots : [];
+  const seen = new Set<string>();
+  return Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }, (_, index) => {
+    const value = source[index];
+    if (typeof value !== 'string') return null;
+    const abilityId = value.trim();
+    if (!abilityId || seen.has(abilityId)) return null;
+    seen.add(abilityId);
+    return abilityId;
+  });
+}
+
+function normalizeMartialPresetPlans(plans: unknown): MartialPresetPlan[] {
+  if (!Array.isArray(plans)) return [];
+  return plans.slice(0, MARTIAL_PRESET_LIMIT).map((plan: any, index) => ({
+    id: typeof plan?.id === 'string' && plan.id.trim() ? plan.id.trim() : `martial-plan-${Date.now()}-${index}`,
+    name: sanitizeMartialPlanName(typeof plan?.name === 'string' ? plan.name : '', getDefaultMartialPlanName(index)),
+    slots: normalizeMartialPresetSlots(plan?.slots),
+    updatedAt: typeof plan?.updatedAt === 'string' ? plan.updatedAt : new Date().toISOString(),
+  }));
+}
+
+function createMartialPresetId(): string {
+  try {
+    const cryptoApi = globalThis.crypto as Crypto | undefined;
+    if (cryptoApi?.randomUUID) return cryptoApi.randomUUID();
+  } catch {}
+  return `martial-plan-${Date.now()}-${Math.round(Math.random() * 100000)}`;
 }
 
 function normalizeInGameWarningScale(value: unknown): number {
@@ -1816,12 +1906,33 @@ type AbilityHintState = {
   anchorRect: DOMRect;
 };
 
-type AbilityDragSlotKind = 'draft' | 'item';
+type AbilityDragSlotKind = 'draft' | 'item' | 'library';
 
 type AbilityDropTarget = {
-  kind: AbilityDragSlotKind;
+  kind: 'draft' | 'item';
+  index: number;
+} | {
+  kind: 'preset';
+  planId: string;
   index: number;
 };
+
+type MartialPresetPlan = {
+  id: string;
+  name: string;
+  slots: Array<string | null>;
+  updatedAt?: string;
+};
+
+type MartialPresetModalState =
+  | { kind: 'save'; targetIndex: number; name: string }
+  | { kind: 'rename'; planId: string; name: string }
+  | null;
+
+type MartialPresetDropHover = {
+  planId: string;
+  slotIndex: number;
+} | null;
 
 type PendingDraftReorder = {
   instanceId: string;
@@ -1842,6 +1953,7 @@ type DraftDragGhostState = {
   ability: AbilityInfo;
   x: number;
   y: number;
+  large?: boolean;
 };
 
 function createEmptyItemBarSlots(): Array<AbilityInfo | undefined> {
@@ -1885,7 +1997,7 @@ const LOCKED_CHARACTER_ACTION_HOTKEY_ROWS: HotkeySettingsRow[] = [
 
 const INTERFACE_HOTKEY_ROWS: HotkeySettingsRow[] = [
   { actionId: 'interface:0', label: '人物属性' },
-  { actionId: 'interface:1', label: '技能界面' },
+  { actionId: 'interface:1', label: '武学界面' },
 ];
 
 const RESERVED_CHARACTER_ACTION_BINDINGS = new Set(
@@ -2795,6 +2907,93 @@ export default function BattleArena({
   // Mobile detection: touch device without fine pointer (mouse) = phone/tablet
   const [isMobileDevice, setIsMobileDevice]    = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
+  const [showCheatAbilityPanelEntry, setShowCheatAbilityPanelEntry] = useState(false);
+  const [showMartialPanel, setShowMartialPanel] = useState(false);
+  const [martialPanelTab, setMartialPanelTab] = useState<'jianghu' | 'jujing'>(() => {
+    try {
+      if (typeof window === 'undefined') return 'jianghu';
+      const stored = localStorage.getItem(MARTIAL_PANEL_TAB_STORAGE_KEY);
+      return stored === 'jujing' || stored === 'jianghu' ? stored : 'jianghu';
+    } catch {
+      return 'jianghu';
+    }
+  });
+  const [martialSearch, setMartialSearch] = useState('');
+  const [martialRarityFilter, setMartialRarityFilter] = useState('all');
+  const [martialSchoolFilter, setMartialSchoolFilter] = useState('all');
+  const [martialEmpoweredOnly, setMartialEmpoweredOnly] = useState(false);
+  const [martialRarityOpen, setMartialRarityOpen] = useState(false);
+  const [martialSchoolOpen, setMartialSchoolOpen] = useState(false);
+  const [martialPresetPlans, setMartialPresetPlans] = useState<MartialPresetPlan[]>([]);
+  const [martialPresetApplying, setMartialPresetApplying] = useState(false);
+  const [martialPresetSaving, setMartialPresetSaving] = useState(false);
+  const [martialPresetModal, setMartialPresetModal] = useState<MartialPresetModalState>(null);
+  const [martialPresetDropHover, setMartialPresetDropHover] = useState<MartialPresetDropHover>(null);
+  const [martialAbilityRowOffset, setMartialAbilityRowOffset] = useState(0);
+  const [martialPanelTempPos, setMartialPanelTempPos] = useState<UiPosition | null>(null);
+  const martialPanelTempPosRef = useRef<UiPosition | null>(null);
+  const martialRarityRef = useRef<HTMLDivElement>(null);
+  const martialSchoolRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!martialRarityOpen && !martialSchoolOpen) return;
+    const h = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (martialRarityOpen && martialRarityRef.current && !martialRarityRef.current.contains(target)) {
+        setMartialRarityOpen(false);
+      }
+      if (martialSchoolOpen && martialSchoolRef.current && !martialSchoolRef.current.contains(target)) {
+        setMartialSchoolOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [martialRarityOpen, martialSchoolOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/game/martial-presets', { credentials: 'include' })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text().catch(() => '加载预设招式失败'));
+        return res.json();
+      })
+      .then((data) => {
+        if (!cancelled) setMartialPresetPlans(normalizeMartialPresetPlans(data?.plans));
+      })
+      .catch((err) => {
+        if (!cancelled) console.error('[MartialPanel] load presets failed:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistMartialPresetPlans = useCallback(async (plans: MartialPresetPlan[]) => {
+    const normalizedPlans = normalizeMartialPresetPlans(plans);
+    setMartialPresetSaving(true);
+    try {
+      const res = await fetch('/api/game/martial-presets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ plans: normalizedPlans }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message ?? err?.error ?? '保存预设招式失败');
+      }
+      const data = await res.json().catch(() => ({}));
+      const savedPlans = normalizeMartialPresetPlans(data?.plans ?? normalizedPlans);
+      setMartialPresetPlans(savedPlans);
+      return savedPlans;
+    } catch (err: any) {
+      console.error('[MartialPanel] save presets failed:', err);
+      toastError(err?.message ?? '保存预设招式失败');
+      return null;
+    } finally {
+      setMartialPresetSaving(false);
+    }
+  }, []);
 
   const openAbilityHint = useCallback((anchorRect: DOMRect, ability: AbilityInfo) => {
     if (abilityDragActiveRef.current) return;
@@ -2924,6 +3123,81 @@ export default function BattleArena({
       localStorage.setItem(ABILITY_PANEL_SCALE_STORAGE_KEY, abilityPanelScale.toFixed(2));
     } catch {}
   }, [abilityPanelScale]);
+  const [martialPanelWidth, setMartialPanelWidth] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return MARTIAL_PANEL_DEFAULT_WIDTH;
+      return normalizeMartialPanelWidth(localStorage.getItem(MARTIAL_PANEL_WIDTH_STORAGE_KEY));
+    } catch {
+      return MARTIAL_PANEL_DEFAULT_WIDTH;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(MARTIAL_PANEL_WIDTH_STORAGE_KEY, String(martialPanelWidth));
+    } catch {}
+  }, [martialPanelWidth]);
+  const [martialPanelHeight, setMartialPanelHeight] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return MARTIAL_PANEL_DEFAULT_HEIGHT;
+      return normalizeMartialPanelHeight(localStorage.getItem(MARTIAL_PANEL_HEIGHT_STORAGE_KEY));
+    } catch {
+      return MARTIAL_PANEL_DEFAULT_HEIGHT;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(MARTIAL_PANEL_HEIGHT_STORAGE_KEY, String(martialPanelHeight));
+    } catch {}
+  }, [martialPanelHeight]);
+  const [martialPresetPanelWidth, setMartialPresetPanelWidth] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return MARTIAL_PRESET_PANEL_DEFAULT_WIDTH;
+      return normalizeMartialPresetPanelWidth(localStorage.getItem(MARTIAL_PRESET_PANEL_WIDTH_STORAGE_KEY));
+    } catch {
+      return MARTIAL_PRESET_PANEL_DEFAULT_WIDTH;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(MARTIAL_PRESET_PANEL_WIDTH_STORAGE_KEY, String(martialPresetPanelWidth));
+    } catch {}
+  }, [martialPresetPanelWidth]);
+  const [martialModalScale, setMartialModalScale] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return MARTIAL_MODAL_DEFAULT_SCALE;
+      return normalizeMartialModalScale(localStorage.getItem(MARTIAL_MODAL_SCALE_STORAGE_KEY));
+    } catch {
+      return MARTIAL_MODAL_DEFAULT_SCALE;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(MARTIAL_MODAL_SCALE_STORAGE_KEY, martialModalScale.toFixed(2));
+    } catch {}
+  }, [martialModalScale]);
+  const [showMartialPresetPanel, setShowMartialPresetPanel] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return false;
+      return localStorage.getItem(MARTIAL_PRESET_PANEL_OPEN_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(MARTIAL_PRESET_PANEL_OPEN_STORAGE_KEY, showMartialPresetPanel ? '1' : '0');
+    } catch {}
+  }, [showMartialPresetPanel]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(MARTIAL_PANEL_TAB_STORAGE_KEY, martialPanelTab);
+    } catch {}
+  }, [martialPanelTab]);
+  useEffect(() => {
+    if (!showCheatAbilityPanelEntry) {
+      setShowCheatWindow(false);
+    }
+  }, [showCheatAbilityPanelEntry]);
   const [inGameWarningScale, setInGameWarningScale] = useState(() => {
     try {
       if (typeof window === 'undefined') return 1;
@@ -3131,7 +3405,7 @@ export default function BattleArena({
   const [showHiddenBuffStatusBar, setShowHiddenBuffStatusBar] = useState(false);
   const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
-  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting'>('switches');
+  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'martial'>('switches');
   const [customUiPromptPos, setCustomUiPromptPos] = useState<UiPosition | null>(null);
   const lightingControlsOpen = showTestingPanel && escMainTab === 'test' && escTestPage === 'lighting';
 
@@ -4116,6 +4390,24 @@ export default function BattleArena({
     castAbilityRef.current(ability.id);
     return true;
   }, [showAbilityDisabledWarning]);
+  const toggleEscPanel = useCallback(() => {
+    setShowTestingPanel((visible) => {
+      const next = !visible;
+      if (next) {
+        setEscPanelPage('main');
+        setEscMainTab('normal');
+        setEscTestPage('switches');
+      }
+      return next;
+    });
+  }, []);
+  const toggleMartialPanel = useCallback(() => {
+    setShowMartialPanel((visible) => {
+      setMartialPanelTempPos(null);
+      martialPanelTempPosRef.current = null;
+      return !visible;
+    });
+  }, []);
   const triggerHotkeyBinding = useCallback((bindingId: string) => {
     const actionId = findHotkeyActionByBinding(hotkeySettings, bindingId);
     if (!actionId) return false;
@@ -4128,7 +4420,7 @@ export default function BattleArena({
         return true;
       }
       if (parsed.index === 1) {
-        setShowCheatWindow((visible) => !visible);
+        toggleMartialPanel();
         return true;
       }
       return false;
@@ -4174,7 +4466,7 @@ export default function BattleArena({
     }
     useConsumableRef.current(consumable.id);
     return true;
-  }, [consumableBarSettings, getHotkeyDraftSlots, hotkeySettings, me.consumableCooldowns, me.consumableCounts, showAbilityDisabledWarning, showInGameWarning, triggerAbilityHotkey]);
+  }, [consumableBarSettings, getHotkeyDraftSlots, hotkeySettings, me.consumableCooldowns, me.consumableCounts, showAbilityDisabledWarning, showInGameWarning, toggleMartialPanel, triggerAbilityHotkey]);
 
   const captureHotkeyBinding = useCallback((target: HotkeyCaptureTarget, binding: HotkeyBinding | null) => {
     if (!target || !binding || !isHotkeyActionId(target.actionId)) return;
@@ -6433,6 +6725,14 @@ export default function BattleArena({
     });
   }, [getUiPositionFromRef]);
 
+  const getDefaultMartialPanelPos = useCallback(() => {
+    const { h } = canvasSizeRef.current;
+    return {
+      left: 24,
+      top: Math.max(52, Math.round(h * 0.09)),
+    };
+  }, []);
+
   const getDefaultHeightCounterPos = useCallback(() => {
     const { w, h } = canvasSizeRef.current;
     return {
@@ -6543,6 +6843,43 @@ export default function BattleArena({
     window.addEventListener('mouseup', onUp);
   }, [persistUiPositions]);
 
+  const startMartialPanelTemporaryDrag = useCallback((e: React.MouseEvent, basePos: UiPosition, size: { width: number; height: number }) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('button, input')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    mouseStateRef.current.isLeft = false;
+    mouseStateRef.current.isRight = false;
+    manualCameraLookActiveRef.current = false;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const base = martialPanelTempPosRef.current ?? basePos;
+    const clampPanelPosition = (position: UiPosition): UiPosition => {
+      const viewport = canvasSizeRef.current;
+      const maxLeft = Math.max(12, Math.round(viewport.w - size.width - 12));
+      const maxTop = Math.max(12, Math.round(viewport.h - size.height - 12));
+      return {
+        left: Math.max(12, Math.min(maxLeft, Math.round(position.left))),
+        top: Math.max(12, Math.min(maxTop, Math.round(position.top))),
+      };
+    };
+    const onMove = (event: MouseEvent) => {
+      const next = clampPanelPosition({ left: base.left + event.clientX - startX, top: base.top + event.clientY - startY });
+      martialPanelTempPosRef.current = next;
+      setMartialPanelTempPos(next);
+    };
+    const onUp = (event: MouseEvent) => {
+      const next = clampPanelPosition({ left: base.left + event.clientX - startX, top: base.top + event.clientY - startY });
+      martialPanelTempPosRef.current = next;
+      setMartialPanelTempPos(next);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
+
   const startCustomUiPromptDrag = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('button')) return;
@@ -6611,6 +6948,7 @@ export default function BattleArena({
       const distanceIndicatorBase = prev[DISTANCE_INDICATOR_UI_KEY] ?? getDefaultDistanceIndicatorPos();
       const inGameWarningBase = prev[IN_GAME_WARNING_UI_KEY] ?? getDefaultInGameWarningPos();
       const itemBarBase = prev[ITEM_BAR_UI_KEY] ?? getDefaultItemBarPos();
+      const martialPanelBase = prev[MARTIAL_PANEL_UI_KEY] ?? getDefaultMartialPanelPos();
       const targetBase = getDefaultTargetStatusPos();
       const next = {
         ...prev,
@@ -6630,6 +6968,7 @@ export default function BattleArena({
         [DISTANCE_INDICATOR_UI_KEY]: distanceIndicatorBase,
         [IN_GAME_WARNING_UI_KEY]: inGameWarningBase,
         [ITEM_BAR_UI_KEY]: itemBarBase,
+        [MARTIAL_PANEL_UI_KEY]: martialPanelBase,
         [TARGET_BUFF_STATUS_UI_KEY]: prev[TARGET_BUFF_STATUS_UI_KEY] ?? targetBase,
         [TARGET_DEBUFF_STATUS_UI_KEY]: prev[TARGET_DEBUFF_STATUS_UI_KEY] ?? {
           left: targetBase.left,
@@ -6646,6 +6985,7 @@ export default function BattleArena({
     getDefaultHeightCounterPos,
     getDefaultInGameWarningPos,
     getDefaultItemBarPos,
+    getDefaultMartialPanelPos,
     getDefaultPlayerChannelBarPos,
     getDefaultPlayerGcdBarPos,
     getDefaultPlayerIconBarPos,
@@ -6811,10 +7151,22 @@ export default function BattleArena({
       if (!e.repeat) {
         crashRecorder.recordBehavior('key-down', { key: e.key, code: e.code, altKey: e.altKey, ctrlKey: e.ctrlKey });
       }
+      const keyboardTarget = e.target as HTMLElement | null;
+      if (keyboardTarget?.closest('input, textarea, select, [contenteditable="true"]')) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         if (customUiMode) {
           cancelCustomUiMode();
+          return;
+        }
+        if (martialPresetModal) {
+          setMartialPresetModal(null);
+          return;
+        }
+        if (showMartialPanel) {
+          setShowMartialPanel(false);
+          setMartialPanelTempPos(null);
+          martialPanelTempPosRef.current = null;
           return;
         }
         if (activeChannelRef.current && onCancelChannel) {
@@ -6830,15 +7182,7 @@ export default function BattleArena({
           setSelectedSelf(false);
           return;
         }
-        setShowTestingPanel((visible) => {
-          const next = !visible;
-          if (next) {
-            setEscPanelPage('main');
-            setEscMainTab('normal');
-            setEscTestPage('switches');
-          }
-          return next;
-        });
+        toggleEscPanel();
         return;
       }
       const k = e.key.toLowerCase();
@@ -6997,7 +7341,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, triggerHotkeyBinding]);
+  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, martialPresetModal, showMartialPanel, toggleEscPanel, triggerHotkeyBinding]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -8357,6 +8701,245 @@ export default function BattleArena({
     return list;
   }, [cheatAbilities, cheatRarityFilter, cheatSchoolFilter]);
 
+  const martialRarityOptions = [
+    { id: 'all', label: '全部稀有度', optionLabel: '全部', color: '#8aa3a1' },
+    { id: '稀世', label: '稀世', color: RARITY_COLOR['稀世'] },
+    { id: '珍奇', label: '珍奇', color: RARITY_COLOR['珍奇'] },
+    { id: '卓越', label: '卓越', color: RARITY_COLOR['卓越'] },
+    { id: '精巧', label: '精巧', color: RARITY_COLOR['精巧'] },
+  ];
+  const martialSchoolOptions = [
+    { id: 'all', label: '全部门派', optionLabel: '全部', color: '#8aa3a1' },
+    ...SCHOOL_TAGS_BA.map((school) => ({ id: school, label: school, color: SCHOOL_COLOR[school] ?? '#8a9297' })),
+  ];
+  const filteredMartialAbilities = useMemo(() => {
+    if (martialPanelTab !== 'jujing') return [];
+    if (martialEmpoweredOnly) return [];
+    const query = martialSearch.trim().toLowerCase();
+    let list = cheatAbilities;
+    if (query) {
+      list = list.filter((ability: any) => (
+        String(ability.name ?? '').toLowerCase().includes(query) ||
+        String(ability.description ?? '').toLowerCase().includes(query)
+      ));
+    }
+    if (martialRarityFilter !== 'all') list = list.filter((ability: any) => ability.rarity === martialRarityFilter);
+    if (martialSchoolFilter !== 'all') list = list.filter((ability: any) => ability.tags?.school === martialSchoolFilter);
+    return list;
+  }, [cheatAbilities, martialEmpoweredOnly, martialPanelTab, martialRarityFilter, martialSchoolFilter, martialSearch]);
+  const martialTotalRows = Math.max(1, Math.ceil(filteredMartialAbilities.length / MARTIAL_VISIBLE_COLUMNS));
+  const martialMaxRowOffset = Math.max(0, martialTotalRows - MARTIAL_VISIBLE_ROWS);
+  useEffect(() => {
+    setMartialAbilityRowOffset(0);
+  }, [martialEmpoweredOnly, martialPanelTab, martialRarityFilter, martialSchoolFilter, martialSearch]);
+  useEffect(() => {
+    setMartialAbilityRowOffset((offset) => Math.min(offset, martialMaxRowOffset));
+  }, [martialMaxRowOffset]);
+  const visibleMartialAbilities = useMemo(() => {
+    const startIndex = martialAbilityRowOffset * MARTIAL_VISIBLE_COLUMNS;
+    return filteredMartialAbilities.slice(startIndex, startIndex + MARTIAL_VISIBLE_COLUMNS * MARTIAL_VISIBLE_ROWS);
+  }, [filteredMartialAbilities, martialAbilityRowOffset]);
+
+  const postAddAbility = useCallback(async (abilityId: string, slotIndex?: number) => {
+    const res = await fetch('/api/game/cheat/add-ability', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        gameId,
+        abilityId,
+        ...(typeof slotIndex === 'number' ? { slotIndex } : {}),
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? '添加技能失败');
+    }
+    return res.json().catch(() => ({}));
+  }, [gameId]);
+
+  const addAbilityToDraftBar = useCallback(async (abilityId: string, slotIndex?: number) => {
+    if (addingAbility) return false;
+    setAddingAbility(abilityId);
+    try {
+      await postAddAbility(abilityId, slotIndex);
+      return true;
+    } catch (err: any) {
+      console.error('[MartialPanel] add-ability failed:', err);
+      toastError(err?.message ?? '添加技能失败');
+      return false;
+    } finally {
+      setAddingAbility(null);
+    }
+  }, [addingAbility, postAddAbility]);
+
+  const getCurrentMartialPresetSlots = useCallback(() => (
+    Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }, (_, index) => draftAbilities[index]?.abilityId ?? null)
+  ), [draftAbilities]);
+
+  const openSaveMartialPresetModal = useCallback(() => {
+    const targetIndex = Math.min(martialPresetPlans.length, MARTIAL_PRESET_LIMIT - 1);
+    const existingPlan = martialPresetPlans[targetIndex];
+    setMartialPresetModal({
+      kind: 'save',
+      targetIndex,
+      name: existingPlan?.name ?? getDefaultMartialPlanName(targetIndex),
+    });
+  }, [martialPresetPlans]);
+
+  const saveMartialPresetToPlan = useCallback(async () => {
+    if (martialPresetModal?.kind !== 'save') return;
+    const targetIndex = Math.max(0, Math.min(MARTIAL_PRESET_LIMIT - 1, martialPresetModal.targetIndex));
+    const nextPlans = [...martialPresetPlans];
+    const existingPlan = nextPlans[targetIndex];
+    nextPlans[targetIndex] = {
+      id: existingPlan?.id ?? createMartialPresetId(),
+      name: sanitizeMartialPlanName(martialPresetModal.name, existingPlan?.name ?? getDefaultMartialPlanName(targetIndex)),
+      slots: getCurrentMartialPresetSlots(),
+      updatedAt: new Date().toISOString(),
+    };
+    const saved = await persistMartialPresetPlans(nextPlans);
+    if (saved) {
+      setMartialPresetModal(null);
+      toastSuccess('预设已保存');
+    }
+  }, [getCurrentMartialPresetSlots, martialPresetModal, martialPresetPlans, persistMartialPresetPlans]);
+
+  const applyMartialPreset = useCallback(async (plan: MartialPresetPlan) => {
+    if (martialPresetApplying || runningCheatAction) return;
+    const slots = normalizeMartialPresetSlots(plan.slots);
+    setMartialPresetApplying(true);
+    try {
+      const clearRes = await fetch('/api/game/cheat/discard-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ gameId }),
+      });
+      if (!clearRes.ok) {
+        const err = await clearRes.json().catch(() => ({}));
+        throw new Error(err.error ?? '预设招式失败');
+      }
+      for (let index = 0; index < DRAFT_ABILITY_SLOT_COUNT; index += 1) {
+        const abilityId = slots[index];
+        if (!abilityId) continue;
+        await postAddAbility(abilityId, index);
+      }
+      toastSuccess('预设招式已启用');
+    } catch (err: any) {
+      toastError(err?.message ?? '预设招式失败');
+    } finally {
+      setMartialPresetApplying(false);
+    }
+  }, [gameId, martialPresetApplying, postAddAbility, runningCheatAction]);
+
+  const createEmptyMartialPresetPlan = useCallback(async () => {
+    if (martialPresetPlans.length >= MARTIAL_PRESET_LIMIT) {
+      toastError('预设招式最多8个');
+      return;
+    }
+    const nextIndex = martialPresetPlans.length;
+    const nextPlans = [
+      ...martialPresetPlans,
+      {
+        id: createMartialPresetId(),
+        name: getDefaultMartialPlanName(nextIndex),
+        slots: normalizeMartialPresetSlots([]),
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+    const saved = await persistMartialPresetPlans(nextPlans);
+    if (saved) toastSuccess('预设已创建');
+  }, [martialPresetPlans, persistMartialPresetPlans]);
+
+  const deleteMartialPresetPlan = useCallback(async (planId: string) => {
+    const saved = await persistMartialPresetPlans(martialPresetPlans.filter((plan) => plan.id !== planId));
+    if (saved) toastSuccess('预设已删除');
+  }, [martialPresetPlans, persistMartialPresetPlans]);
+
+  const openRenameMartialPresetModal = useCallback((plan: MartialPresetPlan) => {
+    setMartialPresetModal({ kind: 'rename', planId: plan.id, name: plan.name });
+  }, []);
+
+  const renameMartialPresetPlan = useCallback(async () => {
+    if (martialPresetModal?.kind !== 'rename') return;
+    const planIndex = martialPresetPlans.findIndex((plan) => plan.id === martialPresetModal.planId);
+    if (planIndex < 0) return;
+    const nextPlans = martialPresetPlans.map((plan, index) => plan.id === martialPresetModal.planId
+      ? {
+          ...plan,
+          name: sanitizeMartialPlanName(martialPresetModal.name, plan.name || getDefaultMartialPlanName(index)),
+          updatedAt: new Date().toISOString(),
+        }
+      : plan);
+    const saved = await persistMartialPresetPlans(nextPlans);
+    if (saved) {
+      setMartialPresetModal(null);
+      toastSuccess('预设已重命名');
+    }
+  }, [martialPresetModal, martialPresetPlans, persistMartialPresetPlans]);
+
+  const updateMartialPresetSlot = useCallback(async (planId: string, slotIndex: number, abilityId: string | null) => {
+    const nextPlans = martialPresetPlans.map((plan) => {
+      if (plan.id !== planId) return plan;
+      const nextSlots = normalizeMartialPresetSlots(plan.slots);
+      const targetIndex = normalizeDraftSlotIndex(slotIndex, slotIndex);
+      if (!abilityId) {
+        nextSlots[targetIndex] = null;
+        return { ...plan, slots: nextSlots, updatedAt: new Date().toISOString() };
+      }
+      const existingIndex = nextSlots.findIndex((slotAbilityId, index) => index !== targetIndex && slotAbilityId === abilityId);
+      if (existingIndex >= 0) {
+        const targetAbilityId = nextSlots[targetIndex];
+        nextSlots[targetIndex] = abilityId;
+        nextSlots[existingIndex] = targetAbilityId ?? null;
+      } else {
+        nextSlots[targetIndex] = abilityId;
+      }
+      return { ...plan, slots: nextSlots, updatedAt: new Date().toISOString() };
+    });
+    await persistMartialPresetPlans(nextPlans);
+  }, [martialPresetPlans, persistMartialPresetPlans]);
+
+  const getMartialAbilityDefinition = useCallback((abilityId: string | null | undefined) => {
+    if (!abilityId) return null;
+    return (abilities as any)[abilityId] ?? cheatAbilities.find((ability: any) => ability.id === abilityId) ?? null;
+  }, [abilities, cheatAbilities]);
+
+  const toMartialAbilityInfo = useCallback((ability: any): AbilityInfo => ({
+    id: ability.id,
+    abilityId: ability.id,
+    name: ability.name,
+    iconPath: ability.iconPath,
+    description: ability.description ?? '',
+    channel: getRuntimeAbilityChannel(ability),
+    range: getEffectiveAbilityRangeClient(ability, me?.buffs),
+    baseRange: typeof ability.range === 'number' ? ability.range : undefined,
+    minRange: ability.minRange,
+    baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
+    cooldown: 0,
+    maxCooldown: Math.max(0, Number(ability.cooldownTicks ?? 0)),
+    maxCharges: typeof ability.maxCharges === 'number' ? ability.maxCharges : undefined,
+    chargeRecoveryTicks: typeof ability.chargeRecoveryTicks === 'number' ? ability.chargeRecoveryTicks : undefined,
+    isReady: true,
+    isCommon: !!ability.isCommon,
+    target: (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
+    friendlyTarget: !!ability.friendlyTarget,
+    canTargetSelf: !!ability.canTargetSelf,
+    faceDirection: requiresFacingByDefault(ability),
+    minSelfHpExclusive: typeof ability.minSelfHpExclusive === 'number' ? ability.minSelfHpExclusive : undefined,
+    minSelfHpPercentExclusive: typeof ability.minSelfHpPercentExclusive === 'number' ? ability.minSelfHpPercentExclusive : undefined,
+    damageType: getAbilityDamageTypeClient(ability),
+    noWeaponRequired: !!ability.noWeaponRequired,
+    canCastWhileMounted: !!ability.canCastWhileMounted,
+    requiresGrounded: !!ability.requiresGrounded,
+    requiresStanding: !!ability.requiresStanding,
+    qinggong: !!ability.qinggong,
+    qinggongGcdImmune: !!ability.qinggongGcdImmune,
+    cannotCastWhileRooted: !!ability.cannotCastWhileRooted,
+    allowGroundCastWithoutTarget: !!ability.allowGroundCastWithoutTarget,
+  }), [me?.buffs]);
+
   const renderCheatIcon = (ability: any) => {
     const rarityBorderColor = ability.rarity ? RARITY_COLOR[ability.rarity] : '#555';
     return (
@@ -8377,27 +8960,7 @@ export default function BattleArena({
           background: 'rgba(20,5,5,0.8)',
         }}
         onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
-        onClick={async () => {
-          if (addingAbility) return;
-          setAddingAbility(ability.id);
-          try {
-            const res = await fetch('/api/game/cheat/add-ability', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ gameId, abilityId: ability.id }),
-            });
-            if (!res.ok) {
-              const err = await res.json();
-              console.error('[CheatWindow] add-ability failed:', err);
-              toastError(err.error ?? '添加技能失败');
-            }
-          } catch (e) {
-            console.error('[CheatWindow] error:', e);
-          } finally {
-            setAddingAbility(null);
-          }
-        }}
+        onClick={() => void addAbilityToDraftBar(ability.id)}
       />
     );
   };
@@ -8619,10 +9182,39 @@ export default function BattleArena({
     };
   }, [specialBarActive]);
 
+  const beginLibraryAbilityPointerDrag = useCallback((e: React.MouseEvent, ability: any) => {
+    if (e.button !== 0 || !ability?.id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const visibleDraftSlots = getVisibleDraftSlotsForLocalMove();
+    const existingIndex = visibleDraftSlots.findIndex((slot) => slot?.abilityId === ability.id);
+    const existingAbility = existingIndex >= 0 ? visibleDraftSlots[existingIndex] : undefined;
+    abilityDragActiveRef.current = true;
+    mouseStateRef.current.isLeft = false;
+    mouseStateRef.current.isRight = false;
+    manualCameraLookActiveRef.current = false;
+    pendingDraftDragRef.current = {
+      instanceId: existingAbility?.id ?? `library:${ability.id}`,
+      sourceKind: existingAbility ? 'draft' : 'library',
+      sourceIndex: existingAbility ? existingIndex : -1,
+      ability: existingAbility ?? toMartialAbilityInfo(ability),
+      startX: e.clientX,
+      startY: e.clientY,
+      active: false,
+    };
+  }, [getVisibleDraftSlotsForLocalMove, toMartialAbilityInfo]);
+
   useEffect(() => {
     const getAbilityDropTargetAtPoint = (clientX: number, clientY: number): AbilityDropTarget | null => {
       const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
       if (element?.closest('[data-consumable-slot]')) return null;
+      const presetSlotElement = element?.closest('[data-martial-preset-slot]') as HTMLElement | null;
+      if (presetSlotElement) {
+        const planId = presetSlotElement.dataset.martialPresetPlanId;
+        const rawIndex = presetSlotElement.dataset.martialPresetSlot;
+        const index = Number(rawIndex);
+        if (planId && Number.isInteger(index)) return { kind: 'preset', planId, index };
+      }
       const itemSlotElement = element?.closest('[data-item-slot-index]') as HTMLElement | null;
       if (itemSlotElement) {
         const rawIndex = itemSlotElement.dataset.itemSlotIndex;
@@ -8644,6 +9236,11 @@ export default function BattleArena({
       return !!element?.closest('[data-discard-drop-zone]');
     };
 
+    const isMartialAbilityLibraryAtPoint = (clientX: number, clientY: number) => {
+      const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+      return !!element?.closest('[data-martial-ability-library]');
+    };
+
     const clearPointerDrag = () => {
       pendingDraftDragRef.current = null;
       abilityDragActiveRef.current = false;
@@ -8651,6 +9248,7 @@ export default function BattleArena({
       setDraggingDraftInstanceId(null);
       setDragHoverIndex(null);
       setDragHoverItemIndex(null);
+      setMartialPresetDropHover(null);
       setDiscardZoneHover(false);
       dragJustEndedRef.current = true;
       window.setTimeout(() => {
@@ -8677,19 +9275,27 @@ export default function BattleArena({
       }
 
       event.preventDefault();
-      setDraftDragGhost({ ability: dragState.ability, x: event.clientX, y: event.clientY });
+      setDraftDragGhost({ ability: dragState.ability, x: event.clientX, y: event.clientY, large: dragState.sourceKind === 'library' });
 
       if (isDiscardZoneAtPoint(event.clientX, event.clientY)) {
         setDiscardZoneHover(true);
         setDragHoverIndex(null);
         setDragHoverItemIndex(null);
+        setMartialPresetDropHover(null);
         return;
       }
 
       setDiscardZoneHover(false);
       const dropTarget = getAbilityDropTargetAtPoint(event.clientX, event.clientY);
+      if (dragState.sourceKind === 'library' && dropTarget?.kind !== 'draft' && dropTarget?.kind !== 'preset') {
+        setDragHoverIndex(null);
+        setDragHoverItemIndex(null);
+        setMartialPresetDropHover(null);
+        return;
+      }
       setDragHoverIndex(dropTarget?.kind === 'draft' ? dropTarget.index : null);
       setDragHoverItemIndex(dropTarget?.kind === 'item' ? dropTarget.index : null);
+      setMartialPresetDropHover(dropTarget?.kind === 'preset' ? { planId: dropTarget.planId, slotIndex: dropTarget.index } : null);
     };
 
     const onMouseUp = (event: MouseEvent) => {
@@ -8706,14 +9312,25 @@ export default function BattleArena({
       dragJustEndedRef.current = true;
 
       const droppedOnDiscard = isDiscardZoneAtPoint(event.clientX, event.clientY);
+      const droppedOnMartialLibrary = isMartialAbilityLibraryAtPoint(event.clientX, event.clientY);
       const dropTarget = getAbilityDropTargetAtPoint(event.clientX, event.clientY);
       void (async () => {
-        if (droppedOnDiscard) {
+        if (dragState.sourceKind === 'library') {
+          if (dropTarget?.kind === 'draft') {
+            await addAbilityToDraftBar(dragState.ability.abilityId ?? dragState.ability.id, dropTarget.index);
+          } else if (dropTarget?.kind === 'preset') {
+            await updateMartialPresetSlot(dropTarget.planId, dropTarget.index, dragState.ability.abilityId ?? dragState.ability.id);
+          }
+        } else if (dropTarget?.kind === 'preset') {
+          await updateMartialPresetSlot(dropTarget.planId, dropTarget.index, dragState.ability.abilityId ?? dragState.ability.id);
+        } else if (dragState.sourceKind === 'draft' && droppedOnMartialLibrary) {
+          await discardDraftAbility(dragState.instanceId);
+        } else if (droppedOnDiscard) {
           const discarded = await discardDraftAbility(dragState.instanceId);
           if (discarded && dragState.sourceKind === 'item') {
             removeAbilityFromItemBar(dragState.instanceId);
           }
-        } else if (dropTarget && !(dropTarget.kind === dragState.sourceKind && dropTarget.index === dragState.sourceIndex)) {
+        } else if (dropTarget && dropTarget.kind !== 'preset' && !(dropTarget.kind === dragState.sourceKind && dropTarget.index === dragState.sourceIndex)) {
           if (dragState.sourceKind === 'draft' && dropTarget.kind === 'draft') {
             await reorderDraftAbility(dragState.instanceId, dropTarget.index);
           } else {
@@ -8737,7 +9354,7 @@ export default function BattleArena({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('blur', onWindowBlur);
     };
-  }, [closeAbilityHint, discardDraftAbility, moveAbilityBetweenLocalBars, removeAbilityFromItemBar, reorderDraftAbility]);
+  }, [addAbilityToDraftBar, closeAbilityHint, discardDraftAbility, moveAbilityBetweenLocalBars, removeAbilityFromItemBar, reorderDraftAbility, updateMartialPresetSlot]);
 
   // Mouse move handler for debug cursor tracking
   const handleDebugMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -8890,6 +9507,10 @@ export default function BattleArena({
   const showFloatingInGameWarning = !!inGameWarningText;
   const itemBarDefaultPos = getDefaultItemBarPos();
   const itemBarPos = uiPositions[ITEM_BAR_UI_KEY] ?? itemBarDefaultPos;
+  const martialPanelDefaultPos = getDefaultMartialPanelPos();
+  const martialPanelPos = uiPositions[MARTIAL_PANEL_UI_KEY] ?? martialPanelDefaultPos;
+  const martialPanelDisplayPos = martialPanelTempPos ?? martialPanelPos;
+  const showFloatingMartialPanel = customUiMode || showMartialPanel;
   const renderStatusPlacement = ({
     keyName,
     label,
@@ -9140,6 +9761,527 @@ export default function BattleArena({
       >
         {customUiMode && label ? <div className={styles.customUiPlacementLabel}>{label}</div> : null}
         {content}
+      </div>
+    );
+  };
+
+  const renderMartialPanel = (preview = false) => {
+    const panelLocked = preview || customUiMode;
+    const activeSlots = Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }, (_, index) => draftAbilities[index]);
+    const activeAbilityByAbilityId = new Map(
+      activeSlots
+        .map((ability, index) => ability ? [ability.abilityId, { ability, index }] as const : null)
+        .filter(Boolean) as Array<readonly [string, { ability: AbilityInfo; index: number }]>,
+    );
+    const activeBuffSlots = activeBuffsClient(playerStatusBuffs)
+      .filter((buff) => buff.category === 'BUFF')
+      .slice(0, DRAFT_ABILITY_SLOT_COUNT);
+    const nextOpenDraftSlotIndex = activeSlots.findIndex((ability) => !ability);
+    const getNextOpenDraftSlot = () => nextOpenDraftSlotIndex >= 0 ? nextOpenDraftSlotIndex : undefined;
+    const renderVerticalLabel = (label: string) => (
+      <div className={styles.martialActiveVerticalLabel} aria-label={label}>
+        {Array.from(label).map((character, index) => <span key={`${label}-${index}`}>{character}</span>)}
+      </div>
+    );
+    const selectedRarity = martialRarityOptions.find((option) => option.id === martialRarityFilter) ?? martialRarityOptions[0];
+    const selectedSchool = martialSchoolOptions.find((option) => option.id === martialSchoolFilter) ?? martialSchoolOptions[0];
+    const isJujingTab = martialPanelTab === 'jujing';
+    const viewportWidth = Math.max(1, Math.round(canvasSizeRef.current.w || canvasSize.w || 1200));
+    const viewportHeight = Math.max(1, Math.round(canvasSizeRef.current.h || canvasSize.h || 800));
+    const maxBundleWidth = Math.max(320, viewportWidth - 48);
+    const maxPanelHeight = Math.max(360, viewportHeight - 104);
+    let presetPanelWidth = showMartialPresetPanel && !preview && isJujingTab ? Math.min(martialPresetPanelWidth, MARTIAL_PRESET_PANEL_MAX_WIDTH) : 0;
+    if (presetPanelWidth > 0 && maxBundleWidth - presetPanelWidth < 360) {
+      presetPanelWidth = Math.max(0, maxBundleWidth - 360);
+    }
+    const panelWidth = Math.round(Math.min(Math.max(360, maxBundleWidth - presetPanelWidth), martialPanelWidth));
+    const panelHeight = Math.round(Math.min(maxPanelHeight, martialPanelHeight));
+    const presetPanelGap = presetPanelWidth > 0 ? 4 : 0;
+    const bundleWidth = panelWidth + presetPanelWidth + presetPanelGap;
+    const scrollbarThumbHeight = Math.max(24, Math.min(100, (MARTIAL_VISIBLE_ROWS / martialTotalRows) * 100));
+    const scrollbarTravel = Math.max(0, 100 - scrollbarThumbHeight);
+    const scrollbarThumbTop = martialMaxRowOffset > 0 ? (martialAbilityRowOffset / martialMaxRowOffset) * scrollbarTravel : 0;
+
+    const renderFilterMenu = ({
+      label,
+      selected,
+      options,
+      open,
+      setOpen,
+      onSelect,
+      ref,
+      singleColumn = false,
+    }: {
+      label: string;
+      selected: { id: string; label: string; optionLabel?: string; color?: string };
+      options: Array<{ id: string; label: string; optionLabel?: string; color?: string }>;
+      open: boolean;
+      setOpen: (value: boolean) => void;
+      onSelect: (id: string) => void;
+      ref: React.RefObject<HTMLDivElement | null>;
+      singleColumn?: boolean;
+    }) => (
+      <div ref={ref} className={styles.martialFilterMenu}>
+        <button
+          type="button"
+          className={styles.martialFilterButton}
+          style={{ '--martial-filter-color': selected.color ?? '#8aa3a1' } as React.CSSProperties}
+          aria-label={label}
+          aria-expanded={open}
+          disabled={panelLocked}
+          onClick={() => setOpen(!open)}
+        >
+          <span>{selected.label}</span>
+          <ChevronDown size={15} strokeWidth={2.2} aria-hidden="true" />
+        </button>
+        {open && !panelLocked && (
+          <div className={`${styles.martialFilterList} ${singleColumn ? styles.martialFilterListSingle : ''}`}>
+            {options.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={`${styles.martialFilterOption} ${selected.id === option.id ? styles.martialFilterOptionActive : ''}`}
+                style={{ '--martial-filter-color': option.color ?? '#8aa3a1' } as React.CSSProperties}
+                onClick={() => {
+                  onSelect(option.id);
+                  setOpen(false);
+                }}
+              >
+                {option.optionLabel ?? option.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+
+    const renderAbilityTile = (ability: any, keyPrefix: string, options: { disabled?: boolean; presetPlanId?: string; presetSlotIndex?: number; activeIndex?: number } = {}) => {
+      const abilityInfo = toMartialAbilityInfo(ability);
+      const rarityBorderColor = ability.rarity ? RARITY_COLOR[ability.rarity] : '#53606a';
+      const isBusy = addingAbility === ability.id;
+      const isPresetTile = !!options.presetPlanId;
+      const activeEntry = activeAbilityByAbilityId.get(ability.id);
+      const isCheckedLibraryTile = !isPresetTile && !!activeEntry;
+      return (
+        <button
+          key={`${keyPrefix}-${ability.id}`}
+          type="button"
+          className={`${styles.martialAbilityItem} ${isCheckedLibraryTile ? styles.martialAbilityItemChecked : ''}`}
+          aria-label={ability.name}
+          disabled={panelLocked || isBusy || options.disabled}
+          onMouseDown={(event) => {
+            if (isPresetTile) return;
+            beginLibraryAbilityPointerDrag(event, ability);
+          }}
+          onMouseEnter={(event) => openAbilityHint(event.currentTarget.getBoundingClientRect(), abilityInfo)}
+          onMouseLeave={closeAbilityHint}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (panelLocked || isBusy) return;
+            if (options.presetPlanId && typeof options.presetSlotIndex === 'number') {
+              void updateMartialPresetSlot(options.presetPlanId, options.presetSlotIndex, null);
+              return;
+            }
+            if (activeEntry) {
+              void discardDraftAbility(activeEntry.ability.id);
+              return;
+            }
+            void addAbilityToDraftBar(ability.id, getNextOpenDraftSlot());
+          }}
+        >
+          <span className={styles.martialAbilityIconFrame} style={{ borderColor: rarityBorderColor }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={getArenaAbilityIconPath(ability.name, ability.iconPath)} alt={ability.name} draggable={false} />
+            {isCheckedLibraryTile && (
+              <span className={styles.martialAbilityCheckBadge} aria-hidden="true">
+                <Check size={12} strokeWidth={3} />
+              </span>
+            )}
+          </span>
+          <span className={styles.martialAbilityName}>{ability.name}</span>
+        </button>
+      );
+    };
+
+    const renderDisplayAbilityTile = (ability: any, keyPrefix: string) => {
+      const abilityInfo = toMartialAbilityInfo(ability);
+      const rarityBorderColor = ability.rarity ? RARITY_COLOR[ability.rarity] : '#53606a';
+      return (
+        <div
+          key={`${keyPrefix}-${ability.id}`}
+          className={`${styles.martialAbilityItem} ${styles.martialDisplayAbilityItem}`}
+          onMouseEnter={(event) => openAbilityHint(event.currentTarget.getBoundingClientRect(), abilityInfo)}
+          onMouseLeave={closeAbilityHint}
+        >
+          <span className={styles.martialAbilityIconFrame} style={{ borderColor: rarityBorderColor }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={getArenaAbilityIconPath(ability.name, ability.iconPath)} alt={ability.name} draggable={false} />
+          </span>
+          <span className={styles.martialAbilityName}>{ability.name}</span>
+        </div>
+      );
+    };
+
+    const renderJianghuPage = () => {
+      const bodyAbility = getMartialAbilityDefinition('menghu_xiasha');
+      const mountAbility = getMartialAbilityDefinition('yuqi');
+      const qinggongAbilities = COMMON_ABILITY_ORDER
+        .filter((abilityId) => abilityId !== 'menghu_xiasha' && abilityId !== 'yuqi')
+        .map((abilityId) => getMartialAbilityDefinition(abilityId))
+        .filter(Boolean);
+      const rows = [
+        { label: '防身武艺', abilities: bodyAbility ? [bodyAbility] : [] },
+        { label: '基础招式', abilities: mountAbility ? [mountAbility] : [] },
+        { label: '江湖轻功', abilities: qinggongAbilities },
+      ];
+      return (
+        <div className={styles.martialJianghuPage}>
+          {rows.map((row) => (
+            <div key={row.label} className={styles.martialJianghuRow}>
+              <div className={styles.martialJianghuRowLabel}>{row.label}</div>
+              <div className={styles.martialJianghuRowBody}>
+                {row.abilities.map((ability: any) => renderDisplayAbilityTile(ability, `jianghu-${row.label}`))}
+              </div>
+            </div>
+          ))}
+          <div className={`${styles.martialJianghuRow} ${styles.martialJianghuQixueRow}`}>
+            <div className={styles.martialJianghuRowLabel}>奇穴</div>
+            <div className={styles.martialJianghuEmptyBody} />
+          </div>
+        </div>
+      );
+    };
+
+    const renderPlanSlot = (plan: MartialPresetPlan, abilityId: string | null, index: number) => {
+      const ability = getMartialAbilityDefinition(abilityId);
+      const isHover = martialPresetDropHover?.planId === plan.id && martialPresetDropHover.slotIndex === index;
+      return (
+        <div
+          key={`${plan.id}-${index}`}
+          data-martial-preset-slot="true"
+          data-martial-preset-plan-id={plan.id}
+          data-martial-preset-slot-index={index}
+          data-martial-preset-slot={index}
+          className={`${styles.martialPresetSlot} ${isHover ? styles.martialPresetSlotHover : ''}`}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!ability || panelLocked) return;
+            void updateMartialPresetSlot(plan.id, index, null);
+          }}
+        >
+          {ability ? renderAbilityTile(ability, `plan-${plan.id}-${index}`, { presetPlanId: plan.id, presetSlotIndex: index }) : <div className={styles.martialPresetEmptySlot} />}
+        </div>
+      );
+    };
+
+    const renderPresetPanel = () => presetPanelWidth > 0 && (
+      <aside className={styles.martialPresetPanel} style={{ width: presetPanelWidth, height: panelHeight }} aria-label="预设招式">
+        <div className={styles.martialPresetPanelHeader}>
+          <div className={styles.martialPresetTitleRow}>
+            <div className={styles.martialPresetPanelTitle}>预设招式({martialPresetPlans.length}/{MARTIAL_PRESET_LIMIT})</div>
+            <button type="button" className={styles.martialIconButton} disabled={panelLocked || martialPresetSaving || martialPresetPlans.length >= MARTIAL_PRESET_LIMIT} onClick={() => void createEmptyMartialPresetPlan()} aria-label="新建预设">
+              <Plus size={17} strokeWidth={2.3} aria-hidden="true" />
+            </button>
+          </div>
+          <div className={styles.martialPresetHeaderActions}>
+            <button type="button" className={styles.martialIconButton} disabled={panelLocked} onClick={() => setShowMartialPresetPanel(false)} aria-label="关闭预设招式">
+              <X size={18} strokeWidth={2.3} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        <div className={styles.martialPresetList}>
+          {martialPresetPlans.map((plan) => (
+            <div key={plan.id} className={styles.martialPresetCard}>
+              <div className={styles.martialPresetCardHeader}>
+                <div className={styles.martialPresetNameRow}>
+                  <span>{plan.name}</span>
+                  <div className={styles.martialPresetCardActions}>
+                    <button type="button" className={styles.martialIconButton} disabled={panelLocked || martialPresetSaving} onClick={() => openRenameMartialPresetModal(plan)} aria-label="编辑方案名">
+                      <Pencil size={16} strokeWidth={2.2} aria-hidden="true" />
+                    </button>
+                    <button type="button" className={styles.martialIconButton} disabled={panelLocked || martialPresetSaving} onClick={() => void deleteMartialPresetPlan(plan.id)} aria-label="删除预设">
+                      <Trash2 size={16} strokeWidth={2.2} aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+                <button type="button" className={styles.martialPresetEnableButton} disabled={panelLocked || martialPresetApplying} onClick={() => void applyMartialPreset(plan)}>启用</button>
+              </div>
+              <div className={styles.martialPresetSlots}>{normalizeMartialPresetSlots(plan.slots).map((abilityId, index) => renderPlanSlot(plan, abilityId, index))}</div>
+            </div>
+          ))}
+        </div>
+      </aside>
+    );
+
+    return (
+      <div className={styles.martialPanelBundle} style={{ width: bundleWidth, height: panelHeight }}>
+        <div
+          className={`${styles.martialPanel} ${preview ? styles.martialPanelPreview : ''}`}
+          style={{ width: panelWidth, height: panelHeight } as React.CSSProperties}
+          aria-label="武学界面"
+        >
+        <div className={styles.martialPanelHeader} onMouseDown={!panelLocked ? (event) => startMartialPanelTemporaryDrag(event, martialPanelDisplayPos, { width: bundleWidth, height: panelHeight }) : undefined}>
+          <div className={styles.martialPanelTitle}>绝境武学</div>
+          {!customUiMode && (
+            <button
+              type="button"
+              className={styles.martialPanelCloseButton}
+              aria-label="关闭武学界面"
+              onClick={() => {
+                setShowMartialPanel(false);
+                setMartialPanelTempPos(null);
+                martialPanelTempPosRef.current = null;
+              }}
+            >
+              <X size={18} strokeWidth={2.3} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+
+        <div className={styles.martialTabs} role="tablist" aria-label="武学分类">
+          <button
+            type="button"
+            className={`${styles.martialTabButton} ${martialPanelTab === 'jianghu' ? styles.martialTabButtonActive : ''}`}
+            aria-selected={martialPanelTab === 'jianghu'}
+            disabled={panelLocked}
+            onClick={() => setMartialPanelTab('jianghu')}
+          >江湖</button>
+          <button
+            type="button"
+            className={`${styles.martialTabButton} ${martialPanelTab === 'jujing' ? styles.martialTabButtonActive : ''}`}
+            aria-selected={martialPanelTab === 'jujing'}
+            disabled={panelLocked}
+            onClick={() => setMartialPanelTab('jujing')}
+          >绝境</button>
+        </div>
+
+        {isJujingTab ? (
+          <>
+            <div className={styles.martialFilters}>
+              <label className={styles.martialSearchBox}>
+                <Search size={16} strokeWidth={2.2} aria-hidden="true" />
+                <input
+                  type="text"
+                  value={martialSearch}
+                  disabled={panelLocked}
+                  placeholder="搜索招式"
+                  onChange={(event) => setMartialSearch(event.target.value)}
+                />
+              </label>
+              {renderFilterMenu({
+                label: '筛选门派',
+                selected: selectedSchool,
+                options: martialSchoolOptions,
+                open: martialSchoolOpen,
+                setOpen: setMartialSchoolOpen,
+                onSelect: setMartialSchoolFilter,
+                ref: martialSchoolRef,
+              })}
+              {renderFilterMenu({
+                label: '筛选稀有度',
+                selected: selectedRarity,
+                options: martialRarityOptions,
+                open: martialRarityOpen,
+                setOpen: setMartialRarityOpen,
+                onSelect: setMartialRarityFilter,
+                ref: martialRarityRef,
+                singleColumn: true,
+              })}
+              <label className={styles.martialEmpoweredToggle}>
+                <input
+                  type="checkbox"
+                  checked={martialEmpoweredOnly}
+                  disabled={panelLocked}
+                  onChange={(event) => setMartialEmpoweredOnly(event.target.checked)}
+                />
+                <span>强化招式</span>
+              </label>
+            </div>
+
+            <div
+              data-martial-ability-library="true"
+              className={styles.martialAbilityViewport}
+              onWheel={(event) => {
+                if (panelLocked || martialMaxRowOffset <= 0) return;
+                event.preventDefault();
+                setMartialAbilityRowOffset((offset) => Math.max(0, Math.min(martialMaxRowOffset, offset + (event.deltaY > 0 ? 1 : -1))));
+              }}
+            >
+              <div className={styles.martialAbilityGrid}>
+                {visibleMartialAbilities.map((ability: any) => renderAbilityTile(ability, 'library'))}
+              </div>
+              {martialMaxRowOffset > 0 && (
+                <div className={styles.martialCustomScrollbar} aria-hidden="true">
+                  <div className={styles.martialCustomScrollbarTrack}>
+                    <div className={styles.martialCustomScrollbarThumb} style={{ height: `${scrollbarThumbHeight}%`, top: `${scrollbarThumbTop}%` }} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className={styles.martialPanelFooterRow}>
+              <div className={styles.martialPanelHint}>右键图标激活/取消该招式</div>
+              <div className={styles.martialPresetActions}>
+                <button type="button" className={styles.martialPresetButton} disabled={panelLocked || martialPresetApplying || martialPresetSaving} onClick={openSaveMartialPresetModal}>
+                  <Save size={14} strokeWidth={2.2} aria-hidden="true" />
+                  <span>存为预设</span>
+                </button>
+                <button type="button" className={styles.martialPresetButton} disabled={panelLocked} onClick={() => setShowMartialPresetPanel((open) => !open)}>
+                  <ListChecks size={14} strokeWidth={2.2} aria-hidden="true" />
+                  <span>预设招式</span>
+                </button>
+              </div>
+            </div>
+
+            <div className={styles.martialActivePanel}>
+              <section className={`${styles.martialActiveSection} ${styles.martialLearnedSection}`} aria-label="已学习招式">
+                <div className={styles.martialActiveTab}>{renderVerticalLabel('已学习招式')}</div>
+                <div className={styles.martialActiveSlots}>
+                  {activeSlots.map((ability, index) => {
+                    const abilityRarity = ability?.abilityId ? abilities[ability.abilityId]?.rarity : undefined;
+                    const rarityBorderColor = abilityRarity ? RARITY_COLOR[abilityRarity] ?? '#53606a' : '#53606a';
+                    return (
+                      <div
+                        key={ability ? `martial-active-${ability.id}` : `martial-empty-${index}`}
+                        data-draft-slot-index={index}
+                        className={`${styles.martialActiveSlot} ${dragHoverIndex === index ? styles.martialActiveSlotHover : ''}`}
+                        onDragOver={(event) => {
+                          if (panelLocked || specialBarActive || !draggingDraftInstanceId) return;
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = 'move';
+                          setDiscardZoneHover(false);
+                          setDragHoverIndex(index);
+                        }}
+                        onDragLeave={() => {
+                          if (dragHoverIndex === index) setDragHoverIndex(null);
+                        }}
+                        onDrop={(event) => {
+                          if (panelLocked || specialBarActive) return;
+                          void handleDraftSlotDrop(event, index);
+                        }}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (!ability || panelLocked || specialBarActive) return;
+                          void discardDraftAbility(ability.id);
+                        }}
+                      >
+                        {ability ? (
+                          <button
+                            type="button"
+                            className={`${styles.martialActiveAbility} ${draggingDraftInstanceId === ability.id ? styles.abilityBtnDragging : ''}`}
+                            disabled={panelLocked}
+                            onMouseDown={(event) => beginAbilityPointerDrag(event, ability, 'draft', index)}
+                            onMouseEnter={(event) => openAbilityHint(event.currentTarget.getBoundingClientRect(), ability)}
+                            onMouseLeave={closeAbilityHint}
+                          >
+                            <span className={styles.martialAbilityIconFrame} style={{ borderColor: rarityBorderColor }}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={getArenaAbilityIconPath(ability.name, ability.iconPath)} alt={ability.name} draggable={false} />
+                            </span>
+                            <span className={styles.martialAbilityName}>{ability.name}</span>
+                          </button>
+                        ) : (
+                          <div className={styles.martialActiveEmptySlot} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+              <section className={`${styles.martialActiveSection} ${styles.martialBuffSection}`} aria-label="已激活增益">
+                <div className={styles.martialActiveTab}>{renderVerticalLabel('已激活增益')}</div>
+                <div className={`${styles.martialActiveSlots} ${styles.martialBuffSlots}`}>
+                  {Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }, (_, index) => {
+                    const buff = activeBuffSlots[index];
+                    return (
+                      <div key={buff ? `martial-buff-${buff.buffId}-${index}` : `martial-buff-empty-${index}`} className={styles.martialBuffSlot}>
+                        {buff ? (
+                          <div
+                            className={styles.martialBuffIconSlot}
+                            title={buff.name}
+                            style={{ backgroundImage: getBuffIconBackgroundImage(buff.name, (buff as any).iconPath) }}
+                          >
+                            {(buff.stacks ?? 0) > 1 && <span className={styles.martialBuffStack}>{buff.stacks}</span>}
+                          </div>
+                        ) : (
+                          <div className={`${styles.martialActiveEmptySlot} ${styles.martialBuffEmptySlot}`} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+          </>
+        ) : renderJianghuPage()}
+        </div>
+        {renderPresetPanel()}
+      </div>
+    );
+  };
+
+  const renderMartialPresetModal = () => {
+    if (!martialPresetModal) return null;
+    const isSaveModal = martialPresetModal.kind === 'save';
+    const saveTargetCount = Math.min(MARTIAL_PRESET_LIMIT, martialPresetPlans.length + 1);
+    const setModalName = (name: string) => {
+      const limitedName = Array.from(name).slice(0, 8).join('');
+      setMartialPresetModal((prev) => prev ? { ...prev, name: limitedName } : prev);
+    };
+    const confirmAction = isSaveModal ? saveMartialPresetToPlan : renameMartialPresetPlan;
+    return (
+      <div className={styles.martialModalBackdrop} data-ui-interactive>
+        <div
+          className={styles.martialModal}
+          role="dialog"
+          aria-modal="true"
+          aria-label={isSaveModal ? '保存预设招式' : '编辑方案名'}
+          style={{ '--martial-modal-width': `${Math.round(520 * martialModalScale)}px` } as React.CSSProperties}
+        >
+          <div className={styles.martialModalHeader}>
+            <div className={styles.martialModalTitle}>{isSaveModal ? '保存预设招式' : '编辑方案名'}</div>
+          </div>
+          <div className={styles.martialModalBody}>
+            {isSaveModal ? (
+              <>
+                <div className={styles.martialModalPrompt}>将当前已激活招式保存为预设招式:</div>
+                <div className={styles.martialModalTargetGrid}>
+                  {Array.from({ length: saveTargetCount }, (_, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      className={`${styles.martialModalTargetButton} ${martialPresetModal.targetIndex === index ? styles.martialModalTargetButtonActive : ''}`}
+                      onClick={() => setMartialPresetModal({
+                        kind: 'save',
+                        targetIndex: index,
+                        name: martialPresetPlans[index]?.name ?? getDefaultMartialPlanName(index),
+                      })}
+                    >
+                      {index + 1}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className={styles.martialModalPrompt}>请输入方案名，字数不能超过8个字</div>
+            )}
+            <input
+              type="text"
+              value={martialPresetModal.name}
+              maxLength={16}
+              className={styles.martialModalInput}
+              onChange={(event) => setModalName(event.target.value)}
+              autoFocus
+            />
+            <div className={styles.martialModalActions}>
+              <button type="button" className={styles.martialModalButton} disabled={martialPresetSaving} onClick={() => void confirmAction()}>确定</button>
+              <button type="button" className={styles.martialModalButton} disabled={martialPresetSaving} onClick={() => setMartialPresetModal(null)}>取消</button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
@@ -9585,20 +10727,6 @@ export default function BattleArena({
           })}
         </div>
       )}
-      {draftDragGhost && (
-        <div
-          className={styles.abilityDragGhost}
-          style={{
-            left: draftDragGhost.x,
-            top: draftDragGhost.y,
-            '--ability-panel-scale': getAbilityPanelCssScale(abilityPanelScale),
-          } as React.CSSProperties}
-          aria-hidden="true"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={getArenaAbilityIconPath(draftDragGhost.ability.name)} alt="" className={styles.abilityDragGhostIcon} draggable={false} />
-        </div>
-      )}
     </div>
   );
 
@@ -9736,6 +10864,19 @@ export default function BattleArena({
       })}
 
       {showFloatingInGameWarning && renderInGameWarning()}
+
+      {showFloatingMartialPanel && (
+        <div
+          data-ui-interactive
+          data-ui-drag={customUiMode ? 'true' : undefined}
+          className={`${styles.martialPanelPlacement} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+          style={{ left: customUiMode ? martialPanelPos.left : martialPanelDisplayPos.left, top: customUiMode ? martialPanelPos.top : martialPanelDisplayPos.top }}
+          onMouseDown={customUiMode ? (event) => startUIDrag(MARTIAL_PANEL_UI_KEY, martialPanelDefaultPos, event, { persist: false }) : undefined}
+        >
+          {customUiMode && <div className={styles.customUiPlacementLabel}>武学界面</div>}
+          {renderMartialPanel(customUiMode && !showMartialPanel)}
+        </div>
+      )}
 
       <div
         ref={itemBarRef}
@@ -10304,6 +11445,13 @@ export default function BattleArena({
                         >
                           灯光控制
                         </button>
+                        <button
+                          type="button"
+                          className={`${styles.escSettingsNavButton} ${escTestPage === 'martial' ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => setEscTestPage('martial')}
+                        >
+                          武学界面
+                        </button>
                       </aside>
                       <section className={styles.escTestContent}>
                         {escTestPage === 'switches' ? (
@@ -10327,6 +11475,15 @@ export default function BattleArena({
                             <label className={styles.escToggleRow}>
                               <input type="checkbox" checked={showHiddenBuffStatusBar} onChange={(e) => setShowHiddenBuffStatusBar(e.target.checked)} className={styles.escToggleInput} />
                               <span>显示隐藏buff</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
+                              <input
+                                type="checkbox"
+                                checked={showCheatAbilityPanelEntry}
+                                onChange={(e) => setShowCheatAbilityPanelEntry(e.target.checked)}
+                                className={styles.escToggleInput}
+                              />
+                              <span>打开测试添加技能面板</span>
                             </label>
                             <label className={styles.escToggleRow}>
                               <input
@@ -10368,6 +11525,73 @@ export default function BattleArena({
                               />
                               <span>跳跃细节和地面距离</span>
                             </label>
+                          </div>
+                        ) : escTestPage === 'martial' ? (
+                          <div className={styles.escTestGrid}>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>武学界面宽度</span>
+                                <span>{martialPanelWidth}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={MARTIAL_PANEL_MIN_WIDTH}
+                                max={MARTIAL_PANEL_MAX_WIDTH}
+                                step="10"
+                                value={martialPanelWidth}
+                                onChange={(e) => setMartialPanelWidth(normalizeMartialPanelWidth(e.target.value))}
+                                className={styles.escRangeInput}
+                                aria-label="武学界面宽度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>武学界面高度</span>
+                                <span>{martialPanelHeight}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={MARTIAL_PANEL_MIN_HEIGHT}
+                                max={MARTIAL_PANEL_MAX_HEIGHT}
+                                step="10"
+                                value={martialPanelHeight}
+                                onChange={(e) => setMartialPanelHeight(normalizeMartialPanelHeight(e.target.value))}
+                                className={styles.escRangeInput}
+                                aria-label="武学界面高度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>预设面板宽度</span>
+                                <span>{martialPresetPanelWidth}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={MARTIAL_PRESET_PANEL_MIN_WIDTH}
+                                max={MARTIAL_PRESET_PANEL_MAX_WIDTH}
+                                step="10"
+                                value={martialPresetPanelWidth}
+                                onChange={(e) => setMartialPresetPanelWidth(normalizeMartialPresetPanelWidth(e.target.value))}
+                                className={styles.escRangeInput}
+                                aria-label="预设面板宽度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>预设弹窗大小</span>
+                                <span>{Math.round(martialModalScale * 100)}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={MARTIAL_MODAL_MIN_SCALE}
+                                max={MARTIAL_MODAL_MAX_SCALE}
+                                step="0.01"
+                                value={martialModalScale}
+                                onChange={(e) => setMartialModalScale(normalizeMartialModalScale(e.target.value))}
+                                className={styles.escRangeInput}
+                                aria-label="预设弹窗大小"
+                              />
+                            </div>
                           </div>
                         ) : (
                           <div className={styles.escLightingPanel}>
@@ -11480,6 +12704,36 @@ export default function BattleArena({
         });
       })()}
 
+      <div className={styles.bottomRightQuickToggles} data-ui-interactive>
+        <button
+          type="button"
+          className={`${styles.bottomRightQuickButton} ${showTestingPanel ? styles.bottomRightQuickButtonActive : ''}`}
+          aria-label="打开ESC面板"
+          title="ESC面板"
+          onClick={toggleEscPanel}
+        >
+          <Keyboard size={18} strokeWidth={2.35} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={`${styles.bottomRightQuickButton} ${showHeartDetailsPanel ? styles.bottomRightQuickButtonActive : ''}`}
+          aria-label="打开人物属性"
+          title="人物属性"
+          onClick={() => setShowHeartDetailsPanel((visible) => !visible)}
+        >
+          <Gauge size={18} strokeWidth={2.35} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={`${styles.bottomRightQuickButton} ${showMartialPanel ? styles.bottomRightQuickButtonActive : ''}`}
+          aria-label="打开武学界面"
+          title="武学界面"
+          onClick={toggleMartialPanel}
+        >
+          <Swords size={18} strokeWidth={2.35} aria-hidden="true" />
+        </button>
+      </div>
+
       {/* ===== CONTROL PANEL: combat helpers + dummy spawn (bottom-right, left of cheat) ===== */}
       <button
         style={{
@@ -11668,6 +12922,8 @@ export default function BattleArena({
       )}
 
       {/* ===== CHEAT: Ability picker (bottom-right, toggleable) ===== */}
+      {showCheatAbilityPanelEntry && (
+        <>
       <button
         style={{
           position: 'absolute', bottom: 80, right: 8, zIndex: 200,
@@ -11777,6 +13033,8 @@ export default function BattleArena({
 
         </div>
       )}
+        </>
+      )}
 
       {/* ===== BOTTOM: WASD / Joystick (mobile left) + centered hotbar ===== */}
       <div className={styles.bottomHud} style={isMobileDevice ? { justifyContent: 'center' } : undefined}>
@@ -11795,6 +13053,23 @@ export default function BattleArena({
       </div>{/* end bottomHud */}
 
       {activeAbilityHint && <AbilityHoverHint hint={activeAbilityHint} />}
+
+      {draftDragGhost && (
+        <div
+          className={`${styles.abilityDragGhost} ${draftDragGhost.large ? styles.abilityDragGhostLarge : ''}`}
+          style={{
+            left: draftDragGhost.x,
+            top: draftDragGhost.y,
+            '--ability-panel-scale': getAbilityPanelCssScale(abilityPanelScale),
+          } as React.CSSProperties}
+          aria-hidden="true"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={getArenaAbilityIconPath(draftDragGhost.ability.name, draftDragGhost.ability.iconPath)} alt="" className={styles.abilityDragGhostIcon} draggable={false} />
+        </div>
+      )}
+
+      {renderMartialPresetModal()}
 
       {/* ===== MOBILE FORWARD/BACK + JUMP BUTTONS — anchored to root container ===== */}
       {isMobileDevice && (

@@ -3,6 +3,29 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Alpha passed / beta stage start (2026-05-24)
+
+**Milestone**:
+- The project officially passed alpha stage on 2026-05-23 and is now moving into beta-stage feature work.
+- Beta work begins with the official `P` 武学界面 / 绝境武学 ability panel, replacing the ad hoc 添加技能 flow with a player-facing panel that stays synced with the six-slot 技能栏.
+
+**Implemented**:
+- Added the official 武学界面 with 江湖/绝境 tabs, default 绝境 open state, search, 门派/稀有度 custom filters, 8-column ability grid, rarity icon borders, active six-slot strip, right-click add/remove, drag-to-slot, drag-swap, and local preset save/load controls.
+- Reused the same draft ability state and reorder/discard routes as 技能栏; extended add-ability with an optional target `slotIndex` so list-to-slot dragging can place a new ability directly into a chosen active slot.
+- Added 武学界面 to custom UI positioning and an ESC 测试 slider for temporary panel size tuning.
+- Refined the beta 武学界面 to match the reference layout more closely: separate ESC width/height controls, left-aligned tabs/filters, 8x3 instant row-wheel list scrolling with a custom scrollbar, same-style active slots, account-backed six-slot preset plans, save/rename modals, attached preset side panel, and temporary title-bar dragging.
+- Hardened the beta 武学界面 slot semantics: active slots and preset plans now reject duplicate ability ids, dragging a checked library ability moves its existing slot, checked abilities show a green check badge, right-clicking a checked library tile removes the learned ability, and preset slots swap existing entries instead of repeating them.
+- Split 江湖 into a display-only page with 防身武艺、基础招式、江湖轻功、奇穴 rows; moved all 武学界面 size controls into a dedicated ESC 测试 tab; added a modal-size setting; and polished the panel defaults, active strip, preset side panel, custom scrollbar visibility, filter controls, and input isolation.
+- Completed a fourth beta polish pass: no-slot add-ability now appends to the next open learned slot instead of slot 1, checked library tiles keep only the top-right badge, filter/search/scrollbar/preset spacing was tuned, the last martial tab is remembered, 江湖奇穴 sits shorter at the bottom, active/preset slot sizes were aligned, the 绝境 bottom strip now has 已学习招式 and 已激活增益 sections, learned abilities can be dragged back to the library to unlearn, ESC closes the martial panel first, bottom-right ESC/C/P icon toggles were added, and the legacy 添加技能 test picker is hidden behind an ESC 测试 switch by default.
+
+**Lesson**:
+- Large new UI features should first trace the full existing gameplay, slot, route, and custom UI systems before implementation so the official surface shares live state instead of duplicating it.
+- When two UI surfaces represent the same combat slots, render both from the same slot array and route all changes through the same live-state endpoints; otherwise hotbar/panel drift is almost guaranteed.
+- Preset-like combat UI should save complete slot arrays, including empty slots, so applying a plan is deterministic instead of compacting abilities into earlier slots.
+- Scrollable combat panels should avoid browser-native scrollbars; custom row paging gives better speed control and a more consistent in-game look.
+- Duplicate prevention for combat slot UIs must live in backend routes as well as frontend affordances. UI checks make the interaction feel right, but route-level de-duping keeps account presets, live hand state, and pickup/draft edge cases from drifting back into invalid repeated slots.
+- Optional slot parameters need explicit null handling. Passing no slot must not flow through numeric normalization as `0`, or append-style UI actions can silently become front-insert/swap actions.
+
 ## China VM deployment planning (2026-05-23)
 
 **Planning / finding**:

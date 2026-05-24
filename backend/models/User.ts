@@ -16,11 +16,19 @@ export type BattleArenaUiLayout = {
   updatedAt?: Date | null;
 };
 
+export type BattleArenaMartialPreset = {
+  id: string;
+  name: string;
+  slots: Array<string | null>;
+  updatedAt?: Date | string | null;
+};
+
 export interface IUser extends Document {
   username: string;
   passwordHash: string;
   tokenVersion: number;
   battleArenaUiLayout?: BattleArenaUiLayout | null;
+  battleArenaMartialPresets?: BattleArenaMartialPreset[] | null;
 
   lastSeenAt?: Date;
   lastSeenIp?: string;
@@ -52,6 +60,11 @@ const UserSchema = new Schema<IUser>(
     battleArenaUiLayout: {
       type: Schema.Types.Mixed,
       default: null,
+    },
+
+    battleArenaMartialPresets: {
+      type: Schema.Types.Mixed,
+      default: [],
     },
 
     // 👀 Presence

@@ -74,6 +74,22 @@ function isCommonAbilityCard(card: any): boolean {
   return !!card?.isCommon;
 }
 
+function getDraftCardAbilityId(card: any): string | null {
+  const abilityId = card?.abilityId ?? card?.id;
+  return typeof abilityId === "string" && abilityId.trim() ? abilityId.trim() : null;
+}
+
+function dedupeDraftCardsByAbility<T extends Record<string, any>>(cards: T[]): T[] {
+  const seen = new Set<string>();
+  return cards.filter((card) => {
+    const abilityId = getDraftCardAbilityId(card);
+    if (!abilityId) return true;
+    if (seen.has(abilityId)) return false;
+    seen.add(abilityId);
+    return true;
+  });
+}
+
 function toSelectedInstancesFromHand(hand: any[]): AbilityInstance[] {
   return normalizeDraftCardSlots((hand ?? []).filter((card: any) => !isCommonAbilityCard(card)))
     .map((card: any, fallbackIndex: number) => {
@@ -101,7 +117,7 @@ function normalizeDraftCardSlots<T extends Record<string, any>>(cards: T[]): T[]
   const assigned: Array<T | undefined> = Array.from({ length: DRAFT_ABILITY_SLOT_COUNT });
   const pending: T[] = [];
 
-  cards.forEach((card, fallbackIndex) => {
+  dedupeDraftCardsByAbility(cards).forEach((card, fallbackIndex) => {
     const hasExplicitSlot = card?.slotIndex !== undefined && Number.isFinite(Number(card.slotIndex));
     const slotIndex = normalizeDraftSlotIndex(card?.slotIndex, fallbackIndex);
     if (hasExplicitSlot && !assigned[slotIndex]) {
@@ -129,6 +145,58 @@ function getFirstAvailableDraftSlot(cards: Array<Record<string, any>>): number |
     if (!occupied.has(slotIndex)) return slotIndex;
   }
   return null;
+}
+
+function insertDraftCardAtSlot<T extends Record<string, any>>(cards: T[], card: T, preferredSlotIndex?: number | null): T[] | null {
+  const normalizedCards = normalizeDraftCardSlots(cards);
+
+  const cardAbilityId = getDraftCardAbilityId(card);
+  const existingIndex = cardAbilityId
+    ? normalizedCards.findIndex((existing) => getDraftCardAbilityId(existing) === cardAbilityId)
+    : -1;
+  if (existingIndex >= 0) {
+    const nextCards = normalizedCards.map((existing, fallbackIndex) => ({
+      ...existing,
+      slotIndex: normalizeDraftSlotIndex(existing.slotIndex, fallbackIndex),
+    }));
+    const existingCard = nextCards[existingIndex];
+    const fromSlotIndex = normalizeDraftSlotIndex(existingCard.slotIndex, existingIndex);
+    const targetSlotIndex = preferredSlotIndex === null || preferredSlotIndex === undefined
+      ? fromSlotIndex
+      : normalizeDraftSlotIndex(preferredSlotIndex, fromSlotIndex);
+    const occupiedIndex = nextCards.findIndex((existing, index) => index !== existingIndex && normalizeDraftSlotIndex(existing.slotIndex, 0) === targetSlotIndex);
+    nextCards[existingIndex] = {
+      ...existingCard,
+      slotIndex: targetSlotIndex,
+    };
+    if (occupiedIndex >= 0) {
+      nextCards[occupiedIndex] = {
+        ...nextCards[occupiedIndex],
+        slotIndex: fromSlotIndex,
+      };
+    }
+    return normalizeDraftCardSlots(nextCards);
+  }
+
+  const firstOpenSlot = getFirstAvailableDraftSlot(normalizedCards);
+  if (firstOpenSlot === null) return null;
+
+  const targetSlotIndex = preferredSlotIndex === null || preferredSlotIndex === undefined
+    ? firstOpenSlot
+    : normalizeDraftSlotIndex(preferredSlotIndex, firstOpenSlot);
+  const nextCards = normalizedCards.map((existing, fallbackIndex) => ({
+    ...existing,
+    slotIndex: normalizeDraftSlotIndex(existing.slotIndex, fallbackIndex),
+  }));
+  const occupiedIndex = nextCards.findIndex((existing) => normalizeDraftSlotIndex(existing.slotIndex, 0) === targetSlotIndex);
+  if (occupiedIndex >= 0) {
+    nextCards[occupiedIndex] = {
+      ...nextCards[occupiedIndex],
+      slotIndex: firstOpenSlot,
+    };
+  }
+  nextCards.push({ ...card, slotIndex: targetSlotIndex });
+  return normalizeDraftCardSlots(nextCards);
 }
 
 function splitDraftAndCommonCards(hand: any[]): { draftCards: any[]; commonCards: any[] } {
@@ -806,12 +874,12 @@ router.post("/battle/complete", async (req, res) => {
 /**
  * POST /cheat/add-ability - CHEAT: Add any ability directly to player's hand during battle
  * Used for testing when draft phase is disabled
- * Body: { gameId, abilityId }
+ * Body: { gameId, abilityId, slotIndex? }
  */
 router.post("/cheat/add-ability", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, abilityId } = req.body;
+    const { gameId, abilityId, slotIndex } = req.body;
 
     if (!abilityId) return res.status(400).json({ error: "abilityId required" });
 
@@ -831,28 +899,30 @@ router.post("/cheat/add-ability", async (req, res) => {
     const playerIndex = game.players.indexOf(userId);
 
     const sourceHand = game.state.players[playerIndex].hand || [];
-    const firstOpenSlot = getFirstAvailableDraftSlot(sourceHand.filter((card: any) => !isCommonAbilityCard(card)));
-    if (firstOpenSlot === null) {
-      return res.status(400).json({ error: DRAFT_ABILITY_LIMIT_ERROR });
-    }
+    const preferredSlotIndex = slotIndex === null || slotIndex === undefined ? null : normalizeDraftSlotIndex(slotIndex, 0);
 
     // Create new ability instance
     const newInstance: AbilityInstance = {
       instanceId: randomUUID(),
       abilityId,
       cooldown: 0,
-      slotIndex: firstOpenSlot,
+      slotIndex: preferredSlotIndex ?? undefined,
     };
 
-    const fullCard = { ...abilityDef, instanceId: newInstance.instanceId, abilityId, cooldown: 0, slotIndex: firstOpenSlot };
+    const fullCard = { ...abilityDef, instanceId: newInstance.instanceId, abilityId, cooldown: 0, slotIndex: preferredSlotIndex ?? undefined };
 
     // Apply to live loop first so the UI updates immediately (no DB-save wait).
     let livePlayerIndex = playerIndex;
     let handSource = [...sourceHand];
     let liveHand = (() => {
       const { draftCards, commonCards } = splitDraftAndCommonCards(handSource);
-      return [...normalizeDraftCardSlots([...draftCards, fullCard]), ...commonCards];
+      const nextDraftCards = insertDraftCardAtSlot(draftCards, fullCard, preferredSlotIndex);
+      if (!nextDraftCards) return null;
+      return [...nextDraftCards, ...commonCards];
     })();
+    if (!liveHand) {
+      return res.status(400).json({ error: DRAFT_ABILITY_LIMIT_ERROR });
+    }
     let liveVersion = game.state.version ?? 0;
 
     const gameLoop = GameLoop.get(gameId);
@@ -862,14 +932,15 @@ router.post("/cheat/add-ability", async (req, res) => {
       if (loopPlayerIdx !== -1) {
         livePlayerIndex = loopPlayerIdx;
         handSource = [...(loopState.players[loopPlayerIdx].hand || [])];
-        const loopFirstOpenSlot = getFirstAvailableDraftSlot(handSource.filter((card: any) => !isCommonAbilityCard(card)));
-        if (loopFirstOpenSlot === null) {
+        const loopPreferredSlotIndex = slotIndex === null || slotIndex === undefined ? null : normalizeDraftSlotIndex(slotIndex, 0);
+        newInstance.slotIndex = loopPreferredSlotIndex ?? undefined;
+        fullCard.slotIndex = loopPreferredSlotIndex ?? undefined;
+        const { draftCards, commonCards } = splitDraftAndCommonCards(handSource);
+        const nextDraftCards = insertDraftCardAtSlot(draftCards, fullCard, loopPreferredSlotIndex);
+        if (!nextDraftCards) {
           return res.status(400).json({ error: DRAFT_ABILITY_LIMIT_ERROR });
         }
-        newInstance.slotIndex = loopFirstOpenSlot;
-        fullCard.slotIndex = loopFirstOpenSlot;
-        const { draftCards, commonCards } = splitDraftAndCommonCards(handSource);
-        liveHand = [...normalizeDraftCardSlots([...draftCards, fullCard]), ...commonCards];
+        liveHand = [...nextDraftCards, ...commonCards];
         loopState.players[loopPlayerIdx] = {
           ...loopState.players[loopPlayerIdx],
           hand: liveHand,
@@ -891,7 +962,7 @@ router.post("/cheat/add-ability", async (req, res) => {
     res.json({ ok: true, hand: liveHand });
 
     // Persist asynchronously; cheat panel responsiveness should not wait for Mongo round-trip.
-    game.tournament.selectedAbilities[userId].push(newInstance);
+    game.tournament.selectedAbilities[userId] = toSelectedInstancesFromHand(liveHand);
     game.state.players[playerIndex] = {
       ...game.state.players[playerIndex],
       hand: liveHand,
