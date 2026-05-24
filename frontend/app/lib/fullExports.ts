@@ -9,6 +9,12 @@ type ExportedMapWarmupStats = {
 	durationMs: number;
 };
 
+export type ExportedMapAssetList = {
+	manifestUrls: string[];
+	assetUrls: string[];
+	allUrls: string[];
+};
+
 const DEFAULT_WARMUP_CONCURRENCY = 3;
 
 let exportedMapWarmupPromise: Promise<ExportedMapWarmupStats> | null = null;
@@ -151,8 +157,7 @@ async function mapWithConcurrency<T>(
 	}));
 }
 
-async function runExportedMapWarmup(concurrency: number): Promise<ExportedMapWarmupStats> {
-	const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+export async function listExportedMapAssetUrls(): Promise<ExportedMapAssetList> {
 	const manifestUrls = [
 		`${EXPORTED_MAP_DATA_PATH}/entities/full.rh.json`,
 		`${EXPORTED_MAP_DATA_PATH}/mesh-map.json`,
@@ -162,22 +167,34 @@ async function runExportedMapWarmup(concurrency: number): Promise<ExportedMapWar
 		`${EXPORTED_MAP_DATA_PATH}/mesh-collision-index.json`,
 	];
 
-	try {
-		const [entities, meshMap, mapConfig, textureMap, terrainTexIndex, collisionIndex] = await Promise.all([
-			fetchJsonCached<any[]>(manifestUrls[0]),
-			fetchJsonCached<Record<string, string>>(manifestUrls[1]),
-			fetchJsonCached<any>(manifestUrls[2]),
-			fetchJsonCached<any>(manifestUrls[3]).catch(() => null),
-			fetchJsonCached<any>(manifestUrls[4]).catch(() => null),
-			fetchJsonCached<any>(manifestUrls[5]).catch(() => null),
-		]);
+	const [entities, meshMap, mapConfig, textureMap, terrainTexIndex, collisionIndex] = await Promise.all([
+		fetchJsonCached<any[]>(manifestUrls[0]),
+		fetchJsonCached<Record<string, string>>(manifestUrls[1]),
+		fetchJsonCached<any>(manifestUrls[2]),
+		fetchJsonCached<any>(manifestUrls[3]).catch(() => null),
+		fetchJsonCached<any>(manifestUrls[4]).catch(() => null),
+		fetchJsonCached<any>(manifestUrls[5]).catch(() => null),
+	]);
 
-		const assetUrls = Array.from(new Set([
-			...collectGlbUrls(Array.isArray(entities) ? entities : [], meshMap ?? {}),
-			...collectTextureUrls(textureMap),
-			...collectTerrainUrls(mapConfig, terrainTexIndex),
-			...collectCollisionUrls(Array.isArray(entities) ? entities : [], collisionIndex),
-		]));
+	const assetUrls = Array.from(new Set([
+		...collectGlbUrls(Array.isArray(entities) ? entities : [], meshMap ?? {}),
+		...collectTextureUrls(textureMap),
+		...collectTerrainUrls(mapConfig, terrainTexIndex),
+		...collectCollisionUrls(Array.isArray(entities) ? entities : [], collisionIndex),
+	]));
+
+	return {
+		manifestUrls,
+		assetUrls,
+		allUrls: Array.from(new Set([...manifestUrls, ...assetUrls])),
+	};
+}
+
+async function runExportedMapWarmup(concurrency: number): Promise<ExportedMapWarmupStats> {
+	const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+	try {
+		const { manifestUrls, assetUrls } = await listExportedMapAssetUrls();
 
 		let fetchedCount = 0;
 		let failedCount = 0;

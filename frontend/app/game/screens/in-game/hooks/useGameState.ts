@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getClientCrashRecorder } from "@/app/game/diagnostics/clientCrashRecorder";
+import { getClientLatencyRecorder } from "@/app/game/diagnostics/clientLatencyRecorder";
 import type { AbilityInstance, GameResponse, TargetSelection } from "../types";
 
 /* ================= DIFF APPLY ================= */
@@ -69,6 +70,11 @@ type WSMessage = {
   endsAt?: number;
   timestamp?: number; // Server timestamp for RTT measurement
   serverTimestamp?: number;
+  clientSentAt?: number;
+  sequence?: number;
+  serverReceivedAt?: number;
+  serverSentAt?: number;
+  serverProcessingMs?: number;
 };
 
 type DisconnectPrompt = {
@@ -149,6 +155,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const meIndexRef = useRef<number>(-1); // set once when game loads, never changes
   // Stable index→userId mapping so WS handler can resolve opponents without stale closure
   const playerIdsRef = useRef<string[]>([]);
+  const disconnectedPlayerIdsRef = useRef<Set<string>>(new Set());
+  const latencyRecordingStoppedRef = useRef(false);
   const rttRef = useRef<number | null>(null);
   const serverTimeOffsetRef = useRef<number>(0);
   const hasServerTimeSyncRef = useRef<boolean>(false);
@@ -159,7 +167,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastChecklistPongAtRef = useRef<number>(0);
   const lastChecklistDiffAtRef = useRef<number>(0);
+  const lastStateDiffReceiveAtRef = useRef<number | null>(null);
+  const pingSeqRef = useRef(0);
+  const pendingPingsRef = useRef<Map<number, { clientSentAt: number; clientPerfSentAt: number }>>(new Map());
   const crashRecorderRef = useRef(getClientCrashRecorder());
+  const latencyRecorderRef = useRef(getClientLatencyRecorder());
 
   const updateServerTimeOffset = useCallback((serverTimestamp?: number, clientReceivedAt = Date.now()) => {
     if (typeof serverTimestamp !== "number" || !Number.isFinite(serverTimestamp)) {
@@ -182,8 +194,72 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     return serverTimeOffsetRef.current;
   }, []);
 
+  const recordHttpTiming = useCallback((
+    operation: string,
+    clientStartedAt: number,
+    clientStartedPerf: number,
+    res: Response,
+    extra?: Record<string, unknown>,
+  ) => {
+    latencyRecorderRef.current.recordHttpSample(operation, {
+      gameId,
+      ok: res.ok,
+      status: res.status,
+      clientStartedAt,
+      clientCompletedAt: Date.now(),
+      durationMs: performance.now() - clientStartedPerf,
+      rttMs: rttRef.current,
+      ...extra,
+    });
+  }, [gameId]);
+
+  const markPlayerConnectedForDiagnostics = useCallback((userId?: string | null) => {
+    if (!userId) return;
+    disconnectedPlayerIdsRef.current.delete(userId);
+    if (latencyRecordingStoppedRef.current) {
+      latencyRecordingStoppedRef.current = false;
+      latencyRecorderRef.current.startSession({
+        gameId,
+        userId: selfUserId,
+        route: typeof window !== "undefined" ? window.location.pathname : "/game/in-game",
+        stateVersion: versionRef.current,
+        playerCount: playerIdsRef.current.length || undefined,
+      });
+    }
+  }, [gameId, selfUserId]);
+
+  const stopLatencyRecordingIfAllPlayersGone = useCallback((reason: string, extra?: Record<string, unknown>) => {
+    const playerIds = [...new Set(playerIdsRef.current.filter((id): id is string => typeof id === "string" && id.length > 0))];
+    if (playerIds.length < 2) return;
+    const disconnectedIds = disconnectedPlayerIdsRef.current;
+    const allPlayersGone = playerIds.every((playerId) => disconnectedIds.has(playerId));
+    if (!allPlayersGone || latencyRecordingStoppedRef.current) return;
+
+    latencyRecordingStoppedRef.current = true;
+    latencyRecorderRef.current.stopSession("all-players-disconnected", {
+      reason,
+      playerIds,
+      disconnectedPlayerIds: [...disconnectedIds].filter((playerId) => playerIds.includes(playerId)),
+      stateVersion: versionRef.current,
+      ...extra,
+    });
+  }, []);
+
+  const markPlayerDisconnectedForDiagnostics = useCallback((userId?: string | null, reason = "unknown", extra?: Record<string, unknown>) => {
+    if (!userId) return;
+    disconnectedPlayerIdsRef.current.add(userId);
+    stopLatencyRecordingIfAllPlayersGone(reason, extra);
+  }, [stopLatencyRecordingIfAllPlayersGone]);
+
   useEffect(() => {
     crashRecorderRef.current.startSession({
+      gameId,
+      userId: selfUserId,
+      route: typeof window !== "undefined" ? window.location.pathname : "/game/in-game",
+    });
+    disconnectedPlayerIdsRef.current = new Set();
+    latencyRecordingStoppedRef.current = false;
+    latencyRecorderRef.current.startSession({
       gameId,
       userId: selfUserId,
       route: typeof window !== "undefined" ? window.location.pathname : "/game/in-game",
@@ -194,6 +270,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   /* ================= INITIAL SNAPSHOT ================= */
 
   const fetchInitialGame = useCallback(async () => {
+    const requestStartedAt = Date.now();
+    const requestStartedPerf = performance.now();
     crashRecorderRef.current.recordBehavior("snapshot-fetch-start", { gameId });
     const res = await fetch(`/api/game/${gameId}`, {
       credentials: "include",
@@ -201,6 +279,15 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
     if (!res.ok) {
       const error = await readBackendError(res);
+      latencyRecorderRef.current.recordHttpSample("snapshot", {
+        gameId,
+        ok: false,
+        status: res.status,
+        error,
+        clientStartedAt: requestStartedAt,
+        clientCompletedAt: Date.now(),
+        durationMs: performance.now() - requestStartedPerf,
+      });
       crashRecorderRef.current.recordBehavior("snapshot-fetch-failed", { gameId, status: res.status, error });
       setLoadError(error);
       setGame(null);
@@ -212,6 +299,19 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     const snapshotReceivedAt = Date.now();
     const offsetMs = updateServerTimeOffset(full.serverTimestamp, snapshotReceivedAt);
     const normalizedFull = normalizeGamePayloadTimestamps(full, offsetMs);
+    latencyRecorderRef.current.recordHttpSample("snapshot", {
+      gameId,
+      ok: true,
+      status: res.status,
+      clientStartedAt: requestStartedAt,
+      clientCompletedAt: snapshotReceivedAt,
+      durationMs: performance.now() - requestStartedPerf,
+      serverTimestamp: full.serverTimestamp,
+      estimatedClockOffsetMs: offsetMs,
+      version: normalizedFull.state?.version,
+      playerCount: normalizedFull.state?.players?.length,
+      mode: normalizedFull.mode,
+    });
     console.log("[useGameState] Snapshot fetched:", {
       hasGame: !!normalizedFull,
       hasTournament: !!normalizedFull.tournament,
@@ -222,7 +322,22 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     versionRef.current = normalizedFull.state.version ?? 0;
     const meIndex = normalizedFull.state.players.findIndex((p: any) => p.userId === selfUserId);
     const playerIds = normalizedFull.state.players.map((p: any) => p.userId as string);
+    disconnectedPlayerIdsRef.current = new Set([...disconnectedPlayerIdsRef.current].filter((playerId) => playerIds.includes(playerId)));
+    if (normalizedFull.state.leaveNotice?.userId) {
+      markPlayerDisconnectedForDiagnostics(normalizedFull.state.leaveNotice.userId, "leave-notice", {
+        endsAt: normalizedFull.state.leaveNotice.endsAt,
+      });
+    }
     crashRecorderRef.current.updateContext({
+      gameId,
+      userId: selfUserId,
+      gameMode: normalizedFull.mode,
+      tournamentPhase: normalizedFull.tournament?.phase,
+      battleNumber: normalizedFull.tournament?.battleNumber,
+      stateVersion: versionRef.current,
+      playerCount: normalizedFull.state.players.length,
+    });
+    latencyRecorderRef.current.updateContext({
       gameId,
       userId: selfUserId,
       gameMode: normalizedFull.mode,
@@ -248,6 +363,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     // Compute and cache meIndex + playerIds so WS handler can identify opponent patches
     meIndexRef.current = meIndex;
     playerIdsRef.current = playerIds;
+    stopLatencyRecordingIfAllPlayersGone("snapshot", { hasSelf: meIndex !== -1 });
     setGame(normalizedFull);
     setLoadError(null);
     setLoading(false);
@@ -269,8 +385,18 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       try {
         console.log("[WS] 1️⃣ Fetching token from /api/auth/token...");
         crashRecorderRef.current.recordWebSocketEvent("token-fetch-start", { gameId });
+        const tokenFetchStartedAt = Date.now();
+        const tokenFetchStartedPerf = performance.now();
         const res = await fetch("/api/auth/token", {
           credentials: "include",
+        });
+        latencyRecorderRef.current.recordHttpSample("auth-token", {
+          gameId,
+          ok: res.ok,
+          status: res.status,
+          clientStartedAt: tokenFetchStartedAt,
+          clientCompletedAt: Date.now(),
+          durationMs: performance.now() - tokenFetchStartedPerf,
         });
 
         console.log(`[WS] 2️⃣ Token endpoint response: ${res.status}`);
@@ -322,6 +448,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       protocol,
       host: window.location.host,
     });
+    latencyRecorderRef.current.recordWebSocketLifecycle("connecting", {
+      gameId,
+      protocol,
+      host: window.location.host,
+    });
 
     const ws = new WebSocket(wsUrl);
 
@@ -350,6 +481,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       console.error(`[WS] If readyState=0, connection is stuck in CONNECTING state`);
       console.error(`[WS] If readyState=3, connection was closed`);
       crashRecorderRef.current.recordWebSocketEvent("connect-timeout", { gameId, readyState: ws.readyState });
+      latencyRecorderRef.current.recordWebSocketLifecycle("connect-timeout", { gameId, readyState: ws.readyState });
     }, 5000);
 
     ws.onopen = () => {
@@ -358,7 +490,16 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       console.log("[WS] 6️⃣✅ WebSocket OPENED successfully!");
       console.log("[WS] Connection established - readyState:", ws.readyState);
       wsRef.current = ws;
+      markPlayerConnectedForDiagnostics(selfUserId);
       crashRecorderRef.current.recordWebSocketEvent("open", { gameId, readyState: ws.readyState });
+      latencyRecorderRef.current.startSession({
+        gameId,
+        userId: selfUserId,
+        route: typeof window !== "undefined" ? window.location.pathname : "/game/in-game",
+        stateVersion: versionRef.current,
+        playerCount: playerIdsRef.current.length || undefined,
+      });
+      latencyRecorderRef.current.recordWebSocketLifecycle("open", { gameId, readyState: ws.readyState });
       crashRecorderRef.current.recordConnectionChecklist("ws-open", { gameId, readyState: ws.readyState, version: versionRef.current }, true);
 
       // Clear reconnect timeout if it was set
@@ -370,25 +511,81 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       // Heartbeat + RTT measurement every second
       heartbeatIntervalRef.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "PING", timestamp: Date.now() }));
+          const sequence = ++pingSeqRef.current;
+          const clientSentAt = Date.now();
+          const clientPerfSentAt = performance.now();
+          pendingPingsRef.current.set(sequence, { clientSentAt, clientPerfSentAt });
+          if (pendingPingsRef.current.size > 30) {
+            const oldest = pendingPingsRef.current.keys().next().value;
+            if (typeof oldest === "number") pendingPingsRef.current.delete(oldest);
+          }
+          ws.send(JSON.stringify({
+            type: "PING",
+            timestamp: clientSentAt,
+            clientSentAt,
+            clientPerfNow: clientPerfSentAt,
+            sequence,
+          }));
         }
       }, 1000); // Every 1 second (was 25 seconds)
     };
 
     ws.onmessage = (event) => {
       try {
-        const message: WSMessage = JSON.parse(event.data);
+        const rawMessage = typeof event.data === "string" ? event.data : String(event.data);
+        const parseStartedAt = performance.now();
+        const message: WSMessage = JSON.parse(rawMessage);
         const receiveTime = performance.now();
+        const parseMs = receiveTime - parseStartedAt;
         const receiveDateNow = Date.now();
+        const payloadBytes = rawMessage.length;
 
         if (message.type === "PONG") {
           // Measure RTT from ping/pong
-          if (message.timestamp) {
-            const rttValue = receiveDateNow - message.timestamp;
+          const pendingPing = typeof message.sequence === "number"
+            ? pendingPingsRef.current.get(message.sequence)
+            : undefined;
+          const clientSentAt = pendingPing?.clientSentAt ?? message.clientSentAt ?? message.timestamp;
+          if (typeof message.sequence === "number") {
+            pendingPingsRef.current.delete(message.sequence);
+          }
+          if (clientSentAt) {
+            const rttValue = receiveDateNow - clientSentAt;
             rttRef.current = rttValue;
             setRtt((prev) => (prev === rttValue ? prev : rttValue));
           }
-          updateServerTimeOffset(message.serverTimestamp, receiveDateNow);
+          const offsetMs = updateServerTimeOffset(message.serverTimestamp, receiveDateNow);
+          const serverReceivedClientClock = typeof message.serverReceivedAt === "number"
+            ? message.serverReceivedAt + offsetMs
+            : undefined;
+          const serverSentClientClock = typeof message.serverSentAt === "number"
+            ? message.serverSentAt + offsetMs
+            : undefined;
+          latencyRecorderRef.current.recordPingSample({
+            gameId,
+            sequence: message.sequence,
+            clientSentAt,
+            clientReceivedAt: receiveDateNow,
+            clientPerfSentAt: pendingPing?.clientPerfSentAt,
+            clientPerfReceivedAt: receiveTime,
+            serverReceivedAt: message.serverReceivedAt,
+            serverSentAt: message.serverSentAt,
+            serverTimestamp: message.serverTimestamp,
+            serverProcessingMs: message.serverProcessingMs,
+            rttMs: rttRef.current,
+            estimatedClockOffsetMs: offsetMs,
+            estimatedClientToServerMs: typeof serverReceivedClientClock === "number" && typeof clientSentAt === "number"
+              ? serverReceivedClientClock - clientSentAt
+              : undefined,
+            estimatedServerToClientMs: typeof serverSentClientClock === "number"
+              ? receiveDateNow - serverSentClientClock
+              : undefined,
+            pendingPingCount: pendingPingsRef.current.size,
+            payloadBytes,
+            parseMs,
+            readyState: ws.readyState,
+            visibilityState: document.visibilityState,
+          });
           crashRecorderRef.current.recordWebSocketMessage({ type: "PONG", version: versionRef.current });
           if (receiveDateNow - lastChecklistPongAtRef.current >= 10_000) {
             lastChecklistPongAtRef.current = receiveDateNow;
@@ -403,6 +600,10 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         }
 
         if (message.type === "PLAYER_DISCONNECTED") {
+          markPlayerDisconnectedForDiagnostics(message.userId, "player-disconnected", {
+            username: message.username,
+            endsAt: message.endsAt,
+          });
           crashRecorderRef.current.recordWebSocketEvent("player-disconnected", {
             gameId,
             userId: message.userId,
@@ -421,6 +622,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         }
 
         if (message.type === "PLAYER_RECONNECTED") {
+          markPlayerConnectedForDiagnostics(message.userId);
           crashRecorderRef.current.recordWebSocketEvent("player-reconnected", {
             gameId,
             userId: message.userId,
@@ -457,6 +659,33 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             ? serverTimeOffsetRef.current
             : updateServerTimeOffset(message.timestamp, receiveDateNow);
           const normalizedDiff = normalizeDiffTimestamps(message.diff, offsetMs);
+          for (const patch of normalizedDiff) {
+            if (patch.path === "/leaveNotice" && patch.value?.userId) {
+              markPlayerDisconnectedForDiagnostics(patch.value.userId, "leave-notice", {
+                username: patch.value.username,
+                endsAt: patch.value.endsAt,
+              });
+            }
+          }
+          const previousDiffAt = lastStateDiffReceiveAtRef.current;
+          lastStateDiffReceiveAtRef.current = receiveDateNow;
+          const serverMessageAt = typeof message.timestamp === "number" ? message.timestamp : undefined;
+          latencyRecorderRef.current.recordStateDiffSample({
+            gameId,
+            type: message.type,
+            version: message.version,
+            diffCount: message.diff.length,
+            eventCount: message.events?.length,
+            payloadBytes,
+            parseMs,
+            intervalMs: previousDiffAt === null ? undefined : receiveDateNow - previousDiffAt,
+            serverTimestamp: serverMessageAt,
+            receiveLagMs: typeof serverMessageAt === "number" ? receiveDateNow - (serverMessageAt + offsetMs) : undefined,
+            rttMs: rttRef.current,
+            samplePaths: message.diff.slice(0, 6).map((patch) => patch.path),
+            readyState: ws.readyState,
+            visibilityState: document.visibilityState,
+          });
 
 
 
@@ -545,6 +774,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         readyState: ws.readyState,
         message: (err as any)?.message,
       });
+      latencyRecorderRef.current.recordWebSocketLifecycle("error", {
+        gameId,
+        readyState: ws.readyState,
+        message: (err as any)?.message,
+      });
       
       // Check if it's a network error
       if ((err as any)?.code === 'ECONNREFUSED' || (err as any)?.message?.includes('refused')) {
@@ -580,6 +814,18 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         wasClean: event.wasClean,
         readyState: ws.readyState,
       });
+      latencyRecorderRef.current.recordWebSocketLifecycle("close", {
+        gameId,
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        readyState: ws.readyState,
+      });
+      markPlayerDisconnectedForDiagnostics(selfUserId, "ws-close", {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+      });
       crashRecorderRef.current.recordConnectionChecklist("ws-close", {
         gameId,
         code: event.code,
@@ -606,7 +852,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         }, 2000);
       }
     };
-  }, [gameId, initialAuthToken, fetchInitialGame, selfUserId, updateServerTimeOffset]);
+  }, [gameId, initialAuthToken, fetchInitialGame, selfUserId, updateServerTimeOffset, markPlayerConnectedForDiagnostics, markPlayerDisconnectedForDiagnostics]);
 
   // Connect WebSocket when game is loaded — connect once, keep alive, only close on unmount
   useEffect(() => {
@@ -621,6 +867,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     return () => {
       if (wsRef.current) {
         crashRecorderRef.current.recordWebSocketEvent("cleanup-close", { gameId, readyState: wsRef.current.readyState });
+        latencyRecorderRef.current.recordWebSocketLifecycle("cleanup-close", { gameId, readyState: wsRef.current.readyState });
         wsRef.current.close();
         wsRef.current = null;
       }
@@ -731,6 +978,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
     setPlaying(true);
     try {
+      const requestStartedAt = Date.now();
+      const requestStartedPerf = performance.now();
       const res = await fetch("/api/game/play", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -746,10 +995,25 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       });
 
       if (!res.ok) {
+        recordHttpTiming("play-ability", requestStartedAt, requestStartedPerf, res, {
+          abilityInstanceId: ability.instanceId,
+          targetUserId,
+          entityTargetId,
+          movementIntent,
+        });
         return { ok: false, error: await readBackendError(res) };
       }
 
       const patch = await res.json();
+      recordHttpTiming("play-ability", requestStartedAt, requestStartedPerf, res, {
+        abilityInstanceId: ability.instanceId,
+        targetUserId,
+        entityTargetId,
+        movementIntent,
+        serverTimestamp: patch.serverTimestamp,
+        version: patch.version,
+        diffCount: patch.diff?.length,
+      });
       const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
       const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
       versionRef.current = patch.version;
@@ -775,6 +1039,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
     setPlaying(true);
     try {
+      const requestStartedAt = Date.now();
+      const requestStartedPerf = performance.now();
       const res = await fetch("/api/game/buff/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -783,10 +1049,21 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       });
 
       if (!res.ok) {
+        recordHttpTiming("cancel-buff", requestStartedAt, requestStartedPerf, res, {
+          buffId,
+          entityTargetId: options?.entityTargetId,
+        });
         return { ok: false, error: await readBackendError(res) };
       }
 
       const patch = await res.json();
+      recordHttpTiming("cancel-buff", requestStartedAt, requestStartedPerf, res, {
+        buffId,
+        entityTargetId: options?.entityTargetId,
+        serverTimestamp: patch.serverTimestamp,
+        version: patch.version,
+        diffCount: patch.diff?.length,
+      });
       const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
       const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
       versionRef.current = patch.version;
@@ -814,6 +1091,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
     setPlaying(true);
     try {
+      const requestStartedAt = Date.now();
+      const requestStartedPerf = performance.now();
       const res = await fetch("/api/game/pass", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -822,10 +1101,16 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       });
 
       if (!res.ok) {
+        recordHttpTiming("end-turn", requestStartedAt, requestStartedPerf, res);
         return { ok: false, error: await readBackendError(res) };
       }
 
       const patch = await res.json();
+      recordHttpTiming("end-turn", requestStartedAt, requestStartedPerf, res, {
+        serverTimestamp: patch.serverTimestamp,
+        version: patch.version,
+        diffCount: patch.diff?.length,
+      });
       const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
       const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
       versionRef.current = patch.version;
@@ -851,6 +1136,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
     setPlaying(true);
     try {
+      const requestStartedAt = Date.now();
+      const requestStartedPerf = performance.now();
       const res = await fetch("/api/game/channel/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -859,10 +1146,16 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       });
 
       if (!res.ok) {
+        recordHttpTiming("cancel-channel", requestStartedAt, requestStartedPerf, res);
         return { ok: false, error: await readBackendError(res) };
       }
 
       const patch = await res.json();
+      recordHttpTiming("cancel-channel", requestStartedAt, requestStartedPerf, res, {
+        serverTimestamp: patch.serverTimestamp,
+        version: patch.version,
+        diffCount: patch.diff?.length,
+      });
       const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
       const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
       versionRef.current = patch.version;
@@ -888,6 +1181,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
     setPlaying(true);
     try {
+      const requestStartedAt = Date.now();
+      const requestStartedPerf = performance.now();
       const res = await fetch("/api/game/consumable/use", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -896,10 +1191,17 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       });
 
       if (!res.ok) {
+        recordHttpTiming("use-consumable", requestStartedAt, requestStartedPerf, res, { consumableId });
         return { ok: false, error: await readBackendError(res) };
       }
 
       const patch = await res.json();
+      recordHttpTiming("use-consumable", requestStartedAt, requestStartedPerf, res, {
+        consumableId,
+        serverTimestamp: patch.serverTimestamp,
+        version: patch.version,
+        diffCount: patch.diff?.length,
+      });
       const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
       const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
       versionRef.current = patch.version;
@@ -923,6 +1225,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       return { ok: false };
     }
 
+    const requestStartedAt = Date.now();
+    const requestStartedPerf = performance.now();
     const res = await fetch("/api/game/target/selection", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -931,10 +1235,19 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     });
 
     if (!res.ok) {
+      recordHttpTiming("target-selection", requestStartedAt, requestStartedPerf, res, {
+        selectionKind: selection?.kind ?? "none",
+      });
       return { ok: false, error: await readBackendError(res) };
     }
 
     const patch = await res.json();
+    recordHttpTiming("target-selection", requestStartedAt, requestStartedPerf, res, {
+      selectionKind: selection?.kind ?? "none",
+      serverTimestamp: patch.serverTimestamp,
+      version: patch.version,
+      diffCount: patch.diff?.length,
+    });
     const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
     const normalizedDiff = normalizeDiffTimestamps(patch.diff ?? [], offsetMs);
     versionRef.current = patch.version;

@@ -3,6 +3,125 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## China VM deployment planning (2026-05-23)
+
+**Planning / finding**:
+- Current production shape is two PM2 Node processes: Next frontend on `3000` and compiled Express/WebSocket backend on `5000`, with MongoDB via `MONGO_URI` and `/ws` proxied to the backend.
+- A first mainland China deployment should start around `4 vCPU / 8 GB RAM / 80 GB SSD / 10-20 Mbps`; use `16 GB` if MongoDB is local, multiple 5-player rooms are expected, or build/install work must happen on the VM under pressure.
+- Five-player gameplay is not just infrastructure: `startGame` allows up to 5, but `joinGame` still caps rooms at 2 and backend loop/channel logic still has some 2-player assumptions.
+- Mainland VMs generally support SSH and VS Code Remote SSH, but ICP/domain rules, provider security groups, China-side npm/GitHub speed, and same-region MongoDB matter for a smooth launch.
+
+**Follow-up correction**:
+- For a tighter budget, `2 vCPU / 16 GB RAM` is a more realistic floor than insisting on `4 vCPU`. The backend is a single Node process, so extra cores are mainly headroom for frontend/nginx/Mongo contention rather than an absolute requirement for one active room.
+- `80 GB` disk is comfort, not a hard floor. Shipping built artifacts from the dev machine can fit into `40-60 GB` if MongoDB is external and logs are managed.
+- If the app VM is in mainland China but MongoDB Atlas stays in the US, cross-border DB latency and route instability are likely a bigger operational risk than raw VM size. For this scale, a local MongoDB on the VM is acceptable if it binds to localhost, has backups, and the VM keeps enough RAM headroom.
+- Oracle's public OCI pricing pages state pricing is globally consistent across locations, and Oracle lists Japan as a country with two cloud regions. Using the higher public hourly rate for budgeting, an x86 E4 VM at `1 OCPU / 16 GB` (`2 vCPU / 16 GB`) is about `$36/month` before storage, `2 OCPU / 16 GB` (`4 vCPU / 16 GB`) is about `$54/month`, and `40-60 GB` block storage adds only about `$1.02-$1.53/month`.
+- Oracle's Ampere A1 free tier is unusually attractive for low-budget deployment: up to `3,000 OCPU hours`, `18,000 GB hours`, and `200 GB` block storage monthly. In practice that can cover one `4-core / 24 GB` Arm VM if the chosen signup region has capacity, but it should be treated as best-effort capacity rather than a guaranteed production baseline.
+
+**Lesson**:
+- For this app, a China deployment runbook must cover nginx WebSocket proxying, same-region MongoDB, PM2 process scoping, fresh VM env files, and asset/build shipping. A copied `.next` directory alone is not enough because the frontend is not using Next standalone output.
+- Oracle is a strong cost candidate when the goal is low monthly spend, but the real comparison is not only VM list price: x86 gives the least deployment friction, while Arm/free-tier value is better only if region capacity and package compatibility cooperate.
+
+## Shortcut locked role actions and backend storage audit (2026-05-23)
+
+**Implemented / checked**:
+- Added locked, gray ESC 快捷键 rows for 角色动作 and made the exact W/S/A/D, arrow, Space, and T bindings unavailable to editable shortcut tabs.
+- Added 界面开关 shortcut rows for 人物属性 (`C`) and 技能界面 (`P`), with 技能界面 toggling the existing 添加技能 panel.
+- Replaced per-row 清除 buttons with right-click behavior: right-click while editing cancels capture; right-click while not editing clears the binding.
+- Confirmed live MongoDB connection uses database `baizhan_V2`; current backend code writes account/profile data to `users` and game sessions to `gamesessions`, while editor override JSON and diagnostics JSONL logs live under `/home/ubuntu/zhenchuan`.
+
+**Lesson**:
+- Role/movement keys need a reserved binding layer before user-editable shortcuts are normalized or captured. Otherwise old browser-local shortcut saves can silently steal movement keys even after the UI displays them as locked.
+
+## Ability grayout combat warnings (2026-05-22)
+
+**Implemented**:
+- Centralized BattleArena hotbar grayout reasons so disabled draft/common/special ability buttons keep a concrete `disabledWarning` string.
+- Routed disabled hotbar clicks and hotkeys through the existing 战斗警告 overlay instead of silently doing nothing for cooldown, GCD, channeling, power locks, control states, targeting, range, facing, and line-of-sight failures.
+
+**Lesson**:
+- Ability readiness and disabled-click feedback must share the same predicate path. If `isReady` only returns a boolean, the UI can gray an icon without knowing what message to show when the player tries to use it.
+
+## Common qinggong stale displacement grayout (2026-05-22)
+
+**Finding / fix**:
+- Common directional qinggong applies a short Dash Runtime buff with `DISPLACEMENT`; if the frontend state still contains that buff after its `expiresAt`, BattleArena's grayout predicates treated it as active and could lock most/all abilities with qinggong/displacement warnings.
+- Added a shared active-buff filter for BattleArena client predicates so expired player buffs are ignored locally even before the next `/players/*/buffs` patch removes them from React state.
+
+**Lesson**:
+- Frontend gameplay gates must not treat a buff array entry as active solely because it is still present in client state. Always apply the `expiresAt` guard locally for lock, control, targeting, range, and visibility predicates; compact state diffs can arrive after wall-clock expiry.
+
+## Post-dash jump prediction hitch (2026-05-22)
+
+**Finding / fix**:
+- Backend dash movement clears air-shift and airborne speed carry at dash start/end so the next jump does not inherit dash or stale airborne speed.
+- BattleArena's local active-dash prediction cleared velocity and air-shift but did not clear `airborneSpeedCarryRef`, so the first jump after dash could predict a longer travel budget than the server and then visibly reconcile.
+- Cleared frontend airborne speed carry during server-authoritative dash/recent dash snap, and made the recent-dash hard-snap window yield to a freshly queued local jump.
+
+**Lesson**:
+- For movement prediction, mirror not only position/velocity constants but also transient carry-state cleanup. A stale local carry value after dash can look like network or frame lag because the next jump is locally overpredicted and then corrected by server state.
+
+## Hidden buff display and shortcut settings (2026-05-23)
+
+**Implemented / checked**:
+- Added an ESC 测试 switch that leaves normal status bars unchanged by default and can flip StatusBar into a hidden-only mode using existing `hiddenInStatusBar` preload metadata.
+- Rebuilt ESC 快捷键设置 with 技能栏、通用栏、物品栏 tabs, two bindings per row, global binding uniqueness, keyboard Ctrl/Alt combos, mouse buttons, and wheel up/down capture while preserving the existing default bindings.
+- Confirmed accounts are stored by the backend `User` mongoose model in MongoDB database `baizhan_V2`, collection `users`; no `copilit`/`copilot` prefixed accounts existed in the active store, so the strict delete matched zero accounts.
+
+**Lesson**:
+- Debug visibility for hidden buffs should be a display-mode switch in StatusBar, not a mutation of buff metadata. Shortcut customization should layer over the existing defaults so camera/movement behavior remains unchanged until a user explicitly binds a conflicting mouse or wheel input.
+
+## Resource pack predownload and cache service (2026-05-22)
+
+**Implemented**:
+- Added a standalone `/resource-pack` page reachable from the lobby so players can warm local browser cache before entering a game.
+- Added `/resource-pack/manifest` outside `/api` because this project's Next `/api/*` paths are proxied to the backend before frontend route handlers.
+- Added a Cache Storage + service worker resource pack for normal game URLs: icons, fonts, game audio/assets, exported map files, and Next static chunks.
+- Moved lobby actions to `开始` → `下载资源包` → `校验`, with query actions that open the resource-pack flow directly.
+- Changed the lobby `下载资源包` / `校验` actions to open an embedded same-origin modal instead of navigating away from the lobby; the resource-pack route uses its own page chrome and hides the global top bar.
+- Added a download/check modal with file progress, cache completeness, live download speed, estimated remaining time, and last verification timestamp.
+- Added exported-map asset discovery so GLBs, textures, terrain textures, heightmaps, and collision sidecars are included without manual upload.
+- Made service-worker registration best-effort with a timeout and populated the manifest list before registration, preventing the page from staying at `0 / 0` if a browser's service-worker registration stalls.
+- Switched the resource-pack manifest to include the real `/full-exports/...` game URLs with file sizes instead of adding zero-sized map URLs client-side.
+
+**Lesson**:
+- A zip file alone cannot make existing `<img>`, audio, GLB loaders, and `fetch()` calls read local resources. Browser predownload should use Cache Storage and a service worker so the original URLs resolve from local cache during play.
+- Do not block the resource-pack UI on service-worker readiness; load and show the manifest first, then report cache-service availability separately.
+- `校验` should be an actual Cache Storage scan against the current manifest. If every URL is present, set a completion/verification marker and show `已完成`; otherwise clear the ready marker so stale or partial packs are not trusted.
+- Zip delivery can reduce request count and compress large JSON, but it is not directly usable by the game. A zip option must download once, stream-unzip client-side, and write each original URL into Cache Storage; otherwise normal icon/audio/GLB/map fetches cannot read it.
+- Live cold-vs-pack test showed the pack works at the transport layer: cold game load fetched about 101 MB of icon/map/GLB resources from network with map asset responseEnd around 5s; after resource-pack download, game load used Cache Storage for icons/map/GLBs with about 37 KB transfer and map asset responseEnd around 1s. If `场景加载中` remains afterward, investigate map parse/render readiness separately from resource download.
+
+## Ability and item bar minimum readable size (2026-05-22)
+
+**Implemented**:
+- Raised the minimum stored `技能栏大小` from 0.5 to 0.85 and updated the ESC slider minimum so old tiny saved values normalize upward.
+- Increased small-screen ability/item slot base size from 30px to 34px and enforced readable minimum hotkey/cooldown/count text sizes.
+
+**Lesson**:
+- Combining a very low saved UI scale with mobile CSS reductions can make ability and item bars unusably small on some screens. Clamp the setting to a playable minimum and test with old stored values like `0.5`, not only the default scale.
+
+## Network diagnostics flight recorder for China-to-US testing (2026-05-22)
+
+**Implemented**:
+- Added authenticated latency diagnostics endpoints that write sanitized JSONL batches/reports under `/home/ubuntu/zhenchuan/logs/latency/`.
+- Added a client latency recorder that auto-starts during in-game sessions and batches samples while the tester plays.
+- Added `/network-diagnostics` as the standalone 网络诊断 page with recent/starred game selection, player tabs, metric cards, slow-transfer rows, and readable timelines.
+- Added a compact 快速诊断 panel that uses the best/catcake player as the baseline, compares latency/state/movement/HTTP/transfer symptoms, and suggests whether to fix player network path, WebSocket/diff payload, `/movement`, nginx, or backend processing first.
+- Tightened 快速诊断 reliability: one-way up/down estimates from client/server timestamps are treated as clock-derived estimates, not decisive slow-transfer evidence; RTT needs sustained average/latest evidence or corroborating state/movement problems before blaming a player connection.
+- Display detailed outliers as 异常样本 rate instead of a raw scary slow-count, so rare tail spikes do not contradict a healthy quick diagnosis.
+- Measured existing latency reports and found the real gameplay transport waste was not the report reader: movement input was POSTed every 33ms even when unchanged, BattleArena also ran a duplicate HTTP ping loop despite WebSocket RTT pings, and server WebSocket broadcasts included many unchanged state patches.
+- Reduced real gameplay traffic without hiding diagnostics: full latency sample rows are kept, movement POSTs now send on input/facing change, jump, or a safety heartbeat, the duplicate HTTP ping loop was removed, WebSocket RTT feeds the HUD, and unchanged server state patches are filtered before broadcast.
+- Fixed diagnostics sanitizers to preserve boolean values; stringifying `true`/`false` made later analysis of idle movement, jumps, accepted flags, and failures unreliable.
+- Removed the in-game latency upload/download controls; gameplay UI should only record silently, not host the report reader.
+- Captured WebSocket PING/PONG RTT, server receive/send timestamps, state-diff cadence/payload sizes, snapshot/action HTTP timings, and movement POST timings with backend receive/respond timestamps.
+- Retains the latest 5 unstarred recorded games plus any starred games, and ignores generated `logs/latency/*.jsonl` / starred-store files alongside the existing diagnostics logs.
+
+**Lesson**:
+- For remote latency tests, record both client-observed timings and server timestamps, then read them from a separate diagnostics surface. RTT alone cannot distinguish China-to-US network delay, server processing time, state-diff jitter, HTTP input ACK delay, or reconnect gaps.
+- Long telemetry lists are hard to act on; always put a baseline-based summary and fix suggestion above raw timelines so a quick scan says whether the likely problem is player route, transmission direction, WebSocket state sync, movement HTTP, or backend processing.
+- Do not diagnose a nearby/same-network device as bad from P95-only or one-way timestamp estimates. Prefer reliable client-observed intervals/durations, server processing time, and multi-signal corroboration; show low-confidence observations separately.
+- Do not solve gameplay latency investigations by hiding diagnostic samples. First inspect the actual transport path: in this app, player movement upload is `/api/game/movement` HTTP, WebSocket client upload is mostly PING, and server WebSocket download can waste bandwidth by resending unchanged patches.
+
 ## Generated crash/frontend logs should stay untracked (2026-05-22)
 
 **Finding**:

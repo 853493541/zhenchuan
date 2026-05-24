@@ -225,7 +225,8 @@ function truncateText(value: string, max = 700) {
 function sanitizeValue(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
   if (value === null || value === undefined) return value;
   if (typeof value === "string") return truncateText(value);
-  if (typeof value === "number" || typeof value === "boolean") return Number.isFinite(value as number) ? value : String(value);
+  if (typeof value === "number") return Number.isFinite(value) ? value : String(value);
+  if (typeof value === "boolean") return value;
   if (typeof value === "bigint") return value.toString();
   if (typeof value === "function") return `[function ${(value as Function).name || "anonymous"}]`;
   if (typeof value !== "object") return String(value);

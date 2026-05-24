@@ -20,6 +20,7 @@ import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
 import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase } from './abilitySoundRegistry';
 import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
 import { formatCrashDiagnosticsReport, getClientCrashRecorder, type CrashRecorderSummary } from '@/app/game/diagnostics/clientCrashRecorder';
+import { getClientLatencyRecorder } from '@/app/game/diagnostics/clientLatencyRecorder';
 
 type V3 = { x: number; y: number; z: number };
 type LoadStageStatus = '完成' | '进行中' | '失败';
@@ -41,6 +42,46 @@ function createMovementClientSession() {
     ? cryptoObj.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return { id, startedAt: Date.now() };
+}
+
+type MovementDirectionPayload =
+  | { dx: number; dy: number; jump: boolean; backpedalOnly?: boolean }
+  | { up: boolean; down: boolean; left: boolean; right: boolean; jump: boolean }
+  | null;
+
+const MOVEMENT_ACTIVE_REFRESH_MS = 250;
+const MOVEMENT_IDLE_REFRESH_MS = 1_000;
+const MOVEMENT_SIGNATURE_PRECISION = 1_000;
+
+function quantizeMovementValue(value: number) {
+  return Math.round(value * MOVEMENT_SIGNATURE_PRECISION) / MOVEMENT_SIGNATURE_PRECISION;
+}
+
+function movementPayloadSignature(direction: MovementDirectionPayload, facing: { x: number; y: number }) {
+  const normalizedDirection = direction
+    ? ('dx' in direction || 'dy' in direction)
+      ? {
+          dx: quantizeMovementValue(direction.dx ?? 0),
+          dy: quantizeMovementValue(direction.dy ?? 0),
+          jump: direction.jump === true,
+          backpedalOnly: direction.backpedalOnly === true,
+        }
+      : {
+          up: direction.up === true,
+          down: direction.down === true,
+          left: direction.left === true,
+          right: direction.right === true,
+          jump: direction.jump === true,
+        }
+    : null;
+
+  return JSON.stringify({
+    direction: normalizedDirection,
+    facing: {
+      x: quantizeMovementValue(facing.x),
+      y: quantizeMovementValue(facing.y),
+    },
+  });
 }
 
 type LoadPerformanceStageState = {
@@ -379,6 +420,7 @@ const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
 const ABILITY_SOUND_SETTINGS_STORAGE_KEY = 'zhenchuan-ability-sound-settings-v1';
 const CAMERA_SETTINGS_STORAGE_KEY = 'zhenchuan-camera-settings-v1';
 const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
+const ABILITY_PANEL_MIN_SCALE = 0.85;
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
 const IN_GAME_WARNING_SCALE_STORAGE_KEY = 'zhenchuan-ingame-warning-scale-v1';
@@ -424,6 +466,9 @@ const CATCAKE_DEFAULT_UI_POSITIONS: Record<string, UiPosition> = {
 const DRAFT_ABILITY_SLOT_COUNT = 6;
 const ITEM_BAR_SLOT_COUNT = 14;
 const CONSUMABLE_BAR_STORAGE_KEY = 'zhenchuan-consumable-bar-settings-v1';
+const HOTKEY_SETTINGS_STORAGE_KEY = 'zhenchuan-hotkey-settings-v1';
+const HOTKEY_SETTINGS_VERSION = 1;
+const HOTKEY_MAX_BINDINGS_PER_ACTION = 2;
 const CONSUMABLE_BAR_MIN_SLOTS = 12;
 const CONSUMABLE_BAR_MAX_SLOTS = 16;
 const CONSUMABLE_BAR_DEFAULT_SLOTS = 12;
@@ -597,7 +642,7 @@ function getBackpedalDoubleJumpDistance(mode?: string): number {
 function normalizeAbilityPanelScale(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return 1;
-  return Math.round(Math.max(0.5, Math.min(2, numeric)) * 100) / 100;
+  return Math.round(Math.max(ABILITY_PANEL_MIN_SCALE, Math.min(2, numeric)) * 100) / 100;
 }
 
 function normalizeInGameWarningScale(value: unknown): number {
@@ -654,11 +699,11 @@ function getAbilityPanelCssScale(value: number): number {
 }
 
 function hasLegacyChannelJumpLock(buffs?: ActiveBuff[]): boolean {
-  return Array.isArray(buffs) && buffs.some((buff) => LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS.has(buff.buffId));
+  return activeBuffsClient(buffs).some((buff) => LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS.has(buff.buffId));
 }
 
 function hasLingRanTianFengStateClient(buffs?: ActiveBuff[]): boolean {
-  return Array.isArray(buffs) && buffs.some((buff: any) =>
+  return activeBuffsClient(buffs).some((buff: any) =>
     (buff.effects ?? []).some((effect: any) => effect?.type === 'LING_RAN_TIAN_FENG_STATE')
   );
 }
@@ -669,7 +714,7 @@ function isLingRanSpecialJumpActiveClient(player?: any): boolean {
 }
 
 function hasLingRanSpecialJumpRefillBuffClient(buffs?: ActiveBuff[]): boolean {
-  return Array.isArray(buffs) && buffs.some((buff) => buff.buffId === 1014 || buff.buffId === 2712);
+  return activeBuffsClient(buffs).some((buff) => buff.buffId === 1014 || buff.buffId === 2712);
 }
 
 function getRuntimeAbilityChannel(ability: any): RuntimeAbilityChannel | null {
@@ -1129,7 +1174,7 @@ const CHU_HE_HAN_JIE_COLLIDER_HEIGHT = 1.5;
 const CHU_HE_HAN_JIE_WALL_KIND = 'chu_he_han_jie_wall';
 
 function getAbilityRangeBonusClient(buffs?: ActiveBuff[]): number {
-  return (buffs ?? []).reduce((sum, buff) => {
+  return activeBuffsClient(buffs).reduce((sum, buff) => {
     const bonus = (buff.effects ?? []).reduce((effectSum, effect) => {
       if (effect.type !== 'RANGE_BOOST') return effectSum;
       return effectSum + Math.max(0, Number((effect as any).value ?? 0));
@@ -1362,9 +1407,20 @@ function buffNameIncludes(buff: ActiveBuff | any, token: string): boolean {
   return typeof buff?.name === 'string' && buff.name.includes(token);
 }
 
+function isActiveBuffClient(buff: ActiveBuff | any, now = Date.now()): boolean {
+  const expiresAt = Number(buff?.expiresAt ?? 0);
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) return true;
+  return expiresAt > now;
+}
+
+function activeBuffsClient(buffs?: ActiveBuff[]): ActiveBuff[] {
+  if (!Array.isArray(buffs) || buffs.length === 0) return [];
+  const now = Date.now();
+  return buffs.filter((buff) => isActiveBuffClient(buff, now));
+}
+
 function hasStealthClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     buffHasEffect(b, 'STEALTH') ||
     STEALTH_BUFF_IDS.has(b.buffId) ||
     buffNameIncludes(b, '隐身') ||
@@ -1373,8 +1429,7 @@ function hasStealthClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasDisguiseClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     DISGUISE_BUFF_IDS.has(b.buffId) ||
     buffHasEffect(b, 'DISGUISE') ||
     buffNameIncludes(b, '伪装')
@@ -1382,8 +1437,7 @@ function hasDisguiseClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasAntiStealthClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     buffHasEffect(b, 'ANTI_STEALTH') ||
     buffNameIncludes(b, '反隐')
   );
@@ -1406,13 +1460,11 @@ function abilityUsesStealthClient(ability?: any): boolean {
 }
 
 function hasSanliuXiaClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => SANLIU_XIA_BUFF_IDS.has(b.buffId) || buffNameIncludes(b, '散流霞'));
+  return activeBuffsClient(buffs).some((b: any) => SANLIU_XIA_BUFF_IDS.has(b.buffId) || buffNameIncludes(b, '散流霞'));
 }
 
 function hasHongMengTianJinClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     HONG_MENG_TIAN_JIN_BUFF_IDS.has(b.buffId) ||
     buffHasEffect(b, 'HONG_MENG_TIAN_JIN') ||
     buffNameIncludes(b, '鸿蒙天禁')
@@ -1420,8 +1472,7 @@ function hasHongMengTianJinClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasShuSeClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     SHU_SE_BUFF_IDS.has(b.buffId) ||
     buffHasEffect(b, 'HONG_MENG_TIAN_JIN_IMMUNE') ||
     buffNameIncludes(b, '曙色')
@@ -1429,8 +1480,7 @@ function hasShuSeClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasMianLaClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'KNOCKBACK_IMMUNE'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'KNOCKBACK_IMMUNE'));
 }
 
 function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
@@ -1438,8 +1488,7 @@ function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
 }
 
 function blocksTargetingClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     buffHasEffect(b, 'STEALTH') ||
     buffHasEffect(b, 'DISGUISE') ||
     buffHasEffect(b, 'UNTARGETABLE') ||
@@ -1453,8 +1502,7 @@ function blocksTargetingClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasQinggongSealClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     buffHasEffect(b, 'DISPLACEMENT') ||
     buffHasEffect(b, 'QINGGONG_SEAL') ||
     buffNameIncludes(b, '封轻功')
@@ -1462,28 +1510,23 @@ function hasQinggongSealClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function hasSilenceClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'SILENCE') || buffNameIncludes(b, '沉默'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'SILENCE') || buffNameIncludes(b, '沉默'));
 }
 
 function hasDisarmClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'DISARM') || buffNameIncludes(b, '缴械'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'DISARM') || buffNameIncludes(b, '缴械'));
 }
 
 function hasInnerPowerLockClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'INNER_POWER_LOCK') || buffNameIncludes(b, '封内'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'INNER_POWER_LOCK') || buffNameIncludes(b, '封内'));
 }
 
 function hasOuterPowerLockClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'OUTER_POWER_LOCK') || buffNameIncludes(b, '封外'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'OUTER_POWER_LOCK') || buffNameIncludes(b, '封外'));
 }
 
 function hasNonQinggongLockClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'NON_QINGGONG_LOCK') || buffNameIncludes(b, '轻功以外'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'NON_QINGGONG_LOCK') || buffNameIncludes(b, '轻功以外'));
 }
 
 function getAbilityDamageTypeClient(ability: any): '内功' | '外功' | undefined {
@@ -1507,24 +1550,19 @@ function getPowerLockWarningClient(ability: any, buffs?: ActiveBuff[]): string |
 }
 
 function hasYuqiStateClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  const now = Date.now();
-  return buffs.some((b: any) => b.buffId === 2741 && (b.expiresAt ?? 0) > now);
+  return activeBuffsClient(buffs).some((b: any) => b.buffId === 2741);
 }
 
 function hasDisplacementClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'DISPLACEMENT'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'DISPLACEMENT'));
 }
 
 function hasDashTurnOverrideClient(buffs?: ActiveBuff[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => buffHasEffect(b, 'DASH_TURN_OVERRIDE'));
+  return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'DASH_TURN_OVERRIDE'));
 }
 
 function buffsHaveAnyEffect(buffs: ActiveBuff[] | undefined, effectTypes: string[]): boolean {
-  if (!Array.isArray(buffs) || buffs.length === 0) return false;
-  return buffs.some((b: any) => effectTypes.some((effectType) => buffHasEffect(b, effectType)));
+  return activeBuffsClient(buffs).some((b: any) => effectTypes.some((effectType) => buffHasEffect(b, effectType)));
 }
 
 function getSpecialAbilityBarIdsClient(buffs: ActiveBuff[] | undefined): string[] {
@@ -1818,6 +1856,238 @@ type ConsumableBarSettings = {
   slotCount: number;
   slots: ConsumableSlotId[];
 };
+
+type HotkeyTabId = 'character-action' | 'interface-toggle' | 'ability' | 'common' | 'consumable';
+type HotkeyActionKind = 'interface' | 'draft' | 'common' | 'consumable';
+type HotkeySettings = Record<string, string[]>;
+type HotkeyBinding = { id: string; label: string };
+type HotkeyCaptureTarget = { actionId: string; bindingIndex: number } | null;
+type HotkeySettingsRow = { actionId: string; label: string; locked?: boolean; bindings?: string[] };
+
+const HOTKEY_SETTINGS_TABS: Array<{ id: HotkeyTabId; label: string }> = [
+  { id: 'character-action', label: '角色动作' },
+  { id: 'interface-toggle', label: '界面开关' },
+  { id: 'ability', label: '技能栏' },
+  { id: 'common', label: '通用栏' },
+  { id: 'consumable', label: '物品栏' },
+];
+
+const LOCKED_CHARACTER_ACTION_HOTKEY_ROWS: HotkeySettingsRow[] = [
+  { actionId: 'character-action:forward', label: '前进', locked: true, bindings: ['W', 'DOWN'] },
+  { actionId: 'character-action:backward', label: '后退', locked: true, bindings: ['S', 'UP'] },
+  { actionId: 'character-action:turn-left', label: '左转', locked: true, bindings: ['A', 'RIGHT'] },
+  { actionId: 'character-action:turn-right', label: '右转', locked: true, bindings: ['D', 'LEFT'] },
+  { actionId: 'character-action:strafe-left', label: '左平移', locked: true, bindings: [] },
+  { actionId: 'character-action:strafe-right', label: '右平移', locked: true, bindings: [] },
+  { actionId: 'character-action:jump', label: '跳跃', locked: true, bindings: ['SPACE'] },
+  { actionId: 'character-action:mount', label: '骑乘', locked: true, bindings: ['T'] },
+];
+
+const INTERFACE_HOTKEY_ROWS: HotkeySettingsRow[] = [
+  { actionId: 'interface:0', label: '人物属性' },
+  { actionId: 'interface:1', label: '技能界面' },
+];
+
+const RESERVED_CHARACTER_ACTION_BINDINGS = new Set(
+  LOCKED_CHARACTER_ACTION_HOTKEY_ROWS.flatMap((row) => row.bindings ?? []),
+);
+
+const HOTKEY_ACTION_IDS = [
+  ...INTERFACE_HOTKEY_ROWS.map((row) => row.actionId),
+  ...Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }, (_, index) => `draft:${index}`),
+  ...Array.from({ length: 8 }, (_, index) => `common:${index}`),
+  ...Array.from({ length: CONSUMABLE_BAR_MAX_SLOTS }, (_, index) => `consumable:${index}`),
+];
+
+const DEFAULT_HOTKEY_BINDINGS: HotkeySettings = {
+  'interface:0': ['C'],
+  'interface:1': ['P'],
+  'draft:0': ['1'],
+  'draft:1': ['2'],
+  'draft:2': ['3'],
+  'draft:3': ['Q'],
+  'draft:4': ['XB2'],
+  'draft:5': ['XB1'],
+  'common:0': ['X'],
+  'common:1': ['MB3'],
+  'common:2': ['A+W'],
+  'common:3': ['A+A'],
+  'common:4': ['A+D'],
+  'common:5': ['A+S'],
+  'common:6': ['`'],
+};
+
+function isHotkeyActionId(actionId: string): boolean {
+  return HOTKEY_ACTION_IDS.includes(actionId);
+}
+
+function buildDefaultHotkeySettings(): HotkeySettings {
+  const settings: HotkeySettings = {};
+  HOTKEY_ACTION_IDS.forEach((actionId) => {
+    settings[actionId] = [...(DEFAULT_HOTKEY_BINDINGS[actionId] ?? [])];
+  });
+  return settings;
+}
+
+function normalizeHotkeyBindingId(value: unknown): string | null {
+  const bindingId = String(value ?? '').trim().toUpperCase();
+  if (!bindingId) return null;
+  return bindingId;
+}
+
+function isReservedCharacterActionBinding(bindingId: string): boolean {
+  const normalizedBinding = normalizeHotkeyBindingId(bindingId);
+  return !!normalizedBinding && RESERVED_CHARACTER_ACTION_BINDINGS.has(normalizedBinding);
+}
+
+function normalizeHotkeyBindingList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const next: string[] = [];
+  value.forEach((entry) => {
+    const bindingId = normalizeHotkeyBindingId(entry);
+    if (!bindingId || next.includes(bindingId)) return;
+    next.push(bindingId);
+  });
+  return next.slice(0, HOTKEY_MAX_BINDINGS_PER_ACTION);
+}
+
+function normalizeHotkeySettings(raw: unknown): HotkeySettings {
+  const defaults = buildDefaultHotkeySettings();
+  const bindings = raw && typeof raw === 'object' && 'bindings' in raw
+    ? (raw as { bindings?: unknown }).bindings
+    : raw;
+  if (!bindings || typeof bindings !== 'object') return defaults;
+  HOTKEY_ACTION_IDS.forEach((actionId) => {
+    if (Object.prototype.hasOwnProperty.call(bindings, actionId)) {
+      defaults[actionId] = normalizeHotkeyBindingList((bindings as Record<string, unknown>)[actionId])
+        .filter((bindingId) => !isReservedCharacterActionBinding(bindingId));
+    }
+  });
+  return defaults;
+}
+
+function loadHotkeySettings(): HotkeySettings {
+  if (typeof window === 'undefined') return buildDefaultHotkeySettings();
+  try {
+    const raw = window.localStorage.getItem(HOTKEY_SETTINGS_STORAGE_KEY);
+    if (!raw) return buildDefaultHotkeySettings();
+    return normalizeHotkeySettings(JSON.parse(raw));
+  } catch {
+    return buildDefaultHotkeySettings();
+  }
+}
+
+function getHotkeyActionBindingLabels(settings: HotkeySettings, actionId: string): string[] {
+  return (settings[actionId] ?? []).slice(0, HOTKEY_MAX_BINDINGS_PER_ACTION);
+}
+
+function formatHotkeyBindingLabel(bindingId: string): string {
+  const parts = bindingId.split('+').filter(Boolean);
+  const base = parts.pop();
+  if (!base) return '';
+  const modifierLabels: Record<string, string> = {
+    C: 'Ctrl',
+    A: 'Alt',
+    S: 'Shift',
+    M: 'Meta',
+  };
+  const baseLabels: Record<string, string> = {
+    SPACE: 'Space',
+    UP: 'Up',
+    DOWN: 'Down',
+    LEFT: 'Left',
+    RIGHT: 'Right',
+    WU: 'MouseWheelUp',
+    WD: 'MouseWheelDown',
+    MB1: 'MouseButton1',
+    MB2: 'MouseButton2',
+    MB3: 'MouseButton3',
+    XB1: 'XButton1',
+    XB2: 'XButton2',
+  };
+  return [
+    ...parts.map((part) => modifierLabels[part] ?? part),
+    baseLabels[base] ?? base,
+  ].join('+');
+}
+
+function findHotkeyActionByBinding(settings: HotkeySettings, bindingId: string): string | null {
+  const normalizedBinding = normalizeHotkeyBindingId(bindingId);
+  if (!normalizedBinding) return null;
+  for (const actionId of HOTKEY_ACTION_IDS) {
+    if ((settings[actionId] ?? []).includes(normalizedBinding)) return actionId;
+  }
+  return null;
+}
+
+function parseHotkeyActionId(actionId: string): { kind: HotkeyActionKind; index: number } | null {
+  const [kind, indexRaw] = actionId.split(':');
+  const index = Number(indexRaw);
+  if ((kind === 'interface' || kind === 'draft' || kind === 'common' || kind === 'consumable') && Number.isInteger(index) && index >= 0) {
+    return { kind, index };
+  }
+  return null;
+}
+
+function normalizeKeyboardHotkey(event: { key: string; code: string; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean }): HotkeyBinding | null {
+  if (event.key === 'Escape') return null;
+  if (event.key === 'Control' || event.key === 'Alt' || event.key === 'Shift' || event.key === 'Meta') return null;
+
+  let base = '';
+  if (/^Key[A-Z]$/.test(event.code)) base = event.code.slice(3);
+  else if (/^Digit[0-9]$/.test(event.code)) base = event.code.slice(5);
+  else if (/^Numpad[0-9]$/.test(event.code)) base = `NUM${event.code.slice(6)}`;
+  else if (/^F\d{1,2}$/i.test(event.key)) base = event.key.toUpperCase();
+  else if (event.code === 'Space') base = 'SPACE';
+  else if (event.code === 'ArrowUp') base = 'UP';
+  else if (event.code === 'ArrowDown') base = 'DOWN';
+  else if (event.code === 'ArrowLeft') base = 'LEFT';
+  else if (event.code === 'ArrowRight') base = 'RIGHT';
+  else if (event.code === 'Backquote') base = '`';
+  else if (event.code === 'Minus') base = '-';
+  else if (event.code === 'Equal') base = '=';
+  else if (event.code === 'BracketLeft') base = '[';
+  else if (event.code === 'BracketRight') base = ']';
+  else if (event.code === 'Semicolon') base = ';';
+  else if (event.code === 'Quote') base = "'";
+  else if (event.code === 'Comma') base = ',';
+  else if (event.code === 'Period') base = '.';
+  else if (event.code === 'Slash') base = '/';
+  else if (event.code === 'Backslash') base = '\\';
+  else if (event.key.length === 1) base = event.key.toUpperCase();
+  else base = event.key.toUpperCase().replace(/\s+/g, '');
+
+  if (!base || base === 'ESCAPE') return null;
+  const parts: string[] = [];
+  if (event.ctrlKey) parts.push('C');
+  if (event.altKey) parts.push('A');
+  if (event.shiftKey) parts.push('S');
+  if (event.metaKey) parts.push('M');
+  parts.push(base.toUpperCase());
+  const label = parts.join('+');
+  return { id: label, label };
+}
+
+function normalizeMouseHotkey(button: number): HotkeyBinding | null {
+  const label = button === 0
+    ? 'MB1'
+    : button === 2
+      ? 'MB2'
+      : button === 1
+        ? 'MB3'
+        : button === 3
+          ? 'XB1'
+          : button === 4
+            ? 'XB2'
+            : '';
+  return label ? { id: label, label } : null;
+}
+
+function normalizeWheelHotkey(deltaY: number): HotkeyBinding | null {
+  if (deltaY === 0) return null;
+  const label = deltaY < 0 ? 'WU' : 'WD';
+  return { id: label, label };
+}
 
 const CONSUMABLE_ITEM_BY_ID = new Map<ConsumableItemId, ConsumableItem>(
   CONSUMABLE_ITEMS.map((item) => [item.id, item] as [ConsumableItemId, ConsumableItem]),
@@ -2353,6 +2623,7 @@ interface BattleArenaProps {
   externalGameWarning?: InGameWarningEvent | null;
   onLeaveGame?: () => Promise<void> | void;
   onMovementRecover?: () => void;
+  rtt?: number | null;
   distance: number;
   maxHp: number;
   abilities: Record<string, any>;
@@ -2387,6 +2658,7 @@ export default function BattleArena({
   externalGameWarning = null,
   onLeaveGame,
   onMovementRecover,
+  rtt = null,
   distance,
   maxHp,
   abilities,
@@ -2405,6 +2677,7 @@ export default function BattleArena({
   ensureResizeObserverSupport();
 
   const crashRecorder = useMemo(() => getClientCrashRecorder(), []);
+  const latencyRecorder = useMemo(() => getClientLatencyRecorder(), []);
   const storedUnitScale = getStoredUnitScale(mode);
   const modePickups = useMemo(() => (mode === 'collision-test' ? [] : pickups), [mode, pickups]);
   const channelAbilityByBuffId = useMemo(() => {
@@ -2515,7 +2788,6 @@ export default function BattleArena({
   const [handAbilities,    setHandAbilities]    = useState<AbilityInfo[]>([]);
   const [activeAbilityHint, setActiveAbilityHint] = useState<AbilityHintState | null>(null);
   const abilityDragActiveRef = useRef(false);
-  const [rtt,              setRtt]              = useState<number | null>(null);
   const [renderFps,        setRenderFps]        = useState<number | null>(null);
   const [systemTime,       setSystemTime]       = useState(() => new Date());
   const [wasdKeys,         setWasdKeys]         = useState({ w: false, a: false, s: false, d: false });
@@ -2710,6 +2982,9 @@ export default function BattleArena({
   const [itemBarAbilities, setItemBarAbilities] = useState<Array<AbilityInfo | undefined>>(() => createEmptyItemBarSlots());
   const itemBarAbilitiesRef = useRef<Array<AbilityInfo | undefined>>(createEmptyItemBarSlots());
   const [consumableBarSettings, setConsumableBarSettings] = useState<ConsumableBarSettings>(() => loadConsumableBarSettings());
+  const [hotkeySettings, setHotkeySettings] = useState<HotkeySettings>(() => loadHotkeySettings());
+  const [hotkeySettingsTab, setHotkeySettingsTab] = useState<HotkeyTabId>('character-action');
+  const [capturingHotkey, setCapturingHotkey] = useState<HotkeyCaptureTarget>(null);
   const [draggingConsumableIndex, setDraggingConsumableIndex] = useState<number | null>(null);
   const [dragHoverConsumableIndex, setDragHoverConsumableIndex] = useState<number | null>(null);
   const consumableDragIndexRef = useRef<number | null>(null);
@@ -2726,6 +3001,12 @@ export default function BattleArena({
       localStorage.setItem(CONSUMABLE_BAR_STORAGE_KEY, JSON.stringify(consumableBarSettings));
     } catch {}
   }, [consumableBarSettings]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HOTKEY_SETTINGS_STORAGE_KEY, JSON.stringify({ version: HOTKEY_SETTINGS_VERSION, bindings: hotkeySettings }));
+    } catch {}
+  }, [hotkeySettings]);
 
   /* --- Pickup interaction state --- */
   const [nearbyPickupIds,   setNearbyPickupIds]   = useState<string[]>([]);         // sorted closest-first
@@ -2847,6 +3128,7 @@ export default function BattleArena({
   const [showTestingPanel, setShowTestingPanel] = useState(false);
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
   const [showCameraEventTestingPanel, setShowCameraEventTestingPanel] = useState(false);
+  const [showHiddenBuffStatusBar, setShowHiddenBuffStatusBar] = useState(false);
   const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
   const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting'>('switches');
@@ -3126,6 +3408,10 @@ export default function BattleArena({
     showInGameWarning(externalGameWarning.text);
   }, [externalGameWarning?.id, externalGameWarning?.text, showInGameWarning]);
   const showAbilityDisabledWarning = useCallback((ability: AbilityInfo) => {
+    if (ability.disabledWarning) {
+      showInGameWarning(ability.disabledWarning);
+      return;
+    }
     if (ability.blockedByAntiStealth) {
       showInGameWarning('反隐期间无法施展隐身招式');
       return;
@@ -3134,9 +3420,7 @@ export default function BattleArena({
       showInGameWarning('视线被遮挡');
       return;
     }
-    if (ability.disabledWarning) {
-      showInGameWarning(ability.disabledWarning);
-    }
+    showInGameWarning(IN_GAME_WARNING_PREVIEW_TEXT);
   }, [showInGameWarning]);
   const clearCameraDebugEntries = useCallback(() => {
     cameraDebugIdRef.current = 0;
@@ -3565,6 +3849,8 @@ export default function BattleArena({
   }
   const lastMovementRecoverAtRef = useRef(0);
   const lastMovementOkLogAtRef = useRef(0);
+  const lastMovementSendRef = useRef<{ signature: string; sentAt: number } | null>(null);
+  const skippedMovementFramesRef = useRef(0);
 
   /* --- Jump / Z refs --- */
   const jumpLocalRef      = useRef(false); // drives local Z prediction
@@ -3807,6 +4093,124 @@ export default function BattleArena({
   useConsumableRef.current = (id: ConsumableItemId) => {
     void onUseConsumable?.(id);
   };
+  const getHotkeyDraftSlots = useCallback(() => {
+    const heldItemIds = new Set(itemBarAbilitiesRef.current.filter(Boolean).map((ability) => ability!.id));
+    return buildDraftAbilitySlots(
+      abilitiesRef.current
+        .filter((ability) => !ability.isCommon && !ability.isSpecialBarAbility && !heldItemIds.has(ability.id))
+        .map((ability) => {
+          const overrideSlotIndex = draftSlotOverridesRef.current[ability.id];
+          return typeof overrideSlotIndex === 'number'
+            ? { ...ability, slotIndex: normalizeDraftSlotIndex(overrideSlotIndex, overrideSlotIndex) }
+            : ability;
+        })
+    );
+  }, []);
+  const triggerAbilityHotkey = useCallback((ability: AbilityInfo | undefined, pressedId: string) => {
+    if (!ability) return false;
+    if (!ability.isReady || ability.blockedByAntiStealth) {
+      showAbilityDisabledWarning(ability);
+      return true;
+    }
+    setPressedAbilityInput(pressedId);
+    castAbilityRef.current(ability.id);
+    return true;
+  }, [showAbilityDisabledWarning]);
+  const triggerHotkeyBinding = useCallback((bindingId: string) => {
+    const actionId = findHotkeyActionByBinding(hotkeySettings, bindingId);
+    if (!actionId) return false;
+    const parsed = parseHotkeyActionId(actionId);
+    if (!parsed) return false;
+
+    if (parsed.kind === 'interface') {
+      if (parsed.index === 0) {
+        setShowHeartDetailsPanel((visible) => !visible);
+        return true;
+      }
+      if (parsed.index === 1) {
+        setShowCheatWindow((visible) => !visible);
+        return true;
+      }
+      return false;
+    }
+
+    if (parsed.kind === 'draft') {
+      const specialBarHotkeysActive = abilitiesRef.current.some((ability) => ability.isSpecialBarAbility);
+      const drafts = specialBarHotkeysActive
+        ? abilitiesRef.current.filter((ability) => ability.isSpecialBarAbility)
+        : getHotkeyDraftSlots();
+      return triggerAbilityHotkey(drafts[parsed.index], `draft-${parsed.index}`);
+    }
+
+    if (parsed.kind === 'common') {
+      if (abilitiesRef.current.some((ability) => ability.isSpecialBarAbility)) return true;
+      const commons = abilitiesRef.current.filter((ability) => ability.isCommon);
+      return triggerAbilityHotkey(commons[parsed.index], `common-${parsed.index}`);
+    }
+
+    const consumableId = consumableBarSettings.slots[parsed.index];
+    const consumable = consumableId ? CONSUMABLE_ITEM_BY_ID.get(consumableId) : undefined;
+    if (!consumableBarSettings.enabled) {
+      showInGameWarning('物品栏已关闭');
+      return true;
+    }
+    if (!consumable) {
+      showInGameWarning('该物品格为空');
+      return true;
+    }
+    if (consumable.implemented !== true) {
+      showInGameWarning('该物品暂未开放');
+      return true;
+    }
+    const count = Number(me.consumableCounts?.[consumable.id] ?? consumable.startingCount ?? 0);
+    if (count <= 0) {
+      showInGameWarning('该物品已用完');
+      return true;
+    }
+    const cooldownExpiresAt = Number(me.consumableCooldowns?.[consumable.id]?.expiresAt ?? 0);
+    if (cooldownExpiresAt > Date.now()) {
+      showInGameWarning('物品调息中');
+      return true;
+    }
+    useConsumableRef.current(consumable.id);
+    return true;
+  }, [consumableBarSettings, getHotkeyDraftSlots, hotkeySettings, me.consumableCooldowns, me.consumableCounts, showAbilityDisabledWarning, showInGameWarning, triggerAbilityHotkey]);
+
+  const captureHotkeyBinding = useCallback((target: HotkeyCaptureTarget, binding: HotkeyBinding | null) => {
+    if (!target || !binding || !isHotkeyActionId(target.actionId)) return;
+    if (isReservedCharacterActionBinding(binding.id)) {
+      toastError('角色动作按键不可占用');
+      return;
+    }
+    setHotkeySettings((current) => {
+      const next: HotkeySettings = {};
+      HOTKEY_ACTION_IDS.forEach((actionId) => {
+        next[actionId] = [...(current[actionId] ?? [])].filter((existing) => existing !== binding.id);
+      });
+      const list = [...(next[target.actionId] ?? [])];
+      list[target.bindingIndex] = binding.id;
+      next[target.actionId] = list.filter(Boolean).slice(0, HOTKEY_MAX_BINDINGS_PER_ACTION);
+      return next;
+    });
+    setCapturingHotkey(null);
+  }, []);
+
+  const clearHotkeyBinding = useCallback((actionId: string, bindingIndex: number) => {
+    if (!isHotkeyActionId(actionId)) return;
+    setHotkeySettings((current) => {
+      const next: HotkeySettings = {};
+      HOTKEY_ACTION_IDS.forEach((id) => {
+        next[id] = [...(current[id] ?? [])];
+      });
+      next[actionId] = (next[actionId] ?? []).filter((_, index) => index !== bindingIndex);
+      return next;
+    });
+  }, []);
+
+  const resetHotkeySettings = useCallback(() => {
+    setHotkeySettings(buildDefaultHotkeySettings());
+    setCapturingHotkey(null);
+  }, []);
   const setConsumableBarEnabled = useCallback((enabled: boolean) => {
     setConsumableBarSettings((prev) => ({ ...prev, enabled }));
   }, []);
@@ -4134,14 +4538,17 @@ export default function BattleArena({
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
         const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
         const forcedRenderDisplacement = forcedDisplacementRef.current;
+        const justJumpedRender = frameNow - lastJumpInputAtRef.current < 320;
         const recentDashSnap =
-          frameNow - lastObservedServerDashAtRef.current < 400 ||
-          frameNow - lastFengLiuYunSanCastAtRef.current < 700;
+          !justJumpedRender &&
+          (
+            frameNow - lastObservedServerDashAtRef.current < 400 ||
+            frameNow - lastFengLiuYunSanCastAtRef.current < 700
+          );
         const airborneRender =
           localJumpCountRef.current > 0 ||
           Math.abs(localVzRef.current) > 0.01 ||
           tz > groundHRef.current + 0.05;
-        const justJumpedRender = frameNow - lastJumpInputAtRef.current < 320;
 
         // During server-authoritative dash: HARD SNAP to server position.
         // Do NOT lerp — any lerp causes the visual to lag behind the server,
@@ -4977,10 +5384,7 @@ export default function BattleArena({
     const dashFacingLocked = !!meActiveDashRef.current && !dashTurnOverrideRef.current;
     const facingInputLocked = movementControlStateRef.current.fullyLocked || movementControlStateRef.current.rooted;
     let facingPayload = { ...meFacingRef.current };
-    let directionPayload:
-      | { dx: number; dy: number; jump: boolean; backpedalOnly?: boolean }
-      | { up: boolean; down: boolean; left: boolean; right: boolean; jump: boolean }
-      | null = null;
+    let directionPayload: MovementDirectionPayload = null;
 
     const fearedSourceUserId = movementControlStateRef.current.fearedSourceUserId;
     const fearedSourcePos = fearedSourceUserId ? opponentPositionsRef.current[fearedSourceUserId] : null;
@@ -5066,6 +5470,34 @@ export default function BattleArena({
     if (!facingInputLocked) {
       meFacingRef.current = facingPayload;
     }
+
+    const movementSignature = movementPayloadSignature(directionPayload, facingPayload);
+    const movementNow = Date.now();
+    const lastMovementSend = lastMovementSendRef.current;
+    const movementChanged = !lastMovementSend || lastMovementSend.signature !== movementSignature;
+    const movementRefreshMs = directionPayload !== null ? MOVEMENT_ACTIVE_REFRESH_MS : MOVEMENT_IDLE_REFRESH_MS;
+    const movementDue = shouldJump
+      || movementChanged
+      || !lastMovementSend
+      || movementNow - lastMovementSend.sentAt >= movementRefreshMs;
+
+    if (!movementDue) {
+      skippedMovementFramesRef.current += 1;
+      return;
+    }
+
+    const skippedBeforeSend = skippedMovementFramesRef.current;
+    skippedMovementFramesRef.current = 0;
+    const timeSinceLastMovementSendMs = lastMovementSend ? movementNow - lastMovementSend.sentAt : null;
+    const movementSendReason = shouldJump
+      ? 'jump'
+      : !lastMovementSend
+      ? 'initial'
+      : movementChanged
+      ? 'changed'
+      : 'heartbeat';
+    lastMovementSendRef.current = { signature: movementSignature, sentAt: movementNow };
+
     const seq = ++movementSeqRef.current;
     const movementClientSession = movementClientSessionRef.current;
     crashRecorder.recordMovementSample({
@@ -5079,6 +5511,11 @@ export default function BattleArena({
       keys: { ...k },
       controlMode: controlModeRef.current,
       mouseLook,
+      movementSendReason,
+      movementChanged,
+      skippedBeforeSend,
+      timeSinceLastMovementSendMs,
+      movementRefreshMs,
       position: localPositionRef.current,
       z: localZRef.current,
       locks: {
@@ -5089,6 +5526,8 @@ export default function BattleArena({
         shiXinGu: !!shiXinGuDirection || shiXinGuStandstill,
       },
     }, shouldJump || directionPayload !== null);
+    const movementRequestStartedAt = movementNow;
+    const movementRequestStartedPerf = performance.now();
     try {
       const res = await fetch('/api/game/movement', {
         method:      'POST',
@@ -5110,6 +5549,24 @@ export default function BattleArena({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
+        latencyRecorder.recordMovementRequest({
+          gameId,
+          seq,
+          ok: false,
+          status: res.status,
+          error: err,
+          clientStartedAt: movementRequestStartedAt,
+          clientCompletedAt: Date.now(),
+          durationMs: performance.now() - movementRequestStartedPerf,
+          shouldJump,
+          hasDirection: directionPayload !== null,
+          movementSendReason,
+          movementChanged,
+          skippedBeforeSend,
+          timeSinceLastMovementSendMs,
+          movementRefreshMs,
+          movementClientSessionId: movementClientSession?.id,
+        });
         crashRecorder.recordBehavior('movement-failed', { gameId, seq, status: res.status, error: err });
         const now = Date.now();
         if (now - lastMovementRecoverAtRef.current > 2000) {
@@ -5120,6 +5577,29 @@ export default function BattleArena({
       } else {
         const ack = await res.json().catch(() => null);
         const now = Date.now();
+        latencyRecorder.recordMovementRequest({
+          gameId,
+          seq,
+          ok: true,
+          status: res.status,
+          accepted: ack?.accepted,
+          ackSeq: ack?.seq,
+          clientStartedAt: movementRequestStartedAt,
+          clientCompletedAt: now,
+          durationMs: performance.now() - movementRequestStartedPerf,
+          shouldJump,
+          hasDirection: directionPayload !== null,
+          movementSendReason,
+          movementChanged,
+          skippedBeforeSend,
+          timeSinceLastMovementSendMs,
+          movementRefreshMs,
+          movementClientSessionId: movementClientSession?.id,
+          serverReceivedAt: ack?.serverReceivedAt,
+          serverRespondedAt: ack?.serverRespondedAt,
+          serverTimestamp: ack?.serverTimestamp,
+          serverProcessingMs: ack?.serverProcessingMs,
+        });
         if (shouldJump || now - lastMovementOkLogAtRef.current >= 2_000) {
           lastMovementOkLogAtRef.current = now;
           crashRecorder.recordConnectionChecklist('movement-ok', {
@@ -5129,6 +5609,11 @@ export default function BattleArena({
             accepted: ack?.accepted,
             hasDirection: directionPayload !== null,
             shouldJump,
+            movementSendReason,
+            movementChanged,
+            skippedBeforeSend,
+            timeSinceLastMovementSendMs,
+            movementRefreshMs,
             serverPosition: ack?.position,
             serverVelocity: ack?.velocity,
             returnedInput: ack?.input,
@@ -5136,9 +5621,26 @@ export default function BattleArena({
         }
       }
     } catch (err) {
+      latencyRecorder.recordMovementRequest({
+        gameId,
+        seq,
+        ok: false,
+        error: err,
+        clientStartedAt: movementRequestStartedAt,
+        clientCompletedAt: Date.now(),
+        durationMs: performance.now() - movementRequestStartedPerf,
+        shouldJump,
+        hasDirection: directionPayload !== null,
+        movementSendReason,
+        movementChanged,
+        skippedBeforeSend,
+        timeSinceLastMovementSendMs,
+        movementRefreshMs,
+        movementClientSessionId: movementClientSession?.id,
+      });
       crashRecorder.recordBehavior('movement-error', { gameId, seq, error: err });
     }
-  }, [crashRecorder, gameId, onMovementRecover]);
+  }, [crashRecorder, gameId, latencyRecorder, onMovementRecover]);
 
   useEffect(() => {
     if (me?.position && !initializedRef.current) {
@@ -5167,6 +5669,7 @@ export default function BattleArena({
         localPositionRef.current = { ...me.position };
         localZRef.current  = (me.position as any).z ?? 0;
         localVzRef.current = 0;
+        airborneSpeedCarryRef.current = 0;
         bvhCenterYInitRef.current = false; // resync cylinder center after dash
         return;
       }
@@ -5193,6 +5696,7 @@ export default function BattleArena({
       localPositionRef.current = { ...me.position };
       localZRef.current = serverZ;
       localVzRef.current = 0;
+      airborneSpeedCarryRef.current = 0;
       localDashAnimRef.current = null;
       localRenderPosRef.current = {
         x: me.position.x,
@@ -5219,9 +5723,13 @@ export default function BattleArena({
       return;
     }
 
+    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 260;
     const recentDashSnap =
-      performance.now() - lastObservedServerDashAtRef.current < 400 ||
-      performance.now() - lastFengLiuYunSanCastAtRef.current < 700;
+      !justJumpedLocally &&
+      (
+        performance.now() - lastObservedServerDashAtRef.current < 400 ||
+        performance.now() - lastFengLiuYunSanCastAtRef.current < 700
+      );
 
     // During active dash: server owns position — hard-snap XY + Z
     // Check me.activeDash directly (not ref) so this works even before React
@@ -5231,6 +5739,7 @@ export default function BattleArena({
       localPositionRef.current = { ...me.position };
       localZRef.current  = (me.position as any).z ?? 0;
       localVzRef.current = 0;
+      airborneSpeedCarryRef.current = 0;
       return;
     }
 
@@ -5271,7 +5780,6 @@ export default function BattleArena({
       localJumpCountRef.current > 0 ||
       Math.abs(localVzRef.current) > 0.01 ||
       localZ > groundHRef.current + 0.05;
-    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 260;
     const hardSnapThreshold = airborneLocal ? (justJumpedLocally ? 6.6 : 4.4) : 2.64;
     const settleThreshold = airborneLocal ? 0.132 : 0.044;
     const zBlend = airborneLocal ? (justJumpedLocally ? 0.08 : 0.16) : 0.35;
@@ -5416,12 +5924,21 @@ export default function BattleArena({
     const myPos = me.position ?? localPositionRef.current;
     const myFacing = me.facing ?? meFacingRef.current;
     const qinggongSealed = hasQinggongSealClient(me.buffs);
-    const disarmed = hasDisarmClient(me.buffs);
     const nonQinggongLocked = hasNonQinggongLockClient(me.buffs);
     const rootedByDebuff = buffsHaveAnyEffect(me.buffs, ['ROOT']);
+    const displaced = hasDisplacementClient(me.buffs);
+    const knockedBack = buffsHaveAnyEffect(me.buffs, ['KNOCKED_BACK']);
+    const pulled = buffsHaveAnyEffect(me.buffs, ['PULLED']);
+    const controlled = buffsHaveAnyEffect(me.buffs, ['CONTROL', 'ATTACK_LOCK']);
     const yuqiMounted = hasYuqiStateClient(me.buffs);
 
-    const isAbilityReady = (ab: any, instance: any): boolean => {
+    const abilityAllowsRuntimeBlockClient = (ab: any, flag: string): boolean => (
+      ab?.[flag] === true ||
+      (Array.isArray(ab?.effects) && ab.effects.some((effect: any) => effect?.[flag] === true))
+    );
+
+    const getAbilityDisabledWarning = (ab: any, instance: any): string | undefined => {
+      if (!ab) return '技能配置不存在';
       const targetContext = getAbilityTargetContext(ab);
       const targetForChecks = targetContext.targetForChecks;
       const targetPos = targetContext.targetPos;
@@ -5432,74 +5949,87 @@ export default function BattleArena({
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       if (maxCharges > 1) {
         const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
-        const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0), sharedGcdTicks);
-        if (chargeLockTicks > 0) return false;
-        if (chargeCount <= 0) return false;
-      } else if (Math.max(0, Number(instance?.cooldown ?? 0), sharedGcdTicks) > 0) {
-        return false;
+        const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0));
+        if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
+        if (chargeLockTicks > 0) return '这个能力正在冷却';
+        if (chargeCount <= 0) return '招式层数正在恢复';
+      } else {
+        const instanceCooldown = Math.max(0, Number(instance?.cooldown ?? 0));
+        if (instanceCooldown > 0) return '这个能力正在冷却';
+        if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
       }
+
       const airborneLockedLocal =
         jumpLocalRef.current ||
         jumpSendRef.current ||
         localJumpCountRef.current > 0 ||
         Math.abs(localVzRef.current) > 0.01;
-      if (ab?.requiresGrounded && airborneLockedLocal) return false;
-      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return false;
+      if (isQinggongLike && qinggongSealed) return '你被封轻功，无法施放轻功技能';
+      if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
+        return '凌然天风特殊跳跃中无法施展任驰骋';
+      }
+      if (me?.activeChannel) return '正在进行其他动作';
+      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '御骑状态下无法施展该招式';
+      const powerLockWarning = getPowerLockWarningClient(ab, me.buffs);
+      if (powerLockWarning) return powerLockWarning;
+      if (nonQinggongLocked && !isQinggongLike) return '你当前只能施展轻功招式';
+      if (displaced && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileDisplaced')) return '该招式无法在位移时施展';
+      if (knockedBack && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileKnockedBack')) return '你被击退，无法行动';
+      if (pulled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhilePulled')) return '你被拉拽，无法行动';
+      if (controlled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileControlled')) return '你被控制，无法行动';
+      if (ab?.cannotCastWhileRooted && rootedByDebuff) return '你被锁足，无法施展该招式';
+      if (ab?.requiresGrounded && airborneLockedLocal && !mountedYuqiToggle) return '该技能需要落地后施放';
       if (requiresStandingAtCastClient(ab) && !mountedYuqiToggle) {
-        if (isStandingCastBlocked(wasdKeys)) return false;
+        if (isStandingCastBlocked(wasdKeys)) return '该技能需要站立后施放';
       }
       if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
-        return false;
+        return `当前气血必须大于${ab.minSelfHpExclusive}才能施放`;
       }
       if (typeof ab?.minSelfHpPercentExclusive === 'number') {
         const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ab.minSelfHpPercentExclusive / 100);
-        if ((me?.hp ?? 0) <= requiredHp) return false;
+        if ((me?.hp ?? 0) <= requiredHp) return `当前气血必须大于${ab.minSelfHpPercentExclusive}%才能施放`;
       }
-      if (getPowerLockWarningClient(ab, me.buffs)) return false;
-      if (disarmed && ab?.noWeaponRequired !== true) return false;
-      if (nonQinggongLocked && !isQinggongLike) return false;
-      if (isQinggongLike && qinggongSealed) return false;
-      if (ab?.cannotCastWhileRooted && rootedByDebuff) return false;
-      if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) return false;
+
+      // Ground-target abilities stay available after caster-state checks.
+      if (ab?.target === 'OPPONENT' && !!ab?.allowGroundCastWithoutTarget) return undefined;
+
+      const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
+      if (needsSelectedTarget && selectedSelf && !targetContext.friendlyTarget && !ab?.canTargetSelf) {
+        return '该技能不能以自己为目标';
+      }
+      if (needsSelectedTarget && targetContext.friendlyTarget && !targetContext.hasSelectedTarget) return '请先选择友方目标';
+      if (needsSelectedTarget && !targetPos) return targetContext.friendlyTarget ? '请先选择友方目标' : '请先选择目标';
 
       // 拿云式: target HP must be < 30%
       if (ab?.id === 'na_yun_shi' || instance?.abilityId === 'na_yun_shi') {
         const tgtHp = (targetForChecks as any)?.hp ?? Infinity;
         const tgtMaxHp = Math.max(1, Number((targetForChecks as any)?.maxHp ?? 100));
-        if (tgtHp >= tgtMaxHp * 0.3) return false;
+        if (tgtHp >= tgtMaxHp * 0.3) return '目标气血过高，无法施放';
       }
       // 梯云纵 / 扶摇直上 mutual exclusion (mirrors backend gate)
       if (ab?.id === 'ti_yun_zong' || instance?.abilityId === 'ti_yun_zong') {
         const now = Date.now();
-        if ((me.buffs ?? []).some((b: any) => b.buffId === 9001 && b.expiresAt > now)) return false;
+        if ((me.buffs ?? []).some((b: any) => b.buffId === 9001 && b.expiresAt > now)) return '该招式被当前气劲阻止';
       }
       if (ab?.id === 'fuyao_zhishang' || instance?.abilityId === 'fuyao_zhishang') {
         const now = Date.now();
-        if ((me.buffs ?? []).some((b: any) => b.buffId === 9003 && b.expiresAt > now)) return false;
+        if ((me.buffs ?? []).some((b: any) => b.buffId === 9003 && b.expiresAt > now)) return '该招式被当前气劲阻止';
       }
-
-      // Ground-target abilities always ready regardless of target selection or range
-      if (ab?.target === 'OPPONENT' && !!ab?.allowGroundCastWithoutTarget) return true;
-
-      const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
-      if (needsSelectedTarget && targetContext.selfTarget && !targetContext.friendlyTarget && !ab?.canTargetSelf) return false;
-      if (needsSelectedTarget && targetContext.friendlyTarget && !targetContext.hasSelectedTarget) return false;
-      if (needsSelectedTarget && !targetPos) return false;
       if ((ab?.id === 'hong_meng_tian_jin' || instance?.abilityId === 'hong_meng_tian_jin') && hasShuSeClient((targetForChecks as any)?.buffs)) {
-        return false;
+        return '目标已受曙色影响';
       }
       if (ab?.id === 'dou_zhuan_xing_yi' || instance?.abilityId === 'dou_zhuan_xing_yi') {
-        if (targetContext.entityTarget) return false;
-        if (hasMianLaClient((targetForChecks as any)?.buffs)) return false;
+        if (targetContext.entityTarget) return '该技能只能对敌方玩家施放';
+        if (hasMianLaClient((targetForChecks as any)?.buffs)) return '目标处于免拉状态';
       }
       if (ab?.id === 'qin_yin_gong_ming' || instance?.abilityId === 'qin_yin_gong_ming') {
-        if (targetContext.entityTarget) return false;
+        if (targetContext.entityTarget) return '该技能只能对敌方玩家施放';
       }
       if (abilityIdForChecks === 'you_feng_piao_zong' && !targetContext.playerTarget) {
-        return false;
+        return '请先选择敌方目标';
       }
 
-      if (ab?.target !== 'OPPONENT') return true;
+      if (ab?.target !== 'OPPONENT') return undefined;
 
       const distanceToTarget = (myPos && targetPos)
         ? worldUnitsToNewUnits(Math.sqrt(
@@ -5509,24 +6039,27 @@ export default function BattleArena({
           ), mode)
         : Infinity;
       const effectiveRange = getEffectiveAbilityRangeClient(ab, me?.buffs);
-      const inMaxRange = !effectiveRange || distanceToTarget <= effectiveRange;
-      const inMinRange = !ab?.minRange || distanceToTarget >= ab.minRange;
-      if (!inMaxRange || !inMinRange) return false;
+      const inMaxRange = typeof effectiveRange !== 'number' || distanceToTarget <= effectiveRange;
+      const inMinRange = typeof ab?.minRange !== 'number' || distanceToTarget >= ab.minRange;
+      if (!inMaxRange) return '距离太远，无法释放该能力';
+      if (!inMinRange) return '距离太近，无法释放该能力';
 
       if (ab?.target === 'OPPONENT' && myPos && targetPos && !targetContext.selfTarget && !targetContext.friendlyTarget) {
         if (requiresFacingByDefault(ab) && myFacing) {
           const dx = targetPos.x - myPos.x;
           const dy = targetPos.y - myPos.y;
-          if (myFacing.x * dx + myFacing.y * dy < 0) return false;
+          if (myFacing.x * dx + myFacing.y * dy < 0) return '目标不在面朝方向内';
         }
           const myZ2 = (myPos as any)?.z ?? localZRef.current ?? 0;
           const tgtZ2 = (targetPos as any)?.z ?? 0;
           if (isClientLineBlocked(myPos, targetPos, myZ2, tgtZ2, targetContext.entityTarget?.id)) {
-            return false;
+            return '视线被遮挡';
           }
       }
-      return true;
+      return undefined;
     };
+
+    const isAbilityReady = (ab: any, instance: any): boolean => !getAbilityDisabledWarning(ab, instance);
 
     const antiStealthActive = hasAntiStealthClient(me?.buffs);
 
@@ -5569,23 +6102,17 @@ export default function BattleArena({
             qinggongGcdImmune: false,
             cannotCastWhileRooted: false,
             allowGroundCastWithoutTarget: false,
+            disabledWarning: getAbilityDisabledWarning(ability, instance),
           };
         }
         const chargeDisplay = getChargeDisplay(ability, instance);
-        const isReadyVal = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
-        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
+        const disabledWarning = antiStealthBlocked
+          ? '反隐期间无法施展隐身招式'
+          : getAbilityDisabledWarning(ability, instance);
+        const isReadyVal = !disabledWarning;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
-        const targetContext = getAbilityTargetContext(ability);
-        const losBlockedVal = !isReadyVal && (ability as any)?.target === 'OPPONENT' && !(ability as any)?.friendlyTarget && myPos && targetContext.targetPos
-          ? isClientLineBlocked(
-              myPos,
-              targetContext.targetPos,
-              (myPos as any)?.z ?? localZRef.current ?? 0,
-              (targetContext.targetPos as any)?.z ?? 0,
-              targetContext.entityTarget?.id,
-            )
-          : false;
+        const losBlockedVal = disabledWarning === '视线被遮挡';
         return {
           id:          instanceId,
           abilityId:      ability.id,
@@ -5638,9 +6165,11 @@ export default function BattleArena({
         if (!ability) return null;
         const instance = me?.specialAbilityStates?.[ability.id] ?? { instanceId: ability.id, abilityId: ability.id, cooldown: 0 };
         const chargeDisplay = getChargeDisplay(ability, instance);
-        const isReadyVal = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
-        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
+        const disabledWarning = antiStealthBlocked
+          ? '反隐期间无法施展隐身招式'
+          : getAbilityDisabledWarning(ability, instance);
+        const isReadyVal = !disabledWarning;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
         return {
           id: ability.id,
@@ -5663,7 +6192,7 @@ export default function BattleArena({
           chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
           chargeLockTicks: chargeDisplay.chargeLockTicks,
           isReady: isReadyVal,
-          losBlocked: false,
+          losBlocked: disabledWarning === '视线被遮挡',
           isCommon: false,
           isSpecialBarAbility: true,
           target: (ability.target as 'SELF' | 'OPPONENT') ?? 'SELF',
@@ -5697,20 +6226,13 @@ export default function BattleArena({
           (h: any) => (h.abilityId ?? h.id) === ability.id
         );
         const chargeDisplay = getChargeDisplay(ability, instance ?? {});
-        const isReadyCom = isAbilityReady(ability, instance);
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
-        const disabledWarning = getPowerLockWarningClient(ability, me.buffs) ?? undefined;
+        const disabledWarning = antiStealthBlocked
+          ? '反隐期间无法施展隐身招式'
+          : getAbilityDisabledWarning(ability, instance);
+        const isReadyCom = !disabledWarning;
         const effectiveRange = getEffectiveAbilityRangeClient(ability, me?.buffs);
-        const targetContext = getAbilityTargetContext(ability);
-        const losBlockedCom = !isReadyCom && (ability as any)?.target === 'OPPONENT' && !(ability as any)?.friendlyTarget && myPos && targetContext.targetPos
-          ? isClientLineBlocked(
-              myPos,
-              targetContext.targetPos,
-              (myPos as any)?.z ?? localZRef.current ?? 0,
-              (targetContext.targetPos as any)?.z ?? 0,
-              targetContext.entityTarget?.id,
-            )
-          : false;
+        const losBlockedCom = disabledWarning === '视线被遮挡';
         return {
           id:          ability.id,
           abilityId:      ability.id,
@@ -5779,10 +6301,16 @@ export default function BattleArena({
     me.hp,
     me.position,
     me.facing,
+    me.activeChannel,
     selectedTargetId,
+    selectedEntityId,
+    selectedSelf,
     targetableOpponentsList,
+    targetableEntityList,
+    visibleEntities,
     distance,
     abilities,
+    mode,
     wasdKeys,
     hasMovementIntent,
     isStandingCastBlocked,
@@ -6272,19 +6800,6 @@ export default function BattleArena({
 
   // ── Keyboard input ──
   useEffect(() => {
-    const getHotkeyDraftSlots = () => {
-      const heldItemIds = new Set(itemBarAbilitiesRef.current.filter(Boolean).map((ability) => ability!.id));
-      return buildDraftAbilitySlots(
-        abilitiesRef.current
-          .filter(a => !a.isCommon && !a.isSpecialBarAbility && !heldItemIds.has(a.id))
-          .map((ability) => {
-            const overrideSlotIndex = draftSlotOverridesRef.current[ability.id];
-            return typeof overrideSlotIndex === 'number'
-              ? { ...ability, slotIndex: normalizeDraftSlotIndex(overrideSlotIndex, overrideSlotIndex) }
-              : ability;
-          }),
-      );
-    };
     const resetMovementKeys = () => {
       autoForwardRef.current = false;
       setAutoForward(false);
@@ -6385,11 +6900,6 @@ export default function BattleArena({
         }
         return;
       }
-      if (k === 'c' && !e.altKey) {
-        e.preventDefault();
-        if (!e.repeat) setShowHeartDetailsPanel(v => !v);
-        return;
-      }
       // Tab / F1 — select the nearest currently targetable enemy player or entity.
       // Rules:
       //   - Only consider targets within ±90° of facing (180° front cone).
@@ -6451,47 +6961,10 @@ export default function BattleArena({
         selectedSelfRef.current = false;
         return;
       }
-      // ── Draft slots: 1  2  3  Q ──
-      const specialBarHotkeysActive = abilitiesRef.current.some(a => a.isSpecialBarAbility);
-      const drafts = specialBarHotkeysActive
-        ? abilitiesRef.current.filter(a => a.isSpecialBarAbility)
-        : getHotkeyDraftSlots();
-      const triggerAbilityHotkey = (ability: AbilityInfo | undefined, pressedId: string) => {
-        if (!ability) return;
-        setPressedAbilityInput(pressedId);
-        if (ability.isReady && !ability.blockedByAntiStealth) {
-          castAbilityRef.current(ability.id);
-        } else {
-          showAbilityDisabledWarning(ability);
-        }
-      };
-      if (e.key === '1' && drafts[0]) { triggerAbilityHotkey(drafts[0], 'draft-0'); return; }
-      if (e.key === '2' && drafts[1]) { triggerAbilityHotkey(drafts[1], 'draft-1'); return; }
-      if (e.key === '3' && drafts[2]) { triggerAbilityHotkey(drafts[2], 'draft-2'); return; }
-      if (k === 'q' && !e.altKey && drafts[3]) { triggerAbilityHotkey(drafts[3], 'draft-3'); return; }
-      // ── Common abilities: X  Alt+A  Alt+D  Alt+S  `  T ──
-      const commons = specialBarHotkeysActive ? [] : abilitiesRef.current.filter(a => a.isCommon);
-      if (k === 'x' && !e.altKey) {
-        // index 0 = 猛虎下山
-        triggerAbilityHotkey(commons[0], 'common-0');
+      const pressedHotkey = normalizeKeyboardHotkey(e);
+      if (pressedHotkey && triggerHotkeyBinding(pressedHotkey.id)) {
+        e.preventDefault();
         return;
-      }
-      if (k === 't' && !e.altKey) {
-        // index 7 = 御骑
-        triggerAbilityHotkey(commons[7], 'common-7');
-        return;
-      }
-      if (e.key === '`') {
-        // index 6 = 后撤
-        triggerAbilityHotkey(commons[6], 'common-6');
-        return;
-      }
-      if (e.altKey) {
-        e.preventDefault(); // suppress browser Alt shortcuts
-        if (k === 'w') triggerAbilityHotkey(commons[2], 'common-2'); // 蹑云逐月
-        if (k === 'a') triggerAbilityHotkey(commons[3], 'common-3'); // 凌霄揽胜
-        if (k === 'd') triggerAbilityHotkey(commons[4], 'common-4'); // 瑶台枕鹤
-        if (k === 's') triggerAbilityHotkey(commons[5], 'common-5'); // 迎风回浪
       }
     };
     const onUp = (e: KeyboardEvent) => {
@@ -6524,7 +6997,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, showAbilityDisabledWarning]);
+  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, triggerHotkeyBinding]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -6598,6 +7071,9 @@ export default function BattleArena({
       manualCameraLookActiveRef.current = false;
       setPressedAbilityInput(null);
     };
+    const isMouseUiTarget = (target: EventTarget | null) => {
+      return !!(target as HTMLElement | null)?.closest(`button, input, select, textarea, label, [data-ui-drag], [data-ui-interactive], .${styles.escOverlay}`);
+    };
 
     const onMouseDown = (e: MouseEvent) => {
       if (customUiMode) {
@@ -6609,10 +7085,16 @@ export default function BattleArena({
         return;
       }
       crashRecorder.recordBehavior('mouse-down', { button: e.button, x: e.clientX, y: e.clientY });
+      const mouseHotkey = normalizeMouseHotkey(e.button);
+      if (mouseHotkey && !isMouseUiTarget(e.target) && triggerHotkeyBinding(mouseHotkey.id)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       // Left button — start camera drag
       if (e.button === 0) {
         // Only start drag if not clicking a UI button or a draggable panel
-        if ((e.target as HTMLElement).closest(`button, input, select, textarea, label, [data-ui-drag], [data-ui-interactive], .${styles.escOverlay}`)) return;
+        if (isMouseUiTarget(e.target)) return;
         mouseStateRef.current.isLeft = true;
         manualCameraLookActiveRef.current = true;
         mouseStateRef.current.lastX  = e.clientX;
@@ -6634,30 +7116,14 @@ export default function BattleArena({
         mouseStateRef.current.lastY   = e.clientY;
         return;
       }
-      if (e.button === 1) {
+      if (e.button === 1 || e.button === 3 || e.button === 4) {
         e.preventDefault();
         e.stopPropagation();
-        const ab = abilitiesRef.current.filter(a => a.isCommon)[1]; // 扶摇直上
-        if (ab?.isReady) { setPressedAbilityInput('common-1'); castAbilityRef.current(ab.id); }
-        return;
-      }
-      if (e.button === 3) {
-        e.preventDefault();
-        e.stopPropagation();
-        const ab = getHotkeyDraftSlots()[5]; // draft slot 6 (XB1)
-        if (ab?.isReady) { setPressedAbilityInput('draft-5'); castAbilityRef.current(ab.id); }
-        return;
-      }
-      if (e.button === 4) {
-        e.preventDefault();
-        e.stopPropagation();
-        const ab = getHotkeyDraftSlots()[4]; // draft slot 5 (XB2)
-        if (ab?.isReady) { setPressedAbilityInput('draft-4'); castAbilityRef.current(ab.id); }
-        return;
       }
     };
     const onMouseUp = (e: MouseEvent) => {
       crashRecorder.recordBehavior('mouse-up', { button: e.button, x: e.clientX, y: e.clientY });
+      setPressedAbilityInput(null);
       if (e.button === 0) {
         const ms = mouseStateRef.current;
         const wasLeftDown = ms.isLeft;
@@ -6693,13 +7159,11 @@ export default function BattleArena({
       if (e.button === 1) {
         e.preventDefault();
         e.stopPropagation();
-        setPressedAbilityInput(null);
         return;
       }
       if (e.button === 3 || e.button === 4) {
         e.preventDefault();
         e.stopPropagation();
-        setPressedAbilityInput(null);
       }
     };
     const onMouseMove = (e: MouseEvent) => {
@@ -6758,6 +7222,11 @@ export default function BattleArena({
     const onWheel = (e: WheelEvent) => {
       if (customUiMode) return;
       if ((e.target as HTMLElement | null)?.closest(`[data-testing-panel], input, select, textarea, [data-ui-interactive], .${styles.escOverlay}`)) return;
+      const wheelHotkey = normalizeWheelHotkey(e.deltaY);
+      if (wheelHotkey && triggerHotkeyBinding(wheelHotkey.id)) {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.12 : -0.12;
       const zoomMax = cameraDistanceToZoom(cameraSettings.maxDistance);
@@ -6783,7 +7252,7 @@ export default function BattleArena({
       window.removeEventListener('wheel',       onWheel,       { capture: true } as EventListenerOptions);
       window.removeEventListener('blur',        resetMouseButtons);
     };
-  }, [cameraSettings.maxDistance, clearTargetSelection, crashRecorder, customUiMode]);
+  }, [cameraSettings.maxDistance, clearTargetSelection, crashRecorder, customUiMode, triggerHotkeyBinding]);
 
   // ── Touch camera rotation (mobile/iPad) ──────────────────────────────────
   // A single touch that starts on the 3D canvas (wrapRef) rotates camera + player
@@ -6939,6 +7408,7 @@ export default function BattleArena({
         jumpLocalRef.current = false;
         // Post-dash jump allowance: MULTI_JUMP → full reset, normal → 1 jump only
         localJumpCountRef.current = effectiveMaxJumps > 2 ? 0 : 1;
+        airborneSpeedCarryRef.current = 0;
         airNudgeRemainingRef.current = 0;
         airNudgeTicksRemainingRef.current = 0;
         airNudgeDirRef.current = null;
@@ -7530,20 +8000,6 @@ export default function BattleArena({
     const id = setInterval(sendMovement, 1000 / 30);
     return () => { clearInterval(id); };
   }, [sendMovement]);
-
-  useEffect(() => {
-    const id = setInterval(async () => {
-      const t0 = performance.now();
-      try {
-        await fetch('/api/game/ping', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', body: JSON.stringify({ gameId }),
-        });
-        setRtt(Math.round(performance.now() - t0));
-      } catch { /* ignore */ }
-    }, 2000);
-    return () => clearInterval(id);
-  }, [gameId]);
 
   /* ========================= HUD DATA ========================= */
   const myMaxHp = me?.maxHp ?? maxHp;
@@ -8472,6 +8928,7 @@ export default function BattleArena({
           allowAnyCancel={allowAnyCancel}
           playerScale={debugLabel === 'me'}
           categoryFilter={categoryFilter}
+          visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
         />
         {customUiMode && (
           <div className={styles.customUiStatusGuide} aria-hidden="true">
@@ -8561,6 +9018,7 @@ export default function BattleArena({
             compact
             borderlessIcons
             maxPerRow={3}
+            visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
           />
         </div>
       </div>
@@ -8716,6 +9174,115 @@ export default function BattleArena({
     );
   };
 
+  const getHotkeySettingsRows = (): HotkeySettingsRow[] => {
+    if (hotkeySettingsTab === 'character-action') {
+      return LOCKED_CHARACTER_ACTION_HOTKEY_ROWS;
+    }
+    if (hotkeySettingsTab === 'interface-toggle') {
+      return INTERFACE_HOTKEY_ROWS;
+    }
+    if (hotkeySettingsTab === 'ability') {
+      return Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }, (_, index) => ({
+        actionId: `draft:${index}`,
+        label: draftAbilities[index]?.name ?? `技能格 ${index + 1}`,
+      }));
+    }
+    if (hotkeySettingsTab === 'common') {
+      return Array.from({ length: COMMON_ABILITY_ORDER.length }, (_, index) => {
+        const abilityId = COMMON_ABILITY_ORDER[index];
+        const meta = abilities[abilityId];
+        return {
+          actionId: `common:${index}`,
+          label: commonAbilities[index]?.name ?? meta?.name ?? `通用格 ${index + 1}`,
+        };
+      });
+    }
+    return Array.from({ length: consumableBarSettings.slotCount }, (_, index) => {
+      const consumableId = consumableBarSettings.slots[index];
+      const consumable = consumableId ? CONSUMABLE_ITEM_BY_ID.get(consumableId) : undefined;
+      return {
+        actionId: `consumable:${index}`,
+        label: consumable?.name ?? `物品格 ${index + 1}`,
+      };
+    });
+  };
+
+  const renderHotkeyBindingButton = (row: HotkeySettingsRow, bindingIndex: number) => {
+    const actionId = row.actionId;
+    const bindings = row.locked ? (row.bindings ?? []) : getHotkeyActionBindingLabels(hotkeySettings, actionId);
+    const isCapturing = !row.locked && capturingHotkey?.actionId === actionId && capturingHotkey.bindingIndex === bindingIndex;
+    const bindingId = bindings[bindingIndex];
+    const label = bindingId ? formatHotkeyBindingLabel(bindingId) : '';
+    return (
+      <div className={styles.escHotkeyBindingCell} key={`${actionId}-${bindingIndex}`}>
+        <button
+          type="button"
+          data-ui-interactive="true"
+          className={`${styles.escHotkeyButton} ${row.locked ? styles.escHotkeyButtonLocked : ''} ${isCapturing ? styles.escHotkeyButtonCapturing : ''}`}
+          disabled={row.locked}
+          aria-label={`${row.label}快捷键${bindingIndex + 1}`}
+          onClick={() => {
+            if (row.locked || isCapturing) return;
+            setCapturingHotkey({ actionId, bindingIndex });
+          }}
+          onKeyDown={(event) => {
+            if (row.locked || !isCapturing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.key === 'Escape') {
+              setCapturingHotkey(null);
+              return;
+            }
+            captureHotkeyBinding(capturingHotkey, normalizeKeyboardHotkey(event));
+          }}
+          onMouseDown={(event) => {
+            if (row.locked) return;
+            if (event.button === 2) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (isCapturing) {
+                setCapturingHotkey(null);
+              } else if (bindingId) {
+                clearHotkeyBinding(actionId, bindingIndex);
+              }
+              return;
+            }
+            if (!isCapturing || event.button === 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            captureHotkeyBinding(capturingHotkey, normalizeMouseHotkey(event.button));
+          }}
+          onWheel={(event) => {
+            if (row.locked || !isCapturing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            captureHotkeyBinding(capturingHotkey, normalizeWheelHotkey(event.deltaY));
+          }}
+          onContextMenu={(event) => {
+            if (row.locked) return;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          {label}
+        </button>
+      </div>
+    );
+  };
+
+  const renderHotkeySettingsRows = () => (
+    <div className={styles.escHotkeyGrid}>
+      {getHotkeySettingsRows().map((row) => (
+        <div className={styles.escHotkeyRow} key={row.actionId}>
+          <div className={styles.escHotkeyLabel}>{row.label}</div>
+          <div className={styles.escHotkeyBindings}>
+            {Array.from({ length: HOTKEY_MAX_BINDINGS_PER_ACTION }, (_, index) => renderHotkeyBindingButton(row, index))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   const renderItemBar = () => {
     const consumableNowMs = systemTime.getTime();
     const visibleConsumableSlots = consumableBarSettings.enabled
@@ -8731,6 +9298,7 @@ export default function BattleArena({
         const remainingCount = consumable ? getConsumableRemainingCount(me, consumable) : 0;
         const unavailable = !!consumable && consumable.implemented !== true;
         const depleted = !!consumable && consumable.implemented === true && remainingCount <= 0;
+        const hotkeyLabel = getHotkeyActionBindingLabels(hotkeySettings, `consumable:${index}`)[0] ?? '';
         return (
           <button
             key={`consumable-slot-${index}-${consumable?.id ?? 'empty'}`}
@@ -8770,7 +9338,7 @@ export default function BattleArena({
               event.stopPropagation();
               const rawSourceIndex = event.dataTransfer.getData('application/x-zhenchuan-consumable-slot');
               const sourceIndex = rawSourceIndex !== '' ? Number(rawSourceIndex) : consumableDragIndexRef.current;
-              if (Number.isInteger(sourceIndex)) {
+              if (typeof sourceIndex === 'number' && Number.isInteger(sourceIndex)) {
                 moveConsumableSlot(sourceIndex, index);
               }
               consumableDragIndexRef.current = null;
@@ -8792,6 +9360,7 @@ export default function BattleArena({
               <img src={getConsumableIconPath(consumable.name)} alt={consumable.name} className={styles.consumableIcon} draggable={false} />
             )}
             {consumable?.implemented === true && <span className={styles.consumableCount}>{remainingCount}</span>}
+            {hotkeyLabel && <span className={styles.consumableHotkey}>{hotkeyLabel}</span>}
             {cooldownMs > 0 && <span className={styles.consumableCooldown}>{cooldownLabel}</span>}
           </button>
         );
@@ -8811,7 +9380,7 @@ export default function BattleArena({
     >
       {showInlinePlayerStatus && (
         <div className={styles.playerBuffRow}>
-          <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} playerScale />
+          <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} playerScale visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'} />
         </div>
       )}
 
@@ -8839,7 +9408,7 @@ export default function BattleArena({
 
       <div className={styles.hotbar}>
         {(specialBarActive ? draftAbilities : Array.from({ length: 6 }, (_, idx) => draftAbilities[idx])).map((ability, idx) => {
-          const keyHint = ['1', '2', '3', 'Q', 'XB2', 'XB1'][idx];
+          const keyHint = getHotkeyActionBindingLabels(hotkeySettings, `draft:${idx}`)[0] ?? '';
           return (
             <div
               data-draft-slot-index={idx}
@@ -8948,8 +9517,7 @@ export default function BattleArena({
       {!specialBarActive && (
         <div className={styles.commonBar}>
           {commonAbilities.map((ability, idx) => {
-            const COMMON_KEY_HINTS = ['X', 'MD', 'MU', 'A+A', 'A+D', 'A+S', '`', 'T'] as const;
-            const keyHint = COMMON_KEY_HINTS[idx] ?? '';
+            const keyHint = getHotkeyActionBindingLabels(hotkeySettings, `common:${idx}`)[0] ?? '';
             const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
             const cdLabel = formatHudCooldownText(ability.cooldown / 30);
             const minuteCooldown = cdLabel.endsWith('m');
@@ -9757,6 +10325,10 @@ export default function BattleArena({
                               <span>崩溃诊断</span>
                             </label>
                             <label className={styles.escToggleRow}>
+                              <input type="checkbox" checked={showHiddenBuffStatusBar} onChange={(e) => setShowHiddenBuffStatusBar(e.target.checked)} className={styles.escToggleInput} />
+                              <span>显示隐藏buff</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
                               <input
                                 type="checkbox"
                                 checked={showDebugGrid}
@@ -9895,7 +10467,16 @@ export default function BattleArena({
                 <div className={styles.escSettingsBody}>
                   <aside className={styles.escSettingsSidebar}>
                     {escPanelPage === 'hotkey-settings' ? (
-                      <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>物品快捷栏</button>
+                      HOTKEY_SETTINGS_TABS.map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          className={`${styles.escSettingsNavButton} ${hotkeySettingsTab === tab.id ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => setHotkeySettingsTab(tab.id)}
+                        >
+                          {tab.label}
+                        </button>
+                      ))
                     ) : escPanelPage === 'sound-settings' ? (
                       <button type="button" className={`${styles.escSettingsNavButton} ${styles.escSettingsNavButtonActive}`}>音效</button>
                     ) : (
@@ -9905,6 +10486,11 @@ export default function BattleArena({
                   <section className={styles.escSettingsContent}>
                     {escPanelPage === 'hotkey-settings' ? (
                       <>
+                        <div className={styles.escSectionTitle}><span>{HOTKEY_SETTINGS_TABS.find((tab) => tab.id === hotkeySettingsTab)?.label ?? '快捷键'}</span></div>
+                        {renderHotkeySettingsRows()}
+                        <div className={styles.escHotkeyActions}>
+                          <button type="button" className={styles.escFooterButton} onClick={resetHotkeySettings}>恢复默认</button>
+                        </div>
                         <div className={styles.escSectionTitle}><span>物品快捷栏</span></div>
                         <div className={styles.escSettingsGrid}>
                           <div className={`${styles.escToggleGroup} ${styles.escSettingControl}`}>
@@ -10025,7 +10611,7 @@ export default function BattleArena({
                             </div>
                             <input
                               type="range"
-                              min="0.5"
+                              min={ABILITY_PANEL_MIN_SCALE}
                               max="2"
                               step="0.01"
                               value={abilityPanelScale}
@@ -10552,6 +11138,7 @@ export default function BattleArena({
                   <StatusBar
                     buffs={targetBuffs}
                     debugLabel={isSelf ? 'me-target' : 'opp'}
+                    visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
                     allowAnyCancel={!isSelf && isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally'}
                     onCancelBuff={
                       isSelf

@@ -442,6 +442,7 @@ router.post("/end", async (req, res) => {
  * Body: { gameId, direction: null | { up, down, left, right } }
  */
 router.post("/movement", async (req, res) => {
+  const serverReceivedAt = Date.now();
   try {
     const userId = getUserIdFromCookie(req);
     const { gameId, direction } = req.body;
@@ -525,13 +526,18 @@ router.post("/movement", async (req, res) => {
       // Return current position immediately so client can update without waiting for broadcast
       // Also include any pending input so client can predict the next position
       const player = state.players[playerIndex];
+      const serverRespondedAt = Date.now();
       res.json({ 
         success: true,
         accepted,
         seq,
         position: player.position,
         velocity: player.velocity,
-        input: input // Send input back so client can predict next position
+        input: input, // Send input back so client can predict next position
+        serverReceivedAt,
+        serverRespondedAt,
+        serverTimestamp: serverRespondedAt,
+        serverProcessingMs: serverRespondedAt - serverReceivedAt,
       });
     } catch (loopErr: any) {
       console.error(`[MOVEMENT] GameLoop error: ${loopErr.message}`);

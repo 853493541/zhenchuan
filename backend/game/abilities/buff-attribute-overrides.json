@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updatedAt": "2026-05-21T06:20:27.969Z",
+  "updatedAt": "2026-05-22T23:19:01.942Z",
   "buffs": {
     "1001": {
       "attribute": "毒性"
@@ -937,10 +937,6 @@
       "hidden": true
     },
     "990103": {
-      "attribute": "未选择",
-      "hidden": true
-    },
-    "999900": {
       "attribute": "未选择",
       "hidden": true
     }

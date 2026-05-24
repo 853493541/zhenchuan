@@ -19,12 +19,13 @@ export interface BroadcastParams {
 export function broadcastGameUpdate(params: BroadcastParams) {
   const { gameId, version, diff, events, gameOver, winnerUserId, timestamp, isMovementOnly } = params;
 
-  // Compact message for movement-only updates (no events, no timestamp)
+  // Compact message for movement-only updates.
   if (isMovementOnly) {
     const message: GameMessage = {
       type: "STATE_DIFF",
       version,
       diff,
+      timestamp: timestamp ?? Date.now(),
     } as GameMessage;
     subscriptionManager.broadcast(gameId, message);
   } else {

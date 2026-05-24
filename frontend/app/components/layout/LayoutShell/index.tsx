@@ -13,6 +13,7 @@ export default function LayoutShell({
   const pathname = usePathname();
   const isLoginPage = pathname === "/login";
   const isInGame = pathname?.startsWith('/game/in-game') || pathname?.startsWith('/game/screens/in-game');
+  const isResourcePack = pathname === '/resource-pack';
 
   // ✅ username comes from AuthGate via window (set once)
   const [username] = useState<string | null>(() => {
@@ -32,14 +33,14 @@ export default function LayoutShell({
      ===================================================== */
   return (
     <div className={styles.container}>
-      {!isInGame && (
+      {!isInGame && !isResourcePack && (
         <div className={styles.topbarGlobal}>
           <TopBar username={username} />
         </div>
       )}
 
       {/* Main content */}
-      <main className={isInGame ? styles.mainFullscreenNoTopbar : styles.main}>{children}</main>
+      <main className={isInGame ? styles.mainFullscreenNoTopbar : isResourcePack ? styles.mainEmbeddedNoTopbar : styles.main}>{children}</main>
     </div>
   );
 }
