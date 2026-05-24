@@ -2321,11 +2321,14 @@
 .martialPanelBundle {
   display: flex;
   align-items: stretch;
-  gap: 4px;
+  gap: 2px;
   pointer-events: auto;
 }
 
 .martialPanel {
+  --martial-panel-scale: 1;
+  --martial-ability-icon-size: clamp(34px, calc(42px * var(--martial-panel-scale)), 42px);
+  --martial-active-icon-size: clamp(32px, calc(38px * var(--martial-panel-scale)), 38px);
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
   align-content: stretch;
@@ -2425,11 +2428,12 @@
 }
 
 .martialSearchBox {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 164px;
-  min-width: 164px;
+  width: clamp(132px, 18%, 164px);
+  min-width: 132px;
   height: 29px;
   padding: 0 9px;
   border: 1px solid rgba(110, 172, 171, 0.5);
@@ -2458,9 +2462,16 @@
   position: relative;
   width: 101px;
   min-width: 101px;
+  height: 29px;
+}
+
+.martialRarityFilterMenu {
+  width: 126px;
+  min-width: 126px;
 }
 
 .martialFilterButton {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2468,10 +2479,10 @@
   height: 29px;
   gap: 6px;
   padding: 0 8px;
-  border: 1px solid var(--martial-filter-color, rgba(110, 172, 171, 0.5));
+  border: 1px solid rgba(110, 172, 171, 0.5);
   border-radius: 2px;
   background: rgba(16, 31, 37, 0.9);
-  color: var(--martial-filter-color, #e9f3ed);
+  color: #e9f3ed;
   font-size: 13px;
   font-weight: 800;
   cursor: pointer;
@@ -2479,6 +2490,7 @@
 
 .martialFilterButton span {
   min-width: 0;
+  color: var(--martial-filter-color, #e9f3ed);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2502,7 +2514,7 @@
 
 .martialFilterListSingle {
   grid-template-columns: 1fr;
-  width: 101px;
+  width: 126px;
 }
 
 .martialFilterOption {
@@ -2524,6 +2536,7 @@
 }
 
 .martialEmpoweredToggle {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2536,6 +2549,55 @@
   font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.martialFilterSpacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+.martialFavoriteModeButton {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 29px;
+  min-width: 88px;
+  padding: 0 9px;
+  border: 1px solid rgba(144, 225, 208, 0.55);
+  border-radius: 4px;
+  background: rgba(18, 38, 42, 0.9);
+  color: #e8f5ef;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.martialFavoriteModeButton:hover {
+  border-color: rgba(167, 236, 219, 0.8);
+  background: rgba(26, 58, 62, 0.95);
+  color: #f2fff9;
+}
+
+.martialFavoriteModeButtonActive {
+  border-color: rgba(224, 230, 151, 0.82);
+  background: rgba(70, 74, 36, 0.92);
+  color: #fff9cf;
+  box-shadow: inset 0 0 0 1px rgba(255, 241, 173, 0.2);
+}
+
+.martialFavoriteModeButtonActive:hover {
+  border-color: rgba(247, 233, 139, 0.9);
+  background: rgba(88, 92, 44, 0.95);
+  color: #fff9d8;
+}
+
+.martialFavoriteModeButton:disabled {
+  cursor: default;
+  opacity: 0.52;
 }
 
 .martialEmpoweredToggle input {
@@ -2557,13 +2619,13 @@
 
 .martialAbilityGrid {
   display: grid;
-  grid-template-columns: repeat(8, 72px);
-  grid-auto-rows: 67px;
+  grid-template-columns: repeat(8, minmax(var(--martial-ability-icon-size), 1fr));
+  grid-auto-rows: clamp(48px, calc(67px * var(--martial-panel-scale)), 67px);
   align-content: start;
-  justify-content: space-between;
-  gap: 24px 18px;
+  justify-content: stretch;
+  gap: clamp(10px, calc(24px * var(--martial-panel-scale)), 24px) clamp(8px, calc(18px * var(--martial-panel-scale)), 18px);
   height: 100%;
-  padding: 16px 28px 12px;
+  padding: clamp(10px, calc(16px * var(--martial-panel-scale)), 16px) clamp(16px, calc(28px * var(--martial-panel-scale)), 28px) clamp(8px, calc(12px * var(--martial-panel-scale)), 12px);
   overflow: hidden;
 }
 
@@ -2607,6 +2669,7 @@
   min-width: 0;
   padding: 0;
   border: 0;
+  outline: 0;
   background: transparent;
   color: #edf6ef;
   cursor: pointer;
@@ -2617,11 +2680,27 @@
   opacity: 0.55;
 }
 
+.martialAbilityItemFavoriteMode {
+  cursor: pointer;
+}
+
+.martialAbilityItemFavoriteMode .martialAbilityIconFrame,
+.martialAbilityItemFavoriteMode .martialAbilityName {
+  filter: grayscale(0.68) saturate(0.62);
+  opacity: 0.62;
+}
+
+.martialAbilityItemFavorited .martialAbilityIconFrame,
+.martialAbilityItemFavorited .martialAbilityName {
+  filter: none;
+  opacity: 1;
+}
+
 .martialAbilityIconFrame {
   position: relative;
   display: block;
-  width: 42px;
-  height: 42px;
+  width: var(--martial-ability-icon-size);
+  height: var(--martial-ability-icon-size);
   border: 2px solid #53606a;
   border-radius: 5px;
   background: rgba(8, 18, 22, 0.86);
@@ -2638,11 +2717,39 @@
   justify-content: center;
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(226, 255, 238, 0.95);
+  border: 1px solid rgba(226, 255, 238, 0.95);
   border-radius: 50%;
   background: #27b36f;
   color: #f6fff9;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.42);
+}
+
+.martialAbilityFavoriteRemoveBadge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(255, 233, 233, 0.92);
+  border-radius: 50%;
+  background: #c73434;
+  color: #fff5f5;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.38);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.martialAbilityFavoriteRemoveBadge:hover {
+  background: #df4b4b;
+  border-color: rgba(255, 245, 245, 0.96);
+}
+
+.martialAbilityFavoriteRemoveBadge[aria-disabled='true'] {
+  cursor: default;
+  opacity: 0.58;
 }
 
 .martialDisplayAbilityItem {
@@ -2661,7 +2768,7 @@
   width: 100%;
   max-width: 70px;
   color: #f1f5ee;
-  font-size: 13px;
+  font-size: clamp(11px, calc(13px * var(--martial-panel-scale)), 13px);
   font-weight: 700;
   line-height: 1.15;
   text-align: center;
@@ -2745,6 +2852,11 @@
   white-space: nowrap;
 }
 
+.martialPanelHintFavorite {
+  color: #ffe66d;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.86), 0 0 8px rgba(255, 221, 77, 0.32);
+}
+
 .martialPresetActions {
   display: flex;
   align-items: center;
@@ -2775,7 +2887,7 @@
 
 .martialActivePanel {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   align-items: stretch;
   min-height: 92px;
   border-top: 1px solid rgba(125, 183, 181, 0.24);
@@ -2790,10 +2902,11 @@
 
 .martialLearnedSection {
   min-width: 0;
+  border-left: 1px solid rgba(125, 183, 181, 0.26);
 }
 
 .martialBuffSection {
-  border-left: 1px solid rgba(125, 183, 181, 0.26);
+  min-width: 0;
 }
 
 .martialActiveTab {
@@ -2847,8 +2960,11 @@
   box-shadow: none;
 }
 
-.martialActiveSlotHover .martialAbilityIconFrame,
-.martialActiveSlotHover .martialActiveEmptySlot {
+.martialBuffSlot:hover .martialBuffEmptySlot,
+.martialActiveSlot:hover .martialAbilityIconFrame,
+.martialActiveSlot:hover .martialActiveEmptySlot,
+.martialPresetSlot:hover .martialAbilityIconFrame,
+.martialPresetSlot:hover .martialPresetEmptySlot {
   border-color: rgba(204, 255, 233, 0.86);
   box-shadow: 0 0 10px rgba(110, 236, 203, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
@@ -2863,6 +2979,7 @@
   min-width: 0;
   padding: 0;
   border: 0;
+  outline: 0;
   background: transparent;
   color: #f1f5ee;
   cursor: grab;
@@ -2884,8 +3001,8 @@
 
 .martialActiveEmptySlot {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: var(--martial-active-icon-size);
+  height: var(--martial-active-icon-size);
   margin-top: 0;
   border-radius: 5px;
   border: 2px solid rgba(114, 130, 135, 0.72);
@@ -2894,13 +3011,13 @@
 }
 
 .martialActiveAbility .martialAbilityIconFrame {
-  width: 38px;
-  height: 38px;
+  width: var(--martial-active-icon-size);
+  height: var(--martial-active-icon-size);
 }
 
 .martialBuffSlot {
-  width: 38px;
-  height: 38px;
+  width: var(--martial-active-icon-size);
+  height: var(--martial-active-icon-size);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3018,20 +3135,26 @@
 }
 
 .martialPresetList {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  position: relative;
   min-height: 0;
-  padding: 12px;
+  padding: 12px 20px 12px 12px;
   overflow: hidden;
 }
 
+.martialPresetListItems {
+  display: grid;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+}
+
 .martialPresetCard {
-  flex: 0 0 auto;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto auto;
-  gap: 8px;
-  padding: 9px 10px;
+  gap: 7px;
+  padding: 8px 9px;
   border: 1px solid rgba(94, 135, 140, 0.42);
   border-radius: 4px;
   background: rgba(13, 24, 29, 0.7);
@@ -3046,6 +3169,13 @@
   color: #f3f6ee;
   font-size: 14px;
   font-weight: 900;
+}
+
+.martialPresetPrimaryActions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
 }
 
 .martialPresetNameRow {
@@ -3065,7 +3195,7 @@
 .martialPresetSlots {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 5px;
+  gap: 3.5px;
   justify-items: center;
 }
 
@@ -3096,7 +3226,7 @@
 }
 
 .martialPresetSlotHover {
-  box-shadow: 0 0 10px rgba(110, 236, 203, 0.3);
+  box-shadow: none;
 }
 
 .martialPresetEmptySlot {
@@ -3110,15 +3240,51 @@
 
 .martialPresetEnableButton {
   justify-self: end;
-  min-width: 64px;
-  min-height: 28px;
+  min-width: 58px;
+  min-height: 25px;
   border: 1px solid rgba(144, 225, 208, 0.55);
   border-radius: 4px;
   background: linear-gradient(180deg, rgba(58, 128, 112, 0.92), rgba(38, 89, 85, 0.92));
   color: #f3fbf5;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 900;
   cursor: pointer;
+}
+
+.martialPresetTopButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 1px solid rgba(144, 225, 208, 0.5);
+  border-radius: 4px;
+  background: rgba(18, 42, 45, 0.86);
+  color: #dff5ee;
+  cursor: pointer;
+}
+
+.martialPresetTopButton:hover {
+  border-color: rgba(190, 255, 238, 0.76);
+  background: rgba(45, 90, 86, 0.92);
+  color: #fff;
+}
+
+.martialPresetTopButton:disabled {
+  cursor: default;
+  opacity: 0.46;
+}
+
+.martialPresetScrollbar {
+  position: absolute;
+  top: 12px;
+  right: 7px;
+  bottom: 12px;
+  width: 6px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
 }
 
 .martialPresetEnableButton:disabled {
@@ -3139,6 +3305,9 @@
 
 .martialModal {
   width: min(var(--martial-modal-width, 520px), calc(100vw - 36px));
+  height: min(var(--martial-modal-height, 270px), calc(100vh - 36px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   border: 1px solid rgba(112, 167, 166, 0.72);
   border-radius: 6px;
   overflow: hidden;
@@ -3153,27 +3322,40 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 45px;
+  min-height: var(--martial-modal-header-height, 45px);
   background: linear-gradient(90deg, rgba(39, 80, 79, 0.66), rgba(27, 46, 52, 0.9), rgba(39, 80, 79, 0.66));
   border-bottom: 1px solid rgba(125, 183, 181, 0.28);
 }
 
 .martialModalTitle {
   color: #f5f2da;
-  font-size: 22px;
+  font-size: var(--martial-modal-title-font, 22px);
   font-weight: 900;
 }
 
 .martialModalBody {
   display: grid;
-  gap: 16px;
+  grid-template-rows: auto auto auto;
+  align-content: center;
+  gap: var(--martial-modal-body-gap, 16px);
   justify-items: center;
-  padding: 28px 42px 30px;
+  min-height: 0;
+  padding: var(--martial-modal-body-pad-top, 22px) var(--martial-modal-body-pad-x, 38px) var(--martial-modal-body-pad-bottom, 24px);
+}
+
+.martialModalSaveRow {
+  display: grid;
+  grid-template-rows: auto auto;
+  justify-items: center;
+  justify-content: center;
+  gap: var(--martial-modal-save-gap, 14px);
+  width: 100%;
+  min-width: 0;
 }
 
 .martialModalPrompt {
   color: #f2f6ef;
-  font-size: 20px;
+  font-size: var(--martial-modal-prompt-font, 18px);
   font-weight: 900;
   text-align: center;
 }
@@ -3182,17 +3364,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--martial-modal-target-gap, 6px);
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .martialModalTargetButton {
-  width: 34px;
-  height: 34px;
+  width: var(--martial-modal-target-size, 34px);
+  height: var(--martial-modal-target-size, 34px);
   border: 1px solid rgba(136, 204, 194, 0.5);
   border-radius: 3px;
   background: rgba(14, 28, 33, 0.82);
   color: #eaf4ed;
-  font-size: 20px;
+  font-size: var(--martial-modal-target-font, 20px);
   font-weight: 900;
   cursor: pointer;
 }
@@ -3203,16 +3387,17 @@
 }
 
 .martialModalInput {
-  width: min(360px, 100%);
-  height: 42px;
-  padding: 0 12px;
+  width: 100%;
+  max-width: var(--martial-modal-input-width, 360px);
+  height: var(--martial-modal-input-height, 42px);
+  padding: 0 var(--martial-modal-input-pad-x, 10px);
   border: 2px solid rgba(104, 158, 157, 0.66);
   border-radius: 2px;
   outline: 0;
   background: rgba(14, 28, 33, 0.84);
   color: #f4f8f2;
   font: inherit;
-  font-size: 20px;
+  font-size: var(--martial-modal-input-font, 20px);
   font-weight: 800;
 }
 
@@ -3220,17 +3405,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 44px;
+  gap: var(--martial-modal-action-gap, 44px);
+  flex-wrap: nowrap;
 }
 
 .martialModalButton {
-  min-width: 156px;
-  min-height: 43px;
+  min-width: var(--martial-modal-button-width, 156px);
+  min-height: var(--martial-modal-button-height, 43px);
   border: 1px solid rgba(144, 225, 208, 0.55);
   border-radius: 4px;
   background: linear-gradient(180deg, rgba(58, 128, 112, 0.92), rgba(38, 89, 85, 0.92));
   color: #f3fbf5;
-  font-size: 22px;
+  font-size: var(--martial-modal-button-font, 22px);
   font-weight: 900;
   cursor: pointer;
 }
@@ -3435,8 +3621,14 @@
   cursor: pointer;
 }
 
-.bottomRightQuickButton:hover,
 .bottomRightQuickButtonActive {
+  border-color: rgba(107, 167, 194, 0.72);
+  background: rgba(12, 24, 32, 0.92);
+  color: #cdefff;
+}
+
+.bottomRightQuickButton:hover,
+.bottomRightQuickButtonActive:hover {
   border-color: rgba(139, 224, 255, 0.92);
   background: rgba(22, 68, 93, 0.94);
   color: #fff;
