@@ -79,6 +79,14 @@ frontend/playwright-report/
 # SQLite / DB
 *.sqlite3
 *.db
+data/mongo/runtime/
+data/mongo/dbpath/
+data/mongo/**/*.lock
+
+# Tracked portable Mongo snapshots for the app-owned collections only.
+!data/mongo/zhenchuan-app/
+!data/mongo/zhenchuan-app/*.ejson
+!data/mongo/zhenchuan-app/README.md
 
 # =====================================
 # PM2 / Deployment files

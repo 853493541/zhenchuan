@@ -8,7 +8,7 @@ It assumes the current architecture:
 - Backend: compiled Node/Express/WebSocket server on port `5000`.
 - WebSocket endpoint: `/ws` on the backend.
 - Process manager: PM2.
-- Database: MongoDB through `MONGO_URI`, forced database name `baizhan_V2` in backend code.
+- Database: local MongoDB through `MONGO_URI`, app-owned database name `zhenchuan_app` through `MONGO_DB_NAME`.
 - Runtime Node version currently used here: Node `20.20.0`.
 
 ## 1. Capacity Answer
@@ -252,9 +252,9 @@ PM2 will print a command with `sudo env PATH=... pm2 startup ...`. Run that prin
 
 ### 5.4 MongoDB choice
 
-Preferred: use managed MongoDB from the same provider and same region. Put its connection string into `backend/.env` as `MONGO_URI`.
+Preferred for Zhenchuan now: local MongoDB on the same VM, bound only to localhost. Put its connection string into `backend/.env` as `MONGO_URI` and keep the app-owned database name in `MONGO_DB_NAME`.
 
-If local MongoDB is needed for first testing, install MongoDB from the provider/official repository, bind it only to localhost, and never open `27017` publicly.
+Install MongoDB from the provider/official repository, bind it only to localhost, and never open `27017` publicly.
 
 Minimum local MongoDB rules:
 
@@ -267,10 +267,18 @@ security group: no public 27017
 Then use a URI like:
 
 ```bash
-MONGO_URI=mongodb://127.0.0.1:27017/baizhan_V2
+MONGO_URI=mongodb://127.0.0.1:27017
+MONGO_DB_NAME=zhenchuan_app
 ```
 
-The backend still forces the database name to `baizhan_V2`, so the path database in the URI is less important than the host/auth options.
+The backend uses `MONGO_DB_NAME`; prefer leaving the URI path empty and setting the database name explicitly.
+
+Restore the tracked app-owned snapshot after MongoDB is running:
+
+```bash
+cd /home/ubuntu/zhenchuan
+npm run db:import
+```
 
 ## 6. VM Directory Layout
 
@@ -302,7 +310,10 @@ Example:
 ```bash
 NODE_ENV=production
 PORT=5000
-MONGO_URI=mongodb://127.0.0.1:27017/baizhan_V2
+MONGO_URI=mongodb://127.0.0.1:27017
+MONGO_DB_NAME=zhenchuan_app
+MONGO_TRACKED_SNAPSHOT_DIR=/home/ubuntu/zhenchuan/data/mongo/zhenchuan-app
+MONGO_SEED_FROM_TRACKED_SNAPSHOT=true
 JWT_SECRET=replace_with_a_long_random_secret
 EXPORT_VIEWER_ROOTS=/home/ubuntu/zhenchuan/frontend/public/game/exported-maps
 CLIENT_LATENCY_LOG_DIR=/home/ubuntu/zhenchuan/logs/latency

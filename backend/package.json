@@ -7,7 +7,12 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "db:status": "node scripts/app-db-snapshot.js status",
+    "db:export": "node scripts/app-db-snapshot.js export",
+    "db:import": "node scripts/app-db-snapshot.js import --replace",
+    "db:users": "node scripts/app-user-maintenance.js list",
+    "db:reset-local-users": "node scripts/app-user-maintenance.js reset-local-users"
   },
   "keywords": [],
   "author": "",

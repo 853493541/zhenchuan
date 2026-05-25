@@ -23,7 +23,7 @@ async function getMe() {
   if (!res.ok) return null;
 
   const data = await res.json();
-  return data.user as { uid: string; username: string };
+  return data.user as { uid: string; username: string; displayName?: string };
 }
 
 export default async function InGamePage({ searchParams }: Props) {
@@ -38,7 +38,7 @@ export default async function InGamePage({ searchParams }: Props) {
     <InGameClient
       gameId={gameId}
       selfUserId={me.uid}
-      selfUsername={me.username}
+      selfUsername={me.displayName || me.username}
     />
   );
 }

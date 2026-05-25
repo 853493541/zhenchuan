@@ -1,0 +1,30 @@
+{
+  "exportedAt": {
+    "$date": {
+      "$numberLong": "1779682032506"
+    }
+  },
+  "dbName": "zhenchuan_app",
+  "collections": [
+    {
+      "collection": "users",
+      "documentCount": {
+        "$numberInt": "10"
+      },
+      "file": "users.ejson",
+      "bytes": {
+        "$numberInt": "12264"
+      }
+    },
+    {
+      "collection": "gamesessions",
+      "documentCount": {
+        "$numberInt": "1"
+      },
+      "file": "gamesessions.ejson",
+      "bytes": {
+        "$numberInt": "116358"
+      }
+    }
+  ]
+}

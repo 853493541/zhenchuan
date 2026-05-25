@@ -684,6 +684,7 @@ export function applyMovement(
       clearAirborneSpeedCarry(player);
 
       (dash as any)._startMs = Date.now();
+      (dash as any)._durationTicks = Math.max(1, Number(dash.ticksRemaining ?? 0));
       console.log(`[DASH] >>> START  time=${new Date().toISOString()}  ticks=${dash.ticksRemaining}`);
     }
 
@@ -792,7 +793,9 @@ export function applyMovement(
 
     if (dash.ticksRemaining <= 0) {
       const elapsed = Date.now() - ((dash as any)._startMs ?? 0);
-      console.log(`[DASH] <<< END    time=${new Date().toISOString()}  elapsed=${elapsed}ms  (expected ~1000ms for 30 ticks @ 30Hz)`);
+      const durationTicks = Math.max(1, Number((dash as any)._durationTicks ?? 30));
+      const expectedMs = Math.round(durationTicks * (1000 / 30));
+      console.log(`[DASH] <<< END    time=${new Date().toISOString()}  elapsed=${elapsed}ms  (expected ~${expectedMs}ms for ${durationTicks} ticks @ 30Hz)`);
       // Dash complete — gravity resets
       const dashEndBaseGroundH = hasExportedCollision(mapCtx)
         ? getExportedGroundHeight(player.position.x, player.position.y, player.position.z ?? 0, arenaW, arenaH, pr, mapCtx.collisionSystem)

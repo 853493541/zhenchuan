@@ -1,88 +1,64 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Activity,
+  ArrowRightLeft,
+  KeyRound,
+  LogOut,
+  Music,
+  Pencil,
+  ShieldCheck,
+  Wrench,
+} from "lucide-react";
 import ChangePasswordModal from "./ChangePasswordModal";
+import ChangeDisplayNameModal from "./ChangeDisplayNameModal";
+import SwitchAccountModal from "./SwitchAccountModal";
+import { removeStoredAuthSession, updateStoredAuthSessionUser } from "./authSessionStore";
 import styles from "./UserMenu.module.css";
 
-
-
 interface Props {
-  username: string;
-}
-
-/* ===============================
-   Display name mapping
-=============================== */
-const DISPLAY_NAME_MAP: Record<string, string> = {
-  admin: "管理员",
-  wuxi: "五溪",
-  douzhi: "豆子",
-  juzi: "桔子",
-  tianmei: "甜妹",
-  guest: "游客账号",
-  catcake: "猫猫糕",
-};
-
-function getDisplayName(username: string) {
-  return DISPLAY_NAME_MAP[username] ?? username;
+  user: {
+    username: string;
+    displayName?: string;
+    isAdmin?: boolean;
+  };
 }
 
 function getAvatarLetter(name: string) {
   return name.charAt(0).toUpperCase();
 }
 
-/* ===============================
-   Permissions
-=============================== */
-const ACTIVITY_PAGE_ALLOWED_USERS = new Set(["admin", "catcake"]);
-
-export default function UserMenu({ username }: Props) {
+export default function UserMenu({ user }: Props) {
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
   const [showChange, setShowChange] = useState(false);
+  const [showDisplayName, setShowDisplayName] = useState(false);
+  const [showSwitch, setShowSwitch] = useState(false);
+  const [displayName, setDisplayName] = useState(user.displayName || user.username);
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
-  const displayName = getDisplayName(username);
   const avatarLetter = getAvatarLetter(displayName);
-  const canViewActivityPage = ACTIVITY_PAGE_ALLOWED_USERS.has(username);
+  const canViewAdminTools = user.isAdmin === true;
 
-  /* =====================================================
-     🔥 GLYPH WARM-UP (CRITICAL FIX)
-     ===================================================== */
   useEffect(() => {
-    const span = document.createElement("span");
-    span.className = "material-symbols-outlined";
-    span.textContent = "admin_panel_settings key logout";
-    span.style.position = "absolute";
-    span.style.visibility = "hidden";
-    span.style.pointerEvents = "none";
-    document.body.appendChild(span);
+    setDisplayName(user.displayName || user.username);
+  }, [user.displayName, user.username]);
 
-    return () => {
-      document.body.removeChild(span);
-    };
-  }, []);
-
-  /* =====================================================
-     Click-away + ESC
-     ===================================================== */
   useEffect(() => {
     if (!open) return;
 
-    function handleClick(e: MouseEvent) {
-      if (
-        wrapperRef.current &&
-        !wrapperRef.current.contains(e.target as Node)
-      ) {
+    function handleClick(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     }
 
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
     }
 
     document.addEventListener("mousedown", handleClick);
@@ -94,63 +70,104 @@ export default function UserMenu({ username }: Props) {
     };
   }, [open]);
 
-  /* =====================================================
-     Logout
-     ===================================================== */
   async function logout() {
     try {
-      await fetch(`/api/auth/logout`, {
+      await fetch("/api/auth/logout", {
         method: "POST",
         credentials: "include",
       });
     } catch {}
 
+    removeStoredAuthSession(user.username);
     setOpen(false);
     setShowChange(false);
+    setShowDisplayName(false);
+    setShowSwitch(false);
     router.replace("/login");
   }
 
-  /* =====================================================
-     Render
-     ===================================================== */
+  function openRoute(path: string) {
+    setOpen(false);
+    router.push(path);
+  }
+
   return (
     <div className={styles.wrap} ref={wrapperRef}>
-      {/* Avatar */}
       <button
         className={styles.avatarBtn}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen((value) => !value)}
         aria-label="账户菜单"
       >
         <div className={styles.avatarCircle}>{avatarLetter}</div>
       </button>
 
-      {/* Menu */}
       {open && (
         <div className={styles.menu} role="menu">
           <div className={styles.profile}>
             <div className={styles.profileAvatar}>{avatarLetter}</div>
             <div className={styles.profileInfo}>
-              <div className={styles.profileName}>{displayName}</div>
-              <div className={styles.profileHint}>已登录</div>
+              <div className={styles.profileNameRow}>
+                <div className={styles.profileName}>{displayName}</div>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  onClick={() => {
+                    setOpen(false);
+                    setShowSwitch(true);
+                  }}
+                  aria-label="切换账号"
+                  title="切换账号"
+                >
+                  <ArrowRightLeft size={15} />
+                </button>
+              </div>
             </div>
           </div>
 
           <div className={styles.divider} />
 
-          {canViewActivityPage && (
-            <button
-              className={styles.menuItem}
-              onClick={() => {
-                setOpen(false);
-                router.push("/admin/activity");
-              }}
-            >
-              <span className="material-symbols-outlined">
-                admin_panel_settings
-              </span>
-              查看记录
-            </button>
+          {canViewAdminTools && (
+            <>
+              <button
+                className={styles.menuItem}
+                onClick={() => {
+                  setOpen(false);
+                  router.push("/admin/activity");
+                }}
+              >
+                <ShieldCheck size={18} />
+                查看记录
+              </button>
+
+              <button className={styles.menuItem} onClick={() => openRoute("/ability-editor")}>
+                <Wrench size={18} />
+                技能编辑
+              </button>
+
+              <button className={styles.menuItem} onClick={() => openRoute("/ability-editor?tab=soundReview")}>
+                <Music size={18} />
+                音效
+              </button>
+
+              <button className={styles.menuItem} onClick={() => openRoute("/network-diagnostics")}>
+                <Activity size={18} />
+                网络诊断
+              </button>
+
+              <div className={styles.divider} />
+            </>
           )}
+
+          <button
+            className={styles.menuItem}
+            onClick={() => {
+              setShowDisplayName(true);
+              setOpen(false);
+            }}
+          >
+            <Pencil size={18} />
+            修改名称
+          </button>
 
           <button
             className={styles.menuItem}
@@ -159,22 +176,38 @@ export default function UserMenu({ username }: Props) {
               setOpen(false);
             }}
           >
-            <span className="material-symbols-outlined">key</span>
+            <KeyRound size={18} />
             修改密码
           </button>
 
-          <button
-            className={`${styles.menuItem} ${styles.logout}`}
-            onClick={logout}
-          >
-            <span className="material-symbols-outlined">logout</span>
+          <button className={`${styles.menuItem} ${styles.logout}`} onClick={logout}>
+            <LogOut size={18} />
             退出登录
           </button>
         </div>
       )}
 
+      {showDisplayName && (
+        <ChangeDisplayNameModal
+          currentDisplayName={displayName}
+          onClose={() => setShowDisplayName(false)}
+          onSaved={(nextUser) => {
+            updateStoredAuthSessionUser(nextUser);
+            setDisplayName(nextUser.displayName || nextUser.username);
+          }}
+        />
+      )}
+
+      {showSwitch && (
+        <SwitchAccountModal
+          currentUser={{ username: user.username, displayName: displayName, isAdmin: user.isAdmin }}
+          onClose={() => setShowSwitch(false)}
+        />
+      )}
+
       {showChange && (
         <ChangePasswordModal
+          currentUsername={user.username}
           onClose={() => {
             setShowChange(false);
             setOpen(false);

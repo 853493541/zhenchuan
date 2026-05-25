@@ -1,31 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import styles from "./LoginPage.module.css";
 import { toastError } from "@/app/components/toast/toast";
+import { rememberCurrentAuthSession } from "@/app/components/auth/authSessionStore";
 
+const TEST_ACCOUNTS = [
+  { username: "testuser1", password: "testuser1@testuser1", label: "一" },
+  { username: "testuser2", password: "testuser2@testuser2", label: "二" },
+];
 
 
 export default function LoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function loginWith(nextUsername: string, nextPassword: string) {
     setError(null);
     setLoading(true);
 
     try {
-      console.log("🔐 Attempting login with:", { username });
+      console.log("🔐 Attempting login with:", { username: nextUsername });
       const res = await fetch(`/api/auth/login`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: nextUsername, password: nextPassword }),
       });
 
       console.log("📡 Login response status:", res.status);
@@ -39,12 +41,22 @@ export default function LoginPage() {
       }
 
       console.log("✅ Login successful, redirecting...");
-      router.replace("/");
+      if (data?.user?.username) {
+        (window as any).__AUTH_USERNAME__ = data.user.username;
+        (window as any).__AUTH_USER__ = data.user;
+        await rememberCurrentAuthSession(data.user).catch(() => undefined);
+      }
+      window.location.replace("/");
     } catch (err) {
       console.error("❌ Login error:", err);
       setError("网络错误，请稍后再试");
       setLoading(false);
     }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await loginWith(username, password);
   }
 
   return (
@@ -86,6 +98,20 @@ export default function LoginPage() {
             {loading ? "登录中…" : "登录"}
           </button>
         </form>
+
+        <div className={styles.quickLoginRow}>
+          {TEST_ACCOUNTS.map((account) => (
+            <button
+              key={account.username}
+              type="button"
+              className={styles.quickLoginBtn}
+              disabled={loading}
+              onClick={() => loginWith(account.username, account.password)}
+            >
+              {account.label}
+            </button>
+          ))}
+        </div>
 
         {/* Links */}
         <div className={styles.links}>

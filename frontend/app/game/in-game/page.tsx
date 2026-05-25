@@ -34,6 +34,7 @@ export default async function Page({ searchParams }: PageProps) {
   const me = meData.user as {
     uid: string;
     username: string;
+    displayName?: string;
   };
 
   // Don't fetch token on server - let client do it
@@ -44,7 +45,7 @@ export default async function Page({ searchParams }: PageProps) {
     <InGameClient
       gameId={gameId}
       selfUserId={me.uid}
-      selfUsername={me.username}
+      selfUsername={me.displayName || me.username}
       authToken=""
     />
   );

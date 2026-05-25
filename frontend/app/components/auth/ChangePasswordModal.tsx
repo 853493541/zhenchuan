@@ -4,11 +4,14 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./ChangePasswordModal.module.css";
 import { toastError } from "@/app/components/toast/toast";
+import { removeStoredAuthSession } from "./authSessionStore";
 
 export default function ChangePasswordModal({
   onClose,
+  currentUsername,
 }: {
   onClose: () => void;
+  currentUsername?: string;
 }) {
   const router = useRouter();
   const modalRef = useRef<HTMLDivElement>(null);
@@ -69,6 +72,7 @@ export default function ChangePasswordModal({
     }
 
     // ✅ clean exit sequence
+    if (currentUsername) removeStoredAuthSession(currentUsername);
     onClose();
     router.replace("/login");
   }

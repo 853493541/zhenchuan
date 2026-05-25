@@ -49,6 +49,28 @@ Each entry goes under its relevant section header.
 - When labels and inputs must align in a settings grid, keep the label column fixed to the longest expected label width. Using content-sized label tracks makes every row start at a different X position as soon as one label is longer than the rest.
 - For dense ESC settings panels, keep the editable shortcut text color consistent with other neutral UI labels unless a specific warning or capture state needs a highlight color.
 
+## Local DB config drift and dash smoothing (2026-05-25)
+
+**Implemented / checked**:
+- Restored source/config parity for local MongoDB: `backend/db.ts`, PM2 env, package DB scripts, git snapshot exceptions, and the China VM runbook now agree on local `zhenchuan_app` instead of hardcoded `baizhan_V2`.
+- Added dash render prediction during active server-authoritative dashes so the frontend keeps moving between server movement samples instead of freezing at the last authoritative position.
+- Added a focused Playwright spec for dash render prediction and gap diagnostics.
+- Follow-up: browser logs showed activeDash samples sometimes arriving/rendering 195-224ms apart while backend dash timing stayed near 30Hz. Expanded the client-side dash bridge to 8 ticks and raised warning diagnostics so covered gaps do not produce false alarm warnings.
+- Follow-up: confirmed the dash bridge is ability-agnostic because it consumes the shared `activeDash` velocity/tick shape, added regression coverage for horizontal, ground-target, knockback-style, and vertical lift dashes, and made backend `[DASH]` end logs report expected duration from the actual starting tick count instead of hardcoding 30 ticks.
+- Generalized the dash debugging method: compare authoritative backend timestamps/counters against client-observed render/network sample gaps, then add diagnostics at the handoff boundary where the two clocks disagree. This catches "backend is fine but frontend sees stale samples" bugs faster than only watching one side.
+- Local DB is now branch-locked to `mongodb://127.0.0.1:27017` + `zhenchuan_app`; app startup and snapshot scripts refuse remote MongoDB URIs or other DB names. Added local user maintenance commands and seeded `testuser1` / `testuser2` for Playwright/manual auth checks.
+- Follow-up: real browser logs showed occasional 269-448ms activeDash sample gaps while backend dash durations still stayed close to expected. Increased the client bridge to 20 ticks and only warn beyond 650ms, because gaps inside that bridge are now covered by prediction instead of indicating a visible stutter.
+
+**Lesson**:
+- A faster server response can expose frontend/server handoff bugs: activeDash may reach the client before the first movement tick, so hard-snapping to server position without short lead prediction can look like a mid-air freeze.
+- Dash diagnostics from the React render path measure client-observed sample gaps, not necessarily backend tick pauses. Cross-check PM2 `[DASH]` timings before blaming the game loop or database.
+- Dash smoothing tests should cover shapes of `activeDash` rather than only named abilities; the frontend bridge must follow velocity/tick fields so new dash abilities inherit the same render behavior automatically.
+- For slow-latency and new-bug investigations, log both the producer timeline and consumer timeline with the same entity/action id. A mismatch between "server advanced" and "client sample/render did not" points to transport/render handoff; matching stalls point back to authoritative processing.
+- Admin/test account maintenance now makes `testuser1` and `testuser2` admins.
+- Follow-up: account switching now uses remembered authenticated browser sessions instead of selecting any local account. The switch list shows only already-authenticated accounts and is allowed only when the current or remembered sessions include an admin; first-time account add still goes through `/login`.
+- Display-name changes now require a unique 1-6 Chinese-character name; `testuser1` / `testuser2` display names are `一` / `二`.
+- Follow-up: topbar account menus should use fixed overlay positioning with visible overflow instead of internal scrollbars; native scroll in the panel can still leave the menu visually cut off and adds unwanted page/panel scroll behavior. Chinese display-name inputs should validate on confirm, not filter during typing, because IME/input composition can wipe partially typed Chinese text.
+
 ## China VM deployment planning (2026-05-23)
 
 **Planning / finding**:

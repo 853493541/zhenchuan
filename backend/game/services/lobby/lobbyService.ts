@@ -10,18 +10,15 @@ import { initializeTournament } from "../economy/tournamentService";
 import { initializeBattleState } from "../battle/battleService";
 import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
 
-/**
- * Helper: fetch username by user ID
- */
-async function getUsernameById(userId: string): Promise<string> {
+async function getPlayerDisplayNameById(userId: string): Promise<string> {
   const user = await User.findById(userId).lean();
-  const username = user?.username || `User${userId.slice(-4)}`;
-  console.log(`[getUsernameById] userId=${userId} -> username=${username}`);
-  return username;
+  const displayName = user?.displayName || user?.username || `User${userId.slice(-4)}`;
+  console.log(`[getPlayerDisplayNameById] userId=${userId} -> displayName=${displayName}`);
+  return displayName;
 }
 
 export async function createGame(userId: string, mode: 'arena' | 'pubg' | 'collision-test' = 'arena') {
-  const username = await getUsernameById(userId);
+  const displayName = await getPlayerDisplayNameById(userId);
 
   const state: GameState = {
     /** authoritative state version */
@@ -65,7 +62,7 @@ export async function createGame(userId: string, mode: 'arena' | 'pubg' | 'colli
     started: false,
     mode,
     playerNames: {
-      [userId]: username,
+      [userId]: displayName,
     },
   });
 
@@ -78,7 +75,7 @@ export async function createGame(userId: string, mode: 'arena' | 'pubg' | 'colli
 }
 
 export async function joinGame(gameId: string, userId: string) {
-  const username = await getUsernameById(userId);
+  const displayName = await getPlayerDisplayNameById(userId);
   const game = await GameSession.findById(gameId);
   if (!game) throw new Error("Game not found");
 
@@ -90,14 +87,14 @@ export async function joinGame(gameId: string, userId: string) {
   }
   if (game.players.length >= 2) throw new Error("Game already full");
 
-  console.log(`[joinGame] Adding user ${userId} (${username}) to game ${gameId}`);
+  console.log(`[joinGame] Adding user ${userId} (${displayName}) to game ${gameId}`);
   game.players.push(userId);
   
   // Ensure playerNames exists and add the new player
   if (!game.playerNames) {
     game.playerNames = {};
   }
-  (game.playerNames as any)[userId] = username;
+  (game.playerNames as any)[userId] = displayName;
   
   console.log(`[joinGame] playerNames before save:`, game.playerNames);
   

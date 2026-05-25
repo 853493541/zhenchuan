@@ -5,6 +5,12 @@ import { usePathname } from "next/navigation";
 import TopBar from "../TopBar";
 import styles from "./styles.module.css";
 
+type LayoutAuthUser = {
+  username: string;
+  displayName?: string;
+  isAdmin?: boolean;
+};
+
 export default function LayoutShell({
   children,
 }: {
@@ -15,10 +21,12 @@ export default function LayoutShell({
   const isInGame = pathname?.startsWith('/game/in-game') || pathname?.startsWith('/game/screens/in-game');
   const isResourcePack = pathname === '/resource-pack';
 
-  // ✅ username comes from AuthGate via window (set once)
-  const [username] = useState<string | null>(() => {
+  const [authUser] = useState<LayoutAuthUser | null>(() => {
     if (typeof window === "undefined") return null;
-    return (window as any).__AUTH_USERNAME__ ?? null;
+    const user = (window as any).__AUTH_USER__;
+    if (user?.username) return user;
+    const username = (window as any).__AUTH_USERNAME__;
+    return username ? { username } : null;
   });
 
   /* =====================================================
@@ -35,7 +43,7 @@ export default function LayoutShell({
     <div className={styles.container}>
       {!isInGame && !isResourcePack && (
         <div className={styles.topbarGlobal}>
-          <TopBar username={username} />
+          <TopBar user={authUser} />
         </div>
       )}
 

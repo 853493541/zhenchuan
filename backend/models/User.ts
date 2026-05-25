@@ -25,10 +25,13 @@ export type BattleArenaMartialPreset = {
 
 export interface IUser extends Document {
   username: string;
+  displayName?: string;
   passwordHash: string;
   tokenVersion: number;
+  isAdmin?: boolean;
   battleArenaUiLayout?: BattleArenaUiLayout | null;
   battleArenaMartialPresets?: BattleArenaMartialPreset[] | null;
+  battleArenaMartialFavoriteOrder?: string[] | null;
 
   lastSeenAt?: Date;
   lastSeenIp?: string;
@@ -46,6 +49,15 @@ const UserSchema = new Schema<IUser>(
       index: true,
     },
 
+    displayName: {
+      type: String,
+      required: true,
+      default: function (this: IUser) {
+        return this.username;
+      },
+      trim: true,
+    },
+
     passwordHash: {
       type: String,
       required: true,
@@ -57,12 +69,23 @@ const UserSchema = new Schema<IUser>(
       default: 0,
     },
 
+    isAdmin: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
+
     battleArenaUiLayout: {
       type: Schema.Types.Mixed,
       default: null,
     },
 
     battleArenaMartialPresets: {
+      type: Schema.Types.Mixed,
+      default: [],
+    },
+
+    battleArenaMartialFavoriteOrder: {
       type: Schema.Types.Mixed,
       default: [],
     },
@@ -86,6 +109,11 @@ const UserSchema = new Schema<IUser>(
 UserSchema.pre("save", function (next) {
   if (this.isModified("username")) {
     this.username = this.username.trim().toLowerCase();
+  }
+  if (!this.displayName || !this.displayName.trim()) {
+    this.displayName = this.username;
+  } else {
+    this.displayName = this.displayName.trim();
   }
   next();
 });

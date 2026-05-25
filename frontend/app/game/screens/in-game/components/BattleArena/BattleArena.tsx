@@ -21,6 +21,7 @@ import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase
 import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
 import { formatCrashDiagnosticsReport, getClientCrashRecorder, type CrashRecorderSummary } from '@/app/game/diagnostics/clientCrashRecorder';
 import { getClientLatencyRecorder } from '@/app/game/diagnostics/clientLatencyRecorder';
+import { predictDashRenderPosition, shouldLogDashServerGap, type DashRenderSample } from './dashRenderPrediction';
 
 type V3 = { x: number; y: number; z: number };
 type LoadStageStatus = '完成' | '进行中' | '失败';
@@ -4712,6 +4713,11 @@ export default function BattleArena({
   const lastInstantSwapCastAtRef = useRef(0);
   const lastFengLiuYunSanCastAtRef = useRef(0);
   const lastObservedServerDashAtRef = useRef(0);
+  const dashServerSampleRef = useRef<DashRenderSample | null>(null);
+  const dashServerSampleKeyRef = useRef('');
+  const lastDashStutterLogAtRef = useRef(0);
+  const dashStartExpectedMsRef = useRef(1000);
+  const dashStartAbilityIdRef = useRef<string | null>(null);
   const pendingGroundCastAbilityRef = useRef<string | null>(null);
   const mouseWorldPosRef = useRef<{ x: number; y: number; z?: number } | null>(null);
   const oppScreenBoundsRef  = useRef<ScreenBounds | null>(null);
@@ -4770,17 +4776,65 @@ export default function BattleArena({
     const isDashing = !!ad && ad.ticksRemaining > 0;
     meActiveDashRef.current = isDashing ? ad : null;
     if (isDashing) {
-      lastObservedServerDashAtRef.current = performance.now();
+      const nowMs = performance.now();
+      lastObservedServerDashAtRef.current = nowMs;
+
+      const serverDashPosition = {
+        x: me.position.x,
+        y: me.position.y,
+        z: (me.position as any).z ?? 0,
+      };
+      const sampleKey = [
+        ad.abilityId ?? '',
+        ad.ticksRemaining ?? '',
+        serverDashPosition.x.toFixed(3),
+        serverDashPosition.y.toFixed(3),
+        serverDashPosition.z.toFixed(3),
+      ].join(':');
+
+      if (dashServerSampleKeyRef.current !== sampleKey) {
+        const previousSample = dashServerSampleRef.current;
+        const gapMs = previousSample ? nowMs - previousSample.sampledAtMs : 0;
+        if (
+          previousSample &&
+          shouldLogDashServerGap(gapMs) &&
+          nowMs - lastDashStutterLogAtRef.current > 500
+        ) {
+          lastDashStutterLogAtRef.current = nowMs;
+          console.warn('[DASH-STUTTER] delayed server dash sample', {
+            abilityId: ad.abilityId ?? null,
+            gapMs: Math.round(gapMs),
+            ticksRemaining: ad.ticksRemaining ?? null,
+          });
+        }
+        dashServerSampleRef.current = {
+          position: serverDashPosition,
+          sampledAtMs: nowMs,
+          ticksRemaining: Number(ad.ticksRemaining ?? 0),
+          vxPerTick: Number(ad.vxPerTick ?? 0),
+          vyPerTick: Number(ad.vyPerTick ?? 0),
+          vzPerTick: Number(ad.vzPerTick ?? ad.forceVzPerTick ?? 0),
+        };
+        dashServerSampleKeyRef.current = sampleKey;
+      }
+    } else {
+      dashServerSampleRef.current = null;
+      dashServerSampleKeyRef.current = '';
     }
     dashTurnOverrideRef.current = hasDashTurnOverrideClient(me?.buffs);
     // Transition logging (synchronous, fine for refs)
     if (isDashing && !_prevDashRef.current) {
-      (window as any).__dashStartMs = performance.now();
-      console.log(`[DASH] >>> FRONTEND START  time=${new Date().toISOString()}`);
+      const nowMs = performance.now();
+      const remainingTicks = Math.max(1, Number(ad?.ticksRemaining ?? 30));
+      dashStartExpectedMsRef.current = Math.round(remainingTicks * (1000 / 30));
+      dashStartAbilityIdRef.current = ad?.abilityId ?? null;
+      (window as any).__dashStartMs = nowMs;
+      console.log(`[DASH] >>> FRONTEND START  time=${new Date().toISOString()} ability=${dashStartAbilityIdRef.current ?? 'unknown'} expectedRemaining=${dashStartExpectedMsRef.current}ms`);
     }
     if (!isDashing && _prevDashRef.current) {
       const elapsed = performance.now() - ((window as any).__dashStartMs ?? 0);
-      console.log(`[DASH] <<< FRONTEND END    elapsed=${elapsed.toFixed(0)}ms  (expected ~1000ms)`);
+      console.log(`[DASH] <<< FRONTEND END    elapsed=${elapsed.toFixed(0)}ms  (expected ~${dashStartExpectedMsRef.current}ms remaining, ability=${dashStartAbilityIdRef.current ?? 'unknown'})`);
+      dashStartAbilityIdRef.current = null;
     }
     _prevDashRef.current = isDashing;
   }
@@ -5345,7 +5399,15 @@ export default function BattleArena({
       // --- local player render pos ---
       const myPos = localPositionRef.current ?? me?.position;
       if (myPos) {
-        const tx = myPos.x, ty = myPos.y, tz = localZRef.current;
+        let tx = myPos.x, ty = myPos.y, tz = localZRef.current;
+        const predictedDashRenderPos = meActiveDashRef.current
+          ? predictDashRenderPosition(dashServerSampleRef.current, { nowMs: frameNow })
+          : null;
+        if (predictedDashRenderPos) {
+          tx = predictedDashRenderPos.x;
+          ty = predictedDashRenderPos.y;
+          tz = predictedDashRenderPos.z;
+        }
         const r  = localRenderPosRef.current;
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
         const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
