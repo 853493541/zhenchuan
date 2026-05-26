@@ -3,6 +3,70 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Backend jump input direction inheritance (2026-05-26)
+
+**Implemented / checked**:
+- Backend `GameLoop.setPlayerInput` now preserves a player's previous movement intent when a one-shot jump packet arrives with no direction, so the authoritative jump does not degrade into the 2-unit upward-jump drift while the frontend predicts a directional jump.
+- Reused the same movement-intent predicate for `hasMovementIntent`, keeping route/cast checks aligned with jump input merging.
+- Backend simulation confirmed the failure mode: a Fuyao jump with direction travels about `21.404` world units and reaches `12.559` max Z, while a direction-lost Fuyao jump reaches the same height but travels exactly `2` world units.
+- Patched merge simulation confirmed the formerly bad sequence (previous forward movement, then jump-only `dx:0,dy:0`) now stores `dy:-1` on the jump input and produces the full `21.404` world-unit authoritative travel.
+- Built backend and frontend successfully, then restarted only PM2 `frontend` and `backend`; both are online on the newest build with no new startup errors after restart.
+
+**Lesson**:
+- Opponent-side short jumps are backend pipeline bugs until proven otherwise. Compare frontend prediction with the actual GameLoop input stored for the consuming tick, not only local render reconciliation logs.
+- Jump direction is vulnerable to one-shot packet races: if the jump pulse arrives as directionless while a movement packet was already holding forward intent, the server must merge that intent before `applyMovement` classifies the jump as upward.
+- A power jump that loses direction is easy to misread because the vertical arc remains correct; the signature is high Z plus exactly the upward-jump horizontal budget.
+
+## Opponent jump render buffer consumption (2026-05-26)
+
+**Implemented / checked**:
+- `opponentPositionBufferRef` stores optional `z` and is passed from `useGameState` through `BattleArena` and `ArenaScene`, but direct delayed interpolation in `Character` was reverted after live/manual feedback showed it made opponent movement feel later.
+- Removed the stale internal BattleArena opponent buffer fallback that was populated from already-rendered React state and never drove the character frame loop.
+- Live two-account check on the public site created a fresh `collision-test` game, moved/jumped test account one, and confirmed test account two received 374 opponent position samples at about 33ms average spacing while both in-game pages stayed up with no runtime console errors.
+- Follow-up correction: removed unbounded remote sample extrapolation and cleared `opponentPositionBufferRef` on game changes after stale samples caused opponent-side sink/snap symptoms on stop, forward double-jump, and Fuyao-style double-jump sequences. A live observer-side test stayed on `/game/in-game`, drove two forward double-jump sequences plus one longer Fuyao-style double-jump sequence through the other account, and captured 1181 remote position samples at about 34ms average spacing with max authoritative step distance `0.238` and no console errors.
+- Follow-up rollback/refix: the delayed-interpolation/capped-extrapolation attempt was reverted because it made opponent double-jump feel laggier and could still look sunk after landing. Current `Character` rendering is prop-driven again, clamps rendered Z to ground, follows airborne vertical height immediately, and uses only a faster planar lerp while airborne. Fresh live-room checks covered opponent double-jump, own-side 扶摇 jump, and jump-doublejump-蹑云逐月; requests returned 200, old jump/dash console spam stayed at 0, correction warnings stayed at 0, and the captured opponent stream still showed backend samples as low as `z=-0.213`, confirming the visual clamp is needed.
+
+**Lesson**:
+- If an opponent jump has the right curve and distance but appears to pause mid-air, inspect the render-consumer path before changing backend physics. A populated WebSocket buffer does not help unless the frame loop reads it directly.
+- Remote interpolation should keep `z` with XY samples. Vertical motion can look correct-but-stuttery when XY is smoothed or delayed separately from height.
+- Do not add a fixed remote render delay to hide packet gaps. It can make measured samples look smoother while making the opponent visibly laggier to the player.
+- Do not extrapolate remote opponent movement during jumps unless there is a stronger visual proof path than sample metrics. In this project, the safer immediate fix is to prevent below-ground rendering and make airborne vertical height follow authoritative props immediately.
+
+## Jump reconciliation sample gaps and stale service workers (2026-05-26)
+
+**Implemented / checked**:
+- Frontend reconciliation now trusts an active locally predicted jump through its planned flight instead of continuously blending XY/Z back toward delayed server samples after the first local-jump grace window.
+- Delayed authoritative positions during a predicted jump are logged as `[JUMP-SAMPLE-GAP] delayed server sample during predicted jump`; only gaps beyond the planned jump budget hard snap and warn as `[JUMP-CORRECTION] hard snap during jump`.
+- Follow-up: local landing now keeps a bounded landing reconciliation window and cumulative jump-chain trust budget, so delayed server samples from phase 1 do not trigger a phase-2 hard snap or a snap-back exactly when the predicted landing clears `jumpTelemetry`.
+- Resource-pack service worker registration now uses a versioned script URL and calls `registration.update()`, and the in-game page nudges old `/resource-pack-sw.js` registrations to update so stale workers stop intercepting app navigations.
+- Live checked the public game page after PM2 restart: the served Next chunk contained the new sample-gap label, a forward jump produced start/sample-gap/end entries with `correctionCount: 0`, and PM2 reported `frontend` and `backend` online on the newest build.
+- Follow-up live check: normal forward double-jump and 扶摇 forward jump + second jump both produced `[JUMP-LANDING-GAP]` catch-up samples with `correctionCount: 0`, no `[JUMP-CORRECTION]`/`[JUMP-LANDING-CORRECTION]`, and no jump console warnings.
+- Follow-up: ordinary `[JUMP]`, `[JUMP-SAMPLE-GAP]`, and `[JUMP-LANDING-GAP]` entries are now kept in `window.__zhenchuanJumpDebug.events` but do not print to the console unless the debug flag is explicitly enabled. Only actual hard corrections and dash stutter diagnostics warn in the console. A fresh live-room self test produced internal jump start/end debug entries, 0 old-spam console entries, and 0 correction warnings.
+- Follow-up rollback/refix: the render-side dash backtrack clamp was reverted after user testing reported harder forward dash lag. Dash rendering is back to the existing `predictDashRenderPosition` path; the fresh live self test clicked 蹑云逐月 after jump-doublejump and recorded 0 `[JUMP-CORRECTION]`, `[JUMP-LANDING-CORRECTION]`, or `[DASH-STUTTER]` warnings.
+
+**Lesson**:
+- Long jumps expose delayed-sample reconciliation bugs. If backend and frontend jump formulas match, repeatedly blending the predicted client back toward old server positions can create the lag even when the authoritative movement is valid.
+- The end of a predicted jump needs its own handoff policy. Clearing jump telemetry immediately on local landing re-enables normal hard-snap reconciliation while the authoritative landing packet can still be one or more movement samples behind.
+- Double-jump hard-snap budgets must include the unacknowledged travel from earlier phases in the airborne chain; comparing a phase-2 gap only against the phase-2 distance can misclassify ordinary phase-1 trail as impossible divergence.
+- Jump telemetry should separate ordinary delayed samples from true corrections. Warning on every delayed packet hides the real failure mode and makes a working prediction path look broken.
+- Console diagnostics should match user-visible severity: ordinary delayed jump samples belong in an opt-in debug buffer, while real visible correction/snap and opponent sample-gap problems should warn with clear labels.
+- Do not add dash backtrack clamps based only on metrics; this can make forward dash feel harder/laggier. Prove dash visual changes with own-side interaction, not only console warning counts.
+- Fixing a service worker source file is not enough for players already controlled by an older worker; registration/update strategy must force the guarded script to replace stale navigation-intercepting versions.
+
+## Frontend jump prediction speed expiry and diagnostics (2026-05-26)
+
+**Implemented / checked**:
+- Frontend movement speed prediction now recomputes active SPEED_BOOST/SLOW effects by wall-clock time inside the local physics tick, so an expired speed buff cannot keep `moveSpeedScaleRef` boosted while the backend has already dropped it.
+- Jump input now captures a queued direction/backpedal snapshot at Space press and uses that same snapshot for the movement POST and local jump start. Facing can still change mid-air for abilities, but the active jump phase keeps its takeoff direction.
+- Added `window.__zhenchuanJumpDebug.events` with frontend jump start, large server-correction, and landing records. Entries include direction, facing, expected/actual travel, expected/actual timing, move-speed scale, speed scale, and correction count.
+- Live checked the public game page after PM2 restart: the served Next chunk contained the jump logger, and a test jump produced start/correction/landing events. The sample showed local expected travel of about `8.5` units but shorter authoritative travel in the current map position, proving the new logs can distinguish speed/direction issues from collision/server correction during jump.
+- Repaired a corrupted enemy name `<Text>` JSX block in `scene/Character.tsx` that was unrelated to movement prediction but blocked the required frontend build.
+
+**Lesson**:
+- Movement prediction cannot rely on React state identity to drop expired timed buffs. Recompute active effects on the same tick that consumes movement speed, using the same wall-clock expiry guard as runtime predicates.
+- Jump direction and facing are separate state. Capture the travel vector at jump input/start time; later facing changes should affect casts and the next jump intent, not redirect the already-started phase.
+- Jump lag debugging needs both expected-plan data and authoritative correction data. A landing-only record hides whether the mismatch came from stale speed scale, wrong direction, collision, or sparse server samples.
+
 ## Knockback, jump carry, shield, and stealth sound parity (2026-05-26)
 
 **Implemented / checked**:

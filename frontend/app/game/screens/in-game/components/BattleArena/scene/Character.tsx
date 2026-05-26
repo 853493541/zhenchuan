@@ -29,6 +29,8 @@ let disguiseCartPrototypePromise: Promise<THREE.Group> | null = null;
 const disguiseTextureLoader = new THREE.TextureLoader();
 const disguiseTextureCache = new Map<string, THREE.Texture>();
 
+export type RemotePositionSample = { t: number; pos: { x: number; y: number; z?: number } };
+
 function loadDisguiseTextureCached(pngName: string, colorSpace: THREE.ColorSpace): THREE.Texture {
   const key = `${pngName}:${colorSpace}`;
   if (!disguiseTextureCache.has(key)) {
@@ -250,6 +252,9 @@ interface CharacterProps {
   onSelect?: () => void;
   /** Live position ref — read every frame for the local player */
   posRef?: MutableRefObject<{ x: number; y: number; z: number }>;
+  /** Remote authoritative position samples, read every frame for opponents. */
+  remotePositionBufferRef?: MutableRefObject<Map<string, RemotePositionSample[]>>;
+  remoteUserId?: string;
   /** Per-frame projected screen anchor for HUD overlays */
   onScreenBounds?: (bounds: { cx: number; topY: number; baseY: number; rs: number }) => void;
   worldHalfX: number;
@@ -329,11 +334,12 @@ export default function Character({
   );
 
   const threeX = worldX - worldHalfX;
-  const threeY = worldZ;
+  const threeY = Math.max(0, worldZ);
   const threeZ = worldHalfY - worldY;
 
   // For opponent (no posRef): smooth lerp toward prop position
   const currentPos = useRef(new THREE.Vector3(threeX, threeY, threeZ));
+  const targetPos = useRef(new THREE.Vector3(threeX, threeY, threeZ));
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -343,22 +349,26 @@ export default function Character({
       // Local player: posRef is already smoothed by the rAF loop in BattleArena.
       // Copy directly — NO additional lerp (avoids sluggish double-smoothing).
       const p = posRef.current;
-      groupRef.current.position.set(p.x - worldHalfX, p.z, worldHalfY - p.y);
+      groupRef.current.position.set(p.x - worldHalfX, Math.max(0, p.z), worldHalfY - p.y);
     } else {
-      // Opponent: smooth lerp toward prop-driven position
+      const nowMs = performance.now();
       const tx = worldX - worldHalfX;
-      const ty = worldZ;
+      const ty = Math.max(0, worldZ);
       const tz = worldHalfY - worldY;
+      targetPos.current.set(tx, ty, tz);
       const shouldInstantSnap =
         !!instantSnapAtRef &&
         instantSnapWindowMs > 0 &&
-        performance.now() - instantSnapAtRef.current < instantSnapWindowMs;
+        nowMs - instantSnapAtRef.current < instantSnapWindowMs;
       const shouldVerticalBlink = Math.abs(ty - currentPos.current.y) >= OPPONENT_VERTICAL_BLINK_THRESHOLD;
       if (shouldInstantSnap || shouldVerticalBlink) {
-        currentPos.current.set(tx, ty, tz);
+        currentPos.current.copy(targetPos.current);
       } else {
-        currentPos.current.lerp(new THREE.Vector3(tx, ty, tz), 0.18);
+        const airborneVisual = ty > 0.05 || currentPos.current.y > 0.05;
+        currentPos.current.lerp(targetPos.current, airborneVisual ? 0.34 : 0.18);
+        if (airborneVisual) currentPos.current.y = ty;
       }
+      currentPos.current.y = Math.max(0, currentPos.current.y);
       groupRef.current.position.copy(currentPos.current);
     }
 

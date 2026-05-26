@@ -2356,9 +2356,8 @@ function isActiveBuffClient(buff: ActiveBuff | any, now = Date.now()): boolean {
   return expiresAt > now;
 }
 
-function activeBuffsClient(buffs?: ActiveBuff[]): ActiveBuff[] {
+function activeBuffsClient(buffs?: ActiveBuff[], now = Date.now()): ActiveBuff[] {
   if (!Array.isArray(buffs) || buffs.length === 0) return [];
-  const now = Date.now();
   return buffs.filter((buff) => isActiveBuffClient(buff, now));
 }
 
@@ -2375,8 +2374,35 @@ function isLocallyConsumedJumpBoostClient(buff: ActiveBuff | any, consumedAt: nu
   return Date.now() - consumedAt < 3000;
 }
 
-function activeSelfBuffsClient(buffs: ActiveBuff[] | undefined, consumedJumpBoostAt: number): ActiveBuff[] {
-  return activeBuffsClient(buffs).filter((buff) => !isLocallyConsumedJumpBoostClient(buff, consumedJumpBoostAt));
+function activeSelfBuffsClient(buffs: ActiveBuff[] | undefined, consumedJumpBoostAt: number, now = Date.now()): ActiveBuff[] {
+  return activeBuffsClient(buffs, now).filter((buff) => !isLocallyConsumedJumpBoostClient(buff, consumedJumpBoostAt));
+}
+
+function getActiveSelfBuffEffectsClient(buffs: ActiveBuff[] | undefined, consumedJumpBoostAt: number, now = Date.now()): any[] {
+  return activeSelfBuffsClient(buffs, consumedJumpBoostAt, now).flatMap((buff: any) => (buff.effects ?? []).filter(Boolean));
+}
+
+function computeMoveSpeedScaleClient(buffs: ActiveBuff[] | undefined, consumedJumpBoostAt: number, now = Date.now()): number {
+  const effects = getActiveSelfBuffEffectsClient(buffs, consumedJumpBoostAt, now);
+  const speedBoost = effects
+    .filter((effect: any) => effect.type === 'SPEED_BOOST')
+    .reduce((sum: number, effect: any) => sum + Number(effect.value ?? 0), 0);
+  const slow = effects
+    .filter((effect: any) => effect.type === 'SLOW')
+    .reduce((sum: number, effect: any) => sum + Number(effect.value ?? 0), 0);
+  return Math.max(0, 1 + speedBoost - slow);
+}
+
+function recordJumpDebugClient(entry: Record<string, any>, level: 'log' | 'warn' = 'log') {
+  if (typeof window === 'undefined') return;
+  const debug = ((window as any).__zhenchuanJumpDebug ??= { events: [] });
+  debug.events.push({ ...entry, at: Date.now() });
+  while (debug.events.length > 240) debug.events.shift();
+  if (level === 'warn') {
+    console.warn(entry.label ?? '[JUMP-DEBUG]', entry);
+  } else if (debug.console === true) {
+    console.log(entry.label ?? '[JUMP-DEBUG]', entry);
+  }
 }
 
 function getLinkedShieldDisplayClient(target?: { shield?: number; buffs?: ActiveBuff[] } | null): number {
@@ -5588,6 +5614,7 @@ export default function BattleArena({
   };
   type JumpTelemetry = {
     startMs: number;
+    expectedTotalMs: number;
     peakMs: number;
     takeoffGround: number;
     peakHeightWorld: number;
@@ -5596,6 +5623,22 @@ export default function BattleArena({
     startSpeedUnitsPerSec: number;
     jumpPhase: number;
     mode: 'directional' | 'upward';
+    dir: { x: number; y: number } | null;
+    trustOriginPos: { x: number; y: number };
+    trustBudgetWorld: number;
+    startFacing: { x: number; y: number };
+    moveSpeedScale: number;
+    speedScale: number;
+    correctionCount: number;
+  };
+  type JumpLandingReconcile = Pick<JumpTelemetry,
+    'jumpPhase' | 'mode' | 'dir' | 'takeoffPos' | 'expectedLandWorld' | 'trustOriginPos' | 'trustBudgetWorld' |
+    'startSpeedUnitsPerSec' | 'moveSpeedScale' | 'speedScale' | 'correctionCount'
+  > & {
+    startedMs: number;
+    trustUntilMs: number;
+    settleUntilMs: number;
+    landingPos: { x: number; y: number; z: number };
   };
   const [jumpRecord, setJumpRecord] = useState<JumpRecord>({
     riseMs: null,
@@ -5758,9 +5801,17 @@ export default function BattleArena({
   const lastMovementSendRef = useRef<{ signature: string; sentAt: number } | null>(null);
   const skippedMovementFramesRef = useRef(0);
 
+  type QueuedJumpIntent = {
+    direction: { x: number; y: number } | null;
+    backpedalOnly: boolean;
+    queuedAtMs: number;
+    controlMode: 'traditional' | 'joystick';
+  };
+
   /* --- Jump / Z refs --- */
   const jumpLocalRef      = useRef(false); // drives local Z prediction
   const jumpSendRef       = useRef(false); // queued for next movement POST
+  const queuedJumpIntentRef = useRef<QueuedJumpIntent | null>(null);
   const localZRef         = useRef(0);     // current Z height (world units)
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
@@ -5768,7 +5819,9 @@ export default function BattleArena({
   const lastDashAbilityIdRef = useRef<string | null>(null); // track last active dash for jump-restore logic
   const airborneSpeedCarryRef = useRef(0); // latest special airborne planar speed snapshot (world units/tick)
   const jumpTelemetryRef  = useRef<JumpTelemetry | null>(null);
+  const jumpLandingReconcileRef = useRef<JumpLandingReconcile | null>(null);
   const lastJumpInputAtRef = useRef(0);    // last local jump press time for air reconciliation
+  const lastJumpCorrectionLogAtRef = useRef(0);
   const bvhCenterYInitRef = useRef(false); // true after _bvhCenter.y first initialised
   const airNudgeRemainingRef = useRef(0);  // current jump phase travel budget (world units)
   const airNudgeTicksRemainingRef = useRef(0); // current jump phase travel ticks remaining
@@ -5780,6 +5833,7 @@ export default function BattleArena({
   const oppFacingRef      = useRef<Facing>({ x: 0, y: 1 });
   const prevActiveChannelRef = useRef<ActiveChannel | null>(null);
   const activeChannelRef = useRef<ActiveChannel | null>(null);
+  const meBuffsRef = useRef<ActiveBuff[]>(me?.buffs ?? []);
   const activeChannelSoundKeysRef = useRef<Set<string>>(new Set());
   const channelSoundFinishAfterCompleteKeysRef = useRef<Set<string>>(new Set());
   const speedSamplePrevRef = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -5789,12 +5843,6 @@ export default function BattleArena({
     validElapsedMs: 0,
     maxUnitsPerSec: 0,
   });
-
-  /* --- Opponent interpolation --- */
-  const internalOpponentBufferRef = useRef<Array<{ t: number; pos: Position }>>([]);
-  const opponentRawRef            = useRef<Position | null>(null);
-  const RENDER_DELAY_MS           = 100;
-  const activeOpponentBuffer      = opponentPositionBufferRef ?? internalOpponentBufferRef;
 
   // Camera direction is now pinned to CAM_DIR constant — no ref needed.
   // Keep a dummy ref so nothing else needs changing.
@@ -5973,11 +6021,8 @@ export default function BattleArena({
       dashStartExpectedMsRef.current = Math.round(remainingTicks * (1000 / 30));
       dashStartAbilityIdRef.current = ad?.abilityId ?? null;
       (window as any).__dashStartMs = nowMs;
-      console.log(`[DASH] >>> FRONTEND START  time=${new Date().toISOString()} ability=${dashStartAbilityIdRef.current ?? 'unknown'} expectedRemaining=${dashStartExpectedMsRef.current}ms`);
     }
     if (!isDashing && _prevDashRef.current) {
-      const elapsed = performance.now() - ((window as any).__dashStartMs ?? 0);
-      console.log(`[DASH] <<< FRONTEND END    elapsed=${elapsed.toFixed(0)}ms  (expected ~${dashStartExpectedMsRef.current}ms remaining, ability=${dashStartAbilityIdRef.current ?? 'unknown'})`);
       dashStartAbilityIdRef.current = null;
     }
     _prevDashRef.current = isDashing;
@@ -6619,12 +6664,14 @@ export default function BattleArena({
   }, [me?.position?.x, me?.position?.y]);
 
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
+  useEffect(() => { meBuffsRef.current = me?.buffs ?? []; }, [me?.buffs]);
   // Keep max-jumps ref in sync with MULTI_JUMP buff from server state
   useEffect(() => {
-    const effects = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt).flatMap((b: any) => (b.effects ?? []).filter(Boolean));
+    const activeSelfBuffs = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt);
+    const effects = activeSelfBuffs.flatMap((b: any) => (b.effects ?? []).filter(Boolean));
     const multiJump = effects.find((e: any) => e.type === 'MULTI_JUMP');
     maxJumpsRef.current = multiJump ? (multiJump.value ?? 2) : 2;
-    yuqiMountedRef.current = hasYuqiStateClient(me?.buffs);
+    yuqiMountedRef.current = activeSelfBuffs.some((b: any) => b.buffId === 2741);
     lingRanTianFengActiveRef.current = effects.some((e: any) => e.type === 'LING_RAN_TIAN_FENG_STATE');
     const nextLingRanCharge = Number((me as any)?.lingRanTianFengCharges ?? 0);
     lingRanTianFengChargeRef.current = lingRanTianFengActiveRef.current
@@ -6652,9 +6699,14 @@ export default function BattleArena({
     return true;
   }, []);
 
-  const getQueuedYuqiMountedJumpDirection = useCallback(() => {
+  const getQueuedJumpIntent = useCallback((): QueuedJumpIntent => {
     if (joystickDirRef.current) {
-      return normalizePlanar(joystickDirRef.current.dx, joystickDirRef.current.dy);
+      return {
+        direction: normalizePlanar(joystickDirRef.current.dx, joystickDirRef.current.dy),
+        backpedalOnly: false,
+        queuedAtMs: performance.now(),
+        controlMode: 'joystick',
+      };
     }
 
     const keys = keysRef.current;
@@ -6668,13 +6720,23 @@ export default function BattleArena({
         camYawRef.current,
         charYawRef.current,
       );
-      return moveIntent.direction ? normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy) : null;
+      return {
+        direction: moveIntent.direction ? normalizePlanar(moveIntent.direction.dx, moveIntent.direction.dy) : null,
+        backpedalOnly: !!moveIntent.direction && moveIntent.backpedalOnly,
+        queuedAtMs: performance.now(),
+        controlMode: 'traditional',
+      };
     }
 
-    return normalizePlanar(
-      (keys.a ? -1 : 0) + (keys.d ? 1 : 0),
-      (keys.w ? 1 : 0) + (keys.s ? -1 : 0),
-    );
+    return {
+      direction: normalizePlanar(
+        (keys.a ? -1 : 0) + (keys.d ? 1 : 0),
+        (keys.w ? 1 : 0) + (keys.s ? -1 : 0),
+      ),
+      backpedalOnly: false,
+      queuedAtMs: performance.now(),
+      controlMode: 'joystick',
+    };
   }, []);
 
   const tryQueueLocalJump = useCallback(() => {
@@ -6708,6 +6770,7 @@ export default function BattleArena({
         return;
       }
       const keepLingRanCharge = hasLingRanSpecialJumpRefillBuffClient(me?.buffs);
+      queuedJumpIntentRef.current = getQueuedJumpIntent();
       lastJumpInputAtRef.current = performance.now();
       jumpLocalRef.current = false;
       jumpSendRef.current = true;
@@ -6715,14 +6778,17 @@ export default function BattleArena({
       crashRecorder.recordBehavior('jump-queued', {
         kind: 'ling-ran-special',
         keepCharge: keepLingRanCharge,
+        queuedJumpIntent: queuedJumpIntentRef.current,
         position: localPositionRef.current ?? me.position,
       });
       return;
     }
-    const queuedYuqiJumpDir = getQueuedYuqiMountedJumpDirection();
+    const queuedJumpIntent = getQueuedJumpIntent();
+    const queuedYuqiJumpDir = queuedJumpIntent.direction;
     if (!canUseYuqiMountedJumpClient(queuedYuqiJumpDir)) {
       jumpLocalRef.current = false;
       jumpSendRef.current = false;
+      queuedJumpIntentRef.current = null;
       crashRecorder.recordBehavior('jump-blocked', { reason: 'yuqi-direction', queuedYuqiJumpDir, position: localPositionRef.current ?? me.position });
       return;
     }
@@ -6730,9 +6796,11 @@ export default function BattleArena({
     if (localJumpCountRef.current >= maxJumps) {
       jumpLocalRef.current = false;
       jumpSendRef.current = false;
+      queuedJumpIntentRef.current = null;
       crashRecorder.recordBehavior('jump-blocked', { reason: 'max-jumps', localJumpCount: localJumpCountRef.current, maxJumps, position: localPositionRef.current ?? me.position });
       return;
     }
+    queuedJumpIntentRef.current = queuedJumpIntent;
     lastJumpInputAtRef.current = performance.now();
     jumpLocalRef.current = true;
     jumpSendRef.current = true;
@@ -6740,22 +6808,16 @@ export default function BattleArena({
       kind: 'normal',
       localJumpCount: localJumpCountRef.current,
       maxJumps,
-      direction: queuedYuqiJumpDir,
+      direction: queuedJumpIntent.direction,
+      backpedalOnly: queuedJumpIntent.backpedalOnly,
       position: localPositionRef.current ?? me.position,
       z: localZRef.current,
     });
-  }, [canUseYuqiMountedJumpClient, crashRecorder, getEffectiveMaxJumps, getQueuedYuqiMountedJumpDirection, me?.activeChannel, me?.buffs, me.position]);
+  }, [canUseYuqiMountedJumpClient, crashRecorder, getEffectiveMaxJumps, getQueuedJumpIntent, me?.activeChannel, me?.buffs, me.position]);
 
   // Keep local movement-speed prediction aligned with backend movement.ts
   useEffect(() => {
-    const effects = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt).flatMap((b: any) => (b.effects ?? []).filter(Boolean));
-    const speedBoost = effects
-      .filter((e: any) => e.type === 'SPEED_BOOST')
-      .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
-    const slow = effects
-      .filter((e: any) => e.type === 'SLOW')
-      .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
-    moveSpeedScaleRef.current = Math.max(0, 1 + speedBoost - slow);
+    moveSpeedScaleRef.current = computeMoveSpeedScaleClient(me?.buffs, locallyConsumedJumpBoostAt);
   }, [me?.buffs, locallyConsumedJumpBoostAt]);
 
   useEffect(() => {
@@ -7416,8 +7478,10 @@ export default function BattleArena({
     const mouseLook = controlModeRef.current === 'traditional' && mouseStateRef.current.isRight;
     const bothMouse = mouseStateRef.current.isRight && mouseStateRef.current.isLeft;
     // Capture & clear jump flag atomically before the async POST
-    const shouldJump = jumpSendRef.current && !jumpLockedRef.current;
-    if (jumpSendRef.current) jumpSendRef.current = false;
+    const hadQueuedJumpSend = jumpSendRef.current;
+    const shouldJump = hadQueuedJumpSend && !jumpLockedRef.current;
+    if (hadQueuedJumpSend) jumpSendRef.current = false;
+    if (hadQueuedJumpSend && !shouldJump) queuedJumpIntentRef.current = null;
     const dashFacingLocked = !!meActiveDashRef.current && !dashTurnOverrideRef.current;
     const facingInputLocked = movementControlStateRef.current.fullyLocked || movementControlStateRef.current.rooted;
     let facingPayload = { ...meFacingRef.current };
@@ -7508,6 +7572,18 @@ export default function BattleArena({
       meFacingRef.current = facingPayload;
     }
 
+    const queuedJumpIntent = shouldJump ? queuedJumpIntentRef.current : null;
+    if (shouldJump) {
+      directionPayload = queuedJumpIntent?.direction
+        ? {
+            dx: queuedJumpIntent.direction.x,
+            dy: queuedJumpIntent.direction.y,
+            jump: true,
+            backpedalOnly: queuedJumpIntent.backpedalOnly,
+          }
+        : { dx: 0, dy: 0, jump: true };
+    }
+
     const movementSignature = movementPayloadSignature(directionPayload, facingPayload);
     const movementNow = Date.now();
     const lastMovementSend = lastMovementSendRef.current;
@@ -7545,6 +7621,7 @@ export default function BattleArena({
       direction: directionPayload,
       facing: facingPayload,
       shouldJump,
+      queuedJumpIntent,
       keys: { ...k },
       controlMode: controlModeRef.current,
       mouseLook,
@@ -7654,6 +7731,7 @@ export default function BattleArena({
             serverPosition: ack?.position,
             serverVelocity: ack?.velocity,
             returnedInput: ack?.input,
+            queuedJumpIntent,
           });
         }
       }
@@ -7688,6 +7766,18 @@ export default function BattleArena({
       initializedRef.current   = true;
     }
   }, [me?.position?.x, me?.position?.y, (me?.position as any)?.z]);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.getRegistration("/")
+      .then((registration) => {
+        const scriptUrl = registration?.active?.scriptURL ?? registration?.waiting?.scriptURL ?? registration?.installing?.scriptURL ?? "";
+        if (registration && scriptUrl.includes("/resource-pack-sw.js")) {
+          registration.update().catch(() => null);
+        }
+      })
+      .catch(() => null);
+  }, []);
 
   useEffect(() => {
     if (!me?.position || !initializedRef.current) return;
@@ -7747,11 +7837,73 @@ export default function BattleArena({
       return;
     }
 
+    const serverZ = (me.position as any).z ?? 0;
+    const localZ  = localZRef.current;
+    const jumpTelemetry = jumpTelemetryRef.current;
+    const reconcileNowMs = performance.now();
+    let landingReconcile = jumpLandingReconcileRef.current;
+    if (landingReconcile && reconcileNowMs > landingReconcile.settleUntilMs) {
+      jumpLandingReconcileRef.current = null;
+      landingReconcile = null;
+    }
+    const airborneLocal =
+      localJumpCountRef.current > 0 ||
+      Math.abs(localVzRef.current) > 0.01 ||
+      localZ > groundHRef.current + 0.05;
+    const correction2d = Math.hypot(dx, dy);
+    const zError = serverZ - localZ;
+    if (landingReconcile && correction2d <= 0.6 && Math.abs(zError) <= 0.3) {
+      jumpLandingReconcileRef.current = null;
+      landingReconcile = null;
+    }
+    const predictedLocalJump = airborneLocal && !!jumpTelemetry;
+    const landingTrustActive = !airborneLocal && !!landingReconcile && reconcileNowMs <= landingReconcile.trustUntilMs;
+    const landingSettleActive = !airborneLocal && !!landingReconcile && reconcileNowMs <= landingReconcile.settleUntilMs;
+    const jumpTrust = jumpTelemetry ?? landingReconcile;
+    const trustBudgetWorld = jumpTrust ? Math.max(jumpTrust.expectedLandWorld, jumpTrust.trustBudgetWorld) : 0;
+    const serverToLocalX = -dx;
+    const serverToLocalY = -dy;
+    const trailingAlongJump = jumpTrust?.dir
+      ? serverToLocalX * jumpTrust.dir.x + serverToLocalY * jumpTrust.dir.y
+      : 0;
+    const trailingLateralDistance = jumpTrust?.dir
+      ? Math.hypot(
+          serverToLocalX - jumpTrust.dir.x * trailingAlongJump,
+          serverToLocalY - jumpTrust.dir.y * trailingAlongJump,
+        )
+      : correction2d;
+    const trailingLateralLimit = Math.max(storedUnitScale * 2.5, Math.min(storedUnitScale * 8, trustBudgetWorld * 0.25));
+    const serverTrailingJumpPath = !!jumpTrust?.dir && trailingAlongJump >= -storedUnitScale && trailingLateralDistance <= trailingLateralLimit;
+    const trustLocalJumpPrediction = predictedLocalJump || landingTrustActive;
+    const jumpHardSnapDistanceSq = jumpTrust
+      ? Math.max(225, Math.pow(Math.max(storedUnitScale * 8, trustBudgetWorld * 1.15), 2))
+      : 25;
+    const allowJumpHardSnap = predictedLocalJump || landingTrustActive
+      ? correction2d * correction2d > jumpHardSnapDistanceSq && !serverTrailingJumpPath
+      : !(landingSettleActive && serverTrailingJumpPath);
+
     // Hard-snap if server position is far away (e.g. new battle start).
-    // This must also snap the render ref; otherwise the local character can
-    // still fall into the old cosmetic dash easing for 5-20u corrections.
-    if (dx * dx + dy * dy > 25) {
-      const serverZ = (me.position as any).z ?? 0;
+    // During a locally-predicted jump, normal server samples are delayed and can
+    // trail far behind long 扶摇/speed jumps. Trust the local jump path unless the
+    // gap is far beyond the planned jump budget.
+    if (dx * dx + dy * dy > 25 && allowJumpHardSnap) {
+      if (jumpTrust) {
+        jumpTrust.correctionCount += 1;
+        recordJumpDebugClient({
+          label: predictedLocalJump ? '[JUMP-CORRECTION] hard snap during jump' : '[JUMP-LANDING-CORRECTION] hard snap after jump',
+          phase: jumpTrust.jumpPhase,
+          mode: jumpTrust.mode,
+          dir: jumpTrust.dir,
+          correction2d,
+          trailingAlongJump,
+          trailingLateralDistance,
+          expectedLandUnits: jumpTrust.expectedLandWorld / storedUnitScale,
+          trustBudgetUnits: jumpTrust.trustBudgetWorld / storedUnitScale,
+          localPosition: { x: local.x, y: local.y, z: localZ },
+          serverPosition: { x: me.position.x, y: me.position.y, z: serverZ },
+          correctionCount: jumpTrust.correctionCount,
+        }, 'warn');
+      }
       localPositionRef.current = { ...me.position };
       localZRef.current = serverZ;
       localVzRef.current = 0;
@@ -7764,12 +7916,12 @@ export default function BattleArena({
       return;
     }
 
-    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 260;
+    const justJumpedLocally = reconcileNowMs - lastJumpInputAtRef.current < 260;
     const recentDashSnap =
       !justJumpedLocally &&
       (
-        performance.now() - lastObservedServerDashAtRef.current < 400 ||
-        performance.now() - lastFengLiuYunSanCastAtRef.current < 700
+        reconcileNowMs - lastObservedServerDashAtRef.current < 400 ||
+        reconcileNowMs - lastFengLiuYunSanCastAtRef.current < 700
       );
 
     // During active dash: server owns position — hard-snap XY + Z
@@ -7813,18 +7965,58 @@ export default function BattleArena({
     }
 
     // Reconcile Z with softer airborne correction to avoid double-jump snap.
-    // When the client just jumped locally, trust prediction more briefly.
-    const serverZ = (me.position as any).z ?? 0;
-    const localZ  = localZRef.current;
-    const zError = serverZ - localZ;
-    const airborneLocal =
-      localJumpCountRef.current > 0 ||
-      Math.abs(localVzRef.current) > 0.01 ||
-      localZ > groundHRef.current + 0.05;
-    const hardSnapThreshold = airborneLocal ? (justJumpedLocally ? 6.6 : 4.4) : 2.64;
+    // Active local jump prediction owns both XY and Z; otherwise delayed server
+    // samples repeatedly shorten long 扶摇/speed jumps.
+    const holdLandingZ = landingTrustActive || (landingSettleActive && serverTrailingJumpPath);
+    const hardSnapThreshold = trustLocalJumpPrediction || holdLandingZ ? 12 : airborneLocal ? (justJumpedLocally ? 6.6 : 4.4) : 2.64;
     const settleThreshold = airborneLocal ? 0.132 : 0.044;
     const zBlend = airborneLocal ? (justJumpedLocally ? 0.08 : 0.16) : 0.35;
-    const shouldSoftReconcile = !airborneLocal || !justJumpedLocally || Math.abs(zError) > 0.66;
+    const shouldSoftReconcile = !trustLocalJumpPrediction && !holdLandingZ && (!airborneLocal || !justJumpedLocally || Math.abs(zError) > 0.66);
+    if ((predictedLocalJump || landingSettleActive) && jumpTrust && (correction2d > 0.75 || Math.abs(zError) > 0.75)) {
+      if (reconcileNowMs - lastJumpCorrectionLogAtRef.current > 250) {
+        lastJumpCorrectionLogAtRef.current = reconcileNowMs;
+        const elapsedMs = jumpTelemetry
+          ? reconcileNowMs - jumpTelemetry.startMs
+          : reconcileNowMs - (landingReconcile?.startedMs ?? reconcileNowMs);
+        const expectedTotalMs = jumpTelemetry
+          ? jumpTelemetry.expectedTotalMs
+          : Math.max(0, (landingReconcile?.trustUntilMs ?? reconcileNowMs) - (landingReconcile?.startedMs ?? reconcileNowMs));
+        const localTravelWorld = local
+          ? Math.hypot(local.x - jumpTrust.takeoffPos.x, local.y - jumpTrust.takeoffPos.y)
+          : 0;
+        const serverTravelWorld = Math.hypot(
+          me.position.x - jumpTrust.takeoffPos.x,
+          me.position.y - jumpTrust.takeoffPos.y,
+        );
+        recordJumpDebugClient({
+          label: predictedLocalJump
+            ? '[JUMP-SAMPLE-GAP] delayed server sample during predicted jump'
+            : '[JUMP-LANDING-GAP] delayed server sample after predicted landing',
+          phase: jumpTrust.jumpPhase,
+          mode: jumpTrust.mode,
+          dir: jumpTrust.dir,
+          elapsedMs: Math.round(elapsedMs),
+          expectedTotalMs: Math.round(expectedTotalMs),
+          correction2d,
+          zError,
+          trailingAlongJump,
+          trailingLateralDistance,
+          localPosition: { x: local.x, y: local.y, z: localZ },
+          serverPosition: { x: me.position.x, y: me.position.y, z: serverZ },
+          localTravelUnits: localTravelWorld / storedUnitScale,
+          serverTravelUnits: serverTravelWorld / storedUnitScale,
+          expectedLandUnits: jumpTrust.expectedLandWorld / storedUnitScale,
+          trustBudgetUnits: jumpTrust.trustBudgetWorld / storedUnitScale,
+          correctionCount: jumpTrust.correctionCount,
+          startSpeedUnitsPerSec: jumpTrust.startSpeedUnitsPerSec,
+          speedScale: jumpTrust.speedScale,
+          moveSpeedScaleAtStart: jumpTrust.moveSpeedScale,
+          moveSpeedScaleNow: moveSpeedScaleRef.current,
+          localFacing: localFacingRef.current,
+          serverFacing: meFacingRef.current,
+        }, 'log');
+      }
+    }
     if (Math.abs(zError) > hardSnapThreshold) {
       localZRef.current = serverZ;
       if (!airborneLocal || serverZ <= groundHRef.current + 0.05) {
@@ -7838,23 +8030,17 @@ export default function BattleArena({
       }
     }
     const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
-    const blend  = airborneLocal && justJumpedLocally ? 0 : moving ? 0.03 : 0.25;
-    localPositionRef.current = {
-      x: local.x + dx * blend,
-      y: local.y + dy * blend,
-    };
-  }, [me?.position?.x, me?.position?.y, (me?.position as any)?.z]);
-
-  useEffect(() => {
-    if (!opponent?.position) return;
-    opponentRawRef.current = opponent.position;
-    if (!opponentPositionBufferRef) {
-      const now    = performance.now();
-      internalOpponentBufferRef.current.push({ t: now, pos: { ...opponent.position } });
-      const cutoff = now - 1000;
-      internalOpponentBufferRef.current = internalOpponentBufferRef.current.filter(e => e.t >= cutoff);
+    const landingSettleBlend = landingSettleActive && serverTrailingJumpPath ? (moving ? 0.015 : 0.05) : null;
+    const blend  = trustLocalJumpPrediction || (airborneLocal && justJumpedLocally)
+      ? 0
+      : landingSettleBlend ?? (moving ? 0.03 : 0.25);
+    if (blend > 0) {
+      localPositionRef.current = {
+        x: local.x + dx * blend,
+        y: local.y + dy * blend,
+      };
     }
-  }, [opponent?.position?.x, opponent?.position?.y, opponentPositionBufferRef]);
+  }, [me?.position?.x, me?.position?.y, (me?.position as any)?.z]);
 
   useEffect(() => {
     // ── Draft abilities: sourced from me.hand (only non-common abilities) ──
@@ -9799,6 +9985,18 @@ export default function BattleArena({
         localVzRef.current = 0;
         return;
       }
+      const tickNowWallMs = Date.now();
+      const activeTickSelfBuffs = activeSelfBuffsClient(
+        meBuffsRef.current,
+        locallyConsumedJumpBoostAtRef.current,
+        tickNowWallMs,
+      );
+      moveSpeedScaleRef.current = computeMoveSpeedScaleClient(
+        meBuffsRef.current,
+        locallyConsumedJumpBoostAtRef.current,
+        tickNowWallMs,
+      );
+      yuqiMountedRef.current = activeTickSelfBuffs.some((buff: any) => buff.buffId === 2741);
       const effectiveMaxSpeed = MAX_SPEED * moveSpeedScaleRef.current;
       const effectiveMaxJumps = getEffectiveMaxJumps();
 
@@ -10150,15 +10348,20 @@ export default function BattleArena({
         jumpLocalRef.current = false;
       }
       if (!zLocked && !movementLocked && jumpLocalRef.current && localJumpCountRef.current < effectiveMaxJumps) {
-        const jumpDir = normalizePlanar(moveIntentDx, moveIntentDy);
+        const queuedJumpIntent = queuedJumpIntentRef.current;
+        const jumpDir = queuedJumpIntent
+          ? queuedJumpIntent.direction
+          : normalizePlanar(moveIntentDx, moveIntentDy);
+        const jumpBackpedalOnly = queuedJumpIntent?.backpedalOnly ?? moveIntentBackpedalOnly;
         if (!canUseYuqiMountedJumpClient(jumpDir)) {
           jumpLocalRef.current = false;
+          queuedJumpIntentRef.current = null;
         } else {
           const isMultiJump = effectiveMaxJumps > 2;
           const hadPowerJumpAirtime = isPowerJumpRef.current && !isPowerJumpCombinedRef.current && localJumpCountRef.current > 0;
           const usePowerDirectionalBudget = hasFuyaoBuffRef.current;
           const consumeLocalJumpBoost = hasFuyaoBuffRef.current;
-          const isBackpedalAirJump = moveIntentBackpedalOnly && localJumpCountRef.current > 0 && jumpDir !== null;
+          const isBackpedalAirJump = jumpBackpedalOnly && localJumpCountRef.current > 0 && jumpDir !== null;
           const heightAboveGround = Math.max(0, localZRef.current - tickGroundH);
           const includeAirborneCarryForJump = localJumpCountRef.current <= 0;
           const jumpSpeedSource = Math.max(
@@ -10241,6 +10444,16 @@ export default function BattleArena({
         const jumpTravelDistance = usesWalkMatchedBudget
           ? Math.max(0, jumpSpeedSource) * jumpTravelTicks
           : directionalJumpDistance * Math.max(0, jumpSpeedScale);
+        const jumpTakeoffPos = {
+          x: localPositionRef.current?.x ?? pos.x,
+          y: localPositionRef.current?.y ?? pos.y,
+        };
+        const previousJumpTrust = jumpTelemetryRef.current ?? jumpLandingReconcileRef.current;
+        const trustOriginPos = previousJumpTrust?.trustOriginPos ?? jumpTakeoffPos;
+        const completedTrustTravel = previousJumpTrust
+          ? Math.hypot(jumpTakeoffPos.x - trustOriginPos.x, jumpTakeoffPos.y - trustOriginPos.y)
+          : 0;
+        const trustBudgetWorld = completedTrustTravel + (jumpDir ? jumpTravelDistance : 0) + UNIT_SCALE * 2;
         localVzRef.current        = jumpVz;
         vel.x = 0;
         vel.y = 0;
@@ -10252,20 +10465,43 @@ export default function BattleArena({
         localJumpCountRef.current = nextJumpPhase;
         jumpLocalRef.current       = false;
         airborneSpeedCarryRef.current = jumpSpeedSource;
+        jumpLandingReconcileRef.current = null;
         jumpTelemetryRef.current = {
           startMs: tickNowMs,
+          expectedTotalMs: jumpTravelTicks * CLIENT_TICK_MS,
           peakMs: tickNowMs,
           takeoffGround: tickGroundH,
           peakHeightWorld: 0,
-          takeoffPos: {
-            x: localPositionRef.current?.x ?? pos.x,
-            y: localPositionRef.current?.y ?? pos.y,
-          },
+          takeoffPos: jumpTakeoffPos,
           expectedLandWorld: jumpDir ? jumpTravelDistance : 0,
           startSpeedUnitsPerSec: (jumpSpeedSource * CLIENT_TICK_HZ) / UNIT_SCALE,
           jumpPhase: nextJumpPhase,
           mode: jumpDir ? 'directional' : 'upward',
+          dir: jumpDir ? { ...jumpDir } : null,
+          trustOriginPos,
+          trustBudgetWorld,
+          startFacing: { ...localFacingRef.current },
+          moveSpeedScale: moveSpeedScaleRef.current,
+          speedScale: jumpSpeedScale,
+          correctionCount: 0,
         };
+        recordJumpDebugClient({
+          label: '[JUMP] >>> FRONTEND START',
+          phase: nextJumpPhase,
+          mode: jumpDir ? 'directional' : 'upward',
+          dir: jumpDir ? { ...jumpDir } : null,
+          queuedJumpIntent,
+          expectedTotalMs: Math.round(jumpTravelTicks * CLIENT_TICK_MS),
+          expectedLandUnits: jumpDir ? jumpTravelDistance / UNIT_SCALE : 0,
+          speedUnitsPerSec: (jumpSpeedSource * CLIENT_TICK_HZ) / UNIT_SCALE,
+          speedScale: jumpSpeedScale,
+          moveSpeedScale: moveSpeedScaleRef.current,
+          jumpVz,
+          localPosition: localPositionRef.current,
+          localFacing: localFacingRef.current,
+          serverFacing: meFacingRef.current,
+        });
+        queuedJumpIntentRef.current = null;
 
         airNudgeRemainingRef.current = 0;
         airNudgeTicksRemainingRef.current = 0;
@@ -10385,6 +10621,44 @@ export default function BattleArena({
             actualLandUnits: actualLandWorld / UNIT_SCALE,
             jumpPhase: telemetry.jumpPhase,
             mode: telemetry.mode,
+          };
+          recordJumpDebugClient({
+            label: '[JUMP] <<< FRONTEND END',
+            phase: telemetry.jumpPhase,
+            mode: telemetry.mode,
+            dir: telemetry.dir,
+            elapsedMs: Math.round(Math.max(0, tickNowMs - telemetry.startMs)),
+            expectedTotalMs: Math.round(telemetry.expectedTotalMs),
+            riseMs: Math.round(Math.max(0, telemetry.peakMs - telemetry.startMs)),
+            fallMs: Math.round(Math.max(0, tickNowMs - telemetry.peakMs)),
+            peakUnits: telemetry.peakHeightWorld / UNIT_SCALE,
+            expectedLandUnits: telemetry.expectedLandWorld / UNIT_SCALE,
+            actualLandUnits: actualLandWorld / UNIT_SCALE,
+            correctionCount: telemetry.correctionCount,
+            startSpeedUnitsPerSec: telemetry.startSpeedUnitsPerSec,
+            speedScale: telemetry.speedScale,
+            moveSpeedScale: telemetry.moveSpeedScale,
+          });
+          const landingTrustMs = Math.min(1500, Math.max(700, telemetry.expectedTotalMs * 0.4));
+          jumpLandingReconcileRef.current = {
+            jumpPhase: telemetry.jumpPhase,
+            mode: telemetry.mode,
+            dir: telemetry.dir ? { ...telemetry.dir } : null,
+            takeoffPos: { ...telemetry.takeoffPos },
+            expectedLandWorld: telemetry.expectedLandWorld,
+            trustOriginPos: { ...telemetry.trustOriginPos },
+            trustBudgetWorld: Math.max(
+              telemetry.trustBudgetWorld,
+              Math.hypot(landPos.x - telemetry.trustOriginPos.x, landPos.y - telemetry.trustOriginPos.y) + UNIT_SCALE * 2,
+            ),
+            startSpeedUnitsPerSec: telemetry.startSpeedUnitsPerSec,
+            moveSpeedScale: telemetry.moveSpeedScale,
+            speedScale: telemetry.speedScale,
+            correctionCount: telemetry.correctionCount,
+            startedMs: tickNowMs,
+            trustUntilMs: tickNowMs + landingTrustMs,
+            settleUntilMs: tickNowMs + landingTrustMs + 1800,
+            landingPos: { x: landPos.x, y: landPos.y, z: clientGroundH },
           };
           jumpTelemetryRef.current = null;
         }
@@ -13905,6 +14179,7 @@ export default function BattleArena({
             meScreenBoundsRef={meScreenBoundsRef}
             oppScreenBoundsRef={oppScreenBoundsRef}
             opponentScreenBoundsRef={opponentScreenBoundsRef}
+            opponentPositionBufferRef={opponentPositionBufferRef}
             entityScreenBoundsRef={entityScreenBoundsRef}
             mode={mode}
             safeZone={safeZone}

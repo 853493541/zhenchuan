@@ -38,6 +38,8 @@ type TarEntry = {
   data: Uint8Array;
 };
 
+const RESOURCE_PACK_SW_URL = "/resource-pack-sw.js?v=2026-05-26-navigation-guard";
+
 type DownloadStatus = "idle" | "checking" | "ready" | "downloading" | "importing" | "done" | "failed";
 type DialogMode = "download" | "check" | null;
 
@@ -101,10 +103,14 @@ async function registerResourceWorker() {
   if (!("serviceWorker" in navigator)) return false;
   const timeout = new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 5_000));
   const registration = await Promise.race([
-    navigator.serviceWorker.register("/resource-pack-sw.js", { scope: "/" }).catch(() => null),
+    navigator.serviceWorker.register(RESOURCE_PACK_SW_URL, { scope: "/" }).catch(() => null),
     timeout,
   ]);
   if (!registration) return false;
+  await Promise.race([
+    registration.update().catch(() => null),
+    timeout,
+  ]);
 
   await Promise.race([
     navigator.serviceWorker.ready.catch(() => null),

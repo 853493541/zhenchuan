@@ -72,6 +72,39 @@ const YIN_QIAO_ABILITY_ID = "yin_qiao";
 const JUE_MAI_BUFF_ID = 1337;
 const WU_XIANG_JUE_SNAPSHOT_BUFF_IDS = new Set([2710, 2731, 2732, 2733, 2734]);
 
+function hasMovementInputIntent(input: MovementInput | null | undefined): boolean {
+  if (!input) return false;
+  if (typeof input.dx === "number" || typeof input.dy === "number") {
+    return Math.hypot(input.dx ?? 0, input.dy ?? 0) > 0.01;
+  }
+  return input.up || input.down || input.left || input.right;
+}
+
+function inheritMovementIntentForJump(input: MovementInput, previousInput: MovementInput): MovementInput {
+  const nextInput: MovementInput = {
+    ...input,
+    up: previousInput.up,
+    down: previousInput.down,
+    left: previousInput.left,
+    right: previousInput.right,
+    backpedalOnly: previousInput.backpedalOnly === true,
+  };
+
+  if (typeof previousInput.dx === "number" || typeof previousInput.dy === "number") {
+    nextInput.dx = previousInput.dx;
+    nextInput.dy = previousInput.dy;
+  } else {
+    delete nextInput.dx;
+    delete nextInput.dy;
+  }
+
+  if (!nextInput.facing && previousInput.facing) {
+    nextInput.facing = { ...previousInput.facing };
+  }
+
+  return nextInput;
+}
+
 /** 2D segment vs AABB intersection test (for LOS checks). */
 function segmentIntersectsAABB(
   x1: number, y1: number, x2: number, y2: number,
@@ -1291,6 +1324,14 @@ export class GameLoop {
     const pendingInput = this.playerInputs.get(playerIndex) ?? null;
     let nextInput = input;
 
+    if (
+      nextInput?.jump &&
+      !hasMovementInputIntent(nextInput) &&
+      hasMovementInputIntent(pendingInput)
+    ) {
+      nextInput = inheritMovementIntentForJump(nextInput, pendingInput!);
+    }
+
     // Jump is a one-shot pulse, so keep it latched until the loop tick consumes it.
     if (pendingInput?.jump && !nextInput?.jump) {
       nextInput = nextInput ? { ...nextInput, jump: true } : pendingInput;
@@ -1318,11 +1359,7 @@ export class GameLoop {
 
   hasMovementIntent(playerIndex: number): boolean {
     const input = this.playerInputs.get(playerIndex);
-    if (!input) return false;
-    if (typeof input.dx === "number" || typeof input.dy === "number") {
-      return Math.hypot(input.dx ?? 0, input.dy ?? 0) > 0.01;
-    }
-    return input.up || input.down || input.left || input.right;
+    return hasMovementInputIntent(input);
   }
 
   /**

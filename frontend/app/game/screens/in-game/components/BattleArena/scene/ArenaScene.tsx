@@ -6,7 +6,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import Ground from './Ground';
 import MapObjects from './MapObjects';
-import Character from './Character';
+import Character, { type RemotePositionSample } from './Character';
 import PickupBooks from './PickupBooks';
 import AoeZone from './AoeZone';
 import TargetEntityVisual from './TargetEntityVisual';
@@ -178,6 +178,7 @@ interface ArenaSceneProps {
   meScreenBoundsRef?: MutableRefObject<ScreenBounds | null>;
   oppScreenBoundsRef?: MutableRefObject<ScreenBounds | null>;
   opponentScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
+  opponentPositionBufferRef?: MutableRefObject<Map<string, RemotePositionSample[]>>;
   entityScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
   mode?: string;
   safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
@@ -499,6 +500,7 @@ export default function ArenaScene({
   meScreenBoundsRef,
   oppScreenBoundsRef,
   opponentScreenBoundsRef,
+  opponentPositionBufferRef,
   entityScreenBoundsRef,
   mode,
   safeZone,
@@ -940,6 +942,8 @@ export default function ArenaScene({
               username={opp.username ?? opp.userId}
               distance={dist}
               onSelect={disguised ? undefined : () => onSelectTarget?.(opp.userId)}
+              remoteUserId={opp.userId}
+              remotePositionBufferRef={opponentPositionBufferRef}
               onScreenBounds={
                 i === 0 || opponentScreenBoundsRef
                   ? (bounds) => {

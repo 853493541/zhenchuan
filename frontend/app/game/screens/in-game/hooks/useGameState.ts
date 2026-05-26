@@ -362,7 +362,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const versionRef = useRef<number>(0);
   // Per-opponent position buffers, keyed by userId. Updated directly in WS handler
   // to bypass React setState + re-render delay (~16-32ms).
-  const opponentPositionBufferRef = useRef<Map<string, Array<{ t: number; pos: { x: number; y: number } }>>>(new Map());
+  const opponentPositionBufferRef = useRef<Map<string, Array<{ t: number; pos: { x: number; y: number; z?: number } }>>>(new Map());
   const meIndexRef = useRef<number>(-1); // set once when game loads, never changes
   // Stable index→userId mapping so WS handler can resolve opponents without stale closure
   const playerIdsRef = useRef<string[]>([]);
@@ -416,6 +416,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     battleEventIdsRef.current = new Set();
     battleRecentHitKeysRef.current = new Map();
     battleEventSeededGameIdRef.current = null;
+    opponentPositionBufferRef.current.clear();
     setChatMessages([]);
   }, [gameId]);
 
