@@ -1282,10 +1282,14 @@ export class GameLoop {
 
     if (typeof seq === "number") {
       const lastSeq = this.playerInputSeq.get(playerIndex);
-      if (typeof lastSeq === "number" && seq < lastSeq) {
+      const isLateSeq = typeof lastSeq === "number" && seq < lastSeq;
+      const isLateJumpPulse = isLateSeq && input?.jump === true && lastSeq - seq <= 90;
+      if (isLateSeq && !isLateJumpPulse) {
         return false;
       }
-      this.playerInputSeq.set(playerIndex, seq);
+      if (!isLateSeq) {
+        this.playerInputSeq.set(playerIndex, seq);
+      }
     }
 
     const pendingInput = this.playerInputs.get(playerIndex) ?? null;
@@ -1302,6 +1306,18 @@ export class GameLoop {
     });
 
     // Jump is a one-shot pulse, so keep it latched until the loop tick consumes it.
+    if (typeof seq === "number") {
+      const lastSeq = this.playerInputSeq.get(playerIndex);
+      const isLateJumpPulse = typeof lastSeq === "number" && seq < lastSeq && input?.jump === true && lastSeq - seq <= 90;
+      if (isLateJumpPulse && input) {
+        nextInput = pendingInput?.jump
+          ? pendingInput
+          : pendingInput
+          ? { ...pendingInput, jump: true, jumpIntent: snapshotJumpIntent(input) }
+          : { ...input, jumpIntent: snapshotJumpIntent(input) };
+      }
+    }
+
     if (pendingInput?.jump && !nextInput?.jump) {
       const jumpIntent = pendingInput.jumpIntent ?? snapshotJumpIntent(pendingInput);
       nextInput = nextInput ? { ...nextInput, jump: true, jumpIntent } : { ...pendingInput, jumpIntent };

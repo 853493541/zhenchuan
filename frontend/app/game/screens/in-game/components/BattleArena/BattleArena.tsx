@@ -472,6 +472,12 @@ const DASH_GROUND_TARGET_ABILITY_IDS = new Set(['lin_shi_fei_zhua', 'han_di', 'g
 const JUMP_CORRECTION_WARNING_MIN_XY = 0.6;
 const JUMP_CORRECTION_WARNING_MIN_Z = 0.6;
 const JUMP_CORRECTION_WARNING_COOLDOWN_MS = 500;
+const JUMP_CORRECTION_SERVER_LAG_TICKS = 10;
+const JUMP_CORRECTION_SERVER_LAG_MIN_XY = 1.1;
+const JUMP_CORRECTION_SERVER_LAG_MIN_Z = 1.1;
+const JUMP_CORRECTION_PENDING_PHASE_MS = 900;
+const JUMP_CORRECTION_LANDING_GRACE_XY = 5.0;
+const JUMP_CORRECTION_LANDING_GRACE_Z = 6.0;
 const LEGACY_PLAYER_STATUS_UI_KEY = 'player-status-bar';
 const PLAYER_BUFF_STATUS_UI_KEY = 'player-buff-status-bar';
 const PLAYER_DEBUFF_STATUS_UI_KEY = 'player-debuff-status-bar';
@@ -5767,6 +5773,7 @@ export default function BattleArena({
   const localZRef         = useRef(0);     // current Z height (world units)
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
+  const advanceLocalPhysicsRef = useRef<() => void>(() => {});
   const tiYunZongPenaltyConsumedRef = useRef(false);
   const lastDashAbilityIdRef = useRef<string | null>(null); // track last active dash for jump-restore logic
   const airborneSpeedCarryRef = useRef(0); // latest special airborne planar speed snapshot (world units/tick)
@@ -7695,6 +7702,7 @@ export default function BattleArena({
 
   useEffect(() => {
     if (!me?.position || !initializedRef.current) return;
+    advanceLocalPhysicsRef.current();
     const local  = localPositionRef.current;
     if (!local) return;
     const dx = me.position.x - local.x;
@@ -7708,15 +7716,46 @@ export default function BattleArena({
     const serverZ = (me.position as any).z ?? 0;
     const localZ = localZRef.current;
     const zError = serverZ - localZ;
+    const absZError = Math.abs(zError);
     const xyError = Math.hypot(dx, dy);
-    const airborneLocalForCorrection =
-      localJumpCountRef.current > 0 ||
-      Math.abs(localVzRef.current) > 0.01 ||
-      localZ > groundHRef.current + 0.05;
+    const airborneLocalForCorrection = localJumpCountRef.current > 0;
+    const serverVelocity = (me as any)?.velocity ?? {};
+    const serverVx = Number(serverVelocity.vx ?? 0);
+    const serverVy = Number(serverVelocity.vy ?? 0);
+    const serverVz = Number(serverVelocity.vz ?? 0);
+    const serverJumpCountRaw = Number((me as any)?.jumpCount ?? 0);
+    const serverJumpCount = Number.isFinite(serverJumpCountRaw) ? serverJumpCountRaw : 0;
+    const localJumpCount = localJumpCountRef.current;
+    const localPlanarPredictionSpeed = Math.max(
+      Math.hypot(localVelocityRef.current.x, localVelocityRef.current.y),
+      getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current),
+    );
+    const serverPlanarSpeed = Math.hypot(
+      Number.isFinite(serverVx) ? serverVx : 0,
+      Number.isFinite(serverVy) ? serverVy : 0,
+    );
+    const jumpLagXyTolerance = Math.max(
+      JUMP_CORRECTION_SERVER_LAG_MIN_XY,
+      Math.max(localPlanarPredictionSpeed, serverPlanarSpeed) * JUMP_CORRECTION_SERVER_LAG_TICKS + 0.25,
+    );
+    const jumpLagZTolerance = Math.max(
+      JUMP_CORRECTION_SERVER_LAG_MIN_Z,
+      Math.max(Math.abs(localVzRef.current), Math.abs(Number.isFinite(serverVz) ? serverVz : 0)) * JUMP_CORRECTION_SERVER_LAG_TICKS + 0.25,
+    );
     const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 260;
+    const waitingForServerJumpPhase =
+      airborneLocalForCorrection &&
+      localJumpCount > serverJumpCount &&
+      performance.now() - lastJumpInputAtRef.current < JUMP_CORRECTION_PENDING_PHASE_MS;
+    const waitingForLocalLanding =
+      airborneLocalForCorrection &&
+      localJumpCount > 0 &&
+      serverJumpCount === 0 &&
+      Math.abs(Number.isFinite(serverVz) ? serverVz : 0) < 0.05 &&
+      xyError <= Math.max(JUMP_CORRECTION_LANDING_GRACE_XY, jumpLagXyTolerance) &&
+      absZError <= JUMP_CORRECTION_LANDING_GRACE_Z;
     const warnJumpCorrection = (reason: string, force = false) => {
       if (!airborneLocalForCorrection) return;
-      const absZError = Math.abs(zError);
       if (!force && xyError < JUMP_CORRECTION_WARNING_MIN_XY && absZError < JUMP_CORRECTION_WARNING_MIN_Z) return;
       const now = performance.now();
       if (now - lastJumpCorrectionWarnAtRef.current < JUMP_CORRECTION_WARNING_COOLDOWN_MS) return;
@@ -7725,8 +7764,10 @@ export default function BattleArena({
         reason,
         xyError: Number(xyError.toFixed(3)),
         zError: Number(zError.toFixed(3)),
-        localJumpCount: localJumpCountRef.current,
+        localJumpCount,
+        serverJumpCount,
         localVz: Number(localVzRef.current.toFixed(3)),
+        serverVz: Number((Number.isFinite(serverVz) ? serverVz : 0).toFixed(3)),
         justJumpedLocally,
         server: {
           x: Number(me.position.x.toFixed(3)),
@@ -7783,6 +7824,21 @@ export default function BattleArena({
         y: me.position.y,
         z: serverZ,
       };
+      return;
+    }
+
+    if (
+      airborneLocalForCorrection &&
+      !forcedDisplacement &&
+      (
+        waitingForServerJumpPhase ||
+        waitingForLocalLanding ||
+        (
+          xyError <= jumpLagXyTolerance &&
+          absZError <= jumpLagZTolerance
+        )
+      )
+    ) {
       return;
     }
 
@@ -9825,8 +9881,8 @@ export default function BattleArena({
     const MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
     const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
     const TURN_RATE = 0.055; // radians / tick at 30 Hz ≈ 95°/sec
-    const tick = () => {
-      const tickNowMs = performance.now();
+    const MAX_CLIENT_PHYSICS_CATCHUP_TICKS = 30;
+    const tick = (tickNowMs = performance.now()) => {
       const pos = localPositionRef.current;
       if (!pos) {
         cameraMoveCommandActiveRef.current = false;
@@ -10440,8 +10496,33 @@ export default function BattleArena({
         airNudgeDirRef.current = null;
       }
     };
-    const id = setInterval(tick, CLIENT_TICK_MS);
-    return () => clearInterval(id);
+    let lastPhysicsAtMs = performance.now();
+    let simulatedPhysicsAtMs = lastPhysicsAtMs;
+    let physicsAccumulatorMs = 0;
+    const runPhysics = () => {
+      const nowMs = performance.now();
+      const elapsedMs = Math.max(0, Math.min(nowMs - lastPhysicsAtMs, CLIENT_TICK_MS * MAX_CLIENT_PHYSICS_CATCHUP_TICKS));
+      lastPhysicsAtMs = nowMs;
+      physicsAccumulatorMs += elapsedMs;
+
+      let catchupTicks = 0;
+      while (physicsAccumulatorMs >= CLIENT_TICK_MS && catchupTicks < MAX_CLIENT_PHYSICS_CATCHUP_TICKS) {
+        simulatedPhysicsAtMs += CLIENT_TICK_MS;
+        tick(simulatedPhysicsAtMs);
+        physicsAccumulatorMs -= CLIENT_TICK_MS;
+        catchupTicks += 1;
+      }
+
+      if (physicsAccumulatorMs > CLIENT_TICK_MS * MAX_CLIENT_PHYSICS_CATCHUP_TICKS) {
+        physicsAccumulatorMs = CLIENT_TICK_MS * MAX_CLIENT_PHYSICS_CATCHUP_TICKS;
+      }
+    };
+    advanceLocalPhysicsRef.current = runPhysics;
+    const id = setInterval(runPhysics, CLIENT_TICK_MS);
+    return () => {
+      advanceLocalPhysicsRef.current = () => {};
+      clearInterval(id);
+    };
   }, [ARENA_HEIGHT, ARENA_WIDTH, getEffectiveMaxJumps, me.userId, mode, playerRadius]);
 
   useEffect(() => {
