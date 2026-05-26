@@ -1290,10 +1290,23 @@ export class GameLoop {
 
     const pendingInput = this.playerInputs.get(playerIndex) ?? null;
     let nextInput = input;
+    const snapshotJumpIntent = (source: MovementInput): NonNullable<MovementInput["jumpIntent"]> => ({
+      up: source.up === true,
+      down: source.down === true,
+      left: source.left === true,
+      right: source.right === true,
+      dx: typeof source.dx === "number" ? source.dx : undefined,
+      dy: typeof source.dy === "number" ? source.dy : undefined,
+      backpedalOnly: source.backpedalOnly === true,
+      facing: source.facing ? { x: source.facing.x, y: source.facing.y } : undefined,
+    });
 
     // Jump is a one-shot pulse, so keep it latched until the loop tick consumes it.
     if (pendingInput?.jump && !nextInput?.jump) {
-      nextInput = nextInput ? { ...nextInput, jump: true } : pendingInput;
+      const jumpIntent = pendingInput.jumpIntent ?? snapshotJumpIntent(pendingInput);
+      nextInput = nextInput ? { ...nextInput, jump: true, jumpIntent } : { ...pendingInput, jumpIntent };
+    } else if (nextInput?.jump && !nextInput.jumpIntent) {
+      nextInput = { ...nextInput, jumpIntent: snapshotJumpIntent(nextInput) };
     }
 
     if (nextInput?.jump) {

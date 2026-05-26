@@ -469,6 +469,9 @@ const IN_GAME_WARNING_DURATION_MS = 1500;
 const IN_GAME_WARNING_PREVIEW_TEXT = '无法施展该招式';
 const REQUIRED_POWER_MISSING_WARNING = '经脉受损 无法运功';
 const DASH_GROUND_TARGET_ABILITY_IDS = new Set(['lin_shi_fei_zhua', 'han_di', 'gu_feng_sa_ta']);
+const JUMP_CORRECTION_WARNING_MIN_XY = 0.6;
+const JUMP_CORRECTION_WARNING_MIN_Z = 0.6;
+const JUMP_CORRECTION_WARNING_COOLDOWN_MS = 500;
 const LEGACY_PLAYER_STATUS_UI_KEY = 'player-status-bar';
 const PLAYER_BUFF_STATUS_UI_KEY = 'player-buff-status-bar';
 const PLAYER_DEBUFF_STATUS_UI_KEY = 'player-debuff-status-bar';
@@ -5858,6 +5861,7 @@ export default function BattleArena({
   const dashServerSampleRef = useRef<DashRenderSample | null>(null);
   const dashServerSampleKeyRef = useRef('');
   const lastDashStutterLogAtRef = useRef(0);
+  const lastJumpCorrectionWarnAtRef = useRef(0);
   const dashStartExpectedMsRef = useRef(1000);
   const dashStartAbilityIdRef = useRef<string | null>(null);
   const pendingGroundCastAbilityRef = useRef<string | null>(null);
@@ -7701,6 +7705,41 @@ export default function BattleArena({
       ? { ...activeDash, ticksRemaining: activeDashTicksRemaining }
       : null;
     const forcedDisplacement = buffsHaveAnyEffect(me?.buffs, ['KNOCKED_BACK', 'PULLED']);
+    const serverZ = (me.position as any).z ?? 0;
+    const localZ = localZRef.current;
+    const zError = serverZ - localZ;
+    const xyError = Math.hypot(dx, dy);
+    const airborneLocalForCorrection =
+      localJumpCountRef.current > 0 ||
+      Math.abs(localVzRef.current) > 0.01 ||
+      localZ > groundHRef.current + 0.05;
+    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 260;
+    const warnJumpCorrection = (reason: string, force = false) => {
+      if (!airborneLocalForCorrection) return;
+      const absZError = Math.abs(zError);
+      if (!force && xyError < JUMP_CORRECTION_WARNING_MIN_XY && absZError < JUMP_CORRECTION_WARNING_MIN_Z) return;
+      const now = performance.now();
+      if (now - lastJumpCorrectionWarnAtRef.current < JUMP_CORRECTION_WARNING_COOLDOWN_MS) return;
+      lastJumpCorrectionWarnAtRef.current = now;
+      console.warn('[JUMP-CORRECTION] server corrected local jump prediction', {
+        reason,
+        xyError: Number(xyError.toFixed(3)),
+        zError: Number(zError.toFixed(3)),
+        localJumpCount: localJumpCountRef.current,
+        localVz: Number(localVzRef.current.toFixed(3)),
+        justJumpedLocally,
+        server: {
+          x: Number(me.position.x.toFixed(3)),
+          y: Number(me.position.y.toFixed(3)),
+          z: Number(serverZ.toFixed(3)),
+        },
+        local: {
+          x: Number(local.x.toFixed(3)),
+          y: Number(local.y.toFixed(3)),
+          z: Number(localZ.toFixed(3)),
+        },
+      });
+    };
 
     // Collision-test mode: both client and backend now use BVH collision, so we can
     // reconcile position normally. Only skip reconciliation on dash (server owns dash).
@@ -7751,7 +7790,7 @@ export default function BattleArena({
     // This must also snap the render ref; otherwise the local character can
     // still fall into the old cosmetic dash easing for 5-20u corrections.
     if (dx * dx + dy * dy > 25) {
-      const serverZ = (me.position as any).z ?? 0;
+      warnJumpCorrection('hard-snap-xy', true);
       localPositionRef.current = { ...me.position };
       localZRef.current = serverZ;
       localVzRef.current = 0;
@@ -7764,7 +7803,6 @@ export default function BattleArena({
       return;
     }
 
-    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 260;
     const recentDashSnap =
       !justJumpedLocally &&
       (
@@ -7814,24 +7852,22 @@ export default function BattleArena({
 
     // Reconcile Z with softer airborne correction to avoid double-jump snap.
     // When the client just jumped locally, trust prediction more briefly.
-    const serverZ = (me.position as any).z ?? 0;
-    const localZ  = localZRef.current;
-    const zError = serverZ - localZ;
-    const airborneLocal =
-      localJumpCountRef.current > 0 ||
-      Math.abs(localVzRef.current) > 0.01 ||
-      localZ > groundHRef.current + 0.05;
+    const airborneLocal = airborneLocalForCorrection;
     const hardSnapThreshold = airborneLocal ? (justJumpedLocally ? 6.6 : 4.4) : 2.64;
     const settleThreshold = airborneLocal ? 0.132 : 0.044;
     const zBlend = airborneLocal ? (justJumpedLocally ? 0.08 : 0.16) : 0.35;
     const shouldSoftReconcile = !airborneLocal || !justJumpedLocally || Math.abs(zError) > 0.66;
     if (Math.abs(zError) > hardSnapThreshold) {
+      warnJumpCorrection('hard-snap-z', true);
       localZRef.current = serverZ;
       if (!airborneLocal || serverZ <= groundHRef.current + 0.05) {
         localVzRef.current = 0;
       }
       bvhCenterYInitRef.current = false; // large Z snap — resync sphere center next tick
     } else if (shouldSoftReconcile) {
+      if (Math.abs(zError) >= JUMP_CORRECTION_WARNING_MIN_Z) {
+        warnJumpCorrection('soft-z');
+      }
       localZRef.current = localZ + zError * zBlend;
       if (Math.abs(serverZ - localZRef.current) < settleThreshold) {
         localZRef.current = serverZ;
@@ -7839,6 +7875,9 @@ export default function BattleArena({
     }
     const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
     const blend  = airborneLocal && justJumpedLocally ? 0 : moving ? 0.03 : 0.25;
+    if (blend > 0) {
+      warnJumpCorrection('soft-xy');
+    }
     localPositionRef.current = {
       x: local.x + dx * blend,
       y: local.y + dy * blend,

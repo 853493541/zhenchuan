@@ -428,6 +428,35 @@ function getJumpStartPlanarSpeed(player: PlayerState, effectiveMoveSpeed: number
   );
 }
 
+function getMovementTargetVelocity(
+  input: MovementInput | MovementInput["jumpIntent"] | null | undefined,
+  effectiveMoveSpeed: number,
+): { vx: number; vy: number } {
+  if (!input) return { vx: 0, vy: 0 };
+
+  if (input.dx !== undefined || input.dy !== undefined) {
+    return {
+      vx: (input.dx ?? 0) * effectiveMoveSpeed,
+      vy: (input.dy ?? 0) * effectiveMoveSpeed,
+    };
+  }
+
+  let inputX = 0;
+  let inputY = 0;
+  if (input.up)    inputY -= 1;
+  if (input.down)  inputY += 1;
+  if (input.left)  inputX -= 1;
+  if (input.right) inputX += 1;
+
+  const inputLen = Math.sqrt(inputX * inputX + inputY * inputY);
+  if (inputLen <= 0.01) return { vx: 0, vy: 0 };
+
+  return {
+    vx: (inputX / inputLen) * effectiveMoveSpeed,
+    vy: (inputY / inputLen) * effectiveMoveSpeed,
+  };
+}
+
 function startAirShift(
   player: PlayerState,
   dir: { x: number; y: number },
@@ -904,26 +933,9 @@ export function applyMovement(
     }
   } else {
     // Calculate target velocity based on input
-
-    if (input.dx !== undefined || input.dy !== undefined) {
-      // 传统模式: precise direction vector from client
-      targetVx = (input.dx ?? 0) * effectiveMoveSpeed;
-      targetVy = (input.dy ?? 0) * effectiveMoveSpeed;
-    } else {
-      // 摇杆模式: WASD boolean flags
-      let inputX = 0;
-      let inputY = 0;
-      if (input.up)    inputY -= 1;
-      if (input.down)  inputY += 1;
-      if (input.left)  inputX -= 1;
-      if (input.right) inputX += 1;
-
-      const inputLen = Math.sqrt(inputX * inputX + inputY * inputY);
-      if (inputLen > 0.01) {
-        targetVx = (inputX / inputLen) * effectiveMoveSpeed;
-        targetVy = (inputY / inputLen) * effectiveMoveSpeed;
-      }
-    }
+    const targetVelocity = getMovementTargetVelocity(input, effectiveMoveSpeed);
+    targetVx = targetVelocity.vx;
+    targetVy = targetVelocity.vy;
 
     const hasDirectionalIntent =
       Math.abs(targetVx) > 0.01 || Math.abs(targetVy) > 0.01;
@@ -968,11 +980,15 @@ export function applyMovement(
     const multiJumpEffect = allEffects.find((e) => e.type === "MULTI_JUMP");
     const baseMaxJumps = multiJumpEffect ? (multiJumpEffect.value ?? MAX_JUMPS) : MAX_JUMPS;
     const maxJumps = yuqiMounted ? 1 : baseMaxJumps;
+    const jumpIntent = input.jumpIntent ?? input;
+    const jumpTargetVelocity = getMovementTargetVelocity(jumpIntent, effectiveMoveSpeed);
+    const jumpTargetVx = jumpTargetVelocity.vx;
+    const jumpTargetVy = jumpTargetVelocity.vy;
     if (input.jump && lingRanTianFengActive) {
       const lingRanTianFengCharges = Math.max(0, Math.min(1, Number(player.lingRanTianFengCharges ?? 0)));
       if (lingRanTianFengCharges > 0) {
         const hasLingRanJumpRefillBuff = activeBuffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712);
-        const jumpDir = normalizePlanar(targetVx, targetVy);
+        const jumpDir = normalizePlanar(jumpTargetVx, jumpTargetVy);
         const specialJumpHeight = jumpDir
           ? LING_RAN_TIAN_FENG_DIRECTIONAL_JUMP_HEIGHT
           : LING_RAN_TIAN_FENG_UPWARD_JUMP_HEIGHT;
@@ -1014,9 +1030,9 @@ export function applyMovement(
       }
     } else if (input.jump && player.jumpCount < maxJumps) {
       const isMultiJump = !!multiJumpEffect;
-      const jumpDir = normalizePlanar(targetVx, targetVy);
-      const isBackpedalAirJump = input.backpedalOnly === true && (player.jumpCount ?? 0) > 0 && jumpDir !== null;
-      if (yuqiMounted && !canUseYuqiMountedJump(jumpDir, player.facing)) {
+      const jumpDir = normalizePlanar(jumpTargetVx, jumpTargetVy);
+      const isBackpedalAirJump = jumpIntent?.backpedalOnly === true && (player.jumpCount ?? 0) > 0 && jumpDir !== null;
+      if (yuqiMounted && !canUseYuqiMountedJump(jumpDir, jumpIntent?.facing ?? player.facing)) {
         input = { ...input, jump: false };
       } else {
       const isDirectionalJump = jumpDir !== null;

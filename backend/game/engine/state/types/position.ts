@@ -34,6 +34,17 @@ export function worldUnitsToGameplayUnits(value: number, unitScale?: number): nu
   return value / normalizeStoredUnitScale(unitScale);
 }
 
+export interface MovementJumpIntent {
+  up?: boolean;
+  down?: boolean;
+  left?: boolean;
+  right?: boolean;
+  dx?: number;
+  dy?: number;
+  backpedalOnly?: boolean;
+  facing?: { x: number; y: number };
+}
+
 /**
  * Movement direction input from client
  * Can be combination of multiple directions (W+D = up+right)
@@ -52,6 +63,8 @@ export interface MovementInput {
   backpedalOnly?: boolean;
   /** Client-reported character facing direction (for server-side ability targeting). */
   facing?: { x: number; y: number };
+  /** Frozen takeoff intent for a latched jump pulse. */
+  jumpIntent?: MovementJumpIntent;
 }
 
 /**

@@ -3,6 +3,18 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Jump intent lock and correction diagnostics (2026-05-26)
+
+**Implemented / checked**:
+- Backend jump takeoff now freezes the original movement/facing intent attached to the one-shot jump pulse, so a later face-turn packet cannot rewrite the already-queued jump direction before the tick consumes it.
+- `movement.ts` uses that frozen jump intent only for takeoff direction/backpedal validation, while live `facing` input still updates server-facing during airtime for ability logic.
+- Added frontend `[JUMP-CORRECTION]` console diagnostics when server reconciliation changes local airborne jump prediction, including XY/Z error, local/server positions, jump count, and local vertical velocity.
+- Built backend and frontend after point 1, then rebuilt both after point 2 and restarted only the Zhenchuan `frontend` and `backend` PM2 apps.
+
+**Lesson**:
+- One-shot jump input must preserve the full takeoff intent, not just the `jump` boolean. If the backend latches `jump: true` onto a newer facing/movement packet, local prediction can be right while the authoritative jump silently turns.
+- Jump correction warnings belong at the client/server reconciliation boundary, where they can show whether a visible snap/blend came from stale local prediction, delayed authoritative state, or a real backend rule mismatch.
+
 ## Knockback, jump carry, shield, and stealth sound parity (2026-05-26)
 
 **Implemented / checked**:
