@@ -1,0 +1,66 @@
+{
+   "files" : [
+      {
+         "name" : "img/GKPLoot.Tga",
+         "value" : "9D729FC074EBCA684791D41CB3E4257477F5C65C"
+      },
+      {
+         "name" : "img/GKPLoot.txt",
+         "value" : "AF58A707F0B2929EF5605BEE15EB57A482BD7E9D"
+      },
+      {
+         "name" : "img/GKPLoot.UITex",
+         "value" : "D8F24B3C776D8E62D12D71A3B2526B8968E9B37C"
+      },
+      {
+         "name" : "img/GKPSeal.Tga",
+         "value" : "E3B6E69FDAA59711F99844952FC6E55085701A02"
+      },
+      {
+         "name" : "img/GKPSeal.txt",
+         "value" : "CAA5AF490D817E4570E1428B012A9B0178F757B1"
+      },
+      {
+         "name" : "img/GKPSeal.UITex",
+         "value" : "6E020136E6713FDB85692B421533CB6C0915254C"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "F0FF7DA840B820BBF1BE54467470464A021E6CA7"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "EAB2ED839DA78390DB64AA70CA1F8B3DDA863A0E"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "AB37BF27BC0C84CEF87A126CB74523CD2BDF2645"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "16A5BB5DEA63639E8F4C0D4FDF276CCD62D7DE26"
+      },
+      {
+         "name" : "ui/MY_GKP.ini",
+         "value" : "51EAADAC3CF4FE0B556FC14F88C71AB611258E62"
+      },
+      {
+         "name" : "ui/MY_GKPLoot.ini",
+         "value" : "FDDB0743E60A3119325983B405C9ECE476A66120"
+      },
+      {
+         "name" : "ui/MY_GKP_Account_Item.ini",
+         "value" : "71CEBCDF445A1E5C37FB8E981974B0D1A567367F"
+      },
+      {
+         "name" : "ui/MY_GKP_Chat.ini",
+         "value" : "35E3BDD2F1B76260DC735FBF0DF2F8ECE5E461E0"
+      },
+      {
+         "name" : "ui/MY_GKP_Record_Item.ini",
+         "value" : "F41EF75C7AC4B24152DCEB4B425C66874A013636"
+      }
+   ],
+   "id" : "MY_GKP",
+   "version" : 148
+}

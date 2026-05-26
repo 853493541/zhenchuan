@@ -2,8 +2,17 @@
 
 import { useEffect, useState } from "react";
 
+export type AuthUser = {
+  uid?: string;
+  id?: string;
+  username: string;
+  displayName: string;
+  isAdmin?: boolean;
+  school?: string | null;
+};
+
 export function useAuth() {
-  const [user, setUser] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -12,7 +21,7 @@ export function useAuth() {
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        setUser(data?.user?.username ?? null);
+        setUser(data?.user ?? null);
       })
       .finally(() => setLoading(false));
   }, []);

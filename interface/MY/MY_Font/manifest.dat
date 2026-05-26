@@ -1,0 +1,22 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "C185F0935B4D9A7A266B357EAB75A40F8FD9ECC4"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "C24522B93A5086B90FA2C3FDC1364B8008F45452"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "844E865D210A7DF8EF1938AFC99ACA4B10FAFDA3"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "DEE970A81E38C633F3D7753620FC8E4A5D6D61A1"
+      }
+   ],
+   "id" : "MY_Font",
+   "version" : 83
+}

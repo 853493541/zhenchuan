@@ -12,12 +12,13 @@
 import { GameState, MovementInput, GroundZone, TargetEntity, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
 import { checkGameOver, resetDefeatedPlayersForTesting } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
+import { broadcastDefeatSystemChat, collectDefeatAnnouncementsFromEvents } from "../../services/chatMessages";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
 import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap, resolveEntityHorizontalCollision } from "./movement";
 import { addBuff, pushBuffExpired } from "../effects/buffRuntime";
 import { resolveHealAmountRoll, resolveNonCritHealAmountRoll, resolveRawDamageWithCrit, resolveScheduledDamage, resolveScheduledDamageRoll } from "../utils/combatMath";
-import { applyDamageToTarget, applyHealToTarget, removeLinkedShield, resolveMaxHpPercentHealAmount } from "../utils/health";
+import { applyDamageToTarget, applyHealToTarget, reconcileLinkedShieldTotal, removeLinkedShield, resolveMaxHpPercentHealAmount } from "../utils/health";
 import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
@@ -25,7 +26,7 @@ import { exportedMap } from "../../map/exportedMap";
 import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
 import { ABILITIES } from "../../abilities/abilities";
 import { loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
-import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasKnockedBackImmune, hasUntargetable, hasDamageImmune, shouldDodge, shouldDodgeForAbility } from "../rules/guards";
+import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasKnockedBackImmune, hasUntargetable, hasDamageImmune, isActiveChannelRuntime, isRuntimeBuffActive, shouldDodge, shouldDodgeForAbility } from "../rules/guards";
 import type { MapObject } from "../state/types/map";
 import { applyTriggeredFollowUpPlayRules, breakOnPlay } from "../flow/play/breakOnPlay";
 import { applyDashRuntimeBuff } from "../effects/definitions/DirectionalDash";
@@ -766,7 +767,7 @@ function breakSanliuXiaOnSuccessfulChannelComplete(params: {
 }
 
 function hasBuffEffect(player: { buffs: Array<{ effects: Array<{ type: string }> }> }, type: string): boolean {
-  return player.buffs.some((b) => b.effects.some((e) => e.type === type));
+  return player.buffs.some((b: any) => isRuntimeBuffActive(b) && b.effects.some((e: any) => e.type === type));
 }
 
 function hasCombatActivityAgainstPlayerDuringChannel(state: GameState, userId: string, channelStartedAt: number): boolean {
@@ -816,21 +817,21 @@ function isChannelBuffRuntime(buff: { buffId: number }): boolean {
 }
 
 function hasLingRanTianFengState(player: {
-  buffs?: Array<{ effects?: Array<{ type?: string }> }>;
+  buffs?: Array<{ expiresAt?: number; effects?: Array<{ type?: string }> }>;
 }): boolean {
   return Array.isArray(player.buffs) && player.buffs.some((buff) =>
-    buff.effects?.some((effect) => effect.type === "LING_RAN_TIAN_FENG_STATE")
+    isRuntimeBuffActive(buff as any) && buff.effects?.some((effect) => effect.type === "LING_RAN_TIAN_FENG_STATE")
   );
 }
 
 function shouldSuppressJumpWhileChanneling(player: {
   activeChannel?: any;
-  buffs?: Array<{ buffId: number; effects?: Array<{ type?: string }> }>;
+  buffs?: Array<{ buffId: number; expiresAt?: number; effects?: Array<{ type?: string }> }>;
 }): boolean {
   if (hasLingRanTianFengState(player)) return false;
-  if (player.activeChannel) return true;
+  if (isActiveChannelRuntime(player.activeChannel)) return true;
   return Array.isArray(player.buffs) && player.buffs.some((buff) =>
-    isChannelBuffRuntime(buff) || buff.effects?.some((effect) => effect.type === "NO_JUMP")
+    isRuntimeBuffActive(buff as any) && (isChannelBuffRuntime(buff) || buff.effects?.some((effect) => effect.type === "NO_JUMP"))
   );
 }
 
@@ -991,21 +992,40 @@ function applyType3KnockbackControl(params: {
   }
 
   const removedStuns = removeStunDebuffsFromPlayer(state, target);
+  const dirX = dx / dist;
+  const dirY = dy / dist;
+  const knockbackDistance = Math.max(0, knockbackUnits);
+  const playerRadius = mapCtx?.playerRadius ?? 2;
+  const maxSubStep = Math.max(0.05, playerRadius * 0.85);
+  const steps = Math.max(1, Math.ceil(knockbackDistance / maxSubStep));
+  const stepX = (dirX * knockbackDistance) / steps;
+  const stepY = (dirY * knockbackDistance) / steps;
 
-  target.position = {
-    ...target.position,
-    x: target.position.x + (dx / dist) * knockbackUnits,
-    y: target.position.y + (dy / dist) * knockbackUnits,
-  };
-  resolveMapCollisions(target, mapCtx);
-  resolveEnemyChuHeHanJieWallCollision({
-    state,
-    actorUserId: target.userId,
-    position: target.position,
-    radius: mapCtx?.playerRadius ?? 2,
-    actorBaseZ: target.position.z ?? 0,
-    actorHeight: 1.5,
-  });
+  for (let step = 0; step < steps; step += 1) {
+    const previousPosition = { x: target.position.x, y: target.position.y };
+    target.position = {
+      ...target.position,
+      x: target.position.x + stepX,
+      y: target.position.y + stepY,
+    };
+    resolveMapCollisions(target, mapCtx);
+    const chuHeWallHit = resolveEnemyChuHeHanJieWallCollision({
+      state,
+      actorUserId: target.userId,
+      position: target.position,
+      radius: playerRadius,
+      previousPosition,
+      actorBaseZ: target.position.z ?? 0,
+      actorHeight: 1.5,
+    });
+    const actualX = target.position.x - previousPosition.x;
+    const actualY = target.position.y - previousPosition.y;
+    const intendedStep = Math.hypot(stepX, stepY);
+    const actualAlongKnockback = actualX * dirX + actualY * dirY;
+    if (chuHeWallHit || (intendedStep > 0.001 && actualAlongKnockback < intendedStep * 0.35)) {
+      break;
+    }
+  }
 
   if (controlDurationMs > 0) {
     const knockbackBuff = {
@@ -1262,18 +1282,47 @@ export class GameLoop {
 
     if (typeof seq === "number") {
       const lastSeq = this.playerInputSeq.get(playerIndex);
-      if (typeof lastSeq === "number" && seq < lastSeq) {
+      const isLateSeq = typeof lastSeq === "number" && seq < lastSeq;
+      const isLateJumpPulse = isLateSeq && input?.jump === true && lastSeq - seq <= 90;
+      if (isLateSeq && !isLateJumpPulse) {
         return false;
       }
-      this.playerInputSeq.set(playerIndex, seq);
+      if (!isLateSeq) {
+        this.playerInputSeq.set(playerIndex, seq);
+      }
     }
 
     const pendingInput = this.playerInputs.get(playerIndex) ?? null;
     let nextInput = input;
+    const snapshotJumpIntent = (source: MovementInput): NonNullable<MovementInput["jumpIntent"]> => ({
+      up: source.up === true,
+      down: source.down === true,
+      left: source.left === true,
+      right: source.right === true,
+      dx: typeof source.dx === "number" ? source.dx : undefined,
+      dy: typeof source.dy === "number" ? source.dy : undefined,
+      backpedalOnly: source.backpedalOnly === true,
+      facing: source.facing ? { x: source.facing.x, y: source.facing.y } : undefined,
+    });
 
     // Jump is a one-shot pulse, so keep it latched until the loop tick consumes it.
+    if (typeof seq === "number") {
+      const lastSeq = this.playerInputSeq.get(playerIndex);
+      const isLateJumpPulse = typeof lastSeq === "number" && seq < lastSeq && input?.jump === true && lastSeq - seq <= 90;
+      if (isLateJumpPulse && input) {
+        nextInput = pendingInput?.jump
+          ? pendingInput
+          : pendingInput
+          ? { ...pendingInput, jump: true, jumpIntent: snapshotJumpIntent(input) }
+          : { ...input, jumpIntent: snapshotJumpIntent(input) };
+      }
+    }
+
     if (pendingInput?.jump && !nextInput?.jump) {
-      nextInput = nextInput ? { ...nextInput, jump: true } : pendingInput;
+      const jumpIntent = pendingInput.jumpIntent ?? snapshotJumpIntent(pendingInput);
+      nextInput = nextInput ? { ...nextInput, jump: true, jumpIntent } : { ...pendingInput, jumpIntent };
+    } else if (nextInput?.jump && !nextInput.jumpIntent) {
+      nextInput = { ...nextInput, jumpIntent: snapshotJumpIntent(nextInput) };
     }
 
     if (nextInput?.jump) {
@@ -1378,6 +1427,7 @@ export class GameLoop {
     // Track buff count per player before movement — applyMovement may splice JUMP_BOOST
     const buffCountsBefore = this.state.players.map((p) => p.buffs?.length ?? 0);
     let movementStateChanged = false;
+    let movementBuffsChanged = false;
     this.state.players.forEach((player, idx) => {
       let input = this.playerInputs.get(idx) ?? null;
       // ── 恐惧 (FEARED): force walk away from sourceUserId, ignore player input ──
@@ -1432,7 +1482,10 @@ export class GameLoop {
         this.playerInputs.set(idx, input);
       }
       const lingRanJumpLockImmune = hasLingRanTianFengState(player as any);
-      if ((player as any).activeChannel?.lockMovement === true) {
+      const movementLockChannel = isActiveChannelRuntime((player as any).activeChannel)
+        ? (player as any).activeChannel
+        : null;
+      if (movementLockChannel?.lockMovement === true) {
         if (input) {
           input = {
             ...input,
@@ -1449,7 +1502,23 @@ export class GameLoop {
       const dashStateBefore = player.activeDash ? { ...player.activeDash } : undefined;
       const dashAbilityIdBefore = player.activeDash?.abilityId;
       const previousPosition = { x: player.position.x, y: player.position.y };
+      const movementBuffSignatureBefore = JSON.stringify((player.buffs ?? []).map((b: any) => ({
+        buffId: b.buffId,
+        expiresAt: b.expiresAt,
+        shieldAmount: b.shieldAmount,
+        sourceAbilityId: b.sourceAbilityId,
+      })));
       applyMovement(player, input, this.tickRate, this.mapCtx);
+      const movementBuffSignatureAfter = JSON.stringify((player.buffs ?? []).map((b: any) => ({
+        buffId: b.buffId,
+        expiresAt: b.expiresAt,
+        shieldAmount: b.shieldAmount,
+        sourceAbilityId: b.sourceAbilityId,
+      })));
+      if (movementBuffSignatureAfter !== movementBuffSignatureBefore) {
+        movementBuffsChanged = true;
+        movementStateChanged = true;
+      }
       if (resolveChuHeHanJieCollisionForPlayer(this.state, player, this.mapCtx.playerRadius ?? 2, previousPosition)) {
         movementStateChanged = true;
       }
@@ -1970,9 +2039,12 @@ export class GameLoop {
         }
 
         // Cancel activeChannel on move/jump
-        if (player.activeChannel) {
-          if (player.activeChannel.cancelOnMove && isMoving) cancelActiveChannel(this.state, player as any);
-          else if (player.activeChannel.cancelOnJump && isJumping) cancelActiveChannel(this.state, player as any);
+        const inputCancelableChannel = isActiveChannelRuntime(player.activeChannel)
+          ? player.activeChannel
+          : null;
+        if (inputCancelableChannel) {
+          if (inputCancelableChannel.cancelOnMove && isMoving) cancelActiveChannel(this.state, player as any);
+          else if (inputCancelableChannel.cancelOnJump && isJumping) cancelActiveChannel(this.state, player as any);
         }
       }
 
@@ -2182,23 +2254,21 @@ export class GameLoop {
                 base: e.value ?? 0,
               });
               const applied = applyHealToTarget(player as any, healRoll.heal);
-              if (applied > 0) {
-                this.state.events.push({
-                  id: randomUUID(),
-                  timestamp: chNow,
-                  turn: this.state.turn,
-                  type: "HEAL",
-                  actorUserId: player.userId,
-                  targetUserId: player.userId,
-                  abilityId: ch.abilityId,
-                  abilityName: ch.abilityName,
-                  effectType: "PERIODIC_HEAL",
-                  value: applied,
-                  isCrit: false,
-                  suppressCritLabel: true,
-                });
-                channelStateChanged = true;
-              }
+              this.state.events.push({
+                id: randomUUID(),
+                timestamp: chNow,
+                turn: this.state.turn,
+                type: "HEAL",
+                actorUserId: player.userId,
+                targetUserId: player.userId,
+                abilityId: ch.abilityId,
+                abilityName: ch.abilityName,
+                effectType: "PERIODIC_HEAL",
+                value: Math.max(0, applied),
+                isCrit: false,
+                suppressCritLabel: true,
+              });
+              channelStateChanged = true;
             }
           }
         }
@@ -2836,6 +2906,7 @@ export class GameLoop {
     }
     this.state.players.forEach((player) => {
       const cooldownSlowSum = player.buffs
+        .filter((b: any) => isRuntimeBuffActive(b))
         .flatMap((b) => b.effects)
         .filter((e: any) => e.type === "COOLDOWN_SLOW")
         .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
@@ -2962,7 +3033,7 @@ export class GameLoop {
     // Pre-seed buffsChanged: true if movement consumed any buff (e.g. JUMP_BOOST splice)
     let buffsChanged = this.state.players.some(
       (p, idx) => (p.buffs?.length ?? 0) !== buffCountsBefore[idx]
-    ) || channelStateChanged || movementStateChanged;
+    ) || movementBuffsChanged || channelStateChanged || movementStateChanged;
 
     // Cancel channel buffs whose out-of-range condition is exceeded (e.g. 云飞玉皇)
     if (this.state.players.length === 2) {
@@ -3019,6 +3090,7 @@ export class GameLoop {
       }
 
       const leftDisguiseLeashArea = player.buffs.some((buff: any) => {
+        if (!isRuntimeBuffActive(buff)) return false;
         if (!isDisguiseBuff(buff)) return false;
 
         const leashOriginX = Number(buff?.leashOriginX);
@@ -3698,6 +3770,10 @@ export class GameLoop {
         }
       }
 
+      if (reconcileLinkedShieldTotal(player as any)) {
+        buffsChanged = true;
+      }
+
       // 无相诀 natural-expire check: if any snapshot DR tier expires naturally AND player hp < 10%, 贯体 heal 50%
       const wuxiangExpired = naturallyExpired.filter((b) => WU_XIANG_JUE_SNAPSHOT_BUFF_IDS.has(b.buffId));
       for (const _b of wuxiangExpired) {
@@ -3901,6 +3977,9 @@ export class GameLoop {
         });
       }
       if (naturallyExpired.length > 0 || (entity.buffs?.length ?? 0) !== before) {
+        buffsChanged = true;
+      }
+      if (reconcileLinkedShieldTotal(entity as any)) {
         buffsChanged = true;
       }
     }
@@ -4730,7 +4809,7 @@ export class GameLoop {
             if (!entity.rearmAtByUser) entity.rearmAtByUser = {};
 
             const hasStealth = player.buffs.some(
-              (b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
+              (b: any) => isRuntimeBuffActive(b, now) && b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
             );
 
             if (!inZone) {
@@ -4800,7 +4879,7 @@ export class GameLoop {
             // Track stealth presence for next-tick break detection.
             if (!(entity as any)._lastHadStealth) (entity as any)._lastHadStealth = {};
             (entity as any)._lastHadStealth[player.userId] = player.buffs.some(
-              (b: any) => b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
+              (b: any) => isRuntimeBuffActive(b, now) && b.buffId === ZHU_YUN_STEALTH_BUFF_ID && b.sourceAbilityId === ZHU_YUN_ABILITY_ID && b.sourceUserId === entity.ownerUserId
             );
           }
           // Suppress unused-var lint (owner var helps debugging context).
@@ -5035,6 +5114,7 @@ export class GameLoop {
 
         // 应天授命 (YING_TIAN_SHIELD): on each hit, accumulate damage and heal 6% of lost HP
         for (const ytBuff of targetPlayer.buffs) {
+          if (!isRuntimeBuffActive(ytBuff as any, now)) continue;
           const ytEffect = ytBuff.effects.find((e) => e.type === "YING_TIAN_SHIELD");
           if (!ytEffect) continue;
           let tickDmg = 0;
@@ -5164,7 +5244,14 @@ export class GameLoop {
     // 2. Check win condition. Testing mode keeps the same battle running by
     // restoring everyone when any player hits 0 HP.
     const winStart = performance.now();
+    const defeatedUserIds = this.state.players.filter((player) => player.hp <= 0).map((player) => player.userId);
+    const defeatAnnouncements = collectDefeatAnnouncementsFromEvents(this.state, eventDiffStart, defeatedUserIds);
     if (resetDefeatedPlayersForTesting(this.state)) {
+      for (const announcement of defeatAnnouncements) {
+        void broadcastDefeatSystemChat(this.gameId, announcement.defeatedUserId, announcement.attackerUserId).catch((err) => {
+          console.error(`[GameLoop] Failed to broadcast defeat chat for ${this.gameId}:`, err);
+        });
+      }
       buffsChanged = true;
     } else {
       checkGameOver(this.state);
@@ -5182,52 +5269,119 @@ export class GameLoop {
       // Send position + facing + cooldown changes (lightweight diff)
       const diff: Array<{ path: string; value: any }> = [];
       const lastBroadcastSignatures = ((this as any)._lastBroadcastSignatures ??= {} as Record<string, string>);
+      const lastCountdownBroadcastValues = ((this as any)._lastCountdownBroadcastValues ??= {} as Record<string, number>);
+      const roundForBroadcast = (value: any, decimals = 3) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return value;
+        const scale = 10 ** decimals;
+        return Math.round(numeric * scale) / scale;
+      };
+      const compactPosition = (position: any) => ({
+        x: roundForBroadcast(position?.x),
+        y: roundForBroadcast(position?.y),
+        ...(typeof position?.z === "number" ? { z: roundForBroadcast(position.z) } : {}),
+      });
+      const compactFacing = (facing: any) => ({
+        x: roundForBroadcast(facing?.x ?? 0, 4),
+        y: roundForBroadcast(facing?.y ?? 1, 4),
+      });
+      const compactActiveDash = (dash: any) => dash ? {
+        abilityId: dash.abilityId,
+        vxPerTick: roundForBroadcast(dash.vxPerTick, 5),
+        vyPerTick: roundForBroadcast(dash.vyPerTick, 5),
+        ...(typeof dash.vzPerTick === "number" ? { vzPerTick: roundForBroadcast(dash.vzPerTick, 5) } : {}),
+        ...(typeof dash.forceVzPerTick === "number" ? { forceVzPerTick: roundForBroadcast(dash.forceVzPerTick, 5) } : {}),
+        ...(dash.lingRanCastLift === true ? { lingRanCastLift: true } : {}),
+        ...(typeof dash.hitTargetUserId === "string" ? { hitTargetUserId: dash.hitTargetUserId } : {}),
+        ...(typeof dash.hitTargetEntityId === "string" ? { hitTargetEntityId: dash.hitTargetEntityId } : {}),
+        ticksRemaining: Math.max(0, Number(dash.ticksRemaining ?? 0)),
+      } : null;
+      const compactActiveChannel = (channel: any) => channel ? {
+        abilityId: channel.abilityId,
+        abilityName: channel.abilityName,
+        instanceId: channel.instanceId,
+        ...(typeof channel.targetUserId === "string" ? { targetUserId: channel.targetUserId } : {}),
+        ...(typeof channel.entityTargetId === "string" ? { entityTargetId: channel.entityTargetId } : {}),
+        startedAt: channel.startedAt,
+        durationMs: channel.durationMs,
+        ...(typeof channel.tickIntervalMs === "number" ? { tickIntervalMs: channel.tickIntervalMs } : {}),
+        ...(typeof channel.consumableId === "string" ? { consumableId: channel.consumableId } : {}),
+        ...(channel.cancelOnMove === true ? { cancelOnMove: true } : {}),
+        ...(channel.cancelOnJump === true ? { cancelOnJump: true } : {}),
+        ...(typeof channel.cancelOnOutOfRange === "number" ? { cancelOnOutOfRange: channel.cancelOnOutOfRange } : {}),
+        ...(channel.forwardChannel === false ? { forwardChannel: false } : {}),
+        ...(channel.lockMovement === true ? { lockMovement: true } : {}),
+        ...(channel.interruptible === false ? { interruptible: false } : {}),
+      } : null;
       const pushPatchIfChanged = (path: string, value: any) => {
         const signature = JSON.stringify(value ?? null);
         if (lastBroadcastSignatures[path] === signature) return;
         lastBroadcastSignatures[path] = signature;
         diff.push({ path, value });
       };
+      const pushCountdownBoundaryIfChanged = (path: string, value: any) => {
+        const current = Math.max(0, Math.ceil(Number(value ?? 0)));
+        const previous = lastCountdownBroadcastValues[path];
+        lastCountdownBroadcastValues[path] = current;
+        if (
+          previous === undefined ||
+          (previous <= 0 && current > 0) ||
+          (previous > 0 && current <= 0) ||
+          current > previous
+        ) {
+          pushPatchIfChanged(path, current);
+        }
+      };
       this.state.players.forEach((p, pidx) => {
-        pushPatchIfChanged(`/players/${pidx}/position`, p.position);
+        pushPatchIfChanged(`/players/${pidx}/position`, compactPosition(p.position));
         // Include facing in compact movement updates so clients can render
         // authoritative direction indicators for both players in real time.
-        pushPatchIfChanged(`/players/${pidx}/facing`, p.facing ?? { x: 0, y: 1 });
+        pushPatchIfChanged(`/players/${pidx}/facing`, compactFacing(p.facing ?? { x: 0, y: 1 }));
         // Include activeDash only when active OR transitioning to null
         if (p.activeDash) {
-          pushPatchIfChanged(`/players/${pidx}/activeDash`, p.activeDash);
+          const compactDash = compactActiveDash(p.activeDash);
+          const dashSignature = JSON.stringify({ ...compactDash, ticksRemaining: undefined });
+          (this as any)._lastActiveDashSig = (this as any)._lastActiveDashSig ?? {};
+          if ((this as any)._lastActiveDashSig[pidx] !== dashSignature) {
+            pushPatchIfChanged(`/players/${pidx}/activeDash`, compactDash);
+            (this as any)._lastActiveDashSig[pidx] = dashSignature;
+          }
           (this as any)._hadActiveDash = (this as any)._hadActiveDash ?? {};
           (this as any)._hadActiveDash[pidx] = true;
         } else if ((this as any)._hadActiveDash?.[pidx]) {
           pushPatchIfChanged(`/players/${pidx}/activeDash`, null);
           (this as any)._hadActiveDash[pidx] = false;
+          if ((this as any)._lastActiveDashSig) {
+            (this as any)._lastActiveDashSig[pidx] = null;
+          }
         }
         // Keep channel UI in sync, but only send when channel payload actually changes.
         // Sending activeChannel every broadcast tick can cause frontend progress bars to resync too often.
         (this as any)._lastActiveChannelSig = (this as any)._lastActiveChannelSig ?? {};
         const prevChannelSig = (this as any)._lastActiveChannelSig[pidx] ?? null;
-        const nextChannelSig = p.activeChannel ? JSON.stringify(p.activeChannel) : null;
+        const compactChannel = compactActiveChannel(p.activeChannel);
+        const nextChannelSig = compactChannel ? JSON.stringify(compactChannel) : null;
 
         if (nextChannelSig !== prevChannelSig) {
-          pushPatchIfChanged(`/players/${pidx}/activeChannel`, p.activeChannel ?? null);
+          pushPatchIfChanged(`/players/${pidx}/activeChannel`, compactChannel);
           (this as any)._lastActiveChannelSig[pidx] = nextChannelSig;
         }
       });
       // Append per-ability cooldown patches so clients stay in sync
       this.state.players.forEach((p, pidx) => {
-        pushPatchIfChanged(`/players/${pidx}/globalGcdTicks`, (p as any).globalGcdTicks ?? 0);
+        pushCountdownBoundaryIfChanged(`/players/${pidx}/globalGcdTicks`, (p as any).globalGcdTicks ?? 0);
         pushPatchIfChanged(`/players/${pidx}/visualGcd`, (p as any).visualGcd ?? null);
         pushPatchIfChanged(`/players/${pidx}/specialAbilityStates`, (p as any).specialAbilityStates ?? {});
         p.hand.forEach((ability, cidx) => {
-          pushPatchIfChanged(`/players/${pidx}/hand/${cidx}/cooldown`, ability.cooldown);
+          pushCountdownBoundaryIfChanged(`/players/${pidx}/hand/${cidx}/cooldown`, ability.cooldown);
           if ((ability as any).chargeCount !== undefined) {
             pushPatchIfChanged(`/players/${pidx}/hand/${cidx}/chargeCount`, (ability as any).chargeCount);
           }
           if ((ability as any).chargeRegenTicksRemaining !== undefined) {
-            pushPatchIfChanged(`/players/${pidx}/hand/${cidx}/chargeRegenTicksRemaining`, (ability as any).chargeRegenTicksRemaining);
+            pushCountdownBoundaryIfChanged(`/players/${pidx}/hand/${cidx}/chargeRegenTicksRemaining`, (ability as any).chargeRegenTicksRemaining);
           }
           if ((ability as any).chargeLockTicks !== undefined) {
-            pushPatchIfChanged(`/players/${pidx}/hand/${cidx}/chargeLockTicks`, (ability as any).chargeLockTicks);
+            pushCountdownBoundaryIfChanged(`/players/${pidx}/hand/${cidx}/chargeLockTicks`, (ability as any).chargeLockTicks);
           }
         });
       });

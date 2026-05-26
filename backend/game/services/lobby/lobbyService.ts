@@ -4,24 +4,43 @@
  */
 
 import GameSession from "../../models/GameSession";
-import { User } from "../../../models/User";
+import { normalizeStoredUserDisplayName, User } from "../../../models/User";
 import { GameState, STARTING_ATTACK_DAMAGE, STARTING_BATTLE_HP, STARTING_CRIT_CHANCE_PCT, STARTING_DEFENSE_PCT, STARTING_HUAJIN_PCT } from "../../engine/state/types";
 import { initializeTournament } from "../economy/tournamentService";
 import { initializeBattleState } from "../battle/battleService";
 import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
 
-/**
- * Helper: fetch username by user ID
- */
-async function getUsernameById(userId: string): Promise<string> {
-  const user = await User.findById(userId).lean();
-  const username = user?.username || `User${userId.slice(-4)}`;
-  console.log(`[getUsernameById] userId=${userId} -> username=${username}`);
-  return username;
+type PlayerProfile = {
+  displayName: string;
+  school: string | null;
+};
+
+async function getPlayerProfileById(userId: string): Promise<PlayerProfile> {
+  const user = await User.findById(userId).select("displayName username school").lean();
+  const displayName = user ? normalizeStoredUserDisplayName(user.username, user.displayName) : `User${userId.slice(-4)}`;
+  const school = typeof user?.school === "string" ? user.school : null;
+  console.log(`[getPlayerProfileById] userId=${userId} -> displayName=${displayName}, school=${school ?? "-"}`);
+  return { displayName, school };
+}
+
+function setGamePlayerMetadata(game: any, userId: string, profile: PlayerProfile): boolean {
+  let changed = false;
+  if (!game.playerNames) game.playerNames = {};
+  if (!game.playerSchools) game.playerSchools = {};
+
+  if (game.playerNames[userId] !== profile.displayName) {
+    game.playerNames[userId] = profile.displayName;
+    changed = true;
+  }
+  if (profile.school && game.playerSchools[userId] !== profile.school) {
+    game.playerSchools[userId] = profile.school;
+    changed = true;
+  }
+  return changed;
 }
 
 export async function createGame(userId: string, mode: 'arena' | 'pubg' | 'collision-test' = 'arena') {
-  const username = await getUsernameById(userId);
+  const profile = await getPlayerProfileById(userId);
 
   const state: GameState = {
     /** authoritative state version */
@@ -65,7 +84,10 @@ export async function createGame(userId: string, mode: 'arena' | 'pubg' | 'colli
     started: false,
     mode,
     playerNames: {
-      [userId]: username,
+      [userId]: profile.displayName,
+    },
+    playerSchools: {
+      ...(profile.school ? { [userId]: profile.school } : {}),
     },
   });
 
@@ -73,36 +95,40 @@ export async function createGame(userId: string, mode: 'arena' | 'pubg' | 'colli
   
   const obj = created.toObject();
   if (!obj.playerNames) obj.playerNames = {};
+  if (!obj.playerSchools) obj.playerSchools = {};
   
   return obj;
 }
 
 export async function joinGame(gameId: string, userId: string) {
-  const username = await getUsernameById(userId);
+  const profile = await getPlayerProfileById(userId);
   const game = await GameSession.findById(gameId);
   if (!game) throw new Error("Game not found");
 
   if (game.players.includes(userId)) {
     console.log(`[joinGame] User already in game`);
+    if (setGamePlayerMetadata(game, userId, profile)) {
+      game.markModified('playerNames');
+      game.markModified('playerSchools');
+      await game.save();
+    }
     const obj = game.toObject();
     if (!obj.playerNames) obj.playerNames = {};
+    if (!obj.playerSchools) obj.playerSchools = {};
     return obj;
   }
   if (game.players.length >= 2) throw new Error("Game already full");
 
-  console.log(`[joinGame] Adding user ${userId} (${username}) to game ${gameId}`);
+  console.log(`[joinGame] Adding user ${userId} (${profile.displayName}) to game ${gameId}`);
   game.players.push(userId);
   
-  // Ensure playerNames exists and add the new player
-  if (!game.playerNames) {
-    game.playerNames = {};
-  }
-  (game.playerNames as any)[userId] = username;
+  setGamePlayerMetadata(game, userId, profile);
   
   console.log(`[joinGame] playerNames before save:`, game.playerNames);
   
   // Mark field as modified so Mongoose persists the change
   game.markModified('playerNames');
+  game.markModified('playerSchools');
   
   await game.save();
   
@@ -111,6 +137,7 @@ export async function joinGame(gameId: string, userId: string) {
   
   const result = saved.toObject();
   if (!result.playerNames) result.playerNames = {};
+  if (!result.playerSchools) result.playerSchools = {};
   
   console.log(`[joinGame] playerNames in response:`, result.playerNames);
   

@@ -6,8 +6,30 @@ import { ActiveBuff, BuffEffect, EffectType } from "../state/types";
    BUFF HELPERS
 ========================================================= */
 
+export function isRuntimeBuffActive(buff: Pick<ActiveBuff, "expiresAt"> | undefined, now = Date.now()): boolean {
+  const expiresAt = Number(buff?.expiresAt ?? 0);
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) return true;
+  return expiresAt > now;
+}
+
+export function getActiveRuntimeBuffs(target: { buffs: ActiveBuff[] }, now = Date.now()): ActiveBuff[] {
+  return (target.buffs ?? []).filter((buff) => isRuntimeBuffActive(buff, now));
+}
+
+export function isActiveChannelRuntime(
+  channel: { startedAt?: number; durationMs?: number } | null | undefined,
+  now = Date.now()
+): boolean {
+  if (!channel) return false;
+  const startedAt = Number(channel.startedAt ?? 0);
+  const durationMs = Number(channel.durationMs ?? 0);
+  if (!Number.isFinite(startedAt) || startedAt <= 0) return true;
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return true;
+  return now < startedAt + durationMs;
+}
+
 function allEffects(target: { buffs: ActiveBuff[] }): BuffEffect[] {
-  return target.buffs.flatMap((b) => b.effects);
+  return getActiveRuntimeBuffs(target).flatMap((b) => b.effects);
 }
 
 function hasEffect(target: { buffs: ActiveBuff[] }, type: EffectType) {
@@ -69,7 +91,7 @@ export function hasInvulnerable(target: { buffs: ActiveBuff[] }) {
 }
 
 export function hasDamageImmune(target: { buffs: ActiveBuff[] }) {
-  return target.buffs.some((b) => b.effects?.some((e: any) => e.type === "DAMAGE_IMMUNE"));
+  return getActiveRuntimeBuffs(target).some((b) => b.effects?.some((e: any) => e.type === "DAMAGE_IMMUNE"));
 }
 
 /**

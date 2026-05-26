@@ -1,0 +1,228 @@
+return {
+	PLUGIN_NAME                = '茗伊插件集',
+	PLUGIN_SHORT_NAME          = '茗伊插件',
+	PLUGIN_AUTHOR              = '茗伊 @ 夢江南',
+	PLUGIN_AUTHOR_FEEDBACK     = '茗伊',
+	PLUGIN_AUTHOR_FEEDBACK_URL = 'https://zhaiyiming.com/feedback',
+	PLUGIN_AUTHOR_SIGNATURE    = '茗伊 @夢江南',
+
+	['%s, welcome to use %s!'] = '歡迎%s使用%s！',
+	['Author @%s'] = '作者 @%s',
+	['[Author]'] = '〔插件君〕',
+	['[Fake author]'] = '〔該玩家非插件君，注意謹防上當受騙〕',
+
+	['Toggle main panel'] = '打開/關閉主界面',
+	['Icon Picker'] = '圖標選擇器',
+	['Font Picker'] = '字體選擇器',
+	['Color Picker'] = '顏色選擇器',
+	['Color Picker Pro'] = '調色板',
+	['Text Editor'] = '文本編輯器',
+	['User Input'] = '用戶輸入',
+	['Font %d'] = '字體 %d',
+
+	['Add to BOSS list'] = '加入首領列表',
+	['Remove from BOSS list'] = '從首領列表中移除',
+	['Add to Important-NPC list'] = '加入重要角色列表',
+	['Remove from Important-NPC list'] = '從重要角色列表中移除',
+
+	['LClick to copy to editbox.\n'] = '左鍵複製到聊天欄\n',
+	['MClick to remove this line.\n'] = '中鍵刪除該行文本\n',
+	['RClick to repeat this line.\n'] = '右鍵發佈到當前頻道\n',
+
+	['Copy to chat input'] = '複製到聊天欄',
+	['View equipment'] = '查看裝備',
+	['Edit in MY_PlayerRemark'] = '編輯角色備注',
+	['Copy debug information'] = '複製調試信息',
+	['Invalid player ID!']           = '您要查看裝備的玩家ID不合法！',
+	['Peek other player failed!']    = '查看裝備失敗！',
+	['Can not find player to peek!'] = '您要查看的玩家不存在！',
+	['Player is too far to peek!']   = '距離太遠查看裝備失敗！',
+
+	['None-function hotkey'] = '空白快捷鍵',
+	['Stop cast skill'] = '打斷自身運功',
+	['Display only chat panel'] = '僅顯示聊天欄',
+
+	OPERATOR = {
+		['=='] = '等於',
+		['==='] = '等於',
+		['!='] = '不等於',
+		['!=='] = '不等於',
+		['~='] = '不等於',
+		['<'] = '小於',
+		['>='] = '不小於',
+		['>'] = '大於',
+		['<='] = '不大於',
+	},
+
+	['\''] = '‘',
+
+	['Syntax error at line %d'] = '語法解析錯誤發生在第%d行',
+	['Unknown action at line %d'] = '未知的指令發生在第%d行',
+	['Unknown action skill at line %d'] = '未知的指令招式名稱發生在第%d行',
+	['Unknown action buff at line %d'] = '未知的指令氣勁名稱發生在第%d行',
+	['Unknown condition at line %d'] = '未知的條件指令發生在第%d行',
+	['Unknown condition skill at line %d'] = '未知的條件招式名稱發生在第%d行',
+	['Unknown condition buff at line %d'] = '未知的條件氣勁名稱發生在第%d行',
+
+	['Copy inscription'] = '抄錄碑銘',
+	['Inscription * '] = '碑銘·',
+
+	['Restore formation of %d group: %s'         ] = '恢復第%d小隊陣眼[%s]。',
+	['Restore player marked as [%s]: %s'         ] = '恢復標記%s為[%s]。',
+	['You are not team leader, permission denied'] = '你不是隊長，無權操作隊伍。',
+	['Unable get player of %d group: #%d'        ] = '無法獲取第%d小隊成員名字#%d。',
+	['Unknown status: %s'                        ] = '成員未知狀態：[%s]。',
+	['Need not adjust: %s'                       ] = '[%s]無需調整。',
+	['Restore distributor: %s'                   ] = '恢復分配者為[%s]。',
+	['Change group of [%s] to %d'                ] = '調整[%s]到第%d小隊。',
+	['Restore team leader: %s'                   ] = '恢復隊長為[%s]。',
+	['Restore team marker: %s'                   ] = '恢復標記者為[%s]。',
+	['Team list restored'                        ] = '小隊狀態已恢復。',
+
+	['Welcome to use %s, would you like to start quick tutorial now?'] = '歡迎使用%s，部分設置尚未初始化，是否立即開始個性化嚮導？',
+	['Quickset'] = '一鍵設置',
+	['Manually'] = '手動設置',
+	['Later'] = '以後再說',
+
+	['Addon comm.'] = '插件消息',
+	['BgMsg cannot be send due to talk lock, data will be sent as soon as talk unlocked.'] = '聊天鎖已阻止插件通信，數據已暫存等待解鎖後重新發送。',
+
+	['%s requires a invalid base library version value: %s.'] = '%s依賴基礎庫但無法解析該依賴版本號：%s。',
+	['%s requires base library version at %s, current at %s.'] = '%s依賴基礎庫@%s，當前版本為 %s。',
+
+	['User settings preset id cannot contains special character (/?*:|\\<>).'] = '本地共用數據方案名稱不能包含特殊符號（/?*:|\\<>）。',
+
+	['%s Database is malformed, do you want to repair database now? Repair database may take a long time and cause a disconnection.'] = '%s資料庫已損壞，需要修複後方可使用，但是修複可能造成客戶端失去響應、角色掉線，請耐心等待，勿隨意結束客戶端，是否立即修複？',
+	['DO NOT KILL PROCESS BY FORCE, OR YOUR DATABASE MAY GOT A DAMAE, PRESS OK TO CONTINUE.'] = '接下來如有頓卡請耐心等待，不要結束進程，否則您的資料庫可能造成不可逆的數據損壞，點擊確認開始操作。',
+	['Database file locked, repair database failed! : %s'] = '資料庫文件被占用，修複失敗！(%s)',
+	['%s Database repair finished!'] = '%s資料庫修複完成！',
+
+	['Default'] = '默認',
+	['Bing.ogg'] = '呯',
+	['Notify.ogg'] = '叮咚',
+	['Hold ctrl when move in to preview.'] = '按住CTRL滑入可試聽。',
+
+	DISTANCE_TYPE = {
+		['gwwean'] = '郭氏距離',
+		['euclidean'] = '歐氏距離',
+		['plane'] = '平面距離',
+		['global'] = '全局默認',
+	},
+
+	['Team dungeon'] = '小隊秘境',
+	['Raid dungeon'] = '團隊秘境',
+	['Duo dungeon'] = '雙人秘境',
+
+	GAME_VERSION_NAME = {
+		'破曉之路', -- 2009-10-22
+		'撼世禪劫·戰寶迦蘭', -- 2010-2-8
+		'藏劍山莊', -- 2010-5-26
+		'戰魂劫', -- 2010-10-28
+		'龍爭虎鬥', -- 2011-1-20
+		'血龍出淵', -- 2011-4-28
+		'風起稻香',
+		'巴蜀風雲', -- 2011-5-19
+		'一代宗師', -- 2011-11-16
+		'燭火燎天', -- 2012-4-19
+		'洱海驚龍', -- 2012-7-12
+		'日月明尊', -- 2012-11-22
+		'安史之亂', -- 2013-6-8
+		'亂世長安', -- 2013-9-16
+		'血戰天策', -- 2013-11-21
+		'逐鹿中原', -- 2014-4-23
+		'蒼雪龍城', -- 2014-11-24
+		'俠義乾坤', -- 2015-4-20
+		'劍膽琴心', -- 2015-10-28
+		'風骨霸刀', -- 2016-10-17
+		'日月凌空', -- 2017-4-20
+		'重製版', -- 2017-12-29
+		'世外蓬萊', -- 2018-12-21
+	},
+	MAP_GROUP = {
+		['Birth / School'] = '稻香村、門派',
+		['City / Old city'] = '主城',
+		['Village / Camp'] = '野外',
+		['Battle field / Arena'] = '戰場、名劍大會',
+		['Other dungeon'] = '其它秘境',
+		['Other'] = '其它地圖',
+	},
+	KUNGFU_TYPE_LABEL_ABBR = {
+		[    0] = '俠', -- 大俠
+		[10002] = '洗', -- 少林 洗髓經
+		[10003] = '易', -- 少林 易經經
+		[10014] = '氣', -- 純陽 紫霞功
+		[10015] = '劍', -- 純陽 太虛劍意
+		[10021] = '花', -- 萬花 花間游
+		[10026] = '傲', -- 天策 傲血戰意
+		[10028] = '離', -- 萬花 離經易道
+		[10062] = '鐵', -- 天策 鐵牢律
+		[10080] = '雲', -- 七秀 雲裳心經
+		[10081] = '冰', -- 七秀 冰心訣
+		[10144] = '問', -- 藏劍 問水訣
+		[10145] = '山', -- 藏劍 山居劍意
+		[10175] = '毒', -- 五毒 毒經
+		[10176] = '補', -- 五毒 補天訣
+		[10224] = '羽', -- 唐門 驚羽訣
+		[10225] = '詭', -- 唐門 天羅詭道
+		[10242] = '焚', -- 明教 焚影聖訣
+		[10243] = '尊', -- 明教 明尊琉璃
+		[10268] = '丐', -- 丐幫 笑塵訣
+		[10389] = '衣', -- 蒼雲 鐵骨衣
+		[10390] = '分', -- 蒼雲 分山勁
+		[10447] = '莫', -- 長歌 莫問
+		[10448] = '相', -- 長歌 相知
+		[10464] = '霸', -- 霸刀 北傲訣
+		[10533] = '蓬', -- 蓬萊 凌海訣
+		[10585] = '凌', -- 凌雪 隱龍訣
+		[10615] = '衍', -- 衍天 太玄經
+		[10626] = '素', -- 藥宗 靈素
+		[10627] = '方', -- 藥宗 無方
+		[10698] = '刀', -- 刀宗 孤鋒訣
+		[10756] = '靈', -- 萬靈 山海心訣
+		[10786] = '段', -- 段氏 周天功
+	},
+
+	['Point left time: (%d+)h(%d+)m(%d+)s'] = '點卡剩餘時間為：(%d+)小時(%d+)分(%d+)秒',
+	['Month time left days: (%d+)d(%d+)h'] = '您的月卡剩餘總時間：(%d+)天(%d+)小時',
+	['Month time to: (%d+)y(%d+)m(%d+)d (%d+)h(%d+)m'] = '包月時間截止至：(%d+)/(%d+)/(%d+) (%d+):(%d+)',
+
+	['Your KGUI is not official, please fix client and try again.'] = '當前客戶端 KGUI 非官方最新發佈版，功能可能受損，請嘗試修複客戶端後再次嘗試確認是否仍然存在問題。',
+
+	['Request list'] = '請求列表',
+	['Clear list and close?'] = '清空列表並關閉？',
+
+	['Import User Settings'] = '導入配置項',
+	['Export User Settings'] = '導出配置項',
+	['Import'] = '導入',
+	['Export'] = '導出',
+	['%d settings imported.'] = '成功導入 %d 條配置項。',
+	['No custom setting selected, nothing to export.'] = '請先選擇您想要導出的自定義配置項。',
+	['No custom setting found, nothing to export.'] = '選中的配置項尚未進行自定義配置，默認配置無需導出。',
+	['%d settings exported, file saved in %s.'] = '成功導出 %d 條配置項，文件位於：%s。',
+
+	['User Settings Location Override'] = '插件設置項高級共享方案設置',
+	['Total: %d'] = '總計：%d條。',
+	['Search'] = '搜索',
+	['Settings description'] = '設置項描述',
+	['y'] = '√',
+	['Preset'] = '方案',
+	['Preset mean follow preset location.'] = '跟隨方案：跟隨插件“系統-全局設置”中“插件設置項方案選擇”的狀態',
+	['Role'] = '角色',
+	['Role: always follow role.'] = '角色獨有：無視方案設置，使用角色獨有配置，不與其他角色共享。',
+	['Server'] = '伺服器',
+	['Server: always follow server.'] = '伺服器共享：無視方案設置，使用同伺服器共享配置。',
+	['Global'] = '全局',
+	['Global: always follow global.'] = '全局共享：無視方案設置，使用全局共享配置。',
+
+	['Global config'] = '全局設置',
+	['Distance type'] = '默認距離計算方式',
+
+	FORMAT_RELATIVE_TIME = {
+		['just_now'] = '剛剛',
+		['seconds_ago'] = '%d秒前',
+		['minutes_ago'] = '%d分鐘前',
+		['hours_ago'] = '%d小時前',
+		['days_ago'] = '%d天前',
+		['date_format'] = '%yyyy/%MM/%dd',
+	},
+}

@@ -1,7 +1,7 @@
 // backend/game/engine/effects/handlers/handleDamage.ts
 
 import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
-import { blocksEnemyTargeting, hasDamageImmune } from "../../rules/guards";
+import { blocksEnemyTargeting, hasDamageImmune, isRuntimeBuffActive } from "../../rules/guards";
 import { resolveScheduledDamageRoll, resolveNonCritHealAmountRoll } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
@@ -51,7 +51,7 @@ export function handleDamage(
 
   // PROJECTILE_IMMUNE (斩无常): block damage from projectile abilities
   if (isEnemyEffect && (ability as any).isProjectile === true &&
-    target.buffs.some((b) => b.effects.some((e) => (e as any).type === "PROJECTILE_IMMUNE") && b.expiresAt > Date.now())
+    target.buffs.some((b) => isRuntimeBuffActive(b) && b.effects.some((e) => (e as any).type === "PROJECTILE_IMMUNE") && b.expiresAt > Date.now())
   ) {
     return;
   }

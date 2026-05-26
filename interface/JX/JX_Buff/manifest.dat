@@ -1,0 +1,50 @@
+{
+   "files" : [
+      {
+         "name" : "data/buff_info.db",
+         "value" : "B39A0D9F91FEB487B1AAE61F9DEAE584AF289CF6"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "8D8F4436782B5AAD2DA6CE341C08C63233739034"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "24D5F5EE0AD2471024828AC72A418F8417C2BF76"
+      },
+      {
+         "name" : "JX_Buff.lua",
+         "value" : "E83C924A006EF053EDCE66637706B2961D4BF9FC"
+      },
+      {
+         "name" : "JX_BuffList.lua",
+         "value" : "A3AA26121737089C8F153DA0485B8B78BED98D10"
+      },
+      {
+         "name" : "JX_Buff_Data.lua",
+         "value" : "59A4870533C1928B3C45C056A663EA4B4D08FEE5"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "9C7256C725D84CBF8CDF9D6200156A4785595362"
+      },
+      {
+         "name" : "ui/BuffList.ini",
+         "value" : "9B418D5B727409D7F0B83F89EBCF3E41C56B1DF1"
+      },
+      {
+         "name" : "ui/JX_BuffList.ini",
+         "value" : "B5246773ED3F33DFF43FE252FE2C19D0D02B3620"
+      },
+      {
+         "name" : "ui/JX_CustomBuffListTemp.ini",
+         "value" : "8E40AC41D9D7839F8A817B75F021BBCEFF403891"
+      },
+      {
+         "name" : "ui/JX_NewBuff.ini",
+         "value" : "1FE3BBFD1AA15ED6A18687740E37DCD41E18CBED"
+      }
+   ],
+   "id" : "JX_Buff",
+   "version" : 104
+}

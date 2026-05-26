@@ -1,0 +1,50 @@
+{
+   "files" : [
+      {
+         "name" : "audio/MsgArrive.ogg",
+         "value" : "7E4BE03D4FF5D9674B9E5B0450DE0006298605BA"
+      },
+      {
+         "name" : "audio/如何自定义声音.txt",
+         "value" : "6F57098B7F853F0688A1773CA2E4E1317ED7A4DB"
+      },
+      {
+         "name" : "img/MY_ChatSwitch.Tga",
+         "value" : "3CA8F462B7C420CEDF1F369A123C577E3EB5958E"
+      },
+      {
+         "name" : "img/MY_ChatSwitch.txt",
+         "value" : "7DB2DB38AE7A9D1889726A670C782737CFB2D009"
+      },
+      {
+         "name" : "img/MY_ChatSwitch.UITex",
+         "value" : "024365BDD26F16F7E52B50E6D40BB2EE43C59350"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "BEAC48C96815B6E230CFFA383CE937BEA0576DB2"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "EF5B66777B93B291C29567D6888D812508409226"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "57E799B1881CC24ACAED98D2F581A363B6FC32F4"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "813362BDD604ACC4C84729A142FBC19F0B00F0C5"
+      },
+      {
+         "name" : "ui/MY_ChatSwitch.ini",
+         "value" : "B8348C478E14591D7CC70BEC4E0A4F0039FBE807"
+      },
+      {
+         "name" : "ui/MY_TeamBalloon.ini",
+         "value" : "703DA383FE33B2E05F96F2E9A55B359597EBCC41"
+      }
+   ],
+   "id" : "MY_Chat",
+   "version" : 125
+}

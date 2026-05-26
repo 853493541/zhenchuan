@@ -1,0 +1,523 @@
+{
+  "exportedAt": {
+    "$date": {
+      "$numberLong": "1779682032519"
+    }
+  },
+  "dbName": "zhenchuan_app",
+  "collection": "users",
+  "documentCount": {
+    "$numberInt": "10"
+  },
+  "documents": [
+    {
+      "_id": {
+        "$oid": "697076e1877c4c3465dcea36"
+      },
+      "username": "catcake",
+      "passwordHash": "$2a$12$MbQ3RG1Lg0mOge.Yz29mseKZu6dyq1.Wffs4d4jTZoT7eINny1Zhu",
+      "createdAt": {
+        "$date": {
+          "$numberLong": "1768978145438"
+        }
+      },
+      "updatedAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "__v": {
+        "$numberInt": "2"
+      },
+      "lastSeenAt": {
+        "$date": {
+          "$numberLong": "1779681427255"
+        }
+      },
+      "lastSeenIp": "::ffff:127.0.0.1",
+      "tokenVersion": {
+        "$numberInt": "2"
+      },
+      "battleArenaUiLayout": {
+        "positions": {
+          "player-icon-bar": {
+            "left": {
+              "$numberInt": "466"
+            },
+            "top": {
+              "$numberInt": "500"
+            }
+          },
+          "player-channel-bar": {
+            "left": {
+              "$numberInt": "833"
+            },
+            "top": {
+              "$numberInt": "674"
+            }
+          },
+          "player-gcd-bar": {
+            "left": {
+              "$numberInt": "857"
+            },
+            "top": {
+              "$numberInt": "705"
+            }
+          },
+          "player-buff-status-bar": {
+            "left": {
+              "$numberInt": "684"
+            },
+            "top": {
+              "$numberInt": "543"
+            }
+          },
+          "player-debuff-status-bar": {
+            "left": {
+              "$numberInt": "685"
+            },
+            "top": {
+              "$numberInt": "622"
+            }
+          },
+          "target-icon-bar": {
+            "left": {
+              "$numberInt": "466"
+            },
+            "top": {
+              "$numberInt": "17"
+            }
+          },
+          "target-owned-ability-bar": {
+            "left": {
+              "$numberInt": "466"
+            },
+            "top": {
+              "$numberInt": "254"
+            }
+          },
+          "target-buff-status-bar": {
+            "left": {
+              "$numberInt": "466"
+            },
+            "top": {
+              "$numberInt": "146"
+            }
+          },
+          "target-debuff-status-bar": {
+            "left": {
+              "$numberInt": "456"
+            },
+            "top": {
+              "$numberInt": "223"
+            }
+          },
+          "target-target-icon-bar": {
+            "left": {
+              "$numberInt": "978"
+            },
+            "top": {
+              "$numberInt": "43"
+            }
+          },
+          "height-counter": {
+            "left": {
+              "$numberInt": "466"
+            },
+            "top": {
+              "$numberInt": "799"
+            }
+          },
+          "distance-indicator": {
+            "left": {
+              "$numberInt": "1098"
+            },
+            "top": {
+              "$numberInt": "415"
+            }
+          },
+          "item-bar": {
+            "left": {
+              "$numberInt": "727"
+            },
+            "top": {
+              "$numberInt": "738"
+            }
+          },
+          "heart-stats-bar": {
+            "left": {
+              "$numberInt": "320"
+            },
+            "top": {
+              "$numberInt": "500"
+            }
+          },
+          "in-game-warning": {
+            "left": {
+              "$numberInt": "884"
+            },
+            "top": {
+              "$numberInt": "244"
+            }
+          },
+          "martial-panel": {
+            "left": {
+              "$numberInt": "19"
+            },
+            "top": {
+              "$numberInt": "125"
+            }
+          }
+        },
+        "viewport": {
+          "w": {
+            "$numberInt": "1920"
+          },
+          "h": {
+            "$numberInt": "945"
+          }
+        },
+        "updatedAt": {
+          "$date": {
+            "$numberLong": "1779671985722"
+          }
+        }
+      },
+      "battleArenaMartialPresets": [
+        {
+          "id": "9f99fbee-8510-4784-a4a6-3a038f17fae1",
+          "name": "预设一",
+          "slots": [
+            "zhenshen_xingsi",
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "updatedAt": "2026-05-24T07:59:01.140Z"
+        },
+        {
+          "id": "efd71916-22f5-4c3c-9eae-c557a5608480",
+          "name": "预设二",
+          "slots": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "updatedAt": "2026-05-24T13:54:33.865Z"
+        }
+      ],
+      "battleArenaMartialFavoriteOrder": [
+        "chan_xiao",
+        "gu_ying_hua_shuang",
+        "sanliu_xia",
+        "bang_hua_sui_liu",
+        "shi_fang_xuan_ji",
+        "xiao_zui_kuang",
+        "qiandie_turui",
+        "na_yun_shi",
+        "tiandi_wuji",
+        "kong_que_ling",
+        "wan_jian_gui_zong",
+        "ren_jian_he_yi",
+        "qixing_gongrui",
+        "yun_fei_yu_huang",
+        "zhenshen_xingsi",
+        "nuwa_butian"
+      ],
+      "displayName": "猫猫糕",
+      "isAdmin": true
+    },
+    {
+      "_id": {
+        "$oid": "6970ac81f900736d8df15819"
+      },
+      "username": "guest",
+      "passwordHash": "$2a$12$5.yRgzGinkKvFwaPPrn4Fe5HL9Q3yK3r7kZQtINEyw1MgwOUAuCGK",
+      "tokenVersion": {
+        "$numberInt": "0"
+      },
+      "lastSeenAt": {
+        "$date": {
+          "$numberLong": "1779681524638"
+        }
+      },
+      "lastSeenIp": "24.205.14.100",
+      "createdAt": {
+        "$date": {
+          "$numberLong": "1768991873580"
+        }
+      },
+      "updatedAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "__v": {
+        "$numberInt": "2"
+      },
+      "battleArenaMartialPresets": [
+        {
+          "id": "828df980-9590-4250-befc-7296b6f93e13",
+          "name": "预设一",
+          "slots": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "updatedAt": "2026-05-24T14:32:17.044Z"
+        }
+      ],
+      "battleArenaMartialFavoriteOrder": [],
+      "displayName": "游客",
+      "isAdmin": false
+    },
+    {
+      "_id": {
+        "$oid": "6a13caeccae79b1386841100"
+      },
+      "username": "juzi",
+      "displayName": "桔貂",
+      "passwordHash": "$2a$12$CwmGkH.PnBZOg4Bm/QUG8eCaP44j927O/MTTpugwSx48fnrfcuMsS",
+      "tokenVersion": {
+        "$numberInt": "0"
+      },
+      "isAdmin": false,
+      "battleArenaUiLayout": null,
+      "battleArenaMartialPresets": [],
+      "battleArenaMartialFavoriteOrder": [],
+      "lastSeenAt": null,
+      "lastSeenIp": null,
+      "createdAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "updatedAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "__v": {
+        "$numberInt": "0"
+      }
+    },
+    {
+      "_id": {
+        "$oid": "6a13caedcae79b1386841101"
+      },
+      "username": "suoyi",
+      "displayName": "所以",
+      "passwordHash": "$2a$12$bkW/bBIDyUMqGpBcJlnTX.54cSNwEqD2ex2fwpPyPWtaHTt3WEjRu",
+      "tokenVersion": {
+        "$numberInt": "0"
+      },
+      "isAdmin": false,
+      "battleArenaUiLayout": null,
+      "battleArenaMartialPresets": [],
+      "battleArenaMartialFavoriteOrder": [],
+      "lastSeenAt": null,
+      "lastSeenIp": null,
+      "createdAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "updatedAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "__v": {
+        "$numberInt": "0"
+      }
+    },
+    {
+      "_id": {
+        "$oid": "6a13caedcae79b1386841102"
+      },
+      "username": "chenglaohei",
+      "displayName": "程老黑",
+      "passwordHash": "$2a$12$6OT8oGuVzumnvmIJqM.5/utf.pIkGHNE63k6WwmfLprVix7KYg66G",
+      "tokenVersion": {
+        "$numberInt": "0"
+      },
+      "isAdmin": false,
+      "battleArenaUiLayout": null,
+      "battleArenaMartialPresets": [],
+      "battleArenaMartialFavoriteOrder": [],
+      "lastSeenAt": null,
+      "lastSeenIp": null,
+      "createdAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "updatedAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "__v": {
+        "$numberInt": "0"
+      }
+    },
+    {
+      "_id": {
+        "$oid": "6a13caedcae79b1386841103"
+      },
+      "username": "lizhizhi",
+      "displayName": "鲤枝枝",
+      "passwordHash": "$2a$12$WrsmXEe/ETwaldXXP5HkOenQnnVeToI8JJrBbZQWGLbqWmoqvRGx2",
+      "tokenVersion": {
+        "$numberInt": "0"
+      },
+      "isAdmin": false,
+      "battleArenaUiLayout": null,
+      "battleArenaMartialPresets": [],
+      "battleArenaMartialFavoriteOrder": [],
+      "lastSeenAt": null,
+      "lastSeenIp": null,
+      "createdAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "updatedAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "__v": {
+        "$numberInt": "0"
+      }
+    },
+    {
+      "_id": {
+        "$oid": "6a13caeecae79b1386841104"
+      },
+      "username": "achuo",
+      "displayName": "阿绰",
+      "passwordHash": "$2a$12$0fabYzyrkQ933JipdUs1a./q8pzhsuheGngp0RXTPFtNIYZ1vBK1a",
+      "tokenVersion": {
+        "$numberInt": "0"
+      },
+      "isAdmin": false,
+      "battleArenaUiLayout": null,
+      "battleArenaMartialPresets": [],
+      "battleArenaMartialFavoriteOrder": [],
+      "lastSeenAt": null,
+      "lastSeenIp": null,
+      "createdAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "updatedAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "__v": {
+        "$numberInt": "0"
+      }
+    },
+    {
+      "_id": {
+        "$oid": "6a13caeecae79b1386841105"
+      },
+      "username": "yanshen",
+      "displayName": "言深",
+      "passwordHash": "$2a$12$qqfBptVQFwEU5JcQ/C38oudFu6WztxU992heV6kMIU7nVm0MrKC3y",
+      "tokenVersion": {
+        "$numberInt": "0"
+      },
+      "isAdmin": false,
+      "battleArenaUiLayout": null,
+      "battleArenaMartialPresets": [],
+      "battleArenaMartialFavoriteOrder": [],
+      "lastSeenAt": null,
+      "lastSeenIp": null,
+      "createdAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "updatedAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "__v": {
+        "$numberInt": "0"
+      }
+    },
+    {
+      "_id": {
+        "$oid": "6a13caeecae79b1386841106"
+      },
+      "username": "testuser1",
+      "displayName": "一",
+      "passwordHash": "$2a$12$eHcc3t8LgliAQ3vNBMO16eqx.guCToeO4ml1BseufMcBxVUScwOF2",
+      "tokenVersion": {
+        "$numberInt": "0"
+      },
+      "isAdmin": true,
+      "battleArenaUiLayout": null,
+      "battleArenaMartialPresets": [],
+      "battleArenaMartialFavoriteOrder": [],
+      "lastSeenAt": null,
+      "lastSeenIp": null,
+      "createdAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "updatedAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "__v": {
+        "$numberInt": "0"
+      }
+    },
+    {
+      "_id": {
+        "$oid": "6a13caefcae79b1386841107"
+      },
+      "username": "testuser2",
+      "displayName": "二",
+      "passwordHash": "$2a$12$LtVEgxVXyV35SvdyW5sQj.hzJI4vphkXdXJPx7mU8nPYJb9cS2cNS",
+      "tokenVersion": {
+        "$numberInt": "0"
+      },
+      "isAdmin": true,
+      "battleArenaUiLayout": null,
+      "battleArenaMartialPresets": [],
+      "battleArenaMartialFavoriteOrder": [],
+      "lastSeenAt": null,
+      "lastSeenIp": null,
+      "createdAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "updatedAt": {
+        "$date": {
+          "$numberLong": "1779682028360"
+        }
+      },
+      "__v": {
+        "$numberInt": "0"
+      }
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+[JX_TargetList]
+name=焦點/目標列表
+desc=附近目標列表、人數統計及發布、小地圖標記
+version=1.0
+default=1
+package=JX
+dependence=JX_0Base
+lua_0=data/JX_CampData.lua
+lua_1=JX_TargetList.lua
+lua_2=JX_NearbyInfo.lua

@@ -1,6 +1,7 @@
 // backend/game/engine/utils/health.ts
 
 import { ActiveBuff } from "../state/types";
+import { isRuntimeBuffActive } from "../rules/guards";
 
 function roundNumber(value: number): number {
   return Math.round(value * 100) / 100;
@@ -51,6 +52,7 @@ export function applyDamageToTarget(target: ShieldedTarget, rawDamage: number): 
   }
 
   normalizeShield(target);
+  reconcileLinkedShieldTotal(target);
 
   let shieldAbsorbed = 0;
   if ((target.shield ?? 0) > 0) {
@@ -62,6 +64,7 @@ export function applyDamageToTarget(target: ShieldedTarget, rawDamage: number): 
       let remainingAbsorb = shieldAbsorbed;
       for (const buff of target.buffs) {
         if (remainingAbsorb <= 0) break;
+        if (!isRuntimeBuffActive(buff)) continue;
         const linked = Math.max(0, Math.floor(buff.shieldAmount ?? 0));
         if (linked <= 0) continue;
 
@@ -86,7 +89,7 @@ export function applyDamageToTarget(target: ShieldedTarget, rawDamage: number): 
     if (
       target.hp <= 0 &&
       Array.isArray(target.buffs) &&
-      target.buffs.some((b) => b.effects.some((e) => (e as any).type === "MIN_HP_1"))
+      target.buffs.some((b) => isRuntimeBuffActive(b) && b.effects.some((e) => (e as any).type === "MIN_HP_1"))
     ) {
       target.hp = 1;
     }
@@ -115,4 +118,28 @@ export function removeLinkedShield(target: ShieldedTarget, buff: { shieldAmount?
   normalizeShield(target);
   target.shield = Math.max(0, (target.shield ?? 0) - linked);
   buff.shieldAmount = 0;
+}
+
+export function reconcileLinkedShieldTotal(target: ShieldedTarget): boolean {
+  normalizeShield(target);
+
+  let linkedTotal = 0;
+  if (Array.isArray(target.buffs)) {
+    const now = Date.now();
+    for (const buff of target.buffs) {
+      const linked = Math.max(0, Math.floor(buff.shieldAmount ?? 0));
+      if (linked <= 0) continue;
+      if (!isRuntimeBuffActive(buff, now)) {
+        buff.shieldAmount = 0;
+        continue;
+      }
+      linkedTotal += linked;
+    }
+  }
+  const normalizedLinkedTotal = roundNumber(linkedTotal);
+  const before = roundNumber(target.shield ?? 0);
+
+  if (before === normalizedLinkedTotal) return false;
+  target.shield = normalizedLinkedTotal;
+  return true;
 }

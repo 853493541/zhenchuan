@@ -1,0 +1,106 @@
+local __META__ = "__META__"
+return {
+	uuid                = {__META__, {"nil", "string"}, nil},
+	embedded            = false,
+	group               = "",
+	sort                = 10000,
+	caption             = "新建目標監控",
+	type                = "BUFF",
+	target              = "CLIENT_PLAYER",
+	scale               = 0.7   , -- 界面縮放比
+	iconFontScale       = 1     , -- 圖標文字縮放比
+	otherFontScale      = 1.4   , -- 其他文字縮放比
+	ignoreSystemUIScale = false , -- 禁止系統縮放
+	enable              = false , -- 啟用標記
+	penetrable          = true  , -- 是否穿透
+	draggable            = false , -- 是否可拖拽
+	alignment           = "LEFT", -- 對齊方式
+	hideVoid            = false , -- 隱藏消失的BUFF
+	hideOthers          = false , -- 只顯示自己的BUFF
+	maxLineCount        = 1     , -- 單行最大數量
+	showName            = true  , -- 顯示名字
+	showTime            = true  , -- 顯示時間
+	cdCircle            = false , -- 倒計時圈
+	cdFlash             = false , -- 倒計時分段特效
+	cdReadySpark        = false , -- 消失特效
+	decimalTime         = 1     , -- 倒計時出現小數點時間
+	cdBar               = true  , -- 顯示倒計時條
+	cdBarWidth          = 240   , -- 倒計時條寬度
+	playSound           = true  , -- 是否播放聲音
+	cdBarUITex          = "Interface/MY/MY_TargetMon/img/ST.UITex|5",  -- 倒計時條圖素
+	boxBgUITex          = "",  -- Box背景圖素
+	anchor = { y = 152, x = -343, s = "TOPLEFT", r = "CENTER" },
+	monitors = {
+		__META__,
+		__VALUE__ = {},
+		__CHILD_TEMPLATE__ = { -- mon
+			__META__,
+			__VALUE__ = {
+				enable = true,
+				iconid = {__META__, {"nil", "number"}, nil},
+				name = "",
+				uuid = {__META__, {"nil", "string"}, nil},
+				capture = true,
+				nameAlias = true,
+				longAlias = {__META__, {"nil", "string"}, nil},
+				rgbLongAlias = {255, 255, 0},
+				shortAlias = {__META__, {"nil", "string"}, nil},
+				rgbShortAlias = {255, 255, 0},
+				rHideVoid = false, -- 翻轉主配置hideVoid欄位
+				rHideOthers = false, -- 翻轉當和主配置hideOthers欄位
+				extentAnimate = {__META__, {"nil", "string"}, nil}, -- BOX特效
+				soundAppear = {
+					__META__,
+					__VALUE__ = {},
+					__CHILD_TEMPLATE__ = 1,
+				},
+				soundDisappear = {
+					__META__,
+					__VALUE__ = {},
+					__CHILD_TEMPLATE__ = 1,
+				},
+				ids = {
+					__META__,
+					__VALUE__ = {},
+					__CHILD_TEMPLATE__ = { -- monid
+						enable = true,
+						iconid = {__META__, {"nil", "number"}, nil},
+						soundAppear = {
+							__META__,
+							__VALUE__ = {},
+							__CHILD_TEMPLATE__ = 1,
+						},
+						soundDisappear = {
+							__META__,
+							__VALUE__ = {},
+							__CHILD_TEMPLATE__ = 1,
+						},
+						levels = {
+							__META__,
+							__VALUE__ = {},
+							__KEY_TEMPLATE__ = {__META__, {"number"}, nil},
+							__CHILD_TEMPLATE__ = { enable = true, iconid = {__META__, {"nil", "number"}, nil} },
+						},
+						ignoreLevel = true,
+					},
+				},
+				kungfus = {
+					__META__,
+					__VALUE__ = {},
+					__CHILD_TEMPLATE__ = true,
+				},
+				tarkungfus = {
+					__META__,
+					__VALUE__ = {},
+					__CHILD_TEMPLATE__ = true,
+				},
+				maps = {
+					__META__,
+					__VALUE__ = {},
+					__CHILD_TEMPLATE__ = true,
+				},
+				ignoreId = true,
+			},
+		},
+	},
+}

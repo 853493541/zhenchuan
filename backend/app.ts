@@ -9,6 +9,7 @@ import { connectDB } from "./db";
 
 // 🔐 AUTH
 import authRoutes from "./routes/authRoutes";
+import adminRoutes from "./routes/admin";
 import { requireAuth } from "./middleware/requireAuth";
 
 // GAME
@@ -497,6 +498,9 @@ console.log("  ✓ GET|HEAD /full-exports/<package>/<file>");
 // Auth routes
 console.log("🔓 Registering auth routes...");
 app.use("/api/auth", authRoutes);
+
+console.log("🛡️ Registering admin routes...");
+app.use("/api/admin", adminRoutes);
 
 console.log("🧾 Registering diagnostics routes...");
 app.use("/api/diagnostics", requireAuth, diagnosticsRoutes);

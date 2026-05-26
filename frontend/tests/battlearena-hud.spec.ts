@@ -76,7 +76,31 @@ test('BattleArena post-dash jump prediction does not inherit dash carry', async 
   expect(battleArenaTsx).toMatch(/const justJumpedRender = frameNow - lastJumpInputAtRef\.current < 320;[\s\S]*const recentDashSnap =\s*!justJumpedRender/);
   expect(battleArenaTsx).toMatch(/const justJumpedLocally = performance\.now\(\) - lastJumpInputAtRef\.current < 260;[\s\S]*const recentDashSnap =\s*!justJumpedLocally/);
   expect(battleArenaTsx).toMatch(/if \(meActiveDashRef\.current\) \{[\s\S]*airborneSpeedCarryRef\.current = 0;[\s\S]*airNudgeRemainingRef\.current = 0;/);
-  expect(battleArenaTsx).toMatch(/if \(activeDash && activeDash\.ticksRemaining > 0\) \{[\s\S]*airborneSpeedCarryRef\.current = 0;[\s\S]*return;/);
+  expect(battleArenaTsx).toMatch(/const ad = \(me as any\)\?\.activeDash;[\s\S]*const isDashing = !!ad && ad\.ticksRemaining > 0;[\s\S]*if \(!isDashing\) \{[\s\S]*airborneSpeedCarryRef\.current = 0;/);
+});
+
+test('BattleArena jump correction ignores normal delayed server samples', async () => {
+  const battleArenaTsx = readFile(battleArenaTsxPath);
+
+  expect(battleArenaTsx).toContain('JUMP_CORRECTION_SERVER_LAG_TICKS');
+  expect(battleArenaTsx).toContain('JUMP_CORRECTION_PENDING_PHASE_MS');
+  expect(battleArenaTsx).toContain('JUMP_CORRECTION_LANDING_GRACE_Z');
+  expect(battleArenaTsx).toContain('getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current)');
+  expect(battleArenaTsx).toContain('const airborneLocalForCorrection = localJumpCountRef.current > 0;');
+  expect(battleArenaTsx).toMatch(/localJumpCount > serverJumpCount[\s\S]*waitingForServerJumpPhase[\s\S]*waitingForLocalLanding[\s\S]*xyError <= jumpLagXyTolerance[\s\S]*absZError <= jumpLagZTolerance[\s\S]*return;/);
+  expect(battleArenaTsx).toContain("console.warn('[JUMP-CORRECTION] server corrected local jump prediction'");
+  expect(battleArenaTsx).toContain('serverJumpCount');
+  expect(battleArenaTsx).toContain('serverVz: Number((Number.isFinite(serverVz) ? serverVz : 0).toFixed(3))');
+});
+
+test('BattleArena local physics catches up delayed browser ticks', async () => {
+  const battleArenaTsx = readFile(battleArenaTsxPath);
+
+  expect(battleArenaTsx).toContain('const MAX_CLIENT_PHYSICS_CATCHUP_TICKS = 30;');
+  expect(battleArenaTsx).toContain('advanceLocalPhysicsRef.current();');
+  expect(battleArenaTsx).toContain('advanceLocalPhysicsRef.current = runPhysics;');
+  expect(battleArenaTsx).toMatch(/physicsAccumulatorMs \+= elapsedMs[\s\S]*while \(physicsAccumulatorMs >= CLIENT_TICK_MS[\s\S]*tick\(simulatedPhysicsAtMs\)/);
+  expect(battleArenaTsx).toContain('const id = setInterval(runPhysics, CLIENT_TICK_MS);');
 });
 
 test('BattleArena test tab can switch status bars to hidden buffs only', async () => {
@@ -159,7 +183,9 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(abilities).toMatch(/id: "yuqi"[\s\S]*cannotCastWhileRooted: true/);
 
   expect(movement).toContain('BACKPEDAL_DOUBLE_JUMP_DISTANCE = 3.7 * UNIT_SCALE');
-  expect(movement).toContain('isBackpedalAirJump = input.backpedalOnly === true');
+  expect(movement).toContain('const jumpIntent = input.jumpIntent ?? input');
+  expect(movement).toContain('isBackpedalAirJump = jumpIntent?.backpedalOnly === true');
+  expect(gameLoop).toContain('const snapshotJumpIntent = (source: MovementInput)');
   expect(movement).toContain('if (!isBackpedalAirJump)');
   expect(battleArenaTsx).toContain('function getBackpedalDoubleJumpDistance');
   expect(battleArenaTsx).toContain('getBackpedalDoubleJumpDistance(mode)');
@@ -307,8 +333,8 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(gameLoop).toContain('naturallyExpired.some((b) => isDisguiseBuff(b as any))');
   expect(gameLoop).toContain('combatStatusChanged');
   expect(gameLoop).toContain('eventsPruned || combatStatusChanged');
-  expect(gameLoop).toContain('path: `/players/${pidx}/inCombat`');
-  expect(gameLoop).toContain('path: `/players/${pidx}/combatLinks`');
+  expect(gameLoop).toContain('pushPatchIfChanged(`/players/${pidx}/inCombat`, p.inCombat === true)');
+  expect(gameLoop).toContain('pushPatchIfChanged(`/players/${pidx}/combatLinks`, (p as any).combatLinks ?? {})');
   expect(playService).toContain('syncCombatStatusFromEvents(state, prevState.events.length);');
   expect(playService).toContain('type: "PLAY_ABILITY"');
   expect(frontendTypes).toContain('| "COMBAT_STATUS"');
@@ -321,7 +347,7 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(readFile(path.join(frontendRoot, 'app/game/screens/in-game/components/GameBoard/components/StatusBar/Hint/index.tsx'))).toContain('function formatRemainingTime(totalSeconds: number)');
   expect(readFile(path.join(frontendRoot, 'app/game/screens/in-game/components/GameBoard/components/StatusBar/Hint/index.tsx'))).toContain('return `${minutes}分 ${seconds}秒`;');
   expect(battleArenaTsx).toContain("showInGameWarning('进入战斗')");
-  expect(battleArenaTsx).toContain("toastSuccess('离开战斗')");
+  expect(battleArenaTsx).toContain("showInGameWarning('离开战斗')");
   expect(battleArenaTsx).toContain('Swords size={20}');
   expect(battleArenaTsx).toContain('styles.combatStatusMarker');
   expect(battleArenaCss).not.toContain('.combatStatusMarker::after');
@@ -461,9 +487,9 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(battleArenaTsx).not.toContain("useConsumableRef.current('jin_chuang_yao')");
   expect(battleArenaTsx).not.toContain("useConsumableRef.current('beng_dai')");
   expect(battleArenaTsx).not.toContain("useConsumableRef.current('sha_shi_wei_zhuang')");
-  expect(battleArenaTsx).not.toContain('consumableHotkey');
+  expect(battleArenaTsx).toContain('styles.consumableHotkey');
+  expect(battleArenaCss).toContain('.consumableHotkey');
   expect(battleArenaTsx).toContain("setEscPanelPage('hotkey-settings')");
-  expect(battleArenaTsx).toContain('物品快捷栏');
   expect(battleArenaTsx).toContain('格子数量');
   expect(battleArenaTsx).toContain('<span>关闭</span>');
   expect(battleArenaTsx).toContain('data-consumable-slot="true"');
@@ -496,9 +522,10 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(movement).toContain('facingInputLocked');
   expect(battleArenaTsx).toContain('const facingInputLocked = movementControlStateRef.current.fullyLocked || movementControlStateRef.current.rooted');
   expect(arenaScene).toContain('sun.shadow.mapSize.width = 1024');
-  expect(battleArenaTsx).not.toContain('界面开关');
+  expect(battleArenaTsx).toContain('界面开关');
   expect(battleArenaTsx).not.toContain('操作开关');
-  expect(battleArenaTsx).not.toContain('应用</button>');
+  expect(battleArenaTsx).toContain('applyEscSettings');
+  expect(battleArenaTsx).toContain('应用</button>');
   expect(cssBlock(battleArenaCss, '.escPanelShell')).toContain('width: min(688px, 96vw)');
   expect(cssBlock(battleArenaCss, '.escPanelShell')).toContain('height: min(437px, 94vh)');
   expect(cssBlock(battleArenaCss, '.escMainGrid')).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))');
@@ -641,12 +668,12 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(cssBlock(battleArenaCss, '.heightCounterPlacement')).toContain('position: absolute');
   expect(battleArenaTsx).toContain('ABILITY_PANEL_SCALE_STORAGE_KEY');
   expect(battleArenaTsx).toContain('ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175');
-  expect(battleArenaTsx).toContain('Math.max(0.5, Math.min(2, numeric))');
+  expect(battleArenaTsx).toContain('Math.max(ABILITY_PANEL_MIN_SCALE, Math.min(2, numeric))');
   expect(battleArenaTsx).toContain('normalized <= 1');
   expect(battleArenaTsx).toContain('getAbilityPanelCssScale(abilityPanelScale)');
   expect(battleArenaTsx).toContain('input, select, textarea');
   expect(battleArenaTsx).toContain('type="range"');
-  expect(battleArenaTsx).toContain('min="0.5"');
+  expect(battleArenaTsx).toContain('min={ABILITY_PANEL_MIN_SCALE}');
   expect(battleArenaTsx).toContain('max="2"');
   expect(battleArenaTsx).toContain('--ability-panel-scale');
   expect(battleArenaTsx).toContain('pressedAbilityInput');
@@ -666,7 +693,7 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(battleArenaTsx).toContain('M 96 96 L 96 4 L 4 4 L 4 96 L 96 96');
   expect(battleArenaTsx).toContain('data-draft-slot-index');
   expect(battleArenaTsx).toContain('data-discard-drop-zone="true"');
-  expect(battleArenaTsx).toContain('className={styles.abilityDragGhost}');
+  expect(battleArenaTsx).toContain('className={`${styles.abilityDragGhost} ${draftDragGhost.large ? styles.abilityDragGhostLarge : \'\'}`}');
   expect(battleArenaTsx).toContain('draggable={false}');
   expect(abilityTypes).toContain('slotIndex?: number');
   expect(draftRoutes).toContain('DRAFT_ABILITY_SLOT_COUNT = 6');
@@ -678,8 +705,8 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(gameplayRoutes).toContain('ERR_PICKUP_HAND_FULL: "只能拾取6个技能"');
   expect(gameplayRoutes).toContain('slotIndex:  firstOpenSlot');
   expect(inGameClient).toContain('return "只能拾取6个技能"');
-  expect(battleArenaTsx).toContain('if (e.key === \'1\' && drafts[0])');
-  expect(battleArenaTsx).toContain('if (drafts[0].isReady) castAbilityRef.current(drafts[0].id)');
+  expect(battleArenaTsx).toContain("'draft:0': ['1']");
+  expect(battleArenaTsx).toContain('return triggerAbilityHotkey(drafts[parsed.index], `draft-${parsed.index}`);');
   expect(battleArenaTsx).toContain('styles.abilityBtnDragging');
   expect(battleArenaTsx).toContain('draggingDraftInstanceId && (');
   expect(battleArenaTsx).toContain('ITEM_BAR_UI_KEY');
@@ -801,7 +828,7 @@ test('browser-computed HUD styles match requested layout and visual rules', asyn
       <div class="commonBar"><button class="abilityBtn commonBtn ready"></button><span class="commonGap"></span><button class="abilityBtn commonBtn ready"></button></div>
       <div class="draftDropCluster">
         <div class="discardDropZone"><svg class="discardDropIcon"></svg><span>将技能拖动至此处即可遗忘</span></div>
-        <div class="hotbar"><button class="abilityBtn ready"><img class="abilityIcon" alt="" /><div class="chargeFrame"><svg class="chargeFrameSvg"><path class="chargeFrameTrack"></path><path class="chargeFrameProgress"></path></svg><span class="chargeStackBox">2</span></div><span class="abilityKey">1</span></button><button class="abilityBtn ready"><span class="abilityKey">2</span></button></div>
+        <div class="hotbar"><button class="abilityBtn ready"><img class="abilityIcon" alt="" /><div class="chargeFrame"><svg class="chargeFrameSvg"><path class="chargeFrameTrack" d="M 96 96 L 96 4 L 4 4 L 4 96 L 96 96"></path><path class="chargeFrameProgress" d="M 96 96 L 96 4 L 4 4 L 4 96 L 96 96"></path></svg><span class="chargeStackBox">2</span></div><span class="abilityKey">1</span></button><button class="abilityBtn ready"><span class="abilityKey">2</span></button></div>
       </div>
       <div class="abilityDragGhost"><img class="abilityDragGhostIcon" alt="" /></div>
       <div class="hotbar"><div class="abilityBtn emptySlot"><span class="abilityKey">Q</span></div></div>

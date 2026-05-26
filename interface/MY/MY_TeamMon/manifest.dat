@@ -1,0 +1,114 @@
+{
+   "files" : [
+      {
+         "name" : "img/ST.Tga",
+         "value" : "05762F4241FCD0F1D4D6AD56DADD22E9B2B7DCF2"
+      },
+      {
+         "name" : "img/ST.txt",
+         "value" : "C9B3665B36587CE1611858726AE321CC755CD1B4"
+      },
+      {
+         "name" : "img/ST.UITex",
+         "value" : "B6A42AAAFF0A31829A766C61E5FD86A6E5123C70"
+      },
+      {
+         "name" : "img/Tree.Tga",
+         "value" : "5D8691C29B49DEAAD9B139F533D24E37DB827A48"
+      },
+      {
+         "name" : "img/Tree.txt",
+         "value" : "876F088F32BB0E1BCDAF7A45E33E9732E9A5B956"
+      },
+      {
+         "name" : "img/Tree.UITex",
+         "value" : "5701473F18B949B9E04E4D8FD06C87FA8A7384DE"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "2516ED3B2DE38495278D82003A866FC8DE967CCF"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "454E5E95404DAE76E1F1BD329624CF342CC51057"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "56A5D546D241C3E9E93EDF4D41711F3BE82058CF"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "3015B1DBA952B20D70D7D0BEB34CA988C47F7102"
+      },
+      {
+         "name" : "ui/MY_TeamMon.ini",
+         "value" : "1B3FC19A0478CC0AA8EECB36D6EDCB48D31E2A9C"
+      },
+      {
+         "name" : "ui/MY_TeamMon_BuffList.ini",
+         "value" : "76303ECAD0E665723A334E26200446CC16182B35"
+      },
+      {
+         "name" : "ui/MY_TeamMon_CenterAlarm.ini",
+         "value" : "296C1C2082A90B3EF2705FBD9916D3342BF32482"
+      },
+      {
+         "name" : "ui/MY_TeamMon_FullScreenAlarm.ini",
+         "value" : "A6572FF39538879B6D67A84447ED93F6A8BA1F74"
+      },
+      {
+         "name" : "ui/MY_TeamMon_LargeTextAlarm.ini",
+         "value" : "A7B7E1F98E78554D937E4ED2D1596EFC1F8D7F17"
+      },
+      {
+         "name" : "ui/MY_TeamMon_PartyBuffList.ini",
+         "value" : "FE5E7D672A77194229C988AFFA07C9953F428E4A"
+      },
+      {
+         "name" : "ui/MY_TeamMon_SpellTimer.ini",
+         "value" : "F6D9F14EFEF84F8458A7B8EE418B998717BD6C1C"
+      },
+      {
+         "name" : "ui/MY_TeamMon_Subscribe_Data.ini",
+         "value" : "956DD41D5C2122595D74F8A666E00D1C1D71C3DC"
+      },
+      {
+         "name" : "ui/MY_TeamMon_Subscribe_FavoriteData.ini",
+         "value" : "625FEFB654531DA652C4B6D8E0AF805FE9230A8F"
+      },
+      {
+         "name" : "ui/MY_TeamMon_Subscribe_VoicePacket_Custom.ini",
+         "value" : "ABA4F472B062A33E73C89B3397A744C1331B5012"
+      },
+      {
+         "name" : "ui/MY_TeamMon_Subscribe_VoicePacket_Official.ini",
+         "value" : "6F621DBA0AD9A6F8A07E5AC39DF11535D13223FC"
+      },
+      {
+         "name" : "ui/MY_TeamMon_UI.ini",
+         "value" : "6D4BE766D4DED0ACADC70CDE74B1FF0C2D5CB78E"
+      },
+      {
+         "name" : "ui/MY_TeamMon_UI_DRAG.ini",
+         "value" : "E608254ED43BDA9836E6D0594C6BB5491A7F7F08"
+      },
+      {
+         "name" : "ui/MY_TeamMon_UI_ITEM_L.ini",
+         "value" : "4F20E811E0B62E5FD61D9CE23B163E07F97B0BB9"
+      },
+      {
+         "name" : "ui/MY_TeamMon_UI_ITEM_R.ini",
+         "value" : "869C86C6094153090E913CDDE06BDFC0DAC4D5F0"
+      },
+      {
+         "name" : "ui/MY_TeamMon_UI_TALK_L.ini",
+         "value" : "9ED98FF4057F09AEA3A996F0908F73379D8251CF"
+      },
+      {
+         "name" : "ui/MY_TeamMon_UI_TALK_R.ini",
+         "value" : "FE93FCA10777ECE6E50BE67FD02172EDFF03AB54"
+      }
+   ],
+   "id" : "MY_TeamMon",
+   "version" : 148
+}

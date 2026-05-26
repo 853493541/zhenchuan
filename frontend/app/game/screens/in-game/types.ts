@@ -6,9 +6,12 @@ export interface AbilityInstance {
   instanceId: string;
   abilityId: string;
   cooldown?: number;
+  _cooldownSyncedAt?: number;
   chargeCount?: number;
   chargeRegenTicksRemaining?: number;
+  _chargeRegenTicksRemainingSyncedAt?: number;
   chargeLockTicks?: number;
+  _chargeLockTicksSyncedAt?: number;
 }
 
 /* =========================================================
@@ -124,6 +127,7 @@ export interface PlayerState {
   hand: AbilityInstance[];
   specialAbilityStates?: Record<string, AbilityInstance>;
   globalGcdTicks?: number;
+  _globalGcdSyncedAt?: number;
   visualGcd?: {
     id: string;
     name: string;
@@ -187,6 +191,30 @@ export interface GameEvent {
   relatedUserId?: string;
 
   timestamp: number;
+}
+
+/* =========================================================
+   In-game Chat
+========================================================= */
+
+export type ChatChannel = "map" | "system" | "battle";
+
+export interface ChatMessage {
+  id: string;
+  channel: ChatChannel;
+  userId: string;
+  username: string;
+  school?: string | null;
+  targetUserId?: string;
+  targetUsername?: string;
+  targetSchool?: string | null;
+  abilityName?: string;
+  value?: number;
+  isCrit?: boolean;
+  battleLogType?: "hit" | "damage";
+  text: string;
+  timestamp: number;
+  variant?: "user" | "system" | "battle";
 }
 
 /* =========================================================
@@ -277,6 +305,7 @@ export interface GameResponse {
   players: string[];
   state: GameState;
   playerNames?: Record<string, string>;
+  playerSchools?: Record<string, string>;
   tournament?: TournamentState;
   mode?: string;
 }

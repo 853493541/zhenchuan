@@ -25,6 +25,7 @@ import {
 import { MIYUN_CONFUSION_BUFF_ID, WU_AN_MI_YUN_ABILITY_ID, WUSHI_IMMUNE_BUFF_ID, hasWuShiImmunity } from "../utils/miyun";
 import { hasDisguiseBuff, isDisguiseBuff, removeDisguiseBuffs } from "../utils/disguise";
 import { getHasteAdjustedBuffTiming } from "../utils/haste";
+import { getActiveRuntimeBuffs, isRuntimeBuffActive } from "../rules/guards";
 
 /* ================= Utilities ================= */
 
@@ -228,41 +229,41 @@ const CONTROL_TYPES_BLOCKED_WHILE_KNOCKED_DOWN = new Set([
 ]);
 
 function hasRootSlowImmune(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some((e) => e.type === "ROOT_SLOW_IMMUNE"));
+  return getActiveRuntimeBuffs(target).some((b) => b.effects.some((e) => e.type === "ROOT_SLOW_IMMUNE"));
 }
 
 function hasKnockbackImmune(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some((e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "CONTROL_ONLY_IMMUNE"));
+  return getActiveRuntimeBuffs(target).some((b) => b.effects.some((e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "CONTROL_ONLY_IMMUNE"));
 }
 
 function hasKnockedBackImmune(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some(
+  return getActiveRuntimeBuffs(target).some((b) => b.effects.some(
     (e) => e.type === "KNOCKBACK_IMMUNE" || e.type === "KNOCKED_BACK_IMMUNE" || e.type === "CONTROL_ONLY_IMMUNE"
   ));
 }
 
 function hasControlImmune(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some((e) => e.type === "CONTROL_IMMUNE"));
+  return getActiveRuntimeBuffs(target).some((b) => b.effects.some((e) => e.type === "CONTROL_IMMUNE"));
 }
 
 function hasControlOnlyImmune(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some((e) => e.type === "CONTROL_ONLY_IMMUNE"));
+  return getActiveRuntimeBuffs(target).some((b) => b.effects.some((e) => e.type === "CONTROL_ONLY_IMMUNE"));
 }
 
 function hasLockoutImmune(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some((e) => e.type === "LOCKOUT_IMMUNE"));
+  return getActiveRuntimeBuffs(target).some((b) => b.effects.some((e) => e.type === "LOCKOUT_IMMUNE"));
 }
 
 function hasSilenceImmune(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some((e) => e.type === "SILENCE_IMMUNE"));
+  return getActiveRuntimeBuffs(target).some((b) => b.effects.some((e) => e.type === "SILENCE_IMMUNE"));
 }
 
 function hasFearImmune(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some((e) => e.type === "FEAR_IMMUNE"));
+  return getActiveRuntimeBuffs(target).some((b) => b.effects.some((e) => e.type === "FEAR_IMMUNE"));
 }
 
 function hasInvulnerable(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some((e) => e.type === "INVULNERABLE"));
+  return getActiveRuntimeBuffs(target).some((b) => b.effects.some((e) => e.type === "INVULNERABLE"));
 }
 
 function getDamageReductionEffects(buff: { effects?: Array<{ type: string; value?: number; damageType?: string }> }): DamageReductionRuntimeEffect[] {
@@ -295,7 +296,7 @@ function existingDamageReductionCoversIncoming(params: {
 }) {
   const { incomingBuffId, incomingEffects, target } = params;
   return incomingEffects.every((incomingEffect) =>
-    target.buffs.some((existingBuff) => {
+    getActiveRuntimeBuffs(target).some((existingBuff) => {
       if (existingBuff.buffId === incomingBuffId) return false;
       return getDamageReductionEffects(existingBuff).some((existingEffect) =>
         damageReductionScopeCovers(existingEffect.damageType, incomingEffect.damageType) &&
@@ -312,7 +313,7 @@ function getToppedDamageReductionBuffs(params: {
   editorOverrides: BuffEditorOverrideMap;
 }) {
   const { incomingBuffId, incomingEffects, target, editorOverrides } = params;
-  return target.buffs.filter((existingBuff) => {
+  return getActiveRuntimeBuffs(target).filter((existingBuff) => {
     if (existingBuff.buffId === incomingBuffId) return false;
     if (isDamageReductionNoOverride(existingBuff.buffId, editorOverrides)) return false;
 
@@ -369,7 +370,7 @@ function applyDamageReductionToppingRules(params: {
 }
 
 function hasAntiStealth(target: { buffs: ActiveBuff[] }): boolean {
-  return target.buffs.some((b) => b.effects.some((e) => e.type === "ANTI_STEALTH"));
+  return getActiveRuntimeBuffs(target).some((b) => b.effects.some((e) => e.type === "ANTI_STEALTH"));
 }
 
 function removeDunyingCompanions(params: {
@@ -1262,7 +1263,7 @@ export function addBuff(params: {
       ))
     );
     const isImmune = buffTarget.buffs.some((b) =>
-      b.effects.some((e) => e.type === "CONTROL_IMMUNE" || e.type === "SILENCE_IMMUNE")
+      isRuntimeBuffActive(b) && b.effects.some((e) => e.type === "CONTROL_IMMUNE" || e.type === "SILENCE_IMMUNE")
     );
     if (isCC && !isImmune) {
       (buffTarget as any).activeChannel = undefined;

@@ -28,6 +28,9 @@ router.get("/:id", async (req, res) => {
     if (!gameObj.playerNames) {
       gameObj.playerNames = {};
     }
+    if (!gameObj.playerSchools) {
+      gameObj.playerSchools = {};
+    }
     
     // Only log when phase changes (reduce spam)
     const currentPhase = gameObj.tournament?.phase || "NO_TOURNAMENT";
@@ -44,6 +47,7 @@ router.get("/:id", async (req, res) => {
       state: liveState,
       serverTimestamp: Date.now(),
       playerNames: gameObj.playerNames,
+      playerSchools: gameObj.playerSchools,
       tournament: gameObj.tournament, // EXPLICITLY INCLUDE
       started: gameObj.started,
       mode: (gameObj as any).mode ?? 'arena',

@@ -1,0 +1,86 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "F7E4F083A79CF5F1CD68E5F705D5C1C8E06182CD"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "6C4A2D981D65D461ABEE59F17DF9E289340AE5E1"
+      },
+      {
+         "name" : "JX.Debug.lua",
+         "value" : "47938FE08DF6CAA3131F8ACC01834AD54EEAF081"
+      },
+      {
+         "name" : "JX.ini",
+         "value" : "91D33AF1E63A79EE52BE5F3A6EA235244538F1D0"
+      },
+      {
+         "name" : "JX.lua",
+         "value" : "331E0F3E29DC7F6E0471406E8A41A1027423BCEB"
+      },
+      {
+         "name" : "JX.UI.lua",
+         "value" : "AB524FEB203D71F9563A2D232D4266EC1F66F3B4"
+      },
+      {
+         "name" : "JX.XGUI.lua",
+         "value" : "C959DBDCCD3E2626A1279EEB6F5B3FA680CCA95B"
+      },
+      {
+         "name" : "lang/default.lang",
+         "value" : "87A2F841C0AA44C39D7B47B7F9652A3C37B4E52E"
+      },
+      {
+         "name" : "lang/zhcn.lang",
+         "value" : "87A2F841C0AA44C39D7B47B7F9652A3C37B4E52E"
+      },
+      {
+         "name" : "lang/zhtw.lang",
+         "value" : "2F01ABA7041203AD8513C54DCBD6C0660F982169"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "9C7256C725D84CBF8CDF9D6200156A4785595362"
+      },
+      {
+         "name" : "ui/FullScreen.ini",
+         "value" : "0FF173A83A3AA46C42EB688EBC37940CBBA5F231"
+      },
+      {
+         "name" : "ui/ObjectList.ini",
+         "value" : "E3E84FC6191AA793E991E17D0ED4CAD978E2F365"
+      },
+      {
+         "name" : "ui/ProgressBar.ini",
+         "value" : "2A15117C91D56876BA00127B6EBA7E470F79BC2A"
+      },
+      {
+         "name" : "ui/ProgressBarSimple.ini",
+         "value" : "55904AF9207ED6015BBAAC638DCFF138395ADBA4"
+      },
+      {
+         "name" : "ui/WndBubblePanel.ini",
+         "value" : "768F8AEB5A7C4A5BC9C75E7A3CEA4B38A6DE4883"
+      },
+      {
+         "name" : "ui/WndCheckBox.ini",
+         "value" : "3A01901B35A4B4918B8319E9A850354F80369A6D"
+      },
+      {
+         "name" : "ui/WndContainer.ini",
+         "value" : "C3850D229D6D14CBEA956435831931DB08977A96"
+      },
+      {
+         "name" : "ui/WndScrollPanel.ini",
+         "value" : "D3D89E87908DEDF5BB1629AE444B1C6595BF8077"
+      },
+      {
+         "name" : "__XGUI.ini",
+         "value" : "D6E9C204288AD83056FA0F0B2CD4E9E4F41D18FC"
+      }
+   ],
+   "id" : "JX_0Base",
+   "version" : 180
+}

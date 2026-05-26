@@ -1,7 +1,7 @@
 // engine/flow/applyImmediateEffects.ts
 import { randomUUID } from "crypto";
 import { resolveEffectTargetIndex } from "../../utils/targeting";
-import { blocksEnemyTargeting, isAlwaysSelfEffect, isEnemyEffect, shouldSkipDueToDodge, hasKnockbackImmune, hasKnockedBackImmune, hasDamageImmune, blocksControlByImmunity } from "../../rules/guards";
+import { blocksEnemyTargeting, isAlwaysSelfEffect, isEnemyEffect, shouldSkipDueToDodge, hasKnockbackImmune, hasKnockedBackImmune, hasDamageImmune, blocksControlByImmunity, isRuntimeBuffActive } from "../../rules/guards";
 import {
   handleDamage,
   handleBonusDamageIfHpGt,
@@ -780,6 +780,7 @@ function applyImmediateKnockback(params: {
     abilityId: ability.id,
     vxPerTick: (dirX * knockbackDistance) / moveTicks,
     vyPerTick: (dirY * knockbackDistance) / moveTicks,
+    stopOnWall: true,
     forceVzPerTick: 0,
     maxUpVz: 0,
     maxDownVz: 0,
@@ -1251,6 +1252,7 @@ export function applyImmediateEffects(params: {
       (ability as any).isProjectile === true &&
       effTarget.buffs.some(
         (b: any) =>
+          isRuntimeBuffActive(b) &&
           b.effects.some((e: any) => e.type === "PROJECTILE_IMMUNE") &&
           b.expiresAt > Date.now()
       )
@@ -2397,7 +2399,7 @@ export function applyImmediateEffects(params: {
         // 银月斩: deal damage + apply DoT. If target has 烈日斩, all damage doubled.
         if (!enemyApplied) break;
         const now = Date.now();
-        const hasLieRi = effTarget.buffs.some((b: any) => b.buffId === LIE_RI_ZHAN_DEBUFF_ID);
+        const hasLieRi = effTarget.buffs.some((b: any) => isRuntimeBuffActive(b, now) && b.buffId === LIE_RI_ZHAN_DEBUFF_ID);
         const mult = hasLieRi ? 2 : 1;
 
         const baseDmg = (effect.value ?? 2) * mult;
@@ -2454,7 +2456,7 @@ export function applyImmediateEffects(params: {
         // 烈日斩: deal damage + apply 15% extra damage debuff. If target has 银月斩, damage doubled.
         if (!enemyApplied) break;
         const now = Date.now();
-        const hasYinYue = effTarget.buffs.some((b: any) => b.buffId === YIN_YUE_ZAN_DOT_BUFF_ID);
+        const hasYinYue = effTarget.buffs.some((b: any) => isRuntimeBuffActive(b, now) && b.buffId === YIN_YUE_ZAN_DOT_BUFF_ID);
         const mult = hasYinYue ? 2 : 1;
 
         const baseDmg = (effect.value ?? 4) * mult;

@@ -1,0 +1,9 @@
+[JX_Activity]
+name=休閒活動輔助功能
+desc=絕境戰場、列星虛境等輔助功能
+version=1.0
+default=1
+package=JX
+lua_0=JX_LootPlus.lua
+lua_1=JX_KillRush.lua
+lua_2=JX_Moba.lua

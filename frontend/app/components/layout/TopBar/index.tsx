@@ -8,10 +8,15 @@ import styles from "./styles.module.css";
 import UserMenu from "@/app/components/auth/UserMenu";
 
 interface TopBarProps {
-  username?: string | null; // ✅ injected from parent (AuthGate / LayoutShell)
+  user?: {
+    username: string;
+    displayName?: string;
+    isAdmin?: boolean;
+    school?: string | null;
+  } | null;
 }
 
-export default function TopBar({ username }: TopBarProps) {
+export default function TopBar({ user }: TopBarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -67,7 +72,7 @@ export default function TopBar({ username }: TopBarProps) {
 
       {/* Right side user menu */}
       <div className={styles.rightArea}>
-        {username ? <UserMenu username={username} /> : null}
+        {user ? <UserMenu user={user} /> : null}
       </div>
     </div>
   );

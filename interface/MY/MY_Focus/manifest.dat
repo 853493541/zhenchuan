@@ -1,0 +1,26 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "505CB9F5779524D5BE031ACDD38832FA53B1D63C"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "ABC5D15E35AE4FACABE74203418812DFD1D3B80D"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "8CB35F91C841BEC6DC8CAD73AB8E9BD1ACAF71AF"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "FEE2E9B1367A8EC75005C670FB20AC72E806C3BE"
+      },
+      {
+         "name" : "ui/MY_Focus.ini",
+         "value" : "8938DA6514F08C9815F1BD1F3C6DB7B07B6E92BF"
+      }
+   ],
+   "id" : "MY_Focus",
+   "version" : 169
+}

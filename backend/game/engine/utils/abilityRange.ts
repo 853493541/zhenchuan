@@ -1,7 +1,8 @@
 import type { ActiveBuff, Ability } from "../state/types";
+import { getActiveRuntimeBuffs } from "../rules/guards";
 
 export function getAbilityRangeBonusFromBuffs(buffs: ActiveBuff[] | undefined): number {
-  return (buffs ?? []).reduce((sum, buff) => {
+  return getActiveRuntimeBuffs({ buffs: buffs ?? [] }).reduce((sum, buff) => {
     const bonus = (buff.effects ?? []).reduce((effectSum, effect) => {
       if (effect.type !== "RANGE_BOOST") return effectSum;
       return effectSum + Math.max(0, Number((effect as any).value ?? 0));

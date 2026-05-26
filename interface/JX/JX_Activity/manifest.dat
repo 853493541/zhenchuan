@@ -1,0 +1,38 @@
+{
+   "files" : [
+      {
+         "name" : "ChickenPack.ini",
+         "value" : "BBE76C8CEBE37226CAE9BB8377F53CEC56B61D43"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "82324AFD6248B903F53906EE2CB2CA92C3F38AF8"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "F716941D9597DA9D6D8F4C054215378CDBDE13DC"
+      },
+      {
+         "name" : "JX_KillRush.lua",
+         "value" : "855A9D5B4FF9E8162A81484E6CBD6B6135C3EA65"
+      },
+      {
+         "name" : "JX_LootPlus.lua",
+         "value" : "4E7166335A3E702E68ED716D73F58B441AC7F5FC"
+      },
+      {
+         "name" : "JX_Moba.lua",
+         "value" : "D08B7D5A9CBE7E382B0E6651FE58EA4F6896C9A3"
+      },
+      {
+         "name" : "LootPlus.ini",
+         "value" : "860E773AFA5EB9267315C3A3391B58551510CD4D"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "9C7256C725D84CBF8CDF9D6200156A4785595362"
+      }
+   ],
+   "id" : "JX_Activity",
+   "version" : 141
+}

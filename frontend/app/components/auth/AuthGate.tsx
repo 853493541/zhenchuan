@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { rememberCurrentAuthSession } from "./authSessionStore";
 
 export default function AuthGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -73,9 +74,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
           // ✅ expose username ONCE for layout/topbar
           if (data?.user?.username) {
             (window as any).__AUTH_USERNAME__ = data.user.username;
+            (window as any).__AUTH_USER__ = data.user;
+            void rememberCurrentAuthSession(data.user).catch(() => undefined);
           }
-
-          if (pathname === "/login") router.replace("/");
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

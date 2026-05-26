@@ -7,16 +7,22 @@ import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage } from "http";
 import { Server as HTTPServer } from "http";
 import jwt from "jsonwebtoken";
-import { subscriptionManager } from "./GameSubscriptionManager";
+import { subscriptionManager, type ChatMessagePayload } from "./GameSubscriptionManager";
+import GameSession from "../game/models/GameSession";
+import { normalizeStoredUserDisplayName, User } from "../models/User";
+import { createChatMessageId, persistAndBroadcastChatMessage } from "../game/services/chatMessages";
 
 export interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
+  username?: string;
+  school?: string | null;
   gameId?: string;
   isAlive?: boolean;
   terminatedByHeartbeat?: boolean;
 }
 
 const WS_DEBUG_LOGS = process.env.WS_DEBUG_LOGS === "1";
+const MAX_CHAT_MESSAGE_LENGTH = 180;
 const wsLog = (...args: any[]) => {
   if (WS_DEBUG_LOGS) console.log(...args);
 };
@@ -47,13 +53,63 @@ function verifyToken(token: string): { userId: string } | null {
   }
 }
 
+function sanitizeChatText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, MAX_CHAT_MESSAGE_LENGTH);
+}
+
+function getPlayerUsername(game: any, userId: string): string {
+  return game?.playerNames?.[userId]
+    ?? game?.state?.players?.find((player: any) => player?.userId === userId)?.username
+    ?? `User${String(userId).slice(-4)}`;
+}
+
+function getPlayerSchool(game: any, userId: string): string | null {
+  const school = game?.playerSchools?.[userId];
+  return typeof school === "string" ? school : null;
+}
+
+async function loadGameMembership(gameId: string, userId: string): Promise<{ ok: boolean; username?: string; school?: string | null }> {
+  const game = await GameSession.findById(gameId).select("players playerNames playerSchools state").lean();
+  if (!game) return { ok: false };
+  const players = Array.isArray((game as any).players) ? (game as any).players : [];
+  if (!players.includes(userId)) return { ok: false };
+  return { ok: true, username: getPlayerUsername(game, userId), school: getPlayerSchool(game, userId) };
+}
+
+async function broadcastMapChat(ws: AuthenticatedWebSocket, message: any) {
+  const gameId = ws.gameId;
+  const userId = ws.userId;
+  if (!gameId || !userId) return;
+
+  const text = sanitizeChatText(message.text);
+  if (!text) return;
+
+  const timestamp = Date.now();
+  const currentUser = await User.findById(userId).select("displayName username school").lean();
+  const username = currentUser ? normalizeStoredUserDisplayName(currentUser.username, currentUser.displayName) : ws.username || `User${String(userId).slice(-4)}`;
+  const school = typeof currentUser?.school === "string" ? currentUser.school : ws.school ?? null;
+  const chat: ChatMessagePayload = {
+    id: createChatMessageId(userId, timestamp),
+    channel: "map",
+    userId,
+    username,
+    school,
+    text,
+    timestamp,
+    variant: "user",
+  };
+
+  await persistAndBroadcastChatMessage(gameId, chat, userId);
+}
+
 export function setupWebSocket(server: HTTPServer) {
   const wss = new WebSocketServer({ server, path: "/ws" });
 
   console.log("🔌 WebSocket server initialized on path /ws");
 
   // Log when clients try to connect but before they authenticate
-  wss.on("connection", (ws: AuthenticatedWebSocket, req: IncomingMessage) => {
+  wss.on("connection", async (ws: AuthenticatedWebSocket, req: IncomingMessage) => {
     wsLog("[WS] Backend: 1️⃣ New connection attempt received!");
     wsLog("[WS] Backend: Connection details:");
     wsLog("[WS]   - URL:", req.url);
@@ -86,7 +142,24 @@ export function setupWebSocket(server: HTTPServer) {
       return;
     }
 
+    let membership: { ok: boolean; username?: string; school?: string | null };
+    try {
+      membership = await loadGameMembership(credentials.gameId, verified.userId);
+    } catch (err) {
+      console.error(`[WS] Game membership lookup failed for ${credentials.gameId}/${verified.userId}:`, err);
+      ws.close(1011, "Game membership lookup failed");
+      return;
+    }
+
+    if (!membership.ok) {
+      wsLog(`[WS] Backend: 5️⃣❌ User ${verified.userId} is not in game ${credentials.gameId}`);
+      ws.close(4003, "Not in game");
+      return;
+    }
+
     ws.userId = verified.userId;
+    ws.username = membership.username;
+    ws.school = membership.school ?? null;
     ws.gameId = credentials.gameId;
     ws.isAlive = true;
 
@@ -100,7 +173,7 @@ export function setupWebSocket(server: HTTPServer) {
     wsLog("[WS] Backend: 8️⃣ Subscription complete!");
 
     // Handle incoming messages
-    ws.on("message", (data: Buffer) => {
+    ws.on("message", async (data: Buffer) => {
       try {
         const message = JSON.parse(data.toString());
         const serverReceivedAt = Date.now();
@@ -118,6 +191,14 @@ export function setupWebSocket(server: HTTPServer) {
               serverTimestamp: serverSentAt,
               serverProcessingMs: serverSentAt - serverReceivedAt,
             }));
+            ws.isAlive = true;
+            break;
+          }
+
+          case "CHAT_MESSAGE": {
+            if (message.channel === "map") {
+              await broadcastMapChat(ws, message);
+            }
             ws.isAlive = true;
             break;
           }

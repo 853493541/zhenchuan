@@ -1,0 +1,70 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "1BA2F503DCFB5FA365F9B9456D394130491CA76B"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "287378C4930055D8E937CF4ED6DE8BDA62CE81BB"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "BC62CB6C529FE834FC0AEACFF528F3496F02F003"
+      },
+      {
+         "name" : "src.20260228093541-65274f1c6.lua",
+         "value" : "32F209D4B12E7CB0E847D9DFDC60FA730834D9BC"
+      },
+      {
+         "name" : "ui/MY_EvokeRequest.ini",
+         "value" : "B052BFA8DB5CC5DE0A4BD9B42A92E3E5FF2B09F1"
+      },
+      {
+         "name" : "ui/MY_JBEventVote.ini",
+         "value" : "F98D8166B1D5BCF8EF7C9FB58E37904351FCE4A1"
+      },
+      {
+         "name" : "ui/MY_JBEventVote__Mod.ini",
+         "value" : "682D83E47339C6D72FABEB3E13A21F0067CB5FED"
+      },
+      {
+         "name" : "ui/MY_PartyRequest.ini",
+         "value" : "23B855ECFBD27050AECD281105A5302F3A3727B3"
+      },
+      {
+         "name" : "ui/MY_RideRequest.ini",
+         "value" : "A1DF64F0E01C0B820539329666B5EC51E26E5779"
+      },
+      {
+         "name" : "ui/MY_RoomRequest.ini",
+         "value" : "34262235708E8CCB8F0765E81AFD853F61442BC4"
+      },
+      {
+         "name" : "ui/MY_SocialRequest.ini",
+         "value" : "EFAD23C19841691CD0B813F1BCD0C379DE2DBC9B"
+      },
+      {
+         "name" : "ui/MY_TeamTools.Mod.ini",
+         "value" : "58ECB2A5C7AF7A9A84FBC4C9D09AFDE8FF894A90"
+      },
+      {
+         "name" : "ui/MY_TeamTools_Achievement.ini",
+         "value" : "49F3EF2C5FA291B364FB4F37C5868A24AE22E381"
+      },
+      {
+         "name" : "ui/MY_TeamTools_DeathLog.ini",
+         "value" : "872BEA06159B69A2DEA8D130978469A3B763131E"
+      },
+      {
+         "name" : "ui/MY_TeamTools_EnterMap.ini",
+         "value" : "85B5FC89EC4FA8FFAF045ABEBAD691C9A0495F9F"
+      },
+      {
+         "name" : "ui/MY_TeamTools_Summary.ini",
+         "value" : "E1F417D2F60F8AD157130791C01223277DDE5D05"
+      }
+   ],
+   "id" : "MY_TeamTools",
+   "version" : 167
+}

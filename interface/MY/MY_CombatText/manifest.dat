@@ -1,0 +1,30 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "4F3780905C5784ABF489ACA0E4238DA3414F9B31"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "7FB793427D26AA03A9C8A0732C1FD5BA6481CA6C"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "6C2BC9D96A6CCFF3C82B0AB89B7135280F40805F"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "2A27D426897B47FC8EBDACEED8C0C63D01736BF8"
+      },
+      {
+         "name" : "ui/MY_CombatText.ini",
+         "value" : "3AF905F31FE9F25D2896F47208A11D9A1BCACCED"
+      },
+      {
+         "name" : "ui/MY_CombatText_Render.ini",
+         "value" : "66E22B679E235BF2623BD9C90C314A064DF02370"
+      }
+   ],
+   "id" : "MY_CombatText",
+   "version" : 99
+}

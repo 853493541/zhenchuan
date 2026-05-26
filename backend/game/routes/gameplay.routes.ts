@@ -4,7 +4,7 @@ import { getUserIdFromCookie } from "./auth";
 import type { GameState, MovementInput, TargetSelection } from "../engine/state/types";
 import { ABILITIES } from "../abilities/abilities";
 import GameSession from "../models/GameSession";
-import { User } from "../../models/User";
+import { normalizeStoredUserDisplayName, User } from "../../models/User";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { ensureBattleLoop, getBattleLoopHydrationDiagnostics } from "../services/battleLoopRuntime";
 import { GameLoop } from "../engine/loop/GameLoop";
@@ -113,9 +113,19 @@ function sendCaughtGameError(res: express.Response, err: any, status = 400) {
 
 type UiLayoutPosition = { left: number; top: number };
 type UiLayoutViewport = { w: number; h: number };
+type UiChatLayoutPayload = {
+  panelSize: { width: number; height: number };
+  settings?: { fontFamily: "simhei"; fontSize: number; backgroundOpacity: number };
+  settingsModalSize?: { width: number; height: number };
+  windows?: Array<{ id: string; name: string; channels: Array<"map" | "system" | "battle">; lockedName?: boolean; lockedDelete?: boolean }>;
+  activeWindowId?: string;
+  detachedWindows?: Array<{ id: string; windowIds: string[]; activeWindowId: string }>;
+  detachedPanelSizes?: Record<string, { width: number; height: number }>;
+};
 type UiLayoutPayload = {
   positions: Record<string, UiLayoutPosition>;
   viewport: UiLayoutViewport | null;
+  chat: UiChatLayoutPayload | null;
 };
 
 type MartialPresetPlan = {
@@ -128,17 +138,201 @@ type MartialPresetPlan = {
 const MARTIAL_PRESET_LIMIT = 8;
 const MARTIAL_PRESET_SLOT_COUNT = 6;
 
+const CHAT_LAYOUT_DEFAULTS: UiChatLayoutPayload = {
+  panelSize: { width: 548, height: 236 },
+};
+const DEFAULT_CHAT_WINDOWS: NonNullable<UiChatLayoutPayload["windows"]> = [
+  { id: "combined", name: "综合", channels: ["map", "system"], lockedName: true, lockedDelete: true },
+  { id: "map", name: "地图", channels: ["map"] },
+  { id: "system", name: "系统", channels: ["system"] },
+  { id: "battle", name: "战斗", channels: ["battle"] },
+];
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function normalizeNumberInRange(value: unknown, fallback: number, min: number, max: number): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.round(Math.max(min, Math.min(max, numeric)));
+}
+
+function sanitizeChatSettingsPayload(raw: unknown): NonNullable<UiChatLayoutPayload["settings"]> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const candidate = raw as Record<string, unknown>;
+  return {
+    fontFamily: "simhei",
+    fontSize: normalizeNumberInRange(candidate.fontSize, 18, 15, 20),
+    backgroundOpacity: normalizeNumberInRange(candidate.backgroundOpacity, 50, 0, 100),
+  };
+}
+
+function sanitizeChatSettingsModalSizePayload(raw: unknown): NonNullable<UiChatLayoutPayload["settingsModalSize"]> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const candidate = raw as Record<string, unknown>;
+  return {
+    width: normalizeNumberInRange(candidate.width, 705, Math.round(705 * 0.5), Math.round(705 * 2)),
+    height: normalizeNumberInRange(candidate.height, 495, Math.round(495 * 0.5), Math.round(495 * 2)),
+  };
+}
+
+function sanitizeChatWindowName(value: unknown, fallback: string): string {
+  const name = typeof value === "string" ? Array.from(value.trim()).slice(0, 8).join("") : "";
+  return name || fallback;
+}
+
+function sanitizeChatWindowsPayload(raw: unknown): NonNullable<UiChatLayoutPayload["windows"]> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const defaultsById = new Map(DEFAULT_CHAT_WINDOWS.map((entry) => [entry.id, entry]));
+  const usedIds = new Set<string>();
+  const windows: NonNullable<UiChatLayoutPayload["windows"]> = [];
+
+  for (const defaultWindow of DEFAULT_CHAT_WINDOWS) {
+    const saved = raw.find((entry) => entry && typeof entry === "object" && !Array.isArray(entry) && (entry as any).id === defaultWindow.id) as Record<string, unknown> | undefined;
+    const channels = Array.isArray(saved?.channels)
+      ? saved.channels.filter((channel): channel is "map" | "system" | "battle" => channel === "map" || channel === "system" || channel === "battle")
+      : defaultWindow.channels;
+    windows.push({
+      ...defaultWindow,
+      name: defaultWindow.lockedName ? defaultWindow.name : sanitizeChatWindowName(saved?.name, defaultWindow.name),
+      channels: [...new Set(channels)],
+    });
+    usedIds.add(defaultWindow.id);
+  }
+
+  for (const entry of raw) {
+    const candidate = entry && typeof entry === "object" && !Array.isArray(entry) ? entry as Record<string, unknown> : null;
+    const id = typeof candidate?.id === "string" ? candidate.id.trim().slice(0, 48) : "";
+    if (!id || usedIds.has(id) || defaultsById.has(id)) continue;
+    const channels = Array.isArray(candidate?.channels)
+      ? candidate.channels.filter((channel): channel is "map" | "system" | "battle" => channel === "map" || channel === "system" || channel === "battle")
+      : [];
+    windows.push({
+      id,
+      name: sanitizeChatWindowName(candidate?.name, `窗口${windows.length + 1}`),
+      channels: [...new Set(channels)],
+    });
+    usedIds.add(id);
+    if (windows.length >= 8) break;
+  }
+
+  return windows.slice(0, 8);
+}
+
+function sanitizeDetachedChatWindowsPayload(raw: unknown, windows: NonNullable<UiChatLayoutPayload["windows"]>): NonNullable<UiChatLayoutPayload["detachedWindows"]> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const validWindowIds = new Set(windows.map((entry) => entry.id));
+  const assignedWindowIds = new Set<string>();
+  const detachedWindows: NonNullable<UiChatLayoutPayload["detachedWindows"]> = [];
+  const usedIds = new Set<string>();
+
+  for (const entry of raw) {
+    const candidate = entry && typeof entry === "object" && !Array.isArray(entry) ? entry as Record<string, unknown> : null;
+    const id = typeof candidate?.id === "string" ? candidate.id.trim().slice(0, 64) : "";
+    if (!id || usedIds.has(id)) continue;
+    const rawWindowIds = Array.isArray(candidate?.windowIds)
+      ? candidate.windowIds
+      : typeof candidate?.windowId === "string"
+      ? [candidate.windowId]
+      : [];
+    const windowIds = rawWindowIds
+      .filter((windowId): windowId is string => typeof windowId === "string")
+      .map((windowId) => windowId.trim().slice(0, 48))
+      .filter((windowId) => windowId !== "combined" && validWindowIds.has(windowId) && !assignedWindowIds.has(windowId));
+    if (windowIds.length === 0) continue;
+    windowIds.forEach((windowId) => assignedWindowIds.add(windowId));
+    const activeWindowCandidate = typeof candidate?.activeWindowId === "string" ? candidate.activeWindowId.trim() : "";
+    detachedWindows.push({
+      id,
+      windowIds,
+      activeWindowId: windowIds.includes(activeWindowCandidate) ? activeWindowCandidate : windowIds[0],
+    });
+    usedIds.add(id);
+    if (detachedWindows.length >= 6) break;
+  }
+
+  return detachedWindows;
+}
+
+function sanitizeDetachedChatPanelSizesPayload(raw: unknown, detachedWindows: NonNullable<UiChatLayoutPayload["detachedWindows"]> | undefined): NonNullable<UiChatLayoutPayload["detachedPanelSizes"]> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || !detachedWindows?.length) return undefined;
+  const validDetachedIds = new Set(detachedWindows.map((entry) => entry.id));
+  const sizes: NonNullable<UiChatLayoutPayload["detachedPanelSizes"]> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!validDetachedIds.has(id) || !value || typeof value !== "object" || Array.isArray(value)) continue;
+    const size = value as Record<string, unknown>;
+    sizes[id] = {
+      width: normalizeNumberInRange(size.width, CHAT_LAYOUT_DEFAULTS.panelSize.width, 120, 1400),
+      height: normalizeNumberInRange(size.height, CHAT_LAYOUT_DEFAULTS.panelSize.height, 92, 1000),
+    };
+  }
+  return Object.keys(sizes).length > 0 ? sizes : undefined;
+}
+
+function sanitizeChatLayoutPayload(raw: unknown): UiChatLayoutPayload | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const candidate = raw as Record<string, unknown>;
+  const panelCandidate = candidate.panelSize && typeof candidate.panelSize === "object" && !Array.isArray(candidate.panelSize)
+    ? candidate.panelSize as Record<string, unknown>
+    : {};
+
+  const payload: UiChatLayoutPayload = {
+    panelSize: {
+      width: normalizeNumberInRange(panelCandidate.width, CHAT_LAYOUT_DEFAULTS.panelSize.width, 120, 1400),
+      height: normalizeNumberInRange(panelCandidate.height, CHAT_LAYOUT_DEFAULTS.panelSize.height, 92, 1000),
+    },
+  };
+  const settings = sanitizeChatSettingsPayload(candidate.settings);
+  if (settings) payload.settings = settings;
+  const settingsModalSize = sanitizeChatSettingsModalSizePayload(candidate.settingsModalSize);
+  if (settingsModalSize) payload.settingsModalSize = settingsModalSize;
+  const windows = sanitizeChatWindowsPayload(candidate.windows);
+  if (windows) {
+    payload.windows = windows;
+    const activeWindowId = typeof candidate.activeWindowId === "string" ? candidate.activeWindowId.trim() : "";
+    payload.activeWindowId = windows.some((entry) => entry.id === activeWindowId) ? activeWindowId : windows[0]?.id;
+    const detachedWindows = sanitizeDetachedChatWindowsPayload(candidate.detachedWindows, windows);
+    if (detachedWindows) {
+      payload.detachedWindows = detachedWindows;
+      const detachedPanelSizes = sanitizeDetachedChatPanelSizesPayload(candidate.detachedPanelSizes, detachedWindows);
+      if (detachedPanelSizes) payload.detachedPanelSizes = detachedPanelSizes;
+    }
+  }
+  return payload;
+}
+
+function mergeChatLayout(existing: UiChatLayoutPayload | null, incoming: UiChatLayoutPayload | null): UiChatLayoutPayload | null {
+  if (!incoming) return existing;
+  if (!existing) return incoming;
+
+  const merged: UiChatLayoutPayload = {
+    panelSize: incoming.panelSize ?? existing.panelSize,
+  };
+  const settings = incoming.settings ?? existing.settings;
+  if (settings) merged.settings = settings;
+  const settingsModalSize = incoming.settingsModalSize ?? existing.settingsModalSize;
+  if (settingsModalSize) merged.settingsModalSize = settingsModalSize;
+  const windows = incoming.windows ?? existing.windows;
+  if (windows) {
+    merged.windows = windows;
+    const activeWindowId = incoming.windows ? incoming.activeWindowId : existing.activeWindowId;
+    merged.activeWindowId = windows.some((entry) => entry.id === activeWindowId) ? activeWindowId : windows[0]?.id;
+  }
+  const detachedWindows = incoming.detachedWindows ?? existing.detachedWindows;
+  if (detachedWindows) merged.detachedWindows = detachedWindows;
+  const detachedPanelSizes = incoming.detachedPanelSizes ?? existing.detachedPanelSizes;
+  if (detachedPanelSizes) merged.detachedPanelSizes = detachedPanelSizes;
+  return merged;
+}
+
 function sanitizeUiLayoutPayload(raw: unknown): UiLayoutPayload {
-  const fallback: UiLayoutPayload = { positions: {}, viewport: null };
+  const fallback: UiLayoutPayload = { positions: {}, viewport: null, chat: null };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return fallback;
   }
 
-  const container = raw as { positions?: unknown; viewport?: unknown };
+  const container = raw as { positions?: unknown; viewport?: unknown; chat?: unknown };
   const positionsSource =
     container.positions && typeof container.positions === "object" && !Array.isArray(container.positions)
       ? container.positions as Record<string, unknown>
@@ -146,6 +340,7 @@ function sanitizeUiLayoutPayload(raw: unknown): UiLayoutPayload {
 
   const positions: Record<string, UiLayoutPosition> = {};
   for (const [key, value] of Object.entries(positionsSource)) {
+    if (key === "chat-clear-dialog") continue;
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
     const candidate = value as Partial<UiLayoutPosition>;
     if (!isFiniteNumber(candidate.left) || !isFiniteNumber(candidate.top)) continue;
@@ -168,7 +363,7 @@ function sanitizeUiLayoutPayload(raw: unknown): UiLayoutPayload {
         }
       : null;
 
-  return { positions, viewport };
+  return { positions, viewport, chat: sanitizeChatLayoutPayload(container.chat) };
 }
 
 function sanitizeMartialPresetName(value: unknown, fallback: string): string {
@@ -207,10 +402,63 @@ function sanitizeMartialPresetsPayload(raw: unknown): MartialPresetPlan[] {
   });
 }
 
+function sanitizeChatHistory(raw: unknown, displayNameByUserId: Map<string, string> = new Map()) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry) => {
+    const candidate = entry && typeof entry === "object" && !Array.isArray(entry) ? entry as Record<string, unknown> : {};
+    const id = typeof candidate.id === "string" && candidate.id ? candidate.id : "";
+    const channel = candidate.channel === "system" ? "system" : candidate.channel === "map" ? "map" : null;
+    const userId = typeof candidate.userId === "string" && candidate.userId ? candidate.userId : "";
+    const username = displayNameByUserId.get(userId)
+      ?? (typeof candidate.username === "string" && candidate.username.trim() ? candidate.username.trim() : `User${userId.slice(-4)}`);
+    const school = typeof candidate.school === "string" ? candidate.school : null;
+    const variant = candidate.variant === "system" || userId === "system" ? "system" : "user";
+    const text = typeof candidate.text === "string" ? candidate.text.slice(0, variant === "system" ? 240 : 180) : "";
+    const timestamp = typeof candidate.timestamp === "number" && Number.isFinite(candidate.timestamp) ? candidate.timestamp : 0;
+    if (!id || !channel || !userId || !text.trim() || timestamp <= 0) return null;
+    return { id, channel, userId, username, school, text, timestamp, variant };
+  }).filter(Boolean);
+}
+
+router.get("/:gameId/chat", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const game = await GameSession.findById(req.params.gameId).select("players chatMessages").lean();
+    if (!game) {
+      return sendGameError(res, 404, "ERR_NOT_FOUND");
+    }
+
+    const players = Array.isArray((game as any).players) ? (game as any).players.map(String) : [];
+    if (!players.includes(userId)) {
+      return sendGameError(res, 403, "ERR_NOT_IN_GAME");
+    }
+
+    const chatUserIds = [...new Set(
+      (Array.isArray((game as any).chatMessages) ? (game as any).chatMessages : [])
+        .map((message: any) => typeof message?.userId === "string" ? message.userId : "")
+        .filter((id: string) => id && id !== "system")
+    )];
+    const users = chatUserIds.length > 0
+      ? await User.find({ _id: { $in: chatUserIds } }).select("displayName username").lean()
+      : [];
+    const displayNameByUserId = new Map<string, string>();
+    for (const user of users) {
+      const id = String((user as any)._id);
+      displayNameByUserId.set(id, normalizeStoredUserDisplayName((user as any).username, (user as any).displayName));
+    }
+
+    return res.json({ messages: sanitizeChatHistory((game as any).chatMessages, displayNameByUserId) });
+  } catch (err: any) {
+    console.error(`[CHAT_HISTORY_GET] ❌ ERROR: ${err.message}`);
+    console.error(`[CHAT_HISTORY_GET] Stack: ${err.stack}`);
+    return sendCaughtGameError(res, err, 401);
+  }
+});
+
 router.get("/ui-layout", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const user = await User.findById(userId).select("battleArenaUiLayout");
+    const user = await User.findById(userId).select("battleArenaUiLayout").lean();
     if (!user) {
       return sendGameError(res, 401, "ERR_NOT_AUTHENTICATED");
     }
@@ -226,21 +474,23 @@ router.get("/ui-layout", async (req, res) => {
 router.put("/ui-layout", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const user = await User.findById(userId).select("battleArenaUiLayout");
+    const user = await User.findById(userId).select("battleArenaUiLayout").lean();
     if (!user) {
       return sendGameError(res, 401, "ERR_NOT_AUTHENTICATED");
     }
 
+    const existingLayout = sanitizeUiLayoutPayload((user as any).battleArenaUiLayout);
     const layout = sanitizeUiLayoutPayload(req.body);
-    (user as any).battleArenaUiLayout = {
+    const chat = mergeChatLayout(existingLayout.chat, layout.chat);
+    const battleArenaUiLayout = {
       positions: layout.positions,
       viewport: layout.viewport,
+      chat,
       updatedAt: new Date(),
     };
-    user.markModified("battleArenaUiLayout");
-    await user.save();
+    await User.updateOne({ _id: userId }, { $set: { battleArenaUiLayout } });
 
-    return res.json(layout);
+    return res.json({ ...layout, chat });
   } catch (err: any) {
     console.error(`[UI_LAYOUT_PUT] ❌ ERROR: ${err.message}`);
     console.error(`[UI_LAYOUT_PUT] Stack: ${err.stack}`);
@@ -251,7 +501,7 @@ router.put("/ui-layout", async (req, res) => {
 router.get("/martial-presets", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const user = await User.findById(userId).select("battleArenaMartialPresets");
+    const user = await User.findById(userId).select("battleArenaMartialPresets").lean();
     if (!user) {
       return sendGameError(res, 401, "ERR_NOT_AUTHENTICATED");
     }
@@ -267,15 +517,13 @@ router.get("/martial-presets", async (req, res) => {
 router.put("/martial-presets", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const user = await User.findById(userId).select("battleArenaMartialPresets");
+    const user = await User.findById(userId).select("_id").lean();
     if (!user) {
       return sendGameError(res, 401, "ERR_NOT_AUTHENTICATED");
     }
 
     const plans = sanitizeMartialPresetsPayload((req.body as any)?.plans);
-    (user as any).battleArenaMartialPresets = plans;
-    user.markModified("battleArenaMartialPresets");
-    await user.save();
+    await User.updateOne({ _id: userId }, { $set: { battleArenaMartialPresets: plans } });
 
     return res.json({ plans });
   } catch (err: any) {

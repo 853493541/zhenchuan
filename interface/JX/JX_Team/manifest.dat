@@ -1,0 +1,26 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "7BB6ED4932C03D45D2A2A0F06A56D0EA2A5ABE67"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "6DE608ECA142A4C41426608269AAD3856E21C391"
+      },
+      {
+         "name" : "JX_Team.lua",
+         "value" : "270B5C578AC4957136572B9F88C0F9D5FF99F291"
+      },
+      {
+         "name" : "JX_TeamTopName.ini",
+         "value" : "152CD8881931753EB5FEAE4E57013AC2DCF437BD"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "8CB35F91C841BEC6DC8CAD73AB8E9BD1ACAF71AF"
+      }
+   ],
+   "id" : "JX_Team",
+   "version" : 159
+}

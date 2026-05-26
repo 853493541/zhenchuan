@@ -1,0 +1,38 @@
+{
+   "files" : [
+      {
+         "name" : "FlowerInfoPanel.ini",
+         "value" : "DA18A72B23E16348D4458F88DBEF8FDD7D94C2E4"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "7A217FEBC87BA7F24C13F8F2F31ED9D2D52A9F5F"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "142D87FBC2ECA59C4D9864EE0680AC753F1EEA55"
+      },
+      {
+         "name" : "JX_FlowerPrice.lua",
+         "value" : "1964CC94D94989FDDF99DFD9ED736E7BD65AC70E"
+      },
+      {
+         "name" : "JX_StorageBox.lua",
+         "value" : "38B27430720113E6FCC4DA7B181EE0C2070E7C8E"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "6C2BC9D96A6CCFF3C82B0AB89B7135280F40805F"
+      },
+      {
+         "name" : "Wnd_JXFlowerPrice.ini",
+         "value" : "0601C2713188298CA40ED05F32231903676BD2DB"
+      },
+      {
+         "name" : "Wnd_JXHomelandTemp.ini",
+         "value" : "3C69BE2A918AB53BAEEEA20BC7E945A0636ADD78"
+      }
+   ],
+   "id" : "JX_Homeland",
+   "version" : 61
+}

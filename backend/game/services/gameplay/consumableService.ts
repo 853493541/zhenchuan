@@ -373,7 +373,6 @@ function applyInstantConsumableHeal(state: GameState, player: PlayerState, consu
     base: consumable.healBase ?? 0,
   });
   const applied = applyHealToTarget(player as any, healRoll.heal);
-  if (applied <= 0) return;
 
   state.events.push({
     id: randomUUID(),
@@ -385,7 +384,7 @@ function applyInstantConsumableHeal(state: GameState, player: PlayerState, consu
     abilityId: consumable.id,
     abilityName: consumable.name,
     effectType: "HEAL",
-    value: applied,
+    value: Math.max(0, applied),
     isCrit: false,
     suppressCritLabel: true,
   } as any);

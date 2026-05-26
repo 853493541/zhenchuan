@@ -1,0 +1,22 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "B60A97771DA0ACD5812EEBFF482E82EF88E5F35C"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "57FA76E766BA1AD7A27A50FD8BA6E6BAFB4A7F9F"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "D19B235B67E1C23C95B937D5A9D7375596E9FF8C"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "46E56CA6EE290B15C7A16D641CAB399037BC9B39"
+      }
+   ],
+   "id" : "MY_FontResource",
+   "version" : 30
+}

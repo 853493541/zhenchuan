@@ -1,0 +1,30 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "13D2D5D44DC05558DB82E42DC1C15F0D513D10BD"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "23C0A2BCFFD0034A712DA4783CE6A83E6D5F0B5A"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "7CCD04E2C6F2D5A13D7BCD768631B8EE448206BD"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "6C0C9077FC50DFCB23666BFC7BF8C2F77B72F7EC"
+      },
+      {
+         "name" : "ui/MY_Recount_DT.ini",
+         "value" : "22632E732AE600CD9BC1B956DA2C029951FC732B"
+      },
+      {
+         "name" : "ui/MY_Recount_UI.ini",
+         "value" : "54BBDA22140AA3799C428C4BEC927F6ADBF5CB8D"
+      }
+   ],
+   "id" : "MY_Recount",
+   "version" : 163
+}

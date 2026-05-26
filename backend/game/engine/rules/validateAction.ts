@@ -2,7 +2,7 @@
 
 import { GameState } from "../state/types";
 import { ABILITIES } from "../../abilities/abilities";
-import { blocksCardTargeting, hasKnockbackImmune } from "./guards";
+import { blocksCardTargeting, hasKnockbackImmune, isActiveChannelRuntime, isRuntimeBuffActive } from "./guards";
 import { calculateDistance, worldUnitsToGameplayUnits } from "../state/types";
 import { worldMap } from "../../map/worldMap";
 import type { MapObject } from "../state/types/map";
@@ -43,7 +43,7 @@ type ValidateCastOptions = {
 
 function hasEffect(player: { buffs: any[] }, type: string) {
   return player.buffs.some((b: any) =>
-    b.effects.some((e: any) => e.type === type)
+    isRuntimeBuffActive(b) && b.effects?.some((e: any) => e.type === type)
   );
 }
 
@@ -412,7 +412,7 @@ export function validateCastAbility(
   }
 
   /* ================= CHANNELING ================= */
-  if (!options?.ignoreActiveChannel && (player as any).activeChannel) {
+  if (!options?.ignoreActiveChannel && isActiveChannelRuntime((player as any).activeChannel)) {
     throw new Error("ERR_CHANNELING");
   }
 

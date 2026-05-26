@@ -1,0 +1,3621 @@
+{
+  "exportedAt": {
+    "$date": {
+      "$numberLong": "1779682032533"
+    }
+  },
+  "dbName": "zhenchuan_app",
+  "collection": "gamesessions",
+  "documentCount": {
+    "$numberInt": "1"
+  },
+  "documents": [
+    {
+      "_id": {
+        "$oid": "6a13c29217c45d5976d187e7"
+      },
+      "players": [
+        "697076e1877c4c3465dcea36",
+        "6970ac81f900736d8df15819"
+      ],
+      "state": {
+        "version": {
+          "$numberInt": "48209"
+        },
+        "unitScale": {
+          "$numberInt": "1"
+        },
+        "turn": {
+          "$numberInt": "0"
+        },
+        "activePlayerIndex": {
+          "$numberInt": "0"
+        },
+        "gameOver": true,
+        "players": [
+          {
+            "userId": "697076e1877c4c3465dcea36",
+            "hp": {
+              "$numberInt": "1200000"
+            },
+            "maxHp": {
+              "$numberInt": "1200000"
+            },
+            "attackDamage": {
+              "$numberInt": "50000"
+            },
+            "shield": {
+              "$numberInt": "0"
+            },
+            "waiGongCritChancePct": {
+              "$numberInt": "46"
+            },
+            "neiGongCritChancePct": {
+              "$numberInt": "46"
+            },
+            "critChancePct": {
+              "$numberInt": "46"
+            },
+            "defensePct": {
+              "$numberInt": "23"
+            },
+            "huajinPct": {
+              "$numberInt": "73"
+            },
+            "hasteRatePct": {
+              "$numberDouble": "23.54"
+            },
+            "hand": [
+              {
+                "id": "zhu_yun_han_rui",
+                "name": "逐云寒蕊",
+                "description": "瞬发，解除控制，可空中施放与控制中施放\n在自身下方放置【逐云寒蕊】(气血50，半径10码，持续12秒)\n友方进入区域1秒后获得【隐藏】，离开或攻击时破隐\n自身获得3秒免控（所有控制等级）",
+                "type": "SUPPORT",
+                "target": "SELF",
+                "cooldownTicks": {
+                  "$numberInt": "300"
+                },
+                "gcd": false,
+                "allowWhileControlled": true,
+                "allowWhileKnockedBack": true,
+                "effects": [
+                  {
+                    "type": "CLEANSE",
+                    "allowWhileControlled": true,
+                    "cleanseRootSlow": true
+                  },
+                  {
+                    "type": "PLACE_ZHU_YUN_HAN_RUI",
+                    "allowWhileControlled": true
+                  }
+                ],
+                "buffs": [
+                  {
+                    "buffId": {
+                      "$numberInt": "2715"
+                    },
+                    "name": "逐云寒蕊",
+                    "category": "BUFF",
+                    "durationMs": {
+                      "$numberInt": "3000"
+                    },
+                    "description": "免疫所有等级的控制（眩晕/定身/锁足/击倒/击退/拉拽）",
+                    "effects": [
+                      {
+                        "type": "CONTROL_IMMUNE"
+                      },
+                      {
+                        "type": "KNOCKBACK_IMMUNE"
+                      }
+                    ]
+                  },
+                  {
+                    "buffId": {
+                      "$numberInt": "2717"
+                    },
+                    "name": "逐云寒蕊·不摇",
+                    "category": "BUFF",
+                    "durationMs": {
+                      "$numberInt": "12000"
+                    },
+                    "description": "逐云寒蕊本体免疫所有控制与锁定（眩晕/定身/锁足/击倒/击退/拉拽/沉默/封招）",
+                    "effects": [
+                      {
+                        "type": "CONTROL_IMMUNE"
+                      },
+                      {
+                        "type": "KNOCKBACK_IMMUNE"
+                      },
+                      {
+                        "type": "SILENCE_IMMUNE"
+                      }
+                    ]
+                  },
+                  {
+                    "buffId": {
+                      "$numberInt": "2716"
+                    },
+                    "name": "逐云寒蕊·隐藏",
+                    "category": "BUFF",
+                    "durationMs": {
+                      "$numberInt": "2000"
+                    },
+                    "breakOnPlay": true,
+                    "description": "无法被敌方技能选中。攻击时破隐，1秒后若仍在区域内重新隐藏",
+                    "effects": [
+                      {
+                        "type": "UNTARGETABLE"
+                      }
+                    ]
+                  }
+                ],
+                "damageType": "内功",
+                "isProjectile": false,
+                "dunLiWhitelisted": true,
+                "instanceId": "21a69710-df68-410f-a78c-e0b1f37fac9e",
+                "abilityId": "zhu_yun_han_rui",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "slotIndex": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "id": "lin_shi_fei_zhua",
+                "name": "临时飞爪",
+                "description": "轻功，以鼠标指定地面位置施放（射程40）。以飞爪冲刺至指定位置，期间可施放技能；冲刺不提供无敌，受到控制立即中断",
+                "type": "SUPPORT",
+                "target": "OPPONENT",
+                "range": {
+                  "$numberInt": "40"
+                },
+                "cooldownTicks": {
+                  "$numberInt": "300"
+                },
+                "gcd": false,
+                "faceDirection": false,
+                "allowGroundCastWithoutTarget": true,
+                "effects": [
+                  {
+                    "type": "LIN_SHI_FEI_ZHUA_DASH",
+                    "value": {
+                      "$numberInt": "40"
+                    }
+                  }
+                ],
+                "buffs": [],
+                "damageType": "外功",
+                "isProjectile": false,
+                "dunLiWhitelisted": false,
+                "noWeaponRequired": true,
+                "instanceId": "85f45915-e7c6-4d3a-b172-33281bc85fa2",
+                "abilityId": "lin_shi_fei_zhua",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "slotIndex": {
+                  "$numberInt": "1"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "b6555b18-7f83-4ff9-8c03-67bfdc9351fa",
+                "abilityId": "menghu_xiasha",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "79db86c1-0c41-43ca-80d8-d30172fe76da",
+                "abilityId": "fuyao_zhishang",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "582f7192-f58f-436d-a28e-e8482c953593",
+                "abilityId": "nieyun_zhuyue",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "bd88c391-8ff0-4a47-92b0-77503d6cfc7e",
+                "abilityId": "lingxiao_lansheng",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "52243025-1564-426e-bf2f-4feaf5ff5e96",
+                "abilityId": "yaotai_zhenhe",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "c3e0dba2-11a3-4690-9aa5-d3b5c64fcc5c",
+                "abilityId": "yingfeng_huilang",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "88c7ada2-4b17-4225-a8d3-b93f36e7c53e",
+                "abilityId": "houyao",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "1486c19f-dacd-4216-b9c1-0a7a8a5840e8",
+                "abilityId": "yuqi",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              }
+            ],
+            "buffs": [],
+            "inCombat": false,
+            "combatLinks": {},
+            "consumableCooldowns": {},
+            "consumableCounts": {
+              "beng_dai": {
+                "$numberInt": "12"
+              },
+              "jin_chuang_yao": {
+                "$numberInt": "8"
+              },
+              "yue_ying_sha": {
+                "$numberInt": "4"
+              },
+              "sha_shi_wei_zhuang": {
+                "$numberInt": "4"
+              },
+              "guan_mu_wei_zhuang": {
+                "$numberInt": "0"
+              },
+              "wa_guan_wei_zhuang": {
+                "$numberInt": "0"
+              },
+              "sha_xing_xie": {
+                "$numberInt": "0"
+              },
+              "ma_cao": {
+                "$numberInt": "0"
+              },
+              "yi_jie_wu_qi_he": {
+                "$numberInt": "0"
+              },
+              "er_jie_wu_qi_he": {
+                "$numberInt": "0"
+              },
+              "san_jie_wu_qi_he": {
+                "$numberInt": "0"
+              },
+              "tian_jie_wu_qi_he": {
+                "$numberInt": "0"
+              }
+            },
+            "position": {
+              "x": {
+                "$numberDouble": "146.7876449649527"
+              },
+              "y": {
+                "$numberDouble": "171.0549289359389"
+              },
+              "z": {
+                "$numberDouble": "13.073091778290514"
+              }
+            },
+            "velocity": {
+              "vx": {
+                "$numberInt": "0"
+              },
+              "vy": {
+                "$numberInt": "0"
+              },
+              "vz": {
+                "$numberInt": "0"
+              }
+            },
+            "facing": {
+              "x": {
+                "$numberDouble": "-0.7736396068968764"
+              },
+              "y": {
+                "$numberDouble": "-0.6336258822368658"
+              }
+            },
+            "moveSpeed": {
+              "$numberDouble": "0.1666667"
+            },
+            "jumpCount": {
+              "$numberInt": "0"
+            },
+            "airNudgeRemaining": {
+              "$numberInt": "0"
+            },
+            "airNudgeTicksRemaining": {
+              "$numberInt": "0"
+            },
+            "airDirectionLocked": false,
+            "airborneSpeedCarry": {
+              "$numberInt": "0"
+            },
+            "isPowerJump": false,
+            "isPowerJumpCombined": false,
+            "tiYunZongPenaltyConsumed": false,
+            "globalGcdTicks": {
+              "$numberInt": "0"
+            },
+            "_globalGcdProgress": {
+              "$numberInt": "0"
+            },
+            "groundedCastLockUntil": {
+              "$numberLong": "1779681517569"
+            },
+            "visualGcd": null
+          },
+          {
+            "userId": "6970ac81f900736d8df15819",
+            "hp": {
+              "$numberInt": "1200000"
+            },
+            "maxHp": {
+              "$numberInt": "1200000"
+            },
+            "attackDamage": {
+              "$numberInt": "50000"
+            },
+            "shield": {
+              "$numberInt": "0"
+            },
+            "waiGongCritChancePct": {
+              "$numberInt": "46"
+            },
+            "neiGongCritChancePct": {
+              "$numberInt": "46"
+            },
+            "critChancePct": {
+              "$numberInt": "46"
+            },
+            "defensePct": {
+              "$numberInt": "23"
+            },
+            "huajinPct": {
+              "$numberInt": "73"
+            },
+            "hasteRatePct": {
+              "$numberDouble": "23.54"
+            },
+            "hand": [
+              {
+                "instanceId": "5b04a319-647d-4f80-8191-ff622f5809e2",
+                "abilityId": "menghu_xiasha",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "47da28be-1f91-4544-ae30-14d7fb5f9efc",
+                "abilityId": "fuyao_zhishang",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "b49342e6-3536-4271-a3d6-9e6534c7e1cf",
+                "abilityId": "nieyun_zhuyue",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "c6e083e0-b6ef-4e04-b751-6e32fb144b1b",
+                "abilityId": "lingxiao_lansheng",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "b09946ae-5b76-4a7b-869f-42c9a8c7b276",
+                "abilityId": "yaotai_zhenhe",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "f019f0e5-df2a-49bb-b3da-f3494ede9a80",
+                "abilityId": "yingfeng_huilang",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "0a48aa8b-21ae-4cba-a254-55212aa856ae",
+                "abilityId": "houyao",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "82073dc6-f76a-4370-94d4-5b072f26e621",
+                "abilityId": "yuqi",
+                "cooldown": {
+                  "$numberInt": "0"
+                },
+                "_cooldownProgress": {
+                  "$numberInt": "0"
+                }
+              }
+            ],
+            "buffs": [],
+            "inCombat": false,
+            "combatLinks": {},
+            "consumableCooldowns": {},
+            "consumableCounts": {
+              "beng_dai": {
+                "$numberInt": "12"
+              },
+              "jin_chuang_yao": {
+                "$numberInt": "8"
+              },
+              "yue_ying_sha": {
+                "$numberInt": "4"
+              },
+              "sha_shi_wei_zhuang": {
+                "$numberInt": "4"
+              },
+              "guan_mu_wei_zhuang": {
+                "$numberInt": "0"
+              },
+              "wa_guan_wei_zhuang": {
+                "$numberInt": "0"
+              },
+              "sha_xing_xie": {
+                "$numberInt": "0"
+              },
+              "ma_cao": {
+                "$numberInt": "0"
+              },
+              "yi_jie_wu_qi_he": {
+                "$numberInt": "0"
+              },
+              "er_jie_wu_qi_he": {
+                "$numberInt": "0"
+              },
+              "san_jie_wu_qi_he": {
+                "$numberInt": "0"
+              },
+              "tian_jie_wu_qi_he": {
+                "$numberInt": "0"
+              }
+            },
+            "position": {
+              "x": {
+                "$numberDouble": "209.96047504464397"
+              },
+              "y": {
+                "$numberDouble": "203.5648974151497"
+              },
+              "z": {
+                "$numberDouble": "0.1905104811442837"
+              }
+            },
+            "velocity": {
+              "vx": {
+                "$numberInt": "0"
+              },
+              "vy": {
+                "$numberInt": "0"
+              },
+              "vz": {
+                "$numberInt": "0"
+              }
+            },
+            "facing": {
+              "x": {
+                "$numberDouble": "0.8209052017854866"
+              },
+              "y": {
+                "$numberDouble": "0.5710644881986005"
+              }
+            },
+            "moveSpeed": {
+              "$numberDouble": "0.1666667"
+            },
+            "jumpCount": {
+              "$numberInt": "0"
+            },
+            "airNudgeRemaining": {
+              "$numberInt": "0"
+            },
+            "airNudgeTicksRemaining": {
+              "$numberInt": "0"
+            },
+            "airDirectionLocked": false,
+            "airborneSpeedCarry": {
+              "$numberInt": "0"
+            },
+            "isPowerJump": false,
+            "isPowerJumpCombined": false,
+            "tiYunZongPenaltyConsumed": false,
+            "globalGcdTicks": {
+              "$numberInt": "0"
+            },
+            "_globalGcdProgress": {
+              "$numberInt": "0"
+            },
+            "visualGcd": null
+          }
+        ],
+        "events": [
+          {
+            "id": "b9dc195e-abd9-45ef-a1ed-7aa187cde0b1",
+            "timestamp": {
+              "$numberLong": "1779679943503"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊"
+          },
+          {
+            "id": "01da0ec6-e8cd-4ba3-b8c0-16764f34c958",
+            "timestamp": {
+              "$numberLong": "1779679943509"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "entity:1ad02235-1f71-493b-995d-cd5eb46b6d8b",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2717"
+            },
+            "buffName": "逐云寒蕊·不摇",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "d95a1c9b-b870-48c3-b2c6-432a33e77f43",
+            "timestamp": {
+              "$numberLong": "1779679943510"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2715"
+            },
+            "buffName": "逐云寒蕊",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "0a210d8a-db90-4a1f-9d01-d91576d2f158",
+            "timestamp": {
+              "$numberLong": "1779679943510"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊"
+          },
+          {
+            "id": "085b7be8-ad05-4d39-bba6-e16d77958ca6",
+            "timestamp": {
+              "$numberLong": "1779679944533"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2716"
+            },
+            "buffName": "逐云寒蕊·隐藏",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "a7c2c5cb-4f76-411d-84cd-2ed2bf650cf2",
+            "timestamp": {
+              "$numberLong": "1779679946533"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_EXPIRED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2715"
+            },
+            "buffName": "逐云寒蕊",
+            "buffCategory": "BUFF"
+          },
+          {
+            "id": "fd0efdd1-fdc0-4b10-994a-486d05c26d61",
+            "timestamp": {
+              "$numberLong": "1779679947963"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜"
+          },
+          {
+            "id": "ec1f674e-9ffc-4449-bf46-65f3ee5356ff",
+            "timestamp": {
+              "$numberLong": "1779679947964"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "12ac326e-acc4-40b2-90fb-e55ff39371fd",
+            "timestamp": {
+              "$numberLong": "1779679947964"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜"
+          },
+          {
+            "id": "7f6ca6c5-88bf-41f6-8df1-05463ac0c2da",
+            "timestamp": {
+              "$numberLong": "1779679949000"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2716"
+            },
+            "buffName": "逐云寒蕊·隐藏",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "faa2345d-57b1-4cb9-965b-a16d09d450df",
+            "timestamp": {
+              "$numberLong": "1779679949666"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_EXPIRED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2716"
+            },
+            "buffName": "逐云寒蕊·隐藏",
+            "buffCategory": "BUFF"
+          },
+          {
+            "id": "3a0fbb92-0965-4e81-b4c9-3b3a58e0c509",
+            "timestamp": {
+              "$numberLong": "1779679950514"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊"
+          },
+          {
+            "id": "bfde5e69-3942-45c5-9262-1e64c0ba8b3c",
+            "timestamp": {
+              "$numberLong": "1779679950515"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "entity:d17d5617-7ed2-490c-9834-bcdb5377b5b1",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2717"
+            },
+            "buffName": "逐云寒蕊·不摇",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "0f47608e-82a5-44e1-a210-4aea644bec70",
+            "timestamp": {
+              "$numberLong": "1779679950515"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2715"
+            },
+            "buffName": "逐云寒蕊",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "104c7381-c744-4bc3-8d72-ebe1b3f273b2",
+            "timestamp": {
+              "$numberLong": "1779679950515"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊"
+          },
+          {
+            "id": "ce55ce17-9d0b-4639-adb6-1eb6576a5167",
+            "timestamp": {
+              "$numberLong": "1779679951533"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2716"
+            },
+            "buffName": "逐云寒蕊·隐藏",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "ade4ea21-f8ab-45e7-adf5-25cc587dd87d",
+            "timestamp": {
+              "$numberLong": "1779679951567"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_EXPIRED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2716"
+            },
+            "buffName": "逐云寒蕊·隐藏",
+            "buffCategory": "BUFF"
+          },
+          {
+            "id": "7bbccf38-8e4d-4575-862f-5b9fd903ec67",
+            "timestamp": {
+              "$numberLong": "1779679952600"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2716"
+            },
+            "buffName": "逐云寒蕊·隐藏",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "739e3c3f-77e1-4c63-b0cd-2b9de6255cc0",
+            "timestamp": {
+              "$numberLong": "1779679952632"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_EXPIRED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2716"
+            },
+            "buffName": "逐云寒蕊·隐藏",
+            "buffCategory": "BUFF"
+          },
+          {
+            "id": "221e025b-0791-4198-89bc-6f2efcfb8613",
+            "timestamp": {
+              "$numberLong": "1779679953533"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_EXPIRED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2715"
+            },
+            "buffName": "逐云寒蕊",
+            "buffCategory": "BUFF"
+          },
+          {
+            "id": "2fa08cb1-3fec-4815-aac4-da217d8091ed",
+            "timestamp": {
+              "$numberLong": "1779679955532"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_EXPIRED",
+            "actorUserId": "entity:1ad02235-1f71-493b-995d-cd5eb46b6d8b",
+            "targetUserId": "entity:1ad02235-1f71-493b-995d-cd5eb46b6d8b",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2717"
+            },
+            "buffName": "逐云寒蕊·不摇",
+            "buffCategory": "BUFF"
+          },
+          {
+            "id": "0c5a9097-1494-4ab5-9635-c567873f2c53",
+            "timestamp": {
+              "$numberLong": "1779679957180"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪"
+          },
+          {
+            "id": "02a070da-c6ce-4d50-85bb-f06c6936cd28",
+            "timestamp": {
+              "$numberLong": "1779679957181"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "10"
+            }
+          },
+          {
+            "id": "a4e6d6dc-b911-4bb4-a37f-ab2c7319613b",
+            "timestamp": {
+              "$numberLong": "1779679957181"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪"
+          },
+          {
+            "id": "68a0dcee-9c9b-4cd9-99de-660b6225d04c",
+            "timestamp": {
+              "$numberLong": "1779679960433"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "houyao",
+            "abilityName": "后撤"
+          },
+          {
+            "id": "f839cd7c-9993-4f86-862d-c9f6f91c9391",
+            "timestamp": {
+              "$numberLong": "1779679960434"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "houyao",
+            "abilityName": "后撤",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "3"
+            }
+          },
+          {
+            "id": "799291c8-f4fa-4fd8-821f-05f2bc1c63a4",
+            "timestamp": {
+              "$numberLong": "1779679960434"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "houyao",
+            "abilityName": "后撤"
+          },
+          {
+            "id": "158c08f9-ada7-459b-94e8-c0ecd591a58a",
+            "timestamp": {
+              "$numberLong": "1779679962532"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_EXPIRED",
+            "actorUserId": "entity:d17d5617-7ed2-490c-9834-bcdb5377b5b1",
+            "targetUserId": "entity:d17d5617-7ed2-490c-9834-bcdb5377b5b1",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2717"
+            },
+            "buffName": "逐云寒蕊·不摇",
+            "buffCategory": "BUFF"
+          },
+          {
+            "id": "bcddc007-35a2-4615-ae16-69e0e3cdb51c",
+            "timestamp": {
+              "$numberLong": "1779679964236"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "fa2a1f2f-3846-4601-bece-ee0ed0db3b2d",
+            "timestamp": {
+              "$numberLong": "1779679964237"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "e50b25ef-97d3-4074-9cd9-c9a17f3d8931",
+            "timestamp": {
+              "$numberLong": "1779679964237"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "2b399a02-dcdc-4f31-bc8f-2d231cfcd4e0",
+            "timestamp": {
+              "$numberLong": "1779679966213"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊"
+          },
+          {
+            "id": "278ca92c-a8ef-4a3b-bbf7-9f62486e1c6e",
+            "timestamp": {
+              "$numberLong": "1779679966214"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "entity:9a253f75-8e58-49c9-be25-98f05252209f",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2717"
+            },
+            "buffName": "逐云寒蕊·不摇",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "2e72fdff-ab2d-4370-b661-9547670f2325",
+            "timestamp": {
+              "$numberLong": "1779679966215"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2715"
+            },
+            "buffName": "逐云寒蕊",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "0a7e406b-898b-411f-93b6-0b5ea7c78da1",
+            "timestamp": {
+              "$numberLong": "1779679966215"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊"
+          },
+          {
+            "id": "b099532a-683b-440c-960e-eb91d2e1c8a9",
+            "timestamp": {
+              "$numberLong": "1779679967233"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2716"
+            },
+            "buffName": "逐云寒蕊·隐藏",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "0e8f2538-bb43-4646-83d9-4eb538762d3a",
+            "timestamp": {
+              "$numberLong": "1779679968765"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_EXPIRED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2716"
+            },
+            "buffName": "逐云寒蕊·隐藏",
+            "buffCategory": "BUFF"
+          },
+          {
+            "id": "d1f49963-5820-4b56-a5d6-6fd01fbddf02",
+            "timestamp": {
+              "$numberLong": "1779679969232"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_EXPIRED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2715"
+            },
+            "buffName": "逐云寒蕊",
+            "buffCategory": "BUFF"
+          },
+          {
+            "id": "5c3f55d9-4a14-4e2a-80cc-3f165eb68bc7",
+            "timestamp": {
+              "$numberLong": "1779679969720"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "82803627-d8dc-4b47-b7ef-2f27dc3e92b0",
+            "timestamp": {
+              "$numberLong": "1779679969720"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "8ac5691a-6488-4f3c-9b45-dd01828e4ca5",
+            "timestamp": {
+              "$numberLong": "1779679969720"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "7c9f9b11-8d3d-4fb9-823c-b8b32365f303",
+            "timestamp": {
+              "$numberLong": "1779679973367"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2716"
+            },
+            "buffName": "逐云寒蕊·隐藏",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "86a29e87-d06b-4700-a3a5-393b0cdc8799",
+            "timestamp": {
+              "$numberLong": "1779679978232"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_EXPIRED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2716"
+            },
+            "buffName": "逐云寒蕊·隐藏",
+            "buffCategory": "BUFF"
+          },
+          {
+            "id": "d6bdfe87-c254-405e-895d-549c78e84032",
+            "timestamp": {
+              "$numberLong": "1779679978232"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_EXPIRED",
+            "actorUserId": "entity:9a253f75-8e58-49c9-be25-98f05252209f",
+            "targetUserId": "entity:9a253f75-8e58-49c9-be25-98f05252209f",
+            "abilityId": "zhu_yun_han_rui",
+            "abilityName": "逐云寒蕊",
+            "buffId": {
+              "$numberInt": "2717"
+            },
+            "buffName": "逐云寒蕊·不摇",
+            "buffCategory": "BUFF"
+          },
+          {
+            "id": "a4ac816f-aa89-4388-9585-9931a784d9f3",
+            "timestamp": {
+              "$numberLong": "1779679989380"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜"
+          },
+          {
+            "id": "d8da61dc-eed6-4c52-960b-4fa6948ac1da",
+            "timestamp": {
+              "$numberLong": "1779679989380"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "da7778eb-e489-408e-91c3-a02d28ee7341",
+            "timestamp": {
+              "$numberLong": "1779679989380"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜"
+          },
+          {
+            "id": "86b3aec6-3792-4a1c-ba4c-41830454e94b",
+            "timestamp": {
+              "$numberLong": "1779680047865"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜"
+          },
+          {
+            "id": "6c796722-f9f0-4691-9214-d67e84ba0889",
+            "timestamp": {
+              "$numberLong": "1779680047870"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "11e71c33-7e6d-4f4c-b051-dd165d210f88",
+            "timestamp": {
+              "$numberLong": "1779680047870"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜"
+          },
+          {
+            "id": "a5c2738d-b82b-4707-b8ec-8a456cd81a85",
+            "timestamp": {
+              "$numberLong": "1779680077587"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "16dea733-c09f-46df-afe8-e495c0e489f0",
+            "timestamp": {
+              "$numberLong": "1779680077587"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "fe16e3d6-c002-4ee0-96c5-ec574d26952e",
+            "timestamp": {
+              "$numberLong": "1779680077587"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "6af7dd6c-ee07-4f9b-95d9-7b0f2f769ef8",
+            "timestamp": {
+              "$numberLong": "1779680082143"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪"
+          },
+          {
+            "id": "b518b485-2866-41b4-bb25-3348abe6790d",
+            "timestamp": {
+              "$numberLong": "1779680082143"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "10"
+            }
+          },
+          {
+            "id": "464d7f2a-5a6a-4e55-9379-8df45d44ecdb",
+            "timestamp": {
+              "$numberLong": "1779680082143"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪"
+          },
+          {
+            "id": "e146e0f7-d571-4b8c-8b5d-6db63e0b51db",
+            "timestamp": {
+              "$numberLong": "1779680085439"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "05c31e85-6b0d-4d88-a935-6fc141410903",
+            "timestamp": {
+              "$numberLong": "1779680085440"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "20"
+            }
+          },
+          {
+            "id": "9b88163a-737a-4059-844f-e567313b2497",
+            "timestamp": {
+              "$numberLong": "1779680085440"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "812013a8-90bf-4525-ae12-2881101f5303",
+            "timestamp": {
+              "$numberLong": "1779680089842"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "817ac847-dae7-4979-a670-e283cd0048e7",
+            "timestamp": {
+              "$numberLong": "1779680089842"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "22174f71-78cb-43e6-bf9d-9b3a9683ded5",
+            "timestamp": {
+              "$numberLong": "1779680089842"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "c6b97303-aa38-4e2e-83bc-a2a46cfe1f64",
+            "timestamp": {
+              "$numberLong": "1779680093172"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "b5918f2c-5fe4-4d8e-bf45-9c067921b2ec",
+            "timestamp": {
+              "$numberLong": "1779680093173"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "20"
+            }
+          },
+          {
+            "id": "7f4211c1-60b4-448e-9308-cbbf9906ad0d",
+            "timestamp": {
+              "$numberLong": "1779680093173"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "fa00df63-e0ce-4cdd-ba33-da1f17d4b121",
+            "timestamp": {
+              "$numberLong": "1779680120724"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "a3107f59-7dbe-46fe-b7f5-8fc21a866aaa",
+            "timestamp": {
+              "$numberLong": "1779680120724"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "b45cbf0b-db6b-4c7f-874c-35621caf4a48",
+            "timestamp": {
+              "$numberLong": "1779680120724"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "4e036c87-2712-4185-b1b0-af66b816ed1e",
+            "timestamp": {
+              "$numberLong": "1779680136790"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪"
+          },
+          {
+            "id": "0fb1ff68-dcfb-4129-b2eb-79a98736ec5b",
+            "timestamp": {
+              "$numberLong": "1779680136791"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "10"
+            }
+          },
+          {
+            "id": "0a4ede69-41be-4049-9522-d0160ff4ac29",
+            "timestamp": {
+              "$numberLong": "1779680136791"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪"
+          },
+          {
+            "id": "61422cb8-577d-4ed6-8f8a-d41d7489e0d7",
+            "timestamp": {
+              "$numberLong": "1779680144385"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "c673e61b-a373-40fe-93f5-305f17f41043",
+            "timestamp": {
+              "$numberLong": "1779680144385"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "0fbaf53b-bd46-43b3-9967-e3e4f5b502f8",
+            "timestamp": {
+              "$numberLong": "1779680144385"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "d3002009-21b0-4c38-b0e2-1a5588b064f4",
+            "timestamp": {
+              "$numberLong": "1779680174574"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "f4aef5cf-26bd-41a4-b889-2e1bbd16aebd",
+            "timestamp": {
+              "$numberLong": "1779680174574"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "eac8c661-253d-4fb7-b759-972fa01cebd1",
+            "timestamp": {
+              "$numberLong": "1779680174575"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "f68adb3c-8517-45e2-bf0f-e614a00e237a",
+            "timestamp": {
+              "$numberLong": "1779680181115"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "bff85151-9e4a-45c3-a7df-e2300685baae",
+            "timestamp": {
+              "$numberLong": "1779680181115"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "00609615-2bcd-4a63-9a54-70cba947445f",
+            "timestamp": {
+              "$numberLong": "1779680181115"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "91c200fb-fb95-429a-a70d-f23c7aa6bb2f",
+            "timestamp": {
+              "$numberLong": "1779680197485"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "6970ac81f900736d8df15819",
+            "targetUserId": "6970ac81f900736d8df15819",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "fb63fa54-e9df-4515-a809-0b0b5ad97fc0",
+            "timestamp": {
+              "$numberLong": "1779680197485"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "6970ac81f900736d8df15819",
+            "targetUserId": "6970ac81f900736d8df15819",
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "7a336f7f-898d-405f-81e7-3481f83b1a40",
+            "timestamp": {
+              "$numberLong": "1779680197485"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "6970ac81f900736d8df15819",
+            "targetUserId": "6970ac81f900736d8df15819",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "e09474ab-ec23-4126-815a-893ae2a49d3d",
+            "timestamp": {
+              "$numberLong": "1779680199762"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "6970ac81f900736d8df15819",
+            "targetUserId": "6970ac81f900736d8df15819",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "houyao",
+            "abilityName": "后撤"
+          },
+          {
+            "id": "774ce9a1-5179-49b3-b080-9ae951678b6a",
+            "timestamp": {
+              "$numberLong": "1779680199762"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "6970ac81f900736d8df15819",
+            "targetUserId": "6970ac81f900736d8df15819",
+            "abilityId": "houyao",
+            "abilityName": "后撤",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "3"
+            }
+          },
+          {
+            "id": "615b7097-2be4-41cb-82ea-d569738f929a",
+            "timestamp": {
+              "$numberLong": "1779680199762"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "6970ac81f900736d8df15819",
+            "targetUserId": "6970ac81f900736d8df15819",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "houyao",
+            "abilityName": "后撤"
+          },
+          {
+            "id": "25e0f6a6-c616-4614-a4c3-cd200150d83d",
+            "timestamp": {
+              "$numberLong": "1779680201408"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "6970ac81f900736d8df15819",
+            "targetUserId": "6970ac81f900736d8df15819",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "9e69506c-a9ed-48a8-89dc-62d8f767bc12",
+            "timestamp": {
+              "$numberLong": "1779680201408"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "6970ac81f900736d8df15819",
+            "targetUserId": "6970ac81f900736d8df15819",
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "20"
+            }
+          },
+          {
+            "id": "4e6eea9e-1b63-411f-9d22-6a803fc4f7f3",
+            "timestamp": {
+              "$numberLong": "1779680201408"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "6970ac81f900736d8df15819",
+            "targetUserId": "6970ac81f900736d8df15819",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "376386ca-bce5-4694-b832-7983bcc1c5d6",
+            "timestamp": {
+              "$numberLong": "1779681431051"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "575401a6-b20b-46d8-9210-dcc986cfb6eb",
+            "timestamp": {
+              "$numberLong": "1779681431056"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "20"
+            }
+          },
+          {
+            "id": "bf173c73-abcd-4262-91b3-5a53499bda73",
+            "timestamp": {
+              "$numberLong": "1779681431056"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "0482d93e-f798-4c65-a353-eac82ef8ce51",
+            "timestamp": {
+              "$numberLong": "1779681436614"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "e714787c-0c4a-4185-b34a-5eb24fb894d1",
+            "timestamp": {
+              "$numberLong": "1779681436614"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "9ad71665-0e5e-4941-9a46-fc9baf1b1286",
+            "timestamp": {
+              "$numberLong": "1779681436614"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "d5aae177-c4c2-4244-a2b2-9691f219f9d0",
+            "timestamp": {
+              "$numberLong": "1779681440184"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜"
+          },
+          {
+            "id": "5960dd92-b12c-473b-a4e1-6416e146626d",
+            "timestamp": {
+              "$numberLong": "1779681440184"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "28f22fc6-1dc5-4e6d-b905-1828b7a5c8f9",
+            "timestamp": {
+              "$numberLong": "1779681440184"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜"
+          },
+          {
+            "id": "61bfbceb-695f-4e91-bc40-7a2a48873cb1",
+            "timestamp": {
+              "$numberLong": "1779681442266"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "215fdec0-2d65-4e6e-82e5-5e92774bcb45",
+            "timestamp": {
+              "$numberLong": "1779681442266"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "a865fd46-5dba-424e-bb06-ca048e9c3b55",
+            "timestamp": {
+              "$numberLong": "1779681442266"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "8bcbe66e-3092-4191-aeed-759d2546234e",
+            "timestamp": {
+              "$numberLong": "1779681444390"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "ea136ffe-1d05-46f6-9cb8-7dd360d4a69b",
+            "timestamp": {
+              "$numberLong": "1779681444390"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "20"
+            }
+          },
+          {
+            "id": "1dac37cf-b6cb-41fe-a3ca-6339810f3a96",
+            "timestamp": {
+              "$numberLong": "1779681444391"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "6cfb9e01-dc00-493c-8700-75f38b87f0b3",
+            "timestamp": {
+              "$numberLong": "1779681446659"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "d0191af3-806f-41a5-a6d8-a9b05721bbc7",
+            "timestamp": {
+              "$numberLong": "1779681446659"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "4fcb6523-58cb-4f84-8bdf-4da32539bd84",
+            "timestamp": {
+              "$numberLong": "1779681446660"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "e7b32cfe-7da9-407c-8c8c-a36256a1ffea",
+            "timestamp": {
+              "$numberLong": "1779681451025"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "b8d6b008-27cd-4803-bca3-dbbb21450c12",
+            "timestamp": {
+              "$numberLong": "1779681451025"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "67ab7314-9b39-412b-bb1b-55e863f0dc20",
+            "timestamp": {
+              "$numberLong": "1779681451025"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "95fc9e5b-4935-4795-beb6-34c1b0f12fc0",
+            "timestamp": {
+              "$numberLong": "1779681454336"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "9a0fad6e-df10-41aa-ad15-2f330cc4d065",
+            "timestamp": {
+              "$numberLong": "1779681454336"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "20"
+            }
+          },
+          {
+            "id": "0b70e083-a0e3-4c42-b8b7-e7716ab5a477",
+            "timestamp": {
+              "$numberLong": "1779681454336"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "532713ce-7605-461f-9080-5d75516f083e",
+            "timestamp": {
+              "$numberLong": "1779681456831"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "52386745-5bea-4a3b-a571-e7fddef9331b",
+            "timestamp": {
+              "$numberLong": "1779681456831"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "0a349783-46f5-4a92-9e90-f9862413c6e6",
+            "timestamp": {
+              "$numberLong": "1779681456831"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "3ff9c6a6-e332-43d5-8d7a-e0643f16b6e5",
+            "timestamp": {
+              "$numberLong": "1779681459169"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "6fa91ac0-5198-4cce-9224-aa3602aa9c30",
+            "timestamp": {
+              "$numberLong": "1779681459169"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "20"
+            }
+          },
+          {
+            "id": "76e9aefd-28e7-472f-8796-c76882bcab49",
+            "timestamp": {
+              "$numberLong": "1779681459169"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "2e5125fd-79f8-499d-8446-928c2301328c",
+            "timestamp": {
+              "$numberLong": "1779681461902"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "4ce2f86f-2f31-4f88-9bd2-341ea76602d7",
+            "timestamp": {
+              "$numberLong": "1779681461902"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "4fa00dd6-43c4-49e4-b261-49e91683e64f",
+            "timestamp": {
+              "$numberLong": "1779681461902"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "534bb9de-971c-4808-9f2a-1c27eda37b2d",
+            "timestamp": {
+              "$numberLong": "1779681466494"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪"
+          },
+          {
+            "id": "f6b91a77-9ed8-4d25-891a-88b2483966b9",
+            "timestamp": {
+              "$numberLong": "1779681466494"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "10"
+            }
+          },
+          {
+            "id": "151c32b6-62b1-41b1-ab05-ba0a0dcc7cd7",
+            "timestamp": {
+              "$numberLong": "1779681466495"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪"
+          },
+          {
+            "id": "ab806898-2abd-4487-bd98-57e6722677b1",
+            "timestamp": {
+              "$numberLong": "1779681468667"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "4f9e9c60-fdd4-41aa-a0cc-5a980839e87b",
+            "timestamp": {
+              "$numberLong": "1779681468668"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "aba5cc97-eed3-44d9-92d2-ba78d3f4ae3d",
+            "timestamp": {
+              "$numberLong": "1779681468668"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "2c95b2d0-4bb7-401f-b778-b6b4794673bb",
+            "timestamp": {
+              "$numberLong": "1779681472683"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "fuyao_zhishang",
+            "abilityName": "扶摇直上"
+          },
+          {
+            "id": "02b90eee-8d78-43a7-b6c1-b4ca2f5f3695",
+            "timestamp": {
+              "$numberLong": "1779681472685"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "BUFF_APPLIED",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "fuyao_zhishang",
+            "abilityName": "扶摇直上",
+            "buffId": {
+              "$numberInt": "9001"
+            },
+            "buffName": "弹跳",
+            "buffCategory": "BUFF",
+            "appliedAtTurn": {
+              "$numberInt": "0"
+            }
+          },
+          {
+            "id": "783f3027-12b7-44ff-80b1-86d7b754917a",
+            "timestamp": {
+              "$numberLong": "1779681472685"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "fuyao_zhishang",
+            "abilityName": "扶摇直上"
+          },
+          {
+            "id": "fa3b19df-0610-444c-95f4-79812854076a",
+            "timestamp": {
+              "$numberLong": "1779681475489"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "9b67bea9-7956-49cd-a788-169931e89f08",
+            "timestamp": {
+              "$numberLong": "1779681475490"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "20"
+            }
+          },
+          {
+            "id": "cb60be86-ef38-49ac-8004-0317f62b5256",
+            "timestamp": {
+              "$numberLong": "1779681475490"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "nieyun_zhuyue",
+            "abilityName": "蹑云逐月"
+          },
+          {
+            "id": "a511c085-442d-4330-831d-97301a609ed3",
+            "timestamp": {
+              "$numberLong": "1779681479692"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "f2297b93-5cab-40ca-bff0-177e6c2a927e",
+            "timestamp": {
+              "$numberLong": "1779681479692"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "163ab428-b7b0-4b75-be82-20e1163e547d",
+            "timestamp": {
+              "$numberLong": "1779681479692"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "e036f383-4fe1-4e67-9995-6d08446a412b",
+            "timestamp": {
+              "$numberLong": "1779681485978"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "2b530f2d-f025-4cc2-a94d-895b470eef8f",
+            "timestamp": {
+              "$numberLong": "1779681485978"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "2005105e-b4fb-4581-a4a1-35f80732366f",
+            "timestamp": {
+              "$numberLong": "1779681485979"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "e5179c08-7edb-4c73-ab0e-0288190d23ff",
+            "timestamp": {
+              "$numberLong": "1779681487579"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "a8b9a0e7-e801-4634-8576-a278dff44964",
+            "timestamp": {
+              "$numberLong": "1779681487579"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "0bab5f0f-f4d3-461f-ac8f-e82a4e243ec0",
+            "timestamp": {
+              "$numberLong": "1779681487579"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "16408689-ea24-4149-ade2-3a7e398d8901",
+            "timestamp": {
+              "$numberLong": "1779681491086"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "360b5a5e-4bce-4070-98f4-a80b4a509410",
+            "timestamp": {
+              "$numberLong": "1779681491086"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "c5c10f96-28b7-49f6-b694-880d53a5fd12",
+            "timestamp": {
+              "$numberLong": "1779681491086"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "2a302a2c-f590-4cc2-a3ae-a0813cfeddbf",
+            "timestamp": {
+              "$numberLong": "1779681494379"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "dffefe1b-ef5f-421c-8558-a30c2553d3d8",
+            "timestamp": {
+              "$numberLong": "1779681494379"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "cd80cf0e-049b-4e66-8699-e8df9cbc55ff",
+            "timestamp": {
+              "$numberLong": "1779681494379"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "2fda0a61-b9c1-4d2f-825c-30ae77076d3a",
+            "timestamp": {
+              "$numberLong": "1779681498824"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "8bf73dac-4259-4d0f-a26d-86f4dc88fad5",
+            "timestamp": {
+              "$numberLong": "1779681498824"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "d05bac3f-89ae-426a-8812-c5ba3d8f2853",
+            "timestamp": {
+              "$numberLong": "1779681498824"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "07c39a8e-1779-4e47-9e90-da033f4b53c4",
+            "timestamp": {
+              "$numberLong": "1779681502142"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "5f5a8f07-6238-4b17-bef7-1d02f1e21fd8",
+            "timestamp": {
+              "$numberLong": "1779681502142"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "5b35aa38-3fb7-4d2e-8bec-9d151b191a10",
+            "timestamp": {
+              "$numberLong": "1779681502142"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "da0fb0a0-c670-4750-9eb5-17904b82a05f",
+            "timestamp": {
+              "$numberLong": "1779681505724"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪"
+          },
+          {
+            "id": "1a0f6b63-6129-4044-b4d7-137f283356db",
+            "timestamp": {
+              "$numberLong": "1779681505724"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "10"
+            }
+          },
+          {
+            "id": "ed9aa4f1-4b27-4d3d-8346-b7fcb5a429c9",
+            "timestamp": {
+              "$numberLong": "1779681505725"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yingfeng_huilang",
+            "abilityName": "迎风回浪"
+          },
+          {
+            "id": "cb2de2cd-9c8a-4024-b269-b896537f146c",
+            "timestamp": {
+              "$numberLong": "1779681508770"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "1d725484-03ad-451f-aba8-02fe9f605812",
+            "timestamp": {
+              "$numberLong": "1779681508770"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "98786a01-ee18-49cf-b694-ab9a166761bf",
+            "timestamp": {
+              "$numberLong": "1779681508770"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": null,
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lin_shi_fei_zhua",
+            "abilityName": "临时飞爪"
+          },
+          {
+            "id": "ae9316a3-8bcf-45aa-98af-e80dd704c2fb",
+            "timestamp": {
+              "$numberLong": "1779681514229"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜"
+          },
+          {
+            "id": "f2db37d4-e472-4b7f-b211-a24f1dfb9abf",
+            "timestamp": {
+              "$numberLong": "1779681514229"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "11ab5a83-49ec-4315-873d-58f9b052c01a",
+            "timestamp": {
+              "$numberLong": "1779681514229"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "lingxiao_lansheng",
+            "abilityName": "凌霄揽胜"
+          },
+          {
+            "id": "be7a54aa-f6bc-44b5-bb67-0669117713bb",
+            "timestamp": {
+              "$numberLong": "1779681517603"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          },
+          {
+            "id": "8d98d79d-6790-4ca3-b881-4e74a84db5f0",
+            "timestamp": {
+              "$numberLong": "1779681517603"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "DASH",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤",
+            "effectType": "DIRECTIONAL_DASH",
+            "value": {
+              "$numberInt": "7"
+            }
+          },
+          {
+            "id": "703679fb-9937-4a7a-a68e-adfd6f515ee5",
+            "timestamp": {
+              "$numberLong": "1779681517604"
+            },
+            "turn": {
+              "$numberInt": "0"
+            },
+            "type": "PLAY_ABILITY",
+            "actorUserId": "697076e1877c4c3465dcea36",
+            "targetUserId": "697076e1877c4c3465dcea36",
+            "entityId": null,
+            "entityName": null,
+            "abilityId": "yaotai_zhenhe",
+            "abilityName": "瑶台枕鹤"
+          }
+        ],
+        "pickups": [],
+        "entities": [],
+        "leaveNotice": {
+          "userId": "697076e1877c4c3465dcea36",
+          "username": "猫猫糕",
+          "endsAt": {
+            "$numberLong": "1779681524121"
+          }
+        },
+        "endedByUserId": "697076e1877c4c3465dcea36"
+      },
+      "started": true,
+      "turn": null,
+      "playerNames": {
+        "697076e1877c4c3465dcea36": "猫猫糕",
+        "6970ac81f900736d8df15819": "游客"
+      },
+      "autoStart": true,
+      "mode": "collision-test",
+      "tournament": {
+        "battleNumber": {
+          "$numberInt": "1"
+        },
+        "gameHp": {
+          "697076e1877c4c3465dcea36": {
+            "$numberInt": "100"
+          },
+          "6970ac81f900736d8df15819": {
+            "$numberInt": "100"
+          }
+        },
+        "economy": {
+          "697076e1877c4c3465dcea36": {
+            "gold": {
+              "$numberInt": "5"
+            },
+            "level": {
+              "$numberInt": "1"
+            },
+            "experience": {
+              "$numberInt": "0"
+            }
+          },
+          "6970ac81f900736d8df15819": {
+            "gold": {
+              "$numberInt": "5"
+            },
+            "level": {
+              "$numberInt": "1"
+            },
+            "experience": {
+              "$numberInt": "0"
+            }
+          }
+        },
+        "selectedAbilities": {
+          "697076e1877c4c3465dcea36": [
+            {
+              "instanceId": "21a69710-df68-410f-a78c-e0b1f37fac9e",
+              "abilityId": "zhu_yun_han_rui",
+              "cooldown": {
+                "$numberInt": "0"
+              },
+              "slotIndex": {
+                "$numberInt": "0"
+              }
+            },
+            {
+              "instanceId": "85f45915-e7c6-4d3a-b172-33281bc85fa2",
+              "abilityId": "lin_shi_fei_zhua",
+              "cooldown": {
+                "$numberInt": "0"
+              },
+              "slotIndex": {
+                "$numberInt": "1"
+              }
+            }
+          ],
+          "6970ac81f900736d8df15819": []
+        },
+        "bench": {
+          "697076e1877c4c3465dcea36": [],
+          "6970ac81f900736d8df15819": []
+        },
+        "battleHistory": [],
+        "shop": {
+          "697076e1877c4c3465dcea36": {
+            "abilities": [
+              {
+                "instanceId": "237d48e0-139b-4dba-b3b0-cdbd0f6f5961",
+                "abilityId": "xinglou_yueying",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "aa7bb56b-3446-41c5-af6e-cc1aa7e10cb9",
+                "abilityId": "fenglai_wushan",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "35e4d265-3674-4998-a9de-705976223ace",
+                "abilityId": "ren_jian_he_yi",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "bf45382d-c363-4f88-8503-69ee6faaeaf3",
+                "abilityId": "kang_long_you_hui",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "8e84f71a-557b-48b8-b0ab-b351e1042fcf",
+                "abilityId": "mie",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "069cbd0a-5632-4dde-8461-c919ae55c03d",
+                "abilityId": "qiang_zhu_shi",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              }
+            ],
+            "locked": [
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          },
+          "6970ac81f900736d8df15819": {
+            "abilities": [
+              {
+                "instanceId": "18799485-fba6-4e1b-a34f-a4bc3f2326d2",
+                "abilityId": "tian_di_di_ang",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "e4302a20-a27f-4cae-bfb4-8be828e154f6",
+                "abilityId": "chuan",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "413aa095-31ac-45fe-9deb-70405b4f917d",
+                "abilityId": "gu_ying_hua_shuang",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "1b570254-b014-4470-a9a2-34e207fc4fdf",
+                "abilityId": "zhen_chi_tu_nan",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "4af23090-d81f-4fda-9b83-ed8377daba8a",
+                "abilityId": "cheng_huang_zhi_wei",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              },
+              {
+                "instanceId": "b4c4d0d5-4419-4ce0-bd5e-427cf36187e9",
+                "abilityId": "jieyang",
+                "cooldown": {
+                  "$numberInt": "0"
+                }
+              }
+            ],
+            "locked": [
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          }
+        },
+        "phase": "BATTLE"
+      },
+      "createdAt": {
+        "$date": {
+          "$numberLong": "1779679890570"
+        }
+      },
+      "updatedAt": {
+        "$date": {
+          "$numberLong": "1779681524127"
+        }
+      },
+      "__v": {
+        "$numberInt": "1"
+      }
+    }
+  ]
+}

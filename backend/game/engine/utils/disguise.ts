@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import type { BuffDefinition, GameState, PlayerState } from "../state/types";
+import { isRuntimeBuffActive } from "../rules/guards";
 
 export const SAND_DISGUISE_CONSUMABLE_ID = "sha_shi_wei_zhuang";
 export const SAND_DISGUISE_CONSUMABLE_NAME = "砂石伪装";
@@ -46,7 +47,7 @@ export function isDisguiseBuff(buff: any): boolean {
 }
 
 export function hasDisguiseBuff(player: Pick<PlayerState, "buffs"> | null | undefined): boolean {
-  return Array.isArray(player?.buffs) && player.buffs.some(isDisguiseBuff);
+  return Array.isArray(player?.buffs) && player.buffs.some((buff) => isRuntimeBuffActive(buff) && isDisguiseBuff(buff));
 }
 
 export function clearTargetSelectionsTargetingPlayer(state: GameState, targetUserId: string): boolean {

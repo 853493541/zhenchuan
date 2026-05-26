@@ -1,6 +1,7 @@
 // backend/game/engine/utils/combatMath.ts
 
 import { ActiveBuff, STARTING_ATTACK_DAMAGE } from "../state/types";
+import { getActiveRuntimeBuffs } from "../rules/guards";
 
 const BASE_CRIT_DAMAGE_MULTIPLIER = 1.75;
 const FLAT_HEAL_SCALE = 10_000;
@@ -38,7 +39,7 @@ export function getAttackDamage(source: { attackDamage?: number; buffs?: ActiveB
   const raw = Number(source?.attackDamage ?? STARTING_ATTACK_DAMAGE);
   const baseAttackDamage = Number.isFinite(raw) && raw > 0 ? raw : STARTING_ATTACK_DAMAGE;
   let attackDamageBonus = 0;
-  for (const buff of source?.buffs ?? []) {
+  for (const buff of getActiveRuntimeBuffs({ buffs: source?.buffs ?? [] })) {
     const stacks = Math.max(1, Number(buff.stacks ?? 1));
     for (const effect of buff.effects ?? []) {
       if (effect.type !== "ATTACK_DAMAGE_MULTIPLIER") continue;
@@ -65,7 +66,7 @@ function getCritBonusPctFromBuffs(
   damageType?: string,
 ): number {
   let total = 0;
-  const buffs = source?.buffs ?? [];
+  const buffs = getActiveRuntimeBuffs({ buffs: source?.buffs ?? [] });
   for (const buff of buffs) {
     const stacks = Math.max(1, Number(buff.stacks ?? 1));
     for (const eff of buff.effects ?? []) {
@@ -88,7 +89,7 @@ function getCritEffectBonusFromBuffs(
   damageType?: string,
 ): number {
   let total = 0;
-  const buffs = source?.buffs ?? [];
+  const buffs = getActiveRuntimeBuffs({ buffs: source?.buffs ?? [] });
   for (const buff of buffs) {
     const stacks = Math.max(1, Number(buff.stacks ?? 1));
     for (const eff of buff.effects ?? []) {
@@ -173,7 +174,7 @@ export function resolveRawDamageWithCrit(params: {
 }
 
 function allEffects(target: { buffs: ActiveBuff[] }) {
-  return target.buffs.flatMap((b) => b.effects);
+  return getActiveRuntimeBuffs(target).flatMap((b) => b.effects);
 }
 
 function getTargetDefensePct(target: DamageTarget): number {
@@ -181,7 +182,7 @@ function getTargetDefensePct(target: DamageTarget): number {
   if (!Number.isFinite(baseDefense) || baseDefense <= 0) return 0;
 
   let multiplier = 1;
-  for (const buff of target.buffs ?? []) {
+  for (const buff of getActiveRuntimeBuffs({ buffs: target.buffs ?? [] })) {
     const stacks = Math.max(1, Number(buff.stacks ?? 1));
     for (const effect of buff.effects ?? []) {
       if (effect.type !== "DEFENSE_MULTIPLIER") continue;
@@ -218,7 +219,7 @@ function applyTargetSideDamageModifiers(params: {
     dmg *= Math.max(0, 1 - defensePct / 100);
   }
 
-  const takenIncSum = params.target.buffs.reduce((sum, buff) => {
+  const takenIncSum = getActiveRuntimeBuffs(params.target).reduce((sum, buff) => {
     const e = buff.effects.find((eff) => eff.type === "DAMAGE_TAKEN_INCREASE");
     if (!e) return sum;
     const stacks = buff.stacks ?? 1;
@@ -272,7 +273,7 @@ export function resolveScheduledDamageRoll(params: {
   // Stack additively by bonus portion per stack: value 1.1 with 3 stacks = +30%
   // If a buff effect has restrictToAbilityId set, it only applies when abilityId matches.
   let dmgMultiBonus = 0;
-  for (const buff of params.source.buffs) {
+  for (const buff of getActiveRuntimeBuffs(params.source)) {
     const dmEff = buff.effects.find((e) => e.type === "DAMAGE_MULTIPLIER");
     if (dmEff) {
       if ((dmEff as any).restrictToAbilityId && (dmEff as any).restrictToAbilityId !== params.abilityId) continue;
@@ -343,7 +344,7 @@ export function resolveNonCritHealAmountRoll(params: {
   }
 
   // Sum HEAL_REDUCTION across all buffs, multiplied by stack count for stackable debuffs.
-  const totalHealReduction = params.target.buffs.reduce((sum, buff) => {
+  const totalHealReduction = getActiveRuntimeBuffs(params.target).reduce((sum, buff) => {
     const hr = buff.effects.find((e) => e.type === "HEAL_REDUCTION");
     if (!hr) return sum;
     const stacks = buff.stacks ?? 1;

@@ -1,4 +1,11 @@
 {
+  "scripts": {
+    "db:status": "npm --prefix backend run db:status",
+    "db:export": "npm --prefix backend run db:export",
+    "db:import": "npm --prefix backend run db:import",
+    "db:users": "npm --prefix backend run db:users",
+    "db:reset-local-users": "npm --prefix backend run db:reset-local-users"
+  },
   "dependencies": {
     "clsx": "^2.1.1",
     "lucide-react": "^0.544.0",

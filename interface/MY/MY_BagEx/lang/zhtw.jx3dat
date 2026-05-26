@@ -1,0 +1,109 @@
+return {
+    ['MY_BagEx'] = '背包助手',
+
+    -- MY_BagEx_GenericFilters.lua --
+    ['Search'] = '搜索',
+    ['Time Limited'] = '限時',
+    ['Generic package searcher and filters'] = '背包、倉庫搜索與對比',
+    ['Compare with bag'] = '對比背包',
+
+    -- MY_BagEx_BagNewItem.lua --
+    ['Bag new item'] = '背包新物品',
+    ['Put new bag item to bottom'] = '背包新獲得物品放置到最後面',
+    ['Avoid locked bag box'] = '避開鎖定的背包格子',
+    ['Ignore exist item'] = '不移動已存在的堆疊物品',
+
+    -- MY_BagEx_Bag.lua --
+    ['Bag'] = '背包',
+    ['Sort need confirm'] = '整理需要二次確認',
+    ['Lock cells data'] = '鎖定格子位置',
+    ['Bag package sort and stack'] = '背包整理、堆疊、鎖定',
+    ['Need confirm'] = '需要二次確認',
+
+    -- MY_BagEx_BagSort.lua --
+    ['Bag contains book only, use official sort please!'] = '整理失敗，背包包含書包，請使用官方整理功能！',
+    ['Bag contains material only, use official sort please!'] = '整理失敗，背包包含礦石包，請使用官方整理功能！',
+    ['Bag panel closed, sort exited!'] = '背包界面已關閉，停止整理！',
+    ['Cannot find item temp position, bag is full, sort exited!'] = '無法獲取臨時位置，背包可能已滿，停止整理！',
+    ['Bag item changed, sort finished, result may not be perfect!'] = '背包物品不一致，整理結束，結果可能不完美！',
+    ['Put new item in bag detected, sort exited!'] = '背包放入新物品，停止整理！',
+    ['Sort'] = '整理',
+    ['Press shift for random, right click to import and export'] = '按住SHIFT隨機打亂，點擊右鍵導入導出',
+    ['Sure to start bag sort?'] = '確認要進行背包物品整理嗎？',
+    ['Export blueprint'] = '導出佈局',
+    ['Import blueprint'] = '導入佈局',
+    ['Please input blueprint'] = '請輸入佈局數據',
+    ['Invalid blueprint data'] = '佈局數據解析失敗',
+
+    -- MY_BagEx_BagSplit.lua --
+    ['Split'] = '拆分',
+    ['Split stacked items (hotkey SHIFT+LClick)'] = '拆分疊加的物品（快捷方式：Shift+滑鼠左鍵）',
+
+    -- MY_BagEx_BagStack.lua --
+    ['Bag panel closed, stack exited!'] = '背包界面已關閉，停止堆疊！',
+    ['Put new item in bag detected, stack exited!'] = '背包放入新物品，停止堆疊！',
+    ['Stack'] = '堆疊',
+    ['Sure to start bag stack?'] = '確認要進行背包物品堆疊嗎？',
+
+    -- MY_BagEx_BagLock.lua --
+    ['Lock'] = '鎖定',
+
+    -- MY_BagEx_Bank.lua --
+    ['Bank'] = '倉庫',
+    ['Sort need confirm'] = '整理需要二次確認',
+    ['Lock cells data'] = '鎖定格子位置',
+    ['Bank package sort and stack'] = '倉庫整理、堆疊、鎖定',
+    ['Need confirm'] = '需要二次確認',
+
+    -- MY_BagEx_BankSort.lua --
+    ['Please unlock mibao first.'] = '請先解除密保鎖。',
+    ['Bank contains book only, use official sort please!'] = '整理失敗，倉庫包含書包，請使用官方整理功能！',
+    ['Bank contains material only, use official sort please!'] = '整理失敗，倉庫包含礦石包，請使用官方整理功能！',
+    ['Bank panel closed, sort exited!'] = '倉庫界面已關閉，停止整理！',
+    ['Cannot find item temp position, bank is full, sort exited!'] = '無法獲取臨時位置，倉庫可能已滿，停止整理！',
+    ['Bank item changed, sort finished, result may not be perfect!'] = '倉庫物品不一致，整理結束，結果可能不完美！',
+    ['Put new item in bank detected, sort exited!'] = '倉庫放入新物品，停止整理！',
+    ['Sort'] = '整理',
+    ['Press shift for random, right click to import and export'] = '按住SHIFT隨機打亂，點擊右鍵導入導出',
+    ['Sure to start bank sort?'] = '確認要進行倉庫物品整理嗎？',
+    ['Export blueprint'] = '導出佈局',
+    ['Import blueprint'] = '導入佈局',
+    ['Please input blueprint'] = '請輸入佈局數據',
+    ['Invalid blueprint data'] = '佈局數據解析失敗',
+
+    -- MY_BagEx_BankStack.lua --
+    ['Please unlock mibao first.'] = '請先解除密保鎖。',
+    ['Bank panel closed, stack exited!'] = '倉庫界面已關閉，停止堆疊！',
+    ['Put new item in bank detected, stack exited!'] = '倉庫放入新物品，停止堆疊！',
+    ['Stack'] = '堆疊',
+    ['Sure to start bank stack?'] = '確認要進行倉庫物品堆疊嗎？',
+
+    -- MY_BagEx_BankLock.lua --
+    ['Lock'] = '鎖定',
+
+    -- MY_BagEx_GuildBank.lua --
+    ['GuildBank'] = '幫會倉庫',
+    ['Sort need confirm'] = '整理需要二次確認',
+    ['Guild package sort and stack'] = '幫會倉庫整理與堆疊',
+    ['Need confirm'] = '需要二次確認',
+
+    -- MY_BagEx_GuildBankSort.lua --
+    ['Please unlock mibao first.'] = '請先解除密保鎖。',
+    ['Guild box closed or page changed, sort exited!'] = '幫會倉庫已關閉或頁碼發生變化，停止整理！',
+    ['Cannot find item temp position, guild bank is full, sort exited!'] = '無法獲取臨時位置，倉庫可能已滿，停止整理！',
+    ['Guild bank item changed, sort finished, result may not be perfect!'] = '倉庫物品不一致，整理結束，結果可能不完美！',
+    ['Put item in guild detected, sort exited!'] = '幫會倉庫放入新物品，停止整理！',
+    ['Unknown exception occurred, sort exited!'] = '發生未知錯誤，停止整理！',
+    ['Sort'] = '整理',
+    ['Press shift for random, right click to import and export'] = '按住SHIFT隨機打亂，點擊右鍵導入導出',
+    ['Sure to start guild bank sort?'] = '確認要進行幫會倉庫物品整理嗎？',
+    ['Export blueprint'] = '導出佈局',
+    ['Import blueprint'] = '導入佈局',
+    ['Please input blueprint'] = '請輸入佈局數據',
+    ['Invalid blueprint data'] = '佈局數據解析失敗',
+
+    -- MY_BagEx_GuildBankStack.lua --
+    ['Stack'] = '堆疊',
+    ['Please unlock mibao first.'] = '請先解除密保鎖。',
+    ['Sure to start guild bank stack?'] = '確認要進行幫會倉庫物品堆疊嗎？',
+}

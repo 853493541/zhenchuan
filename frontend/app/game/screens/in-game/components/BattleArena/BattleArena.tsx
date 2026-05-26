@@ -1,15 +1,15 @@
 'use client';
 
-import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import styles from './BattleArena.module.css';
 import WASDButtons from './WASDButtons';
 import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, ChannelBarHost, type ChannelBarData } from './ChannelBar';
-import { ArrowLeft, ArrowUp, Check, ChevronDown, Clipboard, Download, Gamepad2, LayoutGrid, ListChecks, MessageCircle, Minus, Pencil, Plus, Puzzle, RotateCcw, Save, Search, Settings, Star, Swords, Trash2, UploadCloud, UserRound, Volume2, Wind, X } from 'lucide-react';
+import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowUp, ArrowUpToLine, Check, ChevronDown, Clipboard, CornerDownLeft, Download, Eraser, Gamepad2, Image as ImageIcon, LayoutGrid, ListChecks, MessageCircle, Minus, Pencil, Plus, Puzzle, RotateCcw, Save, Search, Settings, Smile, Star, Swords, Trash2, UploadCloud, UserRound, Volume2, Wind, X } from 'lucide-react';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
-import type { ActiveBuff, ActiveChannel, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
+import type { ActiveBuff, ActiveChannel, ChatChannel, ChatMessage, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles, type SceneRuntimeMetrics } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
@@ -21,6 +21,7 @@ import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase
 import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
 import { formatCrashDiagnosticsReport, getClientCrashRecorder, type CrashRecorderSummary } from '@/app/game/diagnostics/clientCrashRecorder';
 import { getClientLatencyRecorder } from '@/app/game/diagnostics/clientLatencyRecorder';
+import { predictDashRenderPosition, shouldLogDashServerGap, type DashRenderSample } from './dashRenderPrediction';
 
 type V3 = { x: number; y: number; z: number };
 type LoadStageStatus = '完成' | '进行中' | '失败';
@@ -326,11 +327,13 @@ type UiViewportSize = { w: number; h: number };
 type UiPositionStoragePayload = {
   positions: Record<string, UiPosition>;
   viewport: UiViewportSize | null;
+  chat: ChatUiLayoutPayload | null;
 };
 
 const EMPTY_UI_POSITION_STORAGE_PAYLOAD: UiPositionStoragePayload = {
   positions: {},
   viewport: null,
+  chat: null,
 };
 
 function isFiniteNumber(value: unknown): value is number {
@@ -378,6 +381,7 @@ function normalizeUiPositionStoragePayload(raw: unknown): UiPositionStoragePaylo
     viewport: isValidUiViewportSize(payload.viewport)
       ? { w: Math.round(payload.viewport.w), h: Math.round(payload.viewport.h) }
       : null,
+    chat: normalizeChatUiLayoutPayload(payload.chat),
   };
 }
 
@@ -465,6 +469,15 @@ const IN_GAME_WARNING_DURATION_MS = 1500;
 const IN_GAME_WARNING_PREVIEW_TEXT = '无法施展该招式';
 const REQUIRED_POWER_MISSING_WARNING = '经脉受损 无法运功';
 const DASH_GROUND_TARGET_ABILITY_IDS = new Set(['lin_shi_fei_zhua', 'han_di', 'gu_feng_sa_ta']);
+const JUMP_CORRECTION_WARNING_MIN_XY = 0.6;
+const JUMP_CORRECTION_WARNING_MIN_Z = 0.6;
+const JUMP_CORRECTION_WARNING_COOLDOWN_MS = 500;
+const JUMP_CORRECTION_SERVER_LAG_TICKS = 10;
+const JUMP_CORRECTION_SERVER_LAG_MIN_XY = 1.1;
+const JUMP_CORRECTION_SERVER_LAG_MIN_Z = 1.1;
+const JUMP_CORRECTION_PENDING_PHASE_MS = 900;
+const JUMP_CORRECTION_LANDING_GRACE_XY = 5.0;
+const JUMP_CORRECTION_LANDING_GRACE_Z = 6.0;
 const LEGACY_PLAYER_STATUS_UI_KEY = 'player-status-bar';
 const PLAYER_BUFF_STATUS_UI_KEY = 'player-buff-status-bar';
 const PLAYER_DEBUFF_STATUS_UI_KEY = 'player-debuff-status-bar';
@@ -482,6 +495,10 @@ const DISTANCE_INDICATOR_UI_KEY = 'distance-indicator';
 const HEART_STATS_UI_KEY = 'heart-stats-bar';
 const ITEM_BAR_UI_KEY = 'item-bar';
 const MARTIAL_PANEL_UI_KEY = 'martial-panel';
+const CHAT_PANEL_UI_KEY = 'chat-panel';
+const CHAT_CLEAR_DIALOG_UI_KEY = 'chat-clear-dialog';
+const getDetachedChatWindowUiKey = (detachedId: string) => `chat-detached-${detachedId}`;
+const isDetachedChatWindowUiKey = (key: string) => key.startsWith('chat-detached-');
 const CATCAKE_DEFAULT_UI_VIEWPORT: UiViewportSize = { w: 1920, h: 945 };
 const CATCAKE_DEFAULT_UI_POSITIONS: Record<string, UiPosition> = {
   [PLAYER_ICON_BAR_UI_KEY]: { left: 457, top: 463 },
@@ -500,6 +517,8 @@ const CATCAKE_DEFAULT_UI_POSITIONS: Record<string, UiPosition> = {
   [ITEM_BAR_UI_KEY]: { left: 647, top: 751 },
   [HEART_STATS_UI_KEY]: { left: 194, top: 466 },
   [MARTIAL_PANEL_UI_KEY]: { left: 24, top: 88 },
+  [CHAT_PANEL_UI_KEY]: { left: 10, top: 667 },
+  [CHAT_CLEAR_DIALOG_UI_KEY]: { left: 665, top: 114 },
 };
 const DRAFT_ABILITY_SLOT_COUNT = 6;
 const ITEM_BAR_SLOT_COUNT = 14;
@@ -573,6 +592,395 @@ const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
   followMode: 'never',
   version: 2,
 };
+type ChatSettings = {
+  fontFamily: 'simhei';
+  fontSize: number;
+  backgroundOpacity: number;
+};
+type ChatPanelSize = {
+  width: number;
+  height: number;
+};
+type ChatSettingsModalSize = {
+  width: number;
+  height: number;
+};
+type ChatSettingsMainTab = 'page' | 'window';
+type ChatWindowConfig = {
+  id: string;
+  name: string;
+  channels: ChatChannel[];
+  hidden?: boolean;
+  lockedName?: boolean;
+  lockedDelete?: boolean;
+};
+type ChatClearDialogLayout = {
+  width: number;
+  height: number;
+};
+type DetachedChatWindow = {
+  id: string;
+  windowIds: string[];
+  activeWindowId: string;
+};
+type ChatSearchState = {
+  open: boolean;
+  query: string;
+};
+type ChatScrollMetrics = {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+};
+type ChatUiLayoutPayload = {
+  panelSize: ChatPanelSize;
+  settings?: ChatSettings;
+  settingsModalSize?: ChatSettingsModalSize;
+  windows?: ChatWindowConfig[];
+  activeWindowId?: string;
+  detachedWindows?: DetachedChatWindow[];
+  detachedPanelSizes?: Record<string, ChatPanelSize>;
+};
+const CHAT_SETTINGS_STORAGE_KEY = 'zhenchuan-chat-settings-v1';
+const CHAT_SETTINGS_MODAL_SIZE_STORAGE_KEY = 'zhenchuan-chat-settings-modal-size-v1';
+const CHAT_WINDOWS_STORAGE_KEY = 'zhenchuan-chat-windows-v1';
+const CHAT_ACTIVE_WINDOW_STORAGE_KEY = 'zhenchuan-chat-active-window-v1';
+const CHAT_CLEAR_DIALOG_LAYOUT_STORAGE_KEY = 'zhenchuan-chat-clear-dialog-layout-v1';
+const CHAT_FONT_OPTIONS = [
+  { id: 'simhei' as const, label: '黑体', css: 'SimHei, "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif' },
+];
+const CHAT_FONT_SIZE_OPTIONS = [15, 16, 17, 18, 19, 20];
+const DEFAULT_CHAT_SETTINGS: ChatSettings = {
+  fontFamily: 'simhei',
+  fontSize: 18,
+  backgroundOpacity: 50,
+};
+const CHAT_PANEL_DEFAULT_WIDTH = 548;
+const CHAT_PANEL_DEFAULT_HEIGHT = 236;
+const CHAT_MAX_INPUT_LENGTH = 180;
+const CHAT_SETTINGS_MODAL_BASE_WIDTH = 705;
+const CHAT_SETTINGS_MODAL_BASE_HEIGHT = 495;
+const CHAT_SETTINGS_MODAL_SETTING_MIN_SCALE = 0.5;
+const CHAT_SETTINGS_MODAL_SETTING_MAX_SCALE = 2;
+const CHAT_SETTINGS_MODAL_MIN_WIDTH = Math.round(CHAT_SETTINGS_MODAL_BASE_WIDTH * CHAT_SETTINGS_MODAL_SETTING_MIN_SCALE);
+const CHAT_SETTINGS_MODAL_MAX_WIDTH = Math.round(CHAT_SETTINGS_MODAL_BASE_WIDTH * CHAT_SETTINGS_MODAL_SETTING_MAX_SCALE);
+const CHAT_SETTINGS_MODAL_MIN_HEIGHT = Math.round(CHAT_SETTINGS_MODAL_BASE_HEIGHT * CHAT_SETTINGS_MODAL_SETTING_MIN_SCALE);
+const CHAT_SETTINGS_MODAL_MAX_HEIGHT = Math.round(CHAT_SETTINGS_MODAL_BASE_HEIGHT * CHAT_SETTINGS_MODAL_SETTING_MAX_SCALE);
+const DEFAULT_CHAT_SETTINGS_MODAL_SIZE: ChatSettingsModalSize = {
+  width: CHAT_SETTINGS_MODAL_BASE_WIDTH,
+  height: CHAT_SETTINGS_MODAL_BASE_HEIGHT,
+};
+const CHAT_CLEAR_DIALOG_LEGACY_BASE_WIDTH = 590;
+const CHAT_CLEAR_DIALOG_LEGACY_BASE_HEIGHT = 206;
+const CHAT_CLEAR_DIALOG_BASE_WIDTH = Math.round(CHAT_CLEAR_DIALOG_LEGACY_BASE_WIDTH * 0.3);
+const CHAT_CLEAR_DIALOG_BASE_HEIGHT = Math.round(CHAT_CLEAR_DIALOG_LEGACY_BASE_HEIGHT * 0.3);
+const CHAT_CLEAR_DIALOG_DEFAULT_WIDTH_SCALE = 1.3;
+const CHAT_CLEAR_DIALOG_DEFAULT_HEIGHT_SCALE = 2;
+const CHAT_CLEAR_DIALOG_SETTING_MIN_SCALE = 0.1;
+const CHAT_CLEAR_DIALOG_SETTING_MAX_SCALE = 2;
+const CHAT_CLEAR_DIALOG_MIN_WIDTH = Math.round(CHAT_CLEAR_DIALOG_BASE_WIDTH * CHAT_CLEAR_DIALOG_SETTING_MIN_SCALE);
+const CHAT_CLEAR_DIALOG_MAX_WIDTH = Math.round(CHAT_CLEAR_DIALOG_BASE_WIDTH * CHAT_CLEAR_DIALOG_SETTING_MAX_SCALE);
+const CHAT_CLEAR_DIALOG_MIN_HEIGHT = Math.round(CHAT_CLEAR_DIALOG_BASE_HEIGHT * CHAT_CLEAR_DIALOG_SETTING_MIN_SCALE);
+const CHAT_CLEAR_DIALOG_MAX_HEIGHT = Math.round(CHAT_CLEAR_DIALOG_BASE_HEIGHT * CHAT_CLEAR_DIALOG_SETTING_MAX_SCALE);
+const DEFAULT_CHAT_CLEAR_DIALOG_LAYOUT: ChatClearDialogLayout = {
+  width: Math.round(CHAT_CLEAR_DIALOG_BASE_WIDTH * CHAT_CLEAR_DIALOG_DEFAULT_WIDTH_SCALE),
+  height: Math.round(CHAT_CLEAR_DIALOG_BASE_HEIGHT * CHAT_CLEAR_DIALOG_DEFAULT_HEIGHT_SCALE),
+};
+const EMPTY_CHAT_SEARCH_STATE: ChatSearchState = { open: false, query: '' };
+const EMPTY_CHAT_SCROLL_METRICS: ChatScrollMetrics = { scrollTop: 0, scrollHeight: 1, clientHeight: 1 };
+const CHAT_CHANNEL_LABELS: Record<ChatChannel, string> = {
+  map: '地图',
+  system: '系统',
+  battle: '战斗',
+};
+const CHAT_CHANNEL_COLORS: Record<ChatChannel, string> = {
+  map: '#ff7f86',
+  system: '#ffff00',
+  battle: '#f4f4f1',
+};
+const DEFAULT_CHAT_WINDOWS: ChatWindowConfig[] = [
+  { id: 'combined', name: '综合', channels: ['map', 'system'], lockedName: true, lockedDelete: true },
+  { id: 'map', name: '地图', channels: ['map'], lockedDelete: false },
+  { id: 'system', name: '系统', channels: ['system'], lockedDelete: false },
+  { id: 'battle', name: '战斗', channels: ['battle'], lockedDelete: false },
+];
+const CHAT_WINDOW_CHANNEL_OPTIONS: Array<{ id: ChatChannel; label: string; disabled?: boolean }> = [
+  { id: 'map', label: '地图频道' },
+  { id: 'system', label: '系统频道' },
+  { id: 'battle', label: '战斗频道' },
+];
+
+function normalizeChatFontSize(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_CHAT_SETTINGS.fontSize;
+  return Math.round(Math.max(15, Math.min(20, numeric)));
+}
+
+function normalizeChatOpacity(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_CHAT_SETTINGS.backgroundOpacity;
+  return Math.round(Math.max(0, Math.min(100, numeric)));
+}
+
+function normalizeChatSettings(value: unknown): ChatSettings {
+  const candidate = value && typeof value === 'object' ? value as Partial<ChatSettings> : {};
+  return {
+    fontFamily: 'simhei',
+    fontSize: normalizeChatFontSize(candidate.fontSize),
+    backgroundOpacity: normalizeChatOpacity(candidate.backgroundOpacity),
+  };
+}
+
+function loadChatSettings(): ChatSettings {
+  try {
+    if (typeof window === 'undefined') return DEFAULT_CHAT_SETTINGS;
+    return normalizeChatSettings(JSON.parse(localStorage.getItem(CHAT_SETTINGS_STORAGE_KEY) ?? '{}'));
+  } catch {
+    return DEFAULT_CHAT_SETTINGS;
+  }
+}
+
+function normalizeChatSettingsModalWidth(value: unknown): number {
+  return normalizeNumberInRange(value, DEFAULT_CHAT_SETTINGS_MODAL_SIZE.width, CHAT_SETTINGS_MODAL_MIN_WIDTH, CHAT_SETTINGS_MODAL_MAX_WIDTH);
+}
+
+function normalizeChatSettingsModalHeight(value: unknown): number {
+  return normalizeNumberInRange(value, DEFAULT_CHAT_SETTINGS_MODAL_SIZE.height, CHAT_SETTINGS_MODAL_MIN_HEIGHT, CHAT_SETTINGS_MODAL_MAX_HEIGHT);
+}
+
+function normalizeChatSettingsModalSize(value: unknown): ChatSettingsModalSize {
+  const candidate = value && typeof value === 'object' ? value as Partial<ChatSettingsModalSize> : {};
+  return {
+    width: normalizeChatSettingsModalWidth(candidate.width),
+    height: normalizeChatSettingsModalHeight(candidate.height),
+  };
+}
+
+function loadChatSettingsModalSize(): ChatSettingsModalSize {
+  try {
+    if (typeof window === 'undefined') return DEFAULT_CHAT_SETTINGS_MODAL_SIZE;
+    return normalizeChatSettingsModalSize(JSON.parse(localStorage.getItem(CHAT_SETTINGS_MODAL_SIZE_STORAGE_KEY) ?? '{}'));
+  } catch {
+    return DEFAULT_CHAT_SETTINGS_MODAL_SIZE;
+  }
+}
+
+function normalizeChatPanelWidth(value: unknown): number {
+  return normalizeNumberInRange(value, CHAT_PANEL_DEFAULT_WIDTH, 120, 1400);
+}
+
+function normalizeChatPanelHeight(value: unknown): number {
+  return normalizeNumberInRange(value, CHAT_PANEL_DEFAULT_HEIGHT, 92, 1000);
+}
+
+function normalizeChatPanelSize(value: unknown): ChatPanelSize {
+  const candidate = value && typeof value === 'object' ? value as Partial<ChatPanelSize> : {};
+  return {
+    width: normalizeChatPanelWidth(candidate.width),
+    height: normalizeChatPanelHeight(candidate.height),
+  };
+}
+
+function normalizeChatSettingsModalScale(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.round(Math.max(CHAT_SETTINGS_MODAL_SETTING_MIN_SCALE, Math.min(CHAT_SETTINGS_MODAL_SETTING_MAX_SCALE, numeric)) * 10) / 10;
+}
+
+function getChatSettingsModalScale(value: number, base: number): number {
+  return normalizeChatSettingsModalScale(value / base);
+}
+
+function scaleChatSettingsModalValue(scale: unknown, base: number, normalize: (value: unknown) => number): number {
+  return normalize(base * normalizeChatSettingsModalScale(scale));
+}
+
+function normalizeChatWindowName(value: unknown, fallback: string): string {
+  const text = typeof value === 'string' ? Array.from(value.trim()).slice(0, 8).join('') : '';
+  return text || fallback;
+}
+
+function normalizeChatWindows(value: unknown): ChatWindowConfig[] {
+  const source = Array.isArray(value) ? value : [];
+  const defaultsById = new Map(DEFAULT_CHAT_WINDOWS.map((entry) => [entry.id, entry]));
+  const usedIds = new Set<string>();
+  const next: ChatWindowConfig[] = [];
+
+  for (const defaultWindow of DEFAULT_CHAT_WINDOWS) {
+    const saved = source.find((entry) => entry && typeof entry === 'object' && !Array.isArray(entry) && (entry as any).id === defaultWindow.id) as Partial<ChatWindowConfig> | undefined;
+    const savedChannels = Array.isArray(saved?.channels)
+      ? saved.channels.filter((channel): channel is ChatChannel => channel === 'map' || channel === 'system' || channel === 'battle')
+      : null;
+    const channels = defaultWindow.id === 'battle' && (!savedChannels || savedChannels.length === 0)
+      ? defaultWindow.channels
+      : savedChannels ?? defaultWindow.channels;
+    next.push({
+      ...defaultWindow,
+      name: defaultWindow.lockedName ? defaultWindow.name : normalizeChatWindowName(saved?.name, defaultWindow.name),
+      channels: [...new Set(channels)],
+      hidden: defaultWindow.id === 'combined' ? undefined : saved?.hidden === true || undefined,
+    });
+    usedIds.add(defaultWindow.id);
+  }
+
+  for (const entry of source) {
+    const candidate = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry as Partial<ChatWindowConfig> : null;
+    const rawId = typeof candidate?.id === 'string' ? candidate.id.trim() : '';
+    if (!rawId || usedIds.has(rawId) || defaultsById.has(rawId)) continue;
+    const channels = Array.isArray(candidate?.channels)
+      ? candidate.channels.filter((channel): channel is ChatChannel => channel === 'map' || channel === 'system' || channel === 'battle')
+      : [];
+    next.push({
+      id: rawId.slice(0, 48),
+      name: normalizeChatWindowName(candidate?.name, `窗口${next.length + 1}`),
+      channels: [...new Set(channels)],
+      hidden: candidate?.hidden === true || undefined,
+    });
+    usedIds.add(rawId);
+  }
+
+  return next.slice(0, 8);
+}
+
+function loadChatWindows(): ChatWindowConfig[] {
+  try {
+    if (typeof window === 'undefined') return DEFAULT_CHAT_WINDOWS;
+    return normalizeChatWindows(JSON.parse(localStorage.getItem(CHAT_WINDOWS_STORAGE_KEY) ?? '[]'));
+  } catch {
+    return DEFAULT_CHAT_WINDOWS;
+  }
+}
+
+function loadActiveChatWindowId(windows: ChatWindowConfig[]): string {
+  try {
+    if (typeof window === 'undefined') return windows[0]?.id ?? 'combined';
+    const saved = localStorage.getItem(CHAT_ACTIVE_WINDOW_STORAGE_KEY);
+    return windows.some((entry) => entry.id === saved) ? saved! : windows[0]?.id ?? 'combined';
+  } catch {
+    return windows[0]?.id ?? 'combined';
+  }
+}
+
+function normalizeChatClearDialogHeight(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric > CHAT_CLEAR_DIALOG_MAX_HEIGHT) return DEFAULT_CHAT_CLEAR_DIALOG_LAYOUT.height;
+  return normalizeNumberInRange(numeric, DEFAULT_CHAT_CLEAR_DIALOG_LAYOUT.height, CHAT_CLEAR_DIALOG_MIN_HEIGHT, CHAT_CLEAR_DIALOG_MAX_HEIGHT);
+}
+
+function normalizeChatClearDialogWidth(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric > CHAT_CLEAR_DIALOG_MAX_WIDTH) return DEFAULT_CHAT_CLEAR_DIALOG_LAYOUT.width;
+  return normalizeNumberInRange(numeric, DEFAULT_CHAT_CLEAR_DIALOG_LAYOUT.width, CHAT_CLEAR_DIALOG_MIN_WIDTH, CHAT_CLEAR_DIALOG_MAX_WIDTH);
+}
+
+function normalizeChatClearDialogLayout(value: unknown): ChatClearDialogLayout {
+  const candidate = value && typeof value === 'object' ? value as Partial<ChatClearDialogLayout> : {};
+  const width = normalizeChatClearDialogWidth(candidate.width);
+  const height = normalizeChatClearDialogHeight(candidate.height);
+  if (width === CHAT_CLEAR_DIALOG_BASE_WIDTH && height === CHAT_CLEAR_DIALOG_BASE_HEIGHT) {
+    return DEFAULT_CHAT_CLEAR_DIALOG_LAYOUT;
+  }
+  return {
+    width,
+    height,
+  };
+}
+
+function loadChatClearDialogLayout(): ChatClearDialogLayout {
+  try {
+    if (typeof window === 'undefined') return DEFAULT_CHAT_CLEAR_DIALOG_LAYOUT;
+    return normalizeChatClearDialogLayout(JSON.parse(localStorage.getItem(CHAT_CLEAR_DIALOG_LAYOUT_STORAGE_KEY) ?? '{}'));
+  } catch {
+    return DEFAULT_CHAT_CLEAR_DIALOG_LAYOUT;
+  }
+}
+
+function normalizeChatClearDialogScale(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.round(Math.max(CHAT_CLEAR_DIALOG_SETTING_MIN_SCALE, Math.min(CHAT_CLEAR_DIALOG_SETTING_MAX_SCALE, numeric)) * 10) / 10;
+}
+
+function getChatClearDialogScale(value: number, base: number): number {
+  return normalizeChatClearDialogScale(value / base);
+}
+
+function scaleChatClearDialogValue(scale: unknown, base: number, normalize: (value: unknown) => number): number {
+  return normalize(base * normalizeChatClearDialogScale(scale));
+}
+
+function normalizeDetachedChatWindows(value: unknown, windows: ChatWindowConfig[]): DetachedChatWindow[] {
+  if (!Array.isArray(value)) return [];
+  const windowIds = new Set(windows.map((entry) => entry.id));
+  const seen = new Set<string>();
+  const next: DetachedChatWindow[] = [];
+  for (const entry of value) {
+    const candidate = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry as Partial<DetachedChatWindow> : null;
+    const id = typeof candidate?.id === 'string' ? candidate.id.trim().slice(0, 64) : '';
+    const sourceIds = Array.isArray(candidate?.windowIds)
+      ? candidate.windowIds
+      : typeof (candidate as any)?.windowId === 'string'
+      ? [(candidate as any).windowId]
+      : [];
+    const normalizedIds = sourceIds
+      .filter((windowId): windowId is string => typeof windowId === 'string')
+      .map((windowId) => windowId.trim().slice(0, 48))
+      .filter((windowId) => windowId !== 'combined' && windowIds.has(windowId) && !seen.has(windowId));
+    if (!id || seen.has(id) || normalizedIds.length === 0) continue;
+    normalizedIds.forEach((windowId) => seen.add(windowId));
+    const rawActiveWindowId = typeof candidate?.activeWindowId === 'string' ? candidate.activeWindowId.trim() : '';
+    const activeWindowId = normalizedIds.includes(rawActiveWindowId) ? rawActiveWindowId : normalizedIds[0];
+    seen.add(id);
+    next.push({ id, windowIds: normalizedIds, activeWindowId });
+    if (next.length >= 6) break;
+  }
+  return next;
+}
+
+function normalizeChatUiLayoutPayload(value: unknown): ChatUiLayoutPayload | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const payload: ChatUiLayoutPayload = {
+    panelSize: normalizeChatPanelSize(candidate.panelSize),
+  };
+  if ('settings' in candidate) {
+    payload.settings = normalizeChatSettings(candidate.settings);
+  }
+  if ('settingsModalSize' in candidate) {
+    payload.settingsModalSize = normalizeChatSettingsModalSize(candidate.settingsModalSize);
+  }
+  if ('windows' in candidate) {
+    const windows = normalizeChatWindows(candidate.windows);
+    payload.windows = windows;
+    if (typeof candidate.activeWindowId === 'string') {
+      payload.activeWindowId = normalizeActiveChatWindowId(candidate.activeWindowId, windows);
+    }
+    if ('detachedWindows' in candidate) {
+      payload.detachedWindows = normalizeDetachedChatWindows(candidate.detachedWindows, windows);
+    }
+    if ('detachedPanelSizes' in candidate && candidate.detachedPanelSizes && typeof candidate.detachedPanelSizes === 'object' && !Array.isArray(candidate.detachedPanelSizes)) {
+      const detachedIds = new Set((payload.detachedWindows ?? []).map((entry) => entry.id));
+      const sizes: Record<string, ChatPanelSize> = {};
+      for (const [id, size] of Object.entries(candidate.detachedPanelSizes as Record<string, unknown>)) {
+        if (detachedIds.has(id)) {
+          sizes[id] = normalizeChatPanelSize(size);
+        }
+      }
+      payload.detachedPanelSizes = sizes;
+    }
+  }
+  return payload;
+}
+
+function normalizeActiveChatWindowId(value: string, windows: ChatWindowConfig[]): string {
+  return windows.some((entry) => entry.id === value) ? value : windows[0]?.id ?? DEFAULT_CHAT_WINDOWS[0].id;
+}
+
+function formatChatTimestamp(timestamp: number): string {
+  const date = new Date(timestamp);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
 const ABILITY_SOUND_VOLUME_OUTPUT_SCALE = 0.625;
 const PLAYER_CHANNEL_BAR_PREVIEW_DATA: ChannelBarData = {
   kind: 'forward',
@@ -623,6 +1031,7 @@ const DEFAULT_PLAYER_RADIUS = 2; // must match backend
 const COLLISION_TEST_PLAYER_RADIUS = 0.384;
 const LEGACY_STORED_UNIT_SCALE = 2.2;
 const SERVER_TICK_RATE = 30;
+const COOLDOWN_IDLE_CLOCK_INTERVAL_MS = 250;
 const BASE_HASTE_RATE_PCT = 23.54;
 const BASE_GCD_SECONDS = 1.19;
 const BASE_GCD_MS = BASE_GCD_SECONDS * 1000;
@@ -1307,7 +1716,7 @@ function buildChannelBarResultForPlayer(
   options?: { suppressJumpBar?: boolean },
   abilitiesById?: Record<string, any>,
 ): { data: ChannelBarData; abilityId?: string; ability?: any } | null {
-  const buffs = player?.buffs ?? [];
+  const buffs = activeBuffsClient(player?.buffs);
   const suppressJumpBar = options?.suppressJumpBar === true;
 
   const hasBlockingCC = buffsHaveAnyEffect(buffs, ['CONTROL', 'KNOCKED_BACK', 'ATTACK_LOCK']);
@@ -1316,8 +1725,9 @@ function buildChannelBarResultForPlayer(
     return null;
   }
 
-  if (player?.activeChannel) {
-    const channel = player.activeChannel;
+  const activeChannel = getActiveChannelClient(player?.activeChannel ?? null);
+  if (activeChannel) {
+    const channel = activeChannel;
     if (suppressJumpBar && channel.cancelOnJump) {
       return null;
     }
@@ -1961,6 +2371,47 @@ function activeBuffsClient(buffs?: ActiveBuff[]): ActiveBuff[] {
   return buffs.filter((buff) => isActiveBuffClient(buff, now));
 }
 
+function isJumpBoostClientBuff(buff: ActiveBuff | any): boolean {
+  return Number(buff?.buffId) === 9001 || buffHasEffect(buff, 'JUMP_BOOST');
+}
+
+function isLocallyConsumedJumpBoostClient(buff: ActiveBuff | any, consumedAt: number): boolean {
+  if (!isJumpBoostClientBuff(buff) || consumedAt <= 0) return false;
+  const appliedAt = Number(buff?.appliedAt ?? 0);
+  if (Number.isFinite(appliedAt) && appliedAt > 0) {
+    return appliedAt <= consumedAt + 1000;
+  }
+  return Date.now() - consumedAt < 3000;
+}
+
+function activeSelfBuffsClient(buffs: ActiveBuff[] | undefined, consumedJumpBoostAt: number): ActiveBuff[] {
+  return activeBuffsClient(buffs).filter((buff) => !isLocallyConsumedJumpBoostClient(buff, consumedJumpBoostAt));
+}
+
+function getLinkedShieldDisplayClient(target?: { shield?: number; buffs?: ActiveBuff[] } | null): number {
+  const rawShield = Math.max(0, Number(target?.shield ?? 0));
+  if (rawShield <= 0) return 0;
+  const linkedShield = activeBuffsClient(target?.buffs).reduce((sum, buff: any) => {
+    const amount = Number(buff?.shieldAmount ?? 0);
+    return Number.isFinite(amount) && amount > 0 ? sum + amount : sum;
+  }, 0);
+  if (linkedShield <= 0) return 0;
+  return Math.min(rawShield, linkedShield);
+}
+
+function isActiveChannelClient(channel: ActiveChannel | null | undefined, now = Date.now()): boolean {
+  if (!channel) return false;
+  const startedAt = Number((channel as any).startedAt ?? 0);
+  const durationMs = Number((channel as any).durationMs ?? 0);
+  if (!Number.isFinite(startedAt) || startedAt <= 0) return true;
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return true;
+  return now < startedAt + durationMs;
+}
+
+function getActiveChannelClient(channel: ActiveChannel | null | undefined): ActiveChannel | null {
+  return isActiveChannelClient(channel) ? channel ?? null : null;
+}
+
 function hasStealthClient(buffs?: ActiveBuff[]): boolean {
   return activeBuffsClient(buffs).some((b: any) =>
     buffHasEffect(b, 'STEALTH') ||
@@ -2221,7 +2672,7 @@ function getBuffChannelDurationForSound(actor: { buffs?: ActiveBuff[] } | null |
   const runtimeChannel = getRuntimeAbilityChannel(ability);
   if (!runtimeChannel || runtimeChannel.source !== 'BUFF' || runtimeChannel.mode !== 'FORWARD') return null;
 
-  const buffs = actor?.buffs ?? [];
+  const buffs = activeBuffsClient(actor?.buffs);
   const abilityIdentity = String(ability?.id ?? abilityId);
   const buff = buffs.find((entry) => {
     if (typeof runtimeChannel.buffId === 'number' && entry.buffId === runtimeChannel.buffId) return true;
@@ -2249,7 +2700,7 @@ function getChannelSoundLoopDurationMs(params: {
   if (params.phase !== 'channelStart') return undefined;
   if (!isFenglaiWushanSoundAbility(params.ability, params.abilityId)) return undefined;
 
-  const buff = (params.actor?.buffs ?? []).find((entry: any) => entry.buffId === 1014 || entry.sourceAbilityId === 'fenglai_wushan');
+  const buff = activeBuffsClient(params.actor?.buffs).find((entry: any) => entry.buffId === 1014 || entry.sourceAbilityId === 'fenglai_wushan');
   if (buff) {
     const expiresAt = Number(buff.expiresAt);
     const now = Date.now();
@@ -2279,7 +2730,7 @@ function getChannelSoundPlaybackRate(params: {
   if (!baseDurationMs) return 1;
 
   let actualDurationMs: number | null = null;
-  const activeChannel = params.actor?.activeChannel;
+  const activeChannel = getActiveChannelClient(params.actor?.activeChannel ?? null);
   if (
     activeChannel
     && activeChannel.abilityId === params.abilityId
@@ -2878,6 +3329,39 @@ function formatTicksAsSeconds(ticks: number | undefined): string {
   return `${formatCompactSeconds(safeTicks / SERVER_TICK_RATE)}秒`;
 }
 
+function getRuntimeCountdownTicks(source: any, valueKey: string, syncedAtKey: string, nowMs: number): number {
+  const value = Number(source?.[valueKey] ?? 0);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const syncedAt = Number(source?.[syncedAtKey] ?? 0);
+  if (!Number.isFinite(syncedAt) || syncedAt <= 0) return Math.max(0, Math.ceil(value));
+  const elapsedTicks = Math.max(0, ((nowMs - syncedAt) / 1000) * SERVER_TICK_RATE);
+  return Math.max(0, Math.ceil(value - elapsedTicks));
+}
+
+function hasRuntimeCountdown(source: any, valueKey: string, syncedAtKey: string, nowMs: number): boolean {
+  return getRuntimeCountdownTicks(source, valueKey, syncedAtKey, nowMs) > 0;
+}
+
+function playerHasRuntimeCountdown(player: any, nowMs: number): boolean {
+  if (!player) return false;
+  if (hasRuntimeCountdown(player, 'globalGcdTicks', '_globalGcdSyncedAt', nowMs)) return true;
+  if (hasRuntimeCountdown(player.activeDash, 'ticksRemaining', '_ticksRemainingSyncedAt', nowMs)) return true;
+  const hand = Array.isArray(player.hand) ? player.hand : [];
+  if (hand.some((ability: any) => (
+    hasRuntimeCountdown(ability, 'cooldown', '_cooldownSyncedAt', nowMs) ||
+    hasRuntimeCountdown(ability, 'chargeRegenTicksRemaining', '_chargeRegenTicksRemainingSyncedAt', nowMs) ||
+    hasRuntimeCountdown(ability, 'chargeLockTicks', '_chargeLockTicksSyncedAt', nowMs)
+  ))) return true;
+  const specialStates = player.specialAbilityStates && typeof player.specialAbilityStates === 'object'
+    ? Object.values(player.specialAbilityStates)
+    : [];
+  return specialStates.some((ability: any) => (
+    hasRuntimeCountdown(ability, 'cooldown', '_cooldownSyncedAt', nowMs) ||
+    hasRuntimeCountdown(ability, 'chargeRegenTicksRemaining', '_chargeRegenTicksRemainingSyncedAt', nowMs) ||
+    hasRuntimeCountdown(ability, 'chargeLockTicks', '_chargeLockTicksSyncedAt', nowMs)
+  ));
+}
+
 function shouldShowVisualGcd(
   gcd: VisualGcdState | null | undefined,
   settings: GcdVisibilitySettings,
@@ -3238,6 +3722,9 @@ interface BattleArenaProps {
   groundZones?: GroundZone[];
   /** HP-bearing targetable entities (e.g. 逐云寒蕊) */
   entities?: TargetEntity[];
+  chatMessages?: ChatMessage[];
+  onSendChatMessage?: (text: string, channel: ChatChannel) => Promise<{ ok: boolean; error?: string } | void> | { ok: boolean; error?: string } | void;
+  onFetchChatMessages?: () => Promise<{ ok: boolean; messages?: ChatMessage[]; error?: string }>;
   /** Game mode: 'arena' (100×100) or 'pubg' (2000×2000) */
   mode?: string;
 }
@@ -3268,6 +3755,9 @@ export default function BattleArena({
   safeZone,
   groundZones,
   entities,
+  chatMessages = [],
+  onSendChatMessage,
+  onFetchChatMessages,
   mode,
 }: BattleArenaProps) {
   const mapData = useMemo(() => getMapForMode(mode), [mode]);
@@ -3390,13 +3880,579 @@ export default function BattleArena({
   const abilityDragActiveRef = useRef(false);
   const [renderFps,        setRenderFps]        = useState<number | null>(null);
   const [systemTime,       setSystemTime]       = useState(() => new Date());
+  const [cooldownClockMs,  setCooldownClockMs]  = useState(() => Date.now());
+  const cooldownRuntimePlayerRef = useRef<any>(me);
+  cooldownRuntimePlayerRef.current = me;
   const [wasdKeys,         setWasdKeys]         = useState({ w: false, a: false, s: false, d: false });
   const [controlMode,      setControlMode]      = useState<'joystick' | 'traditional'>('traditional');
   // Mobile detection: touch device without fine pointer (mouse) = phone/tablet
   const [isMobileDevice, setIsMobileDevice]    = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
-  const [showCheatAbilityPanelEntry, setShowCheatAbilityPanelEntry] = useState(false);
+  const [showCheatAbilityPanelEntry, setShowCheatAbilityPanelEntry] = useState(true);
   const [showMartialPanel, setShowMartialPanel] = useState(false);
+  const [chatWindows, setChatWindows] = useState<ChatWindowConfig[]>(() => loadChatWindows());
+  const [chatMainWindowIds, setChatMainWindowIds] = useState<string[]>(() => loadChatWindows().map((entry) => entry.id));
+  const [activeChatWindowId, setActiveChatWindowId] = useState(() => loadActiveChatWindowId(loadChatWindows()));
+  const [chatWindowDrafts, setChatWindowDrafts] = useState<ChatWindowConfig[]>(() => loadChatWindows());
+  const [selectedChatWindowId, setSelectedChatWindowId] = useState(() => loadActiveChatWindowId(loadChatWindows()));
+  const [chatSettingsMainTab, setChatSettingsMainTab] = useState<ChatSettingsMainTab>('page');
+  const [chatInputValue, setChatInputValue] = useState('');
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [chatPanelSize, setChatPanelSize] = useState<ChatPanelSize>({ width: CHAT_PANEL_DEFAULT_WIDTH, height: CHAT_PANEL_DEFAULT_HEIGHT });
+  const [showChatSettings, setShowChatSettings] = useState(false);
+  const [chatSettings, setChatSettings] = useState<ChatSettings>(() => loadChatSettings());
+  const [chatSettingsDraft, setChatSettingsDraft] = useState<ChatSettings>(() => loadChatSettings());
+  const [chatSettingsModalSize, setChatSettingsModalSize] = useState<ChatSettingsModalSize>(() => loadChatSettingsModalSize());
+  const [chatClearDialogLayout, setChatClearDialogLayout] = useState<ChatClearDialogLayout>(() => loadChatClearDialogLayout());
+  const [detachedChatWindows, setDetachedChatWindows] = useState<DetachedChatWindow[]>([]);
+  const [uiLayoutReady, setUiLayoutReady] = useState(false);
+  const [detachedChatSearchStates, setDetachedChatSearchStates] = useState<Record<string, ChatSearchState>>({});
+  const [detachedChatPanelSizes, setDetachedChatPanelSizes] = useState<Record<string, ChatPanelSize>>({});
+  const [detachedChatScrollMetrics, setDetachedChatScrollMetrics] = useState<Record<string, ChatScrollMetrics>>({});
+  const [draggingChatGroupId, setDraggingChatGroupId] = useState<string | null>(null);
+  const [chatFontMenuOpen, setChatFontMenuOpen] = useState(false);
+  const [chatSizeMenuOpen, setChatSizeMenuOpen] = useState(false);
+  const [chatScrollMetrics, setChatScrollMetrics] = useState({ scrollTop: 0, scrollHeight: 1, clientHeight: 1 });
+  const [chatBottomAlert, setChatBottomAlert] = useState(false);
+  const [chatClearDialog, setChatClearDialog] = useState<null | { scope: 'current' | 'all' }>(null);
+  const [clearedChatMessageIds, setClearedChatMessageIds] = useState<Record<string, Set<string>>>(() => ({}));
+  const chatPanelRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
+  const chatSearchInputRef = useRef<HTMLInputElement>(null);
+  const chatLogRef = useRef<HTMLDivElement>(null);
+  const chatSettingsFontRef = useRef<HTMLDivElement>(null);
+  const chatSettingsSizeRef = useRef<HTMLDivElement>(null);
+  const chatResizeRef = useRef<{ groupId: 'main' | string; positionKey: string | null; startX: number; startY: number; startWidth: number; startHeight: number; startTop: number | null; lockBottom: boolean } | null>(null);
+  const chatAtBottomRef = useRef(true);
+  const chatDisplayStateRef = useRef({ key: '', length: 0 });
+  const detachedChatAtBottomRef = useRef<Record<string, boolean>>({});
+  const detachedChatDisplayStateRef = useRef<Record<string, { key: string; length: number }>>({});
+  const chatInputCursorEndPendingRef = useRef(false);
+  const lastChatSearchFetchKeyRef = useRef('');
+  const chatTabClickSuppressedRef = useRef<string | null>(null);
+  const detachedChatLogRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const uiLayoutLoadedRef = useRef(false);
+  const chatSettingsRef = useRef(chatSettings);
+  const chatPanelSizeRef = useRef(chatPanelSize);
+  const detachedChatPanelSizesRef = useRef(detachedChatPanelSizes);
+  const chatSettingsModalSizeRef = useRef(chatSettingsModalSize);
+  const chatClearDialogLayoutRef = useRef(chatClearDialogLayout);
+  const chatWindowsRef = useRef(chatWindows);
+  const chatMainWindowIdsRef = useRef(chatMainWindowIds);
+  const activeChatWindowIdRef = useRef(activeChatWindowId);
+  const detachedChatWindowsRef = useRef(detachedChatWindows);
+  const selectedChatFont = CHAT_FONT_OPTIONS[0];
+  const mainChatWindows = useMemo(() => {
+    const byId = new Map(chatWindows.map((entry) => [entry.id, entry]));
+    return chatMainWindowIds.map((id) => byId.get(id)).filter((entry): entry is ChatWindowConfig => !!entry && !entry.hidden);
+  }, [chatMainWindowIds, chatWindows]);
+  const activeChatWindow = useMemo(
+    () => mainChatWindows.find((entry) => entry.id === activeChatWindowId) ?? mainChatWindows[0] ?? null,
+    [activeChatWindowId, mainChatWindows],
+  );
+  const activeChatWindowChannels = useMemo(() => new Set<ChatChannel>(activeChatWindow?.channels ?? []), [activeChatWindow]);
+  const windowChatMessages = useMemo(
+    () => chatMessages.filter((message) => activeChatWindowChannels.has(message.channel)),
+    [activeChatWindowChannels, chatMessages],
+  );
+  const chatSearchActive = chatSearchOpen && chatSearchQuery.trim().length > 0;
+  const displayedWindowChatMessages = useMemo(() => {
+    if (!activeChatWindow) return [];
+    if (chatSearchActive) return windowChatMessages;
+    const windowHiddenIds = clearedChatMessageIds[activeChatWindow.id];
+    const allHiddenIds = clearedChatMessageIds.all;
+    if ((!windowHiddenIds || windowHiddenIds.size === 0) && (!allHiddenIds || allHiddenIds.size === 0)) return windowChatMessages;
+    return windowChatMessages.filter((message) => !windowHiddenIds?.has(message.id) && !allHiddenIds?.has(message.id));
+  }, [activeChatWindow, windowChatMessages, chatSearchActive, clearedChatMessageIds]);
+  const visibleChatMessages = useMemo(() => {
+    const query = chatSearchOpen ? chatSearchQuery.trim().toLowerCase() : '';
+    if (!query) return displayedWindowChatMessages;
+    return displayedWindowChatMessages.filter((message) => {
+      return message.text.toLowerCase().includes(query)
+        || message.username.toLowerCase().includes(query);
+    });
+  }, [chatSearchOpen, chatSearchQuery, displayedWindowChatMessages]);
+  const buildChatPanelStyle = useCallback((panelSize: ChatPanelSize) => ({
+    '--chat-font-family': selectedChatFont.css,
+    '--chat-font-size': `${chatSettings.fontSize}px`,
+    '--chat-log-bg': `rgba(36, 36, 40, ${(chatSettings.backgroundOpacity / 100) * 0.5})`,
+    '--chat-panel-width': `${panelSize.width}px`,
+    '--chat-panel-height': `${panelSize.height}px`,
+    '--chat-settings-modal-width': `${chatSettingsModalSize.width}px`,
+    '--chat-settings-modal-height': `${chatSettingsModalSize.height}px`,
+  } as React.CSSProperties), [chatSettings.backgroundOpacity, chatSettings.fontSize, chatSettingsModalSize.height, chatSettingsModalSize.width, selectedChatFont.css]);
+  const chatPanelStyle = useMemo(() => buildChatPanelStyle(chatPanelSize), [buildChatPanelStyle, chatPanelSize]);
+  useEffect(() => { chatSettingsRef.current = chatSettings; }, [chatSettings]);
+  useEffect(() => { chatPanelSizeRef.current = chatPanelSize; }, [chatPanelSize]);
+  useEffect(() => { detachedChatPanelSizesRef.current = detachedChatPanelSizes; }, [detachedChatPanelSizes]);
+  useEffect(() => { chatSettingsModalSizeRef.current = chatSettingsModalSize; }, [chatSettingsModalSize]);
+  useEffect(() => { chatClearDialogLayoutRef.current = chatClearDialogLayout; }, [chatClearDialogLayout]);
+  useEffect(() => { chatWindowsRef.current = chatWindows; }, [chatWindows]);
+  useEffect(() => { chatMainWindowIdsRef.current = chatMainWindowIds; }, [chatMainWindowIds]);
+  useEffect(() => { activeChatWindowIdRef.current = activeChatWindowId; }, [activeChatWindowId]);
+  useEffect(() => { detachedChatWindowsRef.current = detachedChatWindows; }, [detachedChatWindows]);
+  useEffect(() => {
+    const validDetachedIds = new Set(detachedChatWindows.map((entry) => entry.id));
+    setDetachedChatSearchStates((current) => {
+      const next = Object.fromEntries(Object.entries(current).filter(([id]) => validDetachedIds.has(id)));
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+    setDetachedChatPanelSizes((current) => {
+      const next = Object.fromEntries(Object.entries(current).filter(([id]) => validDetachedIds.has(id))) as Record<string, ChatPanelSize>;
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+    setDetachedChatScrollMetrics((current) => {
+      const next = Object.fromEntries(Object.entries(current).filter(([id]) => validDetachedIds.has(id))) as Record<string, ChatScrollMetrics>;
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+    detachedChatAtBottomRef.current = Object.fromEntries(Object.entries(detachedChatAtBottomRef.current).filter(([id]) => validDetachedIds.has(id)));
+    detachedChatDisplayStateRef.current = Object.fromEntries(Object.entries(detachedChatDisplayStateRef.current).filter(([id]) => validDetachedIds.has(id)));
+  }, [detachedChatWindows]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_SETTINGS_STORAGE_KEY, JSON.stringify(chatSettings));
+    } catch {}
+  }, [chatSettings]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_SETTINGS_MODAL_SIZE_STORAGE_KEY, JSON.stringify(chatSettingsModalSize));
+    } catch {}
+  }, [chatSettingsModalSize]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_CLEAR_DIALOG_LAYOUT_STORAGE_KEY, JSON.stringify(chatClearDialogLayout));
+    } catch {}
+  }, [chatClearDialogLayout]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_WINDOWS_STORAGE_KEY, JSON.stringify(chatWindows));
+    } catch {}
+  }, [chatWindows]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_ACTIVE_WINDOW_STORAGE_KEY, activeChatWindowId);
+    } catch {}
+  }, [activeChatWindowId]);
+  useEffect(() => {
+    if (mainChatWindows.length === 0 || mainChatWindows.some((entry) => entry.id === activeChatWindowId)) return;
+    setActiveChatWindowId(mainChatWindows[0]?.id ?? DEFAULT_CHAT_WINDOWS[0].id);
+  }, [activeChatWindowId, mainChatWindows]);
+  const updateChatScrollMetrics = useCallback(() => {
+    const log = chatLogRef.current;
+    if (!log) return;
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight <= 2;
+    chatAtBottomRef.current = atBottom;
+    if (atBottom) {
+      setChatBottomAlert(false);
+    }
+    setChatScrollMetrics({
+      scrollTop: log.scrollTop,
+      scrollHeight: Math.max(1, log.scrollHeight),
+      clientHeight: Math.max(1, log.clientHeight),
+    });
+  }, []);
+  const updateDetachedChatScrollMetrics = useCallback((detachedId: string) => {
+    const log = detachedChatLogRefs.current[detachedId];
+    if (!log) return;
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight <= 2;
+    detachedChatAtBottomRef.current[detachedId] = atBottom;
+    setDetachedChatScrollMetrics((current) => ({
+      ...current,
+      [detachedId]: {
+        scrollTop: log.scrollTop,
+        scrollHeight: Math.max(1, log.scrollHeight),
+        clientHeight: Math.max(1, log.clientHeight),
+      },
+    }));
+  }, []);
+  const getChatScrollVisual = useCallback((metrics: ChatScrollMetrics) => {
+    const canScroll = metrics.scrollHeight > metrics.clientHeight + 2;
+    const isAtTop = metrics.scrollTop <= 2;
+    const isAtBottom = metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight <= 2;
+    const thumbHeightPct = Math.max(12, Math.min(100, (metrics.clientHeight / metrics.scrollHeight) * 100));
+    const thumbTopPct = canScroll
+      ? Math.min(100 - thumbHeightPct, (metrics.scrollTop / Math.max(1, metrics.scrollHeight - metrics.clientHeight)) * (100 - thumbHeightPct))
+      : 0;
+    return { canScroll, isAtTop, isAtBottom, thumbHeightPct, thumbTopPct };
+  }, []);
+  const beginChatScrollTrackDrag = useCallback((groupId: 'main' | string, event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const track = event.currentTarget;
+    const getLog = () => groupId === 'main' ? chatLogRef.current : detachedChatLogRefs.current[groupId];
+    const applyScroll = (clientY: number) => {
+      const log = getLog();
+      if (!log) return;
+      const rect = track.getBoundingClientRect();
+      const scrollable = Math.max(1, log.scrollHeight - log.clientHeight);
+      const thumbHeight = Math.max(10, Math.min(rect.height, (log.clientHeight / Math.max(1, log.scrollHeight)) * rect.height));
+      const maxThumbTop = Math.max(1, rect.height - thumbHeight);
+      const nextThumbTop = Math.max(0, Math.min(maxThumbTop, clientY - rect.top - thumbHeight / 2));
+      log.scrollTop = (nextThumbTop / maxThumbTop) * scrollable;
+      if (groupId === 'main') updateChatScrollMetrics();
+      else updateDetachedChatScrollMetrics(groupId);
+    };
+    applyScroll(event.clientY);
+    const handleMove = (moveEvent: PointerEvent) => applyScroll(moveEvent.clientY);
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
+    };
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
+  }, [updateChatScrollMetrics, updateDetachedChatScrollMetrics]);
+  useEffect(() => {
+    const log = chatLogRef.current;
+    if (!log || !activeChatWindow) return;
+    const displayKey = activeChatWindow.id;
+    const previous = chatDisplayStateRef.current;
+    const keyChanged = previous.key !== displayKey;
+    const lengthIncreased = visibleChatMessages.length > previous.length;
+    const shouldScrollBottom = keyChanged || (lengthIncreased && !chatSearchActive && chatAtBottomRef.current);
+
+    if (shouldScrollBottom) {
+      log.scrollTop = log.scrollHeight;
+      chatAtBottomRef.current = true;
+      setChatBottomAlert(false);
+    } else if (lengthIncreased && !chatSearchActive) {
+      setChatBottomAlert(true);
+    }
+
+    chatDisplayStateRef.current = { key: displayKey, length: visibleChatMessages.length };
+    updateChatScrollMetrics();
+  }, [activeChatWindow, chatSearchActive, updateChatScrollMetrics, visibleChatMessages.length]);
+  useEffect(() => {
+    if (!chatSearchOpen) return;
+    window.requestAnimationFrame(() => chatSearchInputRef.current?.focus());
+  }, [chatSearchOpen]);
+  useEffect(() => {
+    if (!chatSearchOpen) {
+      lastChatSearchFetchKeyRef.current = '';
+    }
+  }, [chatSearchOpen]);
+  useEffect(() => {
+    const query = chatSearchQuery.trim();
+    if (!activeChatWindow || !chatSearchOpen || !query || !onFetchChatMessages) return;
+    const fetchKey = `${activeChatWindow.id}:${query}`;
+    if (lastChatSearchFetchKeyRef.current === fetchKey) return;
+    const timer = window.setTimeout(() => {
+      lastChatSearchFetchKeyRef.current = fetchKey;
+      void onFetchChatMessages().then((result) => {
+        if (result?.ok) {
+          setClearedChatMessageIds({});
+        }
+      });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [activeChatWindow, chatSearchOpen, chatSearchQuery, onFetchChatMessages]);
+  useEffect(() => {
+    if (!chatInputCursorEndPendingRef.current) return;
+    chatInputCursorEndPendingRef.current = false;
+    window.requestAnimationFrame(() => {
+      const input = chatInputRef.current;
+      if (!input) return;
+      input.focus();
+      const end = input.value.length;
+      input.setSelectionRange(end, end);
+    });
+  }, [chatInputValue]);
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      const resize = chatResizeRef.current;
+      if (!resize) return;
+      const maxWidth = Math.max(1, Math.round(window.innerWidth * 0.6));
+      const maxHeight = Math.max(1, Math.round(window.innerHeight * 0.8));
+      const nextWidth = Math.min(maxWidth, Math.max(120, resize.startWidth + event.clientX - resize.startX));
+      const nextHeight = Math.min(maxHeight, Math.max(92, resize.startHeight - (event.clientY - resize.startY)));
+      if (resize.groupId === 'main') {
+        setChatPanelSize({ width: nextWidth, height: nextHeight });
+      } else {
+        setDetachedChatPanelSizes((current) => ({
+          ...current,
+          [resize.groupId]: { width: nextWidth, height: nextHeight },
+        }));
+      }
+      if (resize.lockBottom && resize.startTop !== null) {
+        const nextTop = Math.max(12, Math.round(resize.startTop + resize.startHeight - nextHeight));
+        setUiPositions((current) => {
+          const next = {
+            ...current,
+            [resize.positionKey ?? CHAT_PANEL_UI_KEY]: {
+              left: current[resize.positionKey ?? CHAT_PANEL_UI_KEY]?.left ?? 10,
+              top: nextTop,
+            },
+          };
+          uiPositionsRef.current = next;
+          return next;
+        });
+      }
+    };
+    const handlePointerUp = () => {
+      chatResizeRef.current = null;
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, []);
+  useEffect(() => {
+    if (!showChatSettings || (!chatFontMenuOpen && !chatSizeMenuOpen)) return;
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (chatFontMenuOpen && chatSettingsFontRef.current && !chatSettingsFontRef.current.contains(target)) {
+        setChatFontMenuOpen(false);
+      }
+      if (chatSizeMenuOpen && chatSettingsSizeRef.current && !chatSettingsSizeRef.current.contains(target)) {
+        setChatSizeMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [chatFontMenuOpen, chatSizeMenuOpen, showChatSettings]);
+  const focusChatInput = useCallback(() => {
+    window.requestAnimationFrame(() => chatInputRef.current?.focus());
+  }, []);
+  const copyMessageToChatInput = useCallback((text: string) => {
+    chatInputCursorEndPendingRef.current = true;
+    setChatInputValue(text.slice(0, CHAT_MAX_INPUT_LENGTH));
+  }, []);
+  const scrollChatLog = useCallback((target: 'up' | 'top' | 'down' | 'bottom') => {
+    const log = chatLogRef.current;
+    if (!log) return;
+    const page = Math.max(24, Math.round(log.clientHeight * 0.8));
+    const nextTop = target === 'top'
+      ? 0
+      : target === 'bottom'
+      ? log.scrollHeight
+      : target === 'up'
+      ? log.scrollTop - page
+      : log.scrollTop + page;
+    log.scrollTo({ top: nextTop, behavior: target === 'top' || target === 'bottom' ? 'auto' : 'smooth' });
+    window.requestAnimationFrame(updateChatScrollMetrics);
+    if (target === 'bottom') {
+      setChatBottomAlert(false);
+    }
+  }, [updateChatScrollMetrics]);
+  const scrollDetachedChatLog = useCallback((detachedId: string, target: 'up' | 'top' | 'down' | 'bottom') => {
+    const log = detachedChatLogRefs.current[detachedId];
+    if (!log) return;
+    const page = Math.max(24, Math.round(log.clientHeight * 0.8));
+    const nextTop = target === 'top'
+      ? 0
+      : target === 'bottom'
+      ? log.scrollHeight
+      : target === 'up'
+      ? log.scrollTop - page
+      : log.scrollTop + page;
+    log.scrollTo({ top: nextTop, behavior: target === 'top' || target === 'bottom' ? 'auto' : 'smooth' });
+    if (target === 'bottom') {
+      detachedChatAtBottomRef.current[detachedId] = true;
+    }
+    window.requestAnimationFrame(() => updateDetachedChatScrollMetrics(detachedId));
+  }, [updateDetachedChatScrollMetrics]);
+  const getVisibleChatMessagesForWindow = useCallback((windowConfig: ChatWindowConfig, searchState?: ChatSearchState) => {
+    const channels = new Set<ChatChannel>(windowConfig.channels);
+    let messages = chatMessages.filter((message) => channels.has(message.channel));
+    const activeSearch = searchState ?? { open: chatSearchOpen, query: chatSearchQuery };
+    const query = activeSearch.query.trim().toLowerCase();
+    if (!activeSearch.open || !query) {
+      const windowHiddenIds = clearedChatMessageIds[windowConfig.id];
+      const allHiddenIds = clearedChatMessageIds.all;
+      if (windowHiddenIds?.size || allHiddenIds?.size) {
+        messages = messages.filter((message) => !windowHiddenIds?.has(message.id) && !allHiddenIds?.has(message.id));
+      }
+      return messages;
+    }
+    return messages.filter((message) => (
+      message.text.toLowerCase().includes(query)
+      || message.username.toLowerCase().includes(query)
+    ));
+  }, [chatMessages, chatSearchOpen, chatSearchQuery, clearedChatMessageIds]);
+  useLayoutEffect(() => {
+    if (detachedChatWindows.length === 0) return;
+    const followUpFrames: number[] = [];
+    for (const detachedWindow of detachedChatWindows) {
+      const log = detachedChatLogRefs.current[detachedWindow.id];
+      if (!log) continue;
+      const activeWindowConfig = chatWindows.find((entry) => entry.id === detachedWindow.activeWindowId && !entry.hidden)
+        ?? chatWindows.find((entry) => detachedWindow.windowIds.includes(entry.id) && !entry.hidden)
+        ?? null;
+      if (!activeWindowConfig) continue;
+      const searchState = detachedChatSearchStates[detachedWindow.id] ?? EMPTY_CHAT_SEARCH_STATE;
+      const messages = getVisibleChatMessagesForWindow(activeWindowConfig, searchState);
+      const displayKey = `${detachedWindow.id}:${activeWindowConfig.id}:${searchState.open ? searchState.query.trim() : ''}`;
+      const previous = detachedChatDisplayStateRef.current[detachedWindow.id] ?? { key: '', length: 0 };
+      const keyChanged = previous.key !== displayKey;
+      const lengthIncreased = messages.length > previous.length;
+      const wasAtBottom = detachedChatAtBottomRef.current[detachedWindow.id] ?? true;
+      const shouldStickToBottom = keyChanged || (lengthIncreased && wasAtBottom);
+
+      if (shouldStickToBottom) {
+        log.scrollTop = log.scrollHeight;
+        detachedChatAtBottomRef.current[detachedWindow.id] = true;
+        followUpFrames.push(window.requestAnimationFrame(() => {
+          const latestLog = detachedChatLogRefs.current[detachedWindow.id];
+          if (!latestLog) return;
+          latestLog.scrollTop = latestLog.scrollHeight;
+          detachedChatAtBottomRef.current[detachedWindow.id] = true;
+          updateDetachedChatScrollMetrics(detachedWindow.id);
+        }));
+      } else {
+        updateDetachedChatScrollMetrics(detachedWindow.id);
+      }
+      detachedChatDisplayStateRef.current[detachedWindow.id] = { key: displayKey, length: messages.length };
+    }
+    return () => followUpFrames.forEach((frame) => window.cancelAnimationFrame(frame));
+  }, [chatWindows, detachedChatWindows, detachedChatSearchStates, getVisibleChatMessagesForWindow, updateDetachedChatScrollMetrics]);
+  const openChatSettings = useCallback(() => {
+    setChatSettingsDraft(chatSettings);
+    setChatWindowDrafts(chatWindows.map((entry) => ({ ...entry, channels: [...entry.channels] })));
+    setSelectedChatWindowId(activeChatWindow?.id ?? chatWindows.find((entry) => !entry.hidden)?.id ?? chatWindows[0]?.id ?? DEFAULT_CHAT_WINDOWS[0].id);
+    setChatSettingsMainTab('page');
+    setChatFontMenuOpen(false);
+    setChatSizeMenuOpen(false);
+    setShowChatSettings(true);
+  }, [activeChatWindow, chatSettings, chatWindows]);
+  const applyChatSettings = useCallback(() => {
+    setChatSettings(normalizeChatSettings(chatSettingsDraft));
+    const normalizedWindows = normalizeChatWindows(chatWindowDrafts);
+    setChatWindows(normalizedWindows);
+    if (!normalizedWindows.some((entry) => entry.id === activeChatWindowId && !entry.hidden)) {
+      setActiveChatWindowId(normalizedWindows.find((entry) => !entry.hidden)?.id ?? normalizedWindows[0]?.id ?? DEFAULT_CHAT_WINDOWS[0].id);
+    }
+  }, [activeChatWindowId, chatSettingsDraft, chatWindowDrafts]);
+  const confirmChatSettings = useCallback(() => {
+    setChatSettings(normalizeChatSettings(chatSettingsDraft));
+    const normalizedWindows = normalizeChatWindows(chatWindowDrafts);
+    setChatWindows(normalizedWindows);
+    if (!normalizedWindows.some((entry) => entry.id === activeChatWindowId && !entry.hidden)) {
+      setActiveChatWindowId(normalizedWindows.find((entry) => !entry.hidden)?.id ?? normalizedWindows[0]?.id ?? DEFAULT_CHAT_WINDOWS[0].id);
+    }
+    setShowChatSettings(false);
+  }, [activeChatWindowId, chatSettingsDraft, chatWindowDrafts]);
+  const cancelChatSettings = useCallback(() => {
+    setChatSettingsDraft(chatSettings);
+    setChatWindowDrafts(chatWindows.map((entry) => ({ ...entry, channels: [...entry.channels] })));
+    setShowChatSettings(false);
+  }, [chatSettings, chatWindows]);
+  const resetChatSettings = useCallback(() => {
+    if (chatSettingsMainTab === 'window') {
+      const defaults = DEFAULT_CHAT_WINDOWS.map((entry) => ({ ...entry, channels: [...entry.channels] }));
+      setChatWindowDrafts(defaults);
+      setChatWindows(defaults);
+      setSelectedChatWindowId(defaults[0].id);
+      setActiveChatWindowId(defaults[0].id);
+      return;
+    }
+    setChatSettingsDraft(DEFAULT_CHAT_SETTINGS);
+    setChatSettings(DEFAULT_CHAT_SETTINGS);
+  }, [chatSettingsMainTab]);
+  const setSelectedChatWindowAsDefault = useCallback(() => {
+    if (!chatWindowDrafts.some((entry) => entry.id === selectedChatWindowId)) return;
+    setChatWindowDrafts((current) => current.map((entry) => entry.id === selectedChatWindowId ? { ...entry, hidden: undefined } : entry));
+    setActiveChatWindowId(selectedChatWindowId);
+  }, [chatWindowDrafts, selectedChatWindowId]);
+  const createChatWindow = useCallback(() => {
+    setChatWindowDrafts((current) => {
+      if (current.length >= 8) return current;
+      const id = `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+      const next = [...current, { id, name: `窗口${current.length + 1}`, channels: [] as ChatChannel[] }];
+      setSelectedChatWindowId(id);
+      return next;
+    });
+  }, []);
+  const deleteSelectedChatWindow = useCallback(() => {
+    setChatWindowDrafts((current) => {
+      const selected = current.find((entry) => entry.id === selectedChatWindowId);
+      if (!selected || selected.lockedDelete) return current;
+      const next = current.filter((entry) => entry.id !== selectedChatWindowId);
+      setSelectedChatWindowId(next[0]?.id ?? DEFAULT_CHAT_WINDOWS[0].id);
+      return next;
+    });
+  }, [selectedChatWindowId]);
+  const clearChatMessages = useCallback((scope: 'current' | 'all') => {
+    if (!activeChatWindow) return;
+    setClearedChatMessageIds((current) => {
+      if (scope === 'all') {
+        return {
+          ...current,
+          all: new Set([...(current.all ?? []), ...chatMessages.map((message) => message.id)]),
+        };
+      }
+      return {
+        ...current,
+        [activeChatWindow.id]: new Set([...(current[activeChatWindow.id] ?? []), ...windowChatMessages.map((message) => message.id)]),
+      };
+    });
+    setChatBottomAlert(false);
+  }, [activeChatWindow, chatMessages, windowChatMessages]);
+  const handleChatEraseClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (event.altKey) {
+      clearChatMessages('all');
+      return;
+    }
+    if (event.ctrlKey) {
+      clearChatMessages('current');
+      return;
+    }
+    setChatClearDialog({ scope: 'current' });
+  }, [clearChatMessages]);
+  const confirmChatClear = useCallback(() => {
+    if (chatClearDialog) {
+      clearChatMessages(chatClearDialog.scope);
+    }
+    setChatClearDialog(null);
+  }, [chatClearDialog, clearChatMessages]);
+  const sendChatText = useCallback(async (rawText: string, channel: ChatChannel, restoreOnFailure: boolean) => {
+    const text = rawText.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_INPUT_LENGTH);
+    if (!text) return false;
+    const result = await onSendChatMessage?.(text, channel);
+    if (result && result.ok === false) {
+      if (restoreOnFailure) {
+        setChatInputValue(text);
+        focusChatInput();
+      }
+      return false;
+    }
+    return true;
+  }, [focusChatInput, onSendChatMessage]);
+  const submitChatMessage = useCallback(async () => {
+    const text = chatInputValue.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_INPUT_LENGTH);
+    setChatInputValue('');
+    if (!text) return;
+    setActiveChatWindowId('map');
+    await sendChatText(text, 'map', true);
+  }, [chatInputValue, sendChatText]);
+  const beginChatResize = useCallback((groupId: 'main' | string, event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const panel = event.currentTarget.closest(`.${styles.chatPanel}`) as HTMLDivElement | null;
+    const wrapRect = wrapRef.current?.getBoundingClientRect();
+    const panelRect = panel?.getBoundingClientRect();
+    const lockBottom = panel?.style.bottom === 'auto';
+    const startTop = wrapRect && panelRect ? Math.round(panelRect.top - wrapRect.top) : null;
+    const startSize = groupId === 'main'
+      ? chatPanelSizeRef.current
+      : (detachedChatPanelSizesRef.current[groupId] ?? chatPanelSizeRef.current);
+    chatResizeRef.current = {
+      groupId,
+      positionKey: groupId === 'main' ? CHAT_PANEL_UI_KEY : getDetachedChatWindowUiKey(groupId),
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: startSize.width,
+      startHeight: startSize.height,
+      startTop,
+      lockBottom,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }, []);
   const [martialPanelTab, setMartialPanelTab] = useState<'jianghu' | 'jujing'>(() => {
     try {
       if (typeof window === 'undefined') return 'jianghu';
@@ -3540,6 +4596,7 @@ export default function BattleArena({
   const [showControlPanel, setShowControlPanel] = useState(false);
   const [showHeartDetailsPanel, setShowHeartDetailsPanel] = useState(false);
   const [showHeartStatSettings, setShowHeartStatSettings] = useState(false);
+  const [showCombatPresetBar, setShowCombatPresetBar] = useState(false);
   const [showCombatPresetPanel, setShowCombatPresetPanel] = useState(false);
   const [heartStatHint, setHeartStatHint] = useState<HeartStatHintState | null>(null);
   const [heartStatVisibility, setHeartStatVisibility] = useState<Record<HeartStatKey, boolean>>(() => {
@@ -3681,6 +4738,11 @@ export default function BattleArena({
       setShowCheatWindow(false);
     }
   }, [showCheatAbilityPanelEntry]);
+  useEffect(() => {
+    if (!showCombatPresetBar) {
+      setShowCombatPresetPanel(false);
+    }
+  }, [showCombatPresetBar]);
   const [inGameWarningScale, setInGameWarningScale] = useState(() => {
     try {
       if (typeof window === 'undefined') return 1;
@@ -3702,6 +4764,51 @@ export default function BattleArena({
     const id = window.setInterval(() => setSystemTime(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let frameId = 0;
+    let timeoutId = 0;
+
+    const clearScheduled = () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+        frameId = 0;
+      }
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+        timeoutId = 0;
+      }
+    };
+
+    const schedule = () => {
+      clearScheduled();
+      const nowMs = Date.now();
+      if (playerHasRuntimeCountdown(cooldownRuntimePlayerRef.current, nowMs)) {
+        frameId = window.requestAnimationFrame(tick);
+      } else {
+        timeoutId = window.setTimeout(tick, COOLDOWN_IDLE_CLOCK_INTERVAL_MS);
+      }
+    };
+
+    const tick = () => {
+      if (disposed) return;
+      setCooldownClockMs(Date.now());
+      schedule();
+    };
+
+    schedule();
+    return () => {
+      disposed = true;
+      clearScheduled();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (playerHasRuntimeCountdown(me, Date.now())) {
+      setCooldownClockMs(Date.now());
+    }
+  }, [me.activeDash, me.globalGcdTicks, me.hand, me.specialAbilityStates]);
 
   useEffect(() => {
     let frameId = 0;
@@ -3813,15 +4920,60 @@ export default function BattleArena({
         const positions = payload.viewport && targetViewport && !areUiViewportSizesEqual(payload.viewport, targetViewport)
           ? scaleUiPositions(payload.positions, payload.viewport, targetViewport)
           : payload.positions;
+        const accountPositions = Object.fromEntries(
+          Object.entries(positions).filter(([key]) => key !== CHAT_CLEAR_DIALOG_UI_KEY)
+        );
 
-        uiPositionsRef.current = positions;
-        setUiPositions(positions);
+        uiPositionsRef.current = accountPositions;
+        setUiPositions(accountPositions);
+        if (payload.chat) {
+          chatPanelSizeRef.current = payload.chat.panelSize;
+          setChatPanelSize(payload.chat.panelSize);
+          if (payload.chat.settings) {
+            chatSettingsRef.current = payload.chat.settings;
+            setChatSettings(payload.chat.settings);
+            setChatSettingsDraft(payload.chat.settings);
+          }
+          if (payload.chat.settingsModalSize) {
+            chatSettingsModalSizeRef.current = payload.chat.settingsModalSize;
+            setChatSettingsModalSize(payload.chat.settingsModalSize);
+          }
+          if (payload.chat.windows) {
+            const accountWindows = payload.chat.windows;
+            const accountDetachedWindows = normalizeDetachedChatWindows(payload.chat.detachedWindows, accountWindows);
+            chatWindowsRef.current = accountWindows;
+            setChatWindows(accountWindows);
+            detachedChatWindowsRef.current = accountDetachedWindows;
+            setDetachedChatWindows(accountDetachedWindows);
+            const accountActiveWindowId = payload.chat.activeWindowId
+              ? normalizeActiveChatWindowId(payload.chat.activeWindowId, accountWindows)
+              : accountWindows[0]?.id ?? DEFAULT_CHAT_WINDOWS[0].id;
+            activeChatWindowIdRef.current = accountActiveWindowId;
+            setActiveChatWindowId(accountActiveWindowId);
+            setChatWindowDrafts(accountWindows.map((entry) => ({ ...entry, channels: [...entry.channels] })));
+            setSelectedChatWindowId(accountActiveWindowId);
+            if (payload.chat.detachedPanelSizes) {
+              const validDetachedIds = new Set(accountDetachedWindows.map((entry) => entry.id));
+              const accountDetachedSizes = Object.fromEntries(
+                Object.entries(payload.chat.detachedPanelSizes).filter(([id]) => validDetachedIds.has(id))
+              ) as Record<string, ChatPanelSize>;
+              detachedChatPanelSizesRef.current = accountDetachedSizes;
+              setDetachedChatPanelSizes(accountDetachedSizes);
+            }
+          }
+        }
+        uiLayoutLoadedRef.current = true;
         storedUiViewportRef.current = targetViewport;
         if (targetViewport) {
           lastCanvasSizeRef.current = targetViewport;
         }
       } catch (err) {
         console.error('[BattleArena] load ui layout failed:', err);
+      } finally {
+        if (!cancelled) {
+          uiLayoutLoadedRef.current = true;
+          setUiLayoutReady(true);
+        }
       }
     };
 
@@ -3885,7 +5037,7 @@ export default function BattleArena({
   const [showHiddenBuffStatusBar, setShowHiddenBuffStatusBar] = useState(false);
   const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
-  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'martial'>('switches');
+  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'martial' | 'chat'>('switches');
   const [gameSettingsTab, setGameSettingsTab] = useState<GameSettingsTabId>('general');
   const [customUiPromptPos, setCustomUiPromptPos] = useState<UiPosition | null>(null);
   const lightingControlsOpen = showTestingPanel && escMainTab === 'test' && escTestPage === 'lighting';
@@ -4621,6 +5773,7 @@ export default function BattleArena({
   const localZRef         = useRef(0);     // current Z height (world units)
   const localVzRef        = useRef(0);     // current Z velocity
   const localJumpCountRef = useRef(0);     // jumps used in current airtime (max 2)
+  const advanceLocalPhysicsRef = useRef<() => void>(() => {});
   const tiYunZongPenaltyConsumedRef = useRef(false);
   const lastDashAbilityIdRef = useRef<string | null>(null); // track last active dash for jump-restore logic
   const airborneSpeedCarryRef = useRef(0); // latest special airborne planar speed snapshot (world units/tick)
@@ -4671,7 +5824,7 @@ export default function BattleArena({
   const groundDeselectCandidateRef = useRef(false);
   const lastQuickLeftClickAtRef = useRef(0);
 
-  activeChannelRef.current = me?.activeChannel ?? null;
+  activeChannelRef.current = getActiveChannelClient(me?.activeChannel ?? null);
 
   const hasMovementIntent = useCallback((keys = keysRef.current) => {
     if (controlModeRef.current === 'traditional') {
@@ -4712,6 +5865,12 @@ export default function BattleArena({
   const lastInstantSwapCastAtRef = useRef(0);
   const lastFengLiuYunSanCastAtRef = useRef(0);
   const lastObservedServerDashAtRef = useRef(0);
+  const dashServerSampleRef = useRef<DashRenderSample | null>(null);
+  const dashServerSampleKeyRef = useRef('');
+  const lastDashStutterLogAtRef = useRef(0);
+  const lastJumpCorrectionWarnAtRef = useRef(0);
+  const dashStartExpectedMsRef = useRef(1000);
+  const dashStartAbilityIdRef = useRef<string | null>(null);
   const pendingGroundCastAbilityRef = useRef<string | null>(null);
   const mouseWorldPosRef = useRef<{ x: number; y: number; z?: number } | null>(null);
   const oppScreenBoundsRef  = useRef<ScreenBounds | null>(null);
@@ -4767,20 +5926,70 @@ export default function BattleArena({
   const _prevDashRef = useRef<boolean>(false);
   {
     const ad = (me as any)?.activeDash;
-    const isDashing = !!ad && ad.ticksRemaining > 0;
-    meActiveDashRef.current = isDashing ? ad : null;
+    const activeDashTicksRemaining = getRuntimeCountdownTicks(ad, 'ticksRemaining', '_ticksRemainingSyncedAt', Date.now());
+    const isDashing = !!ad && activeDashTicksRemaining > 0;
+    const predictedActiveDash = isDashing ? { ...ad, ticksRemaining: activeDashTicksRemaining } : null;
+    meActiveDashRef.current = predictedActiveDash;
     if (isDashing) {
-      lastObservedServerDashAtRef.current = performance.now();
+      const nowMs = performance.now();
+      lastObservedServerDashAtRef.current = nowMs;
+
+      const serverDashPosition = {
+        x: me.position.x,
+        y: me.position.y,
+        z: (me.position as any).z ?? 0,
+      };
+      const sampleKey = [
+        ad.abilityId ?? '',
+        ad._ticksRemainingSyncedAt ?? '',
+        serverDashPosition.x.toFixed(3),
+        serverDashPosition.y.toFixed(3),
+        serverDashPosition.z.toFixed(3),
+      ].join(':');
+
+      if (dashServerSampleKeyRef.current !== sampleKey) {
+        const previousSample = dashServerSampleRef.current;
+        const gapMs = previousSample ? nowMs - previousSample.sampledAtMs : 0;
+        if (
+          previousSample &&
+          shouldLogDashServerGap(gapMs) &&
+          nowMs - lastDashStutterLogAtRef.current > 500
+        ) {
+          lastDashStutterLogAtRef.current = nowMs;
+          console.warn('[DASH-STUTTER] delayed server dash sample', {
+            abilityId: ad.abilityId ?? null,
+            gapMs: Math.round(gapMs),
+            ticksRemaining: activeDashTicksRemaining,
+          });
+        }
+        dashServerSampleRef.current = {
+          position: serverDashPosition,
+          sampledAtMs: nowMs,
+          ticksRemaining: activeDashTicksRemaining,
+          vxPerTick: Number(ad.vxPerTick ?? 0),
+          vyPerTick: Number(ad.vyPerTick ?? 0),
+          vzPerTick: Number(ad.vzPerTick ?? ad.forceVzPerTick ?? 0),
+        };
+        dashServerSampleKeyRef.current = sampleKey;
+      }
+    } else {
+      dashServerSampleRef.current = null;
+      dashServerSampleKeyRef.current = '';
     }
     dashTurnOverrideRef.current = hasDashTurnOverrideClient(me?.buffs);
     // Transition logging (synchronous, fine for refs)
     if (isDashing && !_prevDashRef.current) {
-      (window as any).__dashStartMs = performance.now();
-      console.log(`[DASH] >>> FRONTEND START  time=${new Date().toISOString()}`);
+      const nowMs = performance.now();
+      const remainingTicks = Math.max(1, activeDashTicksRemaining);
+      dashStartExpectedMsRef.current = Math.round(remainingTicks * (1000 / 30));
+      dashStartAbilityIdRef.current = ad?.abilityId ?? null;
+      (window as any).__dashStartMs = nowMs;
+      console.log(`[DASH] >>> FRONTEND START  time=${new Date().toISOString()} ability=${dashStartAbilityIdRef.current ?? 'unknown'} expectedRemaining=${dashStartExpectedMsRef.current}ms`);
     }
     if (!isDashing && _prevDashRef.current) {
       const elapsed = performance.now() - ((window as any).__dashStartMs ?? 0);
-      console.log(`[DASH] <<< FRONTEND END    elapsed=${elapsed.toFixed(0)}ms  (expected ~1000ms)`);
+      console.log(`[DASH] <<< FRONTEND END    elapsed=${elapsed.toFixed(0)}ms  (expected ~${dashStartExpectedMsRef.current}ms remaining, ability=${dashStartAbilityIdRef.current ?? 'unknown'})`);
+      dashStartAbilityIdRef.current = null;
     }
     _prevDashRef.current = isDashing;
   }
@@ -4802,6 +6011,8 @@ export default function BattleArena({
   const isPowerJumpRef           = useRef(false); // true while airborne from a power jump (different gravity)
   const isPowerJumpCombinedRef   = useRef(false); // true for 扶摇+鸟翔 combined 24u jump
   const maxJumpsRef              = useRef(2);     // updated from me.buffs MULTI_JUMP effect
+  const [locallyConsumedJumpBoostAt, setLocallyConsumedJumpBoostAt] = useState(0);
+  const locallyConsumedJumpBoostAtRef = useRef(0);
   const yuqiMountedRef           = useRef(false);
   const lingRanTianFengActiveRef = useRef(false);
   const lingRanTianFengChargeRef = useRef(0);
@@ -5108,7 +6319,11 @@ export default function BattleArena({
       beginPendingGroundCast(id);
       return;
     }
-    if (abilityKey === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
+    if (abilityKey === 'fuyao_zhishang') {
+      hasFuyaoBuffRef.current = true;
+      locallyConsumedJumpBoostAtRef.current = 0;
+      setLocallyConsumedJumpBoostAt(0);
+    }
     if (abilityKey === 'niao_xiang_bi_kong') {
       predictedMultiJumpExpiresAtRef.current = performance.now() + 15_000;
     }
@@ -5345,7 +6560,15 @@ export default function BattleArena({
       // --- local player render pos ---
       const myPos = localPositionRef.current ?? me?.position;
       if (myPos) {
-        const tx = myPos.x, ty = myPos.y, tz = localZRef.current;
+        let tx = myPos.x, ty = myPos.y, tz = localZRef.current;
+        const predictedDashRenderPos = meActiveDashRef.current
+          ? predictDashRenderPosition(dashServerSampleRef.current, { nowMs: frameNow })
+          : null;
+        if (predictedDashRenderPos) {
+          tx = predictedDashRenderPos.x;
+          ty = predictedDashRenderPos.y;
+          tz = predictedDashRenderPos.z;
+        }
         const r  = localRenderPosRef.current;
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
         const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
@@ -5409,7 +6632,7 @@ export default function BattleArena({
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
   // Keep max-jumps ref in sync with MULTI_JUMP buff from server state
   useEffect(() => {
-    const effects = me?.buffs?.flatMap((b: any) => (b.effects ?? []).filter(Boolean)) ?? [];
+    const effects = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt).flatMap((b: any) => (b.effects ?? []).filter(Boolean));
     const multiJump = effects.find((e: any) => e.type === 'MULTI_JUMP');
     maxJumpsRef.current = multiJump ? (multiJump.value ?? 2) : 2;
     yuqiMountedRef.current = hasYuqiStateClient(me?.buffs);
@@ -5418,7 +6641,7 @@ export default function BattleArena({
     lingRanTianFengChargeRef.current = lingRanTianFengActiveRef.current
       ? Math.max(0, Math.min(1, Number.isFinite(nextLingRanCharge) ? nextLingRanCharge : 0))
       : 0;
-  }, [me?.buffs, (me as any)?.lingRanTianFengCharges]);
+  }, [me?.buffs, locallyConsumedJumpBoostAt, (me as any)?.lingRanTianFengCharges]);
 
   useEffect(() => {
     tiYunZongPenaltyConsumedRef.current = !!me?.tiYunZongPenaltyConsumed;
@@ -5466,6 +6689,7 @@ export default function BattleArena({
   }, []);
 
   const tryQueueLocalJump = useCallback(() => {
+    const activeChannel = getActiveChannelClient(me?.activeChannel ?? null);
     if (meActiveDashRef.current) {
       crashRecorder.recordBehavior('jump-blocked', { reason: 'active-dash', position: localPositionRef.current ?? me.position });
       return;
@@ -5474,7 +6698,7 @@ export default function BattleArena({
     if (
       jumpLockedRef.current ||
       (!lingRanJumpLockImmune && (
-        !!me?.activeChannel ||
+        !!activeChannel ||
         hasLegacyChannelJumpLock(me?.buffs) ||
         buffsHaveAnyEffect(me?.buffs, ['NO_JUMP'])
       ))
@@ -5482,7 +6706,7 @@ export default function BattleArena({
       crashRecorder.recordBehavior('jump-blocked', {
         reason: 'locked-or-channeling',
         jumpLocked: jumpLockedRef.current,
-        activeChannel: !!me?.activeChannel,
+        activeChannel: !!activeChannel,
         position: localPositionRef.current ?? me.position,
       });
       return;
@@ -5535,7 +6759,7 @@ export default function BattleArena({
 
   // Keep local movement-speed prediction aligned with backend movement.ts
   useEffect(() => {
-    const effects = (me?.buffs ?? []).flatMap((b: any) => (b.effects ?? []).filter(Boolean));
+    const effects = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt).flatMap((b: any) => (b.effects ?? []).filter(Boolean));
     const speedBoost = effects
       .filter((e: any) => e.type === 'SPEED_BOOST')
       .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
@@ -5543,7 +6767,7 @@ export default function BattleArena({
       .filter((e: any) => e.type === 'SLOW')
       .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
     moveSpeedScaleRef.current = Math.max(0, 1 + speedBoost - slow);
-  }, [me?.buffs]);
+  }, [me?.buffs, locallyConsumedJumpBoostAt]);
 
   useEffect(() => {
     const getBaseSpeedLockReason = () => {
@@ -5678,13 +6902,14 @@ export default function BattleArena({
   const jumpLockedRef = useRef(false);
 
   useEffect(() => {
-    const buffs = me?.buffs ?? [];
+    const buffs = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt);
+    const activeChannel = getActiveChannelClient(me?.activeChannel ?? null);
     const lingRanJumpLockImmune = hasLingRanTianFengStateClient(buffs);
     const fullyLocked = buffsHaveAnyEffect(buffs, ['KNOCKED_BACK', 'CONTROL', 'ATTACK_LOCK']);
     const rooted = !fullyLocked && buffsHaveAnyEffect(buffs, ['ROOT']);
-    const jumpSuppressedByChannel = !lingRanJumpLockImmune && (!!me?.activeChannel || hasLegacyChannelJumpLock(buffs));
+    const jumpSuppressedByChannel = !lingRanJumpLockImmune && (!!activeChannel || hasLegacyChannelJumpLock(buffs));
     const noJumpLocked = !lingRanJumpLockImmune && buffsHaveAnyEffect(buffs, ['NO_JUMP']);
-    const channelMovementLocked = (me?.activeChannel as any)?.lockMovement === true;
+    const channelMovementLocked = (activeChannel as any)?.lockMovement === true;
     // Z_LOCK: full vertical lock (亢龙有悔). Pin vz=0 and skip Z integration.
     const zLocked = buffsHaveAnyEffect(buffs, ['Z_LOCK']);
     // JUMP_NERF: scales jump take-off velocity by sqrt(value). Use min across stacks.
@@ -5695,8 +6920,7 @@ export default function BattleArena({
     let shiXinGuDirection: { x: number; y: number } | null = null;
     let shiXinGuStandstill = false;
     for (const b of buffs ?? []) {
-      const now = Date.now();
-      if (!b || (b.expiresAt ?? 0) <= now) continue;
+      if (!b) continue;
       for (const e of (b.effects ?? [])) {
         if ((e as any)?.type === 'JUMP_NERF') {
           const v = Math.max(0, Math.min(1, Number((e as any).value ?? 1)));
@@ -5752,7 +6976,7 @@ export default function BattleArena({
       jumpLocalRef.current = false;
       jumpSendRef.current = false;
     }
-  }, [me?.activeChannel, me?.buffs]);
+  }, [me?.activeChannel, me?.buffs, locallyConsumedJumpBoostAt]);
 
   // Poll height + consume any finished jump record every 50 ms
   useEffect(() => {
@@ -5776,14 +7000,16 @@ export default function BattleArena({
 
   // Keep render-loop refs up to date for channel AOE circles
   useEffect(() => {
-    const hasFengLai = me?.buffs?.some((b: any) => b.buffId === 1014);
-    const hasZhanWu  = me?.buffs?.some((b: any) => b.buffId === 2712);
+    const activeBuffs = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt);
+    const hasFengLai = activeBuffs.some((b: any) => b.buffId === 1014);
+    const hasZhanWu  = activeBuffs.some((b: any) => b.buffId === 2712);
     meChannelingRef.current = !!(hasFengLai || hasZhanWu);
     meChannelRadiusRef.current = hasZhanWu ? 4 : 10;
-  }, [me?.buffs]);
+  }, [me?.buffs, locallyConsumedJumpBoostAt]);
   useEffect(() => {
-    const hasFengLai = opponent?.buffs?.some((b: any) => b.buffId === 1014);
-    const hasZhanWu  = opponent?.buffs?.some((b: any) => b.buffId === 2712);
+    const activeBuffs = activeBuffsClient(opponent?.buffs);
+    const hasFengLai = activeBuffs.some((b: any) => b.buffId === 1014);
+    const hasZhanWu  = activeBuffs.some((b: any) => b.buffId === 2712);
     oppChannelingRef.current = !!(hasFengLai || hasZhanWu);
     oppChannelRadiusRef.current = hasZhanWu ? 4 : 10;
   }, [opponent?.buffs]);
@@ -5977,6 +7203,14 @@ export default function BattleArena({
       const actorState = actorUserId === myId
         ? me
         : opponentsList.find((opponentEntry) => opponentEntry.userId === actorUserId) ?? null;
+      if (actorUserId !== myId && hasStealthClient(actorState?.buffs)) {
+        if (eventChannelSoundKey) {
+          stopAbilityChannelSound(eventChannelSoundKey);
+          activeChannelSoundKeysRef.current.delete(eventChannelSoundKey);
+          channelSoundFinishAfterCompleteKeysRef.current.delete(eventChannelSoundKey);
+        }
+        return;
+      }
       const eventSourcePosition = typeof evt.x === 'number' && typeof evt.y === 'number'
         ? { x: evt.x, y: evt.y, z: typeof evt.z === 'number' ? evt.z : 0 }
         : null;
@@ -6125,10 +7359,12 @@ export default function BattleArena({
   useEffect(() => {
     const activeKeys = new Set<string>();
     const collectActiveChannel = (player: { userId?: string; activeChannel?: ActiveChannel; buffs?: ActiveBuff[] } | null | undefined) => {
-      const key = getChannelSoundKey(player?.userId, player?.activeChannel?.abilityId, player?.activeChannel?.instanceId);
+      if (player?.userId !== me?.userId && hasStealthClient(player?.buffs)) return;
+      const activeChannel = getActiveChannelClient(player?.activeChannel ?? null);
+      const key = getChannelSoundKey(player?.userId, activeChannel?.abilityId, activeChannel?.instanceId);
       if (key) activeKeys.add(key);
 
-      for (const buff of player?.buffs ?? []) {
+      for (const buff of activeBuffsClient(player?.buffs)) {
         const ability = (buff.sourceAbilityId ? abilities?.[buff.sourceAbilityId] : undefined) ?? channelAbilityByBuffId.get(buff.buffId);
         const channel = getRuntimeAbilityChannel(ability);
         if (!ability || channel?.source !== 'BUFF') continue;
@@ -6163,7 +7399,7 @@ export default function BattleArena({
   // Warn when a targeted channel is interrupted because target became untargetable (e.g. entered stealth).
   useEffect(() => {
     const prev = prevActiveChannelRef.current;
-    const curr = me?.activeChannel ?? null;
+    const curr = getActiveChannelClient(me?.activeChannel ?? null);
 
     if (prev && !curr) {
       const targetIsOpponent = !!prev.targetUserId && prev.targetUserId !== me.userId;
@@ -6466,18 +7702,91 @@ export default function BattleArena({
 
   useEffect(() => {
     if (!me?.position || !initializedRef.current) return;
+    advanceLocalPhysicsRef.current();
     const local  = localPositionRef.current;
     if (!local) return;
     const dx = me.position.x - local.x;
     const dy = me.position.y - local.y;
     const activeDash = (me as any)?.activeDash;
+    const activeDashTicksRemaining = getRuntimeCountdownTicks(activeDash, 'ticksRemaining', '_ticksRemainingSyncedAt', Date.now());
+    const predictedActiveDash = activeDash && activeDashTicksRemaining > 0
+      ? { ...activeDash, ticksRemaining: activeDashTicksRemaining }
+      : null;
     const forcedDisplacement = buffsHaveAnyEffect(me?.buffs, ['KNOCKED_BACK', 'PULLED']);
+    const serverZ = (me.position as any).z ?? 0;
+    const localZ = localZRef.current;
+    const zError = serverZ - localZ;
+    const absZError = Math.abs(zError);
+    const xyError = Math.hypot(dx, dy);
+    const airborneLocalForCorrection = localJumpCountRef.current > 0;
+    const serverVelocity = (me as any)?.velocity ?? {};
+    const serverVx = Number(serverVelocity.vx ?? 0);
+    const serverVy = Number(serverVelocity.vy ?? 0);
+    const serverVz = Number(serverVelocity.vz ?? 0);
+    const serverJumpCountRaw = Number((me as any)?.jumpCount ?? 0);
+    const serverJumpCount = Number.isFinite(serverJumpCountRaw) ? serverJumpCountRaw : 0;
+    const localJumpCount = localJumpCountRef.current;
+    const localPlanarPredictionSpeed = Math.max(
+      Math.hypot(localVelocityRef.current.x, localVelocityRef.current.y),
+      getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current),
+    );
+    const serverPlanarSpeed = Math.hypot(
+      Number.isFinite(serverVx) ? serverVx : 0,
+      Number.isFinite(serverVy) ? serverVy : 0,
+    );
+    const jumpLagXyTolerance = Math.max(
+      JUMP_CORRECTION_SERVER_LAG_MIN_XY,
+      Math.max(localPlanarPredictionSpeed, serverPlanarSpeed) * JUMP_CORRECTION_SERVER_LAG_TICKS + 0.25,
+    );
+    const jumpLagZTolerance = Math.max(
+      JUMP_CORRECTION_SERVER_LAG_MIN_Z,
+      Math.max(Math.abs(localVzRef.current), Math.abs(Number.isFinite(serverVz) ? serverVz : 0)) * JUMP_CORRECTION_SERVER_LAG_TICKS + 0.25,
+    );
+    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 260;
+    const waitingForServerJumpPhase =
+      airborneLocalForCorrection &&
+      localJumpCount > serverJumpCount &&
+      performance.now() - lastJumpInputAtRef.current < JUMP_CORRECTION_PENDING_PHASE_MS;
+    const waitingForLocalLanding =
+      airborneLocalForCorrection &&
+      localJumpCount > 0 &&
+      serverJumpCount === 0 &&
+      Math.abs(Number.isFinite(serverVz) ? serverVz : 0) < 0.05 &&
+      xyError <= Math.max(JUMP_CORRECTION_LANDING_GRACE_XY, jumpLagXyTolerance) &&
+      absZError <= JUMP_CORRECTION_LANDING_GRACE_Z;
+    const warnJumpCorrection = (reason: string, force = false) => {
+      if (!airborneLocalForCorrection) return;
+      if (!force && xyError < JUMP_CORRECTION_WARNING_MIN_XY && absZError < JUMP_CORRECTION_WARNING_MIN_Z) return;
+      const now = performance.now();
+      if (now - lastJumpCorrectionWarnAtRef.current < JUMP_CORRECTION_WARNING_COOLDOWN_MS) return;
+      lastJumpCorrectionWarnAtRef.current = now;
+      console.warn('[JUMP-CORRECTION] server corrected local jump prediction', {
+        reason,
+        xyError: Number(xyError.toFixed(3)),
+        zError: Number(zError.toFixed(3)),
+        localJumpCount,
+        serverJumpCount,
+        localVz: Number(localVzRef.current.toFixed(3)),
+        serverVz: Number((Number.isFinite(serverVz) ? serverVz : 0).toFixed(3)),
+        justJumpedLocally,
+        server: {
+          x: Number(me.position.x.toFixed(3)),
+          y: Number(me.position.y.toFixed(3)),
+          z: Number(serverZ.toFixed(3)),
+        },
+        local: {
+          x: Number(local.x.toFixed(3)),
+          y: Number(local.y.toFixed(3)),
+          z: Number(localZ.toFixed(3)),
+        },
+      });
+    };
 
     // Collision-test mode: both client and backend now use BVH collision, so we can
     // reconcile position normally. Only skip reconciliation on dash (server owns dash).
     if (mode === 'collision-test') {
-      if (activeDash && activeDash.ticksRemaining > 0) {
-        meActiveDashRef.current = activeDash;
+      if (predictedActiveDash) {
+        meActiveDashRef.current = predictedActiveDash;
         localPositionRef.current = { ...me.position };
         localZRef.current  = (me.position as any).z ?? 0;
         localVzRef.current = 0;
@@ -6518,11 +7827,26 @@ export default function BattleArena({
       return;
     }
 
+    if (
+      airborneLocalForCorrection &&
+      !forcedDisplacement &&
+      (
+        waitingForServerJumpPhase ||
+        waitingForLocalLanding ||
+        (
+          xyError <= jumpLagXyTolerance &&
+          absZError <= jumpLagZTolerance
+        )
+      )
+    ) {
+      return;
+    }
+
     // Hard-snap if server position is far away (e.g. new battle start).
     // This must also snap the render ref; otherwise the local character can
     // still fall into the old cosmetic dash easing for 5-20u corrections.
     if (dx * dx + dy * dy > 25) {
-      const serverZ = (me.position as any).z ?? 0;
+      warnJumpCorrection('hard-snap-xy', true);
       localPositionRef.current = { ...me.position };
       localZRef.current = serverZ;
       localVzRef.current = 0;
@@ -6535,7 +7859,6 @@ export default function BattleArena({
       return;
     }
 
-    const justJumpedLocally = performance.now() - lastJumpInputAtRef.current < 260;
     const recentDashSnap =
       !justJumpedLocally &&
       (
@@ -6546,8 +7869,8 @@ export default function BattleArena({
     // During active dash: server owns position — hard-snap XY + Z
     // Check me.activeDash directly (not ref) so this works even before React
     // fires the activeDash tracking useEffect on this render cycle.
-    if (activeDash && activeDash.ticksRemaining > 0) {
-      meActiveDashRef.current = activeDash;
+    if (predictedActiveDash) {
+      meActiveDashRef.current = predictedActiveDash;
       localPositionRef.current = { ...me.position };
       localZRef.current  = (me.position as any).z ?? 0;
       localVzRef.current = 0;
@@ -6585,24 +7908,22 @@ export default function BattleArena({
 
     // Reconcile Z with softer airborne correction to avoid double-jump snap.
     // When the client just jumped locally, trust prediction more briefly.
-    const serverZ = (me.position as any).z ?? 0;
-    const localZ  = localZRef.current;
-    const zError = serverZ - localZ;
-    const airborneLocal =
-      localJumpCountRef.current > 0 ||
-      Math.abs(localVzRef.current) > 0.01 ||
-      localZ > groundHRef.current + 0.05;
+    const airborneLocal = airborneLocalForCorrection;
     const hardSnapThreshold = airborneLocal ? (justJumpedLocally ? 6.6 : 4.4) : 2.64;
     const settleThreshold = airborneLocal ? 0.132 : 0.044;
     const zBlend = airborneLocal ? (justJumpedLocally ? 0.08 : 0.16) : 0.35;
     const shouldSoftReconcile = !airborneLocal || !justJumpedLocally || Math.abs(zError) > 0.66;
     if (Math.abs(zError) > hardSnapThreshold) {
+      warnJumpCorrection('hard-snap-z', true);
       localZRef.current = serverZ;
       if (!airborneLocal || serverZ <= groundHRef.current + 0.05) {
         localVzRef.current = 0;
       }
       bvhCenterYInitRef.current = false; // large Z snap — resync sphere center next tick
     } else if (shouldSoftReconcile) {
+      if (Math.abs(zError) >= JUMP_CORRECTION_WARNING_MIN_Z) {
+        warnJumpCorrection('soft-z');
+      }
       localZRef.current = localZ + zError * zBlend;
       if (Math.abs(serverZ - localZRef.current) < settleThreshold) {
         localZRef.current = serverZ;
@@ -6610,6 +7931,9 @@ export default function BattleArena({
     }
     const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
     const blend  = airborneLocal && justJumpedLocally ? 0 : moving ? 0.03 : 0.25;
+    if (blend > 0) {
+      warnJumpCorrection('soft-xy');
+    }
     localPositionRef.current = {
       x: local.x + dx * blend,
       y: local.y + dy * blend,
@@ -6635,13 +7959,14 @@ export default function BattleArena({
       return Math.max(base, gcdWindow);
     };
     const getSharedGcdTicks = (ab: any): number => (
-      ab?.gcd === true ? Math.max(0, Number(me?.globalGcdTicks ?? 0)) : 0
+      ab?.gcd === true ? getRuntimeCountdownTicks(me, 'globalGcdTicks', '_globalGcdSyncedAt', cooldownClockMs) : 0
     );
     const getChargeDisplay = (ab: any, instance: any) => {
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       const sharedGcdTicks = getSharedGcdTicks(ab);
       if (maxCharges <= 1) {
-        const currentCooldown = Math.max(0, Number(instance?.cooldown ?? 0), sharedGcdTicks);
+        const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
+        const currentCooldown = Math.max(0, instanceCooldown, sharedGcdTicks);
         return {
           maxCharges: undefined,
           chargeCount: undefined,
@@ -6657,12 +7982,18 @@ export default function BattleArena({
 
       const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
       const chargeRecoveryTicks = Math.max(1, Number(ab?.chargeRecoveryTicks ?? ab?.cooldownTicks ?? 1));
-      const chargeRegenTicksRemaining = Math.max(0, Number(instance?.chargeRegenTicksRemaining ?? 0));
+      const chargeRegenTicksRemaining = getRuntimeCountdownTicks(
+        instance,
+        'chargeRegenTicksRemaining',
+        '_chargeRegenTicksRemainingSyncedAt',
+        cooldownClockMs,
+      );
       const chargeRegenProgress = chargeCount < maxCharges
         ? Math.max(0, Math.min(1, 1 - (chargeRegenTicksRemaining / chargeRecoveryTicks)))
         : undefined;
       const chargeCastLockTicks = Math.max(0, Number(ab?.chargeCastLockTicks ?? 0));
-      const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0), sharedGcdTicks);
+      const instanceChargeLockTicks = getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
+      const chargeLockTicks = Math.max(0, instanceChargeLockTicks, sharedGcdTicks);
 
       if (chargeCount <= 0) {
         return {
@@ -6761,12 +8092,12 @@ export default function BattleArena({
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       if (maxCharges > 1) {
         const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
-        const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0));
+        const chargeLockTicks = getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
         if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
         if (chargeLockTicks > 0) return '这个能力正在冷却';
         if (chargeCount <= 0) return '招式层数正在恢复';
       } else {
-        const instanceCooldown = Math.max(0, Number(instance?.cooldown ?? 0));
+        const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
         if (instanceCooldown > 0) return '这个能力正在冷却';
         if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
       }
@@ -6780,7 +8111,7 @@ export default function BattleArena({
       if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
         return '凌然天风特殊跳跃中无法施展任驰骋';
       }
-      if (me?.activeChannel) return '正在进行其他动作';
+      if (getActiveChannelClient(me?.activeChannel ?? null)) return '正在进行其他动作';
       if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '御骑状态下无法施展该招式';
       const powerLockWarning = getPowerLockWarningClient(ab, me.buffs);
       if (powerLockWarning) return powerLockWarning;
@@ -6820,12 +8151,10 @@ export default function BattleArena({
       }
       // 梯云纵 / 扶摇直上 mutual exclusion (mirrors backend gate)
       if (ab?.id === 'ti_yun_zong' || instance?.abilityId === 'ti_yun_zong') {
-        const now = Date.now();
-        if ((me.buffs ?? []).some((b: any) => b.buffId === 9001 && b.expiresAt > now)) return '该招式被当前气劲阻止';
+        if (activeSelfBuffsClient(me.buffs, locallyConsumedJumpBoostAt).some((b: any) => b.buffId === 9001)) return '该招式被当前气劲阻止';
       }
       if (ab?.id === 'fuyao_zhishang' || instance?.abilityId === 'fuyao_zhishang') {
-        const now = Date.now();
-        if ((me.buffs ?? []).some((b: any) => b.buffId === 9003 && b.expiresAt > now)) return '该招式被当前气劲阻止';
+        if (activeSelfBuffsClient(me.buffs, locallyConsumedJumpBoostAt).some((b: any) => b.buffId === 9003)) return '该招式被当前气劲阻止';
       }
       if ((ab?.id === 'hong_meng_tian_jin' || instance?.abilityId === 'hong_meng_tian_jin') && hasShuSeClient((targetForChecks as any)?.buffs)) {
         return '目标已受曙色影响';
@@ -7114,6 +8443,7 @@ export default function BattleArena({
     me.position,
     me.facing,
     me.activeChannel,
+    locallyConsumedJumpBoostAt,
     selectedTargetId,
     selectedEntityId,
     selectedSelf,
@@ -7126,21 +8456,44 @@ export default function BattleArena({
     wasdKeys,
     hasMovementIntent,
     isStandingCastBlocked,
+    cooldownClockMs,
   ]);
 
   /* ========================= PICKUP INTERACTION ========================= */
 
-  const persistUiPositions = useCallback((positions: Record<string, UiPosition>) => {
+  const buildChatUiLayoutPayload = useCallback((overrides?: Partial<ChatUiLayoutPayload>): ChatUiLayoutPayload => {
+    const windows = normalizeChatWindows(overrides?.windows ?? chatWindowsRef.current);
+    const detachedWindows = normalizeDetachedChatWindows(overrides?.detachedWindows ?? detachedChatWindowsRef.current, windows);
+    const detachedIds = new Set(detachedWindows.map((entry) => entry.id));
+    const sourceDetachedSizes = overrides?.detachedPanelSizes ?? detachedChatPanelSizesRef.current;
+    const detachedPanelSizes = Object.fromEntries(
+      Object.entries(sourceDetachedSizes).filter(([id]) => detachedIds.has(id)).map(([id, size]) => [id, normalizeChatPanelSize(size)])
+    ) as Record<string, ChatPanelSize>;
+    return {
+      panelSize: normalizeChatPanelSize(overrides?.panelSize ?? chatPanelSizeRef.current),
+      settings: normalizeChatSettings(overrides?.settings ?? chatSettingsRef.current),
+      settingsModalSize: normalizeChatSettingsModalSize(overrides?.settingsModalSize ?? chatSettingsModalSizeRef.current),
+      windows,
+      activeWindowId: normalizeActiveChatWindowId(overrides?.activeWindowId ?? activeChatWindowIdRef.current, windows),
+      detachedWindows,
+      detachedPanelSizes,
+    };
+  }, []);
+
+  const persistUiLayout = useCallback((positions: Record<string, UiPosition>, chatOverrides?: Partial<ChatUiLayoutPayload>) => {
     const viewport = {
       w: Math.round(canvasSizeRef.current.w),
       h: Math.round(canvasSizeRef.current.h),
     };
+    const persistedPositions = Object.fromEntries(
+      Object.entries(positions).filter(([key]) => key !== CHAT_CLEAR_DIALOG_UI_KEY)
+    );
     storedUiViewportRef.current = viewport;
     void fetch('/api/game/ui-layout', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ positions, viewport }),
+      body: JSON.stringify({ positions: persistedPositions, viewport, chat: buildChatUiLayoutPayload(chatOverrides) }),
     }).then(async (res) => {
       if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -7149,7 +8502,213 @@ export default function BattleArena({
     }).catch((err) => {
       console.error('[BattleArena] persist ui layout failed:', err);
     });
+  }, [buildChatUiLayoutPayload]);
+
+  const persistUiPositions = useCallback((positions: Record<string, UiPosition>) => {
+    persistUiLayout(positions);
+  }, [persistUiLayout]);
+
+  useEffect(() => {
+    if (!uiLayoutLoadedRef.current) return;
+    persistUiLayout(uiPositionsRef.current);
+  }, [chatPanelSize, detachedChatPanelSizes, persistUiLayout]);
+
+  useEffect(() => {
+    if (!uiLayoutLoadedRef.current) return;
+    persistUiLayout(uiPositionsRef.current);
+  }, [activeChatWindowId, chatSettings, chatSettingsModalSize, chatWindows, detachedChatWindows, persistUiLayout]);
+
+  useEffect(() => {
+    const validWindowIds = new Set(chatWindows.map((entry) => entry.id));
+    const assignedWindowIds = new Set<string>();
+    const nextDetachedWindows = detachedChatWindowsRef.current
+      .map((entry) => {
+        const windowIds = entry.windowIds.filter((windowId) => windowId !== 'combined' && validWindowIds.has(windowId) && !assignedWindowIds.has(windowId));
+        windowIds.forEach((windowId) => assignedWindowIds.add(windowId));
+        return {
+          ...entry,
+          windowIds,
+          activeWindowId: windowIds.includes(entry.activeWindowId) ? entry.activeWindowId : windowIds[0] ?? entry.activeWindowId,
+        };
+      })
+      .filter((entry) => entry.windowIds.length > 0);
+    const nextMainWindowIds = chatMainWindowIdsRef.current.filter((windowId) => validWindowIds.has(windowId) && !assignedWindowIds.has(windowId));
+    for (const windowConfig of chatWindows) {
+      if (!assignedWindowIds.has(windowConfig.id) && !nextMainWindowIds.includes(windowConfig.id)) {
+        nextMainWindowIds.push(windowConfig.id);
+      }
+    }
+    detachedChatWindowsRef.current = nextDetachedWindows;
+    chatMainWindowIdsRef.current = nextMainWindowIds;
+    setDetachedChatWindows(nextDetachedWindows);
+    setChatMainWindowIds(nextMainWindowIds);
+  }, [chatWindows]);
+
+  const clampDetachedChatPosition = useCallback((position: UiPosition): UiPosition => {
+    const viewport = canvasSizeRef.current;
+    const size = chatPanelSizeRef.current;
+    const maxLeft = Math.max(12, Math.round(viewport.w - size.width - 12));
+    const maxTop = Math.max(12, Math.round(viewport.h - size.height - 12));
+    return {
+      left: Math.max(12, Math.min(maxLeft, Math.round(position.left))),
+      top: Math.max(12, Math.min(maxTop, Math.round(position.top))),
+    };
   }, []);
+
+  const updateDetachedChatGroupPosition = useCallback((detachedId: string, clientX: number, clientY: number, pointerOffset?: { x: number; y: number }) => {
+    const wrapRect = wrapRef.current?.getBoundingClientRect();
+    if (!wrapRect) return;
+    const positionKey = getDetachedChatWindowUiKey(detachedId);
+    const nextPosition = clampDetachedChatPosition({
+      left: clientX - wrapRect.left - (pointerOffset?.x ?? Math.round(chatPanelSizeRef.current.width / 2)),
+      top: clientY - wrapRect.top - (pointerOffset?.y ?? 14),
+    });
+    setUiPositions((current) => {
+      const next = { ...current, [positionKey]: nextPosition };
+      uiPositionsRef.current = next;
+      return next;
+    });
+  }, [clampDetachedChatPosition]);
+
+  const detachChatWindow = useCallback((windowId: string, sourceGroupId: string, clientX: number, clientY: number, pointerOffset?: { x: number; y: number }): string | null => {
+    const windowConfig = chatWindowsRef.current.find((entry) => entry.id === windowId);
+    if (!windowConfig || windowConfig.id === 'combined') return null;
+    let detachedId = `detached-${windowId}-${Date.now().toString(36)}`;
+    let nextMainWindowIds = chatMainWindowIdsRef.current;
+    let nextDetachedWindows = detachedChatWindowsRef.current;
+
+    if (sourceGroupId === 'main') {
+      nextMainWindowIds = chatMainWindowIdsRef.current.filter((id) => id !== windowId);
+      if (activeChatWindowIdRef.current === windowId) {
+        setActiveChatWindowId(nextMainWindowIds[0] ?? DEFAULT_CHAT_WINDOWS[0].id);
+      }
+      nextDetachedWindows = [...nextDetachedWindows, { id: detachedId, windowIds: [windowId], activeWindowId: windowId }];
+    } else {
+      const sourceGroup = nextDetachedWindows.find((entry) => entry.id === sourceGroupId);
+      if (!sourceGroup || !sourceGroup.windowIds.includes(windowId)) return null;
+      if (sourceGroup.windowIds.length <= 1) {
+        detachedId = sourceGroup.id;
+      } else {
+        nextDetachedWindows = nextDetachedWindows.map((entry) => {
+          if (entry.id !== sourceGroupId) return entry;
+          const windowIds = entry.windowIds.filter((id) => id !== windowId);
+          return {
+            ...entry,
+            windowIds,
+            activeWindowId: windowIds.includes(entry.activeWindowId) ? entry.activeWindowId : windowIds[0] ?? entry.activeWindowId,
+          };
+        });
+        nextDetachedWindows = [...nextDetachedWindows, { id: detachedId, windowIds: [windowId], activeWindowId: windowId }];
+      }
+    }
+
+    chatMainWindowIdsRef.current = nextMainWindowIds;
+    detachedChatWindowsRef.current = nextDetachedWindows;
+    setChatMainWindowIds(nextMainWindowIds);
+    setDetachedChatWindows(nextDetachedWindows);
+    updateDetachedChatGroupPosition(detachedId, clientX, clientY, pointerOffset);
+    return detachedId;
+  }, [updateDetachedChatGroupPosition]);
+
+  const mergeDetachedChatGroup = useCallback((detachedId: string, targetGroupId: string) => {
+    if (detachedId === targetGroupId) return;
+    const draggedGroup = detachedChatWindowsRef.current.find((entry) => entry.id === detachedId);
+    if (!draggedGroup) return;
+    const positionKey = getDetachedChatWindowUiKey(detachedId);
+    const nextPositions = { ...uiPositionsRef.current };
+    delete nextPositions[positionKey];
+    uiPositionsRef.current = nextPositions;
+    setUiPositions(nextPositions);
+
+    if (targetGroupId === 'main') {
+      const nextMainWindowIds = [...chatMainWindowIdsRef.current];
+      for (const windowId of draggedGroup.windowIds) {
+        if (!nextMainWindowIds.includes(windowId)) nextMainWindowIds.push(windowId);
+      }
+      const nextDetachedWindows = detachedChatWindowsRef.current.filter((entry) => entry.id !== detachedId);
+      chatMainWindowIdsRef.current = nextMainWindowIds;
+      detachedChatWindowsRef.current = nextDetachedWindows;
+      setChatMainWindowIds(nextMainWindowIds);
+      setDetachedChatWindows(nextDetachedWindows);
+      setActiveChatWindowId(draggedGroup.activeWindowId);
+      return;
+    }
+
+    const targetGroup = detachedChatWindowsRef.current.find((entry) => entry.id === targetGroupId);
+    if (!targetGroup) return;
+    const nextDetachedWindows = detachedChatWindowsRef.current
+      .filter((entry) => entry.id !== detachedId)
+      .map((entry) => {
+        if (entry.id !== targetGroupId) return entry;
+        const windowIds = [...entry.windowIds];
+        for (const windowId of draggedGroup.windowIds) {
+          if (!windowIds.includes(windowId)) windowIds.push(windowId);
+        }
+        return { ...entry, windowIds, activeWindowId: draggedGroup.activeWindowId };
+      });
+    setDetachedChatWindows(nextDetachedWindows);
+    detachedChatWindowsRef.current = nextDetachedWindows;
+  }, []);
+
+  const findChatTabBarDropTarget = useCallback((clientX: number, clientY: number): string | null => {
+    const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    const tabBar = element?.closest('[data-chat-tab-bar-group="true"]') as HTMLElement | null;
+    return tabBar?.dataset.chatGroupId ?? null;
+  }, []);
+
+  const beginChatTabDetachDrag = useCallback((windowConfig: ChatWindowConfig, sourceGroupId: string, event: React.MouseEvent<HTMLButtonElement>) => {
+    if (windowConfig.id === 'combined' || event.button !== 0) return;
+    const headerRect = (event.currentTarget.closest('[data-chat-tab-bar-group="true"]') as HTMLElement | null)?.getBoundingClientRect();
+    if (!headerRect) return;
+    const tabRect = event.currentTarget.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const dragPointerOffset = {
+      x: Math.max(0, Math.round(startX - tabRect.left)),
+      y: Math.max(0, Math.round(startY - headerRect.top)),
+    };
+    let dragGroupId: string | null = null;
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const movedEnough = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 8;
+      if (!dragGroupId && movedEnough) {
+        const outsideHeader = moveEvent.clientX < headerRect.left
+          || moveEvent.clientX > headerRect.right
+          || moveEvent.clientY < headerRect.top
+          || moveEvent.clientY > headerRect.bottom;
+        if (outsideHeader) {
+          chatTabClickSuppressedRef.current = sourceGroupId;
+          dragGroupId = detachChatWindow(windowConfig.id, sourceGroupId, moveEvent.clientX, moveEvent.clientY, dragPointerOffset);
+          if (dragGroupId) setDraggingChatGroupId(dragGroupId);
+        }
+      }
+      if (dragGroupId) {
+        updateDetachedChatGroupPosition(dragGroupId, moveEvent.clientX, moveEvent.clientY, dragPointerOffset);
+      }
+    };
+    const onUp = (upEvent: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      if (dragGroupId) {
+        const targetGroupId = findChatTabBarDropTarget(upEvent.clientX, upEvent.clientY);
+        if (targetGroupId && targetGroupId !== dragGroupId) {
+          mergeDetachedChatGroup(dragGroupId, targetGroupId);
+        }
+        persistUiLayout(uiPositionsRef.current, {
+          detachedWindows: detachedChatWindowsRef.current,
+          detachedPanelSizes: detachedChatPanelSizesRef.current,
+        });
+        setDraggingChatGroupId(null);
+      }
+      window.setTimeout(() => {
+        if (chatTabClickSuppressedRef.current === sourceGroupId) {
+          chatTabClickSuppressedRef.current = null;
+        }
+      }, 250);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [detachChatWindow, findChatTabBarDropTarget, mergeDetachedChatGroup, persistUiLayout, updateDetachedChatGroupPosition]);
 
   const getUiPositionFromRef = useCallback((
     ref: React.RefObject<HTMLDivElement | null>,
@@ -7284,6 +8843,22 @@ export default function BattleArena({
       top: 24,
     });
   }, [getUiPositionFromRef]);
+
+  const getDefaultChatPanelPos = useCallback(() => {
+    const { h } = canvasSizeRef.current;
+    return getUiPositionFromRef(chatPanelRef, {
+      left: 10,
+      top: Math.max(12, Math.round(h - chatPanelSize.height - 42)),
+    });
+  }, [chatPanelSize.height, getUiPositionFromRef]);
+
+  const getDefaultChatClearDialogPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return {
+      left: Math.max(12, Math.round((w - chatClearDialogLayout.width) / 2)),
+      top: Math.max(12, Math.round(h * 0.12)),
+    };
+  }, [chatClearDialogLayout.width]);
 
   const getDefaultPlayerChannelBarPos = useCallback(() => {
     const hotbarElement = ownedAbilityBarRef.current?.querySelector(`.${styles.hotbar}`);
@@ -7469,6 +9044,8 @@ export default function BattleArena({
       const inGameWarningBase = prev[IN_GAME_WARNING_UI_KEY] ?? getDefaultInGameWarningPos();
       const itemBarBase = prev[ITEM_BAR_UI_KEY] ?? getDefaultItemBarPos();
       const martialPanelBase = prev[MARTIAL_PANEL_UI_KEY] ?? getDefaultMartialPanelPos();
+      const chatPanelBase = prev[CHAT_PANEL_UI_KEY] ?? getDefaultChatPanelPos();
+      const chatClearDialogBase = prev[CHAT_CLEAR_DIALOG_UI_KEY] ?? getDefaultChatClearDialogPos();
       const targetBase = getDefaultTargetStatusPos();
       const next = {
         ...prev,
@@ -7489,6 +9066,8 @@ export default function BattleArena({
         [IN_GAME_WARNING_UI_KEY]: inGameWarningBase,
         [ITEM_BAR_UI_KEY]: itemBarBase,
         [MARTIAL_PANEL_UI_KEY]: martialPanelBase,
+        [CHAT_PANEL_UI_KEY]: chatPanelBase,
+        [CHAT_CLEAR_DIALOG_UI_KEY]: chatClearDialogBase,
         [TARGET_BUFF_STATUS_UI_KEY]: prev[TARGET_BUFF_STATUS_UI_KEY] ?? targetBase,
         [TARGET_DEBUFF_STATUS_UI_KEY]: prev[TARGET_DEBUFF_STATUS_UI_KEY] ?? {
           left: targetBase.left,
@@ -7503,6 +9082,8 @@ export default function BattleArena({
     getDefaultDistanceIndicatorPos,
     getDefaultHeartStatsPos,
     getDefaultHeightCounterPos,
+    getDefaultChatPanelPos,
+    getDefaultChatClearDialogPos,
     getDefaultInGameWarningPos,
     getDefaultItemBarPos,
     getDefaultMartialPanelPos,
@@ -7673,6 +9254,14 @@ export default function BattleArena({
       }
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (chatClearDialog) {
+          setChatClearDialog(null);
+          return;
+        }
+        if (showChatSettings) {
+          cancelChatSettings();
+          return;
+        }
         if (customUiMode) {
           cancelCustomUiMode();
           return;
@@ -7703,8 +9292,23 @@ export default function BattleArena({
         toggleEscPanel();
         return;
       }
-      const keyboardTarget = e.target as HTMLElement | null;
-      if (keyboardTarget?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      const functionKeyNumber = /^F(\d{1,2})$/.exec(e.key)?.[1];
+      const blockedFunctionKey = functionKeyNumber ? Number(functionKeyNumber) >= 1 && Number(functionKeyNumber) <= 10 : false;
+      const blockedRefreshShortcut = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r';
+      const blockedHistoryShortcut = e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight');
+      const blockedBrowserKey = e.key === 'BrowserBack' || e.key === 'BrowserForward';
+      if (blockedFunctionKey || blockedRefreshShortcut || blockedHistoryShortcut || blockedBrowserKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      const keyboardTarget = e.target;
+      if (keyboardTarget instanceof Element && keyboardTarget.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (e.key === 'Enter' && !showTestingPanel && !showChatSettings && !chatClearDialog && !customUiMode && !martialPresetModal) {
+        e.preventDefault();
+        focusChatInput();
+        return;
+      }
       const k = e.key.toLowerCase();
       if (['w', 'a', 's', 'd'].includes(k)) {
         e.preventDefault();
@@ -7851,17 +9455,17 @@ export default function BattleArena({
     const onVisibilityChange = () => {
       if (document.hidden) resetMovementKeys();
     };
-    window.addEventListener('keydown', onDown);
+    window.addEventListener('keydown', onDown, { capture: true });
     window.addEventListener('keyup',   onUp);
     window.addEventListener('blur',    resetMovementKeys);
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
-      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keydown', onDown, { capture: true });
       window.removeEventListener('keyup',   onUp);
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, martialPresetModal, showMartialPanel, toggleEscPanel, triggerHotkeyBinding]);
+  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, cancelChatSettings, chatClearDialog, martialPresetModal, showMartialPanel, showTestingPanel, showChatSettings, focusChatInput, toggleEscPanel, triggerHotkeyBinding]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -7936,10 +9540,22 @@ export default function BattleArena({
       setPressedAbilityInput(null);
     };
     const isMouseUiTarget = (target: EventTarget | null) => {
-      return !!(target as HTMLElement | null)?.closest(`button, input, select, textarea, label, [data-ui-drag], [data-ui-interactive], .${styles.escOverlay}`);
+      return target instanceof Element && !!target.closest(`button, input, select, textarea, label, [data-ui-drag], [data-ui-interactive], .${styles.escOverlay}`);
     };
+    const isTextEntryTarget = (target: EventTarget | null) => {
+      return target instanceof Element && !!target.closest('input, textarea, select, [contenteditable="true"]');
+    };
+    const isTextEntryActive = (target: EventTarget | null) => {
+      return isTextEntryTarget(target) || isTextEntryTarget(document.activeElement);
+    };
+    const hasSideButtonCombo = (buttons: number) => (buttons & 8) !== 0 && (buttons & 16) !== 0;
 
     const onMouseDown = (e: MouseEvent) => {
+      if (hasSideButtonCombo(e.buttons) && isTextEntryActive(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (customUiMode) {
         resetMouseButtons();
         return;
@@ -8031,6 +9647,11 @@ export default function BattleArena({
       }
     };
     const onMouseMove = (e: MouseEvent) => {
+      if (hasSideButtonCombo(e.buttons) && isTextEntryActive(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (customUiMode) {
         resetMouseButtons();
         return;
@@ -8078,14 +9699,20 @@ export default function BattleArena({
     const onContextMenu = (e: MouseEvent) => { e.preventDefault(); };
     // auxclick fires for middle-click and side-buttons — prevent browser tab-open / navigation
     const onAuxClick = (e: MouseEvent) => {
-      if (e.button === 1 || e.button === 3 || e.button === 4) {
+      if (e.button === 1 || ((e.button === 3 || e.button === 4) && isTextEntryActive(e.target))) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    const onSideButtonPointer = (e: PointerEvent) => {
+      if (isTextEntryActive(e.target) && (e.button === 3 || e.button === 4 || hasSideButtonCombo(e.buttons))) {
         e.preventDefault();
         e.stopPropagation();
       }
     };
     const onWheel = (e: WheelEvent) => {
       if (customUiMode) return;
-      if ((e.target as HTMLElement | null)?.closest(`[data-testing-panel], input, select, textarea, [data-ui-interactive], .${styles.escOverlay}`)) return;
+      if (e.target instanceof Element && e.target.closest(`[data-testing-panel], input, select, textarea, [data-ui-interactive], .${styles.escOverlay}`)) return;
       const wheelHotkey = normalizeWheelHotkey(e.deltaY);
       if (wheelHotkey && triggerHotkeyBinding(wheelHotkey.id)) {
         e.preventDefault();
@@ -8101,6 +9728,9 @@ export default function BattleArena({
     // Use capture phase so we intercept BEFORE the browser's own navigation handlers
     window.addEventListener('mousedown',   onMouseDown,   { capture: true });
     window.addEventListener('mouseup',     onMouseUp,     { capture: true });
+    window.addEventListener('pointerdown', onSideButtonPointer, { capture: true });
+    window.addEventListener('pointerup',   onSideButtonPointer, { capture: true });
+    window.addEventListener('pointermove', onSideButtonPointer, { capture: true });
     window.addEventListener('mousemove',   onMouseMove,   { capture: true });
     window.addEventListener('contextmenu', onContextMenu, { capture: true });
     window.addEventListener('auxclick',    onAuxClick,    { capture: true });
@@ -8110,6 +9740,9 @@ export default function BattleArena({
       cancelMouseLookFacingSync();
       window.removeEventListener('mousedown',   onMouseDown,   { capture: true });
       window.removeEventListener('mouseup',     onMouseUp,     { capture: true });
+      window.removeEventListener('pointerdown', onSideButtonPointer, { capture: true });
+      window.removeEventListener('pointerup',   onSideButtonPointer, { capture: true });
+      window.removeEventListener('pointermove', onSideButtonPointer, { capture: true });
       window.removeEventListener('mousemove',   onMouseMove,   { capture: true });
       window.removeEventListener('contextmenu', onContextMenu, { capture: true });
       window.removeEventListener('auxclick',    onAuxClick,    { capture: true });
@@ -8248,8 +9881,8 @@ export default function BattleArena({
     const MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
     const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
     const TURN_RATE = 0.055; // radians / tick at 30 Hz ≈ 95°/sec
-    const tick = () => {
-      const tickNowMs = performance.now();
+    const MAX_CLIENT_PHYSICS_CATCHUP_TICKS = 30;
+    const tick = (tickNowMs = performance.now()) => {
       const pos = localPositionRef.current;
       if (!pos) {
         cameraMoveCommandActiveRef.current = false;
@@ -8619,13 +10252,15 @@ export default function BattleArena({
           const isMultiJump = effectiveMaxJumps > 2;
           const hadPowerJumpAirtime = isPowerJumpRef.current && !isPowerJumpCombinedRef.current && localJumpCountRef.current > 0;
           const usePowerDirectionalBudget = hasFuyaoBuffRef.current;
+          const consumeLocalJumpBoost = hasFuyaoBuffRef.current;
           const isBackpedalAirJump = moveIntentBackpedalOnly && localJumpCountRef.current > 0 && jumpDir !== null;
           const heightAboveGround = Math.max(0, localZRef.current - tickGroundH);
+          const includeAirborneCarryForJump = localJumpCountRef.current <= 0;
           const jumpSpeedSource = Math.max(
             effectiveMaxSpeed,
-            airborneSpeedCarryRef.current,
+            includeAirborneCarryForJump ? airborneSpeedCarryRef.current : 0,
             Math.hypot(vel.x, vel.y),
-            getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current),
+            includeAirborneCarryForJump ? getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current) : 0,
           );
           const jumpSpeedScale = DEFAULT_MOVE_SPEED_WORLD_PER_TICK > 0.0001
             ? jumpSpeedSource / DEFAULT_MOVE_SPEED_WORLD_PER_TICK
@@ -8685,6 +10320,11 @@ export default function BattleArena({
           !hadPowerJumpAirtime &&
           !isMultiJump;
         hasFuyaoBuffRef.current   = false;
+        if (consumeLocalJumpBoost) {
+          const consumedAt = Date.now();
+          locallyConsumedJumpBoostAtRef.current = consumedAt;
+          setLocallyConsumedJumpBoostAt(consumedAt);
+        }
         const jumpVzScale = movementControlStateRef.current.jumpVzScale ?? 1;
         if (jumpVzScale < 1) jumpVz *= jumpVzScale;
         const jumpTravelTicks = estimateAirborneTicks(
@@ -8856,8 +10496,33 @@ export default function BattleArena({
         airNudgeDirRef.current = null;
       }
     };
-    const id = setInterval(tick, CLIENT_TICK_MS);
-    return () => clearInterval(id);
+    let lastPhysicsAtMs = performance.now();
+    let simulatedPhysicsAtMs = lastPhysicsAtMs;
+    let physicsAccumulatorMs = 0;
+    const runPhysics = () => {
+      const nowMs = performance.now();
+      const elapsedMs = Math.max(0, Math.min(nowMs - lastPhysicsAtMs, CLIENT_TICK_MS * MAX_CLIENT_PHYSICS_CATCHUP_TICKS));
+      lastPhysicsAtMs = nowMs;
+      physicsAccumulatorMs += elapsedMs;
+
+      let catchupTicks = 0;
+      while (physicsAccumulatorMs >= CLIENT_TICK_MS && catchupTicks < MAX_CLIENT_PHYSICS_CATCHUP_TICKS) {
+        simulatedPhysicsAtMs += CLIENT_TICK_MS;
+        tick(simulatedPhysicsAtMs);
+        physicsAccumulatorMs -= CLIENT_TICK_MS;
+        catchupTicks += 1;
+      }
+
+      if (physicsAccumulatorMs > CLIENT_TICK_MS * MAX_CLIENT_PHYSICS_CATCHUP_TICKS) {
+        physicsAccumulatorMs = CLIENT_TICK_MS * MAX_CLIENT_PHYSICS_CATCHUP_TICKS;
+      }
+    };
+    advanceLocalPhysicsRef.current = runPhysics;
+    const id = setInterval(runPhysics, CLIENT_TICK_MS);
+    return () => {
+      advanceLocalPhysicsRef.current = () => {};
+      clearInterval(id);
+    };
   }, [ARENA_HEIGHT, ARENA_WIDTH, getEffectiveMaxJumps, me.userId, mode, playerRadius]);
 
   useEffect(() => {
@@ -8868,7 +10533,7 @@ export default function BattleArena({
   /* ========================= HUD DATA ========================= */
   const myMaxHp = me?.maxHp ?? maxHp;
   const myAttackDamage = Math.max(0, Number((me as any)?.attackDamage ?? 50_000));
-  const myShield = Math.max(0, me?.shield ?? 0);
+  const myShield = getLinkedShieldDisplayClient(me);
   const myBarSegments = computeHpShieldSegments(me?.hp ?? 0, myShield, myMaxHp);
   const myHpPct = myBarSegments.hpPct;
   const myShieldPct = myBarSegments.shieldPct;
@@ -8898,7 +10563,7 @@ export default function BattleArena({
   );
   const myHasteRatePct = Math.max(0, Number((me as any)?.hasteRatePct ?? BASE_HASTE_RATE_PCT));
   const myFacingArrow = facingArrow(localFacingRef.current);
-  const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
+  const meEffects = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
   const getTypedEffectTotal = (effectType: string, damageType: '外功' | '内功') => meEffects
     .filter((e: any) => e?.type === effectType && (!e?.damageType || e?.damageType === damageType))
     .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
@@ -9952,7 +11617,7 @@ export default function BattleArena({
     });
   };
 
-  const playerStatusBuffs = me?.buffs ?? [];
+  const playerStatusBuffs = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt);
   const playerIconBarSavedPos = uiPositions[PLAYER_ICON_BAR_UI_KEY];
   const playerIconBarDefaultPos = getDefaultPlayerIconBarPos();
   const playerIconBarPos = playerIconBarSavedPos ?? playerIconBarDefaultPos;
@@ -10008,10 +11673,10 @@ export default function BattleArena({
   const targetStatusIsOwnEntity = targetStatusIsEntity && selectedEntityForStatus?.ownerUserId === me?.userId;
   const targetStatusHasSelection = !!(selectedTargetId || selectedEntityId || selectedSelf);
   const targetStatusBuffs = targetStatusIsSelf
-    ? (me?.buffs ?? [])
+    ? playerStatusBuffs
     : targetStatusIsEntity
-    ? (selectedEntityForStatus?.buffs ?? [])
-    : (selectedTargetForStatus?.buffs ?? []);
+    ? activeBuffsClient(selectedEntityForStatus?.buffs as any)
+    : activeBuffsClient(selectedTargetForStatus?.buffs);
   const targetOwnedAbilityHand = targetStatusIsSelf
     ? me.hand
     : targetStatusIsEntity
@@ -10065,7 +11730,9 @@ export default function BattleArena({
         : opponentsList.find((o) => o.userId === targetTargetEntityForHud.ownerUserId) ?? null)
     : null;
   const targetTargetHp = targetTargetEntityForHud ? (targetTargetEntityForHud.hp ?? 0) : (targetTargetPlayerForHud?.hp ?? 0);
-  const targetTargetShield = Math.max(0, targetTargetEntityForHud ? (targetTargetEntityForHud.shield ?? 0) : (targetTargetPlayerForHud?.shield ?? 0));
+  const targetTargetShield = targetTargetEntityForHud
+    ? getLinkedShieldDisplayClient(targetTargetEntityForHud as any)
+    : getLinkedShieldDisplayClient(targetTargetPlayerForHud as any);
   const targetTargetMaxHp = targetTargetEntityForHud ? (targetTargetEntityForHud.maxHp ?? 1) : (targetTargetPlayerForHud?.maxHp ?? maxHp);
   const targetTargetSegments = computeHpShieldSegments(targetTargetHp, targetTargetShield, targetTargetMaxHp);
   const targetTargetBuffs = targetTargetEntityForHud ? (targetTargetEntityForHud.buffs ?? []) : (targetTargetPlayerForHud?.buffs ?? []);
@@ -10093,6 +11760,22 @@ export default function BattleArena({
   const showFloatingInGameWarning = !!inGameWarningText;
   const itemBarDefaultPos = getDefaultItemBarPos();
   const itemBarPos = uiPositions[ITEM_BAR_UI_KEY] ?? itemBarDefaultPos;
+  const chatPanelSavedPos = uiPositions[CHAT_PANEL_UI_KEY];
+  const chatPanelDefaultPos = getDefaultChatPanelPos();
+  const chatPanelPos = chatPanelSavedPos ?? chatPanelDefaultPos;
+  const useCustomChatPanelPlacement = customUiMode || !!chatPanelSavedPos;
+  const chatClearDialogDefaultPos = getDefaultChatClearDialogPos();
+  const chatClearDialogPos = uiPositions[CHAT_CLEAR_DIALOG_UI_KEY] ?? chatClearDialogDefaultPos;
+  const beginChatPanelCustomDrag = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!customUiMode) return;
+    if ((event.target as HTMLElement | null)?.closest('button, input, textarea, select, [data-chat-resize-handle="true"]')) return;
+    startUIDrag(CHAT_PANEL_UI_KEY, chatPanelDefaultPos, event, { persist: false });
+  }, [chatPanelDefaultPos, customUiMode, startUIDrag]);
+  const beginChatClearDialogCustomDrag = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!customUiMode) return;
+    if ((event.target as HTMLElement | null)?.closest('button')) return;
+    startUIDrag(CHAT_CLEAR_DIALOG_UI_KEY, chatClearDialogDefaultPos, event, { persist: false });
+  }, [chatClearDialogDefaultPos, customUiMode, startUIDrag]);
   const martialPanelDefaultPos = getDefaultMartialPanelPos();
   const martialPanelPos = uiPositions[MARTIAL_PANEL_UI_KEY] ?? martialPanelDefaultPos;
   const martialPanelDisplayPos = martialPanelTempPos ?? martialPanelPos;
@@ -10999,6 +12682,587 @@ export default function BattleArena({
     );
   };
 
+  const renderChatMessageLines = (messages: ChatMessage[]) => messages.map((message) => {
+    const speakerColor = message.school ? SCHOOL_COLOR[message.school] : undefined;
+    const targetColor = message.targetSchool ? SCHOOL_COLOR[message.targetSchool] : undefined;
+    const isSystemMessage = message.channel === 'system' && (message.variant === 'system' || message.userId === 'system');
+    const isBattleMessage = message.channel === 'battle' || message.variant === 'battle';
+    const battleAbilityName = message.abilityName || '攻击';
+    const battleTargetName = message.targetUsername ?? '目标';
+    const renderBattleActor = () => message.username === '你'
+      ? <span>你</span>
+      : <><span>[</span><span className={styles.chatSpeaker} style={speakerColor ? { color: speakerColor } : undefined}>{message.username}</span><span>]</span></>;
+    const renderBattleTarget = () => battleTargetName === '你' ? <span>你</span> : <><span>[</span><span className={styles.chatSpeaker} style={targetColor ? { color: targetColor } : undefined}>{battleTargetName}</span><span>]</span></>;
+    return (
+      <div key={message.id} className={`${styles.chatMessageLine} ${isSystemMessage ? styles.chatSystemMessageLine : ''} ${isBattleMessage ? styles.chatBattleMessageLine : ''}`} data-chat-message-line="true">
+        <span className={styles.chatPrefix}>
+          <button
+            type="button"
+            className={styles.chatTimeButton}
+            data-chat-part="time"
+            onClick={() => copyMessageToChatInput(message.text)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              void sendChatText(message.text, 'map', false);
+            }}
+          >[{formatChatTimestamp(message.timestamp)}]</button>{isSystemMessage || isBattleMessage ? null : <><span className={styles.chatChannel} data-chat-part="channel">[{CHAT_CHANNEL_LABELS[message.channel]}]</span><span className={styles.chatSpeaker} data-chat-part="speaker" style={speakerColor ? { color: speakerColor } : undefined}>[{message.username}]</span></>}
+        </span>{isSystemMessage ? <span className={styles.chatSystemText} data-chat-part="text">{message.text}</span> : isBattleMessage ? (
+          <span className={styles.chatBattleText} data-chat-part="text">
+            {renderBattleActor()}<span>的[{battleAbilityName}]命中了</span>{renderBattleTarget()}
+          </span>
+        ) : <span className={styles.chatText} data-chat-part="text">:{message.text}</span>}
+      </div>
+    );
+  });
+
+  const renderChatScrollTrack = (groupId: 'main' | string, visual: ReturnType<typeof getChatScrollVisual>) => (
+    <div
+      className={`${styles.chatScrollTrack} ${!visual.canScroll ? styles.chatScrollTrackDisabled : ''}`}
+      aria-hidden="true"
+      onPointerDown={visual.canScroll ? (event) => beginChatScrollTrackDrag(groupId, event) : undefined}
+    >
+      <div
+        className={styles.chatScrollThumb}
+        style={{ height: `${visual.thumbHeightPct}%`, top: `${visual.thumbTopPct}%` }}
+      />
+    </div>
+  );
+
+  const renderChatPanel = () => {
+    if (!activeChatWindow) return null;
+    const scrollVisual = getChatScrollVisual(chatScrollMetrics);
+    const placementStyle = useCustomChatPanelPlacement
+      ? { left: chatPanelPos.left, top: chatPanelPos.top, bottom: 'auto' as const }
+      : undefined;
+
+    return (
+      <div
+        ref={chatPanelRef}
+        className={`${styles.chatPanel} ${chatSearchOpen ? styles.chatPanelSearchOpen : ''} ${customUiMode ? styles.chatPanelCustomEditing : ''}`}
+        style={{ ...chatPanelStyle, ...placementStyle }}
+        data-ui-interactive
+        data-ui-drag={customUiMode ? 'true' : undefined}
+        onMouseDown={customUiMode ? beginChatPanelCustomDrag : undefined}
+      >
+        <div className={styles.chatHeader} data-chat-tab-bar-group="true" data-chat-group-id="main">
+          <button type="button" className={styles.chatGearButton} aria-label="聊天设置" title="聊天设置" onClick={openChatSettings}>
+            <Settings size={18} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+          {mainChatWindows.map((windowConfig) => (
+            <button
+              key={windowConfig.id}
+              type="button"
+              className={`${styles.chatTabButton} ${activeChatWindow.id === windowConfig.id ? styles.chatTabButtonActive : ''}`}
+              onMouseDown={(event) => beginChatTabDetachDrag(windowConfig, 'main', event)}
+              onClick={() => {
+                if (chatTabClickSuppressedRef.current === 'main') {
+                  chatTabClickSuppressedRef.current = null;
+                  return;
+                }
+                setActiveChatWindowId(windowConfig.id);
+              }}
+            >
+              {windowConfig.name}
+            </button>
+          ))}
+          <button
+            type="button"
+            className={`${styles.chatSearchButton} ${chatSearchOpen ? styles.chatSearchButtonActive : ''}`}
+            aria-label="搜索聊天"
+            title="搜索聊天"
+            onClick={() => setChatSearchOpen((open) => !open)}
+          >
+            <Search size={18} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+          <div className={styles.chatResizeHandle} data-chat-resize-handle="true" onPointerDown={(event) => beginChatResize('main', event)} aria-hidden="true" />
+        </div>
+
+        <div className={styles.chatLogShell}>
+          <div className={styles.chatScrollControls}>
+            <button type="button" className={`${styles.chatScrollButton} ${scrollVisual.isAtTop ? styles.chatScrollButtonEdge : ''}`} disabled={!scrollVisual.canScroll || scrollVisual.isAtTop} aria-label="滚动到顶部" title="滚动到顶部" onClick={() => scrollChatLog('top')}>
+              <ArrowUpToLine size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+            <button type="button" className={`${styles.chatScrollButton} ${scrollVisual.isAtTop ? styles.chatScrollButtonEdge : ''}`} disabled={!scrollVisual.canScroll || scrollVisual.isAtTop} aria-label="向上滚动" title="向上滚动" onClick={() => scrollChatLog('up')}>
+              <ArrowUp size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+            {renderChatScrollTrack('main', scrollVisual)}
+            <button type="button" className={`${styles.chatScrollButton} ${scrollVisual.isAtBottom ? styles.chatScrollButtonEdge : ''}`} disabled={!scrollVisual.canScroll || scrollVisual.isAtBottom} aria-label="向下滚动" title="向下滚动" onClick={() => scrollChatLog('down')}>
+              <ArrowDown size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+            <button type="button" className={`${styles.chatScrollButton} ${scrollVisual.isAtBottom ? styles.chatScrollButtonEdge : ''} ${chatBottomAlert && !scrollVisual.isAtBottom ? styles.chatScrollButtonFlash : ''}`} disabled={!scrollVisual.canScroll || scrollVisual.isAtBottom} aria-label="滚动到底部" title="滚动到底部" onClick={() => scrollChatLog('bottom')}>
+              <ArrowDownToLine size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+          </div>
+          <div className={styles.chatLogColumn}>
+            <div className={`${styles.chatSearchRow} ${chatSearchOpen ? styles.chatSearchRowOpen : styles.chatSearchRowClosed}`} aria-hidden={!chatSearchOpen}>
+              <div className={styles.chatSearchField}>
+                <input
+                  ref={chatSearchInputRef}
+                  type="text"
+                  value={chatSearchQuery}
+                  className={styles.chatSearchInput}
+                  tabIndex={chatSearchOpen ? 0 : -1}
+                  disabled={!chatSearchOpen}
+                  onChange={(event) => setChatSearchQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                    if (event.key === 'Escape') {
+                      setChatSearchOpen(false);
+                      setChatSearchQuery('');
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className={styles.chatSearchCloseButton}
+                  aria-label="关闭搜索"
+                  title="关闭搜索"
+                  tabIndex={chatSearchOpen ? 0 : -1}
+                  onClick={() => {
+                    setChatSearchOpen(false);
+                    setChatSearchQuery('');
+                  }}
+                >
+                  <X size={15} strokeWidth={2.3} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+            <div ref={chatLogRef} className={styles.chatLog} onScroll={updateChatScrollMetrics}>
+              {renderChatMessageLines(visibleChatMessages)}
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.chatComposer}>
+          <button type="button" className={styles.chatChannelPlaceholder}>频道</button>
+          <label className={styles.chatInputWrap}>
+            <span>地图:</span>
+            <input
+              ref={chatInputRef}
+              type="text"
+              value={chatInputValue}
+              maxLength={CHAT_MAX_INPUT_LENGTH}
+              className={styles.chatInput}
+              onChange={(event) => setChatInputValue(event.target.value.slice(0, CHAT_MAX_INPUT_LENGTH))}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                  void submitChatMessage();
+                }
+                if (event.key === 'Escape') {
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+          </label>
+          <button type="button" className={styles.chatIconButton} aria-label="发送" title="发送" onClick={() => void submitChatMessage()}>
+            <CornerDownLeft size={17} strokeWidth={2.4} aria-hidden="true" />
+          </button>
+          <button type="button" className={styles.chatIconButton} aria-label="图片" title="图片" disabled>
+            <ImageIcon size={17} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+          <button type="button" className={styles.chatIconButton} aria-label="清空聊天" title="清空聊天" onClick={handleChatEraseClick}>
+            <Eraser size={17} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+          <button type="button" className={styles.chatIconButton} aria-label="表情" title="表情" disabled>
+            <Smile size={17} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDetachedChatPanels = () => detachedChatWindows.map((detachedWindow, index) => {
+    const byId = new Map(chatWindows.map((entry) => [entry.id, entry]));
+    const groupWindows = detachedWindow.windowIds.map((windowId) => byId.get(windowId)).filter((entry): entry is ChatWindowConfig => !!entry && !entry.hidden);
+    if (groupWindows.length === 0) return null;
+    const activeWindowConfig = groupWindows.find((entry) => entry.id === detachedWindow.activeWindowId) ?? groupWindows[0];
+    const detachedSearchState = detachedChatSearchStates[detachedWindow.id] ?? EMPTY_CHAT_SEARCH_STATE;
+    const messages = getVisibleChatMessagesForWindow(activeWindowConfig, detachedSearchState);
+    const detachedScrollVisual = getChatScrollVisual(detachedChatScrollMetrics[detachedWindow.id] ?? EMPTY_CHAT_SCROLL_METRICS);
+    const positionKey = getDetachedChatWindowUiKey(detachedWindow.id);
+    const defaultPos = clampDetachedChatPosition({
+      left: chatPanelPos.left + 34 * (index + 1),
+      top: chatPanelPos.top - 34 * (index + 1),
+    });
+    const position = uiPositions[positionKey] ?? defaultPos;
+    const detachedPanelSize = detachedChatPanelSizes[detachedWindow.id] ?? chatPanelSize;
+    const beginDetachedDrag = (event: React.MouseEvent<HTMLDivElement>) => {
+      if ((event.target as HTMLElement | null)?.closest('button, input, textarea, select')) return;
+      startUIDrag(positionKey, defaultPos, event);
+    };
+
+    return (
+      <div
+        key={detachedWindow.id}
+        className={`${styles.chatPanel} ${styles.detachedChatPanel} ${draggingChatGroupId === detachedWindow.id ? styles.chatPanelDragging : ''} ${detachedSearchState.open ? styles.chatPanelSearchOpen : ''} ${customUiMode ? styles.chatPanelCustomEditing : ''}`}
+        style={{ ...buildChatPanelStyle(detachedPanelSize), left: position.left, top: position.top, bottom: 'auto' }}
+        data-ui-interactive
+        data-ui-drag="true"
+      >
+        <div className={styles.chatHeader} data-chat-tab-bar-group="true" data-chat-group-id={detachedWindow.id} onMouseDown={beginDetachedDrag}>
+          {groupWindows.map((windowConfig) => (
+            <button
+              key={windowConfig.id}
+              type="button"
+              className={`${styles.chatTabButton} ${activeWindowConfig.id === windowConfig.id ? styles.chatTabButtonActive : ''}`}
+              onMouseDown={(event) => beginChatTabDetachDrag(windowConfig, detachedWindow.id, event)}
+              onClick={() => {
+                if (chatTabClickSuppressedRef.current === detachedWindow.id) {
+                  chatTabClickSuppressedRef.current = null;
+                  return;
+                }
+                const nextDetachedWindows = detachedChatWindowsRef.current.map((entry) => (
+                  entry.id === detachedWindow.id ? { ...entry, activeWindowId: windowConfig.id } : entry
+                ));
+                detachedChatWindowsRef.current = nextDetachedWindows;
+                setDetachedChatWindows(nextDetachedWindows);
+              }}
+            >
+              {windowConfig.name}
+            </button>
+          ))}
+          <button
+            type="button"
+            className={`${styles.chatSearchButton} ${detachedSearchState.open ? styles.chatSearchButtonActive : ''}`}
+            aria-label="搜索聊天"
+            title="搜索聊天"
+            onClick={() => setDetachedChatSearchStates((current) => ({
+              ...current,
+              [detachedWindow.id]: {
+                ...(current[detachedWindow.id] ?? EMPTY_CHAT_SEARCH_STATE),
+                open: !(current[detachedWindow.id]?.open ?? false),
+              },
+            }))}
+          >
+            <Search size={18} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+          <div className={styles.chatResizeHandle} data-chat-resize-handle="true" onPointerDown={(event) => beginChatResize(detachedWindow.id, event)} aria-hidden="true" />
+        </div>
+
+        <div className={styles.chatLogShell}>
+          <div className={styles.chatScrollControls}>
+            <button type="button" className={`${styles.chatScrollButton} ${detachedScrollVisual.isAtTop ? styles.chatScrollButtonEdge : ''}`} disabled={!detachedScrollVisual.canScroll || detachedScrollVisual.isAtTop} aria-label="滚动到顶部" title="滚动到顶部" onClick={() => scrollDetachedChatLog(detachedWindow.id, 'top')}>
+              <ArrowUpToLine size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+            <button type="button" className={`${styles.chatScrollButton} ${detachedScrollVisual.isAtTop ? styles.chatScrollButtonEdge : ''}`} disabled={!detachedScrollVisual.canScroll || detachedScrollVisual.isAtTop} aria-label="向上滚动" title="向上滚动" onClick={() => scrollDetachedChatLog(detachedWindow.id, 'up')}>
+              <ArrowUp size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+            {renderChatScrollTrack(detachedWindow.id, detachedScrollVisual)}
+            <button type="button" className={`${styles.chatScrollButton} ${detachedScrollVisual.isAtBottom ? styles.chatScrollButtonEdge : ''}`} disabled={!detachedScrollVisual.canScroll || detachedScrollVisual.isAtBottom} aria-label="向下滚动" title="向下滚动" onClick={() => scrollDetachedChatLog(detachedWindow.id, 'down')}>
+              <ArrowDown size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+            <button type="button" className={`${styles.chatScrollButton} ${detachedScrollVisual.isAtBottom ? styles.chatScrollButtonEdge : ''}`} disabled={!detachedScrollVisual.canScroll || detachedScrollVisual.isAtBottom} aria-label="滚动到底部" title="滚动到底部" onClick={() => scrollDetachedChatLog(detachedWindow.id, 'bottom')}>
+              <ArrowDownToLine size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+          </div>
+          <div className={styles.chatLogColumn}>
+            <div className={`${styles.chatSearchRow} ${detachedSearchState.open ? styles.chatSearchRowOpen : styles.chatSearchRowClosed}`} aria-hidden={!detachedSearchState.open}>
+              <div className={styles.chatSearchField}>
+                <input
+                  type="text"
+                  value={detachedSearchState.query}
+                  className={styles.chatSearchInput}
+                  tabIndex={detachedSearchState.open ? 0 : -1}
+                  disabled={!detachedSearchState.open}
+                  onChange={(event) => setDetachedChatSearchStates((current) => ({
+                    ...current,
+                    [detachedWindow.id]: {
+                      ...(current[detachedWindow.id] ?? EMPTY_CHAT_SEARCH_STATE),
+                      query: event.target.value,
+                    },
+                  }))}
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                    if (event.key === 'Escape') {
+                      setDetachedChatSearchStates((current) => ({
+                        ...current,
+                        [detachedWindow.id]: {
+                          ...(current[detachedWindow.id] ?? EMPTY_CHAT_SEARCH_STATE),
+                          open: false,
+                          query: '',
+                        },
+                      }));
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className={styles.chatSearchCloseButton}
+                  aria-label="关闭搜索"
+                  title="关闭搜索"
+                  tabIndex={detachedSearchState.open ? 0 : -1}
+                  onClick={() => setDetachedChatSearchStates((current) => ({
+                    ...current,
+                    [detachedWindow.id]: {
+                      ...(current[detachedWindow.id] ?? EMPTY_CHAT_SEARCH_STATE),
+                      open: false,
+                      query: '',
+                    },
+                  }))}
+                >
+                  <X size={15} strokeWidth={2.3} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+            <div ref={(node) => { detachedChatLogRefs.current[detachedWindow.id] = node; }} className={styles.chatLog} onScroll={() => updateDetachedChatScrollMetrics(detachedWindow.id)}>
+              {renderChatMessageLines(messages)}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  });
+
+  const renderChatSettingsModal = () => {
+    if (!showChatSettings) return null;
+    const normalizedWindowDrafts = normalizeChatWindows(chatWindowDrafts);
+    const settingsDirty = chatSettingsDraft.fontSize !== chatSettings.fontSize
+      || chatSettingsDraft.backgroundOpacity !== chatSettings.backgroundOpacity
+      || JSON.stringify(normalizedWindowDrafts) !== JSON.stringify(normalizeChatWindows(chatWindows));
+    const selectedWindowDraft = chatWindowDrafts.find((entry) => entry.id === selectedChatWindowId) ?? chatWindowDrafts[0] ?? DEFAULT_CHAT_WINDOWS[0];
+    const selectedWindowCanClose = selectedWindowDraft.id !== 'combined';
+    const selectedWindowChannels = new Set(selectedWindowDraft.channels);
+    const settingsWindowStyle = {
+      '--chat-settings-modal-width': `${chatSettingsModalSize.width}px`,
+      '--chat-settings-modal-height': `${chatSettingsModalSize.height}px`,
+    } as React.CSSProperties;
+
+    return (
+      <div className={styles.chatSettingsOverlay} data-ui-interactive>
+        <div className={styles.chatSettingsWindow} role="dialog" aria-modal="true" aria-label="聊天设置" style={settingsWindowStyle}>
+          <div className={styles.chatSettingsTitleBar}>
+            <button type="button" className={styles.chatSettingsBackButton} aria-label="返回" title="返回" onClick={cancelChatSettings}>
+              <ArrowLeft size={17} strokeWidth={2.2} aria-hidden="true" />
+            </button>
+            <div className={styles.chatSettingsTitle}>聊天设置</div>
+            <button type="button" className={styles.chatSettingsCloseButton} aria-label="关闭" title="关闭" onClick={cancelChatSettings}>
+              <X size={20} strokeWidth={2.2} aria-hidden="true" />
+            </button>
+          </div>
+          <div className={styles.chatSettingsMainTabs}>
+            <button type="button" className={`${styles.chatSettingsMainTab} ${chatSettingsMainTab === 'page' ? styles.chatSettingsMainTabActive : ''}`} onClick={() => setChatSettingsMainTab('page')}>聊天页面</button>
+            <button type="button" className={`${styles.chatSettingsMainTab} ${chatSettingsMainTab === 'window' ? styles.chatSettingsMainTabActive : ''}`} onClick={() => setChatSettingsMainTab('window')}>聊天窗口</button>
+          </div>
+          {chatSettingsMainTab === 'page' ? (
+            <div className={styles.chatSettingsBody}>
+              <div className={styles.chatSettingsSidebar}>
+                <button type="button" className={`${styles.chatSettingsNavButton} ${styles.chatSettingsNavButtonActive}`}>界面设置</button>
+              </div>
+              <div className={styles.chatSettingsContent}>
+                <div className={styles.chatSettingsSectionLabel}>文字</div>
+                <div className={styles.chatSettingsTwoColumnRow}>
+                  <div className={styles.chatSettingsControlRow}>
+                    <span className={styles.chatSettingsControlLabel}>字体</span>
+                    <div ref={chatSettingsFontRef} className={styles.chatSettingsMenu}>
+                      <button
+                        type="button"
+                        className={styles.chatSettingsMenuButton}
+                        onClick={() => setChatFontMenuOpen((open) => !open)}
+                      >
+                        <span>{selectedChatFont.label}</span>
+                        <ChevronDown size={18} strokeWidth={2.2} aria-hidden="true" />
+                      </button>
+                      {chatFontMenuOpen && (
+                        <div className={styles.chatSettingsMenuList}>
+                          {CHAT_FONT_OPTIONS.map((option) => (
+                            <button
+                              key={option.id}
+                              type="button"
+                              className={styles.chatSettingsMenuOption}
+                              onClick={() => {
+                                setChatSettingsDraft((current) => ({ ...current, fontFamily: option.id }));
+                                setChatFontMenuOpen(false);
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className={styles.chatSettingsControlRow}>
+                    <span className={styles.chatSettingsControlLabel}>字号</span>
+                    <div ref={chatSettingsSizeRef} className={styles.chatSettingsMenu}>
+                      <button
+                        type="button"
+                        className={styles.chatSettingsMenuButton}
+                        onClick={() => setChatSizeMenuOpen((open) => !open)}
+                      >
+                        <span>{chatSettingsDraft.fontSize}号字体</span>
+                        <ChevronDown size={18} strokeWidth={2.2} aria-hidden="true" />
+                      </button>
+                      {chatSizeMenuOpen && (
+                        <div className={styles.chatSettingsMenuList}>
+                          {CHAT_FONT_SIZE_OPTIONS.map((size) => (
+                            <button
+                              key={size}
+                              type="button"
+                              className={styles.chatSettingsMenuOption}
+                              onClick={() => {
+                                setChatSettingsDraft((current) => ({ ...current, fontSize: size }));
+                                setChatSizeMenuOpen(false);
+                              }}
+                            >
+                              {size}号字体
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className={styles.chatSettingsSectionLabel}>背景</div>
+                <div className={styles.chatSettingsTwoColumnRow}>
+                  <div className={styles.chatSettingsRangeBlock}>
+                    <div className={styles.chatSettingsRangeHeader}>
+                      <span>调整背景透明度</span>
+                      <span>{chatSettingsDraft.backgroundOpacity}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={chatSettingsDraft.backgroundOpacity}
+                      onChange={(event) => setChatSettingsDraft((current) => ({ ...current, backgroundOpacity: normalizeChatOpacity(event.target.value) }))}
+                      className={styles.chatSettingsRangeInput}
+                      aria-label="调整背景透明度"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className={styles.chatWindowSettingsBody}>
+              <div className={styles.chatWindowList}>
+                {chatWindowDrafts.map((windowConfig) => (
+                  <button
+                    key={windowConfig.id}
+                    type="button"
+                    className={`${styles.chatWindowListButton} ${selectedWindowDraft.id === windowConfig.id ? styles.chatWindowListButtonActive : ''}`}
+                    onClick={() => setSelectedChatWindowId(windowConfig.id)}
+                  >
+                    {windowConfig.name}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.chatWindowEditor}>
+                <div className={styles.chatWindowNameRow}>
+                  <span>名称</span>
+                  <input
+                    type="text"
+                    value={selectedWindowDraft.name}
+                    disabled={selectedWindowDraft.lockedName}
+                    className={styles.chatWindowNameInput}
+                    onChange={(event) => {
+                      const nextName = Array.from(event.target.value).slice(0, 8).join('');
+                      setChatWindowDrafts((current) => current.map((entry) => entry.id === selectedWindowDraft.id ? { ...entry, name: nextName } : entry));
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={`${styles.chatWindowReminderToggle} ${selectedWindowDraft.hidden ? styles.chatWindowReminderToggleActive : ''}`}
+                    disabled={!selectedWindowCanClose}
+                    onClick={() => {
+                      if (!selectedWindowCanClose) return;
+                      setChatWindowDrafts((current) => current.map((entry) => entry.id === selectedWindowDraft.id ? { ...entry, hidden: entry.hidden ? undefined : true } : entry));
+                    }}
+                  >
+                    <span className={styles.chatSettingsCheckBox}>{selectedWindowDraft.hidden ? <Check size={18} strokeWidth={2.8} aria-hidden="true" /> : null}</span>
+                    <span>关闭窗口</span>
+                  </button>
+                </div>
+                <div className={styles.chatWindowChannelSection}>
+                  <div className={styles.chatSettingsSectionLabel}>常用</div>
+                  <div className={styles.chatWindowChannelGrid}>
+                    {CHAT_WINDOW_CHANNEL_OPTIONS.map((channelOption) => {
+                      const checked = selectedWindowChannels.has(channelOption.id);
+                      return (
+                        <button
+                          key={channelOption.id}
+                          type="button"
+                          className={`${styles.chatWindowChannelCheck} ${checked ? styles.chatWindowChannelCheckActive : ''} ${channelOption.disabled ? styles.chatWindowChannelCheckDisabled : ''}`}
+                          disabled={channelOption.disabled}
+                          onClick={() => {
+                            setChatWindowDrafts((current) => current.map((entry) => {
+                              if (entry.id !== selectedWindowDraft.id) return entry;
+                              const channels = new Set(entry.channels);
+                              if (channels.has(channelOption.id)) channels.delete(channelOption.id);
+                              else channels.add(channelOption.id);
+                              return { ...entry, channels: [...channels] };
+                            }));
+                          }}
+                        >
+                          <span className={styles.chatSettingsCheckBox}>{checked ? <Check size={18} strokeWidth={2.8} aria-hidden="true" /> : null}</span>
+                          <span>{channelOption.label}</span>
+                          <span className={styles.chatWindowChannelColor} style={{ backgroundColor: CHAT_CHANNEL_COLORS[channelOption.id] }} aria-hidden="true" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          <div className={styles.chatSettingsFooter}>
+            <div className={styles.chatSettingsFooterTools}>
+              {chatSettingsMainTab === 'window' ? (
+                <>
+                  <button type="button" className={styles.chatSettingsFooterButton} onClick={createChatWindow}>新建</button>
+                  <button type="button" className={styles.chatSettingsFooterButton} disabled={selectedWindowDraft.lockedDelete} onClick={deleteSelectedChatWindow}>删除</button>
+                  <button type="button" className={styles.chatSettingsFooterButton} onClick={resetChatSettings}>恢复默认</button>
+                  <button type="button" className={styles.chatSettingsFooterButton} onClick={setSelectedChatWindowAsDefault}>设为默认</button>
+                </>
+              ) : (
+                <button type="button" className={styles.chatSettingsFooterButton} onClick={resetChatSettings}>恢复默认</button>
+              )}
+            </div>
+            <div className={styles.chatSettingsFooterActions}>
+              <button type="button" className={styles.chatSettingsFooterButton} onClick={confirmChatSettings}>确定</button>
+              <button type="button" className={styles.chatSettingsFooterButton} onClick={cancelChatSettings}>取消</button>
+              <button type="button" className={styles.chatSettingsFooterButton} disabled={!settingsDirty} onClick={applyChatSettings}>应用</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderChatClearDialog = () => {
+    if (!chatClearDialog && !customUiMode) return null;
+    const clearDialogStyle = {
+      '--chat-clear-dialog-width': `${chatClearDialogLayout.width}px`,
+      '--chat-clear-dialog-height': `${chatClearDialogLayout.height}px`,
+      left: `${chatClearDialogPos.left}px`,
+      top: `${chatClearDialogPos.top}px`,
+    } as React.CSSProperties;
+    return (
+      <div className={styles.chatClearOverlay} data-ui-interactive data-ui-drag={customUiMode ? 'true' : undefined}>
+        <div
+          className={`${styles.chatClearDialog} ${customUiMode ? styles.chatClearDialogCustomEditing : ''}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="清空聊天栏"
+          style={clearDialogStyle}
+          onMouseDown={customUiMode ? beginChatClearDialogCustomDrag : undefined}
+        >
+          {customUiMode && <div className={styles.chatClearDialogPlacementBox} aria-hidden="true" />}
+          <div className={styles.chatClearText}>清除当前窗口聊天记录？</div>
+          <div className={`${styles.chatClearText} ${styles.chatClearHintText}`}>按住CTRL点击可以跳过该警告。</div>
+          <div className={`${styles.chatClearText} ${styles.chatClearHintText}`}>按住ALT点击可以清空所有聊天栏。</div>
+          <div className={styles.chatClearActions}>
+            <button type="button" className={styles.chatClearButton} onClick={confirmChatClear}>确定</button>
+            <button type="button" className={styles.chatClearButton} onClick={() => setChatClearDialog(null)}>取消</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const getHotkeySettingsRows = (): HotkeySettingsRow[] => {
     if (hotkeySettingsTab === 'character-action') {
       return LOCKED_CHARACTER_ACTION_HOTKEY_ROWS;
@@ -11461,6 +13725,11 @@ export default function BattleArena({
         </div>
       </div>
 
+      {uiLayoutReady ? renderChatPanel() : null}
+      {uiLayoutReady ? renderDetachedChatPanels() : null}
+      {renderChatSettingsModal()}
+      {renderChatClearDialog()}
+
       {customUiMode && (
         <div
           className={styles.customUiPrompt}
@@ -11602,6 +13871,7 @@ export default function BattleArena({
         {renderItemBar()}
       </div>
 
+      {showCombatPresetBar && (
       <div className={styles.critPresetBar}>
         <div className={styles.critPresetButtonStack}>
           {COMBAT_PRESET_RARITIES.map((preset) => {
@@ -11643,7 +13913,7 @@ export default function BattleArena({
             aria-expanded={showCombatPresetPanel}
             onClick={() => setShowCombatPresetPanel((value) => !value)}
           >
-            {showCombatPresetPanel ? '<' : '>'}
+            {showCombatPresetPanel ? '>' : '<'}
           </button>
         </div>
         {showCombatPresetPanel && (
@@ -11680,6 +13950,7 @@ export default function BattleArena({
           </div>
         )}
       </div>
+      )}
       {/* ===== FULL-SCREEN 3D CANVAS ===== */}
       {/* ===== R3F 3D CANVAS ===== */}
       <div ref={wrapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
@@ -11737,10 +14008,10 @@ export default function BattleArena({
               selectedSelfRef.current = false;
             }}
             pickups={modePickups}
-            meChanneling={meChannelingRef.current}
-            meChannelRadius={meChannelRadiusRef.current}
-            channelingOpponentId={visibleOpponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014 || b.buffId === 2712))?.userId ?? null}
-            channelingOpponentRadius={(() => { const opp = visibleOpponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014 || b.buffId === 2712)); return opp?.buffs?.some((b: any) => b.buffId === 2712) ? 4 : 10; })()}
+            meChanneling={playerStatusBuffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712)}
+            meChannelRadius={playerStatusBuffs.some((b: any) => b.buffId === 2712) ? 4 : 10}
+            channelingOpponentId={visibleOpponentsList.find((o) => activeBuffsClient(o?.buffs).some((b: any) => b.buffId === 1014 || b.buffId === 2712))?.userId ?? null}
+            channelingOpponentRadius={(() => { const opp = visibleOpponentsList.find((o) => activeBuffsClient(o?.buffs).some((b: any) => b.buffId === 1014 || b.buffId === 2712)); return activeBuffsClient(opp?.buffs).some((b: any) => b.buffId === 2712) ? 4 : 10; })()}
             selectedSelf={selectedSelf}
             localRenderPosRef={localRenderPosRef}
             camYawRef={camYawRef}
@@ -12105,7 +14376,16 @@ export default function BattleArena({
                         <span className={styles.escMainIcon}><LayoutGrid size={78} strokeWidth={1.6} aria-hidden="true" /></span>
                         <span>自定义界面</span>
                       </button>
-                      <button type="button" className={styles.escMainTile} disabled>
+                      <button
+                        type="button"
+                        className={styles.escMainTile}
+                        onClick={() => {
+                          setShowTestingPanel(false);
+                          setEscPanelPage('main');
+                          setEscMainTab('normal');
+                          openChatSettings();
+                        }}
+                      >
                         <span className={styles.escMainIcon}><MessageCircle size={78} strokeWidth={1.6} aria-hidden="true" /></span>
                         <span>聊天设置</span>
                       </button>
@@ -12161,6 +14441,13 @@ export default function BattleArena({
                         >
                           武学界面
                         </button>
+                        <button
+                          type="button"
+                          className={`${styles.escSettingsNavButton} ${escTestPage === 'chat' ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => setEscTestPage('chat')}
+                        >
+                          聊天
+                        </button>
                       </aside>
                       <section className={styles.escTestContent}>
                         {escTestPage === 'switches' ? (
@@ -12193,6 +14480,15 @@ export default function BattleArena({
                                 className={styles.escToggleInput}
                               />
                               <span>打开测试添加技能面板</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
+                              <input
+                                type="checkbox"
+                                checked={showCombatPresetBar}
+                                onChange={(e) => setShowCombatPresetBar(e.target.checked)}
+                                className={styles.escToggleInput}
+                              />
+                              <span>装备测试栏</span>
                             </label>
                             <label className={styles.escToggleRow}>
                               <input
@@ -12315,6 +14611,85 @@ export default function BattleArena({
                                 onChange={(e) => setMartialModalHeight(scaleMartialModalSettingValue(e.target.value, MARTIAL_MODAL_BASE_HEIGHT, normalizeMartialModalHeight))}
                                 className={styles.escRangeInput}
                                 aria-label="预设弹窗高度"
+                              />
+                            </div>
+                          </div>
+                        ) : escTestPage === 'chat' ? (
+                          <div className={styles.escTestGrid}>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>聊天设置宽度</span>
+                                <span>{getChatSettingsModalScale(chatSettingsModalSize.width, CHAT_SETTINGS_MODAL_BASE_WIDTH).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={CHAT_SETTINGS_MODAL_SETTING_MIN_SCALE}
+                                max={CHAT_SETTINGS_MODAL_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getChatSettingsModalScale(chatSettingsModalSize.width, CHAT_SETTINGS_MODAL_BASE_WIDTH)}
+                                onChange={(e) => setChatSettingsModalSize((current) => ({
+                                  ...current,
+                                  width: scaleChatSettingsModalValue(e.target.value, CHAT_SETTINGS_MODAL_BASE_WIDTH, normalizeChatSettingsModalWidth),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="聊天设置宽度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>聊天设置高度</span>
+                                <span>{getChatSettingsModalScale(chatSettingsModalSize.height, CHAT_SETTINGS_MODAL_BASE_HEIGHT).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={CHAT_SETTINGS_MODAL_SETTING_MIN_SCALE}
+                                max={CHAT_SETTINGS_MODAL_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getChatSettingsModalScale(chatSettingsModalSize.height, CHAT_SETTINGS_MODAL_BASE_HEIGHT)}
+                                onChange={(e) => setChatSettingsModalSize((current) => ({
+                                  ...current,
+                                  height: scaleChatSettingsModalValue(e.target.value, CHAT_SETTINGS_MODAL_BASE_HEIGHT, normalizeChatSettingsModalHeight),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="聊天设置高度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>清除记录宽度</span>
+                                <span>{getChatClearDialogScale(chatClearDialogLayout.width, CHAT_CLEAR_DIALOG_BASE_WIDTH).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={CHAT_CLEAR_DIALOG_SETTING_MIN_SCALE}
+                                max={CHAT_CLEAR_DIALOG_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getChatClearDialogScale(chatClearDialogLayout.width, CHAT_CLEAR_DIALOG_BASE_WIDTH)}
+                                onChange={(e) => setChatClearDialogLayout((current) => ({
+                                  ...current,
+                                  width: scaleChatClearDialogValue(e.target.value, CHAT_CLEAR_DIALOG_BASE_WIDTH, normalizeChatClearDialogWidth),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="清除聊天记录宽度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>清除记录高度</span>
+                                <span>{getChatClearDialogScale(chatClearDialogLayout.height, CHAT_CLEAR_DIALOG_BASE_HEIGHT).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={CHAT_CLEAR_DIALOG_SETTING_MIN_SCALE}
+                                max={CHAT_CLEAR_DIALOG_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getChatClearDialogScale(chatClearDialogLayout.height, CHAT_CLEAR_DIALOG_BASE_HEIGHT)}
+                                onChange={(e) => setChatClearDialogLayout((current) => ({
+                                  ...current,
+                                  height: scaleChatClearDialogValue(e.target.value, CHAT_CLEAR_DIALOG_BASE_HEIGHT, normalizeChatClearDialogHeight),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="清除聊天记录高度"
                               />
                             </div>
                           </div>
@@ -13003,7 +15378,11 @@ export default function BattleArena({
           const isOwnEntity  = isEntityTarget && selectedEntity?.ownerUserId === me?.userId;
           const targetPosition = isSelf ? me.position : isEntityTarget ? selectedEntity?.position : selectedTarget?.position;
           const targetHp     = isSelf ? (me?.hp ?? 0) : isEntityTarget ? (selectedEntity?.hp ?? 0) : (selectedTarget?.hp ?? 0);
-          const targetShield = Math.max(0, isSelf ? (me?.shield ?? 0) : isEntityTarget ? (selectedEntity?.shield ?? 0) : (selectedTarget?.shield ?? 0));
+          const targetShield = isSelf
+            ? myShield
+            : isEntityTarget
+            ? getLinkedShieldDisplayClient(selectedEntity as any)
+            : getLinkedShieldDisplayClient(selectedTarget as any);
           const targetMaxHp  = isSelf
             ? (me?.maxHp ?? maxHp)
             : isEntityTarget ? (selectedEntity?.maxHp ?? 1) : (selectedTarget?.maxHp ?? maxHp);
@@ -13018,7 +15397,7 @@ export default function BattleArena({
                 : `${entityOwner?.username ?? '玩家'}的逐云寒蕊`)
             : (selectedTarget?.username ?? '目标');
           const targetIconDistanceText = formatIconBarDistance(me.position, targetPosition, storedUnitScale);
-          const targetBuffs  = isSelf ? (me?.buffs ?? []) : isEntityTarget ? (selectedEntity?.buffs ?? []) : (selectedTarget?.buffs ?? []);
+          const targetBuffs  = isSelf ? playerStatusBuffs : isEntityTarget ? activeBuffsClient(selectedEntity?.buffs as any) : activeBuffsClient(selectedTarget?.buffs);
           const hpGradient   = isSelf ? selfIconBarHpGradient : iconBarHpGradient;
           const targetInCombat = isSelf ? !!me?.inCombat : isEntityTarget ? false : !!selectedTarget?.inCombat;
           const channelTargetUserId = isSelf
@@ -13647,7 +16026,7 @@ export default function BattleArena({
         <>
       <button
         style={{
-          position: 'absolute', bottom: 80, right: 8, zIndex: 200,
+          position: 'absolute', bottom: 80, right: 8, zIndex: 760,
           background: showCheatWindow ? '#ff6b00' : 'rgba(20,20,30,0.92)',
           color: showCheatWindow ? '#fff' : '#ff6b00',
           border: '1px solid #ff6b00', borderRadius: 4,
@@ -13662,7 +16041,7 @@ export default function BattleArena({
       </button>
       {showCheatWindow && (
         <div style={{
-          position: 'absolute', top: 96, bottom: 118, right: 8, zIndex: 200,
+          position: 'absolute', top: 96, bottom: 118, right: 8, zIndex: 760,
           background: 'rgba(10,18,28,0.97)', border: '1px solid #ff6b00',
           borderRadius: 6, padding: 8,
           overflowY: 'auto',
@@ -13715,7 +16094,7 @@ export default function BattleArena({
             </div>
             {cheatSchoolOpen && (
               <div style={{
-                position: 'absolute', top: '100%', left: 0, zIndex: 300,
+                position: 'absolute', top: '100%', left: 0, zIndex: 780,
                 background: 'rgba(10,10,20,0.97)', border: '1px solid #555',
                 borderRadius: 6, padding: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
                 width: 200,

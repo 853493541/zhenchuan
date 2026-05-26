@@ -1,0 +1,78 @@
+{
+   "files" : [
+      {
+         "name" : "images/border.Tga",
+         "value" : "3CAB86CC8E2A858F22AE603918F424919F2B17DA"
+      },
+      {
+         "name" : "images/border.txt",
+         "value" : "F655614A2AE0567ADE15E144A7450065BE3C0334"
+      },
+      {
+         "name" : "images/border.UITex",
+         "value" : "3312B4B73B7EF944498B69090B70788629AE3095"
+      },
+      {
+         "name" : "images/Cataclysm.Tga",
+         "value" : "745635C94C3DAC568CF6BD9EF36C6F0FADA58A5C"
+      },
+      {
+         "name" : "images/Cataclysm.txt",
+         "value" : "64E6D82A0525F1ADA2D6A83D2281A6AF6379B062"
+      },
+      {
+         "name" : "images/Cataclysm.UITex",
+         "value" : "25DC5C5F2168B4A5B56BCDF5348B51CEE01538F0"
+      },
+      {
+         "name" : "images/ForceColorBox.Tga",
+         "value" : "B0876912061D6DDFB46C0837A4C92B943BC29FEF"
+      },
+      {
+         "name" : "images/ForceColorBox.UITex",
+         "value" : "8E6C35A69EBD226B03AB1017FE4AD8613AAF49FF"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "7118804D5A3299AD51322D8E3D4F4258CF63B881"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "F85EB4B18D6B1DE96A4F2F3703F69F223B06AF69"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "BC62CB6C529FE834FC0AEACFF528F3496F02F003"
+      },
+      {
+         "name" : "src.20260514102914-7b2fe6f6e.lua",
+         "value" : "D85490A2FF50077A2A85356A1BC906618EDF76D2"
+      },
+      {
+         "name" : "ui/MY_CataclysmMain.ini",
+         "value" : "B92DDC2D2AB7F06F75C2C195C0B4A208A0811A34"
+      },
+      {
+         "name" : "ui/MY_CataclysmMain_Button.ini",
+         "value" : "06B06151B4BD605DFF928ABBDDFCCA652E3059A5"
+      },
+      {
+         "name" : "ui/MY_CataclysmParty.CATACLYSM.ini",
+         "value" : "88A387159FE92005A7F2A080DC2EE7083B9E3CF0"
+      },
+      {
+         "name" : "ui/MY_CataclysmParty.OFFICIAL.ini",
+         "value" : "7FDC43B361593349C209697D249EF771AA137BF1"
+      },
+      {
+         "name" : "ui/MY_CataclysmParty_Item.CATACLYSM.ini",
+         "value" : "EAFA37C34542535007CB5F667B0FDA2A9B74A47F"
+      },
+      {
+         "name" : "ui/MY_CataclysmParty_Item.OFFICIAL.ini",
+         "value" : "07A47EDCAF1CA3B8451B637CA3B48163330F209A"
+      }
+   ],
+   "id" : "MY_Cataclysm",
+   "version" : 161
+}

@@ -1,0 +1,8 @@
+[MY_Target]
+name=目標輔助
+desc=顯示自身和目標的方位、連接線等信息
+package=MY
+dependence=MY_!Base
+version=1.0
+default=1
+lua_0=src.20260127084231-edb5b68c6.lua

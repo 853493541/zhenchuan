@@ -1,0 +1,38 @@
+{
+   "files" : [
+      {
+         "name" : "img/MY_TargetDirection.Tga",
+         "value" : "475F32C38F5754C52FC838679B88388249A6F02E"
+      },
+      {
+         "name" : "img/MY_TargetDirection.txt",
+         "value" : "503097DCCA15CC286DD6859E27751FBE51B950DE"
+      },
+      {
+         "name" : "img/MY_TargetDirection.UITex",
+         "value" : "AFC0D3430F7A59EC7973ABB86D6F6B51321B7B73"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "21D797287899A82691020A1093632A2190DCFC4D"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "74AF87E7B61C7CC40CD65AA5BA191AD93CD9E3CD"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "54DB7FD9558F035774AFF5672B5A06AC2B0F236D"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "2FE7669AF47369A7475B97E4CC0A94659F40F743"
+      },
+      {
+         "name" : "ui/MY_TargetDirection.ini",
+         "value" : "2994C1A7A09A3CB6D48F8B8A294EAA32DF765377"
+      }
+   ],
+   "id" : "MY_Target",
+   "version" : 78
+}

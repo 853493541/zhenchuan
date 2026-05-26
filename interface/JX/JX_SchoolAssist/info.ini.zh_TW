@@ -1,0 +1,9 @@
+[JX_SchoolAssist]
+name=技能輔助
+desc=氣場名稱顯示、簡潔內力條
+version=1.0
+default=1
+package=JX
+lua_0=JX_SchoolAssist.lua
+lua_1=JX_Shadows.lua
+lua_2=JX_ClearlyBar.lua

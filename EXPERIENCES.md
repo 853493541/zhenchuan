@@ -3,6 +3,103 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Jump intent lock and correction diagnostics (2026-05-26)
+
+**Implemented / checked**:
+- Backend jump takeoff now freezes the original movement/facing intent attached to the one-shot jump pulse, so a later face-turn packet cannot rewrite the already-queued jump direction before the tick consumes it.
+- `movement.ts` uses that frozen jump intent only for takeoff direction/backpedal validation, while live `facing` input still updates server-facing during airtime for ability logic.
+- Added frontend `[JUMP-CORRECTION]` console diagnostics when server reconciliation changes local airborne jump prediction, including XY/Z error, local/server positions, jump count, and local vertical velocity.
+- Follow-up: `[JUMP-CORRECTION]` warnings during 扶摇/second-jump sequences exposed delayed authoritative samples arriving behind the frontend's local jump phase. BattleArena now ignores airborne server samples that are still inside a velocity-based lag envelope, while keeping warnings/corrections for discrepancies beyond that envelope.
+- Follow-up: real integrated-browser Playwright testing showed quick 扶摇 second jumps can advance the frontend to local jump phase 2 while the latest server sample still reports an earlier `jumpCount`. BattleArena now also waits briefly for server jump phase to catch up before warning or correcting airborne prediction.
+- Follow-up: the same live browser test exposed the opposite timing failure under heavy scene load: the browser rendered near 9 FPS, so the fixed-per-tick local jump loop advanced slower than the 30 Hz backend. BattleArena now catches up fixed 30 Hz prediction ticks when the browser callback is delayed.
+- Follow-up: after fixed-step catch-up, only small server-landed/local-nearly-landed `soft-z` / `soft-xy` residuals remained. BattleArena now gives that narrow landing phase a grace window so local prediction can finish the final descent and drift without a false correction warning.
+- Follow-up: fresh live browser testing still showed server-landed samples racing ahead of a delayed local physics callback. BattleArena now advances local prediction immediately before reconciliation compares the server sample, and allows a larger catch-up window for delayed browser timers.
+- Follow-up: later live runs produced grounded/post-landing corrections with jump counts already zero or the server already landed while the client was in final descent/drift. `[JUMP-CORRECTION]` diagnostics now only classify active local jump-count prediction as a jump correction, with enough final-descent landing grace to cover normal 扶摇 tails while still leaving larger gaps visible.
+- Follow-up: live browser testing at 30 FPS still showed local jump phase 2 while the backend had already landed. The cause was async movement POST reordering: a later non-jump packet could advance `seq` before the quick second-jump packet arrived. `GameLoop.setPlayerInput` now accepts a wider short-window of out-of-order jump pulses and latches their frozen jump intent without rolling newer movement state backward.
+- Built backend and frontend after point 1, then rebuilt both after point 2 and restarted only the Zhenchuan `frontend` and `backend` PM2 apps.
+
+**Lesson**:
+- One-shot jump input must preserve the full takeoff intent, not just the `jump` boolean. If the backend latches `jump: true` onto a newer facing/movement packet, local prediction can be right while the authoritative jump silently turns.
+- Jump correction warnings belong at the client/server reconciliation boundary, where they can show whether a visible snap/blend came from stale local prediction, delayed authoritative state, or a real backend rule mismatch.
+- For jump/fuyao correction logs, compare the position gap against expected local/server velocity over several ticks before treating it as a real desync. Otherwise normal movement POST + backend tick + broadcast latency can make the correct frontend prediction look ahead of the latest server sample and trigger false correction warnings.
+- If local `jumpCount` is ahead of the authoritative sample shortly after jump input, treat that sample as phase-stale before correcting. Velocity envelopes alone do not cover every quick second-jump case because phase mismatch can create a large Z gap even when both sides are individually following valid jump rules.
+- Client prediction that uses per-tick physics constants must catch up missed ticks when the browser frame/timer rate drops. Otherwise a low-FPS scene makes local jump airtime too long while the backend keeps simulating at 30 Hz, producing real correction warnings even with identical jump constants.
+- After the server has landed and the client is only slightly above it or drifting into the same landing, prefer a narrow landing grace over immediate soft correction. This avoids treating the last local descent/drift ticks as a desync while still allowing large gaps to warn/snap.
+- Before warning/correcting against a new authoritative sample, first advance local prediction to the current browser time. Otherwise React/WebSocket updates can compare fresh server state against stale local refs when the physics interval is delayed.
+- A grounded reconciliation after local `jumpCount` has reset is not a during-jump correction warning; keep the normal snap/blend behavior, but do not report it under `[JUMP-CORRECTION]`.
+- One-shot jump pulses need special handling in sequence filtering. Rejecting every lower `seq` can drop valid jumps when movement POSTs arrive out of order; accept nearby late jump pulses while keeping the latest non-jump movement/facing state authoritative.
+
+## Knockback, jump carry, shield, and stealth sound parity (2026-05-26)
+
+**Implemented / checked**:
+- 无间狱-style timed knockback now moves in small collision-resolved steps and stops when forward progress is blocked by map or 楚河汉界 walls; activeDash knockbacks also carry a `stopOnWall` flag.
+- Backend jump start speed now only reuses airborne carry on the first jump; frontend prediction mirrors that rule so a second air jump does not inherit a spent movement-speed boost.
+- Frontend locally consumes/filters 弹跳 after a boosted jump until the server diff arrives, and movement-caused buff mutations now force a buff broadcast from the backend.
+- 应天授命 shield logic ignores expired buffs for post-hit effects, reconciles linked shield display against active shield buffs, and live checked that shield `100000000` drops to `0` after the 8s buff expires.
+- Opponent ability/event sound playback now skips actors who are currently stealthed, and hidden opponent channel loops are removed from the active channel-sound set.
+- Live checked refreshed frontend: 扶摇直上 applied 弹跳, jumping removed backend buff `9001`, and the visible 弹跳 status count dropped from `1` to `0`. Built-code wall check showed a `stopOnWall` dash stopping at the wall boundary and clearing `activeDash`.
+
+**Lesson**:
+- Knockback cannot be a single position add followed by recovery; wall-aware displacement needs substeps and must stop based on forward progress into the wall, not total sideways slide distance.
+- Jump prediction must treat movement-speed carry as a phase-local resource. The first jump may carry the boosted takeoff speed, but a later air jump should recalculate from current speed and ignore stale airborne carry.
+- One-shot movement buffs need optimistic client consumption plus authoritative diff broadcast. If either side misses it, status bars and hotbar gates can think the buff still exists.
+- Shield UI should display active linked shield pools, not stale numeric shield fields. Stealth privacy applies to audio/event loops too, not only targetability, visuals, and combat text.
+
+## Expired buff runtime cleanup (2026-05-25)
+
+**Implemented / checked**:
+- Runtime buff/channel predicates now treat expired entries as inactive across backend guards, movement/jump locks, targeting, combat math, range modifiers, projectile immunity, stealth/disguise helpers, and frontend BattleArena gates.
+- Linked shields now reconcile against only active shield-bearing buffs; natural expiry, turn cleanup, buff replacement/cancel, and damage depletion clear linked shield pools instead of leaving `shield` behind.
+- Channel HUD bars and 3D channel rings now self-expire by time on the client, so a stale non-null buff/channel object cannot keep 风来吴山 visuals or jump suppression alive after expiry.
+- Live checked 风来吴山: buff applied and bar appeared, then after expiry backend buffs/channel were empty, the channel bar DOM was empty, and a jump movement request was accepted.
+- Live checked 月影沙 stealth: stealth/no-jump buff applied from consumable, then after expiry the player had no stealth buff and no remaining buffs.
+- Built-code shield check confirmed an expired linked shield zeros its `shieldAmount` and normalizes total shield down to active linked shields only; removing the active linked shield drops total shield to zero.
+
+**Lesson**:
+- Buff expiry cannot rely only on array cleanup. Every runtime predicate and frontend display/gate path must check `expiresAt`, because a stale buff object can persist long enough to keep locks, stealth, shields, damage modifiers, or channel visuals alive.
+- Linked effects need explicit cleanup hooks. Shields, channel indicators, stealth privacy, and movement locks should be removed or ignored from the effect source itself, not inferred later from a cosmetic/status refresh.
+
+## In-game chat window/account layout polish (2026-05-25)
+
+**Implemented / checked**:
+- Added the `battle` chat channel/window path and render battle messages from server `DAMAGE` combat events on the client, keeping battle text white while coloring actor/target names by stored player school.
+- Wired battle-chat generation from both WebSocket event payloads and the successful `/play` HTTP patch response, and allowed `DAMAGE` events with entity targets as well as player targets.
+- Moved the chat scrollbar into the real left control rail and removed the right-side fake scrollbar; search opens/closes as a dropdown inside the message column without shifting the rail.
+- Follow-up: search/log now sit inside a dedicated message column so opening search reduces the log viewport instead of overlaying the first visible message or changing the left rail geometry; the rail track was simplified to a single thumb layer and edge-disabled buttons were dimmed.
+- Follow-up: battle chat now emits separate `PLAY_ABILITY` hit logs and `DAMAGE` logs in MMO-style wording, with self-perspective `你/你的` text and `[未知目标]` for stealthed actors or targets observed by other clients.
+- Follow-up: chat history refresh now merges server chat with local battle messages instead of replacing the entire chat list, closing search clears the query so stale filters do not hide new battle lines, battle event seeding now runs after game-id reset while new `state.events` changes are consumed as a fallback to `/play` responses, and duplicate near-simultaneous `PLAY_ABILITY` events for one cast collapse to one hit line.
+- Follow-up: battle chat now behaves as an enemy-action report: local self-authored events are hidden for the local viewer, stealthed enemy actors are skipped entirely, `DAMAGE`/`HEAL` events feed action-style hit lines instead of amount math, consumable use responses are read for battle events, 金疮药/绷带 emit action events even when no HP is restored, detached chat panels auto-scroll when already at bottom, and the disabled left-scroll thumb is fully hidden.
+- Follow-up: detached battle-log auto-scroll needed layout-timed bottom following; a separate metrics refresh could mark the detached log as no longer at bottom before the sticky-scroll effect ran. Chat window settings now treat “关闭窗口” as a hidden-window flag that preserves detached group membership and position, and the chat panel waits for account layout loading before painting to avoid the default-position snap.
+- Follow-up: local battle logs are now the only chat messages capped client-side, limited to 200 entries; map/system chat history remains session-scoped. Battle-log generation also filters by the enemy actor's distance to the local player, while normal chat delivery and history are unaffected.
+- Follow-up: combat-log visibility range was raised to 200 units. A live system snapshot during reported lag showed MongoDB idle with a tiny local DB and no lock queue; the notable CPU sample was the backend Node process, so lag checks should look at active GameLoop/backend work before blaming local Mongo reads.
+- Follow-up: two-account live profiling with authenticated API/WebSocket clients showed the heaviest server-side phase was combined movement+ability traffic: backend Node used about 18% of one core, while `mongod` stayed under 1% and disk read/write bytes stayed at 0. Backend active time was dominated by app/framework serialization plus repeated `GameLoop.getState()` structured clones from movement/snapshot/ability paths; direct movement/collision, ability logic, and WebSocket send time were small in the profile.
+- Follow-up: a two-account state-diff audit showed normal movement diffs are small position patches, but ability/test-helper traffic still sends excess full arrays: generic `diffState()` replaces the whole `players` array on ability state changes, and reset-cooldowns replaces each whole `hand` array when only cooldown/charge fields changed.
+- Made detached chat groups account-backed through `battleArenaUiLayout.chat.detachedWindows`, `detachedPanelSizes`, and normal detached position keys, while excluding the transient clear dialog position from account layout writes.
+
+**Lesson**:
+- Chat UI persistence needs to store both structure and geometry. Detached tab groups are not recoverable from positions alone; save group/window membership, group size, and group position together.
+- Combat-system chat can be derived from authoritative event payloads instead of a separate chat write path when the messages are local combat narration. Use the existing event metadata and player-name/school maps so battle messages stay synchronized with live combat state.
+- The local caster may receive combat events through the `/play` response before or instead of a WebSocket event payload, so battle chat must read successful action patches too.
+- Battle chat should seed/remember combat event ids from the loaded game state before appending live event logs; `/play` responses can include historical `state.events`, so unseeded generation can replay old combat lines after reload. Keep the game-id reset before the seed effect, or the reset can wipe the dedupe seed on mount.
+- Server chat history only contains persisted chat, while battle narration is currently client-local; refreshing/searching chat must merge rather than replace or it can erase fresh combat logs.
+- Some ability execution paths emit more than one `PLAY_ABILITY` event around the same cast; client battle narration should dedupe near-simultaneous hit lines by actor/target/ability while leaving separate `DAMAGE` events untouched.
+- Stealth-sensitive combat logs are best personalized at the client display layer using the pre-diff local state: the hidden player still sees `你`, while observers see `[未知目标]` for stealthed actors or targets in hit and damage lines.
+- Enemy-action battle feeds should skip local self-authored entries for the local viewer, skip stealthed enemy actors entirely, and consume `HEAL`/`DAMAGE` as action events when the UI should report activity rather than numeric calculations. Consumable `/use` responses need the same battle-event consumption as `/play` responses, and consumables that should be reportable must emit events even when the applied heal is zero.
+- Detached chat panels need their own at-bottom refs and display-length bookkeeping; the main chat `chatAtBottomRef` does not tell detached windows whether they should follow new messages.
+- Do not update detached chat at-bottom refs in a generic metrics effect before the auto-scroll decision has run. New content increases `scrollHeight` first, so measuring too early flips “was at bottom” to false and prevents the intended scroll-to-bottom.
+- Keep chat history caps channel-specific. If only combat logs need pruning or proximity filtering, apply that in the local battle-message generation path rather than in shared chat append/history merge code, or normal map/system messages will be lost or hidden incorrectly.
+- Local MongoDB being on-box does not automatically mean DB read pressure. Check `mongod` CPU, lock queue, connection count, and DB size first; if `mongod` is idle but backend Node is hot, investigate active game loops, event volume, or render/network paths instead of switching databases prematurely.
+- For CPU profiling, do not load the full 3D scene when isolating backend cost: headless Chromium software WebGL can consume a core by itself. Use lightweight authenticated HTTP/WebSocket clients, then compare process CPU with Node inspector samples, Mongo serverStatus counters, socket frame counts, and request latency.
+- Current Zhenchuan backend hotspots under two-player casting are mostly state snapshot/cloning/serialization paths, especially `GameLoop.getState()`, plus some Mongoose/BSON work from snapshot/cheat/chat saves. Movement collision and ability execution were not the primary CPU consumers in the measured run.
+- State-diff trimming and `getState()` clone reduction are related but separate. Trimming `STATE_DIFF` reduces network/JSON stringify/parse and frontend patch work; optimizing `getState()` reduces backend structuredClone CPU even for routes that return HTTP snapshots or validate input without broadcasting.
+- State-diff array granularity must preserve identity/order safety. Patch `players` and unchanged-slot `hand` arrays by index, but fall back to whole-array replacement when player/card/entity identities change so removed fields and reorders do not leave stale client state.
+- Cooldown, GCD, and activeDash countdowns should be sparse server sync fields plus local client countdowns. Sending only start/reset/end boundaries removes 30Hz countdown payloads while preserving responsive hotbar grayout and dash prediction.
+- For reset-cooldowns, treat undefined cooldown-like fields and zero as the same ready state. Otherwise a reset route can avoid whole `hand` arrays but still flood clients with semantic no-op zero patches.
+- Sparse activeDash sync must not let local countdown ticks become sample identities. Only new server positions or a new dash sync should re-anchor dash prediction; otherwise the render bridge can reset against stale positions and create directional dash lag or short duplicate dash starts.
+- Local cooldown countdowns should animate on `requestAnimationFrame` while any timer is active, then fall back to an idle check interval. A fixed 250ms React clock preserves correctness but makes cooldown arcs visibly step.
+- Resource-pack service workers should not intercept app document navigations such as `/game/in-game`; only cache asset requests. Intercepting navigations can surface `FetchEvent ... network error response` noise during reloads or route changes.
+- For this MMO-style chat panel, the visible scrollbar belongs in the left rail control area. A separate right overlay reads as the wrong control even if it tracks the same scroll position.
+
 ## Alpha passed / beta stage start (2026-05-24)
 
 **Milestone**:
@@ -48,6 +145,28 @@ Each entry goes under its relevant section header.
 - For hotkey-setting rows, avoid flexible full-width binding columns when the intended layout is label-plus-inputs. A max-content row track plus fixed-width binding cells keeps the two shortcut boxes visually attached to the label instead of drifting to the right edge.
 - When labels and inputs must align in a settings grid, keep the label column fixed to the longest expected label width. Using content-sized label tracks makes every row start at a different X position as soon as one label is longer than the rest.
 - For dense ESC settings panels, keep the editable shortcut text color consistent with other neutral UI labels unless a specific warning or capture state needs a highlight color.
+
+## Local DB config drift and dash smoothing (2026-05-25)
+
+**Implemented / checked**:
+- Restored source/config parity for local MongoDB: `backend/db.ts`, PM2 env, package DB scripts, git snapshot exceptions, and the China VM runbook now agree on local `zhenchuan_app` instead of hardcoded `baizhan_V2`.
+- Added dash render prediction during active server-authoritative dashes so the frontend keeps moving between server movement samples instead of freezing at the last authoritative position.
+- Added a focused Playwright spec for dash render prediction and gap diagnostics.
+- Follow-up: browser logs showed activeDash samples sometimes arriving/rendering 195-224ms apart while backend dash timing stayed near 30Hz. Expanded the client-side dash bridge to 8 ticks and raised warning diagnostics so covered gaps do not produce false alarm warnings.
+- Follow-up: confirmed the dash bridge is ability-agnostic because it consumes the shared `activeDash` velocity/tick shape, added regression coverage for horizontal, ground-target, knockback-style, and vertical lift dashes, and made backend `[DASH]` end logs report expected duration from the actual starting tick count instead of hardcoding 30 ticks.
+- Generalized the dash debugging method: compare authoritative backend timestamps/counters against client-observed render/network sample gaps, then add diagnostics at the handoff boundary where the two clocks disagree. This catches "backend is fine but frontend sees stale samples" bugs faster than only watching one side.
+- Local DB is now branch-locked to `mongodb://127.0.0.1:27017` + `zhenchuan_app`; app startup and snapshot scripts refuse remote MongoDB URIs or other DB names. Added local user maintenance commands and seeded `testuser1` / `testuser2` for Playwright/manual auth checks.
+- Follow-up: real browser logs showed occasional 269-448ms activeDash sample gaps while backend dash durations still stayed close to expected. Increased the client bridge to 20 ticks and only warn beyond 650ms, because gaps inside that bridge are now covered by prediction instead of indicating a visible stutter.
+
+**Lesson**:
+- A faster server response can expose frontend/server handoff bugs: activeDash may reach the client before the first movement tick, so hard-snapping to server position without short lead prediction can look like a mid-air freeze.
+- Dash diagnostics from the React render path measure client-observed sample gaps, not necessarily backend tick pauses. Cross-check PM2 `[DASH]` timings before blaming the game loop or database.
+- Dash smoothing tests should cover shapes of `activeDash` rather than only named abilities; the frontend bridge must follow velocity/tick fields so new dash abilities inherit the same render behavior automatically.
+- For slow-latency and new-bug investigations, log both the producer timeline and consumer timeline with the same entity/action id. A mismatch between "server advanced" and "client sample/render did not" points to transport/render handoff; matching stalls point back to authoritative processing.
+- Admin/test account maintenance now makes `testuser1` and `testuser2` admins.
+- Follow-up: account switching now uses remembered authenticated browser sessions instead of selecting any local account. The switch list shows only already-authenticated accounts and is allowed only when the current or remembered sessions include an admin; first-time account add still goes through `/login`.
+- Display-name changes now require a unique 1-6 Chinese-character name; `testuser1` / `testuser2` display names are `一` / `二`.
+- Follow-up: topbar account menus should use fixed overlay positioning with visible overflow instead of internal scrollbars; native scroll in the panel can still leave the menu visually cut off and adds unwanted page/panel scroll behavior. Chinese display-name inputs should validate on confirm, not filter during typing, because IME/input composition can wipe partially typed Chinese text.
 
 ## China VM deployment planning (2026-05-23)
 

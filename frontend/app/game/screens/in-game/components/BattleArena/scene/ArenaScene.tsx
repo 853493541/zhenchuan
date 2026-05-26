@@ -35,9 +35,20 @@ const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
 const DISGUISE_BUFF_IDS = new Set([980001]);
 
+function isActiveBuffClient(buff: any, now = Date.now()): boolean {
+  const expiresAt = Number(buff?.expiresAt ?? 0);
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) return true;
+  return expiresAt > now;
+}
+
+function activeBuffsClient(buffs?: any[]): any[] {
+  if (!Array.isArray(buffs) || buffs.length === 0) return [];
+  const now = Date.now();
+  return buffs.filter((buff) => isActiveBuffClient(buff, now));
+}
+
 function hasStealthBuff(buffs?: any[]): boolean {
-  if (!Array.isArray(buffs)) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     (b.effects ?? []).some((e: any) => e.type === 'STEALTH') ||
     STEALTH_BUFF_IDS.has(b?.buffId) ||
     (typeof b?.name === 'string' && (b.name.includes('隐身') || b.name.includes('遁影')))
@@ -45,8 +56,7 @@ function hasStealthBuff(buffs?: any[]): boolean {
 }
 
 function hasSanliuXiaBuff(buffs?: any[]): boolean {
-  if (!Array.isArray(buffs)) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     SANLIU_XIA_BUFF_IDS.has(b?.buffId) ||
     ZHU_YUN_HIDE_BUFF_IDS.has(b?.buffId) ||
     (typeof b?.name === 'string' && b.name.includes('散流霞'))
@@ -54,13 +64,11 @@ function hasSanliuXiaBuff(buffs?: any[]): boolean {
 }
 
 function hasZhuYunHideBuff(buffs?: any[]): boolean {
-  if (!Array.isArray(buffs)) return false;
-  return buffs.some((b: any) => ZHU_YUN_HIDE_BUFF_IDS.has(b?.buffId));
+  return activeBuffsClient(buffs).some((b: any) => ZHU_YUN_HIDE_BUFF_IDS.has(b?.buffId));
 }
 
 function hasDisguiseBuff(buffs?: any[]): boolean {
-  if (!Array.isArray(buffs)) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     DISGUISE_BUFF_IDS.has(b?.buffId) ||
     (b.effects ?? []).some((e: any) => e.type === 'DISGUISE') ||
     (typeof b?.name === 'string' && b.name.includes('伪装'))
@@ -68,8 +76,7 @@ function hasDisguiseBuff(buffs?: any[]): boolean {
 }
 
 function hasHongMengTianJinBuff(buffs?: any[]): boolean {
-  if (!Array.isArray(buffs)) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     b?.buffId === HONG_MENG_TIAN_JIN_BUFF_ID ||
     (b.effects ?? []).some((e: any) => e.type === 'HONG_MENG_TIAN_JIN') ||
     (typeof b?.name === 'string' && b.name.includes('鸿蒙天禁'))
@@ -81,8 +88,7 @@ function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
 }
 
 function hasShiFangXuanJiBuff(buffs?: any[]): boolean {
-  if (!Array.isArray(buffs)) return false;
-  return buffs.some((b: any) =>
+  return activeBuffsClient(buffs).some((b: any) =>
     b?.buffId === SHI_FANG_XUAN_JI_BUFF_ID ||
     (typeof b?.name === 'string' && b.name.includes('十方玄机'))
   );

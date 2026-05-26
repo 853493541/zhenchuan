@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getClientCrashRecorder } from "@/app/game/diagnostics/clientCrashRecorder";
 import { getClientLatencyRecorder } from "@/app/game/diagnostics/clientLatencyRecorder";
-import type { AbilityInstance, GameResponse, TargetSelection } from "../types";
+import type { AbilityInstance, ChatChannel, ChatMessage, GameResponse, TargetSelection } from "../types";
 
 /* ================= DIFF APPLY ================= */
 
@@ -11,6 +11,8 @@ type DiffPatch = {
   path: string;
   value: any;
 };
+
+const SERVER_TICK_MS = 1000 / 30;
 
 function applyDiff<T extends object>(prev: T, diff: DiffPatch[]): T {
   let next: any = prev;
@@ -60,13 +62,14 @@ function applyDiff<T extends object>(prev: T, diff: DiffPatch[]): T {
 /* ================= WEBSOCKET MESSAGE TYPES ================= */
 
 type WSMessage = {
-  type: "STATE_DIFF" | "GAME_OVER" | "PONG" | "PING" | "PLAYER_DISCONNECTED" | "PLAYER_RECONNECTED";
+  type: "STATE_DIFF" | "GAME_OVER" | "PONG" | "PING" | "PLAYER_DISCONNECTED" | "PLAYER_RECONNECTED" | "CHAT_MESSAGE";
   version?: number;
   diff?: DiffPatch[];
   events?: any[];
   winnerUserId?: string;
   userId?: string;
   username?: string;
+  chat?: ChatMessage;
   endsAt?: number;
   timestamp?: number; // Server timestamp for RTT measurement
   serverTimestamp?: number;
@@ -118,12 +121,138 @@ function normalizeDiffTimestamps(diff: DiffPatch[], offsetMs: number): DiffPatch
   }));
 }
 
-function normalizeGamePayloadTimestamps<T extends { state?: any }>(payload: T, offsetMs: number): T {
-  if (!payload?.state) return payload;
+function annotateAbilityRuntimeSync(ability: any, syncedAt: number): any {
+  if (!ability || typeof ability !== "object") return ability;
+  const next = { ...ability };
+  if (typeof next.cooldown === "number") next._cooldownSyncedAt = syncedAt;
+  if (typeof next.chargeRegenTicksRemaining === "number") next._chargeRegenTicksRemainingSyncedAt = syncedAt;
+  if (typeof next.chargeLockTicks === "number") next._chargeLockTicksSyncedAt = syncedAt;
+  return next;
+}
+
+function annotateActiveDashRuntimeSync(activeDash: any, syncedAt: number): any {
+  if (!activeDash || typeof activeDash !== "object") return activeDash;
+  const next = { ...activeDash };
+  if (typeof next.ticksRemaining === "number") next._ticksRemainingSyncedAt = syncedAt;
+  return next;
+}
+
+function annotatePlayerRuntimeSync(player: any, syncedAt: number): any {
+  if (!player || typeof player !== "object") return player;
+  const next = { ...player };
+  if (typeof next.globalGcdTicks === "number") next._globalGcdSyncedAt = syncedAt;
+  if (next.activeDash) next.activeDash = annotateActiveDashRuntimeSync(next.activeDash, syncedAt);
+  if (Array.isArray(next.hand)) {
+    next.hand = next.hand.map((ability: any) => annotateAbilityRuntimeSync(ability, syncedAt));
+  }
+  if (next.specialAbilityStates && typeof next.specialAbilityStates === "object") {
+    next.specialAbilityStates = Object.fromEntries(
+      Object.entries(next.specialAbilityStates).map(([key, ability]) => [key, annotateAbilityRuntimeSync(ability, syncedAt)])
+    );
+  }
+  return next;
+}
+
+function annotateGameRuntimeSync<T extends { state?: any }>(payload: T, syncedAt: number): T {
+  if (!payload?.state || !Array.isArray(payload.state.players)) return payload;
   return {
     ...payload,
-    state: normalizeServerTimes(payload.state, offsetMs),
+    state: {
+      ...payload.state,
+      players: payload.state.players.map((player: any) => annotatePlayerRuntimeSync(player, syncedAt)),
+    },
   };
+}
+
+function annotateRuntimeSyncDiff(diff: DiffPatch[], syncedAt: number): DiffPatch[] {
+  const annotated: DiffPatch[] = [];
+  for (const patch of diff) {
+    const handMatch = patch.path.match(/^\/players\/(\d+)\/hand$/);
+    if (handMatch && Array.isArray(patch.value)) {
+      annotated.push({ ...patch, value: patch.value.map((ability: any) => annotateAbilityRuntimeSync(ability, syncedAt)) });
+      continue;
+    }
+
+    const playerMatch = patch.path.match(/^\/players\/(\d+)$/);
+    if (playerMatch && patch.value && typeof patch.value === "object") {
+      annotated.push({ ...patch, value: annotatePlayerRuntimeSync(patch.value, syncedAt) });
+      continue;
+    }
+
+    const activeDashMatch = patch.path.match(/^\/players\/(\d+)\/activeDash$/);
+    if (activeDashMatch && patch.value && typeof patch.value === "object") {
+      annotated.push({ ...patch, value: annotateActiveDashRuntimeSync(patch.value, syncedAt) });
+      continue;
+    }
+
+    annotated.push(patch);
+
+    const abilityFieldMatch = patch.path.match(/^\/players\/(\d+)\/hand\/(\d+)\/(cooldown|chargeRegenTicksRemaining|chargeLockTicks)$/);
+    if (abilityFieldMatch && typeof patch.value === "number") {
+      const [, playerIndex, slotIndex, field] = abilityFieldMatch;
+      const syncField = field === "cooldown"
+        ? "_cooldownSyncedAt"
+        : field === "chargeRegenTicksRemaining"
+          ? "_chargeRegenTicksRemainingSyncedAt"
+          : "_chargeLockTicksSyncedAt";
+      annotated.push({ path: `/players/${playerIndex}/hand/${slotIndex}/${syncField}`, value: syncedAt });
+      continue;
+    }
+
+    const gcdMatch = patch.path.match(/^\/players\/(\d+)\/globalGcdTicks$/);
+    if (gcdMatch && typeof patch.value === "number") {
+      annotated.push({ path: `/players/${gcdMatch[1]}/_globalGcdSyncedAt`, value: syncedAt });
+    }
+  }
+  return annotated;
+}
+
+function activeDashSignature(activeDash: any): string | null {
+  if (!activeDash || typeof activeDash !== "object") return null;
+  return JSON.stringify({
+    abilityId: activeDash.abilityId ?? null,
+    vxPerTick: activeDash.vxPerTick ?? null,
+    vyPerTick: activeDash.vyPerTick ?? null,
+    vzPerTick: activeDash.vzPerTick ?? null,
+    forceVzPerTick: activeDash.forceVzPerTick ?? null,
+    lingRanCastLift: activeDash.lingRanCastLift === true,
+    hitTargetUserId: activeDash.hitTargetUserId ?? null,
+    hitTargetEntityId: activeDash.hitTargetEntityId ?? null,
+  });
+}
+
+function filterDuplicateSelfActiveDashPatches(
+  state: any,
+  diff: DiffPatch[],
+  selfPlayerIndex: number,
+  nowMs: number,
+): DiffPatch[] {
+  if (selfPlayerIndex < 0 || diff.length === 0) return diff;
+  const previousDash = state?.players?.[selfPlayerIndex]?.activeDash;
+  const previousSignature = activeDashSignature(previousDash);
+  if (!previousSignature) return diff;
+
+  const previousSyncAt = Number(previousDash?._ticksRemainingSyncedAt ?? 0);
+  const previousTicks = Math.max(0, Number(previousDash?.ticksRemaining ?? 0));
+  const duplicateWindowEndsAt = previousSyncAt > 0 && previousTicks > 0
+    ? previousSyncAt + previousTicks * SERVER_TICK_MS + 750
+    : nowMs + 1;
+
+  return diff.filter((patch) => {
+    const activeDashMatch = patch.path.match(/^\/players\/(\d+)\/activeDash$/);
+    if (!activeDashMatch || Number(activeDashMatch[1]) !== selfPlayerIndex) return true;
+    if (!patch.value || typeof patch.value !== "object") return true;
+    if (activeDashSignature(patch.value) !== previousSignature) return true;
+    return nowMs > duplicateWindowEndsAt;
+  });
+}
+
+function normalizeGamePayloadTimestamps<T extends { state?: any }>(payload: T, offsetMs: number): T {
+  if (!payload?.state) return payload;
+  return annotateGameRuntimeSync({
+    ...payload,
+    state: normalizeServerTimes(payload.state, offsetMs),
+  }, Date.now());
 }
 
 async function readBackendError(res: Response): Promise<string> {
@@ -137,6 +266,87 @@ async function readBackendError(res: Response): Promise<string> {
   }
 }
 
+function normalizeChatMessage(value: unknown, offsetMs: number): ChatMessage | null {
+  const candidate = value as Partial<ChatMessage> | null | undefined;
+  if (!candidate || typeof candidate !== "object") return null;
+  const channel = candidate.channel === "system" ? "system" : candidate.channel === "map" ? "map" : candidate.channel === "battle" ? "battle" : null;
+  if (!channel) return null;
+  if (typeof candidate.id !== "string" || !candidate.id) return null;
+  if (typeof candidate.userId !== "string" || !candidate.userId) return null;
+  if (typeof candidate.text !== "string" || !candidate.text.trim()) return null;
+  const timestamp = typeof candidate.timestamp === "number" && Number.isFinite(candidate.timestamp)
+    ? candidate.timestamp + offsetMs
+    : Date.now();
+  return {
+    id: candidate.id,
+    channel,
+    userId: candidate.userId,
+    username: typeof candidate.username === "string" && candidate.username.trim()
+      ? candidate.username.trim()
+      : `User${candidate.userId.slice(-4)}`,
+    school: typeof candidate.school === "string" ? candidate.school : null,
+    targetUserId: typeof candidate.targetUserId === "string" ? candidate.targetUserId : undefined,
+    targetUsername: typeof candidate.targetUsername === "string" ? candidate.targetUsername : undefined,
+    targetSchool: typeof candidate.targetSchool === "string" ? candidate.targetSchool : null,
+    abilityName: typeof candidate.abilityName === "string" ? candidate.abilityName : undefined,
+    value: typeof candidate.value === "number" && Number.isFinite(candidate.value) ? candidate.value : undefined,
+    isCrit: candidate.isCrit === true,
+    battleLogType: candidate.battleLogType === "hit" || candidate.battleLogType === "damage" ? candidate.battleLogType : undefined,
+    text: candidate.text,
+    timestamp,
+    variant: candidate.variant === "system" ? "system" : candidate.variant === "battle" ? "battle" : "user",
+  };
+}
+
+function getPlayerDisplayName(names: Record<string, string> | undefined, userId: string): string {
+  const name = names?.[userId]?.trim();
+  return name || `User${userId.slice(-4)}`;
+}
+
+const BATTLE_STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021, 2613, 2716]);
+
+function hasBattleStealth(target: GameResponse["state"]["players"][number] | undefined): boolean {
+  const now = Date.now();
+  return (target?.buffs ?? []).some((buff) => {
+    if (typeof buff.expiresAt === "number" && buff.expiresAt <= now) return false;
+    return BATTLE_STEALTH_BUFF_IDS.has(buff.buffId) || buff.effects?.some((effect) => effect.type === "STEALTH");
+  });
+}
+
+function getEntityDisplayName(entity: NonNullable<GameResponse["state"]["entities"]>[number] | undefined, fallbackName: unknown): string {
+  if (typeof fallbackName === "string" && fallbackName.trim()) return fallbackName.trim();
+  if (typeof entity?.abilityName === "string" && entity.abilityName.trim()) return entity.abilityName.trim();
+  if (entity?.kind === "test_dummy_ally" || entity?.kind === "test_dummy_enemy") return "高级江湖木桩";
+  return "目标";
+}
+
+const MAX_LOCAL_BATTLE_MESSAGES = 200;
+const BATTLE_LOG_VISIBLE_RANGE = 200;
+
+function trimLocalBattleMessages(messages: ChatMessage[]): ChatMessage[] {
+  let battleCount = 0;
+  const next: ChatMessage[] = [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.channel === "battle") {
+      if (battleCount >= MAX_LOCAL_BATTLE_MESSAGES) continue;
+      battleCount += 1;
+    }
+    next.push(message);
+  }
+  return next.reverse();
+}
+
+function getPlanarDistance(
+  a: { position?: { x: number; y: number } } | undefined,
+  b: { position?: { x: number; y: number } } | undefined,
+): number | null {
+  if (!a?.position || !b?.position) return null;
+  const dx = a.position.x - b.position.x;
+  const dy = a.position.y - b.position.y;
+  return Math.hypot(dx, dy);
+}
+
 /* ================= HOOK ================= */
 
 export function useGameState(gameId: string, selfUserId: string, initialAuthToken?: string) {
@@ -146,6 +356,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const [disconnectPrompt, setDisconnectPrompt] = useState<DisconnectPrompt | null>(null);
   const [playing, setPlaying] = useState(false);
   const [rtt, setRtt] = useState<number | null>(null); // Network latency
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   // track last known version
   const versionRef = useRef<number>(0);
@@ -170,8 +381,157 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const lastStateDiffReceiveAtRef = useRef<number | null>(null);
   const pingSeqRef = useRef(0);
   const pendingPingsRef = useRef<Map<number, { clientSentAt: number; clientPerfSentAt: number }>>(new Map());
+  const chatMessageIdsRef = useRef<Set<string>>(new Set());
+  const battleEventIdsRef = useRef<Set<string>>(new Set());
+  const battleRecentHitKeysRef = useRef<Map<string, number>>(new Map());
+  const battleEventSeededGameIdRef = useRef<string | null>(null);
+  const playerNamesRef = useRef<Record<string, string>>({});
+  const playerSchoolsRef = useRef<Record<string, string>>({});
+  const playersByUserIdRef = useRef<Record<string, GameResponse["state"]["players"][number]>>({});
+  const entitiesByIdRef = useRef<Record<string, NonNullable<GameResponse["state"]["entities"]>[number]>>({});
   const crashRecorderRef = useRef(getClientCrashRecorder());
   const latencyRecorderRef = useRef(getClientLatencyRecorder());
+
+  useEffect(() => {
+    playerNamesRef.current = game?.playerNames ?? {};
+    playerSchoolsRef.current = game?.playerSchools ?? {};
+  }, [game?.playerNames, game?.playerSchools]);
+
+  useEffect(() => {
+    const playersByUserId: Record<string, GameResponse["state"]["players"][number]> = {};
+    for (const player of game?.state?.players ?? []) {
+      playersByUserId[player.userId] = player;
+    }
+    playersByUserIdRef.current = playersByUserId;
+
+    const entitiesById: Record<string, NonNullable<GameResponse["state"]["entities"]>[number]> = {};
+    for (const entity of game?.state?.entities ?? []) {
+      entitiesById[entity.id] = entity;
+    }
+    entitiesByIdRef.current = entitiesById;
+  }, [game?.state?.players, game?.state?.entities]);
+
+  useEffect(() => {
+    chatMessageIdsRef.current = new Set();
+    battleEventIdsRef.current = new Set();
+    battleRecentHitKeysRef.current = new Map();
+    battleEventSeededGameIdRef.current = null;
+    setChatMessages([]);
+  }, [gameId]);
+
+  useEffect(() => {
+    if (!game || battleEventSeededGameIdRef.current === gameId) return;
+    battleEventIdsRef.current = new Set((game.state?.events ?? [])
+      .map((event) => event?.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0));
+    battleEventSeededGameIdRef.current = gameId;
+  }, [game, gameId]);
+
+  const appendChatMessage = useCallback((message: ChatMessage) => {
+    if (chatMessageIdsRef.current.has(message.id)) return;
+    chatMessageIdsRef.current.add(message.id);
+    setChatMessages((current) => {
+      const next = trimLocalBattleMessages([...current, message]);
+      chatMessageIdsRef.current = new Set(next.map((entry) => entry.id));
+      return next;
+    });
+  }, []);
+
+  const appendBattleMessagesFromEvents = useCallback((events: unknown, offsetMs: number) => {
+    if (!Array.isArray(events)) return;
+    for (const event of events) {
+      const combatEvent = event && typeof event === "object" ? event as Record<string, unknown> : null;
+      if (!combatEvent || (combatEvent.type !== "DAMAGE" && combatEvent.type !== "HEAL" && combatEvent.type !== "PLAY_ABILITY")) continue;
+      if (combatEvent.channelPhase === "start") continue;
+
+      const rawEventId = typeof combatEvent.id === "string" && combatEvent.id ? combatEvent.id : "";
+      const actorUserId = typeof combatEvent.actorUserId === "string" ? combatEvent.actorUserId : "";
+      const targetUserId = typeof combatEvent.targetUserId === "string" ? combatEvent.targetUserId : "";
+      const entityId = typeof combatEvent.entityId === "string" ? combatEvent.entityId : "";
+      const targetKey = targetUserId || entityId || actorUserId;
+      if (!actorUserId || !targetKey) continue;
+
+      const abilityName = typeof combatEvent.abilityName === "string" && combatEvent.abilityName.trim()
+        ? combatEvent.abilityName.trim()
+        : "攻击";
+      const abilityKey = typeof combatEvent.abilityId === "string" && combatEvent.abilityId.trim()
+        ? combatEvent.abilityId.trim()
+        : abilityName;
+      const eventTimestamp = typeof combatEvent.timestamp === "number" && Number.isFinite(combatEvent.timestamp)
+        ? combatEvent.timestamp
+        : Date.now();
+
+      const seenKey = rawEventId || `${combatEvent.type}-${actorUserId}-${targetKey}-${eventTimestamp}-${abilityKey}`;
+      if (battleEventIdsRef.current.has(seenKey)) continue;
+
+      const actorPlayer = playersByUserIdRef.current[actorUserId];
+      const actorHidden = Boolean(actorUserId !== selfUserId && hasBattleStealth(actorPlayer));
+      if (actorUserId === selfUserId || actorHidden) {
+        battleEventIdsRef.current.add(seenKey);
+        continue;
+      }
+      const viewerPlayer = playersByUserIdRef.current[selfUserId];
+      const actorDistance = getPlanarDistance(viewerPlayer, actorPlayer);
+      if (actorDistance === null || actorDistance > BATTLE_LOG_VISIBLE_RANGE) {
+        battleEventIdsRef.current.add(seenKey);
+        continue;
+      }
+
+      const hitKey = `${actorUserId}:${targetKey}:${abilityKey}`;
+      const previousHitAt = battleRecentHitKeysRef.current.get(hitKey);
+      if (typeof previousHitAt === "number" && Math.abs(eventTimestamp - previousHitAt) <= 120) {
+        battleEventIdsRef.current.add(seenKey);
+        continue;
+      }
+      battleRecentHitKeysRef.current.set(hitKey, eventTimestamp);
+      if (battleRecentHitKeysRef.current.size > 120) {
+        const cutoff = eventTimestamp - 5000;
+        for (const [key, hitAt] of battleRecentHitKeysRef.current) {
+          if (hitAt < cutoff) {
+            battleRecentHitKeysRef.current.delete(key);
+          }
+        }
+      }
+      battleEventIdsRef.current.add(seenKey);
+
+      const actorName = getPlayerDisplayName(playerNamesRef.current, actorUserId);
+      const targetPlayer = targetUserId ? playersByUserIdRef.current[targetUserId] : undefined;
+      const targetHidden = Boolean(targetUserId && targetUserId !== selfUserId && hasBattleStealth(targetPlayer));
+      const entityName = getEntityDisplayName(entityId ? entitiesByIdRef.current[entityId] : undefined, combatEvent.entityName);
+      const targetName = targetHidden
+        ? "未知目标"
+        : targetUserId === selfUserId
+        ? "你"
+        : targetUserId
+        ? getPlayerDisplayName(playerNamesRef.current, targetUserId)
+        : entityName;
+      const id = rawEventId ? `battle-hit-${rawEventId}` : `battle-hit-${actorUserId}-${targetKey}-${eventTimestamp}-${abilityKey}`;
+      const timestamp = eventTimestamp + offsetMs;
+      const actorToken = `[${actorName}]`;
+      const targetToken = targetName === "你" ? "你" : `[${targetName}]`;
+      const text = `${actorToken}的[${abilityName}]命中了${targetToken}`;
+      appendChatMessage({
+        id,
+        channel: "battle",
+        userId: actorUserId,
+        username: actorName,
+        school: playerSchoolsRef.current[actorUserId] ?? null,
+        targetUserId: targetUserId || undefined,
+        targetUsername: targetName,
+        targetSchool: targetUserId && targetUserId !== selfUserId && !targetHidden ? playerSchoolsRef.current[targetUserId] ?? null : null,
+        abilityName,
+        battleLogType: "hit",
+        text,
+        timestamp,
+        variant: "battle",
+      });
+    }
+  }, [appendChatMessage, selfUserId]);
+
+  useEffect(() => {
+    if (!game || battleEventSeededGameIdRef.current !== gameId) return;
+    appendBattleMessagesFromEvents(game.state?.events, serverTimeOffsetRef.current);
+  }, [game?.state?.events, gameId, appendBattleMessagesFromEvents]);
 
   const updateServerTimeOffset = useCallback((serverTimestamp?: number, clientReceivedAt = Date.now()) => {
     if (typeof serverTimestamp !== "number" || !Number.isFinite(serverTimestamp)) {
@@ -634,6 +994,18 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
           return;
         }
 
+        if (message.type === "CHAT_MESSAGE") {
+          const offsetMs = hasServerTimeSyncRef.current
+            ? serverTimeOffsetRef.current
+            : updateServerTimeOffset(message.chat?.timestamp ?? message.timestamp, receiveDateNow);
+          const chat = normalizeChatMessage(message.chat, offsetMs);
+          if (chat) {
+            appendChatMessage(chat);
+            crashRecorderRef.current.recordWebSocketMessage({ type: "CHAT_MESSAGE", version: versionRef.current });
+          }
+          return;
+        }
+
         if (message.type === "STATE_DIFF" || message.type === "GAME_OVER") {
           if (!message.diff || message.diff.length === 0) return;
           crashRecorderRef.current.recordWebSocketMessage({
@@ -658,7 +1030,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
           const offsetMs = hasServerTimeSyncRef.current
             ? serverTimeOffsetRef.current
             : updateServerTimeOffset(message.timestamp, receiveDateNow);
-          const normalizedDiff = normalizeDiffTimestamps(message.diff, offsetMs);
+          appendBattleMessagesFromEvents(message.events, offsetMs);
+          const normalizedDiff = annotateRuntimeSyncDiff(
+            normalizeDiffTimestamps(message.diff, offsetMs),
+            receiveDateNow,
+          );
           for (const patch of normalizedDiff) {
             if (patch.path === "/leaveNotice" && patch.value?.userId) {
               markPlayerDisconnectedForDiagnostics(patch.value.userId, "leave-notice", {
@@ -726,9 +1102,15 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             
             // Apply state patches to game.state
             if (statePatches.length > 0) {
+              const filteredStatePatches = filterDuplicateSelfActiveDashPatches(
+                updated.state,
+                statePatches,
+                meIndexRef.current,
+                receiveDateNow,
+              );
               updated = {
                 ...updated,
-                state: applyDiff(updated.state, statePatches),
+                state: applyDiff(updated.state, filteredStatePatches),
               };
             }
             
@@ -852,7 +1234,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         }, 2000);
       }
     };
-  }, [gameId, initialAuthToken, fetchInitialGame, selfUserId, updateServerTimeOffset, markPlayerConnectedForDiagnostics, markPlayerDisconnectedForDiagnostics]);
+  }, [gameId, initialAuthToken, fetchInitialGame, selfUserId, updateServerTimeOffset, appendChatMessage, appendBattleMessagesFromEvents, markPlayerConnectedForDiagnostics, markPlayerDisconnectedForDiagnostics]);
 
   // Connect WebSocket when game is loaded — connect once, keep alive, only close on unmount
   useEffect(() => {
@@ -880,6 +1262,60 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     };
   }, [gameId]);
 
+  const sendChatMessage = useCallback(async (text: string, channel: ChatChannel = "map") => {
+    const value = text.replace(/\s+/g, " ").trim().slice(0, 180);
+    if (!value) return { ok: false };
+    if (channel !== "map") return { ok: false, error: "ERR_CHAT_CHANNEL_UNAVAILABLE" };
+
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      return { ok: false, error: "ERR_CHAT_DISCONNECTED" };
+    }
+
+    ws.send(JSON.stringify({
+      type: "CHAT_MESSAGE",
+      channel,
+      text: value,
+    }));
+    return { ok: true };
+  }, []);
+
+  const fetchChatMessages = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/game/${gameId}/chat`, { credentials: "include" });
+      if (!res.ok) {
+        return { ok: false, error: await readBackendError(res), messages: [] as ChatMessage[] };
+      }
+      const data = await res.json().catch(() => ({}));
+      const offsetMs = hasServerTimeSyncRef.current ? serverTimeOffsetRef.current : 0;
+      const messages = Array.isArray(data?.messages)
+        ? data.messages
+            .map((entry: unknown) => normalizeChatMessage(entry, offsetMs))
+            .filter((entry: ChatMessage | null): entry is ChatMessage => !!entry)
+        : [];
+      setChatMessages((current) => {
+        const byId = new Map<string, ChatMessage>();
+        for (const message of messages) {
+          byId.set(message.id, message);
+        }
+        for (const message of current) {
+          if (message.channel === "battle") {
+            byId.set(message.id, message);
+          }
+        }
+        const next = Array.from(byId.values())
+          .sort((a, b) => a.timestamp - b.timestamp);
+        const trimmed = trimLocalBattleMessages(next);
+        chatMessageIdsRef.current = new Set(trimmed.map((entry) => entry.id));
+        return trimmed;
+      });
+      return { ok: true, messages };
+    } catch (err) {
+      console.error("[useGameState] chat history fetch failed", err);
+      return { ok: false, error: "ERR_CHAT_HISTORY_FETCH_FAILED", messages: [] as ChatMessage[] };
+    }
+  }, [gameId]);
+
   /* ================= GUARDS ================= */
 
   if (!game) {
@@ -901,6 +1337,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       useConsumable: async () => ({ ok: false }),
       updateTargetSelection: async () => ({ ok: false }),
       endTurn: async () => ({ ok: false }),
+      chatMessages,
+      sendChatMessage,
+      fetchChatMessages,
       rtt,
       refetch: fetchInitialGame,
       clearDisconnectPrompt: () => setDisconnectPrompt(null),
@@ -935,6 +1374,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       useConsumable: async () => ({ ok: false }),
       updateTargetSelection: async () => ({ ok: false }),
       endTurn: async () => ({ ok: false }),
+      chatMessages,
+      sendChatMessage,
+      fetchChatMessages,
       rtt,
       refetch: fetchInitialGame,
       clearDisconnectPrompt: () => setDisconnectPrompt(null),
@@ -1014,9 +1456,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         version: patch.version,
         diffCount: patch.diff?.length,
       });
-      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      const patchReceivedAt = Date.now();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+      const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff, offsetMs), patchReceivedAt);
       versionRef.current = patch.version;
+      appendBattleMessagesFromEvents(patch.events, offsetMs);
 
       setGame((prev) => {
         if (!prev) return prev;
@@ -1064,9 +1508,11 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         version: patch.version,
         diffCount: patch.diff?.length,
       });
-      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      const patchReceivedAt = Date.now();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+      const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff, offsetMs), patchReceivedAt);
       versionRef.current = patch.version;
+      appendBattleMessagesFromEvents(patch.events, offsetMs);
 
       setGame((prev) => {
         if (!prev) return prev;
@@ -1111,8 +1557,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         version: patch.version,
         diffCount: patch.diff?.length,
       });
-      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      const patchReceivedAt = Date.now();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+      const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff, offsetMs), patchReceivedAt);
       versionRef.current = patch.version;
 
       setGame((prev) => {
@@ -1156,8 +1603,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         version: patch.version,
         diffCount: patch.diff?.length,
       });
-      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      const patchReceivedAt = Date.now();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+      const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff, offsetMs), patchReceivedAt);
       versionRef.current = patch.version;
 
       setGame((prev) => {
@@ -1202,8 +1650,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         version: patch.version,
         diffCount: patch.diff?.length,
       });
-      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      const patchReceivedAt = Date.now();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+      const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff, offsetMs), patchReceivedAt);
       versionRef.current = patch.version;
 
       setGame((prev) => {
@@ -1248,8 +1697,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       version: patch.version,
       diffCount: patch.diff?.length,
     });
-    const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-    const normalizedDiff = normalizeDiffTimestamps(patch.diff ?? [], offsetMs);
+    const patchReceivedAt = Date.now();
+    const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+    const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff ?? [], offsetMs), patchReceivedAt);
     versionRef.current = patch.version;
 
     if (normalizedDiff.length > 0) {
@@ -1283,6 +1733,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
     useConsumable,
     updateTargetSelection,
     endTurn,
+    chatMessages,
+    sendChatMessage,
+    fetchChatMessages,
     rtt,
     refetch: fetchInitialGame,
     clearDisconnectPrompt: () => setDisconnectPrompt(null),

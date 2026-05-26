@@ -1,0 +1,7 @@
+[JX_Team]
+name=團隊輔助
+desc=團隊配置保存、團隊鼎/宴席顯示增強
+version=1.0
+default=1
+package=JX
+lua_0=JX_Team.lua

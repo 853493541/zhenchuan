@@ -131,18 +131,6 @@ export default function HomePage() {
     router.push("/export-reader.html");
   };
 
-  const openAbilityEditor = () => {
-    router.push("/ability-editor");
-  };
-
-  const openSoundBrowser = () => {
-    router.push("/ability-editor?tab=soundReview");
-  };
-
-  const openNetworkDiagnostics = () => {
-    router.push("/network-diagnostics");
-  };
-
   const openResourcePack = (action: "download" | "check") => {
     setResourcePackOverlay({ action, nonce: Date.now() });
   };
@@ -192,24 +180,6 @@ export default function HomePage() {
             onClick={() => openResourcePack("check")}
           >
             校验
-          </button>
-          <button
-            className={`${styles.createBtn} ${styles.createBtnAbilityEditor}`}
-            onClick={openAbilityEditor}
-          >
-            技能编辑
-          </button>
-          <button
-            className={`${styles.createBtn} ${styles.createBtnSoundBrowser}`}
-            onClick={openSoundBrowser}
-          >
-            音效
-          </button>
-          <button
-            className={`${styles.createBtn} ${styles.createBtnNetworkDiagnostics}`}
-            onClick={openNetworkDiagnostics}
-          >
-            网络诊断
           </button>
         </div>
         <div className={styles.bigStartWrap}>

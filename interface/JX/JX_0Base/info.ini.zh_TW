@@ -1,0 +1,9 @@
+[JX_0Base]
+name=劍心基礎庫
+desc=劍心插件集使用的基礎庫,必須加載
+version=1.0
+default=1
+package=JX
+lua_0=JX.lua
+lua_1=JX.XGUI.lua
+lua_2=JX.UI.lua

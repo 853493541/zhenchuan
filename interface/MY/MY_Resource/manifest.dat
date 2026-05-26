@@ -1,0 +1,94 @@
+{
+   "files" : [
+      {
+         "name" : "img/Poster_2013.Tga",
+         "value" : "9A48D7E9426F8615D683C8DEDBE5D2BF5C83500E"
+      },
+      {
+         "name" : "img/Poster_2013.txt",
+         "value" : "4EA12FE0D95E272E6DA10169F0194DE1941EE411"
+      },
+      {
+         "name" : "img/Poster_2013.UITex",
+         "value" : "45DB9C48029D10E40CC6FA15BF23986C9FFF848C"
+      },
+      {
+         "name" : "img/Poster_2020.Tga",
+         "value" : "F1AC768E2598CA33BDA6A7124A5CA5D09530950C"
+      },
+      {
+         "name" : "img/Poster_2020.txt",
+         "value" : "EDD7CB01FB0BB1FA3DBCC228B5116CC7D5D0A382"
+      },
+      {
+         "name" : "img/Poster_2020.UITex",
+         "value" : "743F527DF3E8C01EFF1D5F0135FBB50830720080"
+      },
+      {
+         "name" : "img/Poster_2024_1.Tga",
+         "value" : "3DBA3B92D2CAE324F2322D312EFFB7A624BAA8FB"
+      },
+      {
+         "name" : "img/Poster_2024_1.txt",
+         "value" : "3579E09034EE9FB68FCB4C08972416965DC6F418"
+      },
+      {
+         "name" : "img/Poster_2024_1.UITex",
+         "value" : "0ACD44E6DFF1B0F139C06C368187538BFADCAD89"
+      },
+      {
+         "name" : "img/Poster_2024_2.Tga",
+         "value" : "0016FAA23227D14C53E9F61538508574D941DCE3"
+      },
+      {
+         "name" : "img/Poster_2024_2.txt",
+         "value" : "B38B0C0E979B9C4888BCB17D86323C7E17E696C7"
+      },
+      {
+         "name" : "img/Poster_2024_2.UITex",
+         "value" : "6E179D8993E30206484147E95D43EF1E97A79F70"
+      },
+      {
+         "name" : "img/Poster_2024_3.Tga",
+         "value" : "45002E4A8EB43D4115353268A09F57C9D1F055B4"
+      },
+      {
+         "name" : "img/Poster_2024_3.txt",
+         "value" : "2D5B8B7E220A843A4DF320D488261B4B3510FBB5"
+      },
+      {
+         "name" : "img/Poster_2024_3.UITex",
+         "value" : "8587F56F6F8D518266776156CBEC353347D07129"
+      },
+      {
+         "name" : "img/WndButton.Tga",
+         "value" : "8E3B3B2EBE954DA79DAAC9A9D0ABAF026EB59E87"
+      },
+      {
+         "name" : "img/WndButton.txt",
+         "value" : "A3B53CE74B63A70D89753EF21FE01818FD9A7229"
+      },
+      {
+         "name" : "img/WndButton.UITex",
+         "value" : "1147A8199FCB5D80538853AA6E7C0A713E0ACCEA"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "29CE65C36EF8F8DEDC8F4064DA66B56D52C1AFBE"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "B4DA37670498D8C03DFABDD7EB30648CE70F9EC0"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "8C66945A6F0A3582635DFD943E22161EE0E47892"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "CA74FDADDA7A481A7C1C6978FF614393D9AA3FC7"
+      }
+   ],
+   "id" : "MY_Resource",
+   "version" : 72
+}

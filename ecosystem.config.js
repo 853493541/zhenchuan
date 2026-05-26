@@ -19,7 +19,11 @@ module.exports = {
       interpreter: "node",
       env: {
         PORT: 5000,
-        NODE_ENV: "production"
+        NODE_ENV: "production",
+        MONGO_URI: "mongodb://127.0.0.1:27017",
+        MONGO_DB_NAME: "zhenchuan_app",
+        MONGO_TRACKED_SNAPSHOT_DIR: "/home/ubuntu/zhenchuan/data/mongo/zhenchuan-app",
+        MONGO_SEED_FROM_TRACKED_SNAPSHOT: "true"
       }
     },
     {

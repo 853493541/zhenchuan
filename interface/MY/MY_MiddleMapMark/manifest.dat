@@ -1,0 +1,22 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "390024EEEA7C66571395F11B30F05AF117362DB0"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "F0D4BFFB0F753B20F93F183F06D70179343616D5"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "3D70CC9FA156342A872420AAA36D17A253A6B8D3"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "210B86AF04C44AF95F51DD86964BECC9A5EA0C5B"
+      }
+   ],
+   "id" : "MY_MiddleMapMark",
+   "version" : 124
+}

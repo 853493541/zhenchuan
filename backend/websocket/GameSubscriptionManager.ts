@@ -12,14 +12,28 @@ export type DiffPatch = {
   value: any;
 };
 
+export type ChatChannel = "map" | "system";
+
+export type ChatMessagePayload = {
+  id: string;
+  channel: ChatChannel;
+  userId: string;
+  username: string;
+  school?: string | null;
+  text: string;
+  timestamp: number;
+  variant?: "user" | "system";
+};
+
 export type GameMessage = {
-  type: "STATE_DIFF" | "GAME_OVER" | "PING" | "PLAYER_DISCONNECTED" | "PLAYER_RECONNECTED";
+  type: "STATE_DIFF" | "GAME_OVER" | "PING" | "PLAYER_DISCONNECTED" | "PLAYER_RECONNECTED" | "CHAT_MESSAGE";
   version?: number;
   diff?: DiffPatch[];
   events?: any[];
   winnerUserId?: string;
   userId?: string;
   username?: string;
+  chat?: ChatMessagePayload;
   endsAt?: number;
   timestamp?: number; // Server timestamp for RTT measurement
 };

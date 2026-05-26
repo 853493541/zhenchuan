@@ -1,0 +1,22 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "1842DDC521152C643F7D909B4B4C4F1F76C20D0C"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "402447D4D05520A6B1FD5E444F24117727B9EC35"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "A106BF5E4BEBC9EDF8F19092673D3177042AB2B8"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "81F9F238AB5D937CB1274EF7F243AB0584585B2A"
+      }
+   ],
+   "id" : "MY_Logoff",
+   "version" : 80
+}
