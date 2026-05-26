@@ -1022,6 +1022,7 @@ const DEFAULT_PLAYER_RADIUS = 2; // must match backend
 const COLLISION_TEST_PLAYER_RADIUS = 0.384;
 const LEGACY_STORED_UNIT_SCALE = 2.2;
 const SERVER_TICK_RATE = 30;
+const COOLDOWN_IDLE_CLOCK_INTERVAL_MS = 250;
 const BASE_HASTE_RATE_PCT = 23.54;
 const BASE_GCD_SECONDS = 1.19;
 const BASE_GCD_MS = BASE_GCD_SECONDS * 1000;
@@ -1706,7 +1707,7 @@ function buildChannelBarResultForPlayer(
   options?: { suppressJumpBar?: boolean },
   abilitiesById?: Record<string, any>,
 ): { data: ChannelBarData; abilityId?: string; ability?: any } | null {
-  const buffs = player?.buffs ?? [];
+  const buffs = activeBuffsClient(player?.buffs);
   const suppressJumpBar = options?.suppressJumpBar === true;
 
   const hasBlockingCC = buffsHaveAnyEffect(buffs, ['CONTROL', 'KNOCKED_BACK', 'ATTACK_LOCK']);
@@ -1715,8 +1716,9 @@ function buildChannelBarResultForPlayer(
     return null;
   }
 
-  if (player?.activeChannel) {
-    const channel = player.activeChannel;
+  const activeChannel = getActiveChannelClient(player?.activeChannel ?? null);
+  if (activeChannel) {
+    const channel = activeChannel;
     if (suppressJumpBar && channel.cancelOnJump) {
       return null;
     }
@@ -2360,6 +2362,47 @@ function activeBuffsClient(buffs?: ActiveBuff[]): ActiveBuff[] {
   return buffs.filter((buff) => isActiveBuffClient(buff, now));
 }
 
+function isJumpBoostClientBuff(buff: ActiveBuff | any): boolean {
+  return Number(buff?.buffId) === 9001 || buffHasEffect(buff, 'JUMP_BOOST');
+}
+
+function isLocallyConsumedJumpBoostClient(buff: ActiveBuff | any, consumedAt: number): boolean {
+  if (!isJumpBoostClientBuff(buff) || consumedAt <= 0) return false;
+  const appliedAt = Number(buff?.appliedAt ?? 0);
+  if (Number.isFinite(appliedAt) && appliedAt > 0) {
+    return appliedAt <= consumedAt + 1000;
+  }
+  return Date.now() - consumedAt < 3000;
+}
+
+function activeSelfBuffsClient(buffs: ActiveBuff[] | undefined, consumedJumpBoostAt: number): ActiveBuff[] {
+  return activeBuffsClient(buffs).filter((buff) => !isLocallyConsumedJumpBoostClient(buff, consumedJumpBoostAt));
+}
+
+function getLinkedShieldDisplayClient(target?: { shield?: number; buffs?: ActiveBuff[] } | null): number {
+  const rawShield = Math.max(0, Number(target?.shield ?? 0));
+  if (rawShield <= 0) return 0;
+  const linkedShield = activeBuffsClient(target?.buffs).reduce((sum, buff: any) => {
+    const amount = Number(buff?.shieldAmount ?? 0);
+    return Number.isFinite(amount) && amount > 0 ? sum + amount : sum;
+  }, 0);
+  if (linkedShield <= 0) return 0;
+  return Math.min(rawShield, linkedShield);
+}
+
+function isActiveChannelClient(channel: ActiveChannel | null | undefined, now = Date.now()): boolean {
+  if (!channel) return false;
+  const startedAt = Number((channel as any).startedAt ?? 0);
+  const durationMs = Number((channel as any).durationMs ?? 0);
+  if (!Number.isFinite(startedAt) || startedAt <= 0) return true;
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return true;
+  return now < startedAt + durationMs;
+}
+
+function getActiveChannelClient(channel: ActiveChannel | null | undefined): ActiveChannel | null {
+  return isActiveChannelClient(channel) ? channel ?? null : null;
+}
+
 function hasStealthClient(buffs?: ActiveBuff[]): boolean {
   return activeBuffsClient(buffs).some((b: any) =>
     buffHasEffect(b, 'STEALTH') ||
@@ -2620,7 +2663,7 @@ function getBuffChannelDurationForSound(actor: { buffs?: ActiveBuff[] } | null |
   const runtimeChannel = getRuntimeAbilityChannel(ability);
   if (!runtimeChannel || runtimeChannel.source !== 'BUFF' || runtimeChannel.mode !== 'FORWARD') return null;
 
-  const buffs = actor?.buffs ?? [];
+  const buffs = activeBuffsClient(actor?.buffs);
   const abilityIdentity = String(ability?.id ?? abilityId);
   const buff = buffs.find((entry) => {
     if (typeof runtimeChannel.buffId === 'number' && entry.buffId === runtimeChannel.buffId) return true;
@@ -2648,7 +2691,7 @@ function getChannelSoundLoopDurationMs(params: {
   if (params.phase !== 'channelStart') return undefined;
   if (!isFenglaiWushanSoundAbility(params.ability, params.abilityId)) return undefined;
 
-  const buff = (params.actor?.buffs ?? []).find((entry: any) => entry.buffId === 1014 || entry.sourceAbilityId === 'fenglai_wushan');
+  const buff = activeBuffsClient(params.actor?.buffs).find((entry: any) => entry.buffId === 1014 || entry.sourceAbilityId === 'fenglai_wushan');
   if (buff) {
     const expiresAt = Number(buff.expiresAt);
     const now = Date.now();
@@ -2678,7 +2721,7 @@ function getChannelSoundPlaybackRate(params: {
   if (!baseDurationMs) return 1;
 
   let actualDurationMs: number | null = null;
-  const activeChannel = params.actor?.activeChannel;
+  const activeChannel = getActiveChannelClient(params.actor?.activeChannel ?? null);
   if (
     activeChannel
     && activeChannel.abilityId === params.abilityId
@@ -3277,6 +3320,39 @@ function formatTicksAsSeconds(ticks: number | undefined): string {
   return `${formatCompactSeconds(safeTicks / SERVER_TICK_RATE)}秒`;
 }
 
+function getRuntimeCountdownTicks(source: any, valueKey: string, syncedAtKey: string, nowMs: number): number {
+  const value = Number(source?.[valueKey] ?? 0);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const syncedAt = Number(source?.[syncedAtKey] ?? 0);
+  if (!Number.isFinite(syncedAt) || syncedAt <= 0) return Math.max(0, Math.ceil(value));
+  const elapsedTicks = Math.max(0, ((nowMs - syncedAt) / 1000) * SERVER_TICK_RATE);
+  return Math.max(0, Math.ceil(value - elapsedTicks));
+}
+
+function hasRuntimeCountdown(source: any, valueKey: string, syncedAtKey: string, nowMs: number): boolean {
+  return getRuntimeCountdownTicks(source, valueKey, syncedAtKey, nowMs) > 0;
+}
+
+function playerHasRuntimeCountdown(player: any, nowMs: number): boolean {
+  if (!player) return false;
+  if (hasRuntimeCountdown(player, 'globalGcdTicks', '_globalGcdSyncedAt', nowMs)) return true;
+  if (hasRuntimeCountdown(player.activeDash, 'ticksRemaining', '_ticksRemainingSyncedAt', nowMs)) return true;
+  const hand = Array.isArray(player.hand) ? player.hand : [];
+  if (hand.some((ability: any) => (
+    hasRuntimeCountdown(ability, 'cooldown', '_cooldownSyncedAt', nowMs) ||
+    hasRuntimeCountdown(ability, 'chargeRegenTicksRemaining', '_chargeRegenTicksRemainingSyncedAt', nowMs) ||
+    hasRuntimeCountdown(ability, 'chargeLockTicks', '_chargeLockTicksSyncedAt', nowMs)
+  ))) return true;
+  const specialStates = player.specialAbilityStates && typeof player.specialAbilityStates === 'object'
+    ? Object.values(player.specialAbilityStates)
+    : [];
+  return specialStates.some((ability: any) => (
+    hasRuntimeCountdown(ability, 'cooldown', '_cooldownSyncedAt', nowMs) ||
+    hasRuntimeCountdown(ability, 'chargeRegenTicksRemaining', '_chargeRegenTicksRemainingSyncedAt', nowMs) ||
+    hasRuntimeCountdown(ability, 'chargeLockTicks', '_chargeLockTicksSyncedAt', nowMs)
+  ));
+}
+
 function shouldShowVisualGcd(
   gcd: VisualGcdState | null | undefined,
   settings: GcdVisibilitySettings,
@@ -3795,6 +3871,9 @@ export default function BattleArena({
   const abilityDragActiveRef = useRef(false);
   const [renderFps,        setRenderFps]        = useState<number | null>(null);
   const [systemTime,       setSystemTime]       = useState(() => new Date());
+  const [cooldownClockMs,  setCooldownClockMs]  = useState(() => Date.now());
+  const cooldownRuntimePlayerRef = useRef<any>(me);
+  cooldownRuntimePlayerRef.current = me;
   const [wasdKeys,         setWasdKeys]         = useState({ w: false, a: false, s: false, d: false });
   const [controlMode,      setControlMode]      = useState<'joystick' | 'traditional'>('traditional');
   // Mobile detection: touch device without fine pointer (mouse) = phone/tablet
@@ -4676,6 +4755,51 @@ export default function BattleArena({
     const id = window.setInterval(() => setSystemTime(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let frameId = 0;
+    let timeoutId = 0;
+
+    const clearScheduled = () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+        frameId = 0;
+      }
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+        timeoutId = 0;
+      }
+    };
+
+    const schedule = () => {
+      clearScheduled();
+      const nowMs = Date.now();
+      if (playerHasRuntimeCountdown(cooldownRuntimePlayerRef.current, nowMs)) {
+        frameId = window.requestAnimationFrame(tick);
+      } else {
+        timeoutId = window.setTimeout(tick, COOLDOWN_IDLE_CLOCK_INTERVAL_MS);
+      }
+    };
+
+    const tick = () => {
+      if (disposed) return;
+      setCooldownClockMs(Date.now());
+      schedule();
+    };
+
+    schedule();
+    return () => {
+      disposed = true;
+      clearScheduled();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (playerHasRuntimeCountdown(me, Date.now())) {
+      setCooldownClockMs(Date.now());
+    }
+  }, [me.activeDash, me.globalGcdTicks, me.hand, me.specialAbilityStates]);
 
   useEffect(() => {
     let frameId = 0;
@@ -5690,7 +5814,7 @@ export default function BattleArena({
   const groundDeselectCandidateRef = useRef(false);
   const lastQuickLeftClickAtRef = useRef(0);
 
-  activeChannelRef.current = me?.activeChannel ?? null;
+  activeChannelRef.current = getActiveChannelClient(me?.activeChannel ?? null);
 
   const hasMovementIntent = useCallback((keys = keysRef.current) => {
     if (controlModeRef.current === 'traditional') {
@@ -5791,8 +5915,10 @@ export default function BattleArena({
   const _prevDashRef = useRef<boolean>(false);
   {
     const ad = (me as any)?.activeDash;
-    const isDashing = !!ad && ad.ticksRemaining > 0;
-    meActiveDashRef.current = isDashing ? ad : null;
+    const activeDashTicksRemaining = getRuntimeCountdownTicks(ad, 'ticksRemaining', '_ticksRemainingSyncedAt', Date.now());
+    const isDashing = !!ad && activeDashTicksRemaining > 0;
+    const predictedActiveDash = isDashing ? { ...ad, ticksRemaining: activeDashTicksRemaining } : null;
+    meActiveDashRef.current = predictedActiveDash;
     if (isDashing) {
       const nowMs = performance.now();
       lastObservedServerDashAtRef.current = nowMs;
@@ -5804,7 +5930,7 @@ export default function BattleArena({
       };
       const sampleKey = [
         ad.abilityId ?? '',
-        ad.ticksRemaining ?? '',
+        ad._ticksRemainingSyncedAt ?? '',
         serverDashPosition.x.toFixed(3),
         serverDashPosition.y.toFixed(3),
         serverDashPosition.z.toFixed(3),
@@ -5822,13 +5948,13 @@ export default function BattleArena({
           console.warn('[DASH-STUTTER] delayed server dash sample', {
             abilityId: ad.abilityId ?? null,
             gapMs: Math.round(gapMs),
-            ticksRemaining: ad.ticksRemaining ?? null,
+            ticksRemaining: activeDashTicksRemaining,
           });
         }
         dashServerSampleRef.current = {
           position: serverDashPosition,
           sampledAtMs: nowMs,
-          ticksRemaining: Number(ad.ticksRemaining ?? 0),
+          ticksRemaining: activeDashTicksRemaining,
           vxPerTick: Number(ad.vxPerTick ?? 0),
           vyPerTick: Number(ad.vyPerTick ?? 0),
           vzPerTick: Number(ad.vzPerTick ?? ad.forceVzPerTick ?? 0),
@@ -5843,7 +5969,7 @@ export default function BattleArena({
     // Transition logging (synchronous, fine for refs)
     if (isDashing && !_prevDashRef.current) {
       const nowMs = performance.now();
-      const remainingTicks = Math.max(1, Number(ad?.ticksRemaining ?? 30));
+      const remainingTicks = Math.max(1, activeDashTicksRemaining);
       dashStartExpectedMsRef.current = Math.round(remainingTicks * (1000 / 30));
       dashStartAbilityIdRef.current = ad?.abilityId ?? null;
       (window as any).__dashStartMs = nowMs;
@@ -5874,6 +6000,8 @@ export default function BattleArena({
   const isPowerJumpRef           = useRef(false); // true while airborne from a power jump (different gravity)
   const isPowerJumpCombinedRef   = useRef(false); // true for 扶摇+鸟翔 combined 24u jump
   const maxJumpsRef              = useRef(2);     // updated from me.buffs MULTI_JUMP effect
+  const [locallyConsumedJumpBoostAt, setLocallyConsumedJumpBoostAt] = useState(0);
+  const locallyConsumedJumpBoostAtRef = useRef(0);
   const yuqiMountedRef           = useRef(false);
   const lingRanTianFengActiveRef = useRef(false);
   const lingRanTianFengChargeRef = useRef(0);
@@ -6180,7 +6308,11 @@ export default function BattleArena({
       beginPendingGroundCast(id);
       return;
     }
-    if (abilityKey === 'fuyao_zhishang') hasFuyaoBuffRef.current = true;
+    if (abilityKey === 'fuyao_zhishang') {
+      hasFuyaoBuffRef.current = true;
+      locallyConsumedJumpBoostAtRef.current = 0;
+      setLocallyConsumedJumpBoostAt(0);
+    }
     if (abilityKey === 'niao_xiang_bi_kong') {
       predictedMultiJumpExpiresAtRef.current = performance.now() + 15_000;
     }
@@ -6489,7 +6621,7 @@ export default function BattleArena({
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
   // Keep max-jumps ref in sync with MULTI_JUMP buff from server state
   useEffect(() => {
-    const effects = me?.buffs?.flatMap((b: any) => (b.effects ?? []).filter(Boolean)) ?? [];
+    const effects = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt).flatMap((b: any) => (b.effects ?? []).filter(Boolean));
     const multiJump = effects.find((e: any) => e.type === 'MULTI_JUMP');
     maxJumpsRef.current = multiJump ? (multiJump.value ?? 2) : 2;
     yuqiMountedRef.current = hasYuqiStateClient(me?.buffs);
@@ -6498,7 +6630,7 @@ export default function BattleArena({
     lingRanTianFengChargeRef.current = lingRanTianFengActiveRef.current
       ? Math.max(0, Math.min(1, Number.isFinite(nextLingRanCharge) ? nextLingRanCharge : 0))
       : 0;
-  }, [me?.buffs, (me as any)?.lingRanTianFengCharges]);
+  }, [me?.buffs, locallyConsumedJumpBoostAt, (me as any)?.lingRanTianFengCharges]);
 
   useEffect(() => {
     tiYunZongPenaltyConsumedRef.current = !!me?.tiYunZongPenaltyConsumed;
@@ -6546,6 +6678,7 @@ export default function BattleArena({
   }, []);
 
   const tryQueueLocalJump = useCallback(() => {
+    const activeChannel = getActiveChannelClient(me?.activeChannel ?? null);
     if (meActiveDashRef.current) {
       crashRecorder.recordBehavior('jump-blocked', { reason: 'active-dash', position: localPositionRef.current ?? me.position });
       return;
@@ -6554,7 +6687,7 @@ export default function BattleArena({
     if (
       jumpLockedRef.current ||
       (!lingRanJumpLockImmune && (
-        !!me?.activeChannel ||
+        !!activeChannel ||
         hasLegacyChannelJumpLock(me?.buffs) ||
         buffsHaveAnyEffect(me?.buffs, ['NO_JUMP'])
       ))
@@ -6562,7 +6695,7 @@ export default function BattleArena({
       crashRecorder.recordBehavior('jump-blocked', {
         reason: 'locked-or-channeling',
         jumpLocked: jumpLockedRef.current,
-        activeChannel: !!me?.activeChannel,
+        activeChannel: !!activeChannel,
         position: localPositionRef.current ?? me.position,
       });
       return;
@@ -6615,7 +6748,7 @@ export default function BattleArena({
 
   // Keep local movement-speed prediction aligned with backend movement.ts
   useEffect(() => {
-    const effects = (me?.buffs ?? []).flatMap((b: any) => (b.effects ?? []).filter(Boolean));
+    const effects = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt).flatMap((b: any) => (b.effects ?? []).filter(Boolean));
     const speedBoost = effects
       .filter((e: any) => e.type === 'SPEED_BOOST')
       .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
@@ -6623,7 +6756,7 @@ export default function BattleArena({
       .filter((e: any) => e.type === 'SLOW')
       .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
     moveSpeedScaleRef.current = Math.max(0, 1 + speedBoost - slow);
-  }, [me?.buffs]);
+  }, [me?.buffs, locallyConsumedJumpBoostAt]);
 
   useEffect(() => {
     const getBaseSpeedLockReason = () => {
@@ -6758,13 +6891,14 @@ export default function BattleArena({
   const jumpLockedRef = useRef(false);
 
   useEffect(() => {
-    const buffs = me?.buffs ?? [];
+    const buffs = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt);
+    const activeChannel = getActiveChannelClient(me?.activeChannel ?? null);
     const lingRanJumpLockImmune = hasLingRanTianFengStateClient(buffs);
     const fullyLocked = buffsHaveAnyEffect(buffs, ['KNOCKED_BACK', 'CONTROL', 'ATTACK_LOCK']);
     const rooted = !fullyLocked && buffsHaveAnyEffect(buffs, ['ROOT']);
-    const jumpSuppressedByChannel = !lingRanJumpLockImmune && (!!me?.activeChannel || hasLegacyChannelJumpLock(buffs));
+    const jumpSuppressedByChannel = !lingRanJumpLockImmune && (!!activeChannel || hasLegacyChannelJumpLock(buffs));
     const noJumpLocked = !lingRanJumpLockImmune && buffsHaveAnyEffect(buffs, ['NO_JUMP']);
-    const channelMovementLocked = (me?.activeChannel as any)?.lockMovement === true;
+    const channelMovementLocked = (activeChannel as any)?.lockMovement === true;
     // Z_LOCK: full vertical lock (亢龙有悔). Pin vz=0 and skip Z integration.
     const zLocked = buffsHaveAnyEffect(buffs, ['Z_LOCK']);
     // JUMP_NERF: scales jump take-off velocity by sqrt(value). Use min across stacks.
@@ -6775,8 +6909,7 @@ export default function BattleArena({
     let shiXinGuDirection: { x: number; y: number } | null = null;
     let shiXinGuStandstill = false;
     for (const b of buffs ?? []) {
-      const now = Date.now();
-      if (!b || (b.expiresAt ?? 0) <= now) continue;
+      if (!b) continue;
       for (const e of (b.effects ?? [])) {
         if ((e as any)?.type === 'JUMP_NERF') {
           const v = Math.max(0, Math.min(1, Number((e as any).value ?? 1)));
@@ -6832,7 +6965,7 @@ export default function BattleArena({
       jumpLocalRef.current = false;
       jumpSendRef.current = false;
     }
-  }, [me?.activeChannel, me?.buffs]);
+  }, [me?.activeChannel, me?.buffs, locallyConsumedJumpBoostAt]);
 
   // Poll height + consume any finished jump record every 50 ms
   useEffect(() => {
@@ -6856,14 +6989,16 @@ export default function BattleArena({
 
   // Keep render-loop refs up to date for channel AOE circles
   useEffect(() => {
-    const hasFengLai = me?.buffs?.some((b: any) => b.buffId === 1014);
-    const hasZhanWu  = me?.buffs?.some((b: any) => b.buffId === 2712);
+    const activeBuffs = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt);
+    const hasFengLai = activeBuffs.some((b: any) => b.buffId === 1014);
+    const hasZhanWu  = activeBuffs.some((b: any) => b.buffId === 2712);
     meChannelingRef.current = !!(hasFengLai || hasZhanWu);
     meChannelRadiusRef.current = hasZhanWu ? 4 : 10;
-  }, [me?.buffs]);
+  }, [me?.buffs, locallyConsumedJumpBoostAt]);
   useEffect(() => {
-    const hasFengLai = opponent?.buffs?.some((b: any) => b.buffId === 1014);
-    const hasZhanWu  = opponent?.buffs?.some((b: any) => b.buffId === 2712);
+    const activeBuffs = activeBuffsClient(opponent?.buffs);
+    const hasFengLai = activeBuffs.some((b: any) => b.buffId === 1014);
+    const hasZhanWu  = activeBuffs.some((b: any) => b.buffId === 2712);
     oppChannelingRef.current = !!(hasFengLai || hasZhanWu);
     oppChannelRadiusRef.current = hasZhanWu ? 4 : 10;
   }, [opponent?.buffs]);
@@ -7057,6 +7192,14 @@ export default function BattleArena({
       const actorState = actorUserId === myId
         ? me
         : opponentsList.find((opponentEntry) => opponentEntry.userId === actorUserId) ?? null;
+      if (actorUserId !== myId && hasStealthClient(actorState?.buffs)) {
+        if (eventChannelSoundKey) {
+          stopAbilityChannelSound(eventChannelSoundKey);
+          activeChannelSoundKeysRef.current.delete(eventChannelSoundKey);
+          channelSoundFinishAfterCompleteKeysRef.current.delete(eventChannelSoundKey);
+        }
+        return;
+      }
       const eventSourcePosition = typeof evt.x === 'number' && typeof evt.y === 'number'
         ? { x: evt.x, y: evt.y, z: typeof evt.z === 'number' ? evt.z : 0 }
         : null;
@@ -7205,10 +7348,12 @@ export default function BattleArena({
   useEffect(() => {
     const activeKeys = new Set<string>();
     const collectActiveChannel = (player: { userId?: string; activeChannel?: ActiveChannel; buffs?: ActiveBuff[] } | null | undefined) => {
-      const key = getChannelSoundKey(player?.userId, player?.activeChannel?.abilityId, player?.activeChannel?.instanceId);
+      if (player?.userId !== me?.userId && hasStealthClient(player?.buffs)) return;
+      const activeChannel = getActiveChannelClient(player?.activeChannel ?? null);
+      const key = getChannelSoundKey(player?.userId, activeChannel?.abilityId, activeChannel?.instanceId);
       if (key) activeKeys.add(key);
 
-      for (const buff of player?.buffs ?? []) {
+      for (const buff of activeBuffsClient(player?.buffs)) {
         const ability = (buff.sourceAbilityId ? abilities?.[buff.sourceAbilityId] : undefined) ?? channelAbilityByBuffId.get(buff.buffId);
         const channel = getRuntimeAbilityChannel(ability);
         if (!ability || channel?.source !== 'BUFF') continue;
@@ -7243,7 +7388,7 @@ export default function BattleArena({
   // Warn when a targeted channel is interrupted because target became untargetable (e.g. entered stealth).
   useEffect(() => {
     const prev = prevActiveChannelRef.current;
-    const curr = me?.activeChannel ?? null;
+    const curr = getActiveChannelClient(me?.activeChannel ?? null);
 
     if (prev && !curr) {
       const targetIsOpponent = !!prev.targetUserId && prev.targetUserId !== me.userId;
@@ -7551,13 +7696,17 @@ export default function BattleArena({
     const dx = me.position.x - local.x;
     const dy = me.position.y - local.y;
     const activeDash = (me as any)?.activeDash;
+    const activeDashTicksRemaining = getRuntimeCountdownTicks(activeDash, 'ticksRemaining', '_ticksRemainingSyncedAt', Date.now());
+    const predictedActiveDash = activeDash && activeDashTicksRemaining > 0
+      ? { ...activeDash, ticksRemaining: activeDashTicksRemaining }
+      : null;
     const forcedDisplacement = buffsHaveAnyEffect(me?.buffs, ['KNOCKED_BACK', 'PULLED']);
 
     // Collision-test mode: both client and backend now use BVH collision, so we can
     // reconcile position normally. Only skip reconciliation on dash (server owns dash).
     if (mode === 'collision-test') {
-      if (activeDash && activeDash.ticksRemaining > 0) {
-        meActiveDashRef.current = activeDash;
+      if (predictedActiveDash) {
+        meActiveDashRef.current = predictedActiveDash;
         localPositionRef.current = { ...me.position };
         localZRef.current  = (me.position as any).z ?? 0;
         localVzRef.current = 0;
@@ -7626,8 +7775,8 @@ export default function BattleArena({
     // During active dash: server owns position — hard-snap XY + Z
     // Check me.activeDash directly (not ref) so this works even before React
     // fires the activeDash tracking useEffect on this render cycle.
-    if (activeDash && activeDash.ticksRemaining > 0) {
-      meActiveDashRef.current = activeDash;
+    if (predictedActiveDash) {
+      meActiveDashRef.current = predictedActiveDash;
       localPositionRef.current = { ...me.position };
       localZRef.current  = (me.position as any).z ?? 0;
       localVzRef.current = 0;
@@ -7715,13 +7864,14 @@ export default function BattleArena({
       return Math.max(base, gcdWindow);
     };
     const getSharedGcdTicks = (ab: any): number => (
-      ab?.gcd === true ? Math.max(0, Number(me?.globalGcdTicks ?? 0)) : 0
+      ab?.gcd === true ? getRuntimeCountdownTicks(me, 'globalGcdTicks', '_globalGcdSyncedAt', cooldownClockMs) : 0
     );
     const getChargeDisplay = (ab: any, instance: any) => {
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       const sharedGcdTicks = getSharedGcdTicks(ab);
       if (maxCharges <= 1) {
-        const currentCooldown = Math.max(0, Number(instance?.cooldown ?? 0), sharedGcdTicks);
+        const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
+        const currentCooldown = Math.max(0, instanceCooldown, sharedGcdTicks);
         return {
           maxCharges: undefined,
           chargeCount: undefined,
@@ -7737,12 +7887,18 @@ export default function BattleArena({
 
       const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
       const chargeRecoveryTicks = Math.max(1, Number(ab?.chargeRecoveryTicks ?? ab?.cooldownTicks ?? 1));
-      const chargeRegenTicksRemaining = Math.max(0, Number(instance?.chargeRegenTicksRemaining ?? 0));
+      const chargeRegenTicksRemaining = getRuntimeCountdownTicks(
+        instance,
+        'chargeRegenTicksRemaining',
+        '_chargeRegenTicksRemainingSyncedAt',
+        cooldownClockMs,
+      );
       const chargeRegenProgress = chargeCount < maxCharges
         ? Math.max(0, Math.min(1, 1 - (chargeRegenTicksRemaining / chargeRecoveryTicks)))
         : undefined;
       const chargeCastLockTicks = Math.max(0, Number(ab?.chargeCastLockTicks ?? 0));
-      const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0), sharedGcdTicks);
+      const instanceChargeLockTicks = getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
+      const chargeLockTicks = Math.max(0, instanceChargeLockTicks, sharedGcdTicks);
 
       if (chargeCount <= 0) {
         return {
@@ -7841,12 +7997,12 @@ export default function BattleArena({
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       if (maxCharges > 1) {
         const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
-        const chargeLockTicks = Math.max(0, Number(instance?.chargeLockTicks ?? 0));
+        const chargeLockTicks = getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
         if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
         if (chargeLockTicks > 0) return '这个能力正在冷却';
         if (chargeCount <= 0) return '招式层数正在恢复';
       } else {
-        const instanceCooldown = Math.max(0, Number(instance?.cooldown ?? 0));
+        const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
         if (instanceCooldown > 0) return '这个能力正在冷却';
         if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
       }
@@ -7860,7 +8016,7 @@ export default function BattleArena({
       if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
         return '凌然天风特殊跳跃中无法施展任驰骋';
       }
-      if (me?.activeChannel) return '正在进行其他动作';
+      if (getActiveChannelClient(me?.activeChannel ?? null)) return '正在进行其他动作';
       if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '御骑状态下无法施展该招式';
       const powerLockWarning = getPowerLockWarningClient(ab, me.buffs);
       if (powerLockWarning) return powerLockWarning;
@@ -7900,12 +8056,10 @@ export default function BattleArena({
       }
       // 梯云纵 / 扶摇直上 mutual exclusion (mirrors backend gate)
       if (ab?.id === 'ti_yun_zong' || instance?.abilityId === 'ti_yun_zong') {
-        const now = Date.now();
-        if ((me.buffs ?? []).some((b: any) => b.buffId === 9001 && b.expiresAt > now)) return '该招式被当前气劲阻止';
+        if (activeSelfBuffsClient(me.buffs, locallyConsumedJumpBoostAt).some((b: any) => b.buffId === 9001)) return '该招式被当前气劲阻止';
       }
       if (ab?.id === 'fuyao_zhishang' || instance?.abilityId === 'fuyao_zhishang') {
-        const now = Date.now();
-        if ((me.buffs ?? []).some((b: any) => b.buffId === 9003 && b.expiresAt > now)) return '该招式被当前气劲阻止';
+        if (activeSelfBuffsClient(me.buffs, locallyConsumedJumpBoostAt).some((b: any) => b.buffId === 9003)) return '该招式被当前气劲阻止';
       }
       if ((ab?.id === 'hong_meng_tian_jin' || instance?.abilityId === 'hong_meng_tian_jin') && hasShuSeClient((targetForChecks as any)?.buffs)) {
         return '目标已受曙色影响';
@@ -8194,6 +8348,7 @@ export default function BattleArena({
     me.position,
     me.facing,
     me.activeChannel,
+    locallyConsumedJumpBoostAt,
     selectedTargetId,
     selectedEntityId,
     selectedSelf,
@@ -8206,6 +8361,7 @@ export default function BattleArena({
     wasdKeys,
     hasMovementIntent,
     isStandingCastBlocked,
+    cooldownClockMs,
   ]);
 
   /* ========================= PICKUP INTERACTION ========================= */
@@ -10001,13 +10157,15 @@ export default function BattleArena({
           const isMultiJump = effectiveMaxJumps > 2;
           const hadPowerJumpAirtime = isPowerJumpRef.current && !isPowerJumpCombinedRef.current && localJumpCountRef.current > 0;
           const usePowerDirectionalBudget = hasFuyaoBuffRef.current;
+          const consumeLocalJumpBoost = hasFuyaoBuffRef.current;
           const isBackpedalAirJump = moveIntentBackpedalOnly && localJumpCountRef.current > 0 && jumpDir !== null;
           const heightAboveGround = Math.max(0, localZRef.current - tickGroundH);
+          const includeAirborneCarryForJump = localJumpCountRef.current <= 0;
           const jumpSpeedSource = Math.max(
             effectiveMaxSpeed,
-            airborneSpeedCarryRef.current,
+            includeAirborneCarryForJump ? airborneSpeedCarryRef.current : 0,
             Math.hypot(vel.x, vel.y),
-            getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current),
+            includeAirborneCarryForJump ? getTravelSpeedPerTick(airNudgeRemainingRef.current, airNudgeTicksRemainingRef.current) : 0,
           );
           const jumpSpeedScale = DEFAULT_MOVE_SPEED_WORLD_PER_TICK > 0.0001
             ? jumpSpeedSource / DEFAULT_MOVE_SPEED_WORLD_PER_TICK
@@ -10067,6 +10225,11 @@ export default function BattleArena({
           !hadPowerJumpAirtime &&
           !isMultiJump;
         hasFuyaoBuffRef.current   = false;
+        if (consumeLocalJumpBoost) {
+          const consumedAt = Date.now();
+          locallyConsumedJumpBoostAtRef.current = consumedAt;
+          setLocallyConsumedJumpBoostAt(consumedAt);
+        }
         const jumpVzScale = movementControlStateRef.current.jumpVzScale ?? 1;
         if (jumpVzScale < 1) jumpVz *= jumpVzScale;
         const jumpTravelTicks = estimateAirborneTicks(
@@ -10250,7 +10413,7 @@ export default function BattleArena({
   /* ========================= HUD DATA ========================= */
   const myMaxHp = me?.maxHp ?? maxHp;
   const myAttackDamage = Math.max(0, Number((me as any)?.attackDamage ?? 50_000));
-  const myShield = Math.max(0, me?.shield ?? 0);
+  const myShield = getLinkedShieldDisplayClient(me);
   const myBarSegments = computeHpShieldSegments(me?.hp ?? 0, myShield, myMaxHp);
   const myHpPct = myBarSegments.hpPct;
   const myShieldPct = myBarSegments.shieldPct;
@@ -10280,7 +10443,7 @@ export default function BattleArena({
   );
   const myHasteRatePct = Math.max(0, Number((me as any)?.hasteRatePct ?? BASE_HASTE_RATE_PCT));
   const myFacingArrow = facingArrow(localFacingRef.current);
-  const meEffects = (me?.buffs ?? []).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
+  const meEffects = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
   const getTypedEffectTotal = (effectType: string, damageType: '外功' | '内功') => meEffects
     .filter((e: any) => e?.type === effectType && (!e?.damageType || e?.damageType === damageType))
     .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
@@ -11334,7 +11497,7 @@ export default function BattleArena({
     });
   };
 
-  const playerStatusBuffs = me?.buffs ?? [];
+  const playerStatusBuffs = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt);
   const playerIconBarSavedPos = uiPositions[PLAYER_ICON_BAR_UI_KEY];
   const playerIconBarDefaultPos = getDefaultPlayerIconBarPos();
   const playerIconBarPos = playerIconBarSavedPos ?? playerIconBarDefaultPos;
@@ -11390,10 +11553,10 @@ export default function BattleArena({
   const targetStatusIsOwnEntity = targetStatusIsEntity && selectedEntityForStatus?.ownerUserId === me?.userId;
   const targetStatusHasSelection = !!(selectedTargetId || selectedEntityId || selectedSelf);
   const targetStatusBuffs = targetStatusIsSelf
-    ? (me?.buffs ?? [])
+    ? playerStatusBuffs
     : targetStatusIsEntity
-    ? (selectedEntityForStatus?.buffs ?? [])
-    : (selectedTargetForStatus?.buffs ?? []);
+    ? activeBuffsClient(selectedEntityForStatus?.buffs as any)
+    : activeBuffsClient(selectedTargetForStatus?.buffs);
   const targetOwnedAbilityHand = targetStatusIsSelf
     ? me.hand
     : targetStatusIsEntity
@@ -11447,7 +11610,9 @@ export default function BattleArena({
         : opponentsList.find((o) => o.userId === targetTargetEntityForHud.ownerUserId) ?? null)
     : null;
   const targetTargetHp = targetTargetEntityForHud ? (targetTargetEntityForHud.hp ?? 0) : (targetTargetPlayerForHud?.hp ?? 0);
-  const targetTargetShield = Math.max(0, targetTargetEntityForHud ? (targetTargetEntityForHud.shield ?? 0) : (targetTargetPlayerForHud?.shield ?? 0));
+  const targetTargetShield = targetTargetEntityForHud
+    ? getLinkedShieldDisplayClient(targetTargetEntityForHud as any)
+    : getLinkedShieldDisplayClient(targetTargetPlayerForHud as any);
   const targetTargetMaxHp = targetTargetEntityForHud ? (targetTargetEntityForHud.maxHp ?? 1) : (targetTargetPlayerForHud?.maxHp ?? maxHp);
   const targetTargetSegments = computeHpShieldSegments(targetTargetHp, targetTargetShield, targetTargetMaxHp);
   const targetTargetBuffs = targetTargetEntityForHud ? (targetTargetEntityForHud.buffs ?? []) : (targetTargetPlayerForHud?.buffs ?? []);
@@ -13723,10 +13888,10 @@ export default function BattleArena({
               selectedSelfRef.current = false;
             }}
             pickups={modePickups}
-            meChanneling={meChannelingRef.current}
-            meChannelRadius={meChannelRadiusRef.current}
-            channelingOpponentId={visibleOpponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014 || b.buffId === 2712))?.userId ?? null}
-            channelingOpponentRadius={(() => { const opp = visibleOpponentsList.find((o) => !!o?.buffs?.some((b: any) => b.buffId === 1014 || b.buffId === 2712)); return opp?.buffs?.some((b: any) => b.buffId === 2712) ? 4 : 10; })()}
+            meChanneling={playerStatusBuffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712)}
+            meChannelRadius={playerStatusBuffs.some((b: any) => b.buffId === 2712) ? 4 : 10}
+            channelingOpponentId={visibleOpponentsList.find((o) => activeBuffsClient(o?.buffs).some((b: any) => b.buffId === 1014 || b.buffId === 2712))?.userId ?? null}
+            channelingOpponentRadius={(() => { const opp = visibleOpponentsList.find((o) => activeBuffsClient(o?.buffs).some((b: any) => b.buffId === 1014 || b.buffId === 2712)); return activeBuffsClient(opp?.buffs).some((b: any) => b.buffId === 2712) ? 4 : 10; })()}
             selectedSelf={selectedSelf}
             localRenderPosRef={localRenderPosRef}
             camYawRef={camYawRef}
@@ -15093,7 +15258,11 @@ export default function BattleArena({
           const isOwnEntity  = isEntityTarget && selectedEntity?.ownerUserId === me?.userId;
           const targetPosition = isSelf ? me.position : isEntityTarget ? selectedEntity?.position : selectedTarget?.position;
           const targetHp     = isSelf ? (me?.hp ?? 0) : isEntityTarget ? (selectedEntity?.hp ?? 0) : (selectedTarget?.hp ?? 0);
-          const targetShield = Math.max(0, isSelf ? (me?.shield ?? 0) : isEntityTarget ? (selectedEntity?.shield ?? 0) : (selectedTarget?.shield ?? 0));
+          const targetShield = isSelf
+            ? myShield
+            : isEntityTarget
+            ? getLinkedShieldDisplayClient(selectedEntity as any)
+            : getLinkedShieldDisplayClient(selectedTarget as any);
           const targetMaxHp  = isSelf
             ? (me?.maxHp ?? maxHp)
             : isEntityTarget ? (selectedEntity?.maxHp ?? 1) : (selectedTarget?.maxHp ?? maxHp);
@@ -15108,7 +15277,7 @@ export default function BattleArena({
                 : `${entityOwner?.username ?? '玩家'}的逐云寒蕊`)
             : (selectedTarget?.username ?? '目标');
           const targetIconDistanceText = formatIconBarDistance(me.position, targetPosition, storedUnitScale);
-          const targetBuffs  = isSelf ? (me?.buffs ?? []) : isEntityTarget ? (selectedEntity?.buffs ?? []) : (selectedTarget?.buffs ?? []);
+          const targetBuffs  = isSelf ? playerStatusBuffs : isEntityTarget ? activeBuffsClient(selectedEntity?.buffs as any) : activeBuffsClient(selectedTarget?.buffs);
           const hpGradient   = isSelf ? selfIconBarHpGradient : iconBarHpGradient;
           const targetInCombat = isSelf ? !!me?.inCombat : isEntityTarget ? false : !!selectedTarget?.inCombat;
           const channelTargetUserId = isSelf

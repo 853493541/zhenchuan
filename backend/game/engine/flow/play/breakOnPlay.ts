@@ -1,6 +1,7 @@
 // engine/flow/breakOnPlay.ts
 import { ActiveBuff, Ability } from "../../state/types";
 import { YUE_YING_SHA_BUFF_ID } from "../../utils/yueYingSha";
+import { isRuntimeBuffActive } from "../../rules/guards";
 
 const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 const SANLIU_XIA_BUFF_ID = 1007;
@@ -87,7 +88,7 @@ export function breakShiFangXuanJiOnPlay(source: { buffs?: ActiveBuff[] }, playe
 export function breakOnPlay(source: { buffs?: ActiveBuff[] }, playedAbility: Ability) {
   if (!Array.isArray(source.buffs)) return;
   breakShiFangXuanJiOnPlay(source, playedAbility);
-  const hadFuguangBefore = source.buffs.some((b) => b.buffId === 1012);
+  const hadFuguangBefore = source.buffs.some((b) => isRuntimeBuffActive(b) && b.buffId === 1012);
   source.buffs = source.buffs.filter((b) => {
     if (b.buffId === SANLIU_XIA_BUFF_ID) return shouldKeepStealthOnPlay(b, playedAbility);
     if (!b.breakOnPlay) return true;
@@ -95,7 +96,7 @@ export function breakOnPlay(source: { buffs?: ActiveBuff[] }, playedAbility: Abi
     return false;
   });
 
-  const hasFuguangAfter = source.buffs.some((b) => b.buffId === 1012);
+  const hasFuguangAfter = source.buffs.some((b) => isRuntimeBuffActive(b) && b.buffId === 1012);
   if (hadFuguangBefore && !hasFuguangAfter) {
     source.buffs = source.buffs.filter((b) => !isDunyingCompanion(b));
   }

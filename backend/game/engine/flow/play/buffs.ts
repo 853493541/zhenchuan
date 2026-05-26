@@ -5,6 +5,7 @@ import {
   shouldSkipDueToDodge,
   blocksNewBuffByUntargetable,
   blocksControlByImmunity,
+  isRuntimeBuffActive,
 } from "../../rules/guards";
 import { handleApplyBuffs } from "../../effects/handlers";
 
@@ -135,6 +136,7 @@ export function applyAbilityBuffs(params: {
       (ability as any).isProjectile === true &&
       localBuffTarget.buffs.some(
         (b: any) =>
+          isRuntimeBuffActive(b) &&
           b.effects.some((e: any) => e.type === "PROJECTILE_IMMUNE") &&
           b.expiresAt > Date.now()
       )

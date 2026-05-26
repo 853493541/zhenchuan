@@ -21,6 +21,7 @@ import {
   DASH_CC_IMMUNE_BUFF_ID,
 } from "../effects/definitions/DirectionalDash";
 import { hasYuqiState } from "../utils/yuqi";
+import { getActiveRuntimeBuffs, isRuntimeBuffActive } from "../rules/guards";
 
 /**
  * Arena boundaries (in units)
@@ -384,7 +385,7 @@ function applyForcedControlFall(player: PlayerState, wasAirborne: boolean): void
   }
 
   // Z_LOCK: keep player suspended in place (亢龙·定身, 龙啸九天 self-stuck).
-  const zLocked = player.buffs.some((b) =>
+  const zLocked = getActiveRuntimeBuffs(player as any).some((b) =>
     b.effects.some((e) => (e as any).type === "Z_LOCK"),
   );
   if (zLocked) {
@@ -418,12 +419,12 @@ function rememberAirborneSpeedCarry(player: PlayerState, speedPerTick: number): 
   player.airborneSpeedCarry = speedPerTick;
 }
 
-function getJumpStartPlanarSpeed(player: PlayerState, effectiveMoveSpeed: number): number {
+function getJumpStartPlanarSpeed(player: PlayerState, effectiveMoveSpeed: number, includeAirborneCarry = true): number {
   return Math.max(
     effectiveMoveSpeed,
-    player.airborneSpeedCarry ?? 0,
+    includeAirborneCarry ? player.airborneSpeedCarry ?? 0 : 0,
     Math.hypot(player.velocity.vx ?? 0, player.velocity.vy ?? 0),
-    getAirShiftSpeedPerTick(player),
+    includeAirborneCarry ? getAirShiftSpeedPerTick(player) : 0,
   );
 }
 
@@ -513,7 +514,9 @@ export function applyMovement(
   if (player.airDirectionLocked === undefined) player.airDirectionLocked = false;
   if (player.airborneSpeedCarry === undefined) player.airborneSpeedCarry = 0;
 
-  const allEffects = player.buffs.flatMap((b) => b.effects);
+  const now = Date.now();
+  const activeBuffs = getActiveRuntimeBuffs(player as any, now);
+  const allEffects = activeBuffs.flatMap((b) => b.effects);
   const lingRanTianFengActive = allEffects.some((e) => e.type === "LING_RAN_TIAN_FENG_STATE");
   const yuqiMounted = hasYuqiState(player as any);
   const baseGroundH = hasExportedCollision(mapCtx)
@@ -527,7 +530,7 @@ export function applyMovement(
   }
   const lingRanCastLiftSustainChannelAbilityId = player.lingRanCastLiftSustainChannelAbilityId;
   const lingRanCastLiftSustainVzPerTick = Number(player.lingRanCastLiftSustainVzPerTick ?? 0);
-  const hasJiuXiaoInitialChannelBuff = player.buffs.some((b: any) => b.buffId === 2726 && (b.expiresAt ?? 0) > Date.now());
+  const hasJiuXiaoInitialChannelBuff = activeBuffs.some((b: any) => b.buffId === 2726);
   const lingRanCastLiftChannelActive =
     !!lingRanCastLiftSustainChannelAbilityId && (
       player.activeChannel?.abilityId === lingRanCastLiftSustainChannelAbilityId ||
@@ -585,7 +588,7 @@ export function applyMovement(
 
   // 风来吴山 (buffId=1014) and 斩无常 (buffId=2712): lock jump input while channeling.
   // This is a hard jump-disable, not a jump-cancel mechanic.
-  const jumpLockedByFenglai = !lingRanTianFengActive && player.buffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712);
+  const jumpLockedByFenglai = !lingRanTianFengActive && activeBuffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712);
   if (jumpLockedByFenglai && input?.jump) {
     input = {
       ...input,
@@ -606,7 +609,7 @@ export function applyMovement(
 
   // 临时飞爪: if dash has ccStopsMe, cancel it when any CC/control is active
   if (player.activeDash && (player.activeDash as any).ccStopsMe) {
-    const hasCCNow = (player.buffs as any[]).some((b: any) =>
+    const hasCCNow = activeBuffs.some((b: any) =>
       b.effects?.some((e: any) => ["CONTROL", "ROOT", "ATTACK_LOCK"].includes(e.type))
     );
     if (hasCCNow) {
@@ -626,7 +629,7 @@ export function applyMovement(
       if (input?.jump && (player.jumpCount ?? 0) < maxJumps) {
         const isMultiJumpDashPending = !!multiJumpEffect;
         const boostIdx = player.buffs.findIndex(
-          (b) => b.effects.some((e) => e.type === "JUMP_BOOST")
+          (b) => isRuntimeBuffActive(b as any, now) && b.effects.some((e) => e.type === "JUMP_BOOST")
         );
         if (boostIdx >= 0) {
           if (isMultiJumpDashPending) {
@@ -757,6 +760,19 @@ export function applyMovement(
       }
     }
 
+    const actualDashStepX = player.position.x - prevX;
+    const actualDashStepY = player.position.y - prevY;
+    const dashDirX = intendedStep > 0.001 ? intendedStepX / intendedStep : 0;
+    const dashDirY = intendedStep > 0.001 ? intendedStepY / intendedStep : 0;
+    const actualAlongDash = actualDashStepX * dashDirX + actualDashStepY * dashDirY;
+    const dashBlockedByWall = intendedStep > 0.001 && actualAlongDash < intendedStep * 0.35;
+    if (dash.stopOnWall && dashBlockedByWall) {
+      dash.vxPerTick = 0;
+      dash.vyPerTick = 0;
+      dash.steerByFacing = false;
+      dash.ticksRemaining = Math.min(Math.max(1, Number(dash.ticksRemaining ?? 1)), 1);
+    }
+
     // Apply frozen vertical velocity (gravity suspended)
     // In collision-test mode use BVH ground height; otherwise fall back to AABB.
     const dashBaseGroundH = hasExportedCollision(mapCtx)
@@ -833,10 +849,7 @@ export function applyMovement(
     }
 
     if (dash.wallDiveOnBlock && intendedStep > 0.001) {
-      const actualStepX = player.position.x - prevX;
-      const actualStepY = player.position.y - prevY;
-      const actualStep = Math.sqrt(actualStepX * actualStepX + actualStepY * actualStepY);
-      if (actualStep < intendedStep * 0.35) {
+      if (dashBlockedByWall) {
         dash.vxPerTick = 0;
         dash.vyPerTick = 0;
         dash.steerByFacing = false;
@@ -847,10 +860,7 @@ export function applyMovement(
 
     // Wall-stun knockback: if the dash was blocked by a wall, flag it and end the dash
     if (dash.wallStunMs && dash.wallStunMs > 0 && intendedStep > 0.001) {
-      const actualStepX = player.position.x - prevX;
-      const actualStepY = player.position.y - prevY;
-      const actualStep = Math.sqrt(actualStepX * actualStepX + actualStepY * actualStepY);
-      if (actualStep < intendedStep * 0.35) {
+      if (dashBlockedByWall) {
         // Wall hit — stop dash immediately and flag for stun application in GameLoop
         dash.wallBlocked = true;
         dash.ticksRemaining = 0;
@@ -961,7 +971,7 @@ export function applyMovement(
     if (input.jump && lingRanTianFengActive) {
       const lingRanTianFengCharges = Math.max(0, Math.min(1, Number(player.lingRanTianFengCharges ?? 0)));
       if (lingRanTianFengCharges > 0) {
-        const hasLingRanJumpRefillBuff = player.buffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712);
+        const hasLingRanJumpRefillBuff = activeBuffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712);
         const jumpDir = normalizePlanar(targetVx, targetVy);
         const specialJumpHeight = jumpDir
           ? LING_RAN_TIAN_FENG_DIRECTIONAL_JUMP_HEIGHT
@@ -1017,7 +1027,7 @@ export function applyMovement(
       let jumpVz = JUMP_VZ;
       // 弹跳 JUMP_BOOST: consumed immediately for a power jump, any jump number.
       const boostIdx = player.buffs.findIndex(
-        (b) => b.effects.some((e) => e.type === "JUMP_BOOST")
+        (b) => isRuntimeBuffActive(b as any, now) && b.effects.some((e) => e.type === "JUMP_BOOST")
       );
       // 梯云纵 TI_YUN_ZONG_JUMP: same effect as 弹跳 (POWER_JUMP_VZ / COMBINED_JUMP_VZ)
       // but persistent — does NOT consume. If 弹跳 is also present, the consumed
@@ -1081,7 +1091,8 @@ export function applyMovement(
         jumpVz *= vzScale;
         player.velocity.vz = (player.velocity.vz ?? 0) * vzScale;
       }
-      const jumpStartPlanarSpeed = getJumpStartPlanarSpeed(player, effectiveMoveSpeed);
+      const includeAirborneCarryForJump = (player.jumpCount ?? 0) <= 0;
+      const jumpStartPlanarSpeed = getJumpStartPlanarSpeed(player, effectiveMoveSpeed, includeAirborneCarryForJump);
       player.velocity.vx = 0;
       player.velocity.vy = 0;
       player.jumpCount += 1;

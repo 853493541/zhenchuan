@@ -1,6 +1,7 @@
 
 
 import { GameState, TargetType } from "../state/types";
+import { isRuntimeBuffActive } from "../rules/guards";
 
 export function getEnemy(state: GameState, playerIndex: number) {
   return state.players[playerIndex === 0 ? 1 : 0];
@@ -16,5 +17,5 @@ export function resolveEffectTargetIndex(
 }
 
 export function hasUntargetable(p: { buffs: any[] }) {
-  return p.buffs && p.buffs.some((b) => b.effects?.some((e: any) => e.type === "UNTARGETABLE"));
+  return p.buffs && p.buffs.some((b) => isRuntimeBuffActive(b) && b.effects?.some((e: any) => e.type === "UNTARGETABLE"));
 }

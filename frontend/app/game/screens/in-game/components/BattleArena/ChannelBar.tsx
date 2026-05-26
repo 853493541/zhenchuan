@@ -239,6 +239,7 @@ export function ChannelBarHost({
   const [state, setState] = useState<DisplayState | null>(null);
   const lastActiveDataRef = useRef<ChannelBarData | null>(null);
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function clearFadeTimer() {
     if (fadeTimerRef.current) {
@@ -247,30 +248,17 @@ export function ChannelBarHost({
     }
   }
 
-  const dataKey = data
-    ? data.kind === 'forward'
-      ? `f:${data.name}:${data.startedAt}`
-      : `r:${data.name}:${data.appliedAt}`
-    : null;
-
-  useEffect(() => {
-    if (data) {
-      clearFadeTimer();
-      lastActiveDataRef.current = data;
-      setState({ data, phase: 'active', fading: false });
-      return;
+  function clearAutoEndTimer() {
+    if (autoEndTimerRef.current) {
+      clearTimeout(autoEndTimerRef.current);
+      autoEndTimerRef.current = null;
     }
+  }
 
-    const prev = lastActiveDataRef.current;
-    if (!prev) {
-      setState(null);
-      return;
-    }
+  function startFade(prev: ChannelBarData) {
     lastActiveDataRef.current = null;
 
     if (variant === 'hud') {
-      // Self bar: freeze the bar at its current progress and fade.
-      // No phase visuals (no green, no orange, no snap).
       const elapsedHud = prev.kind === 'forward'
         ? Date.now() - prev.startedAt
         : Date.now() - prev.appliedAt;
@@ -290,11 +278,9 @@ export function ChannelBarHost({
       return;
     }
 
-    // Enemy bar — distinguish success vs interrupt.
     const elapsed = prev.kind === 'forward'
       ? Date.now() - prev.startedAt
       : Date.now() - prev.appliedAt;
-    // Generous threshold to absorb client/server clock skew on completion.
     const success = elapsed >= prev.durationMs - 300;
 
     if (success) {
@@ -315,10 +301,40 @@ export function ChannelBarHost({
 
     clearFadeTimer();
     fadeTimerRef.current = setTimeout(() => setState(null), fadeOutMs);
+  }
+
+  const dataKey = data
+    ? data.kind === 'forward'
+      ? `f:${data.name}:${data.startedAt}`
+      : `r:${data.name}:${data.appliedAt}`
+    : null;
+
+  useEffect(() => {
+    if (data) {
+      clearAutoEndTimer();
+      clearFadeTimer();
+      lastActiveDataRef.current = data;
+      setState({ data, phase: 'active', fading: false });
+      const startedAt = data.kind === 'forward' ? data.startedAt : data.appliedAt;
+      const endDelayMs = Math.max(0, startedAt + Math.max(1, data.durationMs) - Date.now());
+      autoEndTimerRef.current = setTimeout(() => startFade(data), endDelayMs);
+      return;
+    }
+
+    clearAutoEndTimer();
+    const prev = lastActiveDataRef.current;
+    if (!prev) {
+      setState(null);
+      return;
+    }
+    startFade(prev);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataKey]);
 
-  useEffect(() => () => clearFadeTimer(), []);
+  useEffect(() => () => {
+    clearFadeTimer();
+    clearAutoEndTimer();
+  }, []);
 
   if (!state) return null;
 

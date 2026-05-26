@@ -6,9 +6,12 @@ export interface AbilityInstance {
   instanceId: string;
   abilityId: string;
   cooldown?: number;
+  _cooldownSyncedAt?: number;
   chargeCount?: number;
   chargeRegenTicksRemaining?: number;
+  _chargeRegenTicksRemainingSyncedAt?: number;
   chargeLockTicks?: number;
+  _chargeLockTicksSyncedAt?: number;
 }
 
 /* =========================================================
@@ -124,6 +127,7 @@ export interface PlayerState {
   hand: AbilityInstance[];
   specialAbilityStates?: Record<string, AbilityInstance>;
   globalGcdTicks?: number;
+  _globalGcdSyncedAt?: number;
   visualGcd?: {
     id: string;
     name: string;

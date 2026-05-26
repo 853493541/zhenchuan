@@ -6,8 +6,9 @@
  * Rules:
  * - NEVER replace root
  * - events: append-only
- * - hand arrays: replace (abilities are permanent, cooldown tracked)
- * - small arrays: replace
+ * - fixed runtime arrays: patch by index so players/hand cooldowns do not fan
+ *   out into whole-array replacements
+ * - variable arrays: replace when length/order changes
  *
  * IMPORTANT:
  * - Designed for POLLING + EVENT HISTORY
@@ -21,6 +22,34 @@ export type DiffPatch = {
 };
 
 const APPEND_ONLY_KEYS = new Set(["events"]);
+const INDEX_PATCH_KEYS = new Set(["players", "hand", "entities", "groundZones"]);
+
+function pathKey(basePath: string): string | undefined {
+  return basePath.split("/").filter(Boolean).pop();
+}
+
+function joinPath(basePath: string, key: string | number): string {
+  const cleanBase = basePath === "/" ? "" : basePath;
+  return `${cleanBase}/${key}`;
+}
+
+function identityForArrayItem(key: string, value: any): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  if (key === "players") return value.userId;
+  if (key === "hand") return value.instanceId ?? value.abilityId ?? value.id;
+  if (key === "entities" || key === "groundZones") return value.id;
+  return undefined;
+}
+
+function canPatchArrayByIndex(key: string, prev: any[], next: any[]): boolean {
+  if (!INDEX_PATCH_KEYS.has(key) || prev.length !== next.length) return false;
+  for (let i = 0; i < next.length; i++) {
+    const prevId = identityForArrayItem(key, prev[i]);
+    const nextId = identityForArrayItem(key, next[i]);
+    if ((prevId || nextId) && prevId !== nextId) return false;
+  }
+  return true;
+}
 
 export function diffState(
   prev: any,
@@ -52,22 +81,26 @@ export function diffState(
   /* ================= ARRAYS ================= */
 
   if (Array.isArray(prev) && Array.isArray(next)) {
-    const key = basePath.split("/").pop();
+    const key = pathKey(basePath);
 
     /* ---------- append-only arrays (events) ---------- */
     if (key && APPEND_ONLY_KEYS.has(key)) {
       if (next.length > prev.length) {
         for (let i = prev.length; i < next.length; i++) {
-          patches.push({
-            path: `${basePath}/${i}`,
-            value: next[i],
-          });
+          patches.push({ path: joinPath(basePath, i), value: next[i] });
         }
       }
       return patches;
     }
 
-    /* ---------- small arrays (hand, buffs, etc) ---------- */
+    if (key && canPatchArrayByIndex(key, prev, next)) {
+      for (let i = 0; i < next.length; i++) {
+        patches.push(...diffState(prev[i], next[i], joinPath(basePath, i)));
+      }
+      return patches;
+    }
+
+    /* ---------- variable arrays (buffs, pickups, etc) ---------- */
     if (JSON.stringify(prev) !== JSON.stringify(next)) {
       patches.push({ path: basePath, value: next });
     }
@@ -84,7 +117,7 @@ export function diffState(
   for (const key of keys) {
     const pVal = prev[key];
     const nVal = next[key];
-    const path = `${basePath}/${key}`;
+    const path = joinPath(basePath, key);
 
     // removed
     if (!(key in next)) {

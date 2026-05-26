@@ -12,6 +12,8 @@ type DiffPatch = {
   value: any;
 };
 
+const SERVER_TICK_MS = 1000 / 30;
+
 function applyDiff<T extends object>(prev: T, diff: DiffPatch[]): T {
   let next: any = prev;
 
@@ -119,12 +121,138 @@ function normalizeDiffTimestamps(diff: DiffPatch[], offsetMs: number): DiffPatch
   }));
 }
 
-function normalizeGamePayloadTimestamps<T extends { state?: any }>(payload: T, offsetMs: number): T {
-  if (!payload?.state) return payload;
+function annotateAbilityRuntimeSync(ability: any, syncedAt: number): any {
+  if (!ability || typeof ability !== "object") return ability;
+  const next = { ...ability };
+  if (typeof next.cooldown === "number") next._cooldownSyncedAt = syncedAt;
+  if (typeof next.chargeRegenTicksRemaining === "number") next._chargeRegenTicksRemainingSyncedAt = syncedAt;
+  if (typeof next.chargeLockTicks === "number") next._chargeLockTicksSyncedAt = syncedAt;
+  return next;
+}
+
+function annotateActiveDashRuntimeSync(activeDash: any, syncedAt: number): any {
+  if (!activeDash || typeof activeDash !== "object") return activeDash;
+  const next = { ...activeDash };
+  if (typeof next.ticksRemaining === "number") next._ticksRemainingSyncedAt = syncedAt;
+  return next;
+}
+
+function annotatePlayerRuntimeSync(player: any, syncedAt: number): any {
+  if (!player || typeof player !== "object") return player;
+  const next = { ...player };
+  if (typeof next.globalGcdTicks === "number") next._globalGcdSyncedAt = syncedAt;
+  if (next.activeDash) next.activeDash = annotateActiveDashRuntimeSync(next.activeDash, syncedAt);
+  if (Array.isArray(next.hand)) {
+    next.hand = next.hand.map((ability: any) => annotateAbilityRuntimeSync(ability, syncedAt));
+  }
+  if (next.specialAbilityStates && typeof next.specialAbilityStates === "object") {
+    next.specialAbilityStates = Object.fromEntries(
+      Object.entries(next.specialAbilityStates).map(([key, ability]) => [key, annotateAbilityRuntimeSync(ability, syncedAt)])
+    );
+  }
+  return next;
+}
+
+function annotateGameRuntimeSync<T extends { state?: any }>(payload: T, syncedAt: number): T {
+  if (!payload?.state || !Array.isArray(payload.state.players)) return payload;
   return {
     ...payload,
-    state: normalizeServerTimes(payload.state, offsetMs),
+    state: {
+      ...payload.state,
+      players: payload.state.players.map((player: any) => annotatePlayerRuntimeSync(player, syncedAt)),
+    },
   };
+}
+
+function annotateRuntimeSyncDiff(diff: DiffPatch[], syncedAt: number): DiffPatch[] {
+  const annotated: DiffPatch[] = [];
+  for (const patch of diff) {
+    const handMatch = patch.path.match(/^\/players\/(\d+)\/hand$/);
+    if (handMatch && Array.isArray(patch.value)) {
+      annotated.push({ ...patch, value: patch.value.map((ability: any) => annotateAbilityRuntimeSync(ability, syncedAt)) });
+      continue;
+    }
+
+    const playerMatch = patch.path.match(/^\/players\/(\d+)$/);
+    if (playerMatch && patch.value && typeof patch.value === "object") {
+      annotated.push({ ...patch, value: annotatePlayerRuntimeSync(patch.value, syncedAt) });
+      continue;
+    }
+
+    const activeDashMatch = patch.path.match(/^\/players\/(\d+)\/activeDash$/);
+    if (activeDashMatch && patch.value && typeof patch.value === "object") {
+      annotated.push({ ...patch, value: annotateActiveDashRuntimeSync(patch.value, syncedAt) });
+      continue;
+    }
+
+    annotated.push(patch);
+
+    const abilityFieldMatch = patch.path.match(/^\/players\/(\d+)\/hand\/(\d+)\/(cooldown|chargeRegenTicksRemaining|chargeLockTicks)$/);
+    if (abilityFieldMatch && typeof patch.value === "number") {
+      const [, playerIndex, slotIndex, field] = abilityFieldMatch;
+      const syncField = field === "cooldown"
+        ? "_cooldownSyncedAt"
+        : field === "chargeRegenTicksRemaining"
+          ? "_chargeRegenTicksRemainingSyncedAt"
+          : "_chargeLockTicksSyncedAt";
+      annotated.push({ path: `/players/${playerIndex}/hand/${slotIndex}/${syncField}`, value: syncedAt });
+      continue;
+    }
+
+    const gcdMatch = patch.path.match(/^\/players\/(\d+)\/globalGcdTicks$/);
+    if (gcdMatch && typeof patch.value === "number") {
+      annotated.push({ path: `/players/${gcdMatch[1]}/_globalGcdSyncedAt`, value: syncedAt });
+    }
+  }
+  return annotated;
+}
+
+function activeDashSignature(activeDash: any): string | null {
+  if (!activeDash || typeof activeDash !== "object") return null;
+  return JSON.stringify({
+    abilityId: activeDash.abilityId ?? null,
+    vxPerTick: activeDash.vxPerTick ?? null,
+    vyPerTick: activeDash.vyPerTick ?? null,
+    vzPerTick: activeDash.vzPerTick ?? null,
+    forceVzPerTick: activeDash.forceVzPerTick ?? null,
+    lingRanCastLift: activeDash.lingRanCastLift === true,
+    hitTargetUserId: activeDash.hitTargetUserId ?? null,
+    hitTargetEntityId: activeDash.hitTargetEntityId ?? null,
+  });
+}
+
+function filterDuplicateSelfActiveDashPatches(
+  state: any,
+  diff: DiffPatch[],
+  selfPlayerIndex: number,
+  nowMs: number,
+): DiffPatch[] {
+  if (selfPlayerIndex < 0 || diff.length === 0) return diff;
+  const previousDash = state?.players?.[selfPlayerIndex]?.activeDash;
+  const previousSignature = activeDashSignature(previousDash);
+  if (!previousSignature) return diff;
+
+  const previousSyncAt = Number(previousDash?._ticksRemainingSyncedAt ?? 0);
+  const previousTicks = Math.max(0, Number(previousDash?.ticksRemaining ?? 0));
+  const duplicateWindowEndsAt = previousSyncAt > 0 && previousTicks > 0
+    ? previousSyncAt + previousTicks * SERVER_TICK_MS + 750
+    : nowMs + 1;
+
+  return diff.filter((patch) => {
+    const activeDashMatch = patch.path.match(/^\/players\/(\d+)\/activeDash$/);
+    if (!activeDashMatch || Number(activeDashMatch[1]) !== selfPlayerIndex) return true;
+    if (!patch.value || typeof patch.value !== "object") return true;
+    if (activeDashSignature(patch.value) !== previousSignature) return true;
+    return nowMs > duplicateWindowEndsAt;
+  });
+}
+
+function normalizeGamePayloadTimestamps<T extends { state?: any }>(payload: T, offsetMs: number): T {
+  if (!payload?.state) return payload;
+  return annotateGameRuntimeSync({
+    ...payload,
+    state: normalizeServerTimes(payload.state, offsetMs),
+  }, Date.now());
 }
 
 async function readBackendError(res: Response): Promise<string> {
@@ -903,7 +1031,10 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             ? serverTimeOffsetRef.current
             : updateServerTimeOffset(message.timestamp, receiveDateNow);
           appendBattleMessagesFromEvents(message.events, offsetMs);
-          const normalizedDiff = normalizeDiffTimestamps(message.diff, offsetMs);
+          const normalizedDiff = annotateRuntimeSyncDiff(
+            normalizeDiffTimestamps(message.diff, offsetMs),
+            receiveDateNow,
+          );
           for (const patch of normalizedDiff) {
             if (patch.path === "/leaveNotice" && patch.value?.userId) {
               markPlayerDisconnectedForDiagnostics(patch.value.userId, "leave-notice", {
@@ -971,9 +1102,15 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             
             // Apply state patches to game.state
             if (statePatches.length > 0) {
+              const filteredStatePatches = filterDuplicateSelfActiveDashPatches(
+                updated.state,
+                statePatches,
+                meIndexRef.current,
+                receiveDateNow,
+              );
               updated = {
                 ...updated,
-                state: applyDiff(updated.state, statePatches),
+                state: applyDiff(updated.state, filteredStatePatches),
               };
             }
             
@@ -1319,8 +1456,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         version: patch.version,
         diffCount: patch.diff?.length,
       });
-      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      const patchReceivedAt = Date.now();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+      const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff, offsetMs), patchReceivedAt);
       versionRef.current = patch.version;
       appendBattleMessagesFromEvents(patch.events, offsetMs);
 
@@ -1370,8 +1508,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         version: patch.version,
         diffCount: patch.diff?.length,
       });
-      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      const patchReceivedAt = Date.now();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+      const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff, offsetMs), patchReceivedAt);
       versionRef.current = patch.version;
       appendBattleMessagesFromEvents(patch.events, offsetMs);
 
@@ -1418,8 +1557,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         version: patch.version,
         diffCount: patch.diff?.length,
       });
-      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      const patchReceivedAt = Date.now();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+      const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff, offsetMs), patchReceivedAt);
       versionRef.current = patch.version;
 
       setGame((prev) => {
@@ -1463,8 +1603,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         version: patch.version,
         diffCount: patch.diff?.length,
       });
-      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      const patchReceivedAt = Date.now();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+      const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff, offsetMs), patchReceivedAt);
       versionRef.current = patch.version;
 
       setGame((prev) => {
@@ -1509,8 +1650,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
         version: patch.version,
         diffCount: patch.diff?.length,
       });
-      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-      const normalizedDiff = normalizeDiffTimestamps(patch.diff, offsetMs);
+      const patchReceivedAt = Date.now();
+      const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+      const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff, offsetMs), patchReceivedAt);
       versionRef.current = patch.version;
 
       setGame((prev) => {
@@ -1555,8 +1697,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       version: patch.version,
       diffCount: patch.diff?.length,
     });
-    const offsetMs = updateServerTimeOffset(patch.serverTimestamp, Date.now());
-    const normalizedDiff = normalizeDiffTimestamps(patch.diff ?? [], offsetMs);
+    const patchReceivedAt = Date.now();
+    const offsetMs = updateServerTimeOffset(patch.serverTimestamp, patchReceivedAt);
+    const normalizedDiff = annotateRuntimeSyncDiff(normalizeDiffTimestamps(patch.diff ?? [], offsetMs), patchReceivedAt);
     versionRef.current = patch.version;
 
     if (normalizedDiff.length > 0) {

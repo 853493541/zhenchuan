@@ -2,6 +2,7 @@
 
 import { GameState, ActiveBuff } from "../../../state/types";
 import { pushBuffExpired } from "../../../effects/buffRuntime";
+import { removeLinkedShield } from "../../../utils/health";
 
 /**
  * Remove any buffs that have passed their expiresAt wall-clock time.
@@ -14,21 +15,23 @@ export function cleanupExpiredBuffs(
 ) {
   const now = Date.now();
   const before = player.buffs.slice();
+  const expired = before.filter((b) => now >= b.expiresAt);
 
-  player.buffs = player.buffs.filter((b) => now < b.expiresAt);
+  for (const buff of expired) {
+    removeLinkedShield(player as any, buff as any);
+  }
+  player.buffs = before.filter((b) => now < b.expiresAt);
 
-  for (const old of before) {
-    if (!player.buffs.some((b) => b.buffId === old.buffId)) {
-      pushBuffExpired(state, {
-        targetUserId: player.userId,
-        buffId: old.buffId,
-        buffName: old.name,
-        buffCategory: old.category,
-        sourceAbilityId: old.sourceAbilityId,
-        sourceAbilityName: old.sourceAbilityName,
-        sourceUserId: old.sourceUserId,
-      });
-    }
+  for (const old of expired) {
+    pushBuffExpired(state, {
+      targetUserId: player.userId,
+      buffId: old.buffId,
+      buffName: old.name,
+      buffCategory: old.category,
+      sourceAbilityId: old.sourceAbilityId,
+      sourceAbilityName: old.sourceAbilityName,
+      sourceUserId: old.sourceUserId,
+    });
   }
 }
 

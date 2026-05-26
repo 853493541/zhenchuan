@@ -3,6 +3,36 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Knockback, jump carry, shield, and stealth sound parity (2026-05-26)
+
+**Implemented / checked**:
+- 无间狱-style timed knockback now moves in small collision-resolved steps and stops when forward progress is blocked by map or 楚河汉界 walls; activeDash knockbacks also carry a `stopOnWall` flag.
+- Backend jump start speed now only reuses airborne carry on the first jump; frontend prediction mirrors that rule so a second air jump does not inherit a spent movement-speed boost.
+- Frontend locally consumes/filters 弹跳 after a boosted jump until the server diff arrives, and movement-caused buff mutations now force a buff broadcast from the backend.
+- 应天授命 shield logic ignores expired buffs for post-hit effects, reconciles linked shield display against active shield buffs, and live checked that shield `100000000` drops to `0` after the 8s buff expires.
+- Opponent ability/event sound playback now skips actors who are currently stealthed, and hidden opponent channel loops are removed from the active channel-sound set.
+- Live checked refreshed frontend: 扶摇直上 applied 弹跳, jumping removed backend buff `9001`, and the visible 弹跳 status count dropped from `1` to `0`. Built-code wall check showed a `stopOnWall` dash stopping at the wall boundary and clearing `activeDash`.
+
+**Lesson**:
+- Knockback cannot be a single position add followed by recovery; wall-aware displacement needs substeps and must stop based on forward progress into the wall, not total sideways slide distance.
+- Jump prediction must treat movement-speed carry as a phase-local resource. The first jump may carry the boosted takeoff speed, but a later air jump should recalculate from current speed and ignore stale airborne carry.
+- One-shot movement buffs need optimistic client consumption plus authoritative diff broadcast. If either side misses it, status bars and hotbar gates can think the buff still exists.
+- Shield UI should display active linked shield pools, not stale numeric shield fields. Stealth privacy applies to audio/event loops too, not only targetability, visuals, and combat text.
+
+## Expired buff runtime cleanup (2026-05-25)
+
+**Implemented / checked**:
+- Runtime buff/channel predicates now treat expired entries as inactive across backend guards, movement/jump locks, targeting, combat math, range modifiers, projectile immunity, stealth/disguise helpers, and frontend BattleArena gates.
+- Linked shields now reconcile against only active shield-bearing buffs; natural expiry, turn cleanup, buff replacement/cancel, and damage depletion clear linked shield pools instead of leaving `shield` behind.
+- Channel HUD bars and 3D channel rings now self-expire by time on the client, so a stale non-null buff/channel object cannot keep 风来吴山 visuals or jump suppression alive after expiry.
+- Live checked 风来吴山: buff applied and bar appeared, then after expiry backend buffs/channel were empty, the channel bar DOM was empty, and a jump movement request was accepted.
+- Live checked 月影沙 stealth: stealth/no-jump buff applied from consumable, then after expiry the player had no stealth buff and no remaining buffs.
+- Built-code shield check confirmed an expired linked shield zeros its `shieldAmount` and normalizes total shield down to active linked shields only; removing the active linked shield drops total shield to zero.
+
+**Lesson**:
+- Buff expiry cannot rely only on array cleanup. Every runtime predicate and frontend display/gate path must check `expiresAt`, because a stale buff object can persist long enough to keep locks, stealth, shields, damage modifiers, or channel visuals alive.
+- Linked effects need explicit cleanup hooks. Shields, channel indicators, stealth privacy, and movement locks should be removed or ignored from the effect source itself, not inferred later from a cosmetic/status refresh.
+
 ## In-game chat window/account layout polish (2026-05-25)
 
 **Implemented / checked**:
@@ -16,6 +46,8 @@ Each entry goes under its relevant section header.
 - Follow-up: detached battle-log auto-scroll needed layout-timed bottom following; a separate metrics refresh could mark the detached log as no longer at bottom before the sticky-scroll effect ran. Chat window settings now treat “关闭窗口” as a hidden-window flag that preserves detached group membership and position, and the chat panel waits for account layout loading before painting to avoid the default-position snap.
 - Follow-up: local battle logs are now the only chat messages capped client-side, limited to 200 entries; map/system chat history remains session-scoped. Battle-log generation also filters by the enemy actor's distance to the local player, while normal chat delivery and history are unaffected.
 - Follow-up: combat-log visibility range was raised to 200 units. A live system snapshot during reported lag showed MongoDB idle with a tiny local DB and no lock queue; the notable CPU sample was the backend Node process, so lag checks should look at active GameLoop/backend work before blaming local Mongo reads.
+- Follow-up: two-account live profiling with authenticated API/WebSocket clients showed the heaviest server-side phase was combined movement+ability traffic: backend Node used about 18% of one core, while `mongod` stayed under 1% and disk read/write bytes stayed at 0. Backend active time was dominated by app/framework serialization plus repeated `GameLoop.getState()` structured clones from movement/snapshot/ability paths; direct movement/collision, ability logic, and WebSocket send time were small in the profile.
+- Follow-up: a two-account state-diff audit showed normal movement diffs are small position patches, but ability/test-helper traffic still sends excess full arrays: generic `diffState()` replaces the whole `players` array on ability state changes, and reset-cooldowns replaces each whole `hand` array when only cooldown/charge fields changed.
 - Made detached chat groups account-backed through `battleArenaUiLayout.chat.detachedWindows`, `detachedPanelSizes`, and normal detached position keys, while excluding the transient clear dialog position from account layout writes.
 
 **Lesson**:
@@ -31,6 +63,15 @@ Each entry goes under its relevant section header.
 - Do not update detached chat at-bottom refs in a generic metrics effect before the auto-scroll decision has run. New content increases `scrollHeight` first, so measuring too early flips “was at bottom” to false and prevents the intended scroll-to-bottom.
 - Keep chat history caps channel-specific. If only combat logs need pruning or proximity filtering, apply that in the local battle-message generation path rather than in shared chat append/history merge code, or normal map/system messages will be lost or hidden incorrectly.
 - Local MongoDB being on-box does not automatically mean DB read pressure. Check `mongod` CPU, lock queue, connection count, and DB size first; if `mongod` is idle but backend Node is hot, investigate active game loops, event volume, or render/network paths instead of switching databases prematurely.
+- For CPU profiling, do not load the full 3D scene when isolating backend cost: headless Chromium software WebGL can consume a core by itself. Use lightweight authenticated HTTP/WebSocket clients, then compare process CPU with Node inspector samples, Mongo serverStatus counters, socket frame counts, and request latency.
+- Current Zhenchuan backend hotspots under two-player casting are mostly state snapshot/cloning/serialization paths, especially `GameLoop.getState()`, plus some Mongoose/BSON work from snapshot/cheat/chat saves. Movement collision and ability execution were not the primary CPU consumers in the measured run.
+- State-diff trimming and `getState()` clone reduction are related but separate. Trimming `STATE_DIFF` reduces network/JSON stringify/parse and frontend patch work; optimizing `getState()` reduces backend structuredClone CPU even for routes that return HTTP snapshots or validate input without broadcasting.
+- State-diff array granularity must preserve identity/order safety. Patch `players` and unchanged-slot `hand` arrays by index, but fall back to whole-array replacement when player/card/entity identities change so removed fields and reorders do not leave stale client state.
+- Cooldown, GCD, and activeDash countdowns should be sparse server sync fields plus local client countdowns. Sending only start/reset/end boundaries removes 30Hz countdown payloads while preserving responsive hotbar grayout and dash prediction.
+- For reset-cooldowns, treat undefined cooldown-like fields and zero as the same ready state. Otherwise a reset route can avoid whole `hand` arrays but still flood clients with semantic no-op zero patches.
+- Sparse activeDash sync must not let local countdown ticks become sample identities. Only new server positions or a new dash sync should re-anchor dash prediction; otherwise the render bridge can reset against stale positions and create directional dash lag or short duplicate dash starts.
+- Local cooldown countdowns should animate on `requestAnimationFrame` while any timer is active, then fall back to an idle check interval. A fixed 250ms React clock preserves correctness but makes cooldown arcs visibly step.
+- Resource-pack service workers should not intercept app document navigations such as `/game/in-game`; only cache asset requests. Intercepting navigations can surface `FetchEvent ... network error response` noise during reloads or route changes.
 - For this MMO-style chat panel, the visible scrollbar belongs in the left rail control area. A separate right overlay reads as the wrong control even if it tracks the same scroll position.
 
 ## Alpha passed / beta stage start (2026-05-24)

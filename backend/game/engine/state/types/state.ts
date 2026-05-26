@@ -232,6 +232,7 @@ export interface PlayerState {
     speedPerTick?: number; // optional steering speed (units/tick)
     steerByFacing?: boolean;
     wallDiveOnBlock?: boolean;
+    stopOnWall?: boolean;
     wallStunMs?: number;     // if >0 and wall blocks the dash, stop and stun for this duration
     wallBlocked?: boolean;   // set by movement.ts when a wall hit is detected
     snapUpUnits?: number;
@@ -359,6 +360,7 @@ export interface TargetEntity {
     vxPerTick: number;
     vyPerTick: number;
     forceVzPerTick?: number;
+    stopOnWall?: boolean;
     ticksRemaining: number;
   };
 }

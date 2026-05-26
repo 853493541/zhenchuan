@@ -1356,6 +1356,33 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
         }
         return nextCard;
       });
+    const pushHandRuntimeDiffs = (playerIndex: number, previousHand: any[], nextHand: any[]) => {
+      if ((previousHand?.length ?? 0) !== (nextHand?.length ?? 0)) {
+        diff.push({ path: `/players/${playerIndex}/hand`, value: nextHand });
+        return;
+      }
+      const hasDifferentSlots = nextHand.some((nextCard: any, cardIndex: number) => {
+        const previousCard = previousHand?.[cardIndex] ?? {};
+        return (previousCard.instanceId ?? previousCard.abilityId) !== (nextCard.instanceId ?? nextCard.abilityId);
+      });
+      if (hasDifferentSlots) {
+        diff.push({ path: `/players/${playerIndex}/hand`, value: nextHand });
+        return;
+      }
+      nextHand.forEach((nextCard: any, cardIndex: number) => {
+        const previousCard = previousHand?.[cardIndex] ?? {};
+        for (const field of ["cooldown", "chargeLockTicks", "chargeRegenTicksRemaining"]) {
+          const previousValue = Math.max(0, Number(previousCard[field] ?? 0));
+          const nextValue = Math.max(0, Number(nextCard[field] ?? 0));
+          if (previousValue !== nextValue) {
+            diff.push({ path: `/players/${playerIndex}/hand/${cardIndex}/${field}`, value: nextCard[field] });
+          }
+        }
+        if (previousCard.chargeCount !== nextCard.chargeCount) {
+          diff.push({ path: `/players/${playerIndex}/hand/${cardIndex}/chargeCount`, value: nextCard.chargeCount });
+        }
+      });
+    };
 
     let liveVersion = game.state.version ?? 0;
     let diff: Array<{ path: string; value: any }> = [];
@@ -1364,8 +1391,9 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
     if (gameLoop) {
       const loopState = gameLoop.getState();
       loopState.players = loopState.players.map((p: any, idx: number) => {
+        const previousHand = p.hand ?? [];
         const hand = resetHand(p.hand ?? []);
-        diff.push({ path: `/players/${idx}/hand`, value: hand });
+        pushHandRuntimeDiffs(idx, previousHand, hand);
         diff.push({ path: `/players/${idx}/consumableCooldowns`, value: {} });
         return {
           ...p,
@@ -1378,8 +1406,9 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
       gameLoop.updateState(loopState);
     } else {
       game.state.players = game.state.players.map((p: any, idx: number) => {
+        const previousHand = p.hand ?? [];
         const hand = resetHand(p.hand ?? []);
-        diff.push({ path: `/players/${idx}/hand`, value: hand });
+        pushHandRuntimeDiffs(idx, previousHand, hand);
         diff.push({ path: `/players/${idx}/consumableCooldowns`, value: {} });
         return {
           ...p,
