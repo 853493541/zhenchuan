@@ -190,6 +190,30 @@ export interface GameEvent {
 }
 
 /* =========================================================
+   In-game Chat
+========================================================= */
+
+export type ChatChannel = "map" | "system" | "battle";
+
+export interface ChatMessage {
+  id: string;
+  channel: ChatChannel;
+  userId: string;
+  username: string;
+  school?: string | null;
+  targetUserId?: string;
+  targetUsername?: string;
+  targetSchool?: string | null;
+  abilityName?: string;
+  value?: number;
+  isCrit?: boolean;
+  battleLogType?: "hit" | "damage";
+  text: string;
+  timestamp: number;
+  variant?: "user" | "system" | "battle";
+}
+
+/* =========================================================
    Game State
 ========================================================= */
 
@@ -277,6 +301,7 @@ export interface GameResponse {
   players: string[];
   state: GameState;
   playerNames?: Record<string, string>;
+  playerSchools?: Record<string, string>;
   tournament?: TournamentState;
   mode?: string;
 }

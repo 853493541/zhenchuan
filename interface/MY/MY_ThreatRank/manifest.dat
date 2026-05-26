@@ -1,0 +1,30 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "14436BA2D06644EBCFCE811B9F5F69F9F7D51FF4"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "6C4639B145A9EEAD888CF992D81948A8098FF763"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "808A9E76BCD70C2294F60178BAF25C09F305F2C4"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "D5321EEB84F399705B52BCF8C7B14670556B7791"
+      },
+      {
+         "name" : "ui/Handle_ThreatBar.ini",
+         "value" : "1F2C543461B51C40A7E71BB5997D28CA0090C259"
+      },
+      {
+         "name" : "ui/MY_ThreatRank.ini",
+         "value" : "422584498852CB5B4698EBEBBF44A3E3ACD372B4"
+      }
+   ],
+   "id" : "MY_ThreatRank",
+   "version" : 89
+}

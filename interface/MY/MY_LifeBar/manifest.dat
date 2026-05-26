@@ -1,0 +1,22 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "D929077A49341DBB3228C3AC91F7F252CDD6BCB0"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "E81D7D4AD649A415A3C43F9034325287B89644F4"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "B0E46E0315B196522FBD8D3CA199C196B1119297"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "7AFAA1B26F9D3AB51D0E95F598FB8C1CB9AC4A89"
+      }
+   ],
+   "id" : "MY_LifeBar",
+   "version" : 124
+}

@@ -1,0 +1,66 @@
+{
+   "files" : [
+      {
+         "name" : "ComboWinEffect.ini",
+         "value" : "E50AF377A463555438BA4A2C983BC4CBA44E77E1"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "50C738E0DD173AB835273957C2A9A0AC0A2FC961"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "1C6F86C4D87C0A83E7D2DABF2F8A6BD78DA7CA76"
+      },
+      {
+         "name" : "JX_AutoConfirm.lua",
+         "value" : "63C99E9B44B0C8990EC93FB74AC570865333918E"
+      },
+      {
+         "name" : "JX_Equip.ini",
+         "value" : "CE4C959F3E4097E6210EC3AAF99373016E8B6D05"
+      },
+      {
+         "name" : "JX_Equip.lua",
+         "value" : "8D950BCD572C60979D2B1AC83A5560F59F5C52B1"
+      },
+      {
+         "name" : "JX_FlashTaskBar.lua",
+         "value" : "FACE12387F5D4B60A1D4F7EC2FDE2A8C6477FE82"
+      },
+      {
+         "name" : "JX_HideRepresent.lua",
+         "value" : "182DAD9A19D684EFF98D3082C02785696AC9703F"
+      },
+      {
+         "name" : "JX_HorseFeed.lua",
+         "value" : "0240BD2B688C6A6CCCC5AF3E39364402628AD870"
+      },
+      {
+         "name" : "JX_MiddleMapMark.lua",
+         "value" : "629CAE4C1043A43B18F286D740966D154ADBAB87"
+      },
+      {
+         "name" : "JX_RefineDiamond.lua",
+         "value" : "190870F1C9EECA2C23B62D0DF3BFF7A88D980521"
+      },
+      {
+         "name" : "JX_ToolBox.lua",
+         "value" : "22592F0F9724A78FF8E02D5B82F680DE81AFA515"
+      },
+      {
+         "name" : "MessageBoxPlus.ini",
+         "value" : "B82DF8402247999A5F35EBE3D2CD6B5295BC54BC"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "D19B235B67E1C23C95B937D5A9D7375596E9FF8C"
+      },
+      {
+         "name" : "WorldMapSearch.ini",
+         "value" : "82EE72B897116FEF1A7695100555973D4EB282C3"
+      }
+   ],
+   "id" : "JX_ToolBox",
+   "version" : 166
+}

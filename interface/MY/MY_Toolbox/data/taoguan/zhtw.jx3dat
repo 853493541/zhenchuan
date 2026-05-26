@@ -1,0 +1,15 @@
+return {
+	FILTER_ITEM = {
+		{ szName = "薛婷娥的花燈", bFilter = false }, -- X.GetItemInfoName(5, 27845)
+		{ szName = "薛婷娥的煙花", bFilter = false }, -- X.GetItemInfoName(5, 27846)
+		{ szName = "鎖住的月光寶盒", bFilter = false }, -- X.GetItemInfoName(5, 6043)
+		{ szName = "剪梅", bFilter = false }, -- X.GetItemInfoName(8, 36046)
+		{ szName = "毛茸茸的皮袋·丙午", bFilter = false }, -- X.GetItemInfoName(8, 36201)
+		{ szName = "馬上福來", bFilter = false }, -- X.GetItemInfoName(8, 45728)
+		{ szName = "醉生", bFilter = false }, -- X.GetItemInfoName(5, 6032)
+		{ szName = "梅良玉簽", bFilter = false }, -- X.GetItemInfoName(5, 6038)
+		{ szName = "小銀錘", bFilter = false }, -- X.GetItemInfoName(5, 6058)
+		{ szName = "小金錘", bFilter = false }, -- X.GetItemInfoName(5, 6060)
+		{ szName = "年獸陶罐", bFilter = false }, -- X.GetItemInfoName(5, 20959)	
+	},
+}

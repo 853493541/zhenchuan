@@ -8,6 +8,7 @@ export type AuthUser = {
   username: string;
   displayName: string;
   isAdmin?: boolean;
+  school?: string | null;
 };
 
 export function useAuth() {

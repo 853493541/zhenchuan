@@ -9,6 +9,7 @@ type AuthUser = {
   username: string;
   displayName?: string;
   isAdmin?: boolean;
+  school?: string | null;
 };
 
 const CHINESE_NAME_RE = /^[\u4e00-\u9fff]+$/u;

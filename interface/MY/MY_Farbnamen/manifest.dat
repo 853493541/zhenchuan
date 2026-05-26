@@ -1,0 +1,22 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "C6702C423627CB4645D3B59FE2E9B25661D4008F"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "13B584AC81223541990CA9AFC2C7503392E27613"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "1F356E9BA29F4ABA0BF8D05CA76DB2377359F904"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "AC886FC407F24E306C050891499D59A6A8F60F68"
+      }
+   ],
+   "id" : "MY_Farbnamen",
+   "version" : 115
+}

@@ -1,0 +1,22 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "DAB937FADACDDFCAE84B1F65888786706F46DA78"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "C97648E34B9E8B4FC9D3EE82FBC12B3C2E96A8FA"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "A12CA17060D25DCECF27E76C9BA93E2E4B8F49DF"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "9B77B4AF8CA3E74EC20A59B10238EB0BDF83392F"
+      }
+   ],
+   "id" : "MY_ScreenShot",
+   "version" : 83
+}

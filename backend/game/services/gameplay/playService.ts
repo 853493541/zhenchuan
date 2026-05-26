@@ -28,6 +28,7 @@ import { hasYuqiState } from "../../engine/utils/yuqi";
 import { removeYuqiStateBuffs } from "../../engine/effects/buffRuntime";
 import { getHasteAdjustedTimingMs } from "../../engine/utils/haste";
 import { syncCombatStatusFromEvents } from "../../engine/utils/combatStatus";
+import { broadcastDefeatSystemChat, collectDefeatAnnouncementsFromEvents } from "../chatMessages";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -769,6 +770,13 @@ async function playCastAbility(
   }
 
   syncCombatStatusFromEvents(state, prevState.events.length);
+
+  const defeatAnnouncements = collectDefeatAnnouncementsFromEvents(state, prevState.events.length);
+  for (const announcement of defeatAnnouncements) {
+    void broadcastDefeatSystemChat(gameId, announcement.defeatedUserId, announcement.attackerUserId).catch((err) => {
+      console.error(`[CastAbility] Failed to broadcast defeat chat for ${gameId}:`, err);
+    });
+  }
 
   state.version = (state.version ?? 0) + 1;
 

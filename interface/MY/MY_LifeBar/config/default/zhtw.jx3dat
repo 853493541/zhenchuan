@@ -1,0 +1,340 @@
+local __META__ = {}
+local __TEMPLATE__ = {
+	eCss = '',
+	fDesignUIScale = 1,
+	nDesignFontOffset = 0,
+
+	nCamp = -1,
+	bOnlyInArena = false,
+	bOnlyInDungeon = false,
+	bOnlyInBattleField = false,
+
+	nTextOffsetY = 38,
+	nTextLineHeight = 20,
+	fTextScale = 1.2,
+	fTextSpacing = 0,
+
+	bShowSpecialNpc = false,
+	bShowSpecialNpcOnlyEnemy = true,
+	bShowObjectID = false,
+	bShowObjectIDOnlyUnnamed = true,
+	bShowKungfu = false,
+	bShowDistance = false,
+	bShowDistanceOnlyTarget = false,
+	nDistanceDecimal = 0,
+
+	nLifeWidth = 52,
+	nLifeHeight = 2,
+	nLifePadding = 0,
+	nLifeOffsetX = 0,
+	nLifeOffsetY = 12,
+	nLifeBorder = 2,
+	nLifeBorderR = 0,
+	nLifeBorderG = 0,
+	nLifeBorderB = 0,
+	szLifeDirection = "LEFT_RIGHT",
+
+	nLifePerOffsetX = 0,
+	nLifePerOffsetY = 8,
+
+	fTitleEffectScale = 0.7,
+	nTitleEffectOffsetY = 0,
+	nBalloonOffsetY = -20,
+
+	nAlpha = 255,
+	nFont = 7,
+	nDistance = 80 * 80 * 64 * 64,
+	nVerticalDistance = 50 * 8 * 64,
+
+	bHideLifePercentageWhenFight = false,
+	bHideLifePercentageDecimal = false,
+
+	fGlobalUIScale = 1,
+	bSystemUIScale = true,
+	bShowWhenUIHide = true,
+	bMineOnTop = true,
+	bTargetOnTop = true,
+	bScreenPosSort = true,
+
+	Color = {
+		Self = { -- 自己
+			__META__,
+			__VALUE__ = {
+				{'DifferentiateForce', false},
+				{'Player', { 26, 156, 227 }},
+				{'Npc', { 26, 156, 227 }},
+				{FORCE_TYPE.JIANG_HU , { 255, 255, 255 }}, -- 江湖
+				{FORCE_TYPE.SHAO_LIN , { 255, 178, 95  }}, -- 少林
+				{FORCE_TYPE.WAN_HUA  , { 196, 152, 255 }}, -- 萬花
+				{FORCE_TYPE.TIAN_CE  , { 255, 111, 83  }}, -- 天策
+				{FORCE_TYPE.CHUN_YANG, { 22 , 216, 216 }}, -- 純陽 56,175,255
+				{FORCE_TYPE.QI_XIU   , { 255, 129, 176 }}, -- 七秀
+				{FORCE_TYPE.WU_DU    , { 55 , 147, 255 }}, -- 五毒
+				{FORCE_TYPE.TANG_MEN , { 121, 183, 54  }}, -- 唐門
+				{FORCE_TYPE.CANG_JIAN, { 214, 249, 93  }}, -- 藏劍
+				{FORCE_TYPE.GAI_BANG , { 205, 133, 63  }}, -- 丐幫
+				{FORCE_TYPE.MING_JIAO, { 240, 70 , 96  }}, -- 明教
+				{FORCE_TYPE.CANG_YUN , { 180, 60 , 0   }}, -- 蒼雲
+				{FORCE_TYPE.CHANG_GE , { 100, 250, 180 }}, -- 長歌
+				{FORCE_TYPE.BA_DAO   , { 106, 108, 189 }}, -- 霸刀
+			},
+			__ARRAY_TEMPLATE__ = { 26, 156, 227 },
+		},
+		Party = { -- 團隊
+			__META__,
+			__VALUE__ = {
+				{'DifferentiateForce', false},
+				{'Player', { 23, 133, 194 }},
+				{'Npc', { 23, 133, 194 }},
+				{FORCE_TYPE.JIANG_HU , { 255, 255, 255 }}, -- 江湖
+				{FORCE_TYPE.SHAO_LIN , { 255, 178, 95  }}, -- 少林
+				{FORCE_TYPE.WAN_HUA  , { 196, 152, 255 }}, -- 萬花
+				{FORCE_TYPE.TIAN_CE  , { 255, 111, 83  }}, -- 天策
+				{FORCE_TYPE.CHUN_YANG, { 22 , 216, 216 }}, -- 純陽 56,175,255
+				{FORCE_TYPE.QI_XIU   , { 255, 129, 176 }}, -- 七秀
+				{FORCE_TYPE.WU_DU    , { 55 , 147, 255 }}, -- 五毒
+				{FORCE_TYPE.TANG_MEN , { 121, 183, 54  }}, -- 唐門
+				{FORCE_TYPE.CANG_JIAN, { 214, 249, 93  }}, -- 藏劍
+				{FORCE_TYPE.GAI_BANG , { 205, 133, 63  }}, -- 丐幫
+				{FORCE_TYPE.MING_JIAO, { 240, 70 , 96  }}, -- 明教
+				{FORCE_TYPE.CANG_YUN , { 180, 60 , 0   }}, -- 蒼雲
+				{FORCE_TYPE.CHANG_GE , { 100, 250, 180 }}, -- 長歌
+				{FORCE_TYPE.BA_DAO   , { 106, 108, 189 }}, -- 霸刀
+			},
+			__ARRAY_TEMPLATE__ = { 23, 133, 194 },
+		},
+		Enemy = { -- 敵對
+			__META__,
+			__VALUE__ = {
+				{'DifferentiateForce', false},
+				{'Player', { 203, 53, 9 }},
+				{'Npc', { 203, 53, 9 }},
+				{FORCE_TYPE.JIANG_HU , { 255, 255, 255 }}, -- 江湖
+				{FORCE_TYPE.SHAO_LIN , { 255, 178, 95  }}, -- 少林
+				{FORCE_TYPE.WAN_HUA  , { 196, 152, 255 }}, -- 萬花
+				{FORCE_TYPE.TIAN_CE  , { 255, 111, 83  }}, -- 天策
+				{FORCE_TYPE.CHUN_YANG, { 22 , 216, 216 }}, -- 純陽 56,175,255
+				{FORCE_TYPE.QI_XIU   , { 255, 129, 176 }}, -- 七秀
+				{FORCE_TYPE.WU_DU    , { 55 , 147, 255 }}, -- 五毒
+				{FORCE_TYPE.TANG_MEN , { 121, 183, 54  }}, -- 唐門
+				{FORCE_TYPE.CANG_JIAN, { 214, 249, 93  }}, -- 藏劍
+				{FORCE_TYPE.GAI_BANG , { 205, 133, 63  }}, -- 丐幫
+				{FORCE_TYPE.MING_JIAO, { 240, 70 , 96  }}, -- 明教
+				{FORCE_TYPE.CANG_YUN , { 180, 60 , 0   }}, -- 蒼雲
+				{FORCE_TYPE.CHANG_GE , { 100, 250, 180 }}, -- 長歌
+				{FORCE_TYPE.BA_DAO   , { 106, 108, 189 }}, -- 霸刀
+			},
+			__ARRAY_TEMPLATE__ = { 203, 53, 9 },
+		},
+		Neutrality = { -- 中立
+			__META__,
+			__VALUE__ = {
+				{'DifferentiateForce', false},
+				{'Player', { 238, 238, 15 }},
+				{'Npc', { 238, 238, 15 }},
+				{FORCE_TYPE.JIANG_HU , { 255, 255, 255 }}, -- 江湖
+				{FORCE_TYPE.SHAO_LIN , { 255, 178, 95  }}, -- 少林
+				{FORCE_TYPE.WAN_HUA  , { 196, 152, 255 }}, -- 萬花
+				{FORCE_TYPE.TIAN_CE  , { 255, 111, 83  }}, -- 天策
+				{FORCE_TYPE.CHUN_YANG, { 22 , 216, 216 }}, -- 純陽 56,175,255
+				{FORCE_TYPE.QI_XIU   , { 255, 129, 176 }}, -- 七秀
+				{FORCE_TYPE.WU_DU    , { 55 , 147, 255 }}, -- 五毒
+				{FORCE_TYPE.TANG_MEN , { 121, 183, 54  }}, -- 唐門
+				{FORCE_TYPE.CANG_JIAN, { 214, 249, 93  }}, -- 藏劍
+				{FORCE_TYPE.GAI_BANG , { 205, 133, 63  }}, -- 丐幫
+				{FORCE_TYPE.MING_JIAO, { 240, 70 , 96  }}, -- 明教
+				{FORCE_TYPE.CANG_YUN , { 180, 60 , 0   }}, -- 蒼雲
+				{FORCE_TYPE.CHANG_GE , { 100, 250, 180 }}, -- 長歌
+				{FORCE_TYPE.BA_DAO   , { 106, 108, 189 }}, -- 霸刀
+			},
+			__ARRAY_TEMPLATE__ = { 238, 238, 15 },
+		},
+		Ally = { -- 相同陣營
+			__META__,
+			__VALUE__ = {
+				{'DifferentiateForce', false},
+				{'Player', { 63 , 210, 94 }},
+				{'Npc', { 63 , 210, 94 }},
+				{FORCE_TYPE.JIANG_HU , { 255, 255, 255 }}, -- 江湖
+				{FORCE_TYPE.SHAO_LIN , { 255, 178, 95  }}, -- 少林
+				{FORCE_TYPE.WAN_HUA  , { 196, 152, 255 }}, -- 萬花
+				{FORCE_TYPE.TIAN_CE  , { 255, 111, 83  }}, -- 天策
+				{FORCE_TYPE.CHUN_YANG, { 22 , 216, 216 }}, -- 純陽 56,175,255
+				{FORCE_TYPE.QI_XIU   , { 255, 129, 176 }}, -- 七秀
+				{FORCE_TYPE.WU_DU    , { 55 , 147, 255 }}, -- 五毒
+				{FORCE_TYPE.TANG_MEN , { 121, 183, 54  }}, -- 唐門
+				{FORCE_TYPE.CANG_JIAN, { 214, 249, 93  }}, -- 藏劍
+				{FORCE_TYPE.GAI_BANG , { 205, 133, 63  }}, -- 丐幫
+				{FORCE_TYPE.MING_JIAO, { 240, 70 , 96  }}, -- 明教
+				{FORCE_TYPE.CANG_YUN , { 180, 60 , 0   }}, -- 蒼雲
+				{FORCE_TYPE.CHANG_GE , { 100, 250, 180 }}, -- 長歌
+				{FORCE_TYPE.BA_DAO   , { 106, 108, 189 }}, -- 霸刀
+			},
+			__ARRAY_TEMPLATE__ = { 63 , 210, 94 },
+		},
+		Foe = { -- 仇人
+			__META__,
+			__VALUE__ = {
+				{'DifferentiateForce', false},
+				{'Player', { 197, 26, 201 }},
+				{FORCE_TYPE.JIANG_HU , { 255, 255, 255 }}, -- 江湖
+				{FORCE_TYPE.SHAO_LIN , { 255, 178, 95  }}, -- 少林
+				{FORCE_TYPE.WAN_HUA  , { 196, 152, 255 }}, -- 萬花
+				{FORCE_TYPE.TIAN_CE  , { 255, 111, 83  }}, -- 天策
+				{FORCE_TYPE.CHUN_YANG, { 22 , 216, 216 }}, -- 純陽 56,175,255
+				{FORCE_TYPE.QI_XIU   , { 255, 129, 176 }}, -- 七秀
+				{FORCE_TYPE.WU_DU    , { 55 , 147, 255 }}, -- 五毒
+				{FORCE_TYPE.TANG_MEN , { 121, 183, 54  }}, -- 唐門
+				{FORCE_TYPE.CANG_JIAN, { 214, 249, 93  }}, -- 藏劍
+				{FORCE_TYPE.GAI_BANG , { 205, 133, 63  }}, -- 丐幫
+				{FORCE_TYPE.MING_JIAO, { 240, 70 , 96  }}, -- 明教
+				{FORCE_TYPE.CANG_YUN , { 180, 60 , 0   }}, -- 蒼雲
+				{FORCE_TYPE.CHANG_GE , { 100, 250, 180 }}, -- 長歌
+				{FORCE_TYPE.BA_DAO   , { 106, 108, 189 }}, -- 霸刀
+			},
+			__ARRAY_TEMPLATE__ = { 197, 26, 201 },
+		},
+	},
+	ShowName = {
+		Self = {
+			Npc = { bEnable = true, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = true, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Party = {
+			Npc = { bEnable = true, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = true, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Enemy = {
+			Npc = { bEnable = true, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = true, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Neutrality = {
+			Npc = { bEnable = true, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = true, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Ally = {
+			Npc = { bEnable = true, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = true, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Foe = { Player = { bEnable = true, bOnlyFighting = false, bHideFullLife = false } },
+	},
+	ShowTong = {
+		Self = {
+			Npc = { bEnable = false, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Party = { Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false } },
+		Enemy = { Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false } },
+		Neutrality = { Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false } },
+		Ally = { Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false } },
+		Foe = { Player = { bEnable = true, bOnlyFighting = false, bHideFullLife = false } },
+	},
+	ShowTitle = {
+		Self = {
+			Npc = { bEnable = false, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Party = {
+			Npc = { bEnable = true, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Enemy = {
+			Npc = { bEnable = true, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Neutrality = {
+			Npc = { bEnable = true, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Ally = {
+			Npc = { bEnable = true, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Foe = { Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false } },
+	},
+	ShowLife = {
+		Self = {
+			Npc = { bEnable = true, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = true, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Party = {
+			Npc = { bEnable = false, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Enemy = {
+			Npc = { bEnable = true, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Neutrality = {
+			Npc = { bEnable = false, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Ally = {
+			Npc = { bEnable = false, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Foe = { Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false } },
+	},
+	ShowLifePer = {
+		Self = {
+			Npc = { bEnable = false, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Party = {
+			Npc = { bEnable = false, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Enemy = {
+			Npc = { bEnable = false, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Neutrality = {
+			Npc = { bEnable = false, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Ally = {
+			Npc = { bEnable = false, bOnlyFighting = false, bHideFullLife = false, bHidePets = false },
+			Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false },
+		},
+		Foe = { Player = { bEnable = false, bOnlyFighting = false, bHideFullLife = false } },
+	},
+	ShowBalloon = {
+		Self = {
+			Npc = { bEnable = true },
+			Player = { bEnable = true },
+		},
+		Party = {
+			Npc = { bEnable = true },
+			Player = { bEnable = true },
+		},
+		Enemy = {
+			Npc = { bEnable = true },
+			Player = { bEnable = true },
+		},
+		Neutrality = {
+			Npc = { bEnable = true },
+			Player = { bEnable = true },
+		},
+		Ally = {
+			Npc = { bEnable = true },
+			Player = { bEnable = true },
+		},
+		Foe = { Player = { bEnable = true } },
+	},
+	BalloonChannel = {
+		['MSG_NORMAL'           ] = { bEnable = true, nDuring = 5000 },
+		['MSG_TEAM'             ] = { bEnable = true, nDuring = 5000 },
+		['MSG_PARTY'            ] = { bEnable = true, nDuring = 5000 },
+		['MSG_GUILD'            ] = { bEnable = true, nDuring = 9000 },
+		['MSG_MAP'              ] = { bEnable = true, nDuring = 9000 },
+		['MSG_BATTLE_FILED'     ] = { bEnable = true, nDuring = 9000 },
+		['MSG_NPC_NEARBY'       ] = { bEnable = true, nDuring = 9000 },
+		['MSG_NPC_PARTY'        ] = { bEnable = true, nDuring = 9000 },
+		['MSG_NPC_YELL'         ] = { bEnable = true, nDuring = 9000 },
+		['MSG_NPC_WHISPER'      ] = { bEnable = true, nDuring = 9000 },
+		['MSG_STORY_NPC'        ] = { bEnable = true, nDuring = 9000 },
+		['MSG_STORY_PLAYER'     ] = { bEnable = true, nDuring = 9000 },
+		['MSG_BATTLE_FIELD_SIDE'] = { bEnable = true, nDuring = 5000 },
+	},
+}
+return { __TEMPLATE__, __META__ }

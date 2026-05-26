@@ -1,0 +1,12 @@
+[JX_Wiki]
+name=資料庫
+desc=流程攻略、任務查詢、美人圖、門派技能手冊
+version=1.0
+default=1
+package=JX
+lua_0=JX_Wiki.lua
+lua_1=QuestState.lua
+#lua_4=JX_Achievement.lua
+lua_2=JX_MeiRenTu.lua
+lua_3=JX_AllForceSkill.lua
+lua_4=JX_ItemSearch.lua

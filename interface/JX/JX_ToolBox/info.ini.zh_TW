@@ -1,0 +1,13 @@
+[JX_ToolBox]
+name=實用工具
+desc=合五行石、快速脫/換裝、自動進入JJC/戰場、隱藏自身特效等
+version=1.0
+default=1
+package=JX
+lua_0=JX_ToolBox.lua
+lua_1=JX_RefineDiamond.lua
+lua_2=JX_Equip.lua
+lua_3=JX_FlashTaskBar.lua
+lua_4=JX_HideRepresent.lua
+lua_5=JX_AutoConfirm.lua
+lua_6=JX_HorseFeed.lua

@@ -1,0 +1,50 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "878229D47185D72626C0BAFE5D242DC42E6B602E"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "081733133C43F70821C9433607AC85CBFC733CC5"
+      },
+      {
+         "name" : "JX_HeightMeter.ini",
+         "value" : "F937AC74907FFC2211580478F303FF80CBF219C0"
+      },
+      {
+         "name" : "JX_HeightMeter.lua",
+         "value" : "2F7E379FF330A22F961B2E5549429C7D8D9D1A68"
+      },
+      {
+         "name" : "JX_Target.ini",
+         "value" : "816447987BF2A47204614CD8A7DB46806BD2C1AF"
+      },
+      {
+         "name" : "JX_Target.lua",
+         "value" : "86374C66B201E9147537FB94AA36B7A21F58DCC4"
+      },
+      {
+         "name" : "JX_TargetHeight.ini",
+         "value" : "0D8AB891390BDE86D7F5A1D0B1E77FE03D3E4EFB"
+      },
+      {
+         "name" : "JX_TargetHeight.lua",
+         "value" : "3197CF71F981DCC3529B5E1C4ABAABB881EB5916"
+      },
+      {
+         "name" : "JX_TargetLink.lua",
+         "value" : "89C245E78E58F61904210247B7CAB7263AFF544E"
+      },
+      {
+         "name" : "JX_Target_Old.ini",
+         "value" : "3ADE9912DDF742FD9409EB9C88B2BC6B6DA656BE"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "1F356E9BA29F4ABA0BF8D05CA76DB2377359F904"
+      }
+   ],
+   "id" : "JX_Target",
+   "version" : 149
+}

@@ -1,0 +1,26 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "61D670750BFFC1281F1208E925B2797A39BC6B84"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "B9A698157D6395AA1F30B9E2098336F014338E52"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "AD08B3A45BEE055CE06525BEB3EEBFC87D690A2C"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "3BE481686141AADEA61A951884313C4273FCD691"
+      },
+      {
+         "name" : "ui/MY_ChatLog_UI.ini",
+         "value" : "20DAAE3EC34031F486302D27EA9C2FE066F04AA0"
+      }
+   ],
+   "id" : "MY_ChatLog",
+   "version" : 124
+}

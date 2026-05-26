@@ -1,0 +1,7 @@
+[MY_!Base]
+package=MY
+name=茗伊基礎庫
+desc=茗伊插件依賴此庫，必須載入
+default=1
+version=1.0
+lua_0=src.20260514102914-7b2fe6f6e.lua

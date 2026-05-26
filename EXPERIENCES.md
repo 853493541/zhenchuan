@@ -3,6 +3,36 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## In-game chat window/account layout polish (2026-05-25)
+
+**Implemented / checked**:
+- Added the `battle` chat channel/window path and render battle messages from server `DAMAGE` combat events on the client, keeping battle text white while coloring actor/target names by stored player school.
+- Wired battle-chat generation from both WebSocket event payloads and the successful `/play` HTTP patch response, and allowed `DAMAGE` events with entity targets as well as player targets.
+- Moved the chat scrollbar into the real left control rail and removed the right-side fake scrollbar; search opens/closes as a dropdown inside the message column without shifting the rail.
+- Follow-up: search/log now sit inside a dedicated message column so opening search reduces the log viewport instead of overlaying the first visible message or changing the left rail geometry; the rail track was simplified to a single thumb layer and edge-disabled buttons were dimmed.
+- Follow-up: battle chat now emits separate `PLAY_ABILITY` hit logs and `DAMAGE` logs in MMO-style wording, with self-perspective `你/你的` text and `[未知目标]` for stealthed actors or targets observed by other clients.
+- Follow-up: chat history refresh now merges server chat with local battle messages instead of replacing the entire chat list, closing search clears the query so stale filters do not hide new battle lines, battle event seeding now runs after game-id reset while new `state.events` changes are consumed as a fallback to `/play` responses, and duplicate near-simultaneous `PLAY_ABILITY` events for one cast collapse to one hit line.
+- Follow-up: battle chat now behaves as an enemy-action report: local self-authored events are hidden for the local viewer, stealthed enemy actors are skipped entirely, `DAMAGE`/`HEAL` events feed action-style hit lines instead of amount math, consumable use responses are read for battle events, 金疮药/绷带 emit action events even when no HP is restored, detached chat panels auto-scroll when already at bottom, and the disabled left-scroll thumb is fully hidden.
+- Follow-up: detached battle-log auto-scroll needed layout-timed bottom following; a separate metrics refresh could mark the detached log as no longer at bottom before the sticky-scroll effect ran. Chat window settings now treat “关闭窗口” as a hidden-window flag that preserves detached group membership and position, and the chat panel waits for account layout loading before painting to avoid the default-position snap.
+- Follow-up: local battle logs are now the only chat messages capped client-side, limited to 200 entries; map/system chat history remains session-scoped. Battle-log generation also filters by the enemy actor's distance to the local player, while normal chat delivery and history are unaffected.
+- Follow-up: combat-log visibility range was raised to 200 units. A live system snapshot during reported lag showed MongoDB idle with a tiny local DB and no lock queue; the notable CPU sample was the backend Node process, so lag checks should look at active GameLoop/backend work before blaming local Mongo reads.
+- Made detached chat groups account-backed through `battleArenaUiLayout.chat.detachedWindows`, `detachedPanelSizes`, and normal detached position keys, while excluding the transient clear dialog position from account layout writes.
+
+**Lesson**:
+- Chat UI persistence needs to store both structure and geometry. Detached tab groups are not recoverable from positions alone; save group/window membership, group size, and group position together.
+- Combat-system chat can be derived from authoritative event payloads instead of a separate chat write path when the messages are local combat narration. Use the existing event metadata and player-name/school maps so battle messages stay synchronized with live combat state.
+- The local caster may receive combat events through the `/play` response before or instead of a WebSocket event payload, so battle chat must read successful action patches too.
+- Battle chat should seed/remember combat event ids from the loaded game state before appending live event logs; `/play` responses can include historical `state.events`, so unseeded generation can replay old combat lines after reload. Keep the game-id reset before the seed effect, or the reset can wipe the dedupe seed on mount.
+- Server chat history only contains persisted chat, while battle narration is currently client-local; refreshing/searching chat must merge rather than replace or it can erase fresh combat logs.
+- Some ability execution paths emit more than one `PLAY_ABILITY` event around the same cast; client battle narration should dedupe near-simultaneous hit lines by actor/target/ability while leaving separate `DAMAGE` events untouched.
+- Stealth-sensitive combat logs are best personalized at the client display layer using the pre-diff local state: the hidden player still sees `你`, while observers see `[未知目标]` for stealthed actors or targets in hit and damage lines.
+- Enemy-action battle feeds should skip local self-authored entries for the local viewer, skip stealthed enemy actors entirely, and consume `HEAL`/`DAMAGE` as action events when the UI should report activity rather than numeric calculations. Consumable `/use` responses need the same battle-event consumption as `/play` responses, and consumables that should be reportable must emit events even when the applied heal is zero.
+- Detached chat panels need their own at-bottom refs and display-length bookkeeping; the main chat `chatAtBottomRef` does not tell detached windows whether they should follow new messages.
+- Do not update detached chat at-bottom refs in a generic metrics effect before the auto-scroll decision has run. New content increases `scrollHeight` first, so measuring too early flips “was at bottom” to false and prevents the intended scroll-to-bottom.
+- Keep chat history caps channel-specific. If only combat logs need pruning or proximity filtering, apply that in the local battle-message generation path rather than in shared chat append/history merge code, or normal map/system messages will be lost or hidden incorrectly.
+- Local MongoDB being on-box does not automatically mean DB read pressure. Check `mongod` CPU, lock queue, connection count, and DB size first; if `mongod` is idle but backend Node is hot, investigate active game loops, event volume, or render/network paths instead of switching databases prematurely.
+- For this MMO-style chat panel, the visible scrollbar belongs in the left rail control area. A separate right overlay reads as the wrong control even if it tracks the same scroll position.
+
 ## Alpha passed / beta stage start (2026-05-24)
 
 **Milestone**:

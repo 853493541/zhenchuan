@@ -1,0 +1,242 @@
+{
+   "files" : [
+      {
+         "name" : "audio/Bing.ogg",
+         "value" : "90B84F646784F8474950BD993D03CCFDAE3BA81F"
+      },
+      {
+         "name" : "audio/Notify.ogg",
+         "value" : "7E4BE03D4FF5D9674B9E5B0450DE0006298605BA"
+      },
+      {
+         "name" : "img/Logo.Tga",
+         "value" : "ACB7F262BA8B0B894E4767972E74A54D123D8C98"
+      },
+      {
+         "name" : "img/Logo.txt",
+         "value" : "F98B761F34A2CF8358A8AAD2E2CF9A660EC1E5B9"
+      },
+      {
+         "name" : "img/Logo.UITex",
+         "value" : "DF8D1553CC89147739EB12111BC17E8FD8A3620A"
+      },
+      {
+         "name" : "img/PS.Tga",
+         "value" : "B3C1B4D966C2C1A55B2D235E8B12266BB3DDEF05"
+      },
+      {
+         "name" : "img/PS.txt",
+         "value" : "B84212C573C02C52293E5583D7E7A5F3BEEA16DD"
+      },
+      {
+         "name" : "img/PS.UITex",
+         "value" : "17AFAD7BD872511CF35D7F08ACF9885DFEDBA4D4"
+      },
+      {
+         "name" : "img/UIComponents.Tga",
+         "value" : "FF865480F384F65A4F3A5BC712C8AE4118223821"
+      },
+      {
+         "name" : "img/UIComponents.txt",
+         "value" : "7DE7C83852E5CB873A9A9B334AA322A680644BB4"
+      },
+      {
+         "name" : "img/UIComponents.UITex",
+         "value" : "7743B3EDE13DC8E2AE48384D70AE812BD8A81595"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "8EE14016959FC02D2BCAA24F3385365DC86F03EE"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "FFA2403F34F50D38101110554D1174F3C80C5A58"
+      },
+      {
+         "name" : "licenses/basexx-MIT.txt",
+         "value" : "DB7BF745AF6AABA5B45DAAC9B38B6F7A736BF203"
+      },
+      {
+         "name" : "licenses/LibDeflate-zlib.txt",
+         "value" : "2D9CF68DA5B095678C51D87FA2864622E8230F41"
+      },
+      {
+         "name" : "licenses/LICENSE.txt",
+         "value" : "DBAFAA64A75ED2BDCC57C55462854ADDC8D781AD"
+      },
+      {
+         "name" : "licenses/lua-schema-MIT.txt",
+         "value" : "E31181431ACF4BC1BFE18127C08948A7FD9570A2"
+      },
+      {
+         "name" : "licenses/semver.lua-MIT.txt",
+         "value" : "CD1566FFDD4DC04B2677A07B9943FA55B251F647"
+      },
+      {
+         "name" : "licenses/uuid-MIT.txt",
+         "value" : "DB114A56AFE072B056A8B3867691840314918EFB"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "9C7256C725D84CBF8CDF9D6200156A4785595362"
+      },
+      {
+         "name" : "src.20260514102914-7b2fe6f6e.lua",
+         "value" : "C79AC2AD091F5F2A81FA9C99FD857B5EFC46E328"
+      },
+      {
+         "name" : "ui/Browser.ini",
+         "value" : "34133883C911ADBD1017DAF4DB6286D5A2E13BAF"
+      },
+      {
+         "name" : "ui/components/Shadow.ini",
+         "value" : "BBDC8801CA8A758661AD349F985CE0BBCFBA0B7A"
+      },
+      {
+         "name" : "ui/components/WndAutocomplete.ini",
+         "value" : "17D2D4CBA8172E64DFC741E76932C2DEE758FB4B"
+      },
+      {
+         "name" : "ui/components/WndButton.ini",
+         "value" : "5E4AEC1B1C6A24AD2681A02893D4AF780133C478"
+      },
+      {
+         "name" : "ui/components/WndButtonBox.ini",
+         "value" : "7F8099901E178E2F2D6F96A572AFD0CC2F53CBDB"
+      },
+      {
+         "name" : "ui/components/WndCheckBox.ini",
+         "value" : "E73F91BB1F2C25BCA8F25682AF4FC3304F9E4D2D"
+      },
+      {
+         "name" : "ui/components/WndComboBox.ini",
+         "value" : "4D624970F40F66641FC7CDE759EB5A57C22E1EE5"
+      },
+      {
+         "name" : "ui/components/WndContainer.ini",
+         "value" : "C293059FCB82D831642EACD4768560D66DE7B69F"
+      },
+      {
+         "name" : "ui/components/WndDummyWrapper.ini",
+         "value" : "640E1D62622A6AA0D2B924D7484B5D615424C5AF"
+      },
+      {
+         "name" : "ui/components/WndEditBox.ini",
+         "value" : "C5B91CB0C930B0F12CE5D3E88855C717C224656B"
+      },
+      {
+         "name" : "ui/components/WndEditComboBox.ini",
+         "value" : "1B6C9684246E8DC9032FA7CF0A03EC687A4C3F7B"
+      },
+      {
+         "name" : "ui/components/WndFrame.ini",
+         "value" : "A49BCD2391CA01BE36B9D7C7F9FC5D1663E59B45"
+      },
+      {
+         "name" : "ui/components/WndFrameEmpty.ini",
+         "value" : "EB4C9B16A8ECFEAFF0933A3E3DD44DA3564AF7C7"
+      },
+      {
+         "name" : "ui/components/WndListBox.ini",
+         "value" : "DB030433794438B34B7C29DF4B009B40FB428B87"
+      },
+      {
+         "name" : "ui/components/WndPageSet.ini",
+         "value" : "7EC0F503F0F83021F429D09FA44352BD200B5A7E"
+      },
+      {
+         "name" : "ui/components/WndRadioBox.ini",
+         "value" : "7881C363DDE2B33B60267037F82614302935A907"
+      },
+      {
+         "name" : "ui/components/WndScrollHandleBox.ini",
+         "value" : "F11E6BEDBDD9B91AA46A068270F34C621F5E471B"
+      },
+      {
+         "name" : "ui/components/WndScrollWindowBox.ini",
+         "value" : "D974645AD7703392C0EAF96E241819E98BA05466"
+      },
+      {
+         "name" : "ui/components/WndSlider.ini",
+         "value" : "D2A214EF7B7229A7AA538764A028CE56601E884E"
+      },
+      {
+         "name" : "ui/components/WndTab.ini",
+         "value" : "1A458E1F3A748DC872378F0449B3F53E93400462"
+      },
+      {
+         "name" : "ui/components/WndTable.ini",
+         "value" : "6F745D3479E740A4489E79D8EC6AE19931C2B3C0"
+      },
+      {
+         "name" : "ui/components/WndTabs.ini",
+         "value" : "0A9B0EDCBB98548E5C35940D8CFA96922F7B0A43"
+      },
+      {
+         "name" : "ui/components/WndWebCef.ini",
+         "value" : "42EBBA1225804D5E9E70AE3DF7E8D536D7ACA54A"
+      },
+      {
+         "name" : "ui/components/WndWebPage.ini",
+         "value" : "DB2B7E8BF03FD7DA8D163F684C2985A876AE82DB"
+      },
+      {
+         "name" : "ui/components/WndWindow.ini",
+         "value" : "7B0F8E88370241CD3B4DFBB2ED82E4F54A51F865"
+      },
+      {
+         "name" : "ui/Dev_UIEditor.ini",
+         "value" : "1CFBBF4B98DE82945BE93D85CCD273F38B5B0B78"
+      },
+      {
+         "name" : "ui/DragDrop.ini",
+         "value" : "9E6161D6D36D0CA460A945E0E0554089DBEC5A37"
+      },
+      {
+         "name" : "ui/FloatBar.ini",
+         "value" : "139D565AC8EFCB49290E0EBDE1DF00CC031FE3DF"
+      },
+      {
+         "name" : "ui/MY_Bidding.ini",
+         "value" : "45B832374B7F46425E8BB9AACE5B8D853244324A"
+      },
+      {
+         "name" : "ui/MY_NotifyIcon.ini",
+         "value" : "65D3EA157627C9D1DA258822BB176DE47545355F"
+      },
+      {
+         "name" : "ui/Notify.ini",
+         "value" : "DC9D75E75ACD0EDF4A26ED1595B50E5BC9CED1BA"
+      },
+      {
+         "name" : "ui/NotifyFloatBar.ini",
+         "value" : "305A9F9AB061F3303321BD5F5833F5E280DB632E"
+      },
+      {
+         "name" : "ui/OutputTableTip.ini",
+         "value" : "7D33EAEB91E67228006D3DE5494016C1AB2DA07B"
+      },
+      {
+         "name" : "ui/PageSetModule.ini",
+         "value" : "19BABD2F7077743DE30B52A1C65817A2403A0A50"
+      },
+      {
+         "name" : "ui/PopupMenu.ini",
+         "value" : "EA800F82119A026E0C118ECA70661B68D8EF5162"
+      },
+      {
+         "name" : "ui/PopupMenu.tpl.ini",
+         "value" : "7585838E796A3810F3B470EB2B04C9BB128033BE"
+      },
+      {
+         "name" : "ui/Request.ini",
+         "value" : "FB39F052EBD27C868AB1F2FA0A8109B813CDB47F"
+      },
+      {
+         "name" : "ui/Shadows.ini",
+         "value" : "357C5CB10DEC0ACC9383F2D15D341D4A6D92B75A"
+      }
+   ],
+   "id" : "MY_!Base",
+   "version" : 352
+}

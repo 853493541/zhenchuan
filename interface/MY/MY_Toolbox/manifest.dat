@@ -1,0 +1,54 @@
+{
+   "files" : [
+      {
+         "name" : "img/MY_VisualSkill.Tga",
+         "value" : "F3522819896FF8A0BB93F6E906038DF1E2B23809"
+      },
+      {
+         "name" : "img/MY_VisualSkill.txt",
+         "value" : "849A847407A083E53E5F9156155B3D9F182FC909"
+      },
+      {
+         "name" : "img/MY_VisualSkill.UITex",
+         "value" : "58813E7E8DB4A114C56B3D66B499C41D90B6B5FA"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "FB6041AD5AEE3B8239451DBC50766BD41A2391F3"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "915EE2C87DB96078DB805E013FA856ECCD7F7C19"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "BC62CB6C529FE834FC0AEACFF528F3496F02F003"
+      },
+      {
+         "name" : "src.20260225063502-0787d8f6b.lua",
+         "value" : "944705FCB81C20E2DBBB0703BF519E8FD98463C9"
+      },
+      {
+         "name" : "ui/Btn_MagnifierDown.ini",
+         "value" : "CC40C263AA57631CD9B0FDFA27AE9A4CB836B1D9"
+      },
+      {
+         "name" : "ui/Btn_MagnifierUp.ini",
+         "value" : "9EE9B9D2374A3EF52462703492F9BEBCFA78C309"
+      },
+      {
+         "name" : "ui/MY_DynamicItem.ini",
+         "value" : "1EDE97708656B3EE748085E45E648973ED6747FC"
+      },
+      {
+         "name" : "ui/MY_Love.ini",
+         "value" : "4BBBC8545DB2965B896307208F1B3D434B3E3647"
+      },
+      {
+         "name" : "ui/MY_VisualSkill.ini",
+         "value" : "D8191D232B98870252AE00455AF0AC5B2DCDBD7F"
+      }
+   ],
+   "id" : "MY_Toolbox",
+   "version" : 204
+}

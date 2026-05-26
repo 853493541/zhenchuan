@@ -12,6 +12,7 @@
 import { GameState, MovementInput, GroundZone, TargetEntity, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
 import { checkGameOver, resetDefeatedPlayersForTesting } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
+import { broadcastDefeatSystemChat, collectDefeatAnnouncementsFromEvents } from "../../services/chatMessages";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
 import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap, resolveEntityHorizontalCollision } from "./movement";
@@ -2182,23 +2183,21 @@ export class GameLoop {
                 base: e.value ?? 0,
               });
               const applied = applyHealToTarget(player as any, healRoll.heal);
-              if (applied > 0) {
-                this.state.events.push({
-                  id: randomUUID(),
-                  timestamp: chNow,
-                  turn: this.state.turn,
-                  type: "HEAL",
-                  actorUserId: player.userId,
-                  targetUserId: player.userId,
-                  abilityId: ch.abilityId,
-                  abilityName: ch.abilityName,
-                  effectType: "PERIODIC_HEAL",
-                  value: applied,
-                  isCrit: false,
-                  suppressCritLabel: true,
-                });
-                channelStateChanged = true;
-              }
+              this.state.events.push({
+                id: randomUUID(),
+                timestamp: chNow,
+                turn: this.state.turn,
+                type: "HEAL",
+                actorUserId: player.userId,
+                targetUserId: player.userId,
+                abilityId: ch.abilityId,
+                abilityName: ch.abilityName,
+                effectType: "PERIODIC_HEAL",
+                value: Math.max(0, applied),
+                isCrit: false,
+                suppressCritLabel: true,
+              });
+              channelStateChanged = true;
             }
           }
         }
@@ -5164,7 +5163,14 @@ export class GameLoop {
     // 2. Check win condition. Testing mode keeps the same battle running by
     // restoring everyone when any player hits 0 HP.
     const winStart = performance.now();
+    const defeatedUserIds = this.state.players.filter((player) => player.hp <= 0).map((player) => player.userId);
+    const defeatAnnouncements = collectDefeatAnnouncementsFromEvents(this.state, eventDiffStart, defeatedUserIds);
     if (resetDefeatedPlayersForTesting(this.state)) {
+      for (const announcement of defeatAnnouncements) {
+        void broadcastDefeatSystemChat(this.gameId, announcement.defeatedUserId, announcement.attackerUserId).catch((err) => {
+          console.error(`[GameLoop] Failed to broadcast defeat chat for ${this.gameId}:`, err);
+        });
+      }
       buffsChanged = true;
     } else {
       checkGameOver(this.state);

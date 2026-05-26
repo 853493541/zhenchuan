@@ -1,0 +1,54 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "46837C2A32897DC7C8877145BC50095F2DF55E13"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "5190D7714B501B3E09BBD79B0FE867EA2DB1FDCF"
+      },
+      {
+         "name" : "JX_Achievement.lua",
+         "value" : "A7D295A37200EC86D1B3510D11557F4AF15DB594"
+      },
+      {
+         "name" : "JX_AchievementWeb.ini",
+         "value" : "DA745D55A0DB0F429937752EF3B0DC22331B3BA6"
+      },
+      {
+         "name" : "JX_AllForceSkill.lua",
+         "value" : "E9C981C07275080C70E2611E26AD44E1FED18EB2"
+      },
+      {
+         "name" : "JX_AllForceSkillRecipe.ini",
+         "value" : "46B3FA7AB3C13C53055F40CED9E98380C9D976D5"
+      },
+      {
+         "name" : "JX_ItemSearch.lua",
+         "value" : "6F450793FA4CBA93EEAC4DC927DCE665A878C9CB"
+      },
+      {
+         "name" : "JX_MeiRenTu.lua",
+         "value" : "FF34F11A19889BE2C70CED45D4C1EB02007D0107"
+      },
+      {
+         "name" : "JX_Wiki.lua",
+         "value" : "C0551A9B69D0E60F53F421036A9F543C3E4734D4"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "CB99297531997C5B1504F0843F8B1BE7CF65DD59"
+      },
+      {
+         "name" : "QuestResultTemp.ini",
+         "value" : "270D443B4B79CA98252474F4756771073D236261"
+      },
+      {
+         "name" : "QuestState.lua",
+         "value" : "50D592F490CF7C032508708DCA6DC56611E04356"
+      }
+   ],
+   "id" : "JX_Wiki",
+   "version" : 145
+}

@@ -4,6 +4,7 @@ export type StoredAuthUser = {
   username: string;
   displayName: string;
   isAdmin?: boolean;
+  school?: string | null;
 };
 
 export type StoredAuthSession = StoredAuthUser & {
@@ -12,18 +13,25 @@ export type StoredAuthSession = StoredAuthUser & {
 };
 
 const STORAGE_KEY = "zhenchuan.auth.sessions.v1";
+const LEGACY_TEST_DISPLAY_NAMES: Record<string, Record<string, string>> = {
+  testuser1: { "一": "测试账号一", testuser1: "测试账号一", "testuser 1": "测试账号一" },
+  testuser2: { "二": "测试账号二", testuser2: "测试账号二", "testuser 2": "测试账号二" },
+};
 
 function canUseStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
 function normalizeUser(user: StoredAuthUser): StoredAuthUser {
+  const rawDisplayName = user.displayName || user.username;
+  const displayName = LEGACY_TEST_DISPLAY_NAMES[user.username]?.[rawDisplayName.trim().toLowerCase()] ?? rawDisplayName;
   return {
     id: user.id,
     uid: user.uid,
     username: user.username,
-    displayName: user.displayName || user.username,
+    displayName,
     isAdmin: user.isAdmin === true,
+    school: typeof user.school === "string" ? user.school : null,
   };
 }
 
@@ -33,13 +41,15 @@ export function readStoredAuthSessions(): StoredAuthSession[] {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]");
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((session): session is StoredAuthSession => (
+    const sessions = parsed.filter((session): session is StoredAuthSession => (
       session &&
       typeof session.username === "string" &&
       typeof session.displayName === "string" &&
       typeof session.token === "string" &&
       session.token.length > 0
-    ));
+    )).map((session) => ({ ...session, ...normalizeUser(session) }));
+    writeStoredAuthSessions(sessions);
+    return sessions;
   } catch {
     return [];
   }

@@ -1,0 +1,10 @@
+[JX_Notice]
+name=喊話輔助
+desc=技能、擊殺/協殺、過圖/進幫喊話、喊話屏蔽
+version=1.0
+default=1
+package=JX
+lua_0=JX_SkillNotice.lua
+lua_1=JX_KillNotice.lua
+lua_2=JX_OtherNotice.lua
+lua_3=JX_MsgFilter.lua

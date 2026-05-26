@@ -6,8 +6,8 @@ import { toastError } from "@/app/components/toast/toast";
 import { rememberCurrentAuthSession } from "@/app/components/auth/authSessionStore";
 
 const TEST_ACCOUNTS = [
-  { username: "testuser1", password: "testuser1@testuser1", label: "一" },
-  { username: "testuser2", password: "testuser2@testuser2", label: "二" },
+  { username: "testuser1", password: "testuser1@testuser1", label: "测试账号一" },
+  { username: "testuser2", password: "testuser2@testuser2", label: "测试账号二" },
 ];
 
 

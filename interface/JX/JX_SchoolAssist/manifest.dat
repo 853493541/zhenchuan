@@ -1,0 +1,54 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "643424303C419A7FF4B86D537AB4B5B677E57418"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "3A5E7F44D70FFEC5EE6ABA55BF72FE2388552715"
+      },
+      {
+         "name" : "JX_CastModeTemp.ini",
+         "value" : "72C5158FA74BA798070FD7AA6510D4B1C2758D5A"
+      },
+      {
+         "name" : "JX_ClearlyBar.ini",
+         "value" : "3482060EAABF91C8CF77133ECD5B5FA83DD0CAD5"
+      },
+      {
+         "name" : "JX_ClearlyBar.lua",
+         "value" : "7E094DDB5B1DB99C940F0BA8856A8FE89742ADA6"
+      },
+      {
+         "name" : "JX_PLFuYouCD.ini",
+         "value" : "BE0B5D6803E3C5E2873E044305D6917391D903B6"
+      },
+      {
+         "name" : "JX_SchoolAssist.ini",
+         "value" : "DD9D6206AE4ABF4AB2F48CABEAD4DEF15DDE871F"
+      },
+      {
+         "name" : "JX_SchoolAssist.lua",
+         "value" : "8D6BCCEC3F596D75B587F7D36BEB5F7993F2CF23"
+      },
+      {
+         "name" : "JX_Shadows.ini",
+         "value" : "AAF13ABD83C949843B6580A79905C4FB9FD7F3E2"
+      },
+      {
+         "name" : "JX_Shadows.lua",
+         "value" : "CE2E0129D93A8961DA4BA3CD678D99C7B4839F9E"
+      },
+      {
+         "name" : "JX_SKillTopName.ini",
+         "value" : "3886AB26CD8A95BC208EBFF72D9AF28ECAE35BBF"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "6C2BC9D96A6CCFF3C82B0AB89B7135280F40805F"
+      }
+   ],
+   "id" : "JX_SchoolAssist",
+   "version" : 171
+}

@@ -167,6 +167,9 @@ export default function InGameClient({
     useConsumable,
     updateTargetSelection,
     endTurn,
+    chatMessages,
+    sendChatMessage,
+    fetchChatMessages,
     rtt,
     refetch,
     clearDisconnectPrompt,
@@ -610,11 +613,20 @@ export default function InGameClient({
             safeZone={state?.safeZone}
             groundZones={state?.groundZones}
             entities={state?.entities}
+            chatMessages={chatMessages}
+            onFetchChatMessages={fetchChatMessages}
             opponentPositionBufferRef={opponentPositionBufferRef}
             mode={gameMode ?? 'arena'}
             onLeaveGame={() => leaveGameAndReturnHome('EscExitButton')}
             onMovementRecover={refetch}
             rtt={rtt}
+            onSendChatMessage={async (text, channel) => {
+              const res = await sendChatMessage(text, channel);
+              if (!res.ok && res.error) {
+                pushBattleWarning(res.error === 'ERR_CHAT_DISCONNECTED' ? '聊天连接未就绪' : '该频道暂未开放');
+              }
+              return res;
+            }}
             onCastAbility={async (abilityInstanceId, targetUserId, groundTarget, entityTargetId, movementIntent) => {
               crashRecorder.recordBehavior("cast-api-request", {
                 abilityInstanceId,

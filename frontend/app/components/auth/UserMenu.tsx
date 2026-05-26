@@ -9,13 +9,16 @@ import {
   LogOut,
   Music,
   Pencil,
+  Sparkles,
   ShieldCheck,
   Wrench,
 } from "lucide-react";
 import ChangePasswordModal from "./ChangePasswordModal";
 import ChangeDisplayNameModal from "./ChangeDisplayNameModal";
+import ChangeSchoolModal from "./ChangeSchoolModal";
 import SwitchAccountModal from "./SwitchAccountModal";
 import { removeStoredAuthSession, updateStoredAuthSessionUser } from "./authSessionStore";
+import { getSchoolColor } from "@/app/lib/schoolMeta";
 import styles from "./UserMenu.module.css";
 
 interface Props {
@@ -23,6 +26,7 @@ interface Props {
     username: string;
     displayName?: string;
     isAdmin?: boolean;
+    school?: string | null;
   };
 }
 
@@ -36,8 +40,10 @@ export default function UserMenu({ user }: Props) {
   const [open, setOpen] = useState(false);
   const [showChange, setShowChange] = useState(false);
   const [showDisplayName, setShowDisplayName] = useState(false);
+  const [showSchool, setShowSchool] = useState(false);
   const [showSwitch, setShowSwitch] = useState(false);
   const [displayName, setDisplayName] = useState(user.displayName || user.username);
+  const [school, setSchool] = useState<string | null>(user.school ?? null);
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -46,7 +52,8 @@ export default function UserMenu({ user }: Props) {
 
   useEffect(() => {
     setDisplayName(user.displayName || user.username);
-  }, [user.displayName, user.username]);
+    setSchool(user.school ?? null);
+  }, [user.displayName, user.school, user.username]);
 
   useEffect(() => {
     if (!open) return;
@@ -82,6 +89,7 @@ export default function UserMenu({ user }: Props) {
     setOpen(false);
     setShowChange(false);
     setShowDisplayName(false);
+    setShowSchool(false);
     setShowSwitch(false);
     router.replace("/login");
   }
@@ -121,6 +129,11 @@ export default function UserMenu({ user }: Props) {
                   <ArrowRightLeft size={15} />
                 </button>
               </div>
+              {school && (
+                <div className={styles.profileSchool} style={{ color: getSchoolColor(school), borderColor: getSchoolColor(school) }}>
+                  {school}
+                </div>
+              )}
             </div>
           </div>
 
@@ -172,6 +185,17 @@ export default function UserMenu({ user }: Props) {
           <button
             className={styles.menuItem}
             onClick={() => {
+              setShowSchool(true);
+              setOpen(false);
+            }}
+          >
+            <Sparkles size={18} />
+            修改门派
+          </button>
+
+          <button
+            className={styles.menuItem}
+            onClick={() => {
               setShowChange(true);
               setOpen(false);
             }}
@@ -194,13 +218,26 @@ export default function UserMenu({ user }: Props) {
           onSaved={(nextUser) => {
             updateStoredAuthSessionUser(nextUser);
             setDisplayName(nextUser.displayName || nextUser.username);
+            setSchool(nextUser.school ?? null);
+          }}
+        />
+      )}
+
+      {showSchool && (
+        <ChangeSchoolModal
+          currentSchool={school}
+          onClose={() => setShowSchool(false)}
+          onSaved={(nextUser) => {
+            updateStoredAuthSessionUser(nextUser);
+            setSchool(nextUser.school ?? null);
+            setDisplayName(nextUser.displayName || nextUser.username);
           }}
         />
       )}
 
       {showSwitch && (
         <SwitchAccountModal
-          currentUser={{ username: user.username, displayName: displayName, isAdmin: user.isAdmin }}
+          currentUser={{ username: user.username, displayName: displayName, isAdmin: user.isAdmin, school }}
           onClose={() => setShowSwitch(false)}
         />
       )}

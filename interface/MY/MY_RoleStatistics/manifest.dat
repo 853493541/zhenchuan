@@ -1,0 +1,78 @@
+{
+   "files" : [
+      {
+         "name" : "img/MY_RoleStatistics.Tga",
+         "value" : "20C90F8D5048E01ADD1BC40E46C5408F78C821DE"
+      },
+      {
+         "name" : "img/MY_RoleStatistics.txt",
+         "value" : "1BEBF6AA9EEE99F2DDE8327B8A1F001C27509D0F"
+      },
+      {
+         "name" : "img/MY_RoleStatistics.UITex",
+         "value" : "5972FB52298A3A36E3D28226A10BB69A47D48C46"
+      },
+      {
+         "name" : "img/MY_RoleStatistics_BagStat.Tga",
+         "value" : "EB90AF0914C7661C609D079AB6D1E66AE951E161"
+      },
+      {
+         "name" : "img/MY_RoleStatistics_BagStat.txt",
+         "value" : "DFEC6EA4B5956B2A8242860A52FF6F186FD2C23D"
+      },
+      {
+         "name" : "img/MY_RoleStatistics_BagStat.UITex",
+         "value" : "6251A345DFA000F85CE705F934D7AD4A1501C01E"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "8650D004DAFCA693381A077AFEFCD6A6A3B20638"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "3E7A56F02695C8F1A45004A88B430E3C359ED501"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "D4576CB39B1CFD2B729D47BD869A07ECEC2F124C"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "B25EA0A8725CB4947D8324634D6F43D97463D18C"
+      },
+      {
+         "name" : "ui/MY_RoleStatistics_BagEntry.ini",
+         "value" : "3CD854FBEDC785FE4972B98150E26666B7575300"
+      },
+      {
+         "name" : "ui/MY_RoleStatistics_BagStat.ini",
+         "value" : "3EE8750AA5CC5C23146E4E463F6DF8EE80098639"
+      },
+      {
+         "name" : "ui/MY_RoleStatistics_DungeonEntry.ini",
+         "value" : "9658AB337D6E14D8584964559AAF08F8DF467E3F"
+      },
+      {
+         "name" : "ui/MY_RoleStatistics_EquipEntry.ini",
+         "value" : "D774BB5B822BE82AF587CF28EAE267F077100134"
+      },
+      {
+         "name" : "ui/MY_RoleStatistics_EquipStat.ini",
+         "value" : "59464058F13CAC1B193A90B61849C9FBCE8A0A69"
+      },
+      {
+         "name" : "ui/MY_RoleStatistics_RoleEntry.ini",
+         "value" : "B799D8161CBF139EA1670E49DE6B5629A06D386E"
+      },
+      {
+         "name" : "ui/MY_RoleStatistics_TaskEntry.ini",
+         "value" : "E8103951D61D3A345995D0D6AC2BE45ACF40D960"
+      },
+      {
+         "name" : "ui/MY_RoleStatistics_TaskStat.ini",
+         "value" : "F4849036ABE8190CE09F7CE9991AED9160DB7069"
+      }
+   ],
+   "id" : "MY_RoleStatistics",
+   "version" : 116
+}

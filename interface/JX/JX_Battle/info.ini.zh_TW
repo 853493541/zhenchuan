@@ -1,0 +1,11 @@
+[JX_Battle]
+name=對抗活動輔助功能
+desc=幫會羣密、幫戰輔助、連斬提示等
+version=1.0
+default=1
+package=JX
+lua_0=JX_TongWhisper.lua
+lua_1=JX_KillCombo.lua
+lua_2=JX_TongWar.lua
+lua_3=JX_Command.lua
+lua_4=JX_CrossGateBoss.lua

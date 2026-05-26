@@ -1,0 +1,46 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "4CE8237CEFDBC315CF91EFBC37EF795284D30E1D"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "8CCFAD9C4454D307C15EC267F22C83AEFA829ECC"
+      },
+      {
+         "name" : "JX_KillNotice.lua",
+         "value" : "8AF8F63757B78AA12843FE5F3452CECBC61DD588"
+      },
+      {
+         "name" : "JX_MsgFilter.lua",
+         "value" : "273868185F04BFB5C273F7CCB2B920D70F2FEE25"
+      },
+      {
+         "name" : "JX_OtherNotice.lua",
+         "value" : "1AAE55DD27A3A69BBA4D3B410C6C7A5DC024CF37"
+      },
+      {
+         "name" : "JX_SkillNotice.lua",
+         "value" : "BFF35A48A522246DC1B0D48EF174100CB941131B"
+      },
+      {
+         "name" : "KillShoutSet.ini",
+         "value" : "33A785CF554B93F0ECE6A7358986C990BF157EA4"
+      },
+      {
+         "name" : "OtherShoutSet.ini",
+         "value" : "37CE33BDE893A8830F65FB969B18A0B606CC43AD"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "AD08B3A45BEE055CE06525BEB3EEBFC87D690A2C"
+      },
+      {
+         "name" : "SkillShout.ini",
+         "value" : "12BBB0171B56416DF3AAA05FC56A5A174F1616CB"
+      }
+   ],
+   "id" : "JX_Notice",
+   "version" : 162
+}

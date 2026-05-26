@@ -1,0 +1,54 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "CC26DBF752B4A64C42010B7043CB05C9A2E3B94D"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "CBBBEB8A46C4218466B4B1E79A2AD0F3FD494715"
+      },
+      {
+         "name" : "JX_Command.lua",
+         "value" : "A1D03AD4C2666FC17730E19D35AEECDC537235E0"
+      },
+      {
+         "name" : "JX_CrossGateBoss.ini",
+         "value" : "3D1C41B5EFB68F07D3931483853DDBD0FD9F063F"
+      },
+      {
+         "name" : "JX_CrossGateBoss.lua",
+         "value" : "781EB8E5CA95449A48A808DC5E9594500DF9ABB4"
+      },
+      {
+         "name" : "JX_KillCombo.ini",
+         "value" : "4883070394CF107FEBBA4C760E64D6ECAF1013E4"
+      },
+      {
+         "name" : "JX_KillCombo.lua",
+         "value" : "D8E10E60A41A5381C6AC055636B08F4DD306F34A"
+      },
+      {
+         "name" : "JX_KillCombo_Ani.ini",
+         "value" : "B18DB2C12C4D140E8436DC4BCB84152F25121402"
+      },
+      {
+         "name" : "JX_TongWar.lua",
+         "value" : "555C58DA144DC5D76E48ED54333AEBC6ED17A2B2"
+      },
+      {
+         "name" : "JX_TongWarMark.ini",
+         "value" : "EE1C793C07E054B27D7371601B8407B37F623CE0"
+      },
+      {
+         "name" : "JX_TongWhisper.lua",
+         "value" : "F8F3A7DF0970F01250A7A3EB720FB286F8F46B05"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "BC62CB6C529FE834FC0AEACFF528F3496F02F003"
+      }
+   ],
+   "id" : "JX_Battle",
+   "version" : 57
+}

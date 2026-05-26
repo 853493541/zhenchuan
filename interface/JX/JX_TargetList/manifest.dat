@@ -1,0 +1,38 @@
+{
+   "files" : [
+      {
+         "name" : "data/JX_CampData.lua",
+         "value" : "F1D7920262D5E71AD0C383AD137C1BA3C1D27FB8"
+      },
+      {
+         "name" : "info.ini",
+         "value" : "334EB46CD76639D748A2FFC6C6D950F24292E642"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "3549C9A891A9167AFD9335BBEB5BDBB0D67FEDE9"
+      },
+      {
+         "name" : "JX_NearbyInfo.ini",
+         "value" : "929A10A69315B956A293AEA4EA8542F0C3100237"
+      },
+      {
+         "name" : "JX_NearbyInfo.lua",
+         "value" : "EB66C495DA6F86C70CD1DD8B2AE00077642D76B8"
+      },
+      {
+         "name" : "JX_TargetList.ini",
+         "value" : "9732306ED23B4E79C1F6CE6172BB63E11B49BD3B"
+      },
+      {
+         "name" : "JX_TargetList.lua",
+         "value" : "A82ED869EFD9A9B6D0A79E989D8B26210B0922C3"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "D19B235B67E1C23C95B937D5A9D7375596E9FF8C"
+      }
+   ],
+   "id" : "JX_TargetList",
+   "version" : 171
+}

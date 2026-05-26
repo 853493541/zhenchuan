@@ -1,0 +1,22 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "497C815776A9CB4557F8420C831CBB0D3EA73DDB"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "82340D40D675471EF39AC5556EC9CE01F105626E"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "BC62CB6C529FE834FC0AEACFF528F3496F02F003"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "C6EC6730DFE3B4CD7678E4B43E45DB5ECECE25E2"
+      }
+   ],
+   "id" : "MY_BagEx",
+   "version" : 117
+}

@@ -1,0 +1,22 @@
+{
+   "files" : [
+      {
+         "name" : "info.ini",
+         "value" : "51247C8F47F22923F0EB970EB874FDD155B1359F"
+      },
+      {
+         "name" : "info.ini.zh_TW",
+         "value" : "1A37111D762F7F181CC50609A55777526D7ACE61"
+      },
+      {
+         "name" : "publisher.key",
+         "value" : "D96F26F9614E0B9EB024BF00FB1FB50045141881"
+      },
+      {
+         "name" : "src.20260127084231-edb5b68c6.lua",
+         "value" : "135F210D3E0DF69B1F3A18572599531FE51C45F1"
+      }
+   ],
+   "id" : "MY_RollMonitor",
+   "version" : 82
+}

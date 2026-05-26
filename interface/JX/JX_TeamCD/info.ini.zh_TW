@@ -1,0 +1,7 @@
+[JX_TeamCD]
+name=團隊技能監控
+desc=監控團隊成員常用技能的使用情況
+version=1.0
+default=1
+package=JX
+lua_0=JX_TeamCD.lua

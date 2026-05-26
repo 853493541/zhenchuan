@@ -1,0 +1,20 @@
+return {
+    ['MY_MiddleMapMark'] = '地圖搜索',
+    ['MY middle map mark'] = '茗伊插件·地圖搜索',
+    ['Show search in middle map panel'] = '啟用地圖界面輸入框搜索功能',
+    ['Clear current map data'] = '清除當前地圖數據緩存',
+    ['Current map (%s) npc and doodad record will be deleted, are you sure?'] = '當前地圖(%s)的系統角色坐標、交互物品坐標信息都將被刪除，確認刪除嗎？',
+    ['Type to search, use comma to split.'] = '輸入文字進行搜索，半形逗號分隔多個搜索項。\n如：皇竹草,甜象草',
+    ['[Read]'] = '[已閱讀]',
+    ['[Not read]'] = '[未閱讀]',
+    ['MY_MiddleMapMark TIPS'] = {
+        '說明：',
+        '　　1、在上方輸入框輸入您想要查詢的物品名稱，即可進行地圖物品查詢。',
+        '　　2、該功能會在您角色遇見場景中的物品、NPC時，記錄他們的位置並保存在本地。',
+        '　　3、新裝客戶端由於沒有足夠的記錄，可能出現搜索結果不完全的問題。',
+        '　　4、所有物品坐標信息僅會保存在本地，不涉及任何數據內容上傳或下載。',
+        '　　5、物品坐標位置每次更新都可能被官方修改，查詢結果只代表物品被記錄時刻的瞬時信息。',
+    },
+    ['Ancient database detected, do you want to migrate data from it?'] = '發現舊版地圖數據，是否立即轉換數據？',
+    ['Migrate succeed!'] = '地圖數據遷移成功！',
+}

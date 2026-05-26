@@ -9,6 +9,7 @@ type LayoutAuthUser = {
   username: string;
   displayName?: string;
   isAdmin?: boolean;
+  school?: string | null;
 };
 
 export default function LayoutShell({

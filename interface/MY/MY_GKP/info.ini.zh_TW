@@ -1,0 +1,8 @@
+[MY_GKP]
+name=金團記錄
+desc=團隊拍賣記賬，好團長必備
+package=MY
+version=1.0
+default=1
+dependence=MY_!Base
+lua_0=src.20260127084231-edb5b68c6.lua

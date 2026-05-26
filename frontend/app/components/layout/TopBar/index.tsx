@@ -12,6 +12,7 @@ interface TopBarProps {
     username: string;
     displayName?: string;
     isAdmin?: boolean;
+    school?: string | null;
   } | null;
 }
 

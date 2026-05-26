@@ -1,0 +1,8 @@
+[JX_Homeland]
+name=家園助手
+desc=花價查詢、兌換園宅幣計算
+version=1.0
+default=1
+package=JX
+dependence=JX_0Base
+#lua_0=JX_FlowerPrice.lua
