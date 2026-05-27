@@ -17,6 +17,7 @@ export interface PickupItem {
 }
 
 export interface SafeZone {
+  shape?: "square" | "circle";
   centerX: number;
   centerY: number;
   currentHalf: number;
@@ -27,6 +28,16 @@ export interface SafeZone {
   shrinkProgress: number;
   /** Seconds until next phase change (shrink start or shrink end) */
   nextChangeIn: number;
+  manualShrinking?: boolean;
+  lastShrinkAt?: number;
+  shrinkStartHalf?: number;
+}
+
+export interface PlayAreaBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 }
 
 // ==================== ACTIVE CHANNEL ====================
@@ -396,6 +407,9 @@ export interface GameState {
 
   /** poison zone (毒圈) — shrinking safe area */
   safeZone?: SafeZone;
+
+  /** Hard movement boundary for editable 1v1 modes. */
+  playArea?: PlayAreaBounds;
 
   /** persistent ground damage zones (e.g. 狂龙乱舞) */
   groundZones?: GroundZone[];

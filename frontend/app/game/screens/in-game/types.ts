@@ -226,6 +226,7 @@ export interface ChatMessage {
 ========================================================= */
 
 export interface SafeZone {
+  shape?: 'square' | 'circle';
   centerX: number;
   centerY: number;
   currentHalf: number;
@@ -233,6 +234,16 @@ export interface SafeZone {
   shrinking: boolean;
   shrinkProgress: number;
   nextChangeIn: number;
+  manualShrinking?: boolean;
+  lastShrinkAt?: number;
+  shrinkStartHalf?: number;
+}
+
+export interface PlayAreaBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 }
 
 export interface GroundZone {
@@ -292,6 +303,7 @@ export interface GameState {
   events: GameEvent[];
   pickups?: PickupItem[];
   safeZone?: SafeZone;
+  playArea?: PlayAreaBounds;
   groundZones?: GroundZone[];
   entities?: TargetEntity[];
 }

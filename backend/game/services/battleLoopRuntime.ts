@@ -1,13 +1,14 @@
 import { GameLoop, type GameLoopConfig } from "../engine/loop/GameLoop";
 import type { GameState } from "../engine/state/types";
 import GameSession from "../models/GameSession";
+import { normalizeGameMode } from "../modes";
 import { gameStateCache } from "./gameStateCache";
 
 type SupportedBattleMode = NonNullable<GameLoopConfig["mode"]>;
 const hydrationByGameId = new Map<string, Promise<GameLoop | undefined>>();
 
 function normalizeBattleMode(mode: unknown): SupportedBattleMode {
-  return mode === "pubg" || mode === "collision-test" ? mode : "arena";
+  return normalizeGameMode(mode);
 }
 
 function canHydrateBattleLoop(game: any): game is { state: GameState; tournament: { phase: string } } {

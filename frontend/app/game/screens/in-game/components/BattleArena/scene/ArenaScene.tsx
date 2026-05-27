@@ -1,6 +1,6 @@
 'use client';
 
-import { MutableRefObject, useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { MutableRefObject, useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { Line } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -11,10 +11,11 @@ import PickupBooks from './PickupBooks';
 import AoeZone from './AoeZone';
 import TargetEntityVisual from './TargetEntityVisual';
 import CameraRig from './CameraRig';
-import type { PickupItem, GroundZone, TargetEntity } from '../../../types';
+import type { PickupItem, GroundZone, TargetEntity, PlayAreaBounds, SafeZone } from '../../../types';
 import { getMapForMode } from '../worldMap';
 import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF_XZ, RENDER_SF_Y, type SceneLoadTimingEvent } from './ExportedMapScene';
 import type { MapCollisionSystem } from './MapCollisionSystem';
+import { isExportedMapMode, isYumen1v1BasicMode } from '../../../../../gameModes';
 
 // Colors for up to 5 opponents (index 0 = primary, etc.)
 const OPP_COLORS = ['#cc3333', '#cc8800', '#9933cc', '#cc3388'];
@@ -23,9 +24,12 @@ const OPP_EMISSIVES = ['#440000', '#332200', '#220044', '#330022'];
 const LEGACY_STORED_UNIT_SCALE = 2.2;
 const COLLISION_TEST_VIS_RADIUS = 0.384;
 const CHANNEL_RING_WAIST_Z = 1.0;
+const CHARACTER_VISUAL_HEIGHT = 1.5;
+const YUMEN_SAFE_ZONE_RING_CLEARANCE = 0.34;
+const YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE = 40;
 
 function getStoredUnitScale(mode?: string): number {
-  return mode === 'collision-test' ? 1 : LEGACY_STORED_UNIT_SCALE;
+  return isExportedMapMode(mode) ? 1 : LEGACY_STORED_UNIT_SCALE;
 }
 
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
@@ -180,7 +184,11 @@ interface ArenaSceneProps {
   opponentScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
   entityScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
   mode?: string;
-  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
+  safeZone?: SafeZone;
+  playArea?: PlayAreaBounds;
+  onPlayAreaChange?: (playArea: PlayAreaBounds) => void;
+  boundaryEditMode?: boolean;
+  showSafeZoneCurtain?: boolean;
   groundZones?: GroundZone[];
   /** HP-bearing targetable entities (e.g. 逐云寒蕊) */
   entities?: TargetEntity[];
@@ -275,8 +283,8 @@ const DEFAULT_DIR_LIGHT_CONFIG: DirLightConfig = {
 };
 
 /**
- * Sets renderer properties for collision-test mode.
- * Must render FIRST in the isCollisionTest block so its useEffect fires before EnvProbe.
+ * Sets renderer properties for exported-map modes.
+ * Must render first in the exported-map block so its useEffect fires before EnvProbe.
  */
 function CollisionTestSetup({ blueprintMode, t }: { blueprintMode: boolean; t: EnvToggles }) {
   const { gl } = useThree();
@@ -474,6 +482,332 @@ function SceneMetricsProbe({ onSceneMetrics }: { onSceneMetrics: (metrics: Scene
   return null;
 }
 
+type BoundaryHandle = 'nw' | 'ne' | 'sw' | 'se';
+
+function normalizePlayAreaBounds(playArea: PlayAreaBounds | undefined, mapWidth: number, mapHeight: number): PlayAreaBounds {
+  const rawMinX = Math.max(0, Math.min(mapWidth, Number(playArea?.minX ?? 0)));
+  const rawMaxX = Math.max(0, Math.min(mapWidth, Number(playArea?.maxX ?? mapWidth)));
+  const rawMinY = Math.max(0, Math.min(mapHeight, Number(playArea?.minY ?? 0)));
+  const rawMaxY = Math.max(0, Math.min(mapHeight, Number(playArea?.maxY ?? mapHeight)));
+  return {
+    minX: Math.min(rawMinX, rawMaxX),
+    minY: Math.min(rawMinY, rawMaxY),
+    maxX: Math.max(rawMinX, rawMaxX),
+    maxY: Math.max(rawMinY, rawMaxY),
+  };
+}
+
+function updateBoundaryHandle(bounds: PlayAreaBounds, handle: BoundaryHandle, worldX: number, worldY: number, mapWidth: number, mapHeight: number): PlayAreaBounds {
+  const minSize = 12;
+  const next = { ...bounds };
+  const clampedX = Math.max(0, Math.min(mapWidth, worldX));
+  const clampedY = Math.max(0, Math.min(mapHeight, worldY));
+  if (handle === 'nw' || handle === 'sw') next.minX = Math.min(clampedX, next.maxX - minSize);
+  if (handle === 'ne' || handle === 'se') next.maxX = Math.max(clampedX, next.minX + minSize);
+  if (handle === 'nw' || handle === 'ne') next.minY = Math.min(clampedY, next.maxY - minSize);
+  if (handle === 'sw' || handle === 'se') next.maxY = Math.max(clampedY, next.minY + minSize);
+  return normalizePlayAreaBounds(next, mapWidth, mapHeight);
+}
+
+function YumenBoundaryOverlay({
+  playArea,
+  mapWidth,
+  mapHeight,
+  worldHalfX,
+  worldHalfY,
+  onPlayAreaChange,
+  boundaryEditMode = false,
+  getZoneTerrainZ,
+}: {
+  playArea?: PlayAreaBounds;
+  mapWidth: number;
+  mapHeight: number;
+  worldHalfX: number;
+  worldHalfY: number;
+  onPlayAreaChange?: (playArea: PlayAreaBounds) => void;
+  boundaryEditMode?: boolean;
+  getZoneTerrainZ: (worldX: number, worldY: number, worldZ?: number) => number;
+}) {
+  const [draftBounds, setDraftBounds] = useState(() => normalizePlayAreaBounds(playArea, mapWidth, mapHeight));
+  const draftBoundsRef = useRef(draftBounds);
+  const dragHandleRef = useRef<BoundaryHandle | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
+  const dragPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+  const dragPointRef = useRef(new THREE.Vector3());
+
+  useEffect(() => {
+    draftBoundsRef.current = draftBounds;
+  }, [draftBounds]);
+
+  useEffect(() => {
+    if (!dragHandleRef.current) {
+      setDraftBounds(normalizePlayAreaBounds(playArea, mapWidth, mapHeight));
+    }
+  }, [playArea, mapWidth, mapHeight]);
+
+  const bounds = draftBounds;
+  const minX = bounds.minX - worldHalfX;
+  const maxX = bounds.maxX - worldHalfX;
+  const minZ = worldHalfY - bounds.minY;
+  const maxZ = worldHalfY - bounds.maxY;
+  const centerX = (minX + maxX) / 2;
+  const centerZ = (minZ + maxZ) / 2;
+  const width = Math.max(0.1, maxX - minX);
+  const depth = Math.max(0.1, minZ - maxZ);
+  const wallHeight = 10;
+  const wallY = wallHeight / 2;
+  const handlePositions: Record<BoundaryHandle, [number, number, number]> = {
+    nw: [minX, wallY, minZ],
+    ne: [maxX, wallY, minZ],
+    sw: [minX, wallY, maxZ],
+    se: [maxX, wallY, maxZ],
+  };
+  const boundaryGroundLine: [number, number, number][] = [];
+  const boundaryLineClearance = 0.6;
+  const xLineSamples = Math.max(2, Math.ceil((bounds.maxX - bounds.minX) / 10) + 1);
+  const yLineSamples = Math.max(2, Math.ceil((bounds.maxY - bounds.minY) / 10) + 1);
+  const addBoundaryPoint = (worldX: number, worldY: number) => {
+    boundaryGroundLine.push([
+      worldX - worldHalfX,
+      getZoneTerrainZ(worldX, worldY, 0) + boundaryLineClearance,
+      worldHalfY - worldY,
+    ]);
+  };
+  for (let i = 0; i < xLineSamples; i += 1) {
+    const t = xLineSamples === 1 ? 0 : i / (xLineSamples - 1);
+    addBoundaryPoint(bounds.minX + (bounds.maxX - bounds.minX) * t, bounds.minY);
+  }
+  for (let i = 1; i < yLineSamples; i += 1) {
+    const t = yLineSamples === 1 ? 0 : i / (yLineSamples - 1);
+    addBoundaryPoint(bounds.maxX, bounds.minY + (bounds.maxY - bounds.minY) * t);
+  }
+  for (let i = 1; i < xLineSamples; i += 1) {
+    const t = xLineSamples === 1 ? 0 : i / (xLineSamples - 1);
+    addBoundaryPoint(bounds.maxX - (bounds.maxX - bounds.minX) * t, bounds.maxY);
+  }
+  for (let i = 1; i < yLineSamples; i += 1) {
+    const t = yLineSamples === 1 ? 0 : i / (yLineSamples - 1);
+    addBoundaryPoint(bounds.minX, bounds.maxY - (bounds.maxY - bounds.minY) * t);
+  }
+
+  const applyDragPoint = (event: any) => {
+    const handle = dragHandleRef.current;
+    if (!handle) return;
+    event.stopPropagation();
+    const dragPoint = event.ray?.intersectPlane?.(dragPlaneRef.current, dragPointRef.current);
+    if (!dragPoint) return;
+    const next = updateBoundaryHandle(
+      draftBoundsRef.current,
+      handle,
+      dragPoint.x + worldHalfX,
+      worldHalfY - dragPoint.z,
+      mapWidth,
+      mapHeight,
+    );
+    draftBoundsRef.current = next;
+    setDraftBounds(next);
+  };
+
+  const finishDrag = (event: any) => {
+    if (!dragHandleRef.current) return;
+    event.stopPropagation();
+    try {
+      if (activePointerIdRef.current !== null && event.target?.releasePointerCapture) {
+        event.target.releasePointerCapture(activePointerIdRef.current);
+      }
+    } catch {
+      // Pointer capture can already be released by the browser.
+    }
+    dragHandleRef.current = null;
+    activePointerIdRef.current = null;
+    onPlayAreaChange?.(draftBoundsRef.current);
+  };
+
+  return (
+    <group renderOrder={20}>
+      <mesh position={[centerX, wallY, minZ]} renderOrder={20}>
+        <planeGeometry args={[width, wallHeight]} />
+        <meshBasicMaterial color="#2dd4bf" transparent opacity={0.24} side={THREE.DoubleSide} depthWrite={false} depthTest={true} />
+      </mesh>
+      <mesh position={[centerX, wallY, maxZ]} renderOrder={20}>
+        <planeGeometry args={[width, wallHeight]} />
+        <meshBasicMaterial color="#2dd4bf" transparent opacity={0.24} side={THREE.DoubleSide} depthWrite={false} depthTest={true} />
+      </mesh>
+      <mesh position={[minX, wallY, centerZ]} rotation={[0, Math.PI / 2, 0]} renderOrder={20}>
+        <planeGeometry args={[depth, wallHeight]} />
+        <meshBasicMaterial color="#38bdf8" transparent opacity={0.24} side={THREE.DoubleSide} depthWrite={false} depthTest={true} />
+      </mesh>
+      <mesh position={[maxX, wallY, centerZ]} rotation={[0, Math.PI / 2, 0]} renderOrder={20}>
+        <planeGeometry args={[depth, wallHeight]} />
+        <meshBasicMaterial color="#38bdf8" transparent opacity={0.24} side={THREE.DoubleSide} depthWrite={false} depthTest={true} />
+      </mesh>
+      <Line
+        points={boundaryGroundLine}
+        color="#fff06a"
+        lineWidth={4}
+        transparent
+        opacity={0.86}
+        depthTest={true}
+      />
+      {boundaryEditMode && (Object.keys(handlePositions) as BoundaryHandle[]).map((handle) => (
+        <mesh
+          key={handle}
+          position={handlePositions[handle]}
+          renderOrder={42}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            dragHandleRef.current = handle;
+            activePointerIdRef.current = event.pointerId;
+            event.target?.setPointerCapture?.(event.pointerId);
+          }}
+          onPointerMove={applyDragPoint}
+          onPointerUp={finishDrag}
+          onPointerCancel={finishDrag}
+        >
+          <cylinderGeometry args={[1.4, 1.4, wallHeight + 2, 18]} />
+          <meshBasicMaterial color="#fde047" transparent opacity={0.94} depthTest={false} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function YumenSafeZoneOverlay({
+  safeZone,
+  worldHalfX,
+  worldHalfY,
+  localRenderPosRef,
+  getZoneTerrainZ,
+  showCurtain = false,
+  structureXrayActive,
+  onStructureXrayActiveChange,
+}: {
+  safeZone?: SafeZone;
+  worldHalfX: number;
+  worldHalfY: number;
+  localRenderPosRef: MutableRefObject<{ x: number; y: number; z?: number }>;
+  getZoneTerrainZ: (worldX: number, worldY: number, worldZ?: number) => number;
+  showCurtain?: boolean;
+  structureXrayActive: boolean;
+  onStructureXrayActiveChange: (active: boolean) => void;
+}) {
+  const nearLineRef = useRef<any>(null);
+  const visual = useMemo(() => {
+    if (!safeZone) return null;
+    const radius = Math.max(0, Number(safeZone.currentHalf ?? 0));
+    if (radius <= 0) return null;
+    const wallHeight = CHARACTER_VISUAL_HEIGHT / 2;
+    const segments = 160;
+    const bottomPoints: [number, number, number][] = [];
+    const uvs: number[] = [];
+    for (let i = 0; i <= segments; i += 1) {
+      const angle = (i / segments) * Math.PI * 2;
+      const worldX = safeZone.centerX + Math.cos(angle) * radius;
+      const worldY = safeZone.centerY + Math.sin(angle) * radius;
+      bottomPoints.push([
+        worldX - worldHalfX,
+        getZoneTerrainZ(worldX, worldY, 0) + YUMEN_SAFE_ZONE_RING_CLEARANCE,
+        worldHalfY - worldY,
+      ]);
+    }
+
+    if (!showCurtain) return { bottomPoints, radius };
+
+    const positions: number[] = [];
+    for (let i = 0; i < segments; i += 1) {
+      const a = bottomPoints[i];
+      const b = bottomPoints[i + 1];
+      const topA: [number, number, number] = [a[0], a[1] + wallHeight, a[2]];
+      const topB: [number, number, number] = [b[0], b[1] + wallHeight, b[2]];
+      positions.push(...a, ...b, ...topB, ...a, ...topB, ...topA);
+      uvs.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+    }
+    const curtainGeometry = new THREE.BufferGeometry();
+    curtainGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    curtainGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    const curtainMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color('#facc15') },
+        uOpacity: { value: safeZone.shrinking ? 0.34 : 0.24 },
+      },
+      vertexShader: `
+        varying float vFade;
+        void main() {
+          vFade = uv.y;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        varying float vFade;
+        void main() {
+          float alpha = uOpacity * (1.0 - smoothstep(0.0, 1.0, vFade));
+          gl_FragColor = vec4(uColor, alpha);
+        }
+      `,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    return { bottomPoints, curtainGeometry, curtainMaterial, radius };
+  }, [safeZone, worldHalfX, worldHalfY, getZoneTerrainZ, showCurtain]);
+
+  useEffect(() => {
+    const geometry = visual?.curtainGeometry;
+    const material = visual?.curtainMaterial;
+    return () => {
+      geometry?.dispose();
+      material?.dispose();
+    };
+  }, [visual?.curtainGeometry, visual?.curtainMaterial]);
+
+  useFrame(() => {
+    if (!visual || !safeZone || !nearLineRef.current) {
+      if (structureXrayActive) onStructureXrayActiveChange(false);
+      return;
+    }
+    const player = localRenderPosRef.current;
+    const distanceToCenter = Math.hypot(player.x - safeZone.centerX, player.y - safeZone.centerY);
+    const nearLine = Math.abs(distanceToCenter - visual.radius) <= YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE;
+    if (structureXrayActive !== nearLine) onStructureXrayActiveChange(nearLine);
+  });
+
+  useEffect(() => {
+    return () => onStructureXrayActiveChange(false);
+  }, [onStructureXrayActiveChange]);
+
+  if (!visual) return null;
+  return (
+    <group renderOrder={18}>
+      {showCurtain && visual.curtainGeometry && visual.curtainMaterial && (
+        <mesh geometry={visual.curtainGeometry} material={visual.curtainMaterial} renderOrder={18} />
+      )}
+      <Line
+        points={visual.bottomPoints}
+        color="#ffffff"
+        lineWidth={5}
+        renderOrder={20}
+        depthTest={true}
+        depthWrite={false}
+      />
+      <Line
+        ref={nearLineRef}
+        points={visual.bottomPoints}
+        color="#ffffff"
+        lineWidth={5}
+        transparent
+        opacity={0.98}
+        renderOrder={40}
+        depthTest={true}
+        depthWrite={false}
+        visible={structureXrayActive}
+      />
+    </group>
+  );
+}
+
 export default function ArenaScene({
   me,
   allOpponents,
@@ -502,6 +836,10 @@ export default function ArenaScene({
   entityScreenBoundsRef,
   mode,
   safeZone,
+  playArea,
+  onPlayAreaChange,
+  boundaryEditMode,
+  showSafeZoneCurtain = false,
   groundZones,
   entities,
   selectedEntityId,
@@ -532,12 +870,15 @@ export default function ArenaScene({
   const worldHalfY = mapHeight / 2;
   const isArena = mode === 'arena';
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [safeZoneStructureXrayActive, setSafeZoneStructureXrayActive] = useState(false);
   const zoneProbeRef = useRef(new THREE.Vector3());
+  const hasGroundZoneTimers = (groundZones?.length ?? 0) > 0;
 
   useEffect(() => {
+    if (!hasGroundZoneTimers) return;
     const id = window.setInterval(() => setNowMs(Date.now()), 250);
     return () => window.clearInterval(id);
-  }, []);
+  }, [hasGroundZoneTimers]);
 
   const selectedTarget = selectedTargetId
     ? opponents.find((o) => o.userId === selectedTargetId && !hasDisguiseBuff(o.buffs) && !shouldHideByStealthFromEnemyView(o.buffs))
@@ -579,12 +920,13 @@ export default function ArenaScene({
     onGroundPointerDown(e.point.x + worldHalfX, worldHalfY - e.point.z, e.point.y);
   };
 
-  const isCollisionTest = mode === 'collision-test';
+  const isExportedMap = isExportedMapMode(mode);
+  const isYumenMode = isYumen1v1BasicMode(mode);
 
-  const getZoneVisualZ = (worldX: number, worldY: number, worldZ = 0) => {
+  const getZoneVisualZ = useCallback((worldX: number, worldY: number, worldZ = 0) => {
     let groundZ = 0;
 
-    if (isCollisionTest && collisionSystemRef?.current) {
+    if (isExportedMap && collisionSystemRef?.current) {
       const probe = zoneProbeRef.current;
       probe.set(
         (worldX - worldHalfX - GROUP_POS_X) / RENDER_SF_XZ,
@@ -608,7 +950,26 @@ export default function ArenaScene({
     }
 
     return Math.max(worldZ, groundZ) + 0.16;
-  };
+  }, [collisionSystemRef, isExportedMap, mapObjects, worldHalfX, worldHalfY]);
+
+  const getZoneTerrainZ = useCallback((worldX: number, worldY: number, worldZ = 0) => {
+    let groundZ = 0;
+
+    if (isExportedMap && collisionSystemRef?.current) {
+      const probe = zoneProbeRef.current;
+      probe.set(
+        (worldX - worldHalfX - GROUP_POS_X) / RENDER_SF_XZ,
+        5000,
+        (worldHalfY - worldY - GROUP_POS_Z) / RENDER_SF_XZ,
+      );
+      const terrainY = collisionSystemRef.current.getTerrainGroundY(probe);
+      if (terrainY !== null) {
+        groundZ = terrainY * RENDER_SF_Y + GROUP_POS_Y;
+      }
+    }
+
+    return Math.max(worldZ, groundZ) + 0.16;
+  }, [collisionSystemRef, isExportedMap, worldHalfX, worldHalfY]);
 
   return (
     <>
@@ -625,7 +986,7 @@ export default function ArenaScene({
         onCameraDebugEvent={onCameraDebugEvent}
         worldHalfX={worldHalfX}
         worldHalfY={worldHalfY}
-        collisionSystemRef={isCollisionTest ? collisionSystemRef : undefined}
+        collisionSystemRef={isExportedMap ? collisionSystemRef : undefined}
       />
 
       {/* Lighting — mode-specific */}
@@ -634,7 +995,7 @@ export default function ArenaScene({
           <ambientLight intensity={1.1} color="#f4f6ff" />
           <directionalLight position={[300, 500, 100]} intensity={2.6} color="#eef4ff" />
         </>
-      ) : isCollisionTest ? (
+      ) : isExportedMap ? (
         <>
           <CollisionTestSetup blueprintMode={blueprintMode} t={envToggles ?? DEFAULT_ENV_TOGGLES} />
           <CameraFarSetup far={envToggles?.cameraFar ? 500000 : 2000} />
@@ -674,7 +1035,7 @@ export default function ArenaScene({
           isStealthed={meSemiTransparent}
           isDisguised={meDisguised}
           hideHpBar={meDisguised}
-          cameraFadeEnabled={isCollisionTest && !selfOnlyMode}
+          cameraFadeEnabled={isExportedMap && !selfOnlyMode}
           hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
         />
       )}
@@ -682,13 +1043,14 @@ export default function ArenaScene({
       {!selfOnlyMode && (
         <>
           {/* World */}
-          {isCollisionTest ? (
+          {isExportedMap ? (
             <ExportedMapScene
               worldWidth={mapWidth}
               worldHeight={mapHeight}
               showCollisionShells={showCollisionShells}
               blueprintMode={blueprintMode}
               hideVisuals={blindWorldMode}
+              terrainDepthPrepass={isYumenMode && safeZoneStructureXrayActive}
               onCollisionSystemReady={onCollisionSystemReady}
               onLoadTiming={onSceneLoadTiming}
               onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
@@ -707,6 +1069,30 @@ export default function ArenaScene({
               />
               {!blindWorldMode && <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
             </>
+          )}
+          {isYumenMode && (
+            <YumenBoundaryOverlay
+              playArea={playArea}
+              mapWidth={mapWidth}
+              mapHeight={mapHeight}
+              worldHalfX={worldHalfX}
+              worldHalfY={worldHalfY}
+              onPlayAreaChange={onPlayAreaChange}
+              boundaryEditMode={boundaryEditMode}
+              getZoneTerrainZ={getZoneTerrainZ}
+            />
+          )}
+          {isYumenMode && (
+            <YumenSafeZoneOverlay
+              safeZone={safeZone}
+              worldHalfX={worldHalfX}
+              worldHalfY={worldHalfY}
+              localRenderPosRef={localRenderPosRef}
+              getZoneTerrainZ={getZoneTerrainZ}
+              showCurtain={showSafeZoneCurtain}
+              structureXrayActive={safeZoneStructureXrayActive}
+              onStructureXrayActiveChange={setSafeZoneStructureXrayActive}
+            />
           )}
           {!blueprintMode && <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
 
@@ -966,12 +1352,12 @@ export default function ArenaScene({
       })}
 
       </>}  {/* end !blueprintMode */}
-      {!selfOnlyMode && isCollisionTest && collisionDebugRef && showCollisionShells && (
+      {!selfOnlyMode && isExportedMap && collisionDebugRef && showCollisionShells && (
         <CollisionProbeOverlay debugRef={collisionDebugRef} />
       )}
 
       {/* Player's own collision sphere (visible when Shell/Blueprint is on) */}
-      {!selfOnlyMode && isCollisionTest && collisionReady && (showCollisionShells || blueprintMode) && (
+      {!selfOnlyMode && isExportedMap && collisionReady && (showCollisionShells || blueprintMode) && (
         <PlayerCollisionSphere posRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} playerRadius={COLLISION_TEST_VIS_RADIUS} />
       )}
     </>

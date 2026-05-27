@@ -2,19 +2,77 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import styles from "./page.module.css";
+import { getGameModeLabel, type GameMode, YUMEN_1V1_BASIC_MODE } from "./game/gameModes";
 
-type StartMode = 'collision-test' | 'pubg' | 'arena' | 'export-viewer';
+type StartMode = GameMode | 'export-viewer';
 
-const START_MODES: Array<{ value: StartMode; label: string }> = [
-  { value: 'collision-test', label: '玉门关' },
-  { value: 'pubg', label: '吃鸡' },
-  { value: 'arena', label: '竞技场' },
-  { value: 'export-viewer', label: 'export viewer' },
+const PRIMARY_MODES: Array<{ value: Extract<StartMode, GameMode>; label: string }> = [
+  { value: YUMEN_1V1_BASIC_MODE, label: getGameModeLabel(YUMEN_1V1_BASIC_MODE) },
+  { value: 'collision-test', label: getGameModeLabel('collision-test') },
 ];
 
-const startModeLabel = (mode: StartMode) => START_MODES.find((item) => item.value === mode)?.label ?? '玉门关';
+const LEGACY_MODES: Array<{ value: StartMode; label: string }> = [
+  { value: 'pubg', label: getGameModeLabel('pubg') },
+  { value: 'arena', label: getGameModeLabel('arena') },
+  { value: 'export-viewer', label: getGameModeLabel('export-viewer') },
+];
+
+const startModeLabel = (mode: StartMode) => getGameModeLabel(mode);
+
+function ModeDropdown({
+  label,
+  options,
+  selectedMode,
+  open,
+  onToggle,
+  onSelect,
+  ariaLabel,
+}: {
+  label: string;
+  options: Array<{ value: StartMode; label: string }>;
+  selectedMode: StartMode;
+  open: boolean;
+  onToggle: () => void;
+  onSelect: (mode: StartMode) => void;
+  ariaLabel: string;
+}) {
+  const selectedOption = options.find((option) => option.value === selectedMode);
+  return (
+    <div className={styles.modeMenuWrap} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+        if (open) onToggle();
+      }
+    }}>
+      <button
+        type="button"
+        className={styles.modeMenuButton}
+        onClick={onToggle}
+        aria-label={ariaLabel}
+        aria-expanded={open}
+      >
+        <span>{selectedOption?.label ?? label}</span>
+        <ChevronDown size={16} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className={styles.modeMenuList} role="menu">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`${styles.modeMenuItem} ${option.value === selectedMode ? styles.modeMenuItemActive : ''}`}
+              onClick={() => onSelect(option.value)}
+              role="menuitem"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function HomePage() {
   const router = useRouter();
@@ -22,7 +80,8 @@ export default function HomePage() {
   const [waitingGames, setWaitingGames] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [selectedStartMode, setSelectedStartMode] = useState<StartMode>('collision-test');
+  const [selectedStartMode, setSelectedStartMode] = useState<StartMode>(YUMEN_1V1_BASIC_MODE);
+  const [openModeMenu, setOpenModeMenu] = useState<'primary' | 'legacy' | null>(null);
   const [resourcePackOverlay, setResourcePackOverlay] = useState<{ action: "download" | "check"; nonce: number } | null>(null);
   const previousGameIds = useRef<Set<string>>(new Set());
   const hasAutoJoined = useRef(false);
@@ -108,7 +167,7 @@ export default function HomePage() {
   /* =========================================================
      创建房间
   ========================================================= */
-  const createGame = async (mode: 'arena' | 'pubg' | 'collision-test') => {
+  const createGame = async (mode: GameMode) => {
     setLoading(true);
     try {
       const res = await fetch("/api/game/create", {
@@ -152,16 +211,30 @@ export default function HomePage() {
 
       <div className={styles.createActions}>
         <div className={styles.createActionRow}>
-          <select
-            className={styles.modeSelect}
-            value={selectedStartMode}
-            onChange={(event) => setSelectedStartMode(event.target.value as StartMode)}
-            aria-label="选择模式"
-          >
-            {START_MODES.map((mode) => (
-              <option key={mode.value} value={mode.value}>{mode.label}</option>
-            ))}
-          </select>
+          <ModeDropdown
+            label={getGameModeLabel(YUMEN_1V1_BASIC_MODE)}
+            options={PRIMARY_MODES}
+            selectedMode={selectedStartMode}
+            open={openModeMenu === 'primary'}
+            onToggle={() => setOpenModeMenu((current) => current === 'primary' ? null : 'primary')}
+            onSelect={(mode) => {
+              setSelectedStartMode(mode);
+              setOpenModeMenu(null);
+            }}
+            ariaLabel="选择模式"
+          />
+          <ModeDropdown
+            label="legacy modes"
+            options={LEGACY_MODES}
+            selectedMode={selectedStartMode}
+            open={openModeMenu === 'legacy'}
+            onToggle={() => setOpenModeMenu((current) => current === 'legacy' ? null : 'legacy')}
+            onSelect={(mode) => {
+              setSelectedStartMode(mode);
+              setOpenModeMenu(null);
+            }}
+            ariaLabel="legacy modes"
+          />
           <button
             className={`${styles.createBtn} ${styles.createBtnPrimary}`}
             onClick={startSelectedMode}
@@ -239,7 +312,7 @@ export default function HomePage() {
 
               {/* 模式 */}
               <div className={styles.modeBadge}>
-                {g.mode === 'arena' ? '竞技场' : g.mode === 'collision-test' ? '玉门关' : '吃鸡'}
+                {getGameModeLabel(g.mode)}
               </div>
 
               {/* 人数 */}

@@ -24,6 +24,7 @@ import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
 import { exportedMap } from "../../map/exportedMap";
 import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
+import { type GameMode, isExportedMapMode, isYumen1v1BasicMode } from "../../modes";
 import { ABILITIES } from "../../abilities/abilities";
 import { loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
 import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasKnockedBackImmune, hasUntargetable, hasDamageImmune, isActiveChannelRuntime, isRuntimeBuffActive, shouldDodge, shouldDodgeForAbility } from "../rules/guards";
@@ -1081,7 +1082,7 @@ const PO_CANG_QIONG_ZONE_BUFF_ID = 2705;
 
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
-  mode?: "arena" | "pubg" | "collision-test";
+  mode?: GameMode;
 }
 
 /**
@@ -1108,6 +1109,7 @@ export class GameLoop {
   private zoneStartedAt = 0;
   private lastZoneDamageAt = 0;
   private isArenaMode = false;
+  private isYumenMode = false;
   private mapCtx: MapContext;
   // Index into state.events for STACK_ON_HIT_DAMAGE scanning.
   // Prevents missing immediate cast damage that lands between loop ticks.
@@ -1129,42 +1131,65 @@ export class GameLoop {
     { startTime: 60000, endTime: 65000, fromHalf: 25,  toHalf: 0,   dps: 10 },
   ];
 
+  private static readonly YUMEN_ZONE_SHRINK_UNITS_PER_SECOND = 4;
+  private static readonly YUMEN_ZONE_MIN_RADIUS = 15;
+
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
     this.state = structuredClone(state);
-    this.state.unitScale = normalizeStoredUnitScale(this.state.unitScale ?? (config?.mode === 'collision-test' ? 1 : undefined));
+    const isExportedMode = isExportedMapMode(config?.mode);
+    this.state.unitScale = normalizeStoredUnitScale(this.state.unitScale ?? (isExportedMode ? 1 : undefined));
     this.stackProcScanIndex = this.state.events?.length ?? 0;
     this.tickRate = config?.tickRate ?? 30;
     this.broadcastTickInterval = Math.max(1, Math.round(this.tickRate / 30));
     this.isArenaMode = config?.mode === 'arena';
+    this.isYumenMode = isYumen1v1BasicMode(config?.mode);
 
     // Select map based on game mode
-    const map = config?.mode === 'collision-test' ? exportedMap : this.isArenaMode ? arenaMap : worldMap;
-    const collisionSystem = config?.mode === 'collision-test' ? getCollisionTestExportedSystem() : null;
+    const map = isExportedMode ? exportedMap : this.isArenaMode ? arenaMap : worldMap;
+    const collisionSystem = isExportedMode ? getCollisionTestExportedSystem() : null;
     this.mapCtx = {
       objects: map.objects,
       width: map.width,
       height: map.height,
       circular: false,
       unitScale: this.state.unitScale,
-      playerRadius: config?.mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : undefined,
+      playerRadius: isExportedMode ? COLLISION_TEST_PLAYER_RADIUS : undefined,
       collisionSystem,
+      playArea: this.state.playArea,
     };
 
-    // Initialize safe zone for arena mode
-    if (this.isArenaMode) {
+    // Initialize safe zone for arena mode and manual yumen mode.
+    if (this.isArenaMode || this.isYumenMode) {
       this.zoneStartedAt = Date.now();
       this.lastZoneDamageAt = Date.now();
-      const mapCenter = map.width / 2;
-      this.state.safeZone = {
-        centerX: mapCenter,
-        centerY: mapCenter,
-        currentHalf: mapCenter,
-        dps: 0,
-        shrinking: false,
-        shrinkProgress: 0,
-        nextChangeIn: 10,
-      };
+      const centerX = map.width / 2;
+      const centerY = map.height / 2;
+      const fullHalf = this.isYumenMode ? Math.hypot(map.width / 2, map.height / 2) : Math.min(map.width, map.height) / 2;
+      if (this.state.safeZone) {
+        const previousShape = this.state.safeZone.shape;
+        this.state.safeZone.shape = this.isYumenMode ? "circle" : this.state.safeZone.shape === "circle" ? "circle" : "square";
+        this.state.safeZone.centerX = Number.isFinite(this.state.safeZone.centerX) ? this.state.safeZone.centerX : centerX;
+        this.state.safeZone.centerY = Number.isFinite(this.state.safeZone.centerY) ? this.state.safeZone.centerY : centerY;
+        const existingHalf = this.isYumenMode && previousShape !== "circle" ? fullHalf : this.state.safeZone.currentHalf;
+        this.state.safeZone.currentHalf = Math.max(0, Math.min(fullHalf, Number(existingHalf ?? fullHalf)));
+      } else {
+        this.state.safeZone = {
+          shape: this.isYumenMode ? "circle" : "square",
+          centerX,
+          centerY,
+          currentHalf: fullHalf,
+          dps: 0,
+          shrinking: false,
+          shrinkProgress: 0,
+          nextChangeIn: this.isArenaMode ? 10 : 0,
+        };
+      }
+    }
+
+    if (this.isYumenMode && !this.state.playArea) {
+      this.state.playArea = { minX: 0, minY: 0, maxX: map.width, maxY: map.height };
+      this.mapCtx.playArea = this.state.playArea;
     }
 
     // Initialize player input buffers
@@ -1191,8 +1216,53 @@ export class GameLoop {
   }
 
   /** Return true if player position is outside the safe zone */
-  private isOutsideZone(px: number, py: number, cx: number, cy: number, half: number) {
+  private isOutsideZone(px: number, py: number, cx: number, cy: number, half: number, shape: "square" | "circle" = "square") {
+    if (shape === "circle") {
+      return Math.hypot(px - cx, py - cy) > half;
+    }
     return px < cx - half || px > cx + half || py < cy - half || py > cy + half;
+  }
+
+  private syncDynamicMapContext() {
+    this.mapCtx.playArea = this.state.playArea;
+  }
+
+  private updateManualSafeZone(now: number) {
+    const zone = this.state.safeZone;
+    if (!zone) return;
+
+    const fullHalf = Math.hypot(this.mapCtx.width / 2, this.mapCtx.height / 2);
+    const minRadius = GameLoop.YUMEN_ZONE_MIN_RADIUS;
+    const shrinkUnitsPerSecond = GameLoop.YUMEN_ZONE_SHRINK_UNITS_PER_SECOND;
+    zone.shape = "circle";
+    zone.centerX = Number.isFinite(zone.centerX) ? zone.centerX : this.mapCtx.width / 2;
+    zone.centerY = Number.isFinite(zone.centerY) ? zone.centerY : this.mapCtx.height / 2;
+    zone.currentHalf = Math.max(0, Math.min(fullHalf, Number(zone.currentHalf ?? fullHalf)));
+
+    if (zone.manualShrinking && zone.currentHalf > minRadius) {
+      const lastShrinkAt = Number.isFinite(zone.lastShrinkAt) ? Number(zone.lastShrinkAt) : now;
+      const elapsedSeconds = Math.max(0, (now - lastShrinkAt) / 1000);
+      zone.lastShrinkAt = now;
+      zone.currentHalf = Math.max(
+        minRadius,
+        zone.currentHalf - elapsedSeconds * shrinkUnitsPerSecond,
+      );
+      zone.shrinking = zone.currentHalf > minRadius;
+      zone.manualShrinking = zone.shrinking;
+      zone.dps = Math.max(1, Number(zone.dps ?? 1));
+      const startHalf = Math.max(minRadius + 1, Number(zone.shrinkStartHalf ?? fullHalf));
+      zone.shrinkProgress = Math.max(0, Math.min(1, (startHalf - zone.currentHalf) / (startHalf - minRadius)));
+      zone.nextChangeIn = zone.shrinking
+        ? Math.ceil((zone.currentHalf - minRadius) / shrinkUnitsPerSecond)
+        : 0;
+      return;
+    }
+
+    zone.manualShrinking = false;
+    zone.shrinking = false;
+    zone.shrinkProgress = 0;
+    zone.nextChangeIn = 0;
+    delete zone.lastShrinkAt;
   }
 
   private pruneEventHistoryForBroadcast(): boolean {
@@ -1406,6 +1476,7 @@ export class GameLoop {
   private tick() {
     const tickStart = performance.now();
     const storedUnitScale = normalizeStoredUnitScale(this.state.unitScale);
+    this.syncDynamicMapContext();
 
     if (this.state.gameOver) {
       this.stop();
@@ -3984,15 +4055,23 @@ export class GameLoop {
       }
     }
 
-    // 1d. 毒圈 — poison zone damage (arena mode only, 1x per second)
-    if (this.isArenaMode && this.state.safeZone) {
-      const elapsedMs = now - this.zoneStartedAt;
-      const { currentHalf, dps, shrinking, shrinkProgress, nextChangeIn } = this.computeSafeZone(elapsedMs);
-      this.state.safeZone.currentHalf = currentHalf;
-      this.state.safeZone.dps = dps;
-      this.state.safeZone.shrinking = shrinking;
-      this.state.safeZone.shrinkProgress = shrinkProgress;
-      this.state.safeZone.nextChangeIn = nextChangeIn;
+    // 1d. 毒圈 — poison zone damage (arena timed mode, yumen manual mode)
+    if ((this.isArenaMode || this.isYumenMode) && this.state.safeZone) {
+      if (this.isArenaMode) {
+        const elapsedMs = now - this.zoneStartedAt;
+        const { currentHalf, dps, shrinking, shrinkProgress, nextChangeIn } = this.computeSafeZone(elapsedMs);
+        this.state.safeZone.currentHalf = currentHalf;
+        this.state.safeZone.dps = dps;
+        this.state.safeZone.shrinking = shrinking;
+        this.state.safeZone.shrinkProgress = shrinkProgress;
+        this.state.safeZone.nextChangeIn = nextChangeIn;
+      } else {
+        this.updateManualSafeZone(now);
+      }
+
+      const currentHalf = this.state.safeZone.currentHalf;
+      const dps = this.state.safeZone.dps;
+      const zoneShape = this.state.safeZone.shape === "circle" ? "circle" : "square";
 
       // Apply damage once per second
       if (dps > 0 && now - this.lastZoneDamageAt >= 1000) {
@@ -4001,7 +4080,7 @@ export class GameLoop {
         const cy = this.state.safeZone.centerY;
         for (const player of this.state.players) {
           if (player.hp <= 0) continue;
-          if (this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf)) {
+          if (this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf, zoneShape)) {
             const szResult = applyDamageToTarget(player as any, dps);
             this.state.events.push({
               id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -5391,6 +5470,10 @@ export class GameLoop {
         pushPatchIfChanged("/safeZone", this.state.safeZone);
       }
 
+      if (this.state.playArea) {
+        pushPatchIfChanged("/playArea", this.state.playArea);
+      }
+
       // Append ground zones so frontend can render persistent damage areas
       if (this.state.groundZones !== undefined) {
         pushPatchIfChanged("/groundZones", this.state.groundZones);
@@ -5550,6 +5633,7 @@ export class GameLoop {
    * Expose map context for LOS validation in ability cast path.
    */
   getMapCtx(): MapContext {
+    this.syncDynamicMapContext();
     return this.mapCtx;
   }
 
@@ -5569,6 +5653,7 @@ export class GameLoop {
    */
   updateState(newState: GameState) {
     this.state = structuredClone(newState);
+    this.syncDynamicMapContext();
     if (this.stackProcScanIndex > this.state.events.length) {
       this.stackProcScanIndex = this.state.events.length;
     }

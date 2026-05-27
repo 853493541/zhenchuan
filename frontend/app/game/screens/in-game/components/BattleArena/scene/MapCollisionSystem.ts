@@ -222,6 +222,10 @@ export class MapCollisionSystem {
     return Math.max(shellY, terrainY);
   }
 
+  getTerrainGroundY(center: THREE.Vector3): number | null {
+    return this._getTerrainHeightAt(center.x, center.z);
+  }
+
   getCeilingY(center: THREE.Vector3, shellProbeOriginY?: number): number | null {
     return this._sampleShellCeilingY(center, shellProbeOriginY);
   }

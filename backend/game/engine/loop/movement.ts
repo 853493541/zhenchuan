@@ -4,7 +4,7 @@
  * Handles applying player input to position/velocity
  */
 
-import { PlayerState, MovementInput, NEW_WORLD_UNIT_SCALE } from "../state/types";
+import { PlayerState, MovementInput, NEW_WORLD_UNIT_SCALE, type PlayAreaBounds } from "../state/types";
 import type { MapObject } from "../state/types/map";
 import * as THREE from "three";
 import { worldMap } from "../../map/worldMap";
@@ -42,6 +42,8 @@ export interface MapContext {
   playerRadius?: number;
   /** Server-authoritative exported collision shell for collision-test mode. */
   collisionSystem?: ExportedMapCollisionSystem | null;
+  /** Optional hard rectangular play area inside the map. */
+  playArea?: PlayAreaBounds;
 }
 
 const BVH_STEP_UP_LIMIT = 56;
@@ -64,6 +66,47 @@ function clampToCircle(player: PlayerState, cx: number, cy: number, maxR: number
   const ny = dy / dist;
   player.position.x = cx + nx * maxR;
   player.position.y = cy + ny * maxR;
+}
+
+function getPlayAreaClampBounds(mapCtx: MapContext | undefined, arenaW: number, arenaH: number, playerRadius: number) {
+  const source = mapCtx?.playArea;
+  const rawMinX = Math.max(0, Math.min(arenaW, Number(source?.minX ?? 0)));
+  const rawMaxX = Math.max(0, Math.min(arenaW, Number(source?.maxX ?? arenaW)));
+  const rawMinY = Math.max(0, Math.min(arenaH, Number(source?.minY ?? 0)));
+  const rawMaxY = Math.max(0, Math.min(arenaH, Number(source?.maxY ?? arenaH)));
+  const left = Math.min(rawMinX, rawMaxX);
+  const right = Math.max(rawMinX, rawMaxX);
+  const top = Math.min(rawMinY, rawMaxY);
+  const bottom = Math.max(rawMinY, rawMaxY);
+
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  return {
+    minX: right - left <= playerRadius * 2 ? centerX : left + playerRadius,
+    maxX: right - left <= playerRadius * 2 ? centerX : right - playerRadius,
+    minY: bottom - top <= playerRadius * 2 ? centerY : top + playerRadius,
+    maxY: bottom - top <= playerRadius * 2 ? centerY : bottom - playerRadius,
+  };
+}
+
+function clampToPlayArea(player: PlayerState, mapCtx: MapContext | undefined, arenaW: number, arenaH: number, playerRadius: number, stopVelocity: boolean): void {
+  const bounds = getPlayAreaClampBounds(mapCtx, arenaW, arenaH, playerRadius);
+  if (player.position.x < bounds.minX) {
+    player.position.x = bounds.minX;
+    if (stopVelocity && player.velocity.vx < 0) player.velocity.vx = 0;
+  }
+  if (player.position.x > bounds.maxX) {
+    player.position.x = bounds.maxX;
+    if (stopVelocity && player.velocity.vx > 0) player.velocity.vx = 0;
+  }
+  if (player.position.y < bounds.minY) {
+    player.position.y = bounds.minY;
+    if (stopVelocity && player.velocity.vy < 0) player.velocity.vy = 0;
+  }
+  if (player.position.y > bounds.maxY) {
+    player.position.y = bounds.maxY;
+    if (stopVelocity && player.velocity.vy > 0) player.velocity.vy = 0;
+  }
 }
 
 /**
@@ -778,6 +821,7 @@ export function applyMovement(
         if (player.position.x > maxX) { player.position.x = maxX; }
         if (player.position.y < minY) { player.position.y = minY; }
         if (player.position.y > maxY) { player.position.y = maxY; }
+        clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, false);
       }
       // Collision resolution per sub-step
       if (hasExportedCollision(mapCtx)) {
@@ -786,6 +830,9 @@ export function applyMovement(
         for (const obj of mapObjects) {
           resolveObjectCollision(player, obj, pr);
         }
+      }
+      if (!mapCtx?.circular) {
+        clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, false);
       }
     }
 
@@ -1220,6 +1267,7 @@ export function applyMovement(
     if (player.position.x > maxX) { player.position.x = maxX; player.velocity.vx = 0; }
     if (player.position.y < minY) { player.position.y = minY; player.velocity.vy = 0; }
     if (player.position.y > maxY) { player.position.y = maxY; player.velocity.vy = 0; }
+    clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, true);
   }
 
   // ── Collision resolution ──
@@ -1229,6 +1277,9 @@ export function applyMovement(
     for (const obj of mapObjects) {
       resolveObjectCollision(player, obj, pr);
     }
+  }
+  if (!mapCtx?.circular) {
+    clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, true);
   }
 
   // ── Z axis: asymmetric gravity (combined buff > power jump > regular) ──
@@ -1334,6 +1385,9 @@ export function movePlayerTowards(
       resolveObjectCollision(player, obj, pr);
     }
   }
+  if (!mapCtx?.circular) {
+    clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, true);
+  }
 
   // Stop velocity when forced to move
   player.velocity.vx = 0;
@@ -1397,10 +1451,16 @@ export function resolveMapCollisions(player: PlayerState, mapCtx?: MapContext): 
   const pr = mapCtx?.playerRadius ?? DEFAULT_PLAYER_RADIUS;
   if (hasExportedCollision(mapCtx)) {
     resolveExportedRecovery(player, arenaW, arenaH, pr, mapCtx.collisionSystem);
+    if (!mapCtx?.circular) {
+      clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, true);
+    }
     return;
   }
   for (const obj of mapObjects) {
     resolveObjectCollision(player, obj, pr);
+  }
+  if (!mapCtx?.circular) {
+    clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, true);
   }
 }
 

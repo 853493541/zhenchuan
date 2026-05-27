@@ -14,6 +14,7 @@ import { NEW_WORLD_UNIT_SCALE } from "../../engine/state/types/position";
 import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT, EXPORTED_MAP_SPAWN_POSITIONS } from "../../map/exportedMap";
 import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
 import { createStartingConsumableCounts } from "../gameplay/consumableService";
+import { type GameMode, isExportedMapMode, isYumen1v1BasicMode } from "../../modes";
 
 // Arena dimensions (must match backend arena size)
 const PUBG_WIDTH = 2000;
@@ -238,14 +239,15 @@ function makeCommonAbilities(): AbilityInstance[] {
 export function initializeBattleState(
   tournament: TournamentState,
   playerIds: PlayerID[],
-  mode: 'arena' | 'pubg' | 'collision-test' = 'pubg'
+  mode: GameMode = 'pubg'
 ): GameState {
   const isArena = mode === 'arena';
-  const isCollisionTest = mode === 'collision-test';
-  const unitScale = isCollisionTest ? 1 : NEW_WORLD_UNIT_SCALE;
-  const mapWidth  = isCollisionTest ? EXPORTED_MAP_WIDTH  : isArena ? ARENA_WIDTH  : PUBG_WIDTH;
-  const mapHeight = isCollisionTest ? EXPORTED_MAP_HEIGHT : isArena ? ARENA_HEIGHT : PUBG_HEIGHT;
-  const spawnList = isCollisionTest ? EXPORTED_MAP_SPAWN_POSITIONS : isArena ? ARENA_SPAWN_POSITIONS : PUBG_SPAWN_POSITIONS;
+  const isExportedMap = isExportedMapMode(mode);
+  const isYumen = isYumen1v1BasicMode(mode);
+  const unitScale = isExportedMap ? 1 : NEW_WORLD_UNIT_SCALE;
+  const mapWidth  = isExportedMap ? EXPORTED_MAP_WIDTH  : isArena ? ARENA_WIDTH  : PUBG_WIDTH;
+  const mapHeight = isExportedMap ? EXPORTED_MAP_HEIGHT : isArena ? ARENA_HEIGHT : PUBG_HEIGHT;
+  const spawnList = isExportedMap ? EXPORTED_MAP_SPAWN_POSITIONS : isArena ? ARENA_SPAWN_POSITIONS : PUBG_SPAWN_POSITIONS;
 
   const players: PlayerState[] = playerIds.map((id, i) => {
     const spawn = spawnList[i % spawnList.length];
@@ -294,7 +296,8 @@ export function initializeBattleState(
     gameOver: false,
     players,
     events: [],
-    pickups: isCollisionTest ? [] : isArena ? generateArenaPickups() : generatePickups(),
+    pickups: isExportedMap ? [] : isArena ? generateArenaPickups() : generatePickups(),
+    ...(isYumen ? { playArea: { minX: 0, minY: 0, maxX: mapWidth, maxY: mapHeight } } : {}),
   };
 
   return state;

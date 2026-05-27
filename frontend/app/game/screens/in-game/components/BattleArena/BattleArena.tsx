@@ -9,7 +9,7 @@ import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, ChannelBarHost, type ChannelBarData } from './ChannelBar';
 import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowUp, ArrowUpToLine, Check, ChevronDown, Clipboard, CornerDownLeft, Download, Eraser, Gamepad2, Image as ImageIcon, LayoutGrid, ListChecks, MessageCircle, Minus, Pencil, Plus, Puzzle, RotateCcw, Save, Search, Settings, Smile, Star, Swords, Trash2, UploadCloud, UserRound, Volume2, Wind, X } from 'lucide-react';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
-import type { ActiveBuff, ActiveChannel, ChatChannel, ChatMessage, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
+import type { ActiveBuff, ActiveChannel, ChatChannel, ChatMessage, PickupItem, GroundZone, TargetEntity, TargetSelection, PlayAreaBounds, SafeZone } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles, type SceneRuntimeMetrics } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
@@ -22,6 +22,7 @@ import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } 
 import { formatCrashDiagnosticsReport, getClientCrashRecorder, type CrashRecorderSummary } from '@/app/game/diagnostics/clientCrashRecorder';
 import { getClientLatencyRecorder } from '@/app/game/diagnostics/clientLatencyRecorder';
 import { predictDashRenderPosition, shouldLogDashServerGap, type DashRenderSample } from './dashRenderPrediction';
+import { isExportedMapMode, isYumen1v1BasicMode } from '../../../../gameModes';
 
 type V3 = { x: number; y: number; z: number };
 type LoadStageStatus = '完成' | '进行中' | '失败';
@@ -1067,7 +1068,51 @@ type ChannelingPlayer = {
 };
 
 function getStoredUnitScale(mode?: string): number {
-  return mode === 'collision-test' ? 1 : LEGACY_STORED_UNIT_SCALE;
+  return isExportedMapMode(mode) ? 1 : LEGACY_STORED_UNIT_SCALE;
+}
+
+function clampPositionToPlayAreaClient(
+  worldX: number,
+  worldY: number,
+  playArea: PlayAreaBounds | undefined,
+  arenaWidth: number,
+  arenaHeight: number,
+  playerRadius: number,
+  velocity?: { x: number; y: number },
+) {
+  const rawMinX = Math.max(0, Math.min(arenaWidth, Number(playArea?.minX ?? 0)));
+  const rawMaxX = Math.max(0, Math.min(arenaWidth, Number(playArea?.maxX ?? arenaWidth)));
+  const rawMinY = Math.max(0, Math.min(arenaHeight, Number(playArea?.minY ?? 0)));
+  const rawMaxY = Math.max(0, Math.min(arenaHeight, Number(playArea?.maxY ?? arenaHeight)));
+  const left = Math.min(rawMinX, rawMaxX);
+  const right = Math.max(rawMinX, rawMaxX);
+  const top = Math.min(rawMinY, rawMaxY);
+  const bottom = Math.max(rawMinY, rawMaxY);
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  const minX = right - left <= playerRadius * 2 ? centerX : left + playerRadius;
+  const maxX = right - left <= playerRadius * 2 ? centerX : right - playerRadius;
+  const minY = bottom - top <= playerRadius * 2 ? centerY : top + playerRadius;
+  const maxY = bottom - top <= playerRadius * 2 ? centerY : bottom - playerRadius;
+  let nextX = worldX;
+  let nextY = worldY;
+  if (nextX < minX) {
+    nextX = minX;
+    if (velocity && velocity.x < 0) velocity.x = 0;
+  }
+  if (nextX > maxX) {
+    nextX = maxX;
+    if (velocity && velocity.x > 0) velocity.x = 0;
+  }
+  if (nextY < minY) {
+    nextY = minY;
+    if (velocity && velocity.y < 0) velocity.y = 0;
+  }
+  if (nextY > maxY) {
+    nextY = maxY;
+    if (velocity && velocity.y > 0) velocity.y = 0;
+  }
+  return { x: nextX, y: nextY };
 }
 
 function getDefaultMoveSpeedPerTick(mode?: string): number {
@@ -2624,7 +2669,7 @@ const COLLISION_TEST_MIN_CAMERA_PITCH = -1.05;
 const MAX_CAMERA_PITCH = Math.PI * 0.47;
 
 function clampCameraPitch(pitch: number, mode?: string): number {
-  const minPitch = mode === 'collision-test' ? COLLISION_TEST_MIN_CAMERA_PITCH : DEFAULT_MIN_CAMERA_PITCH;
+  const minPitch = isExportedMapMode(mode) ? COLLISION_TEST_MIN_CAMERA_PITCH : DEFAULT_MIN_CAMERA_PITCH;
   return Math.max(minPitch, Math.min(MAX_CAMERA_PITCH, pitch));
 }
 
@@ -3717,7 +3762,9 @@ interface BattleArenaProps {
   /** Pickup items (ability books) currently on the ground */
   pickups?: PickupItem[];
   /** Safe zone state for poison zone rendering */
-  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
+  safeZone?: SafeZone;
+  /** Hard movement boundary for yumen. */
+  playArea?: PlayAreaBounds;
   /** Persistent ground damage zones */
   groundZones?: GroundZone[];
   /** HP-bearing targetable entities (e.g. 逐云寒蕊) */
@@ -3753,6 +3800,7 @@ export default function BattleArena({
   events = [],
   pickups = [],
   safeZone,
+  playArea,
   groundZones,
   entities,
   chatMessages = [],
@@ -3760,16 +3808,18 @@ export default function BattleArena({
   onFetchChatMessages,
   mode,
 }: BattleArenaProps) {
+  const isExportedMap = isExportedMapMode(mode);
+  const isYumenMode = isYumen1v1BasicMode(mode);
   const mapData = useMemo(() => getMapForMode(mode), [mode]);
-  const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : mode === 'collision-test' ? mapData.width : PUBG_WIDTH;
-  const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : mode === 'collision-test' ? mapData.height : PUBG_HEIGHT;
-  const playerRadius = mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : DEFAULT_PLAYER_RADIUS;
+  const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : isExportedMap ? mapData.width : PUBG_WIDTH;
+  const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : isExportedMap ? mapData.height : PUBG_HEIGHT;
+  const playerRadius = isExportedMap ? COLLISION_TEST_PLAYER_RADIUS : DEFAULT_PLAYER_RADIUS;
   ensureResizeObserverSupport();
 
   const crashRecorder = useMemo(() => getClientCrashRecorder(), []);
   const latencyRecorder = useMemo(() => getClientLatencyRecorder(), []);
   const storedUnitScale = getStoredUnitScale(mode);
-  const modePickups = useMemo(() => (mode === 'collision-test' ? [] : pickups), [mode, pickups]);
+  const modePickups = useMemo(() => (isExportedMap ? [] : pickups), [isExportedMap, pickups]);
   const channelAbilityByBuffId = useMemo(() => {
     const next = new Map<number, any>();
     for (const ability of Object.values(abilities)) {
@@ -3781,6 +3831,9 @@ export default function BattleArena({
     return next;
   }, [abilities]);
   const mapObjectsRef = useRef(mapData.objects);
+  const [localPlayAreaOverride, setLocalPlayAreaOverride] = useState<PlayAreaBounds | null>(null);
+  const effectivePlayArea = localPlayAreaOverride ?? playArea;
+  const playAreaRef = useRef<PlayAreaBounds | undefined>(playArea);
   const entitiesRef = useRef<TargetEntity[]>(entities ?? []);
   useEffect(() => {
     mapObjectsRef.current = mapData.objects;
@@ -3788,6 +3841,15 @@ export default function BattleArena({
   useEffect(() => {
     entitiesRef.current = entities ?? [];
   }, [entities]);
+  useEffect(() => {
+    playAreaRef.current = effectivePlayArea;
+  }, [effectivePlayArea]);
+  useEffect(() => {
+    if (!isYumenMode) setLocalPlayAreaOverride(null);
+  }, [isYumenMode]);
+  useEffect(() => {
+    setLocalPlayAreaOverride(null);
+  }, [gameId]);
   // CODE FRESHNESS MARKER — if you see this in console, the new code IS running
   useEffect(() => { console.log('[BA-FRESH] BattleArena v2 loaded — activeDash support active'); }, []);
   // Prevent page scroll while the game is mounted (critical for touch devices)
@@ -4594,6 +4656,9 @@ export default function BattleArena({
   const [pendingGroundCastAbilityId, setPendingGroundCastAbilityId] = useState<string | null>(null);
   const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number; z?: number; isValid?: boolean } | null>(null);
   const [showControlPanel, setShowControlPanel] = useState(false);
+  const [yumenBoundaryEditMode, setYumenBoundaryEditMode] = useState(false);
+  const [showYumenSafeZoneCurtain, setShowYumenSafeZoneCurtain] = useState(false);
+  const yumenBoundaryEditModeRef = useRef(false);
   const [showHeartDetailsPanel, setShowHeartDetailsPanel] = useState(false);
   const [showHeartStatSettings, setShowHeartStatSettings] = useState(false);
   const [showCombatPresetBar, setShowCombatPresetBar] = useState(false);
@@ -4608,6 +4673,12 @@ export default function BattleArena({
       return DEFAULT_HEART_STAT_VISIBILITY;
     }
   });
+  useEffect(() => {
+    yumenBoundaryEditModeRef.current = yumenBoundaryEditMode;
+  }, [yumenBoundaryEditMode]);
+  useEffect(() => {
+    if (!isYumenMode && yumenBoundaryEditMode) setYumenBoundaryEditMode(false);
+  }, [isYumenMode, yumenBoundaryEditMode]);
   useEffect(() => {
     try {
       localStorage.setItem(HEART_STAT_STORAGE_KEY, JSON.stringify(heartStatVisibility));
@@ -5398,8 +5469,8 @@ export default function BattleArena({
     }
   }, [cameraDebugEntries, formatCameraDebugEntry]);
   const collisionSysRef = useRef<MapCollisionSystem | null>(null);
-  const collisionReadyRef = useRef(mode !== 'collision-test');
-  const [collisionReady, setCollisionReady] = useState(mode !== 'collision-test');
+  const collisionReadyRef = useRef(!isExportedMap);
+  const [collisionReady, setCollisionReady] = useState(!isExportedMap);
   const collisionDebugRef = useRef<CollisionDebugState>({
     enabled: false,
     center: { x: 0, y: 0, z: 0 },
@@ -5407,14 +5478,14 @@ export default function BattleArena({
   });
   useEffect(() => {
     collisionSysRef.current = null;
-    collisionReadyRef.current = mode !== 'collision-test';
-    setCollisionReady(mode !== 'collision-test');
+    collisionReadyRef.current = !isExportedMap;
+    setCollisionReady(!isExportedMap);
     collisionDebugRef.current = {
       enabled: false,
       center: { x: 0, y: 0, z: 0 },
       supportY: null,
     };
-  }, [mode]);
+  }, [isExportedMap]);
   const onCollisionSystemReady = useCallback((sys: MapCollisionSystem) => {
     collisionSysRef.current = sys;
     const pos = localPositionRef.current ?? { x: mapData.width / 2, y: mapData.height / 2 };
@@ -5456,7 +5527,7 @@ export default function BattleArena({
 
       recordLoadStageStart('main-canvas-created', '主场景Canvas创建', startedAt, '等待 Canvas');
       recordLoadStageStart('three-scene-mounted', 'Three场景首帧', startedAt, '等待 renderer');
-      if (mode === 'collision-test') {
+      if (isExportedMap) {
         recordLoadStageStart('collision-ready', '碰撞系统可用', startedAt, collisionReady ? 'collision ready' : '等待 collision ready');
       }
       if (sceneRecovering) {
@@ -5480,7 +5551,7 @@ export default function BattleArena({
         detail: stage.detail,
         meta: stage.meta,
       }));
-      const requiredStageIds = mode === 'collision-test'
+      const requiredStageIds = isExportedMap
         ? ['main-canvas-created', 'three-scene-mounted', 'exported-map-total', 'collision-ready']
         : ['main-canvas-created', 'three-scene-mounted'];
       const completed = requiredStageIds.every((id) => {
@@ -5530,6 +5601,7 @@ export default function BattleArena({
     events.length,
     groundZones?.length,
     me.buffs?.length,
+    isExportedMap,
     mode,
     modePickups.length,
     recordLoadStageEnd,
@@ -5547,7 +5619,7 @@ export default function BattleArena({
     targetZ: number,
     ignoreEntityId?: string,
   ) => {
-    const blockedByMap = mode === 'collision-test' && collisionSysRef.current
+    const blockedByMap = isExportedMap && collisionSysRef.current
       ? clientCheckLOS(
           collisionSysRef.current,
           from.x,
@@ -5559,7 +5631,7 @@ export default function BattleArena({
           ARENA_WIDTH / 2,
           ARENA_HEIGHT / 2,
         )
-      : mode !== 'collision-test'
+      : !isExportedMap
         ? !!isLOSBlockedClient(from.x, from.y, to.x, to.y, mapObjectsRef.current, 0, casterZ, targetZ)
         : false;
     if (blockedByMap) return true;
@@ -5572,7 +5644,7 @@ export default function BattleArena({
       targetZ,
       ignoreEntityId,
     );
-  }, [ARENA_HEIGHT, ARENA_WIDTH, me.userId, mode]);
+  }, [ARENA_HEIGHT, ARENA_WIDTH, isExportedMap, me.userId]);
   const [debugCursor,   setDebugCursor]   = useState<{ x: number; y: number } | null>(null);
   const [debugBounds,   setDebugBounds]   = useState<{
     me:  { cx: number; topY: number; hpBarY: number } | null;
@@ -7698,7 +7770,7 @@ export default function BattleArena({
       localRenderPosRef.current = { x: me.position.x, y: me.position.y, z: localZRef.current };
       initializedRef.current   = true;
     }
-  }, [me?.position?.x, me?.position?.y, (me?.position as any)?.z]);
+  }, [isExportedMap, me?.position?.x, me?.position?.y, (me?.position as any)?.z]);
 
   useEffect(() => {
     if (!me?.position || !initializedRef.current) return;
@@ -7782,9 +7854,9 @@ export default function BattleArena({
       });
     };
 
-    // Collision-test mode: both client and backend now use BVH collision, so we can
+    // Exported-map modes: both client and backend use BVH collision, so we can
     // reconcile position normally. Only skip reconciliation on dash (server owns dash).
-    if (mode === 'collision-test') {
+    if (isExportedMap) {
       if (predictedActiveDash) {
         meActiveDashRef.current = predictedActiveDash;
         localPositionRef.current = { ...me.position };
@@ -9575,6 +9647,11 @@ export default function BattleArena({
       if (e.button === 0) {
         // Only start drag if not clicking a UI button or a draggable panel
         if (isMouseUiTarget(e.target)) return;
+        if (yumenBoundaryEditModeRef.current) {
+          mouseStateRef.current.isLeft = false;
+          manualCameraLookActiveRef.current = false;
+          return;
+        }
         mouseStateRef.current.isLeft = true;
         manualCameraLookActiveRef.current = true;
         mouseStateRef.current.lastX  = e.clientX;
@@ -9662,6 +9739,11 @@ export default function BattleArena({
       }
       const ms = mouseStateRef.current;
       if (!ms.isLeft && !ms.isRight) return;
+      if (yumenBoundaryEditModeRef.current && ms.isLeft) {
+        ms.isLeft = false;
+        manualCameraLookActiveRef.current = false;
+        if (!ms.isRight) return;
+      }
       e.preventDefault();
       const dx = e.clientX - ms.lastX;
       const dy = e.clientY - ms.lastY;
@@ -9888,7 +9970,7 @@ export default function BattleArena({
         cameraMoveCommandActiveRef.current = false;
         return;
       }
-      if (mode === 'collision-test' && !collisionReadyRef.current) {
+      if (isExportedMap && !collisionReadyRef.current) {
         cameraMoveCommandActiveRef.current = false;
         localVelocityRef.current = { x: 0, y: 0 };
         localVzRef.current = 0;
@@ -9926,7 +10008,7 @@ export default function BattleArena({
       const k   = keysRef.current;
       const ms  = mouseStateRef.current;
       const objs = mapObjectsRef.current;
-      const useBVH = mode === 'collision-test' && !!collisionSysRef.current;
+      const useBVH = isExportedMap && !!collisionSysRef.current;
       const rawTickGroundH = (() => {
         if (!useBVH) {
           return getGroundHeightClient(pos.x, pos.y, localZRef.current, objs, playerRadius);
@@ -10184,6 +10266,9 @@ export default function BattleArena({
 
       let newPx = Math.max(playerRadius, Math.min(ARENA_WIDTH - playerRadius, pos.x + vel.x + nudgeX));
       let newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius, pos.y + vel.y + nudgeY));
+      const playAreaClamped = clampPositionToPlayAreaClient(newPx, newPy, playAreaRef.current, ARENA_WIDTH, ARENA_HEIGHT, playerRadius, vel);
+      newPx = playAreaClamped.x;
+      newPy = playAreaClamped.y;
 
       // Map object collision
 
@@ -10215,6 +10300,9 @@ export default function BattleArena({
           _bvhCenter.x * RENDER_SF_XZ + GROUP_POS_X + halfW));
         newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius,
           halfH - (_bvhCenter.z * RENDER_SF_XZ + GROUP_POS_Z)));
+        const bvhPlayAreaClamped = clampPositionToPlayAreaClient(newPx, newPy, playAreaRef.current, ARENA_WIDTH, ARENA_HEIGHT, playerRadius, vel);
+        newPx = bvhPlayAreaClamped.x;
+        newPy = bvhPlayAreaClamped.y;
         // Do NOT read _bvhVelocity.y here — vertical velocity is managed by the vertical pass.
       } else {
         for (const obj of objs) {
@@ -10234,6 +10322,13 @@ export default function BattleArena({
       );
       newPx = wallResolved.x;
       newPy = wallResolved.y;
+      const wallPlayAreaClamped = clampPositionToPlayAreaClient(newPx, newPy, playAreaRef.current, ARENA_WIDTH, ARENA_HEIGHT, playerRadius, vel);
+      newPx = wallPlayAreaClamped.x;
+      newPy = wallPlayAreaClamped.y;
+      if (useBVH) {
+        _bvhCenter.x = (newPx - ARENA_WIDTH / 2 - GROUP_POS_X) / RENDER_SF_XZ;
+        _bvhCenter.z = (ARENA_HEIGHT / 2 - newPy - GROUP_POS_Z) / RENDER_SF_XZ;
+      }
 
       localPositionRef.current = { x: newPx, y: newPy };
 
@@ -10523,7 +10618,7 @@ export default function BattleArena({
       advanceLocalPhysicsRef.current = () => {};
       clearInterval(id);
     };
-  }, [ARENA_HEIGHT, ARENA_WIDTH, getEffectiveMaxJumps, me.userId, mode, playerRadius]);
+  }, [ARENA_HEIGHT, ARENA_WIDTH, getEffectiveMaxJumps, isExportedMap, me.userId, mode, playerRadius]);
 
   useEffect(() => {
     const id = setInterval(sendMovement, 1000 / 30);
@@ -11226,6 +11321,31 @@ export default function BattleArena({
     },
     [gameId, runningCheatAction],
   );
+
+  const updateYumenPlayArea = useCallback(async (
+    nextPlayArea: PlayAreaBounds,
+    options?: { actionId?: string; successText?: string },
+  ) => {
+    setLocalPlayAreaOverride(nextPlayArea);
+    playAreaRef.current = nextPlayArea;
+    const ok = await runCheatAction(
+      options?.actionId ?? 'yumen-play-area',
+      '/api/game/cheat/yumen/play-area',
+      options?.successText ?? '边界已更新',
+      { playArea: nextPlayArea },
+    );
+    if (!ok) {
+      setLocalPlayAreaOverride(null);
+      playAreaRef.current = playArea;
+    }
+  }, [playArea, runCheatAction]);
+
+  const restoreYumenPlayAreaDefault = useCallback(() => {
+    void updateYumenPlayArea(
+      { minX: 0, minY: 0, maxX: mapData.width, maxY: mapData.height },
+      { actionId: 'yumen-play-area-default', successText: '边界已恢复默认' },
+    );
+  }, [mapData.height, mapData.width, updateYumenPlayArea]);
 
   const reorderDraftAbility = useCallback(
     async (instanceId: string, toIndex: number) => {
@@ -13961,7 +14081,7 @@ export default function BattleArena({
           dpr={sceneCanvasDpr}
           gl={sceneCanvasGl}
           onCreated={handleMainCanvasCreated}
-          shadows={mode === 'collision-test' && envToggles.shadows && !blueprintMode ? 'percentage' : false}
+          shadows={isExportedMap && envToggles.shadows && !blueprintMode ? 'percentage' : false}
           onPointerMissed={(event) => {
             if (event.button !== 0) return;
             if (pendingDummySpawnRef.current || pendingGroundCastAbilityRef.current) return;
@@ -14028,6 +14148,10 @@ export default function BattleArena({
             entityScreenBoundsRef={entityScreenBoundsRef}
             mode={mode}
             safeZone={safeZone}
+            playArea={effectivePlayArea}
+            onPlayAreaChange={updateYumenPlayArea}
+            boundaryEditMode={yumenBoundaryEditMode}
+            showSafeZoneCurtain={showYumenSafeZoneCurtain}
             groundZones={groundZones}
             groundCastPreview={
               (() => {
@@ -14116,14 +14240,14 @@ export default function BattleArena({
             collisionSystemRef={collisionSysRef}
             collisionDebugRef={collisionDebugRef}
             onCollisionSystemReady={onCollisionSystemReady}
-            onCameraDebugEvent={mode === 'collision-test' && showCameraEventTestingPanel ? appendCameraDebugEntry : undefined}
+            onCameraDebugEvent={isExportedMap && showCameraEventTestingPanel ? appendCameraDebugEntry : undefined}
             blueprintMode={blueprintMode}
             losIsBlocked={draftAbilities.some(a => !!a?.losBlocked) || commonAbilities.some(a => a.losBlocked)}
-            onEnvDebug={mode === 'collision-test' && lightingControlsOpen ? setEnvDebugInfo : undefined}
+            onEnvDebug={isExportedMap && lightingControlsOpen ? setEnvDebugInfo : undefined}
             onSceneMetrics={handleSceneMetrics}
             onSceneLoadTiming={handleSceneLoadTiming}
-            envToggles={mode === 'collision-test' ? envToggles : undefined}
-            dirLightConfig={mode === 'collision-test' ? dirLightConfig : undefined}
+            envToggles={isExportedMap ? envToggles : undefined}
+            dirLightConfig={isExportedMap ? dirLightConfig : undefined}
             blindWorldMode={selfHasHongMengTianJin}
             opponentInstantSnapAtRef={lastInstantSwapCastAtRef}
           />
@@ -15026,7 +15150,7 @@ export default function BattleArena({
           </div>
         </div>
       )}
-      {mode === 'collision-test' && !collisionReady && (
+      {isExportedMap && !collisionReady && (
         <div style={{
           position: 'absolute',
           top: 20,
@@ -15924,6 +16048,82 @@ export default function BattleArena({
               }}
             >补满物品</button>
           </div>
+
+          {isYumenMode && (
+            <>
+              <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>毒圈</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-start-shrink', '/api/game/cheat/yumen/start-shrink', '毒圈开始缩小')}
+                  style={{
+                    background: 'rgba(210, 80, 70, 0.22)', color: '#ffc4bd',
+                    border: '1px solid rgba(255, 130, 120, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >开始缩小毒圈</button>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-stop-shrink', '/api/game/cheat/yumen/stop-shrink', '毒圈已停止')}
+                  style={{
+                    background: 'rgba(70, 145, 210, 0.22)', color: '#c8e7ff',
+                    border: '1px solid rgba(115, 185, 255, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >停止缩圈</button>
+                <button
+                  type="button"
+                  onClick={() => setShowYumenSafeZoneCurtain((value) => !value)}
+                  style={{
+                    background: showYumenSafeZoneCurtain ? 'rgba(245, 190, 50, 0.34)' : 'rgba(245, 190, 50, 0.14)',
+                    color: '#ffe08a',
+                    border: '1px solid rgba(255, 220, 120, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px', cursor: 'pointer',
+                  }}
+                >{showYumenSafeZoneCurtain ? '关闭光幕' : '开启光幕'}</button>
+              </div>
+              <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>边界</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !yumenBoundaryEditMode;
+                    setYumenBoundaryEditMode(next);
+                    if (next) {
+                      mouseStateRef.current.isLeft = false;
+                      mouseStateRef.current.isRight = false;
+                      mouseStateRef.current.dragDistance = 0;
+                      manualCameraLookActiveRef.current = false;
+                    }
+                  }}
+                  style={{
+                    background: yumenBoundaryEditMode ? 'rgba(245, 210, 80, 0.38)' : 'rgba(245, 210, 80, 0.16)',
+                    color: '#fff0a8',
+                    border: '1px solid rgba(255, 225, 120, 0.66)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px', cursor: 'pointer',
+                  }}
+                >{yumenBoundaryEditMode ? '退出边界编辑' : '边界编辑'}</button>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={restoreYumenPlayAreaDefault}
+                  style={{
+                    background: 'rgba(70, 145, 210, 0.20)', color: '#c8e7ff',
+                    border: '1px solid rgba(115, 185, 255, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >恢复默认边界</button>
+              </div>
+            </>
+          )}
 
           <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>木桩</div>
           {pendingDummySpawn && (

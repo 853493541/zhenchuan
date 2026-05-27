@@ -9,6 +9,7 @@ import { GameState, STARTING_ATTACK_DAMAGE, STARTING_BATTLE_HP, STARTING_CRIT_CH
 import { initializeTournament } from "../economy/tournamentService";
 import { initializeBattleState } from "../battle/battleService";
 import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
+import { DEFAULT_GAME_MODE, type GameMode, normalizeGameMode } from "../../modes";
 
 type PlayerProfile = {
   displayName: string;
@@ -39,7 +40,7 @@ function setGamePlayerMetadata(game: any, userId: string, profile: PlayerProfile
   return changed;
 }
 
-export async function createGame(userId: string, mode: 'arena' | 'pubg' | 'collision-test' = 'arena') {
+export async function createGame(userId: string, mode: GameMode = DEFAULT_GAME_MODE) {
   const profile = await getPlayerProfileById(userId);
 
   const state: GameState = {
@@ -162,7 +163,7 @@ export async function startGame(gameId: string, userId: string) {
   tournament.phase = "BATTLE";
 
   // Initialize battle state for all players (common abilities only, draft skipped)
-  const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test';
+  const gameMode = normalizeGameMode((game as any).mode ?? 'arena');
   const state = initializeBattleState(tournament, game.players as string[], gameMode);
 
   game.state = state;

@@ -17,11 +17,12 @@ import { useGameState } from "./hooks/useGameState";
 import {
   GamePreloadProvider,
 } from "./preload/GamePreloadContext";
+import { isExportedMapMode } from "../../gameModes";
 
 const LEGACY_STORED_UNIT_SCALE = 2.2;
 
 function getStoredUnitScale(mode?: string): number {
-  return mode === 'collision-test' ? 1 : LEGACY_STORED_UNIT_SCALE;
+  return isExportedMapMode(mode) ? 1 : LEGACY_STORED_UNIT_SCALE;
 }
 
 /* ================= ERROR CODE -> WARNING TEXT ================= */
@@ -445,7 +446,7 @@ export default function InGameClient({
   }, []);
 
   useEffect(() => {
-    if (gameMode === 'collision-test') {
+    if (isExportedMapMode(gameMode)) {
       void warmExportedMapAssets({ concurrency: 3 });
     }
   }, [gameMode]);
@@ -611,6 +612,7 @@ export default function InGameClient({
             events={state?.events ?? []}
             pickups={state?.pickups ?? []}
             safeZone={state?.safeZone}
+            playArea={state?.playArea}
             groundZones={state?.groundZones}
             entities={state?.entities}
             chatMessages={chatMessages}

@@ -15,6 +15,8 @@ import { GameLoop } from "../engine/loop/GameLoop";
 import { ABILITIES } from "../abilities/abilities";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { diffState } from "../services/flow/stateDiff";
+import { EXPORTED_MAP_HEIGHT, EXPORTED_MAP_WIDTH } from "../map/exportedMap";
+import { isExportedMapMode, isYumen1v1BasicMode, normalizeGameMode } from "../modes";
 import type { AbilityInstance } from "../engine/state/types";
 import {
   NEW_WORLD_UNIT_SCALE,
@@ -77,6 +79,82 @@ function isCommonAbilityCard(card: any): boolean {
 function getDraftCardAbilityId(card: any): string | null {
   const abilityId = card?.abilityId ?? card?.id;
   return typeof abilityId === "string" && abilityId.trim() ? abilityId.trim() : null;
+}
+
+function clampFiniteNumber(value: unknown, fallback: number, min: number, max: number) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.max(min, Math.min(max, numericValue));
+}
+
+const YUMEN_SAFE_ZONE_MIN_RADIUS = 15;
+const YUMEN_SAFE_ZONE_SHRINK_UNITS_PER_SECOND = 4;
+
+function getYumenFullSafeZoneRadius() {
+  return Math.hypot(EXPORTED_MAP_WIDTH / 2, EXPORTED_MAP_HEIGHT / 2);
+}
+
+function createYumenSafeZone(state: any) {
+  const fullHalf = getYumenFullSafeZoneRadius();
+  const existing = state?.safeZone ?? {};
+  const existingHalf = existing.shape === "circle" ? existing.currentHalf : fullHalf;
+  return {
+    shape: "circle",
+    centerX: clampFiniteNumber(existing.centerX, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH),
+    centerY: clampFiniteNumber(existing.centerY, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT),
+    currentHalf: clampFiniteNumber(existingHalf, fullHalf, YUMEN_SAFE_ZONE_MIN_RADIUS, fullHalf),
+    dps: Math.max(1, clampFiniteNumber(existing.dps, 1, 0, 999)),
+    shrinking: existing.shrinking === true,
+    shrinkProgress: clampFiniteNumber(existing.shrinkProgress, 0, 0, 1),
+    nextChangeIn: Math.max(0, Math.round(clampFiniteNumber(existing.nextChangeIn, 0, 0, 9999))),
+    manualShrinking: existing.manualShrinking === true,
+    lastShrinkAt: Number.isFinite(Number(existing.lastShrinkAt)) ? Number(existing.lastShrinkAt) : undefined,
+    shrinkStartHalf: Number.isFinite(Number(existing.shrinkStartHalf)) ? Number(existing.shrinkStartHalf) : undefined,
+  };
+}
+
+function normalizeYumenPlayArea(input: any) {
+  const minSize = 12;
+  const rawMinX = clampFiniteNumber(input?.minX, 0, 0, EXPORTED_MAP_WIDTH);
+  const rawMaxX = clampFiniteNumber(input?.maxX, EXPORTED_MAP_WIDTH, 0, EXPORTED_MAP_WIDTH);
+  const rawMinY = clampFiniteNumber(input?.minY, 0, 0, EXPORTED_MAP_HEIGHT);
+  const rawMaxY = clampFiniteNumber(input?.maxY, EXPORTED_MAP_HEIGHT, 0, EXPORTED_MAP_HEIGHT);
+  let minX = Math.min(rawMinX, rawMaxX);
+  let maxX = Math.max(rawMinX, rawMaxX);
+  let minY = Math.min(rawMinY, rawMaxY);
+  let maxY = Math.max(rawMinY, rawMaxY);
+
+  if (maxX - minX < minSize) {
+    const centerX = (minX + maxX) / 2;
+    minX = clampFiniteNumber(centerX - minSize / 2, 0, 0, EXPORTED_MAP_WIDTH - minSize);
+    maxX = minX + minSize;
+  }
+  if (maxY - minY < minSize) {
+    const centerY = (minY + maxY) / 2;
+    minY = clampFiniteNumber(centerY - minSize / 2, 0, 0, EXPORTED_MAP_HEIGHT - minSize);
+    maxY = minY + minSize;
+  }
+
+  return { minX, minY, maxX, maxY };
+}
+
+function applyYumenStateUpdate(gameId: string, game: any, updater: (state: any) => Array<{ path: string; value: any }>) {
+  let liveVersion = game.state.version ?? 0;
+  const gameLoop = GameLoop.get(gameId);
+  const targetState = gameLoop ? gameLoop.getState() : game.state;
+  const diff = updater(targetState);
+  targetState.version = (targetState.version ?? 0) + 1;
+  liveVersion = targetState.version;
+  if (gameLoop) {
+    gameLoop.updateState(targetState);
+  }
+  broadcastGameUpdate({ gameId, version: liveVersion, diff, timestamp: Date.now() });
+  game.state = targetState;
+  game.markModified("state");
+  void game.save().catch((err: any) => {
+    console.error("[cheat/yumen-state] async save failed:", err?.message ?? err);
+  });
+  return { liveVersion, diff };
 }
 
 function dedupeDraftCardsByAbility<T extends Record<string, any>>(cards: T[]): T[] {
@@ -693,12 +771,11 @@ router.post("/battle/start", async (req, res) => {
     if (existingLoop) {
       // The loop may have been started before the pickup system was added.
       // Retroactively inject pickups if the loop state is empty so claim/inspect work.
-      // Collision-test no longer uses pickups at all.
+      // Exported-map modes no longer use pickups at all.
       const ls = existingLoop.getState();
-      const mode = ((game as any).mode ?? 'arena') as string;
+      const mode = normalizeGameMode((game as any).mode ?? 'arena');
       const isArena = mode === 'arena';
-      const isCollisionTest = mode === 'collision-test';
-      if (isCollisionTest) {
+      if (isExportedMapMode(mode)) {
         if ((ls.pickups ?? []).length > 0) {
           ls.pickups = [];
           existingLoop.updateState(ls);
@@ -724,7 +801,7 @@ router.post("/battle/start", async (req, res) => {
     }
 
     // Create battle state with positions + use finalized hands
-    const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test';
+    const gameMode = normalizeGameMode((game as any).mode ?? 'arena');
     const battleState = initializeBattleState(game.tournament, playerIds, gameMode);
 
     // Override hands — preserve instanceId but reset cooldowns for a fresh battle
@@ -832,7 +909,7 @@ router.post("/battle/complete", async (req, res) => {
         game.tournament.selectedAbilities[pid] = [];
       }
       // Initialize fresh battle state with only common abilities
-      game.state = initializeBattleState(game.tournament, allPlayers, ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test');
+      game.state = initializeBattleState(game.tournament, allPlayers, normalizeGameMode((game as any).mode ?? 'arena'));
       shouldStartNextBattleLoop = true;
     }
 
@@ -841,7 +918,7 @@ router.post("/battle/complete", async (req, res) => {
     await game.save();
 
     if (shouldStartNextBattleLoop && !GameLoop.get(gameId)) {
-      const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test';
+      const gameMode = normalizeGameMode((game as any).mode ?? 'arena');
       GameLoop.start(gameId, game.state, { tickRate: 30, mode: gameMode });
       console.log(`[battle/complete] Started next battle GameLoop for ${gameId}`);
     }
@@ -1232,6 +1309,98 @@ router.post("/cheat/discard-all", async (req, res) => {
     void game.save().catch((err: any) => {
       console.error("[cheat/discard-all] async save failed:", err?.message ?? err);
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/play-area - Update 玉门关 hard movement boundary.
+ * Body: { gameId, playArea: { minX, minY, maxX, maxY } }
+ */
+router.post("/cheat/yumen/play-area", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, playArea } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const normalizedPlayArea = normalizeYumenPlayArea(playArea);
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      state.playArea = normalizedPlayArea;
+      return [{ path: "/playArea", value: normalizedPlayArea }];
+    });
+    res.json({ ok: true, version: liveVersion, playArea: normalizedPlayArea });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/start-shrink - Start manual 玉门关 poison-zone shrink.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/start-shrink", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const startedAt = Date.now();
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = createYumenSafeZone(state);
+      updatedSafeZone.manualShrinking = true;
+      updatedSafeZone.shrinking = true;
+      updatedSafeZone.dps = Math.max(1, Number(updatedSafeZone.dps ?? 1));
+      updatedSafeZone.lastShrinkAt = startedAt;
+      updatedSafeZone.shrinkStartHalf = updatedSafeZone.currentHalf;
+      updatedSafeZone.nextChangeIn = Math.ceil(Math.max(0, updatedSafeZone.currentHalf - YUMEN_SAFE_ZONE_MIN_RADIUS) / YUMEN_SAFE_ZONE_SHRINK_UNITS_PER_SECOND);
+      state.safeZone = updatedSafeZone;
+      return [{ path: "/safeZone", value: updatedSafeZone }];
+    });
+    res.json({ ok: true, version: liveVersion, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/stop-shrink - Stop manual 玉门关 poison-zone shrink.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/stop-shrink", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = createYumenSafeZone(state);
+      updatedSafeZone.manualShrinking = false;
+      updatedSafeZone.shrinking = false;
+      updatedSafeZone.shrinkProgress = 0;
+      updatedSafeZone.nextChangeIn = 0;
+      delete updatedSafeZone.lastShrinkAt;
+      state.safeZone = updatedSafeZone;
+      return [{ path: "/safeZone", value: updatedSafeZone }];
+    });
+    res.json({ ok: true, version: liveVersion, safeZone: updatedSafeZone });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

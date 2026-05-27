@@ -3,6 +3,7 @@
 // Must match backend/game/map/worldMap.ts and arenaMap.ts exactly.
 
 import { collisionTestMapObjects, COLLISION_TEST_MAP_WIDTH, COLLISION_TEST_MAP_HEIGHT } from './collisionTestMap';
+import { isExportedMapMode } from '../../../../gameModes';
 
 export type MapObjectType = 'building' | 'rock' | 'mountain' | 'hill_high' | 'hill_low';
 
@@ -131,7 +132,7 @@ export function getMapForMode(mode?: string): { objects: MapObject[]; width: num
   if (mode === 'arena') {
     return { objects: arenaMapObjects, width: ARENA_MAP_WIDTH, height: ARENA_MAP_HEIGHT };
   }
-  if (mode === 'collision-test') {
+    if (isExportedMapMode(mode)) {
     return { objects: collisionTestMapObjects, width: COLLISION_TEST_MAP_WIDTH, height: COLLISION_TEST_MAP_HEIGHT };
   }
   return { objects: worldMapObjects, width: WORLD_WIDTH, height: WORLD_HEIGHT };

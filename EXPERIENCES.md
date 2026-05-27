@@ -3,6 +3,45 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 玉门关 official mode bootstrap (2026-05-27)
+
+**Implemented / checked**:
+- Added the official `yumen-1v1-basic` mode while keeping `collision-test` as 技能测试; lobby now defaults to 玉门关（1v1）：基础 and separates legacy modes into a second custom dropdown.
+- Wired yumen through backend session schema, lobby creation, battle initialization, loop hydration, exported-map collision, frontend map selection, asset warming, scene rendering, LOS, and client movement prediction.
+- Added a yumen hard play-area boundary with backend movement clamping, frontend prediction clamping, an obvious exported-map wall, and draggable corner pillars that persist boundary updates through a cheat/control route.
+- Added manual yumen poison controls (`开始缩小毒圈` / `停止缩圈`) with backend start/stop routes, GameLoop manual shrink state, poison damage outside the safe zone, and an exported-map safe-zone wall visual.
+- Built backend and frontend successfully, restarted only PM2 `frontend` and `backend`, confirmed both are online with zero unstable restarts, and live-smoke-checked the lobby dropdowns at `https://zhenchuan.renstoolbox.com/`.
+
+**Lesson**:
+- New modes that copy an existing map must share a single exported-map predicate across backend collision, frontend prediction, asset warming, LOS, and rendering. A single leftover `mode === 'collision-test'` check can split authoritative collision from the client view.
+- For non-square exported maps, safe-zone math should use the larger half-extent when the initial zone must cover the whole playable area; using the smaller half leaves thin map strips outside the first poison square.
+- If client prediction clamps a BVH-backed player after horizontal collision, resync the BVH center before vertical ground sampling or the next vertical pass can use the pre-clamp X/Z.
+
+## 玉门关 boundary editing and circular poison (2026-05-27)
+
+**Implemented / checked**:
+- Added a yumen boundary edit mode that suppresses left-drag camera rotation and only shows draggable boundary pillars while editing is active.
+- Added optimistic local play-area state so a pillar drag updates immediately and does not visually bounce while the backend route/broadcast catches up.
+- Converted yumen poison from square half-extent semantics to circular radius semantics, with `shape: "circle"`, circular damage checks, and final radius `15u`.
+- Follow-up: reverted the yumen manual shrink pace to the faster test speed (`4u/s`) while keeping the `15u` final radius.
+- Follow-up: restored the poison visual as a visible terrain-aware bottom line with an upward circular 光幕 above it, and enabled normal depth testing so terrain/structures can occlude it.
+- Follow-up: removed extra play-area rib lines, kept only the rectangular light wall/guide and the four corner anchor pillars in edit mode, added `恢复默认边界`, and live-reset the active yumen play area to default bounds.
+- Follow-up: gated `ArenaScene`'s 250ms countdown timer so it only runs when ground-zone countdowns exist, avoiding background React scene re-renders during normal yumen play.
+- Follow-up: changed the yumen poison visual to a white bottom line plus short yellow 光幕, with terrain-only height sampling so houses/GLBs/shell geometry do not lift the ring, a static upward alpha fade, and a 40u proximity x-ray rule for the bottom line only.
+- Follow-up: disabled the yumen 光幕 by default behind a control-panel toggle, kept the poison line as a perfect X/Y circle sitting on terrain-only height, restored normal ground occlusion, and raised the close-range structure x-ray threshold to 40u.
+- Built backend/frontend, restarted only PM2 `frontend` and `backend`, checked startup logs, and live Playwright-dragged a yumen boundary pillar on `https://zhenchuan.renstoolbox.com/`; the persisted play area changed and stayed changed after waiting.
+
+**Lesson**:
+- R3F `stopPropagation()` is not enough when a `window` capture-phase mouse handler starts camera drag first. Tool-style scene editing needs an explicit edit mode that gates global mouse behavior.
+- Drag handles that persist through server state should update a local optimistic scene state first; otherwise the authoritative prop can briefly resync to the old value and make the handle feel like it bounced back.
+- A circular poison zone should use radius values everywhere, including damage checks, control-route normalization, and final-zone planning. If old square state is loaded, expand to the full circular map radius so corners are not accidentally poisoned.
+- Do not force poison or boundary visuals through the depth buffer with `depthTest={false}` unless the design explicitly wants x-ray guides. For in-world 光幕, normal depth testing is needed so structures and terrain can block what the player cannot see.
+- A poison bottom line on exported terrain must sample ground support and add clearance, or flat `y=0` rings can sink under hills. Keep the horizontal circle stable, lift the bottom line above support, then build the 光幕 upward from that line.
+- If a guide should ignore buildings and props but still sit on terrain, do not use generic support-ground sampling; support-ground includes shell hits and will climb roofs/structures. Expose a terrain-only heightmap sampler and let normal depth testing handle far occlusion, with an explicit close-range x-ray override only where the design asks for it.
+- A fading 光幕 does not need a per-frame animation loop. A small static shader gradient is cheaper and gives the intended upward disappearance without rebuilding geometry every frame.
+- To keep a circle readable without climbing props, sample terrain-only height for the line points and render GLB props after the normal line pass. For close-range structure x-ray that must still respect ground, rewrite the depth buffer with an invisible terrain-only pass immediately before drawing the x-ray line.
+- Avoid always-on scene timers for optional overlays. A small 250ms state update is still a whole React scene render if it lives in `ArenaScene`.
+
 ## Jump intent lock and correction diagnostics (2026-05-26)
 
 **Implemented / checked**:
