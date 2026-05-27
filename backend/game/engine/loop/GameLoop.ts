@@ -9,7 +9,7 @@
  * - Win condition checks
  */
 
-import { GameState, MovementInput, GroundZone, TargetEntity, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
+import { GameState, MovementInput, GroundZone, TargetEntity, SafeZone, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
 import { checkGameOver, resetDefeatedPlayersForTesting } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
 import { broadcastDefeatSystemChat, collectDefeatAnnouncementsFromEvents } from "../../services/chatMessages";
@@ -1131,8 +1131,12 @@ export class GameLoop {
     { startTime: 60000, endTime: 65000, fromHalf: 25,  toHalf: 0,   dps: 10 },
   ];
 
-  private static readonly YUMEN_ZONE_SHRINK_UNITS_PER_SECOND = 4;
-  private static readonly YUMEN_ZONE_MIN_RADIUS = 15;
+  private static readonly RANDOM_ZONE_TARGET_DIAMETERS = [200, 100, 50, 25, 0] as const;
+  private static readonly RANDOM_ZONE_INITIAL_WAIT_MS = 20_000;
+  private static readonly RANDOM_ZONE_WAIT_MS = 10_000;
+  private static readonly RANDOM_ZONE_PREVIEW_MS = 10_000;
+  private static readonly RANDOM_ZONE_SHRINK_MS = 10_000;
+  private static readonly RANDOM_ZONE_FINAL_WAIT_MS = 30_000;
 
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
@@ -1159,26 +1163,31 @@ export class GameLoop {
       playArea: this.state.playArea,
     };
 
-    // Initialize safe zone for arena mode and manual yumen mode.
+    // Initialize safe zone for arena mode and staged 玉门关 circles.
     if (this.isArenaMode || this.isYumenMode) {
-      this.zoneStartedAt = Date.now();
-      this.lastZoneDamageAt = Date.now();
+      const now = Date.now();
+      this.zoneStartedAt = now;
+      this.lastZoneDamageAt = now;
       const centerX = map.width / 2;
       const centerY = map.height / 2;
       const fullHalf = this.isYumenMode ? Math.hypot(map.width / 2, map.height / 2) : Math.min(map.width, map.height) / 2;
-      if (this.state.safeZone) {
+      if (this.isYumenMode) {
+        this.ensureRandomSafeZoneInitialized(now);
+      } else if (this.state.safeZone) {
         const previousShape = this.state.safeZone.shape;
         this.state.safeZone.shape = this.isYumenMode ? "circle" : this.state.safeZone.shape === "circle" ? "circle" : "square";
         this.state.safeZone.centerX = Number.isFinite(this.state.safeZone.centerX) ? this.state.safeZone.centerX : centerX;
         this.state.safeZone.centerY = Number.isFinite(this.state.safeZone.centerY) ? this.state.safeZone.centerY : centerY;
         const existingHalf = this.isYumenMode && previousShape !== "circle" ? fullHalf : this.state.safeZone.currentHalf;
         this.state.safeZone.currentHalf = Math.max(0, Math.min(fullHalf, Number(existingHalf ?? fullHalf)));
+        this.state.safeZone.currentDiameter = this.state.safeZone.currentHalf * 2;
       } else {
         this.state.safeZone = {
           shape: this.isYumenMode ? "circle" : "square",
           centerX,
           centerY,
           currentHalf: fullHalf,
+          currentDiameter: fullHalf * 2,
           dps: 0,
           shrinking: false,
           shrinkProgress: 0,
@@ -1196,6 +1205,242 @@ export class GameLoop {
     this.state.players.forEach((_, idx) => {
       this.playerInputs.set(idx, null);
     });
+  }
+
+  private getRandomSafeZoneFullRadius() {
+    return Math.hypot(this.mapCtx.width / 2, this.mapCtx.height / 2);
+  }
+
+  private ensureRandomSafeZoneInitialized(now: number) {
+    const centerX = this.mapCtx.width / 2;
+    const centerY = this.mapCtx.height / 2;
+    const fullRadius = this.getRandomSafeZoneFullRadius();
+    const zone = this.state.safeZone;
+    if (
+      zone &&
+      Number.isFinite(zone.currentHalf) &&
+      Number.isFinite(zone.centerX) &&
+      Number.isFinite(zone.centerY)
+    ) {
+      zone.shape = "circle";
+      zone.currentHalf = Math.max(0, Math.min(fullRadius, Number(zone.currentHalf)));
+      zone.currentDiameter = zone.currentHalf * 2;
+      const currentDiameter = zone.currentHalf * 2;
+      const inferredStageIndex = currentDiameter <= 25 ? 4 : currentDiameter <= 50 ? 3 : currentDiameter <= 100 ? 2 : currentDiameter <= 200 ? 1 : 0;
+      const storedStageIndex = Number(zone.stageIndex);
+      zone.stageIndex = Math.max(0, Math.floor(Number.isFinite(storedStageIndex) ? storedStageIndex : inferredStageIndex));
+      zone.phase = zone.phase ?? "idle";
+      zone.nextChangeIn = zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking"
+        ? Math.max(0, (Number(zone.phaseEndsAt ?? now) - now) / 1000)
+        : 0;
+      return;
+    }
+
+    this.state.safeZone = {
+      shape: "circle",
+      centerX,
+      centerY,
+      currentHalf: fullRadius,
+      currentDiameter: fullRadius * 2,
+      dps: 0,
+      shrinking: false,
+      shrinkProgress: 0,
+      nextChangeIn: 0,
+      phase: "idle",
+      stageIndex: 0,
+      phaseStartedAt: now,
+      phaseEndsAt: now,
+      targetVisible: false,
+    };
+  }
+
+  private pickRandomSafeZoneCenter(currentCenterX: number, currentCenterY: number, currentRadius: number, targetRadius: number) {
+    if (targetRadius <= 0) return { x: currentCenterX, y: currentCenterY };
+    const maxDistance = Math.max(0, currentRadius - targetRadius);
+    const minX = Math.max(0, targetRadius);
+    const maxX = Math.max(minX, this.mapCtx.width - targetRadius);
+    const minY = Math.max(0, targetRadius);
+    const maxY = Math.max(minY, this.mapCtx.height - targetRadius);
+
+    for (let attempt = 0; attempt < 64; attempt += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = Math.sqrt(Math.random()) * maxDistance;
+      const candidateX = currentCenterX + Math.cos(angle) * distance;
+      const candidateY = currentCenterY + Math.sin(angle) * distance;
+      if (candidateX < minX || candidateX > maxX || candidateY < minY || candidateY > maxY) continue;
+      return { x: candidateX, y: candidateY };
+    }
+
+    const fallbackX = Math.max(minX, Math.min(maxX, currentCenterX));
+    const fallbackY = Math.max(minY, Math.min(maxY, currentCenterY));
+    const fallbackDistance = Math.hypot(fallbackX - currentCenterX, fallbackY - currentCenterY);
+    if (fallbackDistance <= maxDistance || fallbackDistance <= 0.0001) {
+      return { x: fallbackX, y: fallbackY };
+    }
+
+    const ratio = maxDistance / fallbackDistance;
+    return {
+      x: currentCenterX + (fallbackX - currentCenterX) * ratio,
+      y: currentCenterY + (fallbackY - currentCenterY) * ratio,
+    };
+  }
+
+  private getRandomZoneNextDiameter(zone: SafeZone) {
+    const stageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0)));
+    return GameLoop.RANDOM_ZONE_TARGET_DIAMETERS[stageIndex] ?? null;
+  }
+
+  private getRandomZoneDps(zone: SafeZone) {
+    const stageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0)));
+    if (zone.phase === "complete" || Number(zone.currentHalf ?? 0) <= 0) return 10;
+    if (zone.phase === "shrinking") {
+      const targetDiameter = Number(zone.targetDiameter ?? zone.currentHalf * 2);
+      if (targetDiameter <= 0) return 10;
+      return targetDiameter <= 25 ? 5 : 1;
+    }
+    if (stageIndex >= 4) return 5;
+    if (stageIndex >= 1) return 1;
+    return 0;
+  }
+
+  private beginRandomZoneCountdown(zone: SafeZone, now: number, targetDiameter: number) {
+    const currentRadius = Math.max(0, Number(zone.currentHalf ?? this.getRandomSafeZoneFullRadius()));
+    const targetRadius = Math.max(0, targetDiameter / 2);
+    const targetCenter = this.pickRandomSafeZoneCenter(zone.centerX, zone.centerY, currentRadius, targetRadius);
+    zone.phase = "countdown";
+    zone.phaseStartedAt = now;
+    zone.phaseEndsAt = now + GameLoop.RANDOM_ZONE_PREVIEW_MS;
+    zone.targetStageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0))) + 1;
+    zone.targetDiameter = targetDiameter;
+    zone.targetHalf = targetRadius;
+    zone.targetCenterX = targetCenter.x;
+    zone.targetCenterY = targetCenter.y;
+    zone.targetVisible = true;
+    zone.shrinking = false;
+    zone.shrinkProgress = 0;
+  }
+
+  private beginRandomZoneShrink(zone: SafeZone, now: number, fallbackTargetDiameter?: number) {
+    const targetDiameter = Math.max(0, Number(zone.targetDiameter ?? fallbackTargetDiameter ?? 0));
+    const targetRadius = Math.max(0, Number(zone.targetHalf ?? targetDiameter / 2));
+    const targetCenter = targetDiameter <= 0
+      ? { x: zone.centerX, y: zone.centerY }
+      : {
+          x: Number.isFinite(zone.targetCenterX) ? Number(zone.targetCenterX) : zone.centerX,
+          y: Number.isFinite(zone.targetCenterY) ? Number(zone.targetCenterY) : zone.centerY,
+        };
+
+    zone.phase = "shrinking";
+    zone.phaseStartedAt = now;
+    zone.phaseEndsAt = now + GameLoop.RANDOM_ZONE_SHRINK_MS;
+    zone.targetStageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0))) + 1;
+    zone.targetDiameter = targetDiameter;
+    zone.targetHalf = targetRadius;
+    zone.targetCenterX = targetCenter.x;
+    zone.targetCenterY = targetCenter.y;
+    zone.targetVisible = targetDiameter > 0;
+    zone.shrinkStartHalf = Math.max(0, Number(zone.currentHalf ?? 0));
+    zone.shrinkStartCenterX = zone.centerX;
+    zone.shrinkStartCenterY = zone.centerY;
+    zone.shrinking = true;
+    zone.shrinkProgress = 0;
+  }
+
+  private finishRandomZoneShrink(zone: SafeZone, now: number) {
+    const targetDiameter = Math.max(0, Number(zone.targetDiameter ?? 0));
+    const targetRadius = Math.max(0, Number(zone.targetHalf ?? targetDiameter / 2));
+    zone.centerX = Number.isFinite(zone.targetCenterX) ? Number(zone.targetCenterX) : zone.centerX;
+    zone.centerY = Number.isFinite(zone.targetCenterY) ? Number(zone.targetCenterY) : zone.centerY;
+    zone.currentHalf = targetRadius;
+    zone.currentDiameter = targetDiameter;
+    zone.stageIndex = Math.max(0, Math.floor(Number(zone.targetStageIndex ?? (Number(zone.stageIndex ?? 0) + 1))));
+    zone.targetVisible = false;
+    zone.shrinking = false;
+    zone.shrinkProgress = 0;
+    delete zone.shrinkStartCenterX;
+    delete zone.shrinkStartCenterY;
+    delete zone.shrinkStartHalf;
+
+    if (targetDiameter <= 0) {
+      zone.phase = "complete";
+      zone.phaseStartedAt = now;
+      zone.phaseEndsAt = now;
+      zone.nextChangeIn = 0;
+      zone.dps = 10;
+      return;
+    }
+
+    const waitMs = targetDiameter <= 25 ? GameLoop.RANDOM_ZONE_FINAL_WAIT_MS : GameLoop.RANDOM_ZONE_WAIT_MS;
+    zone.phase = "waiting";
+    zone.phaseStartedAt = now;
+    zone.phaseEndsAt = now + waitMs;
+    zone.nextChangeIn = waitMs / 1000;
+  }
+
+  private updateRandomSafeZone(now: number) {
+    this.ensureRandomSafeZoneInitialized(now);
+    const zone = this.state.safeZone;
+    if (!zone) return;
+    const phaseActive = zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking";
+    if (!phaseActive) {
+      zone.shape = "circle";
+      zone.currentDiameter = Math.max(0, Number(zone.currentHalf ?? 0)) * 2;
+      zone.shrinking = false;
+      zone.shrinkProgress = 0;
+      zone.targetVisible = false;
+      zone.nextChangeIn = 0;
+      zone.dps = this.getRandomZoneDps(zone);
+      return;
+    }
+
+    let transitions = 0;
+    while ((zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking") && Number(zone.phaseEndsAt ?? now) <= now && transitions < 8) {
+      transitions += 1;
+      if (zone.phase === "countdown") {
+        this.beginRandomZoneShrink(zone, now);
+      } else if (zone.phase === "shrinking") {
+        this.finishRandomZoneShrink(zone, now);
+      } else {
+        const targetDiameter = this.getRandomZoneNextDiameter(zone);
+        if (targetDiameter === null) {
+          zone.phase = "complete";
+          zone.phaseStartedAt = now;
+          zone.phaseEndsAt = now;
+          zone.nextChangeIn = 0;
+        } else if (targetDiameter <= 0) {
+          this.beginRandomZoneShrink(zone, now, targetDiameter);
+        } else {
+          this.beginRandomZoneCountdown(zone, now, targetDiameter);
+        }
+      }
+    }
+
+    if (zone.phase === "shrinking") {
+      const phaseStartedAt = Number(zone.phaseStartedAt ?? now);
+      const phaseEndsAt = Number(zone.phaseEndsAt ?? now);
+      const duration = Math.max(1, phaseEndsAt - phaseStartedAt);
+      const progress = Math.min(1, Math.max(0, (now - phaseStartedAt) / duration));
+      const startHalf = Number(zone.shrinkStartHalf ?? zone.currentHalf ?? 0);
+      const startCenterX = Number(zone.shrinkStartCenterX ?? zone.centerX);
+      const startCenterY = Number(zone.shrinkStartCenterY ?? zone.centerY);
+      const targetHalf = Math.max(0, Number(zone.targetHalf ?? 0));
+      const targetCenterX = Number.isFinite(zone.targetCenterX) ? Number(zone.targetCenterX) : startCenterX;
+      const targetCenterY = Number.isFinite(zone.targetCenterY) ? Number(zone.targetCenterY) : startCenterY;
+      zone.currentHalf = startHalf + (targetHalf - startHalf) * progress;
+      zone.currentDiameter = zone.currentHalf * 2;
+      zone.centerX = startCenterX + (targetCenterX - startCenterX) * progress;
+      zone.centerY = startCenterY + (targetCenterY - startCenterY) * progress;
+      zone.shrinking = true;
+      zone.shrinkProgress = progress;
+    } else {
+      zone.currentDiameter = Math.max(0, Number(zone.currentHalf ?? 0)) * 2;
+      zone.shrinking = false;
+      zone.shrinkProgress = 0;
+    }
+
+    zone.shape = "circle";
+    zone.nextChangeIn = Math.max(0, (Number(zone.phaseEndsAt ?? now) - now) / 1000);
+    zone.dps = this.getRandomZoneDps(zone);
   }
 
   /** Compute safe zone size and damage from elapsed time */
@@ -1225,44 +1470,6 @@ export class GameLoop {
 
   private syncDynamicMapContext() {
     this.mapCtx.playArea = this.state.playArea;
-  }
-
-  private updateManualSafeZone(now: number) {
-    const zone = this.state.safeZone;
-    if (!zone) return;
-
-    const fullHalf = Math.hypot(this.mapCtx.width / 2, this.mapCtx.height / 2);
-    const minRadius = GameLoop.YUMEN_ZONE_MIN_RADIUS;
-    const shrinkUnitsPerSecond = GameLoop.YUMEN_ZONE_SHRINK_UNITS_PER_SECOND;
-    zone.shape = "circle";
-    zone.centerX = Number.isFinite(zone.centerX) ? zone.centerX : this.mapCtx.width / 2;
-    zone.centerY = Number.isFinite(zone.centerY) ? zone.centerY : this.mapCtx.height / 2;
-    zone.currentHalf = Math.max(0, Math.min(fullHalf, Number(zone.currentHalf ?? fullHalf)));
-
-    if (zone.manualShrinking && zone.currentHalf > minRadius) {
-      const lastShrinkAt = Number.isFinite(zone.lastShrinkAt) ? Number(zone.lastShrinkAt) : now;
-      const elapsedSeconds = Math.max(0, (now - lastShrinkAt) / 1000);
-      zone.lastShrinkAt = now;
-      zone.currentHalf = Math.max(
-        minRadius,
-        zone.currentHalf - elapsedSeconds * shrinkUnitsPerSecond,
-      );
-      zone.shrinking = zone.currentHalf > minRadius;
-      zone.manualShrinking = zone.shrinking;
-      zone.dps = Math.max(1, Number(zone.dps ?? 1));
-      const startHalf = Math.max(minRadius + 1, Number(zone.shrinkStartHalf ?? fullHalf));
-      zone.shrinkProgress = Math.max(0, Math.min(1, (startHalf - zone.currentHalf) / (startHalf - minRadius)));
-      zone.nextChangeIn = zone.shrinking
-        ? Math.ceil((zone.currentHalf - minRadius) / shrinkUnitsPerSecond)
-        : 0;
-      return;
-    }
-
-    zone.manualShrinking = false;
-    zone.shrinking = false;
-    zone.shrinkProgress = 0;
-    zone.nextChangeIn = 0;
-    delete zone.lastShrinkAt;
   }
 
   private pruneEventHistoryForBroadcast(): boolean {
@@ -4055,18 +4262,19 @@ export class GameLoop {
       }
     }
 
-    // 1d. 毒圈 — poison zone damage (arena timed mode, yumen manual mode)
+    // 1d. 毒圈 — poison zone damage (arena timed mode, yumen staged mode)
     if ((this.isArenaMode || this.isYumenMode) && this.state.safeZone) {
       if (this.isArenaMode) {
         const elapsedMs = now - this.zoneStartedAt;
         const { currentHalf, dps, shrinking, shrinkProgress, nextChangeIn } = this.computeSafeZone(elapsedMs);
         this.state.safeZone.currentHalf = currentHalf;
+        this.state.safeZone.currentDiameter = currentHalf * 2;
         this.state.safeZone.dps = dps;
         this.state.safeZone.shrinking = shrinking;
         this.state.safeZone.shrinkProgress = shrinkProgress;
         this.state.safeZone.nextChangeIn = nextChangeIn;
-      } else {
-        this.updateManualSafeZone(now);
+      } else if (this.isYumenMode) {
+        this.updateRandomSafeZone(now);
       }
 
       const currentHalf = this.state.safeZone.currentHalf;

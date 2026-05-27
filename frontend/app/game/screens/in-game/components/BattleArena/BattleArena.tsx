@@ -3732,6 +3732,89 @@ const COMMON_ABILITY_ORDER = [
   'yuqi',
 ] as const;
 
+function YumenMiniMap({
+  mapWidth,
+  mapHeight,
+  playerPosition,
+  safeZone,
+}: {
+  mapWidth: number;
+  mapHeight: number;
+  playerPosition: { x: number; y: number };
+  safeZone?: SafeZone;
+}) {
+  const size = 152;
+  const padding = 10;
+  const mapScale = Math.min((size - padding * 2) / Math.max(1, mapWidth), (size - padding * 2) / Math.max(1, mapHeight));
+  const renderedWidth = mapWidth * mapScale;
+  const renderedHeight = mapHeight * mapScale;
+  const offsetX = (size - renderedWidth) / 2;
+  const offsetY = (size - renderedHeight) / 2;
+  const toMapX = (x: number) => offsetX + Math.max(0, Math.min(mapWidth, x)) * mapScale;
+  const toMapY = (y: number) => offsetY + Math.max(0, Math.min(mapHeight, y)) * mapScale;
+  const rawCircleX = (x: number) => offsetX + x * mapScale;
+  const rawCircleY = (y: number) => offsetY + y * mapScale;
+  const currentRadius = Math.max(0, Number(safeZone?.currentHalf ?? 0)) * mapScale;
+  const targetRadius = Math.max(0, Number(safeZone?.targetHalf ?? (typeof safeZone?.targetDiameter === 'number' ? safeZone.targetDiameter / 2 : 0))) * mapScale;
+  const hasCurrentCircle = !!safeZone && currentRadius > 0;
+  const hasTargetCircle = !!safeZone?.targetVisible
+    && targetRadius > 0
+    && typeof safeZone.targetCenterX === 'number'
+    && typeof safeZone.targetCenterY === 'number';
+
+  return (
+    <div
+      aria-label="玉门关小地图"
+      style={{
+        position: 'absolute',
+        top: 50,
+        right: 14,
+        width: size,
+        height: size,
+        borderRadius: 6,
+        background: 'rgba(8, 12, 18, 0.86)',
+        border: '1px solid rgba(156, 180, 205, 0.42)',
+        boxShadow: '0 8px 22px rgba(0,0,0,0.36)',
+        zIndex: 545,
+        pointerEvents: 'none',
+      }}
+    >
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{ display: 'block' }}>
+        <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} rx={4} fill="rgba(17, 24, 35, 0.94)" stroke="rgba(210, 225, 240, 0.32)" strokeWidth="1" />
+        {[0.25, 0.5, 0.75].map((ratio) => (
+          <React.Fragment key={ratio}>
+            <line x1={offsetX + renderedWidth * ratio} y1={offsetY} x2={offsetX + renderedWidth * ratio} y2={offsetY + renderedHeight} stroke="rgba(160, 178, 198, 0.16)" strokeWidth="1" />
+            <line x1={offsetX} y1={offsetY + renderedHeight * ratio} x2={offsetX + renderedWidth} y2={offsetY + renderedHeight * ratio} stroke="rgba(160, 178, 198, 0.16)" strokeWidth="1" />
+          </React.Fragment>
+        ))}
+        {hasTargetCircle && (
+          <circle
+            cx={rawCircleX(Number(safeZone!.targetCenterX))}
+            cy={rawCircleY(Number(safeZone!.targetCenterY))}
+            r={targetRadius}
+            fill="none"
+            stroke="#48a7ff"
+            strokeWidth="2.2"
+          />
+        )}
+        {hasCurrentCircle && (
+          <circle
+            cx={rawCircleX(Number(safeZone.centerX))}
+            cy={rawCircleY(Number(safeZone.centerY))}
+            r={currentRadius}
+            fill="none"
+            stroke="#f5d24f"
+            strokeWidth="2"
+            strokeDasharray="4 4"
+          />
+        )}
+        <circle cx={toMapX(playerPosition.x)} cy={toMapY(playerPosition.y)} r="4.5" fill="#f8fafc" stroke="rgba(0,0,0,0.82)" strokeWidth="1.4" />
+        <circle cx={toMapX(playerPosition.x)} cy={toMapY(playerPosition.y)} r="7.5" fill="none" stroke="rgba(248,250,252,0.34)" strokeWidth="1.5" />
+      </svg>
+    </div>
+  );
+}
+
 interface BattleArenaProps {
   me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; consumableCooldowns?: Record<string, { expiresAt: number }>; consumableCounts?: Record<string, number>; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
   opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }> };
@@ -6615,6 +6698,26 @@ export default function BattleArena({
   const localTrailRef     = useRef<Array<{ pos: V3; alpha: number }>>([]);
   const oppTrailRef       = useRef<Array<{ pos: V3; alpha: number }>>([]);
   const lastFrameTimeRef  = useRef<number>(0);
+  const [miniMapPosition, setMiniMapPosition] = useState(() => ({ x: me?.position?.x ?? 0, y: me?.position?.y ?? 0 }));
+
+  useEffect(() => {
+    if (!isYumenMode) return;
+    const updateMiniMapPosition = () => {
+      const renderPosition = localRenderPosRef.current;
+      const nextPosition = {
+        x: Number.isFinite(renderPosition?.x) ? renderPosition.x : me.position.x,
+        y: Number.isFinite(renderPosition?.y) ? renderPosition.y : me.position.y,
+      };
+      setMiniMapPosition((previous) => (
+        Math.abs(previous.x - nextPosition.x) < 0.05 && Math.abs(previous.y - nextPosition.y) < 0.05
+          ? previous
+          : nextPosition
+      ));
+    };
+    updateMiniMapPosition();
+    const id = window.setInterval(updateMiniMapPosition, 100);
+    return () => window.clearInterval(id);
+  }, [isYumenMode, me.position.x, me.position.y]);
 
   // Restore the old rAF render-position loop exactly.
   // Handles: smooth position lerp, dash snap animation, jump phase tracking, Z display.
@@ -13845,6 +13948,15 @@ export default function BattleArena({
         </div>
       </div>
 
+      {isYumenMode && (
+        <YumenMiniMap
+          mapWidth={ARENA_WIDTH}
+          mapHeight={ARENA_HEIGHT}
+          playerPosition={miniMapPosition}
+          safeZone={safeZone}
+        />
+      )}
+
       {uiLayoutReady ? renderChatPanel() : null}
       {uiLayoutReady ? renderDetachedChatPanels() : null}
       {renderChatSettingsModal()}
@@ -16056,7 +16168,7 @@ export default function BattleArena({
                 <button
                   type="button"
                   disabled={!!runningCheatAction}
-                  onClick={() => void runCheatAction('yumen-start-shrink', '/api/game/cheat/yumen/start-shrink', '毒圈开始缩小')}
+                  onClick={() => void runCheatAction('yumen-start-shrink', '/api/game/cheat/yumen/start-shrink', '快速缩圈已开始')}
                   style={{
                     background: 'rgba(210, 80, 70, 0.22)', color: '#ffc4bd',
                     border: '1px solid rgba(255, 130, 120, 0.62)', borderRadius: 4,
@@ -16064,7 +16176,7 @@ export default function BattleArena({
                     cursor: runningCheatAction ? 'not-allowed' : 'pointer',
                     opacity: runningCheatAction ? 0.55 : 1,
                   }}
-                >开始缩小毒圈</button>
+                >开始快速缩圈</button>
                 <button
                   type="button"
                   disabled={!!runningCheatAction}
@@ -16077,6 +16189,18 @@ export default function BattleArena({
                     opacity: runningCheatAction ? 0.55 : 1,
                   }}
                 >停止缩圈</button>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-reset-shrink', '/api/game/cheat/yumen/reset-shrink', '缩圈已重置')}
+                  style={{
+                    background: 'rgba(110, 125, 150, 0.24)', color: '#d9e4f2',
+                    border: '1px solid rgba(175, 195, 220, 0.58)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >重置缩圈</button>
                 <button
                   type="button"
                   onClick={() => setShowYumenSafeZoneCurtain((value) => !value)}
@@ -16442,6 +16566,30 @@ export default function BattleArena({
           pointerEvents: 'none',
           zIndex: 500,
         }}>
+          <div style={{
+            minWidth: 88,
+            padding: '3px 8px',
+            borderRadius: 4,
+            background: safeZone.shrinking || safeZone.phase === 'shrinking'
+              ? 'rgba(255, 96, 48, 0.82)'
+              : safeZone.phase === 'countdown'
+                ? 'rgba(250, 204, 21, 0.82)'
+                : 'rgba(28, 76, 128, 0.82)',
+            border: '1px solid rgba(255,255,255,0.28)',
+            color: safeZone.phase === 'countdown' ? '#1f2933' : '#ffffff',
+            fontSize: 12,
+            fontWeight: 800,
+            fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+            textAlign: 'center',
+            textShadow: safeZone.phase === 'countdown' ? 'none' : '1px 1px 2px rgba(0,0,0,0.55)',
+            whiteSpace: 'nowrap',
+          }}>
+            {safeZone.shrinking || safeZone.phase === 'shrinking'
+              ? '缩圈中'
+              : safeZone.phase === 'countdown'
+                ? '缩圈倒计时'
+                : '等待'}
+          </div>
           {/* Progress bar container */}
           <div style={{
             width: 120,
@@ -16463,16 +16611,18 @@ export default function BattleArena({
           </div>
           {/* Timer text */}
           <div style={{
-            color: safeZone.shrinking ? '#ff8800' : '#ffffff',
+            color: safeZone.shrinking || safeZone.phase === 'shrinking' ? '#ff8800' : '#ffffff',
             fontSize: 13,
             fontWeight: 700,
             fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
             textShadow: '1px 1px 3px rgba(0,0,0,0.8)',
             whiteSpace: 'nowrap',
           }}>
-            {safeZone.shrinking
+            {safeZone.shrinking || safeZone.phase === 'shrinking'
               ? `缩圈中 ${Math.ceil(safeZone.nextChangeIn)}s`
-              : `风暴倒计时: ${Math.ceil(safeZone.nextChangeIn)}`}
+              : safeZone.phase === 'countdown'
+                ? `新安全区 ${Math.ceil(safeZone.nextChangeIn)}s`
+                : `等待 ${Math.ceil(safeZone.nextChangeIn)}s`}
           </div>
         </div>
       )}

@@ -3,6 +3,33 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 玉门关 staged safe zone correction (2026-05-27)
+
+**Implemented / checked**:
+- Removed the staged random safe-zone runtime and circular overlay gate from `collision-test`; this mode should not receive this behavior.
+- Moved the staged random circular safe-zone behavior to `yumen-1v1-basic`, with full-map idle start and manual `开始快速缩圈` / `停止缩圈` / `重置缩圈` controls.
+- Added the `200` diameter stage so yumen now progresses from the exported-map full circle (about `595.545u`) to `200 -> 100 -> 50 -> 25 -> 0`.
+- Added a yumen top-right minimap that shows the local player marker, the current safe zone as a yellow dotted circle, and the revealed next circle as a blue line.
+
+**Lesson**:
+- A requested gameplay system can be technically correct but still wrong if it lands in the wrong mode. When the user scopes behavior to 玉门关, avoid changing `collision-test` even if it shares the exported map/collision stack.
+- For staged yumen safe zones, keep the full-map circle idle until an explicit control starts the sequence; do not auto-start from GameLoop construction.
+
+## Collision-test random safe zone stages (2026-05-27)
+
+**Implemented / checked**:
+- Added collision-test random circular safe-zone staging: full-map first circle, then revealed target diameters `100 -> 50 -> 25 -> 0` with waits/shrink timing matching the requested pattern.
+- The first collision-test circle is based on the exported map diagonal, so it starts at diameter about `595.545u` / radius about `297.773u` for the current `418.807u x 423.409u` map.
+- Next-circle centers are chosen only when their countdown phase begins, constrained so the next circle fits inside the current circle and the map rectangle. The 0 stage shrinks to the center of the 25u circle.
+- Added revealed next-circle metadata to `safeZone`, rendered the next circle as a yellow terrain-aware ring, and enabled the circular safe-zone overlay for collision-test mode.
+- Added the right-side status label above the existing safe-zone timer/progress display with `等待`, `缩圈倒计时`, and `缩圈中` states.
+- Built backend and frontend successfully after the final change, restarted only PM2 `frontend` and `backend`, and confirmed both started online with no reported startup errors.
+
+**Lesson**:
+- Treat user-facing circle sizes as diameters when the design explicitly says diameter. The runtime still uses `currentHalf` as radius, so stage values need conversion before damage checks and rendering.
+- Do not persist unrevealed future safe-zone centers into public game state. Generate the next target when the countdown starts, then broadcast only the revealed/current circle metadata.
+- For non-square exported maps, the first full-map circle should use the map diagonal, not the larger single-axis length, if it must cover every corner.
+
 ## 玉门关 official mode bootstrap (2026-05-27)
 
 **Implemented / checked**:

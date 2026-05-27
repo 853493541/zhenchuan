@@ -230,13 +230,26 @@ export interface SafeZone {
   centerX: number;
   centerY: number;
   currentHalf: number;
+  currentDiameter?: number;
   dps: number;
   shrinking: boolean;
   shrinkProgress: number;
   nextChangeIn: number;
+  phase?: 'idle' | 'waiting' | 'countdown' | 'shrinking' | 'complete';
+  stageIndex?: number;
+  targetStageIndex?: number;
+  phaseStartedAt?: number;
+  phaseEndsAt?: number;
+  targetDiameter?: number;
+  targetHalf?: number;
+  targetCenterX?: number;
+  targetCenterY?: number;
+  targetVisible?: boolean;
   manualShrinking?: boolean;
   lastShrinkAt?: number;
   shrinkStartHalf?: number;
+  shrinkStartCenterX?: number;
+  shrinkStartCenterY?: number;
 }
 
 export interface PlayAreaBounds {

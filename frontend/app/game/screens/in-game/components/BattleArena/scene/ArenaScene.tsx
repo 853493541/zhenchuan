@@ -698,20 +698,29 @@ function YumenSafeZoneOverlay({
     if (radius <= 0) return null;
     const wallHeight = CHARACTER_VISUAL_HEIGHT / 2;
     const segments = 160;
-    const bottomPoints: [number, number, number][] = [];
-    const uvs: number[] = [];
-    for (let i = 0; i <= segments; i += 1) {
-      const angle = (i / segments) * Math.PI * 2;
-      const worldX = safeZone.centerX + Math.cos(angle) * radius;
-      const worldY = safeZone.centerY + Math.sin(angle) * radius;
-      bottomPoints.push([
-        worldX - worldHalfX,
-        getZoneTerrainZ(worldX, worldY, 0) + YUMEN_SAFE_ZONE_RING_CLEARANCE,
-        worldHalfY - worldY,
-      ]);
-    }
+    const buildRingPoints = (centerX: number, centerY: number, ringRadius: number) => {
+      const points: [number, number, number][] = [];
+      for (let segmentIndex = 0; segmentIndex <= segments; segmentIndex += 1) {
+        const angle = (segmentIndex / segments) * Math.PI * 2;
+        const worldX = centerX + Math.cos(angle) * ringRadius;
+        const worldY = centerY + Math.sin(angle) * ringRadius;
+        points.push([
+          worldX - worldHalfX,
+          getZoneTerrainZ(worldX, worldY, 0) + YUMEN_SAFE_ZONE_RING_CLEARANCE,
+          worldHalfY - worldY,
+        ]);
+      }
+      return points;
+    };
 
-    if (!showCurtain) return { bottomPoints, radius };
+    const bottomPoints = buildRingPoints(safeZone.centerX, safeZone.centerY, radius);
+    const targetRadius = Math.max(0, Number(safeZone.targetHalf ?? (typeof safeZone.targetDiameter === 'number' ? safeZone.targetDiameter / 2 : 0)));
+    const targetBottomPoints = safeZone.targetVisible && targetRadius > 0 && typeof safeZone.targetCenterX === 'number' && typeof safeZone.targetCenterY === 'number'
+      ? buildRingPoints(safeZone.targetCenterX, safeZone.targetCenterY, targetRadius)
+      : null;
+    const uvs: number[] = [];
+
+    if (!showCurtain) return { bottomPoints, targetBottomPoints, radius };
 
     const positions: number[] = [];
     for (let i = 0; i < segments; i += 1) {
@@ -751,7 +760,7 @@ function YumenSafeZoneOverlay({
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    return { bottomPoints, curtainGeometry, curtainMaterial, radius };
+    return { bottomPoints, targetBottomPoints, curtainGeometry, curtainMaterial, radius };
   }, [safeZone, worldHalfX, worldHalfY, getZoneTerrainZ, showCurtain]);
 
   useEffect(() => {
@@ -792,6 +801,18 @@ function YumenSafeZoneOverlay({
         depthTest={true}
         depthWrite={false}
       />
+      {visual.targetBottomPoints && (
+        <Line
+          points={visual.targetBottomPoints}
+          color="#facc15"
+          lineWidth={4}
+          transparent
+          opacity={0.9}
+          renderOrder={21}
+          depthTest={true}
+          depthWrite={false}
+        />
+      )}
       <Line
         ref={nearLineRef}
         points={visual.bottomPoints}
@@ -922,6 +943,7 @@ export default function ArenaScene({
 
   const isExportedMap = isExportedMapMode(mode);
   const isYumenMode = isYumen1v1BasicMode(mode);
+  const showCircularSafeZoneOverlay = isYumenMode;
 
   const getZoneVisualZ = useCallback((worldX: number, worldY: number, worldZ = 0) => {
     let groundZ = 0;
@@ -1082,16 +1104,16 @@ export default function ArenaScene({
               getZoneTerrainZ={getZoneTerrainZ}
             />
           )}
-          {isYumenMode && (
+          {showCircularSafeZoneOverlay && (
             <YumenSafeZoneOverlay
               safeZone={safeZone}
               worldHalfX={worldHalfX}
               worldHalfY={worldHalfY}
               localRenderPosRef={localRenderPosRef}
               getZoneTerrainZ={getZoneTerrainZ}
-              showCurtain={showSafeZoneCurtain}
-              structureXrayActive={safeZoneStructureXrayActive}
-              onStructureXrayActiveChange={setSafeZoneStructureXrayActive}
+              showCurtain={isYumenMode && showSafeZoneCurtain}
+              structureXrayActive={isYumenMode ? safeZoneStructureXrayActive : false}
+              onStructureXrayActiveChange={isYumenMode ? setSafeZoneStructureXrayActive : () => undefined}
             />
           )}
           {!blueprintMode && <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}

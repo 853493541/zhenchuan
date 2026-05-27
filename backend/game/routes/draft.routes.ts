@@ -87,30 +87,124 @@ function clampFiniteNumber(value: unknown, fallback: number, min: number, max: n
   return Math.max(min, Math.min(max, numericValue));
 }
 
-const YUMEN_SAFE_ZONE_MIN_RADIUS = 15;
-const YUMEN_SAFE_ZONE_SHRINK_UNITS_PER_SECOND = 4;
+const YUMEN_STAGED_SAFE_ZONE_INITIAL_WAIT_MS = 20_000;
 
 function getYumenFullSafeZoneRadius() {
   return Math.hypot(EXPORTED_MAP_WIDTH / 2, EXPORTED_MAP_HEIGHT / 2);
+}
+
+function getYumenStagedSafeZoneDps(zone: any) {
+  const stageIndex = Math.max(0, Math.floor(Number(zone?.stageIndex ?? 0)));
+  if (zone?.phase === "complete" || Number(zone?.currentHalf ?? 0) <= 0) return 10;
+  if (zone?.phase === "shrinking") {
+    const targetDiameter = Number(zone?.targetDiameter ?? Number(zone?.currentHalf ?? 0) * 2);
+    if (targetDiameter <= 0) return 10;
+    return targetDiameter <= 25 ? 5 : 1;
+  }
+  if (stageIndex >= 4) return 5;
+  if (stageIndex >= 1) return 1;
+  return 0;
 }
 
 function createYumenSafeZone(state: any) {
   const fullHalf = getYumenFullSafeZoneRadius();
   const existing = state?.safeZone ?? {};
   const existingHalf = existing.shape === "circle" ? existing.currentHalf : fullHalf;
-  return {
+  const allowedPhases = new Set(["idle", "waiting", "countdown", "shrinking", "complete"]);
+  const phase = allowedPhases.has(existing.phase) ? existing.phase : "idle";
+  const currentHalf = clampFiniteNumber(existingHalf, fullHalf, 0, fullHalf);
+  const currentDiameter = currentHalf * 2;
+  const inferredStageIndex = currentDiameter <= 25 ? 4 : currentDiameter <= 50 ? 3 : currentDiameter <= 100 ? 2 : currentDiameter <= 200 ? 1 : 0;
+  const zone: any = {
     shape: "circle",
     centerX: clampFiniteNumber(existing.centerX, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH),
     centerY: clampFiniteNumber(existing.centerY, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT),
-    currentHalf: clampFiniteNumber(existingHalf, fullHalf, YUMEN_SAFE_ZONE_MIN_RADIUS, fullHalf),
-    dps: Math.max(1, clampFiniteNumber(existing.dps, 1, 0, 999)),
-    shrinking: existing.shrinking === true,
+    currentHalf,
+    currentDiameter,
+    dps: Math.max(0, clampFiniteNumber(existing.dps, 0, 0, 999)),
+    shrinking: existing.shrinking === true && phase === "shrinking",
     shrinkProgress: clampFiniteNumber(existing.shrinkProgress, 0, 0, 1),
     nextChangeIn: Math.max(0, Math.round(clampFiniteNumber(existing.nextChangeIn, 0, 0, 9999))),
-    manualShrinking: existing.manualShrinking === true,
-    lastShrinkAt: Number.isFinite(Number(existing.lastShrinkAt)) ? Number(existing.lastShrinkAt) : undefined,
-    shrinkStartHalf: Number.isFinite(Number(existing.shrinkStartHalf)) ? Number(existing.shrinkStartHalf) : undefined,
+    phase,
+    stageIndex: Math.max(0, Math.floor(clampFiniteNumber(existing.stageIndex, inferredStageIndex, 0, 99))),
+    targetVisible: existing.targetVisible === true,
   };
+  for (const key of ["targetStageIndex", "phaseStartedAt", "phaseEndsAt", "targetDiameter", "targetHalf", "targetCenterX", "targetCenterY", "shrinkStartHalf", "shrinkStartCenterX", "shrinkStartCenterY"]) {
+    if (Number.isFinite(Number(existing[key]))) zone[key] = Number(existing[key]);
+  }
+  if (zone.phase !== "waiting" && zone.phase !== "countdown" && zone.phase !== "shrinking") {
+    zone.nextChangeIn = 0;
+    zone.targetVisible = false;
+    zone.shrinking = false;
+    zone.shrinkProgress = 0;
+  }
+  zone.dps = getYumenStagedSafeZoneDps(zone);
+  return zone;
+}
+
+function resetYumenSafeZone(now: number) {
+  const fullHalf = getYumenFullSafeZoneRadius();
+  return {
+    shape: "circle",
+    centerX: EXPORTED_MAP_WIDTH / 2,
+    centerY: EXPORTED_MAP_HEIGHT / 2,
+    currentHalf: fullHalf,
+    currentDiameter: fullHalf * 2,
+    dps: 0,
+    shrinking: false,
+    shrinkProgress: 0,
+    nextChangeIn: 0,
+    phase: "idle",
+    stageIndex: 0,
+    phaseStartedAt: now,
+    phaseEndsAt: now,
+    targetVisible: false,
+  };
+}
+
+function startYumenSafeZone(state: any, now: number) {
+  const zone = createYumenSafeZone(state);
+  if (zone.phase === "complete" || zone.currentHalf <= 0) {
+    Object.assign(zone, resetYumenSafeZone(now));
+  }
+  zone.phase = "waiting";
+  zone.phaseStartedAt = now;
+  zone.phaseEndsAt = now + YUMEN_STAGED_SAFE_ZONE_INITIAL_WAIT_MS;
+  zone.nextChangeIn = YUMEN_STAGED_SAFE_ZONE_INITIAL_WAIT_MS / 1000;
+  zone.shrinking = false;
+  zone.shrinkProgress = 0;
+  zone.targetVisible = false;
+  delete zone.targetStageIndex;
+  delete zone.targetDiameter;
+  delete zone.targetHalf;
+  delete zone.targetCenterX;
+  delete zone.targetCenterY;
+  delete zone.shrinkStartHalf;
+  delete zone.shrinkStartCenterX;
+  delete zone.shrinkStartCenterY;
+  zone.dps = getYumenStagedSafeZoneDps(zone);
+  return zone;
+}
+
+function stopYumenSafeZone(state: any, now: number) {
+  const zone = createYumenSafeZone(state);
+  zone.phase = "idle";
+  zone.phaseStartedAt = now;
+  zone.phaseEndsAt = now;
+  zone.nextChangeIn = 0;
+  zone.shrinking = false;
+  zone.shrinkProgress = 0;
+  zone.targetVisible = false;
+  delete zone.targetStageIndex;
+  delete zone.targetDiameter;
+  delete zone.targetHalf;
+  delete zone.targetCenterX;
+  delete zone.targetCenterY;
+  delete zone.shrinkStartHalf;
+  delete zone.shrinkStartCenterX;
+  delete zone.shrinkStartCenterY;
+  zone.dps = getYumenStagedSafeZoneDps(zone);
+  return zone;
 }
 
 function normalizeYumenPlayArea(input: any) {
@@ -1341,7 +1435,7 @@ router.post("/cheat/yumen/play-area", async (req, res) => {
 });
 
 /**
- * POST /cheat/yumen/start-shrink - Start manual 玉门关 poison-zone shrink.
+ * POST /cheat/yumen/start-shrink - Start staged 玉门关 poison-zone shrink.
  * Body: { gameId }
  */
 router.post("/cheat/yumen/start-shrink", async (req, res) => {
@@ -1358,13 +1452,7 @@ router.post("/cheat/yumen/start-shrink", async (req, res) => {
     const startedAt = Date.now();
     let updatedSafeZone: any;
     const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
-      updatedSafeZone = createYumenSafeZone(state);
-      updatedSafeZone.manualShrinking = true;
-      updatedSafeZone.shrinking = true;
-      updatedSafeZone.dps = Math.max(1, Number(updatedSafeZone.dps ?? 1));
-      updatedSafeZone.lastShrinkAt = startedAt;
-      updatedSafeZone.shrinkStartHalf = updatedSafeZone.currentHalf;
-      updatedSafeZone.nextChangeIn = Math.ceil(Math.max(0, updatedSafeZone.currentHalf - YUMEN_SAFE_ZONE_MIN_RADIUS) / YUMEN_SAFE_ZONE_SHRINK_UNITS_PER_SECOND);
+      updatedSafeZone = startYumenSafeZone(state, startedAt);
       state.safeZone = updatedSafeZone;
       return [{ path: "/safeZone", value: updatedSafeZone }];
     });
@@ -1375,7 +1463,7 @@ router.post("/cheat/yumen/start-shrink", async (req, res) => {
 });
 
 /**
- * POST /cheat/yumen/stop-shrink - Stop manual 玉门关 poison-zone shrink.
+ * POST /cheat/yumen/stop-shrink - Stop staged 玉门关 poison-zone shrink.
  * Body: { gameId }
  */
 router.post("/cheat/yumen/stop-shrink", async (req, res) => {
@@ -1389,14 +1477,38 @@ router.post("/cheat/yumen/stop-shrink", async (req, res) => {
     if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
     if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
 
+    const stoppedAt = Date.now();
     let updatedSafeZone: any;
     const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
-      updatedSafeZone = createYumenSafeZone(state);
-      updatedSafeZone.manualShrinking = false;
-      updatedSafeZone.shrinking = false;
-      updatedSafeZone.shrinkProgress = 0;
-      updatedSafeZone.nextChangeIn = 0;
-      delete updatedSafeZone.lastShrinkAt;
+      updatedSafeZone = stopYumenSafeZone(state, stoppedAt);
+      state.safeZone = updatedSafeZone;
+      return [{ path: "/safeZone", value: updatedSafeZone }];
+    });
+    res.json({ ok: true, version: liveVersion, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/reset-shrink - Reset staged 玉门关 poison-zone shrink.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/reset-shrink", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const resetAt = Date.now();
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = resetYumenSafeZone(resetAt);
       state.safeZone = updatedSafeZone;
       return [{ path: "/safeZone", value: updatedSafeZone }];
     });
