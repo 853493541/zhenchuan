@@ -10,10 +10,14 @@ Each entry goes under its relevant section header.
 - Moved the staged random circular safe-zone behavior to `yumen-1v1-basic`, with full-map idle start and manual `开始快速缩圈` / `停止缩圈` / `重置缩圈` controls.
 - Added the `200` diameter stage so yumen now progresses from the exported-map full circle (about `595.545u`) to `200 -> 100 -> 50 -> 25 -> 0`.
 - Added a yumen top-right minimap that shows the local player marker, the current safe zone as a yellow dotted circle, and the revealed next circle as a blue line.
+- Follow-up: doubled the yumen minimap size, gave it the reference-style draggable top bar, changed the map surface to sand without grid lines, and replaced the player dot with a direction cursor plus subtle white facing guide.
+- Follow-up: reduced the minimap by 20%, made its body a pure flat sand color, halved the direction cursor again, removed the white guide strokes, changed the 3D current ring to a restrained golden-white glow, kept the upcoming ring blue, and made current/upcoming rings x-ray through structures within 50u.
 
 **Lesson**:
 - A requested gameplay system can be technically correct but still wrong if it lands in the wrong mode. When the user scopes behavior to 玉门关, avoid changing `collision-test` even if it shares the exported map/collision stack.
 - For staged yumen safe zones, keep the full-map circle idle until an explicit control starts the sequence; do not auto-start from GameLoop construction.
+- If an in-world terrain-following circle becomes visually noisy, put the navigation-critical circle and facing information on a clean minimap layer instead of relying only on the 3D ground line.
+- For yumen safe-zone readability near buildings, x-ray the ring only when the player is close enough to need local navigation. Use terrain depth prepass to avoid showing the line through the ground while letting it pass through houses/structures.
 
 ## Collision-test random safe zone stages (2026-05-27)
 

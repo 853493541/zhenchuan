@@ -3736,15 +3736,23 @@ function YumenMiniMap({
   mapWidth,
   mapHeight,
   playerPosition,
+  playerFacing,
   safeZone,
 }: {
   mapWidth: number;
   mapHeight: number;
   playerPosition: { x: number; y: number };
+  playerFacing: { x: number; y: number };
   safeZone?: SafeZone;
 }) {
-  const size = 152;
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [panelPosition, setPanelPosition] = useState<{ left: number; top: number } | null>(null);
+  const size = 244;
+  const headerHeight = 27;
   const padding = 10;
+  const chromePadding = 2;
+  const panelWidth = size + chromePadding * 2;
+  const panelHeight = headerHeight + size + chromePadding * 2;
   const mapScale = Math.min((size - padding * 2) / Math.max(1, mapWidth), (size - padding * 2) / Math.max(1, mapHeight));
   const renderedWidth = mapWidth * mapScale;
   const renderedHeight = mapHeight * mapScale;
@@ -3761,32 +3769,97 @@ function YumenMiniMap({
     && targetRadius > 0
     && typeof safeZone.targetCenterX === 'number'
     && typeof safeZone.targetCenterY === 'number';
+  const markerX = toMapX(playerPosition.x);
+  const markerY = toMapY(playerPosition.y);
+  const facingLength = Math.hypot(playerFacing.x, playerFacing.y) || 1;
+  const facingX = playerFacing.x / facingLength;
+  const facingY = playerFacing.y / facingLength;
+  const markerRotation = Math.atan2(facingX, -facingY) * 180 / Math.PI;
+
+  const beginDrag = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const baseLeft = rect.left;
+    const baseTop = rect.top;
+    const clampPosition = (left: number, top: number) => {
+      const maxLeft = Math.max(8, window.innerWidth - rect.width - 8);
+      const maxTop = Math.max(8, window.innerHeight - rect.height - 8);
+      return {
+        left: Math.max(8, Math.min(maxLeft, left)),
+        top: Math.max(8, Math.min(maxTop, top)),
+      };
+    };
+    const move = (moveEvent: MouseEvent) => {
+      moveEvent.preventDefault();
+      setPanelPosition(clampPosition(baseLeft + moveEvent.clientX - startX, baseTop + moveEvent.clientY - startY));
+    };
+    const end = () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', end);
+    };
+    setPanelPosition(clampPosition(baseLeft, baseTop));
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', end);
+  };
 
   return (
     <div
+      ref={panelRef}
+      data-ui-interactive
       aria-label="玉门关小地图"
       style={{
         position: 'absolute',
-        top: 50,
-        right: 14,
-        width: size,
-        height: size,
-        borderRadius: 6,
-        background: 'rgba(8, 12, 18, 0.86)',
-        border: '1px solid rgba(156, 180, 205, 0.42)',
-        boxShadow: '0 8px 22px rgba(0,0,0,0.36)',
+        ...(panelPosition ? { left: panelPosition.left, top: panelPosition.top } : { top: 50, right: 14 }),
+        width: panelWidth,
+        height: panelHeight,
+        borderRadius: 2,
+        background: 'rgba(45, 47, 36, 0.94)',
+        border: '1px solid rgba(23, 26, 20, 0.88)',
+        boxShadow: '0 10px 24px rgba(0,0,0,0.42)',
         zIndex: 545,
-        pointerEvents: 'none',
+        pointerEvents: 'auto',
+        overflow: 'hidden',
       }}
     >
-      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{ display: 'block' }}>
-        <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} rx={4} fill="rgba(17, 24, 35, 0.94)" stroke="rgba(210, 225, 240, 0.32)" strokeWidth="1" />
-        {[0.25, 0.5, 0.75].map((ratio) => (
-          <React.Fragment key={ratio}>
-            <line x1={offsetX + renderedWidth * ratio} y1={offsetY} x2={offsetX + renderedWidth * ratio} y2={offsetY + renderedHeight} stroke="rgba(160, 178, 198, 0.16)" strokeWidth="1" />
-            <line x1={offsetX} y1={offsetY + renderedHeight * ratio} x2={offsetX + renderedWidth} y2={offsetY + renderedHeight * ratio} stroke="rgba(160, 178, 198, 0.16)" strokeWidth="1" />
-          </React.Fragment>
-        ))}
+      <div
+        data-ui-drag
+        onMouseDown={beginDrag}
+        style={{
+          height: headerHeight,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '0 7px',
+          background: 'rgba(36, 39, 29, 0.98)',
+          borderBottom: '1px solid rgba(13, 16, 12, 0.86)',
+          color: '#e6e6dd',
+          fontSize: 12,
+          fontWeight: 700,
+          fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+          lineHeight: 1,
+          cursor: 'move',
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ width: 14, color: '#bed6e2', fontSize: 14, textAlign: 'center' }}>≡</span>
+        <span style={{ width: 16, height: 16, border: '2px solid rgba(190, 205, 200, 0.7)', background: 'rgba(18, 24, 22, 0.75)', color: '#77dec0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>✓</span>
+        <span style={{ flex: 1, textShadow: '0 1px 2px rgba(0,0,0,0.75)' }}>安全区</span>
+        <span style={{ width: 16, height: 16, border: '2px solid rgba(150, 164, 158, 0.66)', background: 'rgba(12, 16, 14, 0.62)' }} />
+        <span style={{ textShadow: '0 1px 2px rgba(0,0,0,0.75)' }}>目标圈</span>
+        <span style={{ color: '#c7d8e6', fontSize: 14, marginLeft: 2 }}>⌃</span>
+      </div>
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{ display: 'block', margin: chromePadding, pointerEvents: 'none' }}>
+        <defs>
+          <clipPath id="yumen-minimap-map-clip">
+            <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} />
+          </clipPath>
+        </defs>
+        <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} fill="#c99a58" stroke="rgba(37, 35, 26, 0.78)" strokeWidth="1.5" />
         {hasTargetCircle && (
           <circle
             cx={rawCircleX(Number(safeZone!.targetCenterX))}
@@ -3794,7 +3867,8 @@ function YumenMiniMap({
             r={targetRadius}
             fill="none"
             stroke="#48a7ff"
-            strokeWidth="2.2"
+            strokeWidth="3"
+            clipPath="url(#yumen-minimap-map-clip)"
           />
         )}
         {hasCurrentCircle && (
@@ -3804,12 +3878,15 @@ function YumenMiniMap({
             r={currentRadius}
             fill="none"
             stroke="#f5d24f"
-            strokeWidth="2"
-            strokeDasharray="4 4"
+            strokeWidth="3"
+            strokeDasharray="7 6"
+            clipPath="url(#yumen-minimap-map-clip)"
           />
         )}
-        <circle cx={toMapX(playerPosition.x)} cy={toMapY(playerPosition.y)} r="4.5" fill="#f8fafc" stroke="rgba(0,0,0,0.82)" strokeWidth="1.4" />
-        <circle cx={toMapX(playerPosition.x)} cy={toMapY(playerPosition.y)} r="7.5" fill="none" stroke="rgba(248,250,252,0.34)" strokeWidth="1.5" />
+        <g transform={`translate(${markerX} ${markerY}) rotate(${markerRotation})`}>
+          <path d="M 0 -12 L 7.5 6 L 2 3.5 L 0 10 L -2 3.5 L -7.5 6 Z" fill="#e7df60" stroke="rgba(54, 65, 38, 0.95)" strokeWidth="1.4" strokeLinejoin="round" />
+          <path d="M 0 -8 L 3 3 L 0 1.5 L -3 3 Z" fill="rgba(255,255,255,0.42)" />
+        </g>
       </svg>
     </div>
   );
@@ -6698,26 +6775,37 @@ export default function BattleArena({
   const localTrailRef     = useRef<Array<{ pos: V3; alpha: number }>>([]);
   const oppTrailRef       = useRef<Array<{ pos: V3; alpha: number }>>([]);
   const lastFrameTimeRef  = useRef<number>(0);
-  const [miniMapPosition, setMiniMapPosition] = useState(() => ({ x: me?.position?.x ?? 0, y: me?.position?.y ?? 0 }));
+  const [miniMapPose, setMiniMapPose] = useState(() => ({
+    x: me?.position?.x ?? 0,
+    y: me?.position?.y ?? 0,
+    facingX: me?.facing?.x ?? 0,
+    facingY: me?.facing?.y ?? 1,
+  }));
 
   useEffect(() => {
     if (!isYumenMode) return;
-    const updateMiniMapPosition = () => {
+    const updateMiniMapPose = () => {
       const renderPosition = localRenderPosRef.current;
-      const nextPosition = {
+      const facing = localFacingRef.current ?? me.facing ?? { x: 0, y: 1 };
+      const nextPose = {
         x: Number.isFinite(renderPosition?.x) ? renderPosition.x : me.position.x,
         y: Number.isFinite(renderPosition?.y) ? renderPosition.y : me.position.y,
+        facingX: Number.isFinite(facing?.x) ? facing.x : 0,
+        facingY: Number.isFinite(facing?.y) ? facing.y : 1,
       };
-      setMiniMapPosition((previous) => (
-        Math.abs(previous.x - nextPosition.x) < 0.05 && Math.abs(previous.y - nextPosition.y) < 0.05
+      setMiniMapPose((previous) => (
+        Math.abs(previous.x - nextPose.x) < 0.05
+          && Math.abs(previous.y - nextPose.y) < 0.05
+          && Math.abs(previous.facingX - nextPose.facingX) < 0.01
+          && Math.abs(previous.facingY - nextPose.facingY) < 0.01
           ? previous
-          : nextPosition
+          : nextPose
       ));
     };
-    updateMiniMapPosition();
-    const id = window.setInterval(updateMiniMapPosition, 100);
+    updateMiniMapPose();
+    const id = window.setInterval(updateMiniMapPose, 100);
     return () => window.clearInterval(id);
-  }, [isYumenMode, me.position.x, me.position.y]);
+  }, [isYumenMode, me.position.x, me.position.y, me.facing?.x, me.facing?.y]);
 
   // Restore the old rAF render-position loop exactly.
   // Handles: smooth position lerp, dash snap animation, jump phase tracking, Z display.
@@ -13952,7 +14040,8 @@ export default function BattleArena({
         <YumenMiniMap
           mapWidth={ARENA_WIDTH}
           mapHeight={ARENA_HEIGHT}
-          playerPosition={miniMapPosition}
+          playerPosition={{ x: miniMapPose.x, y: miniMapPose.y }}
+          playerFacing={{ x: miniMapPose.facingX, y: miniMapPose.facingY }}
           safeZone={safeZone}
         />
       )}

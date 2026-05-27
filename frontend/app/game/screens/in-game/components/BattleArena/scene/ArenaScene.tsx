@@ -26,7 +26,7 @@ const COLLISION_TEST_VIS_RADIUS = 0.384;
 const CHANNEL_RING_WAIST_Z = 1.0;
 const CHARACTER_VISUAL_HEIGHT = 1.5;
 const YUMEN_SAFE_ZONE_RING_CLEARANCE = 0.34;
-const YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE = 40;
+const YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE = 50;
 
 function getStoredUnitScale(mode?: string): number {
   return isExportedMapMode(mode) ? 1 : LEGACY_STORED_UNIT_SCALE;
@@ -691,7 +691,7 @@ function YumenSafeZoneOverlay({
   structureXrayActive: boolean;
   onStructureXrayActiveChange: (active: boolean) => void;
 }) {
-  const nearLineRef = useRef<any>(null);
+  const [xrayLines, setXrayLines] = useState({ current: false, target: false });
   const visual = useMemo(() => {
     if (!safeZone) return null;
     const radius = Math.max(0, Number(safeZone.currentHalf ?? 0));
@@ -720,7 +720,11 @@ function YumenSafeZoneOverlay({
       : null;
     const uvs: number[] = [];
 
-    if (!showCurtain) return { bottomPoints, targetBottomPoints, radius };
+    const targetCenter = targetBottomPoints && typeof safeZone.targetCenterX === 'number' && typeof safeZone.targetCenterY === 'number'
+      ? { x: safeZone.targetCenterX, y: safeZone.targetCenterY, radius: targetRadius }
+      : null;
+
+    if (!showCurtain) return { bottomPoints, targetBottomPoints, radius, targetCenter };
 
     const positions: number[] = [];
     for (let i = 0; i < segments; i += 1) {
@@ -760,7 +764,7 @@ function YumenSafeZoneOverlay({
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    return { bottomPoints, targetBottomPoints, curtainGeometry, curtainMaterial, radius };
+    return { bottomPoints, targetBottomPoints, targetCenter, curtainGeometry, curtainMaterial, radius };
   }, [safeZone, worldHalfX, worldHalfY, getZoneTerrainZ, showCurtain]);
 
   useEffect(() => {
@@ -773,13 +777,19 @@ function YumenSafeZoneOverlay({
   }, [visual?.curtainGeometry, visual?.curtainMaterial]);
 
   useFrame(() => {
-    if (!visual || !safeZone || !nearLineRef.current) {
+    if (!visual || !safeZone) {
+      setXrayLines((previous) => (previous.current || previous.target ? { current: false, target: false } : previous));
       if (structureXrayActive) onStructureXrayActiveChange(false);
       return;
     }
     const player = localRenderPosRef.current;
     const distanceToCenter = Math.hypot(player.x - safeZone.centerX, player.y - safeZone.centerY);
-    const nearLine = Math.abs(distanceToCenter - visual.radius) <= YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE;
+    const currentNear = Math.abs(distanceToCenter - visual.radius) <= YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE;
+    const targetNear = visual.targetCenter
+      ? Math.abs(Math.hypot(player.x - visual.targetCenter.x, player.y - visual.targetCenter.y) - visual.targetCenter.radius) <= YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE
+      : false;
+    setXrayLines((previous) => (previous.current === currentNear && previous.target === targetNear ? previous : { current: currentNear, target: targetNear }));
+    const nearLine = currentNear || targetNear;
     if (structureXrayActive !== nearLine) onStructureXrayActiveChange(nearLine);
   });
 
@@ -795,8 +805,18 @@ function YumenSafeZoneOverlay({
       )}
       <Line
         points={visual.bottomPoints}
-        color="#ffffff"
-        lineWidth={5}
+        color="#fff1a8"
+        lineWidth={8}
+        transparent
+        opacity={0.22}
+        renderOrder={19}
+        depthTest={true}
+        depthWrite={false}
+      />
+      <Line
+        points={visual.bottomPoints}
+        color="#fff8d8"
+        lineWidth={4}
         renderOrder={20}
         depthTest={true}
         depthWrite={false}
@@ -804,7 +824,7 @@ function YumenSafeZoneOverlay({
       {visual.targetBottomPoints && (
         <Line
           points={visual.targetBottomPoints}
-          color="#facc15"
+          color="#48a7ff"
           lineWidth={4}
           transparent
           opacity={0.9}
@@ -813,18 +833,42 @@ function YumenSafeZoneOverlay({
           depthWrite={false}
         />
       )}
-      <Line
-        ref={nearLineRef}
-        points={visual.bottomPoints}
-        color="#ffffff"
-        lineWidth={5}
-        transparent
-        opacity={0.98}
-        renderOrder={40}
-        depthTest={true}
-        depthWrite={false}
-        visible={structureXrayActive}
-      />
+      {xrayLines.current && (
+        <>
+          <Line
+            points={visual.bottomPoints}
+            color="#fff1a8"
+            lineWidth={8}
+            transparent
+            opacity={0.28}
+            renderOrder={40}
+            depthTest={true}
+            depthWrite={false}
+          />
+          <Line
+            points={visual.bottomPoints}
+            color="#fff8d8"
+            lineWidth={4}
+            transparent
+            opacity={0.96}
+            renderOrder={41}
+            depthTest={true}
+            depthWrite={false}
+          />
+        </>
+      )}
+      {xrayLines.target && visual.targetBottomPoints && (
+        <Line
+          points={visual.targetBottomPoints}
+          color="#48a7ff"
+          lineWidth={4}
+          transparent
+          opacity={0.96}
+          renderOrder={42}
+          depthTest={true}
+          depthWrite={false}
+        />
+      )}
     </group>
   );
 }
