@@ -11,11 +11,15 @@ Each entry goes under its relevant section header.
 - Changed the yumen minimap distance text to measure against the blue target zone during countdown/shrinking phases, while non-shrink phases still use the current safe zone.
 - Flipped the yumen minimap player marker by 180 degrees so its baseline facing matches the game while preserving left/right turn direction.
 - Latest latency aggregation showed movement route backend processing remained low (usually 0-3ms, max under 30ms in the newest two-account run), but PM2 backend logs still had event-loop callback gaps and GC pressure. The likely self-inflicted source was diagnostics: each latency batch scheduled a full latency-log prune, while hidden-tab main-thread stalls uploaded repeatedly. Latency-log pruning is now debounced to at most one delayed prune window, and hidden-tab stall logging/upload is rate-limited.
+- Follow-up live logs showed debounced latency-log pruning was still too heavy for active gameplay: each delayed prune could take about 1.1-1.4s and align exactly with backend event-loop/game-loop callback gaps. Normal latency uploads no longer schedule pruning; pruning should stay out of the gameplay request path.
+- Follow-up minimap correction inverted the displayed Y axis for marker and safe-zone circles. The facing triangle already used the inverted screen-space basis, but the marker position did not, making the avatar walk backward or sideways relative to its facing.
 
 **Lesson**:
 - A minified TDZ error after an ability cast can be caused by secondary UI event rendering, not the ability execution path. Map the chunk offset before chasing the gameplay code.
 - Manual diagnostic collection UI should not appear in gameplay. Prefer F12 console output plus existing server-side logs unless the user explicitly asks for export controls.
 - Diagnostic tooling can become the lag source. Avoid running whole-log prune/parse work for every uploaded sample batch, and treat hidden-tab browser timer throttling as low-value noise.
+- Debouncing an expensive diagnostic prune only reduces frequency; it does not make it safe for active battles if the prune still runs on the Node event loop. Keep whole-log pruning manual/admin-side or otherwise outside active gameplay.
+- For SVG minimaps, remember screen Y increases downward. If the world/map convention is north-up, convert display Y with `mapHeight - worldY`; facing rotation must use the same inverted screen-space basis.
 
 ## 玉门关 battle-log, arena line, ESC, and lag probes (2026-05-28)
 

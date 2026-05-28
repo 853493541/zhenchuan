@@ -3767,9 +3767,9 @@ function YumenMiniMap({
   const offsetX = (size - renderedWidth) / 2;
   const offsetY = (size - renderedHeight) / 2;
   const toMapX = (x: number) => offsetX + Math.max(0, Math.min(mapWidth, x)) * mapScale;
-  const toMapY = (y: number) => offsetY + Math.max(0, Math.min(mapHeight, y)) * mapScale;
+  const toMapY = (y: number) => offsetY + (mapHeight - Math.max(0, Math.min(mapHeight, y))) * mapScale;
   const rawCircleX = (x: number) => offsetX + x * mapScale;
-  const rawCircleY = (y: number) => offsetY + y * mapScale;
+  const rawCircleY = (y: number) => offsetY + (mapHeight - y) * mapScale;
   const currentRadius = Math.max(0, Number(safeZone?.currentHalf ?? 0)) * mapScale;
   const hasCurrentCircle = !!safeZone && currentRadius > 0;
   const targetRadius = Math.max(0, Number(safeZone?.targetHalf ?? (typeof safeZone?.targetDiameter === 'number' ? safeZone.targetDiameter / 2 : 0))) * mapScale;

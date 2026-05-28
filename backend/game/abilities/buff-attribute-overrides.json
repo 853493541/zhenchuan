@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updatedAt": "2026-05-28T05:03:25.987Z",
+  "updatedAt": "2026-05-28T06:04:08.069Z",
   "buffs": {
     "1001": {
       "attribute": "毒性",
@@ -86,6 +86,7 @@
     },
     "1013": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -99,6 +100,7 @@
     },
     "1016": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -122,7 +124,9 @@
       "manualCancelable": true
     },
     "1020": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "虚化漂浮状态，被命中几率降低65%，移动速度提高30%，期间免疫控制",
+      "descriptionReviewStatus": "fixed"
     },
     "1021": {
       "attribute": "无",
@@ -145,6 +149,8 @@
     },
     "1031": {
       "attribute": "无",
+      "description": "不受招式控制",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -196,7 +202,9 @@
       "manualCancelExcluded": true
     },
     "1330": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "锁足",
+      "descriptionReviewStatus": "fixed"
     },
     "1331": {
       "attribute": "未选择",
@@ -276,7 +284,9 @@
       "timerVisible": true
     },
     "1348": {
-      "attribute": "混元"
+      "attribute": "混元",
+      "description": "每层受到的伤害提高20%",
+      "descriptionReviewStatus": "fixed"
     },
     "1349": {
       "attribute": "无",
@@ -370,11 +380,15 @@
     },
     "2301": {
       "attribute": "阳性",
-      "name": "韦陀献杵·减防"
+      "name": "韦陀献杵·减防",
+      "description": "内功外功防御降低30%",
+      "descriptionReviewStatus": "fixed"
     },
     "2302": {
       "attribute": "无",
       "name": "韦陀献杵·增防",
+      "description": "内功外功防御提高30%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -481,11 +495,14 @@
     },
     "2318": {
       "attribute": "无",
+      "description": "不会被招式命中",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2319": {
-      "attribute": "无"
+      "attribute": "无",
+      "descriptionReviewStatus": "fixed"
     },
     "2320": {
       "attribute": "混元"
@@ -498,6 +515,8 @@
     },
     "2322": {
       "attribute": "无",
+      "description": "听雷伤害提升10%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -522,6 +541,8 @@
     },
     "2326": {
       "attribute": "阴性",
+      "description": "化解受到的伤害55%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -652,10 +673,14 @@
       "timerVisible": true
     },
     "2604": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed"
     },
     "2605": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "蹑云逐月速度降低70%",
+      "descriptionReviewStatus": "fixed"
     },
     "2606": {
       "attribute": "无",
@@ -702,7 +727,9 @@
       "timerVisible": true
     },
     "2612": {
-      "attribute": "点穴"
+      "attribute": "点穴",
+      "description": "不能运功",
+      "descriptionReviewStatus": "fixed"
     },
     "2613": {
       "attribute": "未选择",
@@ -829,7 +856,9 @@
       "timerVisible": true
     },
     "2646": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "不会受到“鸿蒙天禁”禁锢效果",
+      "descriptionReviewStatus": "fixed"
     },
     "2647": {
       "attribute": "无",
@@ -897,10 +926,14 @@
       "manualCancelExcluded": true
     },
     "2703": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "无法施展轻功",
+      "descriptionReviewStatus": "fixed"
     },
     "2704": {
       "attribute": "无",
+      "description": "外功会心率提高10%，外功会心效果提高15%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
@@ -932,6 +965,7 @@
     },
     "2710": {
       "attribute": "阳性",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -1018,10 +1052,14 @@
       "timerVisible": true
     },
     "2723": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "缴械",
+      "descriptionReviewStatus": "fixed"
     },
     "2724": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "缴械",
+      "descriptionReviewStatus": "fixed"
     },
     "2725": {
       "attribute": "无",
@@ -1058,6 +1096,7 @@
     },
     "2731": {
       "attribute": "阳性",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -1069,6 +1108,7 @@
     },
     "2732": {
       "attribute": "阳性",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -1080,6 +1120,7 @@
     },
     "2733": {
       "attribute": "阳性",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -1091,6 +1132,7 @@
     },
     "2734": {
       "attribute": "阳性",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -1169,7 +1211,9 @@
       "descriptionReviewStatus": "fixed"
     },
     "2745": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "不会再受“迷云”效果影响",
+      "descriptionReviewStatus": "fixed"
     },
     "3001": {
       "attribute": "无",
@@ -1192,6 +1236,8 @@
     },
     "9003": {
       "attribute": "混元",
+      "description": "跳得更高",
+      "descriptionReviewStatus": "fixed",
       "manualCancelable": true
     },
     "9101": {
@@ -1205,6 +1251,9 @@
     },
     "980001": {
       "attribute": "无",
+      "name": "藏匿",
+      "description": "取消该状态可恢复移动",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -1215,7 +1264,8 @@
     },
     "990100": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "descriptionReviewStatus": "fixed"
     },
     "990101": {
       "attribute": "未选择",
@@ -1223,7 +1273,8 @@
     },
     "990102": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "descriptionReviewStatus": "fixed"
     },
     "990103": {
       "attribute": "未选择",
@@ -1238,7 +1289,9 @@
     },
     "999900": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "description": "隐藏BUFF：冲刺期间无法转向、无法施放技能或轻功，并免疫控制与击退。所有 dash 共用这一运行态。",
+      "descriptionReviewStatus": "fixed"
     }
   }
 }
