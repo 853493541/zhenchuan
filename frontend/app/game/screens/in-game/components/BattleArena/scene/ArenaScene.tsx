@@ -747,7 +747,7 @@ function YumenSafeZoneOverlay({
 }) {
   const [xraySegments, setXraySegments] = useState<{ current: NearbyLineSegment[]; target: NearbyLineSegment[] }>({ current: [], target: [] });
   const xraySignatureRef = useRef({ current: '', target: '' });
-  const showCurrentLine = safeZone?.phase === 'shrinking' || safeZone?.shrinking === true;
+  const showCurrentLine = true;
   const visual = useMemo(() => {
     if (!safeZone) return null;
     const radius = Math.max(0, Number(safeZone.currentHalf ?? 0));

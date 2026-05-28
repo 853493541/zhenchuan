@@ -104,6 +104,8 @@ const MAX_RTT_VALUES = 600;
 const MAX_MOVEMENT_VALUES = 300;
 const FLUSH_MS = 10_000;
 const KEEPALIVE_MAX_BYTES = 60_000;
+const MAIN_THREAD_PROBE_INTERVAL_MS = 250;
+const MAIN_THREAD_STALL_THRESHOLD_MS = 500;
 const SENSITIVE_KEY_RE = /(token|password|cookie|authorization|jwt|secret|auth|credential)/i;
 
 const nowIso = (ts = Date.now()) => new Date(ts).toISOString();
@@ -237,6 +239,8 @@ export function formatLatencyDiagnosticsReport(report: LatencyReport) {
       lines.push(`[${formatTime(sample.ts)}] move seq=${data.seq ?? "-"} status=${data.status ?? "-"} dur=${formatMs(data.durationMs)} server=${formatMs(data.serverProcessingMs)} jump=${data.shouldJump === true ? "yes" : "no"}`);
     } else if (sample.kind === "http") {
       lines.push(`[${formatTime(sample.ts)}] http ${data.operation ?? "-"} status=${data.status ?? "-"} dur=${formatMs(data.durationMs)} server=${formatMs(data.serverProcessingMs)}`);
+    } else if (sample.kind === "lifecycle" && data.type === "frontend-main-thread-stall") {
+      lines.push(`[${formatTime(sample.ts)}] stall blocked=${formatMs(data.blockedMs)} observed=${formatMs(data.observedIntervalMs)} visibility=${data.visibilityState ?? "-"}`);
     } else {
       lines.push(`[${formatTime(sample.ts)}] ${sample.kind} ${JSON.stringify(data)}`);
     }
@@ -261,6 +265,8 @@ class ClientLatencyRecorder {
   private movementDurations: number[] = [];
   private movementRequestCount = 0;
   private stoppingSession = false;
+  private mainThreadProbeTimer: number | null = null;
+  private lastMainThreadProbeAt = 0;
 
   startSession(context: LatencyRecorderContext) {
     if (typeof window === "undefined") return;
@@ -464,6 +470,7 @@ class ClientLatencyRecorder {
   private installHandlers() {
     if (this.installed || typeof window === "undefined") return;
     this.installed = true;
+    this.startMainThreadProbe();
 
     document.addEventListener("visibilitychange", () => {
       this.recordWebSocketLifecycle(document.hidden ? "page-hidden" : "page-visible", {
@@ -479,6 +486,40 @@ class ClientLatencyRecorder {
 
     (window as any).__zhenchuanLatencyRecorder = this;
     (window as any).__zhenchuanLatencyReport = () => this.buildReport();
+  }
+
+  private startMainThreadProbe() {
+    if (this.mainThreadProbeTimer !== null || typeof window === "undefined") return;
+    this.lastMainThreadProbeAt = performance.now();
+    this.mainThreadProbeTimer = window.setInterval(() => {
+      const now = performance.now();
+      const observedIntervalMs = now - this.lastMainThreadProbeAt;
+      this.lastMainThreadProbeAt = now;
+      const blockedMs = observedIntervalMs - MAIN_THREAD_PROBE_INTERVAL_MS;
+      if (blockedMs < MAIN_THREAD_STALL_THRESHOLD_MS) return;
+
+      const data = {
+        expectedIntervalMs: MAIN_THREAD_PROBE_INTERVAL_MS,
+        observedIntervalMs: roundMs(observedIntervalMs),
+        blockedMs: roundMs(blockedMs),
+        visibilityState: document.visibilityState,
+        online: navigator.onLine,
+        pendingSamples: this.pendingSamples.length,
+        url: window.location.href,
+      };
+      console.warn(`[LAG-PROBE][frontend] ${JSON.stringify({
+        schemaVersion: 1,
+        kind: "frontend-main-thread-stall",
+        ts: Date.now(),
+        iso: nowIso(),
+        sessionId: this.activeSession?.sessionId ?? null,
+        gameId: this.activeSession?.context.gameId ?? this.context.gameId ?? null,
+        userId: this.activeSession?.context.userId ?? this.context.userId ?? null,
+        ...data,
+      })}`);
+      this.recordWebSocketLifecycle("frontend-main-thread-stall", data);
+      void this.flushSamples("frontend-main-thread-stall").catch(() => undefined);
+    }, MAIN_THREAD_PROBE_INTERVAL_MS);
   }
 
   private startFlushTimer() {

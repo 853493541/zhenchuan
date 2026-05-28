@@ -313,6 +313,25 @@ function hasBattleStealth(target: GameResponse["state"]["players"][number] | und
   });
 }
 
+function getBattleSide(target: GameResponse["state"]["players"][number] | undefined): string | null {
+  const rawSide = (target as any)?.teamId ?? (target as any)?.team ?? (target as any)?.side ?? (target as any)?.camp ?? (target as any)?.partyId;
+  if (typeof rawSide !== "string" && typeof rawSide !== "number") return null;
+  const side = String(rawSide).trim();
+  return side ? side : null;
+}
+
+function isSameBattleSide(
+  viewer: GameResponse["state"]["players"][number] | undefined,
+  actor: GameResponse["state"]["players"][number] | undefined,
+  selfUserId: string,
+  actorUserId: string,
+): boolean {
+  if (actorUserId === selfUserId) return true;
+  const viewerSide = getBattleSide(viewer);
+  const actorSide = getBattleSide(actor);
+  return viewerSide !== null && actorSide !== null && viewerSide === actorSide;
+}
+
 function getEntityDisplayName(entity: NonNullable<GameResponse["state"]["entities"]>[number] | undefined, fallbackName: unknown): string {
   if (typeof fallbackName === "string" && fallbackName.trim()) return fallbackName.trim();
   if (typeof entity?.abilityName === "string" && entity.abilityName.trim()) return entity.abilityName.trim();
@@ -465,13 +484,12 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       if (battleEventIdsRef.current.has(seenKey)) continue;
 
       const actorPlayer = playersByUserIdRef.current[actorUserId];
+      const viewerPlayer = playersByUserIdRef.current[selfUserId];
       const actorHidden = Boolean(actorUserId !== selfUserId && hasBattleStealth(actorPlayer));
-      const isSelfYumenPoisonDamage = actorUserId === selfUserId && combatEvent.type === "DAMAGE" && combatEvent.abilityId === "yumen_sandstorm";
-      if ((!isSelfYumenPoisonDamage && actorUserId === selfUserId) || actorHidden) {
+      if (isSameBattleSide(viewerPlayer, actorPlayer, selfUserId, actorUserId) || actorHidden) {
         battleEventIdsRef.current.add(seenKey);
         continue;
       }
-      const viewerPlayer = playersByUserIdRef.current[selfUserId];
       const actorDistance = getPlanarDistance(viewerPlayer, actorPlayer);
       if (actorDistance === null || actorDistance > BATTLE_LOG_VISIBLE_RANGE) {
         battleEventIdsRef.current.add(seenKey);
@@ -499,9 +517,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       const targetPlayer = targetUserId ? playersByUserIdRef.current[targetUserId] : undefined;
       const targetHidden = Boolean(targetUserId && targetUserId !== selfUserId && hasBattleStealth(targetPlayer));
       const entityName = getEntityDisplayName(entityId ? entitiesByIdRef.current[entityId] : undefined, combatEvent.entityName);
-      const targetName = isSelfYumenPoisonDamage
-        ? actorName
-        : targetHidden
+      const targetName = targetHidden
         ? "未知目标"
         : targetUserId === selfUserId
         ? "你"

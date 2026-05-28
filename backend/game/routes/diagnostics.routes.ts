@@ -2,6 +2,7 @@ import express from "express";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import {
   LATENCY_LOG_DIR,
   getNetworkSessionDetail,
@@ -9,6 +10,7 @@ import {
   pruneLatencyLogs,
   setNetworkSessionStar,
 } from "../services/networkDiagnostics";
+import { recordLagProbe, roundLagMs } from "../../utils/lagProbe";
 
 const router = express.Router();
 
@@ -196,6 +198,7 @@ router.post("/client-frontend-log", async (req, res) => {
 });
 
 router.post("/client-latency-batch", async (req, res) => {
+  const handlerStartedAt = performance.now();
   try {
     const payloadBytes = getPayloadBytes(req.body);
     if (payloadBytes > MAX_LATENCY_BATCH_BYTES) {
@@ -221,10 +224,25 @@ router.post("/client-latency-batch", async (req, res) => {
       latencyBatch: sanitize(req.body),
     };
 
+    const writeStartedAt = performance.now();
     await appendJsonl(LATENCY_LOG_DIR, receivedAt, entry);
+    const writeMs = performance.now() - writeStartedAt;
     void pruneLatencyLogs().catch((err) => {
       console.error("[Diagnostics] Failed to prune latency logs:", err instanceof Error ? err.message : String(err));
     });
+
+    const totalMs = performance.now() - handlerStartedAt;
+    const sampleCount = Array.isArray((req.body as any)?.samples) ? (req.body as any).samples.length : null;
+    if (totalMs >= 100 || writeMs >= 60 || payloadBytes >= 250_000) {
+      recordLagProbe("diagnostics-latency-batch", {
+        latencyBatchId,
+        payloadBytes,
+        sampleCount,
+        writeMs: roundLagMs(writeMs),
+        totalMs: roundLagMs(totalMs),
+        userId: req.auth?.uid ?? null,
+      });
+    }
 
     res.json({ ok: true, latencyBatchId, receivedAt });
   } catch (err) {

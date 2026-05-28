@@ -81,6 +81,7 @@ import {
   removeDisguiseBuffs,
 } from "../utils/disguise";
 import { YUE_YING_SHA_BUFF_ID } from "../utils/yueYingSha";
+import { recordLagProbe, roundLagMs } from "../../../utils/lagProbe";
 
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
@@ -1791,9 +1792,24 @@ export class GameLoop {
     console.log(`[GameLoop] Using adaptive timer loop — tickDuration=${tickDuration.toFixed(2)}ms`);
 
     let lastTickTime = performance.now();
+    let lastCallbackAt = lastTickTime;
     const MAX_TICKS_PER_CALLBACK = 6;
     const runTicks = () => {
       if (!this.isRunning) return;
+      const callbackStartedAt = performance.now();
+      const callbackGapMs = callbackStartedAt - lastCallbackAt;
+      lastCallbackAt = callbackStartedAt;
+      if (callbackGapMs >= 150) {
+        recordLagProbe("game-loop-callback-gap", {
+          gameId: this.gameId,
+          version: this.state.version ?? null,
+          gapMs: roundLagMs(callbackGapMs),
+          tickDurationMs: roundLagMs(tickDuration),
+          playerCount: this.state.players.length,
+          eventCount: this.state.events.length,
+          gameOver: this.state.gameOver === true,
+        });
+      }
       let ticksProcessed = 0;
 
       while (ticksProcessed < MAX_TICKS_PER_CALLBACK) {
@@ -1814,6 +1830,20 @@ export class GameLoop {
       const now = performance.now();
       if (now - lastTickTime > tickDuration * MAX_TICKS_PER_CALLBACK) {
         lastTickTime = now;
+      }
+
+      const callbackTotalMs = performance.now() - callbackStartedAt;
+      if (callbackTotalMs >= 100 || ticksProcessed >= MAX_TICKS_PER_CALLBACK) {
+        recordLagProbe("game-loop-callback-work", {
+          gameId: this.gameId,
+          version: this.state.version ?? null,
+          ticksProcessed,
+          callbackMs: roundLagMs(callbackTotalMs),
+          tickDurationMs: roundLagMs(tickDuration),
+          playerCount: this.state.players.length,
+          eventCount: this.state.events.length,
+          gameOver: this.state.gameOver === true,
+        });
       }
 
       const delayMs = Math.max(1, Math.ceil(lastTickTime + tickDuration - now));
@@ -5925,14 +5955,31 @@ export class GameLoop {
       saveTime = performance.now() - saveStart;
     }
 
+    const tickTotal = performance.now() - tickStart;
+
     // One-shot: log tick execution time on dash start/end
     const anyDashing = this.state.players.some(p => !!p.activeDash);
     if (anyDashing) {
-      const tickTotal = performance.now() - tickStart;
       const tr = this.state.players.find(p => p.activeDash)?.activeDash?.ticksRemaining;
       if (tr === 59) {
         console.log(`[TICK-PERF] tick()=${tickTotal.toFixed(1)}ms  move=${moveTime.toFixed(1)}ms  broadcast=${broadcastTime.toFixed(1)}ms  save=${saveTime.toFixed(1)}ms  broadcastInterval=${this.broadcastTickInterval}`);
       }
+    }
+
+    if (tickTotal >= 80 || moveTime >= 40 || broadcastTime >= 40) {
+      recordLagProbe("game-loop-slow-tick", {
+        gameId: this.gameId,
+        version: this.state.version ?? null,
+        tickMs: roundLagMs(tickTotal),
+        moveMs: roundLagMs(moveTime),
+        broadcastMs: roundLagMs(broadcastTime),
+        saveScheduleMs: roundLagMs(saveTime),
+        playerCount: this.state.players.length,
+        entityCount: this.state.entities?.length ?? 0,
+        eventCount: this.state.events.length,
+        broadcastInterval: this.broadcastTickInterval,
+        buffsPerPlayer: this.state.players.map((player) => player.buffs?.length ?? 0),
+      });
     }
 
   }
@@ -5957,6 +6004,10 @@ export class GameLoop {
    * Save game state to database
    */
   private async saveToDB() {
+    const saveStartedAt = performance.now();
+    const version = this.state.version ?? null;
+    let saved = false;
+    let missingGame = false;
     try {
       const game = await GameSession.findByIdAndUpdate(
         this.gameId,
@@ -5965,15 +6016,36 @@ export class GameLoop {
       );
 
       if (!game) {
+        missingGame = true;
         console.warn(
           `[GameLoop] Game ${this.gameId} not found in DB, stopping loop`
         );
         this.stop();
+      } else {
+        saved = true;
       }
     } catch (err) {
       console.error(`[GameLoop] Error saving game ${this.gameId}:`, err);
+      recordLagProbe("game-loop-db-save-error", {
+        gameId: this.gameId,
+        version,
+        error: err instanceof Error ? err.message : String(err),
+      });
       // Don't stop the loop on save errors - just log and continue
       // This prevents cascading failures
+    } finally {
+      const saveMs = performance.now() - saveStartedAt;
+      if (saveMs >= 100) {
+        recordLagProbe("game-loop-db-save-slow", {
+          gameId: this.gameId,
+          version,
+          saveMs: roundLagMs(saveMs),
+          saved,
+          missingGame,
+          playerCount: this.state.players.length,
+          eventCount: this.state.events.length,
+        });
+      }
     }
   }
 
@@ -5994,7 +6066,21 @@ export class GameLoop {
    * Get current game state snapshot (for ability casting validation)
    */
   getState(): GameState {
-    return structuredClone(this.state);
+    const cloneStartedAt = performance.now();
+    const cloned = structuredClone(this.state);
+    const cloneMs = performance.now() - cloneStartedAt;
+    if (cloneMs >= 50) {
+      recordLagProbe("game-loop-clone-slow", {
+        gameId: this.gameId,
+        operation: "getState",
+        version: this.state.version ?? null,
+        cloneMs: roundLagMs(cloneMs),
+        playerCount: this.state.players.length,
+        entityCount: this.state.entities?.length ?? 0,
+        eventCount: this.state.events.length,
+      });
+    }
+    return cloned;
   }
 
   /**
@@ -6020,7 +6106,20 @@ export class GameLoop {
    * Called by gameplay routes
    */
   updateState(newState: GameState) {
+    const cloneStartedAt = performance.now();
     this.state = structuredClone(newState);
+    const cloneMs = performance.now() - cloneStartedAt;
+    if (cloneMs >= 50) {
+      recordLagProbe("game-loop-clone-slow", {
+        gameId: this.gameId,
+        operation: "updateState",
+        version: this.state.version ?? null,
+        cloneMs: roundLagMs(cloneMs),
+        playerCount: this.state.players.length,
+        entityCount: this.state.entities?.length ?? 0,
+        eventCount: this.state.events.length,
+      });
+    }
     this.syncDynamicMapContext();
     if (this.stackProcScanIndex > this.state.events.length) {
       this.stackProcScanIndex = this.state.events.length;

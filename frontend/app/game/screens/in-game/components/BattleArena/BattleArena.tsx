@@ -9677,19 +9677,6 @@ export default function BattleArena({
           martialPanelTempPosRef.current = null;
           return;
         }
-        if (activeChannelRef.current && onCancelChannel) {
-          void onCancelChannel();
-          return;
-        }
-        if (selectedTargetRef.current || selectedEntityRef.current || selectedSelfRef.current) {
-          selectedTargetRef.current = null;
-          selectedEntityRef.current = null;
-          selectedSelfRef.current = false;
-          setSelectedTargetId(null);
-          setSelectedEntityId(null);
-          setSelectedSelf(false);
-          return;
-        }
         toggleEscPanel();
         return;
       }
@@ -9866,7 +9853,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, cancelChatSettings, chatClearDialog, martialPresetModal, showMartialPanel, showTestingPanel, showChatSettings, focusChatInput, toggleEscPanel, triggerHotkeyBinding]);
+  }, [crashRecorder, tryQueueLocalJump, sendMovement, customUiMode, cancelCustomUiMode, cancelChatSettings, chatClearDialog, martialPresetModal, showMartialPanel, showTestingPanel, showChatSettings, focusChatInput, toggleEscPanel, triggerHotkeyBinding]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -13140,7 +13127,7 @@ export default function BattleArena({
 
   const renderChatMessageLines = (messages: ChatMessage[]) => messages.map((message) => {
     const speakerColor = message.school ? SCHOOL_COLOR[message.school] : undefined;
-    const targetColor = message.targetSchool ? SCHOOL_COLOR[message.targetSchool] : undefined;
+    const targetColor = message.targetSchool ? SCHOOL_COLOR[message.targetSchool] : battleTargetName === message.username ? speakerColor : undefined;
     const isSystemMessage = message.channel === 'system' && (message.variant === 'system' || message.userId === 'system');
     const isBattleMessage = message.channel === 'battle' || message.variant === 'battle';
     const battleAbilityName = message.abilityName || '攻击';

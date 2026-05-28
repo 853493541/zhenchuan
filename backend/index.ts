@@ -5,6 +5,7 @@ console.log("🔧 Loading app...");
 import app from "./app";
 import { createServer } from "http";
 import { setupWebSocket } from "./websocket";
+import { startBackendLagProbe } from "./utils/lagProbe";
 
 console.log("📡 App imported successfully!");
 console.log("🎯 App object:", typeof app);
@@ -16,6 +17,7 @@ const server = createServer(app);
 
 // Setup WebSocket on the same server
 setupWebSocket(server);
+startBackendLagProbe();
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

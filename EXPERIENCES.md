@@ -3,6 +3,19 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 玉门关 battle-log, arena line, ESC, and lag probes (2026-05-28)
+
+**Implemented / checked**:
+- Reverted the local-viewer 狂沙 self-log exception and filtered battle narration by self/same-side actors so the player only receives opponent-related battle messages.
+- Restored the 3D arena current safe-zone white line independently of minimap phase semantics; minimap code was not part of this correction.
+- Changed ESC handling so channel/target selection state no longer intercepts the key before the ESC panel can open.
+- Added thresholded `[LAG-PROBE]` timestamps for backend event-loop delay, game-loop callback gaps, slow ticks, DB saves, structuredClone cost, WebSocket broadcast cost, diagnostics batch writes, and frontend main-thread stalls.
+
+**Lesson**:
+- Minimap safe-zone semantics and 3D arena line visibility are separate surfaces. A minimap-only instruction should not gate or hide arena overlays.
+- Self-authored or same-side combat narration can create both privacy/noise bugs and target-color bugs; battle logs should be filtered from the viewer perspective before formatting.
+- Random lag diagnosis needs fresh correlated timestamps from both producer and consumer paths. Old PM2 logs or older latency-page samples should not be used as evidence for a new stall report.
+
 ## 玉门关 safe-zone corrective pass 3 (2026-05-28)
 
 **Implemented / checked**:
