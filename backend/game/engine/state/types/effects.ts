@@ -255,7 +255,6 @@ export interface AbilityEffect {
   thresholdTargetMaxHpPct?: number;
   percentOfTargetMaxHp?: boolean;
   noCrit?: boolean;
-  scaleFlatHeal?: boolean;
 
   /** Direction mode for DIRECTIONAL_DASH effects */
   dirMode?: "TOWARD" | "AWAY" | "PERP_LEFT" | "PERP_RIGHT";

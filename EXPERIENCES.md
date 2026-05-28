@@ -26,6 +26,8 @@ Each entry goes under its relevant section header.
 - Corrective pass: `战意` now keeps its written 16130-per-tick heal as a raw flat number instead of passing through the normal flat-heal scale. It still cannot crit and still receives the 狂沙 heal penalty.
 - Added a `测试缩短cd` Yumen control. Default off uses real cooldowns; when enabled, ability cooldowns and charge recovery are capped at 3 seconds for testing.
 - Added the ability-editor `CD纠正` tab for entering cooldown seconds and marking each ability as 未修正 / 需要补充 / 已修正.
+- Corrective pass: Yumen settlement header needs explicit CSS anchors for the small `队伍排名 x/x` label. Without `yumenResultTop` + `yumenResultTeamRank`, the label drifts from the modal's top-right.
+- Corrective pass: Yumen auto-settle alive counting now also honors unresolved `YUMEN_DEFEAT` events (unless a later `YUMEN_REVIVE` exists), not only HP/flag snapshots.
 
 **Lesson**:
 - Death attribution for poison-zone modes must use the fatal tick's newest positive damage event, not historical damage fallback. Otherwise old player damage can incorrectly steal poison deaths and grant kill rewards.
@@ -51,6 +53,8 @@ Each entry goes under its relevant section header.
 - Correction pass: mode-specific ghost deaths must bypass generic defeat-announcement fallback after every cast. The Yumen loop already has a one-time `yumenDefeated` guard, but `/play` can still inspect historical fatal events unless explicitly skipped for Yumen.
 - Correction pass: Yumen score/reward display is rank and attendee-count based, not damage/kills based. Keep this formula in a shared helper so manual settlement and auto-settlement cannot drift.
 - Correction pass: auto-settle is a test preference, not the default match rule. Store it on `safeZone`, preserve it through safe-zone resets, and only finish the match automatically when the flag is true and alive count reaches at most one.
+- Correction pass: keep the big center rank banner (`第x名`) and the small corner team rank (`队伍排名 x/x`) as separate layout rules so visual tweaks only affect the intended text.
+- Correction pass: for auto-settle and manual-end guards, rely on the same defeat/revive event truth as the UI when state snapshots can lag one tick behind event emission.
 
 ## 临时飞爪 crash, minimap target zone, and diagnostics pressure (2026-05-28)
 

@@ -250,7 +250,6 @@ export interface SafeZone {
   damageMode?: 'test' | 'full';
   autoFullHeal?: boolean;
   autoSettle?: boolean;
-  testShortCooldown?: boolean;
   circleNumber?: number;
   totalCircles?: number;
   fullPoison?: boolean;

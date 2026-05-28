@@ -6,12 +6,7 @@ import type { GameState } from "../engine/state/types";
 
 const recentDefeatBroadcasts = new Map<string, number>();
 
-export type DefeatAnnouncement = { defeatedUserId: string; attackerUserId?: string | null; defeatedName?: string; attackerName?: string | null };
-
-type DefeatChatNames = {
-  defeatedName?: string | null;
-  attackerName?: string | null;
-};
+export type DefeatAnnouncement = { defeatedUserId: string; attackerUserId?: string | null };
 
 type DefeatCollectionOptions = {
   includeHistoricalFallback?: boolean;
@@ -103,37 +98,28 @@ export function collectDefeatAnnouncementsFromEvents(
   return announcements;
 }
 
-function normalizeDefeatChatName(name: unknown): string | undefined {
-  return typeof name === "string" && name.trim() ? name.trim() : undefined;
-}
-
 async function resolvePlayerDisplayNames(gameId: string, userIds: string[]) {
   const ids = [...new Set(userIds.filter(Boolean))];
   const game = await GameSession.findById(gameId).select("playerNames state.players.userId state.players.username").lean();
   const users = await User.find({ _id: { $in: ids } }).select("displayName username").lean();
   const byId = new Map<string, string>();
 
-  for (const userId of ids) {
-    const statePlayer = (game as any)?.state?.players?.find((player: any) => player?.userId === userId);
-    const battleName = normalizeDefeatChatName((game as any)?.playerNames?.[userId]) ?? normalizeDefeatChatName(statePlayer?.username);
-    if (battleName) byId.set(userId, battleName);
-  }
-
   for (const user of users) {
     const userId = String((user as any)._id);
-    if (byId.has(userId)) continue;
     byId.set(userId, normalizeStoredUserDisplayName((user as any).username, (user as any).displayName));
   }
 
   for (const userId of ids) {
     if (byId.has(userId)) continue;
-    byId.set(userId, `User${userId.slice(-4)}`);
+    const statePlayer = (game as any)?.state?.players?.find((player: any) => player?.userId === userId);
+    const fallback = (game as any)?.playerNames?.[userId] ?? statePlayer?.username ?? `User${userId.slice(-4)}`;
+    byId.set(userId, fallback);
   }
 
   return byId;
 }
 
-export async function broadcastDefeatSystemChat(gameId: string, defeatedUserId: string, attackerUserId?: string | null, preferredNames: DefeatChatNames = {}) {
+export async function broadcastDefeatSystemChat(gameId: string, defeatedUserId: string, attackerUserId?: string | null) {
   if (!defeatedUserId) return;
   const validAttackerUserId = attackerUserId && attackerUserId !== defeatedUserId ? attackerUserId : null;
   const timestamp = Date.now();
@@ -148,10 +134,8 @@ export async function broadcastDefeatSystemChat(gameId: string, defeatedUserId: 
     }
   }
   const names = await resolvePlayerDisplayNames(gameId, validAttackerUserId ? [defeatedUserId, validAttackerUserId] : [defeatedUserId]);
-  const defeatedName = normalizeDefeatChatName(preferredNames.defeatedName) ?? names.get(defeatedUserId) ?? `User${defeatedUserId.slice(-4)}`;
-  const attackerName = validAttackerUserId
-    ? normalizeDefeatChatName(preferredNames.attackerName) ?? names.get(validAttackerUserId) ?? `User${validAttackerUserId.slice(-4)}`
-    : null;
+  const defeatedName = names.get(defeatedUserId) ?? `User${defeatedUserId.slice(-4)}`;
+  const attackerName = validAttackerUserId ? names.get(validAttackerUserId) ?? `User${validAttackerUserId.slice(-4)}` : null;
   const chat: ChatMessagePayload = {
     id: `${timestamp}-system-${randomUUID().slice(0, 8)}`,
     channel: "system",
@@ -160,7 +144,7 @@ export async function broadcastDefeatSystemChat(gameId: string, defeatedUserId: 
     school: null,
     text: attackerName
       ? `【${defeatedName}】被【${attackerName}】重伤，黯然离去。`
-      : `【${defeatedName}】黯然离去。`,
+      : `【游客】黯然离去。`,
     timestamp,
     variant: "system",
   };

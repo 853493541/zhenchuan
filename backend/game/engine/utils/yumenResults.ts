@@ -50,11 +50,36 @@ function getYumenDefeatedAtFromEvents(state: any, userId: string): number {
   return defeatedAt;
 }
 
+function hasUnrevivedYumenDefeatEvent(state: any, userId: string): boolean {
+  let latestDefeatAt = 0;
+  let latestReviveAt = 0;
+  for (const event of state?.events ?? []) {
+    if (!event || typeof event !== "object") continue;
+    if (event.type === "YUMEN_DEFEAT" && (event.defeatedUserId === userId || event.targetUserId === userId)) {
+      latestDefeatAt = Math.max(latestDefeatAt, Number(event.timestamp ?? 0));
+      continue;
+    }
+    if (event.type === "YUMEN_REVIVE" && (event.revivedUserId === userId || event.targetUserId === userId)) {
+      latestReviveAt = Math.max(latestReviveAt, Number(event.timestamp ?? 0));
+    }
+  }
+  return latestDefeatAt > latestReviveAt;
+}
+
+function isYumenPlayerAlive(state: GameState | any, player: any, now: number): boolean {
+  if (!player || typeof player !== "object") return false;
+  if (Number(player.hp ?? 0) <= 0) return false;
+  if (player.yumenDefeated === true) return false;
+  if (hasActiveYumenSpectatorBuff(player, now)) return false;
+  const userId = String(player.userId ?? "");
+  if (!userId) return false;
+  if (hasUnrevivedYumenDefeatEvent(state, userId)) return false;
+  return true;
+}
+
 export function countYumenAlivePlayers(state: GameState | any, now = Date.now()): number {
   const players = Array.isArray(state?.players) ? state.players : [];
-  return players.filter((player: any) =>
-    (player?.hp ?? 0) > 0 && player?.yumenDefeated !== true && !hasActiveYumenSpectatorBuff(player, now)
-  ).length;
+  return players.filter((player: any) => isYumenPlayerAlive(state, player, now)).length;
 }
 
 export function buildYumenResults(state: GameState | any, endedAt = Date.now()) {
@@ -67,7 +92,7 @@ export function buildYumenResults(state: GameState | any, endedAt = Date.now()) 
     return {
       userId,
       username: getYumenPlayerDisplayName(state, player),
-      alive: (player?.hp ?? 0) > 0 && player?.yumenDefeated !== true && !hasActiveYumenSpectatorBuff(player, endedAt),
+      alive: isYumenPlayerAlive(state, player, endedAt),
       defeatedAt,
       kills: Math.max(0, Math.round(playerStats.kills)),
       damage: Math.max(0, Math.round(playerStats.damage)),

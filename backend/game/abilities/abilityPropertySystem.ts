@@ -59,7 +59,6 @@ export interface AbilityEditorOverrideEntry {
   description?: string;
   descriptionReviewStatus?: DescriptionReviewStatus;
   adControlStatus?: DescriptionReviewStatus;
-  cooldownReviewStatus?: DescriptionReviewStatus;
   /** tag group → tag value (e.g. { rarity: "稀世", school: "少林" }) */
   tags?: Record<string, string>;
   /** Whether this ability is a ranged projectile (blocked by PROJECTILE_IMMUNE) */
@@ -133,7 +132,6 @@ export interface AbilityEditorAbilityEntry {
   coreSettings: AbilityEditorNumericSetting[];
   damageSettings: AbilityEditorNumericSetting[];
     adControlStatus: DescriptionReviewStatus;
-  cooldownReviewStatus: DescriptionReviewStatus;
   channelInfo?: AbilityEditorChannelInfo;
 }
 
@@ -1318,7 +1316,6 @@ export function buildAbilityEditorEntry(params: {
     overrides?.description !== undefined ||
     overrides?.descriptionReviewStatus !== undefined ||
     overrides?.adControlStatus !== undefined ||
-    overrides?.cooldownReviewStatus !== undefined ||
     channelTimingSettings.some((setting) => setting.overridden) ||
     (overrides?.tags ? Object.keys(overrides.tags).length > 0 : false) ||
     overrides?.isProjectile !== undefined ||
@@ -1345,7 +1342,6 @@ export function buildAbilityEditorEntry(params: {
     coreSettings,
     damageSettings,
     adControlStatus: overrides?.adControlStatus ?? "unfixed",
-    cooldownReviewStatus: overrides?.cooldownReviewStatus ?? "unfixed",
     channelInfo,
   } satisfies AbilityEditorAbilityEntry;
 }

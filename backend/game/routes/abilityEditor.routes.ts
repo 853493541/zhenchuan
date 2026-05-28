@@ -3,7 +3,6 @@ import express from "express";
 import {
   buildCanCastWhileMountedSnapshot,
   buildAbilityEditorSnapshot,
-  buildAbilityCooldownReviewSnapshot,
   buildAbilityDescriptionReviewSnapshot,
   buildNoWeaponRequiredSnapshot,
   setAbilityAdControlStatus,
@@ -11,8 +10,6 @@ import {
   buildQinggongGcdImmuneSnapshot,
   buildQinggongSnapshot,
   setAbilityCanCastWhileMountedOverride,
-  setAbilityCooldownReviewStatus,
-  setAbilityCooldownReviewTicks,
   setAbilityDescriptionOverride,
   setAbilityDescriptionReviewStatus,
   setAbilityEditorDamageValue,
@@ -133,41 +130,6 @@ router.get("/ability-editor/description-review", (req, res) => {
   try {
     getUserIdFromCookie(req);
     return res.json(buildAbilityDescriptionReviewSnapshot());
-  } catch (error) {
-    return handleAbilityEditorError(res, error);
-  }
-});
-
-router.get("/ability-editor/cooldown-review", (req, res) => {
-  try {
-    getUserIdFromCookie(req);
-    return res.json(buildAbilityCooldownReviewSnapshot());
-  } catch (error) {
-    return handleAbilityEditorError(res, error);
-  }
-});
-
-router.put("/ability-editor/cooldown-review/:abilityId/status", (req, res) => {
-  try {
-    getUserIdFromCookie(req);
-    const { status } = req.body ?? {};
-    if (status !== "fixed" && status !== "needs-more" && status !== "unfixed") {
-      return res.status(400).json({ error: "ERR_INVALID_DESCRIPTION_REVIEW_STATUS" });
-    }
-    return res.json(setAbilityCooldownReviewStatus(req.params.abilityId, status));
-  } catch (error) {
-    return handleAbilityEditorError(res, error);
-  }
-});
-
-router.put("/ability-editor/cooldown-review/:abilityId/cooldown", (req, res) => {
-  try {
-    getUserIdFromCookie(req);
-    const { cooldownTicks } = req.body ?? {};
-    if (typeof cooldownTicks !== "number" || !Number.isFinite(cooldownTicks) || cooldownTicks < 0) {
-      return res.status(400).json({ error: "ERR_INVALID_ABILITY_NUMERIC_VALUE" });
-    }
-    return res.json(setAbilityCooldownReviewTicks(req.params.abilityId, cooldownTicks));
   } catch (error) {
     return handleAbilityEditorError(res, error);
   }

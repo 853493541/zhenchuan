@@ -86,8 +86,8 @@ export const YUMEN_ZHANYI_BUFF: BuffDefinition = {
   durationMs: YUMEN_ZHANYI_DURATION_MS,
   periodicMs: 1_000,
   breakOnPlay: false,
-  description: "重伤敌方玩家后获得，每秒回复气血，不会会心。",
-  effects: [{ type: "PERIODIC_HEAL", value: YUMEN_ZHANYI_HEAL_PER_TICK, noCrit: true, scaleFlatHeal: false }],
+  description: "重伤敌方玩家后获得，每秒回复气血。",
+  effects: [{ type: "PERIODIC_HEAL", value: YUMEN_ZHANYI_HEAL_PER_TICK }],
 };
 
 export const YUMEN_SPECTATOR_ABILITY: Ability = {

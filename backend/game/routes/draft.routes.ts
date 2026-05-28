@@ -135,7 +135,6 @@ function createYumenSafeZone(state: any) {
     damageMode: normalizeYumenSafeZoneDamageMode(existing.damageMode),
     autoFullHeal: existing.autoFullHeal === true,
     autoSettle: existing.autoSettle === true,
-    testShortCooldown: existing.testShortCooldown === true,
     stageIndex: Math.max(0, Math.floor(clampFiniteNumber(existing.stageIndex, inferredStageIndex, 0, 99))),
     targetVisible: existing.targetVisible === true,
     paused: existing.paused === true && (phase === "waiting" || phase === "countdown" || phase === "shrinking"),
@@ -188,7 +187,6 @@ function resetYumenSafeZone(now: number) {
     fullPoison: false,
     autoFullHeal: false,
     autoSettle: false,
-    testShortCooldown: false,
     phaseStartedAt: now,
     phaseEndsAt: now,
     targetVisible: false,
@@ -208,12 +206,10 @@ function startYumenSafeZone(state: any, now: number, options?: { timelineMode?: 
   const zone = createYumenSafeZone(state);
   const autoFullHeal = zone.autoFullHeal === true;
   const autoSettle = zone.autoSettle === true;
-  const testShortCooldown = zone.testShortCooldown === true;
   if (zone.phase === "complete" || zone.currentHalf <= 0) {
     Object.assign(zone, resetYumenSafeZone(now));
     zone.autoFullHeal = autoFullHeal;
     zone.autoSettle = autoSettle;
-    zone.testShortCooldown = testShortCooldown;
   }
   zone.timelineMode = normalizeYumenSafeZoneTimelineMode(options?.timelineMode ?? zone.timelineMode);
   zone.damageMode = normalizeYumenSafeZoneDamageMode(options?.damageMode ?? zone.damageMode);
@@ -1737,35 +1733,6 @@ router.post("/cheat/yumen/auto-settle", async (req, res) => {
     });
 
     res.json({ ok: true, version: liveVersion, enabled: updatedSafeZone.autoSettle, safeZone: updatedSafeZone });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * POST /cheat/yumen/test-short-cooldown - Toggle test cooldown cap at 3 seconds.
- * Body: { gameId, enabled }
- */
-router.post("/cheat/yumen/test-short-cooldown", async (req, res) => {
-  try {
-    const userId = getUserIdFromCookie(req);
-    const { gameId, enabled } = req.body;
-
-    const game = await GameSession.findById(gameId);
-    if (!game) return res.status(404).json({ error: "Game not found" });
-    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
-    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
-    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
-
-    let updatedSafeZone: any;
-    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
-      updatedSafeZone = createYumenSafeZone(state);
-      updatedSafeZone.testShortCooldown = enabled === true;
-      state.safeZone = updatedSafeZone;
-      return [{ path: "/safeZone", value: updatedSafeZone }];
-    });
-
-    res.json({ ok: true, version: liveVersion, enabled: updatedSafeZone.testShortCooldown, safeZone: updatedSafeZone });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

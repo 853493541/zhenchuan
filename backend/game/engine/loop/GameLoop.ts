@@ -60,7 +60,6 @@ import {
   YUMEN_SAFE_ZONE_TARGET_DIAMETERS,
   YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
   YUMEN_ZHANYI_ABILITY,
-  YUMEN_ZHANYI_ABILITY_ID,
   YUMEN_ZHANYI_BUFF,
   YUMEN_ZHUI_MING_BUFF,
   YUMEN_ZHUI_MING_BUFF_ID,
@@ -1770,11 +1769,11 @@ export class GameLoop {
 
   private getYumenDefeatEventName(userId: string | null | undefined): string | undefined {
     if (!userId) return undefined;
+    const player = this.state.players.find((entry: any) => entry.userId === userId) as any;
+    if (typeof player?.username === "string" && player.username.trim()) return player.username.trim();
     const stateNames = (this.state as any).playerNames;
     const stateName = stateNames && typeof stateNames === "object" ? stateNames[userId] : undefined;
     if (typeof stateName === "string" && stateName.trim()) return stateName.trim();
-    const player = this.state.players.find((entry: any) => entry.userId === userId) as any;
-    if (typeof player?.username === "string" && player.username.trim()) return player.username.trim();
     return `User${String(userId).slice(-4)}`;
   }
 
@@ -3810,10 +3809,7 @@ export class GameLoop {
                 }
                 buffsChanged = true;
               } else if (e.type === "PERIODIC_HEAL") {
-                const noCritHeal = buff.sourceAbilityId === YUMEN_ZHANYI_ABILITY_ID || (e as any).noCrit === true;
-                const healRoll = noCritHeal
-                  ? resolveNonCritHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0, scaleFlatHeal: (e as any).scaleFlatHeal })
-                  : resolveHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0, scaleFlatHeal: (e as any).scaleFlatHeal });
+                const healRoll = resolveHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0 });
                 const healAmount = applyYumenKuangShaHealPenalty(buff.sourceAbilityId, player as any, healRoll.heal, now);
                 const applied = applyHealToTarget(player as any, healAmount);
                 if (applied > 0) {
@@ -3827,7 +3823,6 @@ export class GameLoop {
                     effectType: "PERIODIC_HEAL",
                     value: applied,
                     isCrit: healRoll.isCrit,
-                    suppressCritLabel: noCritHeal ? true : undefined,
                   });
                 }
                 buffsChanged = true;
@@ -5969,10 +5964,7 @@ export class GameLoop {
         this.pushYumenDefeatEvents(defeatAnnouncements, now);
 
         for (const announcement of defeatAnnouncements) {
-          void broadcastDefeatSystemChat(this.gameId, announcement.defeatedUserId, announcement.attackerUserId, {
-            defeatedName: this.getYumenDefeatEventName(announcement.defeatedUserId),
-            attackerName: this.getYumenDefeatEventName(announcement.attackerUserId),
-          }).catch((err) => {
+          void broadcastDefeatSystemChat(this.gameId, announcement.defeatedUserId, announcement.attackerUserId).catch((err) => {
             console.error(`[GameLoop] Failed to broadcast defeat chat for ${this.gameId}:`, err);
           });
         }
