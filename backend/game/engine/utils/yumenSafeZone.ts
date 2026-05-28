@@ -124,8 +124,10 @@ export function getYumenSafeZoneCountdownMs(stageIndex: number, timelineMode?: u
 }
 
 export function getYumenSafeZoneShrinkMs(stageIndex: number, timelineMode?: unknown): number {
-  if (normalizeYumenSafeZoneTimelineMode(timelineMode) === "fast") return YUMEN_SAFE_ZONE_FAST_PHASE_MS;
   const index = Math.max(0, Math.floor(Number(stageIndex) || 0));
+  if (normalizeYumenSafeZoneTimelineMode(timelineMode) === "fast") {
+    return index === YUMEN_SAFE_ZONE_TARGET_DIAMETERS.length - 1 ? 1_000 : YUMEN_SAFE_ZONE_FAST_PHASE_MS;
+  }
   return YUMEN_SAFE_ZONE_SHRINK_MS[index] ?? 1_000;
 }
 

@@ -1,10 +1,11 @@
-import { monitorEventLoopDelay, performance } from "node:perf_hooks";
+import { PerformanceObserver, monitorEventLoopDelay, performance } from "node:perf_hooks";
 
 const PREFIX = "[LAG-PROBE]";
 const CHECK_INTERVAL_MS = 5_000;
 const EVENT_LOOP_MAX_THRESHOLD_MS = 120;
 const EVENT_LOOP_P99_THRESHOLD_MS = 80;
 const TIMER_DRIFT_THRESHOLD_MS = 120;
+const GC_THRESHOLD_MS = 50;
 
 let backendProbeStarted = false;
 
@@ -46,6 +47,23 @@ export function startBackendLagProbe() {
 
   const histogram = monitorEventLoopDelay({ resolution: 20 });
   histogram.enable();
+
+  try {
+    const gcObserver = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (entry.duration < GC_THRESHOLD_MS) continue;
+        recordLagProbe("backend-gc-pause", {
+          durationMs: roundLagMs(entry.duration),
+          gcKind: (entry as any).kind ?? null,
+          gcFlags: (entry as any).flags ?? null,
+          memory: memorySnapshot(),
+        });
+      }
+    });
+    gcObserver.observe({ entryTypes: ["gc"] });
+  } catch (err) {
+    console.warn(`${PREFIX} gc observer unavailable`, err instanceof Error ? err.message : String(err));
+  }
 
   let lastCheckAt = performance.now();
   const timer = setInterval(() => {

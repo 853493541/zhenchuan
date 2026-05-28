@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updatedAt": "2026-05-28T02:00:19.477Z",
+  "updatedAt": "2026-05-28T02:47:44.067Z",
   "buffs": {
     "1001": {
       "attribute": "毒性",
@@ -211,6 +211,8 @@
     },
     "1337": {
       "attribute": "无",
+      "description": "经脉受到损伤，侠士目标招式调息速度降低1%",
+      "descriptionReviewStatus": "fixed",
       "timerVisible": true
     },
     "1340": {
@@ -237,10 +239,14 @@
     "1345": {
       "attribute": "未选择",
       "hidden": true,
-      "name": "亢龙有悔·僵直"
+      "name": "亢龙有悔·僵直",
+      "description": "隐藏BUFF: 施放后定身：无法移动、跳跃、施放技能，且冻结在当前高度（空中不下落）",
+      "descriptionReviewStatus": "fixed"
     },
     "1346": {
       "attribute": "外功",
+      "description": "每2秒受到伤害",
+      "descriptionReviewStatus": "fixed",
       "timerVisible": true
     },
     "1347": {
@@ -254,11 +260,14 @@
     },
     "1349": {
       "attribute": "无",
+      "description": "不受招式控制效果影响（被拉，击退除外）",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "1350": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -309,10 +318,13 @@
       "manualCancelExcluded": true
     },
     "2004": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "每次受到攻击将受到额外伤害",
+      "descriptionReviewStatus": "fixed"
     },
     "2005": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "descriptionReviewStatus": "fixed"
     },
     "2006": {
       "attribute": "毒性",
@@ -350,7 +362,8 @@
       "manualCancelable": true
     },
     "2303": {
-      "attribute": "无"
+      "attribute": "无",
+      "descriptionReviewStatus": "fixed"
     },
     "2304": {
       "attribute": "无",
@@ -463,10 +476,14 @@
     },
     "2323": {
       "attribute": "阴性",
+      "description": "若施展轻功则无法运功2秒，并受到一次伤害",
+      "descriptionReviewStatus": "fixed",
       "timerVisible": true
     },
     "2324": {
       "attribute": "阴性",
+      "description": "无法运功",
+      "descriptionReviewStatus": "fixed",
       "timerVisible": true
     },
     "2325": {
@@ -517,7 +534,9 @@
       "manualCancelable": true
     },
     "2500": {
-      "attribute": "混元"
+      "attribute": "混元",
+      "description": "每3秒受到伤害",
+      "descriptionReviewStatus": "fixed"
     },
     "2501": {
       "attribute": "混元"
@@ -535,7 +554,9 @@
       "timerVisible": true
     },
     "2506": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕，不受任何增益和伤害效果影响",
+      "descriptionReviewStatus": "fixed"
     },
     "2507": {
       "attribute": "外功",
@@ -560,7 +581,8 @@
       "attribute": "阴性"
     },
     "2512": {
-      "attribute": "阳性"
+      "attribute": "阳性",
+      "descriptionReviewStatus": "needs-more"
     },
     "2513": {
       "attribute": "阳性",
@@ -619,6 +641,8 @@
     },
     "2610": {
       "attribute": "无",
+      "description": "躲闪几率提高65%，受到伤害降低45%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -649,13 +673,17 @@
     },
     "2614": {
       "attribute": "无",
+      "description": "每3秒受到伤害",
+      "descriptionReviewStatus": "fixed",
       "timerVisible": true
     },
     "2615": {
       "attribute": "外功"
     },
     "2616": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "每2秒受到伤害",
+      "descriptionReviewStatus": "fixed"
     },
     "2620": {
       "attribute": "无",
@@ -666,10 +694,14 @@
       "timerVisible": false
     },
     "2625": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "恐惧。",
+      "descriptionReviewStatus": "fixed"
     },
     "2630": {
       "attribute": "无",
+      "description": "免疫控制（被拉和击退除外）和无法运功效果。",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
@@ -693,6 +725,8 @@
     "2636": {
       "attribute": "无",
       "name": "灵辉",
+      "description": "免疫所有控制",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -751,7 +785,9 @@
       "attribute": "无"
     },
     "2649": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "移动速度降低90%，招式施展距离提高12尺，持续12秒",
+      "descriptionReviewStatus": "fixed"
     },
     "2650": {
       "attribute": "无",
@@ -764,6 +800,8 @@
     },
     "2654": {
       "attribute": "无",
+      "description": "凌空而起，跳跃获得强化，免疫控制（击退和被拉除外），技能施展距离提高5尺",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -784,6 +822,8 @@
     },
     "2702": {
       "attribute": "无",
+      "description": "受外功伤害降低30%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -892,6 +932,8 @@
     },
     "2720": {
       "attribute": "无",
+      "description": "移动速度降低60%",
+      "descriptionReviewStatus": "fixed",
       "timerVisible": true
     },
     "2721": {
@@ -917,12 +959,16 @@
     },
     "2726": {
       "attribute": "无",
+      "description": "免疫任何伤害",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true,
       "timerVisible": false
     },
     "2727": {
       "attribute": "无",
+      "description": "可施展特殊招式迅速离开战场",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -1098,6 +1144,11 @@
       "attribute": "未选择",
       "hidden": true,
       "description": "隐藏BUFF：10秒内定身递减。每次定身成功后层数+1并刷新计时，下一次定身持续时间按0.5^层数递减。",
+      "descriptionReviewStatus": "fixed"
+    },
+    "990200": {
+      "attribute": "未选择",
+      "description": "处于沙暴范围内，视野受阻，同时会持续受到伤害",
       "descriptionReviewStatus": "fixed"
     },
     "999900": {

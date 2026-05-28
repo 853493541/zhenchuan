@@ -1149,7 +1149,7 @@ export class GameLoop {
     { startTime: 30000, endTime: 40000, fromHalf: 50,  toHalf: 50,  dps: 1 },
     { startTime: 40000, endTime: 50000, fromHalf: 50,  toHalf: 25,  dps: 5 },
     { startTime: 50000, endTime: 60000, fromHalf: 25,  toHalf: 25,  dps: 5 },
-    { startTime: 60000, endTime: 65000, fromHalf: 25,  toHalf: 0,   dps: 10 },
+    { startTime: 60000, endTime: 61000, fromHalf: 25,  toHalf: 0,   dps: 10 },
   ];
 
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
@@ -1762,6 +1762,24 @@ export class GameLoop {
     }
     this.playerInputs.set(playerIndex, nextInput);
     return true;
+  }
+
+  setPlayerInputForUser(
+    userId: string,
+    input: MovementInput | null,
+    seq?: number,
+    clientSession?: { id: string; startedAt: number },
+  ): { accepted: boolean; playerIndex: number; position: any; velocity: any } | null {
+    const playerIndex = this.state.players.findIndex((player) => player.userId === userId);
+    if (playerIndex === -1) return null;
+    const accepted = this.setPlayerInput(playerIndex, input, seq, clientSession);
+    const player = this.state.players[playerIndex];
+    return {
+      accepted,
+      playerIndex,
+      position: { ...player.position },
+      velocity: player.velocity ? { ...player.velocity } : undefined,
+    };
   }
 
   hasPendingJump(playerIndex: number): boolean {

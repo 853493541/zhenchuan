@@ -11,6 +11,7 @@ import { GameLoop } from "../engine/loop/GameLoop";
 import { randomUUID } from "crypto";
 import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types";
 import { blocksCardTargeting } from "../engine/rules/guards";
+import { recordLagProbe } from "../../utils/lagProbe";
 
 const router = express.Router();
 const pendingLeaveEndTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -792,19 +793,6 @@ router.post("/movement", async (req, res) => {
     }
 
     try {
-      // Get player index
-      const state = loop.getState();
-      if (!state || !state.players) {
-        console.error('[MOVEMENT] Invalid game state');
-        return sendGameError(res, 400, "ERR_INVALID_GAME_STATE");
-      }
-
-      const playerIndex = state.players.findIndex((p) => p.userId === userId);
-      if (playerIndex === -1) {
-        console.warn(`[MOVEMENT] User ${userId} not found in game ${gameId}`);
-        return sendGameError(res, 403, "ERR_NOT_IN_GAME");
-      }
-
       // Update movement input
       let input: MovementInput | null = direction
         ? {
@@ -845,30 +833,43 @@ router.post("/movement", async (req, res) => {
       const movementClientStartedAt = typeof req.body.movementClientStartedAt === 'number' && Number.isFinite(req.body.movementClientStartedAt)
         ? req.body.movementClientStartedAt
         : undefined;
-      const accepted = loop.setPlayerInput(
-        playerIndex,
+      const movementAck = loop.setPlayerInputForUser(
+        userId,
         input,
         seq,
         movementClientSessionId
           ? { id: movementClientSessionId, startedAt: movementClientStartedAt ?? 0 }
           : undefined,
       );
+      if (!movementAck) {
+        console.warn(`[MOVEMENT] User ${userId} not found in game ${gameId}`);
+        return sendGameError(res, 403, "ERR_NOT_IN_GAME");
+      }
       
       // Return current position immediately so client can update without waiting for broadcast
       // Also include any pending input so client can predict the next position
-      const player = state.players[playerIndex];
       const serverRespondedAt = Date.now();
+      const serverProcessingMs = serverRespondedAt - serverReceivedAt;
+      if (serverProcessingMs >= 40) {
+        recordLagProbe("movement-route-slow", {
+          gameId,
+          userId,
+          seq: seq ?? null,
+          accepted: movementAck.accepted,
+          serverProcessingMs,
+        });
+      }
       res.json({ 
         success: true,
-        accepted,
+        accepted: movementAck.accepted,
         seq,
-        position: player.position,
-        velocity: player.velocity,
+        position: movementAck.position,
+        velocity: movementAck.velocity,
         input: input, // Send input back so client can predict next position
         serverReceivedAt,
         serverRespondedAt,
         serverTimestamp: serverRespondedAt,
-        serverProcessingMs: serverRespondedAt - serverReceivedAt,
+        serverProcessingMs,
       });
     } catch (loopErr: any) {
       console.error(`[MOVEMENT] GameLoop error: ${loopErr.message}`);
