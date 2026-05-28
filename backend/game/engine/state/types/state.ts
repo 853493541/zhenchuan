@@ -30,6 +30,11 @@ export interface SafeZone {
   /** Seconds until next phase change (shrink start or shrink end) */
   nextChangeIn: number;
   phase?: "idle" | "waiting" | "countdown" | "shrinking" | "complete";
+  timelineMode?: "fast" | "full";
+  damageMode?: "test" | "full";
+  circleNumber?: number;
+  totalCircles?: number;
+  fullPoison?: boolean;
   stageIndex?: number;
   targetStageIndex?: number;
   phaseStartedAt?: number;
@@ -39,6 +44,9 @@ export interface SafeZone {
   targetCenterX?: number;
   targetCenterY?: number;
   targetVisible?: boolean;
+  paused?: boolean;
+  pausedAt?: number;
+  pausedRemainingMs?: number;
   manualShrinking?: boolean;
   lastShrinkAt?: number;
   shrinkStartHalf?: number;
@@ -136,6 +144,9 @@ export interface PlayerState {
 
   /** active buffs on player */
   buffs: ActiveBuff[];
+
+  /** Date.now() ms when the player most recently entered 玉门关狂沙. */
+  yumenKuangShaStartedAt?: number;
 
   /** Current player-selected target, used for target-of-target UI. */
   targetSelection?: TargetSelection;

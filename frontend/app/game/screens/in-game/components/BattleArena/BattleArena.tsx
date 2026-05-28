@@ -425,6 +425,10 @@ const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
 const ABILITY_SOUND_SETTINGS_STORAGE_KEY = 'zhenchuan-ability-sound-settings-v1';
 const CAMERA_SETTINGS_STORAGE_KEY = 'zhenchuan-camera-settings-v1';
 const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
+const YUMEN_DAMAGE_MODE_STORAGE_KEY = 'zhenchuan-yumen-safe-zone-damage-mode-v1';
+const YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY = 'zhenchuan-yumen-auto-full-shrink-v1';
+const YUMEN_SHOW_FUTURE_SAFE_ZONE_STORAGE_KEY = 'zhenchuan-yumen-show-future-safe-zone-v1';
+const YUMEN_SAFE_ZONE_DISPLAY_MODE_STORAGE_KEY = 'zhenchuan-yumen-safe-zone-display-mode-v1';
 const ABILITY_PANEL_MIN_SCALE = 0.85;
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
@@ -498,6 +502,7 @@ const ITEM_BAR_UI_KEY = 'item-bar';
 const MARTIAL_PANEL_UI_KEY = 'martial-panel';
 const CHAT_PANEL_UI_KEY = 'chat-panel';
 const CHAT_CLEAR_DIALOG_UI_KEY = 'chat-clear-dialog';
+const YUMEN_MINIMAP_UI_KEY = 'yumen-minimap';
 const getDetachedChatWindowUiKey = (detachedId: string) => `chat-detached-${detachedId}`;
 const isDetachedChatWindowUiKey = (key: string) => key.startsWith('chat-detached-');
 const CATCAKE_DEFAULT_UI_VIEWPORT: UiViewportSize = { w: 1920, h: 945 };
@@ -3738,21 +3743,28 @@ function YumenMiniMap({
   playerPosition,
   playerFacing,
   safeZone,
+  panelPosition,
+  onPanelPositionChange,
 }: {
   mapWidth: number;
   mapHeight: number;
   playerPosition: { x: number; y: number };
   playerFacing: { x: number; y: number };
   safeZone?: SafeZone;
+  panelPosition?: UiPosition;
+  onPanelPositionChange?: (position: UiPosition, persist: boolean) => void;
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const [panelPosition, setPanelPosition] = useState<{ left: number; top: number } | null>(null);
+  const [expanded, setExpanded] = useState(true);
   const size = 244;
   const headerHeight = 27;
+  const infoHeight = 40;
   const padding = 10;
   const chromePadding = 2;
   const panelWidth = size + chromePadding * 2;
-  const panelHeight = headerHeight + size + chromePadding * 2;
+  const mapBodyHeight = expanded ? size + chromePadding * 2 : 0;
+  const frameHeight = headerHeight + mapBodyHeight;
+  const panelHeight = infoHeight + frameHeight;
   const mapScale = Math.min((size - padding * 2) / Math.max(1, mapWidth), (size - padding * 2) / Math.max(1, mapHeight));
   const renderedWidth = mapWidth * mapScale;
   const renderedHeight = mapHeight * mapScale;
@@ -3763,18 +3775,41 @@ function YumenMiniMap({
   const rawCircleX = (x: number) => offsetX + x * mapScale;
   const rawCircleY = (y: number) => offsetY + y * mapScale;
   const currentRadius = Math.max(0, Number(safeZone?.currentHalf ?? 0)) * mapScale;
-  const targetRadius = Math.max(0, Number(safeZone?.targetHalf ?? (typeof safeZone?.targetDiameter === 'number' ? safeZone.targetDiameter / 2 : 0))) * mapScale;
   const hasCurrentCircle = !!safeZone && currentRadius > 0;
-  const hasTargetCircle = !!safeZone?.targetVisible
-    && targetRadius > 0
-    && typeof safeZone.targetCenterX === 'number'
-    && typeof safeZone.targetCenterY === 'number';
+  const targetRadius = Math.max(0, Number(safeZone?.targetHalf ?? (typeof safeZone?.targetDiameter === 'number' ? safeZone.targetDiameter / 2 : 0))) * mapScale;
+  const hasTargetCircle = !!safeZone && safeZone.targetVisible === true && targetRadius > 0 && typeof safeZone.targetCenterX === 'number' && typeof safeZone.targetCenterY === 'number';
   const markerX = toMapX(playerPosition.x);
   const markerY = toMapY(playerPosition.y);
   const facingLength = Math.hypot(playerFacing.x, playerFacing.y) || 1;
   const facingX = playerFacing.x / facingLength;
   const facingY = playerFacing.y / facingLength;
-  const markerRotation = Math.atan2(facingX, -facingY) * 180 / Math.PI;
+  const markerRotation = Math.atan2(-facingX, -facingY) * 180 / Math.PI;
+  const totalCircles = Math.max(1, Math.floor(Number(safeZone?.totalCircles ?? 8)));
+  const inferredCircleNumber = (() => {
+    if (typeof safeZone?.circleNumber === 'number') return safeZone.circleNumber;
+    const phase = safeZone?.phase;
+    const stageIndex = phase === 'countdown' || phase === 'shrinking'
+      ? Number(safeZone?.targetStageIndex ?? (Number(safeZone?.stageIndex ?? 0) + 1))
+      : Number(safeZone?.stageIndex ?? 0);
+    return 3 + Math.max(0, Math.floor(Number.isFinite(stageIndex) ? stageIndex : 0));
+  })();
+  const displayCircleNumber = Math.max(1, Math.min(totalCircles, Math.floor(inferredCircleNumber)));
+  const fullPoisonActive = !safeZone || safeZone.fullPoison || safeZone.phase === 'complete' || Number(safeZone.currentHalf ?? 0) <= 0;
+  const distanceSafeZone = safeZone
+    ? {
+        centerX: Number(safeZone.centerX),
+        centerY: Number(safeZone.centerY),
+        radius: Math.max(0, Number(safeZone.currentHalf ?? 0)),
+      }
+    : null;
+  const distanceText = fullPoisonActive
+    ? '已全毒'
+    : distanceSafeZone
+      ? (() => {
+          const distanceToEdge = Math.max(0, Math.hypot(playerPosition.x - distanceSafeZone.centerX, playerPosition.y - distanceSafeZone.centerY) - distanceSafeZone.radius);
+          return distanceToEdge <= 0.05 ? '安全区内' : `距离安全区: ${distanceToEdge.toFixed(1)}尺`;
+        })()
+      : '安全区内';
 
   const beginDrag = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -3796,13 +3831,14 @@ function YumenMiniMap({
     };
     const move = (moveEvent: MouseEvent) => {
       moveEvent.preventDefault();
-      setPanelPosition(clampPosition(baseLeft + moveEvent.clientX - startX, baseTop + moveEvent.clientY - startY));
+      onPanelPositionChange?.(clampPosition(baseLeft + moveEvent.clientX - startX, baseTop + moveEvent.clientY - startY), false);
     };
-    const end = () => {
+    const end = (upEvent: MouseEvent) => {
+      onPanelPositionChange?.(clampPosition(baseLeft + upEvent.clientX - startX, baseTop + upEvent.clientY - startY), true);
       document.removeEventListener('mousemove', move);
       document.removeEventListener('mouseup', end);
     };
-    setPanelPosition(clampPosition(baseLeft, baseTop));
+    onPanelPositionChange?.(clampPosition(baseLeft, baseTop), false);
     document.addEventListener('mousemove', move);
     document.addEventListener('mouseup', end);
   };
@@ -3817,77 +3853,131 @@ function YumenMiniMap({
         ...(panelPosition ? { left: panelPosition.left, top: panelPosition.top } : { top: 50, right: 14 }),
         width: panelWidth,
         height: panelHeight,
+        zIndex: 545,
+        pointerEvents: 'auto',
+        overflow: 'visible',
+      }}
+    >
+      <div style={{
+        height: infoHeight,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        gap: 3,
+        paddingLeft: 4,
+        color: '#fff7d4',
+        fontSize: 13,
+        fontWeight: 800,
+        fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+        lineHeight: 1.05,
+        textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+      }}>
+        <div style={{ color: fullPoisonActive ? '#ff4a3d' : '#fff7d4' }}>{distanceText}</div>
+        <div>{`已刷圈/总圈数: ${displayCircleNumber}/${totalCircles}`}</div>
+      </div>
+      <div style={{
+        height: frameHeight,
         borderRadius: 2,
         background: 'rgba(45, 47, 36, 0.94)',
         border: '1px solid rgba(23, 26, 20, 0.88)',
         boxShadow: '0 10px 24px rgba(0,0,0,0.42)',
-        zIndex: 545,
-        pointerEvents: 'auto',
         overflow: 'hidden',
-      }}
-    >
-      <div
-        data-ui-drag
-        onMouseDown={beginDrag}
-        style={{
-          height: headerHeight,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '0 7px',
-          background: 'rgba(36, 39, 29, 0.98)',
-          borderBottom: '1px solid rgba(13, 16, 12, 0.86)',
-          color: '#e6e6dd',
-          fontSize: 12,
-          fontWeight: 700,
-          fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
-          lineHeight: 1,
-          cursor: 'move',
-          userSelect: 'none',
-        }}
-      >
-        <span style={{ width: 14, color: '#bed6e2', fontSize: 14, textAlign: 'center' }}>≡</span>
-        <span style={{ width: 16, height: 16, border: '2px solid rgba(190, 205, 200, 0.7)', background: 'rgba(18, 24, 22, 0.75)', color: '#77dec0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>✓</span>
-        <span style={{ flex: 1, textShadow: '0 1px 2px rgba(0,0,0,0.75)' }}>安全区</span>
-        <span style={{ width: 16, height: 16, border: '2px solid rgba(150, 164, 158, 0.66)', background: 'rgba(12, 16, 14, 0.62)' }} />
-        <span style={{ textShadow: '0 1px 2px rgba(0,0,0,0.75)' }}>目标圈</span>
-        <span style={{ color: '#c7d8e6', fontSize: 14, marginLeft: 2 }}>⌃</span>
+      }}>
+        <div
+          data-ui-drag
+          onMouseDown={beginDrag}
+          style={{
+            height: headerHeight,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            padding: '0 7px',
+            background: 'rgba(36, 39, 29, 0.98)',
+            borderBottom: expanded ? '1px solid rgba(13, 16, 12, 0.86)' : 'none',
+            color: '#e6e6dd',
+            fontSize: 12,
+            fontWeight: 700,
+            fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+            lineHeight: 1,
+            cursor: 'move',
+            userSelect: 'none',
+          }}
+        >
+          <span style={{ width: 14, color: '#bed6e2', fontSize: 14, textAlign: 'center' }}>≡</span>
+          <button
+            type="button"
+            aria-label={expanded ? '收起小地图' : '展开小地图'}
+            aria-expanded={expanded}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={() => setExpanded((value) => !value)}
+            style={{
+              marginLeft: 'auto',
+              width: 22,
+              height: 22,
+              border: 'none',
+              borderRadius: 2,
+              background: 'transparent',
+              color: '#c7d8e6',
+              fontSize: 15,
+              lineHeight: '20px',
+              padding: 0,
+              cursor: 'pointer',
+              fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+            }}
+          >{expanded ? '⌃' : '⌄'}</button>
+        </div>
+        {expanded && (
+          <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{ display: 'block', margin: chromePadding, pointerEvents: 'none' }}>
+            <defs>
+              <clipPath id="yumen-minimap-map-clip">
+                <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} />
+              </clipPath>
+            </defs>
+            <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} fill="#c99a58" stroke="rgba(37, 35, 26, 0.78)" strokeWidth="1.5" />
+            {hasCurrentCircle && !hasTargetCircle && (
+              <circle
+                cx={rawCircleX(Number(safeZone.centerX))}
+                cy={rawCircleY(Number(safeZone.centerY))}
+                r={currentRadius}
+                fill="none"
+                stroke="#22b8ff"
+                strokeWidth="3"
+                clipPath="url(#yumen-minimap-map-clip)"
+              />
+            )}
+            {hasCurrentCircle && hasTargetCircle && (
+              <circle
+                cx={rawCircleX(Number(safeZone.centerX))}
+                cy={rawCircleY(Number(safeZone.centerY))}
+                r={currentRadius}
+                fill="none"
+                stroke="#f5d24f"
+                strokeWidth="3"
+                strokeDasharray="7 6"
+                strokeLinecap="round"
+                clipPath="url(#yumen-minimap-map-clip)"
+              />
+            )}
+            {hasTargetCircle && (
+              <circle
+                cx={rawCircleX(Number(safeZone.targetCenterX))}
+                cy={rawCircleY(Number(safeZone.targetCenterY))}
+                r={targetRadius}
+                fill="none"
+                stroke="#22b8ff"
+                strokeWidth="3"
+                clipPath="url(#yumen-minimap-map-clip)"
+              />
+            )}
+            <g transform={`translate(${markerX} ${markerY}) rotate(${markerRotation})`}>
+              <path d="M 0 -8.5 C 3.2 -3.4 5.1 1.4 5 5.1 C 2.1 3.8 -2.1 3.8 -5 5.1 C -5.1 1.4 -3.2 -3.4 0 -8.5 Z" fill="#e7df60" stroke="rgba(54, 65, 38, 0.95)" strokeWidth="1.2" strokeLinejoin="round" />
+              <path d="M 0 -5.5 C 1.3 -2.6 2.1 0.1 2.1 2.1 C 0.9 1.6 -0.9 1.6 -2.1 2.1 C -2.1 0.1 -1.3 -2.6 0 -5.5 Z" fill="rgba(255,255,255,0.42)" />
+            </g>
+          </svg>
+        )}
       </div>
-      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{ display: 'block', margin: chromePadding, pointerEvents: 'none' }}>
-        <defs>
-          <clipPath id="yumen-minimap-map-clip">
-            <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} />
-          </clipPath>
-        </defs>
-        <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} fill="#c99a58" stroke="rgba(37, 35, 26, 0.78)" strokeWidth="1.5" />
-        {hasTargetCircle && (
-          <circle
-            cx={rawCircleX(Number(safeZone!.targetCenterX))}
-            cy={rawCircleY(Number(safeZone!.targetCenterY))}
-            r={targetRadius}
-            fill="none"
-            stroke="#48a7ff"
-            strokeWidth="3"
-            clipPath="url(#yumen-minimap-map-clip)"
-          />
-        )}
-        {hasCurrentCircle && (
-          <circle
-            cx={rawCircleX(Number(safeZone.centerX))}
-            cy={rawCircleY(Number(safeZone.centerY))}
-            r={currentRadius}
-            fill="none"
-            stroke="#f5d24f"
-            strokeWidth="3"
-            strokeDasharray="7 6"
-            clipPath="url(#yumen-minimap-map-clip)"
-          />
-        )}
-        <g transform={`translate(${markerX} ${markerY}) rotate(${markerRotation})`}>
-          <path d="M 0 -12 L 7.5 6 L 2 3.5 L 0 10 L -2 3.5 L -7.5 6 Z" fill="#e7df60" stroke="rgba(54, 65, 38, 0.95)" strokeWidth="1.4" strokeLinejoin="round" />
-          <path d="M 0 -8 L 3 3 L 0 1.5 L -3 3 Z" fill="rgba(255,255,255,0.42)" />
-        </g>
-      </svg>
     </div>
   );
 }
@@ -4817,8 +4907,19 @@ export default function BattleArena({
   const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number; z?: number; isValid?: boolean } | null>(null);
   const [showControlPanel, setShowControlPanel] = useState(false);
   const [yumenBoundaryEditMode, setYumenBoundaryEditMode] = useState(false);
-  const [showYumenSafeZoneCurtain, setShowYumenSafeZoneCurtain] = useState(false);
+  const [yumenDamageMode, setYumenDamageMode] = useState<'test' | 'full'>(() => {
+    try {
+      if (typeof window === 'undefined') return 'test';
+      return localStorage.getItem(YUMEN_DAMAGE_MODE_STORAGE_KEY) === 'full' ? 'full' : 'test';
+    } catch {
+      return 'test';
+    }
+  });
+  const [yumenAutoFullShrink, setYumenAutoFullShrink] = useState(false);
+  const [showYumenFutureSafeZone, setShowYumenFutureSafeZone] = useState(true);
+  const [yumenSafeZoneDisplayMode, setYumenSafeZoneDisplayMode] = useState<'terrain' | 'topDown'>('terrain');
   const yumenBoundaryEditModeRef = useRef(false);
+  const yumenAutoFullShrinkStartedRef = useRef<string | null>(null);
   const [showHeartDetailsPanel, setShowHeartDetailsPanel] = useState(false);
   const [showHeartStatSettings, setShowHeartStatSettings] = useState(false);
   const [showCombatPresetBar, setShowCombatPresetBar] = useState(false);
@@ -4839,6 +4940,34 @@ export default function BattleArena({
   useEffect(() => {
     if (!isYumenMode && yumenBoundaryEditMode) setYumenBoundaryEditMode(false);
   }, [isYumenMode, yumenBoundaryEditMode]);
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      setYumenAutoFullShrink(localStorage.getItem(YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY) === '1');
+      setShowYumenFutureSafeZone(localStorage.getItem(YUMEN_SHOW_FUTURE_SAFE_ZONE_STORAGE_KEY) !== '0');
+      setYumenSafeZoneDisplayMode(localStorage.getItem(YUMEN_SAFE_ZONE_DISPLAY_MODE_STORAGE_KEY) === 'topDown' ? 'topDown' : 'terrain');
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_DAMAGE_MODE_STORAGE_KEY, yumenDamageMode);
+    } catch {}
+  }, [yumenDamageMode]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY, yumenAutoFullShrink ? '1' : '0');
+    } catch {}
+  }, [yumenAutoFullShrink]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_SHOW_FUTURE_SAFE_ZONE_STORAGE_KEY, showYumenFutureSafeZone ? '1' : '0');
+    } catch {}
+  }, [showYumenFutureSafeZone]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_SAFE_ZONE_DISPLAY_MODE_STORAGE_KEY, yumenSafeZoneDisplayMode);
+    } catch {}
+  }, [yumenSafeZoneDisplayMode]);
   useEffect(() => {
     try {
       localStorage.setItem(HEART_STAT_STORAGE_KEY, JSON.stringify(heartStatVisibility));
@@ -8771,6 +8900,15 @@ export default function BattleArena({
     persistUiLayout(positions);
   }, [persistUiLayout]);
 
+  const updateYumenMiniMapPosition = useCallback((position: UiPosition, shouldPersist: boolean) => {
+    setUiPositions((current) => {
+      const next = { ...current, [YUMEN_MINIMAP_UI_KEY]: position };
+      uiPositionsRef.current = next;
+      if (shouldPersist) persistUiPositions(next);
+      return next;
+    });
+  }, [persistUiPositions]);
+
   useEffect(() => {
     if (!uiLayoutLoadedRef.current) return;
     persistUiLayout(uiPositionsRef.current);
@@ -11513,6 +11651,13 @@ export default function BattleArena({
     [gameId, runningCheatAction],
   );
 
+  useEffect(() => {
+    if (!isYumenMode || !yumenAutoFullShrink || safeZone?.phase !== 'idle') return;
+    if (yumenAutoFullShrinkStartedRef.current === gameId) return;
+    yumenAutoFullShrinkStartedRef.current = gameId;
+    void runCheatAction('yumen-auto-full-shrink', '/api/game/cheat/yumen/start-full-shrink', '完整缩圈已自动开始');
+  }, [gameId, isYumenMode, runCheatAction, safeZone?.phase, yumenAutoFullShrink]);
+
   const updateYumenPlayArea = useCallback(async (
     nextPlayArea: PlayAreaBounds,
     options?: { actionId?: string; successText?: string },
@@ -14043,6 +14188,8 @@ export default function BattleArena({
           playerPosition={{ x: miniMapPose.x, y: miniMapPose.y }}
           playerFacing={{ x: miniMapPose.facingX, y: miniMapPose.facingY }}
           safeZone={safeZone}
+          panelPosition={uiPositions[YUMEN_MINIMAP_UI_KEY]}
+          onPanelPositionChange={updateYumenMiniMapPosition}
         />
       )}
 
@@ -14349,10 +14496,11 @@ export default function BattleArena({
             entityScreenBoundsRef={entityScreenBoundsRef}
             mode={mode}
             safeZone={safeZone}
+            showFutureSafeZone={showYumenFutureSafeZone}
+            safeZoneDisplayMode={yumenSafeZoneDisplayMode}
             playArea={effectivePlayArea}
             onPlayAreaChange={updateYumenPlayArea}
             boundaryEditMode={yumenBoundaryEditMode}
-            showSafeZoneCurtain={showYumenSafeZoneCurtain}
             groundZones={groundZones}
             groundCastPreview={
               (() => {
@@ -16257,7 +16405,7 @@ export default function BattleArena({
                 <button
                   type="button"
                   disabled={!!runningCheatAction}
-                  onClick={() => void runCheatAction('yumen-start-shrink', '/api/game/cheat/yumen/start-shrink', '快速缩圈已开始')}
+                  onClick={() => void runCheatAction('yumen-start-shrink', '/api/game/cheat/yumen/start-shrink', '快速缩圈已开始', { damageMode: yumenDamageMode })}
                   style={{
                     background: 'rgba(210, 80, 70, 0.22)', color: '#ffc4bd',
                     border: '1px solid rgba(255, 130, 120, 0.62)', borderRadius: 4,
@@ -16266,40 +16414,147 @@ export default function BattleArena({
                     opacity: runningCheatAction ? 0.55 : 1,
                   }}
                 >开始快速缩圈</button>
+                <select
+                  value={yumenDamageMode}
+                  disabled={!!runningCheatAction}
+                  onChange={(event) => {
+                    const nextMode = event.target.value === 'full' ? 'full' : 'test';
+                    setYumenDamageMode(nextMode);
+                    void runCheatAction('yumen-damage-mode', '/api/game/cheat/yumen/damage-mode', nextMode === 'full' ? '毒圈伤害已切换为完整' : '毒圈伤害已切换为测试', { damageMode: nextMode });
+                  }}
+                  style={{
+                    minHeight: 29,
+                    borderRadius: 4,
+                    border: '1px solid rgba(255, 210, 120, 0.58)',
+                    background: 'rgba(35, 28, 18, 0.94)',
+                    color: '#ffe0a0',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: '5px 7px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                  title="快速缩圈伤害模式"
+                >
+                  <option value="full">完整</option>
+                  <option value="test">测试</option>
+                </select>
                 <button
                   type="button"
                   disabled={!!runningCheatAction}
-                  onClick={() => void runCheatAction('yumen-stop-shrink', '/api/game/cheat/yumen/stop-shrink', '毒圈已停止')}
+                  onClick={() => void runCheatAction('yumen-start-full-shrink', '/api/game/cheat/yumen/start-full-shrink', '完整缩圈已开始')}
                   style={{
-                    background: 'rgba(70, 145, 210, 0.22)', color: '#c8e7ff',
-                    border: '1px solid rgba(115, 185, 255, 0.62)', borderRadius: 4,
+                    background: 'rgba(60, 155, 120, 0.22)', color: '#bff5da',
+                    border: '1px solid rgba(105, 220, 165, 0.62)', borderRadius: 4,
                     fontSize: 11, padding: '6px 8px',
                     cursor: runningCheatAction ? 'not-allowed' : 'pointer',
                     opacity: runningCheatAction ? 0.55 : 1,
                   }}
-                >停止缩圈</button>
+                >开始完整缩圈</button>
+                <label style={{
+                  minHeight: 29,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  borderRadius: 4,
+                  border: '1px solid rgba(120, 195, 255, 0.42)',
+                  background: 'rgba(45, 70, 95, 0.22)',
+                  color: '#c8e7ff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: '5px 7px',
+                  cursor: 'pointer',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={yumenAutoFullShrink}
+                    onChange={(event) => setYumenAutoFullShrink(event.target.checked)}
+                    style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+                  />
+                  <span>游戏开始时自动开始</span>
+                </label>
+                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+                  <button
+                    type="button"
+                    disabled={!!runningCheatAction}
+                    onClick={() => void runCheatAction('yumen-pause-shrink', '/api/game/cheat/yumen/pause-shrink', '缩圈已暂停')}
+                    style={{
+                      background: 'rgba(95, 85, 45, 0.28)', color: '#f7e0a0',
+                      border: '1px solid rgba(230, 195, 100, 0.62)', borderRadius: 4,
+                      fontSize: 11, padding: '6px 8px',
+                      cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                      opacity: runningCheatAction ? 0.55 : 1,
+                    }}
+                  >暂停</button>
+                  <button
+                    type="button"
+                    disabled={!!runningCheatAction}
+                    onClick={() => void runCheatAction('yumen-resume-shrink', '/api/game/cheat/yumen/resume-shrink', '缩圈已继续')}
+                    style={{
+                      background: 'rgba(70, 145, 210, 0.22)', color: '#c8e7ff',
+                      border: '1px solid rgba(115, 185, 255, 0.62)', borderRadius: 4,
+                      fontSize: 11, padding: '6px 8px',
+                      cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                      opacity: runningCheatAction ? 0.55 : 1,
+                    }}
+                  >继续</button>
+                  <button
+                    type="button"
+                    disabled={!!runningCheatAction}
+                    onClick={() => void runCheatAction('yumen-reset-shrink', '/api/game/cheat/yumen/reset-shrink', '缩圈已重置')}
+                    style={{
+                      background: 'rgba(110, 125, 150, 0.24)', color: '#d9e4f2',
+                      border: '1px solid rgba(175, 195, 220, 0.58)', borderRadius: 4,
+                      fontSize: 11, padding: '6px 8px',
+                      cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                      opacity: runningCheatAction ? 0.55 : 1,
+                    }}
+                  >重置</button>
+                </div>
                 <button
                   type="button"
-                  disabled={!!runningCheatAction}
-                  onClick={() => void runCheatAction('yumen-reset-shrink', '/api/game/cheat/yumen/reset-shrink', '缩圈已重置')}
+                  onClick={() => setShowYumenFutureSafeZone((value) => !value)}
                   style={{
-                    background: 'rgba(110, 125, 150, 0.24)', color: '#d9e4f2',
-                    border: '1px solid rgba(175, 195, 220, 0.58)', borderRadius: 4,
-                    fontSize: 11, padding: '6px 8px',
-                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
-                    opacity: runningCheatAction ? 0.55 : 1,
+                    background: showYumenFutureSafeZone ? 'rgba(35, 170, 220, 0.28)' : 'rgba(90, 105, 120, 0.22)',
+                    color: showYumenFutureSafeZone ? '#bcecff' : '#d0d8df',
+                    border: showYumenFutureSafeZone ? '1px solid rgba(80, 215, 255, 0.68)' : '1px solid rgba(165, 180, 195, 0.54)',
+                    borderRadius: 4,
+                    fontSize: 11,
+                    padding: '6px 8px',
+                    cursor: 'pointer',
                   }}
-                >重置缩圈</button>
-                <button
-                  type="button"
-                  onClick={() => setShowYumenSafeZoneCurtain((value) => !value)}
-                  style={{
-                    background: showYumenSafeZoneCurtain ? 'rgba(245, 190, 50, 0.34)' : 'rgba(245, 190, 50, 0.14)',
-                    color: '#ffe08a',
-                    border: '1px solid rgba(255, 220, 120, 0.62)', borderRadius: 4,
-                    fontSize: 11, padding: '6px 8px', cursor: 'pointer',
-                  }}
-                >{showYumenSafeZoneCurtain ? '关闭光幕' : '开启光幕'}</button>
+                >{showYumenFutureSafeZone ? '显示未来安全区: 开' : '显示未来安全区: 关'}</button>
+                <label style={{
+                  gridColumn: '1 / -1',
+                  display: 'grid',
+                  gridTemplateColumns: 'auto minmax(0, 1fr)',
+                  alignItems: 'center',
+                  gap: 8,
+                  minHeight: 30,
+                  color: '#c8e7ff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}>
+                  <span>安全区显示方式</span>
+                  <select
+                    value={yumenSafeZoneDisplayMode}
+                    onChange={(event) => setYumenSafeZoneDisplayMode(event.target.value === 'topDown' ? 'topDown' : 'terrain')}
+                    style={{
+                      minHeight: 29,
+                      borderRadius: 4,
+                      border: '1px solid rgba(115, 185, 255, 0.62)',
+                      background: 'rgba(20, 35, 50, 0.94)',
+                      color: '#d9f0ff',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: '5px 7px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="terrain">当前贴地</option>
+                    <option value="topDown">从上往下</option>
+                  </select>
+                </label>
               </div>
               <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>边界</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
@@ -16642,79 +16897,83 @@ export default function BattleArena({
       )}
 
       {/* ===== SAFE ZONE TIMER / PROGRESS BAR ===== */}
-      {safeZone && safeZone.nextChangeIn > 0 && (
-        <div style={{
-          position: 'absolute',
-          left: '95%',
-          top: '30%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 4,
-          pointerEvents: 'none',
-          zIndex: 500,
-        }}>
+      {safeZone && (safeZone.nextChangeIn > 0 || safeZone.phase === 'complete' || safeZone.fullPoison) && (() => {
+        const isShrinking = safeZone.shrinking || safeZone.phase === 'shrinking';
+        const isComplete = safeZone.phase === 'complete' || safeZone.fullPoison || Number(safeZone.currentHalf ?? 0) <= 0;
+        const seconds = Math.max(0, Math.ceil(Number(safeZone.nextChangeIn ?? 0)));
+        const phaseStartedAt = Number(safeZone.phaseStartedAt ?? 0);
+        const phaseEndsAt = Number(safeZone.phaseEndsAt ?? 0);
+        const phaseDuration = Math.max(1, phaseEndsAt - phaseStartedAt);
+        const phaseRemainingMs = Math.max(0, Number(safeZone.nextChangeIn ?? 0) * 1000);
+        const barPercent = isComplete ? 100 : Math.min(100, Math.max(0, ((phaseDuration - phaseRemainingMs) / phaseDuration) * 100));
+        const timerLabel = isComplete ? '已全毒' : isShrinking ? '风暴缩圈中' : safeZone.phase === 'waiting' ? '风暴等待中' : '风暴倒计时';
+        const phaseLabel = isComplete ? '全毒' : isShrinking ? '缩圈中' : safeZone.phase === 'countdown' ? '倒计时' : '等待中';
+        const phaseColor = isComplete
+          ? 'rgba(218, 70, 54, 0.82)'
+          : isShrinking
+            ? 'linear-gradient(90deg, rgba(228,81,48,0.95), rgba(247,128,67,0.95))'
+            : safeZone.phase === 'countdown'
+              ? 'linear-gradient(90deg, rgba(230,186,45,0.95), rgba(255,222,92,0.95))'
+              : 'linear-gradient(90deg, rgba(61,177,205,0.92), rgba(145,224,235,0.92))';
+        return (
           <div style={{
-            minWidth: 88,
-            padding: '3px 8px',
-            borderRadius: 4,
-            background: safeZone.shrinking || safeZone.phase === 'shrinking'
-              ? 'rgba(255, 96, 48, 0.82)'
-              : safeZone.phase === 'countdown'
-                ? 'rgba(250, 204, 21, 0.82)'
-                : 'rgba(28, 76, 128, 0.82)',
-            border: '1px solid rgba(255,255,255,0.28)',
-            color: safeZone.phase === 'countdown' ? '#1f2933' : '#ffffff',
-            fontSize: 12,
-            fontWeight: 800,
+            position: 'absolute',
+            right: 32,
+            top: 374,
+            width: 214,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 5,
+            pointerEvents: 'none',
+            zIndex: 500,
             fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
-            textAlign: 'center',
-            textShadow: safeZone.phase === 'countdown' ? 'none' : '1px 1px 2px rgba(0,0,0,0.55)',
-            whiteSpace: 'nowrap',
           }}>
-            {safeZone.shrinking || safeZone.phase === 'shrinking'
-              ? '缩圈中'
-              : safeZone.phase === 'countdown'
-                ? '缩圈倒计时'
-                : '等待'}
-          </div>
-          {/* Progress bar container */}
-          <div style={{
-            width: 120,
-            height: 12,
-            background: 'rgba(0,0,0,0.5)',
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.2)',
-            overflow: 'hidden',
-          }}>
-            {safeZone.shrinking && (
+            <div style={{
+              height: 18,
+              position: 'relative',
+              borderRadius: 3,
+              overflow: 'hidden',
+              background: 'rgba(20, 34, 40, 0.86)',
+              border: '1px solid rgba(115, 210, 231, 0.34)',
+              boxShadow: '0 3px 10px rgba(0,0,0,0.42)',
+            }}>
               <div style={{
-                width: `${Math.min(100, safeZone.shrinkProgress * 100)}%`,
+                width: `${barPercent}%`,
                 height: '100%',
-                background: 'linear-gradient(90deg, #ff4444, #ff8800)',
-                borderRadius: 3,
-                transition: 'width 0.3s linear',
+                background: phaseColor,
               }} />
-            )}
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#eaffff',
+                fontSize: 11,
+                fontWeight: 800,
+                textShadow: '0 1px 2px rgba(0,0,0,0.85)',
+                letterSpacing: 0,
+              }}>{phaseLabel}</div>
+            </div>
+            <div style={{
+              alignSelf: 'center',
+              minWidth: 142,
+              padding: '2px 10px',
+              borderRadius: 3,
+              background: 'transparent',
+              border: 'none',
+              color: '#e8fbff',
+              fontSize: 13,
+              fontWeight: 800,
+              textAlign: 'center',
+              textShadow: '0 1px 2px rgba(0,0,0,0.85)',
+              whiteSpace: 'nowrap',
+            }}>
+              {isComplete ? '已全毒' : `${timerLabel}: ${seconds}`}
+            </div>
           </div>
-          {/* Timer text */}
-          <div style={{
-            color: safeZone.shrinking || safeZone.phase === 'shrinking' ? '#ff8800' : '#ffffff',
-            fontSize: 13,
-            fontWeight: 700,
-            fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
-            textShadow: '1px 1px 3px rgba(0,0,0,0.8)',
-            whiteSpace: 'nowrap',
-          }}>
-            {safeZone.shrinking || safeZone.phase === 'shrinking'
-              ? `缩圈中 ${Math.ceil(safeZone.nextChangeIn)}s`
-              : safeZone.phase === 'countdown'
-                ? `新安全区 ${Math.ceil(safeZone.nextChangeIn)}s`
-                : `等待 ${Math.ceil(safeZone.nextChangeIn)}s`}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ===== FLOATING DAMAGE / HEAL NUMBERS ===== */}
       {floats.map(entry => {

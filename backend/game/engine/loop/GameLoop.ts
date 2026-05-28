@@ -18,7 +18,7 @@ import GameSession from "../../models/GameSession";
 import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap, resolveEntityHorizontalCollision } from "./movement";
 import { addBuff, pushBuffExpired } from "../effects/buffRuntime";
 import { resolveHealAmountRoll, resolveNonCritHealAmountRoll, resolveRawDamageWithCrit, resolveScheduledDamage, resolveScheduledDamageRoll } from "../utils/combatMath";
-import { applyDamageToTarget, applyHealToTarget, reconcileLinkedShieldTotal, removeLinkedShield, resolveMaxHpPercentHealAmount } from "../utils/health";
+import { applyDamageToTarget, applyHealToTarget, applyPiercingDamageToTarget, reconcileLinkedShieldTotal, removeLinkedShield, resolveMaxHpPercentHealAmount } from "../utils/health";
 import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
@@ -50,6 +50,26 @@ import { triggerYunSanBlink } from "../utils/yunSan";
 import { getMiYunAreaCandidates, hasMiYunConfusion, rerollMiYunAreaTargets } from "../utils/miyun";
 import { getHasteAdjustedTimingMs } from "../utils/haste";
 import { COMBAT_STATUS_CHECK_INTERVAL_MS, expireCombatStatusLinks, syncCombatStatusFromEvents } from "../utils/combatStatus";
+import {
+  YUMEN_KUANG_SHA_BUFF,
+  YUMEN_KUANG_SHA_BUFF_ID,
+  YUMEN_PIERCING_DAMAGE_TYPE,
+  YUMEN_SAFE_ZONE_ABILITY,
+  YUMEN_SAFE_ZONE_TARGET_DIAMETERS,
+  YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
+  YUMEN_ZHUI_MING_BUFF,
+  YUMEN_ZHUI_MING_BUFF_ID,
+  YUMEN_ZHUI_MING_STACK_INTERVAL_MS,
+  applyYumenKuangShaHealPenalty,
+  getYumenKuangShaDamageMultiplier,
+  getYumenSafeZoneCircleNumber,
+  getYumenSafeZoneCountdownMs,
+  getYumenSafeZoneDps,
+  getYumenSafeZoneShrinkMs,
+  getYumenSafeZoneWaitMs,
+  normalizeYumenSafeZoneDamageMode,
+  normalizeYumenSafeZoneTimelineMode,
+} from "../utils/yumenSafeZone";
 import {
   SAND_DISGUISE_ABILITY,
   SAND_DISGUISE_BUFF,
@@ -1131,13 +1151,6 @@ export class GameLoop {
     { startTime: 60000, endTime: 65000, fromHalf: 25,  toHalf: 0,   dps: 10 },
   ];
 
-  private static readonly RANDOM_ZONE_TARGET_DIAMETERS = [200, 100, 50, 25, 0] as const;
-  private static readonly RANDOM_ZONE_INITIAL_WAIT_MS = 20_000;
-  private static readonly RANDOM_ZONE_WAIT_MS = 10_000;
-  private static readonly RANDOM_ZONE_PREVIEW_MS = 10_000;
-  private static readonly RANDOM_ZONE_SHRINK_MS = 10_000;
-  private static readonly RANDOM_ZONE_FINAL_WAIT_MS = 30_000;
-
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
     this.state = structuredClone(state);
@@ -1233,6 +1246,22 @@ export class GameLoop {
       zone.nextChangeIn = zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking"
         ? Math.max(0, (Number(zone.phaseEndsAt ?? now) - now) / 1000)
         : 0;
+      zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+      zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+      zone.fullPoison = zone.phase === "complete" || zone.currentHalf <= 0;
+      zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+      zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+      if (zone.paused === true && (zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking")) {
+        const remainingMs = Math.max(0, Number(zone.pausedRemainingMs ?? (Number(zone.phaseEndsAt ?? now) - now)));
+        zone.pausedRemainingMs = remainingMs;
+        zone.pausedAt = Number.isFinite(Number(zone.pausedAt)) ? Number(zone.pausedAt) : now;
+        zone.phaseEndsAt = now + remainingMs;
+        zone.nextChangeIn = remainingMs / 1000;
+      } else {
+        zone.paused = false;
+        delete zone.pausedAt;
+        delete zone.pausedRemainingMs;
+      }
       return;
     }
 
@@ -1247,10 +1276,16 @@ export class GameLoop {
       shrinkProgress: 0,
       nextChangeIn: 0,
       phase: "idle",
+      timelineMode: "fast",
+      damageMode: "test",
       stageIndex: 0,
+      circleNumber: 3,
+      totalCircles: YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
+      fullPoison: false,
       phaseStartedAt: now,
       phaseEndsAt: now,
       targetVisible: false,
+      paused: false,
     };
   }
 
@@ -1287,20 +1322,11 @@ export class GameLoop {
 
   private getRandomZoneNextDiameter(zone: SafeZone) {
     const stageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0)));
-    return GameLoop.RANDOM_ZONE_TARGET_DIAMETERS[stageIndex] ?? null;
+    return YUMEN_SAFE_ZONE_TARGET_DIAMETERS[stageIndex] ?? null;
   }
 
   private getRandomZoneDps(zone: SafeZone) {
-    const stageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0)));
-    if (zone.phase === "complete" || Number(zone.currentHalf ?? 0) <= 0) return 10;
-    if (zone.phase === "shrinking") {
-      const targetDiameter = Number(zone.targetDiameter ?? zone.currentHalf * 2);
-      if (targetDiameter <= 0) return 10;
-      return targetDiameter <= 25 ? 5 : 1;
-    }
-    if (stageIndex >= 4) return 5;
-    if (stageIndex >= 1) return 1;
-    return 0;
+    return getYumenSafeZoneDps(zone);
   }
 
   private beginRandomZoneCountdown(zone: SafeZone, now: number, targetDiameter: number) {
@@ -1309,7 +1335,9 @@ export class GameLoop {
     const targetCenter = this.pickRandomSafeZoneCenter(zone.centerX, zone.centerY, currentRadius, targetRadius);
     zone.phase = "countdown";
     zone.phaseStartedAt = now;
-    zone.phaseEndsAt = now + GameLoop.RANDOM_ZONE_PREVIEW_MS;
+    zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+    zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+    zone.phaseEndsAt = now + getYumenSafeZoneCountdownMs(Math.max(0, Math.floor(Number(zone.stageIndex ?? 0))), zone.timelineMode);
     zone.targetStageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0))) + 1;
     zone.targetDiameter = targetDiameter;
     zone.targetHalf = targetRadius;
@@ -1318,9 +1346,13 @@ export class GameLoop {
     zone.targetVisible = true;
     zone.shrinking = false;
     zone.shrinkProgress = 0;
+    zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+    zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+    zone.fullPoison = false;
   }
 
   private beginRandomZoneShrink(zone: SafeZone, now: number, fallbackTargetDiameter?: number) {
+    const stageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0)));
     const targetDiameter = Math.max(0, Number(zone.targetDiameter ?? fallbackTargetDiameter ?? 0));
     const targetRadius = Math.max(0, Number(zone.targetHalf ?? targetDiameter / 2));
     const targetCenter = targetDiameter <= 0
@@ -1332,8 +1364,10 @@ export class GameLoop {
 
     zone.phase = "shrinking";
     zone.phaseStartedAt = now;
-    zone.phaseEndsAt = now + GameLoop.RANDOM_ZONE_SHRINK_MS;
-    zone.targetStageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0))) + 1;
+    zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+    zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+    zone.phaseEndsAt = now + getYumenSafeZoneShrinkMs(stageIndex, zone.timelineMode);
+    zone.targetStageIndex = stageIndex + 1;
     zone.targetDiameter = targetDiameter;
     zone.targetHalf = targetRadius;
     zone.targetCenterX = targetCenter.x;
@@ -1344,6 +1378,9 @@ export class GameLoop {
     zone.shrinkStartCenterY = zone.centerY;
     zone.shrinking = true;
     zone.shrinkProgress = 0;
+    zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+    zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+    zone.fullPoison = false;
   }
 
   private finishRandomZoneShrink(zone: SafeZone, now: number) {
@@ -1366,15 +1403,23 @@ export class GameLoop {
       zone.phaseStartedAt = now;
       zone.phaseEndsAt = now;
       zone.nextChangeIn = 0;
-      zone.dps = 10;
+      zone.circleNumber = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+      zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+      zone.fullPoison = true;
+      zone.dps = getYumenSafeZoneDps(zone);
       return;
     }
 
-    const waitMs = targetDiameter <= 25 ? GameLoop.RANDOM_ZONE_FINAL_WAIT_MS : GameLoop.RANDOM_ZONE_WAIT_MS;
+    zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+    zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+    const waitMs = getYumenSafeZoneWaitMs(Math.max(0, Math.floor(Number(zone.stageIndex ?? 0))), zone.timelineMode);
     zone.phase = "waiting";
     zone.phaseStartedAt = now;
     zone.phaseEndsAt = now + waitMs;
     zone.nextChangeIn = waitMs / 1000;
+    zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+    zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+    zone.fullPoison = false;
   }
 
   private updateRandomSafeZone(now: number) {
@@ -1382,6 +1427,29 @@ export class GameLoop {
     const zone = this.state.safeZone;
     if (!zone) return;
     const phaseActive = zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking";
+    if (phaseActive && zone.paused === true) {
+      const remainingMs = Math.max(0, Number(zone.pausedRemainingMs ?? (Number(zone.phaseEndsAt ?? now) - now)));
+      const elapsedMs = Math.max(0, Number(zone.phaseEndsAt ?? now) - Number(zone.phaseStartedAt ?? now) - remainingMs);
+      zone.pausedRemainingMs = remainingMs;
+      zone.pausedAt = Number.isFinite(Number(zone.pausedAt)) ? Number(zone.pausedAt) : now;
+      zone.phaseStartedAt = now - elapsedMs;
+      zone.phaseEndsAt = now + remainingMs;
+      zone.shape = "circle";
+      zone.currentDiameter = Math.max(0, Number(zone.currentHalf ?? 0)) * 2;
+      zone.nextChangeIn = remainingMs / 1000;
+      zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+      zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+      zone.fullPoison = zone.phase === "complete" || Number(zone.currentHalf ?? 0) <= 0;
+      zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+      zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+      zone.dps = this.getRandomZoneDps(zone);
+      return;
+    }
+    if (!phaseActive) {
+      zone.paused = false;
+      delete zone.pausedAt;
+      delete zone.pausedRemainingMs;
+    }
     if (!phaseActive) {
       zone.shape = "circle";
       zone.currentDiameter = Math.max(0, Number(zone.currentHalf ?? 0)) * 2;
@@ -1389,9 +1457,17 @@ export class GameLoop {
       zone.shrinkProgress = 0;
       zone.targetVisible = false;
       zone.nextChangeIn = 0;
+      zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+      zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+      zone.fullPoison = zone.phase === "complete" || Number(zone.currentHalf ?? 0) <= 0;
+      zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+      zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
       zone.dps = this.getRandomZoneDps(zone);
       return;
     }
+    zone.paused = false;
+    delete zone.pausedAt;
+    delete zone.pausedRemainingMs;
 
     let transitions = 0;
     while ((zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking") && Number(zone.phaseEndsAt ?? now) <= now && transitions < 8) {
@@ -1407,8 +1483,9 @@ export class GameLoop {
           zone.phaseStartedAt = now;
           zone.phaseEndsAt = now;
           zone.nextChangeIn = 0;
-        } else if (targetDiameter <= 0) {
-          this.beginRandomZoneShrink(zone, now, targetDiameter);
+          zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+          zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+          zone.fullPoison = true;
         } else {
           this.beginRandomZoneCountdown(zone, now, targetDiameter);
         }
@@ -1440,6 +1517,11 @@ export class GameLoop {
 
     zone.shape = "circle";
     zone.nextChangeIn = Math.max(0, (Number(zone.phaseEndsAt ?? now) - now) / 1000);
+    zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+    zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+    zone.fullPoison = zone.phase === "complete" || Number(zone.currentHalf ?? 0) <= 0;
+    zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+    zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
     zone.dps = this.getRandomZoneDps(zone);
   }
 
@@ -1466,6 +1548,70 @@ export class GameLoop {
       return Math.hypot(px - cx, py - cy) > half;
     }
     return px < cx - half || px > cx + half || py < cy - half || py > cy + half;
+  }
+
+  private syncYumenKuangShaBuff(player: any, outsideSafeZone: boolean, now: number): boolean {
+    if (!this.isYumenMode || !Array.isArray(player?.buffs)) return false;
+    const matchingBuffs = player.buffs.filter((buff: any) => buff.buffId === YUMEN_KUANG_SHA_BUFF_ID || buff.buffId === YUMEN_ZHUI_MING_BUFF_ID);
+    const activeKuangSha = matchingBuffs.find((buff: any) => buff.buffId === YUMEN_KUANG_SHA_BUFF_ID && isRuntimeBuffActive(buff, now));
+    if (outsideSafeZone) {
+      let changed = false;
+      const startedAt = Number(player.yumenKuangShaStartedAt ?? 0);
+      if (!Number.isFinite(startedAt) || startedAt <= 0) {
+        player.yumenKuangShaStartedAt = now;
+        changed = true;
+      }
+
+      if (!activeKuangSha || Number(activeKuangSha.expiresAt ?? 0) - now <= 900) {
+        addBuff({
+          state: this.state,
+          sourceUserId: player.userId,
+          targetUserId: player.userId,
+          ability: YUMEN_SAFE_ZONE_ABILITY,
+          buffTarget: player,
+          buff: YUMEN_KUANG_SHA_BUFF,
+        });
+        changed = true;
+      }
+
+      const activeZhuiMing = player.buffs.find((buff: any) => buff.buffId === YUMEN_ZHUI_MING_BUFF_ID && isRuntimeBuffActive(buff, now));
+      const lastStackAt = Math.max(
+        Number(activeZhuiMing?.lastProcAt ?? 0),
+        Number(player.yumenKuangShaStartedAt ?? now),
+      );
+      if (now - lastStackAt >= YUMEN_ZHUI_MING_STACK_INTERVAL_MS) {
+        addBuff({
+          state: this.state,
+          sourceUserId: player.userId,
+          targetUserId: player.userId,
+          ability: YUMEN_SAFE_ZONE_ABILITY,
+          buffTarget: player,
+          buff: YUMEN_ZHUI_MING_BUFF,
+        });
+        const refreshedZhuiMing = player.buffs.find((buff: any) => buff.buffId === YUMEN_ZHUI_MING_BUFF_ID && isRuntimeBuffActive(buff, now));
+        if (refreshedZhuiMing) refreshedZhuiMing.lastProcAt = now;
+        changed = true;
+      }
+
+      return changed;
+    }
+
+    const removedBuffs = matchingBuffs.filter((buff: any) => buff.buffId === YUMEN_KUANG_SHA_BUFF_ID);
+    if (removedBuffs.length === 0 && player.yumenKuangShaStartedAt === undefined) return false;
+    player.buffs = player.buffs.filter((buff: any) => buff.buffId !== YUMEN_KUANG_SHA_BUFF_ID);
+    delete player.yumenKuangShaStartedAt;
+    for (const buff of removedBuffs) {
+      pushBuffExpired(this.state, {
+        targetUserId: player.userId,
+        buffId: buff.buffId,
+        buffName: buff.name,
+        buffCategory: buff.category,
+        sourceAbilityId: buff.sourceAbilityId,
+        sourceAbilityName: buff.sourceAbilityName,
+        sourceUserId: buff.sourceUserId,
+      });
+    }
+    return true;
   }
 
   private syncDynamicMapContext() {
@@ -2531,7 +2677,8 @@ export class GameLoop {
                 target: player as any,
                 base: e.value ?? 0,
               });
-              const applied = applyHealToTarget(player as any, healRoll.heal);
+              const healAmount = applyYumenKuangShaHealPenalty(ch.abilityId, player as any, healRoll.heal, chNow);
+              const applied = applyHealToTarget(player as any, healAmount);
               this.state.events.push({
                 id: randomUUID(),
                 timestamp: chNow,
@@ -2672,7 +2819,8 @@ export class GameLoop {
           for (const e of ch.effects) {
             if (e.type === "TIMED_SELF_HEAL") {
               const healRoll = resolveHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0 });
-              const applied = applyHealToTarget(player as any, healRoll.heal);
+              const healAmount = applyYumenKuangShaHealPenalty(ch.abilityId, player as any, healRoll.heal, chNow);
+              const applied = applyHealToTarget(player as any, healAmount);
               if (applied > 0) {
                 this.state.events.push({
                   id: randomUUID(),
@@ -3433,7 +3581,8 @@ export class GameLoop {
                 buffsChanged = true;
               } else if (e.type === "PERIODIC_HEAL") {
                 const healRoll = resolveHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0 });
-                const applied = applyHealToTarget(player as any, healRoll.heal);
+                const healAmount = applyYumenKuangShaHealPenalty(buff.sourceAbilityId, player as any, healRoll.heal, now);
+                const applied = applyHealToTarget(player as any, healAmount);
                 if (applied > 0) {
                   this.state.events.push({
                     id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -4280,25 +4429,34 @@ export class GameLoop {
       const currentHalf = this.state.safeZone.currentHalf;
       const dps = this.state.safeZone.dps;
       const zoneShape = this.state.safeZone.shape === "circle" ? "circle" : "square";
+      const cx = this.state.safeZone.centerX;
+      const cy = this.state.safeZone.centerY;
+
+      if (this.isYumenMode) {
+        for (const player of this.state.players) {
+          const outsideSafeZone = this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf, zoneShape);
+          buffsChanged = this.syncYumenKuangShaBuff(player as any, outsideSafeZone, now) || buffsChanged;
+        }
+      }
 
       // Apply damage once per second
       if (dps > 0 && now - this.lastZoneDamageAt >= 1000) {
         this.lastZoneDamageAt = now;
-        const cx = this.state.safeZone.centerX;
-        const cy = this.state.safeZone.centerY;
         for (const player of this.state.players) {
           if (player.hp <= 0) continue;
           if (this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf, zoneShape)) {
-            const szResult = applyDamageToTarget(player as any, dps);
+            const zoneDamage = this.isYumenMode ? dps * getYumenKuangShaDamageMultiplier(player as any, now) : dps;
+            const szResult = applyPiercingDamageToTarget(player as any, zoneDamage);
             this.state.events.push({
               id: randomUUID(), timestamp: now, turn: this.state.turn,
               type: "DAMAGE",
               actorUserId: player.userId,
               targetUserId: player.userId,
-              abilityName: "毒圈",
+              abilityId: "yumen_sandstorm",
+              abilityName: "狂沙",
               effectType: "PERIODIC_DAMAGE",
-              value: dps,
-              shieldAbsorbed: szResult.shieldAbsorbed > 0 ? szResult.shieldAbsorbed : undefined,
+              value: szResult.totalDamage,
+              damageType: YUMEN_PIERCING_DAMAGE_TYPE,
             });
             buffsChanged = true; // triggers HP + event broadcast
           }
@@ -5193,6 +5351,7 @@ export class GameLoop {
       for (const evt of thisTickEvents) {
         if (
           evt.type === "DAMAGE" &&
+          evt.damageType !== YUMEN_PIERCING_DAMAGE_TYPE &&
           evt.effectType !== "STACK_ON_HIT_DAMAGE" &&
           (evt.value ?? 0) > 0 &&
           evt.targetUserId
@@ -5410,6 +5569,7 @@ export class GameLoop {
               evt.type === "DAMAGE" &&
               evt.targetUserId === targetId &&
               (evt.value ?? 0) > 0 &&
+              evt.damageType !== YUMEN_PIERCING_DAMAGE_TYPE &&
               evt.effectType !== "YING_TIAN_SHIELD"
             ) {
               tickDmg += evt.value ?? 0;
@@ -5420,7 +5580,7 @@ export class GameLoop {
           }
           const ytMaxHp = targetPlayer.maxHp ?? 100;
           const ytLostHp = ytMaxHp - targetPlayer.hp;
-          if (ytLostHp > 0) {
+          if (tickDmg > 0 && ytLostHp > 0) {
             const ytHealPct = ytEffect.value ?? 0.06;
             const ytHealAmt = Math.floor(ytLostHp * ytHealPct);
             const ytApplied = applyHealToTarget(targetPlayer as any, ytHealAmt);

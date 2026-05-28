@@ -3,11 +3,14 @@ import express from "express";
 import {
   buildCanCastWhileMountedSnapshot,
   buildAbilityEditorSnapshot,
+  buildAbilityDescriptionReviewSnapshot,
   buildNoWeaponRequiredSnapshot,
   buildHasteUnaffectedSnapshot,
   buildQinggongGcdImmuneSnapshot,
   buildQinggongSnapshot,
   setAbilityCanCastWhileMountedOverride,
+  setAbilityDescriptionOverride,
+  setAbilityDescriptionReviewStatus,
   setAbilityEditorDamageValue,
   setAbilityEditorNumericValue,
   setAbilityEditorProperty,
@@ -26,8 +29,10 @@ import {
   BuffProperty,
   BUFF_PROPERTY_TYPES,
   buildBuffEditorSnapshot,
+  buildBuffDescriptionReviewSnapshot,
   setBuffAttribute,
   setBuffDescription,
+  setBuffDescriptionReviewStatus,
   setBuffHidden,
   setBuffName,
   setBuffProperties,
@@ -49,6 +54,10 @@ import {
   buildManualCancelableBuffSnapshot,
   setManualCancelableBuffOverride,
 } from "../abilities/manualCancelableBuffs";
+import {
+  buildBuffTimerVisibilitySnapshot,
+  setBuffTimerVisibilityOverride,
+} from "../abilities/buffTimerVisibility";
 import { getUserIdFromCookie } from "./auth";
 
 const router = express.Router();
@@ -73,6 +82,8 @@ function handleAbilityEditorError(res: express.Response, error: unknown) {
     message === "ERR_PROPERTY_NOT_APPLICABLE" ||
     message === "ERR_INVALID_ABILITY_NUMERIC_FIELD" ||
     message === "ERR_INVALID_ABILITY_NUMERIC_VALUE" ||
+    message === "ERR_INVALID_ABILITY_DESCRIPTION" ||
+    message === "ERR_INVALID_DESCRIPTION_REVIEW_STATUS" ||
     message === "ERR_INVALID_BUFF_DESCRIPTION" ||
     message === "ERR_INVALID_BUFF_NAME" ||
     message === "ERR_INVALID_BUFF_PROPERTIES" ||
@@ -109,6 +120,41 @@ router.get("/ability-editor/can-cast-while-mounted", (req, res) => {
   try {
     getUserIdFromCookie(req);
     return res.json(buildCanCastWhileMountedSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/description-review", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildAbilityDescriptionReviewSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/description-review/:abilityId/status", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { status } = req.body ?? {};
+    if (status !== "fixed" && status !== "needs-more" && status !== "unfixed") {
+      return res.status(400).json({ error: "ERR_INVALID_DESCRIPTION_REVIEW_STATUS" });
+    }
+    return res.json(setAbilityDescriptionReviewStatus(req.params.abilityId, status));
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/description-review/:abilityId/description", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { description } = req.body ?? {};
+    if (typeof description !== "string") {
+      return res.status(400).json({ error: "ERR_INVALID_ABILITY_DESCRIPTION" });
+    }
+    return res.json(setAbilityDescriptionOverride(req.params.abilityId, description));
   } catch (error) {
     return handleAbilityEditorError(res, error);
   }
@@ -347,6 +393,44 @@ router.get("/ability-editor/qin-yin-gong-ming", (req, res) => {
   }
 });
 
+router.get("/ability-editor/buff-description-review", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildBuffDescriptionReviewSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/buff-description-review/:buffId/status", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const buffId = parseInt(req.params.buffId, 10);
+    if (!Number.isFinite(buffId)) return res.status(400).json({ error: "ERR_INVALID_BUFF_ID" });
+    const { status } = req.body ?? {};
+    if (status !== "fixed" && status !== "needs-more" && status !== "unfixed") {
+      return res.status(400).json({ error: "ERR_INVALID_DESCRIPTION_REVIEW_STATUS" });
+    }
+    return res.json(setBuffDescriptionReviewStatus(buffId, status));
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/buff-description-review/:buffId/description", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const buffId = parseInt(req.params.buffId, 10);
+    if (!Number.isFinite(buffId)) return res.status(400).json({ error: "ERR_INVALID_BUFF_ID" });
+    const { description } = req.body ?? {};
+    if (typeof description !== "string") return res.status(400).json({ error: "ERR_INVALID_BUFF_DESCRIPTION" });
+    setBuffDescription(buffId, description);
+    return res.json(buildBuffDescriptionReviewSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
 router.put("/ability-editor/qin-yin-gong-ming/:buffId", (req, res) => {
   try {
     getUserIdFromCookie(req);
@@ -426,6 +510,37 @@ router.put("/ability-editor/manual-cancelable-buffs/:buffId", (req, res) => {
     setManualCancelableBuffOverride(buffId, mode);
 
     return res.json(buildManualCancelableBuffSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/buff-timer-visibility", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildBuffTimerVisibilitySnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/buff-timer-visibility/:buffId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+
+    const buffId = parseInt(req.params.buffId, 10);
+    if (!Number.isFinite(buffId)) {
+      return res.status(400).json({ error: "ERR_INVALID_BUFF_ID" });
+    }
+
+    const { mode } = req.body ?? {};
+    if (mode !== "manual-include" && mode !== "manual-exclude" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+
+    setBuffTimerVisibilityOverride(buffId, mode);
+
+    return res.json(buildBuffTimerVisibilitySnapshot());
   } catch (error) {
     return handleAbilityEditorError(res, error);
   }

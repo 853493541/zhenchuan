@@ -466,7 +466,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
 
       const actorPlayer = playersByUserIdRef.current[actorUserId];
       const actorHidden = Boolean(actorUserId !== selfUserId && hasBattleStealth(actorPlayer));
-      if (actorUserId === selfUserId || actorHidden) {
+      const isSelfYumenPoisonDamage = actorUserId === selfUserId && combatEvent.type === "DAMAGE" && combatEvent.abilityId === "yumen_sandstorm";
+      if ((!isSelfYumenPoisonDamage && actorUserId === selfUserId) || actorHidden) {
         battleEventIdsRef.current.add(seenKey);
         continue;
       }
@@ -498,7 +499,9 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       const targetPlayer = targetUserId ? playersByUserIdRef.current[targetUserId] : undefined;
       const targetHidden = Boolean(targetUserId && targetUserId !== selfUserId && hasBattleStealth(targetPlayer));
       const entityName = getEntityDisplayName(entityId ? entitiesByIdRef.current[entityId] : undefined, combatEvent.entityName);
-      const targetName = targetHidden
+      const targetName = isSelfYumenPoisonDamage
+        ? actorName
+        : targetHidden
         ? "未知目标"
         : targetUserId === selfUserId
         ? "你"

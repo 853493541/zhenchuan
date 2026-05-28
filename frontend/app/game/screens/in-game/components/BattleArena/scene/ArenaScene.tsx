@@ -24,9 +24,40 @@ const OPP_EMISSIVES = ['#440000', '#332200', '#220044', '#330022'];
 const LEGACY_STORED_UNIT_SCALE = 2.2;
 const COLLISION_TEST_VIS_RADIUS = 0.384;
 const CHANNEL_RING_WAIST_Z = 1.0;
-const CHARACTER_VISUAL_HEIGHT = 1.5;
 const YUMEN_SAFE_ZONE_RING_CLEARANCE = 0.34;
 const YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE = 50;
+const YUMEN_BOUNDARY_LINE_VISIBLE_DISTANCE = 30;
+
+type SafeZoneDisplayMode = 'terrain' | 'topDown';
+type LinePoint = [number, number, number];
+type NearbyLineSegment = { key: string; points: [LinePoint, LinePoint] };
+
+function distancePointToLineSegment2D(px: number, pz: number, a: LinePoint, b: LinePoint): number {
+  const abX = b[0] - a[0];
+  const abZ = b[2] - a[2];
+  const lengthSq = abX * abX + abZ * abZ;
+  if (lengthSq <= 1e-6) return Math.hypot(px - a[0], pz - a[2]);
+  const t = Math.max(0, Math.min(1, ((px - a[0]) * abX + (pz - a[2]) * abZ) / lengthSq));
+  return Math.hypot(px - (a[0] + abX * t), pz - (a[2] + abZ * t));
+}
+
+function buildNearbyLineSegments(points: LinePoint[] | null | undefined, playerSceneX: number, playerSceneZ: number, distance: number, keyPrefix: string): NearbyLineSegment[] {
+  if (!points || points.length < 2) return [];
+  const segments: NearbyLineSegment[] = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index];
+    const b = points[index + 1];
+    if (distancePointToLineSegment2D(playerSceneX, playerSceneZ, a, b) <= distance) {
+      segments.push({ key: `${keyPrefix}-${index}`, points: [a, b] });
+    }
+  }
+  return segments;
+}
+
+function nearbySegmentSignature(segments: NearbyLineSegment[]): string {
+  const pointSignature = (point: LinePoint) => `${point[0].toFixed(2)},${point[1].toFixed(2)},${point[2].toFixed(2)}`;
+  return segments.map((segment) => `${segment.key}:${pointSignature(segment.points[0])}>${pointSignature(segment.points[1])}`).join('|');
+}
 
 function getStoredUnitScale(mode?: string): number {
   return isExportedMapMode(mode) ? 1 : LEGACY_STORED_UNIT_SCALE;
@@ -185,10 +216,11 @@ interface ArenaSceneProps {
   entityScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
   mode?: string;
   safeZone?: SafeZone;
+  showFutureSafeZone?: boolean;
+  safeZoneDisplayMode?: SafeZoneDisplayMode;
   playArea?: PlayAreaBounds;
   onPlayAreaChange?: (playArea: PlayAreaBounds) => void;
   boundaryEditMode?: boolean;
-  showSafeZoneCurtain?: boolean;
   groundZones?: GroundZone[];
   /** HP-bearing targetable entities (e.g. 逐云寒蕊) */
   entities?: TargetEntity[];
@@ -515,6 +547,7 @@ function YumenBoundaryOverlay({
   mapHeight,
   worldHalfX,
   worldHalfY,
+  localRenderPosRef,
   onPlayAreaChange,
   boundaryEditMode = false,
   getZoneTerrainZ,
@@ -524,12 +557,15 @@ function YumenBoundaryOverlay({
   mapHeight: number;
   worldHalfX: number;
   worldHalfY: number;
+  localRenderPosRef: MutableRefObject<{ x: number; y: number; z?: number }>;
   onPlayAreaChange?: (playArea: PlayAreaBounds) => void;
   boundaryEditMode?: boolean;
   getZoneTerrainZ: (worldX: number, worldY: number, worldZ?: number) => number;
 }) {
   const [draftBounds, setDraftBounds] = useState(() => normalizePlayAreaBounds(playArea, mapWidth, mapHeight));
+  const [visibleBoundarySegments, setVisibleBoundarySegments] = useState<NearbyLineSegment[]>([]);
   const draftBoundsRef = useRef(draftBounds);
+  const visibleBoundarySignatureRef = useRef('');
   const dragHandleRef = useRef<BoundaryHandle | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
   const dragPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
@@ -590,6 +626,18 @@ function YumenBoundaryOverlay({
     addBoundaryPoint(bounds.minX, bounds.maxY - (bounds.maxY - bounds.minY) * t);
   }
 
+  useFrame(() => {
+    const player = localRenderPosRef.current;
+    const playerSceneX = player.x - worldHalfX;
+    const playerSceneZ = worldHalfY - player.y;
+    const nextSegments = buildNearbyLineSegments(boundaryGroundLine, playerSceneX, playerSceneZ, YUMEN_BOUNDARY_LINE_VISIBLE_DISTANCE, 'boundary');
+    const signature = nearbySegmentSignature(nextSegments);
+    if (signature !== visibleBoundarySignatureRef.current) {
+      visibleBoundarySignatureRef.current = signature;
+      setVisibleBoundarySegments(nextSegments);
+    }
+  });
+
   const applyDragPoint = (event: any) => {
     const handle = dragHandleRef.current;
     if (!handle) return;
@@ -625,30 +673,32 @@ function YumenBoundaryOverlay({
 
   return (
     <group renderOrder={20}>
-      <mesh position={[centerX, wallY, minZ]} renderOrder={20}>
-        <planeGeometry args={[width, wallHeight]} />
-        <meshBasicMaterial color="#2dd4bf" transparent opacity={0.24} side={THREE.DoubleSide} depthWrite={false} depthTest={true} />
-      </mesh>
-      <mesh position={[centerX, wallY, maxZ]} renderOrder={20}>
-        <planeGeometry args={[width, wallHeight]} />
-        <meshBasicMaterial color="#2dd4bf" transparent opacity={0.24} side={THREE.DoubleSide} depthWrite={false} depthTest={true} />
-      </mesh>
-      <mesh position={[minX, wallY, centerZ]} rotation={[0, Math.PI / 2, 0]} renderOrder={20}>
-        <planeGeometry args={[depth, wallHeight]} />
-        <meshBasicMaterial color="#38bdf8" transparent opacity={0.24} side={THREE.DoubleSide} depthWrite={false} depthTest={true} />
-      </mesh>
-      <mesh position={[maxX, wallY, centerZ]} rotation={[0, Math.PI / 2, 0]} renderOrder={20}>
-        <planeGeometry args={[depth, wallHeight]} />
-        <meshBasicMaterial color="#38bdf8" transparent opacity={0.24} side={THREE.DoubleSide} depthWrite={false} depthTest={true} />
-      </mesh>
-      <Line
-        points={boundaryGroundLine}
-        color="#fff06a"
-        lineWidth={4}
-        transparent
-        opacity={0.86}
-        depthTest={true}
-      />
+      {visibleBoundarySegments.map((segment) => (
+        <Line
+          key={`${segment.key}-glow`}
+          points={segment.points}
+          color="#ff1f1f"
+          lineWidth={5}
+          transparent
+          opacity={0.22}
+          renderOrder={33}
+          depthTest={false}
+          depthWrite={false}
+        />
+      ))}
+      {visibleBoundarySegments.map((segment) => (
+        <Line
+          key={segment.key}
+          points={segment.points}
+          color="#ff2f2f"
+          lineWidth={2}
+          transparent
+          opacity={0.94}
+          renderOrder={34}
+          depthTest={false}
+          depthWrite={false}
+        />
+      ))}
       {boundaryEditMode && (Object.keys(handlePositions) as BoundaryHandle[]).map((handle) => (
         <mesh
           key={handle}
@@ -678,7 +728,9 @@ function YumenSafeZoneOverlay({
   worldHalfY,
   localRenderPosRef,
   getZoneTerrainZ,
-  showCurtain = false,
+  getZoneVisualZ,
+  showFutureSafeZone = true,
+  displayMode = 'terrain',
   structureXrayActive,
   onStructureXrayActiveChange,
 }: {
@@ -687,26 +739,30 @@ function YumenSafeZoneOverlay({
   worldHalfY: number;
   localRenderPosRef: MutableRefObject<{ x: number; y: number; z?: number }>;
   getZoneTerrainZ: (worldX: number, worldY: number, worldZ?: number) => number;
-  showCurtain?: boolean;
+  getZoneVisualZ: (worldX: number, worldY: number, worldZ?: number) => number;
+  showFutureSafeZone?: boolean;
+  displayMode?: SafeZoneDisplayMode;
   structureXrayActive: boolean;
   onStructureXrayActiveChange: (active: boolean) => void;
 }) {
-  const [xrayLines, setXrayLines] = useState({ current: false, target: false });
+  const [xraySegments, setXraySegments] = useState<{ current: NearbyLineSegment[]; target: NearbyLineSegment[] }>({ current: [], target: [] });
+  const xraySignatureRef = useRef({ current: '', target: '' });
+  const showCurrentLine = safeZone?.phase === 'shrinking' || safeZone?.shrinking === true;
   const visual = useMemo(() => {
     if (!safeZone) return null;
     const radius = Math.max(0, Number(safeZone.currentHalf ?? 0));
     if (radius <= 0) return null;
-    const wallHeight = CHARACTER_VISUAL_HEIGHT / 2;
-    const segments = 160;
+    const segments = displayMode === 'topDown' ? 360 : 180;
+    const sampleZ = displayMode === 'topDown' ? getZoneVisualZ : getZoneTerrainZ;
     const buildRingPoints = (centerX: number, centerY: number, ringRadius: number) => {
-      const points: [number, number, number][] = [];
+      const points: LinePoint[] = [];
       for (let segmentIndex = 0; segmentIndex <= segments; segmentIndex += 1) {
         const angle = (segmentIndex / segments) * Math.PI * 2;
         const worldX = centerX + Math.cos(angle) * ringRadius;
         const worldY = centerY + Math.sin(angle) * ringRadius;
         points.push([
           worldX - worldHalfX,
-          getZoneTerrainZ(worldX, worldY, 0) + YUMEN_SAFE_ZONE_RING_CLEARANCE,
+          sampleZ(worldX, worldY, 0) + YUMEN_SAFE_ZONE_RING_CLEARANCE,
           worldHalfY - worldY,
         ]);
       }
@@ -715,81 +771,32 @@ function YumenSafeZoneOverlay({
 
     const bottomPoints = buildRingPoints(safeZone.centerX, safeZone.centerY, radius);
     const targetRadius = Math.max(0, Number(safeZone.targetHalf ?? (typeof safeZone.targetDiameter === 'number' ? safeZone.targetDiameter / 2 : 0)));
-    const targetBottomPoints = safeZone.targetVisible && targetRadius > 0 && typeof safeZone.targetCenterX === 'number' && typeof safeZone.targetCenterY === 'number'
+    const targetBottomPoints = showFutureSafeZone && safeZone.targetVisible && targetRadius > 0 && typeof safeZone.targetCenterX === 'number' && typeof safeZone.targetCenterY === 'number'
       ? buildRingPoints(safeZone.targetCenterX, safeZone.targetCenterY, targetRadius)
       : null;
-    const uvs: number[] = [];
 
-    const targetCenter = targetBottomPoints && typeof safeZone.targetCenterX === 'number' && typeof safeZone.targetCenterY === 'number'
-      ? { x: safeZone.targetCenterX, y: safeZone.targetCenterY, radius: targetRadius }
-      : null;
-
-    if (!showCurtain) return { bottomPoints, targetBottomPoints, radius, targetCenter };
-
-    const positions: number[] = [];
-    for (let i = 0; i < segments; i += 1) {
-      const a = bottomPoints[i];
-      const b = bottomPoints[i + 1];
-      const topA: [number, number, number] = [a[0], a[1] + wallHeight, a[2]];
-      const topB: [number, number, number] = [b[0], b[1] + wallHeight, b[2]];
-      positions.push(...a, ...b, ...topB, ...a, ...topB, ...topA);
-      uvs.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
-    }
-    const curtainGeometry = new THREE.BufferGeometry();
-    curtainGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    curtainGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    const curtainMaterial = new THREE.ShaderMaterial({
-      uniforms: {
-        uColor: { value: new THREE.Color('#facc15') },
-        uOpacity: { value: safeZone.shrinking ? 0.34 : 0.24 },
-      },
-      vertexShader: `
-        varying float vFade;
-        void main() {
-          vFade = uv.y;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 uColor;
-        uniform float uOpacity;
-        varying float vFade;
-        void main() {
-          float alpha = uOpacity * (1.0 - smoothstep(0.0, 1.0, vFade));
-          gl_FragColor = vec4(uColor, alpha);
-        }
-      `,
-      transparent: true,
-      depthTest: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    return { bottomPoints, targetBottomPoints, targetCenter, curtainGeometry, curtainMaterial, radius };
-  }, [safeZone, worldHalfX, worldHalfY, getZoneTerrainZ, showCurtain]);
-
-  useEffect(() => {
-    const geometry = visual?.curtainGeometry;
-    const material = visual?.curtainMaterial;
-    return () => {
-      geometry?.dispose();
-      material?.dispose();
-    };
-  }, [visual?.curtainGeometry, visual?.curtainMaterial]);
+    return { bottomPoints, targetBottomPoints, radius };
+  }, [safeZone, worldHalfX, worldHalfY, getZoneTerrainZ, getZoneVisualZ, showFutureSafeZone, displayMode]);
 
   useFrame(() => {
     if (!visual || !safeZone) {
-      setXrayLines((previous) => (previous.current || previous.target ? { current: false, target: false } : previous));
+      setXraySegments((previous) => (previous.current.length || previous.target.length ? { current: [], target: [] } : previous));
+      xraySignatureRef.current = { current: '', target: '' };
       if (structureXrayActive) onStructureXrayActiveChange(false);
       return;
     }
     const player = localRenderPosRef.current;
-    const distanceToCenter = Math.hypot(player.x - safeZone.centerX, player.y - safeZone.centerY);
-    const currentNear = Math.abs(distanceToCenter - visual.radius) <= YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE;
-    const targetNear = visual.targetCenter
-      ? Math.abs(Math.hypot(player.x - visual.targetCenter.x, player.y - visual.targetCenter.y) - visual.targetCenter.radius) <= YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE
-      : false;
-    setXrayLines((previous) => (previous.current === currentNear && previous.target === targetNear ? previous : { current: currentNear, target: targetNear }));
-    const nearLine = currentNear || targetNear;
+    const playerSceneX = player.x - worldHalfX;
+    const playerSceneZ = worldHalfY - player.y;
+    const current = showCurrentLine ? buildNearbyLineSegments(visual.bottomPoints, playerSceneX, playerSceneZ, YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE, 'safe-current') : [];
+    const target = buildNearbyLineSegments(visual.targetBottomPoints, playerSceneX, playerSceneZ, YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE, 'safe-target');
+    const currentSignature = nearbySegmentSignature(current);
+    const targetSignature = nearbySegmentSignature(target);
+    if (currentSignature !== xraySignatureRef.current.current || targetSignature !== xraySignatureRef.current.target) {
+      xraySignatureRef.current = { current: currentSignature, target: targetSignature };
+      setXraySegments({ current, target });
+    }
+    const nearLine = current.length > 0 || target.length > 0;
     if (structureXrayActive !== nearLine) onStructureXrayActiveChange(nearLine);
   });
 
@@ -800,75 +807,54 @@ function YumenSafeZoneOverlay({
   if (!visual) return null;
   return (
     <group renderOrder={18}>
-      {showCurtain && visual.curtainGeometry && visual.curtainMaterial && (
-        <mesh geometry={visual.curtainGeometry} material={visual.curtainMaterial} renderOrder={18} />
+      {showCurrentLine && (
+        <Line
+          points={visual.bottomPoints}
+          color="#ffffff"
+          lineWidth={5}
+          renderOrder={20}
+          depthTest={true}
+          depthWrite={false}
+        />
       )}
-      <Line
-        points={visual.bottomPoints}
-        color="#fff1a8"
-        lineWidth={8}
-        transparent
-        opacity={0.22}
-        renderOrder={19}
-        depthTest={true}
-        depthWrite={false}
-      />
-      <Line
-        points={visual.bottomPoints}
-        color="#fff8d8"
-        lineWidth={4}
-        renderOrder={20}
-        depthTest={true}
-        depthWrite={false}
-      />
       {visual.targetBottomPoints && (
         <Line
           points={visual.targetBottomPoints}
-          color="#48a7ff"
-          lineWidth={4}
+          color="#22b8ff"
+          lineWidth={3}
           transparent
-          opacity={0.9}
+          opacity={1}
           renderOrder={21}
           depthTest={true}
           depthWrite={false}
         />
       )}
-      {xrayLines.current && (
-        <>
-          <Line
-            points={visual.bottomPoints}
-            color="#fff1a8"
-            lineWidth={8}
-            transparent
-            opacity={0.28}
-            renderOrder={40}
-            depthTest={true}
-            depthWrite={false}
-          />
-          <Line
-            points={visual.bottomPoints}
-            color="#fff8d8"
-            lineWidth={4}
-            transparent
-            opacity={0.96}
-            renderOrder={41}
-            depthTest={true}
-            depthWrite={false}
-          />
-        </>
-      )}
-      {xrayLines.target && visual.targetBottomPoints && (
+      {xraySegments.current.map((segment) => (
         <Line
-          points={visual.targetBottomPoints}
-          color="#48a7ff"
-          lineWidth={4}
+          key={segment.key}
+          points={segment.points}
+          color="#ffffff"
+          lineWidth={5}
           transparent
           opacity={0.96}
-          renderOrder={42}
-          depthTest={true}
+          renderOrder={41}
+          depthTest={false}
           depthWrite={false}
         />
-      )}
+      ))}
+      {xraySegments.target.map((segment) => (
+        <Line
+          key={segment.key}
+          points={segment.points}
+          color="#22b8ff"
+          lineWidth={3}
+          transparent
+          opacity={1}
+          renderOrder={42}
+          depthTest={false}
+          depthWrite={false}
+        />
+      ))}
     </group>
   );
 }
@@ -901,10 +887,11 @@ export default function ArenaScene({
   entityScreenBoundsRef,
   mode,
   safeZone,
+  showFutureSafeZone = true,
+  safeZoneDisplayMode = 'terrain',
   playArea,
   onPlayAreaChange,
   boundaryEditMode,
-  showSafeZoneCurtain = false,
   groundZones,
   entities,
   selectedEntityId,
@@ -1143,6 +1130,7 @@ export default function ArenaScene({
               mapHeight={mapHeight}
               worldHalfX={worldHalfX}
               worldHalfY={worldHalfY}
+              localRenderPosRef={localRenderPosRef}
               onPlayAreaChange={onPlayAreaChange}
               boundaryEditMode={boundaryEditMode}
               getZoneTerrainZ={getZoneTerrainZ}
@@ -1155,7 +1143,9 @@ export default function ArenaScene({
               worldHalfY={worldHalfY}
               localRenderPosRef={localRenderPosRef}
               getZoneTerrainZ={getZoneTerrainZ}
-              showCurtain={isYumenMode && showSafeZoneCurtain}
+              getZoneVisualZ={getZoneVisualZ}
+              showFutureSafeZone={showFutureSafeZone}
+              displayMode={safeZoneDisplayMode}
               structureXrayActive={isYumenMode ? safeZoneStructureXrayActive : false}
               onStructureXrayActiveChange={isYumenMode ? setSafeZoneStructureXrayActive : () => undefined}
             />

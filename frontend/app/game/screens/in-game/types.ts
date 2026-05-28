@@ -178,6 +178,7 @@ export interface GameEvent {
   abilityName?: string;
   channelPhase?: "start" | "complete";
 
+  damageType?: string;
   value?: number;
   shieldAbsorbed?: number;
   isCrit?: boolean;
@@ -236,6 +237,11 @@ export interface SafeZone {
   shrinkProgress: number;
   nextChangeIn: number;
   phase?: 'idle' | 'waiting' | 'countdown' | 'shrinking' | 'complete';
+  timelineMode?: 'fast' | 'full';
+  damageMode?: 'test' | 'full';
+  circleNumber?: number;
+  totalCircles?: number;
+  fullPoison?: boolean;
   stageIndex?: number;
   targetStageIndex?: number;
   phaseStartedAt?: number;
@@ -245,6 +251,9 @@ export interface SafeZone {
   targetCenterX?: number;
   targetCenterY?: number;
   targetVisible?: boolean;
+  paused?: boolean;
+  pausedAt?: number;
+  pausedRemainingMs?: number;
   manualShrinking?: boolean;
   lastShrinkAt?: number;
   shrinkStartHalf?: number;

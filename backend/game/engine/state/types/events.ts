@@ -41,6 +41,7 @@ export interface GameEvent {
   displayZeroDamage?: boolean;
 
   effectType?: EffectType;
+  damageType?: string;
   value?: number;
   /** Amount of damage absorbed by the target's shield (化解). */
   shieldAbsorbed?: number;

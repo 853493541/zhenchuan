@@ -102,6 +102,25 @@ export function applyDamageToTarget(target: ShieldedTarget, rawDamage: number): 
   };
 }
 
+export function applyPiercingDamageToTarget(target: ShieldedTarget, rawDamage: number): {
+  totalDamage: number;
+  shieldAbsorbed: number;
+  hpDamage: number;
+} {
+  const damage = roundNumber(Math.max(0, Number(rawDamage ?? 0)));
+  if (damage <= 0) {
+    return { totalDamage: 0, shieldAbsorbed: 0, hpDamage: 0 };
+  }
+
+  const before = Math.max(0, Number(target.hp ?? 0));
+  target.hp = roundNumber(Math.max(0, before - damage));
+  return {
+    totalDamage: damage,
+    shieldAbsorbed: 0,
+    hpDamage: roundNumber(Math.max(0, before - target.hp)),
+  };
+}
+
 export function addShieldToTarget(target: ShieldedTarget, amount: number): number {
   const shieldGain = Math.max(0, Math.floor(amount));
   if (shieldGain <= 0) return 0;

@@ -225,6 +225,19 @@ export type ManualCancelableBuffSnapshot = {
 
 export type ManualCancelableBuffMode = "manual-include" | "manual-exclude" | "clear";
 
+export type BuffTimerVisibilityEntry = BuffEditorEntry & {
+  manuallyHidden: boolean;
+  manuallyVisible: boolean;
+  displaysTimer: boolean;
+};
+
+export type BuffTimerVisibilitySnapshot = {
+  updatedAt: string | null;
+  buffs: BuffTimerVisibilityEntry[];
+};
+
+export type BuffTimerVisibilityMode = "manual-include" | "manual-exclude" | "clear";
+
 export type HiddenBuffEntry = BuffEditorEntry & {
   defaultHidden: boolean;
   manualHidden: boolean;
@@ -292,6 +305,29 @@ export type AbilityBooleanDeciderSnapshot = {
 };
 
 export type AbilityBooleanDeciderMode = "manual-include" | "manual-exclude" | "clear";
+
+export type DescriptionReviewStatus = "fixed" | "needs-more" | "unfixed";
+
+export type AbilityDescriptionReviewEntry = {
+  id: string;
+  name: string;
+  description: string;
+  status: DescriptionReviewStatus;
+};
+
+export type AbilityDescriptionReviewSnapshot = {
+  updatedAt: string | null;
+  abilities: AbilityDescriptionReviewEntry[];
+};
+
+export type BuffDescriptionReviewEntry = Pick<BuffEditorEntry, "buffId" | "name" | "category" | "description" | "iconPath" | "iconMissing" | "sourceAbilityName"> & {
+  status: DescriptionReviewStatus;
+};
+
+export type BuffDescriptionReviewSnapshot = {
+  updatedAt: string | null;
+  buffs: BuffDescriptionReviewEntry[];
+};
 
 export function getBuffSubtitle(entry: Pick<BuffEditorEntry, "category" | "attribute">): string {
   // No valid attribute → no tag at all

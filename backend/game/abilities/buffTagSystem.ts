@@ -5,8 +5,10 @@ import {
   BUFF_ATTRIBUTES,
   BuffAttribute,
   BuffEditorOverrideEntry,
+  DescriptionReviewStatus,
   BuffProperty,
   BUFF_PROPERTY_TYPES,
+  isDescriptionReviewStatus,
   loadBuffEditorOverrides,
   saveBuffEditorOverrides,
 } from "./buffEditorOverrides";
@@ -34,6 +36,22 @@ export interface BuffEditorEntry {
   properties: BuffProperty[];
   /** Properties auto-derived from the buff's effects[] in code — never saved, always read-only. */
   baseProperties: BuffProperty[];
+}
+
+export interface BuffDescriptionReviewEntry {
+  buffId: number;
+  name: string;
+  category: "BUFF" | "DEBUFF";
+  description: string;
+  iconPath?: string;
+  iconMissing?: boolean;
+  sourceAbilityName?: string;
+  status: DescriptionReviewStatus;
+}
+
+export interface BuffDescriptionReviewSnapshot {
+  updatedAt: string | null;
+  buffs: BuffDescriptionReviewEntry[];
 }
 
 export interface BuffEditorSnapshot {
@@ -152,6 +170,7 @@ function sanitizeOverrideEntry(
   const normalizedName = name && name !== baseName ? name : undefined;
   const description = normalizeDescription(entry.description);
   const normalizedDescription = description && description !== baseDescription ? description : undefined;
+  const normalizedDescriptionReviewStatus = isDescriptionReviewStatus(entry.descriptionReviewStatus) ? entry.descriptionReviewStatus : undefined;
   const normalizedHidden = typeof entry.hidden === "boolean" && entry.hidden !== baseHidden ? entry.hidden : undefined;
   // Allow empty array [] as a valid override sentinel (means user explicitly removed all properties)
   const normalizedProperties = Array.isArray(entry.properties) ? entry.properties : undefined;
@@ -162,18 +181,21 @@ function sanitizeOverrideEntry(
   const normalizedQinYinGongMingUnstealable = entry.qinYinGongMingUnstealable === true ? true : undefined;
   const normalizedManualCancelable = entry.manualCancelable === true ? true : undefined;
   const normalizedManualCancelExcluded = entry.manualCancelExcluded === true ? true : undefined;
+  const normalizedTimerVisible = typeof entry.timerVisible === "boolean" ? entry.timerVisible : undefined;
 
   if (
     normalizedAttribute === "\u672a\u9009\u62e9" &&
     normalizedHidden === undefined &&
     !normalizedName &&
     !normalizedDescription &&
+    normalizedDescriptionReviewStatus === undefined &&
     normalizedProperties === undefined &&
     normalizedDurationMs === undefined &&
     normalizedQinYinGongMingStealable === undefined &&
     normalizedQinYinGongMingUnstealable === undefined &&
     normalizedManualCancelable === undefined &&
-    normalizedManualCancelExcluded === undefined
+    normalizedManualCancelExcluded === undefined &&
+    normalizedTimerVisible === undefined
   ) {
     return null;
   }
@@ -183,12 +205,14 @@ function sanitizeOverrideEntry(
     ...(normalizedHidden === undefined ? {} : { hidden: normalizedHidden }),
     ...(normalizedName ? { name: normalizedName } : {}),
     ...(normalizedDescription ? { description: normalizedDescription } : {}),
+    ...(normalizedDescriptionReviewStatus ? { descriptionReviewStatus: normalizedDescriptionReviewStatus } : {}),
     ...(normalizedProperties !== undefined ? { properties: normalizedProperties } : {}),
     ...(normalizedDurationMs !== undefined ? { durationMs: normalizedDurationMs } : {}),
     ...(normalizedQinYinGongMingStealable === true ? { qinYinGongMingStealable: true } : {}),
     ...(normalizedQinYinGongMingUnstealable === true ? { qinYinGongMingUnstealable: true } : {}),
     ...(normalizedManualCancelable === true ? { manualCancelable: true } : {}),
     ...(normalizedManualCancelExcluded === true ? { manualCancelExcluded: true } : {}),
+    ...(normalizedTimerVisible === undefined ? {} : { timerVisible: normalizedTimerVisible }),
   };
 }
 
@@ -262,6 +286,38 @@ export function buildBuffEditorSnapshot(): BuffEditorSnapshot {
     updatedAt,
     buffs: entries,
   };
+}
+
+export function buildBuffDescriptionReviewSnapshot(): BuffDescriptionReviewSnapshot {
+  const { buffs } = buildBuffEditorSnapshot();
+  const { overrides, updatedAt } = loadBuffEditorOverrides();
+
+  return {
+    updatedAt,
+    buffs: buffs
+      .map((buff) => ({
+        buffId: buff.buffId,
+        name: buff.name,
+        category: buff.category,
+        description: buff.description,
+        iconPath: buff.iconPath,
+        iconMissing: buff.iconMissing,
+        sourceAbilityName: buff.sourceAbilityName,
+        status: overrides[String(buff.buffId)]?.descriptionReviewStatus ?? "unfixed",
+      }))
+      .sort((left, right) => {
+        const statusOrder: Record<DescriptionReviewStatus, number> = { "needs-more": 1, unfixed: 2, fixed: 3 };
+        const statusDelta = statusOrder[left.status] - statusOrder[right.status];
+        if (statusDelta !== 0) return statusDelta;
+        return left.name.localeCompare(right.name, "zh-Hans-CN");
+      }),
+  };
+}
+
+export function setBuffDescriptionReviewStatus(buffId: number, status: DescriptionReviewStatus) {
+  if (!isDescriptionReviewStatus(status)) throw new Error("ERR_INVALID_DESCRIPTION_REVIEW_STATUS");
+  updateBuffOverride(buffId, (current) => ({ ...current, descriptionReviewStatus: status }));
+  return buildBuffDescriptionReviewSnapshot();
 }
 
 export function setBuffAttribute(buffId: number, attribute: BuffAttribute): string {

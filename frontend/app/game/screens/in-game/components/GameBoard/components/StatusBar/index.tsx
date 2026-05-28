@@ -40,6 +40,7 @@ type ResolvedBuff = {
   iconPath?: string;
   attribute?: string;
   manualCancelable?: boolean;
+  hideTimer?: boolean;
   stacks?: number; // live stack count for stackable debuffs
   appliedAt?: number;
   originalOrder: number;
@@ -159,6 +160,7 @@ export default function StatusBar({
         iconPath:    meta.iconPath,
         attribute,
         manualCancelable: meta.manualCancelable === true,
+        hideTimer: meta.hideTimerInStatusBar === true,
         stacks:      b.stacks,
         appliedAt:   b.appliedAt,
         originalOrder,
@@ -196,7 +198,7 @@ export default function StatusBar({
   function renderBuff(b: ResolvedBuff) {
     const colorClass  = b.category === "BUFF" ? styles.buffText : styles.debuffText;
     const secsLeft    = getRemainingSeconds(b);
-    const timer       = showTimers ? formatTimer(secsLeft) : null;
+    const timer       = showTimers && !b.hideTimer ? formatTimer(secsLeft) : null;
     const urgent      = timer?.urgent === true;
     const canManualCancel = !!onCancelBuff && (allowAnyCancel || (b.category === "BUFF" && b.manualCancelable === true));
     const cancelCursor = allowAnyCancel && canManualCancel ? "pointer" : canManualCancel ? "context-menu" : undefined;

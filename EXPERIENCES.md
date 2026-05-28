@@ -3,101 +3,34 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
-## 玉门关 staged safe zone correction (2026-05-27)
+## 玉门关 safe-zone corrective pass 3 (2026-05-28)
 
 **Implemented / checked**:
-- Removed the staged random safe-zone runtime and circular overlay gate from `collision-test`; this mode should not receive this behavior.
-- Moved the staged random circular safe-zone behavior to `yumen-1v1-basic`, with full-map idle start and manual `开始快速缩圈` / `停止缩圈` / `重置缩圈` controls.
-- Added the `200` diameter stage so yumen now progresses from the exported-map full circle (about `595.545u`) to `200 -> 100 -> 50 -> 25 -> 0`.
-- Added a yumen top-right minimap that shows the local player marker, the current safe zone as a yellow dotted circle, and the revealed next circle as a blue line.
-- Follow-up: doubled the yumen minimap size, gave it the reference-style draggable top bar, changed the map surface to sand without grid lines, and replaced the player dot with a direction cursor plus subtle white facing guide.
-- Follow-up: reduced the minimap by 20%, made its body a pure flat sand color, halved the direction cursor again, removed the white guide strokes, changed the 3D current ring to a restrained golden-white glow, kept the upcoming ring blue, and made current/upcoming rings x-ray through structures within 50u.
+- Corrected yumen minimap circle semantics: wait/no target shows a single blue current circle; countdown/shrink shows current as yellow dotted and future target as blue on top, so overlap reads as blue.
+- Flipped the minimap player marker left/right rotation and kept full-poison red styling only on the range/status row, not `已刷圈/总圈数`.
+- Changed `追命` to 30 seconds and stopped removing it when leaving 狂沙, while avoiding outside-zone time counting toward the next stack tick on re-entry.
+- Renamed yumen poison damage events to `狂沙`, allowed their self-hit battle log line, and added `暂停 / 继续 / 重置` controls with a resume endpoint that preserves paused shrink progress.
+- Added the buff timer-visibility editor tab and preload/status-bar support for hiding only an individual buff's timer text.
+- Mechanically reset 167 ability description `已修正` statuses back to `未修正`.
 
 **Lesson**:
-- A requested gameplay system can be technically correct but still wrong if it lands in the wrong mode. When the user scopes behavior to 玉门关, avoid changing `collision-test` even if it shares the exported map/collision stack.
-- For staged yumen safe zones, keep the full-map circle idle until an explicit control starts the sequence; do not auto-start from GameLoop construction.
-- If an in-world terrain-following circle becomes visually noisy, put the navigation-critical circle and facing information on a clean minimap layer instead of relying only on the 3D ground line.
-- For yumen safe-zone readability near buildings, x-ray the ring only when the player is close enough to need local navigation. Use terrain depth prepass to avoid showing the line through the ground while letting it pass through houses/structures.
+- Yumen minimap current/future layers must be phase-aware: current-only means blue, while current-plus-target means yellow dotted current under a blue future target.
+- Pause/resume of a shrink phase must preserve both remaining time and elapsed progress; otherwise the loop can resume from a later visual progress point.
+- Per-buff status display preferences belong in the shared buff override/preload path so editor choices and runtime status rendering cannot drift.
 
-## Collision-test random safe zone stages (2026-05-27)
+## HP nameplate CJK text, jump intent latch, and speed-buff expiry (2026-05-26)
 
 **Implemented / checked**:
-- Added collision-test random circular safe-zone staging: full-map first circle, then revealed target diameters `100 -> 50 -> 25 -> 0` with waits/shrink timing matching the requested pattern.
-- The first collision-test circle is based on the exported map diagonal, so it starts at diameter about `595.545u` / radius about `297.773u` for the current `418.807u x 423.409u` map.
-- Next-circle centers are chosen only when their countdown phase begins, constrained so the next circle fits inside the current circle and the map rectangle. The 0 stage shrinks to the center of the 25u circle.
-- Added revealed next-circle metadata to `safeZone`, rendered the next circle as a yellow terrain-aware ring, and enabled the circular safe-zone overlay for collision-test mode.
-- Added the right-side status label above the existing safe-zone timer/progress display with `等待`, `缩圈倒计时`, and `缩圈中` states.
-- Built backend and frontend successfully after the final change, restarted only PM2 `frontend` and `backend`, and confirmed both started online with no reported startup errors.
+- Replaced 3D player/entity HP-name text with canvas-backed sprite textures using a CJK-capable font stack, while preserving the existing billboard/world-size scaling so names like `一` do not render as boxes or become tiny.
+- Broadened the DOM icon-bar `.enemyName` fallback stack to include Linux CJK fonts without changing its 13.2px special size rule.
+- Added a queued jump-intent snapshot that captures direction/backpedal state at jump keypress time and reuses that same vector for both local prediction and the backend movement POST. Facing/camera payloads still update independently for RMB camera/ability logic, so turning after takeoff does not redirect the current jump while the next queued jump can capture a new direction.
+- Added a local next-buff-expiry timer so movement prediction, jump locks, channel refs, status/gates, and speed scale recompute immediately after a SPEED_BOOST/SLOW-style buff expires even if no fresh buff-array diff has arrived.
+- Frontend build initially exposed a corrupted `Character.tsx` HP-name JSX block; repaired it with the same canvas-text path. Backend build and frontend build passed, PM2 `frontend`/`backend` restarted online, and live browser verification showed the Chinese HP name renders at the intended size with no page errors.
 
 **Lesson**:
-- Treat user-facing circle sizes as diameters when the design explicitly says diameter. The runtime still uses `currentHalf` as radius, so stage values need conversion before damage checks and rendering.
-- Do not persist unrevealed future safe-zone centers into public game state. Generate the next target when the countdown starts, then broadcast only the revealed/current circle metadata.
-- For non-square exported maps, the first full-map circle should use the map diagonal, not the larger single-axis length, if it must cover every corner.
-
-## 玉门关 official mode bootstrap (2026-05-27)
-
-**Implemented / checked**:
-- Added the official `yumen-1v1-basic` mode while keeping `collision-test` as 技能测试; lobby now defaults to 玉门关（1v1）：基础 and separates legacy modes into a second custom dropdown.
-- Wired yumen through backend session schema, lobby creation, battle initialization, loop hydration, exported-map collision, frontend map selection, asset warming, scene rendering, LOS, and client movement prediction.
-- Added a yumen hard play-area boundary with backend movement clamping, frontend prediction clamping, an obvious exported-map wall, and draggable corner pillars that persist boundary updates through a cheat/control route.
-- Added manual yumen poison controls (`开始缩小毒圈` / `停止缩圈`) with backend start/stop routes, GameLoop manual shrink state, poison damage outside the safe zone, and an exported-map safe-zone wall visual.
-- Built backend and frontend successfully, restarted only PM2 `frontend` and `backend`, confirmed both are online with zero unstable restarts, and live-smoke-checked the lobby dropdowns at `https://zhenchuan.renstoolbox.com/`.
-
-**Lesson**:
-- New modes that copy an existing map must share a single exported-map predicate across backend collision, frontend prediction, asset warming, LOS, and rendering. A single leftover `mode === 'collision-test'` check can split authoritative collision from the client view.
-- For non-square exported maps, safe-zone math should use the larger half-extent when the initial zone must cover the whole playable area; using the smaller half leaves thin map strips outside the first poison square.
-- If client prediction clamps a BVH-backed player after horizontal collision, resync the BVH center before vertical ground sampling or the next vertical pass can use the pre-clamp X/Z.
-
-## 玉门关 boundary editing and circular poison (2026-05-27)
-
-**Implemented / checked**:
-- Added a yumen boundary edit mode that suppresses left-drag camera rotation and only shows draggable boundary pillars while editing is active.
-- Added optimistic local play-area state so a pillar drag updates immediately and does not visually bounce while the backend route/broadcast catches up.
-- Converted yumen poison from square half-extent semantics to circular radius semantics, with `shape: "circle"`, circular damage checks, and final radius `15u`.
-- Follow-up: reverted the yumen manual shrink pace to the faster test speed (`4u/s`) while keeping the `15u` final radius.
-- Follow-up: restored the poison visual as a visible terrain-aware bottom line with an upward circular 光幕 above it, and enabled normal depth testing so terrain/structures can occlude it.
-- Follow-up: removed extra play-area rib lines, kept only the rectangular light wall/guide and the four corner anchor pillars in edit mode, added `恢复默认边界`, and live-reset the active yumen play area to default bounds.
-- Follow-up: gated `ArenaScene`'s 250ms countdown timer so it only runs when ground-zone countdowns exist, avoiding background React scene re-renders during normal yumen play.
-- Follow-up: changed the yumen poison visual to a white bottom line plus short yellow 光幕, with terrain-only height sampling so houses/GLBs/shell geometry do not lift the ring, a static upward alpha fade, and a 40u proximity x-ray rule for the bottom line only.
-- Follow-up: disabled the yumen 光幕 by default behind a control-panel toggle, kept the poison line as a perfect X/Y circle sitting on terrain-only height, restored normal ground occlusion, and raised the close-range structure x-ray threshold to 40u.
-- Built backend/frontend, restarted only PM2 `frontend` and `backend`, checked startup logs, and live Playwright-dragged a yumen boundary pillar on `https://zhenchuan.renstoolbox.com/`; the persisted play area changed and stayed changed after waiting.
-
-**Lesson**:
-- R3F `stopPropagation()` is not enough when a `window` capture-phase mouse handler starts camera drag first. Tool-style scene editing needs an explicit edit mode that gates global mouse behavior.
-- Drag handles that persist through server state should update a local optimistic scene state first; otherwise the authoritative prop can briefly resync to the old value and make the handle feel like it bounced back.
-- A circular poison zone should use radius values everywhere, including damage checks, control-route normalization, and final-zone planning. If old square state is loaded, expand to the full circular map radius so corners are not accidentally poisoned.
-- Do not force poison or boundary visuals through the depth buffer with `depthTest={false}` unless the design explicitly wants x-ray guides. For in-world 光幕, normal depth testing is needed so structures and terrain can block what the player cannot see.
-- A poison bottom line on exported terrain must sample ground support and add clearance, or flat `y=0` rings can sink under hills. Keep the horizontal circle stable, lift the bottom line above support, then build the 光幕 upward from that line.
-- If a guide should ignore buildings and props but still sit on terrain, do not use generic support-ground sampling; support-ground includes shell hits and will climb roofs/structures. Expose a terrain-only heightmap sampler and let normal depth testing handle far occlusion, with an explicit close-range x-ray override only where the design asks for it.
-- A fading 光幕 does not need a per-frame animation loop. A small static shader gradient is cheaper and gives the intended upward disappearance without rebuilding geometry every frame.
-- To keep a circle readable without climbing props, sample terrain-only height for the line points and render GLB props after the normal line pass. For close-range structure x-ray that must still respect ground, rewrite the depth buffer with an invisible terrain-only pass immediately before drawing the x-ray line.
-- Avoid always-on scene timers for optional overlays. A small 250ms state update is still a whole React scene render if it lives in `ArenaScene`.
-
-## Jump intent lock and correction diagnostics (2026-05-26)
-
-**Implemented / checked**:
-- Backend jump takeoff now freezes the original movement/facing intent attached to the one-shot jump pulse, so a later face-turn packet cannot rewrite the already-queued jump direction before the tick consumes it.
-- `movement.ts` uses that frozen jump intent only for takeoff direction/backpedal validation, while live `facing` input still updates server-facing during airtime for ability logic.
-- Added frontend `[JUMP-CORRECTION]` console diagnostics when server reconciliation changes local airborne jump prediction, including XY/Z error, local/server positions, jump count, and local vertical velocity.
-- Follow-up: `[JUMP-CORRECTION]` warnings during 扶摇/second-jump sequences exposed delayed authoritative samples arriving behind the frontend's local jump phase. BattleArena now ignores airborne server samples that are still inside a velocity-based lag envelope, while keeping warnings/corrections for discrepancies beyond that envelope.
-- Follow-up: real integrated-browser Playwright testing showed quick 扶摇 second jumps can advance the frontend to local jump phase 2 while the latest server sample still reports an earlier `jumpCount`. BattleArena now also waits briefly for server jump phase to catch up before warning or correcting airborne prediction.
-- Follow-up: the same live browser test exposed the opposite timing failure under heavy scene load: the browser rendered near 9 FPS, so the fixed-per-tick local jump loop advanced slower than the 30 Hz backend. BattleArena now catches up fixed 30 Hz prediction ticks when the browser callback is delayed.
-- Follow-up: after fixed-step catch-up, only small server-landed/local-nearly-landed `soft-z` / `soft-xy` residuals remained. BattleArena now gives that narrow landing phase a grace window so local prediction can finish the final descent and drift without a false correction warning.
-- Follow-up: fresh live browser testing still showed server-landed samples racing ahead of a delayed local physics callback. BattleArena now advances local prediction immediately before reconciliation compares the server sample, and allows a larger catch-up window for delayed browser timers.
-- Follow-up: later live runs produced grounded/post-landing corrections with jump counts already zero or the server already landed while the client was in final descent/drift. `[JUMP-CORRECTION]` diagnostics now only classify active local jump-count prediction as a jump correction, with enough final-descent landing grace to cover normal 扶摇 tails while still leaving larger gaps visible.
-- Follow-up: live browser testing at 30 FPS still showed local jump phase 2 while the backend had already landed. The cause was async movement POST reordering: a later non-jump packet could advance `seq` before the quick second-jump packet arrived. `GameLoop.setPlayerInput` now accepts a wider short-window of out-of-order jump pulses and latches their frozen jump intent without rolling newer movement state backward.
-- Built backend and frontend after point 1, then rebuilt both after point 2 and restarted only the Zhenchuan `frontend` and `backend` PM2 apps.
-
-**Lesson**:
-- One-shot jump input must preserve the full takeoff intent, not just the `jump` boolean. If the backend latches `jump: true` onto a newer facing/movement packet, local prediction can be right while the authoritative jump silently turns.
-- Jump correction warnings belong at the client/server reconciliation boundary, where they can show whether a visible snap/blend came from stale local prediction, delayed authoritative state, or a real backend rule mismatch.
-- For jump/fuyao correction logs, compare the position gap against expected local/server velocity over several ticks before treating it as a real desync. Otherwise normal movement POST + backend tick + broadcast latency can make the correct frontend prediction look ahead of the latest server sample and trigger false correction warnings.
-- If local `jumpCount` is ahead of the authoritative sample shortly after jump input, treat that sample as phase-stale before correcting. Velocity envelopes alone do not cover every quick second-jump case because phase mismatch can create a large Z gap even when both sides are individually following valid jump rules.
-- Client prediction that uses per-tick physics constants must catch up missed ticks when the browser frame/timer rate drops. Otherwise a low-FPS scene makes local jump airtime too long while the backend keeps simulating at 30 Hz, producing real correction warnings even with identical jump constants.
-- After the server has landed and the client is only slightly above it or drifting into the same landing, prefer a narrow landing grace over immediate soft correction. This avoids treating the last local descent/drift ticks as a desync while still allowing large gaps to warn/snap.
-- Before warning/correcting against a new authoritative sample, first advance local prediction to the current browser time. Otherwise React/WebSocket updates can compare fresh server state against stale local refs when the physics interval is delayed.
-- A grounded reconciliation after local `jumpCount` has reset is not a during-jump correction warning; keep the normal snap/blend behavior, but do not report it under `[JUMP-CORRECTION]`.
-- One-shot jump pulses need special handling in sequence filtering. Rejecting every lower `seq` can drop valid jumps when movement POSTs arrive out of order; accept nearby late jump pulses while keeping the latest non-jump movement/facing state authoritative.
+- Drei text/font fallback can still miss CJK glyphs in WebGL text. For small in-world nameplates with strict size rules, browser canvas text converted to a sprite is more reliable and keeps the existing billboard scale math intact.
+- Jump direction is an input-time fact, not a render-time inference. Store the movement vector when the player queues jump; use it for both prediction and the server request, and keep facing/camera as a separate stream.
+- Client movement speed cannot wait for a state diff to notice wall-clock buff expiry. Schedule a wake-up at the nearest active buff `expiresAt` so prediction drops stale speed boosts before snapbacks accumulate.
 
 ## Knockback, jump carry, shield, and stealth sound parity (2026-05-26)
 

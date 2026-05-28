@@ -56,6 +56,8 @@ export const TAG_GROUP_DEFINITIONS: Record<TagGroupId, TagGroupDefinition> = {
 export interface AbilityEditorOverrideEntry {
   properties?: Partial<Record<AbilityPropertyId, boolean>>;
   numeric?: Record<string, number>;
+  description?: string;
+  descriptionReviewStatus?: DescriptionReviewStatus;
   /** tag group → tag value (e.g. { rarity: "稀世", school: "少林" }) */
   tags?: Record<string, string>;
   /** Whether this ability is a ranged projectile (blocked by PROJECTILE_IMMUNE) */
@@ -67,6 +69,7 @@ export interface AbilityEditorOverrideEntry {
 }
 
 export type AbilityEditorOverrideMap = Record<string, AbilityEditorOverrideEntry>;
+export type DescriptionReviewStatus = "fixed" | "needs-more" | "unfixed";
 
 export interface AbilityEditorPropertyDefinition {
   id: AbilityPropertyId;
@@ -150,6 +153,10 @@ interface StoredAbilityEditorOverrides {
   version: number;
   updatedAt: string | null;
   abilities: AbilityEditorOverrideMap | Record<string, Partial<Record<AbilityPropertyId, boolean>>>;
+}
+
+export function isDescriptionReviewStatus(value: unknown): value is DescriptionReviewStatus {
+  return value === "fixed" || value === "needs-more" || value === "unfixed";
 }
 
 interface ChannelAccessor {
@@ -753,10 +760,18 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
     "noWeaponRequired" in entryRecord && typeof entryRecord.noWeaponRequired === "boolean"
       ? entryRecord.noWeaponRequired
       : undefined;
+  const description = "description" in entryRecord && typeof entryRecord.description === "string"
+    ? entryRecord.description
+    : undefined;
+  const descriptionReviewStatus = isDescriptionReviewStatus(entryRecord.descriptionReviewStatus)
+    ? entryRecord.descriptionReviewStatus
+    : undefined;
 
   if (
     Object.keys(properties).length === 0 &&
     Object.keys(numeric).length === 0 &&
+    description === undefined &&
+    descriptionReviewStatus === undefined &&
     !tags &&
     isProjectile === undefined &&
     dunLiWhitelisted === undefined &&
@@ -768,6 +783,8 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
   return {
     properties: Object.keys(properties).length > 0 ? properties : undefined,
     numeric: Object.keys(numeric).length > 0 ? numeric : undefined,
+    description,
+    descriptionReviewStatus,
     tags,
     isProjectile,
     dunLiWhitelisted,
@@ -1145,6 +1162,10 @@ export function buildResolvedAbilities(baseAbilities: AbilityRecord, overrides: 
       }
     }
 
+    if (typeof abilityOverrides?.description === "string") {
+      nextAbility.description = abilityOverrides.description;
+    }
+
     // Apply damageType tag to the resolved ability object so it is available at runtime
     if (abilityOverrides?.tags?.damageType) {
       (nextAbility as any).damageType = abilityOverrides.tags.damageType;
@@ -1257,6 +1278,8 @@ export function buildAbilityEditorEntry(params: {
     properties.some((property) => property.overridden) ||
     coreSettings.some((setting) => setting.overridden) ||
     damageSettings.some((setting) => setting.overridden) ||
+    overrides?.description !== undefined ||
+    overrides?.descriptionReviewStatus !== undefined ||
     channelTimingSettings.some((setting) => setting.overridden) ||
     (overrides?.tags ? Object.keys(overrides.tags).length > 0 : false) ||
     overrides?.isProjectile !== undefined ||

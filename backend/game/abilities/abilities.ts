@@ -7,12 +7,14 @@ import {
   AbilityEditorOverrideMap,
   AbilityPropertyId,
   AbilityRecord,
+  DescriptionReviewStatus,
   TagGroupId,
   TAG_GROUP_DEFINITIONS,
   buildAbilityEditorEntry,
   buildResolvedAbilities,
   getAbilityNumericFieldDefinition,
   getAbilityPropertyDefinition,
+  isDescriptionReviewStatus,
   listAbilityPropertyDefinitions,
   loadAbilityEditorOverrides,
   saveAbilityEditorOverrides,
@@ -5057,15 +5059,98 @@ export interface AbilityBooleanDeciderSnapshot {
 
 export type AbilityBooleanDeciderMode = "manual-include" | "manual-exclude" | "clear";
 
+export interface AbilityDescriptionReviewEntry {
+  id: string;
+  name: string;
+  description: string;
+  status: DescriptionReviewStatus;
+}
+
+export interface AbilityDescriptionReviewSnapshot {
+  updatedAt: string | null;
+  abilities: AbilityDescriptionReviewEntry[];
+}
+
+const DESCRIPTION_REVIEW_SPECIAL_BAR_ABILITY_IDS = new Set(["dong_zhu_ji_wei", "hun_ya_nu_tao", "zhen_xia_che"]);
+
 function hasAbilityOverrideContent(entry: AbilityEditorOverrideEntry) {
   return Boolean(
     entry.tags ||
       entry.properties ||
       entry.numeric ||
+      entry.description !== undefined ||
+      entry.descriptionReviewStatus !== undefined ||
       entry.isProjectile !== undefined ||
       entry.dunLiWhitelisted !== undefined ||
       entry.noWeaponRequired !== undefined
   );
+}
+
+export function buildAbilityDescriptionReviewSnapshot(): AbilityDescriptionReviewSnapshot {
+  const resolvedAbilities = buildResolvedAbilities(BASE_ABILITIES, abilityPropertyOverrides);
+
+  const abilities = Object.values(resolvedAbilities)
+    .filter((ability) => (ability as any).specialBarAbility !== true || DESCRIPTION_REVIEW_SPECIAL_BAR_ABILITY_IDS.has(ability.id))
+    .map((ability) => {
+      const override = abilityPropertyOverrides[ability.id];
+      return {
+        id: ability.id,
+        name: ability.name,
+        description: ability.description,
+        status: override?.descriptionReviewStatus ?? "unfixed",
+      } satisfies AbilityDescriptionReviewEntry;
+    })
+    .sort((left, right) => {
+      const statusOrder: Record<DescriptionReviewStatus, number> = { "needs-more": 1, unfixed: 2, fixed: 3 };
+      const statusDelta = statusOrder[left.status] - statusOrder[right.status];
+      if (statusDelta !== 0) return statusDelta;
+      return left.name.localeCompare(right.name, "zh-Hans-CN");
+    });
+
+  return {
+    updatedAt: abilityPropertyOverridesUpdatedAt,
+    abilities,
+  };
+}
+
+export function setAbilityDescriptionReviewStatus(abilityId: string, status: DescriptionReviewStatus) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) throw new Error("ERR_ABILITY_NOT_FOUND");
+  if (!isDescriptionReviewStatus(status)) throw new Error("ERR_INVALID_DESCRIPTION_REVIEW_STATUS");
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+    descriptionReviewStatus: status,
+  };
+  abilityPropertyOverrides[abilityId] = nextEntry;
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+  return buildAbilityDescriptionReviewSnapshot();
+}
+
+export function setAbilityDescriptionOverride(abilityId: string, description: string) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) throw new Error("ERR_ABILITY_NOT_FOUND");
+  if (typeof description !== "string") throw new Error("ERR_INVALID_ABILITY_DESCRIPTION");
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+  };
+  if (description === baseAbility.description) {
+    delete nextEntry.description;
+  } else {
+    nextEntry.description = description;
+  }
+
+  if (hasAbilityOverrideContent(nextEntry)) {
+    abilityPropertyOverrides[abilityId] = nextEntry;
+  } else {
+    delete abilityPropertyOverrides[abilityId];
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+  return buildAbilityDescriptionReviewSnapshot();
 }
 
 export function buildAbilityEditorSnapshot() {
