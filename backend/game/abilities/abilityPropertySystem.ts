@@ -58,6 +58,8 @@ export interface AbilityEditorOverrideEntry {
   numeric?: Record<string, number>;
   description?: string;
   descriptionReviewStatus?: DescriptionReviewStatus;
+  adControlStatus?: DescriptionReviewStatus;
+  cooldownReviewStatus?: DescriptionReviewStatus;
   /** tag group → tag value (e.g. { rarity: "稀世", school: "少林" }) */
   tags?: Record<string, string>;
   /** Whether this ability is a ranged projectile (blocked by PROJECTILE_IMMUNE) */
@@ -130,6 +132,8 @@ export interface AbilityEditorAbilityEntry {
   properties: AbilityEditorPropertyState[];
   coreSettings: AbilityEditorNumericSetting[];
   damageSettings: AbilityEditorNumericSetting[];
+    adControlStatus: DescriptionReviewStatus;
+  cooldownReviewStatus: DescriptionReviewStatus;
   channelInfo?: AbilityEditorChannelInfo;
 }
 
@@ -207,6 +211,13 @@ const DAMAGE_VALUE_EFFECT_LABELS: Partial<Record<AbilityEffect["type"], string>>
   STACK_ON_HIT_GUAN_TI_HEAL: "层数触发贯体回血",
   SCHEDULED_DAMAGE: "计划伤害倍率",
   DELAYED_DAMAGE: "延时伤害倍率",
+  LIE_RI_ZHAN: "烈日斩伤害倍率",
+  MIE_STRIKE: "灭伤害倍率",
+  SHOU_QUE_SHI: "守缺式伤害倍率",
+  TRUE_DAMAGE: "真实伤害数值",
+  PLACE_FOLLOW_ZONE: "法阵每跳伤害倍率",
+  PLACE_GROW_PULL_ZONE: "爆炸伤害倍率",
+  CHANNEL_AOE_TICK_DAMAGE: "引导范围伤害倍率",
 };
 
 const DAMAGE_VALUE_EFFECT_TYPES = new Set<AbilityEffect["type"]>([
@@ -224,6 +235,13 @@ const DAMAGE_VALUE_EFFECT_TYPES = new Set<AbilityEffect["type"]>([
   "STACK_ON_HIT_DAMAGE",
   "SCHEDULED_DAMAGE",
   "DELAYED_DAMAGE",
+  "LIE_RI_ZHAN",
+  "MIE_STRIKE",
+  "SHOU_QUE_SHI",
+  "TRUE_DAMAGE",
+  "PLACE_FOLLOW_ZONE",
+  "PLACE_GROW_PULL_ZONE",
+  "CHANNEL_AOE_TICK_DAMAGE",
 ]);
 
 function hasEffectFlag(
@@ -486,7 +504,6 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
         })
       );
     }
-
     if (effect.type === "DIRECTIONAL_DASH" && typeof effect.routeDamage === "number") {
       definitions.push(
         createNumericFieldDefinition({
@@ -495,6 +512,21 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
           description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
           order: 240 + effectIndex,
           path: ["effects", effectIndex, "routeDamage"],
+          step: 0.1,
+        })
+      );
+    }
+  });
+
+  ((baseAbility as any).channelEffects ?? []).forEach((effect: AbilityEffect, effectIndex: number) => {
+    if (isDamageValueEffectType(effect.type) && typeof (effect as any).value === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `channelEffects.${effectIndex}.value`,
+          label: `读条完成 · ${getDamageEffectLabel(effect.type)}`,
+          description: `读条完成效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 260 + effectIndex,
+          path: ["channelEffects", effectIndex, "value"],
           step: 0.1,
         })
       );
@@ -766,12 +798,16 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
   const descriptionReviewStatus = isDescriptionReviewStatus(entryRecord.descriptionReviewStatus)
     ? entryRecord.descriptionReviewStatus
     : undefined;
+  const adControlStatus = isDescriptionReviewStatus(entryRecord.adControlStatus)
+    ? entryRecord.adControlStatus
+    : undefined;
 
   if (
     Object.keys(properties).length === 0 &&
     Object.keys(numeric).length === 0 &&
     description === undefined &&
     descriptionReviewStatus === undefined &&
+    adControlStatus === undefined &&
     !tags &&
     isProjectile === undefined &&
     dunLiWhitelisted === undefined &&
@@ -785,6 +821,7 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
     numeric: Object.keys(numeric).length > 0 ? numeric : undefined,
     description,
     descriptionReviewStatus,
+    adControlStatus,
     tags,
     isProjectile,
     dunLiWhitelisted,
@@ -944,7 +981,7 @@ const abilityPropertyDefinitions: AbilityPropertyDefinition[] = [
   {
     id: "canCastWhileMounted",
     label: "可以马上施展",
-    description: "角色处于御骑状态时，仍可施放该技能。",
+    description: "角色处于骑御状态时，仍可施放该技能。",
     group: "施放例外",
     isApplicable: () => true,
     getValue: (ability) => !!(ability as any).canCastWhileMounted,
@@ -1280,6 +1317,8 @@ export function buildAbilityEditorEntry(params: {
     damageSettings.some((setting) => setting.overridden) ||
     overrides?.description !== undefined ||
     overrides?.descriptionReviewStatus !== undefined ||
+    overrides?.adControlStatus !== undefined ||
+    overrides?.cooldownReviewStatus !== undefined ||
     channelTimingSettings.some((setting) => setting.overridden) ||
     (overrides?.tags ? Object.keys(overrides.tags).length > 0 : false) ||
     overrides?.isProjectile !== undefined ||
@@ -1305,6 +1344,8 @@ export function buildAbilityEditorEntry(params: {
     properties,
     coreSettings,
     damageSettings,
+    adControlStatus: overrides?.adControlStatus ?? "unfixed",
+    cooldownReviewStatus: overrides?.cooldownReviewStatus ?? "unfixed",
     channelInfo,
   } satisfies AbilityEditorAbilityEntry;
 }

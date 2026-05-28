@@ -17,7 +17,7 @@ import { useGameState } from "./hooks/useGameState";
 import {
   GamePreloadProvider,
 } from "./preload/GamePreloadContext";
-import { isExportedMapMode } from "../../gameModes";
+import { isExportedMapMode, isYumen1v1BasicMode } from "../../gameModes";
 
 const LEGACY_STORED_UNIT_SCALE = 2.2;
 
@@ -454,6 +454,9 @@ export default function InGameClient({
   /* ================= BATTLE COMPLETION ================= */
 
   useEffect(() => {
+    if (isYumen1v1BasicMode(gameMode)) {
+      return;
+    }
     if (
       tournament &&
       tournament.phase === "BATTLE" &&
@@ -517,7 +520,7 @@ export default function InGameClient({
         cancelled = true;
       };
     }
-  }, [tournament?.phase, state?.gameOver, state?.winnerUserId, gameId, refetch, selfUserId]);
+  }, [gameMode, tournament?.phase, state?.gameOver, state?.winnerUserId, gameId, refetch, selfUserId]);
 
   /* ================= LOADING ================= */
 
@@ -615,6 +618,7 @@ export default function InGameClient({
             playArea={state?.playArea}
             groundZones={state?.groundZones}
             entities={state?.entities}
+            yumenResults={state?.yumenResults}
             chatMessages={chatMessages}
             onFetchChatMessages={fetchChatMessages}
             opponentPositionBufferRef={opponentPositionBufferRef}

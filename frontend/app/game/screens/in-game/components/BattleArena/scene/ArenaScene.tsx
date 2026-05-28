@@ -69,6 +69,7 @@ const ZHU_YUN_HIDE_BUFF_IDS = new Set([2716]);
 const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
 const DISGUISE_BUFF_IDS = new Set([980001]);
+const YUMEN_SPECTATOR_BUFF_ID = 990202;
 
 function isActiveBuffClient(buff: any, now = Date.now()): boolean {
   const expiresAt = Number(buff?.expiresAt ?? 0);
@@ -122,6 +123,13 @@ function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
   return (hasStealthBuff(buffs) && !hasSanliuXiaBuff(buffs)) || hasHongMengTianJinBuff(buffs);
 }
 
+function hasYumenSpectatorBuff(buffs?: any[]): boolean {
+  return activeBuffsClient(buffs).some((b: any) =>
+    b?.buffId === YUMEN_SPECTATOR_BUFF_ID ||
+    (typeof b?.name === 'string' && b.name.includes('观战中'))
+  );
+}
+
 function hasShiFangXuanJiBuff(buffs?: any[]): boolean {
   return activeBuffsClient(buffs).some((b: any) =>
     b?.buffId === SHI_FANG_XUAN_JI_BUFF_ID ||
@@ -139,6 +147,7 @@ interface PlayerInfo {
   facing?: { x: number; y: number };
   buffs?: any[];
   hand?: any[];
+  yumenDefeated?: boolean;
 }
 
 type ScreenBounds = { cx: number; topY: number; baseY: number; rs: number };
@@ -149,6 +158,7 @@ interface ArenaSceneProps {
   allOpponents?: PlayerInfo[];
   /** All non-me players */
   opponents: PlayerInfo[];
+  yumenSpectatorUserIds?: string[];
   selectedTargetId: string | null;
   onSelectTarget?: (userId: string) => void;
   pickups: PickupItem[];
@@ -863,6 +873,7 @@ export default function ArenaScene({
   me,
   allOpponents,
   opponents,
+  yumenSpectatorUserIds = [],
   selectedTargetId,
   onSelectTarget,
   pickups,
@@ -925,6 +936,7 @@ export default function ArenaScene({
   const [safeZoneStructureXrayActive, setSafeZoneStructureXrayActive] = useState(false);
   const zoneProbeRef = useRef(new THREE.Vector3());
   const hasGroundZoneTimers = (groundZones?.length ?? 0) > 0;
+  const yumenSpectatorUserIdSet = useMemo(() => new Set(yumenSpectatorUserIds), [yumenSpectatorUserIds]);
 
   useEffect(() => {
     if (!hasGroundZoneTimers) return;
@@ -933,13 +945,18 @@ export default function ArenaScene({
   }, [hasGroundZoneTimers]);
 
   const selectedTarget = selectedTargetId
-    ? opponents.find((o) => o.userId === selectedTargetId && !hasDisguiseBuff(o.buffs) && !shouldHideByStealthFromEnemyView(o.buffs))
+    ? opponents.find((o) => {
+        const targetYumenSpectator = hasYumenSpectatorBuff(o.buffs) || o.yumenDefeated === true || yumenSpectatorUserIdSet.has(o.userId);
+        const selfYumenSpectator = hasYumenSpectatorBuff(me?.buffs) || me.yumenDefeated === true || yumenSpectatorUserIdSet.has(me.userId);
+        return o.userId === selectedTargetId && !hasDisguiseBuff(o.buffs) && (!shouldHideByStealthFromEnemyView(o.buffs) || (selfYumenSpectator && targetYumenSpectator));
+      })
     : null;
   const selectedEntity = selectedEntityId
     ? (entities ?? []).find((entity) => entity.id === selectedEntityId) ?? null
     : null;
   const meDisguised = hasDisguiseBuff(me?.buffs);
-  const meSemiTransparent = !meDisguised && (hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs));
+  const meYumenSpectator = hasYumenSpectatorBuff(me?.buffs) || me.yumenDefeated === true || yumenSpectatorUserIdSet.has(me.userId);
+  const meSemiTransparent = !meDisguised && (hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs) || meYumenSpectator);
 
   const targetAnchor = selectedTarget
     ? selectedTarget.position
@@ -1087,7 +1104,7 @@ export default function ArenaScene({
           worldHalfY={worldHalfY}
           isStealthed={meSemiTransparent}
           isDisguised={meDisguised}
-          hideHpBar={meDisguised}
+          hideHpBar={meDisguised || meYumenSpectator}
           cameraFadeEnabled={isExportedMap && !selfOnlyMode}
           hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
         />
@@ -1343,7 +1360,8 @@ export default function ArenaScene({
       {/* Opponents — render all of them */}
       {opponents.map((opp, i) => {
         const disguised = hasDisguiseBuff(opp.buffs);
-        const hiddenByStealth = shouldHideByStealthFromEnemyView(opp.buffs);
+        const oppYumenSpectator = hasYumenSpectatorBuff(opp.buffs) || opp.yumenDefeated === true || yumenSpectatorUserIdSet.has(opp.userId);
+        const hiddenByStealth = shouldHideByStealthFromEnemyView(opp.buffs) && !(meYumenSpectator && oppYumenSpectator);
         if (hiddenByStealth) return null;
 
         const dx = opp.position.x - me.position.x;
@@ -1371,8 +1389,8 @@ export default function ArenaScene({
               worldX={opp.position.x}
               worldY={opp.position.y}
               worldZ={opp.position.z ?? 0}
-              color={OPP_COLORS[i % OPP_COLORS.length]}
-              emissive={OPP_EMISSIVES[i % OPP_EMISSIVES.length]}
+              color={oppYumenSpectator ? '#8c8c8c' : OPP_COLORS[i % OPP_COLORS.length]}
+              emissive={oppYumenSpectator ? '#1d1d1d' : OPP_EMISSIVES[i % OPP_EMISSIVES.length]}
               hp={opp.hp}
               shield={opp.shield ?? 0}
               maxHp={opp.maxHp ?? maxHp}
@@ -1396,9 +1414,11 @@ export default function ArenaScene({
               }
               worldHalfX={worldHalfX}
               worldHalfY={worldHalfY}
-              isStealthed={!disguised && hasSanliuXiaBuff(opp.buffs)}
+              isStealthed={!disguised && (hasSanliuXiaBuff(opp.buffs) || oppYumenSpectator)}
               isDisguised={disguised}
               hideHpBar={disguised || hasZhuYunHideBuff(opp.buffs)}
+              hideHealthMeter={oppYumenSpectator}
+              nameColorOverride={oppYumenSpectator ? '#b7b7b7' : undefined}
               hpColorOverride={hasShiFangXuanJiBuff(opp.buffs) ? '#2acb6b' : undefined}
               instantSnapAtRef={opponentInstantSnapAtRef}
               instantSnapWindowMs={600}

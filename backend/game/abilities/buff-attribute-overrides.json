@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updatedAt": "2026-05-28T06:04:08.069Z",
+  "updatedAt": "2026-05-28T07:56:32.607Z",
   "buffs": {
     "1001": {
       "attribute": "毒性",
@@ -106,6 +106,7 @@
     },
     "1017": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
@@ -168,7 +169,9 @@
       "descriptionReviewStatus": "fixed"
     },
     "1221": {
-      "attribute": "阴性"
+      "attribute": "阴性",
+      "description": "减疗50%",
+      "descriptionReviewStatus": "fixed"
     },
     "1310": {
       "attribute": "无",
@@ -184,11 +187,15 @@
     },
     "1320": {
       "attribute": "无",
+      "description": "无敌",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "1321": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "玄剑化生势",
+      "descriptionReviewStatus": "fixed"
     },
     "1322": {
       "attribute": "无",
@@ -198,6 +205,8 @@
     },
     "1323": {
       "attribute": "无",
+      "description": "无敌",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
@@ -213,10 +222,14 @@
       "descriptionReviewStatus": "fixed"
     },
     "1332": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "化劲等级降低6%",
+      "descriptionReviewStatus": "fixed"
     },
     "1333": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "化劲等级降低12%",
+      "descriptionReviewStatus": "fixed"
     },
     "1334": {
       "attribute": "无",
@@ -257,11 +270,15 @@
     },
     "1343": {
       "attribute": "无",
+      "description": "天策府秘传武技，在自己的外功伤害招式命中敌人后，有50%的几率使自身气血与内力恢复5%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "1344": {
       "attribute": "外功",
+      "description": "每秒恢复5%气血和内力值",
+      "descriptionReviewStatus": "fixed",
       "manualCancelable": true
     },
     "1345": {
@@ -317,11 +334,14 @@
     },
     "1354": {
       "attribute": "无",
+      "description": "免疫控制",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "1355": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -334,6 +354,7 @@
     },
     "2001": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -406,6 +427,8 @@
     "2304": {
       "attribute": "无",
       "name": "转乾坤·减伤",
+      "description": "不受无法施展内功招式效果的影响，并且自身受到的伤害降低60%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -419,6 +442,8 @@
     "2305": {
       "attribute": "无",
       "name": "转乾坤·免控",
+      "description": "免疫所有控制（击退和被拉除外）",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -443,33 +468,46 @@
     },
     "2309": {
       "attribute": "阴性",
+      "descriptionReviewStatus": "fixed",
       "manualCancelable": true
     },
     "2310": {
       "attribute": "无",
+      "description": "免疫控制效果（被拉除外）",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2311": {
       "attribute": "无",
+      "description": "不受招式控制(击退和被拉除外)",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2312": {
       "attribute": "无",
+      "description": "不受控制及沉默招式影响",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2313": {
       "attribute": "混元",
+      "description": "化解自身气血最大值5%的伤害",
+      "descriptionReviewStatus": "fixed",
       "manualCancelable": true
     },
     "2314": {
       "attribute": "毒性",
+      "description": "化解最大生命值50%的伤害，并在10秒内恢复自身30%气血最大值",
+      "descriptionReviewStatus": "fixed",
       "manualCancelable": true
     },
     "2315": {
       "attribute": "蛊",
+      "description": "不受控制招式影响（击退和被拉除外）",
+      "descriptionReviewStatus": "fixed",
       "manualCancelable": true
     },
     "2316": {
@@ -505,7 +543,9 @@
       "descriptionReviewStatus": "fixed"
     },
     "2320": {
-      "attribute": "混元"
+      "attribute": "混元",
+      "description": "被疗伤成效降低10%",
+      "descriptionReviewStatus": "fixed"
     },
     "2321": {
       "attribute": "外功",
@@ -554,11 +594,15 @@
     },
     "2327": {
       "attribute": "无",
+      "description": "不受招式控制效果影响",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2401": {
       "attribute": "无",
+      "description": "闪躲几率提高60%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -569,7 +613,9 @@
       "manualCancelable": true
     },
     "2403": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "封轻功",
+      "descriptionReviewStatus": "fixed"
     },
     "2404": {
       "attribute": "无",
@@ -596,7 +642,9 @@
       "descriptionReviewStatus": "fixed"
     },
     "2502": {
-      "attribute": "混元"
+      "attribute": "混元",
+      "description": "每3秒受到伤害",
+      "descriptionReviewStatus": "fixed"
     },
     "2503": {
       "attribute": "毒性",
@@ -638,11 +686,14 @@
       "descriptionReviewStatus": "fixed"
     },
     "2511": {
-      "attribute": "阴性"
+      "attribute": "阴性",
+      "description": "每2秒受到伤害",
+      "descriptionReviewStatus": "fixed"
     },
     "2512": {
       "attribute": "阳性",
-      "descriptionReviewStatus": "needs-more"
+      "description": "内功防御等级降低15%",
+      "descriptionReviewStatus": "fixed"
     },
     "2513": {
       "attribute": "阳性",
@@ -663,6 +714,8 @@
     },
     "2602": {
       "attribute": "无",
+      "description": "招式伤害提高30%，不受任何控制影响，持续时间内受到攻击不会重伤",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
@@ -690,6 +743,8 @@
     },
     "2607": {
       "attribute": "无",
+      "description": "携带玄水蛊术的目标为自身承担55%受到的伤害",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -777,20 +832,30 @@
     },
     "2631": {
       "attribute": "无",
+      "description": "免疫控制(击退和被拉除外)",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2632": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "锁足",
+      "descriptionReviewStatus": "fixed"
     },
     "2633": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "定身",
+      "descriptionReviewStatus": "fixed"
     },
     "2634": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed"
     },
     "2635": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "倒地",
+      "descriptionReviewStatus": "fixed"
     },
     "2636": {
       "attribute": "无",
@@ -880,6 +945,8 @@
     },
     "2650": {
       "attribute": "无",
+      "description": "冲刺至目标点，并获得2层“云散”效果：施展“一阳指”套路招式时会闪现移动至一个随机攻击位置。",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -946,6 +1013,8 @@
     },
     "2706": {
       "attribute": "无",
+      "description": "自身外功和内功基础攻击力提高25%，会心几率提高25%，会心效果提高25%，持续10秒",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingStealable": true,
       "manualCancelable": true
     },
@@ -977,11 +1046,15 @@
     },
     "2711": {
       "attribute": "无",
+      "description": "受到伤害不再立刻结算，而是每秒结算一次期间受到的伤害，每次结算不超过自身最大血量的20%。期间每次受到攻击回复6%已损生命值",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2712": {
       "attribute": "无",
+      "description": "免疫控制效果，格挡远程弹道技能，受到伤害降低50%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -1009,19 +1082,25 @@
     },
     "2715": {
       "attribute": "无",
+      "description": "免疫控制",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2716": {
       "attribute": "无",
-      "name": "逐云寒蕊·藏匿",
+      "name": "逐云寒蕊·隐匿",
+      "description": "隐匿，身形莫测无法被选中",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2717": {
       "attribute": "未选择",
       "hidden": true,
-      "name": "逐云寒蕊本体免疫"
+      "name": "逐云寒蕊本体免疫",
+      "description": "隐藏：逐云寒蕊本体免疫所有控制与锁定（眩晕/定身/锁足/击倒/击退/拉拽/沉默/封招）",
+      "descriptionReviewStatus": "fixed"
     },
     "2718": {
       "attribute": "无",
@@ -1031,7 +1110,9 @@
       "manualCancelable": true
     },
     "2719": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "无法运功",
+      "descriptionReviewStatus": "fixed"
     },
     "2720": {
       "attribute": "无",
@@ -1162,7 +1243,7 @@
     "2737": {
       "attribute": "阳性",
       "description": "受到伤害降低30%，转移受到的伤害",
-      "descriptionReviewStatus": "needs-more",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -1180,14 +1261,21 @@
     },
     "2739": {
       "attribute": "无",
+      "description": "转移100%伤害",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
     "2740": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "承担100%伤害",
+      "descriptionReviewStatus": "fixed"
     },
     "2741": {
       "attribute": "无",
+      "name": "骑御",
+      "description": "策马驰骋",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true,
       "timerVisible": false
@@ -1202,6 +1290,8 @@
     },
     "2743": {
       "attribute": "无",
+      "description": "自身免疫控制",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -1247,7 +1337,9 @@
       "descriptionReviewStatus": "fixed"
     },
     "9202": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed"
     },
     "980001": {
       "attribute": "无",
@@ -1259,6 +1351,8 @@
     },
     "980002": {
       "attribute": "无",
+      "description": "隐身并提高移动速度",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true
     },
@@ -1269,7 +1363,8 @@
     },
     "990101": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "descriptionReviewStatus": "fixed"
     },
     "990102": {
       "attribute": "未选择",
@@ -1285,6 +1380,16 @@
     "990200": {
       "attribute": "未选择",
       "description": "处于沙暴范围内，视野受阻，同时会持续受到伤害",
+      "descriptionReviewStatus": "fixed"
+    },
+    "990201": {
+      "attribute": "未选择",
+      "description": "每层使受到狂沙、毒雾、风雪或水龙卷的伤害增加20%",
+      "descriptionReviewStatus": "fixed"
+    },
+    "990203": {
+      "attribute": "未选择",
+      "description": "你击伤了敌人。\\n每秒回复气血值，不可叠加。",
       "descriptionReviewStatus": "fixed"
     },
     "999900": {

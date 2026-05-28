@@ -6,7 +6,18 @@ import type { GameState } from "../engine/state/types";
 
 const recentDefeatBroadcasts = new Map<string, number>();
 
-export type DefeatAnnouncement = { defeatedUserId: string; attackerUserId: string };
+export type DefeatAnnouncement = { defeatedUserId: string; attackerUserId?: string | null; defeatedName?: string; attackerName?: string | null };
+
+type DefeatChatNames = {
+  defeatedName?: string | null;
+  attackerName?: string | null;
+};
+
+type DefeatCollectionOptions = {
+  includeHistoricalFallback?: boolean;
+  allowUnattributed?: boolean;
+  recentDamageFallbackMs?: number;
+};
 
 export function createChatMessageId(userId: string, timestamp: number): string {
   const suffix = Math.random().toString(36).slice(2, 8);
@@ -36,9 +47,17 @@ export function collectDefeatAnnouncementsFromEvents(
   state: GameState,
   eventStartIndex: number,
   explicitDefeatedUserIds?: string[],
+  options: DefeatCollectionOptions = {},
 ): DefeatAnnouncement[] {
   const eventWindow = state.events.slice(Math.max(0, eventStartIndex));
+  const recentDamageCutoff = options.recentDamageFallbackMs && options.recentDamageFallbackMs > 0
+    ? Date.now() - options.recentDamageFallbackMs
+    : null;
+  const recentFallbackWindow = recentDamageCutoff === null
+    ? []
+    : (state.events as any[]).filter((event) => Number(event?.timestamp ?? 0) >= recentDamageCutoff);
   const defeatedUserIds = new Set<string>();
+  const playerIds = new Set((state.players ?? []).map((player) => player.userId));
 
   for (const userId of explicitDefeatedUserIds ?? []) {
     if (userId) defeatedUserIds.add(userId);
@@ -58,17 +77,34 @@ export function collectDefeatAnnouncementsFromEvents(
 
   const announcements: DefeatAnnouncement[] = [];
   for (const defeatedUserId of defeatedUserIds) {
-    const recentDamage = [...eventWindow]
+    const findLatestDamage = (events: any[]) => [...events]
       .reverse()
-      .find((event: any) => event?.type === "DAMAGE" && event.targetUserId === defeatedUserId && event.actorUserId && event.actorUserId !== defeatedUserId)
-      ?? [...state.events]
-        .reverse()
-        .find((event: any) => event?.type === "DAMAGE" && event.targetUserId === defeatedUserId && event.actorUserId && event.actorUserId !== defeatedUserId);
-    if (!recentDamage) continue;
-    announcements.push({ defeatedUserId, attackerUserId: String((recentDamage as any).actorUserId) });
+      .find((event: any) => {
+        if (event?.type !== "DAMAGE" || event.targetUserId !== defeatedUserId) return false;
+        const damageValue = Number(event.value ?? event.amount ?? event.damage ?? event.finalDamage);
+        return !Number.isFinite(damageValue) || damageValue > 0;
+      });
+
+    const recentDamage = findLatestDamage(eventWindow)
+      ?? findLatestDamage(recentFallbackWindow)
+      ?? (options.includeHistoricalFallback === false ? undefined : findLatestDamage(state.events as any[]));
+    const actorUserId = recentDamage?.actorUserId ? String(recentDamage.actorUserId) : null;
+    const attackerUserId = actorUserId && actorUserId !== defeatedUserId && playerIds.has(actorUserId)
+      ? actorUserId
+      : null;
+
+    if (attackerUserId) {
+      announcements.push({ defeatedUserId, attackerUserId });
+    } else if (options.allowUnattributed === true) {
+      announcements.push({ defeatedUserId, attackerUserId: null });
+    }
   }
 
   return announcements;
+}
+
+function normalizeDefeatChatName(name: unknown): string | undefined {
+  return typeof name === "string" && name.trim() ? name.trim() : undefined;
 }
 
 async function resolvePlayerDisplayNames(gameId: string, userIds: string[]) {
@@ -77,25 +113,31 @@ async function resolvePlayerDisplayNames(gameId: string, userIds: string[]) {
   const users = await User.find({ _id: { $in: ids } }).select("displayName username").lean();
   const byId = new Map<string, string>();
 
+  for (const userId of ids) {
+    const statePlayer = (game as any)?.state?.players?.find((player: any) => player?.userId === userId);
+    const battleName = normalizeDefeatChatName((game as any)?.playerNames?.[userId]) ?? normalizeDefeatChatName(statePlayer?.username);
+    if (battleName) byId.set(userId, battleName);
+  }
+
   for (const user of users) {
     const userId = String((user as any)._id);
+    if (byId.has(userId)) continue;
     byId.set(userId, normalizeStoredUserDisplayName((user as any).username, (user as any).displayName));
   }
 
   for (const userId of ids) {
     if (byId.has(userId)) continue;
-    const statePlayer = (game as any)?.state?.players?.find((player: any) => player?.userId === userId);
-    const fallback = (game as any)?.playerNames?.[userId] ?? statePlayer?.username ?? `User${userId.slice(-4)}`;
-    byId.set(userId, fallback);
+    byId.set(userId, `User${userId.slice(-4)}`);
   }
 
   return byId;
 }
 
-export async function broadcastDefeatSystemChat(gameId: string, defeatedUserId: string, attackerUserId: string) {
-  if (!defeatedUserId || !attackerUserId || defeatedUserId === attackerUserId) return;
+export async function broadcastDefeatSystemChat(gameId: string, defeatedUserId: string, attackerUserId?: string | null, preferredNames: DefeatChatNames = {}) {
+  if (!defeatedUserId) return;
+  const validAttackerUserId = attackerUserId && attackerUserId !== defeatedUserId ? attackerUserId : null;
   const timestamp = Date.now();
-  const duplicateKey = `${gameId}:${defeatedUserId}:${attackerUserId}`;
+  const duplicateKey = `${gameId}:${defeatedUserId}:${validAttackerUserId ?? "none"}`;
   const lastBroadcastAt = recentDefeatBroadcasts.get(duplicateKey) ?? 0;
   if (timestamp - lastBroadcastAt < 1500) return;
   recentDefeatBroadcasts.set(duplicateKey, timestamp);
@@ -105,16 +147,20 @@ export async function broadcastDefeatSystemChat(gameId: string, defeatedUserId: 
       if (value < cutoff) recentDefeatBroadcasts.delete(key);
     }
   }
-  const names = await resolvePlayerDisplayNames(gameId, [defeatedUserId, attackerUserId]);
-  const defeatedName = names.get(defeatedUserId) ?? `User${defeatedUserId.slice(-4)}`;
-  const attackerName = names.get(attackerUserId) ?? `User${attackerUserId.slice(-4)}`;
+  const names = await resolvePlayerDisplayNames(gameId, validAttackerUserId ? [defeatedUserId, validAttackerUserId] : [defeatedUserId]);
+  const defeatedName = normalizeDefeatChatName(preferredNames.defeatedName) ?? names.get(defeatedUserId) ?? `User${defeatedUserId.slice(-4)}`;
+  const attackerName = validAttackerUserId
+    ? normalizeDefeatChatName(preferredNames.attackerName) ?? names.get(validAttackerUserId) ?? `User${validAttackerUserId.slice(-4)}`
+    : null;
   const chat: ChatMessagePayload = {
     id: `${timestamp}-system-${randomUUID().slice(0, 8)}`,
     channel: "system",
     userId: "system",
     username: "系统",
     school: null,
-    text: `【${defeatedName}】被【${attackerName}】重伤，黯然离去。`,
+    text: attackerName
+      ? `【${defeatedName}】被【${attackerName}】重伤，黯然离去。`
+      : `【${defeatedName}】黯然离去。`,
     timestamp,
     variant: "system",
   };

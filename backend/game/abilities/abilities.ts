@@ -159,8 +159,8 @@ export const BASE_ABILITIES: AbilityRecord = {
 
   yuqi: {
     id: "yuqi",
-    name: "御骑",
-    description: "未御骑时：需站立运功3秒，移动或跳跃会打断；完成后获得【御骑】\n已御骑时：瞬发解除【御骑】并下马\n御骑期间移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展带【可以马上施展】标记的招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
+    name: "骑御",
+    description: "未骑御时：需站立运功3秒，移动或跳跃会打断；完成后获得【骑御】\n已骑御时：瞬发解除【骑御】并下马\n骑御期间移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展带【可以马上施展】标记的招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 0,
@@ -178,7 +178,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     buffs: [
       {
         buffId: 2741,
-        name: "御骑",
+        name: "骑御",
         category: "BUFF",
         applyTo: "SELF",
         durationMs: 365 * 24 * 60 * 60 * 1000,
@@ -192,7 +192,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   ren_chi_cheng: {
     id: "ren_chi_cheng",
     name: "任驰骋",
-    description: "需在地面运功0.75秒，期间可以移动但跳跃会打断；完成后获得【御骑】、【任驰骋】12秒（攻击力提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
+    description: "需在地面运功0.75秒，期间可以移动但跳跃会打断；完成后获得【骑御】、【任驰骋】12秒（攻击力提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 900,
@@ -208,7 +208,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     buffs: [
       {
         buffId: 2741,
-        name: "御骑",
+        name: "骑御",
         category: "BUFF",
         applyTo: "SELF",
         durationMs: 365 * 24 * 60 * 60 * 1000,
@@ -5071,6 +5071,25 @@ export interface AbilityDescriptionReviewSnapshot {
   abilities: AbilityDescriptionReviewEntry[];
 }
 
+export interface AbilityCooldownReviewEntry {
+  id: string;
+  name: string;
+  description: string;
+  cooldownTicks: number;
+  baseCooldownTicks: number;
+  status: DescriptionReviewStatus;
+}
+
+export interface AbilityCooldownReviewSnapshot {
+  updatedAt: string | null;
+  abilities: AbilityCooldownReviewEntry[];
+}
+
+export interface AbilityAdControlReviewSnapshot {
+  updatedAt: string | null;
+  abilities: ReturnType<typeof buildAbilityEditorSnapshot>["abilities"];
+}
+
 const DESCRIPTION_REVIEW_SPECIAL_BAR_ABILITY_IDS = new Set(["dong_zhu_ji_wei", "hun_ya_nu_tao", "zhen_xia_che"]);
 
 function hasAbilityOverrideContent(entry: AbilityEditorOverrideEntry) {
@@ -5080,6 +5099,8 @@ function hasAbilityOverrideContent(entry: AbilityEditorOverrideEntry) {
       entry.numeric ||
       entry.description !== undefined ||
       entry.descriptionReviewStatus !== undefined ||
+      entry.adControlStatus !== undefined ||
+      entry.cooldownReviewStatus !== undefined ||
       entry.isProjectile !== undefined ||
       entry.dunLiWhitelisted !== undefined ||
       entry.noWeaponRequired !== undefined
@@ -5151,6 +5172,72 @@ export function setAbilityDescriptionOverride(abilityId: string, description: st
   abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
   rebuildAbilities();
   return buildAbilityDescriptionReviewSnapshot();
+}
+
+export function buildAbilityCooldownReviewSnapshot(): AbilityCooldownReviewSnapshot {
+  const resolvedAbilities = buildResolvedAbilities(BASE_ABILITIES, abilityPropertyOverrides);
+
+  const abilities = Object.values(resolvedAbilities)
+    .filter((ability) => (ability as any).specialBarAbility !== true || DESCRIPTION_REVIEW_SPECIAL_BAR_ABILITY_IDS.has(ability.id))
+    .map((ability) => {
+      const override = abilityPropertyOverrides[ability.id];
+      const baseAbility = BASE_ABILITIES[ability.id];
+      return {
+        id: ability.id,
+        name: ability.name,
+        description: ability.description,
+        cooldownTicks: Math.max(0, Math.round(Number(ability.cooldownTicks ?? 0))),
+        baseCooldownTicks: Math.max(0, Math.round(Number(baseAbility?.cooldownTicks ?? 0))),
+        status: override?.cooldownReviewStatus ?? "unfixed",
+      } satisfies AbilityCooldownReviewEntry;
+    })
+    .sort((left, right) => {
+      const statusOrder: Record<DescriptionReviewStatus, number> = { "needs-more": 1, unfixed: 2, fixed: 3 };
+      const statusDelta = statusOrder[left.status] - statusOrder[right.status];
+      if (statusDelta !== 0) return statusDelta;
+      return left.name.localeCompare(right.name, "zh-Hans-CN");
+    });
+
+  return {
+    updatedAt: abilityPropertyOverridesUpdatedAt,
+    abilities,
+  };
+}
+
+export function setAbilityCooldownReviewStatus(abilityId: string, status: DescriptionReviewStatus) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) throw new Error("ERR_ABILITY_NOT_FOUND");
+  if (!isDescriptionReviewStatus(status)) throw new Error("ERR_INVALID_DESCRIPTION_REVIEW_STATUS");
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+    cooldownReviewStatus: status,
+  };
+  abilityPropertyOverrides[abilityId] = nextEntry;
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+  return buildAbilityCooldownReviewSnapshot();
+}
+
+export function setAbilityCooldownReviewTicks(abilityId: string, cooldownTicks: number) {
+  if (!Number.isFinite(cooldownTicks) || cooldownTicks < 0) throw new Error("ERR_INVALID_ABILITY_NUMERIC_VALUE");
+  setAbilityEditorNumericValue(abilityId, "cooldownTicks", Math.max(0, Math.round(cooldownTicks)));
+  return buildAbilityCooldownReviewSnapshot();
+}
+
+export function setAbilityAdControlStatus(abilityId: string, status: DescriptionReviewStatus) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) throw new Error("ERR_ABILITY_NOT_FOUND");
+  if (!isDescriptionReviewStatus(status)) throw new Error("ERR_INVALID_DESCRIPTION_REVIEW_STATUS");
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+    adControlStatus: status,
+  };
+  abilityPropertyOverrides[abilityId] = nextEntry;
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+  return buildAbilityEditorSnapshot();
 }
 
 export function buildAbilityEditorSnapshot() {

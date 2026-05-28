@@ -32,6 +32,9 @@ export interface SafeZone {
   phase?: "idle" | "waiting" | "countdown" | "shrinking" | "complete";
   timelineMode?: "fast" | "full";
   damageMode?: "test" | "full";
+  autoFullHeal?: boolean;
+  autoSettle?: boolean;
+  testShortCooldown?: boolean;
   circleNumber?: number;
   totalCircles?: number;
   fullPoison?: boolean;
@@ -59,6 +62,23 @@ export interface PlayAreaBounds {
   minY: number;
   maxX: number;
   maxY: number;
+}
+
+export interface YumenResultRow {
+  rank: number;
+  userId: PlayerID;
+  username: string;
+  kills: number;
+  damage: number;
+  score: number;
+  reward: number;
+}
+
+export interface YumenResults {
+  endedAt: number;
+  autoLeaveAt: number;
+  winnerUserId?: PlayerID;
+  rows: YumenResultRow[];
 }
 
 // ==================== ACTIVE CHANNEL ====================
@@ -417,6 +437,7 @@ export interface GameState {
 
   gameOver: boolean;
   winnerUserId?: PlayerID;
+  yumenResults?: YumenResults;
   leaveNotice?: {
     userId: PlayerID;
     username: string;

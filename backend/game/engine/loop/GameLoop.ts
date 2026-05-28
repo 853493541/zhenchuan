@@ -12,7 +12,7 @@
 import { GameState, MovementInput, GroundZone, TargetEntity, SafeZone, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
 import { checkGameOver, resetDefeatedPlayersForTesting } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
-import { broadcastDefeatSystemChat, collectDefeatAnnouncementsFromEvents } from "../../services/chatMessages";
+import { broadcastDefeatSystemChat, collectDefeatAnnouncementsFromEvents, type DefeatAnnouncement } from "../../services/chatMessages";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
 import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap, resolveEntityHorizontalCollision } from "./movement";
@@ -55,8 +55,13 @@ import {
   YUMEN_KUANG_SHA_BUFF_ID,
   YUMEN_PIERCING_DAMAGE_TYPE,
   YUMEN_SAFE_ZONE_ABILITY,
+  YUMEN_SPECTATOR_ABILITY,
+  YUMEN_SPECTATOR_BUFF,
   YUMEN_SAFE_ZONE_TARGET_DIAMETERS,
   YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
+  YUMEN_ZHANYI_ABILITY,
+  YUMEN_ZHANYI_ABILITY_ID,
+  YUMEN_ZHANYI_BUFF,
   YUMEN_ZHUI_MING_BUFF,
   YUMEN_ZHUI_MING_BUFF_ID,
   YUMEN_ZHUI_MING_STACK_INTERVAL_MS,
@@ -67,9 +72,11 @@ import {
   getYumenSafeZoneDps,
   getYumenSafeZoneShrinkMs,
   getYumenSafeZoneWaitMs,
+  hasActiveYumenSpectatorBuff,
   normalizeYumenSafeZoneDamageMode,
   normalizeYumenSafeZoneTimelineMode,
 } from "../utils/yumenSafeZone";
+import { buildYumenResults, countYumenAlivePlayers } from "../utils/yumenResults";
 import {
   SAND_DISGUISE_ABILITY,
   SAND_DISGUISE_BUFF,
@@ -1554,6 +1561,23 @@ export class GameLoop {
   private syncYumenKuangShaBuff(player: any, outsideSafeZone: boolean, now: number): boolean {
     if (!this.isYumenMode || !Array.isArray(player?.buffs)) return false;
     const matchingBuffs = player.buffs.filter((buff: any) => buff.buffId === YUMEN_KUANG_SHA_BUFF_ID || buff.buffId === YUMEN_ZHUI_MING_BUFF_ID);
+    if (hasActiveYumenSpectatorBuff(player, now)) {
+      if (matchingBuffs.length === 0 && player.yumenKuangShaStartedAt === undefined) return false;
+      player.buffs = player.buffs.filter((buff: any) => buff.buffId !== YUMEN_KUANG_SHA_BUFF_ID && buff.buffId !== YUMEN_ZHUI_MING_BUFF_ID);
+      delete player.yumenKuangShaStartedAt;
+      for (const buff of matchingBuffs) {
+        pushBuffExpired(this.state, {
+          targetUserId: player.userId,
+          buffId: buff.buffId,
+          buffName: buff.name,
+          buffCategory: buff.category,
+          sourceAbilityId: buff.sourceAbilityId,
+          sourceAbilityName: buff.sourceAbilityName,
+          sourceUserId: buff.sourceUserId,
+        });
+      }
+      return true;
+    }
     const activeKuangSha = matchingBuffs.find((buff: any) => buff.buffId === YUMEN_KUANG_SHA_BUFF_ID && isRuntimeBuffActive(buff, now));
     if (outsideSafeZone) {
       let changed = false;
@@ -1613,6 +1637,162 @@ export class GameLoop {
       });
     }
     return true;
+  }
+
+  private applyYumenDeathState(player: any, now: number): { changed: boolean; handChanged: boolean; consumablesChanged: boolean; worldObjectsChanged: boolean } {
+    if (!this.isYumenMode || !player || hasActiveYumenSpectatorBuff(player, now)) {
+      return { changed: false, handChanged: false, consumablesChanged: false, worldObjectsChanged: false };
+    }
+
+    const previousHand = Array.isArray(player.hand) ? JSON.parse(JSON.stringify(player.hand)) : [];
+    player.yumenPreDeathHand = previousHand;
+    const consumablesChanged = Object.keys(player.consumableCounts ?? {}).length > 0 || Object.keys(player.consumableCooldowns ?? {}).length > 0;
+
+    const removedBuffs = Array.isArray(player.buffs) ? [...player.buffs] : [];
+    for (const buff of removedBuffs) {
+      removeLinkedShield(player as any, buff as any);
+      pushBuffExpired(this.state, {
+        targetUserId: player.userId,
+        buffId: buff.buffId,
+        buffName: buff.name,
+        buffCategory: buff.category,
+        sourceAbilityId: buff.sourceAbilityId,
+        sourceAbilityName: buff.sourceAbilityName,
+        sourceUserId: buff.sourceUserId,
+      });
+    }
+
+    player.hp = 0;
+    player.shield = 0;
+    player.yumenDefeated = true;
+    player.yumenDefeatedAt = now;
+    player.buffs = [];
+    player.hand = [];
+    player.consumableCounts = {};
+    player.consumableCooldowns = {};
+    player.specialAbilityStates = {};
+    player.globalGcdTicks = 0;
+    delete player.visualGcd;
+    delete player.activeChannel;
+    delete player.activeDash;
+    delete player.targetSelection;
+    delete player.yumenKuangShaStartedAt;
+    const playerCombatLinks = (player as any).combatLinks && typeof (player as any).combatLinks === "object" && !Array.isArray((player as any).combatLinks)
+      ? (player as any).combatLinks
+      : {};
+    const playerRelatedCombatUserId = Object.keys(playerCombatLinks)[0];
+    const playerWasInCombat = player.inCombat === true || Object.keys(playerCombatLinks).length > 0;
+    delete player.combatLinks;
+    player.inCombat = false;
+    if (playerWasInCombat) {
+      this.state.events.push({
+        id: randomUUID(),
+        timestamp: now,
+        turn: this.state.turn,
+        type: "COMBAT_STATUS",
+        actorUserId: player.userId,
+        targetUserId: player.userId,
+        combatStatus: "exit",
+        inCombat: false,
+        relatedUserId: playerRelatedCombatUserId,
+      });
+    }
+
+    for (const other of this.state.players ?? []) {
+      if (other.userId === player.userId) continue;
+      const otherLinks = (other as any).combatLinks && typeof (other as any).combatLinks === "object" && !Array.isArray((other as any).combatLinks)
+        ? (other as any).combatLinks
+        : {};
+      if (otherLinks[player.userId]) {
+        delete otherLinks[player.userId];
+      }
+      if (Object.keys(otherLinks).length === 0) {
+        const otherWasInCombat = (other as any).inCombat === true;
+        delete (other as any).combatLinks;
+        (other as any).inCombat = false;
+        if (otherWasInCombat) {
+          this.state.events.push({
+            id: randomUUID(),
+            timestamp: now,
+            turn: this.state.turn,
+            type: "COMBAT_STATUS",
+            actorUserId: other.userId,
+            targetUserId: other.userId,
+            combatStatus: "exit",
+            inCombat: false,
+            relatedUserId: player.userId,
+          });
+        }
+      }
+    }
+    clearTargetSelectionsTargetingPlayer(this.state, player.userId);
+
+    const groundZonesBefore = this.state.groundZones?.length ?? 0;
+    if (Array.isArray(this.state.groundZones)) {
+      this.state.groundZones = this.state.groundZones.filter((zone: any) => zone?.ownerUserId !== player.userId);
+    }
+    const entitiesBefore = this.state.entities?.length ?? 0;
+    if (Array.isArray(this.state.entities)) {
+      this.state.entities = this.state.entities.filter((entity: any) => entity?.ownerUserId !== player.userId);
+    }
+
+    addBuff({
+      state: this.state,
+      sourceUserId: player.userId,
+      targetUserId: player.userId,
+      ability: YUMEN_SPECTATOR_ABILITY,
+      buffTarget: player,
+      buff: YUMEN_SPECTATOR_BUFF,
+    });
+
+    return {
+      changed: true,
+      handChanged: true,
+      consumablesChanged,
+      worldObjectsChanged: (this.state.groundZones?.length ?? 0) !== groundZonesBefore || (this.state.entities?.length ?? 0) !== entitiesBefore,
+    };
+  }
+
+  private applyYumenKillReward(attackerUserId: string | null | undefined, defeatedUserIds: Set<string>, now: number): boolean {
+    if (!attackerUserId || defeatedUserIds.has(attackerUserId)) return false;
+    const attacker = this.state.players.find((player) => player.userId === attackerUserId);
+    if (!attacker || attacker.hp <= 0 || hasActiveYumenSpectatorBuff(attacker as any, now)) return false;
+    addBuff({
+      state: this.state,
+      sourceUserId: attacker.userId,
+      targetUserId: attacker.userId,
+      ability: YUMEN_ZHANYI_ABILITY,
+      buffTarget: attacker as any,
+      buff: YUMEN_ZHANYI_BUFF,
+    });
+    return true;
+  }
+
+  private getYumenDefeatEventName(userId: string | null | undefined): string | undefined {
+    if (!userId) return undefined;
+    const stateNames = (this.state as any).playerNames;
+    const stateName = stateNames && typeof stateNames === "object" ? stateNames[userId] : undefined;
+    if (typeof stateName === "string" && stateName.trim()) return stateName.trim();
+    const player = this.state.players.find((entry: any) => entry.userId === userId) as any;
+    if (typeof player?.username === "string" && player.username.trim()) return player.username.trim();
+    return `User${String(userId).slice(-4)}`;
+  }
+
+  private pushYumenDefeatEvents(announcements: DefeatAnnouncement[], now: number) {
+    for (const announcement of announcements) {
+      this.state.events.push({
+        id: randomUUID(),
+        timestamp: now,
+        turn: this.state.turn,
+        type: "YUMEN_DEFEAT",
+        actorUserId: announcement.attackerUserId ?? announcement.defeatedUserId,
+        targetUserId: announcement.defeatedUserId,
+        attackerUserId: announcement.attackerUserId ?? null,
+        defeatedUserId: announcement.defeatedUserId,
+        attackerName: this.getYumenDefeatEventName(announcement.attackerUserId) ?? "大漠狂沙",
+        defeatedName: this.getYumenDefeatEventName(announcement.defeatedUserId),
+      });
+    }
   }
 
   private syncDynamicMapContext() {
@@ -3508,6 +3688,8 @@ export class GameLoop {
     let buffsChanged = this.state.players.some(
       (p, idx) => (p.buffs?.length ?? 0) !== buffCountsBefore[idx]
     ) || movementBuffsChanged || channelStateChanged || movementStateChanged;
+    let handStateChanged = false;
+    let consumableStateChanged = false;
 
     // Cancel channel buffs whose out-of-range condition is exceeded (e.g. 云飞玉皇)
     if (this.state.players.length === 2) {
@@ -3628,7 +3810,10 @@ export class GameLoop {
                 }
                 buffsChanged = true;
               } else if (e.type === "PERIODIC_HEAL") {
-                const healRoll = resolveHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0 });
+                const noCritHeal = buff.sourceAbilityId === YUMEN_ZHANYI_ABILITY_ID || (e as any).noCrit === true;
+                const healRoll = noCritHeal
+                  ? resolveNonCritHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0, scaleFlatHeal: (e as any).scaleFlatHeal })
+                  : resolveHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0, scaleFlatHeal: (e as any).scaleFlatHeal });
                 const healAmount = applyYumenKuangShaHealPenalty(buff.sourceAbilityId, player as any, healRoll.heal, now);
                 const applied = applyHealToTarget(player as any, healAmount);
                 if (applied > 0) {
@@ -3642,6 +3827,7 @@ export class GameLoop {
                     effectType: "PERIODIC_HEAL",
                     value: applied,
                     isCrit: healRoll.isCrit,
+                    suppressCritLabel: noCritHeal ? true : undefined,
                   });
                 }
                 buffsChanged = true;
@@ -4491,7 +4677,7 @@ export class GameLoop {
       if (dps > 0 && now - this.lastZoneDamageAt >= 1000) {
         this.lastZoneDamageAt = now;
         for (const player of this.state.players) {
-          if (player.hp <= 0) continue;
+          if (player.hp <= 0 || hasActiveYumenSpectatorBuff(player as any, now)) continue;
           if (this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf, zoneShape)) {
             const zoneDamage = this.isYumenMode ? dps * getYumenKuangShaDamageMultiplier(player as any, now) : dps;
             const szResult = applyPiercingDamageToTarget(player as any, zoneDamage);
@@ -5739,17 +5925,86 @@ export class GameLoop {
     // 2. Check win condition. Testing mode keeps the same battle running by
     // restoring everyone when any player hits 0 HP.
     const winStart = performance.now();
-    const defeatedUserIds = this.state.players.filter((player) => player.hp <= 0).map((player) => player.userId);
-    const defeatAnnouncements = collectDefeatAnnouncementsFromEvents(this.state, eventDiffStart, defeatedUserIds);
-    if (resetDefeatedPlayersForTesting(this.state)) {
-      for (const announcement of defeatAnnouncements) {
-        void broadcastDefeatSystemChat(this.gameId, announcement.defeatedUserId, announcement.attackerUserId).catch((err) => {
-          console.error(`[GameLoop] Failed to broadcast defeat chat for ${this.gameId}:`, err);
+    if (this.isYumenMode) {
+      const defeatedUserIds = this.state.players
+        .filter((player: any) => player.hp <= 0 && player.yumenDefeated !== true && !hasActiveYumenSpectatorBuff(player as any, now))
+        .map((player) => player.userId);
+      const defeatedUserIdSet = new Set(defeatedUserIds);
+      const defeatAnnouncements = collectDefeatAnnouncementsFromEvents(
+        this.state,
+        eventDiffStart,
+        defeatedUserIds,
+        { includeHistoricalFallback: false, allowUnattributed: true, recentDamageFallbackMs: 3000 },
+      );
+
+      if (defeatedUserIds.length > 0) {
+        if (this.state.safeZone?.autoFullHeal === true) {
+          this.state.safeZone.autoFullHeal = false;
+        }
+
+        const rewardedAttackers = new Set<string>();
+        for (const announcement of defeatAnnouncements) {
+          const attackerUserId = announcement.attackerUserId ?? null;
+          if (!attackerUserId || rewardedAttackers.has(attackerUserId)) continue;
+          if (this.applyYumenKillReward(attackerUserId, defeatedUserIdSet, now)) {
+            rewardedAttackers.add(attackerUserId);
+            buffsChanged = true;
+          }
+        }
+
+        for (const defeatedUserId of defeatedUserIds) {
+          const defeatedPlayer = this.state.players.find((player) => player.userId === defeatedUserId);
+          const result = this.applyYumenDeathState(defeatedPlayer as any, now);
+          if (result.changed) {
+            buffsChanged = true;
+            handStateChanged = handStateChanged || result.handChanged;
+            consumableStateChanged = consumableStateChanged || result.consumablesChanged;
+            movementStateChanged = true;
+            combatStatusChanged = true;
+          }
+        }
+
+        this.state.gameOver = false;
+        delete (this.state as any).winnerUserId;
+        this.pushYumenDefeatEvents(defeatAnnouncements, now);
+
+        for (const announcement of defeatAnnouncements) {
+          void broadcastDefeatSystemChat(this.gameId, announcement.defeatedUserId, announcement.attackerUserId, {
+            defeatedName: this.getYumenDefeatEventName(announcement.defeatedUserId),
+            attackerName: this.getYumenDefeatEventName(announcement.attackerUserId),
+          }).catch((err) => {
+            console.error(`[GameLoop] Failed to broadcast defeat chat for ${this.gameId}:`, err);
+          });
+        }
+      }
+
+      if (!this.state.gameOver && this.state.safeZone?.autoSettle === true && countYumenAlivePlayers(this.state, now) <= 1) {
+        const yumenResults = buildYumenResults(this.state, now);
+        this.state.gameOver = true;
+        this.state.winnerUserId = yumenResults.winnerUserId;
+        (this.state as any).yumenResults = yumenResults;
+        this.state.events.push({
+          id: randomUUID(),
+          timestamp: now,
+          turn: this.state.turn,
+          type: "YUMEN_GAME_END",
+          actorUserId: yumenResults.winnerUserId ?? "system",
+          winnerUserId: yumenResults.winnerUserId,
         });
       }
-      buffsChanged = true;
     } else {
-      checkGameOver(this.state);
+      const defeatedUserIds = this.state.players.filter((player) => player.hp <= 0).map((player) => player.userId);
+      const defeatAnnouncements = collectDefeatAnnouncementsFromEvents(this.state, eventDiffStart, defeatedUserIds);
+      if (resetDefeatedPlayersForTesting(this.state)) {
+        for (const announcement of defeatAnnouncements) {
+          void broadcastDefeatSystemChat(this.gameId, announcement.defeatedUserId, announcement.attackerUserId).catch((err) => {
+            console.error(`[GameLoop] Failed to broadcast defeat chat for ${this.gameId}:`, err);
+          });
+        }
+        buffsChanged = true;
+      } else {
+        checkGameOver(this.state);
+      }
     }
     const winTime = performance.now() - winStart;
 
@@ -5905,9 +6160,16 @@ export class GameLoop {
       // or when new events were emitted this tick (e.g. pure channel completion).
       const hasNewEvents = this.state.events.length > eventDiffStart;
       const eventsPruned = this.pruneEventHistoryForBroadcast();
-      if (buffsChanged || hasNewEvents || channelStateChanged || eventsPruned || combatStatusChanged) {
+      if (buffsChanged || hasNewEvents || channelStateChanged || eventsPruned || combatStatusChanged || handStateChanged || consumableStateChanged) {
         this.state.players.forEach((p, pidx) => {
           pushPatchIfChanged(`/players/${pidx}/buffs`, p.buffs);
+          if (handStateChanged) {
+            pushPatchIfChanged(`/players/${pidx}/hand`, p.hand);
+          }
+          if (consumableStateChanged) {
+            pushPatchIfChanged(`/players/${pidx}/consumableCounts`, (p as any).consumableCounts ?? {});
+            pushPatchIfChanged(`/players/${pidx}/consumableCooldowns`, (p as any).consumableCooldowns ?? {});
+          }
         });
         // Also push hp patches if periodic effects changed them
         this.state.players.forEach((p, pidx) => {
@@ -5942,6 +6204,9 @@ export class GameLoop {
           diff.push({ path: "/gameOver", value: true });
           if (this.state.winnerUserId) {
             diff.push({ path: "/winnerUserId", value: this.state.winnerUserId });
+          }
+          if ((this.state as any).yumenResults) {
+            diff.push({ path: "/yumenResults", value: (this.state as any).yumenResults });
           }
           // Capture broadcast payload before the async save so we close over the
           // correct values even if the loop is stopped/cleared before .then() fires.

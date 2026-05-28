@@ -162,6 +162,9 @@ export type GameEventType =
   | "DODGE"
   | "BUFF_APPLIED"
   | "BUFF_EXPIRED"
+  | "YUMEN_DEFEAT"
+  | "YUMEN_REVIVE"
+  | "YUMEN_GAME_END"
   | "COMBAT_STATUS"
   | "END_TURN";
 
@@ -171,6 +174,12 @@ export interface GameEvent {
   type: GameEventType;
   actorUserId: string;
   targetUserId?: string;
+  attackerUserId?: string | null;
+  defeatedUserId?: string;
+  revivedUserId?: string;
+  winnerUserId?: string;
+  attackerName?: string | null;
+  defeatedName?: string;
   entityId?: string;
   entityName?: string;
 
@@ -239,6 +248,9 @@ export interface SafeZone {
   phase?: 'idle' | 'waiting' | 'countdown' | 'shrinking' | 'complete';
   timelineMode?: 'fast' | 'full';
   damageMode?: 'test' | 'full';
+  autoFullHeal?: boolean;
+  autoSettle?: boolean;
+  testShortCooldown?: boolean;
   circleNumber?: number;
   totalCircles?: number;
   fullPoison?: boolean;
@@ -308,6 +320,23 @@ export interface TargetEntity {
   wallNormal?: { x: number; y: number };
 }
 
+export interface YumenResultRow {
+  rank: number;
+  userId: string;
+  username: string;
+  kills: number;
+  damage: number;
+  score: number;
+  reward: number;
+}
+
+export interface YumenResults {
+  endedAt: number;
+  autoLeaveAt: number;
+  winnerUserId?: string;
+  rows: YumenResultRow[];
+}
+
 export interface GameState {
   turn: number;
   activePlayerIndex: number;
@@ -315,6 +344,7 @@ export interface GameState {
 
   gameOver: boolean;
   winnerUserId?: string;
+  yumenResults?: YumenResults;
   leaveNotice?: {
     userId: string;
     username: string;

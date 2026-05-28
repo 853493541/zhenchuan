@@ -9,7 +9,7 @@ import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, ChannelBarHost, type ChannelBarData } from './ChannelBar';
 import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowUp, ArrowUpToLine, Check, ChevronDown, Clipboard, CornerDownLeft, Eraser, Gamepad2, Image as ImageIcon, LayoutGrid, ListChecks, MessageCircle, Minus, Pencil, Plus, Puzzle, RotateCcw, Save, Search, Settings, Smile, Star, Swords, Trash2, UserRound, Volume2, Wind, X } from 'lucide-react';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
-import type { ActiveBuff, ActiveChannel, ChatChannel, ChatMessage, PickupItem, GroundZone, TargetEntity, TargetSelection, PlayAreaBounds, SafeZone } from '../../types';
+import type { ActiveBuff, ActiveChannel, ChatChannel, ChatMessage, PickupItem, GroundZone, TargetEntity, TargetSelection, PlayAreaBounds, SafeZone, YumenResults } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles, type SceneRuntimeMetrics } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
@@ -59,9 +59,13 @@ function quantizeMovementValue(value: number) {
   return Math.round(value * MOVEMENT_SIGNATURE_PRECISION) / MOVEMENT_SIGNATURE_PRECISION;
 }
 
+function isVectorMovementPayload(direction: MovementDirectionPayload): direction is { dx: number; dy: number; jump: boolean; backpedalOnly?: boolean } {
+  return !!direction && 'dx' in direction;
+}
+
 function movementPayloadSignature(direction: MovementDirectionPayload, facing: { x: number; y: number }) {
   const normalizedDirection = direction
-    ? ('dx' in direction || 'dy' in direction)
+    ? isVectorMovementPayload(direction)
       ? {
           dx: quantizeMovementValue(direction.dx ?? 0),
           dy: quantizeMovementValue(direction.dy ?? 0),
@@ -316,6 +320,23 @@ type InGameWarningEvent = {
   text: string;
 };
 
+type YumenDefeatNotice = {
+  id: string;
+  attackerName?: string | null;
+  defeatedName: string;
+  attributed: boolean;
+};
+
+type YumenKillConfirmNotice = {
+  id: string;
+  defeatedName: string;
+};
+
+type YumenHudSize = {
+  width: number;
+  height: number;
+};
+
 type UiPosition = { left: number; top: number };
 type UiViewportSize = { w: number; h: number };
 type UiPositionStoragePayload = {
@@ -369,7 +390,7 @@ function normalizeUiPositionStoragePayload(raw: unknown): UiPositionStoragePaylo
     return EMPTY_UI_POSITION_STORAGE_PAYLOAD;
   }
 
-  const payload = raw as { positions?: unknown; viewport?: unknown };
+  const payload = raw as { positions?: unknown; viewport?: unknown; chat?: unknown };
   return {
     positions: sanitizeUiPositions(payload.positions ?? raw),
     viewport: isValidUiViewportSize(payload.viewport)
@@ -420,6 +441,7 @@ const CAMERA_SETTINGS_STORAGE_KEY = 'zhenchuan-camera-settings-v1';
 const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
 const YUMEN_DAMAGE_MODE_STORAGE_KEY = 'zhenchuan-yumen-safe-zone-damage-mode-v1';
 const YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY = 'zhenchuan-yumen-auto-full-shrink-v1';
+const YUMEN_AUTO_SETTLE_STORAGE_KEY = 'zhenchuan-yumen-auto-settle-v1';
 const YUMEN_SHOW_FUTURE_SAFE_ZONE_STORAGE_KEY = 'zhenchuan-yumen-show-future-safe-zone-v1';
 const YUMEN_SAFE_ZONE_DISPLAY_MODE_STORAGE_KEY = 'zhenchuan-yumen-safe-zone-display-mode-v1';
 const ABILITY_PANEL_MIN_SCALE = 0.85;
@@ -465,6 +487,34 @@ const IN_GAME_WARNING_SCALE_STORAGE_KEY = 'zhenchuan-ingame-warning-scale-v1';
 const IN_GAME_WARNING_UI_KEY = 'in-game-warning';
 const IN_GAME_WARNING_DURATION_MS = 1500;
 const IN_GAME_WARNING_PREVIEW_TEXT = '无法施展该招式';
+const YUMEN_KILL_NOTICE_UI_KEY = 'yumen-kill-notice';
+const YUMEN_KILL_CONFIRM_UI_KEY = 'yumen-kill-confirm';
+const YUMEN_ALIVE_COUNT_UI_KEY = 'yumen-alive-count';
+const YUMEN_KILL_NOTICE_DURATION_MS = 5000;
+const YUMEN_KILL_CONFIRM_DURATION_MS = 3000;
+const YUMEN_KILL_NOTICE_SIZE_STORAGE_KEY = 'zhenchuan-yumen-kill-notice-size-v1';
+const YUMEN_KILL_CONFIRM_SIZE_STORAGE_KEY = 'zhenchuan-yumen-kill-confirm-size-v1';
+const YUMEN_ALIVE_COUNT_SIZE_STORAGE_KEY = 'zhenchuan-yumen-alive-count-size-v1';
+const YUMEN_KILL_NOTICE_BASE_WIDTH = 430;
+const YUMEN_KILL_NOTICE_BASE_HEIGHT = 86;
+const YUMEN_KILL_CONFIRM_BASE_WIDTH = 330;
+const YUMEN_KILL_CONFIRM_BASE_HEIGHT = 78;
+const YUMEN_ALIVE_COUNT_BASE_WIDTH = 168;
+const YUMEN_ALIVE_COUNT_BASE_HEIGHT = 74;
+const YUMEN_HUD_SETTING_MIN_SCALE = 0.5;
+const YUMEN_HUD_SETTING_MAX_SCALE = 2;
+const YUMEN_KILL_NOTICE_MIN_WIDTH = Math.round(YUMEN_KILL_NOTICE_BASE_WIDTH * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_KILL_NOTICE_MAX_WIDTH = Math.round(YUMEN_KILL_NOTICE_BASE_WIDTH * YUMEN_HUD_SETTING_MAX_SCALE);
+const YUMEN_KILL_NOTICE_MIN_HEIGHT = Math.round(YUMEN_KILL_NOTICE_BASE_HEIGHT * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_KILL_NOTICE_MAX_HEIGHT = Math.round(YUMEN_KILL_NOTICE_BASE_HEIGHT * YUMEN_HUD_SETTING_MAX_SCALE);
+const YUMEN_KILL_CONFIRM_MIN_WIDTH = Math.round(YUMEN_KILL_CONFIRM_BASE_WIDTH * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_KILL_CONFIRM_MAX_WIDTH = Math.round(YUMEN_KILL_CONFIRM_BASE_WIDTH * YUMEN_HUD_SETTING_MAX_SCALE);
+const YUMEN_KILL_CONFIRM_MIN_HEIGHT = Math.round(YUMEN_KILL_CONFIRM_BASE_HEIGHT * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_KILL_CONFIRM_MAX_HEIGHT = Math.round(YUMEN_KILL_CONFIRM_BASE_HEIGHT * YUMEN_HUD_SETTING_MAX_SCALE);
+const YUMEN_ALIVE_COUNT_MIN_WIDTH = Math.round(YUMEN_ALIVE_COUNT_BASE_WIDTH * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_ALIVE_COUNT_MAX_WIDTH = Math.round(YUMEN_ALIVE_COUNT_BASE_WIDTH * YUMEN_HUD_SETTING_MAX_SCALE);
+const YUMEN_ALIVE_COUNT_MIN_HEIGHT = Math.round(YUMEN_ALIVE_COUNT_BASE_HEIGHT * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_ALIVE_COUNT_MAX_HEIGHT = Math.round(YUMEN_ALIVE_COUNT_BASE_HEIGHT * YUMEN_HUD_SETTING_MAX_SCALE);
 const REQUIRED_POWER_MISSING_WARNING = '经脉受损 无法运功';
 const DASH_GROUND_TARGET_ABILITY_IDS = new Set(['lin_shi_fei_zhua', 'han_di', 'gu_feng_sa_ta']);
 const JUMP_CORRECTION_WARNING_MIN_XY = 0.6;
@@ -516,6 +566,9 @@ const CATCAKE_DEFAULT_UI_POSITIONS: Record<string, UiPosition> = {
   [HEIGHT_COUNTER_UI_KEY]: { left: 540, top: 816 },
   [DISTANCE_INDICATOR_UI_KEY]: { left: 1147, top: 383 },
   [IN_GAME_WARNING_UI_KEY]: { left: 960, top: 151 },
+  [YUMEN_KILL_NOTICE_UI_KEY]: { left: 745, top: 82 },
+  [YUMEN_KILL_CONFIRM_UI_KEY]: { left: 795, top: 420 },
+  [YUMEN_ALIVE_COUNT_UI_KEY]: { left: 1704, top: 292 },
   [ITEM_BAR_UI_KEY]: { left: 647, top: 751 },
   [HEART_STATS_UI_KEY]: { left: 194, top: 466 },
   [MARTIAL_PANEL_UI_KEY]: { left: 24, top: 88 },
@@ -1038,6 +1091,7 @@ const BASE_HASTE_RATE_PCT = 23.54;
 const BASE_GCD_SECONDS = 1.19;
 const BASE_GCD_MS = BASE_GCD_SECONDS * 1000;
 const BASE_GCD_WINDOW_TICKS = Math.round(BASE_GCD_SECONDS * SERVER_TICK_RATE);
+const TEST_COOLDOWN_CAP_TICKS = 3 * SERVER_TICK_RATE;
 const BASE_MOVE_SPEED_PER_TICK = 0.1666667;
 const AIR_SHIFT_DURATION_TICKS = SERVER_TICK_RATE;
 const LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS = new Set([1014, 1017, 2001, 2003, 2712]);
@@ -1143,6 +1197,61 @@ function normalizeNumberInRange(value: unknown, fallback: number, min: number, m
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.round(Math.max(min, Math.min(max, numeric)));
+}
+
+function normalizeYumenHudSettingScale(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.round(Math.max(YUMEN_HUD_SETTING_MIN_SCALE, Math.min(YUMEN_HUD_SETTING_MAX_SCALE, numeric)) * 10) / 10;
+}
+
+function getYumenHudSettingScale(value: number, base: number): number {
+  return normalizeYumenHudSettingScale(value / base);
+}
+
+function scaleYumenHudSettingValue(scale: unknown, base: number, normalize: (value: unknown) => number): number {
+  return normalize(base * normalizeYumenHudSettingScale(scale));
+}
+
+function normalizeYumenKillNoticeWidth(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_KILL_NOTICE_BASE_WIDTH, YUMEN_KILL_NOTICE_MIN_WIDTH, YUMEN_KILL_NOTICE_MAX_WIDTH);
+}
+
+function normalizeYumenKillNoticeHeight(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_KILL_NOTICE_BASE_HEIGHT, YUMEN_KILL_NOTICE_MIN_HEIGHT, YUMEN_KILL_NOTICE_MAX_HEIGHT);
+}
+
+function normalizeYumenKillConfirmWidth(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_KILL_CONFIRM_BASE_WIDTH, YUMEN_KILL_CONFIRM_MIN_WIDTH, YUMEN_KILL_CONFIRM_MAX_WIDTH);
+}
+
+function normalizeYumenKillConfirmHeight(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_KILL_CONFIRM_BASE_HEIGHT, YUMEN_KILL_CONFIRM_MIN_HEIGHT, YUMEN_KILL_CONFIRM_MAX_HEIGHT);
+}
+
+function normalizeYumenAliveCountWidth(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_ALIVE_COUNT_BASE_WIDTH, YUMEN_ALIVE_COUNT_MIN_WIDTH, YUMEN_ALIVE_COUNT_MAX_WIDTH);
+}
+
+function normalizeYumenAliveCountHeight(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_ALIVE_COUNT_BASE_HEIGHT, YUMEN_ALIVE_COUNT_MIN_HEIGHT, YUMEN_ALIVE_COUNT_MAX_HEIGHT);
+}
+
+function normalizeYumenHudSize(value: unknown, defaults: YumenHudSize, normalizeWidth: (value: unknown) => number, normalizeHeight: (value: unknown) => number): YumenHudSize {
+  const candidate = value && typeof value === 'object' ? value as Partial<YumenHudSize> : {};
+  return {
+    width: normalizeWidth(candidate.width ?? defaults.width),
+    height: normalizeHeight(candidate.height ?? defaults.height),
+  };
+}
+
+function loadYumenHudSize(storageKey: string, defaults: YumenHudSize, normalizeWidth: (value: unknown) => number, normalizeHeight: (value: unknown) => number): YumenHudSize {
+  try {
+    if (typeof window === 'undefined') return defaults;
+    return normalizeYumenHudSize(JSON.parse(localStorage.getItem(storageKey) ?? '{}'), defaults, normalizeWidth, normalizeHeight);
+  } catch {
+    return defaults;
+  }
 }
 
 function normalizeMartialPanelWidth(value: unknown): number {
@@ -2392,6 +2501,8 @@ function facingArrow(facing: { x: number; y: number } | undefined): string {
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
 const STEALTH_ABILITY_IDS = new Set(['anchen_misan', 'fuguang_lueying', 'tiandi_wuji', 'hua_die']);
 const UNTARGETABLE_BUFF_IDS = new Set([1008]);
+const YUMEN_KUANG_SHA_BUFF_ID = 990200;
+const YUMEN_SPECTATOR_BUFF_ID = 990202;
 const DISGUISE_BUFF_IDS = new Set([980001]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const HONG_MENG_TIAN_JIN_BUFF_IDS = new Set([2645]);
@@ -2537,6 +2648,18 @@ function blocksTargetingClient(buffs?: ActiveBuff[]): boolean {
     buffNameIncludes(b, '隐身') ||
     buffNameIncludes(b, '遁影') ||
     buffNameIncludes(b, '不可选中')
+  );
+}
+
+function hasYumenSpectatorClient(buffs?: ActiveBuff[]): boolean {
+  return activeBuffsClient(buffs).some((b: any) =>
+    Number(b?.buffId) === YUMEN_SPECTATOR_BUFF_ID || buffNameIncludes(b, '观战中')
+  );
+}
+
+function hasYumenKuangShaClient(buffs?: ActiveBuff[]): boolean {
+  return activeBuffsClient(buffs).some((b: any) =>
+    Number(b?.buffId) === YUMEN_KUANG_SHA_BUFF_ID || buffNameIncludes(b, '狂沙')
   );
 }
 
@@ -3259,7 +3382,11 @@ function getConsumableCooldownRemainingMs(player: any, consumableId: ConsumableI
 
 function getConsumableRemainingCount(player: any, consumable: ConsumableItem): number {
   const fallback = Number(consumable.startingCount ?? 0);
-  const remaining = Number(player?.consumableCounts?.[consumable.id] ?? fallback);
+  const counts = player?.consumableCounts;
+  const hasExplicitCounts = counts && typeof counts === 'object';
+  const remaining = Number(hasExplicitCounts
+    ? Object.prototype.hasOwnProperty.call(counts, consumable.id) ? counts[consumable.id] : 0
+    : fallback);
   if (!Number.isFinite(remaining)) return Math.max(0, fallback);
   return Math.max(0, Math.floor(remaining));
 }
@@ -3986,10 +4113,10 @@ function YumenMiniMap({
 }
 
 interface BattleArenaProps {
-  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; consumableCooldowns?: Record<string, { expiresAt: number }>; consumableCounts?: Record<string, number>; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
-  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }> };
+  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; activeDash?: any; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; consumableCooldowns?: Record<string, { expiresAt: number }>; consumableCounts?: Record<string, number>; globalGcdTicks?: number; visualGcd?: VisualGcdState | null; moveSpeed?: number; tiYunZongPenaltyConsumed?: boolean; yumenDefeated?: boolean; yumenDefeatedAt?: number; specialAbilityStates?: Record<string, any> };
+  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; yumenDefeated?: boolean; yumenDefeatedAt?: number };
   /** All other players (opponents) — supports 1v1 and N-player modes */
-  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }> }[];
+  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; yumenDefeated?: boolean; yumenDefeatedAt?: number }[];
   gameId: string;
   onCastAbility: (
     abilityInstanceId: string,
@@ -4022,6 +4149,7 @@ interface BattleArenaProps {
   groundZones?: GroundZone[];
   /** HP-bearing targetable entities (e.g. 逐云寒蕊) */
   entities?: TargetEntity[];
+  yumenResults?: YumenResults;
   chatMessages?: ChatMessage[];
   onSendChatMessage?: (text: string, channel: ChatChannel) => Promise<{ ok: boolean; error?: string } | void> | { ok: boolean; error?: string } | void;
   onFetchChatMessages?: () => Promise<{ ok: boolean; messages?: ChatMessage[]; error?: string }>;
@@ -4056,6 +4184,7 @@ export default function BattleArena({
   playArea,
   groundZones,
   entities,
+  yumenResults,
   chatMessages = [],
   onSendChatMessage,
   onFetchChatMessages,
@@ -4063,6 +4192,20 @@ export default function BattleArena({
 }: BattleArenaProps) {
   const isExportedMap = isExportedMapMode(mode);
   const isYumenMode = isYumen1v1BasicMode(mode);
+  const yumenDefeatedUserIdsFromEvents = useMemo(() => {
+    if (!isYumenMode) return new Set<string>();
+    const defeatedIds = new Set<string>();
+    for (const event of events) {
+      if (event?.type === 'YUMEN_DEFEAT') {
+        const defeatedUserId = typeof event.defeatedUserId === 'string' ? event.defeatedUserId : event.targetUserId;
+        if (typeof defeatedUserId === 'string' && defeatedUserId) defeatedIds.add(defeatedUserId);
+      } else if (event?.type === 'YUMEN_REVIVE') {
+        const revivedUserId = typeof event.revivedUserId === 'string' ? event.revivedUserId : event.targetUserId;
+        if (typeof revivedUserId === 'string' && revivedUserId) defeatedIds.delete(revivedUserId);
+      }
+    }
+    return defeatedIds;
+  }, [events, isYumenMode]);
   const mapData = useMemo(() => getMapForMode(mode), [mode]);
   const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : isExportedMap ? mapData.width : PUBG_WIDTH;
   const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : isExportedMap ? mapData.height : PUBG_HEIGHT;
@@ -4159,22 +4302,55 @@ export default function BattleArena({
     () => ((opponents && opponents.length > 0 ? opponents : [opponent]).filter(Boolean)),
     [opponents, opponent],
   );
+  const yumenSpectatorUserIds = useMemo(() => {
+    if (!isYumenMode) return new Set<string>();
+    const ids = new Set<string>();
+    for (const playerEntry of [me, ...opponentsList]) {
+      if (!playerEntry?.userId) continue;
+      if (hasYumenSpectatorClient(playerEntry.buffs) || playerEntry.yumenDefeated === true) {
+        ids.add(playerEntry.userId);
+        continue;
+      }
+      if (yumenDefeatedUserIdsFromEvents.has(playerEntry.userId)) {
+        ids.add(playerEntry.userId);
+      }
+    }
+    return ids;
+  }, [isYumenMode, me, opponentsList, yumenDefeatedUserIdsFromEvents]);
   const selfHasHongMengTianJin = useMemo(
     () => hasHongMengTianJinClient(me?.buffs),
     [me?.buffs],
   );
+  const selfYumenSpectating = useMemo(
+    () => isYumenMode && typeof me?.userId === 'string' && yumenSpectatorUserIds.has(me.userId),
+    [isYumenMode, me?.userId, yumenSpectatorUserIds],
+  );
+  const selfHasYumenKuangSha = isYumenMode && hasYumenKuangShaClient(me?.buffs);
   const worldVisibleOpponentsList = useMemo(
     () => (selfHasHongMengTianJin ? [] : opponentsList),
     [opponentsList, selfHasHongMengTianJin],
   );
   const visibleOpponentsList = useMemo(
-    () => worldVisibleOpponentsList.filter((o) => !shouldHideOpponentByStealth(o?.buffs)),
-    [worldVisibleOpponentsList],
+    () => worldVisibleOpponentsList.filter((o) => {
+      const opponentIsYumenSpectator = typeof o?.userId === 'string' && yumenSpectatorUserIds.has(o.userId);
+      if (selfYumenSpectating && opponentIsYumenSpectator) return true;
+      return !shouldHideOpponentByStealth(o?.buffs);
+    }),
+    [selfYumenSpectating, worldVisibleOpponentsList, yumenSpectatorUserIds],
   );
   const targetableOpponentsList = useMemo(
     () => worldVisibleOpponentsList.filter((o) => !blocksTargetingClient(o?.buffs)),
     [worldVisibleOpponentsList],
   );
+  const yumenAlivePlayerCount = useMemo(() => {
+    if (!isYumenMode) return 0;
+    return [me, ...opponentsList].filter((playerEntry) => {
+      if (!playerEntry) return false;
+      if (typeof playerEntry.userId === 'string' && yumenSpectatorUserIds.has(playerEntry.userId)) return false;
+      if (hasYumenSpectatorClient(playerEntry.buffs)) return false;
+      return Number(playerEntry.hp ?? 0) > 0;
+    }).length;
+  }, [isYumenMode, me, opponentsList, yumenSpectatorUserIds]);
 
   useEffect(() => installAbilityAudioUnlock(), []);
 
@@ -4919,10 +5095,19 @@ export default function BattleArena({
     }
   });
   const [yumenAutoFullShrink, setYumenAutoFullShrink] = useState(false);
+  const [yumenAutoSettlePreference, setYumenAutoSettlePreference] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return false;
+      return localStorage.getItem(YUMEN_AUTO_SETTLE_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   const [showYumenFutureSafeZone, setShowYumenFutureSafeZone] = useState(true);
   const [yumenSafeZoneDisplayMode, setYumenSafeZoneDisplayMode] = useState<'terrain' | 'topDown'>('terrain');
   const yumenBoundaryEditModeRef = useRef(false);
   const yumenAutoFullShrinkStartedRef = useRef<string | null>(null);
+  const yumenAutoSettleSyncKeyRef = useRef<string | null>(null);
   const [showHeartDetailsPanel, setShowHeartDetailsPanel] = useState(false);
   const [showHeartStatSettings, setShowHeartStatSettings] = useState(false);
   const [showCombatPresetBar, setShowCombatPresetBar] = useState(false);
@@ -4947,6 +5132,7 @@ export default function BattleArena({
     try {
       if (typeof window === 'undefined') return;
       setYumenAutoFullShrink(localStorage.getItem(YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY) === '1');
+      setYumenAutoSettlePreference(localStorage.getItem(YUMEN_AUTO_SETTLE_STORAGE_KEY) === '1');
       setShowYumenFutureSafeZone(localStorage.getItem(YUMEN_SHOW_FUTURE_SAFE_ZONE_STORAGE_KEY) !== '0');
       setYumenSafeZoneDisplayMode(localStorage.getItem(YUMEN_SAFE_ZONE_DISPLAY_MODE_STORAGE_KEY) === 'topDown' ? 'topDown' : 'terrain');
     } catch {}
@@ -4961,6 +5147,11 @@ export default function BattleArena({
       localStorage.setItem(YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY, yumenAutoFullShrink ? '1' : '0');
     } catch {}
   }, [yumenAutoFullShrink]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_AUTO_SETTLE_STORAGE_KEY, yumenAutoSettlePreference ? '1' : '0');
+    } catch {}
+  }, [yumenAutoSettlePreference]);
   useEffect(() => {
     try {
       localStorage.setItem(YUMEN_SHOW_FUTURE_SAFE_ZONE_STORAGE_KEY, showYumenFutureSafeZone ? '1' : '0');
@@ -5120,13 +5311,63 @@ export default function BattleArena({
     } catch {}
   }, [inGameWarningScale]);
   const [activeInGameWarning, setActiveInGameWarning] = useState<InGameWarningEvent | null>(null);
-  const inGameWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inGameWarningTimerRef = useRef<number | null>(null);
   const inGameWarningSeqRef = useRef(0);
+  const [activeYumenDefeatNotice, setActiveYumenDefeatNotice] = useState<YumenDefeatNotice | null>(null);
+  const yumenDefeatNoticeTimerRef = useRef<number | null>(null);
+  const [activeYumenKillConfirm, setActiveYumenKillConfirm] = useState<YumenKillConfirmNotice | null>(null);
+  const yumenKillConfirmTimerRef = useRef<number | null>(null);
+  const yumenResultAutoLeaveKeyRef = useRef<number | null>(null);
+  const [yumenKillNoticeSize, setYumenKillNoticeSize] = useState<YumenHudSize>(() => loadYumenHudSize(
+    YUMEN_KILL_NOTICE_SIZE_STORAGE_KEY,
+    { width: YUMEN_KILL_NOTICE_BASE_WIDTH, height: YUMEN_KILL_NOTICE_BASE_HEIGHT },
+    normalizeYumenKillNoticeWidth,
+    normalizeYumenKillNoticeHeight,
+  ));
+  const [yumenKillConfirmSize, setYumenKillConfirmSize] = useState<YumenHudSize>(() => loadYumenHudSize(
+    YUMEN_KILL_CONFIRM_SIZE_STORAGE_KEY,
+    { width: YUMEN_KILL_CONFIRM_BASE_WIDTH, height: YUMEN_KILL_CONFIRM_BASE_HEIGHT },
+    normalizeYumenKillConfirmWidth,
+    normalizeYumenKillConfirmHeight,
+  ));
+  const [yumenAliveCountSize, setYumenAliveCountSize] = useState<YumenHudSize>(() => loadYumenHudSize(
+    YUMEN_ALIVE_COUNT_SIZE_STORAGE_KEY,
+    { width: YUMEN_ALIVE_COUNT_BASE_WIDTH, height: YUMEN_ALIVE_COUNT_BASE_HEIGHT },
+    normalizeYumenAliveCountWidth,
+    normalizeYumenAliveCountHeight,
+  ));
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_KILL_NOTICE_SIZE_STORAGE_KEY, JSON.stringify(yumenKillNoticeSize));
+    } catch {}
+  }, [yumenKillNoticeSize]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_KILL_CONFIRM_SIZE_STORAGE_KEY, JSON.stringify(yumenKillConfirmSize));
+    } catch {}
+  }, [yumenKillConfirmSize]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_ALIVE_COUNT_SIZE_STORAGE_KEY, JSON.stringify(yumenAliveCountSize));
+    } catch {}
+  }, [yumenAliveCountSize]);
 
   useEffect(() => {
     const id = window.setInterval(() => setSystemTime(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!isYumenMode || !yumenResults?.autoLeaveAt) return;
+    const endedAt = Number(yumenResults.endedAt ?? 0);
+    if (yumenResultAutoLeaveKeyRef.current === endedAt) return;
+    if (systemTime.getTime() < yumenResults.autoLeaveAt) return;
+    yumenResultAutoLeaveKeyRef.current = endedAt;
+    void onLeaveGame?.();
+  }, [isYumenMode, onLeaveGame, systemTime, yumenResults?.autoLeaveAt, yumenResults?.endedAt]);
 
   useEffect(() => {
     let disposed = false;
@@ -5398,7 +5639,7 @@ export default function BattleArena({
   const [showHiddenBuffStatusBar, setShowHiddenBuffStatusBar] = useState(false);
   const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
-  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'martial' | 'chat'>('switches');
+  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'martial' | 'chat' | 'kill'>('switches');
   const [gameSettingsTab, setGameSettingsTab] = useState<GameSettingsTabId>('general');
   const [customUiPromptPos, setCustomUiPromptPos] = useState<UiPosition | null>(null);
   const lightingControlsOpen = showTestingPanel && escMainTab === 'test' && escTestPage === 'lighting';
@@ -5409,6 +5650,12 @@ export default function BattleArena({
     }
     if (inGameWarningTimerRef.current !== null) {
       window.clearTimeout(inGameWarningTimerRef.current);
+    }
+    if (yumenDefeatNoticeTimerRef.current !== null) {
+      window.clearTimeout(yumenDefeatNoticeTimerRef.current);
+    }
+    if (yumenKillConfirmTimerRef.current !== null) {
+      window.clearTimeout(yumenKillConfirmTimerRef.current);
     }
     mainCanvasCleanupRef.current?.();
     mainCanvasCleanupRef.current = null;
@@ -5617,6 +5864,45 @@ export default function BattleArena({
       inGameWarningTimerRef.current = null;
     }, IN_GAME_WARNING_DURATION_MS);
   }, []);
+  const showYumenSpectatorAbilityLockWarning = useCallback(() => {
+    showInGameWarning('观战中无法调整技能栏');
+  }, [showInGameWarning]);
+  const showYumenDefeatNotice = useCallback((notice: YumenDefeatNotice) => {
+    if (yumenDefeatNoticeTimerRef.current !== null) {
+      window.clearTimeout(yumenDefeatNoticeTimerRef.current);
+      yumenDefeatNoticeTimerRef.current = null;
+    }
+    setActiveYumenDefeatNotice(notice);
+    yumenDefeatNoticeTimerRef.current = window.setTimeout(() => {
+      setActiveYumenDefeatNotice((current) => current?.id === notice.id ? null : current);
+      yumenDefeatNoticeTimerRef.current = null;
+    }, YUMEN_KILL_NOTICE_DURATION_MS);
+  }, []);
+  const showYumenKillConfirm = useCallback((notice: YumenKillConfirmNotice) => {
+    if (yumenKillConfirmTimerRef.current !== null) {
+      window.clearTimeout(yumenKillConfirmTimerRef.current);
+      yumenKillConfirmTimerRef.current = null;
+    }
+    setActiveYumenKillConfirm(notice);
+    yumenKillConfirmTimerRef.current = window.setTimeout(() => {
+      setActiveYumenKillConfirm((current) => current?.id === notice.id ? null : current);
+      yumenKillConfirmTimerRef.current = null;
+    }, YUMEN_KILL_CONFIRM_DURATION_MS);
+  }, []);
+  const previewYumenKillNotice = useCallback(() => {
+    showYumenDefeatNotice({
+      id: `preview-kill-notice:${Date.now()}`,
+      attackerName: '剑心猫猫糕',
+      defeatedName: '测试账号二',
+      attributed: true,
+    });
+  }, [showYumenDefeatNotice]);
+  const previewYumenKillConfirm = useCallback(() => {
+    showYumenKillConfirm({
+      id: `preview-kill-confirm:${Date.now()}`,
+      defeatedName: '测试账号二',
+    });
+  }, [showYumenKillConfirm]);
   useEffect(() => {
     if (!externalGameWarning?.text) return;
     showInGameWarning(externalGameWarning.text);
@@ -6452,6 +6738,10 @@ export default function BattleArena({
 
     const consumableId = consumableBarSettings.slots[parsed.index];
     const consumable = consumableId ? CONSUMABLE_ITEM_BY_ID.get(consumableId) : undefined;
+    if (selfYumenSpectating) {
+      showInGameWarning('观战中无法使用物品');
+      return true;
+    }
     if (!consumableBarSettings.enabled) {
       showInGameWarning('物品栏已关闭');
       return true;
@@ -6464,7 +6754,7 @@ export default function BattleArena({
       showInGameWarning('该物品暂未开放');
       return true;
     }
-    const count = Number(me.consumableCounts?.[consumable.id] ?? consumable.startingCount ?? 0);
+    const count = getConsumableRemainingCount(me, consumable);
     if (count <= 0) {
       showInGameWarning('该物品已用完');
       return true;
@@ -6476,7 +6766,7 @@ export default function BattleArena({
     }
     useConsumableRef.current(consumable.id);
     return true;
-  }, [consumableBarSettings, getHotkeyDraftSlots, hotkeySettings, me.consumableCooldowns, me.consumableCounts, showAbilityDisabledWarning, showInGameWarning, toggleMartialPanel, triggerAbilityHotkey]);
+  }, [consumableBarSettings, getHotkeyDraftSlots, hotkeySettings, me, me.consumableCooldowns, me.consumableCounts, selfYumenSpectating, showAbilityDisabledWarning, showInGameWarning, toggleMartialPanel, triggerAbilityHotkey]);
 
   const captureHotkeyBinding = useCallback((target: HotkeyCaptureTarget, binding: HotkeyBinding | null) => {
     if (!target || !binding || !isHotkeyActionId(target.actionId)) return;
@@ -7516,6 +7806,7 @@ export default function BattleArena({
     if (newEvents.length === 0) return;
 
     const myId = me?.userId;
+    const selfSpectating = hasYumenSpectatorClient(me?.buffs);
     const playSoundForEvent = (evt: any) => {
       if ((evt.type !== 'PLAY_ABILITY' && evt.type !== 'ABILITY_SOUND' && evt.type !== 'DAMAGE' && evt.type !== 'BUFF_APPLIED') || !evt.abilityId) return;
       const ability = abilities?.[evt.abilityId];
@@ -7620,8 +7911,22 @@ export default function BattleArena({
       // WS array patches can momentarily produce sparse event slices.
       // Ignore empty/malformed entries instead of crashing the whole arena.
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
+      if (selfSpectating && evt.type === 'DAMAGE' && (evt.targetUserId === myId || evt.actorUserId === myId)) continue;
       playSoundForEvent(evt);
-      if (evt.type === 'COMBAT_STATUS' && evt.targetUserId === myId) {
+      if (evt.type === 'YUMEN_DEFEAT') {
+        const defeatedName = typeof evt.defeatedName === 'string' && evt.defeatedName.trim() ? evt.defeatedName.trim() : '玩家';
+        const attackerName = typeof evt.attackerName === 'string' && evt.attackerName.trim() ? evt.attackerName.trim() : '大漠狂沙';
+        const noticeId = `${evt.timestamp ?? Date.now()}:${evt.defeatedUserId ?? defeatedName}`;
+        showYumenDefeatNotice({
+          id: noticeId,
+          attackerName,
+          defeatedName,
+          attributed: true,
+        });
+        if (evt.attackerUserId === myId && evt.defeatedUserId !== myId) {
+          showYumenKillConfirm({ id: noticeId, defeatedName });
+        }
+      } else if (evt.type === 'COMBAT_STATUS' && evt.targetUserId === myId) {
         if ((evt as any).combatStatus === 'enter' || (evt as any).inCombat === true) {
           showInGameWarning('进入战斗');
         } else {
@@ -7695,7 +8000,7 @@ export default function BattleArena({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, me?.userId, showInGameWarning, visibleOpponentsList]);
+  }, [events, me?.userId, showInGameWarning, showYumenDefeatNotice, showYumenKillConfirm, visibleOpponentsList]);
 
   useEffect(() => {
     const activeKeys = new Set<string>();
@@ -8338,8 +8643,18 @@ export default function BattleArena({
 
   useEffect(() => {
     // ── Draft abilities: sourced from me.hand (only non-common abilities) ──
+    const yumenTestShortCooldown = safeZone?.testShortCooldown === true;
+    const getAbilityCooldownTicks = (ab: any): number => {
+      const base = Math.max(0, Math.round(Number(ab?.cooldownTicks ?? 0)));
+      if (base <= 0) return 0;
+      return yumenTestShortCooldown ? Math.min(base, TEST_COOLDOWN_CAP_TICKS) : base;
+    };
+    const getChargeRecoveryDisplayTicks = (ab: any): number => {
+      const base = Math.max(1, Math.round(Number(ab?.chargeRecoveryTicks ?? ab?.cooldownTicks ?? 1)));
+      return yumenTestShortCooldown ? Math.min(base, TEST_COOLDOWN_CAP_TICKS) : base;
+    };
     const getDisplayMaxCooldown = (ab: any): number => {
-      const base = ab?.cooldownTicks ?? 0;
+      const base = getAbilityCooldownTicks(ab);
       const gcdWindow = ab?.gcd === true ? BASE_GCD_WINDOW_TICKS : 0;
       return Math.max(base, gcdWindow);
     };
@@ -8366,7 +8681,7 @@ export default function BattleArena({
       }
 
       const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
-      const chargeRecoveryTicks = Math.max(1, Number(ab?.chargeRecoveryTicks ?? ab?.cooldownTicks ?? 1));
+      const chargeRecoveryTicks = getChargeRecoveryDisplayTicks(ab);
       const chargeRegenTicksRemaining = getRuntimeCountdownTicks(
         instance,
         'chargeRegenTicksRemaining',
@@ -8493,11 +8808,12 @@ export default function BattleArena({
         localJumpCountRef.current > 0 ||
         Math.abs(localVzRef.current) > 0.01;
       if (isQinggongLike && qinggongSealed) return '你被封轻功，无法施放轻功技能';
+      if (selfYumenSpectating && !isQinggongLike) return '观战中只能施展江湖轻功';
       if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
         return '凌然天风特殊跳跃中无法施展任驰骋';
       }
       if (getActiveChannelClient(me?.activeChannel ?? null)) return '正在进行其他动作';
-      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '御骑状态下无法施展该招式';
+      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '骑御状态下无法施展该招式';
       const powerLockWarning = getPowerLockWarningClient(ab, me.buffs);
       if (powerLockWarning) return powerLockWarning;
       if (nonQinggongLocked && !isQinggongLike) return '你当前只能施展轻功招式';
@@ -8649,7 +8965,7 @@ export default function BattleArena({
           range:       effectiveRange,
           baseRange:   typeof ability.range === 'number' ? ability.range : undefined,
           minRange:    ability.minRange,
-          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
+          baseCooldownTicks: getAbilityCooldownTicks(ability),
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           maxCharges: chargeDisplay.maxCharges,
@@ -8707,7 +9023,7 @@ export default function BattleArena({
           range: effectiveRange,
           baseRange: typeof ability.range === 'number' ? ability.range : undefined,
           minRange: ability.minRange,
-          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
+          baseCooldownTicks: getAbilityCooldownTicks(ability),
           cooldown: chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           maxCharges: chargeDisplay.maxCharges,
@@ -8750,7 +9066,7 @@ export default function BattleArena({
         if (!ability) return null;
         const instance = me.hand.find(
           (h: any) => (h.abilityId ?? h.id) === ability.id
-        );
+        ) ?? (selfYumenSpectating ? me.specialAbilityStates?.[ability.id] : undefined);
         const chargeDisplay = getChargeDisplay(ability, instance ?? {});
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
         const disabledWarning = antiStealthBlocked
@@ -8768,7 +9084,7 @@ export default function BattleArena({
           range:       effectiveRange,
           baseRange:   typeof ability.range === 'number' ? ability.range : undefined,
           minRange:    ability.minRange,
-          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
+          baseCooldownTicks: getAbilityCooldownTicks(ability),
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           maxCharges: chargeDisplay.maxCharges,
@@ -8832,6 +9148,7 @@ export default function BattleArena({
     selectedTargetId,
     selectedEntityId,
     selectedSelf,
+    selfYumenSpectating,
     targetableOpponentsList,
     targetableEntityList,
     visibleEntities,
@@ -8842,6 +9159,7 @@ export default function BattleArena({
     hasMovementIntent,
     isStandingCastBlocked,
     cooldownClockMs,
+    safeZone?.testShortCooldown,
   ]);
 
   /* ========================= PICKUP INTERACTION ========================= */
@@ -9230,6 +9548,30 @@ export default function BattleArena({
     };
   }, []);
 
+  const getDefaultYumenKillNoticePos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return {
+      left: Math.max(12, Math.round((w - yumenKillNoticeSize.width) / 2)),
+      top: Math.max(12, Math.round(h * 0.10)),
+    };
+  }, [yumenKillNoticeSize.width]);
+
+  const getDefaultYumenKillConfirmPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return {
+      left: Math.max(12, Math.round((w - yumenKillConfirmSize.width) / 2)),
+      top: Math.max(12, Math.round(h * 0.42 - yumenKillConfirmSize.height / 2)),
+    };
+  }, [yumenKillConfirmSize.height, yumenKillConfirmSize.width]);
+
+  const getDefaultYumenAliveCountPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return {
+      left: Math.max(12, Math.round(w - yumenAliveCountSize.width - 52)),
+      top: Math.max(12, Math.round(h * 0.29)),
+    };
+  }, [yumenAliveCountSize.width]);
+
   const getDefaultItemBarPos = useCallback(() => {
     const { w } = canvasSizeRef.current;
     return getUiPositionFromRef(itemBarRef, {
@@ -9268,7 +9610,7 @@ export default function BattleArena({
           top: Math.max(12, Math.round(canvasSizeRef.current.h - 222)),
         };
     const channelElement = ownedAbilityBarRef.current?.querySelector('[data-channel-bar-root="true"]');
-    return getUiPositionFromElement(channelElement, fallback);
+    return getUiPositionFromElement(channelElement ?? null, fallback);
   }, [getUiPositionFromElement]);
 
   const getDefaultPlayerGcdBarPos = useCallback(() => {
@@ -9285,7 +9627,7 @@ export default function BattleArena({
           top: Math.max(12, Math.round(canvasSizeRef.current.h - 194)),
         };
     const gcdElement = ownedAbilityBarRef.current?.querySelector('[data-gcd-bar-root="true"]');
-    return getUiPositionFromElement(gcdElement, fallback);
+    return getUiPositionFromElement(gcdElement ?? null, fallback);
   }, [getUiPositionFromElement]);
 
   /** Start a drag session for any draggable UI panel. Key is stored in localStorage. */
@@ -9436,6 +9778,9 @@ export default function BattleArena({
       const heightCounterBase = prev[HEIGHT_COUNTER_UI_KEY] ?? getDefaultHeightCounterPos();
       const distanceIndicatorBase = prev[DISTANCE_INDICATOR_UI_KEY] ?? getDefaultDistanceIndicatorPos();
       const inGameWarningBase = prev[IN_GAME_WARNING_UI_KEY] ?? getDefaultInGameWarningPos();
+      const yumenKillNoticeBase = prev[YUMEN_KILL_NOTICE_UI_KEY] ?? getDefaultYumenKillNoticePos();
+      const yumenKillConfirmBase = prev[YUMEN_KILL_CONFIRM_UI_KEY] ?? getDefaultYumenKillConfirmPos();
+      const yumenAliveCountBase = prev[YUMEN_ALIVE_COUNT_UI_KEY] ?? getDefaultYumenAliveCountPos();
       const itemBarBase = prev[ITEM_BAR_UI_KEY] ?? getDefaultItemBarPos();
       const martialPanelBase = prev[MARTIAL_PANEL_UI_KEY] ?? getDefaultMartialPanelPos();
       const chatPanelBase = prev[CHAT_PANEL_UI_KEY] ?? getDefaultChatPanelPos();
@@ -9458,6 +9803,9 @@ export default function BattleArena({
         [HEIGHT_COUNTER_UI_KEY]: heightCounterBase,
         [DISTANCE_INDICATOR_UI_KEY]: distanceIndicatorBase,
         [IN_GAME_WARNING_UI_KEY]: inGameWarningBase,
+        [YUMEN_KILL_NOTICE_UI_KEY]: yumenKillNoticeBase,
+        [YUMEN_KILL_CONFIRM_UI_KEY]: yumenKillConfirmBase,
+        [YUMEN_ALIVE_COUNT_UI_KEY]: yumenAliveCountBase,
         [ITEM_BAR_UI_KEY]: itemBarBase,
         [MARTIAL_PANEL_UI_KEY]: martialPanelBase,
         [CHAT_PANEL_UI_KEY]: chatPanelBase,
@@ -9489,6 +9837,9 @@ export default function BattleArena({
     getDefaultTargetTargetIconBarPos,
     getDefaultTargetOwnedAbilityBarPos,
     getDefaultTargetStatusPos,
+    getDefaultYumenAliveCountPos,
+    getDefaultYumenKillConfirmPos,
+    getDefaultYumenKillNoticePos,
   ]);
 
   const cancelCustomUiMode = useCallback(() => {
@@ -11040,7 +11391,7 @@ export default function BattleArena({
   const formatTooltipLine = (label: string, value: string) => `${label}: ${value}`;
   const formatSpeedUnits = (value: number) => `${formatCompactNumber(value)}尺/秒`;
   const runSpeedDisplayValue = String(Math.max(0, Math.round(effectiveMoveSpeedUnitsPerSec * 4)));
-  const heartStatRows: HeartStatRow[] = [
+  const heartStatRows: HeartStatRow[] = ([
     {
       key: 'attack',
       label: '攻击力',
@@ -11122,7 +11473,7 @@ export default function BattleArena({
       tooltipTitle: '伤害减免',
       tooltipLines: [formatTooltipLine('伤害减免', formatWholePct(damageReductionPct))],
     },
-  ].sort((a, b) => HEART_STAT_ORDER.indexOf(a.key) - HEART_STAT_ORDER.indexOf(b.key));
+  ] satisfies HeartStatRow[]).sort((a, b) => HEART_STAT_ORDER.indexOf(a.key) - HEART_STAT_ORDER.indexOf(b.key));
   const openHeartStatHint = useCallback((event: React.MouseEvent<HTMLElement>, row: HeartStatRow) => {
     if (!row.tooltipLines || row.tooltipLines.length === 0) return;
     setHeartStatHint({
@@ -11392,6 +11743,10 @@ export default function BattleArena({
 
   const addAbilityToDraftBar = useCallback(async (abilityId: string, slotIndex?: number) => {
     if (addingAbility) return false;
+    if (selfYumenSpectating) {
+      showYumenSpectatorAbilityLockWarning();
+      return false;
+    }
     setAddingAbility(abilityId);
     try {
       await postAddAbility(abilityId, slotIndex);
@@ -11403,7 +11758,7 @@ export default function BattleArena({
     } finally {
       setAddingAbility(null);
     }
-  }, [addingAbility, postAddAbility]);
+  }, [addingAbility, postAddAbility, selfYumenSpectating, showYumenSpectatorAbilityLockWarning]);
 
   const getCurrentMartialPresetSlots = useCallback(() => (
     Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }, (_, index) => learnedDraftAbilities[index]?.abilityId ?? null)
@@ -11439,6 +11794,10 @@ export default function BattleArena({
 
   const applyMartialPreset = useCallback(async (plan: MartialPresetPlan) => {
     if (martialPresetApplying || runningCheatAction) return;
+    if (selfYumenSpectating) {
+      showYumenSpectatorAbilityLockWarning();
+      return;
+    }
     const slots = normalizeMartialPresetSlots(plan.slots);
     setMartialPresetApplying(true);
     try {
@@ -11463,7 +11822,7 @@ export default function BattleArena({
     } finally {
       setMartialPresetApplying(false);
     }
-  }, [gameId, martialPresetApplying, postAddAbility, runningCheatAction]);
+  }, [gameId, martialPresetApplying, postAddAbility, runningCheatAction, selfYumenSpectating, showYumenSpectatorAbilityLockWarning]);
 
   const createEmptyMartialPresetPlan = useCallback(async () => {
     if (martialPresetPlans.length >= MARTIAL_PRESET_LIMIT) {
@@ -11555,7 +11914,7 @@ export default function BattleArena({
     name: ability.name,
     iconPath: ability.iconPath,
     description: ability.description ?? '',
-    channel: getRuntimeAbilityChannel(ability),
+    channel: getRuntimeAbilityChannel(ability) ?? undefined,
     range: getEffectiveAbilityRangeClient(ability, me?.buffs),
     baseRange: typeof ability.range === 'number' ? ability.range : undefined,
     minRange: ability.minRange,
@@ -11643,6 +12002,32 @@ export default function BattleArena({
     void runCheatAction('yumen-auto-full-shrink', '/api/game/cheat/yumen/start-full-shrink', '完整缩圈已自动开始');
   }, [gameId, isYumenMode, runCheatAction, safeZone?.phase, yumenAutoFullShrink]);
 
+  useEffect(() => {
+    if (!isYumenMode || !gameId || !safeZone || runningCheatAction === 'yumen-auto-settle') return;
+    const desired = yumenAutoSettlePreference === true;
+    const current = safeZone.autoSettle === true;
+    if (desired === current) {
+      yumenAutoSettleSyncKeyRef.current = null;
+      return;
+    }
+    const syncKey = `${gameId}:${desired ? '1' : '0'}:${current ? '1' : '0'}`;
+    if (yumenAutoSettleSyncKeyRef.current === syncKey) return;
+    yumenAutoSettleSyncKeyRef.current = syncKey;
+    void (async () => {
+      try {
+        const res = await fetch('/api/game/cheat/yumen/auto-settle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ gameId, enabled: desired }),
+        });
+        if (!res.ok) yumenAutoSettleSyncKeyRef.current = null;
+      } catch {
+        yumenAutoSettleSyncKeyRef.current = null;
+      }
+    })();
+  }, [gameId, isYumenMode, runningCheatAction, safeZone?.autoSettle, yumenAutoSettlePreference]);
+
   const updateYumenPlayArea = useCallback(async (
     nextPlayArea: PlayAreaBounds,
     options?: { actionId?: string; successText?: string },
@@ -11670,6 +12055,10 @@ export default function BattleArena({
 
   const reorderDraftAbility = useCallback(
     async (instanceId: string, toIndex: number) => {
+      if (selfYumenSpectating) {
+        showYumenSpectatorAbilityLockWarning();
+        return false;
+      }
       const previousAbilities = abilitiesRef.current;
       const clampedToIndex = normalizeDraftSlotIndex(toIndex, toIndex);
       const predictedAbilities = predictDraftAbilityReorder(previousAbilities, instanceId, clampedToIndex);
@@ -11707,11 +12096,15 @@ export default function BattleArena({
         return false;
       }
     },
-    [gameId],
+    [gameId, selfYumenSpectating, showYumenSpectatorAbilityLockWarning],
   );
 
   const discardDraftAbility = useCallback(
     async (instanceId: string) => {
+      if (selfYumenSpectating) {
+        showYumenSpectatorAbilityLockWarning();
+        return false;
+      }
       const res = await fetch('/api/game/cheat/discard-ability', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -11725,7 +12118,7 @@ export default function BattleArena({
       }
       return true;
     },
-    [gameId],
+    [gameId, selfYumenSpectating, showYumenSpectatorAbilityLockWarning],
   );
 
   const getVisibleDraftSlotsForLocalMove = useCallback(() => {
@@ -12022,7 +12415,7 @@ export default function BattleArena({
           if (discarded && dragState.sourceKind === 'item') {
             removeAbilityFromItemBar(dragState.instanceId);
           }
-        } else if (dropTarget && dropTarget.kind !== 'preset' && !(dropTarget.kind === dragState.sourceKind && dropTarget.index === dragState.sourceIndex)) {
+        } else if ((dropTarget?.kind === 'draft' || dropTarget?.kind === 'martial-draft' || dropTarget?.kind === 'item') && !(dropTarget.kind === dragState.sourceKind && dropTarget.index === dragState.sourceIndex)) {
           if ((dragState.sourceKind === 'draft' || dragState.sourceKind === 'martial-draft') && (dropTarget.kind === 'draft' || dropTarget.kind === 'martial-draft')) {
             await reorderDraftAbility(dragState.instanceId, dropTarget.index);
           } else {
@@ -12199,6 +12592,36 @@ export default function BattleArena({
   const inGameWarningPos = uiPositions[IN_GAME_WARNING_UI_KEY] ?? inGameWarningDefaultPos;
   const inGameWarningText = activeInGameWarning?.text ?? (customUiMode ? IN_GAME_WARNING_PREVIEW_TEXT : null);
   const showFloatingInGameWarning = !!inGameWarningText;
+  const yumenKillNoticeDefaultPos = getDefaultYumenKillNoticePos();
+  const yumenKillNoticePos = uiPositions[YUMEN_KILL_NOTICE_UI_KEY] ?? yumenKillNoticeDefaultPos;
+  const yumenKillNoticeText = activeYumenDefeatNotice
+    ? `${activeYumenDefeatNotice.attackerName ?? '大漠狂沙'} 重伤 ${activeYumenDefeatNotice.defeatedName}`
+    : customUiMode
+    ? '剑心猫猫糕 重伤 测试账号二'
+    : null;
+  const yumenKillNoticeParts = activeYumenDefeatNotice
+    ? {
+        attackerName: activeYumenDefeatNotice.attackerName ?? '大漠狂沙',
+        defeatedName: activeYumenDefeatNotice.defeatedName,
+      }
+    : customUiMode
+    ? { attackerName: '剑心猫猫糕', defeatedName: '测试账号二' }
+    : null;
+  const showFloatingYumenKillNotice = !!yumenKillNoticeText;
+  const yumenKillConfirmDefaultPos = getDefaultYumenKillConfirmPos();
+  const yumenKillConfirmPos = uiPositions[YUMEN_KILL_CONFIRM_UI_KEY] ?? yumenKillConfirmDefaultPos;
+  const yumenKillConfirmText = activeYumenKillConfirm
+    ? `击杀 ${activeYumenKillConfirm.defeatedName}`
+    : customUiMode
+    ? '击杀 测试账号二'
+    : null;
+  const showFloatingYumenKillConfirm = !!yumenKillConfirmText;
+  const yumenAliveCountDefaultPos = getDefaultYumenAliveCountPos();
+  const yumenAliveCountPos = uiPositions[YUMEN_ALIVE_COUNT_UI_KEY] ?? yumenAliveCountDefaultPos;
+  const showFloatingYumenAliveCount = customUiMode || isYumenMode;
+  const yumenAliveCountScale = normalizeYumenHudSettingScale(
+    ((yumenAliveCountSize.width / YUMEN_ALIVE_COUNT_BASE_WIDTH) + (yumenAliveCountSize.height / YUMEN_ALIVE_COUNT_BASE_HEIGHT)) / 2,
+  );
   const itemBarDefaultPos = getDefaultItemBarPos();
   const itemBarPos = uiPositions[ITEM_BAR_UI_KEY] ?? itemBarDefaultPos;
   const chatPanelSavedPos = uiPositions[CHAT_PANEL_UI_KEY];
@@ -12703,9 +13126,7 @@ export default function BattleArena({
       return (
         <div
           key={`${plan.id}-${index}`}
-          data-martial-preset-slot="true"
           data-martial-preset-plan-id={plan.id}
-          data-martial-preset-slot-index={index}
           data-martial-preset-slot={index}
           className={`${styles.martialPresetSlot} ${isHover ? styles.martialPresetSlotHover : ''}`}
           onContextMenu={(event) => {
@@ -13118,6 +13539,155 @@ export default function BattleArena({
           aria-live="polite"
         >
           {inGameWarningText}
+        </div>
+      </div>
+    );
+  };
+
+  const renderYumenKillNotice = () => {
+    if (!showFloatingYumenKillNotice || !yumenKillNoticeText) return null;
+    return (
+      <div
+        data-ui-drag={customUiMode ? 'true' : undefined}
+        className={`${styles.yumenKillNoticePlacement} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+        style={{
+          left: yumenKillNoticePos.left,
+          top: yumenKillNoticePos.top,
+          width: yumenKillNoticeSize.width,
+          height: yumenKillNoticeSize.height,
+          pointerEvents: customUiMode ? 'auto' : 'none',
+          '--yumen-kill-notice-width': `${yumenKillNoticeSize.width}px`,
+          '--yumen-kill-notice-height': `${yumenKillNoticeSize.height}px`,
+        } as React.CSSProperties}
+        onMouseDown={customUiMode ? (event) => startUIDrag(YUMEN_KILL_NOTICE_UI_KEY, yumenKillNoticeDefaultPos, event, { persist: false }) : undefined}
+      >
+        {customUiMode ? (
+          <div className={styles.customUiPlacementLabel}>击杀提示</div>
+        ) : null}
+        <div key={activeYumenDefeatNotice?.id ?? 'preview'} className={`${styles.yumenKillNoticeBrush} ${activeYumenDefeatNotice ? styles.yumenKillNoticeActive : styles.yumenKillNoticePreview}`}>
+          <span className={`${styles.yumenKillNoticeName} ${styles.yumenKillNoticeNameLeft}`}>{yumenKillNoticeParts?.attackerName}</span>
+          <span className={styles.yumenKillNoticeAction}>重伤</span>
+          <span className={`${styles.yumenKillNoticeName} ${styles.yumenKillNoticeNameRight}`}>{yumenKillNoticeParts?.defeatedName}</span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderYumenKillConfirm = () => {
+    if (!showFloatingYumenKillConfirm || !yumenKillConfirmText) return null;
+    return (
+      <div
+        data-ui-drag={customUiMode ? 'true' : undefined}
+        className={`${styles.yumenKillConfirmPlacement} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+        style={{
+          left: yumenKillConfirmPos.left,
+          top: yumenKillConfirmPos.top,
+          width: yumenKillConfirmSize.width,
+          height: yumenKillConfirmSize.height,
+          pointerEvents: customUiMode ? 'auto' : 'none',
+          '--yumen-kill-confirm-width': `${yumenKillConfirmSize.width}px`,
+          '--yumen-kill-confirm-height': `${yumenKillConfirmSize.height}px`,
+        } as React.CSSProperties}
+        onMouseDown={customUiMode ? (event) => startUIDrag(YUMEN_KILL_CONFIRM_UI_KEY, yumenKillConfirmDefaultPos, event, { persist: false }) : undefined}
+      >
+        {customUiMode ? (
+          <div className={styles.customUiPlacementLabel}>击杀确认</div>
+        ) : null}
+        <div key={activeYumenKillConfirm?.id ?? 'preview'} className={`${styles.yumenKillConfirm} ${activeYumenKillConfirm ? styles.yumenKillConfirmActive : styles.yumenKillConfirmPreview}`} aria-live="polite">
+          {yumenKillConfirmText}
+        </div>
+      </div>
+    );
+  };
+
+  const renderYumenAliveCount = () => {
+    if (!showFloatingYumenAliveCount) return null;
+    const displayCount = customUiMode && !isYumenMode ? 2 : yumenAlivePlayerCount;
+    return (
+      <div
+        data-ui-drag={customUiMode ? 'true' : undefined}
+        className={`${styles.yumenAliveCountPlacement} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+        style={{
+          left: yumenAliveCountPos.left,
+          top: yumenAliveCountPos.top,
+          width: yumenAliveCountSize.width,
+          height: yumenAliveCountSize.height,
+          pointerEvents: customUiMode ? 'auto' : 'none',
+          '--yumen-alive-count-width': `${yumenAliveCountSize.width}px`,
+          '--yumen-alive-count-height': `${yumenAliveCountSize.height}px`,
+          '--yumen-alive-count-scale': yumenAliveCountScale,
+        } as React.CSSProperties}
+        onMouseDown={customUiMode ? (event) => startUIDrag(YUMEN_ALIVE_COUNT_UI_KEY, yumenAliveCountDefaultPos, event, { persist: false }) : undefined}
+      >
+        {customUiMode ? (
+          <div className={styles.customUiPlacementLabel}>剩余人数</div>
+        ) : null}
+        <div className={styles.yumenAliveCountPanel}>
+          <span className={styles.yumenAliveCountLabel}>剩余人数</span>
+          <span className={styles.yumenAliveCountValue}>{displayCount}</span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderYumenResultOverlay = () => {
+    if (!isYumenMode || !yumenResults) return null;
+    const rows = Array.isArray(yumenResults.rows) ? yumenResults.rows : [];
+    const selfRow = rows.find((row) => row.userId === me.userId) ?? rows[0];
+    const selfRank = selfRow?.rank ?? 1;
+    const rankTotal = Math.max(1, rows.length || 1);
+    const countdown = Math.max(0, Math.ceil((Number(yumenResults.autoLeaveAt ?? 0) - systemTime.getTime()) / 1000));
+    const rankClass = selfRank === 1
+      ? styles.yumenResultRankGold
+      : selfRank === 2
+      ? styles.yumenResultRankSilver
+      : selfRank === 3
+      ? styles.yumenResultRankBronze
+      : styles.yumenResultRankGray;
+    return (
+      <div className={styles.yumenResultOverlay} role="dialog" aria-modal="true">
+        <div className={styles.yumenResultWindow}>
+          <div className={styles.yumenResultTop}>
+            <div className={`${styles.yumenResultBanner} ${rankClass}`}><span>第{selfRank}名</span></div>
+            <div className={styles.yumenResultTeamRank}>队伍排名：{selfRank}/{rankTotal}</div>
+          </div>
+          <div className={styles.yumenResultSubtitle}>{selfRank === 1 ? '绝处睥睨，傲视群星' : '棋差一招，下次努力'}</div>
+          <div className={styles.yumenResultTable}>
+            <div className={`${styles.yumenResultRow} ${styles.yumenResultHeader}`}>
+              <span>玩家名字</span>
+              <span>击杀</span>
+              <span>伤害量</span>
+              <span>评分结算</span>
+              <span>奖励</span>
+            </div>
+            <div className={styles.yumenResultList}>
+              {rows.map((row) => {
+                const rowRankClass = row.rank === 1
+                  ? styles.yumenResultMedalGold
+                  : row.rank === 2
+                  ? styles.yumenResultMedalSilver
+                  : row.rank === 3
+                  ? styles.yumenResultMedalBronze
+                  : styles.yumenResultMedalGray;
+                return (
+                  <div key={row.userId} className={`${styles.yumenResultRow} ${row.userId === me.userId ? styles.yumenResultSelfRow : ''}`}>
+                    <span className={styles.yumenResultNameCell}>
+                      <span className={`${styles.yumenResultMedal} ${rowRankClass}`}>{row.rank}</span>
+                      <span className={styles.yumenResultName}>{row.username}</span>
+                    </span>
+                    <span>{formatGameAmount(row.kills)}</span>
+                    <span>{formatGameAmount(row.damage)}</span>
+                    <span>{formatGameAmount(row.score)}</span>
+                    <span className={styles.yumenResultReward}><Star size={16} strokeWidth={2.2} aria-hidden="true" />{formatGameAmount(row.reward)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className={styles.yumenResultFooter}>
+            <span className={styles.yumenResultCountdown}>将在<span className={styles.yumenResultCountdownNumber}>{countdown}</span>秒后离开战场</span>
+            <button type="button" className={styles.yumenResultLeaveButton} onClick={() => void onLeaveGame?.()}>离开战场</button>
+          </div>
         </div>
       </div>
     );
@@ -13839,7 +14409,7 @@ export default function BattleArena({
 
   const renderItemBar = () => {
     const consumableNowMs = systemTime.getTime();
-    const visibleConsumableSlots = consumableBarSettings.enabled
+    const visibleConsumableSlots = consumableBarSettings.enabled && !selfYumenSpectating
       ? consumableBarSettings.slots.slice(0, consumableBarSettings.slotCount)
       : [];
 
@@ -14295,6 +14865,9 @@ export default function BattleArena({
       })}
 
       {showFloatingInGameWarning && renderInGameWarning()}
+      {showFloatingYumenKillNotice && renderYumenKillNotice()}
+      {showFloatingYumenKillConfirm && renderYumenKillConfirm()}
+      {showFloatingYumenAliveCount && renderYumenAliveCount()}
 
       {showFloatingMartialPanel && (
         <div
@@ -14426,6 +14999,7 @@ export default function BattleArena({
             me={me}
             allOpponents={worldVisibleOpponentsList}
             opponents={visibleOpponentsList}
+            yumenSpectatorUserIds={Array.from(yumenSpectatorUserIds)}
             selectedTargetId={selectedTargetId}
             onSelectTarget={(userId) => {
               const clicked = worldVisibleOpponentsList.find((o) => o.userId === userId);
@@ -14595,6 +15169,9 @@ export default function BattleArena({
         </Canvas>
       </div>
       {sceneRecovering && <div className={styles.canvasRecoveryNotice}>画面恢复中</div>}
+      <div className={`${styles.yumenGhostScreenVeil} ${selfYumenSpectating ? styles.yumenGhostScreenVeilVisible : ''}`} aria-hidden="true" />
+      <div className={`${styles.yumenSandstormScreenVeil} ${selfHasYumenKuangSha ? styles.yumenSandstormScreenVeilVisible : ''}`} aria-hidden="true" />
+      {renderYumenResultOverlay()}
       {/* per-opponent floating channel overlay removed:
          enemy channel bar is now rendered inside .enemyBossGroup
          (below the boss HP bar, above the status bar). */}
@@ -14614,6 +15191,7 @@ export default function BattleArena({
             me={me}
             allOpponents={[]}
             opponents={[]}
+            yumenSpectatorUserIds={Array.from(yumenSpectatorUserIds)}
             selectedTargetId={null}
             onSelectTarget={() => {}}
             entities={[]}
@@ -14906,6 +15484,13 @@ export default function BattleArena({
                         >
                           聊天
                         </button>
+                        <button
+                          type="button"
+                          className={`${styles.escSettingsNavButton} ${escTestPage === 'kill' ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => setEscTestPage('kill')}
+                        >
+                          击杀
+                        </button>
                       </aside>
                       <section className={styles.escTestContent}>
                         {escTestPage === 'switches' ? (
@@ -15144,6 +15729,106 @@ export default function BattleArena({
                                 }))}
                                 className={styles.escRangeInput}
                                 aria-label="清除聊天记录高度"
+                              />
+                            </div>
+                          </div>
+                        ) : escTestPage === 'kill' ? (
+                          <div className={styles.escTestGrid}>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>击杀提示宽度</span>
+                                <button type="button" className={styles.escInlineButton} onClick={previewYumenKillNotice}>预览</button>
+                                <span>{getYumenHudSettingScale(yumenKillNoticeSize.width, YUMEN_KILL_NOTICE_BASE_WIDTH).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={YUMEN_HUD_SETTING_MIN_SCALE}
+                                max={YUMEN_HUD_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getYumenHudSettingScale(yumenKillNoticeSize.width, YUMEN_KILL_NOTICE_BASE_WIDTH)}
+                                onChange={(e) => setYumenKillNoticeSize((current) => ({
+                                  ...current,
+                                  width: scaleYumenHudSettingValue(e.target.value, YUMEN_KILL_NOTICE_BASE_WIDTH, normalizeYumenKillNoticeWidth),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="击杀提示宽度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>击杀提示高度</span>
+                                <span>{getYumenHudSettingScale(yumenKillNoticeSize.height, YUMEN_KILL_NOTICE_BASE_HEIGHT).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={YUMEN_HUD_SETTING_MIN_SCALE}
+                                max={YUMEN_HUD_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getYumenHudSettingScale(yumenKillNoticeSize.height, YUMEN_KILL_NOTICE_BASE_HEIGHT)}
+                                onChange={(e) => setYumenKillNoticeSize((current) => ({
+                                  ...current,
+                                  height: scaleYumenHudSettingValue(e.target.value, YUMEN_KILL_NOTICE_BASE_HEIGHT, normalizeYumenKillNoticeHeight),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="击杀提示高度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>击杀确认宽度</span>
+                                <button type="button" className={styles.escInlineButton} onClick={previewYumenKillConfirm}>预览</button>
+                                <span>{getYumenHudSettingScale(yumenKillConfirmSize.width, YUMEN_KILL_CONFIRM_BASE_WIDTH).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={YUMEN_HUD_SETTING_MIN_SCALE}
+                                max={YUMEN_HUD_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getYumenHudSettingScale(yumenKillConfirmSize.width, YUMEN_KILL_CONFIRM_BASE_WIDTH)}
+                                onChange={(e) => setYumenKillConfirmSize((current) => ({
+                                  ...current,
+                                  width: scaleYumenHudSettingValue(e.target.value, YUMEN_KILL_CONFIRM_BASE_WIDTH, normalizeYumenKillConfirmWidth),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="击杀确认宽度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>击杀确认高度</span>
+                                <span>{getYumenHudSettingScale(yumenKillConfirmSize.height, YUMEN_KILL_CONFIRM_BASE_HEIGHT).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={YUMEN_HUD_SETTING_MIN_SCALE}
+                                max={YUMEN_HUD_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getYumenHudSettingScale(yumenKillConfirmSize.height, YUMEN_KILL_CONFIRM_BASE_HEIGHT)}
+                                onChange={(e) => setYumenKillConfirmSize((current) => ({
+                                  ...current,
+                                  height: scaleYumenHudSettingValue(e.target.value, YUMEN_KILL_CONFIRM_BASE_HEIGHT, normalizeYumenKillConfirmHeight),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="击杀确认高度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>剩余人数缩放</span>
+                                <span>{yumenAliveCountScale.toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={YUMEN_HUD_SETTING_MIN_SCALE}
+                                max={YUMEN_HUD_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={yumenAliveCountScale}
+                                onChange={(e) => setYumenAliveCountSize(() => ({
+                                  width: scaleYumenHudSettingValue(e.target.value, YUMEN_ALIVE_COUNT_BASE_WIDTH, normalizeYumenAliveCountWidth),
+                                  height: scaleYumenHudSettingValue(e.target.value, YUMEN_ALIVE_COUNT_BASE_HEIGHT, normalizeYumenAliveCountHeight),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="剩余人数缩放"
                               />
                             </div>
                           </div>
@@ -16322,6 +17007,136 @@ export default function BattleArena({
 
           {isYumenMode && (
             <>
+              <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>玉门关</div>
+              <button
+                type="button"
+                disabled={!!runningCheatAction}
+                onClick={() => void runCheatAction('yumen-revive-all', '/api/game/cheat/yumen/revive-all', '全部玩家已复活')}
+                style={{
+                  background: 'rgba(40, 160, 80, 0.22)', color: '#c8ffd8',
+                  border: '1px solid rgba(95, 225, 135, 0.62)', borderRadius: 4,
+                  fontSize: 11, padding: '6px 8px',
+                  cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                  opacity: runningCheatAction ? 0.55 : 1,
+                }}
+              >复活全部玩家</button>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 6 }}>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction || yumenAlivePlayerCount > 1}
+                  onClick={() => void runCheatAction('yumen-end-game', '/api/game/cheat/yumen/end-game', '战场已结算')}
+                  style={{
+                    background: yumenAlivePlayerCount <= 1 ? 'rgba(210, 80, 70, 0.24)' : 'rgba(70, 80, 92, 0.20)',
+                    color: yumenAlivePlayerCount <= 1 ? '#ffc4bd' : '#aeb9c3',
+                    border: yumenAlivePlayerCount <= 1 ? '1px solid rgba(255, 130, 120, 0.62)' : '1px solid rgba(150, 165, 178, 0.42)',
+                    borderRadius: 4,
+                    fontSize: 11,
+                    padding: '6px 8px',
+                    cursor: runningCheatAction || yumenAlivePlayerCount > 1 ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >结束战场</button>
+                <label style={{
+                  minHeight: 29,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  borderRadius: 4,
+                  border: '1px solid rgba(255, 176, 104, 0.48)',
+                  background: 'rgba(92, 54, 28, 0.28)',
+                  color: '#ffd7b8',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: '5px 7px',
+                  cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                  opacity: runningCheatAction ? 0.55 : 1,
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={yumenAutoSettlePreference}
+                    disabled={!!runningCheatAction}
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      setYumenAutoSettlePreference(enabled);
+                      void (async () => {
+                        const ok = await runCheatAction(
+                          'yumen-auto-settle',
+                          '/api/game/cheat/yumen/auto-settle',
+                          enabled ? '自动结算已开启' : '自动结算已关闭',
+                          { enabled },
+                        );
+                        if (!ok) setYumenAutoSettlePreference(safeZone?.autoSettle === true);
+                      })();
+                    }}
+                    style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+                  />
+                  <span>自动结算</span>
+                </label>
+              </div>
+              <label style={{
+                minHeight: 29,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                borderRadius: 4,
+                border: '1px solid rgba(120, 195, 255, 0.42)',
+                background: 'rgba(45, 70, 95, 0.22)',
+                color: '#c8e7ff',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '5px 7px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={safeZone?.autoFullHeal === true}
+                  disabled={!!runningCheatAction}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    void runCheatAction(
+                      'yumen-auto-full-heal',
+                      '/api/game/cheat/yumen/auto-full-heal',
+                      enabled ? '自动满血已开启' : '自动满血已关闭',
+                      { enabled },
+                    );
+                  }}
+                  style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+                />
+                <span>自动满血</span>
+              </label>
+              <label style={{
+                minHeight: 29,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                borderRadius: 4,
+                border: '1px solid rgba(180, 165, 255, 0.42)',
+                background: 'rgba(65, 58, 105, 0.22)',
+                color: '#ded8ff',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '5px 7px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={safeZone?.testShortCooldown === true}
+                  disabled={!!runningCheatAction}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    void runCheatAction(
+                      'yumen-test-short-cooldown',
+                      '/api/game/cheat/yumen/test-short-cooldown',
+                      enabled ? '测试缩短CD已开启' : '测试缩短CD已关闭',
+                      { enabled },
+                    );
+                  }}
+                  style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+                />
+                <span>测试缩短cd</span>
+              </label>
               <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>毒圈</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
                 <button

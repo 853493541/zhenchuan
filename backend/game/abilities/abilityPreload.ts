@@ -3,7 +3,7 @@ import { applyPropertyOverridesToEffects, BuffEditorOverrideEntry, loadBuffEdito
 import { loadAbilityEditorOverrides } from "./abilityPropertySystem";
 import { SAND_DISGUISE_BUFF, SAND_DISGUISE_CONSUMABLE_ID, SAND_DISGUISE_CONSUMABLE_NAME } from "../engine/utils/disguise";
 import { YUE_YING_SHA_BUFF, YUE_YING_SHA_CONSUMABLE_ID, YUE_YING_SHA_CONSUMABLE_NAME } from "../engine/utils/yueYingSha";
-import { YUMEN_KUANG_SHA_BUFF, YUMEN_ZHUI_MING_BUFF } from "../engine/utils/yumenSafeZone";
+import { YUMEN_KUANG_SHA_BUFF, YUMEN_SPECTATOR_BUFF, YUMEN_ZHANYI_BUFF, YUMEN_ZHUI_MING_BUFF } from "../engine/utils/yumenSafeZone";
 
 const BUFF_ICON_PATH_OVERRIDES: Record<string, string> = {
   "心诤": "/icons/心诤-buff.png",
@@ -46,11 +46,10 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     : { overrides: {} as Record<string, BuffEditorOverrideEntry> };
   const { overrides: abilityEditorOverrides } = loadAbilityEditorOverrides();
 
-  const TEST_COOLDOWN_CAP_TICKS = 90; // 3 seconds at 30Hz
-  const clampCooldownTicksForTesting = (ticks: number | undefined) => {
+  const normalizeCooldownTicks = (ticks: number | undefined) => {
     if (ticks === undefined) return 0;
     if (ticks <= 0) return 0;
-    return Math.min(ticks, TEST_COOLDOWN_CAP_TICKS);
+    return Math.max(0, Math.round(ticks));
   };
 
   for (const ability of Object.values(ABILITIES)) {
@@ -73,11 +72,11 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       minRange: (ability as any).minRange,
 
       // Cooldown length for arc display
-      cooldownTicks: clampCooldownTicksForTesting((ability as any).cooldownTicks),
+      cooldownTicks: normalizeCooldownTicks((ability as any).cooldownTicks),
 
       // Charge metadata (for multi-charge abilities)
       maxCharges: (ability as any).maxCharges,
-      chargeRecoveryTicks: clampCooldownTicksForTesting((ability as any).chargeRecoveryTicks),
+      chargeRecoveryTicks: normalizeCooldownTicks((ability as any).chargeRecoveryTicks),
       chargeCastLockTicks: (ability as any).chargeCastLockTicks,
 
       // Common movement abilities are always shown regardless of draft
@@ -124,7 +123,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       // 可在缴械时施放的特殊技能。
       noWeaponRequired: !!(ability as any).noWeaponRequired,
 
-      // 御骑期间允许施放的招式。
+      // 骑御期间允许施放的招式。
       canCastWhileMounted: !!(ability as any).canCastWhileMounted,
 
       // Editor/runtime cast exception flags.
@@ -202,6 +201,18 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     ...YUMEN_ZHUI_MING_BUFF,
     sourceAbilityId: "yumen_sandstorm",
     sourceAbilityName: "玉门关风暴",
+  });
+
+  buffs.push({
+    ...YUMEN_SPECTATOR_BUFF,
+    sourceAbilityId: "yumen_spectator",
+    sourceAbilityName: "玉门观战",
+  });
+
+  buffs.push({
+    ...YUMEN_ZHANYI_BUFF,
+    sourceAbilityId: "yumen_zhanyi",
+    sourceAbilityName: "战意",
   });
 
   buffs.push({

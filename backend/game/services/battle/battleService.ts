@@ -42,6 +42,21 @@ const ARENA_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
 // Keep SPAWN_POSITIONS as alias for pubg (backward compat)
 const SPAWN_POSITIONS = PUBG_SPAWN_POSITIONS;
 
+export function attachPlayerNamesToBattleState(
+  state: GameState,
+  playerNames?: Record<string, string> | null
+): GameState {
+  const names = playerNames && typeof playerNames === "object" ? playerNames : {};
+  (state as any).playerNames = { ...names };
+  state.players = state.players.map((player) => {
+    const username = names[player.userId];
+    return typeof username === "string" && username.trim().length > 0
+      ? { ...player, username }
+      : player;
+  });
+  return state;
+}
+
 // Pickup spawn positions — clusters near each player spawn (P0≈985,1000 | P1≈1015,1000)
 // so books appear within arm's reach without needing to walk far.
 const PICKUP_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
@@ -299,6 +314,8 @@ export function initializeBattleState(
     pickups: isExportedMap ? [] : isArena ? generateArenaPickups() : generatePickups(),
     ...(isYumen ? { playArea: { minX: 0, minY: 0, maxX: mapWidth, maxY: mapHeight } } : {}),
   };
+
+  (state as any).mode = mode;
 
   return state;
 }

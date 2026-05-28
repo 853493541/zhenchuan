@@ -7,7 +7,7 @@ import GameSession from "../../models/GameSession";
 import { normalizeStoredUserDisplayName, User } from "../../../models/User";
 import { GameState, STARTING_ATTACK_DAMAGE, STARTING_BATTLE_HP, STARTING_CRIT_CHANCE_PCT, STARTING_DEFENSE_PCT, STARTING_HUAJIN_PCT } from "../../engine/state/types";
 import { initializeTournament } from "../economy/tournamentService";
-import { initializeBattleState } from "../battle/battleService";
+import { attachPlayerNamesToBattleState, initializeBattleState } from "../battle/battleService";
 import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
 import { DEFAULT_GAME_MODE, type GameMode, normalizeGameMode } from "../../modes";
 
@@ -164,7 +164,10 @@ export async function startGame(gameId: string, userId: string) {
 
   // Initialize battle state for all players (common abilities only, draft skipped)
   const gameMode = normalizeGameMode((game as any).mode ?? 'arena');
-  const state = initializeBattleState(tournament, game.players as string[], gameMode);
+  const state = attachPlayerNamesToBattleState(
+    initializeBattleState(tournament, game.players as string[], gameMode),
+    game.playerNames as Record<string, string> | undefined
+  );
 
   game.state = state;
   game.tournament = tournament;

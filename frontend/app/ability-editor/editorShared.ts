@@ -136,6 +136,8 @@ export type AbilityEditorAbility = {
   properties: AbilityPropertyState[];
   coreSettings: AbilityEditorNumericSetting[];
   damageSettings: AbilityEditorNumericSetting[];
+  adControlStatus: DescriptionReviewStatus;
+  cooldownReviewStatus: DescriptionReviewStatus;
   channelInfo?: AbilityEditorChannelInfo;
 };
 
@@ -318,6 +320,20 @@ export type AbilityDescriptionReviewEntry = {
 export type AbilityDescriptionReviewSnapshot = {
   updatedAt: string | null;
   abilities: AbilityDescriptionReviewEntry[];
+};
+
+export type AbilityCooldownReviewEntry = {
+  id: string;
+  name: string;
+  description: string;
+  cooldownTicks: number;
+  baseCooldownTicks: number;
+  status: DescriptionReviewStatus;
+};
+
+export type AbilityCooldownReviewSnapshot = {
+  updatedAt: string | null;
+  abilities: AbilityCooldownReviewEntry[];
 };
 
 export type BuffDescriptionReviewEntry = Pick<BuffEditorEntry, "buffId" | "name" | "category" | "description" | "iconPath" | "iconMissing" | "sourceAbilityName"> & {

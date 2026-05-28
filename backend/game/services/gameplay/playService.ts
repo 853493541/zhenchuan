@@ -25,10 +25,12 @@ import { resolveScheduledDamage, resolveScheduledDamageRoll } from "../../engine
 import { getAbilityRangeBonusFromBuffs } from "../../engine/utils/abilityRange";
 import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../../engine/utils/specialAbilityBar";
 import { hasYuqiState } from "../../engine/utils/yuqi";
+import { hasActiveYumenSpectatorBuff } from "../../engine/utils/yumenSafeZone";
 import { removeYuqiStateBuffs } from "../../engine/effects/buffRuntime";
 import { getHasteAdjustedTimingMs } from "../../engine/utils/haste";
 import { syncCombatStatusFromEvents } from "../../engine/utils/combatStatus";
 import { broadcastDefeatSystemChat, collectDefeatAnnouncementsFromEvents } from "../chatMessages";
+import { isYumen1v1BasicMode } from "../../modes";
 
 /* ================= EVENT PRUNING ================= */
 
@@ -56,10 +58,15 @@ const HOUYAO_GCD_EXEMPT_ABILITY_IDS = new Set([
   "yaotai_zhenhe",
 ]);
 
-function clampCooldownTicksForTesting(ticks: number | undefined): number {
+function shouldShortenCooldownsForTesting(state: GameState): boolean {
+  return state.safeZone?.testShortCooldown === true;
+}
+
+function resolveRuntimeCooldownTicks(ticks: number | undefined, shortenForTesting: boolean): number {
   if (ticks === undefined) return 0;
   if (ticks <= 0) return 0;
-  return Math.min(ticks, TEST_COOLDOWN_CAP_TICKS);
+  const normalized = Math.max(0, Math.round(ticks));
+  return shortenForTesting ? Math.min(normalized, TEST_COOLDOWN_CAP_TICKS) : normalized;
 }
 
 function hasChargeSystem(ability: any): boolean {
@@ -119,18 +126,18 @@ function getActiveChannelTickIntervalMs(ability: any): number | undefined {
   return hasLianHuanNuTick ? 1_000 : undefined;
 }
 
-function getChargeRecoveryTicks(ability: any): number {
+function getChargeRecoveryTicks(ability: any, shortenForTesting: boolean): number {
   return Math.max(
     1,
-    clampCooldownTicksForTesting((ability as any).chargeRecoveryTicks ?? ability.cooldownTicks ?? 1)
+    resolveRuntimeCooldownTicks((ability as any).chargeRecoveryTicks ?? ability.cooldownTicks ?? 1, shortenForTesting)
   );
 }
 
-function normalizeChargeRegenQueue(instance: any, ability: any) {
+function normalizeChargeRegenQueue(instance: any, ability: any, shortenForTesting: boolean) {
   if (!hasChargeSystem(ability)) return;
 
   const maxCharges = Math.max(0, Number(ability.maxCharges ?? 0));
-  const recoveryTicks = getChargeRecoveryTicks(ability);
+  const recoveryTicks = getChargeRecoveryTicks(ability, shortenForTesting);
   const clampedChargeCount = Math.max(0, Math.min(maxCharges, Number(instance.chargeCount ?? maxCharges)));
   const missingCharges = Math.max(0, maxCharges - clampedChargeCount);
 
@@ -161,25 +168,25 @@ function normalizeChargeRegenQueue(instance: any, ability: any) {
     : 0;
 }
 
-function ensureChargeRuntime(instance: any, ability: any) {
+function ensureChargeRuntime(instance: any, ability: any, shortenForTesting = false) {
   if (!hasChargeSystem(ability)) return;
   const maxCharges = Math.max(0, Number(ability.maxCharges ?? 0));
   if (typeof instance.chargeCount !== "number") instance.chargeCount = maxCharges;
   if (typeof instance.chargeRegenTicksRemaining !== "number") instance.chargeRegenTicksRemaining = 0;
   if (typeof instance.chargeLockTicks !== "number") instance.chargeLockTicks = 0;
-  normalizeChargeRegenQueue(instance, ability);
+  normalizeChargeRegenQueue(instance, ability, shortenForTesting);
 }
 
-function consumeAbilityUseRuntime(instance: any, ability: any, applyBaseCooldown: boolean) {
+function consumeAbilityUseRuntime(instance: any, ability: any, applyBaseCooldown: boolean, shortenForTesting: boolean) {
   if (hasChargeSystem(ability)) {
-    ensureChargeRuntime(instance, ability);
+    ensureChargeRuntime(instance, ability, shortenForTesting);
     const maxCharges = Math.max(1, Number(ability.maxCharges ?? 1));
-    const recoveryTicks = getChargeRecoveryTicks(ability);
+    const recoveryTicks = getChargeRecoveryTicks(ability, shortenForTesting);
     const castLockTicks = Math.max(0, Number((ability as any).chargeCastLockTicks ?? 0));
 
     instance.chargeCount = Math.max(0, (instance.chargeCount ?? maxCharges) - 1);
     instance.chargeLockTicks = Math.max(instance.chargeLockTicks ?? 0, castLockTicks);
-    normalizeChargeRegenQueue(instance, ability);
+    normalizeChargeRegenQueue(instance, ability, shortenForTesting);
 
     if ((instance._chargeRegenQueueTicks?.length ?? 0) <= 0) {
       instance._chargeRegenProgress = 0;
@@ -196,7 +203,7 @@ function consumeAbilityUseRuntime(instance: any, ability: any, applyBaseCooldown
   }
 
   if (applyBaseCooldown) {
-    instance.cooldown = clampCooldownTicksForTesting(ability.cooldownTicks ?? 3);
+    instance.cooldown = resolveRuntimeCooldownTicks(ability.cooldownTicks ?? 3, shortenForTesting);
   }
 }
 
@@ -390,38 +397,45 @@ async function playCastAbility(
   const prevState: GameState = structuredClone(state);
 
   const player = state.players[playerIndex];
+  const yumenSpectator = hasActiveYumenSpectatorBuff(player as any);
   // Accept instanceId or abilityId (common abilities may arrive as abilityId)
   let idx = player.hand.findIndex(
     (c) => c.instanceId === abilityInstanceId || (c.abilityId ?? (c as any).id) === abilityInstanceId
   );
+  let spectatorCommonAbilityState: any = null;
 
   // Auto-inject common abilities missing from hand (legacy games)
   if (idx === -1) {
     const commonAbility = ABILITIES[abilityInstanceId];
     if (commonAbility && (commonAbility as any).isCommon) {
-      const injected: any = { instanceId: abilityInstanceId, abilityId: abilityInstanceId, cooldown: 0 };
-      if (hasChargeSystem(commonAbility)) {
-        injected.chargeCount = Number((commonAbility as any).maxCharges ?? 0);
-        injected.chargeRegenTicksRemaining = 0;
-        injected.chargeLockTicks = 0;
+      if (yumenSpectator) {
+        if (!isQinggongAbility(commonAbility)) throw new Error("ERR_NON_QINGGONG_LOCKED");
+        spectatorCommonAbilityState = getOrCreateSpecialAbilityState(player as any, abilityInstanceId) as any;
+      } else {
+        const injected: any = { instanceId: abilityInstanceId, abilityId: abilityInstanceId, cooldown: 0 };
+        if (hasChargeSystem(commonAbility)) {
+          injected.chargeCount = Number((commonAbility as any).maxCharges ?? 0);
+          injected.chargeRegenTicksRemaining = 0;
+          injected.chargeLockTicks = 0;
+        }
+        player.hand.push(injected);
+        idx = player.hand.length - 1;
       }
-      player.hand.push(injected);
-      idx = player.hand.length - 1;
     }
   }
 
-  const temporarySpecialAbility = idx === -1 &&
+  const temporarySpecialAbility = idx === -1 && !spectatorCommonAbilityState &&
     ABILITIES[abilityInstanceId] &&
     (ABILITIES[abilityInstanceId] as any).specialBarAbility === true &&
     isSpecialAbilityBarAbility(player as any, abilityInstanceId);
 
-  if (idx === -1 && !temporarySpecialAbility) {
+  if (idx === -1 && !temporarySpecialAbility && !spectatorCommonAbilityState) {
     throw new Error("ERR_ABILITY_NOT_IN_HAND");
   }
   
-  const played = temporarySpecialAbility
+  const played = spectatorCommonAbilityState ?? (temporarySpecialAbility
     ? (getOrCreateSpecialAbilityState(player as any, abilityInstanceId) as any)
-    : player.hand[idx];
+    : player.hand[idx]);
   console.log("[playCastAbility] DEBUG - played ability:", {
     instanceId: played.instanceId,
     abilityId: played.abilityId,
@@ -435,8 +449,12 @@ async function playCastAbility(
   if (!ability) {
     throw new Error("ERR_ABILITY_NOT_FOUND");
   }
+  if (yumenSpectator && !isQinggongAbility(ability)) {
+    throw new Error("ERR_NON_QINGGONG_LOCKED");
+  }
 
-  ensureChargeRuntime(played, ability);
+  const shortenCooldownsForTesting = shouldShortenCooldownsForTesting(state);
+  ensureChargeRuntime(played, ability, shortenCooldownsForTesting);
 
   if ((ability as any).requiresStanding) {
     player.velocity = {
@@ -467,7 +485,7 @@ async function playCastAbility(
       abilityName: ability.name,
     });
 
-    consumeAbilityUseRuntime(played, ability, true);
+    consumeAbilityUseRuntime(played, ability, true, shortenCooldownsForTesting);
   } else {
 
     const isFriendlyTargetAbility =
@@ -530,7 +548,7 @@ async function playCastAbility(
         forwardChannel: (ability as any).channelForward ?? true,
         lockMovement: (ability as any).channelLockMovement === true,
         effects: (ability as any).channelEffects ?? [],
-        cooldownTicks: clampCooldownTicksForTesting(ability.cooldownTicks ?? 150),
+        cooldownTicks: resolveRuntimeCooldownTicks(ability.cooldownTicks ?? 150, shortenCooldownsForTesting),
         interruptible: (ability as any).channelNotInterruptible !== true,
       };
 
@@ -584,7 +602,7 @@ async function playCastAbility(
 
       // If a pure channel ever uses charge metadata, consume a charge at cast start.
       if (hasChargeSystem(ability)) {
-        consumeAbilityUseRuntime(played, ability, false);
+        consumeAbilityUseRuntime(played, ability, false, shortenCooldownsForTesting);
       }
 
       // ── 傍花随柳 on-play trigger (channel cast counts as "出招") ─────────────
@@ -694,7 +712,7 @@ async function playCastAbility(
         );
 
       // Set runtime cooldown/charges after ability is consumed.
-      consumeAbilityUseRuntime(played, ability, true);
+      consumeAbilityUseRuntime(played, ability, true, shortenCooldownsForTesting);
 
       if (upgradedBangDaGouTouCast) {
         played.cooldown = Math.max(played.cooldown ?? 0, BANG_DA_GOU_TOU_COOLDOWN_TICKS);
@@ -771,11 +789,13 @@ async function playCastAbility(
 
   syncCombatStatusFromEvents(state, prevState.events.length);
 
-  const defeatAnnouncements = collectDefeatAnnouncementsFromEvents(state, prevState.events.length);
-  for (const announcement of defeatAnnouncements) {
-    void broadcastDefeatSystemChat(gameId, announcement.defeatedUserId, announcement.attackerUserId).catch((err) => {
-      console.error(`[CastAbility] Failed to broadcast defeat chat for ${gameId}:`, err);
-    });
+  if (!isYumen1v1BasicMode((state as any).mode)) {
+    const defeatAnnouncements = collectDefeatAnnouncementsFromEvents(state, prevState.events.length);
+    for (const announcement of defeatAnnouncements) {
+      void broadcastDefeatSystemChat(gameId, announcement.defeatedUserId, announcement.attackerUserId).catch((err) => {
+        console.error(`[CastAbility] Failed to broadcast defeat chat for ${gameId}:`, err);
+      });
+    }
   }
 
   state.version = (state.version ?? 0) + 1;

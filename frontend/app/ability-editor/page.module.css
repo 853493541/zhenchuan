@@ -536,6 +536,13 @@
   padding-top: 12px;
 }
 
+.adControlSection {
+  max-width: 1420px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-top: 12px;
+}
+
 .adControlShell {
   display: flex;
   flex-direction: column;
@@ -607,6 +614,62 @@
   font-weight: 700;
 }
 
+.adControlBoard {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.adControlColumn {
+  min-width: 0;
+}
+
+.adControlColumnTitle {
+  padding: 8px 14px;
+  border-bottom: 2px solid var(--ad-column-border, #ddd7cb);
+  border-radius: 8px 8px 0 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.adControlColumnBody {
+  max-height: 720px;
+  overflow-y: auto;
+  border: 1px solid var(--ad-column-border, #ddd7cb);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  background: #ffffff;
+}
+
+.adControlEmpty {
+  padding: 24px 16px;
+  color: #aaa;
+  font-size: 13px;
+  text-align: center;
+}
+
+.adControlReviewRow {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0ece6;
+}
+
+.adAbilityNameLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.adAbilityDescription {
+  margin-top: 8px;
+  color: #4f4639;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .adControlError {
   padding: 10px 12px;
   border: 1px solid #fecaca;
@@ -664,17 +727,28 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: 8px;
 }
 
 .adSettingRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px;
+  grid-template-columns: minmax(0, 1fr) 104px;
   align-items: center;
   gap: 10px;
   padding: 8px;
   border: 1px solid #eee7dc;
   border-radius: 8px;
   background: #fbf8f2;
+}
+
+.adNoSettingRow {
+  padding: 8px;
+  border: 1px solid #eee7dc;
+  border-radius: 8px;
+  background: #fbf8f2;
+  color: #9b9388;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .adSettingLabelBlock {
@@ -758,6 +832,49 @@
   opacity: 0.45;
 }
 
+.adReviewActions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.adReviewButton {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid var(--ad-action-color, #7a6e62);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ad-action-color, #7a6e62);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.adReviewButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.adReviewButtonIcon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1.5px solid var(--ad-action-color, #7a6e62);
+  border-radius: 3px;
+  color: var(--ad-action-color, #7a6e62);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+
 @media (max-width: 980px) {
   .adControlHeader {
     align-items: stretch;
@@ -768,7 +885,8 @@
     justify-content: flex-start;
   }
 
-  .adControlList {
+  .adControlList,
+  .adControlBoard {
     grid-template-columns: 1fr;
   }
 }

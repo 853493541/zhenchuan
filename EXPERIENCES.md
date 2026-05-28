@@ -3,6 +3,55 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 玉门关 KILL / 观战 death state (2026-05-28)
+
+**Implemented / checked**:
+- Replaced the Yumen-only `测试重置` death reset with a `观战中` spectator state: HP stays at 0, buffs/debuffs are cleared, ability hand is saved then emptied, owned zones/entities are removed, combat links/targets are cleared, and the spectator buff grants stealth, untargetable/invulnerable/damage immunity, +100% speed, and high multi-jump count.
+- Added last-hit defeat attribution for Yumen using only the current damage event window. Player final hits broadcast `【被击败者】被【击败者】重伤，黯然离去。`; poison/no-player final hits broadcast `【被击败者】黯然离去。` and do not grant kill credit.
+- Added `战意` as the Yumen kill reward: 30 seconds, refreshes on reapply, heals 16130 HP each second through the normal periodic-heal path, so heal reduction and 狂沙 healing penalty apply.
+- Added `复活全部玩家` to the Yumen control panel and a Yumen-only backend route that restores full HP, removes `观战中`, and restores saved ability hands.
+- Follow-up tightened the spectator state: death now clears consumable counts/cooldowns in the same broadcast as the emptied hand, `观战中` is registered as a debuff in preload so the official status bar shows it without normal cancel affordance, and runtime `战意` metadata is also preloaded so the buff appears on the official bar.
+- Added a Yumen-only `自动满血` test toggle, default off. When off, fatal HP enters spectator death; when on, it restores HP through the old testing heal branch.
+- Added Yumen spectator ability-bar locks in backend cheat/pickup mutation paths and frontend bar/preset mutation handlers, so a ghost cannot add, reorder, discard, or claim new skills.
+- Added `YUMEN_DEFEAT` events for the frontend red-brush kill notice, plus draggable/resizeable kill-notice and alive-count HUD controls under ESC → 测试 → 击杀.
+- Follow-up split Yumen ghost nameplate visibility from health-meter visibility, so ghosts can hide HP bars without hiding player names.
+- Follow-up Yumen death cleanup now removes combat links for the defeated player and for opponents linked to that player, emits combat-exit events, and broadcasts the combat state patches so `战斗中` does not stick forever after death.
+- Follow-up polished Yumen kill UI: softened and lowered the full-screen kill broadcast, removed the white backing, added custom placement plus width/height controls for the personal kill confirmation, redesigned `剩余人数`, and added a dark sandy screen veil for `狂沙`.
+- Added a manual Yumen end-game route and result overlay. When alive count is at most one, the test control can store `yumenResults`, show rank/stat/reward rows, auto-leave countdown, and a `离开战场` action while skipping the old tournament-complete flow.
+- Live-verification correction: the result overlay must sit above movable chat/map/HUD panels, or the ranking table can be covered at match end.
+- Corrective pass: Yumen death chat is no longer rebroadcast from the generic post-cast defeat announcer. Live Playwright verified one real `观战中` death, then two follow-up casts kept the `重伤，黯然离去。` system-chat count at one.
+- Corrective pass: ghost opponent names render gray, the 狂沙 veil is lighter and sand-colored, kill-broadcast/kill-confirm visuals were softened, and ESC test controls gained preview buttons plus a single true `剩余人数缩放` control.
+- Corrective pass: Yumen settlement now uses rank-by-attendee scoring. In a two-player live verification, rank 1 scored 2 for 40 display stars and rank 2 scored 1 for 20 display stars.
+- Added an `自动结算` test checkbox next to `结束战场`, default off, with live verification that enabling it at one alive player stores `yumenResults` and shows the result overlay.
+- Corrective pass: `战意` now keeps its written 16130-per-tick heal as a raw flat number instead of passing through the normal flat-heal scale. It still cannot crit and still receives the 狂沙 heal penalty.
+- Added a `测试缩短cd` Yumen control. Default off uses real cooldowns; when enabled, ability cooldowns and charge recovery are capped at 3 seconds for testing.
+- Added the ability-editor `CD纠正` tab for entering cooldown seconds and marking each ability as 未修正 / 需要补充 / 已修正.
+
+**Lesson**:
+- Death attribution for poison-zone modes must use the fatal tick's newest positive damage event, not historical damage fallback. Otherwise old player damage can incorrectly steal poison deaths and grant kill rewards.
+- Clearing a player's hand inside the game loop needs an explicit full-hand broadcast patch; cooldown-only hand diffs do not tell the client that the whole bar was emptied.
+- Runtime-only buffs must be registered in the preload `buffMap`; otherwise the official `StatusBar` silently drops them even though they exist on the player state.
+- If a ghost/spectator state clears ability hands, it should also clear consumable runtime fields and explicitly broadcast those paths, or the client can keep stale item counts.
+- Correction pass: the generic `checkGameOver()` testing reset can still fire immediately after ability damage, before the Yumen loop handles death. Tag battle states with their mode and skip that reset for Yumen, or `[测试重置]` can appear even when the Yumen death branch no longer heals.
+- Correction pass: defeat attribution needs to accept `DAMAGE` events that carry actor/target but no numeric `value`; otherwise player kills become unattributed `大漠狂沙` deaths and `战意` is not granted.
+- Correction pass: fresh lobby-created battle states need `playerNames` copied into runtime state so `YUMEN_DEFEAT` events can broadcast real names instead of undefined/fallback labels.
+- Correction pass: Yumen alive-count and ghost visibility should also derive defeated users from `YUMEN_DEFEAT` events, because a client can receive the event before the corresponding spectator-buff patch is reflected in opponent state.
+- Correction pass: no-attacker Yumen system chat still needs the defeated player's real battle name (`【玩家名】黯然离去。`), not a generic `游客` fallback. Prefer the game state's `playerNames` map over account/default names for battle-end chat.
+- Correction pass: `战意` periodic heal should carry an explicit `noCrit` marker in the buff definition, and the periodic-heal runtime should honor that marker so future refactors cannot accidentally make it 会心 again.
+- Correction pass: raw-value periodic heals must opt out of `FLAT_HEAL_SCALE`; otherwise a written value like 16130 can display as an 80万-scale heal after stat scaling.
+- Correction pass: 狂沙 screen color should be a darker orange sand wash with only smooth radial color layers. Do not use repeating gradients or line textures for that overlay.
+- Correction pass: Yumen result rank totals should come from actual attendee rows, not a hardcoded lobby capacity such as 20.
+- Correction pass: test-only cooldown shortening should be an explicit match toggle, because always capping cooldowns hides real cooldown data while tuning CD values.
+- Correction pass: event-derived ghost state needs a matching `YUMEN_REVIVE` event, not an HP-patch heuristic. Otherwise alive count can be instant after death but stale after revive, or revive can unlock backend buffs while the frontend still says `观战中`.
+- Correction pass: mark Yumen deaths on the player state until revive. Relying only on an active spectator buff can let later casts rediscover the same 0-HP player and rebroadcast the same `重伤` chat.
+- Correction pass: clearing consumables to `{}` also needs frontend handling; missing keys inside an explicit count object mean zero, not the item's starting count.
+- Correction pass: `hideHpBar` was too broad for Yumen ghosts because it hid the whole billboard, including names. Use a separate `hideHealthMeter` flag when only HP/shield bars should disappear.
+- Correction pass: manual Yumen game-over needs persistent `yumenResults` in state and timestamp normalization on the client; otherwise reconnects or server/client clock drift can break the result countdown.
+- Correction pass: after adding Yumen HUD/runtime fields, keep the narrow `BattleArena` prop and helper union types in sync. Next production builds skip type validation in this repo, so use editor diagnostics or a focused type check on touched files to catch these issues.
+- Correction pass: mode-specific ghost deaths must bypass generic defeat-announcement fallback after every cast. The Yumen loop already has a one-time `yumenDefeated` guard, but `/play` can still inspect historical fatal events unless explicitly skipped for Yumen.
+- Correction pass: Yumen score/reward display is rank and attendee-count based, not damage/kills based. Keep this formula in a shared helper so manual settlement and auto-settlement cannot drift.
+- Correction pass: auto-settle is a test preference, not the default match rule. Store it on `safeZone`, preserve it through safe-zone resets, and only finish the match automatically when the flag is true and alive count reaches at most one.
+
 ## 临时飞爪 crash, minimap target zone, and diagnostics pressure (2026-05-28)
 
 **Implemented / checked**:

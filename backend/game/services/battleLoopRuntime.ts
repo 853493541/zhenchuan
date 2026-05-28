@@ -2,6 +2,7 @@ import { GameLoop, type GameLoopConfig } from "../engine/loop/GameLoop";
 import type { GameState } from "../engine/state/types";
 import GameSession from "../models/GameSession";
 import { normalizeGameMode } from "../modes";
+import { attachPlayerNamesToBattleState } from "./battle/battleService";
 import { gameStateCache } from "./gameStateCache";
 
 type SupportedBattleMode = NonNullable<GameLoopConfig["mode"]>;
@@ -59,7 +60,11 @@ export async function ensureBattleLoop(gameId: string, existingGame?: any): Prom
     if (activeBeforeStart) return activeBeforeStart;
 
     const mode = normalizeBattleMode((game as any).mode);
-    const loop = GameLoop.start(gameId, game.state as GameState, { tickRate: 30, mode });
+    const state = attachPlayerNamesToBattleState(
+      game.state as GameState,
+      (game as any).playerNames as Record<string, string> | undefined
+    );
+    const loop = GameLoop.start(gameId, state, { tickRate: 30, mode });
     gameStateCache.set(gameId, loop.getState());
     console.log(`[battleLoopRuntime] Hydrated GameLoop for ${gameId} from persisted battle state`);
     return loop;

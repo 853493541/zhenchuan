@@ -11,6 +11,8 @@ import { GameLoop } from "../engine/loop/GameLoop";
 import { randomUUID } from "crypto";
 import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types";
 import { blocksCardTargeting } from "../engine/rules/guards";
+import { isYumen1v1BasicMode } from "../modes";
+import { hasActiveYumenSpectatorBuff } from "../engine/utils/yumenSafeZone";
 import { recordLagProbe } from "../../utils/lagProbe";
 
 const router = express.Router();
@@ -79,6 +81,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   ERR_PICKUP_TOO_FAR: "Too far away to interact",
   ERR_PICKUP_CLAIM_TOO_FAR: "Too far away to pick up",
   ERR_PICKUP_HAND_FULL: "只能拾取6个技能",
+  ERR_YUMEN_SPECTATOR_LOCKED: "观战中无法调整技能栏",
   ERR_ABILITY_NOT_FOUND: "Ability definition not found",
   ERR_CONSUMABLE_NOT_FOUND: "Consumable definition not found",
   ERR_CONSUMABLE_NOT_IMPLEMENTED: "Consumable is not implemented yet",
@@ -1049,6 +1052,10 @@ router.post("/pickup/claim", async (req, res) => {
 
     // Check distance — claim allows up to PICKUP_CLAIM_RANGE so player can walk away after channeling
     const player = loopState.players[playerIndex];
+    const game = await GameSession.findById(gameId);
+    if (isYumen1v1BasicMode((game as any)?.mode) && hasActiveYumenSpectatorBuff(player as any)) {
+      return sendGameError(res, 400, "ERR_YUMEN_SPECTATOR_LOCKED");
+    }
     const storedUnitScale = loopState.unitScale ?? NEW_WORLD_UNIT_SCALE;
     const claimRange = PICKUP_CLAIM_RANGE * storedUnitScale;
     const dx = player.position.x - pickup.position.x;
@@ -1090,7 +1097,6 @@ router.post("/pickup/claim", async (req, res) => {
     loop.updateState(loopState);
 
     // Persist to DB
-    const game = await GameSession.findById(gameId);
     if (game) {
       game.state.players[playerIndex] = {
         ...game.state.players[playerIndex],

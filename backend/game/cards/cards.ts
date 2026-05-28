@@ -96,8 +96,8 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
 
   yuqi: {
     id: "yuqi",
-    name: "御骑",
-    description: "未御骑时：需站立运功3秒，移动或跳跃会打断；完成后获得【御骑】\n已御骑时：瞬发解除【御骑】并下马\n御骑期间移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展带【可以马上施展】标记的招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
+    name: "骑御",
+    description: "未骑御时：需站立运功3秒，移动或跳跃会打断；完成后获得【骑御】\n已骑御时：瞬发解除【骑御】并下马\n骑御期间移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展带【可以马上施展】标记的招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 0,
@@ -114,7 +114,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     buffs: [
       {
         buffId: 2741,
-        name: "御骑",
+        name: "骑御",
         category: "BUFF",
         applyTo: "SELF",
         durationMs: 365 * 24 * 60 * 60 * 1000,
@@ -128,7 +128,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   ren_chi_cheng: {
     id: "ren_chi_cheng",
     name: "任驰骋",
-    description: "需在地面运功0.75秒，期间可以移动但跳跃会打断；完成后获得【御骑】、【任驰骋】12秒（伤害提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
+    description: "需在地面运功0.75秒，期间可以移动但跳跃会打断；完成后获得【骑御】、【任驰骋】12秒（伤害提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 900,
@@ -144,7 +144,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     buffs: [
       {
         buffId: 2741,
-        name: "御骑",
+        name: "骑御",
         category: "BUFF",
         applyTo: "SELF",
         durationMs: 365 * 24 * 60 * 60 * 1000,

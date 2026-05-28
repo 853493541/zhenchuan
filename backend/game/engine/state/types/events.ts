@@ -13,6 +13,9 @@ export type GameEventType =
   | "HEAL"
   | "BUFF_APPLIED"
   | "BUFF_EXPIRED"
+  | "YUMEN_DEFEAT"
+  | "YUMEN_REVIVE"
+  | "YUMEN_GAME_END"
   | "COMBAT_STATUS"
   | "DASH";
 
@@ -25,6 +28,12 @@ export interface GameEvent {
 
   actorUserId: PlayerID;
   targetUserId?: PlayerID;
+  attackerUserId?: PlayerID | null;
+  defeatedUserId?: PlayerID;
+  revivedUserId?: PlayerID;
+  winnerUserId?: PlayerID;
+  attackerName?: string | null;
+  defeatedName?: string;
   entityId?: string;
   entityName?: string;
 

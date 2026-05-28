@@ -13,6 +13,7 @@ import { getEffectiveAbilityRange } from "../utils/abilityRange";
 import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../utils/specialAbilityBar";
 import { hasYuqiState } from "../utils/yuqi";
 import { hasMiYunConfusion } from "../utils/miyun";
+import { hasActiveYumenSpectatorBuff } from "../utils/yumenSafeZone";
 
 const SHU_SE_BUFF_ID = 2646;
 const REN_CHI_CHENG_ABILITY_ID = "ren_chi_cheng";
@@ -251,6 +252,7 @@ export function validateCastAbility(
   }
 
   const player = state.players[playerIndex];
+  const yumenSpectator = hasActiveYumenSpectatorBuff(player as any);
 
   // Accept lookup by instanceId OR by abilityId (common abilities may be cast by abilityId)
   let instance = player.hand.find(
@@ -268,8 +270,13 @@ export function validateCastAbility(
         newInst.chargeRegenTicksRemaining = 0;
         newInst.chargeLockTicks = 0;
       }
-      player.hand.push(newInst as any);
-      instance = newInst as any;
+      if (yumenSpectator) {
+        if (!isQinggongAbility(maybeCommon)) throw new Error("ERR_NON_QINGGONG_LOCKED");
+        instance = getOrCreateSpecialAbilityState(player as any, abilityInstanceId) as any;
+      } else {
+        player.hand.push(newInst as any);
+        instance = newInst as any;
+      }
     }
   }
 
@@ -300,6 +307,9 @@ export function validateCastAbility(
   const ability = ABILITIES[abilityId];
   if (!ability) {
     throw new Error("ERR_ABILITY_NOT_FOUND");
+  }
+  if (yumenSpectator && !isQinggongAbility(ability)) {
+    throw new Error("ERR_NON_QINGGONG_LOCKED");
   }
 
   const yuqiMounted = hasYuqiState(player as any);

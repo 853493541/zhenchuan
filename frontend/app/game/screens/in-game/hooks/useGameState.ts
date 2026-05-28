@@ -92,6 +92,8 @@ const ABSOLUTE_SERVER_TIME_KEYS = new Set([
   "startedAt",
   "lastTickAt",
   "timestamp",
+  "endedAt",
+  "autoLeaveAt",
 ]);
 
 function normalizeServerTimes<T>(value: T, offsetMs: number): T {

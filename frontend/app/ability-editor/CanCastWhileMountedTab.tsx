@@ -165,7 +165,7 @@ export default function CanCastWhileMountedTab({ snapshot, loading, errorMessage
       </div>
 
       <p style={{ marginTop: 16, fontSize: 12, color: "#8a7f6f" }}>
-        这里决定哪些技能拥有“可以马上施展”属性。右侧技能在御骑期间仍可施放，中间列表可以直接判定，左侧“恢复”会清除手动覆盖并回到代码默认值。
+        这里决定哪些技能拥有“可以马上施展”属性。右侧技能在骑御期间仍可施放，中间列表可以直接判定，左侧“恢复”会清除手动覆盖并回到代码默认值。
       </p>
     </div>
   );

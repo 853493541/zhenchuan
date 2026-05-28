@@ -7,6 +7,7 @@ import AdControlTab from "./AdControlTab";
 import BuffEditorTab from "./BuffEditorTab";
 import AbilityBooleanDeciderTab from "./AbilityBooleanDeciderTab";
 import CanCastWhileMountedTab from "./CanCastWhileMountedTab";
+import CooldownReviewTab from "./CooldownReviewTab";
 import DamageReductionOverrideTab from "./DamageReductionOverrideTab";
 import DescriptionReviewTab, { abilityToReviewEntry, buffToReviewEntry } from "./DescriptionReviewTab";
 import HiddenBuffTab from "./HiddenBuffTab";
@@ -24,6 +25,8 @@ import {
   AbilityBooleanDeciderSnapshot,
   AbilityEditorAbility,
   AbilityEditorSnapshot,
+  AbilityCooldownReviewEntry,
+  AbilityCooldownReviewSnapshot,
   AbilityRarity,
   AbilitySchool,
   AbilityDescriptionReviewEntry,
@@ -67,16 +70,17 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "adControl" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "abilityDescriptionReview" | "qinggong" | "qinggongGcdImmune" | "hasteUnaffected" | "soundReview" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "buffTimerVisibility" | "hiddenBuffs" | "buffDescriptionReview";
+type MainTab = "abilities" | "buffs" | "adControl" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "abilityDescriptionReview" | "cooldownReview" | "qinggong" | "qinggongGcdImmune" | "hasteUnaffected" | "soundReview" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "buffTimerVisibility" | "hiddenBuffs" | "buffDescriptionReview";
 type EditorTabGroup = "skill" | "buff";
 
 const SKILL_EDITOR_TABS: Array<{ id: MainTab; label: string }> = [
-  { id: "adControl", label: "AD控制" },
+  { id: "adControl", label: "加成修正" },
   { id: "projectiles", label: "远程弹道" },
   { id: "dunLiWhitelist", label: "盾立白名单" },
   { id: "noWeaponRequired", label: "无需武器" },
   { id: "canCastWhileMounted", label: "可以马上施展" },
   { id: "abilityDescriptionReview", label: "描述修正" },
+  { id: "cooldownReview", label: "CD纠正" },
   { id: "qinggong", label: "轻功" },
   { id: "qinggongGcdImmune", label: "不受轻功GCD 影响" },
   { id: "hasteUnaffected", label: "读条不受加速影响" },
@@ -144,6 +148,8 @@ export default function AbilityEditorPage() {
       setMainTab("canCastWhileMounted");
     } else if (params.get("tab") === "abilityDescriptionReview") {
       setMainTab("abilityDescriptionReview");
+    } else if (params.get("tab") === "cooldownReview" || params.get("tab") === "cdReview") {
+      setMainTab("cooldownReview");
     } else if (params.get("tab") === "qinggong") {
       setMainTab("qinggong");
     } else if (params.get("tab") === "qinggongGcdImmune") {
@@ -238,6 +244,9 @@ export default function AbilityEditorPage() {
   const [abilityDescriptionReviewSnapshot, setAbilityDescriptionReviewSnapshot] = useState<AbilityDescriptionReviewSnapshot | null>(null);
   const [abilityDescriptionReviewLoading, setAbilityDescriptionReviewLoading] = useState(false);
   const [abilityDescriptionReviewError, setAbilityDescriptionReviewError] = useState("");
+  const [abilityCooldownReviewSnapshot, setAbilityCooldownReviewSnapshot] = useState<AbilityCooldownReviewSnapshot | null>(null);
+  const [abilityCooldownReviewLoading, setAbilityCooldownReviewLoading] = useState(false);
+  const [abilityCooldownReviewError, setAbilityCooldownReviewError] = useState("");
   const [qinggongSnapshot, setQinggongSnapshot] = useState<AbilityBooleanDeciderSnapshot | null>(null);
   const [qinggongLoading, setQinggongLoading] = useState(false);
   const [qinggongError, setQinggongError] = useState("");
@@ -417,6 +426,28 @@ export default function AbilityEditorPage() {
       setAbilityDescriptionReviewError(message);
     } finally {
       setAbilityDescriptionReviewLoading(false);
+    }
+  };
+
+  const loadAbilityCooldownReviewSnapshot = async () => {
+    setAbilityCooldownReviewLoading(true);
+    setAbilityCooldownReviewError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/cooldown-review", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setAbilityCooldownReviewSnapshot((await response.json()) as AbilityCooldownReviewSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setAbilityCooldownReviewError(message);
+    } finally {
+      setAbilityCooldownReviewLoading(false);
     }
   };
 
@@ -628,6 +659,13 @@ export default function AbilityEditorPage() {
   }, [mainTab]);
 
   useEffect(() => {
+    if (mainTab === "cooldownReview" && !abilityCooldownReviewSnapshot && !abilityCooldownReviewLoading) {
+      loadAbilityCooldownReviewSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
     if (mainTab === "qinggong" && !qinggongSnapshot && !qinggongLoading) {
       loadQinggongSnapshot();
     }
@@ -759,6 +797,45 @@ export default function AbilityEditorPage() {
         ...prev,
         updatedAt: nextSnapshot.updatedAt,
         abilities: prev.abilities.map((ability) => ability.id === entry.id ? { ...ability, description } : ability),
+      } : prev);
+    } catch { /* silent */ }
+  };
+
+  const handleAbilityCooldownStatus = async (entry: AbilityCooldownReviewEntry, status: DescriptionReviewStatus) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/cooldown-review/${entry.id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as AbilityCooldownReviewSnapshot;
+      setAbilityCooldownReviewSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
+  const handleAbilityCooldownSave = async (entry: AbilityCooldownReviewEntry, cooldownTicks: number) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/cooldown-review/${entry.id}/cooldown`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ cooldownTicks }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as AbilityCooldownReviewSnapshot;
+      setAbilityCooldownReviewSnapshot(nextSnapshot);
+      setSnapshot((prev) => prev ? {
+        ...prev,
+        updatedAt: nextSnapshot.updatedAt,
+        abilities: prev.abilities.map((ability) => ability.id === entry.id
+          ? {
+              ...ability,
+              coreSettings: ability.coreSettings.map((setting) => setting.id === "cooldownTicks" ? { ...setting, value: cooldownTicks, overridden: true } : setting),
+            }
+          : ability),
       } : prev);
     } catch { /* silent */ }
   };
@@ -1335,7 +1412,7 @@ export default function AbilityEditorPage() {
 
       {/* ── Projectile abilities tab ─────────────────────────────────────────── */}
       {mainTab === "adControl" && (
-        <section className={styles.buffEditorSection}>
+        <section className={styles.adControlSection}>
           <AdControlTab
             snapshot={snapshot}
             loading={loading}
@@ -1401,6 +1478,19 @@ export default function AbilityEditorPage() {
             toReviewEntry={abilityToReviewEntry}
             searchStorageKey="abilityEditor.descriptionReview.search"
             loadingText="正在加载技能描述修正列表…"
+          />
+        </section>
+      )}
+
+      {mainTab === "cooldownReview" && (
+        <section className={styles.buffEditorSection}>
+          <CooldownReviewTab
+            entries={abilityCooldownReviewSnapshot?.abilities ?? []}
+            loading={abilityCooldownReviewLoading}
+            errorMessage={abilityCooldownReviewError}
+            onRetry={loadAbilityCooldownReviewSnapshot}
+            onStatusChange={handleAbilityCooldownStatus}
+            onCooldownChange={handleAbilityCooldownSave}
           />
         </section>
       )}
