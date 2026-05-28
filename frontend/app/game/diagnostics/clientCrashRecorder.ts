@@ -624,7 +624,10 @@ class ClientCrashRecorder {
       this.activeSession.lastAliveAt = now;
     }
     this.recordBreadcrumb("fatal:error", { error: sanitizeValue(error), data }, "fatal", true);
-    void this.uploadReport(reason, { compact: false, eventAt: now }).catch(() => undefined);
+    const report = this.buildReport(reason, { compact: false, eventAt: now });
+    const consoleError = this.originalConsoleError ?? (typeof console !== "undefined" ? console.error.bind(console) : null);
+    consoleError?.("[Zhenchuan][crash-diagnostics]", summary, report);
+    void this.uploadReportObject(report, false).catch(() => undefined);
   }
 
   buildReport(reason: CrashReportReason, options?: { compact?: boolean; eventAt?: number; extra?: Record<string, unknown> }) {

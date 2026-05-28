@@ -24,6 +24,11 @@ const MAX_OBJECT_KEYS = 160;
 const CRASH_LOG_DIR = process.env.CLIENT_CRASH_LOG_DIR || path.resolve(process.cwd(), "../logs/client-crashes");
 const FRONTEND_LOG_DIR = process.env.CLIENT_FRONTEND_LOG_DIR || path.resolve(process.cwd(), "../logs/frontend");
 const SENSITIVE_KEY_RE = /(token|password|cookie|authorization|jwt|secret|auth|credential)/i;
+const LATENCY_PRUNE_DEBOUNCE_MS = 5 * 60_000;
+
+let latencyPruneTimer: ReturnType<typeof setTimeout> | null = null;
+let latencyPruneRunning = false;
+let latencyPruneQueuedReason: string | null = null;
 
 function dayKey(ts: number) {
   return new Date(ts).toISOString().slice(0, 10);
@@ -67,6 +72,39 @@ async function appendJsonl(logDir: string, ts: number, entry: unknown) {
   await fs.mkdir(logDir, { recursive: true });
   const logPath = path.join(logDir, `${dayKey(ts)}.jsonl`);
   await fs.appendFile(logPath, `${JSON.stringify(entry)}\n`, "utf8");
+}
+
+function scheduleLatencyLogPrune(reason: string) {
+  latencyPruneQueuedReason = reason;
+  if (latencyPruneTimer || latencyPruneRunning) return;
+
+  latencyPruneTimer = setTimeout(() => {
+    latencyPruneTimer = null;
+    const runReason = latencyPruneQueuedReason ?? reason;
+    latencyPruneQueuedReason = null;
+    latencyPruneRunning = true;
+    const startedAt = performance.now();
+    void pruneLatencyLogs()
+      .then((result) => {
+        const durationMs = performance.now() - startedAt;
+        if (durationMs >= 250 || result.removedEntries > 0) {
+          recordLagProbe("diagnostics-prune-latency-logs", {
+            reason: runReason,
+            durationMs: roundLagMs(durationMs),
+            removedEntries: result.removedEntries,
+            keptGames: result.keepGameIds.length,
+          });
+        }
+      })
+      .catch((err) => {
+        console.error("[Diagnostics] Failed to prune latency logs:", err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        latencyPruneRunning = false;
+        if (latencyPruneQueuedReason) scheduleLatencyLogPrune("queued");
+      });
+  }, LATENCY_PRUNE_DEBOUNCE_MS);
+  latencyPruneTimer.unref?.();
 }
 
 function matchesSessionEntry(entry: any, sessionId: string, gameId: string, userId: string) {
@@ -227,9 +265,7 @@ router.post("/client-latency-batch", async (req, res) => {
     const writeStartedAt = performance.now();
     await appendJsonl(LATENCY_LOG_DIR, receivedAt, entry);
     const writeMs = performance.now() - writeStartedAt;
-    void pruneLatencyLogs().catch((err) => {
-      console.error("[Diagnostics] Failed to prune latency logs:", err instanceof Error ? err.message : String(err));
-    });
+    scheduleLatencyLogPrune("latency-batch");
 
     const totalMs = performance.now() - handlerStartedAt;
     const sampleCount = Array.isArray((req.body as any)?.samples) ? (req.body as any).samples.length : null;
@@ -278,9 +314,7 @@ router.post("/client-latency-report", async (req, res) => {
     };
 
     await appendJsonl(LATENCY_LOG_DIR, receivedAt, entry);
-    void pruneLatencyLogs().catch((err) => {
-      console.error("[Diagnostics] Failed to prune latency logs:", err instanceof Error ? err.message : String(err));
-    });
+    scheduleLatencyLogPrune("latency-report");
 
     res.json({ ok: true, latencyReportId, receivedAt });
   } catch (err) {

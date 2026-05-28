@@ -106,6 +106,7 @@ const FLUSH_MS = 10_000;
 const KEEPALIVE_MAX_BYTES = 60_000;
 const MAIN_THREAD_PROBE_INTERVAL_MS = 250;
 const MAIN_THREAD_STALL_THRESHOLD_MS = 500;
+const HIDDEN_MAIN_THREAD_STALL_LOG_MS = 30_000;
 const SENSITIVE_KEY_RE = /(token|password|cookie|authorization|jwt|secret|auth|credential)/i;
 
 const nowIso = (ts = Date.now()) => new Date(ts).toISOString();
@@ -267,6 +268,7 @@ class ClientLatencyRecorder {
   private stoppingSession = false;
   private mainThreadProbeTimer: number | null = null;
   private lastMainThreadProbeAt = 0;
+  private lastHiddenMainThreadStallLoggedAt = 0;
 
   startSession(context: LatencyRecorderContext) {
     if (typeof window === "undefined") return;
@@ -290,6 +292,7 @@ class ClientLatencyRecorder {
     this.movementDurations = [];
     this.movementRequestCount = 0;
     this.stoppingSession = false;
+    this.lastHiddenMainThreadStallLoggedAt = 0;
     this.uploadStatus = { status: "idle" };
     this.activeSession = {
       schemaVersion: 1,
@@ -497,6 +500,12 @@ class ClientLatencyRecorder {
       this.lastMainThreadProbeAt = now;
       const blockedMs = observedIntervalMs - MAIN_THREAD_PROBE_INTERVAL_MS;
       if (blockedMs < MAIN_THREAD_STALL_THRESHOLD_MS) return;
+      const wallNow = Date.now();
+      const hidden = document.visibilityState !== "visible";
+      if (hidden) {
+        if (wallNow - this.lastHiddenMainThreadStallLoggedAt < HIDDEN_MAIN_THREAD_STALL_LOG_MS) return;
+        this.lastHiddenMainThreadStallLoggedAt = wallNow;
+      }
 
       const data = {
         expectedIntervalMs: MAIN_THREAD_PROBE_INTERVAL_MS,
@@ -510,15 +519,15 @@ class ClientLatencyRecorder {
       console.warn(`[LAG-PROBE][frontend] ${JSON.stringify({
         schemaVersion: 1,
         kind: "frontend-main-thread-stall",
-        ts: Date.now(),
-        iso: nowIso(),
+        ts: wallNow,
+        iso: nowIso(wallNow),
         sessionId: this.activeSession?.sessionId ?? null,
         gameId: this.activeSession?.context.gameId ?? this.context.gameId ?? null,
         userId: this.activeSession?.context.userId ?? this.context.userId ?? null,
         ...data,
       })}`);
       this.recordWebSocketLifecycle("frontend-main-thread-stall", data);
-      void this.flushSamples("frontend-main-thread-stall").catch(() => undefined);
+      if (!hidden) void this.flushSamples("frontend-main-thread-stall").catch(() => undefined);
     }, MAIN_THREAD_PROBE_INTERVAL_MS);
   }
 
