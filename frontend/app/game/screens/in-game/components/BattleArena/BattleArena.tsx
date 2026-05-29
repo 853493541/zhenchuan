@@ -8931,6 +8931,7 @@ export default function BattleArena({
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       if (maxCharges <= 1) {
         const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
+        const rawInstanceCooldown = Math.max(0, Math.round(Number(instance?.cooldown ?? 0)));
         const currentCooldown = Math.max(0, instanceCooldown);
         return {
           maxCharges: undefined,
@@ -8941,7 +8942,7 @@ export default function BattleArena({
           chargeCastLockTicks: undefined,
           chargeLockTicks: undefined,
           cooldown: currentCooldown,
-          maxCooldown: Math.max(getDisplayMaxCooldown(ab), currentCooldown),
+          maxCooldown: Math.max(getDisplayMaxCooldown(ab), rawInstanceCooldown, currentCooldown),
           cooldownDisplayKind: 'cooldown' as CooldownDisplayKind,
         };
       }
@@ -8959,6 +8960,7 @@ export default function BattleArena({
         : undefined;
       const chargeCastLockTicks = Math.max(0, Number(ab?.chargeCastLockTicks ?? 0));
       const instanceChargeLockTicks = getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
+      const rawInstanceChargeLockTicks = Math.max(0, Math.round(Number(instance?.chargeLockTicks ?? 0)));
       const chargeLockTicks = Math.max(0, instanceChargeLockTicks);
 
       if (chargeCount <= 0) {
@@ -8986,7 +8988,7 @@ export default function BattleArena({
           chargeCastLockTicks,
           chargeLockTicks,
           cooldown: chargeLockTicks,
-          maxCooldown: Math.max(1, chargeCastLockTicks, chargeLockTicks),
+          maxCooldown: Math.max(1, chargeCastLockTicks, rawInstanceChargeLockTicks, chargeLockTicks),
           cooldownDisplayKind: 'cooldown' as CooldownDisplayKind,
         };
       }

@@ -3,6 +3,15 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Ability cooldown spinner regression fix for >1s cooldowns (2026-05-29)
+
+**Implemented / checked**:
+- Restored cooldown arc progression by stabilizing `maxCooldown` against raw runtime instance values (`instance.cooldown` / `instance.chargeLockTicks`) instead of relying only on definition cooldown fields.
+- This prevents cases where `maxCooldown` collapsed to the live remaining ticks, which made the conic cooldown overlay stay near 100% and feel like it stopped spinning.
+
+**Lesson**:
+- For HUD radial cooldown percentage, use a stable max baseline from runtime instance data when ability definition cooldown fields can be absent, or the arc can appear frozen even while numeric cooldown keeps ticking.
+
 ## Yumen spawn-facing alignment legacy-mode compatibility (2026-05-29)
 
 **Implemented / checked**:
