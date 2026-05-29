@@ -5,6 +5,15 @@ Each entry goes under its relevant section header.
 
 ## Chat input channel color tint (2026-05-29)
 
+## Yumen settlement exit footer layout update (2026-05-29)
+
+**Implemented / checked**:
+- Moved the settlement auto-leave text and `离开战场` button from a right-aligned row into a centered vertical stack.
+- Updated the countdown number in `将在 X 秒后离开战场` to display in yellow.
+
+**Lesson**:
+- For end-of-match dialogs, the primary exit countdown and action read more clearly when centered as a stacked call-to-action instead of competing with table content at the edge.
+
 **Implemented / checked**:
 - Changed the chat input text color to inherit the active composer channel color instead of using a fixed near-white color.
 - The map composer now visually matches the outgoing map-channel tint while typing.
