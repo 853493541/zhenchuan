@@ -5105,13 +5105,6 @@ export default function BattleArena({
     }
     return true;
   }, [focusChatInput, onSendChatMessage]);
-  const submitChatMessage = useCallback(async () => {
-    const text = chatInputValue.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_INPUT_LENGTH);
-    setChatInputValue('');
-    if (!text) return;
-    setActiveChatWindowId('map');
-    await sendChatText(text, 'map', true);
-  }, [chatInputValue, sendChatText]);
   const beginChatResize = useCallback((groupId: 'main' | string, event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -12331,6 +12324,29 @@ export default function BattleArena({
     },
     [gameId, runningCheatAction],
   );
+
+  const runChatCommand = useCallback(async (rawText: string) => {
+    const text = rawText.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_INPUT_LENGTH);
+    if (!text.startsWith('/')) return false;
+    const command = text.slice(1).trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+    if (command === 'upz') {
+      return runCheatAction('chat-command-upz', '/api/game/cheat/yumen/drop-to-top-hit', '已执行 Z救援');
+    }
+    toastError(`未知命令：${text}`);
+    return false;
+  }, [runCheatAction]);
+
+  const submitChatMessage = useCallback(async () => {
+    const text = chatInputValue.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_INPUT_LENGTH);
+    setChatInputValue('');
+    if (!text) return;
+    if (text.startsWith('/')) {
+      await runChatCommand(text);
+      return;
+    }
+    setActiveChatWindowId('map');
+    await sendChatText(text, 'map', true);
+  }, [chatInputValue, runChatCommand, sendChatText]);
 
   useEffect(() => {
     if (!isYumenMode || !yumenAutoFullShrink || selfHasYumenPrep || safeZone?.phase !== 'idle' || runningCheatAction === 'yumen-auto-full-shrink') return;

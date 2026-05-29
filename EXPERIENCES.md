@@ -12,6 +12,26 @@ Each entry goes under its relevant section header.
 **Lesson**:
 - When the send channel is visually encoded, the typed text should share that channel color so the composer feels like part of the same message pipeline.
 
+## Chat slash command handling (2026-05-29)
+
+**Implemented / checked**:
+- Updated the chat submit path so messages starting with `/` are treated as commands instead of being sent to chat.
+- Added `/upz` as a command that triggers the same current-player Z rescue action as the control-panel button.
+- Unknown slash commands are blocked from chat and reported as commands rather than normal messages.
+
+**Lesson**:
+- Slash-prefixed chat input should short-circuit before network send, so command-like text cannot leak into public chat.
+
+## React error-boundary startup crash fix (2026-05-29)
+
+**Implemented / checked**:
+- Investigated a startup crash reported as `ReferenceError: Cannot access 'vh' before initialization` on the in-game client.
+- Root cause was a render-time TDZ dependency in the chat command callbacks: `runChatCommand` and `submitChatMessage` were defined before `runCheatAction`, so the component tried to read the later `const` during initial render.
+- Moved the chat command callbacks below `runCheatAction` so all dependencies are initialized before they are referenced.
+
+**Lesson**:
+- In React components, a callback can still crash at render time if its dependency array reads a later `const`; moving the callback below the dependency or switching to a ref avoids TDZ failures.
+
 ## Ctrl+left-click ability mention insertion in chat (2026-05-29)
 
 **Implemented / checked**:
