@@ -597,18 +597,18 @@ const CONSUMABLE_BAR_MIN_SLOTS = 12;
 const CONSUMABLE_BAR_MAX_SLOTS = 16;
 const CONSUMABLE_BAR_DEFAULT_SLOTS = 12;
 const CONSUMABLE_ITEMS = [
-  { id: 'beng_dai', name: '绷带', implemented: true, startingCount: 12 },
-  { id: 'jin_chuang_yao', name: '金疮药', implemented: true, startingCount: 8 },
-  { id: 'yue_ying_sha', name: '月影沙', implemented: true, startingCount: 4 },
-  { id: 'sha_shi_wei_zhuang', name: '砂石伪装', implemented: true, startingCount: 4 },
-  { id: 'guan_mu_wei_zhuang', name: '灌木伪装', implemented: false, startingCount: 0 },
-  { id: 'wa_guan_wei_zhuang', name: '瓦罐伪装', implemented: false, startingCount: 0 },
-  { id: 'sha_xing_xie', name: '沙行蝎', implemented: false, startingCount: 0 },
-  { id: 'ma_cao', name: '马草', implemented: false, startingCount: 0 },
-  { id: 'yi_jie_wu_qi_he', name: '一阶武器盒', implemented: false, startingCount: 0 },
-  { id: 'er_jie_wu_qi_he', name: '二阶武器盒', implemented: false, startingCount: 0 },
-  { id: 'san_jie_wu_qi_he', name: '三阶武器盒', implemented: false, startingCount: 0 },
-  { id: 'tian_jie_wu_qi_he', name: '天阶武器盒', implemented: false, startingCount: 0 },
+  { id: 'beng_dai', name: '绷带', implemented: true, startingCount: 12, cooldownMs: 0 },
+  { id: 'jin_chuang_yao', name: '金疮药', implemented: true, startingCount: 8, cooldownMs: 120_000 },
+  { id: 'yue_ying_sha', name: '月影沙', implemented: true, startingCount: 4, cooldownMs: 30_000 },
+  { id: 'sha_shi_wei_zhuang', name: '砂石伪装', implemented: true, startingCount: 4, cooldownMs: 0 },
+  { id: 'guan_mu_wei_zhuang', name: '灌木伪装', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'wa_guan_wei_zhuang', name: '瓦罐伪装', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'sha_xing_xie', name: '沙行蝎', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'ma_cao', name: '马草', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'yi_jie_wu_qi_he', name: '一阶武器盒', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'er_jie_wu_qi_he', name: '二阶武器盒', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'san_jie_wu_qi_he', name: '三阶武器盒', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'tian_jie_wu_qi_he', name: '天阶武器盒', implemented: false, startingCount: 0, cooldownMs: 0 },
 ] as const;
 const STATUS_BAR_VERTICAL_OFFSET = 58;
 const PLAYER_CHANNEL_BAR_FLOAT_WIDTH = 290;
@@ -2515,6 +2515,7 @@ const STEALTH_ABILITY_IDS = new Set(['anchen_misan', 'fuguang_lueying', 'tiandi_
 const UNTARGETABLE_BUFF_IDS = new Set([1008]);
 const YUMEN_KUANG_SHA_BUFF_ID = 990200;
 const YUMEN_SPECTATOR_BUFF_ID = 990202;
+const YUMEN_PREP_BUFF_ID = 990204;
 const DISGUISE_BUFF_IDS = new Set([980001]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const HONG_MENG_TIAN_JIN_BUFF_IDS = new Set([2645]);
@@ -2672,6 +2673,12 @@ function hasYumenSpectatorClient(buffs?: ActiveBuff[]): boolean {
 function hasYumenKuangShaClient(buffs?: ActiveBuff[]): boolean {
   return activeBuffsClient(buffs).some((b: any) =>
     Number(b?.buffId) === YUMEN_KUANG_SHA_BUFF_ID || buffNameIncludes(b, '狂沙')
+  );
+}
+
+function hasYumenPrepClient(buffs?: ActiveBuff[]): boolean {
+  return activeBuffsClient(buffs).some((b: any) =>
+    Number(b?.buffId) === YUMEN_PREP_BUFF_ID || buffNameIncludes(b, '准备时间')
   );
 }
 
@@ -2941,6 +2948,8 @@ function isChannelStartCue(params: { ability: any; event: any; phase: AbilitySou
 }
 interface Facing { x: number; y: number; }
 
+type CooldownDisplayKind = 'cooldown' | 'gcd' | 'charge';
+
 interface AbilityInfo {
   id: string;        // instanceId (or abilityId fallback for common)
   abilityId: string;    // always the plain ability id (e.g. 'fuyao_zhishang')
@@ -2954,6 +2963,7 @@ interface AbilityInfo {
   baseCooldownTicks?: number;
   cooldown: number;
   maxCooldown: number;
+  cooldownDisplayKind?: CooldownDisplayKind;
   chargeCount?: number;
   maxCharges?: number;
   chargeRegenTicksRemaining?: number;
@@ -3413,6 +3423,25 @@ function formatHudCooldownText(seconds: number, options?: { roundUpSeconds?: boo
 
 function formatConsumableCooldown(ms: number): string {
   return formatHudCooldownText(ms / 1000, { roundUpSeconds: true });
+}
+
+function getCooldownOverlayStyle(cooldownPct: number, kind: CooldownDisplayKind = 'cooldown'): React.CSSProperties {
+  const pct = Math.max(0, Math.min(100, Number(cooldownPct) || 0));
+  const startPct = (100 - pct).toFixed(1);
+  const color = kind === 'gcd' ? 'rgba(130, 137, 146, 0.54)' : 'rgba(0, 0, 0, 0.50)';
+  return { background: `conic-gradient(from 0deg, transparent ${startPct}%, ${color} ${startPct}%)` };
+}
+
+function isCooldownFlashDanger(remainingMs: number): boolean {
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0 || remainingMs >= 3000) return false;
+  const phaseMs = ((remainingMs % 1000) + 1000) % 1000;
+  return phaseMs > 500;
+}
+
+function getConsumableCooldownPct(consumable: ConsumableItem | undefined, remainingMs: number): number {
+  const maxMs = Math.max(0, Number(consumable?.cooldownMs ?? 0));
+  if (maxMs <= 0) return 100;
+  return Math.max(0, Math.min(100, (remainingMs / maxMs) * 100));
 }
 
 function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
@@ -4385,7 +4414,14 @@ export default function BattleArena({
     () => isYumenMode && typeof me?.userId === 'string' && yumenSpectatorUserIds.has(me.userId),
     [isYumenMode, me?.userId, yumenSpectatorUserIds],
   );
+  const selfHasYumenPrep = isYumenMode && hasYumenPrepClient(me?.buffs);
+  const canOpenMartialPanel = !isYumenMode || selfHasYumenPrep;
   const selfHasYumenKuangSha = isYumenMode && hasYumenKuangShaClient(me?.buffs);
+  useEffect(() => {
+    if (!canOpenMartialPanel) {
+      setShowMartialPanel(false);
+    }
+  }, [canOpenMartialPanel]);
   const worldVisibleOpponentsList = useMemo(
     () => (selfHasHongMengTianJin ? [] : opponentsList),
     [opponentsList, selfHasHongMengTianJin],
@@ -6773,12 +6809,18 @@ export default function BattleArena({
     });
   }, []);
   const toggleMartialPanel = useCallback(() => {
+    if (!canOpenMartialPanel) {
+      setShowMartialPanel(false);
+      setMartialPanelTempPos(null);
+      martialPanelTempPosRef.current = null;
+      return;
+    }
     setShowMartialPanel((visible) => {
       setMartialPanelTempPos(null);
       martialPanelTempPosRef.current = null;
       return !visible;
     });
-  }, []);
+  }, [canOpenMartialPanel]);
   const triggerHotkeyBinding = useCallback((bindingId: string) => {
     const actionId = findHotkeyActionByBinding(hotkeySettings, bindingId);
     if (!actionId) return false;
@@ -8045,9 +8087,12 @@ export default function BattleArena({
           // I dealt damage to opponent — account for shield absorption
           const shieldAbsAtk = evt.shieldAbsorbed ?? 0;
           const totalDmgAtk = evt.value ?? 0;
+          const playerTargetBounds = evt.targetUserId
+            ? opponentScreenBoundsRef.current[evt.targetUserId] ?? null
+            : null;
           const bounds = evt.entityId
             ? entityScreenBoundsRef.current[evt.entityId] ?? oppScreenBoundsRef.current
-            : oppScreenBoundsRef.current;
+            : playerTargetBounds ?? oppScreenBoundsRef.current;
           const { w, h } = canvasSizeRef.current;
           const screenPct = bounds
             ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 55) / h) }
@@ -8738,6 +8783,7 @@ export default function BattleArena({
       if (maxCharges <= 1) {
         const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
         const currentCooldown = Math.max(0, instanceCooldown, sharedGcdTicks);
+        const cooldownDisplayKind: CooldownDisplayKind = currentCooldown > 0 && sharedGcdTicks > 0 && instanceCooldown <= 0 ? 'gcd' : 'cooldown';
         return {
           maxCharges: undefined,
           chargeCount: undefined,
@@ -8748,6 +8794,7 @@ export default function BattleArena({
           chargeLockTicks: undefined,
           cooldown: currentCooldown,
           maxCooldown: Math.max(getDisplayMaxCooldown(ab), currentCooldown),
+          cooldownDisplayKind,
         };
       }
 
@@ -8777,10 +8824,12 @@ export default function BattleArena({
           chargeLockTicks,
           cooldown: chargeRegenTicksRemaining,
           maxCooldown: chargeRecoveryTicks,
+          cooldownDisplayKind: 'charge' as CooldownDisplayKind,
         };
       }
 
       if (chargeLockTicks > 0) {
+        const cooldownDisplayKind: CooldownDisplayKind = sharedGcdTicks > 0 && instanceChargeLockTicks <= 0 ? 'gcd' : 'cooldown';
         return {
           maxCharges,
           chargeCount,
@@ -8790,7 +8839,8 @@ export default function BattleArena({
           chargeCastLockTicks,
           chargeLockTicks,
           cooldown: chargeLockTicks,
-          maxCooldown: Math.max(1, chargeCastLockTicks),
+          maxCooldown: Math.max(1, chargeCastLockTicks, cooldownDisplayKind === 'gcd' ? BASE_GCD_WINDOW_TICKS : 0, chargeLockTicks),
+          cooldownDisplayKind,
         };
       }
 
@@ -8804,6 +8854,7 @@ export default function BattleArena({
         chargeLockTicks,
         cooldown: 0,
         maxCooldown: chargeRecoveryTicks,
+        cooldownDisplayKind: 'cooldown' as CooldownDisplayKind,
       };
     };
     const selectedTarget = selectedTargetId
@@ -9039,6 +9090,7 @@ export default function BattleArena({
           baseCooldownTicks: getAbilityCooldownTicks(ability),
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
+          cooldownDisplayKind: chargeDisplay.cooldownDisplayKind,
           maxCharges: chargeDisplay.maxCharges,
           chargeCount: chargeDisplay.chargeCount,
           chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
@@ -9097,6 +9149,7 @@ export default function BattleArena({
           baseCooldownTicks: getAbilityCooldownTicks(ability),
           cooldown: chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
+          cooldownDisplayKind: chargeDisplay.cooldownDisplayKind,
           maxCharges: chargeDisplay.maxCharges,
           chargeCount: chargeDisplay.chargeCount,
           chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
@@ -9158,6 +9211,7 @@ export default function BattleArena({
           baseCooldownTicks: getAbilityCooldownTicks(ability),
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
+          cooldownDisplayKind: chargeDisplay.cooldownDisplayKind,
           maxCharges: chargeDisplay.maxCharges,
           chargeCount: chargeDisplay.chargeCount,
           chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
@@ -12039,7 +12093,7 @@ export default function BattleArena({
   };
 
   const runCheatAction = useCallback(
-    async (actionId: string, url: string, successText: string, body?: Record<string, any>) => {
+    async (actionId: string, url: string, successText: string, body?: Record<string, any>, options?: { suppressError?: (status: number, payload: any) => boolean }) => {
       if (runningCheatAction) return false;
       setRunningCheatAction(actionId);
       try {
@@ -12051,7 +12105,9 @@ export default function BattleArena({
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          toastError(err.error ?? '操作失败');
+          if (!options?.suppressError?.(res.status, err)) {
+            toastError(err.error ?? '操作失败');
+          }
           return false;
         }
         toastSuccess(successText);
@@ -12067,11 +12123,20 @@ export default function BattleArena({
   );
 
   useEffect(() => {
-    if (!isYumenMode || !yumenAutoFullShrink || safeZone?.phase !== 'idle') return;
-    if (yumenAutoFullShrinkStartedRef.current === gameId) return;
-    yumenAutoFullShrinkStartedRef.current = gameId;
-    void runCheatAction('yumen-auto-full-shrink', '/api/game/cheat/yumen/start-full-shrink', '完整缩圈已自动开始');
-  }, [gameId, isYumenMode, runCheatAction, safeZone?.phase, yumenAutoFullShrink]);
+    if (!isYumenMode || !yumenAutoFullShrink || selfHasYumenPrep || safeZone?.phase !== 'idle' || runningCheatAction === 'yumen-auto-full-shrink') return;
+    const autoStartKey = `${gameId}:${safeZone?.phaseStartedAt ?? 0}`;
+    if (yumenAutoFullShrinkStartedRef.current === autoStartKey) return;
+    void (async () => {
+      const ok = await runCheatAction(
+        'yumen-auto-full-shrink',
+        '/api/game/cheat/yumen/start-full-shrink',
+        '完整缩圈已自动开始',
+        undefined,
+        { suppressError: (status, payload) => status === 409 && payload?.prepActive === true },
+      );
+      if (ok) yumenAutoFullShrinkStartedRef.current = autoStartKey;
+    })();
+  }, [gameId, isYumenMode, runCheatAction, runningCheatAction, safeZone?.phase, safeZone?.phaseStartedAt, selfHasYumenPrep, yumenAutoFullShrink]);
 
   useEffect(() => {
     if (!isYumenMode || !gameId || !safeZone || runningCheatAction === 'yumen-auto-settle') return;
@@ -14490,6 +14555,8 @@ export default function BattleArena({
         const consumable = consumableId ? CONSUMABLE_ITEM_BY_ID.get(consumableId) : undefined;
         const cooldownMs = consumable ? getConsumableCooldownRemainingMs(me, consumable.id, consumableNowMs) : 0;
         const cooldownLabel = formatConsumableCooldown(cooldownMs);
+        const cooldownPct = getConsumableCooldownPct(consumable, cooldownMs);
+        const cooldownDanger = isCooldownFlashDanger(cooldownMs);
         const remainingCount = consumable ? getConsumableRemainingCount(me, consumable) : 0;
         const unavailable = !!consumable && consumable.implemented !== true;
         const depleted = !!consumable && consumable.implemented === true && remainingCount <= 0;
@@ -14556,7 +14623,7 @@ export default function BattleArena({
             )}
             {consumable?.implemented === true && <span className={styles.consumableCount}>{remainingCount}</span>}
             {hotkeyLabel && <span className={styles.consumableHotkey}>{hotkeyLabel}</span>}
-            {cooldownMs > 0 && <span className={styles.consumableCooldown}>{cooldownLabel}</span>}
+            {cooldownMs > 0 && <span className={`${styles.consumableCooldown} ${cooldownDanger ? styles.consumableCooldownDanger : ''}`} style={getCooldownOverlayStyle(cooldownPct, 'cooldown')}>{cooldownLabel}</span>}
           </button>
         );
       })}
@@ -14635,6 +14702,9 @@ export default function BattleArena({
                 const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
                 const cdLabel = formatHudCooldownText(ability.cooldown / 30);
                 const minuteCooldown = cdLabel.endsWith('m');
+                const cooldownDisplayKind = ability.cooldownDisplayKind ?? 'cooldown';
+                const showCooldownNumber = cooldownDisplayKind !== 'gcd';
+                const cooldownDanger = showCooldownNumber && isCooldownFlashDanger((ability.cooldown / SERVER_TICK_RATE) * 1000);
                 const hasCharges = (ability.maxCharges ?? 0) > 1;
                 const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
                 const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
@@ -14677,8 +14747,8 @@ export default function BattleArena({
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={getArenaAbilityIconPath(ability.name, ability.iconPath)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                     {ability.cooldown > 0 && ability.maxCooldown > 0 && (
-                      <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100 - cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100 - cdPct).toFixed(1)}%)` }}>
-                        <span className={`${styles.cdNum} ${minuteCooldown ? styles.cdNumMinutes : ''}`}>{cdLabel}</span>
+                      <div className={`${styles.cdArc} ${cooldownDisplayKind === 'gcd' ? styles.cdArcGcd : ''}`} style={getCooldownOverlayStyle(cdPct, cooldownDisplayKind)}>
+                        {showCooldownNumber && <span className={`${styles.cdNum} ${minuteCooldown ? styles.cdNumMinutes : ''} ${cooldownDanger ? styles.cdNumDanger : ''}`}>{cdLabel}</span>}
                       </div>
                     )}
                     {hasCharges && (
@@ -14718,6 +14788,9 @@ export default function BattleArena({
             const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
             const cdLabel = formatHudCooldownText(ability.cooldown / 30);
             const minuteCooldown = cdLabel.endsWith('m');
+            const cooldownDisplayKind = ability.cooldownDisplayKind ?? 'cooldown';
+            const showCooldownNumber = cooldownDisplayKind !== 'gcd';
+            const cooldownDanger = showCooldownNumber && isCooldownFlashDanger((ability.cooldown / SERVER_TICK_RATE) * 1000);
             const hasCharges = (ability.maxCharges ?? 0) > 1;
             const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
             const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
@@ -14751,8 +14824,8 @@ export default function BattleArena({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={getArenaAbilityIconPath(ability.name, ability.iconPath)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                   {ability.cooldown > 0 && ability.maxCooldown > 0 && (
-                    <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100 - cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100 - cdPct).toFixed(1)}%)` }}>
-                      <span className={`${styles.cdNum} ${minuteCooldown ? styles.cdNumMinutes : ''}`}>{cdLabel}</span>
+                    <div className={`${styles.cdArc} ${cooldownDisplayKind === 'gcd' ? styles.cdArcGcd : ''}`} style={getCooldownOverlayStyle(cdPct, cooldownDisplayKind)}>
+                      {showCooldownNumber && <span className={`${styles.cdNum} ${minuteCooldown ? styles.cdNumMinutes : ''} ${cooldownDanger ? styles.cdNumDanger : ''}`}>{cdLabel}</span>}
                     </div>
                   )}
                   {hasCharges && (
@@ -16976,6 +17049,7 @@ export default function BattleArena({
           type="button"
           className={`${styles.bottomRightQuickButton} ${showMartialPanel ? styles.bottomRightQuickButtonActive : ''}`}
           aria-label="打开武学界面"
+          disabled={!canOpenMartialPanel}
           title="武学界面"
           onClick={toggleMartialPanel}
         >
@@ -17278,6 +17352,25 @@ export default function BattleArena({
                   <span>自动结算</span>
                 </label>
               </div>
+              <button
+                type="button"
+                disabled={!!runningCheatAction}
+                onClick={() => void (async () => {
+                  const ok = await runCheatAction('yumen-restart-game', '/api/game/cheat/yumen/restart-game', '游戏已重新开始');
+                  if (ok) yumenAutoFullShrinkStartedRef.current = null;
+                })()}
+                style={{
+                  width: '100%',
+                  background: 'rgba(70, 145, 210, 0.22)',
+                  color: '#c8e7ff',
+                  border: '1px solid rgba(115, 185, 255, 0.62)',
+                  borderRadius: 4,
+                  fontSize: 11,
+                  padding: '6px 8px',
+                  cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                  opacity: runningCheatAction ? 0.55 : 1,
+                }}
+              >重新开始游戏</button>
               <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>毒圈</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
                 <button

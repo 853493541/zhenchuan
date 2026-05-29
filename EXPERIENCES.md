@@ -3,6 +3,38 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Yumen prep restart and multiplayer follow-up (2026-05-29)
+
+**Implemented / checked**:
+- Fixed Yumen presence chat so initial WebSocket subscribe emits `【玩家】加入了战场。`, while `重新连接` only emits after a recorded disconnect; Yumen disconnect chat now ignores stale generic leave notices.
+- Disabled the generic `/game/end` leave-notice and delayed no-winner game-over finalizer for Yumen, and guarded the frontend no-winner redirect in this mode.
+- Made existing-loop `/battle/start`, next-battle start, and the new `重新开始游戏` route apply the same `准备时间` prep through `addBuff()`, while resetting the Yumen safe zone to idle so auto poison waits for prep exit.
+- Fixed multiplayer damage floats to use target-user screen bounds instead of the primary opponent fallback, and made every enemy avatar use the red enemy palette.
+- Matched cooldown numbers to the system-chat yellow and reduced cooldown number size/weight.
+- Follow-up live verification caught auto-full-shrink racing before the prep buff reached the client; shrink-start routes now reject active `准备时间`, and the frontend only marks auto-start complete after a successful start.
+
+**Lesson**:
+- Suppressing a disconnect modal is not enough if the backend still creates `leaveNotice` and delayed no-winner game-over state; mode-specific lifecycle behavior must be disabled at the source.
+- Runtime prep buffs should be applied in every battle-start path, including idempotent existing-loop paths, or live reload/second-client starts can skip the official status-bar buff channel.
+- Multiplayer UI anchors must key by target id. Primary-opponent fallbacks are acceptable only as a last resort in 1v1 views.
+- Client-side auto-start gates are not enough for prep timing, because persisted local preferences can race initial state hydration. Server shrink-start routes must reject active prep and let the client retry after prep ends.
+
+## Yumen prep phase, presence chat, and cooldown HUD (2026-05-29)
+
+**Implemented / checked**:
+- Added the `准备时间` runtime debuff for Yumen battle start through `addBuff()`, with ROOT, SILENCE, and STEALTH effects, and preloaded its metadata so the status bar can display it.
+- Randomized Yumen players onto exported-map spawn points at `/battle/start`, then applied the 60-second prep buff before the game loop starts.
+- Replaced spectator-only ability-bar mutation checks with a Yumen prep-window lock: spectators stay locked, and non-spectators can add/reorder/discard/open skill choices only while `准备时间` is active.
+- Added server-persisted system chat for Yumen disconnect/reconnect presence and suppressed the old leave/disconnect modal in this mode.
+- Added one-time server countdown announcements for `30/20/10/5/4/3/2/1` and `绝境开启!祝各位洪福齐天。`, deduped through match state.
+- Split hotbar cooldown display between real cooldown and GCD-only overlays so GCD shows a gray wedge without numbers, while real ability and consumable cooldown numbers are larger, yellow, and flash red below 3 seconds.
+
+**Lesson**:
+- Prep-phase UI locks must have backend route enforcement; frontend P-panel gating alone can be bypassed by direct mutation endpoints.
+- Presence announcements are best emitted by the WebSocket subscription manager in Yumen mode, but reconnect chat needs a prior-disconnect key to avoid initial subscribe noise.
+- Runtime-only buffs must be included in preload metadata before relying on the official status bar or frontend buff-name gates.
+- For hotbars, GCD is a shared timing overlay, not an ability cooldown. Track it separately so the user sees motion feedback without misleading cooldown numbers.
+
 ## Dash identity, diagnostics stalls, and live regression proof (2026-05-29)
 
 **Implemented / checked**:

@@ -13,6 +13,7 @@ import { createStartingConsumableCounts } from "../services/gameplay/consumableS
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
 import { GameLoop } from "../engine/loop/GameLoop";
 import { getGroundHeightForMap, getTopDownHitHeightForMap, type MapContext } from "../engine/loop/movement";
+import { addBuff } from "../engine/effects/buffRuntime";
 import { ABILITIES } from "../abilities/abilities";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { diffState } from "../services/flow/stateDiff";
@@ -30,10 +31,14 @@ import {
 } from "../engine/state/types";
 import {
   YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
+  YUMEN_PREP_ABILITY,
+  YUMEN_PREP_BUFF,
+  YUMEN_PREP_DURATION_MS,
   YUMEN_SPECTATOR_BUFF_ID,
   getYumenSafeZoneCircleNumber,
   getYumenSafeZoneDps,
   getYumenSafeZoneInitialWaitMs,
+  hasActiveYumenPrepBuff,
   hasActiveYumenSpectatorBuff,
   normalizeYumenSafeZoneDamageMode,
   normalizeYumenSafeZoneTimelineMode,
@@ -198,12 +203,33 @@ function resetYumenSafeZone(now: number) {
   };
 }
 
-function isYumenSpectatorAbilityBarLocked(gameId: string, game: any, userId: string): boolean {
-  if (!isYumen1v1BasicMode((game as any).mode)) return false;
+function getYumenAbilityBarLockReason(gameId: string, game: any, userId: string): string | null {
+  if (!isYumen1v1BasicMode((game as any).mode)) return null;
   const loopState = GameLoop.get(gameId)?.getState();
   const state = loopState ?? game.state;
   const player = (state?.players ?? []).find((entry: any) => entry?.userId === userId);
-  return hasActiveYumenSpectatorBuff(player as any);
+  if (hasActiveYumenSpectatorBuff(player as any)) return "观战中无法调整技能栏";
+  if (!hasActiveYumenPrepBuff(player as any)) return "非准备时间无法调整技能栏";
+  return null;
+}
+
+function getActiveYumenPrepBlock(gameId: string, game: any, now = Date.now()) {
+  const loopState = GameLoop.get(gameId)?.getState();
+  const state = loopState ?? game.state;
+  const prepEndsAt = Number((state as any)?.yumenPrep?.endsAt ?? 0);
+  const activePrepBuffEndsAt = (state?.players ?? []).reduce((latest: number, player: any) => {
+    if (!hasActiveYumenPrepBuff(player, now)) return latest;
+    const buffEndsAt = Math.max(
+      ...((player?.buffs ?? [])
+        .filter((buff: any) => buff?.buffId === YUMEN_PREP_BUFF.buffId)
+        .map((buff: any) => Number(buff?.expiresAt ?? 0))
+        .filter((expiresAt: number) => Number.isFinite(expiresAt) && expiresAt > now)),
+      latest,
+    );
+    return Math.max(latest, buffEndsAt);
+  }, 0);
+  const blockedUntil = Math.max(prepEndsAt, activePrepBuffEndsAt);
+  return blockedUntil > now ? { prepActive: true, prepEndsAt: blockedUntil } : null;
 }
 
 function startYumenSafeZone(state: any, now: number, options?: { timelineMode?: YumenSafeZoneTimelineMode; damageMode?: YumenSafeZoneDamageMode }) {
@@ -465,6 +491,123 @@ function shuffledYumenSpawnPositions() {
     [positions[index], positions[swapIndex]] = [positions[swapIndex], positions[index]];
   }
   return positions;
+}
+
+function applyYumenBattleStartPrep(gameId: string, state: any) {
+  const now = Date.now();
+  const mapCtx = getYumenRouteMapContext(gameId, state);
+  const spawnPositions = shuffledYumenSpawnPositions();
+  let prepEndsAt = now + YUMEN_PREP_DURATION_MS;
+
+  state.safeZone = resetYumenSafeZone(now);
+  state.gameOver = false;
+  delete (state as any).winnerUserId;
+  delete (state as any).yumenResults;
+  delete (state as any).leaveNotice;
+
+  (state.players ?? []).forEach((player: any, index: number) => {
+    const spawn = spawnPositions[index % spawnPositions.length] ?? { x: EXPORTED_MAP_WIDTH / 2, y: EXPORTED_MAP_HEIGHT / 2 };
+    teleportYumenPlayerTo(state, player, spawn.x, spawn.y, mapCtx, (spawn as any).z);
+
+    const faceX = EXPORTED_MAP_WIDTH / 2 - Number(player.position?.x ?? EXPORTED_MAP_WIDTH / 2);
+    const faceY = EXPORTED_MAP_HEIGHT / 2 - Number(player.position?.y ?? EXPORTED_MAP_HEIGHT / 2);
+    const faceLen = Math.hypot(faceX, faceY) || 1;
+    player.facing = { x: faceX / faceLen, y: faceY / faceLen };
+
+    addBuff({
+      state,
+      sourceUserId: player.userId,
+      targetUserId: player.userId,
+      ability: YUMEN_PREP_ABILITY,
+      buffTarget: player,
+      buff: YUMEN_PREP_BUFF,
+    });
+
+    const activePrep = (player.buffs ?? []).find((buff: any) => buff?.buffId === YUMEN_PREP_BUFF.buffId);
+    prepEndsAt = Math.max(prepEndsAt, Number(activePrep?.expiresAt ?? 0) || 0);
+  });
+
+  (state as any).yumenPrep = {
+    startedAt: now,
+    endsAt: prepEndsAt,
+    announcements: {},
+  };
+}
+
+function shouldApplyYumenBattleStartPrep(state: any, now = Date.now()) {
+  const prep = (state as any)?.yumenPrep;
+  if (!Number.isFinite(Number(prep?.startedAt))) return true;
+  const prepEndsAt = Number(prep?.endsAt ?? 0);
+  if (Number.isFinite(prepEndsAt) && prepEndsAt > now) {
+    return (state?.players ?? []).some((player: any) => !hasActiveYumenPrepBuff(player, now));
+  }
+  return false;
+}
+
+function resetYumenAbilityRuntimeCard(card: any) {
+  const abilityId = card?.abilityId ?? card?.id;
+  const def = abilityId ? ABILITIES[abilityId] : undefined;
+  const maxCharges = Math.max(0, Number((def as any)?.maxCharges ?? card?.maxCharges ?? 0));
+  const nextCard: any = {
+    ...card,
+    cooldown: 0,
+    _cooldownProgress: 0,
+    chargeLockTicks: 0,
+    chargeRegenTicksRemaining: 0,
+  };
+  delete nextCard._chargeRegenQueueTicks;
+  if (maxCharges > 1) {
+    nextCard.maxCharges = maxCharges;
+    nextCard.chargeCount = maxCharges;
+  }
+  return nextCard;
+}
+
+function resetYumenPlayerForBattleStart(player: any, selectedAbilitiesByUser: Record<string, any[]> = {}) {
+  const maxHp = Math.max(1, Number(player?.maxHp ?? STARTING_BATTLE_HP));
+  const currentHand = Array.isArray(player?.hand) ? player.hand : [];
+  const savedHand = Array.isArray(player?.yumenPreDeathHand) ? player.yumenPreDeathHand : null;
+  const fallbackHand = currentHand.length > 0
+    ? currentHand
+    : buildHandFromSelectedAbilityInstances(selectedAbilitiesByUser[player.userId] ?? []);
+  const hand = cloneJson(savedHand ?? fallbackHand).map(resetYumenAbilityRuntimeCard);
+  const nextPlayer: any = {
+    ...player,
+    hp: maxHp,
+    maxHp,
+    shield: 0,
+    buffs: [],
+    hand,
+    specialAbilityStates: {},
+    globalGcdTicks: 0,
+    visualGcd: null,
+    consumableCounts: createStartingConsumableCounts(),
+    consumableCooldowns: {},
+    targetSelection: undefined,
+    inCombat: false,
+    combatLinks: {},
+    velocity: { ...(player?.velocity ?? {}), vx: 0, vy: 0, vz: 0 },
+    jumpCount: 0,
+  };
+  for (const key of [
+    "activeChannel",
+    "activeDash",
+    "activeKnockback",
+    "activePull",
+    "groundedCastLockUntil",
+    "isPowerJump",
+    "isPowerJumpCombined",
+    "lingRanCastLiftSustainChannelAbilityId",
+    "lingRanCastLiftSustainVzPerTick",
+    "tiYunZongPenaltyConsumed",
+    "yumenDefeated",
+    "yumenDefeatedAt",
+    "yumenPreDeathHand",
+    "yumenKuangShaStartedAt",
+  ]) {
+    delete nextPlayer[key];
+  }
+  return nextPlayer;
 }
 
 function dedupeDraftCardsByAbility<T extends Record<string, any>>(cards: T[]): T[] {
@@ -1105,6 +1248,25 @@ router.post("/battle/start", async (req, res) => {
       const ls = existingLoop.getState();
       const mode = normalizeGameMode((game as any).mode ?? 'arena');
       const isArena = mode === 'arena';
+      if (isYumen1v1BasicMode(mode) && shouldApplyYumenBattleStartPrep(ls)) {
+        const prevState = structuredClone(ls);
+        applyYumenBattleStartPrep(String(gameId), ls);
+        const diff = diffState(prevState, ls);
+        ls.version = (ls.version ?? 0) + 1;
+        existingLoop.updateState(ls);
+        game.state = ls as any;
+        game.markModified("state");
+        await game.save();
+        if (diff.length > 0) {
+          broadcastGameUpdate({
+            gameId,
+            version: ls.version,
+            diff,
+            timestamp: Date.now(),
+          });
+        }
+        return res.json({ status: "battle_already_started", prepStarted: true, version: ls.version });
+      }
       if (isExportedMapMode(mode)) {
         if ((ls.pickups ?? []).length > 0) {
           ls.pickups = [];
@@ -1141,6 +1303,10 @@ router.post("/battle/start", async (req, res) => {
     for (const ps of battleState.players) {
       const saved = handByUserId[ps.userId];
       if (saved) ps.hand = saved.map((c: any) => ({ ...c, cooldown: 0 }));
+    }
+
+    if (isYumen1v1BasicMode(gameMode)) {
+      applyYumenBattleStartPrep(String(gameId), battleState);
     }
 
     // Disabled: spam during testing
@@ -1246,6 +1412,10 @@ router.post("/battle/complete", async (req, res) => {
         initializeBattleState(game.tournament, allPlayers, normalizeGameMode((game as any).mode ?? 'arena')),
         game.playerNames as Record<string, string> | undefined
       );
+      const nextGameMode = normalizeGameMode((game as any).mode ?? 'arena');
+      if (isYumen1v1BasicMode(nextGameMode)) {
+        applyYumenBattleStartPrep(String(gameId), game.state);
+      }
       shouldStartNextBattleLoop = true;
     }
 
@@ -1301,8 +1471,9 @@ router.post("/cheat/add-ability", async (req, res) => {
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
-    if (isYumenSpectatorAbilityBarLocked(String(gameId), game, userId)) {
-      return res.status(400).json({ error: "观战中无法调整技能栏" });
+    const yumenAbilityBarLockReason = getYumenAbilityBarLockReason(String(gameId), game, userId);
+    if (yumenAbilityBarLockReason) {
+      return res.status(400).json({ error: yumenAbilityBarLockReason });
     }
 
     const abilityDef = ABILITIES[abilityId];
@@ -1413,8 +1584,9 @@ router.post("/cheat/reorder-ability", async (req, res) => {
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
-    if (isYumenSpectatorAbilityBarLocked(String(gameId), game, userId)) {
-      return res.status(400).json({ error: "观战中无法调整技能栏" });
+    const yumenAbilityBarLockReason = getYumenAbilityBarLockReason(String(gameId), game, userId);
+    if (yumenAbilityBarLockReason) {
+      return res.status(400).json({ error: yumenAbilityBarLockReason });
     }
 
     const dbPlayerIndex = game.players.indexOf(userId);
@@ -1513,8 +1685,9 @@ router.post("/cheat/discard-ability", async (req, res) => {
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
-    if (isYumenSpectatorAbilityBarLocked(String(gameId), game, userId)) {
-      return res.status(400).json({ error: "观战中无法调整技能栏" });
+    const yumenAbilityBarLockReason = getYumenAbilityBarLockReason(String(gameId), game, userId);
+    if (yumenAbilityBarLockReason) {
+      return res.status(400).json({ error: yumenAbilityBarLockReason });
     }
 
     const dbPlayerIndex = game.players.indexOf(userId);
@@ -1598,8 +1771,9 @@ router.post("/cheat/discard-all", async (req, res) => {
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
-    if (isYumenSpectatorAbilityBarLocked(String(gameId), game, userId)) {
-      return res.status(400).json({ error: "观战中无法调整技能栏" });
+    const yumenAbilityBarLockReason = getYumenAbilityBarLockReason(String(gameId), game, userId);
+    if (yumenAbilityBarLockReason) {
+      return res.status(400).json({ error: yumenAbilityBarLockReason });
     }
 
     const dbPlayerIndex = game.players.indexOf(userId);
@@ -1734,6 +1908,41 @@ router.post("/cheat/yumen/revive-all", async (req, res) => {
       diff.push({ path: "/winnerUserId", value: undefined });
       diff.push({ path: "/yumenResults", value: undefined });
       return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/restart-game - Restart 玉门关 at battle-start prep state.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/restart-game", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const selectedAbilitiesByUser = game.tournament?.selectedAbilities ?? {};
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const prevState = structuredClone(state);
+      state.turn = 0;
+      state.activePlayerIndex = 0;
+      state.events = [];
+      state.groundZones = [];
+      state.entities = [];
+      state.pickups = [];
+      state.players = (state.players ?? []).map((player: any) => resetYumenPlayerForBattleStart(player, selectedAbilitiesByUser));
+      applyYumenBattleStartPrep(String(gameId), state);
+      return diffState(prevState, state);
     });
 
     res.json({ ok: true, version: liveVersion });
@@ -2095,6 +2304,9 @@ router.post("/cheat/yumen/start-shrink", async (req, res) => {
     if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
     if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
 
+    const prepBlock = getActiveYumenPrepBlock(String(gameId), game);
+    if (prepBlock) return res.status(409).json({ error: "准备时间内不能开启绝境", ...prepBlock });
+
     const startedAt = Date.now();
     let updatedSafeZone: any;
     const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
@@ -2122,6 +2334,9 @@ router.post("/cheat/yumen/start-full-shrink", async (req, res) => {
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
     if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const prepBlock = getActiveYumenPrepBlock(String(gameId), game);
+    if (prepBlock) return res.status(409).json({ error: "准备时间内不能开启绝境", ...prepBlock });
 
     const startedAt = Date.now();
     let updatedSafeZone: any;

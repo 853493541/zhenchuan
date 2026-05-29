@@ -12,7 +12,7 @@
 import { GameState, MovementInput, GroundZone, TargetEntity, SafeZone, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
 import { checkGameOver, resetDefeatedPlayersForTesting } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
-import { broadcastDefeatSystemChat, collectDefeatAnnouncementsFromEvents, type DefeatAnnouncement } from "../../services/chatMessages";
+import { broadcastDefeatSystemChat, broadcastSystemChat, collectDefeatAnnouncementsFromEvents, type DefeatAnnouncement } from "../../services/chatMessages";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
 import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap, resolveEntityHorizontalCollision } from "./movement";
@@ -57,6 +57,7 @@ import {
   YUMEN_SAFE_ZONE_ABILITY,
   YUMEN_SPECTATOR_ABILITY,
   YUMEN_SPECTATOR_BUFF,
+  YUMEN_PREP_BUFF_ID,
   YUMEN_SAFE_ZONE_TARGET_DIAMETERS,
   YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
   YUMEN_ZHANYI_ABILITY,
@@ -71,6 +72,7 @@ import {
   getYumenSafeZoneDps,
   getYumenSafeZoneShrinkMs,
   getYumenSafeZoneWaitMs,
+  hasActiveYumenPrepBuff,
   hasActiveYumenSpectatorBuff,
   normalizeYumenSafeZoneDamageMode,
   normalizeYumenSafeZoneTimelineMode,
@@ -1549,6 +1551,66 @@ export class GameLoop {
       }
     }
     return { currentHalf: 0, dps: 10, shrinking: false, shrinkProgress: 0, nextChangeIn: 0 };
+  }
+
+  private syncYumenPrepAnnouncements(now: number): boolean {
+    if (!this.isYumenMode) return false;
+    const stateAny = this.state as any;
+    const prep = stateAny.yumenPrep;
+    if (!prep || typeof prep !== "object") return false;
+
+    let changed = false;
+    const announcements = prep.announcements && typeof prep.announcements === "object" ? prep.announcements : {};
+    if (prep.announcements !== announcements) {
+      prep.announcements = announcements;
+      changed = true;
+    }
+
+    const prepBuffs = (this.state.players ?? []).flatMap((player: any) =>
+      (player.buffs ?? []).filter((buff: any) => buff?.buffId === YUMEN_PREP_BUFF_ID)
+    );
+    const activePrep = (this.state.players ?? []).some((player: any) => hasActiveYumenPrepBuff(player, now));
+    const latestBuffEndsAt = prepBuffs.reduce((latest: number, buff: any) => Math.max(latest, Number(buff?.expiresAt ?? 0) || 0), 0);
+    const prepEndsAt = Math.max(Number(prep.endsAt ?? 0) || 0, latestBuffEndsAt);
+    if (!Number.isFinite(prepEndsAt) || prepEndsAt <= 0) return changed;
+    if (prep.endsAt !== prepEndsAt) {
+      prep.endsAt = prepEndsAt;
+      changed = true;
+    }
+
+    if (activePrep) {
+      const remainingMs = Math.max(0, prepEndsAt - now);
+      const thresholds: Array<[string, number, string]> = [
+        ["30", 30_000, "绝境将在30秒后开始。"],
+        ["20", 20_000, "绝境将在20秒后开始。"],
+        ["10", 10_000, "绝境将在10秒后开始。"],
+        ["5", 5_000, "5!"],
+        ["4", 4_000, "4!"],
+        ["3", 3_000, "3!"],
+        ["2", 2_000, "2!"],
+        ["1", 1_000, "1!"],
+      ];
+
+      for (const [key, triggerMs, text] of thresholds) {
+        if (announcements[key] === true || remainingMs > triggerMs) continue;
+        announcements[key] = true;
+        changed = true;
+        void broadcastSystemChat(this.gameId, text).catch((err) => {
+          console.error(`[GameLoop] Failed to broadcast Yumen prep chat for ${this.gameId}:`, err);
+        });
+      }
+      return changed;
+    }
+
+    if (now >= prepEndsAt && announcements.open !== true) {
+      announcements.open = true;
+      changed = true;
+      void broadcastSystemChat(this.gameId, "绝境开启!祝各位洪福齐天。").catch((err) => {
+        console.error(`[GameLoop] Failed to broadcast Yumen prep start chat for ${this.gameId}:`, err);
+      });
+    }
+
+    return changed;
   }
 
   /** Return true if player position is outside the safe zone */
@@ -3689,6 +3751,7 @@ export class GameLoop {
     let buffsChanged = this.state.players.some(
       (p, idx) => (p.buffs?.length ?? 0) !== buffCountsBefore[idx]
     ) || movementBuffsChanged || channelStateChanged || movementStateChanged;
+    buffsChanged = this.syncYumenPrepAnnouncements(now) || buffsChanged;
     let handStateChanged = false;
     let consumableStateChanged = false;
 

@@ -479,6 +479,19 @@
   border-color: rgba(168, 170, 176, 0.82);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 7px rgba(255, 255, 255, 0.08);
 }
+.bottomRightQuickButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  border-color: rgba(93, 105, 112, 0.62);
+  background: rgba(12, 17, 20, 0.84);
+  color: rgba(190, 210, 220, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(222, 245, 255, 0.04), 0 4px 9px rgba(0, 0, 0, 0.24);
+}
+.bottomRightQuickButton:disabled:hover {
+  border-color: rgba(93, 105, 112, 0.62);
+  background: rgba(12, 17, 20, 0.84);
+  color: rgba(190, 210, 220, 0.52);
+}
 
 .chatSearchCloseButton {
   position: absolute;
@@ -486,12 +499,16 @@
   right: 0;
   width: 24px;
   height: 22px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: rgba(166, 170, 176, 0.92);
+  color: #ffe24b;
+  font-size: 15px;
+  font-weight: 900;
   display: inline-flex;
-  align-items: center;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    1px 0 0 rgba(42, 23, 0, 0.95),
+    -1px 0 0 rgba(42, 23, 0, 0.95),
+    0 1px 0 rgba(42, 23, 0, 0.95),
+    0 -1px 0 rgba(42, 23, 0, 0.95);
   justify-content: center;
   cursor: pointer;
 }
@@ -5410,6 +5427,21 @@
   color: #fff;
 }
 
+.bottomRightQuickButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  border-color: rgba(93, 105, 112, 0.62);
+  background: rgba(12, 17, 20, 0.84);
+  color: rgba(190, 210, 220, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(222, 245, 255, 0.04), 0 4px 9px rgba(0, 0, 0, 0.24);
+}
+
+.bottomRightQuickButton:disabled:hover {
+  border-color: rgba(93, 105, 112, 0.62);
+  background: rgba(12, 17, 20, 0.84);
+  color: rgba(190, 210, 220, 0.52);
+}
+
 /* ---- WASD (mobile left) ---- */
 .wasdWrap {
   display: flex;
@@ -5899,13 +5931,27 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff4d6;
-  background: rgba(0, 0, 0, 0.58);
+  color: #ffff00;
   font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-  font-size: calc(10px * var(--ability-panel-scale, 1));
-  font-weight: 800;
+  font-size: calc(10.5px * var(--ability-panel-scale, 1));
+  font-weight: 700;
   line-height: 1;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.96);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    1px 0 0 rgba(42, 23, 0, 0.95),
+    -1px 0 0 rgba(42, 23, 0, 0.95),
+    0 1px 0 rgba(42, 23, 0, 0.95),
+    0 -1px 0 rgba(42, 23, 0, 0.95);
+}
+
+.consumableCooldownDanger {
+  color: #ff2b1e;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    1px 0 0 rgba(60, 0, 0, 0.96),
+    -1px 0 0 rgba(60, 0, 0, 0.96),
+    0 1px 0 rgba(60, 0, 0, 0.96),
+    0 -1px 0 rgba(60, 0, 0, 0.96);
 }
 
 .itemSlotFilled {
@@ -6155,28 +6201,47 @@
 .cdArc {
   position: absolute;
   inset: 0;
-  border-radius: 0;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: none;
   z-index: 3;
-  /* background is set inline: conic-gradient(from -90deg, rgba(0,0,0,0.72) X%, transparent X%) */
+  /* background dynamically set to a softer conic cooldown wedge */
+}
+
+.cdArcGcd {
+  mix-blend-mode: normal;
 }
 
 .cdNum {
-  font-size: 10px;
-  font-weight: bold;
-  color: #fff;
-  text-shadow: 0 0 8px rgba(0,0,0,1), 0 1px 3px rgba(0,0,0,0.9);
+  font-size: calc(11.2px * var(--ability-panel-scale, 1));
+  font-weight: 700;
+  color: #ffff00;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    1px 0 0 rgba(42, 23, 0, 0.95),
+    -1px 0 0 rgba(42, 23, 0, 0.95),
+    0 1px 0 rgba(42, 23, 0, 0.95),
+    0 -1px 0 rgba(42, 23, 0, 0.95);
   pointer-events: none;
   z-index: 4;
-  letter-spacing: -0.5px;
+  letter-spacing: 0;
+  line-height: 1;
 }
 
 .cdNumMinutes {
-  font-size: 12px;
-  color: #ffe033;
+  font-size: calc(10.5px * var(--ability-panel-scale, 1));
+}
+
+.cdNumDanger {
+  color: #ff2b1e;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    1px 0 0 rgba(60, 0, 0, 0.96),
+    -1px 0 0 rgba(60, 0, 0, 0.96),
+    0 1px 0 rgba(60, 0, 0, 0.96),
+    0 -1px 0 rgba(60, 0, 0, 0.96);
 }
 
 .abilityHintPanel {
@@ -6186,21 +6251,24 @@
   max-height: min(62vh, 420px);
   overflow: hidden;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(14, 18, 26, 0.96);
   border: 1px solid rgba(210, 225, 245, 0.18);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.62);
   color: #f2f4f8;
   font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  padding: 8px 11px 9px;
 }
 
 .abilityHintBody {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
-  gap: 10px;
-  padding: 8px 11px 9px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
 }
 
 .abilityHintMain {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 

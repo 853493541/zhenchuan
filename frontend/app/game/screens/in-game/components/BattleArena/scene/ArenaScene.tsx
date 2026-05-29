@@ -17,9 +17,8 @@ import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF_XZ, 
 import type { MapCollisionSystem } from './MapCollisionSystem';
 import { isExportedMapMode, isYumen1v1BasicMode } from '../../../../../gameModes';
 
-// Colors for up to 5 opponents (index 0 = primary, etc.)
-const OPP_COLORS = ['#cc3333', '#cc8800', '#9933cc', '#cc3388'];
-const OPP_EMISSIVES = ['#440000', '#332200', '#220044', '#330022'];
+const OPP_COLORS = ['#cc3333', '#cc3333', '#cc3333', '#cc3333'];
+const OPP_EMISSIVES = ['#440000', '#440000', '#440000', '#440000'];
 
 const LEGACY_STORED_UNIT_SCALE = 2.2;
 const COLLISION_TEST_VIS_RADIUS = 0.384;
