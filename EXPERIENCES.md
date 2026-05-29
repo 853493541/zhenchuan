@@ -3,6 +3,17 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## GCD-only cooldown overlay should keep arc, hide number (2026-05-29)
+
+**Implemented / checked**:
+- Restored per-skill cooldown arc rendering for shared basic GCD lockouts by mapping shared GCD ticks into HUD cooldown display data with `cooldownDisplayKind: 'gcd'`.
+- Kept the prior UX change that hides the numeric cooldown label for GCD-only lockouts.
+- Follow-up correction: removed the separate GCD arc color branch and reused the normal cooldown arc visual, so GCD-only lockout now uses the same arc style as all other cooldowns.
+- Applied this for both single-charge and multi-charge abilities when they are locked by shared GCD but not by their own cooldown/charge lock.
+
+**Lesson**:
+- For GCD-only lockouts, treat the arc and number as separate UI concerns: hide the number text but keep the exact same cooldown arc visual instead of introducing a second arc style.
+
 ## Ability cooldown spinner regression fix for >1s cooldowns (2026-05-29)
 
 **Implemented / checked**:

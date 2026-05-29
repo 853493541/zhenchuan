@@ -3478,7 +3478,7 @@ function formatConsumableCooldown(ms: number): string {
 function getCooldownOverlayStyle(cooldownPct: number, kind: CooldownDisplayKind = 'cooldown'): React.CSSProperties {
   const pct = Math.max(0, Math.min(100, Number(cooldownPct) || 0));
   const startPct = (100 - pct).toFixed(1);
-  const color = kind === 'gcd' ? 'rgba(130, 137, 146, 0.54)' : 'rgba(0, 0, 0, 0.50)';
+  const color = 'rgba(0, 0, 0, 0.50)';
   return { background: `conic-gradient(from 0deg, transparent ${startPct}%, ${color} ${startPct}%)` };
 }
 
@@ -8928,11 +8928,27 @@ export default function BattleArena({
       ab?.gcd === true ? getRuntimeCountdownTicks(me, 'globalGcdTicks', '_globalGcdSyncedAt', cooldownClockMs) : 0
     );
     const getChargeDisplay = (ab: any, instance: any) => {
+      const sharedGcdTicks = getSharedGcdTicks(ab);
+      const baseGcdTicks = Math.max(1, Math.round((BASE_GCD_MS / 1000) * SERVER_TICK_RATE));
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       if (maxCharges <= 1) {
         const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
         const rawInstanceCooldown = Math.max(0, Math.round(Number(instance?.cooldown ?? 0)));
         const currentCooldown = Math.max(0, instanceCooldown);
+        if (currentCooldown <= 0 && sharedGcdTicks > 0) {
+          return {
+            maxCharges: undefined,
+            chargeCount: undefined,
+            chargeRecoveryTicks: undefined,
+            chargeRegenTicksRemaining: undefined,
+            chargeRegenProgress: undefined,
+            chargeCastLockTicks: undefined,
+            chargeLockTicks: undefined,
+            cooldown: sharedGcdTicks,
+            maxCooldown: Math.max(baseGcdTicks, sharedGcdTicks),
+            cooldownDisplayKind: 'gcd' as CooldownDisplayKind,
+          };
+        }
         return {
           maxCharges: undefined,
           chargeCount: undefined,
@@ -8990,6 +9006,21 @@ export default function BattleArena({
           cooldown: chargeLockTicks,
           maxCooldown: Math.max(1, chargeCastLockTicks, rawInstanceChargeLockTicks, chargeLockTicks),
           cooldownDisplayKind: 'cooldown' as CooldownDisplayKind,
+        };
+      }
+
+      if (sharedGcdTicks > 0) {
+        return {
+          maxCharges,
+          chargeCount,
+          chargeRecoveryTicks,
+          chargeRegenTicksRemaining,
+          chargeRegenProgress,
+          chargeCastLockTicks,
+          chargeLockTicks,
+          cooldown: sharedGcdTicks,
+          maxCooldown: Math.max(baseGcdTicks, sharedGcdTicks),
+          cooldownDisplayKind: 'gcd' as CooldownDisplayKind,
         };
       }
 
