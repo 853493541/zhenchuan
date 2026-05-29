@@ -59,6 +59,7 @@ export interface AbilityEditorOverrideEntry {
   description?: string;
   descriptionReviewStatus?: DescriptionReviewStatus;
   adControlStatus?: DescriptionReviewStatus;
+  cooldownReviewStatus?: DescriptionReviewStatus;
   /** tag group → tag value (e.g. { rarity: "稀世", school: "少林" }) */
   tags?: Record<string, string>;
   /** Whether this ability is a ranged projectile (blocked by PROJECTILE_IMMUNE) */
@@ -131,7 +132,8 @@ export interface AbilityEditorAbilityEntry {
   properties: AbilityEditorPropertyState[];
   coreSettings: AbilityEditorNumericSetting[];
   damageSettings: AbilityEditorNumericSetting[];
-    adControlStatus: DescriptionReviewStatus;
+  adControlStatus: DescriptionReviewStatus;
+  cooldownReviewStatus: DescriptionReviewStatus;
   channelInfo?: AbilityEditorChannelInfo;
 }
 
@@ -799,6 +801,9 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
   const adControlStatus = isDescriptionReviewStatus(entryRecord.adControlStatus)
     ? entryRecord.adControlStatus
     : undefined;
+  const cooldownReviewStatus = isDescriptionReviewStatus(entryRecord.cooldownReviewStatus)
+    ? entryRecord.cooldownReviewStatus
+    : undefined;
 
   if (
     Object.keys(properties).length === 0 &&
@@ -806,6 +811,7 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
     description === undefined &&
     descriptionReviewStatus === undefined &&
     adControlStatus === undefined &&
+    cooldownReviewStatus === undefined &&
     !tags &&
     isProjectile === undefined &&
     dunLiWhitelisted === undefined &&
@@ -820,6 +826,7 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
     description,
     descriptionReviewStatus,
     adControlStatus,
+    cooldownReviewStatus,
     tags,
     isProjectile,
     dunLiWhitelisted,
@@ -1316,6 +1323,7 @@ export function buildAbilityEditorEntry(params: {
     overrides?.description !== undefined ||
     overrides?.descriptionReviewStatus !== undefined ||
     overrides?.adControlStatus !== undefined ||
+    overrides?.cooldownReviewStatus !== undefined ||
     channelTimingSettings.some((setting) => setting.overridden) ||
     (overrides?.tags ? Object.keys(overrides.tags).length > 0 : false) ||
     overrides?.isProjectile !== undefined ||
@@ -1342,6 +1350,7 @@ export function buildAbilityEditorEntry(params: {
     coreSettings,
     damageSettings,
     adControlStatus: overrides?.adControlStatus ?? "unfixed",
+    cooldownReviewStatus: overrides?.cooldownReviewStatus ?? "unfixed",
     channelInfo,
   } satisfies AbilityEditorAbilityEntry;
 }

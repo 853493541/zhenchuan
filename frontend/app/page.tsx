@@ -21,6 +21,12 @@ const LEGACY_MODES: Array<{ value: StartMode; label: string }> = [
 
 const startModeLabel = (mode: StartMode) => getGameModeLabel(mode);
 
+function getLobbyMaxPlayers(mode: unknown) {
+  if (mode === YUMEN_1V1_BASIC_MODE || mode === undefined || mode === null) return 6;
+  if (mode === 'pubg') return 5;
+  return 2;
+}
+
 function ModeDropdown({
   label,
   options,
@@ -138,8 +144,10 @@ export default function HomePage() {
         for (const gameId of currentGameIds) {
           if (!previousGameIds.current.has(gameId)) {
             const game = games.find((g: any) => g._id === gameId);
+            const playersJoined = Array.isArray(game?.players) ? game.players.length : 0;
+            const hasOpenSlot = playersJoined < getLobbyMaxPlayers(game?.mode);
             // Only auto-join if the room creator is not me
-            if (game && game.players?.[0] !== meRef.current.uid) {
+            if (game && hasOpenSlot && game.players?.[0] !== meRef.current.uid) {
               hasAutoJoined.current = true;
               router.push(`/game/room?gameId=${gameId}`);
               return;
@@ -294,6 +302,9 @@ export default function HomePage() {
 
         {waitingGames.map((g) => {
           const isMine = me && g.players?.[0] === me.uid;
+          const maxPlayers = getLobbyMaxPlayers(g.mode);
+          const playersJoined = Array.isArray(g.players) ? g.players.length : 0;
+          const roomFull = playersJoined >= maxPlayers;
 
           return (
             <div
@@ -317,11 +328,11 @@ export default function HomePage() {
 
               {/* 人数 */}
               <div className={styles.playerCount}>
-                当前人数：{g.players.length} / 2
+                当前人数：{playersJoined} / {maxPlayers}
               </div>
 
               {/* 状态 */}
-              <div className={styles.status}>🟢 等待加入</div>
+              <div className={styles.status}>{roomFull ? "已满" : "🟢 等待加入"}</div>
 
               {/* 时间（右下角，仅分钟级） */}
               <div className={styles.time}>

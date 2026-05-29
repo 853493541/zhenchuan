@@ -13,7 +13,7 @@ export function isExportedMapMode(mode: unknown): mode is 'collision-test' | typ
 export function getGameModeLabel(mode: unknown): string {
   switch (mode) {
     case YUMEN_1V1_BASIC_MODE:
-      return '玉门关（1v1）：基础';
+      return '玉门关（6人）：基础';
     case 'collision-test':
       return '技能测试';
     case 'pubg':

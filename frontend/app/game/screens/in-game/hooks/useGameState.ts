@@ -213,6 +213,7 @@ function activeDashSignature(activeDash: any): string | null {
   if (!activeDash || typeof activeDash !== "object") return null;
   return JSON.stringify({
     abilityId: activeDash.abilityId ?? null,
+    startedAt: activeDash.startedAt ?? null,
     vxPerTick: activeDash.vxPerTick ?? null,
     vyPerTick: activeDash.vyPerTick ?? null,
     vzPerTick: activeDash.vzPerTick ?? null,

@@ -197,6 +197,16 @@ export class ExportedMapCollisionSystem {
     return this.sampleShellCeilingY(center, shellProbeOriginY);
   }
 
+  getTopDownHitY(worldX: number, worldZ: number, originY = 16000): number | null {
+    const shellY = this.sampleShellTopDownY(worldX, worldZ, originY);
+    const terrainY = this.getTerrainHeightAt(worldX, worldZ);
+
+    if (shellY === null && terrainY === null) return null;
+    if (shellY === null) return terrainY;
+    if (terrainY === null) return shellY;
+    return Math.max(shellY, terrainY);
+  }
+
   private getFaceNormal(faceIndex: number, out: THREE.Vector3): THREE.Vector3 | null {
     const position = this.shellGeometry?.getAttribute("position");
     if (!position || faceIndex < 0) return null;
@@ -216,6 +226,20 @@ export class ExportedMapCollisionSystem {
     if (lenSq < 1e-10) return null;
     out.multiplyScalar(1 / Math.sqrt(lenSq));
     return out;
+  }
+
+  private sampleShellTopDownY(worldX: number, worldZ: number, originY: number): number | null {
+    if (!this.shellBVH) return null;
+    const bvh = this.shellBVH as any;
+
+    this.ray.origin.set(worldX, originY, worldZ);
+    this.ray.direction.set(0, -1, 0);
+
+    const hit = bvh.raycastFirst(this.ray, THREE.DoubleSide, 0, Math.max(1, originY + 12000)) as
+      | { point?: THREE.Vector3 }
+      | null;
+    if (!hit?.point || !Number.isFinite(hit.point.y)) return null;
+    return hit.point.y;
   }
 
   private sampleShellGroundY(center: THREE.Vector3, probeOriginY?: number): number | null {

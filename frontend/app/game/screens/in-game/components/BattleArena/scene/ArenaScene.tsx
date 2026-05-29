@@ -28,7 +28,6 @@ const YUMEN_SAFE_ZONE_RING_CLEARANCE = 0.34;
 const YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE = 50;
 const YUMEN_BOUNDARY_LINE_VISIBLE_DISTANCE = 30;
 
-type SafeZoneDisplayMode = 'terrain' | 'topDown';
 type LinePoint = [number, number, number];
 type NearbyLineSegment = { key: string; points: [LinePoint, LinePoint] };
 
@@ -226,8 +225,6 @@ interface ArenaSceneProps {
   entityScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
   mode?: string;
   safeZone?: SafeZone;
-  showFutureSafeZone?: boolean;
-  safeZoneDisplayMode?: SafeZoneDisplayMode;
   playArea?: PlayAreaBounds;
   onPlayAreaChange?: (playArea: PlayAreaBounds) => void;
   boundaryEditMode?: boolean;
@@ -738,9 +735,6 @@ function YumenSafeZoneOverlay({
   worldHalfY,
   localRenderPosRef,
   getZoneTerrainZ,
-  getZoneVisualZ,
-  showFutureSafeZone = true,
-  displayMode = 'terrain',
   structureXrayActive,
   onStructureXrayActiveChange,
 }: {
@@ -749,9 +743,6 @@ function YumenSafeZoneOverlay({
   worldHalfY: number;
   localRenderPosRef: MutableRefObject<{ x: number; y: number; z?: number }>;
   getZoneTerrainZ: (worldX: number, worldY: number, worldZ?: number) => number;
-  getZoneVisualZ: (worldX: number, worldY: number, worldZ?: number) => number;
-  showFutureSafeZone?: boolean;
-  displayMode?: SafeZoneDisplayMode;
   structureXrayActive: boolean;
   onStructureXrayActiveChange: (active: boolean) => void;
 }) {
@@ -762,8 +753,7 @@ function YumenSafeZoneOverlay({
     if (!safeZone) return null;
     const radius = Math.max(0, Number(safeZone.currentHalf ?? 0));
     if (radius <= 0) return null;
-    const segments = displayMode === 'topDown' ? 360 : 180;
-    const sampleZ = displayMode === 'topDown' ? getZoneVisualZ : getZoneTerrainZ;
+    const segments = 180;
     const buildRingPoints = (centerX: number, centerY: number, ringRadius: number) => {
       const points: LinePoint[] = [];
       for (let segmentIndex = 0; segmentIndex <= segments; segmentIndex += 1) {
@@ -772,7 +762,7 @@ function YumenSafeZoneOverlay({
         const worldY = centerY + Math.sin(angle) * ringRadius;
         points.push([
           worldX - worldHalfX,
-          sampleZ(worldX, worldY, 0) + YUMEN_SAFE_ZONE_RING_CLEARANCE,
+          getZoneTerrainZ(worldX, worldY, 0) + YUMEN_SAFE_ZONE_RING_CLEARANCE,
           worldHalfY - worldY,
         ]);
       }
@@ -780,13 +770,9 @@ function YumenSafeZoneOverlay({
     };
 
     const bottomPoints = buildRingPoints(safeZone.centerX, safeZone.centerY, radius);
-    const targetRadius = Math.max(0, Number(safeZone.targetHalf ?? (typeof safeZone.targetDiameter === 'number' ? safeZone.targetDiameter / 2 : 0)));
-    const targetBottomPoints = showFutureSafeZone && safeZone.targetVisible && targetRadius > 0 && typeof safeZone.targetCenterX === 'number' && typeof safeZone.targetCenterY === 'number'
-      ? buildRingPoints(safeZone.targetCenterX, safeZone.targetCenterY, targetRadius)
-      : null;
 
-    return { bottomPoints, targetBottomPoints, radius };
-  }, [safeZone, worldHalfX, worldHalfY, getZoneTerrainZ, getZoneVisualZ, showFutureSafeZone, displayMode]);
+    return { bottomPoints, radius };
+  }, [safeZone, worldHalfX, worldHalfY, getZoneTerrainZ]);
 
   useFrame(() => {
     if (!visual || !safeZone) {
@@ -799,14 +785,12 @@ function YumenSafeZoneOverlay({
     const playerSceneX = player.x - worldHalfX;
     const playerSceneZ = worldHalfY - player.y;
     const current = showCurrentLine ? buildNearbyLineSegments(visual.bottomPoints, playerSceneX, playerSceneZ, YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE, 'safe-current') : [];
-    const target = buildNearbyLineSegments(visual.targetBottomPoints, playerSceneX, playerSceneZ, YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE, 'safe-target');
     const currentSignature = nearbySegmentSignature(current);
-    const targetSignature = nearbySegmentSignature(target);
-    if (currentSignature !== xraySignatureRef.current.current || targetSignature !== xraySignatureRef.current.target) {
-      xraySignatureRef.current = { current: currentSignature, target: targetSignature };
-      setXraySegments({ current, target });
+    if (currentSignature !== xraySignatureRef.current.current || xraySignatureRef.current.target) {
+      xraySignatureRef.current = { current: currentSignature, target: '' };
+      setXraySegments({ current, target: [] });
     }
-    const nearLine = current.length > 0 || target.length > 0;
+    const nearLine = current.length > 0;
     if (structureXrayActive !== nearLine) onStructureXrayActiveChange(nearLine);
   });
 
@@ -827,18 +811,6 @@ function YumenSafeZoneOverlay({
           depthWrite={false}
         />
       )}
-      {visual.targetBottomPoints && (
-        <Line
-          points={visual.targetBottomPoints}
-          color="#22b8ff"
-          lineWidth={3}
-          transparent
-          opacity={1}
-          renderOrder={21}
-          depthTest={true}
-          depthWrite={false}
-        />
-      )}
       {xraySegments.current.map((segment) => (
         <Line
           key={segment.key}
@@ -848,19 +820,6 @@ function YumenSafeZoneOverlay({
           transparent
           opacity={0.96}
           renderOrder={41}
-          depthTest={false}
-          depthWrite={false}
-        />
-      ))}
-      {xraySegments.target.map((segment) => (
-        <Line
-          key={segment.key}
-          points={segment.points}
-          color="#22b8ff"
-          lineWidth={3}
-          transparent
-          opacity={1}
-          renderOrder={42}
           depthTest={false}
           depthWrite={false}
         />
@@ -898,8 +857,6 @@ export default function ArenaScene({
   entityScreenBoundsRef,
   mode,
   safeZone,
-  showFutureSafeZone = true,
-  safeZoneDisplayMode = 'terrain',
   playArea,
   onPlayAreaChange,
   boundaryEditMode,
@@ -1160,9 +1117,6 @@ export default function ArenaScene({
               worldHalfY={worldHalfY}
               localRenderPosRef={localRenderPosRef}
               getZoneTerrainZ={getZoneTerrainZ}
-              getZoneVisualZ={getZoneVisualZ}
-              showFutureSafeZone={showFutureSafeZone}
-              displayMode={safeZoneDisplayMode}
               structureXrayActive={isYumenMode ? safeZoneStructureXrayActive : false}
               onStructureXrayActiveChange={isYumenMode ? setSafeZoneStructureXrayActive : () => undefined}
             />

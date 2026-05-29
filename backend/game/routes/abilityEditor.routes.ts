@@ -2,10 +2,13 @@ import express from "express";
 
 import {
   buildCanCastWhileMountedSnapshot,
+  buildAbilityCooldownReviewSnapshot,
   buildAbilityEditorSnapshot,
   buildAbilityDescriptionReviewSnapshot,
   buildNoWeaponRequiredSnapshot,
   setAbilityAdControlStatus,
+  setAbilityCooldownReviewStatus,
+  setAbilityCooldownReviewTicks,
   buildHasteUnaffectedSnapshot,
   buildQinggongGcdImmuneSnapshot,
   buildQinggongSnapshot,
@@ -156,6 +159,41 @@ router.put("/ability-editor/description-review/:abilityId/description", (req, re
       return res.status(400).json({ error: "ERR_INVALID_ABILITY_DESCRIPTION" });
     }
     return res.json(setAbilityDescriptionOverride(req.params.abilityId, description));
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/cooldown-review", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildAbilityCooldownReviewSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/cooldown-review/:abilityId/status", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { status } = req.body ?? {};
+    if (status !== "fixed" && status !== "needs-more" && status !== "unfixed") {
+      return res.status(400).json({ error: "ERR_INVALID_DESCRIPTION_REVIEW_STATUS" });
+    }
+    return res.json(setAbilityCooldownReviewStatus(req.params.abilityId, status));
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/cooldown-review/:abilityId/cooldown", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { cooldownTicks } = req.body ?? {};
+    if (typeof cooldownTicks !== "number") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+    return res.json(setAbilityCooldownReviewTicks(req.params.abilityId, cooldownTicks));
   } catch (error) {
     return handleAbilityEditorError(res, error);
   }

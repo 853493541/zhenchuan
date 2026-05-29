@@ -249,6 +249,7 @@ export interface SafeZone {
   timelineMode?: 'fast' | 'full';
   damageMode?: 'test' | 'full';
   autoFullHeal?: boolean;
+  testShortCooldown?: boolean;
   autoSettle?: boolean;
   circleNumber?: number;
   totalCircles?: number;

@@ -3,6 +3,75 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Dash identity, diagnostics stalls, and live regression proof (2026-05-29)
+
+**Implemented / checked**:
+- Added stable `startedAt` identity to directional `activeDash` payloads and included it in backend broadcast signatures plus frontend duplicate filtering/observation keys, so repeated identical 蹑云逐月 casts are not mistaken for the previous dash.
+- Removed sync timestamp from the frontend dash observation key; server resends of the same dash no longer count as new frontend dash starts.
+- Changed recent-dash reconciliation so server position still updates authoritative local state, but the render position does not hard-snap during the dash settle window.
+- Reduced diagnostic self-pressure by keeping frontend crash breadcrumbs in memory instead of JSON-parsing/stringifying localStorage on each wrapped console call, and by not uploading latency samples directly from the main-thread stall callback.
+- Completed a live Playwright proof against `https://zhenchuan.renstoolbox.com`: 10 distinct frontend-observed 蹑云逐月 dashes, no `recent-dash-snap` or `hard-snap-xy` snapback correction probes.
+
+**Lesson**:
+- Repeated server-owned movement with identical velocity/direction needs an explicit per-cast identity. Do not use countdown sync time as dash identity; it changes on resyncs and can create duplicate frontend starts.
+- A performance diagnostic can become the lag source if warning/stall logging performs synchronous storage or upload work. Keep hot-path diagnostics memory-first and flush outside the stall callback.
+- Playwright trace/screenshot/video can add WebGL readback pressure during movement regressions. Disable them for live gameplay performance proofs.
+- Test cooldown reset must clear all cooldown runtime fields, including `_cooldownProgress` and `globalGcdTicks`, or API-driven repeated casts can fail for the wrong reason.
+
+## Lobby visibility and dash snapback regression (2026-05-28)
+
+**Implemented / checked**:
+- Changed lobby waiting-room visibility to depend on `started: false` instead of a one-player size filter, so full unstarted rooms still show in the lobby.
+- Added mode-aware lobby counts/status and stopped auto-joining rooms that are already full.
+- Added a live Playwright dash regression that creates one Yumen battle, enables test-short cooldown, performs at least ten frontend 蹑云逐月 dashes, and fails on `recent-dash-snap` or `hard-snap-xy` frontend correction probes.
+- Reworked post-dash frontend reconciliation so local authoritative position still syncs to the server, but the render ref no longer hard-snaps during the recent-dash settle window.
+
+**Lesson**:
+- Lobby availability and lobby visibility are separate concerns: full rooms should be visible until started, while join/auto-join paths enforce capacity.
+- Post-dash reconciliation should not use the same hard render snap as teleport/forced displacement. After a server-owned dash ends, sync local gameplay position to the server and let the render position settle to avoid visible snapback.
+
+## Yumen cooldown toggle, Z rescue, and dash HUD correction (2026-05-28)
+
+**Implemented / checked**:
+- Added the missing `/cheat/yumen/test-short-cooldown` route and changed runtime cooldown clamping so real cooldowns are used unless `safeZone.testShortCooldown` is enabled.
+- Split Yumen rescue into the old support-ground helper (`虚空救援`) and a new current-player `Z救援` route using a top-down first-hit height helper that also considers exported AABB tops.
+- Replaced Yumen spawn slots with the copied eight XYZ coordinates and preserved spawn Z during battle initialization/random spawn assignment.
+- Moved coordinate copying out of the ESC panel into a lightweight HUD widget, and removed the BattleArena-level minimap pose interval that could force parent re-renders during local dashes.
+
+**Lesson**:
+- A testing checkbox needs both a backend toggle route and runtime logic gated by that state; a frontend checkbox alone just produces generic 操作失败.
+- For exported-map rescue, support-ground height and top-down first-hit height are different tools. Houses/roofs need a top-down query plus AABB fallback, while void recovery can keep the support-ground path.
+- Avoid parent-level intervals for fast HUD pose updates in `BattleArena`; during dash they can make only the local player feel laggy even when the server and opponent view are fine.
+
+## Target mark SVG refinements (2026-05-28)
+
+**Implemented / checked**:
+- Refined the custom target-mark SVGs for `云`, `斧`, and `剑` under `frontend/public/icons/marks`.
+- Changed `云` to strict black/white only, broadened `斧` into a clearer axe-head silhouette, and rebuilt `剑` as a more balanced centered sword.
+- Corrected the follow-up pass by returning closer to the first version's silhouettes and making only small targeted changes.
+- Added transparent SVG target marks for `钩子` and `红鼓` from the supplied references.
+
+**Lessons**:
+- Small target marks need strong silhouettes before surface detail; a weapon mark that reads as a throwable object at icon size should be simplified into the canonical weapon shape.
+- When the user prefers an earlier art direction, preserve that base and make minimal shape/color edits instead of fully redrawing the asset.
+
+## Cooldown import and six-player Yumen controls (2026-05-28)
+
+**Implemented / checked**:
+- Restored the ability-editor `CD纠正` tab after it had been removed from source, including backend snapshot/status routes and frontend seconds-based editing.
+- Parsed `frontend/真传技能细节.xlsx` with standard-library XLSX XML parsing because `openpyxl` was not installed. The correct repeated-table columns are skill name/CD at B/C and I/J, not A/B and H/I.
+- Corrected the cooldown import to cover all 151 spreadsheet rows, convert seconds to 30Hz ticks, and mark each matched cooldown row as fixed. Sixteen current in-game abilities are absent from the sheet.
+- Expanded the Yumen room cap to six players, added six exported-map spawn slots, and added Yumen test controls for random spawn assignment, gathering to middle, and Z-only top-down ground rescue.
+- Removed future safe-zone display controls and target-ring rendering from the control panel, minimap, and 3D safe-zone overlay.
+- Added a default-off ESC testing coordinate display with a copy button.
+
+**Lesson**:
+- The live app can still show a removed ability-editor tab if old build artifacts are running; verify source and git history before assuming the route still exists.
+- For spreadsheet imports, inspect the actual XML cell columns before importing. In this sheet, IDs occupy A/H while skill names occupy B/I.
+- Keep cooldown overrides in `ability-property-overrides.json` rather than editing base definitions by hand, so the review page status and runtime overrides stay synchronized.
+- Yumen teleport/rescue controls should update the live `GameLoop` state first and broadcast precise position/velocity patches; waiting for Mongo would make test controls feel stale.
+- Removing future-zone UI also requires removing minimap and 3D target-ring rendering, not only deleting the toggle button.
+
 ## 玉门关 KILL / 观战 death state (2026-05-28)
 
 **Implemented / checked**:

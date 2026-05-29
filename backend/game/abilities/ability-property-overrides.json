@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-28T08:39:37.828Z",
+  "updatedAt": "2026-05-28T16:37:38.247Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -9,11 +9,13 @@
       "numeric": {
         "effects.0.value": 3.8541,
         "buffs.0.effects.1.value": 3.8541,
-        "buffs.0.effects.0.value": 1.05
+        "buffs.0.effects.0.value": 1.05,
+        "cooldownTicks": 540
       },
       "description": "对指定区域施放风蜈之毒，使6尺半径区域内目标立即受到（3.8541*攻击力）点伤害，并使这些目标每3秒受到伤害，持续18秒，风蜈之毒结束会再次爆炸，对6尺半径区域内的5个目标造成（3.8541*攻击力）点伤害",
       "descriptionReviewStatus": "needs-more",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
         "school": "五毒",
@@ -26,9 +28,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 360
+      },
       "description": "对周围5尺5个目标造成8-8点(+[1.2708*最终阳性内功攻击])伤害并添加12秒持续伤害效果，若只命中单个目标则伤害提高100%",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
         "school": "少林",
@@ -48,6 +54,7 @@
       "description": "对目标造成伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
         "school": "通用",
@@ -63,11 +70,13 @@
       },
       "numeric": {
         "effects.0.value": 7.98,
-        "buffs.1.effects.0.value": 0.1
+        "buffs.1.effects.0.value": 0.1,
+        "cooldownTicks": 300
       },
       "description": "对目标及其周围最多2个目标造成伤害，使当前目标减速且无法施展轻功招式，持续2秒，并获得一层“急曲”效果。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
         "school": "七秀",
@@ -82,11 +91,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 6.26
+        "effects.0.value": 6.26,
+        "cooldownTicks": 150
       },
       "description": "对目标造成伤害，对目标添加3层无法卸除持续30秒的“绝脉”效果：招式调息速度降低1%。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
         "school": "段氏",
@@ -103,11 +114,13 @@
       "numeric": {
         "effects.1.value": 1.1197,
         "effects.3.value": 1.1197,
-        "effects.5.value": 1.1197
+        "effects.5.value": 1.1197,
+        "cooldownTicks": 240
       },
       "description": "冲刺并对12尺内的目标造成3次513-533点(+[1.1197*最终阴性内功攻击])伤害，且每次卸除目标混元、阳性、阴性、毒性增益气劲各一个。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
         "school": "明教",
@@ -122,11 +135,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 1.7312
+        "effects.0.value": 1.7312,
+        "cooldownTicks": 90
       },
       "description": "对目标造成35-49(+[1.7312*最终外功攻击])伤害，每施展一次则使该招式伤害提高10%，最多提高30%，该效果脱离战斗后消失。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
         "school": "藏剑",
@@ -140,7 +155,11 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
         "school": "明教",
@@ -154,8 +173,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1500
+      },
       "description": "恢复友方目标369598点气血值，并使其10秒内受到的伤害降低40%",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
         "school": "七秀",
@@ -166,8 +189,12 @@
       "noWeaponRequired": false
     },
     "fuyao_zhishang": {
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "江湖轻功，身轻如燕，能跳得更高，并能施展踏云。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
         "school": "通用",
@@ -181,8 +208,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1200
+      },
       "description": "施展后进入隐身状态，前5秒可以移动但移动速度降低50%，后15秒内移动会结束隐身效果。施展任何招式将提前结束隐身效果。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
         "school": "唐门",
@@ -196,9 +227,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1200
+      },
       "description": "血量高于35%方可施展，消耗自身30%气血值，获得50%气血最大值护盾，并在10秒内恢复30%气血值，该招式可以在被控制时施展。献祭将解除自身控制效果，并使自身免疫控制（击退和被拉除外）持续5秒。",
       "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
         "school": "五毒",
@@ -213,8 +248,12 @@
         "qinggong": false,
         "hasteUnaffected": true
       },
+      "numeric": {
+        "cooldownTicks": 5400
+      },
       "description": "解除自身控制效果，持续运功9秒，持续期间受到的伤害降低50%且免疫控制效果，每1秒回复最大气血值5%，完整运功额外回复30%最大气血值。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
         "school": "丐帮",
@@ -228,8 +267,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "祈求女娲指引，进入补天姿态，基础攻击力提高100%，免疫锁足、减速效果，移动速度降低50%，受到的伤害降低50%，运功不会被伤害打退，持续20秒。若骑乘坐骑将使你脱离这个姿态。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
         "school": "五毒",
@@ -243,8 +286,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "解除受控效果，向前翻越10尺，使自身5秒内无法被敌人选中且移动速度提高20%，\n效果期间每秒回复2%气血最大值，主动施展技能将提前解除该效果。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
         "school": "霸刀",
@@ -258,9 +305,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 450
+      },
       "description": "对目标造成20-20点(+[0.5989*最终混元内功攻击])伤害，并使其定身，受到伤害提高10%，持续1秒，若自身已经学习“商阳指”“兰摧玉折”“钟林毓秀”则会给目标添加对应持续伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
         "rarity": "珍奇",
@@ -280,6 +331,7 @@
       "description": "使目标每3秒受到262点伤害，可叠加2层(+[0.019*最终外功攻击]+[0.16*基础外功攻击])，持续24秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
         "rarity": "卓越",
@@ -293,9 +345,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 0
+      },
       "description": "卸除目标阴性、混元性、阳性、毒性内功增益气劲各一个。",
       "descriptionReviewStatus": "fixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
         "rarity": "精巧",
@@ -311,11 +367,13 @@
       },
       "numeric": {
         "effects.0.value": 3.2375,
-        "buffs.0.effects.0.value": 1.96
+        "buffs.0.effects.0.value": 1.96,
+        "cooldownTicks": 540
       },
       "description": "对目标及其周围3个目标造成28-31(+[3.2375*最终外功攻击])伤害，并使其6秒内移动速度降低50%，同时目标受到的下8次攻击将受到额外伤害（每0.5秒最多触发一次）。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
         "rarity": "珍奇",
@@ -330,11 +388,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 3.2968
+        "effects.0.value": 3.2968,
+        "cooldownTicks": 180
       },
       "description": "对目标造成460-508点(+[3.2968*最终阳性内功攻击])伤害，并使其内功防御等级降低15%，持续12秒，当目标拥有“银月斩”效果时将对其额外造成伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
         "rarity": "精巧",
@@ -349,11 +409,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 4.1
+        "effects.0.value": 4.1,
+        "cooldownTicks": 0
       },
       "description": "对目标造成46-50点(+[4.1000*最终外功攻击])伤害，并添加“三环套月”效果，当“三环套月”叠加至3层时会额外附带一次伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "精巧",
@@ -368,11 +430,13 @@
         "qinggong": false
       },
       "numeric": {
-        "buffs.0.effects.0.value": 0.074
+        "buffs.0.effects.0.value": 0.074,
+        "cooldownTicks": 0
       },
       "description": "使目标每3秒受到22点伤害(+[0.074*最终混元内功攻击])，持续18秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -387,11 +451,13 @@
         "qinggong": false
       },
       "numeric": {
-        "buffs.0.effects.0.value": 0.086
+        "buffs.0.effects.0.value": 0.086,
+        "cooldownTicks": 0
       },
       "description": "使目标每2秒受到260点伤害，受到的锁足控制时间延长20%(+[0.086*最终毒性内功攻击])，持续12秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
         "rarity": "卓越",
@@ -406,11 +472,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 3.6
+        "effects.0.value": 3.6,
+        "cooldownTicks": 450
       },
       "description": "对目标造成124-129(+[3.6000*最终外功攻击])伤害，并隐身3秒，施展任何招式都将提前解除隐身效果。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "珍奇",
@@ -425,11 +493,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 4.4947
+        "effects.0.value": 4.4947,
+        "cooldownTicks": 210
       },
       "description": "对目标造成271-299点(+[4.4947*最终阳性内功攻击])伤害，并使目标内外防等级降低30%，自身内外防提高30%，持续5秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -444,11 +514,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 6.8875
+        "effects.0.value": 6.8875,
+        "cooldownTicks": 240
       },
       "description": "对目标造成93-93(+[6.8875*最终外功攻击])点伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -462,9 +534,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 180
+      },
       "description": "对目标造成460-508点(+[3.2968*最终阴性内功攻击])伤害，并对其每2秒造成272点伤害(+[0.074*最终阴性内功攻击])，持续12秒，当目标拥有“烈日斩”效果时将对其额外造成伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
         "rarity": "精巧",
@@ -479,11 +555,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 0.5989
+        "effects.0.value": 0.5989,
+        "cooldownTicks": 450
       },
       "description": "对目标造成114-126点(+[0.5989*最终混元内功攻击])伤害，若该目标正受到自身“绝境·商阳指”“绝境·兰摧玉折”“绝境·钟林毓秀”“绝境·蛇影”“绝境·蟾啸”持续性伤害，则使其剩余伤害立即生效并额外造成一次伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -497,9 +575,13 @@
       "properties": {
         "qinggongGcdImmune": true
       },
+      "numeric": {
+        "cooldownTicks": 540
+      },
       "description": "立即冲向目标释放一道掌法并造成伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "蓬莱",
         "rarity": "精巧",
@@ -513,8 +595,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 0
+      },
       "description": "向目标冲刺造成（1.4375*攻击力）外功伤害，添加锁足和“心怵”效果。若目标已拥有“心怵”效果，则添加定身并强化“心怵”效果，同时该招式的调息时间额外增加16秒。",
       "descriptionReviewStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
         "rarity": "精巧",
@@ -530,11 +616,13 @@
       },
       "numeric": {
         "effects.0.value": 3.14,
-        "buffs.0.effects.0.value": 0.52
+        "buffs.0.effects.0.value": 0.52,
+        "cooldownTicks": 360
       },
       "description": "使目标及其8尺周围内的最多8个目标每2秒受到？点伤害，持续16秒，同时目标2秒内无法施展招式。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
         "rarity": "卓越",
@@ -548,8 +636,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 600
+      },
       "description": "使周围6尺内5个目标眩晕5秒，眩晕期间招式调息速度降低50%。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -563,8 +655,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1200
+      },
       "description": "对周围8尺内最多5个目标造成65-71点伤害，使其下马并定身，持续4秒。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
         "rarity": "精巧",
@@ -578,8 +674,12 @@
       "properties": {
         "qinggongGcdImmune": true
       },
+      "numeric": {
+        "cooldownTicks": 600
+      },
       "description": "使用轻功腾空跳向目标区域，对半径5尺范围内最多5个目标造成眩晕和伤害。持续3秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "苍云",
         "rarity": "精巧",
@@ -593,8 +693,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 600
+      },
       "description": "跳跃至正前方15尺处并以重剑猛击地面，对半径6尺范围内的最多10个目标造成98-108(+[3.1625*最终外功攻击])伤害并使其晕眩3秒，对周围4尺内的目标造成额外伤害。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
         "rarity": "卓越",
@@ -608,8 +712,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1290
+      },
       "description": "以剑气击伤敌人心脉，使其施展轻功则2秒内无法施展招式，并受到伤害307-312点，持续9秒。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
         "rarity": "卓越",
@@ -623,8 +731,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 450
+      },
       "description": "对目标造成伤害，将其击退12尺，击退中的目标如果碰撞障碍则眩晕4秒。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "精巧",
@@ -638,8 +750,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "使目标眩晕，不受任何增益效果影响，持续15秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
         "rarity": "珍奇",
@@ -653,8 +769,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 600
+      },
       "description": "使目标眩晕，持续4秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
         "rarity": "精巧",
@@ -669,11 +789,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 9.5
+        "effects.0.value": 9.5,
+        "cooldownTicks": 300
       },
       "description": "冲向目标，对目标造成124-129(+[9.5000*最终外功攻击])点伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "rarity": "珍奇",
@@ -688,11 +810,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 4.4947
+        "effects.0.value": 4.4947,
+        "cooldownTicks": 360
       },
       "description": "对目标造成0-28点(+[4.4947*最终阳性内功攻击])伤害，并击倒3秒，击倒自然结束时若目标血量低于30%则额外眩晕2秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -706,8 +830,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 600
+      },
       "description": "对自身周围8尺内的最多6个目标造成锁足效果，持续9秒。目标在被锁足的后半段时间里若被伤害招式命中，则有50%几率解除其锁足效果",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -722,11 +850,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 0.2604
+        "effects.0.value": 0.2604,
+        "cooldownTicks": 330
       },
       "description": "对目标造成271-299点(+[0.2604*最终阳性内功攻击])伤害，眩晕目标4秒，使目标12秒内受到的疗伤成效降低50%。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
         "rarity": "卓越",
@@ -741,11 +871,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 0.5
+        "effects.0.value": 0.5,
+        "cooldownTicks": 1200
       },
       "description": "毒手：对20尺内的敌方玩家施展，使自身受到的55%伤害将由敌方玩家承担，持续8秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
         "rarity": "卓越",
@@ -760,11 +892,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 0.7187
+        "effects.0.value": 0.7187,
+        "cooldownTicks": 180
       },
       "description": "对目标及其周围4尺内总共5个敌对目标造成51-56点(+[0.7187*最终外功攻击])伤害，使目标移动速度降低65%，周围目标移动速度降低40%，持续12秒，该效果无法被解除，也无法延长减速的持续时间。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "rarity": "精巧",
@@ -778,8 +912,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 300
+      },
       "description": "对周围6尺内的最多6个目标造成69-76(+[2.1562*最终外功攻击])伤害，并使这些目标锁足3秒，减疗50%持续10秒。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -793,8 +931,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 450
+      },
       "description": "使自身会心效果提高20%，对选择区域范围内的最多6个目标均造成23-23点(+[0.5989*最终混元内功攻击])伤害，并使其锁足10.5秒。目标在被锁足的后半段持续时间里若被伤害招式命中，则有50%几率解除其锁足效果。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -808,9 +950,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 600
+      },
       "description": "使目标眩晕5秒，并使其8秒内“蹑云逐月”招式移动速度降低70%。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -824,8 +970,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1500
+      },
       "description": "给友方目标一个5层的护盾，使其受到的所有伤害降低40%，运功不会被伤害击退，被攻击则消耗一层，每消耗一层恢复自身3%气血最大值，持续20秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -839,8 +989,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1650
+      },
       "description": "使自身移动速度提高55%，持续15秒，清除自身所有移动限制（击倒除外）并使自身免疫控制效果（被拉除外），持续3秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
         "rarity": "精巧",
@@ -854,8 +1008,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1350
+      },
       "description": "使你突破一切限制，解除自身控制效果，卸除自身所有内功不利效果、点穴效果、持续伤害不利效果。施展后不受招式控制和无法施展内功招式效果的影响，持续8秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -869,8 +1027,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 750
+      },
       "description": "使自身受到的伤害提高30%，招式伤害提高30%，持续12秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
         "rarity": "卓越",
@@ -884,8 +1046,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "解除自身控制，投掷锁链至目标点，使自身冲向其位置。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "凌雪",
         "rarity": "精巧",
@@ -898,6 +1064,7 @@
     "houyao": {
       "description": "向后方快速撤退。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
         "rarity": "精巧",
@@ -911,8 +1078,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "使自身每秒恢复气血最大值的6%，持续5秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
         "rarity": "卓越",
@@ -927,11 +1098,13 @@
         "qinggongGcdImmune": false
       },
       "numeric": {
-        "effects.0.routeDamage": 3.375
+        "effects.0.routeDamage": 3.375,
+        "cooldownTicks": 750
       },
       "description": "向前冲刺，并对处于冲刺路径上的最多5名敌人造成570-593(+[3.3750*最终外功攻击])外功伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "rarity": "精巧",
@@ -945,8 +1118,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "解除所有移动限制，并且不受招式控制(击退和被拉除外)，移动速度提高100%，持续6秒。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "rarity": "精巧",
@@ -960,8 +1137,12 @@
       "properties": {
         "qinggongGcdImmune": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "江湖轻功，向左侧迅速移动，可以避开敌人的攻击。过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
         "rarity": "精巧",
@@ -975,8 +1156,12 @@
       "properties": {
         "qinggongGcdImmune": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "突破内功限制，能够在空中连续跳跃多次，持续15秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
         "rarity": "精巧",
@@ -990,8 +1175,12 @@
       "properties": {
         "qinggongGcdImmune": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "江湖轻功，解除被击僵直，向前冲刺一段距离。冲刺过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
         "rarity": "精巧",
@@ -1005,8 +1194,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1500
+      },
       "description": "自身将向前冲刺，持续2秒，可以转向，结束后在脚下生成“生太极”气场，并回复自身10%的最大气血值。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "精巧",
@@ -1020,8 +1213,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1080
+      },
       "description": "使你被命中几率降低70%，持续5秒，清除自身所有移动限制，并使你不受招式控制(击退和被拉除外)，持续3.5秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
         "rarity": "卓越",
@@ -1035,8 +1232,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1350
+      },
       "description": "立刻恢复自身20%气血最大值，同时10秒内使自身被命中几率降低20%。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
         "rarity": "卓越",
@@ -1050,8 +1251,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 5400
+      },
       "description": "使自身受到的伤害降低80%，持续8秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "rarity": "珍奇",
@@ -1065,8 +1270,12 @@
       "properties": {
         "qinggongGcdImmune": true
       },
+      "numeric": {
+        "cooldownTicks": 1200
+      },
       "description": "门派轻功，解除自身减速、锁足效果，使自身虚化浮空，被命中几率降低65%，移动速度提高30%，期间免疫控制且可自由漂浮，无法施展招式。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "衍天",
         "rarity": "卓越",
@@ -1080,8 +1289,12 @@
       "properties": {
         "qinggongGcdImmune": true
       },
+      "numeric": {
+        "cooldownTicks": 750
+      },
       "description": "向后疾退，解除自身锁足效果，疾退过程中自身被命中几率降低100%。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -1095,8 +1308,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1950
+      },
       "description": "使自身化解受到的伤害55%，持续10秒。并不产生威胁值，运功不被打退，持续1秒。该招式的施放无视控制效果。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
         "rarity": "精巧",
@@ -1114,11 +1331,13 @@
         "buffs.0.effects.0.value": 4.18,
         "buffs.0.effects.1.value": 5.91,
         "buffs.0.effects.2.value": 7.57,
-        "buffs.0.effects.3.value": 2.79
+        "buffs.0.effects.3.value": 2.79,
+        "cooldownTicks": 900
       },
       "description": "立即“修罗”附体，对10尺180°范围发起三段挥砍，对最多6个目标造成伤害，期间蓄力旋转一次链刃击退自身周围10尺最多6个目标造成伤害，持续10秒。修罗会汲取造成伤害的30%恢复自身气血值。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "凌雪",
         "rarity": "卓越",
@@ -1132,8 +1351,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 9000
+      },
       "description": "招式伤害提高30%，不受任何控制影响，20秒内受到攻击不会重伤。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "rarity": "珍奇",
@@ -1147,8 +1370,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 690
+      },
       "description": "清除自身所有移动限制，并使自身不受招式控制(击退和被拉除外)，持续8秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -1162,8 +1389,12 @@
       "properties": {
         "qinggongGcdImmune": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "江湖轻功，向右侧迅速移动，可以避开敌人攻击。过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
         "rarity": "精巧",
@@ -1177,8 +1408,12 @@
       "properties": {
         "qinggongGcdImmune": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "向后疾退，避开敌人的攻击。过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
         "rarity": "精巧",
@@ -1195,6 +1430,7 @@
       },
       "description": "在非战斗状态施展后能成功驾驭和下马，施展驾驭需3秒。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
         "rarity": "精巧",
@@ -1208,8 +1444,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1500
+      },
       "description": "恢复5%气血值，解除自身阳性、混元性、阴性、毒性不利效果各两个并使自身被命中概率降低60%，持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
         "rarity": "精巧",
@@ -1223,8 +1463,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 7200
+      },
       "description": "产生一个10尺的气场，范围内队友获得镇山河，并解除外功、阴性、混元性、阳性、毒性和点穴的不利效果，持续8秒。该招式的施放无视任何控制效果。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "珍奇",
@@ -1238,8 +1482,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "使纯阳诀下所有招式瞬发，不受无法施展内功招式效果的影响，并且自身受到的伤害降低70%，持续6秒，同时解除所有控制效果，自身免疫控制（击退和被拉除外），持续4秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -1253,8 +1501,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1110
+      },
       "description": "以混元气劲护持自身，化解自身气血最大值5%伤害。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "精巧",
@@ -1270,11 +1522,13 @@
         "hasteUnaffected": false
       },
       "numeric": {
-        "buffs.0.effects.0.value": 0.125
+        "buffs.0.effects.0.value": 0.125,
+        "cooldownTicks": 600
       },
       "description": "使目标受到的疗伤成效降低50%，并使目标每3秒受到235点伤害(+[0.125*最终外功攻击])，持续18秒，可在移动中施展。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
         "rarity": "精巧",
@@ -1290,11 +1544,13 @@
         "hasteUnaffected": false
       },
       "numeric": {
-        "buffs.0.effects.3.value": 3.61
+        "buffs.0.effects.3.value": 3.61,
+        "cooldownTicks": 1200
       },
       "description": "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计8次伤害。\n在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
         "rarity": "卓越",
@@ -1310,11 +1566,13 @@
         "hasteUnaffected": false
       },
       "numeric": {
-        "buffs.0.effects.0.value": 0.104
+        "buffs.0.effects.0.value": 0.104,
+        "cooldownTicks": 0
       },
       "description": "使目标每3秒受到67点伤害(+[0.104*最终混元内功攻击])，持续18秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -1329,8 +1587,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 0
+      },
       "description": "以七星罡气禁锢目标，使其定身，气血恢复速度提高，持续10秒，如果目标为非侠士单位，则持续1秒。任何伤害都会眩晕4秒，同一时间内只能使一个目标被定身，只能对人形目标施展。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "rarity": "卓越",
@@ -1345,8 +1607,12 @@
         "qinggong": false,
         "hasteUnaffected": true
       },
+      "numeric": {
+        "cooldownTicks": 5400
+      },
       "description": "需持续运功，8秒内每0.5秒为半径20尺范围内气血百分比最低的一名小队或团队成员恢复14489点气血值，该招式不会被打退、打断，持续期间自身不受控制招式影响",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
         "rarity": "珍奇",
@@ -1361,9 +1627,13 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 750
+      },
       "description": "持续舞棍3秒，过程免疫全部控制效果。持续左右交替挥舞手中棍棒六次，对6尺180度范围内最多5个目标造成中等伤害，每次造成伤害自身获得1层“讼言”，最多30层。每层“讼言”提高会心3%。舞棍结束后打出一次12尺范围终结扫击并消耗全部“讼言”。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
         "rarity": "卓越",
@@ -1380,11 +1650,13 @@
       },
       "numeric": {
         "channelEffects.0.value": 10.2562,
-        "channelEffects.1.value": 18.84
+        "channelEffects.1.value": 18.84,
+        "cooldownTicks": 360
       },
       "description": "对目标造成1032-1140(+[10.2562*最终外功攻击])伤害，若目标处于自身4尺内则额外造成伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
         "rarity": "卓越",
@@ -1399,8 +1671,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 150
+      },
       "description": "恢复友方目标138598点气血值。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
         "rarity": "珍奇",
@@ -1416,11 +1692,13 @@
         "hasteUnaffected": false
       },
       "numeric": {
-        "buffs.0.effects.0.value": 0.099
+        "buffs.0.effects.0.value": 0.099,
+        "cooldownTicks": 0
       },
       "description": "使目标攻击降低-776点，每3秒受到64点伤害(+[0.099*最终混元内功攻击])，持续18秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
         "rarity": "精巧",
@@ -1435,9 +1713,13 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 360
+      },
       "description": "对目标造成1032-1140(+[6.4937*最终外功攻击])伤害，若目标血量高于60%则追加50%额外伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
         "rarity": "珍奇",
@@ -1452,8 +1734,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 600
+      },
       "description": "将前方一定距离内的敌方目标拉到身前，之后使目标无法施展轻功，持续5秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
         "rarity": "珍奇",
@@ -1467,8 +1753,12 @@
       "properties": {
         "qinggongGcdImmune": true
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "解除自身锁足和减速不利效果，快速冲向前方，施展过程中不受控制招式影响。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
         "rarity": "精巧",
@@ -1483,8 +1773,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 750
+      },
       "description": "成功运功会于前方位置唤起雷云，雷云每秒对半径8尺内最多5个敌方目标造成80-100(+[2.8750*最终外功攻击])伤害，雷云持续6秒。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
         "rarity": "珍奇",
@@ -1499,11 +1793,13 @@
         "qinggong": false
       },
       "numeric": {
-        "buffs.0.effects.0.value": 0.1
+        "buffs.0.effects.0.value": 0.1,
+        "cooldownTicks": 180
       },
       "description": "对目标造成86-95点(+[2.0781*最终阴性内功攻击])伤害，并附带1层急曲效果，若目标已存在3层急曲则直接引爆。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
         "damageType": "内功",
@@ -1518,11 +1814,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 4.526
+        "effects.0.value": 4.526,
+        "cooldownTicks": 360
       },
       "description": "对目标造成96-96点(+[4.5260*最终混元内功攻击])伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "damageType": "内功",
@@ -1537,11 +1835,13 @@
         "qinggong": false
       },
       "numeric": {
-        "buffs.1.effects.0.value": 0.15
+        "buffs.1.effects.0.value": 0.15,
+        "cooldownTicks": 90
       },
       "description": "击破目标护甲，使其防御等级降低-1150点，每2秒受到150点伤害(+[0.15*最终外功攻击])，持续12秒，若目标免疫击倒则额外添加一个“流血”效果，使其每2秒受到300点伤害，持续12秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -1555,8 +1855,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 600
+      },
       "description": "使目标定身，持续6秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -1570,8 +1874,12 @@
       "properties": {
         "qinggongGcdImmune": true
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "随风：跳跃一段距离。跳到空中后，消失在敌人视野中，并不受任何伤害，持续1秒。并向前冲刺一段距离。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
         "damageType": "内功",
@@ -1585,8 +1893,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "将自身周围10尺范围内最多6个敌对目标拉至身边，使其眩晕4秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
         "damageType": "内功",
@@ -1600,8 +1912,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 2100
+      },
       "description": "自身躲闪率提高65%，受到的内功伤害降低45%，持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
         "damageType": "外功",
@@ -1615,8 +1931,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "将自身牵引至标记位置，非战斗中使用时将返还部分调息时间。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
         "school": "通用",
@@ -1631,8 +1951,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "使目标8秒内获得3层“傍花随柳”效果，前2层“傍花随柳”目标施展任何招式将受到伤害，最后1层“傍花随柳”时将直接沉默目标4秒。",
       "descriptionReviewStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
         "school": "万花",
@@ -1648,11 +1972,13 @@
         "hasteUnaffected": false
       },
       "numeric": {
-        "channelEffects.0.value": 0.7239
+        "channelEffects.0.value": 0.7239,
+        "cooldownTicks": 0
       },
       "description": "对目标造成28-28点(+[0.7239*最终混元内功攻击])伤害，并解除其身上的混元、阳性、阴性、毒性有益气劲各两个。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
         "school": "万花",
@@ -1667,8 +1993,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 1350
+      },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标受到的外功伤害降低30%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -1683,8 +2013,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 1200
+      },
       "description": "在自身脚下产生一个20尺范围气场，在气场范围内自身和友方目标将免疫控制(被推被拉除外)，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "damageType": "内功",
@@ -1699,8 +2033,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "产生一个15尺的气场，范围内敌方不能施展轻功，持续15秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -1714,8 +2052,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 540
+      },
       "description": "引爆自身13尺范围内的气场，对气场周围6尺内最多5个目标造成伤害，若引爆友方的气场，则使他们定身5秒。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -1730,8 +2072,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 1350
+      },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标受到的内功伤害降低30%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "damageType": "内功",
@@ -1747,11 +2093,13 @@
         "hasteUnaffected": true
       },
       "numeric": {
-        "buffs.0.effects.5.value": 1.8
+        "buffs.0.effects.5.value": 1.8,
+        "cooldownTicks": 1200
       },
       "description": "可移动释放，挥舞武器进行持续旋转，每0.5秒对自身周围6尺内最多6个敌对目标造成伤害，\n过程中自身受到伤害降低50%，免疫控制且可以格挡远程弹道技能的伤害，持续4秒。降低伤害和格挡远程弹道技能的效果可以对自身6尺范围内的小队成员生效。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "凌雪",
         "damageType": "外功",
@@ -1765,8 +2113,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1500
+      },
       "description": "开启后8秒内受到伤害不再立刻结算，而是每秒结算一次期间受到的伤害，每次结算不超过自身最大血量的20%。期间免疫受击僵直，每次受到攻击回复6%已损生命值。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万灵",
         "damageType": "外功",
@@ -1780,8 +2132,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1350
+      },
       "description": "10秒内受到的伤害降低50%，血量每减少25%，减伤效果提高10%，减伤效果自然结束血量低于10%则立刻恢复50%气血最大值。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
         "damageType": "内功",
@@ -1795,9 +2151,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 600
+      },
       "description": "当自身血量高于20%时对目标造成264-291(+[2.6937*最终外功攻击])伤害，若自身气血低于10%，则对目标造成264-291(+[11.2437*最终外功攻击])伤害，并使自身3秒内不会重伤。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -1811,8 +2171,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 4500
+      },
       "description": "解除自身控制效果并在自身位置创建残影保存自身技能调息时间、气血、内力状态，持续7秒。\n结束后解除自身所有受控状态并召唤影子附着自身，使自身技能调息时间、气血、内力状态恢复至记录时的状态。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
         "school": "长歌",
@@ -1826,8 +2190,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "解除自身控制，免疫控制持续3秒，并在自身脚下生成10尺范围的“逐云寒蕊”，持续10秒。小队成员在进入“逐云寒蕊”短暂延迟后将隐匿其中，身形莫测无法被选中，“逐云寒蕊”消失、离开“逐云寒蕊”或者角色发动攻击后隐匿消失。“逐云寒蕊”免疫控制，可以被攻击，受到范围伤害降低20%。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
         "school": "药宗",
@@ -1841,9 +2209,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 360
+      },
       "description": "使目标跳跃能力降低，移动速度降低48%，持续8秒。",
       "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
         "school": "少林",
@@ -1858,11 +2230,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 0.5989
+        "effects.0.value": 0.5989,
+        "cooldownTicks": 180
       },
       "description": "对目标造成（0.5989*攻击力)点伤害，并使其移动速度降低20%，持续3秒。",
       "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
         "school": "少林",
@@ -1877,11 +2251,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 0.52
+        "effects.0.value": 0.52,
+        "cooldownTicks": 360
       },
       "description": "向敌方挥出旋转的刀气，会自动追踪附近敌对目标，并持续造成伤害，持续6秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "凌雪",
@@ -1898,11 +2274,13 @@
       "numeric": {
         "effects.0.value": 3.475,
         "effects.1.value": 3.475,
-        "buffs.1.effects.0.value": 0.1
+        "buffs.1.effects.0.value": 0.1,
+        "cooldownTicks": 210
       },
       "description": "对目标造成2次150-165(+[3.4750*最终外功攻击])伤害，并添加“亢龙有悔”持续伤害效果，该效果最高可叠加2层，持续24秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "丐帮",
@@ -1917,11 +2295,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 6.7447
+        "effects.0.value": 6.7447,
+        "cooldownTicks": 0
       },
       "description": "目标血量低于30%方可施展，对其造成122-134点(+[6.7447*最终阳性内功攻击])伤害外加最大生命值10%的真实伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
         "school": "少林",
@@ -1936,11 +2316,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 4.2395
+        "effects.0.value": 4.2395,
+        "cooldownTicks": 120
       },
       "description": "对目标造成123-135点(+[4.2395*最终阴性内功攻击])伤害，造成伤害的50%将治疗自身。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
         "school": "明教",
@@ -1955,11 +2337,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 4.4937
+        "effects.0.value": 4.4937,
+        "cooldownTicks": 150
       },
       "description": "对目标造成0-0点(+[4.4937*最终外功攻击])伤害，若目标处于“锁足”“定身”“眩晕”状态则使其20秒内受到的伤害提高20%，该效果可叠加5层。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
         "school": "纯阳",
@@ -1973,9 +2357,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 600
+      },
       "description": "林寒涧肃：在目标位置投放“天绝地灭”机关，持续时间固定9秒，结束后将自动引爆。将“天绝地灭”周围15尺范围内最多五个敌方目标拉扯到“天绝地灭”所在点。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "唐门",
@@ -1990,11 +2378,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 1.401
+        "effects.0.value": 1.401,
+        "cooldownTicks": 0
       },
       "description": "对目标造成19-21点(+[1.4010*最终阴性内功攻击])伤害，可以连续施展3次。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
         "school": "明教",
@@ -2009,11 +2399,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 0.49
+        "effects.0.value": 0.49,
+        "cooldownTicks": 360
       },
       "description": "命令海雕在指定位置扇出一道飓风，持续对周围造成12次伤害，持续6秒。飓风会自动跟随附近敌对目标（优先自身目标）。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "蓬莱",
@@ -2027,8 +2419,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 600
+      },
       "description": "击倒当前目标2秒，并击退其周围6尺内最多5个其他的敌对目标，造成40-44点(+[0.1000*最终外功攻击])伤害。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "天策",
@@ -2042,8 +2438,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 450
+      },
       "description": "向前跳跃10尺，落地时回头对起跳方向长啸，使矩形范围内命中的目标获得2秒恐惧效果。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "万灵",
@@ -2057,8 +2457,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "召唤海雕飞向自身位置，盘旋至升空，保护自身6尺范围内的小队成员，使范围内的小队成员不会受到伤害，最多承受286120点伤害，持续8秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "蓬莱",
@@ -2072,8 +2476,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1350
+      },
       "description": "解除自身控制效果并免疫控制效果，持续3秒；使自身受到的伤害降低60%，持续6秒，并击飞自身半径6尺范围内最多5个目标造成伤害。施展过程中不受控制效果的影响（被拉除外）。同时能够击毁攻击范围内最多5个气场和可见机关。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "丐帮",
@@ -2087,8 +2495,12 @@
       "properties": {
         "qinggongGcdImmune": true
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "当你处于战斗状态时，下一次跳跃能跳得更高，抗摔伤力提高，持续30秒；\n当处于非战斗状态时，可以连续跳跃，持续12秒。施展后，重置“蹑云逐月”的调息时间。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "纯阳",
@@ -2102,8 +2514,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "天策府秘传武技，在自己的伤害招式命中敌人后，有50%的几率使自身气血与内力恢复5%，持续20秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "天策",
@@ -2117,8 +2533,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 750
+      },
       "description": "命令海雕将自身抓上天空，解除自身受控制状态，使自身免疫控制3秒并减少30%受到的伤害。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "蓬莱",
@@ -2133,8 +2553,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 300
+      },
       "description": "每1秒对目标发射一枚弩箭，一共发射3支。第一枚箭造成100-100点(+[0.8125*最终外功攻击])外功伤害，第二枚箭造成187-374点(+[1.0500*最终外功攻击])外功伤害，第三枚箭造成364-728点(+[1.3125*最终外功攻击])外功伤害。每枚箭额外附带100%武器伤害。若目标离自己小于15尺，则每枚箭都击退目标4尺。该招式免疫打断，消耗一枚弩箭。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
         "school": "唐门",
@@ -2148,8 +2572,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 2100
+      },
       "description": "使目标玩家不受控制，作用期间目标移动速度提高50%，受到的伤害降低50%，持续6秒。若对队友施展，则持续时间减半。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
         "rarity": "精巧",
@@ -2163,8 +2591,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 2250
+      },
       "description": "天钺：将目标禁锢至“天禁空间”并使其召唤物全部失效，且无法提前解除，禁锢持续6秒，若目标为团队成员则卸除掉“阴性不利效果”“阳性不利效果”“混元不利效果”“毒不利效果”“持续伤害不利效果”各2个，同一目标20秒内只会被禁锢一次。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "衍天",
         "damageType": "内功",
@@ -2179,8 +2611,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 4500
+      },
       "description": "运功3秒，选择一个敌对玩家进行伪装，可以完全切换成其外观表现，并且自身与所有人成为友好势力，清除自身仇恨效果，免疫任何伤害，持续20秒。自身使用任何门派技能都会使伪装失效。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "凌雪",
         "damageType": "外功",
@@ -2194,8 +2630,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1350
+      },
       "description": "在自身前方生成一道20尺刀气阻碍，敌方玩家目标无法穿越，持续4秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "霸刀",
         "damageType": "外功",
@@ -2209,8 +2649,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "保护自身不受伤害，2秒内反弹敌方对自身释放的所有招式的伤害及效果，该招式只对玩家生效。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "苍云",
         "damageType": "外功",
@@ -2224,8 +2668,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "解除自身控制，使用藤蔓种子，环绕自身形成藤蔓装甲，使得距离自身6尺内的敌对目标攻击自身时将被击退并对其造成伤害，敌方无法通过对自身冲刺接近6尺（对区域的冲刺则不受影响）。期间免疫控制（击退和被拉除外），持续5秒。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "药宗",
         "damageType": "内功",
@@ -2239,8 +2687,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "清除自身当前所受的移动限制效果，使自身不受招式控制，持续3秒，并使自身接下来10秒内的下一个伤害招式附带该移动限制效果。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
         "damageType": "内功",
@@ -2254,8 +2706,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1050
+      },
       "description": "将自身所受的控制效果（不包括被推、被拉）转移给当前目标，持续5秒，并在10秒内减少15%受到的伤害，免疫控制效果（不包括被推、被拉）。非受控状态下施展将返回7秒调息时间。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "刀宗",
         "damageType": "外功",
@@ -2270,11 +2726,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 0.7187
+        "effects.0.value": 0.7187,
+        "cooldownTicks": 600
       },
       "description": "对目标造成56-84点(+[0.7187*最终外功攻击])伤害，使目标下马并且移动速度降低60%，持续5秒。若你攻击的目标正在运功，则使该目标5秒内无法运功。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -2288,9 +2746,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 120
+      },
       "description": "向前拍出掌法，可于冲刺中释放，释放对前方8尺矩形内最多5个目标造成54-59(+[1.6187*最终外功攻击])伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
         "damageType": "外功",
@@ -2304,9 +2766,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "移除敌对目标身上2个增益效果，并添加给自身。",
       "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "长歌",
         "damageType": "内功",
@@ -2321,11 +2787,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 3
+        "effects.0.value": 3,
+        "cooldownTicks": 240
       },
       "description": "对目标造成34-34点(+[3.0000*最终阳性内功攻击])伤害，3秒内连续施展时对目标额外造成30%伤害且小范围击退目标。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
         "damageType": "内功",
@@ -2339,9 +2807,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 750
+      },
       "description": "凝气成雕，造成伤害，若其正在运功，则将运功打断并使其沉默4秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "蓬莱",
         "damageType": "外功",
@@ -2355,8 +2827,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1050
+      },
       "description": "使目标无法使用武器，持续4秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
         "damageType": "内功",
@@ -2370,8 +2846,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 750
+      },
       "description": "打断目标运功，使其不能施展轻功以外的招式，持续4秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
         "damageType": "内功",
@@ -2385,8 +2865,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1500
+      },
       "description": "击飞非治疗心法敌方目标的武器，使目标无法施展轻功以外的招式，持续5秒，武器将掉落至目标6尺位置，若目标拾取到地上的武器则提前解除此效果。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "刀宗",
         "damageType": "外功",
@@ -2400,9 +2884,13 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1350
+      },
       "description": "立即对周围6尺内的最多10个目标均造成伤害并清除其阳性、混元性、阴性、毒性气劲各一个，并使其4秒内无法使用武器。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
         "damageType": "外功",
@@ -2416,8 +2904,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1350
+      },
       "description": "立刻与敌对目标侠士交换位置（免疫被拉的目标除外）。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "衍天",
         "damageType": "内功",
@@ -2432,8 +2924,12 @@
         "qinggong": true,
         "qinggongGcdImmune": true
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "冲刺至目标点，并获得2层“云散”效果：施展“一阳指”套路招式时会闪现移动至一个随机攻击位置。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "段氏",
         "damageType": "内功",
@@ -2447,8 +2943,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 750
+      },
       "description": "使自身移动速度降低90%，招式施展距离提高12尺，持续12秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
         "damageType": "内功",
@@ -2462,8 +2962,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 360
+      },
       "description": "将前方10尺扇形范围的最多5个目标吸引到自身前方造成240-264(+[3.4187*最终外功攻击])伤害。",
       "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
         "damageType": "外功",
@@ -2477,8 +2981,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 750
+      },
       "description": "使自身无法施展轻功招式，运功不会被打退、打断，不受缴械和无法运功效果的影响，持续12秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
         "damageType": "内功",
@@ -2493,9 +3001,13 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 270
+      },
       "description": "对目标造成伤害，引爆所有“绝脉”。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "段氏",
         "damageType": "内功",
@@ -2510,8 +3022,12 @@
         "qinggong": false,
         "hasteUnaffected": true
       },
+      "numeric": {
+        "cooldownTicks": 2700
+      },
       "description": "使自身进入“机甲”状态，运功过程免疫控制和伤害，进入“机甲”状态可施展特殊招式，机甲状态持续20秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
         "damageType": "外功",
@@ -2526,11 +3042,13 @@
         "qinggong": false
       },
       "numeric": {
-        "effects.0.value": 0.65
+        "effects.0.value": 0.65,
+        "cooldownTicks": 240
       },
       "description": "龙吟一击，对目标造成67-73(+[0.6500*最终外功攻击])点伤害。若招式会心则立刻重置调息时间。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -2544,8 +3062,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 1800
+      },
       "description": "使自身会心几率提高10%，会心效果提高20%，持续20秒，并使15尺内的10个敌对目标8秒内无法进入隐身状态，已经进入隐身状态的目标则立刻解除隐身状态。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -2559,8 +3081,12 @@
       "properties": {
         "qinggongGcdImmune": true
       },
+      "numeric": {
+        "cooldownTicks": 1200
+      },
       "description": "凌空而起，免疫控制（击退和被拉除外），并使得自身身轻如燕，施展招式最大距离提高5尺，施展任意招式可以额外获得一次跳跃机会，且跳跃（自身按W/A/S/D空格进行跳跃时）变为朝对应方向的一小段冲刺效果，持续8秒。“凌然天风”期间起跳及跳跃时自身免疫击退。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "药宗",
         "damageType": "内功",
@@ -2574,8 +3100,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 2700
+      },
       "description": "解除友方目标的受控效果（击倒除外），使其受到的伤害降低30%，并为队友目标承担100%伤害，持续10秒",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
         "damageType": "内功",
@@ -2589,8 +3119,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 4500
+      },
       "description": "平衡自身与友方目标气血值百分比后，再额外恢复双方气血最大值20%。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
         "damageType": "内功",
@@ -2604,8 +3138,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 900
+      },
       "description": "冲刺到友方目标身边，为其承受1次伤害，并击飞其周围5个目标。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -2619,8 +3157,12 @@
       "properties": {
         "qinggong": false
       },
+      "numeric": {
+        "cooldownTicks": 2250
+      },
       "description": "使自身外功和内功基础攻击力提高25%，会心几率提高25%，会心效果提高25%，持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "damageType": "内功",
@@ -2635,8 +3177,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 1350
+      },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标内功会心提高10%，会心效果提高15%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "damageType": "内功",
@@ -2653,6 +3199,7 @@
       },
       "description": "军中秘传马技，使你可在战斗中上马并解除自身锁足效果，并在5秒内不受控制招式影响。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
         "damageType": "外功",
@@ -2667,8 +3214,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 1350
+      },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标外功会心提高10%，会心效果提高15%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
         "damageType": "外功",
@@ -2683,8 +3234,12 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
+      "numeric": {
+        "cooldownTicks": 2100
+      },
       "description": "施展招式后使目标陷入持续7秒的“迷云”状态：施展招式时生效的目标随机选择，不分敌我。迷云状态结束后，目标获得“雾释”效果，效果持续期间不会再次陷入“迷云”。",
       "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "段氏",
         "damageType": "内功",
@@ -2695,16 +3250,25 @@
       "noWeaponRequired": false
     },
     "dong_zhu_ji_wei": {
+      "numeric": {
+        "cooldownTicks": 0
+      },
       "description": "解除自身受控状态，使自身移动速度提高100%，免疫所有控制效果持续8秒。",
-      "descriptionReviewStatus": "fixed"
+      "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed"
     },
     "hun_ya_nu_tao": {
+      "numeric": {
+        "cooldownTicks": 360
+      },
       "description": "击退自身周围6尺敌对目标，使其眩晕4秒",
-      "descriptionReviewStatus": "unfixed"
+      "descriptionReviewStatus": "unfixed",
+      "cooldownReviewStatus": "fixed"
     },
     "zhen_xia_che": {
       "description": "什么都是假的，只有下车是真的。",
-      "descriptionReviewStatus": "fixed"
+      "descriptionReviewStatus": "fixed",
+      "cooldownReviewStatus": "fixed"
     }
   }
 }

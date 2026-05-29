@@ -527,7 +527,6 @@ class ClientLatencyRecorder {
         ...data,
       })}`);
       this.recordWebSocketLifecycle("frontend-main-thread-stall", data);
-      if (!hidden) void this.flushSamples("frontend-main-thread-stall").catch(() => undefined);
     }, MAIN_THREAD_PROBE_INTERVAL_MS);
   }
 

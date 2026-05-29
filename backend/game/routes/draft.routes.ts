@@ -12,10 +12,12 @@ import { attachPlayerNamesToBattleState, initializeBattleState, generatePickups,
 import { createStartingConsumableCounts } from "../services/gameplay/consumableService";
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
 import { GameLoop } from "../engine/loop/GameLoop";
+import { getGroundHeightForMap, getTopDownHitHeightForMap, type MapContext } from "../engine/loop/movement";
 import { ABILITIES } from "../abilities/abilities";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { diffState } from "../services/flow/stateDiff";
-import { EXPORTED_MAP_HEIGHT, EXPORTED_MAP_WIDTH } from "../map/exportedMap";
+import { EXPORTED_MAP_HEIGHT, EXPORTED_MAP_SPAWN_POSITIONS, EXPORTED_MAP_WIDTH, exportedMap } from "../map/exportedMap";
+import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../map/exportedMapCollision";
 import { isExportedMapMode, isYumen1v1BasicMode, normalizeGameMode } from "../modes";
 import type { AbilityInstance } from "../engine/state/types";
 import {
@@ -134,6 +136,7 @@ function createYumenSafeZone(state: any) {
     timelineMode: normalizeYumenSafeZoneTimelineMode(existing.timelineMode),
     damageMode: normalizeYumenSafeZoneDamageMode(existing.damageMode),
     autoFullHeal: existing.autoFullHeal === true,
+    testShortCooldown: existing.testShortCooldown === true,
     autoSettle: existing.autoSettle === true,
     stageIndex: Math.max(0, Math.floor(clampFiniteNumber(existing.stageIndex, inferredStageIndex, 0, 99))),
     targetVisible: existing.targetVisible === true,
@@ -186,6 +189,7 @@ function resetYumenSafeZone(now: number) {
     totalCircles: YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
     fullPoison: false,
     autoFullHeal: false,
+    testShortCooldown: false,
     autoSettle: false,
     phaseStartedAt: now,
     phaseEndsAt: now,
@@ -205,10 +209,12 @@ function isYumenSpectatorAbilityBarLocked(gameId: string, game: any, userId: str
 function startYumenSafeZone(state: any, now: number, options?: { timelineMode?: YumenSafeZoneTimelineMode; damageMode?: YumenSafeZoneDamageMode }) {
   const zone = createYumenSafeZone(state);
   const autoFullHeal = zone.autoFullHeal === true;
+  const testShortCooldown = zone.testShortCooldown === true;
   const autoSettle = zone.autoSettle === true;
   if (zone.phase === "complete" || zone.currentHalf <= 0) {
     Object.assign(zone, resetYumenSafeZone(now));
     zone.autoFullHeal = autoFullHeal;
+    zone.testShortCooldown = testShortCooldown;
     zone.autoSettle = autoSettle;
   }
   zone.timelineMode = normalizeYumenSafeZoneTimelineMode(options?.timelineMode ?? zone.timelineMode);
@@ -353,6 +359,112 @@ function applyYumenStateUpdate(gameId: string, game: any, updater: (state: any) 
     console.error("[cheat/yumen-state] async save failed:", err?.message ?? err);
   });
   return { liveVersion, diff };
+}
+
+function getYumenRouteMapContext(gameId: string, state: any): MapContext {
+  const gameLoop = GameLoop.get(gameId);
+  if (gameLoop) return gameLoop.getMapCtx();
+  return {
+    objects: exportedMap.objects,
+    width: exportedMap.width,
+    height: exportedMap.height,
+    circular: false,
+    unitScale: state?.unitScale ?? 1,
+    playerRadius: COLLISION_TEST_PLAYER_RADIUS,
+    collisionSystem: getCollisionTestExportedSystem(),
+    playArea: state?.playArea,
+  };
+}
+
+function getSupportGroundZ(x: number, y: number, mapCtx: MapContext) {
+  return getGroundHeightForMap(x, y, 100000, mapCtx);
+}
+
+function getTopDownHitZ(x: number, y: number, mapCtx: MapContext) {
+  return getTopDownHitHeightForMap(x, y, mapCtx);
+}
+
+function teleportYumenPlayerTo(state: any, player: any, x: number, y: number, mapCtx: MapContext, zOverride?: number) {
+  const clampedX = clampFiniteNumber(x, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH);
+  const clampedY = clampFiniteNumber(y, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT);
+  const z = Number.isFinite(Number(zOverride)) ? Number(zOverride) : getTopDownHitZ(clampedX, clampedY, mapCtx);
+  player.position = { ...(player.position ?? {}), x: clampedX, y: clampedY, z };
+  player.velocity = { ...(player.velocity ?? {}), vx: 0, vy: 0, vz: 0 };
+  player.jumpCount = 0;
+  delete player.isPowerJump;
+  delete player.isPowerJumpCombined;
+  delete player.activeDash;
+  delete player.activeKnockback;
+  delete player.activePull;
+  return player.position;
+}
+
+function teleportYumenPlayerZToSupportGround(player: any, mapCtx: MapContext) {
+  const x = clampFiniteNumber(player?.position?.x, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH);
+  const y = clampFiniteNumber(player?.position?.y, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT);
+  const z = getSupportGroundZ(x, y, mapCtx);
+  player.position = { ...(player.position ?? {}), z };
+  player.velocity = { ...(player.velocity ?? {}), vz: 0 };
+  player.jumpCount = 0;
+  delete player.isPowerJump;
+  delete player.isPowerJumpCombined;
+  return player.position;
+}
+
+function teleportYumenPlayerZToTopDownHit(player: any, mapCtx: MapContext) {
+  const x = clampFiniteNumber(player?.position?.x, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH);
+  const y = clampFiniteNumber(player?.position?.y, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT);
+  const z = getTopDownHitZ(x, y, mapCtx);
+  player.position = { ...(player.position ?? {}), z };
+  player.velocity = { ...(player.velocity ?? {}), vz: 0 };
+  player.jumpCount = 0;
+  delete player.isPowerJump;
+  delete player.isPowerJumpCombined;
+  return player.position;
+}
+
+function capYumenRuntimeCooldownsForTesting(state: any) {
+  const diff: Array<{ path: string; value: any }> = [];
+  const cap = 90;
+  (state.players ?? []).forEach((player: any, playerIndex: number) => {
+    (player.hand ?? []).forEach((instance: any, abilityIndex: number) => {
+      if (Number(instance.cooldown ?? 0) > cap) {
+        instance.cooldown = cap;
+        diff.push({ path: `/players/${playerIndex}/hand/${abilityIndex}/cooldown`, value: cap });
+      }
+      if (Number(instance.chargeRegenTicksRemaining ?? 0) > cap) {
+        instance.chargeRegenTicksRemaining = cap;
+        diff.push({ path: `/players/${playerIndex}/hand/${abilityIndex}/chargeRegenTicksRemaining`, value: cap });
+      }
+      if (Array.isArray(instance._chargeRegenQueueTicks)) {
+        const nextQueue = instance._chargeRegenQueueTicks.map((ticks: any) => Math.min(cap, Math.max(0, Number(ticks) || 0)));
+        if (JSON.stringify(nextQueue) !== JSON.stringify(instance._chargeRegenQueueTicks)) {
+          instance._chargeRegenQueueTicks = nextQueue;
+          diff.push({ path: `/players/${playerIndex}/hand/${abilityIndex}/_chargeRegenQueueTicks`, value: nextQueue });
+        }
+      }
+    });
+    Object.entries(player.specialAbilityStates ?? {}).forEach(([abilityId, instance]: [string, any]) => {
+      if (Number(instance.cooldown ?? 0) > cap) {
+        instance.cooldown = cap;
+        diff.push({ path: `/players/${playerIndex}/specialAbilityStates/${abilityId}/cooldown`, value: cap });
+      }
+    });
+    if (Number(player.activeChannel?.cooldownTicks ?? 0) > cap) {
+      player.activeChannel.cooldownTicks = cap;
+      diff.push({ path: `/players/${playerIndex}/activeChannel/cooldownTicks`, value: cap });
+    }
+  });
+  return diff;
+}
+
+function shuffledYumenSpawnPositions() {
+  const positions = [...EXPORTED_MAP_SPAWN_POSITIONS];
+  for (let index = positions.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [positions[index], positions[swapIndex]] = [positions[swapIndex], positions[index]];
+  }
+  return positions;
 }
 
 function dedupeDraftCardsByAbility<T extends Record<string, any>>(cards: T[]): T[] {
@@ -1739,6 +1851,37 @@ router.post("/cheat/yumen/auto-settle", async (req, res) => {
 });
 
 /**
+ * POST /cheat/yumen/test-short-cooldown - Toggle 3-second testing cooldown cap for Yumen.
+ * Body: { gameId, enabled }
+ */
+router.post("/cheat/yumen/test-short-cooldown", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, enabled } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（6人）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = createYumenSafeZone(state);
+      updatedSafeZone.testShortCooldown = enabled === true;
+      state.safeZone = updatedSafeZone;
+      const diff: Array<{ path: string; value: any }> = [{ path: "/safeZone", value: updatedSafeZone }];
+      if (updatedSafeZone.testShortCooldown) diff.push(...capYumenRuntimeCooldownsForTesting(state));
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, enabled: updatedSafeZone.testShortCooldown, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * POST /cheat/yumen/play-area - Update 玉门关 hard movement boundary.
  * Body: { gameId, playArea: { minX, minY, maxX, maxY } }
  */
@@ -1759,6 +1902,179 @@ router.post("/cheat/yumen/play-area", async (req, res) => {
       return [{ path: "/playArea", value: normalizedPlayArea }];
     });
     res.json({ ok: true, version: liveVersion, playArea: normalizedPlayArea });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/random-spawn-points - Move all players to shuffled exported-map spawn points.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/random-spawn-points", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let positions: Array<{ userId: string; position: any }> = [];
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const diff: Array<{ path: string; value: any }> = [];
+      const mapCtx = getYumenRouteMapContext(String(gameId), state);
+      const spawnPositions = shuffledYumenSpawnPositions();
+      positions = [];
+      state.players = (state.players ?? []).map((player: any, index: number) => {
+        const spawn = spawnPositions[index % spawnPositions.length] ?? { x: EXPORTED_MAP_WIDTH / 2, y: EXPORTED_MAP_HEIGHT / 2 };
+        const nextPlayer = { ...player };
+        const nextPosition = teleportYumenPlayerTo(state, nextPlayer, spawn.x, spawn.y, mapCtx, spawn.z);
+        positions.push({ userId: nextPlayer.userId, position: nextPosition });
+        diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
+        diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
+        diff.push({ path: `/players/${index}/activeDash`, value: undefined });
+        diff.push({ path: `/players/${index}/activeKnockback`, value: undefined });
+        diff.push({ path: `/players/${index}/activePull`, value: undefined });
+        return nextPlayer;
+      });
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, positions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/gather-middle - Gather all players near the exported-map middle.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/gather-middle", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let positions: Array<{ userId: string; position: any }> = [];
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const diff: Array<{ path: string; value: any }> = [];
+      const mapCtx = getYumenRouteMapContext(String(gameId), state);
+      const centerX = EXPORTED_MAP_WIDTH / 2;
+      const centerY = EXPORTED_MAP_HEIGHT / 2;
+      const radius = 4;
+      const players = state.players ?? [];
+      positions = [];
+      state.players = players.map((player: any, index: number) => {
+        const angle = players.length > 0 ? (Math.PI * 2 * index) / players.length : 0;
+        const nextPlayer = { ...player };
+        const nextPosition = teleportYumenPlayerTo(
+          state,
+          nextPlayer,
+          centerX + Math.cos(angle) * radius,
+          centerY + Math.sin(angle) * radius,
+          mapCtx,
+        );
+        positions.push({ userId: nextPlayer.userId, position: nextPosition });
+        diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
+        diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
+        diff.push({ path: `/players/${index}/activeDash`, value: undefined });
+        diff.push({ path: `/players/${index}/activeKnockback`, value: undefined });
+        diff.push({ path: `/players/${index}/activePull`, value: undefined });
+        return nextPlayer;
+      });
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, positions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/drop-to-ground - Only adjust each player's Z to support ground.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/drop-to-ground", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let positions: Array<{ userId: string; position: any }> = [];
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const diff: Array<{ path: string; value: any }> = [];
+      const mapCtx = getYumenRouteMapContext(String(gameId), state);
+      positions = [];
+      state.players = (state.players ?? []).map((player: any, index: number) => {
+        const nextPlayer = { ...player };
+        const nextPosition = teleportYumenPlayerZToSupportGround(nextPlayer, mapCtx);
+        positions.push({ userId: nextPlayer.userId, position: nextPosition });
+        diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
+        diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
+        return nextPlayer;
+      });
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, positions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/drop-to-top-hit - Adjust the current player's Z to the first top-down collision hit.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/drop-to-top-hit", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（6人）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let position: any = null;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const diff: Array<{ path: string; value: any }> = [];
+      const mapCtx = getYumenRouteMapContext(String(gameId), state);
+      state.players = (state.players ?? []).map((player: any, index: number) => {
+        if (player?.userId !== userId) return player;
+        const nextPlayer = { ...player };
+        position = teleportYumenPlayerZToTopDownHit(nextPlayer, mapCtx);
+        diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
+        diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
+        diff.push({ path: `/players/${index}/activeDash`, value: undefined });
+        diff.push({ path: `/players/${index}/activeKnockback`, value: undefined });
+        diff.push({ path: `/players/${index}/activePull`, value: undefined });
+        return nextPlayer;
+      });
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, position });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -2071,6 +2387,7 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
         const nextCard: any = {
           ...card,
           cooldown: 0,
+          _cooldownProgress: 0,
           chargeLockTicks: 0,
           chargeRegenTicksRemaining: 0,
         };
@@ -2094,7 +2411,7 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
       }
       nextHand.forEach((nextCard: any, cardIndex: number) => {
         const previousCard = previousHand?.[cardIndex] ?? {};
-        for (const field of ["cooldown", "chargeLockTicks", "chargeRegenTicksRemaining"]) {
+        for (const field of ["cooldown", "_cooldownProgress", "chargeLockTicks", "chargeRegenTicksRemaining"]) {
           const previousValue = Math.max(0, Number(previousCard[field] ?? 0));
           const nextValue = Math.max(0, Number(nextCard[field] ?? 0));
           if (previousValue !== nextValue) {
@@ -2118,10 +2435,14 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
         const hand = resetHand(p.hand ?? []);
         pushHandRuntimeDiffs(idx, previousHand, hand);
         diff.push({ path: `/players/${idx}/consumableCooldowns`, value: {} });
+        if (Math.max(0, Number(p.globalGcdTicks ?? 0)) > 0) {
+          diff.push({ path: `/players/${idx}/globalGcdTicks`, value: 0 });
+        }
         return {
           ...p,
           hand,
           consumableCooldowns: {},
+          globalGcdTicks: 0,
         };
       });
       loopState.version = (loopState.version ?? 0) + 1;
@@ -2133,10 +2454,14 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
         const hand = resetHand(p.hand ?? []);
         pushHandRuntimeDiffs(idx, previousHand, hand);
         diff.push({ path: `/players/${idx}/consumableCooldowns`, value: {} });
+        if (Math.max(0, Number(p.globalGcdTicks ?? 0)) > 0) {
+          diff.push({ path: `/players/${idx}/globalGcdTicks`, value: 0 });
+        }
         return {
           ...p,
           hand,
           consumableCooldowns: {},
+          globalGcdTicks: 0,
         };
       });
       game.state.version = (game.state.version ?? 0) + 1;
@@ -2156,6 +2481,7 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
       ...p,
       hand: resetHand(p.hand ?? []),
       consumableCooldowns: {},
+      globalGcdTicks: 0,
     }));
 
     game.markModified("state");

@@ -265,6 +265,48 @@ function getExportedGroundHeight(
     : groundExportY * EXPORTED_COLLISION_RENDER_SF_Y + EXPORTED_COLLISION_GROUP_POS_Y;
 }
 
+function getTopDownObjectHeight(px: number, py: number, objects: MapObject[]): number {
+  let top = 0;
+  for (const obj of objects) {
+    if (px >= obj.x && px <= obj.x + obj.w && py >= obj.y && py <= obj.y + obj.d && obj.h > top) {
+      top = obj.h;
+    }
+  }
+  return top;
+}
+
+function getExportedTopDownHitHeight(
+  px: number,
+  py: number,
+  arenaW: number,
+  arenaH: number,
+  collisionSystem: ExportedMapCollisionSystem,
+): number | null {
+  const halfW = arenaW / 2;
+  const halfH = arenaH / 2;
+  const worldX = (px - halfW - EXPORTED_COLLISION_GROUP_POS_X) / EXPORTED_COLLISION_RENDER_SF_XZ;
+  const worldZ = (halfH - py - EXPORTED_COLLISION_GROUP_POS_Z) / EXPORTED_COLLISION_RENDER_SF_XZ;
+  const hitY = collisionSystem.getTopDownHitY(worldX, worldZ);
+  return hitY === null
+    ? null
+    : hitY * EXPORTED_COLLISION_RENDER_SF_Y + EXPORTED_COLLISION_GROUP_POS_Y;
+}
+
+export function getTopDownHitHeightForMap(
+  px: number,
+  py: number,
+  mapCtx?: MapContext,
+): number {
+  const mapObjects = mapCtx?.objects ?? worldMap.objects;
+  const arenaW = mapCtx?.width ?? ARENA_WIDTH;
+  const arenaH = mapCtx?.height ?? ARENA_HEIGHT;
+  const objectTop = getTopDownObjectHeight(px, py, mapObjects);
+  const exportedTop = hasExportedCollision(mapCtx)
+    ? getExportedTopDownHitHeight(px, py, arenaW, arenaH, mapCtx.collisionSystem)
+    : null;
+  return Math.max(0, objectTop, exportedTop ?? 0);
+}
+
 export function getGroundHeightForMap(
   px: number,
   py: number,

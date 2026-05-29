@@ -266,6 +266,7 @@ export function initializeBattleState(
 
   const players: PlayerState[] = playerIds.map((id, i) => {
     const spawn = spawnList[i % spawnList.length];
+    const spawnZ = (spawn as { z?: number }).z;
 
     // Face toward map center
     const dx = mapWidth  / 2 - spawn.x;
@@ -296,7 +297,7 @@ export function initializeBattleState(
       combatLinks: {},
       consumableCooldowns: {},
       consumableCounts: createStartingConsumableCounts(),
-      position: { x: spawn.x, y: spawn.y },
+      position: { x: spawn.x, y: spawn.y, ...(typeof spawnZ === "number" ? { z: spawnZ } : {}) },
       velocity: { vx: 0, vy: 0 },
       facing: { x: dx / mag, y: dy / mag },
       moveSpeed: BASE_MOVE_SPEED_PER_TICK * unitScale,

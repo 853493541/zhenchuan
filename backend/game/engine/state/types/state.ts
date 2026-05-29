@@ -33,6 +33,7 @@ export interface SafeZone {
   timelineMode?: "fast" | "full";
   damageMode?: "test" | "full";
   autoFullHeal?: boolean;
+  testShortCooldown?: boolean;
   autoSettle?: boolean;
   circleNumber?: number;
   totalCircles?: number;
@@ -279,6 +280,7 @@ export interface PlayerState {
    */
   activeDash?: {
     abilityId: string;
+    startedAt?: number;
     vxPerTick: number;    // horizontal X step per tick (units/tick)
     vyPerTick: number;    // horizontal Y step per tick (units/tick)
     lingRanCastLift?: boolean;
@@ -411,6 +413,7 @@ export interface TargetEntity {
   /** Active forced movement (e.g. pull, knockback). Tick-based; cleared on completion. */
   activeDash?: {
     abilityId?: string;
+    startedAt?: number;
     vxPerTick: number;
     vyPerTick: number;
     forceVzPerTick?: number;

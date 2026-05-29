@@ -77,7 +77,6 @@ router.get("/waiting", async (_req, res) => {
 
     const games = await GameSession.find({
       started: false,
-      players: { $size: 1 },
     }).sort({ createdAt: -1 });
 
     res.json(games);

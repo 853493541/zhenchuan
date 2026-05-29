@@ -9,7 +9,7 @@ import { GameState, STARTING_ATTACK_DAMAGE, STARTING_BATTLE_HP, STARTING_CRIT_CH
 import { initializeTournament } from "../economy/tournamentService";
 import { attachPlayerNamesToBattleState, initializeBattleState } from "../battle/battleService";
 import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
-import { DEFAULT_GAME_MODE, type GameMode, normalizeGameMode } from "../../modes";
+import { DEFAULT_GAME_MODE, isYumen1v1BasicMode, type GameMode, normalizeGameMode } from "../../modes";
 
 type PlayerProfile = {
   displayName: string;
@@ -38,6 +38,13 @@ function setGamePlayerMetadata(game: any, userId: string, profile: PlayerProfile
     changed = true;
   }
   return changed;
+}
+
+function getMaxPlayersForMode(mode: unknown) {
+  const normalizedMode = normalizeGameMode(mode ?? DEFAULT_GAME_MODE);
+  if (isYumen1v1BasicMode(normalizedMode)) return 6;
+  if (normalizedMode === "pubg") return 5;
+  return 2;
 }
 
 export async function createGame(userId: string, mode: GameMode = DEFAULT_GAME_MODE) {
@@ -118,7 +125,8 @@ export async function joinGame(gameId: string, userId: string) {
     if (!obj.playerSchools) obj.playerSchools = {};
     return obj;
   }
-  if (game.players.length >= 2) throw new Error("Game already full");
+  const maxPlayers = getMaxPlayersForMode((game as any).mode);
+  if (game.players.length >= maxPlayers) throw new Error("Game already full");
 
   console.log(`[joinGame] Adding user ${userId} (${profile.displayName}) to game ${gameId}`);
   game.players.push(userId);
@@ -142,8 +150,8 @@ export async function joinGame(gameId: string, userId: string) {
   
   console.log(`[joinGame] playerNames in response:`, result.playerNames);
   
-  // Auto-start if enabled and room is full (2 for dev, up to 5 for PUBG)
-  if (result.autoStart && saved.players.length >= 2) {
+  // Auto-start only when the mode-specific room is full.
+  if (result.autoStart && saved.players.length >= getMaxPlayersForMode((saved as any).mode)) {
     console.log(`[joinGame] Auto-starting game (autoStart=${result.autoStart})`);
     const startedGame = await startGame(gameId, saved.players[0]);
     return startedGame;
@@ -157,7 +165,8 @@ export async function startGame(gameId: string, userId: string) {
   if (!game) throw new Error("Game not found");
   if (game.players[0] !== userId) throw new Error("Only host can start");
   if (game.players.length < 2) throw new Error("Need at least 2 players to start");
-  if (game.players.length > 5) throw new Error("Maximum 5 players allowed");
+  const maxPlayers = getMaxPlayersForMode((game as any).mode);
+  if (game.players.length > maxPlayers) throw new Error(`Maximum ${maxPlayers} players allowed`);
 
   const tournament = initializeTournament(game.players as string[]);
   tournament.phase = "BATTLE";

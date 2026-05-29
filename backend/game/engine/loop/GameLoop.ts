@@ -1258,6 +1258,7 @@ export class GameLoop {
       zone.fullPoison = zone.phase === "complete" || zone.currentHalf <= 0;
       zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
       zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+      zone.testShortCooldown = zone.testShortCooldown === true;
       if (zone.paused === true && (zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking")) {
         const remainingMs = Math.max(0, Number(zone.pausedRemainingMs ?? (Number(zone.phaseEndsAt ?? now) - now)));
         zone.pausedRemainingMs = remainingMs;
@@ -1289,6 +1290,7 @@ export class GameLoop {
       circleNumber: 3,
       totalCircles: YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
       fullPoison: false,
+      testShortCooldown: false,
       phaseStartedAt: now,
       phaseEndsAt: now,
       targetVisible: false,
@@ -6029,6 +6031,7 @@ export class GameLoop {
       });
       const compactActiveDash = (dash: any) => dash ? {
         abilityId: dash.abilityId,
+        ...(typeof dash.startedAt === "number" ? { startedAt: dash.startedAt } : {}),
         vxPerTick: roundForBroadcast(dash.vxPerTick, 5),
         vyPerTick: roundForBroadcast(dash.vyPerTick, 5),
         ...(typeof dash.vzPerTick === "number" ? { vzPerTick: roundForBroadcast(dash.vzPerTick, 5) } : {}),

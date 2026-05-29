@@ -189,8 +189,10 @@ export function handleDirectionalDash(
     source.position.z = (source.position.z ?? 0) + snapUpWorld;
   }
 
+  const dashStartedAt = Date.now();
   source.activeDash = {
     abilityId: ability.id,
+    startedAt: dashStartedAt,
     vxPerTick: dirX * worldDistance / durationTicks,
     vyPerTick: dirY * worldDistance / durationTicks,
     speedPerTick: effect.speedPerTick !== undefined
@@ -298,7 +300,7 @@ export function handleDirectionalDash(
     { type: "DISPLACEMENT" },
     { type: "DASH_TURN_LOCK" },
   ];
-  const dashRuntimeAppliedAt = Date.now();
+  const dashRuntimeAppliedAt = dashStartedAt;
   applyDashRuntimeBuff({
     state,
     target: source,

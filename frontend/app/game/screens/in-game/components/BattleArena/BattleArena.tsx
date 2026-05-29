@@ -442,8 +442,6 @@ const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
 const YUMEN_DAMAGE_MODE_STORAGE_KEY = 'zhenchuan-yumen-safe-zone-damage-mode-v1';
 const YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY = 'zhenchuan-yumen-auto-full-shrink-v1';
 const YUMEN_AUTO_SETTLE_STORAGE_KEY = 'zhenchuan-yumen-auto-settle-v1';
-const YUMEN_SHOW_FUTURE_SAFE_ZONE_STORAGE_KEY = 'zhenchuan-yumen-show-future-safe-zone-v1';
-const YUMEN_SAFE_ZONE_DISPLAY_MODE_STORAGE_KEY = 'zhenchuan-yumen-safe-zone-display-mode-v1';
 const ABILITY_PANEL_MIN_SCALE = 0.85;
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
@@ -540,6 +538,20 @@ const PLAYER_GCD_BAR_UI_KEY = 'player-gcd-bar';
 const TARGET_ICON_BAR_UI_KEY = 'target-icon-bar';
 const TARGET_TARGET_ICON_BAR_UI_KEY = 'target-target-icon-bar';
 const TARGET_OWNED_ABILITY_BAR_UI_KEY = 'target-owned-ability-bar';
+
+function recordDashProbe(type: 'start' | 'end' | 'correction', payload: Record<string, unknown> = {}) {
+  if (typeof window === 'undefined') return;
+  const target = window as any;
+  const probe = target.__zhenchuanDashProbe ?? { starts: 0, ends: 0, corrections: [], events: [] };
+  if (type === 'start') probe.starts = Number(probe.starts ?? 0) + 1;
+  if (type === 'end') probe.ends = Number(probe.ends ?? 0) + 1;
+  const event = { type, ts: Date.now(), ...payload };
+  probe.events = [...(Array.isArray(probe.events) ? probe.events : []), event].slice(-80);
+  if (type === 'correction') {
+    probe.corrections = [...(Array.isArray(probe.corrections) ? probe.corrections : []), event].slice(-80);
+  }
+  target.__zhenchuanDashProbe = probe;
+}
 const OWNED_ABILITY_BAR_UI_KEY = 'owned-ability-bar';
 const HEIGHT_COUNTER_UI_KEY = 'height-counter';
 const DISTANCE_INDICATOR_UI_KEY = 'distance-indicator';
@@ -3899,8 +3911,6 @@ function YumenMiniMap({
   const rawCircleY = (y: number) => offsetY + (mapHeight - y) * mapScale;
   const currentRadius = Math.max(0, Number(safeZone?.currentHalf ?? 0)) * mapScale;
   const hasCurrentCircle = !!safeZone && currentRadius > 0;
-  const targetRadius = Math.max(0, Number(safeZone?.targetHalf ?? (typeof safeZone?.targetDiameter === 'number' ? safeZone.targetDiameter / 2 : 0))) * mapScale;
-  const hasTargetCircle = !!safeZone && safeZone.targetVisible === true && targetRadius > 0 && typeof safeZone.targetCenterX === 'number' && typeof safeZone.targetCenterY === 'number';
   const markerX = toMapX(playerPosition.x);
   const markerY = toMapY(playerPosition.y);
   const facingLength = Math.hypot(playerFacing.x, playerFacing.y) || 1;
@@ -3918,18 +3928,11 @@ function YumenMiniMap({
   })();
   const displayCircleNumber = Math.max(1, Math.min(totalCircles, Math.floor(inferredCircleNumber)));
   const fullPoisonActive = !safeZone || safeZone.fullPoison || safeZone.phase === 'complete' || Number(safeZone.currentHalf ?? 0) <= 0;
-  const targetRadiusWorld = Math.max(0, Number(safeZone?.targetHalf ?? (typeof safeZone?.targetDiameter === 'number' ? safeZone.targetDiameter / 2 : 0)));
-  const shouldMeasureTargetSafeZone = safeZone?.phase === 'countdown' || safeZone?.phase === 'shrinking';
-  const canMeasureTargetSafeZone = !!safeZone
-    && shouldMeasureTargetSafeZone
-    && typeof safeZone.targetCenterX === 'number'
-    && typeof safeZone.targetCenterY === 'number'
-    && Number.isFinite(targetRadiusWorld);
   const distanceSafeZone = safeZone
     ? {
-        centerX: canMeasureTargetSafeZone ? Number(safeZone.targetCenterX) : Number(safeZone.centerX),
-        centerY: canMeasureTargetSafeZone ? Number(safeZone.targetCenterY) : Number(safeZone.centerY),
-        radius: canMeasureTargetSafeZone ? targetRadiusWorld : Math.max(0, Number(safeZone.currentHalf ?? 0)),
+        centerX: Number(safeZone.centerX),
+        centerY: Number(safeZone.centerY),
+        radius: Math.max(0, Number(safeZone.currentHalf ?? 0)),
       }
     : null;
   const distanceText = fullPoisonActive
@@ -3959,6 +3962,7 @@ function YumenMiniMap({
         top: Math.max(8, Math.min(maxTop, top)),
       };
     };
+
     const move = (moveEvent: MouseEvent) => {
       moveEvent.preventDefault();
       onPanelPositionChange?.(clampPosition(baseLeft + moveEvent.clientX - startX, baseTop + moveEvent.clientY - startY), false);
@@ -4066,35 +4070,11 @@ function YumenMiniMap({
               </clipPath>
             </defs>
             <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} fill="#c99a58" stroke="rgba(37, 35, 26, 0.78)" strokeWidth="1.5" />
-            {hasCurrentCircle && !hasTargetCircle && (
+            {hasCurrentCircle && (
               <circle
                 cx={rawCircleX(Number(safeZone.centerX))}
                 cy={rawCircleY(Number(safeZone.centerY))}
                 r={currentRadius}
-                fill="none"
-                stroke="#22b8ff"
-                strokeWidth="3"
-                clipPath="url(#yumen-minimap-map-clip)"
-              />
-            )}
-            {hasCurrentCircle && hasTargetCircle && (
-              <circle
-                cx={rawCircleX(Number(safeZone.centerX))}
-                cy={rawCircleY(Number(safeZone.centerY))}
-                r={currentRadius}
-                fill="none"
-                stroke="#f5d24f"
-                strokeWidth="3"
-                strokeDasharray="7 6"
-                strokeLinecap="round"
-                clipPath="url(#yumen-minimap-map-clip)"
-              />
-            )}
-            {hasTargetCircle && (
-              <circle
-                cx={rawCircleX(Number(safeZone.targetCenterX))}
-                cy={rawCircleY(Number(safeZone.targetCenterY))}
-                r={targetRadius}
                 fill="none"
                 stroke="#22b8ff"
                 strokeWidth="3"
@@ -4108,6 +4088,86 @@ function YumenMiniMap({
           </svg>
         )}
       </div>
+    </div>
+  );
+}
+
+function formatCoordinateText(position: Partial<V3> | null | undefined, fallback: Partial<V3>) {
+  const x = Number.isFinite(position?.x) ? Number(position?.x) : Number(fallback.x ?? 0);
+  const y = Number.isFinite(position?.y) ? Number(position?.y) : Number(fallback.y ?? 0);
+  const z = Number.isFinite(position?.z) ? Number(position?.z) : Number(fallback.z ?? 0);
+  return `X ${x.toFixed(2)}  Y ${y.toFixed(2)}  Z ${z.toFixed(2)}`;
+}
+
+function FloatingCoordinateDisplay({
+  visible,
+  positionRef,
+  fallbackPosition,
+  onCopy,
+}: {
+  visible: boolean;
+  positionRef: React.MutableRefObject<V3>;
+  fallbackPosition: Partial<V3>;
+  onCopy: () => void;
+}) {
+  const [text, setText] = useState(() => formatCoordinateText(positionRef.current, fallbackPosition));
+
+  useEffect(() => {
+    if (!visible) return;
+    const update = () => setText(formatCoordinateText(positionRef.current, fallbackPosition));
+    update();
+    const id = window.setInterval(update, 100);
+    return () => window.clearInterval(id);
+  }, [fallbackPosition.x, fallbackPosition.y, fallbackPosition.z, positionRef, visible]);
+
+  if (!visible) return null;
+
+  return (
+    <div
+      data-ui-interactive
+      style={{
+        position: 'fixed',
+        left: '50%',
+        top: 52,
+        transform: 'translateX(-50%)',
+        zIndex: 991,
+        minHeight: 32,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '5px 7px 5px 10px',
+        borderRadius: 4,
+        border: '1px solid rgba(138, 189, 255, 0.50)',
+        background: 'rgba(18, 31, 48, 0.92)',
+        color: '#d8ecff',
+        fontSize: 12,
+        fontWeight: 800,
+        pointerEvents: 'auto',
+        userSelect: 'text',
+      }}
+    >
+      <span>{text}</span>
+      <button
+        type="button"
+        onClick={onCopy}
+        title="复制坐标"
+        aria-label="复制坐标"
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: 4,
+          border: '1px solid rgba(138, 189, 255, 0.58)',
+          background: 'rgba(39, 69, 105, 0.82)',
+          color: '#d8ecff',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >
+        <Clipboard size={14} strokeWidth={2.2} aria-hidden="true" />
+      </button>
     </div>
   );
 }
@@ -5103,8 +5163,6 @@ export default function BattleArena({
       return false;
     }
   });
-  const [showYumenFutureSafeZone, setShowYumenFutureSafeZone] = useState(true);
-  const [yumenSafeZoneDisplayMode, setYumenSafeZoneDisplayMode] = useState<'terrain' | 'topDown'>('terrain');
   const yumenBoundaryEditModeRef = useRef(false);
   const yumenAutoFullShrinkStartedRef = useRef<string | null>(null);
   const yumenAutoSettleSyncKeyRef = useRef<string | null>(null);
@@ -5133,8 +5191,6 @@ export default function BattleArena({
       if (typeof window === 'undefined') return;
       setYumenAutoFullShrink(localStorage.getItem(YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY) === '1');
       setYumenAutoSettlePreference(localStorage.getItem(YUMEN_AUTO_SETTLE_STORAGE_KEY) === '1');
-      setShowYumenFutureSafeZone(localStorage.getItem(YUMEN_SHOW_FUTURE_SAFE_ZONE_STORAGE_KEY) !== '0');
-      setYumenSafeZoneDisplayMode(localStorage.getItem(YUMEN_SAFE_ZONE_DISPLAY_MODE_STORAGE_KEY) === 'topDown' ? 'topDown' : 'terrain');
     } catch {}
   }, []);
   useEffect(() => {
@@ -5152,16 +5208,6 @@ export default function BattleArena({
       localStorage.setItem(YUMEN_AUTO_SETTLE_STORAGE_KEY, yumenAutoSettlePreference ? '1' : '0');
     } catch {}
   }, [yumenAutoSettlePreference]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(YUMEN_SHOW_FUTURE_SAFE_ZONE_STORAGE_KEY, showYumenFutureSafeZone ? '1' : '0');
-    } catch {}
-  }, [showYumenFutureSafeZone]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(YUMEN_SAFE_ZONE_DISPLAY_MODE_STORAGE_KEY, yumenSafeZoneDisplayMode);
-    } catch {}
-  }, [yumenSafeZoneDisplayMode]);
   useEffect(() => {
     try {
       localStorage.setItem(HEART_STAT_STORAGE_KEY, JSON.stringify(heartStatVisibility));
@@ -5637,6 +5683,7 @@ export default function BattleArena({
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
   const [showCameraEventTestingPanel, setShowCameraEventTestingPanel] = useState(false);
   const [showHiddenBuffStatusBar, setShowHiddenBuffStatusBar] = useState(false);
+  const [showCoordinateDisplay, setShowCoordinateDisplay] = useState(false);
   const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
   const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'martial' | 'chat' | 'kill'>('switches');
@@ -6520,11 +6567,27 @@ export default function BattleArena({
   // the render loop reads the STALE value and falls back to cosmetic easing.
   // Setting it here ensures RAF always sees the latest activeDash.
   const _prevDashRef = useRef<boolean>(false);
+  const observedDashKeyRef = useRef<string>('');
   {
     const ad = (me as any)?.activeDash;
     const activeDashTicksRemaining = getRuntimeCountdownTicks(ad, 'ticksRemaining', '_ticksRemainingSyncedAt', Date.now());
-    const isDashing = !!ad && activeDashTicksRemaining > 0;
-    const predictedActiveDash = isDashing ? { ...ad, ticksRemaining: activeDashTicksRemaining } : null;
+    const rawDashTicks = Math.max(0, Number(ad?.ticksRemaining ?? 0));
+    const dashObservationKey = ad
+      ? JSON.stringify({
+          abilityId: ad.abilityId ?? null,
+          startedAt: ad.startedAt ?? null,
+          vxPerTick: ad.vxPerTick ?? null,
+          vyPerTick: ad.vyPerTick ?? null,
+          vzPerTick: ad.vzPerTick ?? null,
+          forceVzPerTick: ad.forceVzPerTick ?? null,
+        })
+      : '';
+    const firstRenderForDash = !!dashObservationKey && dashObservationKey !== observedDashKeyRef.current && rawDashTicks > 0;
+    const isDashing = !!ad && (activeDashTicksRemaining > 0 || firstRenderForDash);
+    const renderDashTicksRemaining = isDashing
+      ? Math.max(1, activeDashTicksRemaining > 0 ? activeDashTicksRemaining : Math.ceil(rawDashTicks || 1))
+      : 0;
+    const predictedActiveDash = isDashing ? { ...ad, ticksRemaining: renderDashTicksRemaining } : null;
     meActiveDashRef.current = predictedActiveDash;
     if (isDashing) {
       const nowMs = performance.now();
@@ -6537,6 +6600,7 @@ export default function BattleArena({
       };
       const sampleKey = [
         ad.abilityId ?? '',
+        ad.startedAt ?? '',
         ad._ticksRemainingSyncedAt ?? '',
         serverDashPosition.x.toFixed(3),
         serverDashPosition.y.toFixed(3),
@@ -6561,7 +6625,7 @@ export default function BattleArena({
         dashServerSampleRef.current = {
           position: serverDashPosition,
           sampledAtMs: nowMs,
-          ticksRemaining: activeDashTicksRemaining,
+          ticksRemaining: renderDashTicksRemaining,
           vxPerTick: Number(ad.vxPerTick ?? 0),
           vyPerTick: Number(ad.vyPerTick ?? 0),
           vzPerTick: Number(ad.vzPerTick ?? ad.forceVzPerTick ?? 0),
@@ -6575,18 +6639,29 @@ export default function BattleArena({
     dashTurnOverrideRef.current = hasDashTurnOverrideClient(me?.buffs);
     // Transition logging (synchronous, fine for refs)
     if (isDashing && !_prevDashRef.current) {
+      observedDashKeyRef.current = dashObservationKey;
       const nowMs = performance.now();
-      const remainingTicks = Math.max(1, activeDashTicksRemaining);
+      const remainingTicks = Math.max(1, renderDashTicksRemaining);
       dashStartExpectedMsRef.current = Math.round(remainingTicks * (1000 / 30));
       dashStartAbilityIdRef.current = ad?.abilityId ?? null;
       (window as any).__dashStartMs = nowMs;
+      recordDashProbe('start', {
+        abilityId: dashStartAbilityIdRef.current ?? 'unknown',
+        expectedRemainingMs: dashStartExpectedMsRef.current,
+      });
       console.log(`[DASH] >>> FRONTEND START  time=${new Date().toISOString()} ability=${dashStartAbilityIdRef.current ?? 'unknown'} expectedRemaining=${dashStartExpectedMsRef.current}ms`);
     }
     if (!isDashing && _prevDashRef.current) {
       const elapsed = performance.now() - ((window as any).__dashStartMs ?? 0);
+      recordDashProbe('end', {
+        abilityId: dashStartAbilityIdRef.current ?? 'unknown',
+        elapsedMs: Math.round(elapsed),
+        expectedRemainingMs: dashStartExpectedMsRef.current,
+      });
       console.log(`[DASH] <<< FRONTEND END    elapsed=${elapsed.toFixed(0)}ms  (expected ~${dashStartExpectedMsRef.current}ms remaining, ability=${dashStartAbilityIdRef.current ?? 'unknown'})`);
       dashStartAbilityIdRef.current = null;
     }
+    if (!ad) observedDashKeyRef.current = '';
     _prevDashRef.current = isDashing;
   }
 
@@ -7143,37 +7218,31 @@ export default function BattleArena({
   const localTrailRef     = useRef<Array<{ pos: V3; alpha: number }>>([]);
   const oppTrailRef       = useRef<Array<{ pos: V3; alpha: number }>>([]);
   const lastFrameTimeRef  = useRef<number>(0);
-  const [miniMapPose, setMiniMapPose] = useState(() => ({
-    x: me?.position?.x ?? 0,
-    y: me?.position?.y ?? 0,
-    facingX: me?.facing?.x ?? 0,
-    facingY: me?.facing?.y ?? 1,
-  }));
 
-  useEffect(() => {
-    if (!isYumenMode) return;
-    const updateMiniMapPose = () => {
-      const renderPosition = localRenderPosRef.current;
-      const facing = localFacingRef.current ?? me.facing ?? { x: 0, y: 1 };
-      const nextPose = {
-        x: Number.isFinite(renderPosition?.x) ? renderPosition.x : me.position.x,
-        y: Number.isFinite(renderPosition?.y) ? renderPosition.y : me.position.y,
-        facingX: Number.isFinite(facing?.x) ? facing.x : 0,
-        facingY: Number.isFinite(facing?.y) ? facing.y : 1,
-      };
-      setMiniMapPose((previous) => (
-        Math.abs(previous.x - nextPose.x) < 0.05
-          && Math.abs(previous.y - nextPose.y) < 0.05
-          && Math.abs(previous.facingX - nextPose.facingX) < 0.01
-          && Math.abs(previous.facingY - nextPose.facingY) < 0.01
-          ? previous
-          : nextPose
-      ));
-    };
-    updateMiniMapPose();
-    const id = window.setInterval(updateMiniMapPose, 100);
-    return () => window.clearInterval(id);
-  }, [isYumenMode, me.position.x, me.position.y, me.facing?.x, me.facing?.y]);
+  const getCurrentCoordinateText = useCallback(() => {
+    const pos = localRenderPosRef.current ?? me.position;
+    return formatCoordinateText(pos, me.position);
+  }, [me.position]);
+
+  const copyCurrentCoordinateText = useCallback(async () => {
+    const text = getCurrentCoordinateText();
+    try {
+      await navigator.clipboard.writeText(text);
+      toastSuccess('坐标已复制');
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (ok) toastSuccess('坐标已复制');
+      else toastError('复制坐标失败');
+    }
+  }, [getCurrentCoordinateText]);
 
   // Restore the old rAF render-position loop exactly.
   // Handles: smooth position lerp, dash snap animation, jump phase tracking, Z display.
@@ -7205,7 +7274,7 @@ export default function BattleArena({
         const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
         const forcedRenderDisplacement = forcedDisplacementRef.current;
         const justJumpedRender = frameNow - lastJumpInputAtRef.current < 320;
-        const recentDashSnap =
+        const recentDashSettle =
           !justJumpedRender &&
           (
             frameNow - lastObservedServerDashAtRef.current < 400 ||
@@ -7219,17 +7288,22 @@ export default function BattleArena({
         // During server-authoritative dash: HARD SNAP to server position.
         // Do NOT lerp — any lerp causes the visual to lag behind the server,
         // extending the perceived dash duration beyond the actual 1-second window.
-        if (meActiveDashRef.current || forcedRenderDisplacement || recentDashSnap) {
+        if (recentDashSettle) {
+          localDashAnimRef.current = null;
+        }
+        const snapThreshold = recentDashSettle ? 80 : SNAP_THRESH;
+
+        if (meActiveDashRef.current || forcedRenderDisplacement) {
           localDashAnimRef.current = null;
           localRenderPosRef.current = { x: tx, y: ty, z: tz };
-        } else if (dist2d > SNAP_THRESH) {
+        } else if (dist2d > snapThreshold) {
           localRenderPosRef.current = { x: tx, y: ty, z: tz };
           localDashAnimRef.current  = null;
-        } else if (!localDashAnimRef.current && dist2d > DASH_THRESH) {
+        } else if (!recentDashSettle && !localDashAnimRef.current && dist2d > DASH_THRESH) {
           localDashAnimRef.current = { start: { ...r }, startTime: frameNow };
         }
-        if (!meActiveDashRef.current && !forcedRenderDisplacement && !recentDashSnap) {
-          if (localDashAnimRef.current) {
+        if (!meActiveDashRef.current && !forcedRenderDisplacement) {
+          if (!recentDashSettle && localDashAnimRef.current) {
             const elapsed = frameNow - localDashAnimRef.current.startTime;
             const t = Math.min(1, elapsed / DASH_ANIM_MS);
             const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
@@ -7240,8 +7314,8 @@ export default function BattleArena({
             };
             if (t >= 1) localDashAnimRef.current = null;
           } else {
-            const horizontalK = Math.min(1, (airborneRender ? (justJumpedRender ? 0.52 : 0.4) : 0.3) * dtF);
-            const verticalK = Math.min(1, (airborneRender ? (justJumpedRender ? 0.62 : 0.46) : 0.3) * dtF);
+            const horizontalK = Math.min(1, (recentDashSettle ? 0.34 : airborneRender ? (justJumpedRender ? 0.52 : 0.4) : 0.3) * dtF);
+            const verticalK = Math.min(1, (recentDashSettle ? 0.34 : airborneRender ? (justJumpedRender ? 0.62 : 0.46) : 0.3) * dtF);
             localRenderPosRef.current = {
               x: r.x + ddx * horizontalK,
               y: r.y + ddy * horizontalK,
@@ -8454,6 +8528,7 @@ export default function BattleArena({
           z: Number(localZ.toFixed(3)),
         },
       };
+      recordDashProbe('correction', data);
       console.warn(`[LAG-PROBE][frontend] ${JSON.stringify({
         schemaVersion: 1,
         kind: 'frontend-position-correction',
@@ -8526,7 +8601,15 @@ export default function BattleArena({
 
     const recentLocalPhysicsStall = performance.now() - lastLocalPhysicsStallAtRef.current < 1_500;
     const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
-    const hardSnapDistanceSq = recentLocalPhysicsStall && moving && !forcedDisplacement && !airborneLocalForCorrection ? 100 : 25;
+    const recentDashSettle =
+      !justJumpedLocally &&
+      (
+        performance.now() - lastObservedServerDashAtRef.current < 400 ||
+        performance.now() - lastFengLiuYunSanCastAtRef.current < 700
+      );
+    const hardSnapDistanceSq = recentDashSettle
+      ? 6400
+      : recentLocalPhysicsStall && moving && !forcedDisplacement && !airborneLocalForCorrection ? 100 : 25;
 
     // Hard-snap if server position is far away (e.g. new battle start).
     // This must also snap the render ref; otherwise the local character can
@@ -8546,13 +8629,6 @@ export default function BattleArena({
       return;
     }
 
-    const recentDashSnap =
-      !justJumpedLocally &&
-      (
-        performance.now() - lastObservedServerDashAtRef.current < 400 ||
-        performance.now() - lastFengLiuYunSanCastAtRef.current < 700
-      );
-
     // During active dash: server owns position — hard-snap XY + Z
     // Check me.activeDash directly (not ref) so this works even before React
     // fires the activeDash tracking useEffect on this render cycle.
@@ -8565,18 +8641,13 @@ export default function BattleArena({
       return;
     }
 
-    if (recentDashSnap && dx * dx + dy * dy > 0.01) {
+    if (recentDashSettle && dx * dx + dy * dy > 0.01) {
       const serverZ = (me.position as any).z ?? 0;
-      recordPositionCorrectionProbe('recent-dash-snap');
       localPositionRef.current = { ...me.position };
       localZRef.current = serverZ;
       localVzRef.current = 0;
+      airborneSpeedCarryRef.current = 0;
       localDashAnimRef.current = null;
-      localRenderPosRef.current = {
-        x: me.position.x,
-        y: me.position.y,
-        z: serverZ,
-      };
       return;
     }
 
@@ -14740,13 +14811,20 @@ export default function BattleArena({
         <YumenMiniMap
           mapWidth={ARENA_WIDTH}
           mapHeight={ARENA_HEIGHT}
-          playerPosition={{ x: miniMapPose.x, y: miniMapPose.y }}
-          playerFacing={{ x: miniMapPose.facingX, y: miniMapPose.facingY }}
+          playerPosition={{ x: me.position.x, y: me.position.y }}
+          playerFacing={{ x: me.facing?.x ?? 0, y: me.facing?.y ?? 1 }}
           safeZone={safeZone}
           panelPosition={uiPositions[YUMEN_MINIMAP_UI_KEY]}
           onPanelPositionChange={updateYumenMiniMapPosition}
         />
       )}
+
+      <FloatingCoordinateDisplay
+        visible={showCoordinateDisplay}
+        positionRef={localRenderPosRef}
+        fallbackPosition={me.position}
+        onCopy={() => void copyCurrentCoordinateText()}
+      />
 
       {uiLayoutReady ? renderChatPanel() : null}
       {uiLayoutReady ? renderDetachedChatPanels() : null}
@@ -15055,8 +15133,6 @@ export default function BattleArena({
             entityScreenBoundsRef={entityScreenBoundsRef}
             mode={mode}
             safeZone={safeZone}
-            showFutureSafeZone={showYumenFutureSafeZone}
-            safeZoneDisplayMode={yumenSafeZoneDisplayMode}
             playArea={effectivePlayArea}
             onPlayAreaChange={updateYumenPlayArea}
             boundaryEditMode={yumenBoundaryEditMode}
@@ -15494,6 +15570,7 @@ export default function BattleArena({
                       </aside>
                       <section className={styles.escTestContent}>
                         {escTestPage === 'switches' ? (
+                          <>
                           <div className={styles.escTestGrid}>
                             <label className={styles.escToggleRow}>
                               <input type="checkbox" checked={showSceneTestingPanel} onChange={(e) => setShowSceneTestingPanel(e.target.checked)} className={styles.escToggleInput} />
@@ -15541,6 +15618,15 @@ export default function BattleArena({
                               <span>屏幕坐标</span>
                             </label>
                             <label className={styles.escToggleRow}>
+                              <input
+                                type="checkbox"
+                                checked={showCoordinateDisplay}
+                                onChange={(e) => setShowCoordinateDisplay(e.target.checked)}
+                                className={styles.escToggleInput}
+                              />
+                              <span>打开坐标显示</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
                               <input type="checkbox" checked={showCollisionShells} onChange={(e) => setShowCollisionShells(e.target.checked)} className={styles.escToggleInput} />
                               <span>显示碰撞线</span>
                             </label>
@@ -15570,6 +15656,7 @@ export default function BattleArena({
                               <span>跳跃细节和地面距离</span>
                             </label>
                           </div>
+                          </>
                         ) : escTestPage === 'martial' ? (
                           <div className={styles.escTestGrid}>
                             <div className={styles.escSettingControl}>
@@ -17003,6 +17090,74 @@ export default function BattleArena({
                 opacity: runningCheatAction ? 0.55 : 1,
               }}
             >补满物品</button>
+            {isYumenMode && (
+              <label style={{
+                minHeight: 29,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                borderRadius: 4,
+                border: '1px solid rgba(120, 195, 255, 0.42)',
+                background: 'rgba(45, 70, 95, 0.22)',
+                color: '#c8e7ff',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '5px 7px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={safeZone?.autoFullHeal === true}
+                  disabled={!!runningCheatAction}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    void runCheatAction(
+                      'yumen-auto-full-heal',
+                      '/api/game/cheat/yumen/auto-full-heal',
+                      enabled ? '自动满血已开启' : '自动满血已关闭',
+                      { enabled },
+                    );
+                  }}
+                  style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+                />
+                <span>自动满血</span>
+              </label>
+            )}
+            {isYumenMode && (
+              <label style={{
+                minHeight: 29,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                borderRadius: 4,
+                border: '1px solid rgba(180, 165, 255, 0.42)',
+                background: 'rgba(65, 58, 105, 0.22)',
+                color: '#ded8ff',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '5px 7px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={safeZone?.testShortCooldown === true}
+                  disabled={!!runningCheatAction}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    void runCheatAction(
+                      'yumen-test-short-cooldown',
+                      '/api/game/cheat/yumen/test-short-cooldown',
+                      enabled ? '测试缩短CD已开启' : '测试缩短CD已关闭',
+                      { enabled },
+                    );
+                  }}
+                  style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+                />
+                <span>测试缩短cd</span>
+              </label>
+            )}
           </div>
 
           {isYumenMode && (
@@ -17020,6 +17175,56 @@ export default function BattleArena({
                   opacity: runningCheatAction ? 0.55 : 1,
                 }}
               >复活全部玩家</button>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-random-spawn-points', '/api/game/cheat/yumen/random-spawn-points', '已随机分配出生点')}
+                  style={{
+                    background: 'rgba(70, 145, 210, 0.22)', color: '#c8e7ff',
+                    border: '1px solid rgba(115, 185, 255, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >随机出生点</button>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-gather-middle', '/api/game/cheat/yumen/gather-middle', '已集合到中间')}
+                  style={{
+                    background: 'rgba(60, 155, 120, 0.22)', color: '#bff5da',
+                    border: '1px solid rgba(105, 220, 165, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >集合到中间</button>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-drop-to-ground', '/api/game/cheat/yumen/drop-to-ground', '已执行虚空救援')}
+                  style={{
+                    background: 'rgba(95, 85, 45, 0.28)', color: '#f7e0a0',
+                    border: '1px solid rgba(230, 195, 100, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >虚空救援</button>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-drop-to-top-hit', '/api/game/cheat/yumen/drop-to-top-hit', 'Z轴已落到顶部命中点')}
+                  style={{
+                    background: 'rgba(55, 115, 160, 0.28)', color: '#c8e7ff',
+                    border: '1px solid rgba(105, 190, 245, 0.64)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >Z救援</button>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 6 }}>
                 <button
                   type="button"
@@ -17073,70 +17278,6 @@ export default function BattleArena({
                   <span>自动结算</span>
                 </label>
               </div>
-              <label style={{
-                minHeight: 29,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                borderRadius: 4,
-                border: '1px solid rgba(120, 195, 255, 0.42)',
-                background: 'rgba(45, 70, 95, 0.22)',
-                color: '#c8e7ff',
-                fontSize: 11,
-                fontWeight: 700,
-                padding: '5px 7px',
-                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
-                opacity: runningCheatAction ? 0.55 : 1,
-              }}>
-                <input
-                  type="checkbox"
-                  checked={safeZone?.autoFullHeal === true}
-                  disabled={!!runningCheatAction}
-                  onChange={(event) => {
-                    const enabled = event.target.checked;
-                    void runCheatAction(
-                      'yumen-auto-full-heal',
-                      '/api/game/cheat/yumen/auto-full-heal',
-                      enabled ? '自动满血已开启' : '自动满血已关闭',
-                      { enabled },
-                    );
-                  }}
-                  style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
-                />
-                <span>自动满血</span>
-              </label>
-              <label style={{
-                minHeight: 29,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                borderRadius: 4,
-                border: '1px solid rgba(180, 165, 255, 0.42)',
-                background: 'rgba(65, 58, 105, 0.22)',
-                color: '#ded8ff',
-                fontSize: 11,
-                fontWeight: 700,
-                padding: '5px 7px',
-                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
-                opacity: runningCheatAction ? 0.55 : 1,
-              }}>
-                <input
-                  type="checkbox"
-                  checked={safeZone?.testShortCooldown === true}
-                  disabled={!!runningCheatAction}
-                  onChange={(event) => {
-                    const enabled = event.target.checked;
-                    void runCheatAction(
-                      'yumen-test-short-cooldown',
-                      '/api/game/cheat/yumen/test-short-cooldown',
-                      enabled ? '测试缩短CD已开启' : '测试缩短CD已关闭',
-                      { enabled },
-                    );
-                  }}
-                  style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
-                />
-                <span>测试缩短cd</span>
-              </label>
               <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>毒圈</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
                 <button
@@ -17248,50 +17389,6 @@ export default function BattleArena({
                     }}
                   >重置</button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowYumenFutureSafeZone((value) => !value)}
-                  style={{
-                    background: showYumenFutureSafeZone ? 'rgba(35, 170, 220, 0.28)' : 'rgba(90, 105, 120, 0.22)',
-                    color: showYumenFutureSafeZone ? '#bcecff' : '#d0d8df',
-                    border: showYumenFutureSafeZone ? '1px solid rgba(80, 215, 255, 0.68)' : '1px solid rgba(165, 180, 195, 0.54)',
-                    borderRadius: 4,
-                    fontSize: 11,
-                    padding: '6px 8px',
-                    cursor: 'pointer',
-                  }}
-                >{showYumenFutureSafeZone ? '显示未来安全区: 开' : '显示未来安全区: 关'}</button>
-                <label style={{
-                  gridColumn: '1 / -1',
-                  display: 'grid',
-                  gridTemplateColumns: 'auto minmax(0, 1fr)',
-                  alignItems: 'center',
-                  gap: 8,
-                  minHeight: 30,
-                  color: '#c8e7ff',
-                  fontSize: 11,
-                  fontWeight: 700,
-                }}>
-                  <span>安全区显示方式</span>
-                  <select
-                    value={yumenSafeZoneDisplayMode}
-                    onChange={(event) => setYumenSafeZoneDisplayMode(event.target.value === 'topDown' ? 'topDown' : 'terrain')}
-                    style={{
-                      minHeight: 29,
-                      borderRadius: 4,
-                      border: '1px solid rgba(115, 185, 255, 0.62)',
-                      background: 'rgba(20, 35, 50, 0.94)',
-                      color: '#d9f0ff',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: '5px 7px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <option value="terrain">当前贴地</option>
-                    <option value="topDown">从上往下</option>
-                  </select>
-                </label>
               </div>
               <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>边界</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
