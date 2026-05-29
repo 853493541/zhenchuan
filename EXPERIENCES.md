@@ -3,6 +3,28 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Ability tooltip cooldown should use real CD, not 3s test cap (2026-05-29)
+
+**Implemented / checked**:
+- Traced ability tooltip cooldown rendering to `formatAbilityCooldownLabel()`.
+- Fixed charge-skill tooltip cooldown source to use uncapped recovery ticks for display (`tooltipChargeRecoveryTicks`) instead of runtime-capped `chargeRecoveryTicks` used by test-short-cooldown mode.
+- Applied the uncapped tooltip recovery value to draft/common/special bars and martial ability info so tooltip cooldown text reflects real configured cooldown values.
+- Root-cause correction: `buildAbilityPreload()` had a global 3-second clamp on `cooldownTicks` and `chargeRecoveryTicks`; removed this clamp so preload metadata now carries real cooldown values for all skills.
+
+**Lesson**:
+- Tooltip metadata and runtime cooldown state can have different intents. Keep tooltip cooldown sourced from canonical config values, while runtime state can still be test-capped for gameplay experiments.
+
+## Yumen remaining-count label style tweak (2026-05-29)
+
+**Implemented / checked**:
+- Updated the right-side `剩余人数` label style to remove the white border/outline effect by clearing `-webkit-text-stroke` and removing the white glow shadow layer.
+- Increased the `剩余人数` label font size by 20% (from height ratio `0.228` to `0.274`).
+- Follow-up tweak: restored a very small white border (`-webkit-text-stroke: 0.08px rgba(255,255,255,0.52)`) per visual preference.
+- Follow-up tweak: reduced the `剩余人数` number stroke from `0.6px` to `0.3px` (half strength).
+
+**Lesson**:
+- For large HUD typography, white stroke plus white glow can feel too harsh; a clean solid color with only subtle dark shadow gives better readability and less visual strain.
+
 ## Ability/consumable hover intensity softened by 30% (2026-05-29)
 
 **Implemented / checked**:

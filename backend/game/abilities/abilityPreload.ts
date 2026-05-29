@@ -46,13 +46,6 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     : { overrides: {} as Record<string, BuffEditorOverrideEntry> };
   const { overrides: abilityEditorOverrides } = loadAbilityEditorOverrides();
 
-  const TEST_COOLDOWN_CAP_TICKS = 90; // 3 seconds at 30Hz
-  const clampCooldownTicksForTesting = (ticks: number | undefined) => {
-    if (ticks === undefined) return 0;
-    if (ticks <= 0) return 0;
-    return Math.min(ticks, TEST_COOLDOWN_CAP_TICKS);
-  };
-
   for (const ability of Object.values(ABILITIES)) {
     const cardPayload = {
       id: ability.id,
@@ -73,11 +66,11 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       minRange: (ability as any).minRange,
 
       // Cooldown length for arc display
-      cooldownTicks: clampCooldownTicksForTesting((ability as any).cooldownTicks),
+      cooldownTicks: typeof (ability as any).cooldownTicks === "number" ? (ability as any).cooldownTicks : 0,
 
       // Charge metadata (for multi-charge abilities)
       maxCharges: (ability as any).maxCharges,
-      chargeRecoveryTicks: clampCooldownTicksForTesting((ability as any).chargeRecoveryTicks),
+      chargeRecoveryTicks: typeof (ability as any).chargeRecoveryTicks === "number" ? (ability as any).chargeRecoveryTicks : 0,
       chargeCastLockTicks: (ability as any).chargeCastLockTicks,
 
       // Common movement abilities are always shown regardless of draft

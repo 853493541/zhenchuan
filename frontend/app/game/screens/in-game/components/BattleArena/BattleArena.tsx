@@ -3019,6 +3019,7 @@ interface AbilityInfo {
   chargeRegenTicksRemaining?: number;
   chargeRegenProgress?: number;
   chargeRecoveryTicks?: number;
+  tooltipChargeRecoveryTicks?: number;
   chargeLockTicks?: number;
   chargeCastLockTicks?: number;
   isReady: boolean;
@@ -3783,7 +3784,7 @@ function formatAbilityCastLabel(ability: AbilityInfo): string {
 function formatAbilityCooldownLabel(ability: AbilityInfo): string {
   const cooldownTicks = Number(ability.baseCooldownTicks ?? 0);
   if (cooldownTicks > 0) return formatTicksAsSeconds(cooldownTicks);
-  const recoveryTicks = Number(ability.chargeRecoveryTicks ?? 0);
+  const recoveryTicks = Number(ability.tooltipChargeRecoveryTicks ?? ability.chargeRecoveryTicks ?? 0);
   if ((ability.maxCharges ?? 0) > 1 && recoveryTicks > 0) return formatTicksAsSeconds(recoveryTicks);
   return '0秒';
 }
@@ -9274,6 +9275,9 @@ export default function BattleArena({
           maxCharges: chargeDisplay.maxCharges,
           chargeCount: chargeDisplay.chargeCount,
           chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
+          tooltipChargeRecoveryTicks: Number(ability?.maxCharges ?? 0) > 1
+            ? Math.max(1, Math.round(Number(ability?.chargeRecoveryTicks ?? ability?.cooldownTicks ?? 1)))
+            : undefined,
           chargeRegenTicksRemaining: chargeDisplay.chargeRegenTicksRemaining,
           chargeRegenProgress: chargeDisplay.chargeRegenProgress,
           chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
@@ -9333,6 +9337,9 @@ export default function BattleArena({
           maxCharges: chargeDisplay.maxCharges,
           chargeCount: chargeDisplay.chargeCount,
           chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
+          tooltipChargeRecoveryTicks: Number(ability?.maxCharges ?? 0) > 1
+            ? Math.max(1, Math.round(Number(ability?.chargeRecoveryTicks ?? ability?.cooldownTicks ?? 1)))
+            : undefined,
           chargeRegenTicksRemaining: chargeDisplay.chargeRegenTicksRemaining,
           chargeRegenProgress: chargeDisplay.chargeRegenProgress,
           chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
@@ -9395,6 +9402,9 @@ export default function BattleArena({
           maxCharges: chargeDisplay.maxCharges,
           chargeCount: chargeDisplay.chargeCount,
           chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
+          tooltipChargeRecoveryTicks: Number(ability?.maxCharges ?? 0) > 1
+            ? Math.max(1, Math.round(Number(ability?.chargeRecoveryTicks ?? ability?.cooldownTicks ?? 1)))
+            : undefined,
           chargeRegenTicksRemaining: chargeDisplay.chargeRegenTicksRemaining,
           chargeRegenProgress: chargeDisplay.chargeRegenProgress,
           chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
@@ -12228,6 +12238,9 @@ export default function BattleArena({
     maxCooldown: Math.max(0, Number(ability.cooldownTicks ?? 0)),
     maxCharges: typeof ability.maxCharges === 'number' ? ability.maxCharges : undefined,
     chargeRecoveryTicks: typeof ability.chargeRecoveryTicks === 'number' ? ability.chargeRecoveryTicks : undefined,
+    tooltipChargeRecoveryTicks: typeof ability.chargeRecoveryTicks === 'number'
+      ? ability.chargeRecoveryTicks
+      : undefined,
     isReady: true,
     isCommon: !!ability.isCommon,
     target: (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
