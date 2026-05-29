@@ -5688,7 +5688,7 @@
 }
 .commonBtn.ready:hover {
   border-color: rgba(22, 59, 38, 0.98) !important;
-  box-shadow: 0 0 8px rgba(255, 255, 245, 0.18) !important;
+  box-shadow: 0 0 6px rgba(255, 255, 245, 0.126) !important;
 }
 
 /* ---- Mirror spacer so hotbar stays centered ---- */
@@ -6006,7 +6006,7 @@
 .itemSlot:hover,
 .itemSlotHover {
   border-color: rgba(22, 59, 38, 0.98);
-  box-shadow: 0 0 8px rgba(255, 255, 245, 0.18);
+  box-shadow: 0 0 6px rgba(255, 255, 245, 0.126);
 }
 
 .itemAbilityIcon {
@@ -6087,17 +6087,20 @@
 
 .abilityBtn:hover:not(:disabled) {
   border-color: rgba(22, 59, 38, 0.98);
-  box-shadow: 0 0 8px rgba(255, 255, 245, 0.18);
+  box-shadow: 0 0 6px rgba(255, 255, 245, 0.126);
 }
 
 .abilityBtn:hover:not(:disabled)::after,
 .abilityBtn.ready:hover::after,
-.abilityBtn:active:not(:disabled)::after,
-.abilityBtnPressed::after,
-.draftSlotHover .abilityBtn::after,
 .commonBtn.ready:hover::after,
 .itemSlot:hover::after,
 .itemSlotHover::after {
+  opacity: 0.7;
+}
+
+.abilityBtn:active:not(:disabled)::after,
+.abilityBtnPressed::after,
+.draftSlotHover .abilityBtn::after {
   opacity: 1;
 }
 
@@ -6108,7 +6111,7 @@
 
 .abilityBtn.ready:hover {
   border-color: rgba(22, 59, 38, 0.98);
-  box-shadow: 0 0 8px rgba(255, 255, 245, 0.18);
+  box-shadow: 0 0 6px rgba(255, 255, 245, 0.126);
 }
 
 .abilityBtn:active:not(:disabled),

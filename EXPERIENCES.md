@@ -3,6 +3,16 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Ability/consumable hover intensity softened by 30% (2026-05-29)
+
+**Implemented / checked**:
+- Reduced ability-slot and consumable-slot hover glow intensity to about 70% of previous strength.
+- Lowered hover shadow from `0 0 8px rgba(255, 255, 245, 0.18)` to `0 0 6px rgba(255, 255, 245, 0.126)` for the relevant slot hover paths.
+- Reduced hover highlight-overlay opacity to `0.7` while keeping active/pressed feedback at full opacity.
+
+**Lesson**:
+- For HUD hover feedback tuning, reduce both shadow intensity and overlay opacity together; changing only one can still feel overly strong.
+
 ## GCD-only cooldown overlay should keep arc, hide number (2026-05-29)
 
 **Implemented / checked**:
