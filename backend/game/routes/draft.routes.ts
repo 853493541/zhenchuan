@@ -419,12 +419,17 @@ function getTopDownHitZ(x: number, y: number, mapCtx: MapContext) {
   return getTopDownHitHeightForMap(x, y, mapCtx);
 }
 
-const YUMEN_START_SPAWN_Z_LIFT = 5;
+const YUMEN_START_SPAWN_Z_LIFT = 10;
 
 function getYumenLiftedSpawnZ(x: number, y: number, mapCtx: MapContext, zOverride?: number) {
   const clampedX = clampFiniteNumber(x, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH);
   const clampedY = clampFiniteNumber(y, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT);
-  const baseZ = Number.isFinite(Number(zOverride)) ? Number(zOverride) : getTopDownHitZ(clampedX, clampedY, mapCtx);
+  const supportGroundZ = getSupportGroundZ(clampedX, clampedY, mapCtx);
+  const topDownHitZ = getTopDownHitZ(clampedX, clampedY, mapCtx);
+  const overrideZ = Number(zOverride);
+  const baseZ = Number.isFinite(overrideZ)
+    ? Math.max(overrideZ, supportGroundZ, topDownHitZ)
+    : Math.max(supportGroundZ, topDownHitZ);
   return baseZ + YUMEN_START_SPAWN_Z_LIFT;
 }
 

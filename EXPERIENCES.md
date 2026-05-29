@@ -5,6 +5,16 @@ Each entry goes under its relevant section header.
 
 ## Yumen duplicate shrink-start guard (2026-05-29)
 
+## Yumen mountain spawn anti-stuck lift (2026-05-29)
+
+**Implemented / checked**:
+- Investigated reports of players spawning slightly inside mountain geometry and getting stuck due to low initial Z.
+- Increased Yumen battle-start/random-spawn lift height from `+5` to `+10` units to create a clearer drop-in at match start.
+- Hardened lifted spawn baseline Z to `max(spawn.z override, support-ground Z, top-down-hit Z)` so bad per-point Z data cannot place players below valid terrain support.
+
+**Lesson**:
+- Spawn-point Z should be treated as a hint, not authority, in complex 3D terrain. Using the maximum valid terrain-derived floor plus a short initial lift avoids embed-on-spawn while preserving the intended "drop-in" feel.
+
 **Implemented / checked**:
 - Investigated reports of broken poison-zone behavior in multi-player Yumen games and traced a plausible cause to duplicate start requests from multiple clients joining at different times.
 - The frontend auto-full-shrink effect can run on each client with the preference enabled while the zone is still `idle`.
