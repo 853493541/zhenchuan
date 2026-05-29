@@ -242,6 +242,9 @@ export default function InGameClient({
   const leaveNotice = state?.leaveNotice;
   const leaveNoticeKey = leaveNotice ? `${leaveNotice.userId}:${leaveNotice.endsAt}` : null;
   const exitPrompt = useMemo(() => {
+    if (isYumen1v1BasicMode(gameMode)) {
+      return null;
+    }
     if (disconnectPrompt) {
       return { ...disconnectPrompt, reason: "disconnected" as const };
     }
@@ -254,7 +257,7 @@ export default function InGameClient({
       endsAt: leaveNotice.endsAt,
       reason: "left" as const,
     };
-  }, [disconnectPrompt, dismissedLeaveNoticeKey, leaveNotice, leaveNoticeKey, selfUserId]);
+  }, [disconnectPrompt, dismissedLeaveNoticeKey, gameMode, leaveNotice, leaveNoticeKey, selfUserId]);
 
   const leaveGameAndReturnHome = async (source: string) => {
     crashRecorder.recordBehavior("leave-game-request", { source, gameId });
@@ -318,10 +321,11 @@ export default function InGameClient({
 
   useEffect(() => {
     if (state?.gameOver && !state?.winnerUserId) {
+      if (isYumen1v1BasicMode(gameMode)) return;
       crashRecorder.endSession("game-over-no-winner", { clearUploadedLogs: true });
       router.replace("/game");
     }
-  }, [crashRecorder, router, state?.gameOver, state?.winnerUserId]);
+  }, [crashRecorder, gameMode, router, state?.gameOver, state?.winnerUserId]);
 
   useEffect(() => {
     if (tournament?.phase === "GAME_OVER") {

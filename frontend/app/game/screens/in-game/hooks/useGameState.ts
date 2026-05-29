@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getClientCrashRecorder } from "@/app/game/diagnostics/clientCrashRecorder";
 import { getClientLatencyRecorder } from "@/app/game/diagnostics/clientLatencyRecorder";
+import { isYumen1v1BasicMode } from "../../../gameModes";
 import type { AbilityInstance, ChatChannel, ChatMessage, GameResponse, TargetSelection } from "../types";
 
 /* ================= DIFF APPLY ================= */
@@ -409,6 +410,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const battleEventSeededGameIdRef = useRef<string | null>(null);
   const playerNamesRef = useRef<Record<string, string>>({});
   const playerSchoolsRef = useRef<Record<string, string>>({});
+  const gameModeRef = useRef<string | undefined>(undefined);
   const playersByUserIdRef = useRef<Record<string, GameResponse["state"]["players"][number]>>({});
   const entitiesByIdRef = useRef<Record<string, NonNullable<GameResponse["state"]["entities"]>[number]>>({});
   const crashRecorderRef = useRef(getClientCrashRecorder());
@@ -417,7 +419,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   useEffect(() => {
     playerNamesRef.current = game?.playerNames ?? {};
     playerSchoolsRef.current = game?.playerSchools ?? {};
-  }, [game?.playerNames, game?.playerSchools]);
+    gameModeRef.current = game?.mode;
+  }, [game?.mode, game?.playerNames, game?.playerSchools]);
 
   useEffect(() => {
     const playersByUserId: Record<string, GameResponse["state"]["players"][number]> = {};
@@ -992,7 +995,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             username: message.username,
             endsAt: message.endsAt,
           });
-          if (message.userId && message.userId !== selfUserId) {
+          if (message.userId && message.userId !== selfUserId && !isYumen1v1BasicMode(gameModeRef.current)) {
             const promptEndsAt = Date.now() + 5_000;
             setDisconnectPrompt({
               userId: message.userId,

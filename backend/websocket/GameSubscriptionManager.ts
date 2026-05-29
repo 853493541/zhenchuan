@@ -4,8 +4,10 @@
  * Broadcasts state changes to all connected clients
  */
 
+import { randomUUID } from "crypto";
 import { WebSocket } from "ws";
 import GameSession from "../game/models/GameSession";
+import { isYumen1v1BasicMode } from "../game/modes";
 import { performance } from "node:perf_hooks";
 import { recordLagProbe, roundLagMs } from "../utils/lagProbe";
 
@@ -53,6 +55,8 @@ export class GameSubscriptionManager {
   // Track disbandment timeouts (gameId -> timeoutId)
   // Only disband waiting rooms after 30 sec of no clients
   private disbandTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private yumenDisconnectedPresence: Set<string> = new Set();
+  private yumenJoinedPresence: Set<string> = new Set();
   private readonly DISBAND_GRACE_PERIOD = 30 * 1000; // 30 seconds
 
   /**
@@ -119,23 +123,65 @@ export class GameSubscriptionManager {
       const game = await GameSession.findById(gameId);
       if (!game || !game.started) return;
       const state = game.state as any;
-      if (state?.gameOver || state?.leaveNotice) return;
+      const isYumen = isYumen1v1BasicMode((game as any).mode);
+      if (state?.gameOver || (!isYumen && state?.leaveNotice)) return;
+      const timestamp = Date.now();
 
       const username =
         (game as any).playerNames?.[userId] ??
         state?.players?.find((player: any) => player?.userId === userId)?.username ??
         `User${String(userId).slice(-4)}`;
 
+      const presenceKey = `${gameId}:${userId}`;
+      if (isYumen) {
+        if (type === "PLAYER_DISCONNECTED") {
+          if (this.yumenJoinedPresence.has(presenceKey)) {
+            this.yumenDisconnectedPresence.add(presenceKey);
+            await this.persistAndBroadcastSystemChat(gameId, `【${username}】断开连接。`, timestamp);
+          }
+        } else if (this.yumenDisconnectedPresence.has(presenceKey)) {
+          this.yumenDisconnectedPresence.delete(presenceKey);
+          this.yumenJoinedPresence.add(presenceKey);
+          await this.persistAndBroadcastSystemChat(gameId, `【${username}】重新连接。`, timestamp);
+        } else if (!this.yumenJoinedPresence.has(presenceKey)) {
+          this.yumenJoinedPresence.add(presenceKey);
+          await this.persistAndBroadcastSystemChat(gameId, `【${username}】加入了战场。`, timestamp);
+        }
+      }
+
       this.broadcast(gameId, {
         type,
         userId,
         username,
-        endsAt: type === "PLAYER_DISCONNECTED" ? Date.now() + 5_000 : undefined,
-        timestamp: Date.now(),
+        endsAt: type === "PLAYER_DISCONNECTED" ? timestamp + 5_000 : undefined,
+        timestamp,
       });
     } catch (err) {
       console.error(`[WS] Failed to broadcast ${type} for ${gameId}/${userId}:`, err);
     }
+  }
+
+  private async persistAndBroadcastSystemChat(gameId: string, text: string, timestamp = Date.now()) {
+    const chat: ChatMessagePayload = {
+      id: `${timestamp}-system-${randomUUID().slice(0, 8)}`,
+      channel: "system",
+      userId: "system",
+      username: "系统",
+      school: null,
+      text,
+      timestamp,
+      variant: "system",
+    };
+    try {
+      await GameSession.updateOne({ _id: gameId }, { $push: { chatMessages: chat } });
+    } catch (err) {
+      console.error(`[WS] Failed to persist presence chat for ${gameId}:`, err);
+    }
+    this.broadcast(gameId, {
+      type: "CHAT_MESSAGE",
+      timestamp,
+      chat,
+    });
   }
 
   /**
