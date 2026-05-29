@@ -2851,22 +2851,33 @@ export class GameLoop {
 
     // 1a-ch. Process active channels: out-of-range / LOS cancel + completion
     let channelStateChanged = false;
-    if (this.state.players.length === 2) {
-      for (let idx = 0; idx < 2; idx++) {
-        const player = this.state.players[idx];
+    const channelPlayers = this.state.players ?? [];
+    for (let idx = 0; idx < channelPlayers.length; idx++) {
+        const player = channelPlayers[idx];
         if (!player.activeChannel) continue;
 
         const ch = player.activeChannel;
-        const opp = this.state.players[idx === 0 ? 1 : 0];
         const targetEntity = ch.entityTargetId
           ? (this.state.entities ?? []).find((entity) => entity.id === ch.entityTargetId) ?? null
           : null;
+        const fallbackTargetPlayer = channelPlayers.find((candidate, candidateIndex) => (
+          candidateIndex !== idx && (candidate.hp ?? 0) > 0
+        )) ?? channelPlayers.find((candidate, candidateIndex) => candidateIndex !== idx) ?? null;
         const targetPlayer = targetEntity
           ? null
-          : this.state.players.find((p) => p.userId === ch.targetUserId) ?? opp;
-        const targetPosition = targetEntity?.position ?? targetPlayer?.position;
+          : (typeof ch.targetUserId === "string"
+            ? channelPlayers.find((p) => p.userId === ch.targetUserId) ?? null
+            : fallbackTargetPlayer);
         const channelAbility = (ABILITIES as any)[ch.abilityId] as any;
         const isConsumableChannel = typeof (ch as any).consumableId === "string";
+        const targetPosition = targetEntity?.position ?? targetPlayer?.position ?? (
+          isConsumableChannel || channelAbility?.target !== "OPPONENT" ? player.position : undefined
+        );
+        const channelTargetAlive = targetEntity
+          ? (targetEntity.hp ?? 0) > 0
+          : targetPlayer
+            ? (targetPlayer.hp ?? 0) > 0
+            : (player.hp ?? 0) > 0;
 
         // Silence interrupts ability channels. Consumable channels ignore lockouts, but real displacement still breaks them.
         if ((!isConsumableChannel && hasBuffEffect(player as any, "SILENCE")) || hasBuffEffect(player as any, "DISPLACEMENT")) {
@@ -2875,7 +2886,7 @@ export class GameLoop {
           continue;
         }
 
-        if (!targetPosition || ((targetEntity?.hp ?? targetPlayer?.hp ?? 0) <= 0)) {
+        if (!targetPosition || !channelTargetAlive) {
           cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
@@ -3620,7 +3631,6 @@ export class GameLoop {
           channelStateChanged = true;
         }
       }
-    }
     this.state.players.forEach((player) => {
       const cooldownSlowSum = player.buffs
         .filter((b: any) => isRuntimeBuffActive(b))

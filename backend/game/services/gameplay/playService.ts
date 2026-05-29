@@ -765,13 +765,6 @@ async function playCastAbility(
       Math.max(0, Number((player as any).globalGcdTicks ?? 0)),
       BASE_GCD_TICKS,
     );
-    for (const inst of runtimeAbilities) {
-      const instCardId = getAbilityIdFromInstance(inst);
-      const instCard = ABILITIES[instCardId];
-      if (instCard && (instCard as any).gcd === true) {
-        applyMinimumAbilityLock(inst, instCard, BASE_GCD_TICKS);
-      }
-    }
     setVisualGcd(player, "基础调息时间", "base", BASE_GCD_MS);
 
     if (isQinggongAbility(ability) && !isQinggongGcdImmune(ability)) {

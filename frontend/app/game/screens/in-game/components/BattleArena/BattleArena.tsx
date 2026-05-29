@@ -598,8 +598,8 @@ const CONSUMABLE_BAR_MAX_SLOTS = 16;
 const CONSUMABLE_BAR_DEFAULT_SLOTS = 12;
 const CONSUMABLE_ITEMS = [
   { id: 'beng_dai', name: '绷带', implemented: true, startingCount: 12, cooldownMs: 0 },
-  { id: 'jin_chuang_yao', name: '金疮药', implemented: true, startingCount: 8, cooldownMs: 120_000 },
-  { id: 'yue_ying_sha', name: '月影沙', implemented: true, startingCount: 4, cooldownMs: 30_000 },
+  { id: 'jin_chuang_yao', name: '金疮药', implemented: true, startingCount: 2, cooldownMs: 120_000 },
+  { id: 'yue_ying_sha', name: '月影沙', implemented: true, startingCount: 1, cooldownMs: 30_000 },
   { id: 'sha_shi_wei_zhuang', name: '砂石伪装', implemented: true, startingCount: 4, cooldownMs: 0 },
   { id: 'guan_mu_wei_zhuang', name: '灌木伪装', implemented: false, startingCount: 0, cooldownMs: 0 },
   { id: 'wa_guan_wei_zhuang', name: '瓦罐伪装', implemented: false, startingCount: 0, cooldownMs: 0 },
@@ -1102,11 +1102,61 @@ const COOLDOWN_IDLE_CLOCK_INTERVAL_MS = 250;
 const BASE_HASTE_RATE_PCT = 23.54;
 const BASE_GCD_SECONDS = 1.19;
 const BASE_GCD_MS = BASE_GCD_SECONDS * 1000;
-const BASE_GCD_WINDOW_TICKS = Math.round(BASE_GCD_SECONDS * SERVER_TICK_RATE);
 const TEST_COOLDOWN_CAP_TICKS = 3 * SERVER_TICK_RATE;
+const YUMEN_SANDSTORM_OVERLAY_STORAGE_KEY = 'zhenchuan-yumen-sandstorm-overlay';
 const BASE_MOVE_SPEED_PER_TICK = 0.1666667;
 const AIR_SHIFT_DURATION_TICKS = SERVER_TICK_RATE;
 const LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS = new Set([1014, 1017, 2001, 2003, 2712]);
+
+type YumenSandstormOverlaySettings = {
+  orangeAmount: number;
+  brightness: number;
+};
+
+const DEFAULT_YUMEN_SANDSTORM_OVERLAY: YumenSandstormOverlaySettings = {
+  orangeAmount: 55,
+  brightness: 0,
+};
+
+function clampSandstormSetting(value: unknown, min: number, max: number, fallback: number): number {
+  const next = Number(value);
+  if (!Number.isFinite(next)) return fallback;
+  return Math.max(min, Math.min(max, next));
+}
+
+function normalizeSandstormOverlaySettings(value: unknown): YumenSandstormOverlaySettings {
+  const source = value && typeof value === 'object' ? value as Partial<YumenSandstormOverlaySettings> : {};
+  return {
+    orangeAmount: clampSandstormSetting(source.orangeAmount, 0, 100, DEFAULT_YUMEN_SANDSTORM_OVERLAY.orangeAmount),
+    brightness: clampSandstormSetting(source.brightness, -40, 40, DEFAULT_YUMEN_SANDSTORM_OVERLAY.brightness),
+  };
+}
+
+function buildYumenSandstormOverlayValues(settings: YumenSandstormOverlaySettings) {
+  const amountRatio = clampRatio(settings.orangeAmount / 100);
+  const neutral = { r: 92, g: 78, b: 62 };
+  const orange = { r: 218, g: 132, b: 52 };
+  const shift = Math.round(settings.brightness);
+  const clampChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value + shift)));
+  const r = clampChannel(neutral.r + (orange.r - neutral.r) * amountRatio);
+  const g = clampChannel(neutral.g + (orange.g - neutral.g) * amountRatio);
+  const b = clampChannel(neutral.b + (orange.b - neutral.b) * amountRatio);
+  const alpha = Number((0.12 + amountRatio * 0.34).toFixed(3));
+  const rgba = `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
+  return {
+    r,
+    g,
+    b,
+    alpha,
+    rgba,
+    cssVars: {
+      '--yumen-sandstorm-r': String(r),
+      '--yumen-sandstorm-g': String(g),
+      '--yumen-sandstorm-b': String(b),
+      '--yumen-sandstorm-alpha': alpha.toFixed(3),
+    } as React.CSSProperties,
+  };
+}
 
 type ScreenBounds = { cx: number; topY: number; baseY: number; rs: number };
 
@@ -3938,8 +3988,24 @@ function YumenMiniMap({
   const toMapY = (y: number) => offsetY + (mapHeight - Math.max(0, Math.min(mapHeight, y))) * mapScale;
   const rawCircleX = (x: number) => offsetX + x * mapScale;
   const rawCircleY = (y: number) => offsetY + (mapHeight - y) * mapScale;
+  const safeZonePhase = safeZone?.phase;
+  const isWaiting = safeZonePhase === 'waiting';
+  const isCountdownOrShrinking = safeZonePhase === 'countdown' || safeZonePhase === 'shrinking';
+  const isShrinking = safeZone?.shrinking === true || safeZonePhase === 'shrinking';
   const currentRadius = Math.max(0, Number(safeZone?.currentHalf ?? 0)) * mapScale;
   const hasCurrentCircle = !!safeZone && currentRadius > 0;
+  const targetRadius = Math.max(0, Number(safeZone?.targetHalf ?? 0)) * mapScale;
+  const hasFutureCircle = !!safeZone && isCountdownOrShrinking && safeZone.targetVisible === true && targetRadius > 0;
+  const mergedCircleEpsilon = 0.6;
+  const circlesMerged = hasCurrentCircle && hasFutureCircle && (() => {
+    const currentCx = Number(safeZone?.centerX ?? 0);
+    const currentCy = Number(safeZone?.centerY ?? 0);
+    const futureCx = Number(safeZone?.targetCenterX ?? safeZone?.centerX ?? 0);
+    const futureCy = Number(safeZone?.targetCenterY ?? safeZone?.centerY ?? 0);
+    const centerDelta = Math.hypot(rawCircleX(currentCx) - rawCircleX(futureCx), rawCircleY(currentCy) - rawCircleY(futureCy));
+    const radiusDelta = Math.abs(currentRadius - targetRadius);
+    return centerDelta <= mergedCircleEpsilon && radiusDelta <= mergedCircleEpsilon;
+  })();
   const markerX = toMapX(playerPosition.x);
   const markerY = toMapY(playerPosition.y);
   const facingLength = Math.hypot(playerFacing.x, playerFacing.y) || 1;
@@ -3959,9 +4025,9 @@ function YumenMiniMap({
   const fullPoisonActive = !safeZone || safeZone.fullPoison || safeZone.phase === 'complete' || Number(safeZone.currentHalf ?? 0) <= 0;
   const distanceSafeZone = safeZone
     ? {
-        centerX: Number(safeZone.centerX),
-        centerY: Number(safeZone.centerY),
-        radius: Math.max(0, Number(safeZone.currentHalf ?? 0)),
+        centerX: hasFutureCircle ? Number(safeZone.targetCenterX ?? safeZone.centerX) : Number(safeZone.centerX),
+        centerY: hasFutureCircle ? Number(safeZone.targetCenterY ?? safeZone.centerY) : Number(safeZone.centerY),
+        radius: Math.max(0, hasFutureCircle ? Number(safeZone.targetHalf ?? 0) : Number(safeZone.currentHalf ?? 0)),
       }
     : null;
   const distanceText = fullPoisonActive
@@ -4099,14 +4165,26 @@ function YumenMiniMap({
               </clipPath>
             </defs>
             <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} fill="#c99a58" stroke="rgba(37, 35, 26, 0.78)" strokeWidth="1.5" />
-            {hasCurrentCircle && (
+            {hasFutureCircle && (
+              <circle
+                cx={rawCircleX(Number(safeZone.targetCenterX ?? safeZone.centerX))}
+                cy={rawCircleY(Number(safeZone.targetCenterY ?? safeZone.centerY))}
+                r={targetRadius}
+                fill="none"
+                stroke="#22b8ff"
+                strokeWidth="3"
+                clipPath="url(#yumen-minimap-map-clip)"
+              />
+            )}
+            {hasCurrentCircle && !circlesMerged && (
               <circle
                 cx={rawCircleX(Number(safeZone.centerX))}
                 cy={rawCircleY(Number(safeZone.centerY))}
                 r={currentRadius}
                 fill="none"
-                stroke="#22b8ff"
-                strokeWidth="3"
+                stroke={isWaiting ? '#22b8ff' : '#ffd04a'}
+                strokeWidth={isWaiting ? '3' : '2.5'}
+                strokeDasharray={isWaiting ? undefined : '8 5'}
                 clipPath="url(#yumen-minimap-map-clip)"
               />
             )}
@@ -5722,10 +5800,27 @@ export default function BattleArena({
   const [showCoordinateDisplay, setShowCoordinateDisplay] = useState(false);
   const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
-  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'martial' | 'chat' | 'kill'>('switches');
+  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'martial' | 'chat' | 'kill' | 'sandstorm'>('switches');
+  const [yumenSandstormOverlaySettings, setYumenSandstormOverlaySettings] = useState<YumenSandstormOverlaySettings>(() => {
+    if (typeof window === 'undefined') return DEFAULT_YUMEN_SANDSTORM_OVERLAY;
+    try {
+      return normalizeSandstormOverlaySettings(JSON.parse(localStorage.getItem(YUMEN_SANDSTORM_OVERLAY_STORAGE_KEY) ?? '{}'));
+    } catch {
+      return DEFAULT_YUMEN_SANDSTORM_OVERLAY;
+    }
+  });
+  const yumenSandstormOverlayValues = useMemo(
+    () => buildYumenSandstormOverlayValues(yumenSandstormOverlaySettings),
+    [yumenSandstormOverlaySettings],
+  );
   const [gameSettingsTab, setGameSettingsTab] = useState<GameSettingsTabId>('general');
   const [customUiPromptPos, setCustomUiPromptPos] = useState<UiPosition | null>(null);
   const lightingControlsOpen = showTestingPanel && escMainTab === 'test' && escTestPage === 'lighting';
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(YUMEN_SANDSTORM_OVERLAY_STORAGE_KEY, JSON.stringify(yumenSandstormOverlaySettings));
+  }, [yumenSandstormOverlaySettings]);
 
   useEffect(() => () => {
     if (sceneRecoveryTimerRef.current !== null) {
@@ -6073,6 +6168,15 @@ export default function BattleArena({
       toastError('复制镜头日志失败');
     }
   }, [cameraDebugEntries, formatCameraDebugEntry]);
+  const copyYumenSandstormOverlayValues = useCallback(async () => {
+    const text = `RGB ${yumenSandstormOverlayValues.r}, ${yumenSandstormOverlayValues.g}, ${yumenSandstormOverlayValues.b}\nAlpha ${yumenSandstormOverlayValues.alpha.toFixed(3)}\n${yumenSandstormOverlayValues.rgba}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toastSuccess('已复制狂沙数值');
+    } catch {
+      toastError('复制狂沙数值失败');
+    }
+  }, [yumenSandstormOverlayValues]);
   const collisionSysRef = useRef<MapCollisionSystem | null>(null);
   const collisionReadyRef = useRef(!isExportedMap);
   const [collisionReady, setCollisionReady] = useState(!isExportedMap);
@@ -6466,6 +6570,8 @@ export default function BattleArena({
   const facingInitRef     = useRef(false);
   const meFacingRef       = useRef<Facing>({ x: 0, y: 1 });
   const oppFacingRef      = useRef<Facing>({ x: 0, y: 1 });
+  const lastYumenCameraAlignKeyRef = useRef<string | null>(null);
+  const previousYumenCameraAlignPositionRef = useRef<{ x: number; y: number } | null>(null);
   const prevActiveChannelRef = useRef<ActiveChannel | null>(null);
   const activeChannelRef = useRef<ActiveChannel | null>(null);
   const activeChannelSoundKeysRef = useRef<Set<string>>(new Set());
@@ -6813,6 +6919,7 @@ export default function BattleArena({
       setShowMartialPanel(false);
       setMartialPanelTempPos(null);
       martialPanelTempPosRef.current = null;
+      showInGameWarning('战斗警告：当前无法打开武学界面');
       return;
     }
     setShowMartialPanel((visible) => {
@@ -6820,7 +6927,7 @@ export default function BattleArena({
       martialPanelTempPosRef.current = null;
       return !visible;
     });
-  }, [canOpenMartialPanel]);
+  }, [canOpenMartialPanel, showInGameWarning]);
   const triggerHotkeyBinding = useCallback((bindingId: string) => {
     const actionId = findHotkeyActionByBinding(hotkeySettings, bindingId);
     if (!actionId) return false;
@@ -7606,6 +7713,44 @@ export default function BattleArena({
       }
     }
   }, [me?.facing?.x, me?.facing?.y]);
+  useEffect(() => {
+    if (!isYumenMode) {
+      lastYumenCameraAlignKeyRef.current = null;
+      previousYumenCameraAlignPositionRef.current = null;
+      return;
+    }
+    const pos = me?.position;
+    const facing = me?.facing;
+    if (!pos || !facing || !Number.isFinite(facing.x) || !Number.isFinite(facing.y)) return;
+
+    const prevPos = previousYumenCameraAlignPositionRef.current;
+    previousYumenCameraAlignPositionRef.current = { x: pos.x, y: pos.y };
+    const teleported = !prevPos || Math.hypot(pos.x - prevPos.x, pos.y - prevPos.y) >= 25;
+    if (!selfHasYumenPrep && !teleported) return;
+
+    const centerX = ARENA_WIDTH / 2;
+    const centerY = ARENA_HEIGHT / 2;
+    const toCenterX = centerX - pos.x;
+    const toCenterY = centerY - pos.y;
+    const toCenterLen = Math.hypot(toCenterX, toCenterY);
+    if (toCenterLen <= 0.001) return;
+    const facingLen = Math.hypot(facing.x, facing.y) || 1;
+    const dot = ((facing.x / facingLen) * (toCenterX / toCenterLen)) + ((facing.y / facingLen) * (toCenterY / toCenterLen));
+    if (dot < 0.98) return;
+
+    const alignKey = `${gameId}:${Math.round(pos.x * 10)}:${Math.round(pos.y * 10)}:${Math.round(facing.x * 1000)}:${Math.round(facing.y * 1000)}`;
+    if (lastYumenCameraAlignKeyRef.current === alignKey) return;
+    lastYumenCameraAlignKeyRef.current = alignKey;
+
+    const nextFacing = { x: facing.x / facingLen, y: facing.y / facingLen };
+    meFacingRef.current = nextFacing;
+    localFacingRef.current = nextFacing;
+    const yaw = facingToYaw(nextFacing);
+    charYawRef.current = yaw;
+    camYawRef.current = yaw;
+    manualCameraLookActiveRef.current = false;
+    cameraLookInputVersionRef.current += 1;
+  }, [ARENA_HEIGHT, ARENA_WIDTH, gameId, isYumenMode, me?.facing?.x, me?.facing?.y, me?.position?.x, me?.position?.y, selfHasYumenPrep]);
   useEffect(() => {
     const f = opponent?.facing;
     if (f && Number.isFinite(f.x) && Number.isFinite(f.y)) {
@@ -8760,30 +8905,33 @@ export default function BattleArena({
   useEffect(() => {
     // ── Draft abilities: sourced from me.hand (only non-common abilities) ──
     const yumenTestShortCooldown = safeZone?.testShortCooldown === true;
-    const getAbilityCooldownTicks = (ab: any): number => {
+    const getAbilityRealCooldownTicks = (ab: any): number => {
       const base = Math.max(0, Math.round(Number(ab?.cooldownTicks ?? 0)));
-      if (base <= 0) return 0;
-      return yumenTestShortCooldown ? Math.min(base, TEST_COOLDOWN_CAP_TICKS) : base;
+      if (base > 0) return base;
+      if (Number(ab?.maxCharges ?? 0) > 1) {
+        return Math.max(0, Math.round(Number(ab?.chargeRecoveryTicks ?? 0)));
+      }
+      return 0;
+    };
+    const getAbilityRuntimeCooldownTicks = (ab: any): number => {
+      const base = getAbilityRealCooldownTicks(ab);
+      return yumenTestShortCooldown && base > 0 ? Math.min(base, TEST_COOLDOWN_CAP_TICKS) : base;
     };
     const getChargeRecoveryDisplayTicks = (ab: any): number => {
       const base = Math.max(1, Math.round(Number(ab?.chargeRecoveryTicks ?? ab?.cooldownTicks ?? 1)));
       return yumenTestShortCooldown ? Math.min(base, TEST_COOLDOWN_CAP_TICKS) : base;
     };
     const getDisplayMaxCooldown = (ab: any): number => {
-      const base = getAbilityCooldownTicks(ab);
-      const gcdWindow = ab?.gcd === true ? BASE_GCD_WINDOW_TICKS : 0;
-      return Math.max(base, gcdWindow);
+      return getAbilityRuntimeCooldownTicks(ab);
     };
     const getSharedGcdTicks = (ab: any): number => (
       ab?.gcd === true ? getRuntimeCountdownTicks(me, 'globalGcdTicks', '_globalGcdSyncedAt', cooldownClockMs) : 0
     );
     const getChargeDisplay = (ab: any, instance: any) => {
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
-      const sharedGcdTicks = getSharedGcdTicks(ab);
       if (maxCharges <= 1) {
         const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
-        const currentCooldown = Math.max(0, instanceCooldown, sharedGcdTicks);
-        const cooldownDisplayKind: CooldownDisplayKind = currentCooldown > 0 && sharedGcdTicks > 0 && instanceCooldown <= 0 ? 'gcd' : 'cooldown';
+        const currentCooldown = Math.max(0, instanceCooldown);
         return {
           maxCharges: undefined,
           chargeCount: undefined,
@@ -8794,7 +8942,7 @@ export default function BattleArena({
           chargeLockTicks: undefined,
           cooldown: currentCooldown,
           maxCooldown: Math.max(getDisplayMaxCooldown(ab), currentCooldown),
-          cooldownDisplayKind,
+          cooldownDisplayKind: 'cooldown' as CooldownDisplayKind,
         };
       }
 
@@ -8811,7 +8959,7 @@ export default function BattleArena({
         : undefined;
       const chargeCastLockTicks = Math.max(0, Number(ab?.chargeCastLockTicks ?? 0));
       const instanceChargeLockTicks = getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
-      const chargeLockTicks = Math.max(0, instanceChargeLockTicks, sharedGcdTicks);
+      const chargeLockTicks = Math.max(0, instanceChargeLockTicks);
 
       if (chargeCount <= 0) {
         return {
@@ -8829,7 +8977,6 @@ export default function BattleArena({
       }
 
       if (chargeLockTicks > 0) {
-        const cooldownDisplayKind: CooldownDisplayKind = sharedGcdTicks > 0 && instanceChargeLockTicks <= 0 ? 'gcd' : 'cooldown';
         return {
           maxCharges,
           chargeCount,
@@ -8839,8 +8986,8 @@ export default function BattleArena({
           chargeCastLockTicks,
           chargeLockTicks,
           cooldown: chargeLockTicks,
-          maxCooldown: Math.max(1, chargeCastLockTicks, cooldownDisplayKind === 'gcd' ? BASE_GCD_WINDOW_TICKS : 0, chargeLockTicks),
-          cooldownDisplayKind,
+          maxCooldown: Math.max(1, chargeCastLockTicks, chargeLockTicks),
+          cooldownDisplayKind: 'cooldown' as CooldownDisplayKind,
         };
       }
 
@@ -9087,7 +9234,7 @@ export default function BattleArena({
           range:       effectiveRange,
           baseRange:   typeof ability.range === 'number' ? ability.range : undefined,
           minRange:    ability.minRange,
-          baseCooldownTicks: getAbilityCooldownTicks(ability),
+          baseCooldownTicks: getAbilityRealCooldownTicks(ability),
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           cooldownDisplayKind: chargeDisplay.cooldownDisplayKind,
@@ -9146,7 +9293,7 @@ export default function BattleArena({
           range: effectiveRange,
           baseRange: typeof ability.range === 'number' ? ability.range : undefined,
           minRange: ability.minRange,
-          baseCooldownTicks: getAbilityCooldownTicks(ability),
+          baseCooldownTicks: getAbilityRealCooldownTicks(ability),
           cooldown: chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           cooldownDisplayKind: chargeDisplay.cooldownDisplayKind,
@@ -9208,7 +9355,7 @@ export default function BattleArena({
           range:       effectiveRange,
           baseRange:   typeof ability.range === 'number' ? ability.range : undefined,
           minRange:    ability.minRange,
-          baseCooldownTicks: getAbilityCooldownTicks(ability),
+          baseCooldownTicks: getAbilityRealCooldownTicks(ability),
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
           cooldownDisplayKind: chargeDisplay.cooldownDisplayKind,
@@ -15319,7 +15466,7 @@ export default function BattleArena({
       </div>
       {sceneRecovering && <div className={styles.canvasRecoveryNotice}>画面恢复中</div>}
       <div className={`${styles.yumenGhostScreenVeil} ${selfYumenSpectating ? styles.yumenGhostScreenVeilVisible : ''}`} aria-hidden="true" />
-      <div className={`${styles.yumenSandstormScreenVeil} ${selfHasYumenKuangSha ? styles.yumenSandstormScreenVeilVisible : ''}`} aria-hidden="true" />
+      <div className={`${styles.yumenSandstormScreenVeil} ${selfHasYumenKuangSha ? styles.yumenSandstormScreenVeilVisible : ''}`} style={yumenSandstormOverlayValues.cssVars} aria-hidden="true" />
       {renderYumenResultOverlay()}
       {/* per-opponent floating channel overlay removed:
          enemy channel bar is now rendered inside .enemyBossGroup
@@ -15639,6 +15786,13 @@ export default function BattleArena({
                           onClick={() => setEscTestPage('kill')}
                         >
                           击杀
+                        </button>
+                        <button
+                          type="button"
+                          className={`${styles.escSettingsNavButton} ${escTestPage === 'sandstorm' ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => setEscTestPage('sandstorm')}
+                        >
+                          狂沙
                         </button>
                       </aside>
                       <section className={styles.escTestContent}>
@@ -15990,6 +16144,52 @@ export default function BattleArena({
                                 className={styles.escRangeInput}
                                 aria-label="剩余人数缩放"
                               />
+                            </div>
+                          </div>
+                        ) : escTestPage === 'sandstorm' ? (
+                          <div className={styles.escTestGrid}>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>橙色量</span>
+                                <span>{Math.round(yumenSandstormOverlaySettings.orangeAmount)}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={yumenSandstormOverlaySettings.orangeAmount}
+                                onChange={(e) => setYumenSandstormOverlaySettings((current) => normalizeSandstormOverlaySettings({ ...current, orangeAmount: e.target.value }))}
+                                className={styles.escRangeInput}
+                                aria-label="狂沙橙色量"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>明暗</span>
+                                <span>{Math.round(yumenSandstormOverlaySettings.brightness)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="-40"
+                                max="40"
+                                step="1"
+                                value={yumenSandstormOverlaySettings.brightness}
+                                onChange={(e) => setYumenSandstormOverlaySettings((current) => normalizeSandstormOverlaySettings({ ...current, brightness: e.target.value }))}
+                                className={styles.escRangeInput}
+                                aria-label="狂沙明暗"
+                              />
+                            </div>
+                            <div className={`${styles.escSettingControl} ${styles.sandstormValuePanel}`}>
+                              <div className={styles.escRangeHeader}>
+                                <span>最终值</span>
+                                <button type="button" className={styles.escInlineButton} onClick={copyYumenSandstormOverlayValues}>复制</button>
+                              </div>
+                              <div className={styles.sandstormValueRows}>
+                                <div><span>RGB</span> {yumenSandstormOverlayValues.r}, {yumenSandstormOverlayValues.g}, {yumenSandstormOverlayValues.b}</div>
+                                <div><span>Alpha</span> {yumenSandstormOverlayValues.alpha.toFixed(3)}</div>
+                                <div>{yumenSandstormOverlayValues.rgba}</div>
+                              </div>
                             </div>
                           </div>
                         ) : (
@@ -17047,9 +17247,9 @@ export default function BattleArena({
       <div className={styles.bottomRightQuickToggles} data-ui-interactive>
         <button
           type="button"
-          className={`${styles.bottomRightQuickButton} ${showMartialPanel ? styles.bottomRightQuickButtonActive : ''}`}
+          className={`${styles.bottomRightQuickButton} ${showMartialPanel ? styles.bottomRightQuickButtonActive : ''} ${!canOpenMartialPanel ? styles.bottomRightQuickButtonBlocked : ''}`}
           aria-label="打开武学界面"
-          disabled={!canOpenMartialPanel}
+          aria-disabled={!canOpenMartialPanel}
           title="武学界面"
           onClick={toggleMartialPanel}
         >

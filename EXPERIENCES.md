@@ -3,6 +3,62 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Yumen minimap two-style ring rule (2026-05-29)
+
+**Implemented / checked**:
+- Simplified current safe-zone ring visuals to only two styles: blue or yellow dotted.
+- In countdown/shrinking (non-waiting) phases, current ring now consistently renders as yellow dotted; no solid yellow fallback remains.
+
+**Lesson**:
+- When visual semantics are player-facing rules, remove fallback color variants that can reintroduce ambiguity across nearby phases.
+
+## Yumen minimap waiting-phase blue-circle correction (2026-05-29)
+
+**Implemented / checked**:
+- Updated minimap current-circle styling so `waiting` phase always renders blue only.
+- Kept yellow dotted styling only for active `shrinking` current circles, preserving the phase visual contract.
+
+**Lesson**:
+- Safe-zone phase coloring should be explicit per phase (`waiting`, `countdown`, `shrinking`) rather than inferred from fallback current-circle styling.
+
+## Yumen minimap merged-ring blue-priority adjustment (2026-05-29)
+
+**Implemented / checked**:
+- Added overlap detection for current-zone and future-zone minimap circles.
+- When yellow current ring and blue future ring are effectively merged, the yellow ring is suppressed so the minimap displays a clean blue circle.
+
+**Lesson**:
+- For layered circle overlays, merged-state rendering needs explicit priority rules, otherwise two valid styles combine into an unintended third color cue.
+
+## Yumen minimap future-zone visual regression fix (2026-05-29)
+
+**Implemented / checked**:
+- Restored minimap zone semantics so the future safe zone is rendered in blue during countdown/shrinking phases.
+- Shrinking current zone now renders as a yellow dotted circle, while non-shrinking current zone keeps a softer yellow solid outline.
+- Distance text now measures against the future (blue) target zone when that future circle is visible, matching minimap visual intent.
+
+**Lesson**:
+- For staged shrinking circles, minimap visual coding and distance-reference logic must use the same phase-aware target/current selection, or players see contradictory guidance.
+
+## Yumen auto-settle immediate trigger correction (2026-05-29)
+
+**Implemented / checked**:
+- Fixed `/cheat/yumen/auto-settle` so enabling the checkbox performs an immediate settle evaluation against current alive count.
+- When `autoSettle` is enabled and alive count is already `<= 1`, the route now sets `gameOver`, writes `winnerUserId` + `yumenResults`, appends `YUMEN_GAME_END`, and broadcasts those patches in the same update.
+
+**Lesson**:
+- Toggle routes that enable automatic behavior should evaluate the terminal condition immediately, not only rely on a future loop tick or unrelated state nudge.
+
+## Battle-start consumable stock correction (2026-05-29)
+
+**Implemented / checked**:
+- Updated the authoritative backend starting consumable stock to: 绷带 12, 金疮药 2, 月影沙 1, 砂石伪装 4.
+- Synced the frontend BattleArena fallback consumable list to the same counts so local HUD defaults match backend truth before live state arrives.
+- Updated the HUD coverage test assertions for `STARTING_CONSUMABLE_COUNTS` so regression checks enforce the new values.
+
+**Lesson**:
+- Starting consumable counts are duplicated between backend runtime defaults, frontend fallback display config, and string-based HUD checks. Keep all three in sync in the same change to avoid UI/runtime drift.
+
 ## Yumen prep restart and multiplayer follow-up (2026-05-29)
 
 **Implemented / checked**:

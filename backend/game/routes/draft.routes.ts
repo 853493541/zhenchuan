@@ -209,7 +209,6 @@ function getYumenAbilityBarLockReason(gameId: string, game: any, userId: string)
   const state = loopState ?? game.state;
   const player = (state?.players ?? []).find((entry: any) => entry?.userId === userId);
   if (hasActiveYumenSpectatorBuff(player as any)) return "观战中无法调整技能栏";
-  if (!hasActiveYumenPrepBuff(player as any)) return "非准备时间无法调整技能栏";
   return null;
 }
 
@@ -410,6 +409,23 @@ function getTopDownHitZ(x: number, y: number, mapCtx: MapContext) {
   return getTopDownHitHeightForMap(x, y, mapCtx);
 }
 
+const YUMEN_START_SPAWN_Z_LIFT = 5;
+
+function getYumenLiftedSpawnZ(x: number, y: number, mapCtx: MapContext, zOverride?: number) {
+  const clampedX = clampFiniteNumber(x, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH);
+  const clampedY = clampFiniteNumber(y, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT);
+  const baseZ = Number.isFinite(Number(zOverride)) ? Number(zOverride) : getTopDownHitZ(clampedX, clampedY, mapCtx);
+  return baseZ + YUMEN_START_SPAWN_Z_LIFT;
+}
+
+function faceYumenPlayerTowardCenter(player: any, centerX = EXPORTED_MAP_WIDTH / 2, centerY = EXPORTED_MAP_HEIGHT / 2) {
+  const faceX = centerX - Number(player.position?.x ?? centerX);
+  const faceY = centerY - Number(player.position?.y ?? centerY);
+  const faceLen = Math.hypot(faceX, faceY) || 1;
+  player.facing = { x: faceX / faceLen, y: faceY / faceLen };
+  return player.facing;
+}
+
 function teleportYumenPlayerTo(state: any, player: any, x: number, y: number, mapCtx: MapContext, zOverride?: number) {
   const clampedX = clampFiniteNumber(x, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH);
   const clampedY = clampFiniteNumber(y, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT);
@@ -507,12 +523,8 @@ function applyYumenBattleStartPrep(gameId: string, state: any) {
 
   (state.players ?? []).forEach((player: any, index: number) => {
     const spawn = spawnPositions[index % spawnPositions.length] ?? { x: EXPORTED_MAP_WIDTH / 2, y: EXPORTED_MAP_HEIGHT / 2 };
-    teleportYumenPlayerTo(state, player, spawn.x, spawn.y, mapCtx, (spawn as any).z);
-
-    const faceX = EXPORTED_MAP_WIDTH / 2 - Number(player.position?.x ?? EXPORTED_MAP_WIDTH / 2);
-    const faceY = EXPORTED_MAP_HEIGHT / 2 - Number(player.position?.y ?? EXPORTED_MAP_HEIGHT / 2);
-    const faceLen = Math.hypot(faceX, faceY) || 1;
-    player.facing = { x: faceX / faceLen, y: faceY / faceLen };
+    teleportYumenPlayerTo(state, player, spawn.x, spawn.y, mapCtx, getYumenLiftedSpawnZ(spawn.x, spawn.y, mapCtx, (spawn as any).z));
+    faceYumenPlayerTowardCenter(player);
 
     addBuff({
       state,
@@ -2046,14 +2058,48 @@ router.post("/cheat/yumen/auto-settle", async (req, res) => {
     if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
 
     let updatedSafeZone: any;
+    let settledNow = false;
+    let yumenResults: any;
     const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const now = Date.now();
       updatedSafeZone = createYumenSafeZone(state);
       updatedSafeZone.autoSettle = enabled === true;
       state.safeZone = updatedSafeZone;
-      return [{ path: "/safeZone", value: updatedSafeZone }];
+      const diff: Array<{ path: string; value: any }> = [{ path: "/safeZone", value: updatedSafeZone }];
+
+      if (updatedSafeZone.autoSettle === true && state.gameOver !== true && countYumenAlivePlayers(state, now) <= 1) {
+        yumenResults = buildYumenResults(state, now);
+        state.gameOver = true;
+        state.winnerUserId = yumenResults.winnerUserId;
+        state.yumenResults = yumenResults;
+        state.events.push({
+          id: randomUUID(),
+          timestamp: now,
+          turn: state.turn,
+          type: "YUMEN_GAME_END",
+          actorUserId: yumenResults.winnerUserId ?? "system",
+          winnerUserId: yumenResults.winnerUserId,
+        });
+        settledNow = true;
+        diff.push(
+          { path: "/gameOver", value: true },
+          { path: "/winnerUserId", value: yumenResults.winnerUserId },
+          { path: "/yumenResults", value: yumenResults },
+          { path: "/events", value: state.events },
+        );
+      }
+
+      return diff;
     });
 
-    res.json({ ok: true, version: liveVersion, enabled: updatedSafeZone.autoSettle, safeZone: updatedSafeZone });
+    res.json({
+      ok: true,
+      version: liveVersion,
+      enabled: updatedSafeZone.autoSettle,
+      safeZone: updatedSafeZone,
+      settledNow,
+      yumenResults,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -2140,9 +2186,11 @@ router.post("/cheat/yumen/random-spawn-points", async (req, res) => {
       state.players = (state.players ?? []).map((player: any, index: number) => {
         const spawn = spawnPositions[index % spawnPositions.length] ?? { x: EXPORTED_MAP_WIDTH / 2, y: EXPORTED_MAP_HEIGHT / 2 };
         const nextPlayer = { ...player };
-        const nextPosition = teleportYumenPlayerTo(state, nextPlayer, spawn.x, spawn.y, mapCtx, spawn.z);
+        const nextPosition = teleportYumenPlayerTo(state, nextPlayer, spawn.x, spawn.y, mapCtx, getYumenLiftedSpawnZ(spawn.x, spawn.y, mapCtx, spawn.z));
+        faceYumenPlayerTowardCenter(nextPlayer);
         positions.push({ userId: nextPlayer.userId, position: nextPosition });
         diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/facing`, value: nextPlayer.facing });
         diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
         diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
         diff.push({ path: `/players/${index}/activeDash`, value: undefined });
@@ -2193,8 +2241,10 @@ router.post("/cheat/yumen/gather-middle", async (req, res) => {
           centerY + Math.sin(angle) * radius,
           mapCtx,
         );
+        faceYumenPlayerTowardCenter(nextPlayer, centerX, centerY);
         positions.push({ userId: nextPlayer.userId, position: nextPosition });
         diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/facing`, value: nextPlayer.facing });
         diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
         diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
         diff.push({ path: `/players/${index}/activeDash`, value: undefined });

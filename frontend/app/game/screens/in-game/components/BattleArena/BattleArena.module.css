@@ -5043,10 +5043,10 @@
   opacity: 0;
   transition: opacity 180ms ease-out;
   background:
-    radial-gradient(circle at 48% 42%, rgba(207, 142, 79, 0.28), rgba(157, 96, 51, 0.34) 58%, rgba(84, 53, 31, 0.42)),
-    radial-gradient(circle at 18% 20%, rgba(218, 158, 96, 0.16), transparent 42%),
-    radial-gradient(circle at 84% 82%, rgba(96, 63, 36, 0.24), transparent 48%),
-    rgba(126, 83, 48, 0.26);
+    radial-gradient(circle at 48% 42%, rgba(var(--yumen-sandstorm-r, 126), var(--yumen-sandstorm-g, 83), var(--yumen-sandstorm-b, 48), calc(var(--yumen-sandstorm-alpha, 0.26) * 1.08)), rgba(var(--yumen-sandstorm-r, 126), var(--yumen-sandstorm-g, 83), var(--yumen-sandstorm-b, 48), calc(var(--yumen-sandstorm-alpha, 0.26) * 1.26)) 58%, rgba(84, 53, 31, calc(var(--yumen-sandstorm-alpha, 0.26) * 1.45))),
+    radial-gradient(circle at 18% 20%, rgba(var(--yumen-sandstorm-r, 126), var(--yumen-sandstorm-g, 83), var(--yumen-sandstorm-b, 48), calc(var(--yumen-sandstorm-alpha, 0.26) * 0.62)), transparent 42%),
+    radial-gradient(circle at 84% 82%, rgba(96, 63, 36, calc(var(--yumen-sandstorm-alpha, 0.26) * 0.92)), transparent 48%),
+    rgba(var(--yumen-sandstorm-r, 126), var(--yumen-sandstorm-g, 83), var(--yumen-sandstorm-b, 48), var(--yumen-sandstorm-alpha, 0.26));
 }
 
 .yumenSandstormScreenVeilVisible {
@@ -5118,12 +5118,14 @@
 
 .yumenResultRankBronze {
   color: #cf8751;
-  text-shadow: 0 3px 0 rgba(48, 22, 10, 0.9), 0 0 24px rgba(229, 139, 76, 0.28);
+  -webkit-text-stroke: 0;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.62);
 }
 
 .yumenResultRankGray {
   color: #a7adb4;
-  text-shadow: 0 3px 0 rgba(24, 27, 31, 0.9), 0 0 20px rgba(185, 194, 203, 0.18);
+  -webkit-text-stroke: 0;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.58);
 }
 
 .yumenResultSubtitle {
@@ -5440,6 +5442,43 @@
   border-color: rgba(93, 105, 112, 0.62);
   background: rgba(12, 17, 20, 0.84);
   color: rgba(190, 210, 220, 0.52);
+}
+
+.bottomRightQuickButtonBlocked {
+  cursor: pointer;
+  opacity: 0.42;
+  border-color: rgba(93, 105, 112, 0.62);
+  background: rgba(12, 17, 20, 0.84);
+  color: rgba(190, 210, 220, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(222, 245, 255, 0.04), 0 4px 9px rgba(0, 0, 0, 0.24);
+}
+
+.bottomRightQuickButtonBlocked:hover {
+  border-color: rgba(121, 138, 148, 0.72);
+  background: rgba(18, 25, 29, 0.92);
+  color: rgba(214, 231, 239, 0.7);
+}
+
+.sandstormValuePanel {
+  grid-column: 1 / -1;
+  min-height: 0;
+  padding: 8px 9px;
+  border: 1px solid rgba(190, 138, 78, 0.28);
+  border-radius: 4px;
+  background: rgba(46, 34, 24, 0.62);
+}
+
+.sandstormValueRows {
+  display: grid;
+  gap: 5px;
+  color: #f1e2d0;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.sandstormValueRows span {
+  color: rgba(246, 216, 180, 0.78);
 }
 
 /* ---- WASD (mobile left) ---- */

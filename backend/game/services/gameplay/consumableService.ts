@@ -32,8 +32,8 @@ export type ConsumableId =
 
 export const STARTING_CONSUMABLE_COUNTS: Record<ConsumableId, number> = {
   beng_dai: 12,
-  jin_chuang_yao: 8,
-  yue_ying_sha: 4,
+  jin_chuang_yao: 2,
+  yue_ying_sha: 1,
   sha_shi_wei_zhuang: 4,
   guan_mu_wei_zhuang: 0,
   wa_guan_wei_zhuang: 0,

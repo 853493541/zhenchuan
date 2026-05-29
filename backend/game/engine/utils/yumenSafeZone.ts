@@ -3,7 +3,7 @@ import type { Ability, BuffDefinition, SafeZone } from "../state/types";
 export const YUMEN_SAFE_ZONE_FIRST_CIRCLE = 3;
 export const YUMEN_SAFE_ZONE_TOTAL_CIRCLES = 8;
 export const YUMEN_SAFE_ZONE_TARGET_DIAMETERS = [200, 100, 50, 25, 0] as const;
-export const YUMEN_SAFE_ZONE_INITIAL_WAIT_MS = 76_000;
+export const YUMEN_SAFE_ZONE_INITIAL_WAIT_MS = 17_000;
 export const YUMEN_SAFE_ZONE_COUNTDOWN_MS = [63_000, 50_000, 40_000, 28_000, 60_000] as const;
 export const YUMEN_SAFE_ZONE_SHRINK_MS = [64_000, 52_000, 40_000, 30_000, 1_000] as const;
 export const YUMEN_SAFE_ZONE_WAIT_MS = [60_000, 50_000, 40_000, 25_000, 0] as const;
