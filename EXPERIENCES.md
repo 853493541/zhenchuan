@@ -3,6 +3,15 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Chat bracket color parity for class-highlighted names (2026-05-29)
+
+**Implemented / checked**:
+- Updated battle-chat name rendering so `[` and `]` brackets use the same class color as the player name.
+- Applied the same rule to both actor and target bracketed names in battle narration lines.
+
+**Lesson**:
+- If player tags are visually bracketed, color semantics should apply to the whole token (`[name]`), not only the inner text, or class highlighting looks inconsistent.
+
 ## Yumen minimap two-style ring rule (2026-05-29)
 
 **Implemented / checked**:

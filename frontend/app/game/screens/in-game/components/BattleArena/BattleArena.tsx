@@ -13983,10 +13983,19 @@ export default function BattleArena({
     const battleAbilityName = message.abilityName || '攻击';
     const battleTargetName = message.targetUsername ?? '目标';
     const targetColor = message.targetSchool ? SCHOOL_COLOR[message.targetSchool] : battleTargetName === message.username ? speakerColor : undefined;
+    const renderBracketedBattleName = (name: string, color?: string) => (
+      <>
+        <span style={color ? { color } : undefined}>[</span>
+        <span className={styles.chatSpeaker} style={color ? { color } : undefined}>{name}</span>
+        <span style={color ? { color } : undefined}>]</span>
+      </>
+    );
     const renderBattleActor = () => message.username === '你'
       ? <span>你</span>
-      : <><span>[</span><span className={styles.chatSpeaker} style={speakerColor ? { color: speakerColor } : undefined}>{message.username}</span><span>]</span></>;
-    const renderBattleTarget = () => battleTargetName === '你' ? <span>你</span> : <><span>[</span><span className={styles.chatSpeaker} style={targetColor ? { color: targetColor } : undefined}>{battleTargetName}</span><span>]</span></>;
+      : renderBracketedBattleName(message.username, speakerColor);
+    const renderBattleTarget = () => battleTargetName === '你'
+      ? <span>你</span>
+      : renderBracketedBattleName(battleTargetName, targetColor);
     return (
       <div key={message.id} className={`${styles.chatMessageLine} ${isSystemMessage ? styles.chatSystemMessageLine : ''} ${isBattleMessage ? styles.chatBattleMessageLine : ''}`} data-chat-message-line="true">
         <span className={styles.chatPrefix}>
