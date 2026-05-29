@@ -17,7 +17,7 @@ async function login(page: Page, baseUrl: string, username: string, password: st
 
 async function createLiveBattle(host: Page, guest: Page, baseUrl: string) {
   const createRes = await host.request.post(`${baseUrl}/api/game/create`, {
-    data: { mode: 'collision-test' },
+    data: { mode: 'test' },
   });
   expect(createRes.ok()).toBeTruthy();
   const created = await createRes.json();

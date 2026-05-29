@@ -2117,7 +2117,7 @@ router.post("/cheat/yumen/test-short-cooldown", async (req, res) => {
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
-    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（6人）：基础" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关：经典" });
     if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
 
     let updatedSafeZone: any;
@@ -2311,7 +2311,7 @@ router.post("/cheat/yumen/drop-to-top-hit", async (req, res) => {
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
-    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（6人）：基础" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关：经典" });
     if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
 
     let position: any = null;

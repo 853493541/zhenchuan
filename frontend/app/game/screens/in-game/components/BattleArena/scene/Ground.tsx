@@ -23,7 +23,7 @@ export default function Ground({
 }: GroundProps) {
   const half = arenaSize / 2;
 
-  const isCollisionTest = mode === 'collision-test';
+  const isCollisionTest = mode === 'test' || mode === 'collision-test';
 
   /* ── Arena grid lines ── */
   const arenaGridPositions = useMemo(() => {
@@ -109,7 +109,7 @@ export default function Ground({
   // ═══════════════════════════════════════════════════
   //  COLLISION-TEST MODE — Sandy desert ground matching exported map
   // ═══════════════════════════════════════════════════
-  if (mode === 'collision-test') {
+  if (mode === 'test' || mode === 'collision-test') {
     return (
       <group>
         <mesh

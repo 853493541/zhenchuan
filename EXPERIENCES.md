@@ -3,6 +3,26 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Yumen spawn-facing alignment legacy-mode compatibility (2026-05-29)
+
+**Implemented / checked**:
+- Updated frontend `isYumen1v1BasicMode()` detection to accept both `yumenguan-classic` and legacy `yumen-1v1-basic`.
+- This restores Yumen-only startup camera alignment behavior for older live sessions that still carry the legacy mode code.
+
+**Lesson**:
+- After renaming mode codes, frontend mode predicates must keep legacy compatibility wherever mode-gated runtime behavior (like spawn camera alignment) is expected on already-running sessions.
+
+## Mode code rename: yumenguan-classic and test (2026-05-29)
+
+**Implemented / checked**:
+- Renamed canonical backend/frontend mode codes to `yumenguan-classic` and `test`.
+- Updated frontend labels to `玉门关：经典` and `测试`.
+- Updated mode selectors, diagnostics mode labels, room-size checks, in-game test-mode conditionals, and live test create payloads to the new codes.
+- Kept legacy compatibility handling for `yumen-1v1-basic` and `collision-test` in mode normalization/predicates and labels so existing sessions still resolve correctly.
+
+**Lesson**:
+- Renaming gameplay mode ids should include a compatibility window for legacy persisted values, or older sessions/routes can silently fall into wrong mode branches.
+
 ## Chat bracket color parity for class-highlighted names (2026-05-29)
 
 **Implemented / checked**:

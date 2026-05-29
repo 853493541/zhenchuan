@@ -74,7 +74,7 @@ async function getOrCreateCredentials(page: Page, baseUrl: string, role: 'host' 
 
 async function createLiveYumenBattle(host: Page, guest: Page, baseUrl: string) {
   const createRes = await host.request.post(`${baseUrl}/api/game/create`, {
-    data: { mode: 'yumen-1v1-basic' },
+    data: { mode: 'yumenguan-classic' },
   });
   expect(createRes.ok()).toBeTruthy();
   const created = await createRes.json();

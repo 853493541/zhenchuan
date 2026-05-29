@@ -10,7 +10,7 @@ type StartMode = GameMode | 'export-viewer';
 
 const PRIMARY_MODES: Array<{ value: Extract<StartMode, GameMode>; label: string }> = [
   { value: YUMEN_1V1_BASIC_MODE, label: getGameModeLabel(YUMEN_1V1_BASIC_MODE) },
-  { value: 'collision-test', label: getGameModeLabel('collision-test') },
+  { value: 'test', label: getGameModeLabel('test') },
 ];
 
 const LEGACY_MODES: Array<{ value: StartMode; label: string }> = [

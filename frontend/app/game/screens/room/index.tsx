@@ -20,7 +20,7 @@ type GameData = {
 };
 
 function getRoomMaxPlayers(mode?: string) {
-  if (!mode || mode === "yumen-1v1-basic") return 6;
+  if (!mode || mode === "yumenguan-classic" || mode === "yumen-1v1-basic") return 6;
   if (mode === "pubg") return 5;
   return 2;
 }

@@ -15526,7 +15526,7 @@ export default function BattleArena({
           />
         </Canvas>
       </div>}
-      {mode === 'collision-test' && showSceneTestingPanel && (
+      {(mode === 'test' || mode === 'collision-test') && showSceneTestingPanel && (
         <div className={styles.uiInfoPanel} style={{ left: '5%', top: '50%', transform: 'translateY(-50%)' }}>
           <div className={styles.uiFloatingTitle}>角色状态</div>
           <div className={styles.uiInfoValue}>位置 {localRenderPosRef.current.x.toFixed(1)}, {localRenderPosRef.current.y.toFixed(1)}</div>
@@ -15536,7 +15536,7 @@ export default function BattleArena({
         </div>
       )}
 
-      {mode === 'collision-test' && showCameraEventTestingPanel && (
+      {(mode === 'test' || mode === 'collision-test') && showCameraEventTestingPanel && (
         <div
           className={styles.uiFloatingPanel}
           style={{
@@ -15602,7 +15602,7 @@ export default function BattleArena({
         </div>
       )}
 
-      {mode === 'collision-test' && showMeasurePanel && (
+      {(mode === 'test' || mode === 'collision-test') && showMeasurePanel && (
         <div className={styles.uiFloatingPanel} style={{ left: '70%', top: '60%', width: 220, transform: 'translate(-50%, -50%)' }}>
           <div className={styles.uiFloatingTitle}>距离测试</div>
           <div className={styles.escMeasureGrid}>

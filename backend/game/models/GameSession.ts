@@ -25,8 +25,9 @@ const GameSessionSchema = new mongoose.Schema(
     // 🔄 Auto-start when room is full
     autoStart: { type: Boolean, default: true },
 
-    // 🎮 Game mode: 'arena' | 'pubg' | 'collision-test' | 'yumen-1v1-basic'
-    mode: { type: String, enum: ['arena', 'pubg', 'collision-test', 'yumen-1v1-basic'], default: 'yumen-1v1-basic' },
+    // 🎮 Game mode: 'arena' | 'pubg' | 'test' | 'yumenguan-classic'
+    // Keep legacy codes in enum for backwards compatibility with existing sessions.
+    mode: { type: String, enum: ['arena', 'pubg', 'test', 'yumenguan-classic', 'collision-test', 'yumen-1v1-basic'], default: 'yumenguan-classic' },
 
     // 🎮 Tournament/Draft/Economy state (persists across battles)
     tournament: { type: mongoose.Schema.Types.Mixed, default: null },
