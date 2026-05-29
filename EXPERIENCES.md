@@ -3,6 +3,15 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Ability tooltip cast text wording update (2026-05-29)
+
+**Implemented / checked**:
+- Updated channeled-ability tooltip cast text from `3秒` style to `释放: 3秒` style.
+- Kept instant-cast tooltip text unchanged as `瞬间释放`.
+
+**Lesson**:
+- Tooltip cast wording should clearly distinguish cast type semantics; explicit `释放:` prefix makes channel duration read faster without affecting instant-cast readability.
+
 ## Ability tooltip cooldown should use real CD, not 3s test cap (2026-05-29)
 
 **Implemented / checked**:

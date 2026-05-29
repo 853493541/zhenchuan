@@ -3778,7 +3778,7 @@ function formatAbilityCastLabel(ability: AbilityInfo): string {
   const channel = ability.channel;
   if (!channel || channel.durationMs <= 0) return '瞬间释放';
   const seconds = formatCompactSeconds(channel.durationMs / 1000);
-  return `${seconds}秒`;
+  return `释放: ${seconds}秒`;
 }
 
 function formatAbilityCooldownLabel(ability: AbilityInfo): string {
