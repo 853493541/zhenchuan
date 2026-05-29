@@ -10418,10 +10418,12 @@ export default function BattleArena({
       // Tab / F1 — select the nearest currently targetable enemy player or entity.
       // Rules:
       //   - Only consider targets within ±90° of facing (180° front cone).
+      //   - Only consider targets within 60 units.
       //   - Exclude the currently selected target so Tab always cycles when an
       //     alternative is available.
       if (e.key === 'Tab' || e.key === 'F1') {
         e.preventDefault();
+        const TARGET_SELECT_MAX_UNITS = 60;
         const myPos = localPositionRef.current ?? me.position;
         const facing = localFacingRef.current ?? meFacingRef.current ?? { x: 0, y: 1 };
         const facingLen = Math.hypot(facing.x, facing.y);
@@ -10434,6 +10436,9 @@ export default function BattleArena({
           if (c.id === currentSelectedId) return false; // exclude current target
           const dx = c.position.x - myPos.x;
           const dy = c.position.y - myPos.y;
+          const dz = (c.position.z ?? 0) - ((myPos as any).z ?? 0);
+          const distUnits = worldUnitsToNewUnits(Math.sqrt(dx * dx + dy * dy + dz * dz), mode);
+          if (distUnits > TARGET_SELECT_MAX_UNITS) return false;
           const planar = Math.hypot(dx, dy);
           if (planar < 0.0001) return true; // standing on top of target
           // dot product against facing — must be > 0 to be in front (180° cone)
@@ -10453,11 +10458,7 @@ export default function BattleArena({
         }, null);
 
         if (!nearest) {
-          // No alternative front-cone target. If a target is currently selected,
-          // keep it; otherwise notify the user.
-          if (!currentSelectedId) {
-            showInGameWarning('当前没有可选目标');
-          }
+          // No alternative target inside facing cone + range. Keep current target unchanged.
           return;
         }
         if (nearest.kind === 'player') {
@@ -10512,7 +10513,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [crashRecorder, tryQueueLocalJump, sendMovement, customUiMode, cancelCustomUiMode, cancelChatSettings, chatClearDialog, martialPresetModal, showMartialPanel, showTestingPanel, showChatSettings, focusChatInput, toggleEscPanel, triggerHotkeyBinding]);
+  }, [crashRecorder, tryQueueLocalJump, sendMovement, customUiMode, cancelCustomUiMode, cancelChatSettings, chatClearDialog, martialPresetModal, showMartialPanel, showTestingPanel, showChatSettings, focusChatInput, toggleEscPanel, triggerHotkeyBinding, mode]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)

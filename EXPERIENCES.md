@@ -3,6 +3,16 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Tab auto-target range/facing refinement (2026-05-29)
+
+**Implemented / checked**:
+- Updated `Tab/F1` auto-target selection to keep existing rules but additionally require targets to be within 60 units.
+- Kept facing-direction filtering and current-target exclusion behavior unchanged.
+- Removed the no-candidate warning output; when no target matches, selection now stays unchanged without showing an error message.
+
+**Lesson**:
+- Auto-target hotkeys should be deterministic and quiet: strict eligibility filters (facing + range) improve target quality, and no-match paths should fail silently to avoid UI noise.
+
 ## Ability tooltip cast text wording update (2026-05-29)
 
 **Implemented / checked**:
