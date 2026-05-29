@@ -3,6 +3,17 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Yumen duplicate shrink-start guard (2026-05-29)
+
+**Implemented / checked**:
+- Investigated reports of broken poison-zone behavior in multi-player Yumen games and traced a plausible cause to duplicate start requests from multiple clients joining at different times.
+- The frontend auto-full-shrink effect can run on each client with the preference enabled while the zone is still `idle`.
+- Added backend guards to reject `start-shrink` and `start-full-shrink` when the safe zone is already in `waiting`, `countdown`, or `shrinking`.
+- Suppressed the expected `alreadyStarted` conflict in the frontend auto-full-shrink path so late joiners do not produce false error toasts.
+
+**Lesson**:
+- Join-time client automation must be backed by idempotent server routes. A per-client preference is not a safe uniqueness guarantee for match-wide state transitions like poison-zone start.
+
 ## Yumen settlement exit footer layout update (2026-05-29)
 
 **Implemented / checked**:

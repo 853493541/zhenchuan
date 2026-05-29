@@ -12358,7 +12358,7 @@ export default function BattleArena({
         '/api/game/cheat/yumen/start-full-shrink',
         '完整缩圈已自动开始',
         undefined,
-        { suppressError: (status, payload) => status === 409 && payload?.prepActive === true },
+        { suppressError: (status, payload) => status === 409 && (payload?.prepActive === true || payload?.alreadyStarted === true) },
       );
       if (ok) yumenAutoFullShrinkStartedRef.current = autoStartKey;
     })();

@@ -270,6 +270,16 @@ function startYumenSafeZone(state: any, now: number, options?: { timelineMode?: 
   return zone;
 }
 
+function yumenSafeZoneStartAlreadyActive(state: any) {
+  const zone = createYumenSafeZone(state);
+  const phase = String(zone.phase ?? "idle");
+  const phaseActive = phase === "waiting" || phase === "countdown" || phase === "shrinking";
+  return {
+    active: phaseActive,
+    zone,
+  };
+}
+
 function setYumenSafeZoneDamageMode(state: any, damageMode: YumenSafeZoneDamageMode) {
   const zone = createYumenSafeZone(state);
   zone.damageMode = normalizeYumenSafeZoneDamageMode(damageMode);
@@ -2357,6 +2367,11 @@ router.post("/cheat/yumen/start-shrink", async (req, res) => {
     const prepBlock = getActiveYumenPrepBlock(String(gameId), game);
     if (prepBlock) return res.status(409).json({ error: "准备时间内不能开启绝境", ...prepBlock });
 
+    const { active, zone } = yumenSafeZoneStartAlreadyActive(game.state);
+    if (active) {
+      return res.status(409).json({ error: "毒圈已在进行中", alreadyStarted: true, safeZone: zone });
+    }
+
     const startedAt = Date.now();
     let updatedSafeZone: any;
     const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
@@ -2387,6 +2402,11 @@ router.post("/cheat/yumen/start-full-shrink", async (req, res) => {
 
     const prepBlock = getActiveYumenPrepBlock(String(gameId), game);
     if (prepBlock) return res.status(409).json({ error: "准备时间内不能开启绝境", ...prepBlock });
+
+    const { active, zone } = yumenSafeZoneStartAlreadyActive(game.state);
+    if (active) {
+      return res.status(409).json({ error: "毒圈已在进行中", alreadyStarted: true, safeZone: zone });
+    }
 
     const startedAt = Date.now();
     let updatedSafeZone: any;
