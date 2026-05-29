@@ -3,6 +3,32 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Chat input channel color tint (2026-05-29)
+
+**Implemented / checked**:
+- Changed the chat input text color to inherit the active composer channel color instead of using a fixed near-white color.
+- The map composer now visually matches the outgoing map-channel tint while typing.
+
+**Lesson**:
+- When the send channel is visually encoded, the typed text should share that channel color so the composer feels like part of the same message pipeline.
+
+## Ctrl+left-click ability mention insertion in chat (2026-05-29)
+
+**Implemented / checked**:
+- Added a new shortcut on ability slots: `Ctrl + 左键点击` appends `[技能名]` into the chat input box.
+- Applied the behavior to both draft ability slots and common ability slots.
+- Follow-up: applied the same `Ctrl + 左键点击` mention behavior to consumable slots, appending `[物品名]` into the chat input.
+- Follow-up: enabled the same `Ctrl + 左键点击` mention behavior for P-panel ability tiles, appending `[技能名]` to chat.
+- P-panel safeguard: when `Ctrl + 左键点击` is used on a tile, drag/add/remove/favorite tile actions are all suppressed so only the chat-token insertion runs.
+- Follow-up: added status-bar support. `Ctrl + 左键点击` on a status/buff icon now appends `[状态名]` into chat.
+- Status-bar safeguard: ctrl-click on status icons suppresses cancel/other icon click side effects so only name copy runs.
+- Each click appends one token, so repeated clicks produce repeated tokens (for example `[技能A][技能A]`).
+- Kept normal left-click cast behavior unchanged when `Ctrl` is not held.
+- Follow-up: bracketed ability tokens can now be removed as a group from chat input. `Backspace` at token end or `Delete` at token start removes the whole `[技能名]` block in one action.
+
+**Lesson**:
+- Chat mention shortcuts should append to existing input (not replace it) and preserve deterministic one-click-one-token behavior so players can compose repeated callouts quickly.
+
 ## Tab auto-target range/facing refinement (2026-05-29)
 
 **Implemented / checked**:

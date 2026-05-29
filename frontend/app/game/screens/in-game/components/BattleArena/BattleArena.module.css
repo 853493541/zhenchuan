@@ -754,7 +754,7 @@
   border-radius: 0;
   outline: 0;
   background: transparent;
-  color: #f8f4ec;
+  color: inherit;
   font: inherit;
   font-size: calc(var(--chat-font-size) - 2px);
   font-weight: 600;

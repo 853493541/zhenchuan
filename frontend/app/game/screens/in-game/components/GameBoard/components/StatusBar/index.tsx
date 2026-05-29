@@ -28,6 +28,7 @@ type Props = {
   maxPerRow?: number;
   categoryFilter?: "BUFF" | "DEBUFF";
   visibilityMode?: "visible" | "hidden-only";
+  onCopyBuffName?: (name: string) => void;
 };
 
 type ResolvedBuff = {
@@ -93,6 +94,7 @@ export default function StatusBar({
   maxPerRow = 10,
   categoryFilter,
   visibilityMode = "visible",
+  onCopyBuffName,
 }: Props) {
   const preload = useGamePreload();
   const [activeHint, setActiveHint] = useState<ActiveHint | null>(null);
@@ -223,7 +225,18 @@ export default function StatusBar({
             }}
             onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b)}
             onMouseLeave={closeHint}
+            onMouseDown={(e) => {
+              if (!e.ctrlKey || e.button !== 0 || !onCopyBuffName) return;
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onClick={(e) => {
+              if (e.ctrlKey && onCopyBuffName) {
+                e.preventDefault();
+                e.stopPropagation();
+                onCopyBuffName(b.name);
+                return;
+              }
               if (!allowAnyCancel || !canManualCancel || !onCancelBuff) return;
               e.preventDefault();
               e.stopPropagation();

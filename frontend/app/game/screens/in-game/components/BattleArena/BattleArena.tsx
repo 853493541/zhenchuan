@@ -4595,6 +4595,7 @@ export default function BattleArena({
   const detachedChatAtBottomRef = useRef<Record<string, boolean>>({});
   const detachedChatDisplayStateRef = useRef<Record<string, { key: string; length: number }>>({});
   const chatInputCursorEndPendingRef = useRef(false);
+  const chatInputCursorPendingRef = useRef<number | null>(null);
   const lastChatSearchFetchKeyRef = useRef('');
   const chatTabClickSuppressedRef = useRef<string | null>(null);
   const detachedChatLogRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -4815,14 +4816,24 @@ export default function BattleArena({
     return () => window.clearTimeout(timer);
   }, [activeChatWindow, chatSearchOpen, chatSearchQuery, onFetchChatMessages]);
   useEffect(() => {
-    if (!chatInputCursorEndPendingRef.current) return;
+    const moveToEnd = chatInputCursorEndPendingRef.current;
+    const moveToCursor = chatInputCursorPendingRef.current;
+    if (!moveToEnd && moveToCursor === null) return;
     chatInputCursorEndPendingRef.current = false;
+    chatInputCursorPendingRef.current = null;
     window.requestAnimationFrame(() => {
       const input = chatInputRef.current;
       if (!input) return;
       input.focus();
-      const end = input.value.length;
-      input.setSelectionRange(end, end);
+      if (moveToEnd) {
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+        return;
+      }
+      if (moveToCursor !== null) {
+        const clamped = Math.max(0, Math.min(moveToCursor, input.value.length));
+        input.setSelectionRange(clamped, clamped);
+      }
     });
   }, [chatInputValue]);
   useEffect(() => {
@@ -4888,6 +4899,11 @@ export default function BattleArena({
   const copyMessageToChatInput = useCallback((text: string) => {
     chatInputCursorEndPendingRef.current = true;
     setChatInputValue(text.slice(0, CHAT_MAX_INPUT_LENGTH));
+  }, []);
+  const appendAbilityNameToChatInput = useCallback((abilityName: string) => {
+    chatInputCursorEndPendingRef.current = true;
+    const tag = `[${abilityName}]`;
+    setChatInputValue((current) => (current + tag).slice(0, CHAT_MAX_INPUT_LENGTH));
   }, []);
   const scrollChatLog = useCallback((target: 'up' | 'top' | 'down' | 'bottom') => {
     const log = chatLogRef.current;
@@ -13009,6 +13025,7 @@ export default function BattleArena({
           showDebug={showDebug}
           debugLabel={debugLabel}
           onCancelBuff={onCancel}
+          onCopyBuffName={appendAbilityNameToChatInput}
           allowAnyCancel={allowAnyCancel}
           playerScale={debugLabel === 'me'}
           categoryFilter={categoryFilter}
@@ -13102,6 +13119,7 @@ export default function BattleArena({
             compact
             borderlessIcons
             maxPerRow={3}
+            onCopyBuffName={appendAbilityNameToChatInput}
             visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
           />
         </div>
@@ -13334,6 +13352,11 @@ export default function BattleArena({
           aria-label={ability.name}
           disabled={panelLocked || isBusy || options.disabled}
           onMouseDown={(event) => {
+            if (event.ctrlKey && event.button === 0) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
             if (isPresetTile) return;
             if (martialFavoriteMode) {
               event.preventDefault();
@@ -13342,6 +13365,12 @@ export default function BattleArena({
             beginLibraryAbilityPointerDrag(event, ability);
           }}
           onClick={(event) => {
+            if (event.ctrlKey) {
+              event.preventDefault();
+              event.stopPropagation();
+              appendAbilityNameToChatInput(ability.name);
+              return;
+            }
             if (!favoriteModeTile || !isFavoritedAbility) return;
             event.preventDefault();
             favoriteMartialAbility(ability.id);
@@ -14196,6 +14225,46 @@ export default function BattleArena({
               onChange={(event) => setChatInputValue(event.target.value.slice(0, CHAT_MAX_INPUT_LENGTH))}
               onKeyDown={(event) => {
                 event.stopPropagation();
+                if ((event.key === 'Backspace' || event.key === 'Delete') && !event.ctrlKey && !event.altKey && !event.metaKey) {
+                  const input = event.currentTarget;
+                  const selectionStart = input.selectionStart;
+                  const selectionEnd = input.selectionEnd;
+                  if (selectionStart !== null && selectionEnd !== null && selectionStart === selectionEnd) {
+                    const caret = selectionStart;
+                    const text = chatInputValue;
+                    let tokenStart = -1;
+                    let tokenEnd = -1;
+
+                    if (event.key === 'Backspace' && caret > 0 && text[caret - 1] === ']') {
+                      const open = text.lastIndexOf('[', caret - 1);
+                      if (open >= 0) {
+                        const token = text.slice(open, caret);
+                        if (/^\[[^\[\]]+\]$/.test(token)) {
+                          tokenStart = open;
+                          tokenEnd = caret;
+                        }
+                      }
+                    }
+
+                    if (event.key === 'Delete' && caret < text.length && text[caret] === '[') {
+                      const close = text.indexOf(']', caret + 1);
+                      if (close >= 0) {
+                        const token = text.slice(caret, close + 1);
+                        if (/^\[[^\[\]]+\]$/.test(token)) {
+                          tokenStart = caret;
+                          tokenEnd = close + 1;
+                        }
+                      }
+                    }
+
+                    if (tokenStart >= 0 && tokenEnd > tokenStart) {
+                      event.preventDefault();
+                      chatInputCursorPendingRef.current = tokenStart;
+                      setChatInputValue((text.slice(0, tokenStart) + text.slice(tokenEnd)).slice(0, CHAT_MAX_INPUT_LENGTH));
+                      return;
+                    }
+                  }
+                }
                 if (event.key === 'Enter') {
                   event.preventDefault();
                   event.currentTarget.blur();
@@ -14815,8 +14884,13 @@ export default function BattleArena({
               setDraggingConsumableIndex(null);
               setDragHoverConsumableIndex(null);
             }}
-            onClick={() => {
-              if (!consumable || cooldownMs > 0 || unavailable || depleted || customUiMode) return;
+            onClick={(event) => {
+              if (!consumable) return;
+              if (event.ctrlKey) {
+                appendAbilityNameToChatInput(consumable.name);
+                return;
+              }
+              if (cooldownMs > 0 || unavailable || depleted || customUiMode) return;
               useConsumableRef.current(consumable.id);
             }}
           >
@@ -14845,7 +14919,7 @@ export default function BattleArena({
     >
       {showInlinePlayerStatus && (
         <div className={styles.playerBuffRow}>
-          <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} playerScale visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'} />
+          <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} onCopyBuffName={appendAbilityNameToChatInput} playerScale visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'} />
         </div>
       )}
 
@@ -14938,8 +15012,12 @@ export default function BattleArena({
                       handleDraftDragStart(e, ability.id, idx);
                     }}
                     onDragEnd={handleDraftDragEnd}
-                    onClick={() => {
+                    onClick={(event) => {
                       if (dragJustEndedRef.current) return;
+                      if (event.ctrlKey) {
+                        appendAbilityNameToChatInput(ability.name);
+                        return;
+                      }
                       if (!ability.isReady || ability.blockedByAntiStealth) {
                         showAbilityDisabledWarning(ability);
                         return;
@@ -15016,7 +15094,11 @@ export default function BattleArena({
                   onMouseLeave={closeAbilityHint}
                   onFocus={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
                   onBlur={closeAbilityHint}
-                  onClick={() => {
+                  onClick={(event) => {
+                    if (event.ctrlKey) {
+                      appendAbilityNameToChatInput(ability.name);
+                      return;
+                    }
                     if (!ability.isReady || ability.blockedByAntiStealth) {
                       showAbilityDisabledWarning(ability);
                       return;
@@ -16958,6 +17040,7 @@ export default function BattleArena({
                   <StatusBar
                     buffs={targetBuffs}
                     debugLabel={isSelf ? 'me-target' : 'opp'}
+                    onCopyBuffName={appendAbilityNameToChatInput}
                     visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
                     allowAnyCancel={!isSelf && isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally'}
                     onCancelBuff={
