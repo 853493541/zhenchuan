@@ -5898,7 +5898,7 @@
 
 .consumableSlotEmpty {
   cursor: default;
-  background: rgba(8, 20, 13, 0.34);
+  background: rgba(8, 20, 13, 0.24);
 }
 
 .consumableSlotDragHover {
@@ -5925,12 +5925,12 @@
 
 .consumableSlotUnavailable {
   cursor: default;
-  color: rgba(186, 190, 188, 0.6);
+  color: rgba(186, 190, 188, 0.72);
 }
 
 .consumableSlotUnavailable .consumableIcon {
-  opacity: 0.38;
-  filter: grayscale(1) saturate(0.12) brightness(0.72);
+  opacity: 0.57;
+  filter: grayscale(0.7) saturate(0.38) brightness(0.8);
 }
 
 .consumableSlotDepleted {
@@ -5938,8 +5938,8 @@
 }
 
 .consumableSlotDepleted .consumableIcon {
-  opacity: 0.52;
-  filter: saturate(0.3) brightness(0.7);
+  opacity: 0.66;
+  filter: saturate(0.5) brightness(0.79);
 }
 
 .consumableCount {

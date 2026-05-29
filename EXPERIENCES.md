@@ -3,8 +3,6 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
-## Chat input channel color tint (2026-05-29)
-
 ## Yumen settlement exit footer layout update (2026-05-29)
 
 **Implemented / checked**:
@@ -13,6 +11,17 @@ Each entry goes under its relevant section header.
 
 **Lesson**:
 - For end-of-match dialogs, the primary exit countdown and action read more clearly when centered as a stacked call-to-action instead of competing with table content at the edge.
+
+## Consumable gray-out softening (2026-05-29)
+
+**Implemented / checked**:
+- Reduced the consumable bar gray-out severity for empty, unavailable, and depleted states by about 30%.
+- Softened the mute effect by raising icon opacity and easing grayscale/saturation/brightness suppression instead of changing cooldown overlays.
+
+**Lesson**:
+- Inventory-state mute effects should communicate missing items without making the bar feel visually disabled; reducing desaturation and opacity together keeps the state readable but calmer.
+
+## Chat input channel color tint (2026-05-29)
 
 **Implemented / checked**:
 - Changed the chat input text color to inherit the active composer channel color instead of using a fixed near-white color.
