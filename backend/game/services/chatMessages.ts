@@ -38,23 +38,6 @@ export async function persistAndBroadcastChatMessage(gameId: string, chat: ChatM
   });
 }
 
-export async function broadcastSystemChat(gameId: string, text: string) {
-  const value = text.trim();
-  if (!value) return;
-  const timestamp = Date.now();
-  const chat: ChatMessagePayload = {
-    id: `${timestamp}-system-${randomUUID().slice(0, 8)}`,
-    channel: "system",
-    userId: "system",
-    username: "系统",
-    school: null,
-    text: value,
-    timestamp,
-    variant: "system",
-  };
-  await persistAndBroadcastChatMessage(gameId, chat);
-}
-
 export function collectDefeatAnnouncementsFromEvents(
   state: GameState,
   eventStartIndex: number,
@@ -153,10 +136,17 @@ export async function broadcastDefeatSystemChat(gameId: string, defeatedUserId: 
   const names = await resolvePlayerDisplayNames(gameId, validAttackerUserId ? [defeatedUserId, validAttackerUserId] : [defeatedUserId]);
   const defeatedName = names.get(defeatedUserId) ?? `User${defeatedUserId.slice(-4)}`;
   const attackerName = validAttackerUserId ? names.get(validAttackerUserId) ?? `User${validAttackerUserId.slice(-4)}` : null;
-  await broadcastSystemChat(
-    gameId,
-    attackerName
+  const chat: ChatMessagePayload = {
+    id: `${timestamp}-system-${randomUUID().slice(0, 8)}`,
+    channel: "system",
+    userId: "system",
+    username: "系统",
+    school: null,
+    text: attackerName
       ? `【${defeatedName}】被【${attackerName}】重伤，黯然离去。`
       : `【游客】黯然离去。`,
-  );
+    timestamp,
+    variant: "system",
+  };
+  await persistAndBroadcastChatMessage(gameId, chat);
 }

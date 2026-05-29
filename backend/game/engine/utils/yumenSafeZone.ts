@@ -3,7 +3,7 @@ import type { Ability, BuffDefinition, SafeZone } from "../state/types";
 export const YUMEN_SAFE_ZONE_FIRST_CIRCLE = 3;
 export const YUMEN_SAFE_ZONE_TOTAL_CIRCLES = 8;
 export const YUMEN_SAFE_ZONE_TARGET_DIAMETERS = [200, 100, 50, 25, 0] as const;
-export const YUMEN_SAFE_ZONE_INITIAL_WAIT_MS = 17_000;
+export const YUMEN_SAFE_ZONE_INITIAL_WAIT_MS = 76_000;
 export const YUMEN_SAFE_ZONE_COUNTDOWN_MS = [63_000, 50_000, 40_000, 28_000, 60_000] as const;
 export const YUMEN_SAFE_ZONE_SHRINK_MS = [64_000, 52_000, 40_000, 30_000, 1_000] as const;
 export const YUMEN_SAFE_ZONE_WAIT_MS = [60_000, 50_000, 40_000, 25_000, 0] as const;
@@ -46,11 +46,8 @@ export const YUMEN_KUANG_SHA_HEAL_MULTIPLIER = 0.3;
 export const YUMEN_PIERCING_DAMAGE_TYPE = "穿透伤害";
 export const YUMEN_SPECTATOR_BUFF_ID = 990202;
 export const YUMEN_ZHANYI_BUFF_ID = 990203;
-export const YUMEN_PREP_BUFF_ID = 990204;
 export const YUMEN_ZHANYI_ABILITY_ID = "yumen_zhanyi";
-export const YUMEN_PREP_ABILITY_ID = "yumen_prep_time";
 export const YUMEN_ZHANYI_DURATION_MS = 30_000;
-export const YUMEN_PREP_DURATION_MS = 60_000;
 export const YUMEN_ZHANYI_HEAL_PER_TICK = 16_130;
 
 export const YUMEN_ZHUI_MING_BUFF: BuffDefinition = {
@@ -93,20 +90,6 @@ export const YUMEN_ZHANYI_BUFF: BuffDefinition = {
   effects: [{ type: "PERIODIC_HEAL", value: YUMEN_ZHANYI_HEAL_PER_TICK }],
 };
 
-export const YUMEN_PREP_BUFF: BuffDefinition = {
-  buffId: YUMEN_PREP_BUFF_ID,
-  name: "准备时间",
-  category: "DEBUFF",
-  durationMs: YUMEN_PREP_DURATION_MS,
-  breakOnPlay: false,
-  description: "绝境开始前的准备时间。无法移动、无法施展招式，并处于隐身状态。",
-  effects: [
-    { type: "ROOT" },
-    { type: "SILENCE" },
-    { type: "STEALTH" },
-  ],
-};
-
 export const YUMEN_SPECTATOR_ABILITY: Ability = {
   id: "yumen_spectator",
   name: "玉门观战",
@@ -123,15 +106,6 @@ export const YUMEN_ZHANYI_ABILITY: Ability = {
   target: "SELF",
   effects: [],
   buffs: [YUMEN_ZHANYI_BUFF],
-};
-
-export const YUMEN_PREP_ABILITY: Ability = {
-  id: YUMEN_PREP_ABILITY_ID,
-  name: "准备时间",
-  type: "SUPPORT",
-  target: "SELF",
-  effects: [],
-  buffs: [YUMEN_PREP_BUFF],
 };
 
 const YUMEN_KUANG_SHA_REDUCED_HEAL_ABILITY_IDS = new Set(["fengxiu_diang", "changzhen", "qiandie_turui", YUMEN_ZHANYI_ABILITY_ID]);
@@ -156,10 +130,6 @@ export function hasActiveYumenKuangSha(target: { buffs?: any[] } | undefined | n
 
 export function hasActiveYumenSpectatorBuff(target: { buffs?: any[] } | undefined | null, now = Date.now()): boolean {
   return Array.isArray(target?.buffs) && target!.buffs.some((buff: any) => buff?.buffId === YUMEN_SPECTATOR_BUFF_ID && isActiveBuff(buff, now));
-}
-
-export function hasActiveYumenPrepBuff(target: { buffs?: any[] } | undefined | null, now = Date.now()): boolean {
-  return Array.isArray(target?.buffs) && target!.buffs.some((buff: any) => buff?.buffId === YUMEN_PREP_BUFF_ID && isActiveBuff(buff, now));
 }
 
 export function getYumenZhuiMingStacks(target: { buffs?: any[] } | undefined | null, now = Date.now()): number {

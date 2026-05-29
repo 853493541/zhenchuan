@@ -21,7 +21,6 @@ const pendingLeaveEndTimers = new Map<string, ReturnType<typeof setTimeout>>();
 async function finalizeLeaveEnd(gameId: string, endedByUserId: string, endsAt: number) {
   const game = await GameSession.findById(gameId);
   if (!game) return;
-  if (isYumen1v1BasicMode((game as any).mode)) return;
 
   const loop = GameLoop.get(gameId);
   const state = loop?.getState() ?? game.state;
@@ -726,35 +725,6 @@ router.post("/end", async (req, res) => {
     const state = loop?.getState() ?? game.state;
     if (!state) {
       return sendGameError(res, 400, "ERR_INVALID_GAME_STATE");
-    }
-
-    if (isYumen1v1BasicMode((game as any).mode)) {
-      const existingTimer = pendingLeaveEndTimers.get(gameId);
-      if (existingTimer) {
-        clearTimeout(existingTimer);
-        pendingLeaveEndTimers.delete(gameId);
-      }
-
-      const diff: Array<{ path: string; value: any }> = [];
-      if ((state as any).leaveNotice) {
-        delete (state as any).leaveNotice;
-        state.version = (state.version ?? 0) + 1;
-        diff.push({ path: "/leaveNotice", value: undefined });
-        loop?.updateState(state);
-        game.state = state as any;
-        game.markModified("state");
-        void game.save().catch((err: any) => {
-          console.error("[game/end:yumen] async save failed:", err?.message ?? err);
-        });
-        broadcastGameUpdate({
-          gameId,
-          version: state.version,
-          diff,
-          timestamp: Date.now(),
-        });
-      }
-
-      return res.json({ ok: true, pending: false, version: state.version, diff, serverTimestamp: Date.now() });
     }
 
     const existingNotice = (state as any).leaveNotice;

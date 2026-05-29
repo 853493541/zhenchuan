@@ -58,15 +58,10 @@ const HOUYAO_GCD_EXEMPT_ABILITY_IDS = new Set([
   "yaotai_zhenhe",
 ]);
 
-function clampCooldownTicksForTesting(ticks: number | undefined, testShortCooldown: boolean): number {
+function clampCooldownTicksForTesting(ticks: number | undefined): number {
   if (ticks === undefined) return 0;
-  const normalizedTicks = Math.max(0, Math.round(ticks));
-  if (!testShortCooldown || normalizedTicks <= 0) return normalizedTicks;
-  return Math.min(normalizedTicks, TEST_COOLDOWN_CAP_TICKS);
-}
-
-function isTestShortCooldownEnabled(state: GameState): boolean {
-  return state.safeZone?.testShortCooldown === true;
+  if (ticks <= 0) return 0;
+  return Math.min(ticks, TEST_COOLDOWN_CAP_TICKS);
 }
 
 function hasChargeSystem(ability: any): boolean {
@@ -95,7 +90,7 @@ function isQinggongGcdImmune(ability: any): boolean {
 function applyMinimumAbilityLock(instance: any, ability: any, ticks: number) {
   if (!ability || ticks <= 0) return;
   if (hasChargeSystem(ability)) {
-    ensureChargeRuntime(instance, ability, false);
+    ensureChargeRuntime(instance, ability);
     instance.chargeLockTicks = Math.max(instance.chargeLockTicks ?? 0, ticks);
     instance.cooldown = Math.max(instance.cooldown ?? 0, instance.chargeLockTicks);
     return;
@@ -126,18 +121,18 @@ function getActiveChannelTickIntervalMs(ability: any): number | undefined {
   return hasLianHuanNuTick ? 1_000 : undefined;
 }
 
-function getChargeRecoveryTicks(ability: any, testShortCooldown: boolean): number {
+function getChargeRecoveryTicks(ability: any): number {
   return Math.max(
     1,
-    clampCooldownTicksForTesting((ability as any).chargeRecoveryTicks ?? ability.cooldownTicks ?? 1, testShortCooldown)
+    clampCooldownTicksForTesting((ability as any).chargeRecoveryTicks ?? ability.cooldownTicks ?? 1)
   );
 }
 
-function normalizeChargeRegenQueue(instance: any, ability: any, testShortCooldown: boolean) {
+function normalizeChargeRegenQueue(instance: any, ability: any) {
   if (!hasChargeSystem(ability)) return;
 
   const maxCharges = Math.max(0, Number(ability.maxCharges ?? 0));
-  const recoveryTicks = getChargeRecoveryTicks(ability, testShortCooldown);
+  const recoveryTicks = getChargeRecoveryTicks(ability);
   const clampedChargeCount = Math.max(0, Math.min(maxCharges, Number(instance.chargeCount ?? maxCharges)));
   const missingCharges = Math.max(0, maxCharges - clampedChargeCount);
 
@@ -168,25 +163,25 @@ function normalizeChargeRegenQueue(instance: any, ability: any, testShortCooldow
     : 0;
 }
 
-function ensureChargeRuntime(instance: any, ability: any, testShortCooldown = false) {
+function ensureChargeRuntime(instance: any, ability: any) {
   if (!hasChargeSystem(ability)) return;
   const maxCharges = Math.max(0, Number(ability.maxCharges ?? 0));
   if (typeof instance.chargeCount !== "number") instance.chargeCount = maxCharges;
   if (typeof instance.chargeRegenTicksRemaining !== "number") instance.chargeRegenTicksRemaining = 0;
   if (typeof instance.chargeLockTicks !== "number") instance.chargeLockTicks = 0;
-  normalizeChargeRegenQueue(instance, ability, testShortCooldown);
+  normalizeChargeRegenQueue(instance, ability);
 }
 
-function consumeAbilityUseRuntime(instance: any, ability: any, applyBaseCooldown: boolean, testShortCooldown: boolean) {
+function consumeAbilityUseRuntime(instance: any, ability: any, applyBaseCooldown: boolean) {
   if (hasChargeSystem(ability)) {
-    ensureChargeRuntime(instance, ability, testShortCooldown);
+    ensureChargeRuntime(instance, ability);
     const maxCharges = Math.max(1, Number(ability.maxCharges ?? 1));
-    const recoveryTicks = getChargeRecoveryTicks(ability, testShortCooldown);
+    const recoveryTicks = getChargeRecoveryTicks(ability);
     const castLockTicks = Math.max(0, Number((ability as any).chargeCastLockTicks ?? 0));
 
     instance.chargeCount = Math.max(0, (instance.chargeCount ?? maxCharges) - 1);
     instance.chargeLockTicks = Math.max(instance.chargeLockTicks ?? 0, castLockTicks);
-    normalizeChargeRegenQueue(instance, ability, testShortCooldown);
+    normalizeChargeRegenQueue(instance, ability);
 
     if ((instance._chargeRegenQueueTicks?.length ?? 0) <= 0) {
       instance._chargeRegenProgress = 0;
@@ -203,7 +198,7 @@ function consumeAbilityUseRuntime(instance: any, ability: any, applyBaseCooldown
   }
 
   if (applyBaseCooldown) {
-    instance.cooldown = clampCooldownTicksForTesting(ability.cooldownTicks ?? 3, testShortCooldown);
+    instance.cooldown = clampCooldownTicksForTesting(ability.cooldownTicks ?? 3);
   }
 }
 
@@ -449,12 +444,11 @@ async function playCastAbility(
   if (!ability) {
     throw new Error("ERR_ABILITY_NOT_FOUND");
   }
-  const testShortCooldown = isTestShortCooldownEnabled(state);
   if (yumenSpectator && !isQinggongAbility(ability)) {
     throw new Error("ERR_NON_QINGGONG_LOCKED");
   }
 
-  ensureChargeRuntime(played, ability, testShortCooldown);
+  ensureChargeRuntime(played, ability);
 
   if ((ability as any).requiresStanding) {
     player.velocity = {
@@ -485,7 +479,7 @@ async function playCastAbility(
       abilityName: ability.name,
     });
 
-    consumeAbilityUseRuntime(played, ability, true, testShortCooldown);
+    consumeAbilityUseRuntime(played, ability, true);
   } else {
 
     const isFriendlyTargetAbility =
@@ -548,7 +542,7 @@ async function playCastAbility(
         forwardChannel: (ability as any).channelForward ?? true,
         lockMovement: (ability as any).channelLockMovement === true,
         effects: (ability as any).channelEffects ?? [],
-        cooldownTicks: clampCooldownTicksForTesting(ability.cooldownTicks ?? 150, testShortCooldown),
+        cooldownTicks: clampCooldownTicksForTesting(ability.cooldownTicks ?? 150),
         interruptible: (ability as any).channelNotInterruptible !== true,
       };
 
@@ -602,7 +596,7 @@ async function playCastAbility(
 
       // If a pure channel ever uses charge metadata, consume a charge at cast start.
       if (hasChargeSystem(ability)) {
-        consumeAbilityUseRuntime(played, ability, false, testShortCooldown);
+        consumeAbilityUseRuntime(played, ability, false);
       }
 
       // ── 傍花随柳 on-play trigger (channel cast counts as "出招") ─────────────
@@ -712,7 +706,7 @@ async function playCastAbility(
         );
 
       // Set runtime cooldown/charges after ability is consumed.
-      consumeAbilityUseRuntime(played, ability, true, testShortCooldown);
+      consumeAbilityUseRuntime(played, ability, true);
 
       if (upgradedBangDaGouTouCast) {
         played.cooldown = Math.max(played.cooldown ?? 0, BANG_DA_GOU_TOU_COOLDOWN_TICKS);
@@ -765,6 +759,13 @@ async function playCastAbility(
       Math.max(0, Number((player as any).globalGcdTicks ?? 0)),
       BASE_GCD_TICKS,
     );
+    for (const inst of runtimeAbilities) {
+      const instCardId = getAbilityIdFromInstance(inst);
+      const instCard = ABILITIES[instCardId];
+      if (instCard && (instCard as any).gcd === true) {
+        applyMinimumAbilityLock(inst, instCard, BASE_GCD_TICKS);
+      }
+    }
     setVisualGcd(player, "基础调息时间", "base", BASE_GCD_MS);
 
     if (isQinggongAbility(ability) && !isQinggongGcdImmune(ability)) {
