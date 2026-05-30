@@ -2743,7 +2743,7 @@ export const BASE_ABILITIES: AbilityRecord = {
       {
         buffId: 2602,
         name: "啸如虎",
-        category: "BUFF",
+        category: "DEBUFF",
         durationMs: 12_000,
         description: "气血不会降至1以下；伤害提高30%；不受控制，但仍受锁招影响",
         effects: [
@@ -4232,8 +4232,8 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "BUFF",
         applyTo: "SELF",
         durationMs: 8_000,
-        description: "免疫控制（击退/拉拽除外）",
-        effects: [{ type: "CONTROL_IMMUNE" }],
+        description: "免疫控制（击退/拉拽除外），并使受到的伤害降低15%",
+        effects: [{ type: "CONTROL_IMMUNE" }, { type: "DAMAGE_REDUCTION", value: 0.15 }],
       },
       {
         buffId: 2632,

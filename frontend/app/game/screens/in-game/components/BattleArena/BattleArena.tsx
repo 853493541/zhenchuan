@@ -7606,10 +7606,6 @@ export default function BattleArena({
       showInGameWarning('目标处于免拉状态');
       return;
     }
-    if (abilityKey === 'you_feng_piao_zong' && !selectedTargetIdNow) {
-      showInGameWarning('请先选择敌方目标');
-      return;
-    }
     if (abilityKey === 'you_feng_piao_zong' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
       showInGameWarning('目标不可选中');
       return;
@@ -9612,10 +9608,6 @@ export default function BattleArena({
       if (ab?.id === 'qin_yin_gong_ming' || instance?.abilityId === 'qin_yin_gong_ming') {
         if (targetContext.entityTarget) return '该技能只能对敌方玩家施放';
       }
-      if (abilityIdForChecks === 'you_feng_piao_zong' && !targetContext.playerTarget) {
-        return '请先选择敌方目标';
-      }
-
       if (ab?.target !== 'OPPONENT') return undefined;
 
       const distanceToTarget = (myPos && targetPos)

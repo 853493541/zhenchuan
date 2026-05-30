@@ -1354,7 +1354,18 @@ export function applyImmediateEffects(params: {
         break;
 
       case "YOU_FENG_PIAO_ZONG": {
+        const hadCleanseableControl = (source.buffs ?? []).some((buff: any) => {
+          const effects = Array.isArray(buff?.effects) ? buff.effects : [];
+          const hasRoot = effects.some((e: any) => e?.type === "ROOT");
+          const hasControl = effects.some((e: any) => e?.type === "CONTROL");
+          const hasAttackLock = effects.some((e: any) => e?.type === "ATTACK_LOCK");
+          const isMoheKnockdown = buff?.buffId === 1002 && buff?.sourceAbilityId === "mohe_wuliang";
+          const isNamedKnockdown = typeof buff?.name === "string" && buff.name.includes("倒地");
+          return hasRoot || hasControl || hasAttackLock || isMoheKnockdown || isNamedKnockdown;
+        });
+
         const capturedControls = captureAndCleanseControls(source, Date.now());
+        (source as any)._youFengNoControlRemoved = !hadCleanseableControl;
 
         const immunityBuff = getAbilityBuffDefinition(ability, YOU_FENG_IMMUNITY_BUFF_ID);
         if (immunityBuff) {

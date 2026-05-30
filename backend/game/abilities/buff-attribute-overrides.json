@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updatedAt": "2026-05-28T07:56:32.607Z",
+  "updatedAt": "2026-05-30T10:14:35.009Z",
   "buffs": {
     "1001": {
       "attribute": "毒性",
@@ -367,7 +367,7 @@
     },
     "2003": {
       "attribute": "无",
-      "description": "免疫一切控制效果，受到的范围类伤害降低20%",
+      "description": "免疫一切控制效果",
       "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
@@ -832,7 +832,7 @@
     },
     "2631": {
       "attribute": "无",
-      "description": "免疫控制(击退和被拉除外)",
+      "description": "受到伤害降低15%, 免疫控制(击退和被拉除外)",
       "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelable": true

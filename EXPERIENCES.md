@@ -48,6 +48,27 @@ Each entry goes under its relevant section header.
 **Lesson**:
 - 这两类“紫色圈圈”属于 `groundZones` 可视标记，显示时长由 `expiresAt` 决定；若只改技能描述或 buff 时长不会影响该可视圈持续时间。
 
+## 千蝶吐瑞无减伤语义与啸如虎Buff类别调整 (2026-05-30)
+
+**Implemented / checked**:
+- `啸如虎`（buffId 2602）在技能定义中的附带 Buff `category` 从 `BUFF` 调整为 `DEBUFF`，其余效果（`MIN_HP_1`、`DAMAGE_MULTIPLIER`、`CONTROL_ONLY_IMMUNE`）保持不变。
+- `千蝶吐瑞`（buffId 2003）覆盖描述中删除“受到范围类伤害降低20%”语义，改为仅“免疫一切控制效果”，避免描述层误导为带减伤。
+
+**Lesson**:
+- Buff 语义变更应同时检查“运行时效果字段”和“覆盖描述层”；即使数值层没有减伤，旧描述也会造成错误认知与验收偏差。
+
+## 游风飘踪无目标施放/充能加速/额外减伤修正 (2026-05-30)
+
+**Implemented / checked**:
+- 前端施放校验移除“游风飘踪必须选敌方目标”的硬性拦截，允许无目标施放。
+- 后端施放校验为游风飘踪增加显式“可无目标”兼容：若传入无效目标/实体目标会自动退化为无目标施放而非报错。
+- 运行时保持“有目标且成功解控则反射控制”的原行为；无目标时不反射给任何目标，但仍会给自己添加游风飘踪免控Buff。
+- 新增逻辑：若施放时未解除任何可解控效果，则使“下一次充能”恢复时间缩短15秒（450 ticks）。
+- 游风飘踪免控Buff（buffId 2631）新增15%减伤效果（`DAMAGE_REDUCTION: 0.15`），并仅更新Buff描述，不改技能描述文本。
+
+**Lesson**:
+- 对“可选目标但不依赖目标结算”的技能，前端与后端都应以“目标可选、逻辑可降级”为原则；否则容易出现前端可用性和后端结算不一致。
+
 ## Yumen duplicate shrink-start guard (2026-05-29)
 
 ## Camera dash collision-aware prediction (2026-05-29)

@@ -308,6 +308,7 @@ export function validateCastAbility(
   if (!ability) {
     throw new Error("ERR_ABILITY_NOT_FOUND");
   }
+  const isYouFengPiaoZong = ability.id === "you_feng_piao_zong";
   if (yumenSpectator && !isQinggongAbility(ability)) {
     throw new Error("ERR_NON_QINGGONG_LOCKED");
   }
@@ -316,6 +317,19 @@ export function validateCastAbility(
   const mountedYuqiToggle = yuqiMounted && ability.id === "yuqi";
   let resolvedTargetUserId = options?.targetUserId;
   let resolvedEntityTargetId = options?.entityTargetId;
+
+  if (isYouFengPiaoZong) {
+    // 游风飘踪允许无目标施放；若提供了非法目标，退化为无目标而不是报错。
+    if (resolvedEntityTargetId) {
+      resolvedEntityTargetId = undefined;
+    }
+    if (resolvedTargetUserId) {
+      const optionalTarget = state.players.find((candidate) => candidate.userId === resolvedTargetUserId);
+      if (!optionalTarget || optionalTarget.userId === player.userId || (optionalTarget.hp ?? 0) <= 0) {
+        resolvedTargetUserId = undefined;
+      }
+    }
+  }
 
   ensureChargeRuntime(instance, ability);
 

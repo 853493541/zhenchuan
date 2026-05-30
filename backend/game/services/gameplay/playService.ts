@@ -207,6 +207,20 @@ function consumeAbilityUseRuntime(instance: any, ability: any, applyBaseCooldown
   }
 }
 
+function accelerateNextChargeRecovery(instance: any, reductionTicks: number) {
+  if (!Array.isArray(instance._chargeRegenQueueTicks) || instance._chargeRegenQueueTicks.length <= 0) return;
+  const reduction = Math.max(0, Math.floor(Number(reductionTicks) || 0));
+  if (reduction <= 0) return;
+
+  const nextQueue = instance._chargeRegenQueueTicks.map((ticks: any) => Math.max(0, Math.floor(Number(ticks) || 0)));
+  nextQueue[0] = Math.max(0, nextQueue[0] - reduction);
+  instance._chargeRegenQueueTicks = nextQueue;
+  instance.chargeRegenTicksRemaining = nextQueue.length > 0 ? Math.max(0, Math.min(...nextQueue)) : 0;
+  if ((instance.chargeCount ?? 0) <= 0) {
+    instance.cooldown = Math.max(0, instance.chargeRegenTicksRemaining ?? 0);
+  }
+}
+
 const BANG_DA_GOU_TOU_ABILITY_ID = "bang_da_gou_tou";
 const BANG_DA_GOU_TOU_XINCHU_ER_BUFF_ID = 1333;
 const BANG_DA_GOU_TOU_COOLDOWN_TICKS = 16 * 30;
@@ -713,6 +727,13 @@ async function playCastAbility(
 
       // Set runtime cooldown/charges after ability is consumed.
       consumeAbilityUseRuntime(played, ability, true, testShortCooldown);
+
+      if (ability.id === "you_feng_piao_zong") {
+        if ((player as any)._youFengNoControlRemoved === true) {
+          accelerateNextChargeRecovery(played, 15 * 30);
+        }
+        delete (player as any)._youFengNoControlRemoved;
+      }
 
       if (upgradedBangDaGouTouCast) {
         played.cooldown = Math.max(played.cooldown ?? 0, BANG_DA_GOU_TOU_COOLDOWN_TICKS);
