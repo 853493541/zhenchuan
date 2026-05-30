@@ -14,6 +14,18 @@ Each entry goes under its relevant section header.
 **Lesson**:
 - For ability descriptions, treat `BASE_ABILITIES` as the canonical source-of-truth for the original text and `ability-property-overrides.json` as the mutable live layer. If a reversible history is needed, create an explicit snapshot file before further edits because the current editor save path does not preserve prior descriptions automatically.
 
+## 五项技能平衡调整（天地低昂/春泥护花/狂龙乱舞/疾/太阴指）(2026-05-30)
+
+**Implemented / checked**:
+- 将天地低昂运行时减伤从 40% 提升到 55%：同步修改描述、Buff 描述和 `DAMAGE_REDUCTION.value`（`0.4 -> 0.55`）。
+- 将春泥护花 Buff 持续时间从 15 秒提升到 20 秒（`durationMs: 15000 -> 20000`）。
+- 将狂龙乱舞地面区域伤害频率从默认 0.5 秒改为每 1 秒：在 `PLACE_GROUND_ZONE` 效果中显式设置 `zoneIntervalMs: 1000`，并同步描述文案。
+- 将疾冲刺距离改为 30 尺，并通过 `durationTicks: 24` 维持接近原冲刺速度（原为 37/30 tick，现为 30/24 tick）。
+- 将太阴指后撤距离改为 20 尺，并将调息模型改为 4 层充能：`cooldownTicks: 0`、`maxCharges: 4`、`chargeRecoveryTicks: 750`，同时更新描述文案。
+
+**Lesson**:
+- 地面区域类技能如果不显式设置 `zoneIntervalMs`，会走 `GameLoop` 默认 `500ms` 频率。涉及“每秒/每0.5秒”调优时，必须同时改效果字段和描述文本。
+
 ## Yumen duplicate shrink-start guard (2026-05-29)
 
 ## Camera dash collision-aware prediction (2026-05-29)

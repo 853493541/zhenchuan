@@ -137,7 +137,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   ji: {
     id: "ji",
     name: "疾",
-    description: "向前冲刺37格（1秒），对冲刺路径上的敌方单位造成10点伤害",
+    description: "向前冲刺30尺（保持原冲刺速度），对冲刺路径上的敌方单位造成10点伤害",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -147,9 +147,9 @@ export const BASE_ABILITIES: AbilityRecord = {
     effects: [
       {
         type: "DIRECTIONAL_DASH",
-        value: 37,
+        value: 30,
         dirMode: "TOWARD",
-        durationTicks: 30,
+        durationTicks: 24,
         routeDamage: 10,
         routeRadius: 2,
       },
@@ -1352,7 +1352,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   kuang_long_luan_wu: {
     id: "kuang_long_luan_wu",
     name: "狂龙乱舞",
-    description: "运功2秒，于前方2尺处唤起雷云，雷云半径8尺，每0.5秒造成3点伤害，持续6秒",
+    description: "运功2秒，于前方2尺处唤起雷云，雷云半径8尺，每秒造成3点伤害，持续6秒",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 300,
@@ -1365,7 +1365,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelCancelOnJump: true,
     channelForward: true,
     channelEffects: [
-      { type: "PLACE_GROUND_ZONE", value: 3, range: 8 },
+      { type: "PLACE_GROUND_ZONE", value: 3, range: 8, zoneIntervalMs: 1_000 },
     ],
   } as any,
 
@@ -1891,7 +1891,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         buffId: 2316,
         name: "春泥护花",
         category: "BUFF",
-        durationMs: 15_000,
+        durationMs: 20_000,
         initialStacks: 5,
         maxStacks: 5,
         breakOnPlay: false,
@@ -1972,15 +1972,17 @@ export const BASE_ABILITIES: AbilityRecord = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 太阴指 — instant, cleanse root/slow, dash back 30u in 0.7s, 100% dodge, GCD, 轻功
+  // 太阴指 — instant, cleanse root/slow, dash back 20u in 0.7s, 4 charges, 100% dodge, GCD, 轻功
   // ──────────────────────────────────────────────────────────────────────────
   tai_yin_zhi: {
     id: "tai_yin_zhi",
     name: "太阴指",
-    description: "轻功，瞬发，可在空中或移动中施放\n解除减速与锁足，向后冲刺30尺（0.7秒完成）\n冲刺期间获得【太阴指】：100%闪避率\n触发GCD",
+    description: "轻功，瞬发，可在空中或移动中施放\n解除减速与锁足，向后冲刺20尺（0.7秒完成）\n4层充能，每层恢复25秒\n冲刺期间获得【太阴指】：100%闪避率\n触发GCD",
     type: "SUPPORT",
     target: "SELF",
-    cooldownTicks: 300,
+    cooldownTicks: 0,
+    maxCharges: 4,
+    chargeRecoveryTicks: 750,
     gcd: true,
     qinggong: true,
     effects: [
@@ -1990,7 +1992,7 @@ export const BASE_ABILITIES: AbilityRecord = {
       },
       {
         type: "DIRECTIONAL_DASH",
-        value: 30,
+        value: 20,
         dirMode: "AWAY",
         durationTicks: 21,
       },
@@ -2264,12 +2266,12 @@ export const BASE_ABILITIES: AbilityRecord = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 天地低昂 — instant self-buff: 40% DR for 10s, castable while controlled
+  // 天地低昂 — instant self-buff: 55% DR for 10s, castable while controlled
   // ──────────────────────────────────────────────────────────────────────────
   tian_di_di_ang: {
     id: "tian_di_di_ang",
     name: "天地低昂",
-    description: "瞬发，自身减少受到的伤害40%，持续10秒\n可在眩晕/控制中施放",
+    description: "瞬发，自身减少受到的伤害55%，持续10秒\n可在眩晕/控制中施放",
     type: "SUPPORT",
     target: "SELF",
     range: 0,
@@ -2281,11 +2283,11 @@ export const BASE_ABILITIES: AbilityRecord = {
       {
         buffId: 2326,
         name: "天地低昂",
-        description: "受到的伤害减少40%",
+        description: "受到的伤害减少55%",
         category: "BUFF",
         durationMs: 10_000,
         breakOnPlay: false,
-        effects: [{ type: "DAMAGE_REDUCTION", value: 0.4 }],
+        effects: [{ type: "DAMAGE_REDUCTION", value: 0.55 }],
       },
     ],
   },

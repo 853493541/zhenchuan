@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-30T08:51:37.050Z",
+  "updatedAt": "2026-05-30T09:05:08.277Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -392,8 +392,8 @@
         "effects.0.value": 3.2968,
         "cooldownTicks": 180
       },
-      "description": "对目标造成(3.2968*攻击力)点伤害，并使其内功防御等级降低15%，持续12秒，当目标拥有“银月斩”效果时将对其额外造成伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "对目标造成(3.2968*攻击力)点伤害，并使其内功防御等级降低15%，持续12秒，当目标拥有“银月斩”效果时将对其额外造成(1.6484攻击力)点伤害。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -600,7 +600,7 @@
         "cooldownTicks": 0
       },
       "description": "向目标冲刺造成(1.4375*攻击力)外功伤害，添加锁足和“心怵”效果。若目标已拥有“心怵”效果，则添加定身并强化“心怵”效果，同时该招式的调息时间额外增加16秒。",
-      "descriptionReviewStatus": "needs-more",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
@@ -620,8 +620,8 @@
         "buffs.0.effects.0.value": 0.52,
         "cooldownTicks": 360
       },
-      "description": "使目标及其8尺周围内的最多8个目标每2秒受到？点伤害，持续16秒，同时目标2秒内无法施展招式。",
-      "descriptionReviewStatus": "needs-more",
+      "description": "使目标及其8尺周围内的最多8个目标每2秒受到(0.62攻击力)点伤害，持续16秒，同时目标2秒内无法施展招式。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -794,7 +794,7 @@
         "cooldownTicks": 300
       },
       "description": "冲向目标，对目标造成(9.5000*攻击力)点伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1573,7 +1573,7 @@
         "cooldownTicks": 0
       },
       "description": "使目标每3秒受到(0.104*攻击力)点伤害，持续18秒。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1781,7 +1781,7 @@
         "cooldownTicks": 750
       },
       "description": "成功运功会于前方位置唤起雷云，雷云每秒对半径8尺内最多5个敌方目标造成(2.8750*攻击力)点伤害，雷云持续6秒。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
@@ -2483,8 +2483,8 @@
       "numeric": {
         "cooldownTicks": 1350
       },
-      "description": "解除自身控制效果并免疫控制效果，持续3秒；使自身受到的伤害降低60%，持续6秒，并击飞自身半径6尺范围内最多5个目标造成伤害。施展过程中不受控制效果的影响(被拉除外)。同时能够击毁攻击范围内最多5个气场和可见机关。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "解除自身控制效果并免疫控制效果，持续3秒；使自身受到的伤害降低60%，持续6秒，并击飞自身半径6尺范围内最多5个目标造成(0.5攻击力)点伤害。施展过程中不受控制效果的影响(被拉除外)。同时能够击毁攻击范围内最多5个气场和可见机关。",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2561,7 +2561,7 @@
         "cooldownTicks": 300
       },
       "description": "每1秒对目标发射一枚弩箭，一共发射3支。第一枚箭造成(0.8125*攻击力)点外功伤害，第二枚箭造成(1.0500*攻击力)点外功伤害，第三枚箭造成(1.3125*攻击力)点外功伤害。每枚箭额外附带100%武器伤害。若目标离自己小于15尺，则每枚箭都击退目标4尺。该招式免疫打断，消耗一枚弩箭。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2974,7 +2974,7 @@
         "cooldownTicks": 360
       },
       "description": "将前方10尺扇形范围的最多5个目标吸引到自身前方造成(3.4187*攻击力)点伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
@@ -3054,7 +3054,7 @@
         "cooldownTicks": 240
       },
       "description": "龙吟一击，对目标造成(0.6500*攻击力)点伤害。若招式会心则立刻重置调息时间。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
