@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-28T16:37:38.247Z",
+  "updatedAt": "2026-05-30T05:17:04.331Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -31,8 +31,8 @@
       "numeric": {
         "cooldownTicks": 360
       },
-      "description": "对周围5尺5个目标造成8-8点(+[1.2708*最终阳性内功攻击])伤害并添加12秒持续伤害效果，若只命中单个目标则伤害提高100%",
-      "descriptionReviewStatus": "unfixed",
+      "description": "对周围5尺5个目标造成(1.2708*攻击力)点伤害并添加12秒持续伤害效果，若只命中单个目标则伤害提高100%",
+      "descriptionReviewStatus": "needs-more",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -52,7 +52,7 @@
         "effects.0.value": 0.5
       },
       "description": "对目标造成伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "needs-more",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -308,8 +308,8 @@
       "numeric": {
         "cooldownTicks": 450
       },
-      "description": "对目标造成20-20点(+[0.5989*最终混元内功攻击])伤害，并使其定身，受到伤害提高10%，持续1秒，若自身已经学习“商阳指”“兰摧玉折”“钟林毓秀”则会给目标添加对应持续伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "对目标造成(0.5989*攻击力)点伤害，并使其定身，受到伤害提高10%，持续1秒，若自身已经学习“商阳指”“兰摧玉折”“钟林毓秀”则会给目标添加对应持续伤害。额外造成X点",
+      "descriptionReviewStatus": "needs-more",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -328,8 +328,8 @@
       "numeric": {
         "buffs.0.effects.0.value": 0.18
       },
-      "description": "使目标每3秒受到262点伤害，可叠加2层(+[0.019*最终外功攻击]+[0.16*基础外功攻击])，持续24秒。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "使目标每3秒受到（0.179*攻击力）点伤害，可叠加2层，持续24秒。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -620,7 +620,7 @@
         "cooldownTicks": 360
       },
       "description": "使目标及其8尺周围内的最多8个目标每2秒受到？点伤害，持续16秒，同时目标2秒内无法施展招式。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "needs-more",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -658,8 +658,8 @@
       "numeric": {
         "cooldownTicks": 1200
       },
-      "description": "对周围8尺内最多5个目标造成65-71点伤害，使其下马并定身，持续4秒。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "对周围8尺内最多5个目标造成（0.01*攻击力)点伤害并定身，持续4秒。",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -696,8 +696,8 @@
       "numeric": {
         "cooldownTicks": 600
       },
-      "description": "跳跃至正前方15尺处并以重剑猛击地面，对半径6尺范围内的最多10个目标造成98-108(+[3.1625*最终外功攻击])伤害并使其晕眩3秒，对周围4尺内的目标造成额外伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "跳跃至正前方15尺处并以重剑猛击地面，对半径6尺范围内的最多10个目标造成（3.1625*攻击力)点伤害并使其晕眩3秒，对周围4尺内的目标造成额外50%伤害。",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
@@ -895,8 +895,8 @@
         "effects.0.value": 0.7187,
         "cooldownTicks": 180
       },
-      "description": "对目标及其周围4尺内总共5个敌对目标造成51-56点(+[0.7187*最终外功攻击])伤害，使目标移动速度降低65%，周围目标移动速度降低40%，持续12秒，该效果无法被解除，也无法延长减速的持续时间。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "对目标及其周围4尺内总共5个敌对目标造成(0.7187*攻击力)点伤害，使目标移动速度降低65%，周围目标移动速度降低40%，持续12秒，该效果无法被解除。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1101,8 +1101,8 @@
         "effects.0.routeDamage": 3.375,
         "cooldownTicks": 750
       },
-      "description": "向前冲刺，并对处于冲刺路径上的最多5名敌人造成570-593(+[3.3750*最终外功攻击])外功伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "向前冲刺，并对处于冲刺路径上的最多5名敌人造成（3.3750*攻击力)点外功伤害。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1122,7 +1122,7 @@
         "cooldownTicks": 900
       },
       "description": "解除所有移动限制，并且不受招式控制(击退和被拉除外)，移动速度提高100%，持续6秒。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -1525,8 +1525,8 @@
         "buffs.0.effects.0.value": 0.125,
         "cooldownTicks": 600
       },
-      "description": "使目标受到的疗伤成效降低50%，并使目标每3秒受到235点伤害(+[0.125*最终外功攻击])，持续18秒，可在移动中施展。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "使目标受到的疗伤成效降低50%，并使目标每3秒受到(0.125*攻击力)点伤害，持续18秒，可在移动中施展。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1548,7 +1548,7 @@
         "cooldownTicks": 1200
       },
       "description": "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计8次伤害。\n在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "needs-more",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2255,7 +2255,7 @@
         "cooldownTicks": 360
       },
       "description": "向敌方挥出旋转的刀气，会自动追踪附近敌对目标，并持续造成伤害，持续6秒。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "needs-more",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2422,8 +2422,8 @@
       "numeric": {
         "cooldownTicks": 600
       },
-      "description": "击倒当前目标2秒，并击退其周围6尺内最多5个其他的敌对目标，造成40-44点(+[0.1000*最终外功攻击])伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "击倒当前目标2秒，并击退其周围6尺内最多5个其他的敌对目标，造成(0.1000*攻击力)伤害。",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2729,8 +2729,8 @@
         "effects.0.value": 0.7187,
         "cooldownTicks": 600
       },
-      "description": "对目标造成56-84点(+[0.7187*最终外功攻击])伤害，使目标下马并且移动速度降低60%，持续5秒。若你攻击的目标正在运功，则使该目标5秒内无法运功。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "对目标造成(0.7187*攻击力)点伤害，使目标下马并且移动速度降低60%，持续5秒。若你攻击的目标正在运功，则使该目标5秒内无法运功。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2908,7 +2908,7 @@
         "cooldownTicks": 1350
       },
       "description": "立刻与敌对目标侠士交换位置（免疫被拉的目标除外）。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "衍天",
@@ -3262,7 +3262,7 @@
         "cooldownTicks": 360
       },
       "description": "击退自身周围6尺敌对目标，使其眩晕4秒",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "needs-more",
       "cooldownReviewStatus": "fixed"
     },
     "zhen_xia_che": {

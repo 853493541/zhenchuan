@@ -3,6 +3,17 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Ability description source audit and backup (2026-05-30)
+
+**Implemented / checked**:
+- Audited the ability description pipeline and confirmed the usual base/original text lives inline in `BASE_ABILITIES` inside `backend/game/abilities/abilities.ts`.
+- Confirmed the live edited descriptions are persisted in `backend/game/abilities/ability-property-overrides.json` and merged into runtime abilities during rebuild.
+- Confirmed there is no separate persisted backup store for original ability descriptions; the typed `originalDescription` field exists, but in the ability table it is only populated for `fenglai_wushan`.
+- Wrote a timestamped JSON backup of the current effective ability descriptions to `backend/game/abilities/backups/ability-descriptions-backup-2026-05-30T05-32-00.404Z.json`.
+
+**Lesson**:
+- For ability descriptions, treat `BASE_ABILITIES` as the canonical source-of-truth for the original text and `ability-property-overrides.json` as the mutable live layer. If a reversible history is needed, create an explicit snapshot file before further edits because the current editor save path does not preserve prior descriptions automatically.
+
 ## Yumen duplicate shrink-start guard (2026-05-29)
 
 ## Camera dash collision-aware prediction (2026-05-29)
@@ -15,6 +26,28 @@ Each entry goes under its relevant section header.
 
 **Lesson**:
 - Camera follow bugs can originate in render-target prediction rather than camera math. For short server-authoritative dashes, live browser tests should exercise the in-page state update path; request-context API calls can bypass frontend diff application and create false missed observations.
+
+## Camera ground-clamp sky-look split (2026-05-30)
+
+**Implemented / checked**:
+- Extended collision-test camera pitch to near straight-up and split ground-clamp handling by movement intent.
+- Stationary upward dragging now keeps a safe boom distance and aims into the sky instead of collapsing the camera into the avatar.
+- Forward walking keeps the staged old behavior: the camera can close in at the ground clamp first, then aim upward once close enough.
+- Added live Playwright probe coverage for 10 stationary expected-behavior passes across house / 城墙 / mountain labels, plus forward-walking checks for all three categories.
+
+**Lesson**:
+- Camera tests must drag far enough to reach the actual pitch clamp; partial upward drags can produce misleading halfway samples. For live WebGL checks, use a camera-specific probe and poll for a fresh frame after synthetic input instead of relying on a single immediate read.
+
+## Camera smooth sky-look blend and W preserve (2026-05-30)
+
+**Implemented / checked**:
+- Replaced the fixed ground-clamp sky target with a pitch-derived look direction so dragging farther upward maps continuously to a higher viewing angle.
+- Blended from the normal avatar look target into the pitch-derived sky target with a continuous look-up ratio, removing the mode-switch feel when entering or leaving sky view.
+- Preserved the sky-facing pitch when pressing or releasing forward movement from sky view; forward movement changes camera position but does not force the angle back toward the avatar.
+- Added probe fields and deterministic live Playwright sampling for smooth up/down transitions and W-preserve behavior across repeated house / 城墙 / mountain-labeled cases.
+
+**Lesson**:
+- Camera feel should avoid binary target swaps around collision clamps. Live WebGL proof is more reliable when synthetic mouse movement is backed by deterministic pitch stepping, explicit endpoint samples, and aggregate smoothness checks because headless rendering can drop individual frames.
 
 ## Yumen mountain spawn anti-stuck lift (2026-05-29)
 

@@ -3172,7 +3172,7 @@ function formatIconBarDistance(from: Position | undefined, to: Position | undefi
 const CAM_DIR = { x: 0, y: 1 };
 const DEFAULT_PITCH = Math.atan2(10, 20);
 const DEFAULT_MIN_CAMERA_PITCH = 0.08;
-const COLLISION_TEST_MIN_CAMERA_PITCH = -1.05;
+const COLLISION_TEST_MIN_CAMERA_PITCH = -Math.PI * 0.49;
 const MAX_CAMERA_PITCH = Math.PI * 0.47;
 
 function clampCameraPitch(pitch: number, mode?: string): number {
@@ -4228,7 +4228,10 @@ type CameraDebugEntry = {
   wallClamp: boolean;
   probeClamp: boolean;
   groundClamp: boolean;
+  skyLook: boolean;
   recenter: boolean;
+  forwardMove: boolean;
+  lookUpRatio: number;
   wallDebug?: {
     hitCount: number;
     sampleCount: number;
@@ -6455,6 +6458,8 @@ export default function BattleArena({
       entry.wallClamp ? 'wall' : null,
       entry.probeClamp ? 'probe' : null,
       entry.groundClamp ? 'ground' : null,
+      entry.skyLook ? 'sky' : null,
+      entry.forwardMove ? 'forward' : null,
       entry.recenter ? 'recenter' : null,
     ].filter(Boolean).join('/');
     const wallLine = entry.wallDebug
@@ -6479,7 +6484,7 @@ export default function BattleArena({
         `look(${entry.lookTarget.x.toFixed(2)}, ${entry.lookTarget.y.toFixed(2)}, ${entry.lookTarget.z.toFixed(2)}) ` +
         `pivot(${entry.pivot.x.toFixed(2)}, ${entry.pivot.y.toFixed(2)}, ${entry.pivot.z.toFixed(2)})`,
       `yaw=${entry.yaw.toFixed(2)} pitch=${entry.pitch.toFixed(2)} zoom=${entry.zoom.toFixed(2)} ` +
-        `dist=${entry.actualDistance.toFixed(2)}/${entry.desiredDistance.toFixed(2)}${flags ? ` flags=${flags}` : ''}`,
+        `dist=${entry.actualDistance.toFixed(2)}/${entry.desiredDistance.toFixed(2)} lookUp=${entry.lookUpRatio.toFixed(2)}${flags ? ` flags=${flags}` : ''}`,
       wallLine,
       probeLine,
     ].filter(Boolean).join('\n');
@@ -6930,6 +6935,7 @@ export default function BattleArena({
   const camPitchRef    = useRef(DEFAULT_PITCH); // camera pitch angle (radians)
   const camZoomRef     = useRef(cameraZoomLevel);           // zoom multiplier (scroll wheel)
   const cameraMoveCommandActiveRef = useRef(false);
+  const cameraForwardMoveCommandActiveRef = useRef(false);
   const cameraLookInputVersionRef = useRef(0);
   const manualCameraLookActiveRef = useRef(false);
   const mouseLookFacingSyncRafRef = useRef<number | null>(null);
@@ -7213,29 +7219,53 @@ export default function BattleArena({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    if (!params.has('playwrightCameraDashProbe')) return;
+    const enableDashProbe = params.has('playwrightCameraDashProbe');
+    const enableSkyProbe = params.has('playwrightCameraSkyProbe');
+    if (!enableDashProbe && !enableSkyProbe) return;
     const target = window as any;
-    target.__zhenchuanCastAbilityForProbe = (
-      abilityInstanceId: string,
-      options?: {
-        targetUserId?: string;
-        groundTarget?: { x: number; y: number; z?: number };
-        entityTargetId?: string;
-        movementIntent?: boolean;
-      },
-    ) => onCastAbility(
-      abilityInstanceId,
-      options?.targetUserId,
-      options?.groundTarget,
-      options?.entityTargetId,
-      options?.movementIntent ?? false,
-    );
-    target.__zhenchuanRefreshGameForProbe = () => Promise.resolve(onMovementRecover?.());
+    if (enableDashProbe) {
+      target.__zhenchuanCastAbilityForProbe = (
+        abilityInstanceId: string,
+        options?: {
+          targetUserId?: string;
+          groundTarget?: { x: number; y: number; z?: number };
+          entityTargetId?: string;
+          movementIntent?: boolean;
+        },
+      ) => onCastAbility(
+        abilityInstanceId,
+        options?.targetUserId,
+        options?.groundTarget,
+        options?.entityTargetId,
+        options?.movementIntent ?? false,
+      );
+      target.__zhenchuanRefreshGameForProbe = () => Promise.resolve(onMovementRecover?.());
+    }
+    if (enableSkyProbe) {
+      target.__zhenchuanCameraSkyProbe = { samples: [], last: null };
+    }
+    target.__zhenchuanSetCameraForProbe = (next: { yaw?: number; pitch?: number; zoom?: number }) => {
+      if (Number.isFinite(next?.yaw)) camYawRef.current = Number(next.yaw);
+      if (Number.isFinite(next?.pitch)) camPitchRef.current = clampCameraPitch(Number(next.pitch), mode);
+      if (Number.isFinite(next?.zoom)) camZoomRef.current = Math.max(0.25, Math.min(2.5, Number(next.zoom)));
+      cameraLookInputVersionRef.current += 1;
+      return { yaw: camYawRef.current, pitch: camPitchRef.current, zoom: camZoomRef.current };
+    };
+    target.__zhenchuanSetForwardForProbe = (active: boolean) => {
+      const forwardActive = active === true;
+      keysRef.current.w = forwardActive;
+      setWasdKeys(prev => ({ ...prev, w: forwardActive }));
+      if (!forwardActive) cameraForwardMoveCommandActiveRef.current = false;
+      return { keys: { ...keysRef.current }, forward: cameraForwardMoveCommandActiveRef.current };
+    };
     return () => {
       if (target.__zhenchuanCastAbilityForProbe) delete target.__zhenchuanCastAbilityForProbe;
       if (target.__zhenchuanRefreshGameForProbe) delete target.__zhenchuanRefreshGameForProbe;
+      if (target.__zhenchuanSetCameraForProbe) delete target.__zhenchuanSetCameraForProbe;
+      if (target.__zhenchuanSetForwardForProbe) delete target.__zhenchuanSetForwardForProbe;
+      if (target.__zhenchuanCameraSkyProbe) delete target.__zhenchuanCameraSkyProbe;
     };
-  }, [onCastAbility, onMovementRecover]);
+  }, [mode, onCastAbility, onMovementRecover]);
 
   const getHotkeyDraftSlots = useCallback(() => {
     const heldItemIds = new Set(itemBarAbilitiesRef.current.filter(Boolean).map((ability) => ability!.id));
@@ -11357,20 +11387,24 @@ export default function BattleArena({
       const pos = localPositionRef.current;
       if (!pos) {
         cameraMoveCommandActiveRef.current = false;
+        cameraForwardMoveCommandActiveRef.current = false;
         return;
       }
       if (isExportedMap && !collisionReadyRef.current) {
         cameraMoveCommandActiveRef.current = false;
+        cameraForwardMoveCommandActiveRef.current = false;
         localVelocityRef.current = { x: 0, y: 0 };
         localVzRef.current = 0;
         return;
       }
+      cameraForwardMoveCommandActiveRef.current = false;
       const effectiveMaxSpeed = MAX_SPEED * moveSpeedScaleRef.current;
       const effectiveMaxJumps = getEffectiveMaxJumps();
 
       // During server-authoritative dash: skip movement + gravity, but KEEP camera/turning
       if (meActiveDashRef.current) {
         cameraMoveCommandActiveRef.current = false;
+        cameraForwardMoveCommandActiveRef.current = false;
         localVelocityRef.current.x = 0;
         localVelocityRef.current.y = 0;
         jumpLocalRef.current = false;
@@ -11536,6 +11570,11 @@ export default function BattleArena({
         );
         const moveDirection = movementLocked ? null : moveIntent.direction;
         cameraMoveCommandActiveRef.current = !!moveDirection;
+        cameraForwardMoveCommandActiveRef.current = !!moveDirection && !moveIntent.backpedalOnly && (
+          mouseLook
+            ? ((k.w && !k.s) || bothMouse || (k.a && k.d && !k.s))
+            : (k.w && !k.s)
+        );
         moveIntentDx = moveDirection?.dx ?? 0;
         moveIntentDy = moveDirection?.dy ?? 0;
         moveIntentBackpedalOnly = !!moveDirection && moveIntent.backpedalOnly;
@@ -11586,6 +11625,10 @@ export default function BattleArena({
         if (k.d) ix += 1;
         const moveDir = movementLocked ? null : normalizePlanar(ix, iy);
         cameraMoveCommandActiveRef.current = !!moveDir || (!movementLocked && !!joystickDirRef.current);
+        cameraForwardMoveCommandActiveRef.current = !movementLocked && (
+          (!!moveDir && k.w && !k.s) ||
+          (Math.hypot(joystickDirRef.current?.dx ?? 0, joystickDirRef.current?.dy ?? 0) > 0.01 && (joystickDirRef.current?.dy ?? 0) > 0.01)
+        );
         moveIntentDx = moveDir?.x ?? 0;
         moveIntentDy = moveDir?.y ?? 0;
         if (jumpAirborne) {
@@ -15874,6 +15917,7 @@ export default function BattleArena({
             camPitchRef={camPitchRef}
             camZoomRef={camZoomRef}
             cameraMoveCommandActiveRef={cameraMoveCommandActiveRef}
+            cameraForwardMoveCommandActiveRef={cameraForwardMoveCommandActiveRef}
             cameraLookInputVersionRef={cameraLookInputVersionRef}
             manualCameraLookActiveRef={manualCameraLookActiveRef}
             meFacingRef={localFacingRef as React.MutableRefObject<{ x: number; y: number }>}
@@ -16036,6 +16080,7 @@ export default function BattleArena({
             camPitchRef={camPitchRef}
             camZoomRef={camZoomRef}
             cameraMoveCommandActiveRef={cameraMoveCommandActiveRef}
+            cameraForwardMoveCommandActiveRef={cameraForwardMoveCommandActiveRef}
             cameraLookInputVersionRef={cameraLookInputVersionRef}
             manualCameraLookActiveRef={manualCameraLookActiveRef}
             meFacingRef={localFacingRef as React.MutableRefObject<{ x: number; y: number }>}

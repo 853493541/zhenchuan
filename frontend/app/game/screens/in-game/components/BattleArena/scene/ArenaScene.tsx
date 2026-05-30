@@ -175,6 +175,7 @@ interface ArenaSceneProps {
   camPitchRef: MutableRefObject<number>;
   camZoomRef: MutableRefObject<number>;
   cameraMoveCommandActiveRef?: MutableRefObject<boolean>;
+  cameraForwardMoveCommandActiveRef?: MutableRefObject<boolean>;
   cameraLookInputVersionRef?: MutableRefObject<number>;
   manualCameraLookActiveRef?: MutableRefObject<boolean>;
   onCameraDebugEvent?: (entry: {
@@ -191,7 +192,10 @@ interface ArenaSceneProps {
     wallClamp: boolean;
     probeClamp: boolean;
     groundClamp: boolean;
+    skyLook: boolean;
     recenter: boolean;
+    forwardMove: boolean;
+    lookUpRatio: number;
     wallDebug?: {
       hitCount: number;
       sampleCount: number;
@@ -845,6 +849,7 @@ export default function ArenaScene({
   camPitchRef,
   camZoomRef,
   cameraMoveCommandActiveRef,
+  cameraForwardMoveCommandActiveRef,
   cameraLookInputVersionRef,
   manualCameraLookActiveRef,
   onCameraDebugEvent,
@@ -1007,6 +1012,7 @@ export default function ArenaScene({
         camPitchRef={camPitchRef}
         camZoomRef={camZoomRef}
         moveCommandActiveRef={cameraMoveCommandActiveRef}
+        forwardMoveActiveRef={cameraForwardMoveCommandActiveRef}
         cameraLookInputVersionRef={cameraLookInputVersionRef}
         manualCameraLookActiveRef={manualCameraLookActiveRef}
         onCameraDebugEvent={onCameraDebugEvent}
