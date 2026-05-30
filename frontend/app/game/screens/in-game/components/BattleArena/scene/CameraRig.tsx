@@ -70,15 +70,15 @@ const CAMERA_SCREEN_CENTER_HEIGHT = 0.78;
 const LOOK_UP_OVERFLOW_RANGE = 4;
 const CAMERA_GROUND_SKY_HOLD_MIN_DISTANCE = 4.5;
 const CAMERA_GROUND_SKY_LOOK_DISTANCE = 120;
-const CAMERA_WALL_PADDING = 0.45;
+const CAMERA_WALL_PADDING = 0.82;
 const CAMERA_MIN_DISTANCE = 0.08;
 const CAMERA_GROUND_CLEARANCE = 0.12;
 const CAMERA_GROUND_PROBE_RISE = 0.8;
 const AVATAR_HIDDEN_NEAR_DISTANCE = 1.5;
 const LOOK_UP_LOWERING_SCALE = 0.35;
-const CAMERA_PROBE_SIDE = 0.55;
-const CAMERA_PROBE_UP = 0.36;
-const CAMERA_PROBE_DOWN = 0.24;
+const CAMERA_PROBE_SIDE = 0.92;
+const CAMERA_PROBE_UP = 0.56;
+const CAMERA_PROBE_DOWN = 0.44;
 const CAMERA_STATE_EPSILON = 0.05;
 const CAMERA_DISTANCE_SETTLE_EPSILON = 0.035;
 const CAMERA_COLLISION_DIRECTION_EPSILON = 0.04;
@@ -93,9 +93,9 @@ const CAMERA_WALL_DISTANCE_GROW_SPEED = 0.6;
 const CAMERA_WALL_DISTANCE_EXPAND_HOLD_MS = 520;
 const CAMERA_WALL_DISTANCE_EXPAND_MIN_DELTA = 0.55;
 const CAMERA_WALL_DISTANCE_EXPAND_TARGET_EPSILON = 0.3;
-const CAMERA_WALL_SUPPORT_SIDE = 0.78;
-const CAMERA_WALL_SUPPORT_UP = 0.56;
-const CAMERA_WALL_SUPPORT_DOWN = 0.42;
+const CAMERA_WALL_SUPPORT_SIDE = 0.95;
+const CAMERA_WALL_SUPPORT_UP = 0.64;
+const CAMERA_WALL_SUPPORT_DOWN = 0.5;
 const CAMERA_ACTIVE_LOOK_SAMPLE_WINDOW_MS = 120;
 const CAMERA_WALL_MIN_RELIABLE_HITS = 5;
 const CAMERA_WALL_RELIABLE_HIT_INDEX = 4;
@@ -110,13 +110,16 @@ const CAMERA_PROBE_CLAMP_EXIT_HOLD_MS = 160;
 const CAMERA_GROUND_CLAMP_ENTER_RATIO = 0.08;
 const CAMERA_GROUND_CLAMP_EXIT_RATIO = 0.035;
 const CAMERA_GROUND_CLAMP_MAX_ABOVE_PLAYER = 1.2;
-const CAMERA_PROBE_MIN_RELIABLE_HITS = 2;
-const CAMERA_PROBE_RELIABLE_HIT_INDEX = 1;
-const CAMERA_PROBE_ACTIVE_LOOK_MIN_RELIABLE_HITS = 2;
-const CAMERA_PROBE_ACTIVE_LOOK_RELIABLE_HIT_INDEX = 1;
-const CAMERA_PROBE_MIN_REDUCTION = 0.28;
+const CAMERA_PROBE_MIN_RELIABLE_HITS = 1;
+const CAMERA_PROBE_RELIABLE_HIT_INDEX = 0;
+const CAMERA_PROBE_ACTIVE_LOOK_MIN_RELIABLE_HITS = 1;
+const CAMERA_PROBE_ACTIVE_LOOK_RELIABLE_HIT_INDEX = 0;
+const CAMERA_PROBE_MIN_REDUCTION = 0.16;
 const CAMERA_PROBE_DISTANCE_SHRINK_SPEED = 6;
 const CAMERA_PROBE_DISTANCE_GROW_SPEED = 2.5;
+const CAMERA_GROUND_BODY_SIDE = 0.72;
+const CAMERA_GROUND_BODY_DOWN = 0.48;
+const CAMERA_GROUND_BODY_SAMPLE_MARGIN = 1.2;
 const CAMERA_CLOSE_CAMERA_ENTER_DISTANCE = 1.44;
 const CAMERA_CLOSE_CAMERA_EXIT_DISTANCE = 1.62;
 const CAMERA_SNAP_LOG_DISTANCE = 0.9;
@@ -143,6 +146,7 @@ const CAMERA_WALL_SUPPORT_ACTIVE_LOOK_SAMPLES = [
 ] as const;
 
 const CAMERA_PROBE_SAMPLES = [
+  { label: 'C', x: 0, y: 0 },
   { label: 'R', x: 1, y: 0 },
   { label: 'L', x: -1, y: 0 },
   { label: 'U', x: 0, y: 1 },
@@ -154,10 +158,18 @@ const CAMERA_PROBE_SAMPLES = [
 ] as const;
 
 const CAMERA_PROBE_ACTIVE_LOOK_SAMPLES = [
+  { label: 'C', x: 0, y: 0 },
   { label: 'R', x: 1, y: 0 },
   { label: 'L', x: -1, y: 0 },
   { label: 'U', x: 0, y: 1 },
   { label: 'D', x: 0, y: -1 },
+] as const;
+
+const CAMERA_GROUND_SUPPORT_SAMPLES = [
+  { label: 'C', x: 0, y: 0 },
+  { label: 'D', x: 0, y: -1 },
+  { label: 'DL', x: -1, y: -1 },
+  { label: 'DR', x: 1, y: -1 },
 ] as const;
 
 const _pivot = new THREE.Vector3();
@@ -177,6 +189,7 @@ const _cameraRightExport = new THREE.Vector3();
 const _cameraUpExport = new THREE.Vector3();
 const _probeTargetExport = new THREE.Vector3();
 const _probeDirExport = new THREE.Vector3();
+const _groundSampleScene = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
 const _targetCamera = new THREE.Vector3();
 const _targetCameraDir = new THREE.Vector3();
@@ -297,6 +310,9 @@ export default function CameraRig({
     let probeMaxDistanceScene: number | null = null;
     let groundClampThisFrame = false;
     let groundSkyLookWanted = false;
+    let groundSupportHitCount = 0;
+    let groundSupportHitMask = '';
+    let groundRequiredCameraYScene: number | null = null;
 
     _pivot.set(px, py + CAMERA_PIVOT_HEIGHT, pz);
     _desiredCamera.set(
@@ -546,12 +562,48 @@ export default function CameraRig({
       }
 
       sceneToExport(_desiredCamera, _desiredCameraExport);
-      const groundY = collisionSystemRef.current.getSupportGroundY(
+      const centerGroundY = collisionSystemRef.current.getSupportGroundY(
         _desiredCameraExport,
         _desiredCameraExport.y + CAMERA_GROUND_PROBE_RISE / RENDER_SF_Y,
       );
-      if (groundY !== null) {
-        const minCameraY = groundY * RENDER_SF_Y + GROUP_POS_Y + CAMERA_GROUND_CLEARANCE;
+      if (centerGroundY !== null) {
+        const centerRequiredCameraY = centerGroundY * RENDER_SF_Y + GROUP_POS_Y + CAMERA_GROUND_CLEARANCE;
+        groundRequiredCameraYScene = centerRequiredCameraY;
+        groundSupportHitCount += 1;
+        groundSupportHitMask = 'C';
+
+        const shouldSampleGroundBody =
+          pitch < 0 ||
+          _desiredCamera.y <= centerRequiredCameraY + CAMERA_GROUND_BODY_DOWN + CAMERA_GROUND_BODY_SAMPLE_MARGIN;
+
+        if (shouldSampleGroundBody) {
+          for (const sample of CAMERA_GROUND_SUPPORT_SAMPLES) {
+            if (sample.label === 'C') continue;
+
+            const offsetX = sample.x * CAMERA_GROUND_BODY_SIDE;
+            const offsetY = sample.y * CAMERA_GROUND_BODY_DOWN;
+            _probeTargetExport.copy(_desiredCameraExport)
+              .addScaledVector(_cameraRightExport, offsetX / RENDER_SF_XZ)
+              .addScaledVector(_cameraUpExport, offsetY / RENDER_SF_Y);
+            exportToScene(_probeTargetExport, _groundSampleScene);
+
+            const groundY = collisionSystemRef.current.getSupportGroundY(
+              _probeTargetExport,
+              _probeTargetExport.y + CAMERA_GROUND_PROBE_RISE / RENDER_SF_Y,
+            );
+            if (groundY === null) continue;
+
+            const sampleOffsetY = _groundSampleScene.y - _desiredCamera.y;
+            const requiredCameraY = groundY * RENDER_SF_Y + GROUP_POS_Y + CAMERA_GROUND_CLEARANCE - sampleOffsetY;
+            groundRequiredCameraYScene = Math.max(groundRequiredCameraYScene, requiredCameraY);
+            groundSupportHitCount += 1;
+            groundSupportHitMask = `${groundSupportHitMask},${sample.label}`;
+          }
+        }
+      }
+
+      if (groundRequiredCameraYScene !== null) {
+        const minCameraY = groundRequiredCameraYScene;
         const roofLikeGroundWhileBlocked =
           (targetWallClampActive || probeClampActive) &&
           minCameraY > py + CAMERA_GROUND_CLAMP_MAX_ABOVE_PLAYER;
@@ -699,6 +751,9 @@ export default function CameraRig({
     }
 
     camera.position.copy(_pivot).addScaledVector(_targetCameraDir, smoothedCameraDistanceRef.current);
+    if (groundClampThisFrame && groundRequiredCameraYScene !== null && camera.position.y < groundRequiredCameraYScene) {
+      camera.position.y = groundRequiredCameraYScene;
+    }
 
     const visibleLookUpRatio = collisionBlendActiveRef.current ? smoothedLookUpRatioRef.current : lookUpRatio;
     const actualDistanceScene = camera.position.distanceTo(_pivot);
@@ -838,6 +893,16 @@ export default function CameraRig({
     const pitchLookHorizontal = Math.max(0, Math.cos(pitch));
     const pitchLookVertical = pitch < 0 ? -Math.sin(pitch) * LOOK_UP_LOWERING_SCALE : -Math.sin(pitch);
     const pitchLookDistance = Math.max(1e-4, Math.hypot(pitchLookHorizontal, pitchLookVertical));
+    const wallBodyLimitScene = Math.min(
+      targetWallClampActive ? centerClampDistanceScene : Number.POSITIVE_INFINITY,
+      retainedProbeDistanceSceneRef.current ?? rawReliableProbeDistanceScene ?? Number.POSITIVE_INFINITY,
+    );
+    const wallBodyClearanceScene = Number.isFinite(wallBodyLimitScene)
+      ? wallBodyLimitScene - actualDistanceScene
+      : null;
+    const groundClearanceScene = groundRequiredCameraYScene === null
+      ? null
+      : camera.position.y - groundRequiredCameraYScene;
     if (typeof window !== 'undefined') {
       const target = window as any;
       const probe = target.__zhenchuanCameraSkyProbe;
@@ -857,6 +922,22 @@ export default function CameraRig({
           wallClamp: wallClampActive,
           probeClamp: probeClampActive,
           groundClamp: groundClampActive,
+          wallHitCount,
+          wallHitMask,
+          wallMinDistance: wallMinDistanceScene,
+          wallMaxDistance: wallMaxDistanceScene,
+          rawWallDistance: rawWallClampDistanceScene,
+          retainedWallDistance: centerClampDistanceScene < desiredDistanceScene - CAMERA_STATE_EPSILON ? centerClampDistanceScene : null,
+          probeHitCount,
+          probeHitMask,
+          probeMinDistance: probeMinDistanceScene,
+          probeMaxDistance: probeMaxDistanceScene,
+          rawProbeDistance: rawReliableProbeDistanceScene,
+          retainedProbeDistance: retainedProbeDistanceSceneRef.current,
+          wallBodyClearance: wallBodyClearanceScene,
+          groundSupportHitCount,
+          groundSupportHitMask,
+          groundClearance: groundClearanceScene,
           skyLook: skyLookActive,
           forwardMove: forwardMoveActive,
           manualLook: manualLookActive,

@@ -3,6 +3,17 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Camera wall body collision and ground body clamp (2026-05-30)
+
+**Implemented / checked**:
+- Broadened the BattleArena camera wall probes so wall collision treats the camera like a small body/viewport volume instead of a single center ray.
+- Added lower-body ground support sampling for upward/low camera angles, then gated those extra ground samples to avoid heavy every-frame BVH work.
+- Added live camera probe diagnostics and a Playwright regression that verifies wall body clearance and ground clearance against the live HTTPS site.
+- Verified the same wall-edge case five independent times with Playwright repeat mode; all five runs passed with positive wall body clearance and zero ground penetration.
+
+**Lesson**:
+- Camera wall clipping is an edge/body problem, not only a center-ray problem. Live proof cases must face real wall geometry, and repeated live WebGL checks are more reliable as independent browser runs than as many resets inside one long-lived tab.
+
 ## Ability description source audit and backup (2026-05-30)
 
 **Implemented / checked**:
