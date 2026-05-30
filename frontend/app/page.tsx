@@ -19,6 +19,12 @@ const LEGACY_MODES: Array<{ value: StartMode; label: string }> = [
   { value: 'export-viewer', label: getGameModeLabel('export-viewer') },
 ];
 
+const START_MODE_STORAGE_KEY = "zhenchuan.home.selectedStartMode";
+const VALID_START_MODES = new Set<StartMode>([
+  ...PRIMARY_MODES.map((option) => option.value),
+  ...LEGACY_MODES.map((option) => option.value),
+]);
+
 const startModeLabel = (mode: StartMode) => getGameModeLabel(mode);
 
 function getLobbyMaxPlayers(mode: unknown) {
@@ -95,6 +101,26 @@ export default function HomePage() {
   // without adding `me` to the effect dependency (which caused re-mount loops)
   const meRef = useRef<any>(null);
   useEffect(() => { meRef.current = me; }, [me]);
+
+  useEffect(() => {
+    try {
+      const savedMode = window.localStorage.getItem(START_MODE_STORAGE_KEY);
+      if (savedMode && VALID_START_MODES.has(savedMode as StartMode)) {
+        setSelectedStartMode(savedMode as StartMode);
+      }
+    } catch {
+      // Ignore storage read errors and keep default mode.
+    }
+  }, []);
+
+  const selectStartMode = (mode: StartMode) => {
+    setSelectedStartMode(mode);
+    try {
+      window.localStorage.setItem(START_MODE_STORAGE_KEY, mode);
+    } catch {
+      // Ignore storage write errors and keep in-memory selection.
+    }
+  };
 
   /* =========================================================
      Utils：时间显示（仅显示"多少分钟前 / 刚刚"）
@@ -226,7 +252,7 @@ export default function HomePage() {
             open={openModeMenu === 'primary'}
             onToggle={() => setOpenModeMenu((current) => current === 'primary' ? null : 'primary')}
             onSelect={(mode) => {
-              setSelectedStartMode(mode);
+              selectStartMode(mode);
               setOpenModeMenu(null);
             }}
             ariaLabel="选择模式"
@@ -238,7 +264,7 @@ export default function HomePage() {
             open={openModeMenu === 'legacy'}
             onToggle={() => setOpenModeMenu((current) => current === 'legacy' ? null : 'legacy')}
             onSelect={(mode) => {
-              setSelectedStartMode(mode);
+              selectStartMode(mode);
               setOpenModeMenu(null);
             }}
             ariaLabel="legacy modes"

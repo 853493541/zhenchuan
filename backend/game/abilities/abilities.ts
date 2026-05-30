@@ -3270,6 +3270,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: false,
     qinggong: true,
+    hasteUnaffected: true,
     effects: [{ type: "LING_RAN_TIAN_FENG_CAST", value: 9, durationTicks: 15 } as any],
     buffs: [
       {

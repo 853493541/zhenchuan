@@ -1,10 +1,11 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-30T10:34:55.941Z",
+  "updatedAt": "2026-05-30T11:25:55.686Z",
   "abilities": {
     "baizu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 3.8541,
@@ -22,11 +23,13 @@
         "damageType": "内功"
       },
       "isProjectile": false,
-      "dunLiWhitelisted": false
+      "dunLiWhitelisted": false,
+      "noWeaponRequired": false
     },
     "heng_sao_liu_he": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 360
@@ -46,7 +49,8 @@
     },
     "menghu_xiasha": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 0.5
@@ -66,7 +70,8 @@
     },
     "jianpo_xukong": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 7.98,
@@ -88,7 +93,8 @@
     },
     "jieyang": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 6.26,
@@ -110,7 +116,8 @@
     },
     "jing_shi_po_mo_ji": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.1.value": 1.1197,
@@ -133,14 +140,15 @@
     },
     "ting_lei": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 1.7312,
         "cooldownTicks": 90
       },
       "description": "对目标造成(1.7312*攻击力)点伤害，每施展一次则使该招式伤害提高10%，最多提高30%，该效果脱离战斗后消失。",
-      "descriptionReviewStatus": "needs-more",
+      "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -154,7 +162,8 @@
     },
     "anchen_misan": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -172,7 +181,8 @@
     },
     "fengxiu_diang": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1500
@@ -190,6 +200,9 @@
       "noWeaponRequired": false
     },
     "fuyao_zhishang": {
+      "properties": {
+        "canCastWhileMounted": false
+      },
       "numeric": {
         "cooldownTicks": 900
       },
@@ -207,7 +220,8 @@
     },
     "fuguang_lueying": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1200
@@ -226,7 +240,8 @@
     },
     "guchong_xianji": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1200
@@ -247,7 +262,8 @@
     "xiao_zui_kuang": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": true
+        "hasteUnaffected": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 5400
@@ -266,7 +282,8 @@
     },
     "nuwa_butian": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -285,7 +302,8 @@
     },
     "sanliu_xia": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -304,7 +322,8 @@
     },
     "fu_rong_bing_di": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 450
@@ -324,7 +343,8 @@
     },
     "hua_xue_biao": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "buffs.0.effects.0.value": 0.18
@@ -344,7 +364,8 @@
     },
     "jian_zhuan_liu_yun": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 0
@@ -364,7 +385,8 @@
     },
     "kong_que_ling": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 3.2375,
@@ -386,7 +408,8 @@
     },
     "lie_ri_zhan": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 3.2968,
@@ -407,7 +430,8 @@
     },
     "sanhuan_taoyue": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 4.1,
@@ -428,7 +452,8 @@
     },
     "shang_yang_zhi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "buffs.0.effects.0.value": 0.074,
@@ -449,7 +474,8 @@
     },
     "she_ying": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "buffs.0.effects.0.value": 0.086,
@@ -470,7 +496,8 @@
     },
     "tiandi_wuji": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 3.6,
@@ -491,7 +518,8 @@
     },
     "weituo_xianchu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 4.4947,
@@ -512,7 +540,8 @@
     },
     "wu_wo_wu_jian": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 6.8875,
@@ -533,7 +562,8 @@
     },
     "yin_yue_zhan": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 180
@@ -553,7 +583,8 @@
     },
     "yu_shi_ju_fen": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 0.5989,
@@ -574,7 +605,8 @@
     },
     "yue_chao_zhan_bo": {
       "properties": {
-        "qinggongGcdImmune": true
+        "qinggongGcdImmune": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 540
@@ -594,7 +626,8 @@
     },
     "bang_da_gou_tou": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 0
@@ -613,7 +646,8 @@
     },
     "chan_xiao": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 3.14,
@@ -635,7 +669,8 @@
     },
     "da_shizi_hou": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 600
@@ -654,7 +689,8 @@
     },
     "dican_longxiang": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1200
@@ -673,7 +709,8 @@
     },
     "han_di": {
       "properties": {
-        "qinggongGcdImmune": true
+        "qinggongGcdImmune": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 600
@@ -692,7 +729,8 @@
     },
     "he_gui_gu_shan": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 600
@@ -711,7 +749,8 @@
     },
     "jiang_chun_zhu_xiu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1290
@@ -730,7 +769,8 @@
     },
     "jiu_zhuan_gui_yi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 450
@@ -749,7 +789,8 @@
     },
     "lei_ting_zhen_nu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -768,7 +809,8 @@
     },
     "leizhenzi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 600
@@ -787,7 +829,8 @@
     },
     "zhenshen_xingsi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 9.5,
@@ -808,7 +851,8 @@
     },
     "mohe_wuliang": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 4.4947,
@@ -829,7 +873,8 @@
     },
     "san_cai_hua_sheng": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 600
@@ -848,7 +893,8 @@
     },
     "shengsi_jie": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 0.2604,
@@ -869,7 +915,8 @@
     },
     "xuanshui_gu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 0.5,
@@ -890,7 +937,8 @@
     },
     "chuan": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 0.7187,
@@ -911,7 +959,8 @@
     },
     "wan_jian_gui_zong": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 300
@@ -930,7 +979,8 @@
     },
     "wufang_xingjin": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 450
@@ -949,7 +999,8 @@
     },
     "wuyun_jiekong": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 600
@@ -969,7 +1020,8 @@
     },
     "chun_ni_hu_hua": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1500
@@ -988,7 +1040,8 @@
     },
     "dienong_zu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1650
@@ -1007,7 +1060,8 @@
     },
     "duangu_jue": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1350
@@ -1026,7 +1080,8 @@
     },
     "duoming_gu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 750
@@ -1045,7 +1100,8 @@
     },
     "gu_feng_sa_ta": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -1063,6 +1119,9 @@
       "noWeaponRequired": false
     },
     "houyao": {
+      "properties": {
+        "canCastWhileMounted": false
+      },
       "description": "向后方快速撤退。",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -1077,7 +1136,8 @@
     },
     "huayu_suxin": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -1096,7 +1156,8 @@
     },
     "ji": {
       "properties": {
-        "qinggongGcdImmune": false
+        "qinggongGcdImmune": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.routeDamage": 3.375,
@@ -1117,7 +1178,8 @@
     },
     "jiru_feng": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -1136,7 +1198,8 @@
     },
     "lingxiao_lansheng": {
       "properties": {
-        "qinggongGcdImmune": false
+        "qinggongGcdImmune": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -1155,7 +1218,8 @@
     },
     "niao_xiang_bi_kong": {
       "properties": {
-        "qinggongGcdImmune": false
+        "qinggongGcdImmune": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -1174,7 +1238,8 @@
     },
     "nieyun_zhuyue": {
       "properties": {
-        "qinggongGcdImmune": false
+        "qinggongGcdImmune": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -1193,7 +1258,8 @@
     },
     "qionglong_huasheng": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1500
@@ -1212,7 +1278,8 @@
     },
     "que_ta_zhi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1080,
@@ -1232,7 +1299,8 @@
     },
     "sheng_ming_you": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1350
@@ -1251,7 +1319,8 @@
     },
     "shou_ru_shan": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 5400
@@ -1270,7 +1339,8 @@
     },
     "taxingxing": {
       "properties": {
-        "qinggongGcdImmune": true
+        "qinggongGcdImmune": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1200
@@ -1289,7 +1359,8 @@
     },
     "tai_yin_zhi": {
       "properties": {
-        "qinggongGcdImmune": true
+        "qinggongGcdImmune": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 750
@@ -1308,7 +1379,8 @@
     },
     "tian_di_di_ang": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1950
@@ -1327,7 +1399,8 @@
     },
     "wu_jianyu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "buffs.0.effects.0.value": 4.18,
@@ -1351,7 +1424,8 @@
     },
     "xiao_ru_hu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 9000
@@ -1370,7 +1444,8 @@
     },
     "xinglou_yueying": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 690
@@ -1389,7 +1464,8 @@
     },
     "yaotai_zhenhe": {
       "properties": {
-        "qinggongGcdImmune": false
+        "qinggongGcdImmune": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -1408,7 +1484,8 @@
     },
     "yingfeng_huilang": {
       "properties": {
-        "qinggongGcdImmune": false
+        "qinggongGcdImmune": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -1444,7 +1521,8 @@
     },
     "yun_qi_song": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1500
@@ -1463,7 +1541,8 @@
     },
     "zhen_shan_he": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 7200
@@ -1482,7 +1561,8 @@
     },
     "zhuan_qiankun": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -1501,7 +1581,8 @@
     },
     "zuowang_wuwo": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1110
@@ -1521,7 +1602,8 @@
     "chuan_xin_nu": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "buffs.0.effects.0.value": 0.125,
@@ -1544,7 +1626,8 @@
     "fenglai_wushan": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "buffs.0.effects.3.value": 3.61,
@@ -1566,7 +1649,8 @@
     "lan_cui_yu_zhe": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "buffs.0.effects.0.value": 0.104,
@@ -1588,7 +1672,7 @@
     "qixing_gongrui": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": true
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 0
@@ -1608,7 +1692,8 @@
     "qiandie_turui": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": true
+        "hasteUnaffected": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 5400
@@ -1628,13 +1713,14 @@
     "xinzheng": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 750
       },
-      "description": "持续舞棍3秒，过程免疫全部控制效果。持续左右交替挥舞手中棍棒六次，对6尺180度范围内最多5个目标造成中等伤害，每次造成伤害自身获得1层“讼言”，最多30层。每层“讼言”提高会心3%。舞棍结束后打出一次12尺范围终结扫击并消耗全部“讼言”。",
-      "descriptionReviewStatus": "needs-more",
+      "description": "持续舞棍3秒，过程免疫全部控制效果。对6尺180度范围内最多5个目标造成（1.605攻击力）点伤害，每次造成伤害自身获得1层“讼言”，最多30层。每层“讼言”提高会心3%。舞棍结束后打出一次12尺范围终结扫击造成（9.63攻击力）点伤害并消耗全部“讼言”。",
+      "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1649,7 +1735,8 @@
     "yun_fei_yu_huang": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "channelEffects.0.value": 10.2562,
@@ -1672,7 +1759,8 @@
     "changzhen": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 150
@@ -1692,7 +1780,8 @@
     "zhong_lin_yu_xiu": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "buffs.0.effects.0.value": 0.099,
@@ -1714,7 +1803,8 @@
     "zhuiming_jian": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 360
@@ -1735,7 +1825,8 @@
     "zhuo_ying_shi": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 600
@@ -1754,7 +1845,8 @@
     },
     "yan_yu_xing": {
       "properties": {
-        "qinggongGcdImmune": true
+        "qinggongGcdImmune": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900,
@@ -1775,7 +1867,8 @@
     "kuang_long_luan_wu": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 750
@@ -1794,7 +1887,8 @@
     },
     "jian_zhu_tian_di": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "buffs.0.effects.0.value": 0.1,
@@ -1815,7 +1909,8 @@
     },
     "liang_yi_hua_xing": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 4.526,
@@ -1836,7 +1931,8 @@
     },
     "po_feng": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "buffs.1.effects.0.value": 0.15,
@@ -1857,7 +1953,8 @@
     },
     "da_dao_wu_shu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 600
@@ -1876,7 +1973,8 @@
     },
     "hua_die": {
       "properties": {
-        "qinggongGcdImmune": true
+        "qinggongGcdImmune": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -1895,7 +1993,8 @@
     },
     "ji_le_yin": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -1914,7 +2013,8 @@
     },
     "jing_hong_you_long": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 2100
@@ -1933,7 +2033,8 @@
     },
     "lin_shi_fei_zhua": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -1953,7 +2054,8 @@
     "bang_hua_sui_liu": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -1973,7 +2075,8 @@
     "shao_ming_zhi": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "channelEffects.0.value": 0.7239,
@@ -1995,7 +2098,8 @@
     "ling_tai_xu": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1350
@@ -2015,7 +2119,8 @@
     "sheng_tai_ji": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1200
@@ -2035,7 +2140,8 @@
     "tun_ri_yue": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -2054,7 +2160,8 @@
     },
     "ren_jian_he_yi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 540
@@ -2074,7 +2181,8 @@
     "chong_yin_yang": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1350
@@ -2094,7 +2202,8 @@
     "zhan_wu_chang": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": true
+        "hasteUnaffected": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "buffs.0.effects.5.value": 1.8,
@@ -2115,7 +2224,8 @@
     },
     "ying_tian_shou_ming": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1500
@@ -2134,7 +2244,8 @@
     },
     "wu_xiang_jue": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1350
@@ -2153,7 +2264,8 @@
     },
     "mie": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 600
@@ -2173,7 +2285,8 @@
     },
     "gu_ying_hua_shuang": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 4500
@@ -2192,7 +2305,8 @@
     },
     "zhu_yun_han_rui": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -2211,7 +2325,8 @@
     },
     "bao_can_shi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 360
@@ -2231,7 +2346,8 @@
     },
     "bu_feng_shi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 0.5989,
@@ -2252,7 +2368,8 @@
     },
     "fei_ren_hui_zhuan": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 0.52,
@@ -2273,7 +2390,8 @@
     },
     "kang_long_you_hui": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 3.475,
@@ -2296,7 +2414,8 @@
     },
     "na_yun_shi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 6.7447,
@@ -2317,7 +2436,8 @@
     },
     "qu_ye_duan_chou": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 4.2395,
@@ -2338,7 +2458,8 @@
     },
     "tai_ji_wu_ji": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 4.4937,
@@ -2359,7 +2480,8 @@
     },
     "tian_jue_di_mie": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 600
@@ -2379,7 +2501,8 @@
     },
     "you_yue_lun": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 1.401,
@@ -2400,7 +2523,8 @@
     },
     "zhen_chi_tu_nan": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 0.49,
@@ -2421,7 +2545,8 @@
     },
     "cang_yue": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 600
@@ -2440,7 +2565,8 @@
     },
     "cheng_huang_zhi_wei": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 450
@@ -2459,7 +2585,8 @@
     },
     "ji_dian_chi_yu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -2478,7 +2605,8 @@
     },
     "long_xiao_jiu_tian": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1350
@@ -2497,7 +2625,8 @@
     },
     "ti_yun_zong": {
       "properties": {
-        "qinggongGcdImmune": true
+        "qinggongGcdImmune": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -2516,7 +2645,8 @@
     },
     "xu_ru_lin": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -2535,7 +2665,8 @@
     },
     "yu_yu_cheng_feng": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 750
@@ -2555,7 +2686,8 @@
     "lian_huan_nu": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 300
@@ -2574,7 +2706,8 @@
     },
     "shi_xin_gu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 2100
@@ -2593,7 +2726,8 @@
     },
     "hong_meng_tian_jin": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 2250
@@ -2613,7 +2747,8 @@
     "shi_fang_xuan_ji": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 4500
@@ -2632,7 +2767,8 @@
     },
     "chu_he_han_jie": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1350,
@@ -2652,7 +2788,8 @@
     },
     "dun_li": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900,
@@ -2672,7 +2809,8 @@
     },
     "lv_ye_man_sheng": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -2691,7 +2829,8 @@
     },
     "ru_yi_fa": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -2710,7 +2849,8 @@
     },
     "you_feng_piao_zong": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1050,
@@ -2730,7 +2870,8 @@
     },
     "jian_fei_jing_tian": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 0.7187,
@@ -2751,7 +2892,8 @@
     },
     "qian_long_wu_yong": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 120
@@ -2771,7 +2913,8 @@
     },
     "qin_yin_gong_ming": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -2791,7 +2934,8 @@
     },
     "shou_que_shi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 3,
@@ -2813,7 +2957,8 @@
     },
     "xiang_ji_bi_luo": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 750
@@ -2833,7 +2978,8 @@
     },
     "bu_wei_an_xing": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1050
@@ -2852,7 +2998,8 @@
     },
     "qiang_zhu_shi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 750
@@ -2871,7 +3018,8 @@
     },
     "xi_bing_yu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1500
@@ -2890,7 +3038,8 @@
     },
     "xia_liu_bao_shi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1350
@@ -2910,7 +3059,8 @@
     },
     "dou_zhuan_xing_yi": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1350
@@ -2930,7 +3080,8 @@
     "feng_liu_yun_san": {
       "properties": {
         "qinggong": true,
-        "qinggongGcdImmune": true
+        "qinggongGcdImmune": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -2949,7 +3100,8 @@
     },
     "ku_can_gu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 750
@@ -2968,7 +3120,8 @@
     },
     "long_zhan_yu_ye": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 360
@@ -2987,7 +3140,8 @@
     },
     "mi_xin_gu": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 750
@@ -3007,7 +3161,8 @@
     "yin_qiao": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 270
@@ -3028,7 +3183,8 @@
     "jiu_xiao_feng_lei": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": true
+        "hasteUnaffected": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 2700
@@ -3047,7 +3203,8 @@
     },
     "long_yin": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "effects.0.value": 0.65,
@@ -3068,7 +3225,8 @@
     },
     "han_ru_lei": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1800
@@ -3087,7 +3245,8 @@
     },
     "ling_ran_tian_feng": {
       "properties": {
-        "qinggongGcdImmune": true
+        "qinggongGcdImmune": true,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1200
@@ -3106,7 +3265,8 @@
     },
     "she_shen_jue": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 2700
@@ -3125,7 +3285,8 @@
     },
     "ting_feng_chui_xue": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 4500
@@ -3144,7 +3305,8 @@
     },
     "yuan": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 900
@@ -3163,7 +3325,8 @@
     },
     "zi_qi_dong_lai": {
       "properties": {
-        "qinggong": false
+        "qinggong": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 2250
@@ -3183,7 +3346,8 @@
     "po_cang_qiong": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1350
@@ -3203,7 +3367,8 @@
     "ren_chi_cheng": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "description": "军中秘传马技，使你可在战斗中上马并解除自身锁足和减速效果，并在5秒内不受控制招式影响。",
       "descriptionReviewStatus": "fixed",
@@ -3220,7 +3385,8 @@
     "sui_xing_chen": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 1350
@@ -3240,7 +3406,8 @@
     "wu_an_mi_yun": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": false,
+        "canCastWhileMounted": false
       },
       "numeric": {
         "cooldownTicks": 2100

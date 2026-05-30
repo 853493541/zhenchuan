@@ -92,6 +92,42 @@ Each entry goes under its relevant section header.
 **Lesson**:
 - 对带 live override 的技能，先核对 override 是否已经是目标文案；若只是 runtime 缺失，应优先补 canonical 行为而不是重写 override，避免覆盖用户或编辑器刚写入的最新描述。
 
+## 龙战于野补拉后直伤与凌然天风免加速 (2026-05-30)
+
+**Implemented / checked**:
+- `龙战于野` 在拉拽分支后新增一次 `(3.4187 * 攻击力)` 的普通伤害，放在即时效果分支里结算，保持“先拉后打”的技能语义。
+- `凌然天风` 在技能定义中显式加入 `hasteUnaffected: true`，避免它的起跳位移和 7 秒特殊跳跃 Buff 被加速缩短。
+- 复查了加速入口：当前会被加速影响的主要是 `channelDurationMs`、`channelEffects` 里的周期性结算，以及未标记 `hasteUnaffected` 的周期性 Buff/DoT 持续时间。
+
+**Lesson**:
+- 如果一个技能的效果描述本来就是“固定时长/固定跳跃”，就应该把它标成 `hasteUnaffected`；否则它会同时被通道时长和 Buff 持续时间两条路径缩短。
+
+## 加速作用域收敛为仅 DOT Buff/DeBuff (2026-05-30)
+
+**Implemented / checked**:
+- 将 `shouldApplyHasteToBuffTiming()` 的判定从“`CHANNEL + periodic` 或 `PERIODIC_DAMAGE`”收敛为仅 `PERIODIC_DAMAGE`。
+- 结果是：读条/运功本身仍由 `activeChannel.durationMs` 走加速缩时，但不再因为“通道技能 + periodic buff”而把非 DOT 的控制/护盾/功能型 buff 跟着缩时。
+- 用户指定的 6 项已按新规则对齐：
+  - `云栖松` 周期恢复：不受加速。
+  - `蛊虫献祭`：不受加速。
+  - `花语酥心`：不受加速。
+  - `七星拱瑞`：读条受加速，buff 不受加速。
+  - `破风`：减防 buff 不受加速；`流血`（`PERIODIC_DAMAGE`）继续受加速。
+  - `应天授命`：不受加速。
+
+**Lesson**:
+- “读条是否受加速”和“附带 buff 是否受加速”必须分开处理。将 buff 缩时限定在真正 `PERIODIC_DAMAGE` 的 DOT，能避免把护盾/恢复/控制类效果错误纳入加速系统。
+
+## 首页模式选择 localStorage 持久化 (2026-05-30)
+
+**Implemented / checked**:
+- 在首页 `page.tsx` 新增 `zhenchuan.home.selectedStartMode` 本地存储键，用于记住上次选择的开局模式。
+- 页面初次加载时读取 localStorage 并校验模式值必须在当前可选模式集合内，避免非法值污染状态。
+- 用户在首页切换主模式/legacy 模式时同步写入 localStorage，下次回到首页会自动恢复上次选择（例如 `test`）。
+
+**Lesson**:
+- 对“频繁重复选择”的入口状态，最好做“读取时校验 + 写入时容错”的轻量持久化，既能减少重复操作，也避免历史脏值导致页面进入无效模式。
+
 ## Yumen duplicate shrink-start guard (2026-05-29)
 
 ## Camera dash collision-aware prediction (2026-05-29)

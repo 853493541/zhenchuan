@@ -2948,6 +2948,15 @@ export function applyImmediateEffects(params: {
             anchor: { x: anchorX, y: anchorY, z: anchorZ },
             mapCtx,
           });
+          applyImmediateDamageToEnemyTarget({
+            state,
+            source,
+            ability,
+            target: candidate,
+            baseDamage: 3.4187,
+            effectType: "DAMAGE",
+            now: Date.now(),
+          });
         }
         break;
       }
