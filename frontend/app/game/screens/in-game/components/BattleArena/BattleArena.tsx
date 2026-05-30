@@ -2884,6 +2884,7 @@ const DISGUISE_BUFF_IDS = new Set([980001]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const HONG_MENG_TIAN_JIN_BUFF_IDS = new Set([2645]);
 const SHU_SE_BUFF_IDS = new Set([2646]);
+const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 
 function buffHasEffect(buff: ActiveBuff | any, type: string): boolean {
   return Array.isArray(buff?.effects) && buff.effects.some((e: any) => e?.type === type);
@@ -3008,6 +3009,12 @@ function hasShuSeClient(buffs?: ActiveBuff[]): boolean {
 
 function hasMianLaClient(buffs?: ActiveBuff[]): boolean {
   return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'KNOCKBACK_IMMUNE'));
+}
+
+function hasShiFangXuanJiClient(buffs?: ActiveBuff[]): boolean {
+  return activeBuffsClient(buffs).some((b: any) =>
+    Number(b?.buffId) === SHI_FANG_XUAN_JI_BUFF_ID || buffNameIncludes(b, '十方玄机')
+  );
 }
 
 function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
@@ -7579,6 +7586,15 @@ export default function BattleArena({
     }
     if (
       ability?.target === 'OPPONENT' &&
+      !isFriendlyTargetAbility &&
+      selectedTarget &&
+      hasShiFangXuanJiClient(selectedTarget.buffs)
+    ) {
+      showInGameWarning('请选择敌方目标');
+      return;
+    }
+    if (
+      ability?.target === 'OPPONENT' &&
       selectedEntity &&
       ((isFriendlyTargetAbility && selectedEntity.ownerUserId !== me.userId) ||
         (!isFriendlyTargetAbility && selectedEntity.ownerUserId === me.userId))
@@ -9604,6 +9620,14 @@ export default function BattleArena({
       if (ab?.id === 'dou_zhuan_xing_yi' || instance?.abilityId === 'dou_zhuan_xing_yi') {
         if (targetContext.entityTarget) return '该技能只能对敌方玩家施放';
         if (hasMianLaClient((targetForChecks as any)?.buffs)) return '目标处于免拉状态';
+      }
+      if (
+        ab?.target === 'OPPONENT' &&
+        !targetContext.friendlyTarget &&
+        targetContext.playerTarget &&
+        hasShiFangXuanJiClient((targetContext.playerTarget as any)?.buffs)
+      ) {
+        return '请选择敌方目标';
       }
       if (ab?.id === 'qin_yin_gong_ming' || instance?.abilityId === 'qin_yin_gong_ming') {
         if (targetContext.entityTarget) return '该技能只能对敌方玩家施放';

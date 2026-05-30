@@ -36,9 +36,8 @@ export function applyHealToTarget(target: ShieldedTarget, rawHeal: number): numb
   const heal = Math.max(0, Math.floor(rawHeal));
   if (heal <= 0) return 0;
 
-  const before = target.hp;
   target.hp = Math.min(getMaxHp(target), target.hp + heal);
-  return Math.max(0, target.hp - before);
+  return heal;
 }
 
 export function applyDamageToTarget(target: ShieldedTarget, rawDamage: number): {
@@ -132,11 +131,14 @@ export function addShieldToTarget(target: ShieldedTarget, amount: number): numbe
 
 export function removeLinkedShield(target: ShieldedTarget, buff: { shieldAmount?: number }) {
   const linked = Math.max(0, Math.floor(buff.shieldAmount ?? 0));
-  if (linked <= 0) return;
-
   normalizeShield(target);
-  target.shield = Math.max(0, (target.shield ?? 0) - linked);
+  if (linked > 0) {
+    target.shield = Math.max(0, (target.shield ?? 0) - linked);
+  }
   buff.shieldAmount = 0;
+  if (Array.isArray(target.buffs)) {
+    reconcileLinkedShieldTotal(target);
+  }
 }
 
 export function reconcileLinkedShieldTotal(target: ShieldedTarget): boolean {

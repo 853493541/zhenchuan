@@ -73,6 +73,7 @@ export function applyAbilityBuffs(params: {
     ability.id === "po_feng" ||
     ability.id === "ji_dian_chi_yu" ||
     ability.id === "cheng_huang_zhi_wei" ||
+    ability.id === "ti_yun_zong" ||
     ability.id === "shi_xin_gu" ||
     ability.id === "hong_meng_tian_jin" ||
     ability.id === "you_feng_piao_zong" ||

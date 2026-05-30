@@ -172,7 +172,6 @@ const CONSUMABLES: Record<ConsumableId, ConsumableDefinition> = {
 
 const STEALTH_BREAK_BUFF_IDS = new Set([1011, 1012, 1013, SAND_DISGUISE_BUFF_ID, YUE_YING_SHA_BUFF_ID]);
 const FUGUANG_COMPANION_BUFF_ID = 1021;
-const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 const BLOCKING_CONSUMABLE_EFFECTS = new Set(["ROOT", "CONTROL", "KNOCKED_BACK", "PULLED", "DISPLACEMENT", "FEARED", "FREEZE"]);
 
 function getConsumableDefinition(rawId: unknown): ConsumableDefinition | null {
@@ -303,7 +302,6 @@ function breakStealthForConsumable(state: GameState, player: PlayerState, consum
       continue;
     }
     const removesStealth = STEALTH_BREAK_BUFF_IDS.has(buff.buffId) ||
-      buff.buffId === SHI_FANG_XUAN_JI_BUFF_ID ||
       (hadFuguang && buff.buffId === FUGUANG_COMPANION_BUFF_ID);
     if (!removesStealth) {
       remainingBuffs.push(buff);

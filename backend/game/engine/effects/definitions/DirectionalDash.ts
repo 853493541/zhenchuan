@@ -176,9 +176,12 @@ export function handleDirectionalDash(
   let arcGravityDownPerTick: number | undefined;
   const arcPeakHeight = gameplayUnitsToWorldUnits(effect.arcPeakHeight ?? 0, storedUnitScale);
   if (arcPeakHeight > 0) {
-    const halfTicks = Math.max(1, durationTicks / 2);
-    const g = (2 * arcPeakHeight) / (halfTicks * halfTicks);
-    forceVzPerTick = g * halfTicks;
+    const totalTicks = Math.max(1, durationTicks);
+    const peakStep = Math.max(1, Math.ceil(totalTicks / 2));
+    const velocityFactor = (totalTicks - 1) / 2;
+    const peakFactor = Math.max(1, (peakStep * velocityFactor) - ((peakStep * (peakStep - 1)) / 2));
+    const g = arcPeakHeight / peakFactor;
+    forceVzPerTick = g * velocityFactor;
     useArcGravity = true;
     arcGravityUpPerTick = g;
     arcGravityDownPerTick = g;

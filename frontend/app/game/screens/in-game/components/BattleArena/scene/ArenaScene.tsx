@@ -918,6 +918,7 @@ export default function ArenaScene({
   const meDisguised = hasDisguiseBuff(me?.buffs);
   const meYumenSpectator = hasYumenSpectatorBuff(me?.buffs) || me.yumenDefeated === true || yumenSpectatorUserIdSet.has(me.userId);
   const meSemiTransparent = !meDisguised && (hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs) || meYumenSpectator);
+  const meShiFang = hasShiFangXuanJiBuff(me?.buffs);
 
   const targetAnchor = selectedTarget
     ? selectedTarget.position
@@ -1052,8 +1053,8 @@ export default function ArenaScene({
           worldX={me.position.x}
           worldY={me.position.y}
           worldZ={me.position.z ?? 0}
-          color="#1a66cc"
-          emissive="#0a2255"
+          color={meShiFang ? '#2acb6b' : '#1a66cc'}
+          emissive={meShiFang ? '#0c5d34' : '#0a2255'}
           hp={me.hp}
           shield={me.shield ?? 0}
           maxHp={me.maxHp ?? maxHp}
@@ -1068,7 +1069,7 @@ export default function ArenaScene({
           isDisguised={meDisguised}
           hideHpBar={meDisguised || meYumenSpectator}
           cameraFadeEnabled={isExportedMap && !selfOnlyMode}
-          hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
+          hpColorOverride={meShiFang ? '#2acb6b' : undefined}
         />
       )}
 
@@ -1319,6 +1320,7 @@ export default function ArenaScene({
       {/* Opponents — render all of them */}
       {opponents.map((opp, i) => {
         const disguised = hasDisguiseBuff(opp.buffs);
+        const oppShiFang = hasShiFangXuanJiBuff(opp.buffs);
         const oppYumenSpectator = hasYumenSpectatorBuff(opp.buffs) || opp.yumenDefeated === true || yumenSpectatorUserIdSet.has(opp.userId);
         const hiddenByStealth = shouldHideByStealthFromEnemyView(opp.buffs) && !(meYumenSpectator && oppYumenSpectator);
         if (hiddenByStealth) return null;
@@ -1348,8 +1350,8 @@ export default function ArenaScene({
               worldX={opp.position.x}
               worldY={opp.position.y}
               worldZ={opp.position.z ?? 0}
-              color={oppYumenSpectator ? '#8c8c8c' : OPP_COLORS[i % OPP_COLORS.length]}
-              emissive={oppYumenSpectator ? '#1d1d1d' : OPP_EMISSIVES[i % OPP_EMISSIVES.length]}
+              color={oppShiFang ? '#2acb6b' : (oppYumenSpectator ? '#8c8c8c' : OPP_COLORS[i % OPP_COLORS.length])}
+              emissive={oppShiFang ? '#0c5d34' : (oppYumenSpectator ? '#1d1d1d' : OPP_EMISSIVES[i % OPP_EMISSIVES.length])}
               hp={opp.hp}
               shield={opp.shield ?? 0}
               maxHp={opp.maxHp ?? maxHp}
@@ -1377,8 +1379,8 @@ export default function ArenaScene({
               isDisguised={disguised}
               hideHpBar={disguised || hasZhuYunHideBuff(opp.buffs)}
               hideHealthMeter={oppYumenSpectator}
-              nameColorOverride={oppYumenSpectator ? '#b7b7b7' : undefined}
-              hpColorOverride={hasShiFangXuanJiBuff(opp.buffs) ? '#2acb6b' : undefined}
+              nameColorOverride={oppYumenSpectator ? '#b7b7b7' : (oppShiFang ? '#7cffb0' : undefined)}
+              hpColorOverride={oppShiFang ? '#2acb6b' : undefined}
               instantSnapAtRef={opponentInstantSnapAtRef}
               instantSnapWindowMs={600}
             />

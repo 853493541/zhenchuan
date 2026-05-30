@@ -735,6 +735,11 @@ async function playCastAbility(
         delete (player as any)._youFengNoControlRemoved;
       }
 
+      if (ability.id === "lin_shi_fei_zhua" && (player as any).inCombat !== true) {
+        played.cooldown = Math.max(0, (played.cooldown ?? 0) - (40 * 30));
+        (played as any)._cooldownProgress = 0;
+      }
+
       if (upgradedBangDaGouTouCast) {
         played.cooldown = Math.max(played.cooldown ?? 0, BANG_DA_GOU_TOU_COOLDOWN_TICKS);
       }

@@ -5,6 +5,7 @@ import {
   buildAbilityCooldownReviewSnapshot,
   buildAbilityEditorSnapshot,
   buildAbilityDescriptionReviewSnapshot,
+  buildGuaranteedHitSnapshot,
   buildNoWeaponRequiredSnapshot,
   setAbilityAdControlStatus,
   setAbilityCooldownReviewStatus,
@@ -22,6 +23,7 @@ import {
   setAbilityHasteUnaffectedOverride,
   setAbilityQinggongGcdImmuneOverride,
   setAbilityQinggongOverride,
+  setAbilityGuaranteedHitOverride,
   setAbilityIsProjectile,
   setAbilityDunLiWhitelisted,
   setAbilityTag,
@@ -420,6 +422,28 @@ router.put("/ability-editor/haste-unaffected/:abilityId", (req, res) => {
       return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
     }
     return res.json(setAbilityHasteUnaffectedOverride(req.params.abilityId, mode));
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.get("/ability-editor/guaranteed-hit", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    return res.json(buildGuaranteedHitSnapshot());
+  } catch (error) {
+    return handleAbilityEditorError(res, error);
+  }
+});
+
+router.put("/ability-editor/guaranteed-hit/:abilityId", (req, res) => {
+  try {
+    getUserIdFromCookie(req);
+    const { mode } = req.body ?? {};
+    if (mode !== "manual-include" && mode !== "manual-exclude" && mode !== "clear") {
+      return res.status(400).json({ error: "ERR_INVALID_PAYLOAD" });
+    }
+    return res.json(setAbilityGuaranteedHitOverride(req.params.abilityId, mode));
   } catch (error) {
     return handleAbilityEditorError(res, error);
   }

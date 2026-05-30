@@ -71,6 +71,8 @@ function getGameErrorText(rawCode: string) {
       return "距离太近，无法释放该能力";
     case "ERR_TARGET_UNAVAILABLE":
       return "警告：目标丢失或不可选中";
+    case "ERR_SELECT_ENEMY_TARGET":
+      return "请选择敌方目标";
     case "ERR_REQUIRES_GROUNDED":
       return "该技能需要落地后施放";
     case "ERR_REQUIRES_STANDING":

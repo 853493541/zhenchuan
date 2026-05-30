@@ -3,6 +3,54 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 十方玄机目标归属与敌方视角名字颜色修复 (2026-05-30)
+
+**Implemented / checked**:
+- 后端 `validateCastAbility` 新增十方玄机目标归属校验：敌方指向技能若目标处于【十方玄机】会直接返回 `ERR_SELECT_ENEMY_TARGET`，前端映射为“请选择敌方目标”。
+- 同步补上“十方玄机持有者不可施展友方目标招式”的后端拦截：若施法者处于【十方玄机】且技能是 `friendlyTarget`，同样返回“请选择敌方目标”。
+- 前端 BattleArena 新增本地预检：当敌方指向技能选中带【十方玄机】的玩家时，施放前直接弹“请选择敌方目标”，避免无效请求发出。
+- 前端 3D 场景中，对手处于【十方玄机】时名字颜色改为绿色（观战灰名保持优先级更高）。
+- 新增并通过 Playwright source guard：覆盖后端错误码拦截点与 ArenaScene 名字颜色覆盖表达式。
+- 完成本轮 backend/frontend build，并在成功构建后重启 `pm2 restart frontend backend`。
+
+**Lesson**:
+- 十方玄机这类“目标阵营临时改写”规则必须同时落在后端强校验和前端预检两侧；只做单侧会出现“能点能放但服务端拒绝”或“前端看起来禁用但后端可穿透”的体验分叉。
+
+## 技能后续修复：护盾驱散/十方/心诤/轻功与治疗数字 (2026-05-30)
+
+**Implemented / checked**:
+- 少明指通道驱散现在先从 `buffs` 数组移除目标 Buff，再调用 `removeLinkedShield()`，避免通道结算窗口里护盾白条和 linked shield 状态不同步。
+- 惊鸿游龙恢复为 `PHYSICAL_DODGE`，只参与外功闪避；内功仍只吃其内功减伤。
+- 十方玄机改为可空中施放、读条中可跳，完成时清掉“正在选中我”的目标选择，但 Buff 本身不再提供 `UNTARGETABLE`，因此敌对关系下仍可被 tab/点击重新选中；模型和血条变绿，名字保持原敌我颜色。
+- 心诤命中时叠加 讼言（最多30层，每层3%会心），最终一击后立即清除全部讼言。
+- `applyHealToTarget()` 返回有效治疗尝试值而不是实际缺口填充值，使满血治疗和贯体治疗也能显示应发生的治疗数字；治疗减益后的数值仍由现有 heal roll 决定。
+- 风来吴山设置 `periodicStartImmediate`，让 5秒/625ms 的设计稳定产生8次伤害。
+- 散流霞的位移抛物线改为离散 tick 下首尾落地的重力公式，避免15 tick 抛物线只跑到约150度/提前断弧。
+- 浮光掠影可在受控下施放；若施放时已有非减速控制，浮光和遁影会先应用事件再立即移除，单纯减速不会破除。
+- 临时飞爪非战斗施放后把冷却减少40秒。
+- 梯云纵按战斗状态分流：战斗中给30秒的一次性战斗跳跃 Buff；非战斗中给12秒连续跳跃 Buff 并刷新蹑云逐月；进入战斗时移除非战斗 Buff。
+- 听雷 Buff 时长提升为9999秒，并在脱战时移除。
+- 新增 Playwright source guard 覆盖上述每个行为点，随后通过 backend/frontend build 和 PM2 restart 验证。
+
+**Lesson**:
+- linked shield 修复不只看数值扣除，还要看 Buff 移除顺序；如果会在同一 tick 内 reconcile，先移出列表再扣 linked shield 更稳。
+- 对“描述已正确、实现要对齐”的技能调整，尽量不要改描述层；用源码 guard 检查运行时字段和关键路径，能防止后续编辑器覆盖或重构把行为改回去。
+
+## 解控/必定命中/护盾偷取/闪避修复批次 (2026-05-30)
+
+**Implemented / checked**:
+- 普通解控不再保留 `摩诃无量` 的击倒 Buff；原问题是 `handleCleanse()` 里显式用 `isMoheKnockdown(b) ||` 把 buffId `1002` 排除在清除列表外。
+- 为当前解控临时硬编码清理 `孔雀翎`、`捕风式`、`滞影/捉影式`、`剑飞惊天/惊惧` 四类指定慢/封轻功 Buff。
+- 新增技能编辑器 `必定命中` 页，保存到顶层 `ignoreDodge` 覆盖字段，并让运行时 resolved ability 继承该字段。
+- 疾电叱羽分担伤害只扣区域血量，不再推送玩家 `DAMAGE` 事件，避免玩家头上出现受伤害数字。
+- `removeLinkedShield()` 在清除 linked shield 后立即按剩余 active buff 重新对齐 `target.shield`，防止护盾白条和实际护盾分叉。
+- 琴音共鸣偷盾时先记录被偷 Buff 的剩余 `shieldAmount`，再从原目标移除护盾，避免 `removeLinkedShield()` 把要同步给新主人的护盾数值清零。
+- 云栖松、惊鸿游龙改为提供通用 `DODGE`，并避免 buff 属性覆盖层在未设置闪避属性时删掉代码定义里的闪避效果。
+
+**Lesson**:
+- linked shield 的剩余值属于运行时状态，任何“移除原 Buff 后复制新 Buff”的流程都必须先拍下 `shieldAmount`；`removeLinkedShield()` 会把原对象的 `shieldAmount` 置零。
+- 编辑器覆盖层的“缺少某个属性”不能默认等于“删除代码定义效果”，否则只编辑减伤等局部属性会意外删掉同一个 Buff 上的闪避。
+
 ## Camera wall body collision and ground body clamp (2026-05-30)
 
 **Implemented / checked**:

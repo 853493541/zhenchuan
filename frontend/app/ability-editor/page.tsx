@@ -70,13 +70,14 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "adControl" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "abilityDescriptionReview" | "cooldownReview" | "qinggong" | "qinggongGcdImmune" | "hasteUnaffected" | "soundReview" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "buffTimerVisibility" | "hiddenBuffs" | "buffDescriptionReview";
+type MainTab = "abilities" | "buffs" | "adControl" | "projectiles" | "dunLiWhitelist" | "guaranteedHit" | "noWeaponRequired" | "canCastWhileMounted" | "abilityDescriptionReview" | "cooldownReview" | "qinggong" | "qinggongGcdImmune" | "hasteUnaffected" | "soundReview" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "buffTimerVisibility" | "hiddenBuffs" | "buffDescriptionReview";
 type EditorTabGroup = "skill" | "buff";
 
 const SKILL_EDITOR_TABS: Array<{ id: MainTab; label: string }> = [
   { id: "adControl", label: "加成修正" },
   { id: "projectiles", label: "远程弹道" },
   { id: "dunLiWhitelist", label: "盾立白名单" },
+  { id: "guaranteedHit", label: "必定命中" },
   { id: "noWeaponRequired", label: "无需武器" },
   { id: "canCastWhileMounted", label: "可以马上施展" },
   { id: "abilityDescriptionReview", label: "描述修正" },
@@ -142,6 +143,8 @@ export default function AbilityEditorPage() {
       setMainTab("projectiles");
     } else if (params.get("tab") === "dunLiWhitelist") {
       setMainTab("dunLiWhitelist");
+    } else if (params.get("tab") === "guaranteedHit") {
+      setMainTab("guaranteedHit");
     } else if (params.get("tab") === "noWeaponRequired") {
       setMainTab("noWeaponRequired");
     } else if (params.get("tab") === "canCastWhileMounted") {
@@ -256,6 +259,9 @@ export default function AbilityEditorPage() {
   const [hasteUnaffectedSnapshot, setHasteUnaffectedSnapshot] = useState<AbilityBooleanDeciderSnapshot | null>(null);
   const [hasteUnaffectedLoading, setHasteUnaffectedLoading] = useState(false);
   const [hasteUnaffectedError, setHasteUnaffectedError] = useState("");
+  const [guaranteedHitSnapshot, setGuaranteedHitSnapshot] = useState<AbilityBooleanDeciderSnapshot | null>(null);
+  const [guaranteedHitLoading, setGuaranteedHitLoading] = useState(false);
+  const [guaranteedHitError, setGuaranteedHitError] = useState("");
   const [qinYinGongMingSnapshot, setQinYinGongMingSnapshot] = useState<QinYinGongMingSnapshot | null>(null);
   const [qinYinGongMingLoading, setQinYinGongMingLoading] = useState(false);
   const [qinYinGongMingError, setQinYinGongMingError] = useState("");
@@ -583,6 +589,28 @@ export default function AbilityEditorPage() {
     }
   };
 
+  const loadGuaranteedHitSnapshot = async () => {
+    setGuaranteedHitLoading(true);
+    setGuaranteedHitError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/guaranteed-hit", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setGuaranteedHitSnapshot((await response.json()) as AbilityBooleanDeciderSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setGuaranteedHitError(message);
+    } finally {
+      setGuaranteedHitLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSnapshot();
   }, []);
@@ -682,6 +710,13 @@ export default function AbilityEditorPage() {
   useEffect(() => {
     if (mainTab === "hasteUnaffected" && !hasteUnaffectedSnapshot && !hasteUnaffectedLoading) {
       loadHasteUnaffectedSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "guaranteedHit" && !guaranteedHitSnapshot && !guaranteedHitLoading) {
+      loadGuaranteedHitSnapshot();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab]);
@@ -906,6 +941,21 @@ export default function AbilityEditorPage() {
       if (!res.ok) return;
       const nextSnapshot = (await res.json()) as AbilityBooleanDeciderSnapshot;
       setHasteUnaffectedSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
+  const handleGuaranteedHitToggle = async (abilityId: string, mode: AbilityBooleanDeciderMode) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/guaranteed-hit/${abilityId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as AbilityBooleanDeciderSnapshot;
+      setGuaranteedHitSnapshot(nextSnapshot);
       setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
     } catch { /* silent */ }
   };
@@ -1557,6 +1607,30 @@ export default function AbilityEditorPage() {
             footerText="这里决定哪些读条技能不吃加速率。未排除的技能会按当前规则缩短正读条、逆读条以及持续伤害的总时间和跳间隔；未决定列表只显示带读条的技能。"
             showMetadataRow={false}
             limitUndecidedToChannel
+          />
+        </section>
+      )}
+
+      {mainTab === "guaranteedHit" && (
+        <section className={styles.buffEditorSection}>
+          <AbilityBooleanDeciderTab
+            searchStorageKey="abilityEditor.guaranteedHit.search"
+            loadingText="正在加载必定命中列表…"
+            snapshot={guaranteedHitSnapshot}
+            loading={guaranteedHitLoading}
+            errorMessage={guaranteedHitError}
+            onRetry={loadGuaranteedHitSnapshot}
+            onToggle={handleGuaranteedHitToggle}
+            enabledColumnTitle="必定命中"
+            enabledEmptyText="当前没有必定命中的技能"
+            excludedColumnTitle="可被闪避"
+            undecidedColumnTitle="未决定"
+            decideYesLabel="设为必定命中"
+            decideNoLabel="设为可被闪避"
+            enabledActionLabel="改为可被闪避"
+            excludedActionLabel="恢复"
+            footerText=""
+            showMetadataRow={false}
           />
         </section>
       )}

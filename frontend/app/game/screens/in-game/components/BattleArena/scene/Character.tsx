@@ -577,7 +577,7 @@ export default function Character({
             <Text
               position={[0, showHealthMeter ? 0.32 : 0.04, 0]}
               fontSize={0.28}
-              color={nameColorOverride ?? hpColorOverride ?? (isSelected ? '#ff99bb' : '#ff3333')}
+              color={nameColorOverride ?? (isSelected ? '#ff99bb' : '#ff3333')}
               anchorX="center"
               anchorY="middle"
               outlineWidth={0.025}

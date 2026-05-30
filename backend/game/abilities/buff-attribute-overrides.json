@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updatedAt": "2026-05-30T11:26:15.082Z",
+  "updatedAt": "2026-05-30T17:32:07.097Z",
   "buffs": {
     "1001": {
       "attribute": "毒性",
@@ -653,7 +653,7 @@
       "attribute": "无",
       "description": "闪躲几率提高60%",
       "descriptionReviewStatus": "fixed",
-      "qinYinGongMingUnstealable": true,
+      "qinYinGongMingStealable": true,
       "manualCancelable": true,
       "timerVisible": true
     },

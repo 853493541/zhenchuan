@@ -31,7 +31,7 @@ interface AbilityBooleanDeciderTabProps {
   decideNoLabel: string;
   enabledActionLabel: string;
   excludedActionLabel: string;
-  footerText: string;
+  footerText?: string;
   showQinggongBadge?: boolean;
   showImmuneBadge?: boolean;
   showMetadataRow?: boolean;
@@ -220,7 +220,7 @@ export default function AbilityBooleanDeciderTab({
         </div>
       </div>
 
-      <p style={{ marginTop: 16, fontSize: 12, color: "#8a7f6f" }}>{footerText}</p>
+      {footerText ? <p style={{ marginTop: 16, fontSize: 12, color: "#8a7f6f" }}>{footerText}</p> : null}
     </div>
   );
 }

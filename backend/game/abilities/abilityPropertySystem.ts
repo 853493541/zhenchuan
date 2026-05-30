@@ -66,6 +66,8 @@ export interface AbilityEditorOverrideEntry {
   isProjectile?: boolean;
   /** Whether this ability is whitelisted from 盾立 reflect (damage immunity still applies) */
   dunLiWhitelisted?: boolean;
+  /** Whether this ability ignores target dodge chance. */
+  ignoreDodge?: boolean;
   /** Whether this ability can be cast while disarmed. False is a meaningful manual exclusion. */
   noWeaponRequired?: boolean;
 }
@@ -800,6 +802,12 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
       ? entryRecord.dunLiWhitelisted
       : undefined;
 
+  // Parse top-level ignoreDodge field
+  const ignoreDodge =
+    "ignoreDodge" in entryRecord && typeof entryRecord.ignoreDodge === "boolean"
+      ? entryRecord.ignoreDodge
+      : undefined;
+
   // Parse top-level noWeaponRequired field
   const noWeaponRequired =
     "noWeaponRequired" in entryRecord && typeof entryRecord.noWeaponRequired === "boolean"
@@ -828,6 +836,7 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
     !tags &&
     isProjectile === undefined &&
     dunLiWhitelisted === undefined &&
+    ignoreDodge === undefined &&
     noWeaponRequired === undefined
   ) {
     return null;
@@ -843,6 +852,7 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
     tags,
     isProjectile,
     dunLiWhitelisted,
+    ignoreDodge,
     noWeaponRequired,
   };
 }
@@ -1240,6 +1250,13 @@ export function buildResolvedAbilities(baseAbilities: AbilityRecord, overrides: 
       (nextAbility as any).dunLiWhitelisted = false;
     }
 
+    // Apply ignoreDodge so dodge resolution can treat the ability as guaranteed-hit.
+    if (abilityOverrides?.ignoreDodge === true) {
+      (nextAbility as any).ignoreDodge = true;
+    } else if (abilityOverrides && "ignoreDodge" in abilityOverrides && abilityOverrides.ignoreDodge === false) {
+      delete (nextAbility as any).ignoreDodge;
+    }
+
     // Apply noWeaponRequired so disarm validation and preload can see editor overrides.
     if (abilityOverrides?.noWeaponRequired === true) {
       (nextAbility as any).noWeaponRequired = true;
@@ -1340,7 +1357,8 @@ export function buildAbilityEditorEntry(params: {
     channelTimingSettings.some((setting) => setting.overridden) ||
     (overrides?.tags ? Object.keys(overrides.tags).length > 0 : false) ||
     overrides?.isProjectile !== undefined ||
-    overrides?.dunLiWhitelisted !== undefined;
+    overrides?.dunLiWhitelisted !== undefined ||
+    overrides?.ignoreDodge !== undefined;
 
   return {
     id: ability.id,

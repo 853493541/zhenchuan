@@ -1208,6 +1208,7 @@ export function applyMovement(
         player.jumpCount += 1;
         player.tiYunZongPenaltyConsumed = true;
       }
+      player.buffs = player.buffs.filter((buff: any) => buff.buffId !== 9004);
 
       clearAirShift(player);
       rememberAirborneSpeedCarry(player, jumpStartPlanarSpeed);

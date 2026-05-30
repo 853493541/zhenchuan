@@ -101,6 +101,51 @@ const XI_BING_YU_BUFF_ID = 2724;
 const YIN_QIAO_ABILITY_ID = "yin_qiao";
 const JUE_MAI_BUFF_ID = 1337;
 const WU_XIANG_JUE_SNAPSHOT_BUFF_IDS = new Set([2710, 2731, 2732, 2733, 2734]);
+const XINZHENG_ABILITY_ID = "xinzheng";
+const XINZHENG_SONG_YAN_BUFF_ID = 1018;
+const XINZHENG_SONG_YAN_BUFF = {
+  buffId: XINZHENG_SONG_YAN_BUFF_ID,
+  name: "讼言",
+  category: "BUFF",
+  durationMs: 30_000,
+  initialStacks: 1,
+  maxStacks: 30,
+  breakOnPlay: false,
+  description: "每层会心提高3%",
+  effects: [{ type: "CRIT_CHANCE_BONUS", value: 3 }],
+};
+
+function addXinzhengSongYanStack(state: GameState, player: any) {
+  const ability = ABILITIES[XINZHENG_ABILITY_ID];
+  if (!ability) return false;
+  addBuff({
+    state,
+    sourceUserId: player.userId,
+    targetUserId: player.userId,
+    ability: ability as any,
+    buffTarget: player as any,
+    buff: XINZHENG_SONG_YAN_BUFF as any,
+  });
+  return true;
+}
+
+function removeXinzhengSongYanStacks(state: GameState, player: any) {
+  if (!Array.isArray(player?.buffs)) return false;
+  const removed = player.buffs.filter((buff: any) => buff?.buffId === XINZHENG_SONG_YAN_BUFF_ID);
+  if (removed.length === 0) return false;
+  player.buffs = player.buffs.filter((buff: any) => buff?.buffId !== XINZHENG_SONG_YAN_BUFF_ID);
+  for (const buff of removed) {
+    pushBuffExpired(state, {
+      targetUserId: player.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+    });
+  }
+  return true;
+}
 
 /** 2D segment vs AABB intersection test (for LOS checks). */
 function segmentIntersectsAABB(
@@ -3505,8 +3550,8 @@ export class GameLoop {
                     });
                     if (idx === -1) break;
                     const removed = (dispelTarget.buffs as any[])[idx];
-                    removeLinkedShield(dispelTarget as any, removed);
                     (dispelTarget.buffs as any[]).splice(idx, 1);
+                    removeLinkedShield(dispelTarget as any, removed);
                     pushBuffExpired(this.state, {
                       targetUserId: dispelTarget.userId,
                       buffId: removed.buffId,
@@ -3621,6 +3666,10 @@ export class GameLoop {
                 buff: buffDef,
               });
             }
+          }
+
+          if (ch.abilityId === "shi_fang_xuan_ji") {
+            channelStateChanged = clearTargetSelectionsTargetingPlayer(this.state, player.userId) || channelStateChanged;
           }
 
           if (ch.abilityId === "ren_chi_cheng" && removeRootAndSlowEffects(this.state, player as any, chNow)) {
@@ -4091,6 +4140,9 @@ export class GameLoop {
                     damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
                     timestamp: now,
                   });
+                  if (buff.sourceAbilityId === XINZHENG_ABILITY_ID) {
+                    addXinzhengSongYanStack(this.state, player as any);
+                  }
                   buffsChanged = true;
                 }
               } else if (e.type === "CHANNEL_AOE_TICK_DAMAGE") {
@@ -4456,6 +4508,10 @@ export class GameLoop {
               }
 
               buffsChanged = true;
+            }
+
+            if (buff.sourceAbilityId === XINZHENG_ABILITY_ID && e.type === "TIMED_AOE_DAMAGE") {
+              buffsChanged = removeXinzhengSongYanStacks(this.state, player as any) || buffsChanged;
             }
           }
         }

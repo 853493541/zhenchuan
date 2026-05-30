@@ -62,6 +62,7 @@ const CONTROL_DR_DURATION_MS = 10_000;
 const LEI_TING_ZHEN_NU_BUFF_ID = 2506;
 const FUGUANG_LUEYING_BUFF_ID = 1012;
 const DUNYING_COMPANION_BUFF_ID = 1021;
+const NON_SLOW_CONTROL_BREAK_TYPES = ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE", "NON_QINGGONG_LOCK"];
 const LING_RAN_TIAN_FENG_BUFF_ID = 2654;
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
@@ -684,7 +685,7 @@ function removeStealthOnIncomingControl(params: {
   if (controlTypes.length === 0) return;
 
   const tiandiBreakTypes = ["CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE", "NON_QINGGONG_LOCK"];
-  const fuguangBreakTypes = ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE", "NON_QINGGONG_LOCK"];
+  const fuguangBreakTypes = NON_SLOW_CONTROL_BREAK_TYPES;
 
   const removed: ActiveBuff[] = [];
   target.buffs = target.buffs.filter((b) => {
@@ -722,6 +723,30 @@ function removeStealthOnIncomingControl(params: {
       buffId: b.buffId,
       buffName: b.name,
       buffCategory: b.category,
+    });
+  }
+}
+
+function removeFuguangIfCurrentControl(params: {
+  state: GameState;
+  targetUserId: string;
+  target: { buffs: ActiveBuff[] };
+}) {
+  const { state, targetUserId, target } = params;
+  const controlTypes = target.buffs
+    .filter((buff) => isRuntimeBuffActive(buff as any))
+    .flatMap((buff) => buff.effects ?? [])
+    .map((effect) => effect.type)
+    .filter((type) => NON_SLOW_CONTROL_BREAK_TYPES.includes(type));
+  if (controlTypes.length === 0) return;
+
+  removeStealthOnIncomingControl({ state, targetUserId, target, controlTypes });
+  if (!target.buffs.some((buff) => buff.buffId === FUGUANG_LUEYING_BUFF_ID)) {
+    expireBuffsMatching({
+      state,
+      targetUserId,
+      target,
+      shouldExpire: (buff) => isDunyingCompanion(buff),
     });
   }
 }
@@ -1296,6 +1321,14 @@ export function addBuff(params: {
     buffCategory: active.category,
     appliedAtTurn: active.appliedAtTurn,
   });
+
+  if (active.buffId === FUGUANG_LUEYING_BUFF_ID || active.buffId === DUNYING_COMPANION_BUFF_ID) {
+    removeFuguangIfCurrentControl({
+      state,
+      targetUserId,
+      target: buffTarget,
+    });
+  }
 
   if (resistanceConfig) {
     refreshResistanceBuff({

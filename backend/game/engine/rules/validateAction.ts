@@ -16,6 +16,7 @@ import { hasMiYunConfusion } from "../utils/miyun";
 import { hasActiveYumenSpectatorBuff } from "../utils/yumenSafeZone";
 
 const SHU_SE_BUFF_ID = 2646;
+const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 const REN_CHI_CHENG_ABILITY_ID = "ren_chi_cheng";
 const EXPLICIT_GROUND_DASH_ABILITY_IDS = new Set(["gu_feng_sa_ta", "han_di", "lin_shi_fei_zhua"]);
 
@@ -45,6 +46,12 @@ type ValidateCastOptions = {
 function hasEffect(player: { buffs: any[] }, type: string) {
   return player.buffs.some((b: any) =>
     isRuntimeBuffActive(b) && b.effects?.some((e: any) => e.type === type)
+  );
+}
+
+function hasShiFangXuanJi(player: { buffs?: any[] }): boolean {
+  return (player?.buffs ?? []).some((b: any) =>
+    isRuntimeBuffActive(b) && Number(b?.buffId) === SHI_FANG_XUAN_JI_BUFF_ID
   );
 }
 
@@ -393,6 +400,9 @@ export function validateCastAbility(
   ) {
     throw new Error("ERR_TARGET_UNAVAILABLE");
   }
+  if (isFriendlyTargetAbility && !ignoreTargetAllegiance && hasShiFangXuanJi(player as any)) {
+    throw new Error("ERR_SELECT_ENEMY_TARGET");
+  }
 
   let targetIndex =
     ability.target === "SELF" || isFriendlyTargetAbility
@@ -408,6 +418,17 @@ export function validateCastAbility(
     : null;
   if (ability.target === "OPPONENT" && resolvedEntityTargetId && !explicitEntity) {
     throw new Error("ERR_TARGET_UNAVAILABLE");
+  }
+  if (
+    ability.target === "OPPONENT" &&
+    !isFriendlyTargetAbility &&
+    !allowGroundCastWithoutTarget &&
+    !ignoreTargetAllegiance &&
+    !explicitEntity &&
+    targetPlayer?.userId !== player.userId &&
+    hasShiFangXuanJi(targetPlayer as any)
+  ) {
+    throw new Error("ERR_SELECT_ENEMY_TARGET");
   }
   const targetPosition = explicitEntity?.position ?? targetPlayer.position;
 

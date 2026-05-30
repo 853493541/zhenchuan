@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-30T11:25:55.686Z",
+  "updatedAt": "2026-05-30T23:36:55.844Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -24,6 +24,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "heng_sao_liu_he": {
@@ -45,6 +46,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "menghu_xiasha": {
@@ -66,6 +68,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "jianpo_xukong": {
@@ -89,6 +92,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "jieyang": {
@@ -112,6 +116,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "jing_shi_po_mo_ji": {
@@ -158,6 +163,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "anchen_misan": {
@@ -177,6 +183,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "fengxiu_diang": {
@@ -197,7 +204,8 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "ignoreDodge": true
     },
     "fuyao_zhishang": {
       "properties": {
@@ -216,6 +224,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "fuguang_lueying": {
@@ -236,6 +245,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "guchong_xianji": {
@@ -257,6 +267,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "xiao_zui_kuang": {
@@ -278,6 +289,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "nuwa_butian": {
@@ -298,6 +310,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "sanliu_xia": {
@@ -318,6 +331,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "fu_rong_bing_di": {
@@ -339,6 +353,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "hua_xue_biao": {
@@ -360,6 +375,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "jian_zhuan_liu_yun": {
@@ -381,6 +397,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "kong_que_ling": {
@@ -404,6 +421,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "lie_ri_zhan": {
@@ -426,6 +444,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "sanhuan_taoyue": {
@@ -448,6 +467,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "shang_yang_zhi": {
@@ -470,6 +490,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "she_ying": {
@@ -492,6 +513,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "tiandi_wuji": {
@@ -514,6 +536,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "weituo_xianchu": {
@@ -536,6 +559,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "wu_wo_wu_jian": {
@@ -558,6 +582,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "yin_yue_zhan": {
@@ -579,6 +604,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "yu_shi_ju_fen": {
@@ -601,6 +627,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "yue_chao_zhan_bo": {
@@ -622,6 +649,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "bang_da_gou_tou": {
@@ -642,6 +670,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "chan_xiao": {
@@ -665,6 +694,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "da_shizi_hou": {
@@ -685,6 +715,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "dican_longxiang": {
@@ -705,6 +736,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "han_di": {
@@ -725,6 +757,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "he_gui_gu_shan": {
@@ -745,6 +778,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "jiang_chun_zhu_xiu": {
@@ -765,6 +799,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "jiu_zhuan_gui_yi": {
@@ -785,6 +820,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "lei_ting_zhen_nu": {
@@ -805,6 +841,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "leizhenzi": {
@@ -825,6 +862,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "zhenshen_xingsi": {
@@ -847,6 +885,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "mohe_wuliang": {
@@ -869,6 +908,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "san_cai_hua_sheng": {
@@ -889,6 +929,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "shengsi_jie": {
@@ -911,6 +952,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "xuanshui_gu": {
@@ -933,6 +975,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "chuan": {
@@ -955,6 +998,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "wan_jian_gui_zong": {
@@ -975,6 +1019,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "wufang_xingjin": {
@@ -995,6 +1040,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "wuyun_jiekong": {
@@ -1016,6 +1062,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "chun_ni_hu_hua": {
@@ -1036,6 +1083,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "dienong_zu": {
@@ -1056,6 +1104,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "duangu_jue": {
@@ -1076,6 +1125,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "duoming_gu": {
@@ -1096,6 +1146,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "gu_feng_sa_ta": {
@@ -1116,6 +1167,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "houyao": {
@@ -1132,6 +1184,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "huayu_suxin": {
@@ -1152,6 +1205,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "ji": {
@@ -1174,6 +1228,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "jiru_feng": {
@@ -1194,6 +1249,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "lingxiao_lansheng": {
@@ -1214,6 +1270,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "niao_xiang_bi_kong": {
@@ -1234,6 +1291,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "nieyun_zhuyue": {
@@ -1254,6 +1312,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "qionglong_huasheng": {
@@ -1274,6 +1333,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "que_ta_zhi": {
@@ -1295,6 +1355,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "sheng_ming_you": {
@@ -1315,6 +1376,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "shou_ru_shan": {
@@ -1335,6 +1397,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "taxingxing": {
@@ -1355,6 +1418,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "tai_yin_zhi": {
@@ -1375,6 +1439,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "tian_di_di_ang": {
@@ -1395,6 +1460,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "wu_jianyu": {
@@ -1420,6 +1486,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "xiao_ru_hu": {
@@ -1440,6 +1507,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "xinglou_yueying": {
@@ -1460,6 +1528,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "yaotai_zhenhe": {
@@ -1480,6 +1549,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "yingfeng_huilang": {
@@ -1500,6 +1570,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "yuqi": {
@@ -1517,6 +1588,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "yun_qi_song": {
@@ -1537,6 +1609,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "zhen_shan_he": {
@@ -1557,6 +1630,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "zhuan_qiankun": {
@@ -1577,6 +1651,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "zuowang_wuwo": {
@@ -1597,6 +1672,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "chuan_xin_nu": {
@@ -1621,6 +1697,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "fenglai_wushan": {
@@ -1644,6 +1721,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "lan_cui_yu_zhe": {
@@ -1667,6 +1745,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "qixing_gongrui": {
@@ -1687,6 +1766,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "qiandie_turui": {
@@ -1708,6 +1788,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "xinzheng": {
@@ -1730,6 +1811,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "yun_fei_yu_huang": {
@@ -1754,6 +1836,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "changzhen": {
@@ -1775,6 +1858,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "zhong_lin_yu_xiu": {
@@ -1798,6 +1882,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "zhuiming_jian": {
@@ -1820,6 +1905,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "zhuo_ying_shi": {
@@ -1841,6 +1927,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "yan_yu_xing": {
@@ -1862,6 +1949,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "kuang_long_luan_wu": {
@@ -1883,6 +1971,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "jian_zhu_tian_di": {
@@ -1905,6 +1994,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "liang_yi_hua_xing": {
@@ -1927,6 +2017,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "po_feng": {
@@ -1949,6 +2040,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "da_dao_wu_shu": {
@@ -1969,6 +2061,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "hua_die": {
@@ -1989,6 +2082,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "ji_le_yin": {
@@ -2009,6 +2103,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "jing_hong_you_long": {
@@ -2029,6 +2124,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "lin_shi_fei_zhua": {
@@ -2049,6 +2145,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "bang_hua_sui_liu": {
@@ -2070,7 +2167,8 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "ignoreDodge": true
     },
     "shao_ming_zhi": {
       "properties": {
@@ -2093,6 +2191,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "ling_tai_xu": {
@@ -2114,6 +2213,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "sheng_tai_ji": {
@@ -2135,6 +2235,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "tun_ri_yue": {
@@ -2156,6 +2257,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "ren_jian_he_yi": {
@@ -2176,6 +2278,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "chong_yin_yang": {
@@ -2197,6 +2300,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "zhan_wu_chang": {
@@ -2220,6 +2324,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "ying_tian_shou_ming": {
@@ -2240,6 +2345,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "wu_xiang_jue": {
@@ -2260,6 +2366,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "mie": {
@@ -2281,6 +2388,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "gu_ying_hua_shuang": {
@@ -2301,6 +2409,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "zhu_yun_han_rui": {
@@ -2321,6 +2430,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "bao_can_shi": {
@@ -2342,6 +2452,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "bu_feng_shi": {
@@ -2364,6 +2475,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "fei_ren_hui_zhuan": {
@@ -2386,6 +2498,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "kang_long_you_hui": {
@@ -2410,6 +2523,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "na_yun_shi": {
@@ -2432,6 +2546,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "qu_ye_duan_chou": {
@@ -2454,6 +2569,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "tai_ji_wu_ji": {
@@ -2476,6 +2592,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "tian_jue_di_mie": {
@@ -2497,6 +2614,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "you_yue_lun": {
@@ -2519,6 +2637,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "zhen_chi_tu_nan": {
@@ -2541,6 +2660,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "cang_yue": {
@@ -2561,6 +2681,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "cheng_huang_zhi_wei": {
@@ -2581,6 +2702,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "ji_dian_chi_yu": {
@@ -2601,6 +2723,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": true,
       "noWeaponRequired": true
     },
     "long_xiao_jiu_tian": {
@@ -2621,6 +2744,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": true,
       "noWeaponRequired": true
     },
     "ti_yun_zong": {
@@ -2641,6 +2765,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "xu_ru_lin": {
@@ -2661,6 +2786,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "yu_yu_cheng_feng": {
@@ -2681,6 +2807,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "lian_huan_nu": {
@@ -2702,6 +2829,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "shi_xin_gu": {
@@ -2722,6 +2850,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "hong_meng_tian_jin": {
@@ -2763,6 +2892,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "chu_he_han_jie": {
@@ -2784,6 +2914,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "dun_li": {
@@ -2825,6 +2956,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "ru_yi_fa": {
@@ -2845,6 +2977,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "you_feng_piao_zong": {
@@ -2866,6 +2999,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "jian_fei_jing_tian": {
@@ -2888,6 +3022,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "qian_long_wu_yong": {
@@ -2909,6 +3044,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "qin_yin_gong_ming": {
@@ -2930,6 +3066,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": true,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "shou_que_shi": {
@@ -2953,6 +3090,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "xiang_ji_bi_luo": {
@@ -2974,6 +3112,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "bu_wei_an_xing": {
@@ -2994,6 +3133,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "qiang_zhu_shi": {
@@ -3014,6 +3154,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "xi_bing_yu": {
@@ -3034,6 +3175,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "xia_liu_bao_shi": {
@@ -3055,6 +3197,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "dou_zhuan_xing_yi": {
@@ -3075,6 +3218,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "feng_liu_yun_san": {
@@ -3096,6 +3240,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "ku_can_gu": {
@@ -3116,6 +3261,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "long_zhan_yu_ye": {
@@ -3136,6 +3282,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "mi_xin_gu": {
@@ -3156,6 +3303,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "yin_qiao": {
@@ -3178,6 +3326,7 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "jiu_xiao_feng_lei": {
@@ -3199,6 +3348,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "long_yin": {
@@ -3221,6 +3371,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "han_ru_lei": {
@@ -3241,6 +3392,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "ling_ran_tian_feng": {
@@ -3261,6 +3413,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": true
     },
     "she_shen_jue": {
@@ -3281,6 +3434,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "ting_feng_chui_xue": {
@@ -3301,6 +3455,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "yuan": {
@@ -3321,6 +3476,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "zi_qi_dong_lai": {
@@ -3341,6 +3497,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "po_cang_qiong": {
@@ -3362,6 +3519,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "ren_chi_cheng": {
@@ -3380,6 +3538,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "sui_xing_chen": {
@@ -3401,6 +3560,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": false,
       "noWeaponRequired": false
     },
     "wu_an_mi_yun": {
@@ -3422,6 +3582,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
+      "ignoreDodge": true,
       "noWeaponRequired": false
     },
     "dong_zhu_ji_wei": {

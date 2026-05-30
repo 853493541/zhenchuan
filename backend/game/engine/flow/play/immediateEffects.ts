@@ -267,8 +267,9 @@ function syncStolenBuffRuntime(params: {
   sourcePlayer: any;
   stolenBuff: any;
   appliedBuff: any;
+  stolenShieldAmount?: number;
 }) {
-  const { sourcePlayer, stolenBuff, appliedBuff } = params;
+  const { sourcePlayer, stolenBuff, appliedBuff, stolenShieldAmount } = params;
 
   appliedBuff.expiresAt = stolenBuff.expiresAt;
   if (stolenBuff.periodicMs !== undefined) appliedBuff.periodicMs = stolenBuff.periodicMs;
@@ -288,9 +289,10 @@ function syncStolenBuffRuntime(params: {
   if (stolenBuff.sourceAbilityId) appliedBuff.sourceAbilityId = stolenBuff.sourceAbilityId;
   if (stolenBuff.sourceAbilityName) appliedBuff.sourceAbilityName = stolenBuff.sourceAbilityName;
 
-  if (typeof stolenBuff.shieldAmount === "number") {
+  const nextShieldAmount = typeof stolenShieldAmount === "number" ? stolenShieldAmount : stolenBuff.shieldAmount;
+  if (typeof nextShieldAmount === "number") {
     const previousShield = appliedBuff.shieldAmount ?? 0;
-    const nextShield = stolenBuff.shieldAmount;
+    const nextShield = nextShieldAmount;
     const shieldDelta = nextShield - previousShield;
     if (shieldDelta !== 0) {
       sourcePlayer.shield = Math.max(0, (sourcePlayer.shield ?? 0) + shieldDelta);
@@ -2838,12 +2840,28 @@ export function applyImmediateEffects(params: {
 
       // ─── 梯云纵: refresh 蹑云逐月 cooldown on caster. ───────────────────
       case "TI_YUN_ZONG_REFRESH": {
-        const inst = (source as any).hand?.find?.(
-          (a: any) => a.abilityId === "nieyun_zhuyue",
-        );
-        if (inst) {
-          inst.cooldown = 0;
-          inst._cooldownProgress = 0;
+        const tiYunAbility = ABILITIES[ability.id] as any;
+        const sourceInCombat = (source as any).inCombat === true;
+        const buffId = sourceInCombat ? 9004 : 9003;
+        const buff = tiYunAbility?.buffs?.find?.((entry: any) => entry.buffId === buffId);
+        if (buff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: source.userId,
+            ability: tiYunAbility ?? ability,
+            buffTarget: source as any,
+            buff,
+          });
+        }
+        if (!sourceInCombat) {
+          const inst = (source as any).hand?.find?.(
+            (a: any) => a.abilityId === "nieyun_zhuyue",
+          );
+          if (inst) {
+            inst.cooldown = 0;
+            inst._cooldownProgress = 0;
+          }
         }
         break;
       }
@@ -3023,6 +3041,9 @@ export function applyImmediateEffects(params: {
           if (idx === -1) continue;
 
           const buffDefinition = buildStolenBuffDefinition(stolenBuff);
+          const stolenShieldAmount = typeof stolenBuff.shieldAmount === "number"
+            ? Math.max(0, Math.floor(stolenBuff.shieldAmount))
+            : undefined;
 
           removeLinkedShield(stealTarget as any, stolenBuff);
           stealTarget.buffs.splice(idx, 1);
@@ -3050,6 +3071,7 @@ export function applyImmediateEffects(params: {
               sourcePlayer: source,
               stolenBuff,
               appliedBuff,
+              stolenShieldAmount,
             });
           }
         }

@@ -810,7 +810,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   yun_qi_song: {
     id: "yun_qi_song",
     name: "云栖松",
-    description: "自身获得【云栖松】12秒：外功闪避率提高60%\n同时获得【栖松】5秒：每秒回复1点气血（贯体）\n并驱散自身阳性、混元、阴性、毒性不利效果各两个",
+    description: "自身获得【云栖松】12秒：闪避率提高60%\n同时获得【栖松】5秒：每秒回复1点气血（贯体）\n并驱散自身阳性、混元、阴性、毒性不利效果各两个",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -828,8 +828,8 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "云栖松",
         category: "BUFF",
         durationMs: 12_000,
-        description: "外功闪避率提高60%",
-        effects: [{ type: "PHYSICAL_DODGE", chance: 0.6 }],
+        description: "闪避率提高60%",
+        effects: [{ type: "DODGE", chance: 0.6 }],
       },
       {
         buffId: 2402,
@@ -959,6 +959,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: false,
     requiresGrounded: true,
+    allowWhileControlled: true,
     effects: [],
     buffs: [
       {
@@ -1029,6 +1030,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         description: "运功中：不受技能控制",
         durationMs: 5_000,   // 5 seconds total channel
         periodicMs: 625,     // 5000 / 8 = 625ms per hit → 8 total hits
+        periodicStartImmediate: true,
         breakOnPlay: true,   // interrupted when player casts another ability
         cancelOnJump: false,
         effects: [
@@ -1257,7 +1259,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     qinggong: true,
     cannotCastWhileRooted: true,
-    requiresGrounded: true,
+    requiresGrounded: false,
     effects: [],
     buffs: [
       {
@@ -2189,7 +2191,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "听雷·伤",
         description: "伤害提升10%（最多3层）",
         category: "BUFF",
-        durationMs: 12_000,
+        durationMs: 9_999_000,
         breakOnPlay: false,
         maxStacks: 3,
         initialStacks: 1,
@@ -3252,6 +3254,15 @@ export const BASE_ABILITIES: AbilityRecord = {
         description: "跳跃高度额外增加12码",
         effects: [{ type: "TI_YUN_ZONG_JUMP" }],
       },
+      {
+        buffId: 9004,
+        name: "梯云纵·战斗",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 30_000,
+        description: "下一次跳跃能跳得更高",
+        effects: [{ type: "TI_YUN_ZONG_JUMP" }],
+      },
     ],
   },
 
@@ -3292,7 +3303,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   jing_hong_you_long: {
     id: "jing_hong_you_long",
     name: "惊鸿游龙",
-    description: "瞬发，自身施放。获得【惊鸿游龙】10秒：外功闪避率提高65%，受到内功伤害降低45%",
+    description: "瞬发，自身施放。获得【惊鸿游龙】10秒：闪避率提高65%，受到内功伤害降低45%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -3305,7 +3316,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "BUFF",
         durationMs: 10_000,
         breakOnPlay: false,
-        description: "外功闪避率提高65%，受到内功伤害降低45%",
+        description: "闪避率提高65%，受到内功伤害降低45%",
         effects: [
           { type: "PHYSICAL_DODGE", chance: 0.65 },
           { type: "DAMAGE_REDUCTION", value: 0.45, damageType: "内功" },
@@ -4371,7 +4382,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "OPPONENT",
     range: 20,
     faceDirection: false,
-    requiresGrounded: true,
+    requiresGrounded: false,
     requireTargetInRangeOnChannelComplete: true,
     cooldownTicks: 450,
     gcd: true,
@@ -4386,14 +4397,13 @@ export const BASE_ABILITIES: AbilityRecord = {
         breakOnPlay: false,
         description: "所有人视你为友方目标；不可被选中，不受范围技能影响，并免疫所有伤害",
         effects: [
-          { type: "UNTARGETABLE" },
           { type: "INVULNERABLE" },
         ],
       },
     ],
     channelDurationMs: 3_000,
     channelCancelOnMove: false,
-    channelCancelOnJump: true,
+    channelCancelOnJump: false,
     channelCancelOnOutOfRange: 20,
     channelForward: true,
     applyBuffsOnComplete: true,
@@ -5111,6 +5121,7 @@ function hasAbilityOverrideContent(entry: AbilityEditorOverrideEntry) {
       entry.cooldownReviewStatus !== undefined ||
       entry.isProjectile !== undefined ||
       entry.dunLiWhitelisted !== undefined ||
+      entry.ignoreDodge !== undefined ||
       entry.noWeaponRequired !== undefined
   );
 }
@@ -5426,6 +5437,46 @@ export function buildHasteUnaffectedSnapshot(): AbilityBooleanDeciderSnapshot {
   });
 }
 
+export function buildGuaranteedHitSnapshot(): AbilityBooleanDeciderSnapshot {
+  const resolvedAbilities = buildResolvedAbilities(BASE_ABILITIES, abilityPropertyOverrides);
+
+  const abilities = Object.values(resolvedAbilities)
+    .filter((ability) => (ability as any).specialBarAbility !== true)
+    .map((ability) => {
+      const override = abilityPropertyOverrides[ability.id];
+      const qinggongGcdImmune = (ability as any).qinggongGcdImmune === true;
+      const qinggong = ability.qinggong === true || qinggongGcdImmune;
+
+      return {
+        id: ability.id,
+        name: ability.name,
+        description: ability.description,
+        type: ability.type,
+        target: ability.target,
+        baseEnabled: (BASE_ABILITIES[ability.id] as any)?.ignoreDodge === true,
+        manualEnabled: override?.ignoreDodge === true,
+        manuallyExcluded: override?.ignoreDodge === false,
+        enabled: (ability as any).ignoreDodge === true,
+        qinggong,
+        qinggongGcdImmune,
+      } satisfies AbilityBooleanDeciderEntry;
+    })
+    .sort((left, right) => {
+      const selectedDelta = Number(right.enabled) - Number(left.enabled);
+      if (selectedDelta !== 0) return selectedDelta;
+      const excludedDelta = Number(right.manuallyExcluded) - Number(left.manuallyExcluded);
+      if (excludedDelta !== 0) return excludedDelta;
+      const typeDelta = ABILITY_TYPE_ORDER[left.type] - ABILITY_TYPE_ORDER[right.type];
+      if (typeDelta !== 0) return typeDelta;
+      return left.name.localeCompare(right.name, "zh-Hans-CN");
+    });
+
+  return {
+    updatedAt: abilityPropertyOverridesUpdatedAt,
+    abilities,
+  };
+}
+
 export function setAbilityEditorProperty(
   abilityId: string,
   propertyId: AbilityPropertyId,
@@ -5550,6 +5601,7 @@ export function setAbilityTag(abilityId: string, tagGroup: TagGroupId, value: st
     nextEntry.cooldownReviewStatus === undefined &&
     nextEntry.isProjectile === undefined &&
     nextEntry.dunLiWhitelisted === undefined &&
+    nextEntry.ignoreDodge === undefined &&
     nextEntry.noWeaponRequired === undefined;
   if (isEmpty) {
     delete abilityPropertyOverrides[abilityId];
@@ -5602,6 +5654,7 @@ export function setAbilityIsProjectile(abilityId: string, mode: AbilityBooleanOv
     nextEntry.cooldownReviewStatus === undefined &&
     nextEntry.isProjectile === undefined &&
     nextEntry.dunLiWhitelisted === undefined &&
+    nextEntry.ignoreDodge === undefined &&
     nextEntry.noWeaponRequired === undefined;
   if (isEmpty) {
     delete abilityPropertyOverrides[abilityId];
@@ -5646,6 +5699,7 @@ export function setAbilityDunLiWhitelisted(abilityId: string, mode: AbilityBoole
     nextEntry.cooldownReviewStatus === undefined &&
     nextEntry.isProjectile === undefined &&
     nextEntry.dunLiWhitelisted === undefined &&
+    nextEntry.ignoreDodge === undefined &&
     nextEntry.noWeaponRequired === undefined;
   if (isEmpty) {
     delete abilityPropertyOverrides[abilityId];
@@ -5661,6 +5715,34 @@ export function setAbilityDunLiWhitelisted(abilityId: string, mode: AbilityBoole
     baseAbility,
     overrides: abilityPropertyOverrides[abilityId],
   });
+}
+
+export function setAbilityGuaranteedHitOverride(abilityId: string, mode: AbilityBooleanDeciderMode) {
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) throw new Error("ERR_ABILITY_NOT_FOUND");
+
+  const nextEntry: AbilityEditorOverrideEntry = {
+    ...(abilityPropertyOverrides[abilityId] ?? {}),
+  };
+
+  if (mode === "manual-include") {
+    nextEntry.ignoreDodge = true;
+  } else if (mode === "manual-exclude") {
+    nextEntry.ignoreDodge = false;
+  } else {
+    delete nextEntry.ignoreDodge;
+  }
+
+  if (hasAbilityOverrideContent(nextEntry)) {
+    abilityPropertyOverrides[abilityId] = nextEntry;
+  } else {
+    delete abilityPropertyOverrides[abilityId];
+  }
+
+  abilityPropertyOverridesUpdatedAt = saveAbilityEditorOverrides(abilityPropertyOverrides);
+  rebuildAbilities();
+
+  return buildGuaranteedHitSnapshot();
 }
 
 export function setAbilityNoWeaponRequiredOverride(abilityId: string, mode: NoWeaponRequiredOverrideMode) {

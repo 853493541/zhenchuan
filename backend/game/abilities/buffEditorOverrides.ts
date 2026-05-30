@@ -335,8 +335,6 @@ export function applyPropertyOverridesToEffects(
     } else {
       effects.push({ type: "DODGE", chance });
     }
-  } else if (dodgeIdx >= 0) {
-    effects.splice(dodgeIdx, 1);
   }
 
   // 外功闪避 ↔ PHYSICAL_DODGE (uses 'chance' field, 0.0–1.0)
@@ -350,8 +348,6 @@ export function applyPropertyOverridesToEffects(
     } else {
       effects.push({ type: "PHYSICAL_DODGE", chance });
     }
-  } else if (physDodgeIdx >= 0) {
-    effects.splice(physDodgeIdx, 1);
   }
 
   // 沉默免疫 ↔ SILENCE_IMMUNE (also confers interrupt immunity at runtime).

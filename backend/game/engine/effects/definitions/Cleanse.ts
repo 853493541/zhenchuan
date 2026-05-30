@@ -20,6 +20,13 @@ function isKnockdown(buff: ActiveBuff) {
   return isMoheKnockdown(buff) || buff.name.includes("倒地");
 }
 
+const HARDCODED_CLEANSEABLE_SLOW_BUFF_IDS = new Set([
+  2005, // 孔雀翎
+  1342, // 捕风式
+  2403, // 滞影（捉影式）
+  2720, // 惊惧（剑飞惊天减速）
+]);
+
 function classifyCapturedControl(buff: ActiveBuff): CapturedControlKind | null {
   if (isKnockdown(buff)) return "knockdown";
 
@@ -75,7 +82,8 @@ export function captureAndCleanseControls(
 
 /**
  * Control level cleansability:
- *   Level 0 – ROOT, SLOW           → REMOVABLE only when effect.cleanseRootSlow=true
+ *   Level 0 – ROOT                 → REMOVABLE only when effect.cleanseRootSlow=true
+ *   Selected SLOW/QINGGONG_SEAL    → REMOVABLE by any cleanse (hardcoded list above)
  *   Level 1 – CONTROL, ATTACK_LOCK → REMOVABLE by cleanse
  *   Level 2 – KNOCKED_BACK         → NOT removable (physics effect, must expire)
  *   Level 3 – SILENCE              → NOT removable (hard silence, must expire)
@@ -86,14 +94,14 @@ export function handleCleanse(
 ) {
   const cleanseRootSlow = effect?.cleanseRootSlow === true;
 
-  source.buffs = source.buffs.filter(
-    (b) =>
-      isMoheKnockdown(b) ||
-      !b.effects.some(
-        (e) =>
-          ((e.type === "ROOT" || e.type === "SLOW") && cleanseRootSlow) ||
-          e.type === "CONTROL" ||
-          e.type === "ATTACK_LOCK"
-      )
-  );
+  source.buffs = source.buffs.filter((b) => {
+    if (HARDCODED_CLEANSEABLE_SLOW_BUFF_IDS.has(b.buffId)) return false;
+
+    return !b.effects.some(
+      (e) =>
+        (e.type === "ROOT" && cleanseRootSlow) ||
+        e.type === "CONTROL" ||
+        e.type === "ATTACK_LOCK"
+    );
+  });
 }
