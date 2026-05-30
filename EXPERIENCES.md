@@ -5,7 +5,67 @@ Each entry goes under its relevant section header.
 
 ## Yumen duplicate shrink-start guard (2026-05-29)
 
+## Camera dash collision-aware prediction (2026-05-29)
+
+**Implemented / checked**:
+- Traced dash camera wall-entry jitter to frontend render prediction, not `CameraRig`: the camera follows `localRenderPosRef`, and active dash rendering used a linear predictor that ignored exported-map collision.
+- Added collision-aware dash render prediction in `BattleArena.tsx`, using the same exported collision system readiness and play-area clamping path as movement prediction so the camera target stops with the visual/player body.
+- Added a real `ESC -> 测试 -> 镜头测试` panel with live prediction/collision metrics and a browser probe for Playwright.
+- Added a deterministic exported-map test positioning route and a live Playwright regression. The live test must cast through the in-page frontend path and refresh the browser state after cheat positioning; using `page.request` alone updates the server but can miss short active-dash states in React.
+
+**Lesson**:
+- Camera follow bugs can originate in render-target prediction rather than camera math. For short server-authoritative dashes, live browser tests should exercise the in-page state update path; request-context API calls can bypass frontend diff application and create false missed observations.
+
 ## Yumen mountain spawn anti-stuck lift (2026-05-29)
+
+## Yumen spectator ghost cooldown zeroing (2026-05-29)
+
+## Yumen sandstorm defeat announcement real-name fix (2026-05-29)
+
+## Yumen spectator frontend GCD/cooldown sync fix (2026-05-29)
+
+## GCD bar flashing stabilization (2026-05-29)
+
+## Yumen auto-settle shared-state sync fix (2026-05-29)
+
+**Implemented / checked**:
+- Diagnosed intermittent "自动结算不生效" as client preference contention: each player had a local auto-settle preference that could keep forcing different values to the server.
+- Removed per-client auto-settle localStorage preference/sync loop in BattleArena.
+- Bound the 自动结算 checkbox directly to shared server state (`safeZone.autoSettle`), so all players now see the same checked status and a single authoritative value.
+
+**Lesson**:
+- Match-wide rule toggles must be represented as shared server state only. Per-client remembered preferences create hidden state fights and intermittent behavior.
+
+**Implemented / checked**:
+- Investigated repeated GCD bar flash/restart behavior after spectator cooldown changes.
+- Switched frontend GCD fallback source from raw `me.globalGcdTicks` to runtime-decayed ticks via `getRuntimeCountdownTicks(...)` so stale server values do not keep re-triggering the bar.
+- Added a one-tick guard to suppress micro-fallback blips (`<= 1` tick), which removes brief flash artifacts near countdown boundaries.
+
+**Lesson**:
+- Cooldown bar fallback should use time-decayed runtime values, not raw synced snapshots; snapshot jitter near zero creates visual flicker and fake re-triggers.
+
+**Implemented / checked**:
+- Investigated ghost-form reports where frontend showed ongoing GCD and blocked 轻功 casts even though backend spectator rules allow continuous mobility.
+- In BattleArena frontend logic, bypassed cooldown/GCD gating for spectator 轻功 checks so local readiness matches backend validation.
+- Hidden the player GCD visual bar while `观战中` is active to avoid misleading "still cooling down" UI.
+
+**Lesson**:
+- Spectator-mode exceptions must be mirrored in frontend readiness checks and visual cooldown widgets; backend-only fixes still feel broken when UI/state prediction disagrees.
+
+**Implemented / checked**:
+- Found server chat fallback for unattributed defeats (such as 狂沙) was hardcoded to `【游客】黯然离去。`.
+- Updated system defeat broadcast fallback to use the actual defeated player display name when attacker attribution is missing.
+
+**Lesson**:
+- For kill/death announcements, fallback text must still resolve identity from the defeated user record; placeholder labels like "游客" create false attribution and confuse players.
+
+**Implemented / checked**:
+- Added spectator-mode cooldown bypass in ability validation so `观战中` players are not blocked by GCD or per-skill cooldown checks when casting movement skills.
+- Added runtime cooldown normalization in `GameLoop` so while `观战中` is active, ability cooldown, GCD, and charge lock/regen are continuously forced to ready state.
+- Kept existing spectator lock on non-轻功 abilities unchanged; this update only removes cooldown friction for allowed ghost-form mobility.
+
+**Lesson**:
+- For spectator/ghost traversal, cooldown-state consistency must be enforced both at validation time and tick-time state maintenance; patching only one path leaves intermittent lockouts.
 
 **Implemented / checked**:
 - Investigated reports of players spawning slightly inside mountain geometry and getting stuck due to low initial Z.

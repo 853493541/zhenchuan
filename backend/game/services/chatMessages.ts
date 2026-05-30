@@ -157,6 +157,6 @@ export async function broadcastDefeatSystemChat(gameId: string, defeatedUserId: 
     gameId,
     attackerName
       ? `【${defeatedName}】被【${attackerName}】重伤，黯然离去。`
-      : `【游客】黯然离去。`,
+      : `【${defeatedName}】黯然离去。`,
   );
 }

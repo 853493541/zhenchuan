@@ -319,7 +319,7 @@ export function validateCastAbility(
 
   ensureChargeRuntime(instance, ability);
 
-  if ((ability as any).gcd === true && Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
+  if (!yumenSpectator && (ability as any).gcd === true && Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
     throw new Error("ERR_ON_COOLDOWN");
   }
 
@@ -398,14 +398,14 @@ export function validateCastAbility(
   const targetPosition = explicitEntity?.position ?? targetPlayer.position;
 
   /* ================= COOLDOWN ================= */
-  if (hasChargeSystem(ability)) {
+  if (!yumenSpectator && hasChargeSystem(ability)) {
     if ((instance.chargeLockTicks ?? 0) > 0) {
       throw new Error("ERR_ON_COOLDOWN");
     }
     if ((instance.chargeCount ?? 0) <= 0) {
       throw new Error("ERR_ON_COOLDOWN");
     }
-  } else if (instance.cooldown > 0) {
+  } else if (!yumenSpectator && instance.cooldown > 0) {
     throw new Error("ERR_ON_COOLDOWN");
   }
 
@@ -746,6 +746,7 @@ export function validatePlayAbility(
   }
 
   const player = state.players[playerIndex];
+  const yumenSpectator = hasActiveYumenSpectatorBuff(player as any);
 
   const instance = player.hand.find((c) => c.instanceId === abilityInstanceId);
   const specialInstance = !instance &&
@@ -782,11 +783,11 @@ export function validatePlayAbility(
 
   /* ================= COOLDOWN ================= */
 
-  if (hasChargeSystem(ability)) {
+  if (!yumenSpectator && hasChargeSystem(ability)) {
     if ((resolvedInstance.chargeLockTicks ?? 0) > 0 || (resolvedInstance.chargeCount ?? 0) <= 0) {
       throw new Error("ERR_ON_COOLDOWN");
     }
-  } else if (resolvedInstance.cooldown > 0) {
+  } else if (!yumenSpectator && resolvedInstance.cooldown > 0) {
     throw new Error("ERR_ON_COOLDOWN");
   }
 

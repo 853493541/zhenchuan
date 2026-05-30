@@ -3233,6 +3233,143 @@
   cursor: pointer;
 }
 
+.escCameraTestPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-height: 0;
+}
+
+.escCameraTestToolbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.escCameraEventToggle {
+  flex: 1 1 160px;
+}
+
+.escCameraMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.escCameraMetricBox,
+.escCameraVectorPanel,
+.escCameraEventPanel {
+  border-radius: 4px;
+  border: 1px solid rgba(121, 174, 164, 0.2);
+  background: rgba(29, 45, 52, 0.68);
+}
+
+.escCameraMetricBox {
+  min-height: 48px;
+  padding: 7px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.escCameraMetricBox span,
+.escCameraVectorRow span,
+.escCameraSectionHeader span,
+.escCameraEventItem span {
+  color: rgba(221, 231, 228, 0.72);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.escCameraMetricBox strong,
+.escCameraVectorRow strong,
+.escCameraEventItem strong {
+  min-width: 0;
+  color: #f4f8f1;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.25;
+  overflow: hidden;
+}
+
+.escCameraVectorPanel,
+.escCameraEventPanel {
+  padding: 7px;
+  display: grid;
+  gap: 5px;
+}
+
+.escCameraSectionHeader,
+.escCameraVectorRow,
+.escCameraEventItem {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.escCameraSectionHeader {
+  min-height: 20px;
+  border-bottom: 1px solid rgba(121, 174, 164, 0.18);
+  padding-bottom: 4px;
+}
+
+.escCameraSectionHeader span:last-child {
+  justify-self: end;
+  color: #baf0e4;
+}
+
+.escCameraVectorRow,
+.escCameraEventItem {
+  min-height: 22px;
+}
+
+.escCameraEventList {
+  max-height: 94px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(83, 154, 143, 0.75) rgba(18, 31, 37, 0.75);
+  display: grid;
+  gap: 3px;
+}
+
+.escCameraEventList::-webkit-scrollbar {
+  width: 7px;
+}
+
+.escCameraEventList::-webkit-scrollbar-track {
+  background: rgba(18, 31, 37, 0.75);
+}
+
+.escCameraEventList::-webkit-scrollbar-thumb {
+  background: rgba(83, 154, 143, 0.75);
+  border-radius: 4px;
+}
+
+.escCameraEmptyState {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(221, 231, 228, 0.62);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+@media (max-width: 720px) {
+  .escCameraMetricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .escCameraSectionHeader,
+  .escCameraVectorRow,
+  .escCameraEventItem {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+}
+
 .escInlineButton {
   min-height: 22px;
   padding: 0 8px;

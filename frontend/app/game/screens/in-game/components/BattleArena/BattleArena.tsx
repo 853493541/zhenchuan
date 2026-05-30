@@ -21,11 +21,32 @@ import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase
 import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
 import { getClientCrashRecorder } from '@/app/game/diagnostics/clientCrashRecorder';
 import { getClientLatencyRecorder } from '@/app/game/diagnostics/clientLatencyRecorder';
-import { predictDashRenderPosition, shouldLogDashServerGap, type DashRenderSample } from './dashRenderPrediction';
+import { DASH_RENDER_MAX_LEAD_TICKS, predictDashRenderPosition, shouldLogDashServerGap, type DashRenderPredictionOptions, type DashRenderSample } from './dashRenderPrediction';
 import { isExportedMapMode, isYumen1v1BasicMode } from '../../../../gameModes';
 
 type V3 = { x: number; y: number; z: number };
 type LoadStageStatus = '完成' | '进行中' | '失败';
+
+type CameraDashPredictionDebugSnapshot = {
+  active: boolean;
+  collisionAware: boolean;
+  collisionReady: boolean;
+  leadTicks: number;
+  requestedLeadTicks: number;
+  simulatedTicks: number;
+  collisionDelta: number;
+  stoppedByCollision: boolean;
+  serverRenderGap: number;
+  renderPredictionGap: number;
+  cameraPitch: number;
+  minPitch: number;
+  maxPitch: number;
+  cameraZoom: number;
+  serverPosition: V3 | null;
+  renderPosition: V3 | null;
+  predictedPosition: V3 | null;
+  linearPosition: V3 | null;
+};
 
 type LoadPerformanceStage = {
   id: string;
@@ -441,7 +462,6 @@ const CAMERA_SETTINGS_STORAGE_KEY = 'zhenchuan-camera-settings-v1';
 const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
 const YUMEN_DAMAGE_MODE_STORAGE_KEY = 'zhenchuan-yumen-safe-zone-damage-mode-v1';
 const YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY = 'zhenchuan-yumen-auto-full-shrink-v1';
-const YUMEN_AUTO_SETTLE_STORAGE_KEY = 'zhenchuan-yumen-auto-settle-v1';
 const ABILITY_PANEL_MIN_SCALE = 0.85;
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
@@ -551,6 +571,68 @@ function recordDashProbe(type: 'start' | 'end' | 'correction', payload: Record<s
     probe.corrections = [...(Array.isArray(probe.corrections) ? probe.corrections : []), event].slice(-80);
   }
   target.__zhenchuanDashProbe = probe;
+}
+
+function createEmptyCameraDashPredictionSnapshot(): CameraDashPredictionDebugSnapshot {
+  return {
+    active: false,
+    collisionAware: false,
+    collisionReady: false,
+    leadTicks: 0,
+    requestedLeadTicks: 0,
+    simulatedTicks: 0,
+    collisionDelta: 0,
+    stoppedByCollision: false,
+    serverRenderGap: 0,
+    renderPredictionGap: 0,
+    cameraPitch: 0,
+    minPitch: 0,
+    maxPitch: 0,
+    cameraZoom: DEFAULT_CAMERA_ZOOM,
+    serverPosition: null,
+    renderPosition: null,
+    predictedPosition: null,
+    linearPosition: null,
+  };
+}
+
+function recordCameraDashPredictionProbe(snapshot: CameraDashPredictionDebugSnapshot) {
+  if (typeof window === 'undefined') return;
+  const target = window as any;
+  const probe = target.__zhenchuanCameraDashProbe ?? { active: false, dashes: [], samples: [] };
+  probe.last = snapshot;
+  probe.samples = [...(Array.isArray(probe.samples) ? probe.samples : []), { ts: Date.now(), ...snapshot }].slice(-240);
+
+  if (snapshot.active) {
+    if (!probe.active) {
+      probe.active = true;
+      probe.current = {
+        startedAt: Date.now(),
+        samples: 0,
+        maxCollisionDelta: 0,
+        maxRenderPredictionGap: 0,
+        maxServerRenderGap: 0,
+        stoppedByCollision: false,
+        collisionAware: false,
+      };
+    }
+    probe.current.samples += 1;
+    probe.current.maxCollisionDelta = Math.max(Number(probe.current.maxCollisionDelta ?? 0), snapshot.collisionDelta);
+    probe.current.maxRenderPredictionGap = Math.max(Number(probe.current.maxRenderPredictionGap ?? 0), snapshot.renderPredictionGap);
+    probe.current.maxServerRenderGap = Math.max(Number(probe.current.maxServerRenderGap ?? 0), snapshot.serverRenderGap);
+    probe.current.stoppedByCollision = probe.current.stoppedByCollision || snapshot.stoppedByCollision;
+    probe.current.collisionAware = probe.current.collisionAware || snapshot.collisionAware;
+  } else if (probe.active) {
+    const finished = {
+      ...(probe.current ?? {}),
+      endedAt: Date.now(),
+    };
+    probe.dashes = [...(Array.isArray(probe.dashes) ? probe.dashes : []), finished].slice(-80);
+    probe.active = false;
+    probe.current = null;
+  }
+
+  target.__zhenchuanCameraDashProbe = probe;
 }
 const OWNED_ABILITY_BAR_UI_KEY = 'owned-ability-bar';
 const HEIGHT_COUNTER_UI_KEY = 'height-counter';
@@ -2196,6 +2278,238 @@ function getBvhCeilingY(sys: MapCollisionSystem, center: THREE.Vector3): number 
   return sys.getCeilingY(center, center.y);
 }
 
+type CollisionAwareDashPredictionContext = {
+  arenaWidth: number;
+  arenaHeight: number;
+  playerRadius: number;
+  isExportedMap: boolean;
+  collisionSystem: MapCollisionSystem | null;
+  objects: MapObject[];
+  entities: TargetEntity[];
+  actorUserId: string;
+  playArea?: PlayAreaBounds;
+};
+
+type CollisionAwareDashPrediction = {
+  position: V3;
+  debug: {
+    collisionAware: boolean;
+    collisionReady: boolean;
+    leadTicks: number;
+    requestedLeadTicks: number;
+    simulatedTicks: number;
+    collisionDelta: number;
+    stoppedByCollision: boolean;
+    linearPosition: V3;
+  };
+};
+
+const _dashPredictBvhCenter = new THREE.Vector3();
+const _dashPredictBvhVelocity = new THREE.Vector3();
+const _dashPredictGroundCenter = new THREE.Vector3();
+
+function computeDashRenderLeadTicks(sample: DashRenderSample, options: DashRenderPredictionOptions) {
+  const tickMs = options.tickMs ?? (1000 / SERVER_TICK_RATE);
+  const maxLeadTicks = options.maxLeadTicks ?? DASH_RENDER_MAX_LEAD_TICKS;
+  const elapsedMs = Math.max(0, options.nowMs - sample.sampledAtMs);
+  const elapsedTicks = tickMs > 0 ? elapsedMs / tickMs : 0;
+  return {
+    requestedLeadTicks: elapsedTicks,
+    leadTicks: Math.max(0, Math.min(elapsedTicks, maxLeadTicks, sample.ticksRemaining)),
+  };
+}
+
+function getDashPredictionGroundHeight(x: number, y: number, z: number, ctx: CollisionAwareDashPredictionContext): number {
+  if (ctx.isExportedMap && ctx.collisionSystem) {
+    const halfW = ctx.arenaWidth / 2;
+    const halfH = ctx.arenaHeight / 2;
+    _dashPredictGroundCenter.set(
+      (x - halfW - GROUP_POS_X) / RENDER_SF_XZ,
+      (z - GROUP_POS_Y) / RENDER_SF_Y + EXPORT_CYL_HALF_HEIGHT,
+      (halfH - y - GROUP_POS_Z) / RENDER_SF_XZ,
+    );
+    const supportY = getBvhGroundSupportY(ctx.collisionSystem, _dashPredictGroundCenter);
+    return supportY === null ? z : supportY * RENDER_SF_Y + GROUP_POS_Y;
+  }
+  return getGroundHeightClient(x, y, z, ctx.objects, ctx.playerRadius);
+}
+
+function applyDashPredictionCollisionStep(
+  pos: V3,
+  stepX: number,
+  stepY: number,
+  ctx: CollisionAwareDashPredictionContext,
+) {
+  let x = pos.x;
+  let y = pos.y;
+  const velocity = { x: stepX, y: stepY };
+  const intendedStep = Math.hypot(stepX, stepY);
+  const maxSubStep = Math.max(0.001, ctx.playerRadius * 0.85);
+  const numSubSteps = Math.max(1, Math.ceil(intendedStep / maxSubStep));
+  let stoppedByCollision = false;
+
+  for (let subIndex = 0; subIndex < numSubSteps; subIndex += 1) {
+    const subX = stepX / numSubSteps;
+    const subY = stepY / numSubSteps;
+    const beforeX = x;
+    const beforeY = y;
+    let nextX = Math.max(ctx.playerRadius, Math.min(ctx.arenaWidth - ctx.playerRadius, x + subX));
+    let nextY = Math.max(ctx.playerRadius, Math.min(ctx.arenaHeight - ctx.playerRadius, y + subY));
+    const playAreaClamped = clampPositionToPlayAreaClient(
+      nextX,
+      nextY,
+      ctx.playArea,
+      ctx.arenaWidth,
+      ctx.arenaHeight,
+      ctx.playerRadius,
+      velocity,
+    );
+    nextX = playAreaClamped.x;
+    nextY = playAreaClamped.y;
+
+    if (ctx.isExportedMap && ctx.collisionSystem) {
+      const halfW = ctx.arenaWidth / 2;
+      const halfH = ctx.arenaHeight / 2;
+      _dashPredictBvhCenter.set(
+        (nextX - halfW - GROUP_POS_X) / RENDER_SF_XZ,
+        (pos.z - GROUP_POS_Y) / RENDER_SF_Y + EXPORT_CYL_HALF_HEIGHT,
+        (halfH - nextY - GROUP_POS_Z) / RENDER_SF_XZ,
+      );
+      _dashPredictBvhVelocity.set(subX / RENDER_SF_XZ, 0, -subY / RENDER_SF_XZ);
+      ctx.collisionSystem.resolveSphereCollision(_dashPredictBvhCenter, EXPORT_CYL_RADIUS, _dashPredictBvhVelocity);
+      nextX = Math.max(ctx.playerRadius, Math.min(ctx.arenaWidth - ctx.playerRadius,
+        _dashPredictBvhCenter.x * RENDER_SF_XZ + GROUP_POS_X + halfW));
+      nextY = Math.max(ctx.playerRadius, Math.min(ctx.arenaHeight - ctx.playerRadius,
+        halfH - (_dashPredictBvhCenter.z * RENDER_SF_XZ + GROUP_POS_Z)));
+      const bvhPlayAreaClamped = clampPositionToPlayAreaClient(
+        nextX,
+        nextY,
+        ctx.playArea,
+        ctx.arenaWidth,
+        ctx.arenaHeight,
+        ctx.playerRadius,
+        velocity,
+      );
+      nextX = bvhPlayAreaClamped.x;
+      nextY = bvhPlayAreaClamped.y;
+    } else {
+      for (const obj of ctx.objects) {
+        const resolved = resolveObjCollisionClient(nextX, nextY, pos.z, velocity, obj, ctx.playerRadius);
+        nextX = resolved.x;
+        nextY = resolved.y;
+      }
+    }
+
+    const wallResolved = resolveEnemyChuHeHanJieWallCollisionClient(
+      nextX,
+      nextY,
+      pos.z,
+      velocity,
+      ctx.entities,
+      ctx.actorUserId,
+      ctx.playerRadius,
+    );
+    nextX = wallResolved.x;
+    nextY = wallResolved.y;
+    const finalPlayAreaClamped = clampPositionToPlayAreaClient(
+      nextX,
+      nextY,
+      ctx.playArea,
+      ctx.arenaWidth,
+      ctx.arenaHeight,
+      ctx.playerRadius,
+      velocity,
+    );
+    nextX = finalPlayAreaClamped.x;
+    nextY = finalPlayAreaClamped.y;
+
+    const actualStepX = nextX - beforeX;
+    const actualStepY = nextY - beforeY;
+    const intendedSubStep = Math.hypot(subX, subY);
+    if (intendedSubStep > 1e-4) {
+      const along = (actualStepX * subX + actualStepY * subY) / intendedSubStep;
+      if (along < intendedSubStep * 0.35) stoppedByCollision = true;
+    }
+    x = nextX;
+    y = nextY;
+    if (stoppedByCollision) break;
+  }
+
+  pos.x = x;
+  pos.y = y;
+  return stoppedByCollision;
+}
+
+function predictDashRenderPositionWithCollision(
+  sample: DashRenderSample | null,
+  options: DashRenderPredictionOptions,
+  ctx: CollisionAwareDashPredictionContext,
+): CollisionAwareDashPrediction | null {
+  if (!sample) return null;
+
+  const { requestedLeadTicks, leadTicks } = computeDashRenderLeadTicks(sample, options);
+  const linearPosition = predictDashRenderPosition(sample, options) ?? sample.position;
+  const collisionReady = !ctx.isExportedMap || !!ctx.collisionSystem;
+
+  if (!collisionReady || leadTicks <= 0) {
+    return {
+      position: { ...linearPosition },
+      debug: {
+        collisionAware: false,
+        collisionReady,
+        leadTicks,
+        requestedLeadTicks,
+        simulatedTicks: 0,
+        collisionDelta: 0,
+        stoppedByCollision: false,
+        linearPosition: { ...linearPosition },
+      },
+    };
+  }
+
+  const pos: V3 = { ...sample.position };
+  let simulatedTicks = 0;
+  let stoppedByCollision = false;
+  const fullTicks = Math.floor(leadTicks);
+  const fractionalTick = leadTicks - fullTicks;
+  const stepScales: number[] = [];
+  for (let tickIndex = 0; tickIndex < fullTicks; tickIndex += 1) stepScales.push(1);
+  if (fractionalTick > 1e-4) stepScales.push(fractionalTick);
+
+  for (const stepScale of stepScales) {
+    const stepX = sample.vxPerTick * stepScale;
+    const stepY = sample.vyPerTick * stepScale;
+    if (Math.hypot(stepX, stepY) > 1e-5) {
+      stoppedByCollision = applyDashPredictionCollisionStep(pos, stepX, stepY, ctx) || stoppedByCollision;
+    }
+    const nextZ = sample.position.z + sample.vzPerTick * (simulatedTicks + stepScale);
+    const groundZ = getDashPredictionGroundHeight(pos.x, pos.y, nextZ, ctx);
+    pos.z = Math.max(groundZ, nextZ);
+    simulatedTicks += stepScale;
+    if (stoppedByCollision) break;
+  }
+
+  const collisionDelta = Math.hypot(
+    linearPosition.x - pos.x,
+    linearPosition.y - pos.y,
+    linearPosition.z - pos.z,
+  );
+
+  return {
+    position: pos,
+    debug: {
+      collisionAware: true,
+      collisionReady: true,
+      leadTicks,
+      requestedLeadTicks,
+      simulatedTicks,
+      collisionDelta,
+      stoppedByCollision,
+      linearPosition: { ...linearPosition },
+    },
+  };
+}
+
 /* --- LOS BVH scratch (avoid GC in render loop) --- */
 const _losFrom = new THREE.Vector3();
 const _losTo   = new THREE.Vector3();
@@ -3647,7 +3961,7 @@ function buildVisibleVisualGcd(
   }
 
   const remainingBaseGcdTicks = Math.max(0, Number(globalGcdTicks ?? 0));
-  if (!settings.enabled || !settings.base || remainingBaseGcdTicks <= 0) {
+  if (!settings.enabled || !settings.base || remainingBaseGcdTicks <= 1) {
     return null;
   }
 
@@ -4205,6 +4519,14 @@ function formatCoordinateText(position: Partial<V3> | null | undefined, fallback
   const y = Number.isFinite(position?.y) ? Number(position?.y) : Number(fallback.y ?? 0);
   const z = Number.isFinite(position?.z) ? Number(position?.z) : Number(fallback.z ?? 0);
   return `X ${x.toFixed(2)}  Y ${y.toFixed(2)}  Z ${z.toFixed(2)}`;
+}
+
+function formatCameraDashNumber(value: number, digits = 2) {
+  return Number.isFinite(value) ? value.toFixed(digits) : '-';
+}
+
+function formatCameraDashPosition(position: V3 | null) {
+  return position ? formatCoordinateText(position, position) : '-';
 }
 
 function FloatingCoordinateDisplay({
@@ -5279,17 +5601,8 @@ export default function BattleArena({
     }
   });
   const [yumenAutoFullShrink, setYumenAutoFullShrink] = useState(false);
-  const [yumenAutoSettlePreference, setYumenAutoSettlePreference] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return false;
-      return localStorage.getItem(YUMEN_AUTO_SETTLE_STORAGE_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
   const yumenBoundaryEditModeRef = useRef(false);
   const yumenAutoFullShrinkStartedRef = useRef<string | null>(null);
-  const yumenAutoSettleSyncKeyRef = useRef<string | null>(null);
   const [showHeartDetailsPanel, setShowHeartDetailsPanel] = useState(false);
   const [showHeartStatSettings, setShowHeartStatSettings] = useState(false);
   const [showCombatPresetBar, setShowCombatPresetBar] = useState(false);
@@ -5314,7 +5627,6 @@ export default function BattleArena({
     try {
       if (typeof window === 'undefined') return;
       setYumenAutoFullShrink(localStorage.getItem(YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY) === '1');
-      setYumenAutoSettlePreference(localStorage.getItem(YUMEN_AUTO_SETTLE_STORAGE_KEY) === '1');
     } catch {}
   }, []);
   useEffect(() => {
@@ -5327,11 +5639,6 @@ export default function BattleArena({
       localStorage.setItem(YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY, yumenAutoFullShrink ? '1' : '0');
     } catch {}
   }, [yumenAutoFullShrink]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(YUMEN_AUTO_SETTLE_STORAGE_KEY, yumenAutoSettlePreference ? '1' : '0');
-    } catch {}
-  }, [yumenAutoSettlePreference]);
   useEffect(() => {
     try {
       localStorage.setItem(HEART_STAT_STORAGE_KEY, JSON.stringify(heartStatVisibility));
@@ -5810,7 +6117,7 @@ export default function BattleArena({
   const [showCoordinateDisplay, setShowCoordinateDisplay] = useState(false);
   const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
-  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'martial' | 'chat' | 'kill' | 'sandstorm'>('switches');
+  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'camera' | 'martial' | 'chat' | 'kill' | 'sandstorm'>('switches');
   const [yumenSandstormOverlaySettings, setYumenSandstormOverlaySettings] = useState<YumenSandstormOverlaySettings>(() => {
     if (typeof window === 'undefined') return DEFAULT_YUMEN_SANDSTORM_OVERLAY;
     try {
@@ -6031,13 +6338,18 @@ export default function BattleArena({
   }), [isMobileDevice]);
   const [cameraZoomLevel, setCameraZoomLevel] = useState(() => cameraDistanceToZoom(cameraSettings.maxDistance));
   const [cameraDebugEntries, setCameraDebugEntries] = useState<CameraDebugEntry[]>([]);
+  const cameraDashPredictionDebugRef = useRef<CameraDashPredictionDebugSnapshot>(createEmptyCameraDashPredictionSnapshot());
+  const [cameraDashPredictionDebug, setCameraDashPredictionDebug] = useState<CameraDashPredictionDebugSnapshot>(() => createEmptyCameraDashPredictionSnapshot());
   const cameraDebugIdRef = useRef(0);
   const cameraEventTestingEnabledRef = useRef(false);
-  const visibleVisualGcd = buildVisibleVisualGcd(
-    me?.visualGcd ?? null,
-    me?.globalGcdTicks,
-    gcdVisibilitySettings,
-  );
+  const runtimeGlobalGcdTicks = getRuntimeCountdownTicks(me, 'globalGcdTicks', '_globalGcdSyncedAt', cooldownClockMs);
+  const visibleVisualGcd = selfYumenSpectating
+    ? null
+    : buildVisibleVisualGcd(
+        me?.visualGcd ?? null,
+        runtimeGlobalGcdTicks,
+        gcdVisibilitySettings,
+      );
   const showInGameWarning = useCallback((text: string) => {
     const nextText = text.trim();
     if (!nextText) return;
@@ -6129,6 +6441,13 @@ export default function BattleArena({
       clearCameraDebugEntries();
     }
   }, [clearCameraDebugEntries, showCameraEventTestingPanel]);
+  useEffect(() => {
+    if (!showCameraEventTestingPanel && !(showTestingPanel && escMainTab === 'test' && escTestPage === 'camera')) return;
+    const id = window.setInterval(() => {
+      setCameraDashPredictionDebug({ ...cameraDashPredictionDebugRef.current });
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [escMainTab, escTestPage, showCameraEventTestingPanel, showTestingPanel]);
   const formatCameraDebugEntry = useCallback((entry: CameraDebugEntry) => {
     const time = new Date(entry.ts).toLocaleTimeString('en-GB', { hour12: false });
     const millis = String(entry.ts % 1000).padStart(3, '0');
@@ -6890,6 +7209,34 @@ export default function BattleArena({
   useConsumableRef.current = (id: ConsumableItemId) => {
     void onUseConsumable?.(id);
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('playwrightCameraDashProbe')) return;
+    const target = window as any;
+    target.__zhenchuanCastAbilityForProbe = (
+      abilityInstanceId: string,
+      options?: {
+        targetUserId?: string;
+        groundTarget?: { x: number; y: number; z?: number };
+        entityTargetId?: string;
+        movementIntent?: boolean;
+      },
+    ) => onCastAbility(
+      abilityInstanceId,
+      options?.targetUserId,
+      options?.groundTarget,
+      options?.entityTargetId,
+      options?.movementIntent ?? false,
+    );
+    target.__zhenchuanRefreshGameForProbe = () => Promise.resolve(onMovementRecover?.());
+    return () => {
+      if (target.__zhenchuanCastAbilityForProbe) delete target.__zhenchuanCastAbilityForProbe;
+      if (target.__zhenchuanRefreshGameForProbe) delete target.__zhenchuanRefreshGameForProbe;
+    };
+  }, [onCastAbility, onMovementRecover]);
+
   const getHotkeyDraftSlots = useCallback(() => {
     const heldItemIds = new Set(itemBarAbilitiesRef.current.filter(Boolean).map((ability) => ability!.id));
     return buildDraftAbilitySlots(
@@ -7415,18 +7762,29 @@ export default function BattleArena({
       const frameDt = lastFrameTimeRef.current === 0 ? 16 : Math.min(frameNow - lastFrameTimeRef.current, 50);
       lastFrameTimeRef.current = frameNow;
       const dtF = frameDt / 16.67;
+      let dashPrediction: CollisionAwareDashPrediction | null = null;
 
       // --- local player render pos ---
       const myPos = localPositionRef.current ?? me?.position;
       if (myPos) {
         let tx = myPos.x, ty = myPos.y, tz = localZRef.current;
-        const predictedDashRenderPos = meActiveDashRef.current
-          ? predictDashRenderPosition(dashServerSampleRef.current, { nowMs: frameNow })
+        dashPrediction = meActiveDashRef.current
+          ? predictDashRenderPositionWithCollision(dashServerSampleRef.current, { nowMs: frameNow }, {
+              arenaWidth: ARENA_WIDTH,
+              arenaHeight: ARENA_HEIGHT,
+              playerRadius,
+              isExportedMap,
+              collisionSystem: collisionSysRef.current,
+              objects: mapObjectsRef.current,
+              entities: entitiesRef.current,
+              actorUserId: me.userId,
+              playArea: playAreaRef.current,
+            })
           : null;
-        if (predictedDashRenderPos) {
-          tx = predictedDashRenderPos.x;
-          ty = predictedDashRenderPos.y;
-          tz = predictedDashRenderPos.z;
+        if (dashPrediction) {
+          tx = dashPrediction.position.x;
+          ty = dashPrediction.position.y;
+          tz = dashPrediction.position.z;
         }
         const r  = localRenderPosRef.current;
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
@@ -7484,6 +7842,40 @@ export default function BattleArena({
         }
       }
 
+      const renderPosition = localRenderPosRef.current ? { ...localRenderPosRef.current } : null;
+      const serverPosition = me?.position ? { x: me.position.x, y: me.position.y, z: Number((me.position as any).z ?? localZRef.current ?? 0) } : null;
+      const predictedPosition = dashPrediction?.position ? { ...dashPrediction.position } : null;
+      const linearPosition = dashPrediction?.debug.linearPosition ? { ...dashPrediction.debug.linearPosition } : null;
+      const serverRenderGap = renderPosition && serverPosition
+        ? Math.hypot(renderPosition.x - serverPosition.x, renderPosition.y - serverPosition.y, renderPosition.z - serverPosition.z)
+        : 0;
+      const renderPredictionGap = renderPosition && predictedPosition
+        ? Math.hypot(renderPosition.x - predictedPosition.x, renderPosition.y - predictedPosition.y, renderPosition.z - predictedPosition.z)
+        : 0;
+      const minPitch = isExportedMapMode(mode) ? COLLISION_TEST_MIN_CAMERA_PITCH : DEFAULT_MIN_CAMERA_PITCH;
+      const snapshot: CameraDashPredictionDebugSnapshot = {
+        active: !!meActiveDashRef.current,
+        collisionAware: !!dashPrediction?.debug.collisionAware,
+        collisionReady: dashPrediction?.debug.collisionReady ?? (!isExportedMap || !!collisionSysRef.current),
+        leadTicks: dashPrediction?.debug.leadTicks ?? 0,
+        requestedLeadTicks: dashPrediction?.debug.requestedLeadTicks ?? 0,
+        simulatedTicks: dashPrediction?.debug.simulatedTicks ?? 0,
+        collisionDelta: dashPrediction?.debug.collisionDelta ?? 0,
+        stoppedByCollision: dashPrediction?.debug.stoppedByCollision ?? false,
+        serverRenderGap,
+        renderPredictionGap,
+        cameraPitch: camPitchRef.current,
+        minPitch,
+        maxPitch: MAX_CAMERA_PITCH,
+        cameraZoom: camZoomRef.current,
+        serverPosition,
+        renderPosition,
+        predictedPosition,
+        linearPosition,
+      };
+      cameraDashPredictionDebugRef.current = snapshot;
+      recordCameraDashPredictionProbe(snapshot);
+
       myZRef.current = localRenderPosRef.current.z ?? 0;
 
       rafId = requestAnimationFrame(tick);
@@ -7491,7 +7883,7 @@ export default function BattleArena({
 
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [me?.position?.x, me?.position?.y]);
+  }, [ARENA_HEIGHT, ARENA_WIDTH, isExportedMap, me?.position?.x, me?.position?.y, (me?.position as any)?.z, me.userId, mode, playerRadius]);
 
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
   // Keep max-jumps ref in sync with MULTI_JUMP buff from server state
@@ -8934,15 +9326,21 @@ export default function BattleArena({
     const getDisplayMaxCooldown = (ab: any): number => {
       return getAbilityRuntimeCooldownTicks(ab);
     };
-    const getSharedGcdTicks = (ab: any): number => (
-      ab?.gcd === true ? getRuntimeCountdownTicks(me, 'globalGcdTicks', '_globalGcdSyncedAt', cooldownClockMs) : 0
-    );
+    const getSharedGcdTicks = (ab: any): number => {
+      const isQinggongLike = ab?.qinggong === true || ab?.qinggongGcdImmune === true;
+      if (selfYumenSpectating && isQinggongLike) return 0;
+      return ab?.gcd === true ? getRuntimeCountdownTicks(me, 'globalGcdTicks', '_globalGcdSyncedAt', cooldownClockMs) : 0;
+    };
     const getChargeDisplay = (ab: any, instance: any) => {
       const sharedGcdTicks = getSharedGcdTicks(ab);
       const baseGcdTicks = Math.max(1, Math.round((BASE_GCD_MS / 1000) * SERVER_TICK_RATE));
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
+      const isQinggongLike = ab?.qinggong === true || ab?.qinggongGcdImmune === true;
+      const ignoreSpectatorCooldown = selfYumenSpectating && isQinggongLike;
       if (maxCharges <= 1) {
-        const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
+        const instanceCooldown = ignoreSpectatorCooldown
+          ? 0
+          : getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
         const rawInstanceCooldown = Math.max(0, Math.round(Number(instance?.cooldown ?? 0)));
         const currentCooldown = Math.max(0, instanceCooldown);
         if (currentCooldown <= 0 && sharedGcdTicks > 0) {
@@ -8975,17 +9373,21 @@ export default function BattleArena({
 
       const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
       const chargeRecoveryTicks = getChargeRecoveryDisplayTicks(ab);
-      const chargeRegenTicksRemaining = getRuntimeCountdownTicks(
-        instance,
-        'chargeRegenTicksRemaining',
-        '_chargeRegenTicksRemainingSyncedAt',
-        cooldownClockMs,
-      );
+      const chargeRegenTicksRemaining = ignoreSpectatorCooldown
+        ? 0
+        : getRuntimeCountdownTicks(
+            instance,
+            'chargeRegenTicksRemaining',
+            '_chargeRegenTicksRemainingSyncedAt',
+            cooldownClockMs,
+          );
       const chargeRegenProgress = chargeCount < maxCharges
         ? Math.max(0, Math.min(1, 1 - (chargeRegenTicksRemaining / chargeRecoveryTicks)))
         : undefined;
       const chargeCastLockTicks = Math.max(0, Number(ab?.chargeCastLockTicks ?? 0));
-      const instanceChargeLockTicks = getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
+      const instanceChargeLockTicks = ignoreSpectatorCooldown
+        ? 0
+        : getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
       const rawInstanceChargeLockTicks = Math.max(0, Math.round(Number(instance?.chargeLockTicks ?? 0)));
       const chargeLockTicks = Math.max(0, instanceChargeLockTicks);
 
@@ -9098,17 +9500,18 @@ export default function BattleArena({
       const targetForChecks = targetContext.targetForChecks;
       const targetPos = targetContext.targetPos;
       const abilityIdForChecks = ab?.id ?? instance?.abilityId;
-      const sharedGcdTicks = getSharedGcdTicks(ab);
       const isQinggongLike = ab?.qinggong === true || ab?.qinggongGcdImmune === true;
+      const ignoreSpectatorCooldown = selfYumenSpectating && isQinggongLike;
+      const sharedGcdTicks = ignoreSpectatorCooldown ? 0 : getSharedGcdTicks(ab);
       const mountedYuqiToggle = yuqiMounted && (ab?.id === 'yuqi' || instance?.abilityId === 'yuqi');
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
-      if (maxCharges > 1) {
+      if (!ignoreSpectatorCooldown && maxCharges > 1) {
         const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
         const chargeLockTicks = getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
         if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
         if (chargeLockTicks > 0) return '这个能力正在冷却';
         if (chargeCount <= 0) return '招式层数正在恢复';
-      } else {
+      } else if (!ignoreSpectatorCooldown) {
         const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
         if (instanceCooldown > 0) return '这个能力正在冷却';
         if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
@@ -12363,32 +12766,6 @@ export default function BattleArena({
       if (ok) yumenAutoFullShrinkStartedRef.current = autoStartKey;
     })();
   }, [gameId, isYumenMode, runCheatAction, runningCheatAction, safeZone?.phase, safeZone?.phaseStartedAt, selfHasYumenPrep, yumenAutoFullShrink]);
-
-  useEffect(() => {
-    if (!isYumenMode || !gameId || !safeZone || runningCheatAction === 'yumen-auto-settle') return;
-    const desired = yumenAutoSettlePreference === true;
-    const current = safeZone.autoSettle === true;
-    if (desired === current) {
-      yumenAutoSettleSyncKeyRef.current = null;
-      return;
-    }
-    const syncKey = `${gameId}:${desired ? '1' : '0'}:${current ? '1' : '0'}`;
-    if (yumenAutoSettleSyncKeyRef.current === syncKey) return;
-    yumenAutoSettleSyncKeyRef.current = syncKey;
-    void (async () => {
-      try {
-        const res = await fetch('/api/game/cheat/yumen/auto-settle', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ gameId, enabled: desired }),
-        });
-        if (!res.ok) yumenAutoSettleSyncKeyRef.current = null;
-      } catch {
-        yumenAutoSettleSyncKeyRef.current = null;
-      }
-    })();
-  }, [gameId, isYumenMode, runningCheatAction, safeZone?.autoSettle, yumenAutoSettlePreference]);
 
   const updateYumenPlayArea = useCallback(async (
     nextPlayArea: PlayAreaBounds,
@@ -15922,6 +16299,16 @@ export default function BattleArena({
                         </button>
                         <button
                           type="button"
+                          className={`${styles.escSettingsNavButton} ${escTestPage === 'camera' ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => {
+                            setEscTestPage('camera');
+                            setShowCameraEventTestingPanel(true);
+                          }}
+                        >
+                          镜头测试
+                        </button>
+                        <button
+                          type="button"
                           className={`${styles.escSettingsNavButton} ${escTestPage === 'martial' ? styles.escSettingsNavButtonActive : ''}`}
                           onClick={() => setEscTestPage('martial')}
                         >
@@ -15958,7 +16345,16 @@ export default function BattleArena({
                               <span>角色测试状态</span>
                             </label>
                             <label className={styles.escToggleRow}>
-                              <input type="checkbox" checked={showCameraEventTestingPanel} onChange={(e) => setShowCameraEventTestingPanel(e.target.checked)} className={styles.escToggleInput} />
+                              <input
+                                type="checkbox"
+                                checked={showCameraEventTestingPanel}
+                                onChange={(e) => {
+                                  const next = e.target.checked;
+                                  setShowCameraEventTestingPanel(next);
+                                  if (next) setEscTestPage('camera');
+                                }}
+                                className={styles.escToggleInput}
+                              />
                               <span>镜头测试</span>
                             </label>
                             <label className={styles.escToggleRow}>
@@ -16038,6 +16434,94 @@ export default function BattleArena({
                             </label>
                           </div>
                           </>
+                        ) : escTestPage === 'camera' ? (
+                          <div className={styles.escCameraTestPanel}>
+                            <div className={styles.escCameraTestToolbar}>
+                              <label className={`${styles.escToggleRow} ${styles.escCameraEventToggle}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={showCameraEventTestingPanel}
+                                  onChange={(e) => setShowCameraEventTestingPanel(e.target.checked)}
+                                  className={styles.escToggleInput}
+                                />
+                                <span>镜头事件记录</span>
+                              </label>
+                              <button type="button" className={styles.escInlineButton} onClick={clearCameraDebugEntries}>清空</button>
+                              <button type="button" className={styles.escInlineButton} onClick={() => void copyCameraDebugEntries()}>复制</button>
+                            </div>
+                            <div className={styles.escCameraMetricGrid}>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>冲刺状态</span>
+                                <strong>{cameraDashPredictionDebug.active ? '冲刺中' : '待机'}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>碰撞预测</span>
+                                <strong>{cameraDashPredictionDebug.collisionAware ? '运行' : cameraDashPredictionDebug.collisionReady ? '就绪' : '等待'}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>领先帧</span>
+                                <strong>{formatCameraDashNumber(cameraDashPredictionDebug.leadTicks, 1)}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>预测修正</span>
+                                <strong>{formatCameraDashNumber(cameraDashPredictionDebug.collisionDelta)}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>服务端差</span>
+                                <strong>{formatCameraDashNumber(cameraDashPredictionDebug.serverRenderGap)}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>渲染误差</span>
+                                <strong>{formatCameraDashNumber(cameraDashPredictionDebug.renderPredictionGap)}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>镜头距离</span>
+                                <strong>{formatCameraDashNumber(cameraZoomToDistance(cameraDashPredictionDebug.cameraZoom))}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>俯仰角</span>
+                                <strong>{formatCameraDashNumber(cameraDashPredictionDebug.cameraPitch)} / {formatCameraDashNumber(cameraDashPredictionDebug.minPitch)}..{formatCameraDashNumber(cameraDashPredictionDebug.maxPitch)}</strong>
+                              </div>
+                            </div>
+                            <div className={styles.escCameraVectorPanel}>
+                              <div className={styles.escCameraSectionHeader}>
+                                <span>位置</span>
+                                <span>{cameraDashPredictionDebug.stoppedByCollision ? '碰撞停止' : '跟随中'}</span>
+                              </div>
+                              <div className={styles.escCameraVectorRow}>
+                                <span>服务端</span>
+                                <strong>{formatCameraDashPosition(cameraDashPredictionDebug.serverPosition)}</strong>
+                              </div>
+                              <div className={styles.escCameraVectorRow}>
+                                <span>渲染</span>
+                                <strong>{formatCameraDashPosition(cameraDashPredictionDebug.renderPosition)}</strong>
+                              </div>
+                              <div className={styles.escCameraVectorRow}>
+                                <span>碰撞预测</span>
+                                <strong>{formatCameraDashPosition(cameraDashPredictionDebug.predictedPosition)}</strong>
+                              </div>
+                              <div className={styles.escCameraVectorRow}>
+                                <span>线性预测</span>
+                                <strong>{formatCameraDashPosition(cameraDashPredictionDebug.linearPosition)}</strong>
+                              </div>
+                            </div>
+                            <div className={styles.escCameraEventPanel}>
+                              <div className={styles.escCameraSectionHeader}>
+                                <span>事件日志</span>
+                                <span>{cameraDebugEntries.length}</span>
+                              </div>
+                              <div className={styles.escCameraEventList}>
+                                {cameraDebugEntries.length === 0 ? (
+                                  <div className={styles.escCameraEmptyState}>暂无记录</div>
+                                ) : cameraDebugEntries.slice(-8).reverse().map((entry) => (
+                                  <div className={styles.escCameraEventItem} key={entry.id}>
+                                    <span>{entry.type}</span>
+                                    <strong>{entry.message}</strong>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
                         ) : escTestPage === 'martial' ? (
                           <div className={styles.escTestGrid}>
                             <div className={styles.escSettingControl}>
@@ -17687,19 +18171,17 @@ export default function BattleArena({
                 }}>
                   <input
                     type="checkbox"
-                    checked={yumenAutoSettlePreference}
+                    checked={safeZone?.autoSettle === true}
                     disabled={!!runningCheatAction}
                     onChange={(event) => {
                       const enabled = event.target.checked;
-                      setYumenAutoSettlePreference(enabled);
                       void (async () => {
-                        const ok = await runCheatAction(
+                        await runCheatAction(
                           'yumen-auto-settle',
                           '/api/game/cheat/yumen/auto-settle',
                           enabled ? '自动结算已开启' : '自动结算已关闭',
                           { enabled },
                         );
-                        if (!ok) setYumenAutoSettlePreference(safeZone?.autoSettle === true);
                       })();
                     }}
                     style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}

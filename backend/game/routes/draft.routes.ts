@@ -20,6 +20,7 @@ import { diffState } from "../services/flow/stateDiff";
 import { EXPORTED_MAP_HEIGHT, EXPORTED_MAP_SPAWN_POSITIONS, EXPORTED_MAP_WIDTH, exportedMap } from "../map/exportedMap";
 import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../map/exportedMapCollision";
 import { isExportedMapMode, isYumen1v1BasicMode, normalizeGameMode } from "../modes";
+import { DASH_CC_IMMUNE_BUFF_ID } from "../engine/effects/definitions/DirectionalDash";
 import type { AbilityInstance } from "../engine/state/types";
 import {
   NEW_WORLD_UNIT_SCALE,
@@ -2780,6 +2781,89 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
     void game.save().catch((err: any) => {
       console.error("[cheat/reset-cooldowns] async save failed:", err?.message ?? err);
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/set-player-positions - Move battle players on exported-map modes for deterministic tests.
+ * Body: { gameId, positions: [{ userId?, playerIndex?, x, y, z?, faceX?, faceY?, faceTargetX?, faceTargetY? }] }
+ */
+router.post("/cheat/set-player-positions", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, positions } = req.body;
+    const requestedPositions = Array.isArray(positions) ? positions : [];
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const gameMode = normalizeGameMode((game as any).mode ?? "arena");
+    if (!isExportedMapMode(gameMode) && !isExportedMapMode((game as any).mode)) {
+      return res.status(400).json({ error: "Only available in exported-map modes" });
+    }
+    if (requestedPositions.length === 0) return res.status(400).json({ error: "positions required" });
+
+    const gameLoop = GameLoop.get(String(gameId));
+    const currentState = gameLoop ? gameLoop.getState() : game.state;
+    const players = Array.isArray(currentState?.players) ? currentState.players : [];
+    const resolvedRequests = requestedPositions.map((entry: any) => {
+      const playerIndex = Number.isFinite(Number(entry?.playerIndex))
+        ? Math.floor(Number(entry.playerIndex))
+        : players.findIndex((player: any) => player.userId === (entry?.userId ?? userId));
+      return { ...entry, playerIndex };
+    });
+    if (resolvedRequests.some((entry: any) => entry.playerIndex < 0 || entry.playerIndex >= players.length)) {
+      return res.status(400).json({ error: "Invalid player target" });
+    }
+
+    let movedPositions: Array<{ userId: string; position: any; facing: any }> = [];
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const diff: Array<{ path: string; value: any }> = [];
+      const mapCtx = getYumenRouteMapContext(String(gameId), state);
+      movedPositions = [];
+
+      for (const entry of resolvedRequests) {
+        const index = entry.playerIndex;
+        const currentPlayer = state.players[index];
+        const nextPlayer = { ...currentPlayer };
+        const nextPosition = teleportYumenPlayerTo(state, nextPlayer, entry.x, entry.y, mapCtx, entry.z);
+        nextPlayer.buffs = (nextPlayer.buffs ?? []).filter((buff: any) => Number(buff?.buffId) !== DASH_CC_IMMUNE_BUFF_ID);
+
+        const targetX = Number(entry.faceTargetX);
+        const targetY = Number(entry.faceTargetY);
+        const faceX = Number(entry.faceX);
+        const faceY = Number(entry.faceY);
+        if (Number.isFinite(targetX) && Number.isFinite(targetY)) {
+          const dx = targetX - nextPosition.x;
+          const dy = targetY - nextPosition.y;
+          const len = Math.hypot(dx, dy) || 1;
+          nextPlayer.facing = { x: dx / len, y: dy / len };
+        } else if (Number.isFinite(faceX) && Number.isFinite(faceY) && Math.hypot(faceX, faceY) > 1e-6) {
+          const len = Math.hypot(faceX, faceY);
+          nextPlayer.facing = { x: faceX / len, y: faceY / len };
+        }
+
+        state.players[index] = nextPlayer;
+        diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/facing`, value: nextPlayer.facing });
+        diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
+        diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
+        diff.push({ path: `/players/${index}/buffs`, value: nextPlayer.buffs });
+        diff.push({ path: `/players/${index}/activeDash`, value: undefined });
+        diff.push({ path: `/players/${index}/activeKnockback`, value: undefined });
+        diff.push({ path: `/players/${index}/activePull`, value: undefined });
+        movedPositions.push({ userId: nextPlayer.userId, position: nextPlayer.position, facing: nextPlayer.facing });
+      }
+
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, positions: movedPositions });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

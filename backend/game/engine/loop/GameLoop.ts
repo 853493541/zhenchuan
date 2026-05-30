@@ -3632,6 +3632,7 @@ export class GameLoop {
         }
       }
     this.state.players.forEach((player) => {
+      const yumenSpectator = hasActiveYumenSpectatorBuff(player as any);
       const cooldownSlowSum = player.buffs
         .filter((b: any) => isRuntimeBuffActive(b))
         .flatMap((b) => b.effects)
@@ -3639,7 +3640,10 @@ export class GameLoop {
         .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
       const cooldownRate = Math.max(0, 1 - cooldownSlowSum);
 
-      if (Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
+      if (yumenSpectator) {
+        (player as any).globalGcdTicks = 0;
+        (player as any)._globalGcdProgress = 0;
+      } else if (Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
         (player as any)._globalGcdProgress = ((player as any)._globalGcdProgress ?? 0) + cooldownRate;
         while ((player as any)._globalGcdProgress >= 1 && (player as any).globalGcdTicks > 0) {
           (player as any).globalGcdTicks--;
@@ -3669,6 +3673,19 @@ export class GameLoop {
         const abilityId = ability.abilityId || ability.id;
         const abilityDef = (ABILITIES as any)[abilityId];
         const maxCharges = Math.max(0, Number(abilityDef?.maxCharges ?? 0));
+
+        if (yumenSpectator) {
+          ability.cooldown = 0;
+          ability._cooldownProgress = 0;
+          if (maxCharges > 1) {
+            ability.chargeCount = maxCharges;
+            ability.chargeLockTicks = 0;
+            ability.chargeRegenTicksRemaining = 0;
+            ability._chargeRegenQueueTicks = [];
+            ability._chargeRegenProgress = 0;
+          }
+          return;
+        }
 
         if (maxCharges > 1) {
           if (typeof ability.chargeCount !== "number") ability.chargeCount = maxCharges;
