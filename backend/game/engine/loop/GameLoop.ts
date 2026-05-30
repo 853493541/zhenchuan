@@ -4212,7 +4212,7 @@ export class GameLoop {
                 z: center.z ?? 0,
                 height: radiusWorld,
                 radius: radiusWorld,
-                expiresAt: now + 1_000,
+                expiresAt: now + 500,
                 damagePerInterval: 0,
                 intervalMs: 1_000,
                 lastTickAt: now,

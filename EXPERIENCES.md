@@ -38,6 +38,16 @@ Each entry goes under its relevant section header.
 **Lesson**:
 - 若 Buff 在 `buff-attribute-overrides.json` 配置了 `properties.减伤`，其值会覆盖技能表中的 `DAMAGE_REDUCTION`；出现“文案已改但实战未变”时，必须先核查该覆盖层。
 
+## 百足/五方行尽区域圈显示时长下调为0.5秒 (2026-05-30)
+
+**Implemented / checked**:
+- 将百足首次命中时的地面圈 marker 时长由 `1000ms` 下调为 `500ms`（`immediateEffects.ts` 中 `BAIZU_AOE`）。
+- 将百足18秒结束二次爆炸时的地面圈 marker 时长由 `1000ms` 下调为 `500ms`（`GameLoop.ts` 中 `baizu_marker` 生成点）。
+- 将五方行尽命中时区域 marker 时长由 `1000ms` 下调为 `500ms`（`immediateEffects.ts` 中 `WUFANG_XINGJIN_AOE`）。
+
+**Lesson**:
+- 这两类“紫色圈圈”属于 `groundZones` 可视标记，显示时长由 `expiresAt` 决定；若只改技能描述或 buff 时长不会影响该可视圈持续时间。
+
 ## Yumen duplicate shrink-start guard (2026-05-29)
 
 ## Camera dash collision-aware prediction (2026-05-29)
