@@ -717,7 +717,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   jiru_feng: {
     id: "jiru_feng",
     name: "疾如风",
-    description: "解除控制（等级1）\n5秒内免疫控制（不含击退/拉拽），移动速度提升100%",
+    description: "解除控制（等级1）\n6秒内免疫控制（不含击退/拉拽），移动速度提升100%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -731,7 +731,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         buffId: 1033,
         name: "疾如风",
         category: "BUFF",
-        durationMs: 5_000, // 5 seconds
+        durationMs: 6_000, // 6 seconds
         description: "免疫控制；移动速度+100%",
         effects: [
           { type: "CONTROL_IMMUNE" },
@@ -2689,11 +2689,11 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
   },
 
-  // ─── 七星拱瑞: channel 1.5s freeze + 贯体 15s HoT; damage breaks into stun ───
+  // ─── 七星拱瑞: channel 1.5s freeze + 贯体 10s HoT; damage breaks into stun ───
   qixing_gongrui: {
     id: "qixing_gongrui",
     name: "七星拱瑞",
-    description: "需要目标，面向目标，需要站立，运功1.5秒（正读条）\n运功完成后：对目标施加【七星拱瑞】15秒——冻结（无法移动/施放技能）且每秒回复5点气血（贯体）\n【七星拱瑞】存在时受到伤害立即解除并附加【七星拱瑞·眩晕】4秒\n触发GCD；移动或跳跃打断运功",
+    description: "需要目标，面向目标，需要站立，运功1.5秒（正读条）\n运功完成后：对目标施加【七星拱瑞】10秒——冻结（无法移动/施放技能）且每秒回复5点气血（贯体）\n【七星拱瑞】存在时受到伤害立即解除并附加【七星拱瑞·眩晕】4秒\n触发GCD；移动或跳跃打断运功",
     type: "CHANNEL",
     target: "OPPONENT",
     range: 20,
@@ -2708,7 +2708,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         buffId: 2600,
         name: "七星拱瑞",
         category: "DEBUFF",
-        durationMs: 15_000,
+        durationMs: 10_000,
         periodicMs: 1_000,
         description: "冻结：无法移动和施放技能；每秒回复5点气血（贯体）；受到伤害立即解除并附加眩晕",
         effects: [
@@ -4908,7 +4908,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   hun_ya_nu_tao: {
     id: "hun_ya_nu_tao",
     name: "魂压怒涛",
-    description: "九霄风雷期间可用\n击退10尺内敌方目标10尺，击退在0.5秒内完成，结束后附加【冲撞】眩晕4秒\n8秒冷却，不进入公共冷却",
+    description: "九霄风雷期间可用\n击退6尺内敌方目标10尺，击退在0.5秒内完成，结束后附加【冲撞】眩晕4秒\n8秒冷却，不进入公共冷却",
     type: "CONTROL",
     target: "SELF",
     cooldownTicks: 240,
@@ -4916,7 +4916,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     noWeaponRequired: true,
     specialBarAbility: true,
     hiddenFromDraft: true,
-    effects: [{ type: "HUN_YA_NU_TAO", range: 10, value: 10, durationTicks: 15 } as any],
+    effects: [{ type: "HUN_YA_NU_TAO", range: 6, value: 10, durationTicks: 15 } as any],
     buffs: [
       {
         buffId: 2730,

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-30T08:45:48.590Z",
+  "updatedAt": "2026-05-30T08:51:37.050Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -371,8 +371,8 @@
         "buffs.0.effects.0.value": 1.96,
         "cooldownTicks": 540
       },
-      "description": "对目标及其周围3个目标造成(3.2375*攻击力)点伤害，并使其6秒内移动速度降低50%，同时目标受到的下8次攻击将受到额外伤害(每0.5秒最多触发一次)。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "对目标及其周围3个目标造成(3.2375*攻击力)点伤害，并使其6秒内移动速度降低50%，同时目标受到的下8次攻击将受到额外（1.963攻击力)点伤害(每0.5秒最多触发一次)。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1588,7 +1588,7 @@
     "qixing_gongrui": {
       "properties": {
         "qinggong": false,
-        "hasteUnaffected": false
+        "hasteUnaffected": true
       },
       "numeric": {
         "cooldownTicks": 0
@@ -2281,8 +2281,8 @@
         "buffs.1.effects.0.value": 0.1,
         "cooldownTicks": 210
       },
-      "description": "对目标造成2次(3.4750*攻击力)点伤害，并添加“亢龙有悔”持续伤害效果，该效果最高可叠加2层，持续24秒。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "对目标造成2次(3.4750*攻击力)点伤害，并使其每2秒受到(0.1攻击力)点伤害，持续24秒，可叠加2层。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {

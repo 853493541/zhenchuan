@@ -234,6 +234,28 @@ Each entry goes under its relevant section header.
 **Lesson**:
 - When changing runtime timing fields (like cast lock), update player-facing descriptions in the same edit pass so gameplay behavior and tooltip text remain aligned.
 
+## 七星拱瑞 / 疾如风 / 魂压怒涛数值校准 (2026-05-30)
+
+**Implemented / checked**:
+- 将七星拱瑞（buffId 2600）持续时间从 15 秒下调至 10 秒，并同步技能描述文案。
+- 将疾如风（buffId 1033）持续时间从 5 秒上调至 6 秒，并同步技能描述文案。
+- 将魂压怒涛的击退判定半径从 10 尺下调至 6 尺：
+  - 描述文案 `击退10尺内敌方目标10尺` -> `击退6尺内敌方目标10尺`
+  - 运行时效果字段 `HUN_YA_NU_TAO.range` 从 `10` 改为 `6`
+
+**Lesson**:
+- 涉及技能范围/时长修改时，应同时改动描述和 effect 数值字段，避免前后端表现与说明不一致。
+
+## 七星拱瑞加速缩时修正 (2026-05-30)
+
+**Implemented / checked**:
+- 复盘确认七星拱瑞（buffId 2600）属于 `CHANNEL + periodic buff` 路径，`addBuff()` 会经过 `getHasteAdjustedBuffTiming()`，在 `hasteUnaffected=false` 时会按加速缩短持续时间。
+- 在 `ability-property-overrides.json` 中将 `qixing_gongrui.properties.hasteUnaffected` 从 `false` 改为 `true`，使其持续时间固定按配置值执行。
+- 保持技能定义中的七星拱瑞持续时间为 `durationMs: 10_000` 不变，修复后不再被加速缩到约 8 秒。
+
+**Lesson**:
+- 对带 periodic 的 CHANNEL 技能，如果设计要求“固定时长”，必须显式开启 `hasteUnaffected`，否则运行时会自动按加速缩时。
+
 ## Ability tooltip cooldown should use real CD, not 3s test cap (2026-05-29)
 
 **Implemented / checked**:
