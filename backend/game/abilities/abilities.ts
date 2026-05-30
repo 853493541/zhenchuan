@@ -192,7 +192,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   ren_chi_cheng: {
     id: "ren_chi_cheng",
     name: "任驰骋",
-    description: "需在地面运功0.75秒，期间可以移动但跳跃会打断；完成后获得【骑御】、【任驰骋】12秒（攻击力提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
+    description: "需在地面运功0.75秒，期间可以移动但跳跃会打断；完成后解除自身锁足，并获得【骑御】、【任驰骋】12秒（攻击力提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 900,
@@ -351,7 +351,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   wufang_xingjin: {
     id: "wufang_xingjin",
     name: "五方行尽",
-    description: "可选目标或地面施放（范围8）\n命中后立刻造成1点伤害\n附加【五方行尽】10秒：锁足；后半段被击时有50%概率解除\n若命中至少1名敌方目标，获得【会神】8秒：伤害提高20%",
+    description: "可选目标或地面施放（范围8）\n命中后立刻造成1点伤害\n附加【五方行尽】10秒：锁足；后半段被击时有50%概率解除\n若命中至少1名敌方目标，获得【会神】8秒：会心效果提高20%",
     type: "CONTROL",
     target: "OPPONENT",
     range: 20,
@@ -382,8 +382,8 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "会神",
         category: "BUFF",
         durationMs: 8_000,
-        description: "伤害提高20%",
-        effects: [{ type: "DAMAGE_MULTIPLIER", value: 1.2 }],
+        description: "会心效果提高20%",
+        effects: [{ type: "CRIT_EFFECT_BONUS", value: 0.2 }],
       },
     ],
   },
@@ -2403,7 +2403,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   zhong_lin_yu_xiu: {
     id: "zhong_lin_yu_xiu",
     name: "钟林毓秀",
-    description: "正读条1秒，必须站立施放，移动或跳跃会中断读条\n读条完成后附加【钟林毓秀】18秒：每3秒受到1点伤害\n射程20",
+    description: "正读条1秒，必须站立施放，移动或跳跃会中断读条\n读条完成后附加【钟林毓秀】18秒：攻击力降低5%，每3秒受到1点伤害\n射程20",
     type: "CHANNEL",
     target: "OPPONENT",
     range: 20,
@@ -2419,8 +2419,11 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "DEBUFF",
         durationMs: 18_000,
         periodicMs: 3_000,
-        description: "每3秒受到1点伤害",
-        effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
+        description: "攻击力降低5%，每3秒受到1点伤害",
+        effects: [
+          { type: "PERIODIC_DAMAGE", value: 1 },
+          { type: "ATTACK_DAMAGE_MULTIPLIER", value: 0.95 },
+        ],
       },
     ],
     channelDurationMs: 1_000,
@@ -2479,7 +2482,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   fu_rong_bing_di: {
     id: "fu_rong_bing_di",
     name: "芙蓉并蒂",
-    description: "瞬发，定身目标1秒并附加【芙蓉并蒂】6秒：受到伤害增加10%\n若技能栏内有【商阳指】【兰摧玉折】或【钟林毓秀】，额外施放对应持续伤害效果\n射程20",
+    description: "瞬发，造成(0.5989*攻击力)点伤害，定身目标1秒并附加【芙蓉并蒂】6秒：受到伤害增加10%\n若技能栏内有【商阳指】【兰摧玉折】或【钟林毓秀】，额外施放对应持续伤害效果\n射程20",
     type: "ATTACK",
     target: "OPPONENT",
     range: 20,
@@ -2487,6 +2490,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     requiresGrounded: false,
     effects: [
+      { type: "DAMAGE", value: 0.5989 },
       {
         type: "APPLY_SLOT_DOTS",
         slotAbilityIds: ["shang_yang_zhi", "lan_cui_yu_zhe", "zhong_lin_yu_xiu"],

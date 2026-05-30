@@ -899,6 +899,49 @@ const PULL_CHANNEL_QINGGONG_SEAL_CONFIG: Record<string, { buffId: number; buffNa
 const PULL_CHANNEL_POST_STUN_CONFIG: Record<string, { buffId: number; buffName: string; durationMs: number }> = {
 };
 
+function removeRootAndSlowEffects(state: GameState, target: any, now: number): boolean {
+  if (!Array.isArray(target?.buffs) || target.buffs.length === 0) return false;
+
+  let changed = false;
+  const nextBuffs: any[] = [];
+  for (const buff of target.buffs) {
+    const effects = Array.isArray(buff?.effects) ? buff.effects : [];
+    if ((buff?.expiresAt ?? 0) <= now || effects.length === 0) {
+      nextBuffs.push(buff);
+      continue;
+    }
+
+    const filteredEffects = effects.filter((effect: any) => effect.type !== "ROOT" && effect.type !== "SLOW");
+    if (filteredEffects.length === effects.length) {
+      nextBuffs.push(buff);
+      continue;
+    }
+
+    changed = true;
+    if (filteredEffects.length === 0) {
+      pushBuffExpired(state, {
+        targetUserId: target.userId,
+        buffId: buff.buffId,
+        buffName: buff.name,
+        buffCategory: buff.category,
+        sourceAbilityId: buff.sourceAbilityId,
+        sourceAbilityName: buff.sourceAbilityName,
+      });
+      continue;
+    }
+
+    nextBuffs.push({
+      ...buff,
+      effects: filteredEffects,
+    });
+  }
+
+  if (changed) {
+    target.buffs = nextBuffs;
+  }
+  return changed;
+}
+
 function tryRemoveWufangRootOnHit(state: GameState, target: any, now: number): boolean {
   if (!Array.isArray(target?.buffs) || target.buffs.length === 0) return false;
 
@@ -3578,6 +3621,10 @@ export class GameLoop {
                 buff: buffDef,
               });
             }
+          }
+
+          if (ch.abilityId === "ren_chi_cheng" && removeRootAndSlowEffects(this.state, player as any, chNow)) {
+            channelStateChanged = true;
           }
 
           breakSanliuXiaOnSuccessfulChannelComplete({

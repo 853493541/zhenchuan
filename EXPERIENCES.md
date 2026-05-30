@@ -69,6 +69,29 @@ Each entry goes under its relevant section header.
 **Lesson**:
 - 对“可选目标但不依赖目标结算”的技能，前端与后端都应以“目标可选、逻辑可降级”为原则；否则容易出现前端可用性和后端结算不一致。
 
+## Test mode 改为集合点附近固定出生 (2026-05-30)
+
+**Implemented / checked**:
+- 定位到 `initializeBattleState()` 对所有 exported-map 模式统一使用 `EXPORTED_MAP_SPAWN_POSITIONS`，导致 `test` 模式也沿用了随机出生点。
+- 为 `mode === "test"` 增加独立的固定出生列表，位置设置为 exported-map 中心（集合点）附近半径 4 的若干点位。
+- 初始化时为 `test` 模式单独构建 exported-map `MapContext`，并用地面支持高度 / top-down 命中高度计算安全出生 Z，再额外抬高 10 单位，避免落回随机点或出生嵌地。
+- 保持 玉门关（1v1）：基础 模式继续使用原有 `EXPORTED_MAP_SPAWN_POSITIONS` 随机出生逻辑，不影响该模式。
+
+**Lesson**:
+- 当多个模式共享 exported-map 时，出生点策略不能只按“是否 exported-map”分支；像 `test` 这类验证模式通常需要固定、可复现的中心附近出生，而不是复用竞技/随机出生表。
+
+## 芙蓉并蒂/五方行尽/任驰骋/钟林毓秀效果同步 (2026-05-30)
+
+**Implemented / checked**:
+- `芙蓉并蒂` 的运行时补上直接伤害效果：在原有附带 DOT 逻辑前新增 `DAMAGE 0.5989`，使其命中时立刻造成 `(0.5989 * 攻击力)` 伤害。
+- `五方行尽` 的自增益 `会神`（buffId `1336`）从 `DAMAGE_MULTIPLIER 1.2` 改为 `CRIT_EFFECT_BONUS 0.2`，与“会心效果提高20%”描述一致。
+- `任驰骋` 在 `GameLoop` 的读条完成分支补上仅移除 `ROOT/SLOW` 的后处理，保证是“读条成功时解除锁足”，不会顺带清掉眩晕/封招等更高等级控制。
+- `钟林毓秀` 的 DOT debuff（buffId `2502`）新增 `ATTACK_DAMAGE_MULTIPLIER 0.95`，使携带者攻击力降低5%，同时保留原有持续伤害。
+- 同步更新了 `abilities.ts` 中这几项的基础描述，避免基础表与当前实际效果继续分叉；`ability-property-overrides.json` 中相关 live 描述已是目标状态，因此未覆盖该文件中的其他近期修改。
+
+**Lesson**:
+- 对带 live override 的技能，先核对 override 是否已经是目标文案；若只是 runtime 缺失，应优先补 canonical 行为而不是重写 override，避免覆盖用户或编辑器刚写入的最新描述。
+
 ## Yumen duplicate shrink-start guard (2026-05-29)
 
 ## Camera dash collision-aware prediction (2026-05-29)

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-30T10:14:04.364Z",
+  "updatedAt": "2026-05-30T10:34:55.941Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -310,7 +310,7 @@
         "cooldownTicks": 450
       },
       "description": "对目标造成(0.5989*攻击力)点伤害，并使其定身，受到伤害提高10%，持续1秒，若自身已经学习“商阳指”“兰摧玉折”“钟林毓秀”则会给目标添加对应持续伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -559,8 +559,8 @@
         "effects.0.value": 0.5989,
         "cooldownTicks": 450
       },
-      "description": "对目标造成(0.5989*攻击力)点伤害，若该目标正受到自身“绝境·商阳指”“绝境·兰摧玉折”“绝境·钟林毓秀”“绝境·蛇影”“绝境·蟾啸”持续性伤害，则使其剩余伤害立即生效并额外造成一次伤害。",
-      "descriptionReviewStatus": "needs-more",
+      "description": "对目标造成(0.5989*攻击力)点伤害，若该目标正受到自身“绝境·商阳指”“绝境·兰摧玉折”“绝境·钟林毓秀”“绝境·蛇影”“绝境·蟾啸”持续性伤害，则使其剩余伤害立即生效。每一个持续伤害效果被吞噬会额外造成(1.0攻击力）点伤害。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2560,8 +2560,8 @@
       "numeric": {
         "cooldownTicks": 300
       },
-      "description": "每1秒对目标发射一枚弩箭，一共发射3支。第一枚箭造成(0.8125*攻击力)点外功伤害，第二枚箭造成(1.0500*攻击力)点外功伤害，第三枚箭造成(1.3125*攻击力)点外功伤害。每枚箭额外附带100%武器伤害。若目标离自己小于15尺，则每枚箭都击退目标4尺。该招式免疫打断，消耗一枚弩箭。",
-      "descriptionReviewStatus": "needs-more",
+      "description": "每1秒对目标发射一枚弩箭，一共发射3支。第一枚箭造成(0.8125*攻击力)点外功伤害，第二枚箭造成(1.0500*攻击力)点外功伤害，第三枚箭造成(1.3125*攻击力)点外功伤害。。若目标离自己小于15尺，则每枚箭都击退目标4尺。该招式免疫打断。",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -3205,7 +3205,7 @@
         "qinggong": false,
         "hasteUnaffected": false
       },
-      "description": "军中秘传马技，使你可在战斗中上马并解除自身锁足效果，并在5秒内不受控制招式影响。",
+      "description": "军中秘传马技，使你可在战斗中上马并解除自身锁足和减速效果，并在5秒内不受控制招式影响。",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
