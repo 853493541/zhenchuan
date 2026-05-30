@@ -200,6 +200,15 @@ Each entry goes under its relevant section header.
 **Lesson**:
 - Tooltip cast wording should clearly distinguish cast type semantics; explicit `释放:` prefix makes channel duration read faster without affecting instant-cast readability.
 
+## Ability tooltip zero-cooldown wording update (2026-05-30)
+
+**Implemented / checked**:
+- Updated ability hover tooltip cooldown formatting in `BattleArena.tsx` so skills with no cooldown now show `无调息时间` instead of `0秒`.
+- Kept existing cooldown display behavior for positive cooldowns and multi-charge recovery unchanged.
+
+**Lesson**:
+- For tooltips, zero values that represent "no mechanic" should use explicit wording instead of numeric `0秒`, which reads like an active but empty cooldown.
+
 ## Ability tooltip cooldown should use real CD, not 3s test cap (2026-05-29)
 
 **Implemented / checked**:

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-30T05:17:04.331Z",
+  "updatedAt": "2026-05-30T08:09:43.290Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -12,9 +12,9 @@
         "buffs.0.effects.0.value": 1.05,
         "cooldownTicks": 540
       },
-      "description": "对指定区域施放风蜈之毒，使6尺半径区域内目标立即受到（3.8541*攻击力）点伤害，并使这些目标每3秒受到伤害，持续18秒，风蜈之毒结束会再次爆炸，对6尺半径区域内的5个目标造成（3.8541*攻击力）点伤害",
-      "descriptionReviewStatus": "needs-more",
-      "adControlStatus": "fixed",
+      "description": "对指定区域施放风蜈之毒，使6尺半径区域内目标立即受到（3.8541*攻击力）点伤害，并使这些目标每3秒受到(1.05*攻击力)点伤害，持续18秒，风蜈之毒结束会再次爆炸，对6尺半径区域内的5个目标造成（3.8541*攻击力）点伤害",
+      "descriptionReviewStatus": "fixed",
+      "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -350,7 +350,7 @@
       },
       "description": "卸除目标阴性、混元性、阳性、毒性内功增益气劲各一个。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",

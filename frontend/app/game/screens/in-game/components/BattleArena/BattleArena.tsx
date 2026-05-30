@@ -4100,7 +4100,7 @@ function formatAbilityCooldownLabel(ability: AbilityInfo): string {
   if (cooldownTicks > 0) return formatTicksAsSeconds(cooldownTicks);
   const recoveryTicks = Number(ability.tooltipChargeRecoveryTicks ?? ability.chargeRecoveryTicks ?? 0);
   if ((ability.maxCharges ?? 0) > 1 && recoveryTicks > 0) return formatTicksAsSeconds(recoveryTicks);
-  return '0秒';
+  return '无调息时间';
 }
 
 function AbilityHoverHint({ hint }: { hint: AbilityHintState }) {
