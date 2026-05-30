@@ -26,6 +26,18 @@ Each entry goes under its relevant section header.
 **Lesson**:
 - 地面区域类技能如果不显式设置 `zoneIntervalMs`，会走 `GameLoop` 默认 `500ms` 频率。涉及“每秒/每0.5秒”调优时，必须同时改效果字段和描述文本。
 
+## 天地低昂减伤覆盖回退与烈日斩/破风降防语义修复 (2026-05-30)
+
+**Implemented / checked**:
+- 复盘发现天地低昂（buffId 2326）在 `buff-attribute-overrides.json` 中仍有 `properties: [{ type: "减伤", value: 40 }]`，会覆盖技能定义中的 `0.55`，导致实战仍是 40%。
+- 将 buffId 2326 覆盖值从 `40` 修正为 `55`，使实战减伤与技能定义/文案一致。
+- 将烈日斩 Debuff（buffId 2512）从 `DAMAGE_TAKEN_INCREASE 0.15` 改为 `DEFENSE_MULTIPLIER 0.85`，实现“防御降低15%”而非“易伤+15%”。
+- 将破风 Debuff（buffId 2615）从 `DAMAGE_TAKEN_INCREASE 0.05` 改为 `DEFENSE_MULTIPLIER 0.95`，实现“防御降低5%”。
+- 同步了 `abilities.ts`、`ability-property-overrides.json`、`buff-attribute-overrides.json` 的对应描述，避免编辑器描述与运行时效果分叉。
+
+**Lesson**:
+- 若 Buff 在 `buff-attribute-overrides.json` 配置了 `properties.减伤`，其值会覆盖技能表中的 `DAMAGE_REDUCTION`；出现“文案已改但实战未变”时，必须先核查该覆盖层。
+
 ## Yumen duplicate shrink-start guard (2026-05-29)
 
 ## Camera dash collision-aware prediction (2026-05-29)

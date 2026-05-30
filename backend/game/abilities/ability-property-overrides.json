@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-30T09:05:08.277Z",
+  "updatedAt": "2026-05-30T09:15:51.236Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -815,7 +815,7 @@
         "cooldownTicks": 360
       },
       "description": "对目标造成(4.4947*攻击力)点伤害，并击倒3秒，击倒自然结束时若目标血量低于30%则额外眩晕2秒。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1431,7 +1431,7 @@
         "hasteUnaffected": true
       },
       "description": "在非战斗状态施展后能成功驾驭和下马，施展驾驭需3秒。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1822,7 +1822,7 @@
         "cooldownTicks": 360
       },
       "description": "对目标造成(4.5260*攻击力)点伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1842,8 +1842,8 @@
         "buffs.1.effects.0.value": 0.15,
         "cooldownTicks": 90
       },
-      "description": "击破目标护甲，使其防御等级降低-1150点，每2秒受到(0.15*攻击力)点伤害，持续12秒，若目标免疫击倒则额外添加一个“流血”效果，使其每2秒受到300点伤害，持续12秒。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "击破目标护甲，使其防御等级降低5%，每2秒受到(0.15*攻击力)点伤害，持续12秒，若目标免疫击倒则额外添加“流血”效果，使其每2秒受到（0.125攻击力)点伤害，持续12秒。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2059,8 +2059,8 @@
       "numeric": {
         "cooldownTicks": 540
       },
-      "description": "引爆自身13尺范围内的气场，对气场周围6尺内最多5个目标造成伤害，若引爆友方的气场，则使他们定身5秒。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "引爆自身13尺范围内的气场，对气场周围6尺内最多5个目标造成（0.5攻击力)点伤害，若引爆友方的气场，则使他们定身5秒。",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2158,8 +2158,8 @@
       "numeric": {
         "cooldownTicks": 600
       },
-      "description": "当自身血量高于20%时对目标造成(2.6937*攻击力)点伤害，若自身气血低于10%，则对目标造成(11.2437*攻击力)点伤害，并使自身3秒内不会重伤。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "当自身血量高于10%时对目标造成(2.6937*攻击力)点伤害，若自身气血低于10%，则对目标造成(11.2437*攻击力)点伤害，并使自身3秒内不会重伤。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2303,7 +2303,7 @@
         "cooldownTicks": 0
       },
       "description": "目标血量低于30%方可施展，对其造成(6.7447*攻击力)点伤害外加最大生命值10%的真实伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2324,7 +2324,7 @@
         "cooldownTicks": 120
       },
       "description": "对目标造成(4.2395*攻击力)点伤害，造成伤害的50%将治疗自身。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2677,8 +2677,8 @@
       "numeric": {
         "cooldownTicks": 900
       },
-      "description": "解除自身控制，使用藤蔓种子，环绕自身形成藤蔓装甲，使得距离自身6尺内的敌对目标攻击自身时将被击退并对其造成伤害，敌方无法通过对自身冲刺接近6尺(对区域的冲刺则不受影响)。期间免疫控制(击退和被拉除外)，持续5秒。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "解除自身控制，使用藤蔓种子，环绕自身形成藤蔓装甲，使得距离自身6尺内的敌对目标攻击自身时将被击退并对其造成(0.5攻击力)点伤害，敌方无法通过对自身冲刺接近6尺(对区域的冲刺则不受影响)。期间免疫控制(击退和被拉除外)，持续5秒。",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "药宗",
@@ -2757,7 +2757,7 @@
         "cooldownTicks": 120
       },
       "description": "向前拍出掌法，可于冲刺中释放，释放对前方8尺矩形内最多5个目标造成(1.6187*攻击力)点伤害。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {

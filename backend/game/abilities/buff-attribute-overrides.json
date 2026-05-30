@@ -586,7 +586,7 @@
       "properties": [
         {
           "type": "减伤",
-          "value": 40,
+          "value": 55,
           "noOverride": false
         }
       ],
@@ -692,7 +692,7 @@
     },
     "2512": {
       "attribute": "阳性",
-      "description": "内功防御等级降低15%",
+      "description": "防御降低15%",
       "descriptionReviewStatus": "fixed"
     },
     "2513": {
@@ -802,7 +802,7 @@
     },
     "2615": {
       "attribute": "外功",
-      "description": "外功防御等级降低？？？点",
+      "description": "防御降低5%",
       "descriptionReviewStatus": "fixed"
     },
     "2616": {
