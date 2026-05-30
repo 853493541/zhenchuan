@@ -641,7 +641,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         buffId: 1221,
         name: "月劫",
         category: "DEBUFF",
-        durationMs: 15_000, // 15 seconds
+        durationMs: 12_000, // 12 seconds
         description: "受到治疗效果降低50%",
         effects: [{ type: "HEAL_REDUCTION", value: 0.5 }],
       },
@@ -778,13 +778,13 @@ export const BASE_ABILITIES: AbilityRecord = {
   que_ta_zhi: {
     id: "que_ta_zhi",
     name: "鹊踏枝",
-    description: "解除等级1控制\n获得【素衿】3.5秒：免疫等级1控制\n获得【鹊踏枝】5秒：70%闪避率\n2层充能，每层5秒恢复，施放间隔1秒",
+    description: "解除等级1控制\n获得【素衿】3.5秒：免疫等级1控制\n获得【鹊踏枝】5秒：70%闪避率\n2层充能，每层5秒恢复，施放间隔0.5秒",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 0,
     maxCharges: 2,
     chargeRecoveryTicks: 150,
-    chargeCastLockTicks: 30,
+    chargeCastLockTicks: 15,
     gcd: false,
     effects: [{ type: "CLEANSE", allowWhileControlled: true }],
     buffs: [
@@ -4210,13 +4210,13 @@ export const BASE_ABILITIES: AbilityRecord = {
   you_feng_piao_zong: {
     id: "you_feng_piao_zong",
     name: "游风飘踪",
-    description: "瞬发，自身施放，2层充能，每层5秒恢复，施放间隔1秒\n解除自身锁足/定身/眩晕/倒地/锁招\n获得【游风飘踪】8秒：免疫控制（击退/拉拽除外）\n若有当前目标且成功解除锁足/定身/眩晕/倒地，则立即对其施加对应控制5秒\n反射部分仍受递减影响",
+    description: "瞬发，自身施放，2层充能，每层5秒恢复，施放间隔0.5秒\n解除自身锁足/定身/眩晕/倒地/锁招\n获得【游风飘踪】8秒：免疫控制（击退/拉拽除外）\n若有当前目标且成功解除锁足/定身/眩晕/倒地，则立即对其施加对应控制5秒\n反射部分仍受递减影响",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 0,
     maxCharges: 2,
     chargeRecoveryTicks: 150,
-    chargeCastLockTicks: 30,
+    chargeCastLockTicks: 15,
     gcd: false,
     range: 20,
     allowWhileControlled: true,
@@ -4486,20 +4486,20 @@ export const BASE_ABILITIES: AbilityRecord = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 盾立 — instant self defense. 2 charges, 5s per-charge recovery, 1s lock
+  // 盾立 — instant self defense. 2 charges, 5s per-charge recovery, 0.5s lock
   // between casts. For 2s, reflects explicit player-targeted enemy casts back
   // to the original caster and remains immune to all damage.
   // ──────────────────────────────────────────────────────────────────────────
   dun_li: {
     id: "dun_li",
     name: "盾立",
-    description: "瞬发，自身施放，2层充能，每层5秒恢复，施放间隔1秒\n获得【盾立】2秒：免疫所有伤害；期间若受到敌方直接指定你的技能，则改为由你对原施法者施放该技能",
+    description: "瞬发，自身施放，2层充能，每层5秒恢复，施放间隔0.5秒\n获得【盾立】2秒：免疫所有伤害；期间若受到敌方直接指定你的技能，则改为由你对原施法者施放该技能",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 0,
     maxCharges: 2,
     chargeRecoveryTicks: 150,
-    chargeCastLockTicks: 30,
+    chargeCastLockTicks: 15,
     gcd: false,
     ignoreDodge: true,
     effects: [],
@@ -5077,6 +5077,7 @@ export interface AbilityCooldownReviewEntry {
   description: string;
   cooldownTicks: number;
   baseCooldownTicks: number;
+  usesChargeRecovery: boolean;
   status: DescriptionReviewStatus;
 }
 
@@ -5182,12 +5183,14 @@ export function buildAbilityCooldownReviewSnapshot(): AbilityCooldownReviewSnaps
     .map((ability) => {
       const override = abilityPropertyOverrides[ability.id];
       const baseAbility = BASE_ABILITIES[ability.id];
+      const usesChargeRecovery = Number(ability.maxCharges ?? 0) > 1;
       return {
         id: ability.id,
         name: ability.name,
         description: ability.description,
-        cooldownTicks: Math.max(0, Math.round(Number(ability.cooldownTicks ?? 0))),
-        baseCooldownTicks: Math.max(0, Math.round(Number(baseAbility?.cooldownTicks ?? 0))),
+        cooldownTicks: Math.max(0, Math.round(Number(usesChargeRecovery ? (ability as any).chargeRecoveryTicks : ability.cooldownTicks) ?? 0)),
+        baseCooldownTicks: Math.max(0, Math.round(Number(usesChargeRecovery ? (baseAbility as any)?.chargeRecoveryTicks : baseAbility?.cooldownTicks) ?? 0)),
+        usesChargeRecovery,
         status: override?.cooldownReviewStatus ?? "unfixed",
       } satisfies AbilityCooldownReviewEntry;
     })
@@ -5224,7 +5227,11 @@ export function setAbilityCooldownReviewTicks(abilityId: string, cooldownTicks: 
     throw new Error("ERR_INVALID_ABILITY_NUMERIC_VALUE");
   }
 
-  setAbilityEditorNumericValue(abilityId, "cooldownTicks", Math.max(0, Math.round(cooldownTicks)));
+  const baseAbility = BASE_ABILITIES[abilityId];
+  if (!baseAbility) throw new Error("ERR_ABILITY_NOT_FOUND");
+
+  const fieldId = Number(baseAbility.maxCharges ?? 0) > 1 ? "chargeRecoveryTicks" : "cooldownTicks";
+  setAbilityEditorNumericValue(abilityId, fieldId, Math.max(0, Math.round(cooldownTicks)));
   return buildAbilityCooldownReviewSnapshot();
 }
 

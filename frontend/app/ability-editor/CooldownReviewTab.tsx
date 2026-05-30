@@ -145,6 +145,7 @@ function CooldownRow({
 }) {
   const [draft, setDraft] = useState(ticksToSecondsText(entry.cooldownTicks));
   const baseSeconds = ticksToSecondsText(entry.baseCooldownTicks);
+  const timeLabel = entry.usesChargeRecovery ? "充能时间" : "冷却时间";
 
   return (
     <div style={{ padding: "10px 12px", borderBottom: "1px solid #f0ece6" }}>
@@ -155,12 +156,12 @@ function CooldownRow({
             <div style={{ fontWeight: 800, fontSize: 13, color: "#211d18", lineHeight: 1.2, overflow: "hidden", whiteSpace: "nowrap" }}>{entry.name}</div>
             <CopyNameButton value={entry.name} />
           </div>
-          <div style={{ marginTop: 2, fontSize: 11, color: "#8a7f73" }}>原始 {baseSeconds}s / 当前 {ticksToSecondsText(entry.cooldownTicks)}s</div>
+          <div style={{ marginTop: 2, fontSize: 11, color: "#8a7f73" }}>原始{timeLabel} {baseSeconds}s / 当前{timeLabel} {ticksToSecondsText(entry.cooldownTicks)}s</div>
         </div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-        <label style={{ fontSize: 12, fontWeight: 800, color: "#4f463d" }}>CD</label>
+        <label style={{ fontSize: 12, fontWeight: 800, color: "#4f463d" }}>{timeLabel}</label>
         <input
           type="text"
           inputMode="decimal"

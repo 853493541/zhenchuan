@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-30T08:09:43.290Z",
+  "updatedAt": "2026-05-30T08:45:48.590Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -12,7 +12,7 @@
         "buffs.0.effects.0.value": 1.05,
         "cooldownTicks": 540
       },
-      "description": "对指定区域施放风蜈之毒，使6尺半径区域内目标立即受到（3.8541*攻击力）点伤害，并使这些目标每3秒受到(1.05*攻击力)点伤害，持续18秒，风蜈之毒结束会再次爆炸，对6尺半径区域内的5个目标造成（3.8541*攻击力）点伤害",
+      "description": "对指定区域施放风蜈之毒，使6尺半径区域内目标立即受到(3.8541*攻击力)点伤害，并使这些目标每3秒受到(1.05*攻击力)点伤害，持续18秒，风蜈之毒结束会再次爆炸，对6尺半径区域内的5个目标造成(3.8541*攻击力)点伤害",
       "descriptionReviewStatus": "fixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
@@ -73,8 +73,8 @@
         "buffs.1.effects.0.value": 0.1,
         "cooldownTicks": 300
       },
-      "description": "对目标及其周围最多2个目标造成伤害，使当前目标减速且无法施展轻功招式，持续2秒，并获得一层“急曲”效果。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "对目标及其周围最多2个目标造成(7.98*攻击力)点伤害，使当前目标减速且无法施展轻功招式，持续2秒，并获得一层“急曲”效果，每3秒受到(0.125*攻击力)点伤害，持续18秒，最多叠加3层。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -92,10 +92,11 @@
       },
       "numeric": {
         "effects.0.value": 6.26,
-        "cooldownTicks": 150
+        "cooldownTicks": 150,
+        "chargeRecoveryTicks": 150
       },
-      "description": "对目标造成伤害，对目标添加3层无法卸除持续30秒的“绝脉”效果：招式调息速度降低1%。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "对目标造成(6.26攻击力)点伤害，对目标添加3层无法卸除持续30秒的“绝脉”效果：招式调息速度降低1%。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -117,8 +118,8 @@
         "effects.5.value": 1.1197,
         "cooldownTicks": 240
       },
-      "description": "冲刺并对12尺内的目标造成3次513-533点(+[1.1197*最终阴性内功攻击])伤害，且每次卸除目标混元、阳性、阴性、毒性增益气劲各一个。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "冲刺并对12尺内的目标造成3次(1.1197*攻击力)点伤害，且每次卸除目标混元、阳性、阴性、毒性增益气劲各一个。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -138,7 +139,7 @@
         "effects.0.value": 1.7312,
         "cooldownTicks": 90
       },
-      "description": "对目标造成35-49(+[1.7312*最终外功攻击])伤害，每施展一次则使该招式伤害提高10%，最多提高30%，该效果脱离战斗后消失。",
+      "description": "对目标造成(1.7312*攻击力)点伤害，每施展一次则使该招式伤害提高10%，最多提高30%，该效果脱离战斗后消失。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -230,7 +231,7 @@
       "numeric": {
         "cooldownTicks": 1200
       },
-      "description": "血量高于35%方可施展，消耗自身30%气血值，获得50%气血最大值护盾，并在10秒内恢复30%气血值，该招式可以在被控制时施展。献祭将解除自身控制效果，并使自身免疫控制（击退和被拉除外）持续5秒。",
+      "description": "血量高于35%方可施展，消耗自身30%气血值，获得50%气血最大值护盾，并在10秒内恢复30%气血值，该招式可以在被控制时施展。献祭将解除自身控制效果，并使自身免疫控制(击退和被拉除外)持续5秒。",
       "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -328,7 +329,7 @@
       "numeric": {
         "buffs.0.effects.0.value": 0.18
       },
-      "description": "使目标每3秒受到（0.179*攻击力）点伤害，可叠加2层，持续24秒。",
+      "description": "使目标每3秒受到(0.179*攻击力)点伤害，可叠加2层，持续24秒。",
       "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -370,7 +371,7 @@
         "buffs.0.effects.0.value": 1.96,
         "cooldownTicks": 540
       },
-      "description": "对目标及其周围3个目标造成28-31(+[3.2375*最终外功攻击])伤害，并使其6秒内移动速度降低50%，同时目标受到的下8次攻击将受到额外伤害（每0.5秒最多触发一次）。",
+      "description": "对目标及其周围3个目标造成(3.2375*攻击力)点伤害，并使其6秒内移动速度降低50%，同时目标受到的下8次攻击将受到额外伤害(每0.5秒最多触发一次)。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -391,7 +392,7 @@
         "effects.0.value": 3.2968,
         "cooldownTicks": 180
       },
-      "description": "对目标造成460-508点(+[3.2968*最终阳性内功攻击])伤害，并使其内功防御等级降低15%，持续12秒，当目标拥有“银月斩”效果时将对其额外造成伤害。",
+      "description": "对目标造成(3.2968*攻击力)点伤害，并使其内功防御等级降低15%，持续12秒，当目标拥有“银月斩”效果时将对其额外造成伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -412,7 +413,7 @@
         "effects.0.value": 4.1,
         "cooldownTicks": 0
       },
-      "description": "对目标造成46-50点(+[4.1000*最终外功攻击])伤害，并添加“三环套月”效果，当“三环套月”叠加至3层时会额外附带一次伤害。",
+      "description": "对目标造成(4.1000*攻击力)点伤害，并添加“三环套月”效果，当“三环套月”叠加至3层时会额外附带一次伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -433,7 +434,7 @@
         "buffs.0.effects.0.value": 0.074,
         "cooldownTicks": 0
       },
-      "description": "使目标每3秒受到22点伤害(+[0.074*最终混元内功攻击])，持续18秒。",
+      "description": "使目标每3秒受到(0.074*攻击力)点伤害，持续18秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -454,7 +455,7 @@
         "buffs.0.effects.0.value": 0.086,
         "cooldownTicks": 0
       },
-      "description": "使目标每2秒受到260点伤害，受到的锁足控制时间延长20%(+[0.086*最终毒性内功攻击])，持续12秒。",
+      "description": "使目标每2秒受到260点伤害，受到的锁足控制时间延长20%(0.086*攻击力)，持续12秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -475,7 +476,7 @@
         "effects.0.value": 3.6,
         "cooldownTicks": 450
       },
-      "description": "对目标造成124-129(+[3.6000*最终外功攻击])伤害，并隐身3秒，施展任何招式都将提前解除隐身效果。",
+      "description": "对目标造成(3.6000*攻击力)点伤害，并隐身3秒，施展任何招式都将提前解除隐身效果。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -496,7 +497,7 @@
         "effects.0.value": 4.4947,
         "cooldownTicks": 210
       },
-      "description": "对目标造成271-299点(+[4.4947*最终阳性内功攻击])伤害，并使目标内外防等级降低30%，自身内外防提高30%，持续5秒。",
+      "description": "对目标造成(4.4947*攻击力)点伤害，并使目标内外防等级降低30%，自身内外防提高30%，持续5秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -517,7 +518,7 @@
         "effects.0.value": 6.8875,
         "cooldownTicks": 240
       },
-      "description": "对目标造成93-93(+[6.8875*最终外功攻击])点伤害。",
+      "description": "对目标造成(6.8875*攻击力)点伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -537,7 +538,7 @@
       "numeric": {
         "cooldownTicks": 180
       },
-      "description": "对目标造成460-508点(+[3.2968*最终阴性内功攻击])伤害，并对其每2秒造成272点伤害(+[0.074*最终阴性内功攻击])，持续12秒，当目标拥有“烈日斩”效果时将对其额外造成伤害。",
+      "description": "对目标造成(3.2968*攻击力)点伤害，并对其每2秒造成(0.074*攻击力)点伤害，持续12秒，当目标拥有“烈日斩”效果时将对其额外造成伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
@@ -558,7 +559,7 @@
         "effects.0.value": 0.5989,
         "cooldownTicks": 450
       },
-      "description": "对目标造成114-126点(+[0.5989*最终混元内功攻击])伤害，若该目标正受到自身“绝境·商阳指”“绝境·兰摧玉折”“绝境·钟林毓秀”“绝境·蛇影”“绝境·蟾啸”持续性伤害，则使其剩余伤害立即生效并额外造成一次伤害。",
+      "description": "对目标造成(0.5989*攻击力)点伤害，若该目标正受到自身“绝境·商阳指”“绝境·兰摧玉折”“绝境·钟林毓秀”“绝境·蛇影”“绝境·蟾啸”持续性伤害，则使其剩余伤害立即生效并额外造成一次伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
@@ -598,7 +599,7 @@
       "numeric": {
         "cooldownTicks": 0
       },
-      "description": "向目标冲刺造成（1.4375*攻击力）外功伤害，添加锁足和“心怵”效果。若目标已拥有“心怵”效果，则添加定身并强化“心怵”效果，同时该招式的调息时间额外增加16秒。",
+      "description": "向目标冲刺造成(1.4375*攻击力)外功伤害，添加锁足和“心怵”效果。若目标已拥有“心怵”效果，则添加定身并强化“心怵”效果，同时该招式的调息时间额外增加16秒。",
       "descriptionReviewStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -658,7 +659,7 @@
       "numeric": {
         "cooldownTicks": 1200
       },
-      "description": "对周围8尺内最多5个目标造成（0.01*攻击力)点伤害并定身，持续4秒。",
+      "description": "对周围8尺内最多5个目标造成(0.01*攻击力)点伤害并定身，持续4秒。",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -696,7 +697,7 @@
       "numeric": {
         "cooldownTicks": 600
       },
-      "description": "跳跃至正前方15尺处并以重剑猛击地面，对半径6尺范围内的最多10个目标造成（3.1625*攻击力)点伤害并使其晕眩3秒，对周围4尺内的目标造成额外50%伤害。",
+      "description": "跳跃至正前方15尺处并以重剑猛击地面，对半径6尺范围内的最多10个目标造成(3.1625*攻击力)点伤害并使其晕眩3秒，对周围4尺内的目标造成额外50%伤害。",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -715,8 +716,8 @@
       "numeric": {
         "cooldownTicks": 1290
       },
-      "description": "以剑气击伤敌人心脉，使其施展轻功则2秒内无法施展招式，并受到伤害307-312点，持续9秒。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "以剑气击伤敌人心脉，使其施展轻功则2秒内无法施展招式，并受到（0.5*攻击力)点伤害，持续9秒。",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -735,7 +736,7 @@
         "cooldownTicks": 450
       },
       "description": "对目标造成伤害，将其击退12尺，击退中的目标如果碰撞障碍则眩晕4秒。",
-      "descriptionReviewStatus": "unfixed",
+      "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -792,7 +793,7 @@
         "effects.0.value": 9.5,
         "cooldownTicks": 300
       },
-      "description": "冲向目标，对目标造成124-129(+[9.5000*最终外功攻击])点伤害。",
+      "description": "冲向目标，对目标造成(9.5000*攻击力)点伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -813,7 +814,7 @@
         "effects.0.value": 4.4947,
         "cooldownTicks": 360
       },
-      "description": "对目标造成0-28点(+[4.4947*最终阳性内功攻击])伤害，并击倒3秒，击倒自然结束时若目标血量低于30%则额外眩晕2秒。",
+      "description": "对目标造成(4.4947*攻击力)点伤害，并击倒3秒，击倒自然结束时若目标血量低于30%则额外眩晕2秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -853,7 +854,7 @@
         "effects.0.value": 0.2604,
         "cooldownTicks": 330
       },
-      "description": "对目标造成271-299点(+[0.2604*最终阳性内功攻击])伤害，眩晕目标4秒，使目标12秒内受到的疗伤成效降低50%。",
+      "description": "对目标造成(0.2604*攻击力)点伤害，眩晕目标4秒，使目标12秒内受到的疗伤成效降低50%。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -915,7 +916,7 @@
       "numeric": {
         "cooldownTicks": 300
       },
-      "description": "对周围6尺内的最多6个目标造成69-76(+[2.1562*最终外功攻击])伤害，并使这些目标锁足3秒，减疗50%持续10秒。",
+      "description": "对周围6尺内的最多6个目标造成(2.1562*攻击力)点伤害，并使这些目标锁足3秒，减疗50%持续10秒。",
       "descriptionReviewStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -934,7 +935,7 @@
       "numeric": {
         "cooldownTicks": 450
       },
-      "description": "使自身会心效果提高20%，对选择区域范围内的最多6个目标均造成23-23点(+[0.5989*最终混元内功攻击])伤害，并使其锁足10.5秒。目标在被锁足的后半段持续时间里若被伤害招式命中，则有50%几率解除其锁足效果。",
+      "description": "使自身会心效果提高20%，对选择区域范围内的最多6个目标均造成(0.5989*攻击力)点伤害，并使其锁足10.5秒。目标在被锁足的后半段持续时间里若被伤害招式命中，则有50%几率解除其锁足效果。",
       "descriptionReviewStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -992,7 +993,7 @@
       "numeric": {
         "cooldownTicks": 1650
       },
-      "description": "使自身移动速度提高55%，持续15秒，清除自身所有移动限制（击倒除外）并使自身免疫控制效果（被拉除外），持续3秒。",
+      "description": "使自身移动速度提高55%，持续15秒，清除自身所有移动限制(击倒除外)并使自身免疫控制效果(被拉除外)，持续3秒。",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1101,7 +1102,7 @@
         "effects.0.routeDamage": 3.375,
         "cooldownTicks": 750
       },
-      "description": "向前冲刺，并对处于冲刺路径上的最多5名敌人造成（3.3750*攻击力)点外功伤害。",
+      "description": "向前冲刺，并对处于冲刺路径上的最多5名敌人造成(3.3750*攻击力)点外功伤害。",
       "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -1214,7 +1215,8 @@
         "qinggong": false
       },
       "numeric": {
-        "cooldownTicks": 1080
+        "cooldownTicks": 1080,
+        "chargeRecoveryTicks": 1080
       },
       "description": "使你被命中几率降低70%，持续5秒，清除自身所有移动限制，并使你不受招式控制(击退和被拉除外)，持续3.5秒。",
       "descriptionReviewStatus": "fixed",
@@ -1485,7 +1487,7 @@
       "numeric": {
         "cooldownTicks": 1800
       },
-      "description": "使纯阳诀下所有招式瞬发，不受无法施展内功招式效果的影响，并且自身受到的伤害降低70%，持续6秒，同时解除所有控制效果，自身免疫控制（击退和被拉除外），持续4秒。",
+      "description": "使纯阳诀下所有招式瞬发，不受无法施展内功招式效果的影响，并且自身受到的伤害降低70%，持续6秒，同时解除所有控制效果，自身免疫控制(击退和被拉除外)，持续4秒。",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1523,7 +1525,8 @@
       },
       "numeric": {
         "buffs.0.effects.0.value": 0.125,
-        "cooldownTicks": 600
+        "cooldownTicks": 600,
+        "chargeRecoveryTicks": 600
       },
       "description": "使目标受到的疗伤成效降低50%，并使目标每3秒受到(0.125*攻击力)点伤害，持续18秒，可在移动中施展。",
       "descriptionReviewStatus": "fixed",
@@ -1547,7 +1550,7 @@
         "buffs.0.effects.3.value": 3.61,
         "cooldownTicks": 1200
       },
-      "description": "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计8次伤害。\n在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
+      "description": "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计8次伤害。\n在此过程中你无法跳跃，不受控制招式影响(被拉除外)。",
       "descriptionReviewStatus": "needs-more",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -1569,7 +1572,7 @@
         "buffs.0.effects.0.value": 0.104,
         "cooldownTicks": 0
       },
-      "description": "使目标每3秒受到67点伤害(+[0.104*最终混元内功攻击])，持续18秒。",
+      "description": "使目标每3秒受到(0.104*攻击力)点伤害，持续18秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -1653,7 +1656,7 @@
         "channelEffects.1.value": 18.84,
         "cooldownTicks": 360
       },
-      "description": "对目标造成1032-1140(+[10.2562*最终外功攻击])伤害，若目标处于自身4尺内则额外造成伤害。",
+      "description": "对目标造成(10.2562*攻击力)点伤害，若目标处于自身4尺内则额外造成伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
@@ -1695,7 +1698,7 @@
         "buffs.0.effects.0.value": 0.099,
         "cooldownTicks": 0
       },
-      "description": "使目标攻击降低-776点，每3秒受到64点伤害(+[0.099*最终混元内功攻击])，持续18秒。",
+      "description": "使目标攻击降低-776点，每3秒受到(0.099*攻击力)点伤害，持续18秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -1716,7 +1719,7 @@
       "numeric": {
         "cooldownTicks": 360
       },
-      "description": "对目标造成1032-1140(+[6.4937*最终外功攻击])伤害，若目标血量高于60%则追加50%额外伤害。",
+      "description": "对目标造成(6.4937*攻击力)点伤害，若目标血量高于60%则追加50%额外伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
@@ -1754,7 +1757,8 @@
         "qinggongGcdImmune": true
       },
       "numeric": {
-        "cooldownTicks": 900
+        "cooldownTicks": 900,
+        "chargeRecoveryTicks": 900
       },
       "description": "解除自身锁足和减速不利效果，快速冲向前方，施展过程中不受控制招式影响。",
       "descriptionReviewStatus": "fixed",
@@ -1776,7 +1780,7 @@
       "numeric": {
         "cooldownTicks": 750
       },
-      "description": "成功运功会于前方位置唤起雷云，雷云每秒对半径8尺内最多5个敌方目标造成80-100(+[2.8750*最终外功攻击])伤害，雷云持续6秒。",
+      "description": "成功运功会于前方位置唤起雷云，雷云每秒对半径8尺内最多5个敌方目标造成(2.8750*攻击力)点伤害，雷云持续6秒。",
       "descriptionReviewStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1796,8 +1800,8 @@
         "buffs.0.effects.0.value": 0.1,
         "cooldownTicks": 180
       },
-      "description": "对目标造成86-95点(+[2.0781*最终阴性内功攻击])伤害，并附带1层急曲效果，若目标已存在3层急曲则直接引爆。",
-      "descriptionReviewStatus": "unfixed",
+      "description": "对目标造成(3.8541*攻击力)点伤害，并附带1层急曲效果，若目标已存在3层急曲则直接引爆。\n急曲:每3秒造成(0.125*攻击力)点伤害，持续18秒，可以叠加3层。",
+      "descriptionReviewStatus": "fixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -1817,7 +1821,7 @@
         "effects.0.value": 4.526,
         "cooldownTicks": 360
       },
-      "description": "对目标造成96-96点(+[4.5260*最终混元内功攻击])伤害。",
+      "description": "对目标造成(4.5260*攻击力)点伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -1838,7 +1842,7 @@
         "buffs.1.effects.0.value": 0.15,
         "cooldownTicks": 90
       },
-      "description": "击破目标护甲，使其防御等级降低-1150点，每2秒受到150点伤害(+[0.15*最终外功攻击])，持续12秒，若目标免疫击倒则额外添加一个“流血”效果，使其每2秒受到300点伤害，持续12秒。",
+      "description": "击破目标护甲，使其防御等级降低-1150点，每2秒受到(0.15*攻击力)点伤害，持续12秒，若目标免疫击倒则额外添加一个“流血”效果，使其每2秒受到300点伤害，持续12秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -1975,7 +1979,7 @@
         "channelEffects.0.value": 0.7239,
         "cooldownTicks": 0
       },
-      "description": "对目标造成28-28点(+[0.7239*最终混元内功攻击])伤害，并解除其身上的混元、阳性、阴性、毒性有益气劲各两个。",
+      "description": "对目标造成(0.7239*攻击力)点伤害，并解除其身上的混元、阳性、阴性、毒性有益气劲各两个。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -2154,7 +2158,7 @@
       "numeric": {
         "cooldownTicks": 600
       },
-      "description": "当自身血量高于20%时对目标造成264-291(+[2.6937*最终外功攻击])伤害，若自身气血低于10%，则对目标造成264-291(+[11.2437*最终外功攻击])伤害，并使自身3秒内不会重伤。",
+      "description": "当自身血量高于20%时对目标造成(2.6937*攻击力)点伤害，若自身气血低于10%，则对目标造成(11.2437*攻击力)点伤害，并使自身3秒内不会重伤。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
@@ -2233,7 +2237,7 @@
         "effects.0.value": 0.5989,
         "cooldownTicks": 180
       },
-      "description": "对目标造成（0.5989*攻击力)点伤害，并使其移动速度降低20%，持续3秒。",
+      "description": "对目标造成(0.5989*攻击力)点伤害，并使其移动速度降低20%，持续3秒。",
       "descriptionReviewStatus": "fixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -2277,7 +2281,7 @@
         "buffs.1.effects.0.value": 0.1,
         "cooldownTicks": 210
       },
-      "description": "对目标造成2次150-165(+[3.4750*最终外功攻击])伤害，并添加“亢龙有悔”持续伤害效果，该效果最高可叠加2层，持续24秒。",
+      "description": "对目标造成2次(3.4750*攻击力)点伤害，并添加“亢龙有悔”持续伤害效果，该效果最高可叠加2层，持续24秒。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -2298,7 +2302,7 @@
         "effects.0.value": 6.7447,
         "cooldownTicks": 0
       },
-      "description": "目标血量低于30%方可施展，对其造成122-134点(+[6.7447*最终阳性内功攻击])伤害外加最大生命值10%的真实伤害。",
+      "description": "目标血量低于30%方可施展，对其造成(6.7447*攻击力)点伤害外加最大生命值10%的真实伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
@@ -2319,7 +2323,7 @@
         "effects.0.value": 4.2395,
         "cooldownTicks": 120
       },
-      "description": "对目标造成123-135点(+[4.2395*最终阴性内功攻击])伤害，造成伤害的50%将治疗自身。",
+      "description": "对目标造成(4.2395*攻击力)点伤害，造成伤害的50%将治疗自身。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -2340,7 +2344,7 @@
         "effects.0.value": 4.4937,
         "cooldownTicks": 150
       },
-      "description": "对目标造成0-0点(+[4.4937*最终外功攻击])伤害，若目标处于“锁足”“定身”“眩晕”状态则使其20秒内受到的伤害提高20%，该效果可叠加5层。",
+      "description": "对目标造成(4.4937*攻击力)点伤害，若目标处于“锁足”“定身”“眩晕”状态则使其20秒内受到的伤害提高20%，该效果可叠加5层。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -2381,7 +2385,7 @@
         "effects.0.value": 1.401,
         "cooldownTicks": 0
       },
-      "description": "对目标造成19-21点(+[1.4010*最终阴性内功攻击])伤害，可以连续施展3次。",
+      "description": "对目标造成(1.4010*攻击力)点伤害，可以连续施展3次。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -2402,7 +2406,7 @@
         "effects.0.value": 0.49,
         "cooldownTicks": 360
       },
-      "description": "命令海雕在指定位置扇出一道飓风，持续对周围造成12次伤害，持续6秒。飓风会自动跟随附近敌对目标（优先自身目标）。",
+      "description": "命令海雕在指定位置扇出一道飓风，持续对周围造成12次伤害，持续6秒。飓风会自动跟随附近敌对目标(优先自身目标)。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -2479,7 +2483,7 @@
       "numeric": {
         "cooldownTicks": 1350
       },
-      "description": "解除自身控制效果并免疫控制效果，持续3秒；使自身受到的伤害降低60%，持续6秒，并击飞自身半径6尺范围内最多5个目标造成伤害。施展过程中不受控制效果的影响（被拉除外）。同时能够击毁攻击范围内最多5个气场和可见机关。",
+      "description": "解除自身控制效果并免疫控制效果，持续3秒；使自身受到的伤害降低60%，持续6秒，并击飞自身半径6尺范围内最多5个目标造成伤害。施展过程中不受控制效果的影响(被拉除外)。同时能够击毁攻击范围内最多5个气场和可见机关。",
       "descriptionReviewStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2556,7 +2560,7 @@
       "numeric": {
         "cooldownTicks": 300
       },
-      "description": "每1秒对目标发射一枚弩箭，一共发射3支。第一枚箭造成100-100点(+[0.8125*最终外功攻击])外功伤害，第二枚箭造成187-374点(+[1.0500*最终外功攻击])外功伤害，第三枚箭造成364-728点(+[1.3125*最终外功攻击])外功伤害。每枚箭额外附带100%武器伤害。若目标离自己小于15尺，则每枚箭都击退目标4尺。该招式免疫打断，消耗一枚弩箭。",
+      "description": "每1秒对目标发射一枚弩箭，一共发射3支。第一枚箭造成(0.8125*攻击力)点外功伤害，第二枚箭造成(1.0500*攻击力)点外功伤害，第三枚箭造成(1.3125*攻击力)点外功伤害。每枚箭额外附带100%武器伤害。若目标离自己小于15尺，则每枚箭都击退目标4尺。该招式免疫打断，消耗一枚弩箭。",
       "descriptionReviewStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2631,7 +2635,8 @@
         "qinggong": false
       },
       "numeric": {
-        "cooldownTicks": 1350
+        "cooldownTicks": 1350,
+        "chargeRecoveryTicks": 1350
       },
       "description": "在自身前方生成一道20尺刀气阻碍，敌方玩家目标无法穿越，持续4秒。",
       "descriptionReviewStatus": "fixed",
@@ -2650,7 +2655,8 @@
         "qinggong": false
       },
       "numeric": {
-        "cooldownTicks": 900
+        "cooldownTicks": 900,
+        "chargeRecoveryTicks": 900
       },
       "description": "保护自身不受伤害，2秒内反弹敌方对自身释放的所有招式的伤害及效果，该招式只对玩家生效。",
       "descriptionReviewStatus": "fixed",
@@ -2671,7 +2677,7 @@
       "numeric": {
         "cooldownTicks": 900
       },
-      "description": "解除自身控制，使用藤蔓种子，环绕自身形成藤蔓装甲，使得距离自身6尺内的敌对目标攻击自身时将被击退并对其造成伤害，敌方无法通过对自身冲刺接近6尺（对区域的冲刺则不受影响）。期间免疫控制（击退和被拉除外），持续5秒。",
+      "description": "解除自身控制，使用藤蔓种子，环绕自身形成藤蔓装甲，使得距离自身6尺内的敌对目标攻击自身时将被击退并对其造成伤害，敌方无法通过对自身冲刺接近6尺(对区域的冲刺则不受影响)。期间免疫控制(击退和被拉除外)，持续5秒。",
       "descriptionReviewStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2707,9 +2713,10 @@
         "qinggong": false
       },
       "numeric": {
-        "cooldownTicks": 1050
+        "cooldownTicks": 1050,
+        "chargeRecoveryTicks": 1050
       },
-      "description": "将自身所受的控制效果（不包括被推、被拉）转移给当前目标，持续5秒，并在10秒内减少15%受到的伤害，免疫控制效果（不包括被推、被拉）。非受控状态下施展将返回7秒调息时间。",
+      "description": "将自身所受的控制效果(不包括被推、被拉)转移给当前目标，持续5秒，并在10秒内减少15%受到的伤害，免疫控制效果(不包括被推、被拉)。非受控状态下施展将返回7秒调息时间。",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2749,7 +2756,7 @@
       "numeric": {
         "cooldownTicks": 120
       },
-      "description": "向前拍出掌法，可于冲刺中释放，释放对前方8尺矩形内最多5个目标造成54-59(+[1.6187*最终外功攻击])伤害。",
+      "description": "向前拍出掌法，可于冲刺中释放，释放对前方8尺矩形内最多5个目标造成(1.6187*攻击力)点伤害。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
@@ -2788,9 +2795,10 @@
       },
       "numeric": {
         "effects.0.value": 3,
-        "cooldownTicks": 240
+        "cooldownTicks": 240,
+        "chargeRecoveryTicks": 240
       },
-      "description": "对目标造成34-34点(+[3.0000*最终阳性内功攻击])伤害，3秒内连续施展时对目标额外造成30%伤害且小范围击退目标。",
+      "description": "对目标造成(3.0000*攻击力)点伤害，3秒内连续施展时对目标额外造成30%伤害且小范围击退目标。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -2907,7 +2915,7 @@
       "numeric": {
         "cooldownTicks": 1350
       },
-      "description": "立刻与敌对目标侠士交换位置（免疫被拉的目标除外）。",
+      "description": "立刻与敌对目标侠士交换位置(免疫被拉的目标除外)。",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2965,7 +2973,7 @@
       "numeric": {
         "cooldownTicks": 360
       },
-      "description": "将前方10尺扇形范围的最多5个目标吸引到自身前方造成240-264(+[3.4187*最终外功攻击])伤害。",
+      "description": "将前方10尺扇形范围的最多5个目标吸引到自身前方造成(3.4187*攻击力)点伤害。",
       "descriptionReviewStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -3045,7 +3053,7 @@
         "effects.0.value": 0.65,
         "cooldownTicks": 240
       },
-      "description": "龙吟一击，对目标造成67-73(+[0.6500*最终外功攻击])点伤害。若招式会心则立刻重置调息时间。",
+      "description": "龙吟一击，对目标造成(0.6500*攻击力)点伤害。若招式会心则立刻重置调息时间。",
       "descriptionReviewStatus": "unfixed",
       "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
@@ -3084,7 +3092,7 @@
       "numeric": {
         "cooldownTicks": 1200
       },
-      "description": "凌空而起，免疫控制（击退和被拉除外），并使得自身身轻如燕，施展招式最大距离提高5尺，施展任意招式可以额外获得一次跳跃机会，且跳跃（自身按W/A/S/D空格进行跳跃时）变为朝对应方向的一小段冲刺效果，持续8秒。“凌然天风”期间起跳及跳跃时自身免疫击退。",
+      "description": "凌空而起，免疫控制(击退和被拉除外)，并使得自身身轻如燕，施展招式最大距离提高5尺，施展任意招式可以额外获得一次跳跃机会，且跳跃(自身按W/A/S/D空格进行跳跃时)变为朝对应方向的一小段冲刺效果，持续8秒。“凌然天风”期间起跳及跳跃时自身免疫击退。",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -3103,7 +3111,7 @@
       "numeric": {
         "cooldownTicks": 2700
       },
-      "description": "解除友方目标的受控效果（击倒除外），使其受到的伤害降低30%，并为队友目标承担100%伤害，持续10秒",
+      "description": "解除友方目标的受控效果(击倒除外)，使其受到的伤害降低30%，并为队友目标承担100%伤害，持续10秒",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {

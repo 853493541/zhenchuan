@@ -328,6 +328,7 @@ export type AbilityCooldownReviewEntry = {
   description: string;
   cooldownTicks: number;
   baseCooldownTicks: number;
+  usesChargeRecovery: boolean;
   status: DescriptionReviewStatus;
 };
 

@@ -209,6 +209,31 @@ Each entry goes under its relevant section header.
 **Lesson**:
 - For tooltips, zero values that represent "no mechanic" should use explicit wording instead of numeric `0秒`, which reads like an active but empty cooldown.
 
+## Ability editor charge cooldown review fix (2026-05-30)
+
+**Implemented / checked**:
+- Traced the cooldown review page and confirmed it only read and wrote `cooldownTicks`, which is the wrong field for charged abilities.
+- Updated the cooldown review snapshot/save path so abilities with `maxCharges > 1` now review `chargeRecoveryTicks` instead.
+- Updated the cooldown review UI so charged abilities show `充能时间` rather than generic `CD` / `冷却时间` wording.
+- Kept non-charge abilities on the existing `cooldownTicks` review path.
+
+**Lesson**:
+- Charge skills need a separate review surface from standard cooldown skills. Reusing a generic cooldown field hides the real runtime source of truth and makes editor changes look broken.
+
+## Charge cast lock and 生死劫月劫 timing adjustment (2026-05-30)
+
+**Implemented / checked**:
+- Reduced charge-cast lock from 1.0s to 0.5s for charge skills that previously used `chargeCastLockTicks: 30`:
+  - 鹊踏枝
+  - 游风飘踪
+  - 盾立
+- Updated these skill descriptions to match the new 0.5s cast interval.
+- Kept 楚河汉界 unchanged because it already used 0.5s (`chargeCastLockTicks: 15`).
+- Reduced 生死劫's 月劫 (`buffId: 1221`) duration from 15s to 12s.
+
+**Lesson**:
+- When changing runtime timing fields (like cast lock), update player-facing descriptions in the same edit pass so gameplay behavior and tooltip text remain aligned.
+
 ## Ability tooltip cooldown should use real CD, not 3s test cap (2026-05-29)
 
 **Implemented / checked**:
@@ -5701,3 +5726,29 @@ Lesson: damage/buff/movement reflection MUST hook at every chokepoint. Pre-immun
 ### 连环弩 used a fully custom tick path outside the shared damage helper
 - The `lian_huan_nu` tick branch in `GameLoop.ts` did all of its own work: raw `!hasDamageImmune()` gating, manual `resolveScheduledDamage()`, direct `applyDamageToTarget()`, and direct `activeDash` knockback. That bypassed 盾立 reflect entirely. It also applied no actual `KNOCKED_BACK` CC state, so reflected knockback did not reliably break the caster’s channel.
 - Fix: route damage through `applyDamageToHostileTarget()`, resolve the actual knockback victim through `getDunLiReflectVictim()`, add a short `KNOCKED_BACK` debuff when knockback lands, and explicitly clear `activeChannel` on the knockback victim so reflected self-knockback breaks 连环弩 immediately.
+
+## Ability description regex migration (41 -> 32 first batch) (2026-05-30)
+
+### What was changed
+- Applied a targeted text migration in `backend/game/abilities/ability-property-overrides.json` for full main-damage fragments only: `X...(+[coef*...攻击])...伤害` -> `（coef*攻击力）点伤害`.
+- Total replacements in batch 1: 32.
+- Applied requested explicit mapping for 剑主天地: `86-95点(+[2.0781*最终阴性内功攻击])伤害` -> `（3.8541*攻击力）点伤害`.
+
+### Why 41 became 32
+- The original 41-count search matched any `(+[...攻击...])` fragment.
+- 9 of those are not the same sentence shape as main-hit damage clauses (e.g., periodic damage suffixes, control-duration scaling, multi-clause projectile lines), so they were intentionally excluded from batch 1 to avoid over-replacement.
+
+### Lesson
+- For description cleanup, split passes by semantic shape first (main-hit clause vs periodic/control/auxiliary clause). This avoids changing non-damage or secondary formula text accidentally.
+
+## Ability description parenthesis normalization + remaining 9 conversion (2026-05-30)
+
+### What was changed
+- Normalized ability override descriptions to ASCII parentheses in `backend/game/abilities/ability-property-overrides.json` by replacing full-width `（ ）` with `()`.
+- Completed the previously excluded 9 formula fragments (periodic lines, multi-segment line, and one control-scaling suffix) to the simplified attack-power style.
+
+### Validation
+- Post-change scan result: full-width parentheses count `0` and legacy `(+[...攻击...])` fragments in descriptions count `0`.
+
+### Lesson
+- If style consistency requires ASCII punctuation, run punctuation normalization before formula migration to avoid mixed-width output and reduce cleanup passes.

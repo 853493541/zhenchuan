@@ -565,6 +565,19 @@ function buildCoreFieldDefinitions(baseAbility: AbilityWithDescription) {
     }),
   ];
 
+  if (Number(baseAbility.maxCharges ?? 0) > 1) {
+    definitions.push(
+      createNumericFieldDefinition({
+        id: "chargeRecoveryTicks",
+        label: "充能 Tick",
+        description: "每层充能恢复时间，30 Tick = 1 秒",
+        order: 11,
+        path: ["chargeRecoveryTicks"],
+        step: 1,
+      })
+    );
+  }
+
   if (typeof baseAbility.range === "number") {
     definitions.push(
       createNumericFieldDefinition({
