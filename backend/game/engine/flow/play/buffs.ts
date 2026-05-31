@@ -111,6 +111,10 @@ export function applyAbilityBuffs(params: {
   if (blocksNewBuffByUntargetable(source, abilityBuffTarget)) return;
 
   for (const buff of ability.buffs) {
+    if (ability.id === "xinzheng" && buff.buffId === 1018) {
+      continue;
+    }
+
     // Per-buff applyTo override: a buff can specify "SELF" or "OPPONENT" regardless
     // of the ability's target field (e.g. 云飞玉皇 channels a self-buff while targeting an enemy)
     const localBuffTarget =

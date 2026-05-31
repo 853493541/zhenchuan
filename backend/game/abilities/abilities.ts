@@ -1132,6 +1132,18 @@ export const BASE_ABILITIES: AbilityRecord = {
           { type: "TIMED_AOE_DAMAGE", delayMs: 3_000, value: 10, range: 12, aoeAngle: 180 },
         ],
       },
+      {
+        buffId: 1018,
+        name: "讼言",
+        category: "BUFF",
+        applyTo: "SELF",
+        durationMs: 99_000,
+        initialStacks: 1,
+        maxStacks: 30,
+        breakOnPlay: false,
+        description: "每层会心提高3%",
+        effects: [{ type: "CRIT_CHANCE_BONUS", value: 3 }],
+      },
     ],
   },
 

@@ -3,6 +3,30 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 心法面板会心显示未按层数累计修复 (2026-05-31)
+
+**Implemented / checked**:
+- 定位到前端 `BattleArena` 心法(C)面板会心显示逻辑：`CRIT_CHANCE_BONUS` 汇总时只加了 effect.value，没有乘 buff 的 `stacks`。
+- 修复 `getTypedEffectTotal()`：按每个 buff 的 `stackCount` 叠乘对应效果值，确保会心/会效与后端战斗结算一致。
+- 新增并通过 Playwright source guard，显式检查面板计算包含 `stackCount` 乘法。
+- 完成 backend/frontend build，并在成功构建后执行 `pm2 restart frontend backend`。
+
+**Lesson**:
+- 面板展示使用的增益汇总必须与后端 combatMath 保持同一“叠层口径”；否则会出现“实际已生效但属性面板几乎不动”的错觉。
+
+## 心诤-讼言状态栏与生命周期修复 (2026-05-30)
+
+**Implemented / checked**:
+- 将【讼言】(1018) 正式加入 `xinzheng` 的 `ability.buffs`，并设置为 99 秒、30 层上限、每层会心 +3%，使其能走官方 preload/status bar 元数据链路。
+- 在 `applyAbilityBuffs` 中对 `xinzheng` 的 1018 做逐条跳过，避免施放瞬间误加讼言；讼言仍只在心诤 `CHANNEL_AOE_TICK` 命中时叠层。
+- `GameLoop` 里移除“最终一击即刻清空讼言”的旧逻辑，改为：只要【心诤】通道 Buff(1017)不再处于激活状态（包括自然结束、打断、换招等任意原因），立即清空全部讼言。
+- 讼言叠层来源改为直接读取 `ABILITIES.xinzheng.buffs` 内的 1018 定义，不再使用 `GameLoop` 内硬编码模板，避免和技能定义漂移。
+- 新增并通过 Playwright source guard（单测目标用例），并完成 backend/frontend build + `pm2 restart frontend backend`。
+
+**Lesson**:
+- 运行时动态 Buff 若要稳定显示在官方状态栏，定义必须进入技能/预载元数据链路；仅在循环内手工 `addBuff` 会生效但常常缺 UI 元信息。
+- “依附通道存在的叠层 Buff”应绑定通道 Buff 的存活状态，而不是绑定某个单次效果点（如最终一击），否则会出现打断/提前结束时的残留或错时清理。
+
 ## 十方玄机目标归属与敌方视角名字颜色修复 (2026-05-30)
 
 **Implemented / checked**:

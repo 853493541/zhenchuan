@@ -102,31 +102,30 @@ const YIN_QIAO_ABILITY_ID = "yin_qiao";
 const JUE_MAI_BUFF_ID = 1337;
 const WU_XIANG_JUE_SNAPSHOT_BUFF_IDS = new Set([2710, 2731, 2732, 2733, 2734]);
 const XINZHENG_ABILITY_ID = "xinzheng";
+const XINZHENG_CHANNEL_BUFF_ID = 1017;
 const XINZHENG_SONG_YAN_BUFF_ID = 1018;
-const XINZHENG_SONG_YAN_BUFF = {
-  buffId: XINZHENG_SONG_YAN_BUFF_ID,
-  name: "讼言",
-  category: "BUFF",
-  durationMs: 30_000,
-  initialStacks: 1,
-  maxStacks: 30,
-  breakOnPlay: false,
-  description: "每层会心提高3%",
-  effects: [{ type: "CRIT_CHANCE_BONUS", value: 3 }],
-};
 
 function addXinzhengSongYanStack(state: GameState, player: any) {
   const ability = ABILITIES[XINZHENG_ABILITY_ID];
-  if (!ability) return false;
+  const songYanBuff = (ability as any)?.buffs?.find((entry: any) => entry?.buffId === XINZHENG_SONG_YAN_BUFF_ID);
+  if (!ability || !songYanBuff) return false;
   addBuff({
     state,
     sourceUserId: player.userId,
     targetUserId: player.userId,
     ability: ability as any,
     buffTarget: player as any,
-    buff: XINZHENG_SONG_YAN_BUFF as any,
+    buff: songYanBuff,
   });
   return true;
+}
+
+function hasActiveXinzhengChannelBuff(player: any, now = Date.now()) {
+  return (player?.buffs ?? []).some((buff: any) =>
+    buff?.buffId === XINZHENG_CHANNEL_BUFF_ID &&
+    buff?.sourceAbilityId === XINZHENG_ABILITY_ID &&
+    isRuntimeBuffActive(buff, now)
+  );
 }
 
 function removeXinzhengSongYanStacks(state: GameState, player: any) {
@@ -4510,9 +4509,6 @@ export class GameLoop {
               buffsChanged = true;
             }
 
-            if (buff.sourceAbilityId === XINZHENG_ABILITY_ID && e.type === "TIMED_AOE_DAMAGE") {
-              buffsChanged = removeXinzhengSongYanStacks(this.state, player as any) || buffsChanged;
-            }
           }
         }
       }
@@ -4601,6 +4597,9 @@ export class GameLoop {
         });
       }
       if (naturallyExpired.length > 0 || player.buffs.length !== before) buffsChanged = true;
+      if (!hasActiveXinzhengChannelBuff(player as any, now)) {
+        buffsChanged = removeXinzhengSongYanStacks(this.state, player as any) || buffsChanged;
+      }
 
       if (!hasYuqiState(player as any, now)) {
         const lingeringZongQingQi = player.buffs.filter((b) => b.buffId === ZONG_QING_QI_BUFF_ID);

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-30T23:36:55.844Z",
+  "updatedAt": "2026-05-30T23:40:12.397Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -2892,8 +2892,8 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
-      "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "ignoreDodge": true
     },
     "chu_he_han_jie": {
       "properties": {

@@ -18,6 +18,7 @@ const combatStatusPath = path.join(repoRoot, 'backend/game/engine/utils/combatSt
 const validateActionPath = path.join(repoRoot, 'backend/game/engine/rules/validateAction.ts');
 const consumableServicePath = path.join(repoRoot, 'backend/game/services/gameplay/consumableService.ts');
 const playServicePath = path.join(repoRoot, 'backend/game/services/gameplay/playService.ts');
+const battleArenaPath = path.join(frontendRoot, 'app/game/screens/in-game/components/BattleArena/BattleArena.tsx');
 const arenaScenePath = path.join(frontendRoot, 'app/game/screens/in-game/components/BattleArena/scene/ArenaScene.tsx');
 const characterPath = path.join(frontendRoot, 'app/game/screens/in-game/components/BattleArena/scene/Character.tsx');
 
@@ -76,13 +77,21 @@ test('Shifang remains targetable, clears existing targeters, avoids combat entry
   expect(character).toContain("color={nameColorOverride ?? (isSelected ? '#ff99bb' : '#ff3333')}");
 });
 
-test('Xinzheng gains Songyan stacks on hits and clears them after the final hit', async () => {
+test('Xinzheng Songyan is official, stacks on tick, lasts 99s, and is removed when Xinzheng ends', async () => {
+  const abilities = readFile(abilitiesPath);
+  const applyBuffs = readFile(applyBuffsPath);
   const gameLoop = readFile(gameLoopPath);
+  const xinzheng = abilityBlock(abilities, 'xinzheng');
 
+  expect(xinzheng).toContain('buffId: 1018');
+  expect(xinzheng).toContain('durationMs: 99_000');
+  expect(xinzheng).toContain('maxStacks: 30');
+  expect(applyBuffs).toContain('ability.id === "xinzheng" && buff.buffId === 1018');
+  expect(gameLoop).toContain('const XINZHENG_CHANNEL_BUFF_ID = 1017;');
   expect(gameLoop).toContain('const XINZHENG_SONG_YAN_BUFF_ID = 1018;');
-  expect(gameLoop).toContain('effects: [{ type: "CRIT_CHANCE_BONUS", value: 3 }]');
-  expect(gameLoop).toContain('maxStacks: 30');
+  expect(gameLoop).toContain('const songYanBuff = (ability as any)?.buffs?.find((entry: any) => entry?.buffId === XINZHENG_SONG_YAN_BUFF_ID);');
   expect(gameLoop).toMatch(/if \(buff\.sourceAbilityId === XINZHENG_ABILITY_ID\) \{\s*addXinzhengSongYanStack\(this\.state, player as any\);\s*\}/);
+  expect(gameLoop).toContain('if (!hasActiveXinzhengChannelBuff(player as any, now)) {');
   expect(gameLoop).toContain('removeXinzhengSongYanStacks(this.state, player as any)');
 });
 
@@ -157,4 +166,11 @@ test('Ting Lei lasts until combat exit and is explicitly removed there', async (
   expect(tinglei).toContain('durationMs: 9_999_000');
   expect(combatStatus).toContain('const TING_LEI_BUFF_ID = 2322;');
   expect(combatStatus).toContain('removeCombatStatusBuffs(state, player, timestamp, [TING_LEI_BUFF_ID])');
+});
+
+test('C panel crit display applies buff stack counts for typed crit bonuses', async () => {
+  const battleArena = readFile(battleArenaPath);
+
+  expect(battleArena).toContain('const stackCount = Math.max(1, Number(buff?.stacks ?? 1));');
+  expect(battleArena).toContain('return sum + (buffContribution * stackCount);');
 });

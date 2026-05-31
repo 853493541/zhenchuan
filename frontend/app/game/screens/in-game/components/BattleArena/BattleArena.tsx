@@ -12111,9 +12111,15 @@ export default function BattleArena({
   const myHasteRatePct = Math.max(0, Number((me as any)?.hasteRatePct ?? BASE_HASTE_RATE_PCT));
   const myFacingArrow = facingArrow(localFacingRef.current);
   const meEffects = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
-  const getTypedEffectTotal = (effectType: string, damageType: '外功' | '内功') => meEffects
-    .filter((e: any) => e?.type === effectType && (!e?.damageType || e?.damageType === damageType))
-    .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
+  const getTypedEffectTotal = (effectType: string, damageType: '外功' | '内功') => activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt)
+    .reduce((sum: number, buff: any) => {
+      const stackCount = Math.max(1, Number(buff?.stacks ?? 1));
+      const effects = Array.isArray(buff?.effects) ? buff.effects : [];
+      const buffContribution = effects
+        .filter((e: any) => e?.type === effectType && (!e?.damageType || e?.damageType === damageType))
+        .reduce((effectSum: number, e: any) => effectSum + Number(e?.value ?? 0), 0);
+      return sum + (buffContribution * stackCount);
+    }, 0);
   const defenseMultiplier = meEffects
     .filter((e: any) => e?.type === 'DEFENSE_MULTIPLIER')
     .reduce((multiplier: number, e: any) => {
