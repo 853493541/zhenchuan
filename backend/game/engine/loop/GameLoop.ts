@@ -94,7 +94,6 @@ import { recordLagProbe, roundLagMs } from "../../../utils/lagProbe";
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
 const LV_YE_MAN_SHENG_RADIUS_UNITS = 6;
-const LV_YE_MAN_SHENG_RETAL_DAMAGE = 3;
 const LV_YE_MAN_SHENG_KNOCKBACK_SPEED_UNITS_PER_SEC = 20;
 const XI_BING_YU_ABILITY_ID = "xi_bing_yu";
 const XI_BING_YU_BUFF_ID = 2724;
@@ -2550,10 +2549,14 @@ export class GameLoop {
         }
       }
 
-      // 跃潮斩波: when dash ends, deal 15 damage to enemies within 8u
+      // 跃潮斩波: when dash ends, deal configured landing damage to enemies within 8u
       if (dashAbilityIdBefore === "yue_chao_zhan_bo" && !player.activeDash) {
         const yczbAbility = ABILITIES["yue_chao_zhan_bo"] as any;
         if (yczbAbility) {
+          const dashEffect = Array.isArray(yczbAbility.effects)
+            ? yczbAbility.effects.find((entry: any) => entry?.type === "DASH")
+            : null;
+          const landingDamage = Number(dashEffect?.landingDamage ?? 15);
           const hitTargets = getMiYunAffectedHostileTargets({
             state: this.state,
             source: player as any,
@@ -2580,7 +2583,7 @@ export class GameLoop {
               state: this.state,
               source: player as any,
               target: opp,
-              baseDamage: 15,
+              baseDamage: landingDamage,
               abilityId: "yue_chao_zhan_bo",
               abilityName: yczbAbility.name,
               effectType: "DAMAGE",
@@ -2703,6 +2706,11 @@ export class GameLoop {
       if (dashAbilityIdBefore === "he_gui_gu_shan" && !player.activeDash) {
         const heAbility = ABILITIES["he_gui_gu_shan"] as any;
         if (heAbility) {
+          const dashEffect = Array.isArray(heAbility.effects)
+            ? heAbility.effects.find((entry: any) => entry?.type === "DIRECTIONAL_DASH")
+            : null;
+          const landDamage = Number(dashEffect?.landDamage ?? 2);
+          const closeBonusDamage = Number(dashEffect?.closeBonusDamage ?? 2);
           const stunBuff = heAbility.buffs?.find((b: any) => b.buffId === 2325);
           for (const opp of getMiYunAffectedHostileTargets({
             state: this.state,
@@ -2717,7 +2725,7 @@ export class GameLoop {
               state: this.state,
               source: player as any,
               target: opp,
-              baseDamage: 2,
+              baseDamage: landDamage,
               abilityId: "he_gui_gu_shan",
               abilityName: heAbility.name,
               effectType: "DAMAGE",
@@ -2729,7 +2737,7 @@ export class GameLoop {
                 state: this.state,
                 source: player as any,
                 target: opp,
-                baseDamage: 2,
+                baseDamage: closeBonusDamage,
                 abilityId: "he_gui_gu_shan",
                 abilityName: heAbility.name,
                 effectType: "DAMAGE",
@@ -3116,9 +3124,17 @@ export class GameLoop {
           const lhnElapsed = Math.max(0, Math.min(chNow, ch.startedAt + ch.durationMs) - ch.startedAt);
           const lhnDueTickCount = Math.min(3, Math.floor(lhnElapsed / lhnInterval));
           const lhnCompletedTickCount = Math.min(3, Math.max(0, Number((ch as any).lianHuanNuTickCount ?? 0)));
+          const lhnEffect = Array.isArray((channelAbility as any)?.channelEffects)
+            ? (channelAbility as any).channelEffects.find((entry: any) => entry?.type === "LIAN_HUAN_NU_TICK")
+            : null;
+          const lhnTickDamages = [
+            Number(lhnEffect?.tickDamage1 ?? 1),
+            Number(lhnEffect?.tickDamage2 ?? 2),
+            Number(lhnEffect?.tickDamage3 ?? 3),
+          ];
           for (let tickIdx = lhnCompletedTickCount; tickIdx < lhnDueTickCount && (targetPlayer.hp ?? 0) > 0; tickIdx++) {
             (ch as any).lianHuanNuTickCount = tickIdx + 1;
-            const lhnDmg = tickIdx + 1; // 1, 2, 3
+            const lhnDmg = lhnTickDamages[tickIdx] ?? (tickIdx + 1);
             if (!blocksEnemyTargeting(targetPlayer as any)) {
               const lhnAbility = (ABILITIES["lian_huan_nu"] ?? { id: "lian_huan_nu", name: "连环弩" }) as any;
               const reflectVictim = getDunLiReflectVictim(this.state, player.userId, targetPlayer as any, lhnAbility);
@@ -3614,6 +3630,12 @@ export class GameLoop {
           }
 
           if (ch.abilityId === YIN_QIAO_ABILITY_ID && targetPlayer && !channelEffectDodged) {
+            const yinQiaoExtraPerStack = Array.isArray((channelAbility as any)?.channelEffects)
+              ? Number(
+                  ((channelAbility as any).channelEffects.find((entry: any) => entry?.type === "TIMED_AOE_DAMAGE") as any)
+                    ?.extraPerStackDamage ?? 1
+                )
+              : 1;
             const jueMaiIndex = (targetPlayer.buffs as any[]).findIndex(
               (buff: any) =>
                 buff.buffId === JUE_MAI_BUFF_ID &&
@@ -3621,7 +3643,7 @@ export class GameLoop {
             );
             if (jueMaiIndex !== -1) {
               const jueMaiBuff = (targetPlayer.buffs as any[])[jueMaiIndex];
-              const extraDamage = Math.max(0, Number(jueMaiBuff.stacks ?? 0));
+              const extraDamage = Math.max(0, Number(jueMaiBuff.stacks ?? 0) * yinQiaoExtraPerStack);
               if (extraDamage > 0) {
                 const appliedExtraDamage = applyDamageToHostileTarget({
                   state: this.state,
@@ -5875,11 +5897,15 @@ export class GameLoop {
             buffsChanged = true;
           }
 
+          const lvYeAbility = ABILITIES[LV_YE_MAN_SHENG_ABILITY_ID] as any;
+          const lvYeEffect = Array.isArray(lvYeAbility?.effects)
+            ? lvYeAbility.effects.find((entry: any) => entry?.type === "PLACE_LV_YE_MAN_SHENG_FIELD")
+            : null;
           const retaliateDamage = applyDamageToHostileTarget({
             state: this.state,
             source: protector as any,
             target: { kind: "player", target: attacker } as any,
-            baseDamage: LV_YE_MAN_SHENG_RETAL_DAMAGE,
+            baseDamage: Number(lvYeEffect?.retaliateDamage ?? 3),
             abilityId: LV_YE_MAN_SHENG_ABILITY_ID,
             abilityName: "绿野蔓生",
             effectType: "DAMAGE",

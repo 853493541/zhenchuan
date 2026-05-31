@@ -359,7 +359,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     faceDirection: false,
     allowGroundCastWithoutTarget: true,
-    effects: [{ type: "WUFANG_XINGJIN_AOE", value: 1, range: 8 }],
+    effects: [{ type: "WUFANG_XINGJIN_AOE", value: 1, range: 8 } as any],
     buffs: [
       {
         buffId: 1330,
@@ -511,7 +511,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelCancelOnJump: true,
     channelCancelOnOutOfRange: 20,
     channelForward: true,
-    channelEffects: [{ type: "TIMED_AOE_DAMAGE", value: 2, range: 20 }],
+    channelEffects: [{ type: "TIMED_AOE_DAMAGE", value: 2, range: 20, extraPerStackDamage: 1 } as any],
   } as any,
 
   long_zhan_yu_ye: {
@@ -522,7 +522,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: false,
-    effects: [{ type: "LONG_ZHAN_YU_YE", value: 10 } as any],
+    effects: [{ type: "LONG_ZHAN_YU_YE", value: 10, damageValue: 3.4187 } as any],
     buffs: [],
   },
 
@@ -2039,7 +2039,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: true,
     effects: [
-      { type: "AOE_APPLY_BUFFS", range: 6 },
+      { type: "AOE_APPLY_BUFFS", range: 6, damageValue: 2.1562 } as any,
     ],
     buffs: [
       {
@@ -2163,7 +2163,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     qinggong: true,
     faceDirection: false,
     effects: [
-      { type: "DASH", value: 8 },
+      { type: "DASH", value: 8, landingDamage: 15 } as any,
     ],
     buffs: [],
   },
@@ -2226,7 +2226,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     range: 22,
     cooldownTicks: 300,
     gcd: true,
-    effects: [],
+    effects: [{ type: "DAMAGE", value: 1 }],
     buffs: [
       {
         buffId: 2323,
@@ -2265,7 +2265,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     qinggong: true,
     faceDirection: false,
     effects: [
-      { type: "DIRECTIONAL_DASH", dirMode: "TOWARD", value: 15, durationTicks: 30 },
+      { type: "DIRECTIONAL_DASH", dirMode: "TOWARD", value: 15, durationTicks: 30, landDamage: 2, closeBonusDamage: 2 } as any,
     ],
     buffs: [
       {
@@ -2489,6 +2489,7 @@ export const BASE_ABILITIES: AbilityRecord = {
       {
         type: "SETTLE_SOURCE_DOTS",
         sourceAbilityIds: ["shang_yang_zhi", "lan_cui_yu_zhe", "zhong_lin_yu_xiu", "she_ying", "chan_xiao"],
+        settleMultiplier: 1,
       } as any,
     ],
     buffs: [],
@@ -2637,6 +2638,7 @@ export const BASE_ABILITIES: AbilityRecord = {
       {
         type: "YIN_YUE_ZHAN",
         value: 2,
+        extraDamageValue: 2,
       } as any,
     ],
     buffs: [
@@ -3483,7 +3485,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: true,
     effects: [
-      { type: "JIAN_ZHU_TIAN_DI_STRIKE" } as any,
+      { type: "JIAN_ZHU_TIAN_DI_STRIKE", strikeDamage: 1 } as any,
     ],
     buffs: [
       {
@@ -3674,7 +3676,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "REN_JIAN_HE_YI_AOE", range: 13 } as any],
+    effects: [{ type: "REN_JIAN_HE_YI_AOE", range: 13, explodeDamage: 0.5 } as any],
     buffs: [
       {
         buffId: 2735,
@@ -3997,7 +3999,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     range: 4,
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "MIE_STRIKE", value: 2 }],
+    effects: [{ type: "MIE_STRIKE", value: 2, extraDamageValue: 12 } as any],
     buffs: [
       {
         buffId: 2713,
@@ -4651,7 +4653,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     allowWhileControlled: true,
     effects: [
       { type: "CLEANSE", allowWhileControlled: true, cleanseRootSlow: true },
-      { type: "PLACE_LV_YE_MAN_SHENG_FIELD", allowWhileControlled: true },
+      { type: "PLACE_LV_YE_MAN_SHENG_FIELD", allowWhileControlled: true, retaliateDamage: 3 } as any,
     ],
     buffs: [
       {
@@ -4712,7 +4714,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     channelForward: false,
     applyBuffsOnChannelStart: true,
     channelEffects: [
-      { type: "LIAN_HUAN_NU_TICK", value: 0, range: 25 } as any,
+      { type: "LIAN_HUAN_NU_TICK", value: 0, range: 25, tickDamage1: 1, tickDamage2: 2, tickDamage3: 3 } as any,
     ],
   } as any,
 

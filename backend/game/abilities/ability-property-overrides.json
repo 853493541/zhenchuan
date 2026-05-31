@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-31T09:07:29.268Z",
+  "updatedAt": "2026-05-31T09:23:24.679Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -39,7 +39,7 @@
       },
       "description": "对周围5尺5个目标造成(1.2708*攻击力)点伤害并添加12秒持续伤害效果，每2秒造成（0.125攻击力)点伤害。若只命中单个目标则伤害提高100%",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",

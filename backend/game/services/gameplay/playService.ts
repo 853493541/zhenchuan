@@ -760,6 +760,9 @@ async function playCastAbility(
     if (jiangBuff) {
       const jiangAbility = ABILITIES["jiang_chun_zhu_xiu"] as any;
       const silenceBuff = jiangAbility?.buffs?.find((b: any) => b.buffId === 2324);
+      const triggerEffect = Array.isArray(jiangAbility?.effects)
+        ? jiangAbility.effects.find((entry: any) => entry?.type === "DAMAGE")
+        : null;
       const opp = (state as any).players?.find((p: any) => p.userId !== player.userId);
       if (jiangAbility && silenceBuff && opp) {
         addBuff({
@@ -770,7 +773,13 @@ async function playCastAbility(
           buffTarget: player as any,
           buff: silenceBuff,
         });
-        const dmg = resolveScheduledDamage({ source: opp, target: player as any, base: 1, abilityId: "jiang_chun_zhu_xiu" });
+        const dmg = resolveScheduledDamage({
+          source: opp,
+          target: player as any,
+          base: Number(triggerEffect?.value ?? 1),
+          abilityId: "jiang_chun_zhu_xiu",
+          damageType: jiangAbility.damageType,
+        });
         if (dmg > 0) applyDamageToTarget(player as any, dmg);
       }
     }

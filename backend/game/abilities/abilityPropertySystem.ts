@@ -201,6 +201,7 @@ const DAMAGE_VALUE_EFFECT_LABELS: Partial<Record<AbilityEffect["type"], string>>
   DAMAGE: "直接伤害倍率",
   BANG_DA_GOU_TOU: "棒打狗头伤害倍率",
   HENG_SAO_LIU_HE_AOE: "横扫六合伤害倍率",
+  WUFANG_XINGJIN_AOE: "五方行尽伤害倍率",
   BONUS_DAMAGE_IF_TARGET_HP_GT: "追加伤害倍率",
   PERIODIC_DAMAGE: "持续伤害倍率",
   CHANNEL_AOE_TICK: "引导范围伤害倍率",
@@ -215,10 +216,12 @@ const DAMAGE_VALUE_EFFECT_LABELS: Partial<Record<AbilityEffect["type"], string>>
   STACK_ON_HIT_GUAN_TI_HEAL: "层数触发贯体回血",
   SCHEDULED_DAMAGE: "计划伤害倍率",
   DELAYED_DAMAGE: "延时伤害倍率",
+  YIN_YUE_ZHAN: "银月斩伤害倍率",
   LIE_RI_ZHAN: "烈日斩伤害倍率",
   MIE_STRIKE: "灭伤害倍率",
   SHOU_QUE_SHI: "守缺式伤害倍率",
   TRUE_DAMAGE: "真实伤害数值",
+  PLACE_GROUND_ZONE: "法阵每跳伤害倍率",
   PLACE_FOLLOW_ZONE: "法阵每跳伤害倍率",
   PLACE_GROW_PULL_ZONE: "爆炸伤害倍率",
   CHANNEL_AOE_TICK_DAMAGE: "引导范围伤害倍率",
@@ -228,6 +231,7 @@ const DAMAGE_VALUE_EFFECT_TYPES = new Set<AbilityEffect["type"]>([
   "DAMAGE",
   "BANG_DA_GOU_TOU",
   "HENG_SAO_LIU_HE_AOE",
+  "WUFANG_XINGJIN_AOE",
   "BONUS_DAMAGE_IF_TARGET_HP_GT",
   "PERIODIC_DAMAGE",
   "CHANNEL_AOE_TICK",
@@ -241,10 +245,12 @@ const DAMAGE_VALUE_EFFECT_TYPES = new Set<AbilityEffect["type"]>([
   "STACK_ON_HIT_DAMAGE",
   "SCHEDULED_DAMAGE",
   "DELAYED_DAMAGE",
+  "YIN_YUE_ZHAN",
   "LIE_RI_ZHAN",
   "MIE_STRIKE",
   "SHOU_QUE_SHI",
   "TRUE_DAMAGE",
+  "PLACE_GROUND_ZONE",
   "PLACE_FOLLOW_ZONE",
   "PLACE_GROW_PULL_ZONE",
   "CHANNEL_AOE_TICK_DAMAGE",
@@ -588,11 +594,11 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
       );
     }
 
-    if (baseAbility.id === "dican_longxiang" && effect.type === "AOE_APPLY_BUFFS" && typeof (effect as any).damageValue === "number") {
+    if (effect.type === "AOE_APPLY_BUFFS" && typeof (effect as any).damageValue === "number") {
       definitions.push(
         createNumericFieldDefinition({
           id: `effects.${effectIndex}.damageValue`,
-          label: "帝骖龙翔伤害倍率",
+          label: baseAbility.id === "dican_longxiang" ? "帝骖龙翔伤害倍率" : "范围伤害倍率",
           description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
           order: 246 + effectIndex,
           path: ["effects", effectIndex, "damageValue"],
@@ -613,6 +619,138 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
         })
       );
     }
+
+    if (baseAbility.id === "yue_chao_zhan_bo" && effect.type === "DASH" && typeof (effect as any).landingDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.landingDamage`,
+          label: "跃潮斩波伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 落地范围伤害倍率会乘以攻击力`,
+          order: 248 + effectIndex,
+          path: ["effects", effectIndex, "landingDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "he_gui_gu_shan" && effect.type === "DIRECTIONAL_DASH") {
+      if (typeof (effect as any).landDamage === "number") {
+        definitions.push(
+          createNumericFieldDefinition({
+            id: `effects.${effectIndex}.landDamage`,
+            label: "鹤归孤山伤害倍率",
+            description: `技能效果 ${effectIndex + 1} · 落地范围伤害倍率会乘以攻击力`,
+            order: 249 + effectIndex,
+            path: ["effects", effectIndex, "landDamage"],
+            step: 0.1,
+          })
+        );
+      }
+      if (typeof (effect as any).closeBonusDamage === "number") {
+        definitions.push(
+          createNumericFieldDefinition({
+            id: `effects.${effectIndex}.closeBonusDamage`,
+            label: "鹤归孤山额外伤害倍率",
+            description: `技能效果 ${effectIndex + 1} · 近距额外伤害倍率会乘以攻击力`,
+            order: 250 + effectIndex,
+            path: ["effects", effectIndex, "closeBonusDamage"],
+            step: 0.1,
+          })
+        );
+      }
+    }
+
+    if (baseAbility.id === "long_zhan_yu_ye" && effect.type === "LONG_ZHAN_YU_YE" && typeof (effect as any).damageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.damageValue`,
+          label: "龙战于野伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 251 + effectIndex,
+          path: ["effects", effectIndex, "damageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "yu_shi_ju_fen" && effect.type === "SETTLE_SOURCE_DOTS" && typeof (effect as any).settleMultiplier === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.settleMultiplier`,
+          label: "玉石俱焚额外伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 吞噬持续伤害的结算倍率`,
+          order: 252 + effectIndex,
+          path: ["effects", effectIndex, "settleMultiplier"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "yin_yue_zhan" && effect.type === "YIN_YUE_ZHAN" && typeof (effect as any).extraDamageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.extraDamageValue`,
+          label: "银月斩额外伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 额外伤害倍率会乘以攻击力`,
+          order: 253 + effectIndex,
+          path: ["effects", effectIndex, "extraDamageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "jian_zhu_tian_di" && effect.type === "JIAN_ZHU_TIAN_DI_STRIKE" && typeof (effect as any).strikeDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.strikeDamage`,
+          label: "剑主天地伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 直接伤害倍率会乘以攻击力`,
+          order: 254 + effectIndex,
+          path: ["effects", effectIndex, "strikeDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "ren_jian_he_yi" && effect.type === "REN_JIAN_HE_YI_AOE" && typeof (effect as any).explodeDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.explodeDamage`,
+          label: "人剑合一引爆伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 引爆伤害倍率会乘以攻击力`,
+          order: 255 + effectIndex,
+          path: ["effects", effectIndex, "explodeDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "mie" && effect.type === "MIE_STRIKE" && typeof (effect as any).extraDamageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.extraDamageValue`,
+          label: "灭额外伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 低血量额外伤害倍率会乘以攻击力`,
+          order: 256 + effectIndex,
+          path: ["effects", effectIndex, "extraDamageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "lv_ye_man_sheng" && effect.type === "PLACE_LV_YE_MAN_SHENG_FIELD" && typeof (effect as any).retaliateDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.retaliateDamage`,
+          label: "绿野蔓生伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 反击伤害倍率会乘以攻击力`,
+          order: 257 + effectIndex,
+          path: ["effects", effectIndex, "retaliateDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
   });
 
   ((baseAbility as any).channelEffects ?? []).forEach((effect: AbilityEffect, effectIndex: number) => {
@@ -624,6 +762,40 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
           description: `读条完成效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
           order: 260 + effectIndex,
           path: ["channelEffects", effectIndex, "value"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "lian_huan_nu" && effect.type === "LIAN_HUAN_NU_TICK") {
+      const tickFields: Array<{ key: string; label: string; orderOffset: number }> = [
+        { key: "tickDamage1", label: "连环弩第一段伤害倍率", orderOffset: 1 },
+        { key: "tickDamage2", label: "连环弩第二段伤害倍率", orderOffset: 2 },
+        { key: "tickDamage3", label: "连环弩第三段伤害倍率", orderOffset: 3 },
+      ];
+      for (const field of tickFields) {
+        if (typeof (effect as any)[field.key] !== "number") continue;
+        definitions.push(
+          createNumericFieldDefinition({
+            id: `channelEffects.${effectIndex}.${field.key}`,
+            label: field.label,
+            description: `读条完成效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+            order: 270 + effectIndex * 4 + field.orderOffset,
+            path: ["channelEffects", effectIndex, field.key],
+            step: 0.1,
+          })
+        );
+      }
+    }
+
+    if (baseAbility.id === "yin_qiao" && effect.type === "TIMED_AOE_DAMAGE" && typeof (effect as any).extraPerStackDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `channelEffects.${effectIndex}.extraPerStackDamage`,
+          label: "引窍额外伤害倍率",
+          description: `读条完成效果 ${effectIndex + 1} · 每层绝脉额外伤害倍率会乘以攻击力`,
+          order: 271 + effectIndex,
+          path: ["channelEffects", effectIndex, "extraPerStackDamage"],
           step: 0.1,
         })
       );

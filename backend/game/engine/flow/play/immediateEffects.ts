@@ -2299,7 +2299,8 @@ export function applyImmediateEffects(params: {
           const remainingMs = Math.max(0, settleBuff.expiresAt - settleNow);
           const remainingTicks = Math.max(0, Math.ceil(remainingMs / settleBuff.periodicMs));
           const dmgPerTick = settleBuff.effects.find((e: any) => e.type === "PERIODIC_DAMAGE")?.value ?? 0;
-          const totalDmg = remainingTicks * dmgPerTick;
+          const settleMultiplier = Number((effect as any).settleMultiplier ?? 1);
+          const totalDmg = remainingTicks * dmgPerTick * settleMultiplier;
           // Remove the buff first
           const idx = effTarget.buffs.indexOf(settleBuff);
           if (idx !== -1) effTarget.buffs.splice(idx, 1);
@@ -2436,7 +2437,8 @@ export function applyImmediateEffects(params: {
         const hasLieRi = effTarget.buffs.some((b: any) => isRuntimeBuffActive(b, now) && b.buffId === LIE_RI_ZHAN_DEBUFF_ID);
         const mult = hasLieRi ? 2 : 1;
 
-        const baseDmg = (effect.value ?? 2) * mult;
+        const extraDamageValue = Number((effect as any).extraDamageValue ?? 0);
+        const baseDmg = ((effect.value ?? 2) + (hasLieRi ? extraDamageValue : 0)) * mult;
         const yyzDmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg, abilityId: ability.id, damageType: (ability as any).damageType });
         if (yyzDmg > 0) {
           const { adjustedDamage: adjYyz, redirectPlayer: rtYyz, redirectAmt: raYyz } = preCheckRedirect(state, effTarget as any, yyzDmg);
@@ -2994,7 +2996,7 @@ export function applyImmediateEffects(params: {
             source,
             ability,
             target: candidate,
-            baseDamage: 3.4187,
+            baseDamage: Number((effect as any).damageValue ?? 3.4187),
             effectType: "DAMAGE",
             now: Date.now(),
           });
@@ -3424,6 +3426,16 @@ export function applyImmediateEffects(params: {
           if (!target || target.userId === source.userId || (target.hp ?? 0) <= 0) continue;
           if (blocksEnemyTargeting(target)) continue;
 
+          applyImmediateDamageToEnemyTarget({
+            state,
+            source,
+            ability,
+            target: candidate,
+            baseDamage: Number((effect as any).explodeDamage ?? 0),
+            effectType: "DAMAGE",
+            now: Date.now(),
+          });
+
           addBuff({
             state,
             sourceUserId: source.userId,
@@ -3702,7 +3714,8 @@ export function applyImmediateEffects(params: {
           const remainingMs2 = Math.max(0, existing2614.expiresAt - Date.now());
           const periodicMs2 = existing2614.periodicMs ?? jztdBuffDef?.periodicMs ?? 3000;
           const remainTicks2 = Math.max(0, Math.ceil(remainingMs2 / periodicMs2));
-          const burstDmg = remainTicks2 * dmgPerTick2 + 1; // +1 for the hit itself
+          const strikeDamage = Number((effect as any).strikeDamage ?? 1);
+          const burstDmg = remainTicks2 * dmgPerTick2 + strikeDamage;
           effTarget.buffs = effTarget.buffs.filter((b: any) => b.buffId !== 2614);
           pushBuffExpired(state, {
             targetUserId: effTarget.userId,
@@ -3750,7 +3763,8 @@ export function applyImmediateEffects(params: {
           }
         } else {
           // Normal hit: 1 damage + apply/stack buff 2614
-          const dmg1 = resolveScheduledDamage({ source, target: effTarget, base: 1, abilityId: ability.id, damageType: (ability as any).damageType });
+          const strikeDamage = Number((effect as any).strikeDamage ?? 1);
+          const dmg1 = resolveScheduledDamage({ source, target: effTarget, base: strikeDamage, abilityId: ability.id, damageType: (ability as any).damageType });
           if (dmg1 > 0 && !hasDamageImmune(effTarget as any)) {
             const { adjustedDamage: adjJ1, redirectPlayer: rtJ1, redirectAmt: raJ1 } = preCheckRedirect(state, effTarget as any, dmg1);
             const applyJ1 = adjJ1;
@@ -3862,7 +3876,7 @@ export function applyImmediateEffects(params: {
         if (hasDamageImmune(effTarget as any)) break;
         const mieMaxHp = source.maxHp ?? 100;
         const mieIsLowHp = source.hp < mieMaxHp * 0.1;
-        const mieBase = mieIsLowHp ? 12 : (effect.value ?? 2);
+        const mieBase = mieIsLowHp ? Number((effect as any).extraDamageValue ?? 12) : (effect.value ?? 2);
         const mieDmg = resolveScheduledDamage({
           source,
           target: effTarget,

@@ -5,6 +5,20 @@ Each entry goes under its relevant section header.
 
 ## adControl 列表改为按系数表逐行驱动 (2026-05-31)
 
+### 继续收敛剩余未匹配行（18 → 0）(2026-05-31)
+
+**Implemented / checked**:
+- 继续按“定义字段 + 提取字段 + 运行时读取同字段”的方法，把剩余未匹配行全部补齐，涉及能力：`银月斩 / 玉石俱焚 / 跃潮斩波 / 鹤归孤山 / 剑主天地 / 绛唇珠袖 / 连环弩 / 龙战于野 / 绿野蔓生 / 灭 / 人剑合一 / 万剑归宗 / 五方行尽 / 引窍 / 狂龙乱舞`。
+- 在 `abilityPropertySystem.ts` 扩展伤害提取：
+  - 新增类型标签与提取类型：`WUFANG_XINGJIN_AOE`、`YIN_YUE_ZHAN`、`PLACE_GROUND_ZONE`。
+  - 增加非标准路径字段提取：`landingDamage / landDamage / closeBonusDamage / strikeDamage / explodeDamage / extraDamageValue / settleMultiplier / retaliateDamage / tickDamage1~3 / extraPerStackDamage`。
+- 在 `immediateEffects.ts`、`GameLoop.ts`、`playService.ts` 将原硬编码伤害改为读取上述字段（包括 dash 落地、dot 结算、叠层附加伤害、反击伤害、触发伤害等）。
+- `绛唇珠袖` 过程中验证到“自定义 effect type 在归一化/编辑器提取链路中可能丢失”的问题，最终改为使用标准 `DAMAGE` effect 作为系数载体，保证 `damageSettings` 稳定生成。
+- 用与前端 `AdControlTab` 同逻辑的脚本复核，最终 `unmatchedCount = 0`。
+
+**Lesson**:
+- 对编辑器可调系数，优先复用标准 effect type 作为载体；临时自定义 type 若未同时接入完整类型链路，容易在快照/提取阶段被忽略，导致“代码有值但 UI 无匹配”。
+
 **Implemented / checked**:
 - 用户要求不是只重置状态，而是按 `reports/damage_output_coeff_check.md` 逐行重建 `adControl` 列表。
 - 新增 `frontend/app/ability-editor/adControlCoeffRows.ts`，由系数表解析出的行数据驱动 UI（当前 90 行）。
