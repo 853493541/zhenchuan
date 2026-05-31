@@ -5,6 +5,59 @@ Each entry goes under its relevant section header.
 
 ## adControl 列表改为按系数表逐行驱动 (2026-05-31)
 
+### adControl 4列布局 + 状态置顶 + 数值近实时自动保存 (2026-05-31)
+
+**Textbox readability polish / checked**:
+- 用户反馈“输入框看不到数字”，定位到 `adSettingRow` 右侧控件列过窄（历史 `104px` 设计与新 `文本系数 > 输入框` 组合冲突）。
+- 调整 `frontend/app/ability-editor/page.module.css`：
+  - `adSettingRow` 右侧列改为 `minmax(220px, 42%)`；
+  - `adSettingControl` 设置最小宽度，输入框最小宽度增大；
+  - 输入框字号/对比度提升，确保数字可读；
+  - 文本系数区域加可视化容器，避免和输入框挤压重叠。
+
+**Lesson**:
+- 新增快捷操作控件后必须同步回算“最小可读输入宽度”，否则会出现功能增强但主输入可用性退化。
+
+**Follow-up UI efficiency update / checked**:
+- 将 `adControl` 桌面布局改为固定 4 列同屏（`repeat(4, minmax(0, 1fr))`），避免第 4 列掉到第二行。
+- 在每条可编辑加成行增加“文本系数一键覆盖”控件，顺序为：`文本系数值  >  [当前输入框]`。
+- `>` 点击后会把输入框值直接覆盖成文本系数首个数字并立即保存，满足快速批量对齐需求。
+
+**Lesson**:
+- 审核/录入密集型页面应提供“来源值一键覆盖当前值”的短路径，显著减少键盘输入与焦点切换成本。
+
+**Implemented / checked**:
+- `frontend/app/ability-editor/AdControlTab.tsx` 改为 4 列：`无加成 / 需要补充 / 未修正 / 已修正`，并将 `无加成` 技能从 `已修正` 列中拆出到最左列。
+- 对“状态切换为 `需要补充` 或 `已修正`”的技能增加置顶逻辑：切换成功后会在目标列顶端显示，减少来回滚动查找。
+- 数值输入增强为“接近自动处理”：
+  - 保留 `onBlur` 立即保存；
+  - 新增短延迟自动保存（输入后约 450ms 自动提交）；
+  - 避免依赖点击 `已修正` 才触发保存。
+
+**Lesson**:
+- 评审流 UI 里，“状态驱动的快速回看”很关键；状态更新后把目标条目置顶，能显著降低大列表操作成本。
+
+### no_damage_output_coeff_check.csv 批量入表（无加成 + 已修正）(2026-05-31)
+
+**Follow-up fix / checked**:
+- 发现 `AdControlTab` 的行匹配逻辑会把 `无加成` 行通过 fallback 绑定到任意可用 `damageSettings`，导致这类行出现可编辑输入框（看起来像在改某个真实数值）。
+- 已在 `frontend/app/ability-editor/AdControlTab.tsx` 将 `outputType === "无加成"` 的行从“打分匹配”和“fallback 匹配”中都排除，强制保持 `setting = null`，仅显示灰态不可编辑。
+
+**Lesson**:
+- 审查用途的“展示行”如果业务语义是“无系数”，必须在匹配层做硬约束（不可被 fallback 绑定），不能只靠标签文本区分。
+
+**Implemented / checked**:
+- 使用 `reports/no_damage_output_coeff_check.csv` 作为来源，把其中 94 个技能批量加入 `adControl` 行数据源。
+- 在 `frontend/app/ability-editor/adControlCoeffRows.ts` 为每个技能新增一行：
+  - `outputType: "无加成"`
+  - `textCoeff: ""`
+  - `currentCoeff: ""`
+- 在 `backend/game/abilities/ability-property-overrides.json` 将这 94 个技能对应的 `adControlStatus` 全部设为 `fixed`（已修正）。
+- 复核脚本确认：`missingNoBonusRows=0`、`notFixedStatus=0`。
+
+**Lesson**:
+- 对“无伤害/无系数”技能，前端应显式建模为 `无加成` 行并配合 `fixed` 状态，否则这类技能会在审查列表中缺席，导致审查覆盖面不完整。
+
 ### 继续收敛剩余未匹配行（18 → 0）(2026-05-31)
 
 **Implemented / checked**:

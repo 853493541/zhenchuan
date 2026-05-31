@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import CopyNameButton from "./CopyNameButton";
 import { AD_CONTROL_COEFF_ROWS } from "./adControlCoeffRows";
@@ -22,11 +22,13 @@ type Props = {
 
 type AbilityWithAdStatus = AbilityEditorAbility & { adControlStatus: DescriptionReviewStatus };
 type RowAction = { label: string; status: DescriptionReviewStatus; tint: string };
+type AdControlColumnKey = "no-bonus" | DescriptionReviewStatus;
 type AdControlRowEntry = {
   rowId: string;
   sourceIndex: number;
   ability: AbilityWithAdStatus;
   outputType: string;
+  textCoeff: string;
   setting: AbilityEditorNumericSetting | null;
 };
 type AdControlAbilityEntry = {
@@ -35,7 +37,15 @@ type AdControlAbilityEntry = {
   rows: AdControlRowEntry[];
 };
 
-const STATUS_CONFIG: Record<DescriptionReviewStatus, { title: string; background: string; color: string; border: string; empty: string; actions: RowAction[] }> = {
+const STATUS_CONFIG: Record<AdControlColumnKey, { title: string; background: string; color: string; border: string; empty: string; actions: RowAction[] }> = {
+  "no-bonus": {
+    title: "无加成",
+    background: "#edf3ff",
+    color: "#2a4b8d",
+    border: "#b7c8ea",
+    empty: "当前没有无加成条目",
+    actions: [],
+  },
   "needs-more": {
     title: "需要补充",
     background: "#fff7e8",
@@ -78,6 +88,12 @@ function cleanDecimalInput(value: string) {
 function formatMultiplier(value: number) {
   if (!Number.isFinite(value)) return "0";
   return Number.isInteger(value) ? String(value) : String(value).replace(/\.0+$/, "");
+}
+
+function formatTextCoeffQuickValue(raw: string): string | null {
+  const first = extractNumericCandidates(raw)[0];
+  if (!Number.isFinite(first)) return null;
+  return formatMultiplier(first);
 }
 
 function extractNumericCandidates(raw: string): number[] {
@@ -139,8 +155,11 @@ function assignSettingsForRows(
   const assignments: Array<number | null> = new Array(rows.length).fill(null);
   if (rows.length === 0 || settings.length === 0) return assignments;
 
+  const isNoBonusRow = (row: { outputType: string }) => row.outputType === "无加成";
+
   const pairs: Array<{ rowIndex: number; settingIndex: number; score: number; diff: number }> = [];
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    if (isNoBonusRow(rows[rowIndex])) continue;
     for (let settingIndex = 0; settingIndex < settings.length; settingIndex += 1) {
       const { score, diff } = scoreRowSetting(rows[rowIndex], settings[settingIndex]);
       pairs.push({ rowIndex, settingIndex, score, diff });
@@ -165,6 +184,7 @@ function assignSettingsForRows(
 
   // Fallback: assign remaining rows by first free setting to minimize null rows.
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    if (isNoBonusRow(rows[rowIndex])) continue;
     if (assignments[rowIndex] !== null) continue;
     const fallbackSetting = settings.findIndex((_, idx) => !usedSettings.has(idx));
     if (fallbackSetting === -1) continue;
@@ -180,6 +200,21 @@ export default function AdControlTab({ snapshot, loading, onSnapshotUpdate }: Pr
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [priorityAbilityIds, setPriorityAbilityIds] = useState<Record<DescriptionReviewStatus, string[]>>({
+    "needs-more": [],
+    unfixed: [],
+    fixed: [],
+  });
+  const autosaveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(() => {
+    return () => {
+      for (const timer of Object.values(autosaveTimersRef.current)) {
+        clearTimeout(timer);
+      }
+      autosaveTimersRef.current = {};
+    };
+  }, []);
 
   const allAbilities = useMemo<AbilityWithAdStatus[]>(() => {
     return (snapshot?.abilities ?? [])
@@ -236,6 +271,7 @@ export default function AdControlTab({ snapshot, loading, onSnapshotUpdate }: Pr
         sourceIndex: index,
         ability,
         outputType: row.outputType,
+        textCoeff: row.textCoeff,
         setting: settingIndex === null ? null : ability.damageSettings[settingIndex] ?? null,
       });
     }
@@ -246,11 +282,12 @@ export default function AdControlTab({ snapshot, loading, onSnapshotUpdate }: Pr
   const filteredRows = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     if (!normalizedSearch) return coeffRowEntries;
-    return coeffRowEntries.filter(({ ability, outputType, setting }) => {
+    return coeffRowEntries.filter(({ ability, outputType, textCoeff, setting }) => {
       const searchable = [
         ability.name,
         ability.description,
         outputType,
+        textCoeff,
         setting?.label ?? "",
       ].join(" ").toLowerCase();
       return searchable.includes(normalizedSearch);
@@ -279,11 +316,34 @@ export default function AdControlTab({ snapshot, loading, onSnapshotUpdate }: Pr
     return entries;
   }, [filteredRows]);
 
-  const grouped = useMemo(() => ({
-    "needs-more": filteredAbilities.filter((entry) => entry.ability.adControlStatus === "needs-more"),
-    unfixed: filteredAbilities.filter((entry) => entry.ability.adControlStatus === "unfixed"),
-    fixed: filteredAbilities.filter((entry) => entry.ability.adControlStatus === "fixed"),
-  }), [filteredAbilities]);
+  const grouped = useMemo(() => {
+    const isNoBonusAbility = (entry: AdControlAbilityEntry) =>
+      entry.rows.length > 0 && entry.rows.every((row) => row.outputType === "无加成");
+
+    const byColumn: Record<AdControlColumnKey, AdControlAbilityEntry[]> = {
+      "no-bonus": filteredAbilities.filter(isNoBonusAbility),
+      "needs-more": filteredAbilities.filter((entry) => !isNoBonusAbility(entry) && entry.ability.adControlStatus === "needs-more"),
+      unfixed: filteredAbilities.filter((entry) => !isNoBonusAbility(entry) && entry.ability.adControlStatus === "unfixed"),
+      fixed: filteredAbilities.filter((entry) => !isNoBonusAbility(entry) && entry.ability.adControlStatus === "fixed"),
+    };
+
+    const sortByPriority = (entries: AdControlAbilityEntry[], status: DescriptionReviewStatus) => {
+      const ranked = new Map(priorityAbilityIds[status].map((abilityId, index) => [abilityId, index]));
+      return [...entries].sort((left, right) => {
+        const leftRank = ranked.get(left.ability.id);
+        const rightRank = ranked.get(right.ability.id);
+        if (leftRank !== undefined && rightRank !== undefined) return leftRank - rightRank;
+        if (leftRank !== undefined) return -1;
+        if (rightRank !== undefined) return 1;
+        return left.ability.name.localeCompare(right.ability.name, "zh-Hans-CN");
+      });
+    };
+
+    byColumn["needs-more"] = sortByPriority(byColumn["needs-more"], "needs-more");
+    byColumn.fixed = sortByPriority(byColumn.fixed, "fixed");
+
+    return byColumn;
+  }, [filteredAbilities, priorityAbilityIds]);
 
   const uniqueAbilityCount = useMemo(() => new Set(coeffRowEntries.map((entry) => entry.ability.id)).size, [coeffRowEntries]);
 
@@ -354,11 +414,28 @@ export default function AdControlTab({ snapshot, loading, onSnapshotUpdate }: Pr
       }
 
       onSnapshotUpdate((await response.json()) as AbilityEditorSnapshot);
+      if (status === "needs-more" || status === "fixed") {
+        setPriorityAbilityIds((current) => ({
+          ...current,
+          [status]: [ability.id, ...current[status].filter((id) => id !== ability.id)],
+        }));
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "状态保存失败");
     } finally {
       setSavingKey(null);
     }
+  };
+
+  const scheduleAutosave = (ability: AbilityWithAdStatus, setting: AbilityEditorNumericSetting, key: string, value: string) => {
+    const existing = autosaveTimersRef.current[key];
+    if (existing) {
+      clearTimeout(existing);
+    }
+    autosaveTimersRef.current[key] = setTimeout(() => {
+      void saveDamageSetting(ability, setting, value);
+      delete autosaveTimersRef.current[key];
+    }, 450);
   };
 
   if (loading) {
@@ -390,7 +467,7 @@ export default function AdControlTab({ snapshot, loading, onSnapshotUpdate }: Pr
       {errorMessage && <div className={styles.adControlError}>{errorMessage}</div>}
 
       <div className={styles.adControlBoard}>
-        {(["needs-more", "unfixed", "fixed"] as DescriptionReviewStatus[]).map((status) => {
+        {(["no-bonus", "needs-more", "unfixed", "fixed"] as AdControlColumnKey[]).map((status) => {
           const config = STATUS_CONFIG[status];
           const entries = grouped[status];
           return (
@@ -446,29 +523,58 @@ export default function AdControlTab({ snapshot, loading, onSnapshotUpdate }: Pr
 
                         const key = `${ability.id}:${row.setting.id}`;
                         const draftValue = drafts[key] ?? formatMultiplier(row.setting.value);
+                        const quickTextCoeff = formatTextCoeffQuickValue(row.textCoeff);
                         const disabled = savingKey === key || savingKey === `${ability.id}:status`;
 
                         return (
                           <label key={`${row.rowId}:${row.setting.id}`} className={styles.adSettingRow}>
                             <span className={styles.adSettingLabel}>{row.outputType}</span>
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              className={styles.adNumericInput}
-                              value={draftValue}
-                              disabled={disabled}
-                              onChange={(event) => setDrafts((current) => ({ ...current, [key]: cleanDecimalInput(event.target.value) }))}
-                              onBlur={() => {
-                                if (Object.prototype.hasOwnProperty.call(drafts, key)) {
-                                  void saveDamageSetting(ability, row.setting, drafts[key]);
-                                }
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.currentTarget.blur();
-                                }
-                              }}
-                            />
+                            <span className={styles.adSettingControl}>
+                              <span className={styles.adCoeffQuick}>
+                                <span className={styles.adCoeffValue}>{quickTextCoeff ?? "-"}</span>
+                                <button
+                                  type="button"
+                                  className={styles.adCoeffApplyButton}
+                                  disabled={disabled || quickTextCoeff === null}
+                                  onClick={() => {
+                                    if (!quickTextCoeff) return;
+                                    setDrafts((current) => ({ ...current, [key]: quickTextCoeff }));
+                                    void saveDamageSetting(ability, row.setting, quickTextCoeff);
+                                  }}
+                                >
+                                  {">"}
+                                </button>
+                              </span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                className={styles.adNumericInput}
+                                value={draftValue}
+                                disabled={disabled}
+                                onChange={(event) => {
+                                  const cleaned = cleanDecimalInput(event.target.value);
+                                  setDrafts((current) => ({ ...current, [key]: cleaned }));
+                                  scheduleAutosave(ability, row.setting, key, cleaned);
+                                }}
+                                onBlur={(event) => {
+                                  const timer = autosaveTimersRef.current[key];
+                                  if (timer) {
+                                    clearTimeout(timer);
+                                    delete autosaveTimersRef.current[key];
+                                  }
+                                  const immediateValue = cleanDecimalInput(event.currentTarget.value);
+                                  if (immediateValue.length > 0) {
+                                    setDrafts((current) => ({ ...current, [key]: immediateValue }));
+                                    void saveDamageSetting(ability, row.setting, immediateValue);
+                                  }
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                              />
+                            </span>
                           </label>
                         );
                       })}

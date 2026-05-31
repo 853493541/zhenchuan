@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-31T09:23:24.679Z",
+  "updatedAt": "2026-05-31T10:04:34.349Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -39,7 +39,7 @@
       },
       "description": "对周围5尺5个目标造成(1.2708*攻击力)点伤害并添加12秒持续伤害效果，每2秒造成（0.125攻击力)点伤害。若只命中单个目标则伤害提高100%",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
@@ -177,7 +177,7 @@
         "cooldownTicks": 900
       },
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -199,7 +199,7 @@
       },
       "description": "恢复友方目标369598点气血值，并使其10秒内受到的伤害降低40%",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -220,7 +220,7 @@
       },
       "description": "江湖轻功，身轻如燕，能跳得更高，并能施展踏云。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
@@ -242,7 +242,7 @@
       },
       "description": "施展后进入隐身状态，前5秒可以移动但移动速度降低50%，后15秒内移动会结束隐身效果。施展任何招式将提前结束隐身效果。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -264,7 +264,7 @@
       },
       "description": "血量高于35%方可施展，消耗自身30%气血值，获得50%气血最大值护盾，并在10秒内恢复30%气血值，该招式可以在被控制时施展。献祭将解除自身控制效果，并使自身免疫控制(击退和被拉除外)持续5秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -287,7 +287,7 @@
       },
       "description": "解除自身控制效果，持续运功9秒，持续期间受到的伤害降低50%且免疫控制效果，每1秒回复最大气血值5%，完整运功额外回复30%最大气血值。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -309,7 +309,7 @@
       },
       "description": "祈求女娲指引，进入补天姿态，基础攻击力提高100%，免疫锁足、减速效果，移动速度降低50%，受到的伤害降低50%，运功不会被伤害打退，持续20秒。若骑乘坐骑将使你脱离这个姿态。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -331,7 +331,7 @@
       },
       "description": "解除受控效果，向前翻越10尺，使自身5秒内无法被敌人选中且移动速度提高20%，\n效果期间每秒回复2%气血最大值，主动施展技能将提前解除该效果。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -397,7 +397,7 @@
       },
       "description": "卸除目标阴性、混元性、阳性、毒性内功增益气劲各一个。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -668,11 +668,11 @@
       },
       "numeric": {
         "cooldownTicks": 0,
-        "effects.0.value": 10
+        "effects.0.value": 1.4375
       },
       "description": "向目标冲刺造成(1.4375*攻击力)外功伤害，添加锁足和“心怵”效果。若目标已拥有“心怵”效果，则添加定身并强化“心怵”效果，同时该招式的调息时间额外增加16秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
@@ -718,7 +718,7 @@
       },
       "description": "使周围6尺内5个目标眩晕5秒，眩晕期间招式调息速度降低50%。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -850,7 +850,7 @@
       },
       "description": "使目标眩晕，不受任何增益效果影响，持续15秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -872,7 +872,7 @@
       },
       "description": "使目标眩晕，持续4秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -940,7 +940,7 @@
       },
       "description": "对自身周围8尺内的最多6个目标造成锁足效果，持续9秒。目标在被锁足的后半段时间里若被伤害招式命中，则有50%几率解除其锁足效果",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1075,7 +1075,7 @@
       },
       "description": "使目标眩晕5秒，并使其8秒内“蹑云逐月”招式移动速度降低70%。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -1097,7 +1097,7 @@
       },
       "description": "给友方目标一个5层的护盾，使其受到的所有伤害降低40%，运功不会被伤害击退，被攻击则消耗一层，每消耗一层恢复自身3%气血最大值，持续20秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1119,7 +1119,7 @@
       },
       "description": "使自身移动速度提高55%，持续15秒，清除自身所有移动限制(击倒除外)并使自身免疫控制效果(被拉除外)，持续3秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -1141,7 +1141,7 @@
       },
       "description": "使你突破一切限制，解除自身控制效果，卸除自身所有内功不利效果、点穴效果、持续伤害不利效果。施展后不受招式控制和无法施展内功招式效果的影响，持续8秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -1163,7 +1163,7 @@
       },
       "description": "使自身受到的伤害提高30%，招式伤害提高30%，持续12秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -1185,7 +1185,7 @@
       },
       "description": "解除自身控制，投掷锁链至目标点，使自身冲向其位置。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "凌雪",
@@ -1203,7 +1203,7 @@
       },
       "description": "向后方快速撤退。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1225,7 +1225,7 @@
       },
       "description": "使自身每秒恢复气血最大值的6%，持续5秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1270,7 +1270,7 @@
       },
       "description": "解除所有移动限制，并且不受招式控制(击退和被拉除外)，移动速度提高100%，持续6秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -1292,7 +1292,7 @@
       },
       "description": "江湖轻功，向左侧迅速移动，可以避开敌人的攻击。过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1314,7 +1314,7 @@
       },
       "description": "突破内功限制，能够在空中连续跳跃多次，持续15秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -1336,7 +1336,7 @@
       },
       "description": "江湖轻功，解除被击僵直，向前冲刺一段距离。冲刺过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1358,7 +1358,7 @@
       },
       "description": "自身将向前冲刺，持续2秒，可以转向，结束后在脚下生成“生太极”气场，并回复自身10%的最大气血值。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1381,7 +1381,7 @@
       },
       "description": "使你被命中几率降低70%，持续5秒，清除自身所有移动限制，并使你不受招式控制(击退和被拉除外)，持续3.5秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -1403,7 +1403,7 @@
       },
       "description": "立刻恢复自身20%气血最大值，同时10秒内使自身被命中几率降低20%。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
@@ -1425,7 +1425,7 @@
       },
       "description": "使自身受到的伤害降低80%，持续8秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -1447,7 +1447,7 @@
       },
       "description": "门派轻功，解除自身减速、锁足效果，使自身虚化浮空，被命中几率降低65%，移动速度提高30%，期间免疫控制且可自由漂浮，无法施展招式。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "衍天",
@@ -1469,7 +1469,7 @@
       },
       "description": "向后疾退，解除自身锁足效果，疾退过程中自身被命中几率降低100%。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1491,7 +1491,7 @@
       },
       "description": "使自身化解受到的伤害55%，持续10秒。并不产生威胁值，运功不被打退，持续1秒。该招式的施放无视控制效果。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -1539,7 +1539,7 @@
       },
       "description": "招式伤害提高30%，不受任何控制影响，20秒内受到攻击不会重伤。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -1561,7 +1561,7 @@
       },
       "description": "清除自身所有移动限制，并使自身不受招式控制(击退和被拉除外)，持续8秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1583,7 +1583,7 @@
       },
       "description": "江湖轻功，向右侧迅速移动，可以避开敌人攻击。过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1605,7 +1605,7 @@
       },
       "description": "向后疾退，避开敌人的攻击。过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1624,7 +1624,7 @@
       },
       "description": "在非战斗状态施展后能成功驾驭和下马，施展驾驭需3秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1646,7 +1646,7 @@
       },
       "description": "恢复5%气血值，解除自身阳性、混元性、阴性、毒性不利效果各两个并使自身被命中概率降低60%，持续10秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
@@ -1668,7 +1668,7 @@
       },
       "description": "产生一个10尺的气场，范围内队友获得镇山河，并解除外功、阴性、混元性、阳性、毒性和点穴的不利效果，持续8秒。该招式的施放无视任何控制效果。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1690,7 +1690,7 @@
       },
       "description": "使纯阳诀下所有招式瞬发，不受无法施展内功招式效果的影响，并且自身受到的伤害降低70%，持续6秒，同时解除所有控制效果，自身免疫控制(击退和被拉除外)，持续4秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1712,7 +1712,7 @@
       },
       "description": "以混元气劲护持自身，化解自身气血最大值5%伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1807,7 +1807,7 @@
       },
       "description": "以七星罡气禁锢目标，使其定身，气血恢复速度提高，持续10秒，如果目标为非侠士单位，则持续1秒。任何伤害都会眩晕4秒，同一时间内只能使一个目标被定身，只能对人形目标施展。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1830,7 +1830,7 @@
       },
       "description": "需持续运功，8秒内每0.5秒为半径20尺范围内气血百分比最低的一名小队或团队成员恢复14489点气血值，该招式不会被打退、打断，持续期间自身不受控制招式影响",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -1901,7 +1901,7 @@
       },
       "description": "恢复友方目标138598点气血值。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1971,7 +1971,7 @@
       },
       "description": "将前方一定距离内的敌方目标拉到身前，之后使目标无法施展轻功，持续5秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -1994,7 +1994,7 @@
       },
       "description": "解除自身锁足和减速不利效果，快速冲向前方，施展过程中不受控制招式影响。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
@@ -2108,7 +2108,7 @@
       },
       "description": "使目标定身，持续6秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2130,7 +2130,7 @@
       },
       "description": "随风：跳跃一段距离。跳到空中后，消失在敌人视野中，并不受任何伤害，持续1秒。并向前冲刺一段距离。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -2152,7 +2152,7 @@
       },
       "description": "将自身周围10尺范围内最多6个敌对目标拉至身边，使其眩晕4秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
@@ -2174,7 +2174,7 @@
       },
       "description": "自身躲闪率提高65%，受到的内功伤害降低45%，持续10秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -2196,7 +2196,7 @@
       },
       "description": "将自身牵引至标记位置，非战斗中使用时将返还部分调息时间。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -2219,7 +2219,7 @@
       },
       "description": "使目标8秒内获得3层“傍花随柳”效果，每层“傍花随柳”目标施展任何招式将受到（1.0攻击力）伤害，最后1层“傍花随柳”时将沉默目标4秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -2266,7 +2266,7 @@
       },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标受到的外功伤害降低30%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2289,7 +2289,7 @@
       },
       "description": "在自身脚下产生一个20尺范围气场，在气场范围内自身和友方目标将免疫控制(被推被拉除外)，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2312,7 +2312,7 @@
       },
       "description": "产生一个15尺的气场，范围内敌方不能施展轻功，持续15秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2357,7 +2357,7 @@
       },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标受到的内功伤害降低30%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2403,7 +2403,7 @@
       },
       "description": "开启后8秒内受到伤害不再立刻结算，而是每秒结算一次期间受到的伤害，每次结算不超过自身最大血量的20%。期间免疫受击僵直，每次受到攻击回复6%已损生命值。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万灵",
@@ -2425,7 +2425,7 @@
       },
       "description": "10秒内受到的伤害降低50%，血量每减少25%，减伤效果提高10%，减伤效果自然结束血量低于10%则立刻恢复50%气血最大值。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -2469,7 +2469,7 @@
       },
       "description": "解除自身控制效果并在自身位置创建残影保存自身技能调息时间、气血、内力状态，持续7秒。\n结束后解除自身所有受控状态并召唤影子附着自身，使自身技能调息时间、气血、内力状态恢复至记录时的状态。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -2491,7 +2491,7 @@
       },
       "description": "解除自身控制，免疫控制持续3秒，并在自身脚下生成10尺范围的“逐云寒蕊”，持续10秒。小队成员在进入“逐云寒蕊”短暂延迟后将隐匿其中，身形莫测无法被选中，“逐云寒蕊”消失、离开“逐云寒蕊”或者角色发动攻击后隐匿消失。“逐云寒蕊”免疫控制，可以被攻击，受到范围伤害降低20%。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -2513,7 +2513,7 @@
       },
       "description": "使目标跳跃能力降低，移动速度降低48%，持续8秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
@@ -2536,7 +2536,7 @@
       },
       "description": "对目标造成(0.5989*攻击力)点伤害，并使其移动速度降低20%，持续3秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
@@ -2653,7 +2653,7 @@
       },
       "description": "对目标造成(4.4937*攻击力)点伤害，若目标处于“锁足”“定身”“眩晕”状态则使其20秒内受到的伤害提高20%，该效果可叠加5层。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
@@ -2765,7 +2765,7 @@
       },
       "description": "向前跳跃10尺，落地时回头对起跳方向长啸，使矩形范围内命中的目标获得2秒恐惧效果。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2787,7 +2787,7 @@
       },
       "description": "召唤海雕飞向自身位置，盘旋至升空，保护自身6尺范围内的小队成员，使范围内的小队成员不会受到伤害，最多承受286120点伤害，持续8秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2809,7 +2809,7 @@
       },
       "description": "解除自身控制效果并免疫控制效果，持续3秒；使自身受到的伤害降低60%，持续6秒，并击飞自身半径6尺范围内最多5个目标造成(0.5攻击力)点伤害。施展过程中不受控制效果的影响(被拉除外)。同时能够击毁攻击范围内最多5个气场和可见机关。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2831,7 +2831,7 @@
       },
       "description": "当你处于战斗状态时，下一次跳跃能跳得更高，抗摔伤力提高，持续30秒；\n当处于非战斗状态时，可以连续跳跃，持续12秒。施展后，重置“蹑云逐月”的调息时间。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2853,7 +2853,7 @@
       },
       "description": "天策府秘传武技，在自己的伤害招式命中敌人后，有50%的几率使自身气血与内力恢复5%，持续20秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2875,7 +2875,7 @@
       },
       "description": "命令海雕将自身抓上天空，解除自身受控制状态，使自身免疫控制3秒并减少30%受到的伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2920,7 +2920,7 @@
       },
       "description": "使目标玩家不受控制，作用期间目标移动速度提高50%，受到的伤害降低50%，持续6秒。若对队友施展，则持续时间减半。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -2942,7 +2942,7 @@
       },
       "description": "天钺：将目标禁锢至“天禁空间”并使其召唤物全部失效，且无法提前解除，禁锢持续6秒，若目标为团队成员则卸除掉“阴性不利效果”“阳性不利效果”“混元不利效果”“毒不利效果”“持续伤害不利效果”各2个，同一目标20秒内只会被禁锢一次。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "衍天",
@@ -2964,7 +2964,7 @@
       },
       "description": "运功3秒，选择一个敌对玩家进行伪装，可以完全切换成其外观表现，并且自身与所有人成为友好势力，清除自身仇恨效果，免疫任何伤害，持续20秒。自身使用任何门派技能都会使伪装失效。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "凌雪",
@@ -2987,7 +2987,7 @@
       },
       "description": "在自身前方生成一道20尺刀气阻碍，敌方玩家目标无法穿越，持续4秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "霸刀",
@@ -3010,7 +3010,7 @@
       },
       "description": "保护自身不受伤害，2秒内反弹敌方对自身释放的所有招式的伤害及效果，该招式只对玩家生效。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "苍云",
@@ -3053,7 +3053,7 @@
       },
       "description": "清除自身当前所受的移动限制效果，使自身不受招式控制，持续3秒，并使自身接下来10秒内的下一个伤害招式附带该移动限制效果。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
@@ -3076,7 +3076,7 @@
       },
       "description": "将自身所受的控制效果（不包括被推、被拉）转移给当前目标，持续5秒，并在10秒内减少15%受到的伤害，免疫控制效果（不包括被推、被拉）。非受控状态下施展将返回7秒调息时间。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "刀宗",
@@ -3143,7 +3143,7 @@
       },
       "description": "移除敌对目标身上2个增益效果，并添加给自身。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "长歌",
@@ -3211,7 +3211,7 @@
       },
       "description": "使目标无法使用武器，持续4秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
@@ -3233,7 +3233,7 @@
       },
       "description": "打断目标运功，使其不能施展轻功以外的招式，持续4秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -3255,7 +3255,7 @@
       },
       "description": "击飞非治疗心法敌方目标的武器，使目标无法施展轻功以外的招式，持续5秒，武器将掉落至目标6尺位置，若目标拾取到地上的武器则提前解除此效果。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "刀宗",
@@ -3299,7 +3299,7 @@
       },
       "description": "立刻与敌对目标侠士交换位置(免疫被拉的目标除外)。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "衍天",
@@ -3322,7 +3322,7 @@
       },
       "description": "冲刺至目标点，并获得2层“云散”效果：施展“一阳指”套路招式时会闪现移动至一个随机攻击位置。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "段氏",
@@ -3344,7 +3344,7 @@
       },
       "description": "使自身移动速度降低90%，招式施展距离提高12尺，持续12秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -3388,7 +3388,7 @@
       },
       "description": "使自身无法施展轻功招式，运功不会被打退、打断，不受缴械和无法运功效果的影响，持续12秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -3434,7 +3434,7 @@
       },
       "description": "使自身进入“机甲”状态，运功过程免疫控制和伤害，进入“机甲”状态可施展特殊招式，机甲状态持续20秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -3479,7 +3479,7 @@
       },
       "description": "使自身会心几率提高10%，会心效果提高20%，持续20秒，并使15尺内的10个敌对目标8秒内无法进入隐身状态，已经进入隐身状态的目标则立刻解除隐身状态。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -3501,7 +3501,7 @@
       },
       "description": "凌空而起，免疫控制(击退和被拉除外)，并使得自身身轻如燕，施展招式最大距离提高5尺，施展任意招式可以额外获得一次跳跃机会，且跳跃(自身按W/A/S/D空格进行跳跃时)变为朝对应方向的一小段冲刺效果，持续8秒。“凌然天风”期间起跳及跳跃时自身免疫击退。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "药宗",
@@ -3523,7 +3523,7 @@
       },
       "description": "解除友方目标的受控效果(击倒除外)，使其受到的伤害降低30%，并为队友目标承担100%伤害，持续10秒",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -3545,7 +3545,7 @@
       },
       "description": "平衡自身与友方目标气血值百分比后，再额外恢复双方气血最大值20%。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -3567,7 +3567,7 @@
       },
       "description": "冲刺到友方目标身边，为其承受1次伤害，并击飞其周围5个目标。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -3589,7 +3589,7 @@
       },
       "description": "使自身外功和内功基础攻击力提高25%，会心几率提高25%，会心效果提高25%，持续10秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -3612,7 +3612,7 @@
       },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标内功会心提高10%，会心效果提高15%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -3632,7 +3632,7 @@
       },
       "description": "军中秘传马技，使你可在战斗中上马并解除自身锁足和减速效果，并在5秒内不受控制招式影响。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -3655,7 +3655,7 @@
       },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标外功会心提高10%，会心效果提高15%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -3678,7 +3678,7 @@
       },
       "description": "施展招式后使目标陷入持续7秒的“迷云”状态：施展招式时生效的目标随机选择，不分敌我。迷云状态结束后，目标获得“雾释”效果，效果持续期间不会再次陷入“迷云”。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "段氏",
