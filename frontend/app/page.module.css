@@ -198,8 +198,38 @@
   background: #b45309;
 }
 
+.createBtnResourceImport {
+  background: #0f766e;
+}
+
 .createBtnResourceCheck {
   background: #475569;
+}
+
+.createBtnAutoJoinOn {
+  background: #0f766e;
+}
+
+.createBtnAutoJoinOff {
+  background: #64748b;
+}
+
+.resourceGateNotice {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  padding: 4px 2px 2px;
+}
+
+.resourceImportError {
+  font-size: 13px;
+  font-weight: 700;
+  color: #991b1b;
+  padding: 0 2px 2px;
+}
+
+.hiddenFileInput {
+  display: none;
 }
 
 .createBtn:disabled {
@@ -338,6 +368,18 @@
 
 .waiting:hover {
   background: #d1fae5;
+}
+
+.waitingLocked {
+  background: #e5e7eb;
+  border-color: #94a3b8;
+  cursor: not-allowed;
+  filter: grayscale(0.55);
+}
+
+.waitingLocked:hover {
+  background: #e5e7eb;
+  transform: none;
 }
 
 /* =========================================================

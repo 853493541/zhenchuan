@@ -5,6 +5,30 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, X } from "lucide-react";
 import styles from "./page.module.css";
 import { getGameModeLabel, type GameMode, YUMEN_1V1_BASIC_MODE } from "./game/gameModes";
+import { toastSuccess } from "./components/toast/toast";
+
+type ResourceCategory = "app" | "icons" | "sounds" | "fonts" | "game" | "map";
+
+type PackageAsset = {
+  url: string;
+  size: number;
+  category: ResourceCategory;
+  packagePath: string;
+  contentType?: string;
+};
+
+type PackageManifest = {
+  cacheName?: string;
+  assets?: PackageAsset[];
+  totalAssets?: number;
+  totalBytes?: number;
+};
+
+type TarEntry = {
+  name: string;
+  size: number;
+  data: Uint8Array;
+};
 
 type StartMode = GameMode | 'export-viewer';
 
@@ -20,6 +44,11 @@ const LEGACY_MODES: Array<{ value: StartMode; label: string }> = [
 ];
 
 const START_MODE_STORAGE_KEY = "zhenchuan.home.selectedStartMode";
+const AUTO_JOIN_ENABLED_STORAGE_KEY = "zhenchuan.home.autoJoinEnabled";
+const RESOURCE_PACK_FALLBACK_CACHE_NAME = "zhenchuan-resource-pack-v1";
+const RESOURCE_PACK_READY_STORAGE_KEY = "zhenchuan.resourcePack.ready.v1";
+const RESOURCE_PACK_DOWNLOADED_AT_STORAGE_KEY = "zhenchuan.resourcePack.downloadedAt.v1";
+const tarTextDecoder = new TextDecoder();
 const VALID_START_MODES = new Set<StartMode>([
   ...PRIMARY_MODES.map((option) => option.value),
   ...LEGACY_MODES.map((option) => option.value),
@@ -32,6 +61,54 @@ function getLobbyMaxPlayers(mode: unknown) {
   if (mode === YUMEN_1V1_BASIC_MODE || mode === undefined || mode === null) return 6;
   if (mode === 'pubg') return 5;
   return 2;
+}
+
+function toAbsoluteUrl(url: string) {
+  return new URL(url, window.location.origin).toString();
+}
+
+function decodeTarText(bytes: Uint8Array) {
+  const end = bytes.indexOf(0);
+  return tarTextDecoder.decode(end >= 0 ? bytes.subarray(0, end) : bytes).trim();
+}
+
+function parseTarSize(bytes: Uint8Array) {
+  const value = decodeTarText(bytes).replace(/\0/g, "").trim();
+  const parsed = Number.parseInt(value || "0", 8);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isEmptyTarBlock(bytes: Uint8Array) {
+  for (const byte of bytes) {
+    if (byte !== 0) return false;
+  }
+  return true;
+}
+
+async function readTarGzipEntries(file: File, onEntry: (entry: TarEntry) => Promise<void>) {
+  const DecompressionStreamCtor = (window as any).DecompressionStream;
+  if (!DecompressionStreamCtor) throw new Error("当前浏览器不支持本地资源包解压");
+
+  const stream = file.stream().pipeThrough(new DecompressionStreamCtor("gzip"));
+  const buffer = await new Response(stream).arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let offset = 0;
+
+  while (offset + 512 <= bytes.length) {
+    const header = bytes.subarray(offset, offset + 512);
+    if (isEmptyTarBlock(header)) break;
+
+    const name = decodeTarText(header.subarray(0, 100));
+    const prefix = decodeTarText(header.subarray(345, 500));
+    const entryName = prefix ? `${prefix}/${name}` : name;
+    const size = parseTarSize(header.subarray(124, 136));
+    const dataStart = offset + 512;
+    const dataEnd = dataStart + size;
+    if (!entryName || dataEnd > bytes.length) throw new Error("资源包文件损坏");
+
+    await onEntry({ name: entryName, size, data: bytes.subarray(dataStart, dataEnd) });
+    offset = dataStart + Math.ceil(size / 512) * 512;
+  }
 }
 
 function ModeDropdown({
@@ -93,11 +170,19 @@ export default function HomePage() {
   const [waitingGames, setWaitingGames] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [autoJoinEnabled, setAutoJoinEnabled] = useState(true);
+  const [resourcePackGateReady, setResourcePackGateReady] = useState(false);
+  const [resourcePackGateChecking, setResourcePackGateChecking] = useState(true);
   const [selectedStartMode, setSelectedStartMode] = useState<StartMode>(YUMEN_1V1_BASIC_MODE);
   const [openModeMenu, setOpenModeMenu] = useState<'primary' | 'legacy' | null>(null);
   const [resourcePackOverlay, setResourcePackOverlay] = useState<{ action: "download" | "check"; nonce: number } | null>(null);
+  const [resourcePackImporting, setResourcePackImporting] = useState(false);
+  const [resourcePackImportError, setResourcePackImportError] = useState<string | null>(null);
   const previousGameIds = useRef<Set<string>>(new Set());
   const hasAutoJoined = useRef(false);
+  const previousGateReadyRef = useRef(false);
+  const gateToastInitializedRef = useRef(false);
+  const packageInputRef = useRef<HTMLInputElement | null>(null);
   // Keep me in a ref so the polling closure always sees the latest value
   // without adding `me` to the effect dependency (which caused re-mount loops)
   const meRef = useRef<any>(null);
@@ -108,6 +193,10 @@ export default function HomePage() {
       const savedMode = window.localStorage.getItem(START_MODE_STORAGE_KEY);
       if (savedMode && VALID_START_MODES.has(savedMode as StartMode)) {
         setSelectedStartMode(savedMode as StartMode);
+      }
+      const savedAutoJoinEnabled = window.localStorage.getItem(AUTO_JOIN_ENABLED_STORAGE_KEY);
+      if (savedAutoJoinEnabled !== null) {
+        setAutoJoinEnabled(savedAutoJoinEnabled !== "0");
       }
     } catch {
       // Ignore storage read errors and keep default mode.
@@ -125,6 +214,77 @@ export default function HomePage() {
 
   const canViewLegacyModes = me?.isAdmin === true;
 
+  const checkResourcePackGate = useRef<() => Promise<void>>(async () => {});
+
+  checkResourcePackGate.current = async () => {
+    setResourcePackGateChecking(true);
+    try {
+      const previouslyReady = (() => {
+        try {
+          return window.localStorage.getItem(RESOURCE_PACK_READY_STORAGE_KEY) === "true";
+        } catch {
+          return false;
+        }
+      })();
+      if (previouslyReady) {
+        // Keep UX consistent with the resource-pack page's own 100% pass marker.
+        setResourcePackGateReady(true);
+      }
+      if (!("caches" in window)) {
+        setResourcePackGateReady(false);
+        return;
+      }
+      const manifestRes = await fetch("/resource-pack/manifest", {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!manifestRes.ok) {
+        setResourcePackGateReady(false);
+        return;
+      }
+      const manifest = await manifestRes.json().catch(() => null) as { assets?: Array<{ url: string }>; cacheName?: string } | null;
+      const assets = Array.isArray(manifest?.assets)
+        ? manifest!.assets.filter((asset) => typeof asset?.url === "string" && asset.url.length > 0)
+        : [];
+      if (assets.length === 0) {
+        setResourcePackGateReady(false);
+        return;
+      }
+      const cacheName = typeof manifest?.cacheName === "string" && manifest.cacheName
+        ? manifest.cacheName
+        : RESOURCE_PACK_FALLBACK_CACHE_NAME;
+      const cache = await caches.open(cacheName);
+      const origin = window.location.origin;
+      let readyCount = 0;
+      await Promise.all(assets.map(async (asset) => {
+        const absoluteUrl = new URL(asset.url, origin).toString();
+        const hit =
+          (await cache.match(absoluteUrl, { ignoreVary: true }))
+          ?? (await cache.match(asset.url, { ignoreVary: true }));
+        if (hit) readyCount += 1;
+      }));
+      const strictReady = readyCount === assets.length;
+      if (strictReady) {
+        try {
+          window.localStorage.setItem(RESOURCE_PACK_READY_STORAGE_KEY, "true");
+        } catch {
+          // Ignore storage write errors.
+        }
+      } else {
+        try {
+          window.localStorage.removeItem(RESOURCE_PACK_READY_STORAGE_KEY);
+        } catch {
+          // Ignore storage write errors.
+        }
+      }
+      setResourcePackGateReady(strictReady);
+    } catch {
+      setResourcePackGateReady(false);
+    } finally {
+      setResourcePackGateChecking(false);
+    }
+  };
+
   useEffect(() => {
     if (canViewLegacyModes) return;
     if (isLegacyMode(selectedStartMode)) {
@@ -134,6 +294,42 @@ export default function HomePage() {
       setOpenModeMenu(null);
     }
   }, [canViewLegacyModes, openModeMenu, selectedStartMode]);
+
+  useEffect(() => {
+    void checkResourcePackGate.current();
+  }, []);
+
+  useEffect(() => {
+    if (!gateToastInitializedRef.current) {
+      previousGateReadyRef.current = resourcePackGateReady;
+      gateToastInitializedRef.current = true;
+      return;
+    }
+    if (!previousGateReadyRef.current && resourcePackGateReady) {
+      toastSuccess("资源已验证完整");
+    }
+    previousGateReadyRef.current = resourcePackGateReady;
+  }, [resourcePackGateReady]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const payload = event.data as { type?: string; ready?: boolean } | null;
+      if (!payload) return;
+      if (payload.type !== "resource-pack-gate") return;
+      if (payload.ready === true) {
+        setResourcePackGateReady(true);
+        setResourcePackGateChecking(false);
+        return;
+      }
+      if (payload.ready === false) {
+        setResourcePackGateReady(false);
+        setResourcePackGateChecking(false);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   /* =========================================================
      Utils：时间显示（仅显示"多少分钟前 / 刚刚"）
@@ -176,7 +372,7 @@ export default function HomePage() {
       setWaitingGames(games);
       
       // Auto-join logic: detect new room created by another player
-      if (meRef.current && !hasAutoJoined.current) {
+      if (meRef.current && autoJoinEnabled && resourcePackGateReady && !resourcePackGateChecking && !hasAutoJoined.current) {
         const currentGameIds = new Set<string>(games.map((g: any) => g._id as string));
         
         // Find a new room that is not created by me
@@ -209,7 +405,7 @@ export default function HomePage() {
 
     const t = setInterval(fetchWaitingGames, 3000);
     return () => clearInterval(t);
-  }, [router]); // `me` intentionally NOT in deps — use meRef.current inside fetchWaitingGames
+  }, [autoJoinEnabled, resourcePackGateChecking, resourcePackGateReady, router]); // `me` intentionally NOT in deps — use meRef.current inside fetchWaitingGames
 
   /* =========================================================
      创建房间
@@ -241,6 +437,79 @@ export default function HomePage() {
     setResourcePackOverlay({ action, nonce: Date.now() });
   };
 
+  const closeResourcePackOverlay = () => {
+    setResourcePackOverlay(null);
+    // Explicit close after user-operated panel actions triggers one gate refresh.
+    void checkResourcePackGate.current();
+  };
+
+  const importOfflinePack = async (file: File | null) => {
+    if (!file) return;
+    if (!("caches" in window)) {
+      setResourcePackImportError("当前浏览器不支持本地缓存");
+      return;
+    }
+
+    setResourcePackImporting(true);
+    setResourcePackImportError(null);
+    try {
+      const cache = await caches.open(RESOURCE_PACK_FALLBACK_CACHE_NAME);
+      let packageManifest: PackageManifest | null = null;
+      let packageAssetsByPath = new Map<string, PackageAsset>();
+      let imported = 0;
+
+      await readTarGzipEntries(file, async (entry) => {
+        if (entry.name === "manifest.json") {
+          packageManifest = JSON.parse(tarTextDecoder.decode(entry.data)) as PackageManifest;
+          const packageAssets = Array.isArray(packageManifest.assets) ? packageManifest.assets : [];
+          packageAssetsByPath = new Map(packageAssets.map((asset) => [asset.packagePath, asset]));
+          return;
+        }
+
+        const asset = packageAssetsByPath.get(entry.name);
+        if (!asset) return;
+        const headers = new Headers();
+        if (asset.contentType) headers.set("Content-Type", asset.contentType);
+        headers.set("Content-Length", String(entry.size));
+        await cache.put(toAbsoluteUrl(asset.url), new Response(entry.data, { status: 200, headers }));
+        imported += 1;
+      });
+
+      if (!packageManifest || packageAssetsByPath.size === 0) throw new Error("资源包缺少 manifest.json");
+      if (imported !== packageAssetsByPath.size) {
+        throw new Error(`导入数量 ${imported} / ${packageAssetsByPath.size}`);
+      }
+
+      try {
+        window.localStorage.setItem(RESOURCE_PACK_DOWNLOADED_AT_STORAGE_KEY, new Date().toISOString());
+      } catch {
+        // Ignore localStorage write errors.
+      }
+
+      await checkResourcePackGate.current();
+    } catch (err) {
+      setResourcePackImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setResourcePackImporting(false);
+    }
+  };
+
+  const toggleAutoJoin = () => {
+    setAutoJoinEnabled((value) => {
+      const next = !value;
+      try {
+        window.localStorage.setItem(AUTO_JOIN_ENABLED_STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        // Ignore storage write errors and keep in-memory selection.
+      }
+      return next;
+    });
+    hasAutoJoined.current = false;
+  };
+
+  const roomJoinGateBlocked = resourcePackGateChecking || !resourcePackGateReady;
+  const showResourcePackSetup = !resourcePackGateReady;
+
   const startSelectedMode = () => {
     if (selectedStartMode === 'export-viewer') {
       openExportViewer();
@@ -258,61 +527,105 @@ export default function HomePage() {
 
       <div className={styles.createActions}>
         <div className={styles.createActionRow}>
-          <ModeDropdown
-            label={getGameModeLabel(YUMEN_1V1_BASIC_MODE)}
-            options={PRIMARY_MODES}
-            selectedMode={selectedStartMode}
-            open={openModeMenu === 'primary'}
-            onToggle={() => setOpenModeMenu((current) => current === 'primary' ? null : 'primary')}
-            onSelect={(mode) => {
-              selectStartMode(mode);
-              setOpenModeMenu(null);
-            }}
-            ariaLabel="选择模式"
-          />
-          {canViewLegacyModes && (
-            <ModeDropdown
-              label="legacy modes"
-              options={LEGACY_MODES}
-              selectedMode={selectedStartMode}
-              open={openModeMenu === 'legacy'}
-              onToggle={() => setOpenModeMenu((current) => current === 'legacy' ? null : 'legacy')}
-              onSelect={(mode) => {
-                selectStartMode(mode);
-                setOpenModeMenu(null);
-              }}
-              ariaLabel="legacy modes"
-            />
+          {showResourcePackSetup ? (
+            <>
+              <button
+                className={`${styles.createBtn} ${styles.createBtnResourcePack}`}
+                onClick={() => openResourcePack("download")}
+              >
+                下载资源包
+              </button>
+              <button
+                className={`${styles.createBtn} ${styles.createBtnResourceImport}`}
+                onClick={() => packageInputRef.current?.click()}
+                disabled={resourcePackImporting}
+              >
+                {resourcePackImporting ? "上传离线包中…" : "上传离线包"}
+              </button>
+              <button
+                className={`${styles.createBtn} ${styles.createBtnResourceCheck}`}
+                onClick={() => openResourcePack("check")}
+              >
+                校验
+              </button>
+            </>
+          ) : (
+            <>
+              <ModeDropdown
+                label={getGameModeLabel(YUMEN_1V1_BASIC_MODE)}
+                options={PRIMARY_MODES}
+                selectedMode={selectedStartMode}
+                open={openModeMenu === 'primary'}
+                onToggle={() => setOpenModeMenu((current) => current === 'primary' ? null : 'primary')}
+                onSelect={(mode) => {
+                  selectStartMode(mode);
+                  setOpenModeMenu(null);
+                }}
+                ariaLabel="选择模式"
+              />
+              {canViewLegacyModes && (
+                <ModeDropdown
+                  label="legacy modes"
+                  options={LEGACY_MODES}
+                  selectedMode={selectedStartMode}
+                  open={openModeMenu === 'legacy'}
+                  onToggle={() => setOpenModeMenu((current) => current === 'legacy' ? null : 'legacy')}
+                  onSelect={(mode) => {
+                    selectStartMode(mode);
+                    setOpenModeMenu(null);
+                  }}
+                  ariaLabel="legacy modes"
+                />
+              )}
+              <button
+                className={`${styles.createBtn} ${styles.createBtnPrimary}`}
+                onClick={startSelectedMode}
+                disabled={loading}
+              >
+                {loading ? "创建中…" : "开始"}
+              </button>
+              <button
+                className={`${styles.createBtn} ${autoJoinEnabled ? styles.createBtnAutoJoinOn : styles.createBtnAutoJoinOff}`}
+                onClick={toggleAutoJoin}
+                type="button"
+              >
+                自动加入：{autoJoinEnabled ? "开启" : "关闭"}
+              </button>
+              <button
+                className={`${styles.createBtn} ${styles.createBtnResourceCheck}`}
+                onClick={() => openResourcePack("check")}
+                type="button"
+              >
+                资源管理器
+              </button>
+            </>
           )}
-          <button
-            className={`${styles.createBtn} ${styles.createBtnPrimary}`}
-            onClick={startSelectedMode}
-            disabled={loading}
-          >
-            {loading ? "创建中…" : "开始"}
-          </button>
-          <button
-            className={`${styles.createBtn} ${styles.createBtnResourcePack}`}
-            onClick={() => openResourcePack("download")}
-          >
-            下载资源包
-          </button>
-          <button
-            className={`${styles.createBtn} ${styles.createBtnResourceCheck}`}
-            onClick={() => openResourcePack("check")}
-          >
-            校验
-          </button>
+          <input
+            ref={packageInputRef}
+            type="file"
+            accept=".tgz,.tar.gz,application/gzip,application/x-gzip"
+            className={styles.hiddenFileInput}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0] ?? null;
+              event.currentTarget.value = "";
+              void importOfflinePack(file);
+            }}
+          />
         </div>
-        <div className={styles.bigStartWrap}>
-          <button
-            className={styles.bigStartBtn}
-            onClick={startSelectedMode}
-            disabled={loading}
-          >
-            {loading ? "创建中…" : `创建 ${startModeLabel(selectedStartMode)}`}
-          </button>
-        </div>
+        {resourcePackImportError && (
+          <div className={styles.resourceImportError}>{`离线包加载失败：${resourcePackImportError}`}</div>
+        )}
+        {!showResourcePackSetup && (
+          <div className={styles.bigStartWrap}>
+            <button
+              className={styles.bigStartBtn}
+              onClick={startSelectedMode}
+              disabled={loading}
+            >
+              {loading ? "创建中…" : `创建 ${startModeLabel(selectedStartMode)}`}
+            </button>
+          </div>
+        )}
       </div>
 
       {resourcePackOverlay && (
@@ -321,7 +634,7 @@ export default function HomePage() {
             <button
               type="button"
               className={styles.resourcePackClose}
-              onClick={() => setResourcePackOverlay(null)}
+              onClick={closeResourcePackOverlay}
               aria-label="关闭资源包窗口"
             >
               <X size={18} aria-hidden="true" />
@@ -336,26 +649,29 @@ export default function HomePage() {
         </div>
       )}
 
-      <div className={styles.list}>
-        {waitingGames.length === 0 && (
-          <p className={styles.empty}>暂无可加入的房间</p>
-        )}
+      {resourcePackGateReady && (
+        <div className={styles.list}>
+          {waitingGames.length === 0 && (
+            <p className={styles.empty}>暂无可加入的房间</p>
+          )}
 
-        {waitingGames.map((g) => {
+          {waitingGames.map((g) => {
           const isMine = me && g.players?.[0] === me.uid;
           const maxPlayers = getLobbyMaxPlayers(g.mode);
           const playersJoined = Array.isArray(g.players) ? g.players.length : 0;
           const roomFull = playersJoined >= maxPlayers;
+          const roomJoinDisabled = roomJoinGateBlocked || roomFull;
 
           return (
             <div
               key={g._id}
               className={`${styles.card} ${styles.waiting} ${
                 isMine ? styles.mine : ""
-              }`}
-              onClick={() =>
-                router.push(`/game/room?gameId=${g._id}`)
-              }
+              } ${roomJoinDisabled ? styles.waitingLocked : ""}`}
+              onClick={() => {
+                if (roomJoinDisabled) return;
+                router.push(`/game/room?gameId=${g._id}`);
+              }}
             >
               {/* 标题 */}
               <div className={styles.cardTitle}>
@@ -373,7 +689,9 @@ export default function HomePage() {
               </div>
 
               {/* 状态 */}
-              <div className={styles.status}>{roomFull ? "已满" : "🟢 等待加入"}</div>
+              <div className={styles.status}>
+                {roomJoinGateBlocked ? "⚪ 需先完成校验（100%）" : roomFull ? "已满" : "🟢 等待加入"}
+              </div>
 
               {/* 时间（右下角，仅分钟级） */}
               <div className={styles.time}>
@@ -381,8 +699,9 @@ export default function HomePage() {
               </div>
             </div>
           );
-        })}
-      </div>
+          })}
+        </div>
+      )}
     </div>
   );
 }

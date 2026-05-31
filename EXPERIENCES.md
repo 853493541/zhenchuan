@@ -3,6 +3,225 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 离线包下载入口迁移与管理员限制 (2026-05-31)
+
+**Implemented / checked**:
+- 将 `下载离线包` 从资源管理器页面工具栏移除（`frontend/app/resource-pack/page.tsx`）。
+- 在顶部账户图标菜单（`frontend/app/components/auth/UserMenu.tsx`）新增 `下载离线包` 条目，并放在管理员工具区，仅 `isAdmin === true` 可见。
+- 对下载接口 `frontend/app/resource-pack/package/route.ts` 增加服务端管理员鉴权：转发 cookie 到后端 `/api/auth/me`，非管理员返回 `403`，避免非管理员通过直链下载。
+
+**Lesson**:
+- 管理员能力限制不能只做前端隐藏；高价值下载入口应同时做接口层鉴权，避免直链绕过 UI。
+
+## 主页与资源管理器细化：未通过隐藏房间 + 常驻进度条 + 通过提示 (2026-05-31)
+
+**Implemented / checked**:
+- 首页 `frontend/app/page.tsx` 调整为“校验未通过时不显示房间列表”，通过后才渲染房间卡片区域。
+- 资源管理器 `frontend/app/resource-pack/page.tsx` 去除下载区域重复百分比，仅保留一处百分比展示。
+- 资源管理器进度条改为常驻显示（只要有资源清单就显示），下载完成或暂停后不再隐藏。
+- 首页新增通过提示：资源 gate 从未通过切换为通过时，弹出系统 toast `资源已验证完整`。
+
+**Lesson**:
+- 资源流程提示应避免重复数值和状态跳变，常驻进度条与通过瞬时提示组合更利于用户判断当前可加入状态。
+
+## 首页通过态入口整理：新增资源管理器并移除100%文案 (2026-05-31)
+
+## 资源管理器收口：校验通过自动关闭 + 进度条回归 + 文案裁剪 (2026-05-31)
+
+## 通过态资源管理器行为回调：禁用自动校验与自动关闭 (2026-05-31)
+
+**Implemented / checked**:
+- 首页 `frontend/app/page.tsx` 移除 `resource-pack-verify-pass` 自动关闭逻辑，资源管理器不再因“校验通过”被自动关闭。
+- 资源管理器页 `frontend/app/resource-pack/page.tsx` 调整 query-action 自动触发策略：当 `action=check` 且本地通过标记已是 true 时，不再自动执行校验。
+- 首页去掉通过流程中残留的 `资源包校验中…` 提示行，避免进入实际游戏流程仍出现“校验xxx”提示。
+
+**Lesson**:
+- 通过态下资源管理器应是“手动工具窗口”而非自动流程步骤；避免自动触发与自动关闭可减少误判和打断测试。
+
+**Implemented / checked**:
+- 首页 `frontend/app/page.tsx` 新增对 `resource-pack-verify-pass` 消息处理：资源管理器内执行校验并通过后，主页会自动关闭资源管理器浮层并立即置为通过态。
+- 资源管理器页 `frontend/app/resource-pack/page.tsx` 恢复主面板进度条显示：在 `downloading/importing` 状态显示百分比与进度条。
+- 资源管理器页移除 `浏览器缓存` 统计卡片与 `缓存服务已启用/不可用` 文案，保留关键下载/校验信息。
+- 首页移除未通过时提示文案 `资源包未完整：请先 下载 / 上传 / 校验`，仅在检查进行中显示 `资源包校验中…`。
+
+**Lesson**:
+- 资源管理器作为操作面板应优先呈现“当前动作进度”，而非暴露实现细节（缓存服务、配额）文案；通过态联动应以显式事件收口，避免用户额外手动关闭。
+
+**Implemented / checked**:
+- 在首页通过态操作行新增 `资源管理器` 按钮（`frontend/app/page.tsx`），点击后直接打开嵌入式 `校验资源包` 窗口，便于在通过态直接做清除/校验测试。
+- 调整首页 gate 文案渲染：通过态不再显示 `资源包校验：100%（可加入房间 / 可自动加入）`，仅在“校验中”或“未完整”时显示提示。
+- Live 页面确认：通过态可见 `资源管理器`，点击后出现 `校验资源包` 对话框；通过态顶部不再出现原 100% 提示文案。
+
+**Lesson**:
+- 通过态首页应突出可操作入口（资源管理）而不是重复状态描述，减少视觉噪音并方便回归测试。
+
+## 资源包反复缺文件最终修复：移除 _next/static + 显式动作同步 (2026-05-31)
+
+**Implemented / checked**:
+- 根因确认：资源包清单包含了构建产物目录 `_next/static`，会引入部署期 hash 文件与陈旧 chunk，导致下载阶段出现 404，进而“手动校验也不通过”。
+- 在 `frontend/app/resource-pack/resourcePackFiles.ts` 中彻底移除 `_next/static` 目录采集，只保留 public 下稳定资源（icons/fonts/js/lib/tools/game/maps）。
+- 在主页与嵌入资源包页之间补上显式状态同步：
+  - 资源包页 `done/ready/failed` 向父页 `postMessage`。
+  - 主页监听该消息即时更新 gate（无需依赖切 tab/重进才刷新）。
+  - 关闭资源包面板时额外做一次显式 gate 刷新。
+- Live Playwright 复核：
+  - 资源包页总量稳定为 `1624`，下载到 `1624/1624` 后可通过。
+  - 主页“下载到100%后”可自动切换为通过态。
+  - 主页“上传离线包后”可自动触发校验并切换为通过态。
+
+**Lesson**:
+- 离线资源包不能依赖 Next 构建输出目录作为稳定内容来源；这会把部署时序问题直接暴露给终端用户。
+
+## 资源包通过后主页不解锁：显式动作同步修复 (2026-05-31)
+
+**Implemented / checked**:
+- 修复“下载到100%后主页仍不通过 / 手动校验也不解锁”的状态同步断点：
+  - 在嵌入资源包页（`frontend/app/resource-pack/page.tsx`）对 `done/ready/failed` 状态发送 `postMessage`（`type: resource-pack-gate`，含 `ready` 布尔值）。
+  - 在主页（`frontend/app/page.tsx`）监听该消息并即时更新 gate 状态，不再依赖 focus/re-enter 才反映结果。
+  - 关闭资源包面板时再执行一次显式 gate 刷新，确保下载/校验后的最终状态落地。
+- 保持“仅进入页面自动检查一次”的策略不变；新增同步仅发生在用户显式下载/校验操作路径。
+
+**Lesson**:
+- 当主页与嵌入页共享同一状态门禁时，必须有显式跨 frame 状态同步；否则会出现“子页已100%，父页仍锁定”的假失败。
+
+## 资源包两段式主页 + 缺失反复问题修复 (2026-05-31)
+
+**Implemented / checked**:
+- 主页改为两段式显示（`frontend/app/page.tsx`）：
+  - 未通过资源包 gate 时，只显示 `下载资源包 / 上传离线包 / 校验`，隐藏 `模式选择 / 开始 / 创建 / 自动加入`。
+  - 通过 gate 后，隐藏资源包三按钮，显示 `模式选择 / 开始 / 创建 / 自动加入`。
+- 按要求移除“切出切回就重检”行为：删除 `focus` 触发重检与关闭面板后自动重检，改为“进入页面时检查一次”，其余仅由显式操作（如上传离线包后的自动校验）更新状态。
+- 修复“总是差几个文件、反复掉到 1672/1677”根因（`frontend/app/resource-pack/resourcePackFiles.ts`）：
+  - 从资源包清单中排除 Next 构建易变运行时文件（如 `webpack-*.js`、`_buildManifest.js`、`_ssgManifest.js` 及若干 manifest）。
+  - 避免每次前端重新构建后，旧包被新 hash 文件拉低完整度而反复缺失。
+
+**Lesson**:
+- 资源包清单必须避免把部署期易变的前端运行时文件作为硬性资源，否则会在每次发布后造成“用户包看似又缺几个”的体验。
+
+## 加载离线包移到主页 + 导入完成自动校验 (2026-05-31)
+
+**Implemented / checked**:
+- 将 `加载离线包` 从资源包面板中移出，新增到主页操作行（`frontend/app/page.tsx`）作为独立按钮。
+- 主页新增离线包导入实现：选择 `.tgz/.tar.gz` 后直接写入 `CacheStorage`，不再要求用户进入资源包面板执行导入。
+- 离线包导入完成后自动调用主页 gate 校验（`checkResourcePackGate.current()`），无需用户再手点一次 `校验`。
+- 资源包面板（`frontend/app/resource-pack/page.tsx`）移除 `导入离线包` 按钮与对应导入逻辑，仅保留下载离线包/下载资源包/校验/清除。
+
+**Lesson**:
+- 当用户流程要求“主页一步完成导入并可加入”，应把离线包入口前移到首页并把校验串到导入成功回调里，避免跨面板二次操作。
+
+## 资源包自动补齐（免点击）+ 去除缓存完整度条 (2026-05-31)
+
+**Implemented / checked**:
+- 首页 `frontend/app/page.tsx` 增加资源包自动补齐：
+  - gate 检测到未满 100% 时，后台自动下载缺失文件到 CacheStorage（并发 4），无需用户手动点 `继续下载/校验`。
+  - 补齐完成后自动复检 gate，房间自动解锁。
+  - 增加提示文案：`资源包自动补齐中…完成后将自动解锁房间`。
+- 资源包页 `frontend/app/resource-pack/page.tsx` 去除“缓存完整度”进度条显示（主视图 + 弹窗中的缓存完整度条），避免用户被条形图误导。
+- 资源包页首次进入自动触发缺失文件下载（若未满），不要求用户手动点击下载按钮。
+
+**Lesson**:
+- 对外发给用户的资源包流程应以“自动收敛到可加入”优先，减少手动操作入口和状态分叉。
+
+## 资源包策略回调：取消隐式补齐，仅保留显式下载到100% (2026-05-31)
+
+**Implemented / checked**:
+- 按最新需求回调方案：不再在首页后台自动补齐缺失资源，避免出现“未操作也在偷偷下载 extras”的行为。
+- 移除 `frontend/app/page.tsx` 中自动补齐逻辑与对应提示文案，恢复为显式校验/下载驱动的 gate。
+- 移除 `frontend/app/resource-pack/page.tsx` 的页面加载后自动触发下载，恢复为用户显式点击下载。
+- 保留“去掉缓存完整度条”改动，避免误读百分比条。
+
+**Lesson**:
+- 资源包策略需要严格区分“显式下载包内容”和“隐式后台补齐”；当用户要求只信任下载包本身时，应避免任何后台兜底下载。
+
+## 资源包“显示100%但大厅仍锁”定位与修复 (2026-05-31)
+
+**Implemented / checked**:
+- 定位到资源包页缓存完整度百分比使用 `Math.round`，在 `1674/1677` 这类接近值时会显示 `100%`，但实际上并未全量缓存。
+- 大厅 gate 用的是严格判定（必须 `readyCount === assets.length`），因此会继续锁房，形成“资源页看起来100%但不能加入”的表象冲突。
+- 在 `frontend/app/resource-pack/page.tsx` 增加 `toPercent()`：仅当 `value >= total` 才显示 `100`，否则使用向下保留 1 位小数，避免误报 100%。
+- Live Playwright 复核：不完整缓存显示 `99.8% (1674/1677)` 且大厅保持锁定；补齐到 `1677/1677` 后主页状态切换为 `资源包校验：100%（可加入房间 / 可自动加入）`，房间状态变为 `🟢 等待加入`。
+
+**Lesson**:
+- gate 与展示口径必须一致；任何会把“未完成”四舍五入成“100%”的 UI 都会制造假通过反馈。
+
+## 资源包按钮行为更新：先校验再继续下载 + 下载中仅主按钮切换 (2026-05-31)
+
+**Implemented / checked**:
+- 在 `frontend/app/resource-pack/page.tsx` 调整首按钮文案逻辑：
+  - 部分缓存（`cachedCount > 0 && < assets.length`）显示 `继续下载`。
+  - 下载进行中显示 `暂停下载`，再次点击会暂停当前下载。
+  - 全量完成后显示 `重新下载资源包`。
+- 修复“进入页面后再次全量重下”问题：移除下载前强制 `caches.delete(CACHE_NAME)`，改为先扫描缓存，仅下载缺失文件（missing-only resume）。
+- 校验/下载的 cache 命中统一为双路径匹配（绝对 URL + 相对 URL），减少误判导致的重复下载。
+- 下载中的顶部栏不再整体灰掉：`busy` 仅包含 `checking/importing`，下载时其它按钮保持可用；主绿色按钮独立切换为 `暂停下载`。
+
+**Live check (Playwright, production URL)**:
+- 在嵌入资源包窗口看到部分缓存状态时，主按钮显示 `继续下载`。
+- 点击后主按钮切换为 `暂停下载`，其余按钮（下载离线包/导入离线包/校验/清除）保持可点击（未 disabled）。
+
+**Lesson**:
+- 对大资源包流程应优先做“增量恢复下载”，并把“暂停/继续”集中在主按钮，避免把辅助操作一并禁用造成交互阻塞。
+
+## Live Playwright验收：资源包100%后首页解锁/自动加入 (2026-05-31)
+
+**Implemented / checked**:
+- 按项目要求在 `https://zhenchuan.renstoolbox.com/` 做了真实 Playwright 流程验证（非 localhost）。
+- 复现起始状态：主页提示 `资源包校验未达100%，房间已锁定。请先完成“校验”。`，房间为灰锁状态。
+- 在主页嵌入的资源包窗口执行 `下载资源包`，进度从 `0/1677` 到 `1677/1677`，状态 `已完成`，完整度 `100%`。
+- 关闭资源包窗口后，首页出现短暂 `资源包校验中…`，随后自动触发加入房间并跳转到 `/game/room?...`（说明 gate 已通过，auto-join 生效）。
+- 再次回到首页后，仍会在校验完成后自动进入房间，行为与“通过后可加入”预期一致。
+
+**Lesson**:
+- 线上验证应以“是否能从锁定态切换到可加入态（或自动加入）”为判定标准，而不只看资源包页单点 100% 文案。
+
+## Homepage 校验假阴性（资源页100%但大厅仍锁）修复 (2026-05-31)
+
+**Implemented / checked**:
+- 复盘首页 gate 与资源包页校验结果不一致：资源包页已显示 100%，首页仍长期灰房锁定。
+- 在 `frontend/app/page.tsx` 中对 gate 逻辑做对齐修复：
+  - 优先读取资源包页写入的本地通过标记 `zhenchuan.resourcePack.ready.v1`（同源同键），避免 UI 结果分叉。
+  - 严格校验时对 CacheStorage 查询改为“双路径匹配”：先绝对 URL，再原始相对 URL，降低键形态差异导致的误判。
+  - 严格校验完成后同步回写/清理同一 ready 键，确保两页状态收敛。
+
+**Lesson**:
+- 前端多入口 gate 场景必须共享同一通过信号并保持回写一致；仅做各自独立重算很容易出现“一个页面通过、另一个页面不通过”的假阴性体验。
+
+## Homepage auto-join toggle + 100% 校验 join gate (2026-05-31)
+
+**Implemented / checked**:
+- In `frontend/app/page.tsx`, replaced implicit auto-join behavior with a user-facing toggle button (`自动加入：开启/关闭`) and persisted it to localStorage.
+- Added a frontend resource-pack gate check on homepage:
+  - Fetches `/resource-pack/manifest`.
+  - Verifies every manifest asset exists in Cache Storage under the pack cache name.
+  - Only when cached coverage is 100% is room joining enabled and auto-join allowed.
+- Added UI lock behavior for unverified users:
+  - Waiting rooms become gray and non-clickable.
+  - Status text shows `需先完成校验（100%）`.
+  - Auto-join is blocked while gate is not ready.
+- Added focus/overlay-close re-check so users who finish 校验 in the resource-pack iframe get gate status refreshed on homepage.
+
+**Lesson**:
+- Auto-join should be opt-in and should share the same eligibility gate as manual join. Otherwise users can bypass client readiness constraints through background polling side effects.
+
+## Resource pack freshness + coverage expansion (2026-05-31)
+
+**Implemented / checked**:
+- Audited the resource-pack pipeline (`/resource-pack/manifest`, `/resource-pack/package`, downloader/importer, service worker path filter).
+- Fixed freshness bug in `frontend/app/resource-pack/page.tsx`: `下载资源包` no longer skips already-cached files. It now recreates cache content and re-fetches all manifest assets with `cache: "reload"`, so clicking download gets the newest version.
+- Expanded collector coverage in `frontend/app/resource-pack/resourcePackFiles.ts`:
+  - Added extensions: `.wem`, `.js`, `.html`, `.txt`.
+  - Added tool/static paths: `/js/**`, `/lib/**`, and root files `export-reader.html`, `full-validator.html`, `mesh-inspector.html`, `resource-pack-sw.js`.
+  - Added MIME mappings for the new file types.
+- Updated `frontend/public/resource-pack-sw.js` to serve cached `/js/**` and `/lib/**` requests.
+- Live verification against running app manifest (`http://127.0.0.1:3000/resource-pack/manifest`) confirmed inclusion of previously missing assets:
+  - `hasWem: true`
+  - `hasJsTool: true`
+  - `hasLibTool: true`
+  - `hasExportReader/full-validator/mesh-inspector: true`
+
+**Lesson**:
+- Offline-pack freshness cannot rely on “if cached then skip” logic; when URLs stay stable, explicit re-fetch is required to avoid stale assets. Coverage should be driven by actual runtime tool/static paths, not only core game folders.
+
 ## Homepage legacy dropdown admin-only + create label update (2026-05-31)
 
 **Implemented / checked**:

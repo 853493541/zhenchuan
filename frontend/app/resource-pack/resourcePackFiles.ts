@@ -29,12 +29,15 @@ const PUBLIC_ASSET_EXTENSIONS = new Set([
   ".glb",
   ".gltf",
   ".ogg",
+  ".wem",
   ".mp3",
   ".wav",
   ".woff2",
+  ".js",
+  ".html",
+  ".txt",
 ]);
 
-const NEXT_STATIC_EXTENSIONS = new Set([".js", ".css", ".wasm", ".json"]);
 
 const CONTENT_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -48,13 +51,23 @@ const CONTENT_TYPES: Record<string, string> = {
   ".glb": "model/gltf-binary",
   ".gltf": "model/gltf+json",
   ".ogg": "audio/ogg",
+  ".wem": "application/octet-stream",
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
   ".woff2": "font/woff2",
+  ".html": "text/html; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".wasm": "application/wasm",
 };
+
+const PUBLIC_TOOL_FILES = [
+  "export-reader.html",
+  "full-validator.html",
+  "mesh-inspector.html",
+  "resource-pack-sw.js",
+] as const;
 
 function encodeUrlPath(pathLike: string) {
   return pathLike
@@ -63,6 +76,12 @@ function encodeUrlPath(pathLike: string) {
     .filter(Boolean)
     .map((segment) => encodeURIComponent(segment))
     .join("/");
+}
+
+function buildAssetUrl(baseUrl: string, relPath: string) {
+  const normalizedBase = baseUrl === "/" ? "" : baseUrl.replace(/\/+$/, "");
+  const encodedRelPath = encodeUrlPath(relPath);
+  return `${normalizedBase}/${encodedRelPath}`.replace(/^\/\//, "/");
 }
 
 function categoryForPublicPath(relPath: string): ResourceCategory {
@@ -109,7 +128,7 @@ async function collectFiles(
       const relPath = path.relative(root, fullPath);
       if (includeFile && !includeFile(relPath)) return;
       assets.push({
-        url: `${baseUrl}/${encodeUrlPath(relPath)}`,
+        url: buildAssetUrl(baseUrl, relPath),
         size: stat.size,
         category: category ?? categoryForPublicPath(relPath),
         filePath: fullPath,
@@ -122,15 +141,40 @@ async function collectFiles(
   return assets;
 }
 
+async function collectSpecificFiles(
+  root: string,
+  relPaths: readonly string[],
+  category: ResourceCategory,
+) {
+  const assets: Array<Omit<ResourcePackFile, "packagePath">> = [];
+
+  await Promise.all(relPaths.map(async (relPath) => {
+    const fullPath = path.join(root, relPath);
+    const stat = await fs.stat(fullPath).catch(() => null);
+    if (!stat?.isFile()) return;
+    assets.push({
+      url: buildAssetUrl("/", relPath),
+      size: stat.size,
+      category,
+      filePath: fullPath,
+      contentType: contentTypeForPath(fullPath),
+    });
+  }));
+
+  return assets;
+}
+
 export async function collectResourcePackFiles(): Promise<ResourcePackFile[]> {
   const cwd = process.cwd();
   const publicRoot = path.join(cwd, "public");
-  const nextStaticRoot = path.join(cwd, ".next", "static");
   const exportedMapsRoot = path.join(publicRoot, "game", "exported-maps");
 
   const publicAssets = (await Promise.all([
     collectFiles(path.join(publicRoot, "icons"), "/icons", PUBLIC_ASSET_EXTENSIONS, "icons"),
     collectFiles(path.join(publicRoot, "fonts"), "/fonts", PUBLIC_ASSET_EXTENSIONS, "fonts"),
+    collectFiles(path.join(publicRoot, "js"), "/js", PUBLIC_ASSET_EXTENSIONS, "app"),
+    collectFiles(path.join(publicRoot, "lib"), "/lib", PUBLIC_ASSET_EXTENSIONS, "app"),
+    collectSpecificFiles(publicRoot, PUBLIC_TOOL_FILES, "app"),
     collectFiles(
       path.join(publicRoot, "game"),
       "/game",
@@ -140,10 +184,8 @@ export async function collectResourcePackFiles(): Promise<ResourcePackFile[]> {
     ),
     collectFiles(exportedMapsRoot, "/full-exports", PUBLIC_ASSET_EXTENSIONS, "map"),
   ])).flat();
-  const appAssets = await collectFiles(nextStaticRoot, "/_next/static", NEXT_STATIC_EXTENSIONS, "app");
-
   const assetsByUrl = new Map<string, Omit<ResourcePackFile, "packagePath">>();
-  for (const asset of [...publicAssets, ...appAssets]) {
+  for (const asset of publicAssets) {
     assetsByUrl.set(asset.url, asset);
   }
 

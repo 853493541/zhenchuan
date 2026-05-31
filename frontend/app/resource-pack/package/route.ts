@@ -1,6 +1,7 @@
 import { createReadStream } from "node:fs";
 import { PassThrough, Readable } from "node:stream";
 import { createGzip } from "node:zlib";
+import { cookies } from "next/headers";
 import { collectResourcePackFiles, RESOURCE_PACK_CACHE_NAME, type ResourcePackFile } from "../resourcePackFiles";
 
 export const runtime = "nodejs";
@@ -81,7 +82,26 @@ async function writeTarFileEntry(stream: PassThrough, file: ResourcePackFile, mt
   if (padding > 0) await writeChunk(stream, Buffer.alloc(padding));
 }
 
+async function ensureAdmin() {
+  const cookieStore = await cookies();
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:5000";
+  const res = await fetch(`${backendUrl}/api/auth/me`, {
+    cache: "no-store",
+    headers: {
+      cookie: cookieStore.toString(),
+    },
+  });
+  if (!res.ok) return false;
+  const data = await res.json().catch(() => null) as { user?: { isAdmin?: boolean } } | null;
+  return data?.user?.isAdmin === true;
+}
+
 export async function GET() {
+  const allowed = await ensureAdmin();
+  if (!allowed) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+
   const files = await collectResourcePackFiles();
   const manifest = Buffer.from(JSON.stringify(buildPackageManifest(files)), "utf8");
   const mtime = Math.floor(Date.now() / 1000);
