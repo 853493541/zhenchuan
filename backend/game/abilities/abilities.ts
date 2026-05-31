@@ -2626,7 +2626,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   yin_yue_zhan: {
     id: "yin_yue_zhan",
     name: "银月斩",
-    description: "瞬发，对目标造成2点伤害，并附加【银月斩】6秒：每2秒造成1点伤害。\n若目标已有【烈日斩】，所有伤害翻倍。\n射程6",
+    description: "瞬发，对目标造成2点伤害，并附加【银月斩】12秒：每2秒造成1点伤害。\n若目标已有【烈日斩】，所有伤害翻倍。\n射程6",
     type: "ATTACK",
     target: "OPPONENT",
     range: 6,
@@ -2643,7 +2643,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         buffId: 2511,
         name: "银月斩",
         category: "DEBUFF",
-        durationMs: 6_000,
+        durationMs: 12_000,
         periodicMs: 2_000,
         description: "每2秒受到1点伤害",
         effects: [{ type: "PERIODIC_DAMAGE", value: 1 }],
@@ -4550,13 +4550,14 @@ export const BASE_ABILITIES: AbilityRecord = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 迷心蛊 — instant self-cast. Gain a 12s self debuff: sealed qinggong, but
-  // immune only to lockouts (attack-lock and silence), not hard control.
+  // 迷心蛊 — instant self-cast. Gain a 12s self debuff: sealed qinggong, with
+  // lockout + silence immunity (silence immunity also grants interrupt immunity
+  // in runtime), but not hard control immunity.
   // ──────────────────────────────────────────────────────────────────────────
   mi_xin_gu: {
     id: "mi_xin_gu",
     name: "迷心蛊",
-    description: "瞬发，自身施放\n获得【迷心蛊】12秒（减益）：封轻功，但免疫所有锁招与沉默",
+    description: "瞬发，自身施放\n获得【迷心蛊】12秒（减益）：封轻功，但免疫所有锁招、沉默与打断",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 450,
@@ -4570,10 +4571,11 @@ export const BASE_ABILITIES: AbilityRecord = {
         applyTo: "SELF",
         durationMs: 12_000,
         breakOnPlay: false,
-        description: "封轻功，但免疫所有锁招与沉默",
+        description: "封轻功，但免疫所有锁招、沉默与打断",
         effects: [
           { type: "QINGGONG_SEAL" },
           { type: "LOCKOUT_IMMUNE" },
+          { type: "SILENCE_IMMUNE" },
         ],
       },
     ],

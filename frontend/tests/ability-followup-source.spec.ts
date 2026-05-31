@@ -112,6 +112,22 @@ test('Fenglai schedules eight ticks before its five-second expiry', async () => 
   expect(fenglai).toContain('periodicStartImmediate: true');
 });
 
+test('Yinyue DOT base duration is twelve seconds', async () => {
+  const abilities = readFile(abilitiesPath);
+  const yinyue = abilityBlock(abilities, 'yin_yue_zhan');
+
+  expect(yinyue).toContain('durationMs: 12_000');
+  expect(yinyue).toContain('periodicMs: 2_000');
+});
+
+test('Mi Xin Gu grants lockout and interrupt immunity via SILENCE_IMMUNE', async () => {
+  const abilities = readFile(abilitiesPath);
+  const mixingu = abilityBlock(abilities, 'mi_xin_gu');
+
+  expect(mixingu).toContain('{ type: "LOCKOUT_IMMUNE" }');
+  expect(mixingu).toContain('{ type: "SILENCE_IMMUNE" }');
+});
+
 test('Sanliu dash arc uses discrete end-at-ground math for the full parabola', async () => {
   const abilities = readFile(abilitiesPath);
   const directionalDash = readFile(directionalDashPath);

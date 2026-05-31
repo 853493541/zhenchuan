@@ -3,6 +3,38 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 迷心蛊补齐不可打断效果 (2026-05-31)
+
+**Implemented / checked**:
+- 先排查系统“不可打断”机制：运行时将 `SILENCE_IMMUNE` 视为打断免疫（`immediateEffects` 打断链路与 `buffRuntime` 的 channel 取消逻辑都用此判定）。
+- 在 `mi_xin_gu` Buff 效果中新增 `{ type: "SILENCE_IMMUNE" }`，保留原有 `QINGGONG_SEAL + LOCKOUT_IMMUNE`。
+- 同步更新迷心蛊基础描述与 Buff 描述为“免疫所有锁招、沉默与打断”。
+- 新增并通过 Playwright source guard，锁定 `mi_xin_gu` 同时包含 `LOCKOUT_IMMUNE` 与 `SILENCE_IMMUNE`。
+- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，服务启动正常。
+
+**Lesson**:
+- 当前系统里“不可打断”不是独立 effect type，而是复用 `SILENCE_IMMUNE` 语义；若只加 `LOCKOUT_IMMUNE` 仍可能被打断技能或 CC 读条取消链路中断。
+
+## 报表误生成无间狱空倍率行 (2026-05-31)
+
+**Implemented / checked**:
+- 追查到 `无间狱` 的两条空倍率行不是游戏代码数据问题，而是报表抽取逻辑把描述里的泛化“造成伤害”摘要句单独记成了两行，同时又把后续四个明确倍率行单独记了一次。
+- 已从 `reports/all_colors_full_list.csv` 和 `reports/table_damage_output_mode_clean.md` 删除这两条伪行。
+
+**Lesson**:
+- 当技能描述同时包含“摘要伤害句 + 明细倍率句”时，报表生成必须优先保留带倍率的明细行，丢弃没有倍率的摘要占位行。
+
+## 银月斩Debuff基础时长从6秒调至12秒 (2026-05-31)
+
+**Implemented / checked**:
+- 在 `abilities.ts` 中将银月斩 Debuff（buffId 2511）基础时长 `durationMs` 从 `6_000` 调整为 `12_000`。
+- 同步更新银月斩基础描述中的“附加【银月斩】6秒”文案为“12秒”，与实际配置一致。
+- 新增并通过 Playwright source guard，锁定银月斩包含 `durationMs: 12_000` 与 `periodicMs: 2_000`。
+- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，服务启动正常。
+
+**Lesson**:
+- 对会进入“DOT受加速缩时”路径的 Debuff，如果目标体感时长明显偏短，先核查基础时长是否仍是旧值；仅改描述而不改 `durationMs` 会持续造成实战时长偏差。
+
 ## Buff无计时显示时Tooltip同步隐藏时间 (2026-05-31)
 
 **Implemented / checked**:
