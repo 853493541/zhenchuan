@@ -4078,8 +4078,12 @@ function GcdVisualBar({ gcd }: { gcd?: VisualGcdState | null }) {
 }
 
 function formatAbilityRangeLabel(ability: AbilityInfo): string {
+  if (ability.target === 'SELF') {
+    return '无';
+  }
+
   if (typeof ability.range !== 'number') {
-    return ability.target === 'SELF' ? '自身' : '-';
+    return '-';
   }
 
   const range = ability.range;

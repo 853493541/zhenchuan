@@ -2033,7 +2033,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   wan_jian_gui_zong: {
     id: "wan_jian_gui_zong",
     name: "万剑归宗",
-    description: "瞬发，可在空中或移动中施放\n锁足6尺范围内的敌人3秒\n附加【玄一】5层（30秒）：每层使治疗效果降低10%",
+    description: "瞬发，可在空中或移动中施放\n锁足6尺范围内的敌人3秒\n附加【玄一】5层（10秒）：每层使治疗效果降低10%",
     type: "CONTROL",
     target: "SELF",
     cooldownTicks: 300,
@@ -2055,7 +2055,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         buffId: 2320,
         name: "玄一",
         category: "DEBUFF",
-        durationMs: 30_000,
+        durationMs: 10_000,
         initialStacks: 5,
         maxStacks: 5,
         breakOnPlay: false,
@@ -4846,13 +4846,13 @@ export const BASE_ABILITIES: AbilityRecord = {
   qiang_zhu_shi: {
     id: "qiang_zhu_shi",
     name: "抢珠式",
-    description: "8尺，瞬发，可空中施放，不进入公共冷却\n使目标获得【抢珠式】4秒：无法使用轻功以外招式",
+    description: "8尺，瞬发，可空中施放，不进入公共冷却\n若目标正在可打断运功则先打断\n使目标获得【抢珠式】4秒：无法使用轻功以外招式",
     type: "CONTROL",
     target: "OPPONENT",
     range: 8,
     cooldownTicks: 300,
     gcd: false,
-    effects: [],
+    effects: [{ type: "INTERRUPT_CHANNEL" }],
     buffs: [
       {
         buffId: 2725,

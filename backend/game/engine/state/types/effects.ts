@@ -232,7 +232,9 @@ export type EffectType =
   | "YOU_FENG_PIAO_ZONG"
   | "RU_YI_FA"
   // 翔极碧落: interrupt the target's channel and apply silence if successful
-  | "XIANG_JI_BI_LUO";
+  | "XIANG_JI_BI_LUO"
+  // 打断目标当前可打断运功（不附带额外效果）
+  | "INTERRUPT_CHANNEL";
 
 /**
  * Immediate ability effects
