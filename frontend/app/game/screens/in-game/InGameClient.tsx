@@ -136,6 +136,7 @@ type Props = {
   gameId: string;
   selfUserId: string;
   selfUsername: string;
+  selfIsAdmin?: boolean;
   authToken?: string;
 };
 
@@ -145,6 +146,7 @@ export default function InGameClient({
   gameId,
   selfUserId,
   selfUsername,
+  selfIsAdmin = false,
   authToken,
 }: Props) {
   ensureResizeObserverSupport();
@@ -613,6 +615,7 @@ export default function InGameClient({
             me={mePlayer}
             opponent={primaryOpponent}
             opponents={normalizedOpponents}
+            isAdmin={selfIsAdmin}
             externalGameWarning={battleWarningEvent}
             gameId={gameId}
             distance={distance}

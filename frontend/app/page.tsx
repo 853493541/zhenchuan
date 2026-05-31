@@ -26,6 +26,7 @@ const VALID_START_MODES = new Set<StartMode>([
 ]);
 
 const startModeLabel = (mode: StartMode) => getGameModeLabel(mode);
+const isLegacyMode = (mode: StartMode) => LEGACY_MODES.some((option) => option.value === mode);
 
 function getLobbyMaxPlayers(mode: unknown) {
   if (mode === YUMEN_1V1_BASIC_MODE || mode === undefined || mode === null) return 6;
@@ -121,6 +122,18 @@ export default function HomePage() {
       // Ignore storage write errors and keep in-memory selection.
     }
   };
+
+  const canViewLegacyModes = me?.isAdmin === true;
+
+  useEffect(() => {
+    if (canViewLegacyModes) return;
+    if (isLegacyMode(selectedStartMode)) {
+      selectStartMode(YUMEN_1V1_BASIC_MODE);
+    }
+    if (openModeMenu === 'legacy') {
+      setOpenModeMenu(null);
+    }
+  }, [canViewLegacyModes, openModeMenu, selectedStartMode]);
 
   /* =========================================================
      Utils：时间显示（仅显示"多少分钟前 / 刚刚"）
@@ -257,18 +270,20 @@ export default function HomePage() {
             }}
             ariaLabel="选择模式"
           />
-          <ModeDropdown
-            label="legacy modes"
-            options={LEGACY_MODES}
-            selectedMode={selectedStartMode}
-            open={openModeMenu === 'legacy'}
-            onToggle={() => setOpenModeMenu((current) => current === 'legacy' ? null : 'legacy')}
-            onSelect={(mode) => {
-              selectStartMode(mode);
-              setOpenModeMenu(null);
-            }}
-            ariaLabel="legacy modes"
-          />
+          {canViewLegacyModes && (
+            <ModeDropdown
+              label="legacy modes"
+              options={LEGACY_MODES}
+              selectedMode={selectedStartMode}
+              open={openModeMenu === 'legacy'}
+              onToggle={() => setOpenModeMenu((current) => current === 'legacy' ? null : 'legacy')}
+              onSelect={(mode) => {
+                selectStartMode(mode);
+                setOpenModeMenu(null);
+              }}
+              ariaLabel="legacy modes"
+            />
+          )}
           <button
             className={`${styles.createBtn} ${styles.createBtnPrimary}`}
             onClick={startSelectedMode}
@@ -295,7 +310,7 @@ export default function HomePage() {
             onClick={startSelectedMode}
             disabled={loading}
           >
-            {loading ? "创建中…" : `开始 ${startModeLabel(selectedStartMode)}`}
+            {loading ? "创建中…" : `创建 ${startModeLabel(selectedStartMode)}`}
           </button>
         </div>
       </div>

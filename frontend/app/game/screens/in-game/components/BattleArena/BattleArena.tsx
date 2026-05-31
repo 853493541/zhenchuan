@@ -4621,6 +4621,7 @@ interface BattleArenaProps {
   opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; yumenDefeated?: boolean; yumenDefeatedAt?: number };
   /** All other players (opponents) — supports 1v1 and N-player modes */
   opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; yumenDefeated?: boolean; yumenDefeatedAt?: number }[];
+  isAdmin?: boolean;
   gameId: string;
   onCastAbility: (
     abilityInstanceId: string,
@@ -4668,6 +4669,7 @@ export default function BattleArena({
   me,
   opponent,
   opponents,
+  isAdmin = false,
   gameId,
   onCastAbility,
   onCancelChannel,
@@ -4696,6 +4698,7 @@ export default function BattleArena({
 }: BattleArenaProps) {
   const isExportedMap = isExportedMapMode(mode);
   const isYumenMode = isYumen1v1BasicMode(mode);
+  const canAccessTestingPanels = !isYumenMode || isAdmin;
   const yumenDefeatedUserIdsFromEvents = useMemo(() => {
     if (!isYumenMode) return new Set<string>();
     const defeatedIds = new Set<string>();
@@ -4890,7 +4893,7 @@ export default function BattleArena({
   // Mobile detection: touch device without fine pointer (mouse) = phone/tablet
   const [isMobileDevice, setIsMobileDevice]    = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
-  const [showCheatAbilityPanelEntry, setShowCheatAbilityPanelEntry] = useState(true);
+  const [showCheatAbilityPanelEntry, setShowCheatAbilityPanelEntry] = useState(() => !isYumenMode);
   const [showMartialPanel, setShowMartialPanel] = useState(false);
   const [chatWindows, setChatWindows] = useState<ChatWindowConfig[]>(() => loadChatWindows());
   const [chatMainWindowIds, setChatMainWindowIds] = useState<string[]>(() => loadChatWindows().map((entry) => entry.id));
@@ -6146,7 +6149,27 @@ export default function BattleArena({
   );
   const [gameSettingsTab, setGameSettingsTab] = useState<GameSettingsTabId>('general');
   const [customUiPromptPos, setCustomUiPromptPos] = useState<UiPosition | null>(null);
-  const lightingControlsOpen = showTestingPanel && escMainTab === 'test' && escTestPage === 'lighting';
+  const lightingControlsOpen = canAccessTestingPanels && showTestingPanel && escMainTab === 'test' && escTestPage === 'lighting';
+
+  useEffect(() => {
+    if (canAccessTestingPanels) return;
+    if (escMainTab === 'test') setEscMainTab('normal');
+    if (escTestPage !== 'switches') setEscTestPage('switches');
+    if (showControlPanel) setShowControlPanel(false);
+    if (showSceneTestingPanel) setShowSceneTestingPanel(false);
+    if (showCameraEventTestingPanel) setShowCameraEventTestingPanel(false);
+    if (showCheatAbilityPanelEntry) setShowCheatAbilityPanelEntry(false);
+    if (showCheatWindow) setShowCheatWindow(false);
+  }, [
+    canAccessTestingPanels,
+    escMainTab,
+    escTestPage,
+    showCameraEventTestingPanel,
+    showCheatAbilityPanelEntry,
+    showCheatWindow,
+    showControlPanel,
+    showSceneTestingPanel,
+  ]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -6323,6 +6346,10 @@ export default function BattleArena({
   }, [crashRecorder, gameId]);
 
   const [showMeasurePanel, setShowMeasurePanel] = useState(false);
+  useEffect(() => {
+    if (canAccessTestingPanels || !showMeasurePanel) return;
+    setShowMeasurePanel(false);
+  }, [canAccessTestingPanels, showMeasurePanel]);
   const [showJumpDetailsPanel, setShowJumpDetailsPanel] = useState(false);
   const [showGroundDistanceDetail, setShowGroundDistanceDetail] = useState(false);
   const [envDebugInfo, setEnvDebugInfo] = useState<EnvDebugInfo | null>(null);
@@ -16280,15 +16307,17 @@ export default function BattleArena({
                   >
                     常规
                   </button>
-                  <button
-                    type="button"
-                    className={`${styles.escMainTabButton} ${escMainTab === 'test' ? styles.escMainTabButtonActive : ''}`}
-                    onClick={() => setEscMainTab('test')}
-                  >
-                    测试
-                  </button>
+                  {canAccessTestingPanels && (
+                    <button
+                      type="button"
+                      className={`${styles.escMainTabButton} ${escMainTab === 'test' ? styles.escMainTabButtonActive : ''}`}
+                      onClick={() => setEscMainTab('test')}
+                    >
+                      测试
+                    </button>
+                  )}
                 </div>
-                {escMainTab === 'normal' ? (
+                {escMainTab === 'normal' || !canAccessTestingPanels ? (
                   <>
                     <div className={styles.escMainGrid}>
                       <button type="button" className={styles.escMainTile} disabled>
@@ -16442,15 +16471,17 @@ export default function BattleArena({
                               <input type="checkbox" checked={showHiddenBuffStatusBar} onChange={(e) => setShowHiddenBuffStatusBar(e.target.checked)} className={styles.escToggleInput} />
                               <span>显示隐藏buff</span>
                             </label>
-                            <label className={styles.escToggleRow}>
-                              <input
-                                type="checkbox"
-                                checked={showCheatAbilityPanelEntry}
-                                onChange={(e) => setShowCheatAbilityPanelEntry(e.target.checked)}
-                                className={styles.escToggleInput}
-                              />
-                              <span>打开测试添加技能面板</span>
-                            </label>
+                            {canAccessTestingPanels && (
+                              <label className={styles.escToggleRow}>
+                                <input
+                                  type="checkbox"
+                                  checked={showCheatAbilityPanelEntry}
+                                  onChange={(e) => setShowCheatAbilityPanelEntry(e.target.checked)}
+                                  className={styles.escToggleInput}
+                                />
+                                <span>打开测试添加技能面板</span>
+                              </label>
+                            )}
                             <label className={styles.escToggleRow}>
                               <input
                                 type="checkbox"
@@ -17992,6 +18023,8 @@ export default function BattleArena({
       </div>
 
       {/* ===== CONTROL PANEL: combat helpers + dummy spawn (bottom-right, left of cheat) ===== */}
+      {canAccessTestingPanels && (
+        <>
       <button
         style={{
           position: 'absolute', bottom: 80, right: 290, zIndex: 210,
@@ -18528,6 +18561,8 @@ export default function BattleArena({
             >清除木桩</button>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* ===== CHEAT: Ability picker (bottom-right, toggleable) ===== */}

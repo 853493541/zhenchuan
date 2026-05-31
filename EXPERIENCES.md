@@ -3,244 +3,26 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
-## 技能灰置/施放失败提示文案统一映射 (2026-05-31)
+## Homepage legacy dropdown admin-only + create label update (2026-05-31)
 
 **Implemented / checked**:
-- 在 `frontend/app/game/screens/in-game/components/BattleArena/BattleArena.tsx` 统一更新技能灰置与施放前校验提示文案，按产品映射替换核心文案：
-  - `技能配置不存在 -> 该招式不存在`
-  - 冷却/GCD/层数恢复/封轻功/观战限制/特殊跳跃限制/非轻功限制/受控/锁足等多类限制统一为 `招式施展失败`
-  - 骑御限制改为 `该招式无法在骑行状态下施展`
-  - 击退/拉拽限制统一为 `该招式无法在位移时施展`
-  - 气血阈值不足统一为 `气血要求不足`
-  - 目标选择/目标类型错误统一为 `目标类型不正确`
-  - 距离过远/过近统一为 `目标在招式范围之外`
-  - 特定目标规则失败（如目标过高血量、曙色已存在、实体目标限制）统一为 `招式施展失败`
-- 同步更新 `frontend/app/game/screens/in-game/InGameClient.tsx` 的服务端错误码文案映射，保证“服务端拒绝施放”与“前端灰置/本地校验”提示一致。
-- 已完成 backend/frontend build，并执行 `pm2 restart frontend backend`；两进程 online。
+- In `frontend/app/page.tsx`, restricted `legacy modes` dropdown visibility to admins only (`me?.isAdmin === true`).
+- Added a non-admin safety fallback: if a legacy mode was previously saved in localStorage, homepage auto-resets selection to default mode and closes legacy dropdown state.
+- Updated the middle large start button text from `开始 XXX` to `创建 XXX` while keeping loading text unchanged (`创建中…`).
 
 **Lesson**:
-- 这类文案统一不能只改点击施放分支，还要同时覆盖“灰置禁用来源”分支（`getAbilityDisabledWarning`），否则同一限制会在不同入口显示不同提示。
+- Role-gating homepage controls should also sanitize persisted selections; hiding the UI alone is insufficient when prior localStorage state can still point to restricted options.
 
-## 最终技能系数核对表定版并清理旧版本 (2026-05-31)
-
-## 补齐伤害核对表空当前系数位 (2026-05-31)
+## Yumenguan testing UI admin gating + add-skill default off (2026-05-31)
 
 **Implemented / checked**:
-- 对 `reports/damage_output_coeff_check.csv` 与 `reports/damage_output_coeff_check.md` 的全部空 `当前系数` 槽位逐行补齐，不再保留空值。
-- 逐项按运行时代码核对：优先使用合并后的 `ABILITIES`（含覆盖层）中的 `effects/buffs/channelEffects` 数值；对自定义流程技能再追到 `immediateEffects.ts`、`GameLoop.ts`、`playService.ts` 的实际结算分支。
-- 已核对并回填的典型自定义分支：`棒打狗头` 跃进命中、`横扫六合` 单目标翻倍、`守缺式` 强化30%、`天绝地灭` 爆炸区、`跃潮斩波` 落地伤害、`鹤归孤山` 近身追加段、`连环弩` 1/2/3段、`绿野蔓生` 反击、`斩无常` 引导tick、`狂龙乱舞` 地面区tick。
-- 变更后执行 backend/frontend build，并执行 `pm2 restart frontend backend`；两进程在线。
+- Wired authenticated `isAdmin` from server-side in-game pages into `InGameClient`, then into `BattleArena` as a prop.
+- Added a Yumenguan gate in `BattleArena`: only admins can access test-only surfaces there (ESC `测试` tab, on-screen `控制面板`, and test-only `打开测试添加技能面板` toggle).
+- Set `showCheatAbilityPanelEntry` default to off when entering Yumenguan mode, so `添加技能` does not appear by default even for admins.
+- Added a defensive cleanup effect for non-admin Yumenguan sessions to auto-close/hide any testing panels that might remain from prior state.
 
 **Lesson**:
-- “文本倍率”与“当前系数”在该项目中经常不一一对应；必须以运行时结算分支为准，尤其是 dash 结束结算、地面区定时结算、以及条件分支（翻倍/追加/引爆）技能。
-
-**Implemented / checked**:
-- 删除 `reports/` 下此前所有旧导出，只保留当前最终版四个文件：有伤害/无伤害各一份 `csv` 与 `md`。
-- 在最终版表中新增 `当前系数` 列，来源于后端当前运行能力数据（含覆盖层与实际效果对象），用于对比 `文本系数` 与系统当前值。
-- 对用户明确指出的项目完成修正：`盾立` 归入无伤害；`绛唇珠袖` 归入有伤害；`横扫六合/银月斩/百足/无间狱` 等多系数项目按行拆开。
-- 额外确认：`无间狱` 两条空系数行是旧报表生成逻辑误产物，不是系统数据问题，已在最终版中移除。
-
-**Lesson**:
-- 这类“文本系数 vs 当前系统系数”核对表，不能只看描述文本或中间导出，必须直接对照合并后的运行时能力对象；否则自定义效果类型会把当前值看错或看漏。
-
-## CLEANSE无法清除ROOT紧急修复 (2026-05-31)
-
-**Implemented / checked**:
-- 定位到 `handleCleanse()`：ROOT 仅在 `cleanseRootSlow=true` 时才会被移除，导致大量仅配置 `CLEANSE` 的解控技能无法解锁足。
-- 修复为默认可清 ROOT：`cleanseRootSlow` 改为“默认 true，只有显式 false 才禁用”，兼容旧字段同时恢复全局解锁足预期。
-- 新增并通过 Playwright source guard，锁定 `Cleanse.ts` 中默认逻辑为 `effect?.cleanseRootSlow !== false`。
-- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，服务启动正常。
-
-**Lesson**:
-- 对核心通用语义（如 CLEANSE 是否解 ROOT）不应依赖“局部技能是否手写标记”；应先保证默认行为正确，再把字段用于少数显式例外。
-
-## CLEANSE解锁足二次回归：调用层显式false覆盖默认值 (2026-05-31)
-
-**Implemented / checked**:
-- 复盘发现仅修改 `Cleanse.ts` 默认值不够：`immediateEffects.ts` 的 `CLEANSE` 分支会把未配置场景也折叠成 `cleanseRootSlow: false` 传入，导致默认语义被调用层覆盖。
-- 修复 `backend/game/engine/flow/play/immediateEffects.ts`：仅在技能或效果显式给出 `true/false` 时才传 `cleanseRootSlow`；未配置时传 `undefined`，让 `handleCleanse()` 的默认“可解 ROOT”生效。
-- 补充 source guard：`frontend/tests/ability-followup-source.spec.ts` 新增断言，锁定 CLEANSE 调用路径不会再把缺省值强制成 `false`。
-- 新增并执行 live on-screen Playwright：`frontend/tests/cleanse-root.live.spec.ts`，在 `https://zhenchuan.renstoolbox.com` 实战流程验证：先被 `三才化生` 锁足，再用 `星楼月影`、`游风飘踪`，两者都能清除 ROOT；测试通过（`1 passed`）。
-- 本轮已完成构建与验证：backend build 通过、frontend build 通过，随后执行 `pm2 restart frontend backend`，两进程均 `online`。
-
-**Disproved approach**:
-- “只改 `Cleanse.ts` 默认值即可完全修复”是错误的；若调用层持续显式传 `false`，运行时仍会复现“解控不解锁足”。
-
-**Lesson**:
-- 对引擎默认语义改动，必须同步检查调用方是否在参数组装阶段做了布尔收窄（尤其是 `=== true` 这类写法），否则会出现“源码单测通过、实战仍失败”的假修复。
-
-## 迷心蛊补齐不可打断效果 (2026-05-31)
-
-**Implemented / checked**:
-- 先排查系统“不可打断”机制：运行时将 `SILENCE_IMMUNE` 视为打断免疫（`immediateEffects` 打断链路与 `buffRuntime` 的 channel 取消逻辑都用此判定）。
-- 在 `mi_xin_gu` Buff 效果中新增 `{ type: "SILENCE_IMMUNE" }`，保留原有 `QINGGONG_SEAL + LOCKOUT_IMMUNE`。
-- 同步更新迷心蛊基础描述与 Buff 描述为“免疫所有锁招、沉默与打断”。
-- 新增并通过 Playwright source guard，锁定 `mi_xin_gu` 同时包含 `LOCKOUT_IMMUNE` 与 `SILENCE_IMMUNE`。
-- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，服务启动正常。
-
-**Lesson**:
-- 当前系统里“不可打断”不是独立 effect type，而是复用 `SILENCE_IMMUNE` 语义；若只加 `LOCKOUT_IMMUNE` 仍可能被打断技能或 CC 读条取消链路中断。
-
-## 报表误生成无间狱空倍率行 (2026-05-31)
-
-**Implemented / checked**:
-- 追查到 `无间狱` 的两条空倍率行不是游戏代码数据问题，而是报表抽取逻辑把描述里的泛化“造成伤害”摘要句单独记成了两行，同时又把后续四个明确倍率行单独记了一次。
-- 已从 `reports/all_colors_full_list.csv` 和 `reports/table_damage_output_mode_clean.md` 删除这两条伪行。
-
-**Lesson**:
-- 当技能描述同时包含“摘要伤害句 + 明细倍率句”时，报表生成必须优先保留带倍率的明细行，丢弃没有倍率的摘要占位行。
-
-## 银月斩Debuff基础时长从6秒调至12秒 (2026-05-31)
-
-**Implemented / checked**:
-- 在 `abilities.ts` 中将银月斩 Debuff（buffId 2511）基础时长 `durationMs` 从 `6_000` 调整为 `12_000`。
-- 同步更新银月斩基础描述中的“附加【银月斩】6秒”文案为“12秒”，与实际配置一致。
-- 新增并通过 Playwright source guard，锁定银月斩包含 `durationMs: 12_000` 与 `periodicMs: 2_000`。
-- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，服务启动正常。
-
-**Lesson**:
-- 对会进入“DOT受加速缩时”路径的 Debuff，如果目标体感时长明显偏短，先核查基础时长是否仍是旧值；仅改描述而不改 `durationMs` 会持续造成实战时长偏差。
-
-## Buff无计时显示时Tooltip同步隐藏时间 (2026-05-31)
-
-**Implemented / checked**:
-- 调整状态栏提示逻辑：`StatusBar` 新增 `showRemainingTime` 透传，沿用与图标下方倒计时一致的判定（`showTimers && !hideTimerInStatusBar`）。
-- 调整 `StatusHint`：当 `showRemainingTime=false` 时不渲染“剩余时间”行，避免“条目不显示时间但 tooltip 还显示时间”的不一致。
-- 新增并通过 Playwright source guard（`ability-followup-source.spec.ts`）覆盖该行为。
-- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，服务启动正常。
-
-**Lesson**:
-- 对同一 UI 语义（是否显示剩余时间），条目视图与 tooltip 必须共享同一布尔来源，避免双路径判定造成显示分叉。
-
-## 梯云纵·战斗图标补齐 (2026-05-31)
-
-**Implemented / checked**:
-- 在资源目录中确认存在源图标 `frontend/public/icons/梯云纵.png`。
-- 复制同一文件为 `frontend/public/icons/梯云纵·战斗.png`，用于战斗态 Buff `梯云纵·战斗` 的默认图标路径解析。
-- 复核 `abilities.ts` 中战斗态 Buff 名称为 `梯云纵·战斗`，与新图标文件名一致。
-- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，服务启动正常。
-
-**Lesson**:
-- 当前 Buff 图标默认按 `name -> /icons/${name}.png` 回退解析；新增/改名 Buff 时，优先保证图标文件名与 Buff 显示名逐字一致，通常无需额外代码改动。
-
-## 临时飞爪锁足下前端冲刺预测回弹修复 (2026-05-31)
-
-**Implemented / checked**:
-- 后端语义保持不变：临时飞爪允许施放，但属于 `ccStopsMe` 冲刺，带 `ROOT` 时会在 movement tick 被中断。
-- 前端 `BattleArena` 在两处 `predictedActiveDash` 推导中新增“锁足 + ccStopsMe”抑制分支：
-  - 若 `buffsHaveAnyEffect(me?.buffs, ['ROOT'])` 且 `activeDash.ccStopsMe === true`，则不进入本地 dash 预测路径。
-  - 避免了锁足状态下一帧冲刺可视位移后又被服务器拉回的 snap-back 体感。
-- 更新并通过 Playwright source guard（`ability-followup-source.spec.ts` 中临时飞爪用例）。
-- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，启动日志无新的启动失败。
-
-**Lesson**:
-- 对“允许施放但会被控制立即打断”的位移技能，前端预测不能只看 `activeDash` 是否存在；还要结合控制态与 dash 可中断标记，否则会出现短促假位移与回弹。
-
-## 技能输出表误判修正：减伤文本不等于造成伤害 (2026-05-31)
-
-**Implemented / checked**:
-- 修正“有伤害/无伤害”拆分规则：不再用包含“伤害”字样做宽匹配，改为只接受“造成/每X秒受到/额外造成/引爆造成/反弹”等明确输出伤害语义。
-- 新增减伤排除规则：`受到的伤害降低/减少/化解/结算` 等语句一律不视作输出伤害。
-- 重新生成两张表：`reports/table_damage_output_mode.md`、`reports/table_no_damage_output_mode.md`。
-- 争议条目复核通过：女娲补天、舍身诀、守如山、笑醉狂、逐云寒蕊、转乾坤、游风飘踪全部归入无伤害表。
-
-**Lesson**:
-- 技能描述中“伤害”一词同时覆盖“造成伤害”和“承受/减免伤害”，分类时必须区分施加方与承受方语义。
-
-## 浮光掠影非减速控制破隐最短显示窗口修复 (2026-05-31)
-
-**Implemented / checked**:
-- 保留“非减速控制会破浮光”的规则，但在 `buffRuntime.removeStealthOnIncomingControl` 中新增最短显示窗口：浮光(1012)与遁影(1021)若生效不足 `100ms`，不会立即移除，而是把 `expiresAt` 截到 `appliedAt + 100ms`。
-- 超过 100ms 的浮光/遁影仍按原逻辑立刻破除并发出 `BUFF_EXPIRED` 事件。
-- 这样实现了“控制命中即触发破隐判定”，同时视觉/状态至少保留 0.1 秒。
-- 新增并通过 Playwright source guard，验证 `FUGUANG_MIN_VISIBLE_MS = 100` 与最短窗口分支存在。
-- 完成 backend/frontend build，并在最新成功构建后执行 `pm2 restart frontend backend`。
-
-**Lesson**:
-- 对“要立即判定破除，但又要短暂可见”的隐身类 Buff，最佳做法是缩短 `expiresAt` 到最小窗口而非直接硬删，既保持判定时序，又避免同 tick 闪烁/不可见体验。
-
-## 心法面板会心显示未按层数累计修复 (2026-05-31)
-
-**Implemented / checked**:
-- 定位到前端 `BattleArena` 心法(C)面板会心显示逻辑：`CRIT_CHANCE_BONUS` 汇总时只加了 effect.value，没有乘 buff 的 `stacks`。
-- 修复 `getTypedEffectTotal()`：按每个 buff 的 `stackCount` 叠乘对应效果值，确保会心/会效与后端战斗结算一致。
-- 新增并通过 Playwright source guard，显式检查面板计算包含 `stackCount` 乘法。
-- 完成 backend/frontend build，并在成功构建后执行 `pm2 restart frontend backend`。
-
-**Lesson**:
-- 面板展示使用的增益汇总必须与后端 combatMath 保持同一“叠层口径”；否则会出现“实际已生效但属性面板几乎不动”的错觉。
-
-## 心诤-讼言状态栏与生命周期修复 (2026-05-30)
-
-**Implemented / checked**:
-- 将【讼言】(1018) 正式加入 `xinzheng` 的 `ability.buffs`，并设置为 99 秒、30 层上限、每层会心 +3%，使其能走官方 preload/status bar 元数据链路。
-- 在 `applyAbilityBuffs` 中对 `xinzheng` 的 1018 做逐条跳过，避免施放瞬间误加讼言；讼言仍只在心诤 `CHANNEL_AOE_TICK` 命中时叠层。
-- `GameLoop` 里移除“最终一击即刻清空讼言”的旧逻辑，改为：只要【心诤】通道 Buff(1017)不再处于激活状态（包括自然结束、打断、换招等任意原因），立即清空全部讼言。
-- 讼言叠层来源改为直接读取 `ABILITIES.xinzheng.buffs` 内的 1018 定义，不再使用 `GameLoop` 内硬编码模板，避免和技能定义漂移。
-- 新增并通过 Playwright source guard（单测目标用例），并完成 backend/frontend build + `pm2 restart frontend backend`。
-
-**Lesson**:
-- 运行时动态 Buff 若要稳定显示在官方状态栏，定义必须进入技能/预载元数据链路；仅在循环内手工 `addBuff` 会生效但常常缺 UI 元信息。
-- “依附通道存在的叠层 Buff”应绑定通道 Buff 的存活状态，而不是绑定某个单次效果点（如最终一击），否则会出现打断/提前结束时的残留或错时清理。
-
-## 十方玄机目标归属与敌方视角名字颜色修复 (2026-05-30)
-
-**Implemented / checked**:
-- 后端 `validateCastAbility` 新增十方玄机目标归属校验：敌方指向技能若目标处于【十方玄机】会直接返回 `ERR_SELECT_ENEMY_TARGET`，前端映射为“请选择敌方目标”。
-- 同步补上“十方玄机持有者不可施展友方目标招式”的后端拦截：若施法者处于【十方玄机】且技能是 `friendlyTarget`，同样返回“请选择敌方目标”。
-- 前端 BattleArena 新增本地预检：当敌方指向技能选中带【十方玄机】的玩家时，施放前直接弹“请选择敌方目标”，避免无效请求发出。
-- 前端 3D 场景中，对手处于【十方玄机】时名字颜色改为绿色（观战灰名保持优先级更高）。
-- 新增并通过 Playwright source guard：覆盖后端错误码拦截点与 ArenaScene 名字颜色覆盖表达式。
-- 完成本轮 backend/frontend build，并在成功构建后重启 `pm2 restart frontend backend`。
-
-**Lesson**:
-- 十方玄机这类“目标阵营临时改写”规则必须同时落在后端强校验和前端预检两侧；只做单侧会出现“能点能放但服务端拒绝”或“前端看起来禁用但后端可穿透”的体验分叉。
-
-## 技能后续修复：护盾驱散/十方/心诤/轻功与治疗数字 (2026-05-30)
-
-**Implemented / checked**:
-- 少明指通道驱散现在先从 `buffs` 数组移除目标 Buff，再调用 `removeLinkedShield()`，避免通道结算窗口里护盾白条和 linked shield 状态不同步。
-- 惊鸿游龙恢复为 `PHYSICAL_DODGE`，只参与外功闪避；内功仍只吃其内功减伤。
-- 十方玄机改为可空中施放、读条中可跳，完成时清掉“正在选中我”的目标选择，但 Buff 本身不再提供 `UNTARGETABLE`，因此敌对关系下仍可被 tab/点击重新选中；模型和血条变绿，名字保持原敌我颜色。
-- 心诤命中时叠加 讼言（最多30层，每层3%会心），最终一击后立即清除全部讼言。
-- `applyHealToTarget()` 返回有效治疗尝试值而不是实际缺口填充值，使满血治疗和贯体治疗也能显示应发生的治疗数字；治疗减益后的数值仍由现有 heal roll 决定。
-- 风来吴山设置 `periodicStartImmediate`，让 5秒/625ms 的设计稳定产生8次伤害。
-- 散流霞的位移抛物线改为离散 tick 下首尾落地的重力公式，避免15 tick 抛物线只跑到约150度/提前断弧。
-- 浮光掠影可在受控下施放；若施放时已有非减速控制，浮光和遁影会先应用事件再立即移除，单纯减速不会破除。
-- 临时飞爪非战斗施放后把冷却减少40秒。
-- 梯云纵按战斗状态分流：战斗中给30秒的一次性战斗跳跃 Buff；非战斗中给12秒连续跳跃 Buff 并刷新蹑云逐月；进入战斗时移除非战斗 Buff。
-- 听雷 Buff 时长提升为9999秒，并在脱战时移除。
-- 新增 Playwright source guard 覆盖上述每个行为点，随后通过 backend/frontend build 和 PM2 restart 验证。
-
-**Lesson**:
-- linked shield 修复不只看数值扣除，还要看 Buff 移除顺序；如果会在同一 tick 内 reconcile，先移出列表再扣 linked shield 更稳。
-- 对“描述已正确、实现要对齐”的技能调整，尽量不要改描述层；用源码 guard 检查运行时字段和关键路径，能防止后续编辑器覆盖或重构把行为改回去。
-
-## 解控/必定命中/护盾偷取/闪避修复批次 (2026-05-30)
-
-**Implemented / checked**:
-- 普通解控不再保留 `摩诃无量` 的击倒 Buff；原问题是 `handleCleanse()` 里显式用 `isMoheKnockdown(b) ||` 把 buffId `1002` 排除在清除列表外。
-- 为当前解控临时硬编码清理 `孔雀翎`、`捕风式`、`滞影/捉影式`、`剑飞惊天/惊惧` 四类指定慢/封轻功 Buff。
-- 新增技能编辑器 `必定命中` 页，保存到顶层 `ignoreDodge` 覆盖字段，并让运行时 resolved ability 继承该字段。
-- 疾电叱羽分担伤害只扣区域血量，不再推送玩家 `DAMAGE` 事件，避免玩家头上出现受伤害数字。
-- `removeLinkedShield()` 在清除 linked shield 后立即按剩余 active buff 重新对齐 `target.shield`，防止护盾白条和实际护盾分叉。
-- 琴音共鸣偷盾时先记录被偷 Buff 的剩余 `shieldAmount`，再从原目标移除护盾，避免 `removeLinkedShield()` 把要同步给新主人的护盾数值清零。
-- 云栖松、惊鸿游龙改为提供通用 `DODGE`，并避免 buff 属性覆盖层在未设置闪避属性时删掉代码定义里的闪避效果。
-
-**Lesson**:
-- linked shield 的剩余值属于运行时状态，任何“移除原 Buff 后复制新 Buff”的流程都必须先拍下 `shieldAmount`；`removeLinkedShield()` 会把原对象的 `shieldAmount` 置零。
-- 编辑器覆盖层的“缺少某个属性”不能默认等于“删除代码定义效果”，否则只编辑减伤等局部属性会意外删掉同一个 Buff 上的闪避。
-
-## Camera wall body collision and ground body clamp (2026-05-30)
-
-**Implemented / checked**:
-- Broadened the BattleArena camera wall probes so wall collision treats the camera like a small body/viewport volume instead of a single center ray.
-- Added lower-body ground support sampling for upward/low camera angles, then gated those extra ground samples to avoid heavy every-frame BVH work.
-- Added live camera probe diagnostics and a Playwright regression that verifies wall body clearance and ground clearance against the live HTTPS site.
-- Verified the same wall-edge case five independent times with Playwright repeat mode; all five runs passed with positive wall body clearance and zero ground penetration.
-
-**Lesson**:
-- Camera wall clipping is an edge/body problem, not only a center-ray problem. Live proof cases must face real wall geometry, and repeated live WebGL checks are more reliable as independent browser runs than as many resets inside one long-lived tab.
+- Mode-specific production-like UX should enforce role-based visibility at render time and also actively clean stale UI state; gating render alone is not enough when panels can persist across mode transitions.
 
 ## Ability description source audit and backup (2026-05-30)
 
@@ -295,77 +77,6 @@ Each entry goes under its relevant section header.
 
 **Lesson**:
 - Buff 语义变更应同时检查“运行时效果字段”和“覆盖描述层”；即使数值层没有减伤，旧描述也会造成错误认知与验收偏差。
-
-## 游风飘踪无目标施放/充能加速/额外减伤修正 (2026-05-30)
-
-**Implemented / checked**:
-- 前端施放校验移除“游风飘踪必须选敌方目标”的硬性拦截，允许无目标施放。
-- 后端施放校验为游风飘踪增加显式“可无目标”兼容：若传入无效目标/实体目标会自动退化为无目标施放而非报错。
-- 运行时保持“有目标且成功解控则反射控制”的原行为；无目标时不反射给任何目标，但仍会给自己添加游风飘踪免控Buff。
-- 新增逻辑：若施放时未解除任何可解控效果，则使“下一次充能”恢复时间缩短15秒（450 ticks）。
-- 游风飘踪免控Buff（buffId 2631）新增15%减伤效果（`DAMAGE_REDUCTION: 0.15`），并仅更新Buff描述，不改技能描述文本。
-
-**Lesson**:
-- 对“可选目标但不依赖目标结算”的技能，前端与后端都应以“目标可选、逻辑可降级”为原则；否则容易出现前端可用性和后端结算不一致。
-
-## Test mode 改为集合点附近固定出生 (2026-05-30)
-
-**Implemented / checked**:
-- 定位到 `initializeBattleState()` 对所有 exported-map 模式统一使用 `EXPORTED_MAP_SPAWN_POSITIONS`，导致 `test` 模式也沿用了随机出生点。
-- 为 `mode === "test"` 增加独立的固定出生列表，位置设置为 exported-map 中心（集合点）附近半径 4 的若干点位。
-- 初始化时为 `test` 模式单独构建 exported-map `MapContext`，并用地面支持高度 / top-down 命中高度计算安全出生 Z，再额外抬高 10 单位，避免落回随机点或出生嵌地。
-- 保持 玉门关（1v1）：基础 模式继续使用原有 `EXPORTED_MAP_SPAWN_POSITIONS` 随机出生逻辑，不影响该模式。
-
-**Lesson**:
-- 当多个模式共享 exported-map 时，出生点策略不能只按“是否 exported-map”分支；像 `test` 这类验证模式通常需要固定、可复现的中心附近出生，而不是复用竞技/随机出生表。
-
-## 芙蓉并蒂/五方行尽/任驰骋/钟林毓秀效果同步 (2026-05-30)
-
-**Implemented / checked**:
-- `芙蓉并蒂` 的运行时补上直接伤害效果：在原有附带 DOT 逻辑前新增 `DAMAGE 0.5989`，使其命中时立刻造成 `(0.5989 * 攻击力)` 伤害。
-- `五方行尽` 的自增益 `会神`（buffId `1336`）从 `DAMAGE_MULTIPLIER 1.2` 改为 `CRIT_EFFECT_BONUS 0.2`，与“会心效果提高20%”描述一致。
-- `任驰骋` 在 `GameLoop` 的读条完成分支补上仅移除 `ROOT/SLOW` 的后处理，保证是“读条成功时解除锁足”，不会顺带清掉眩晕/封招等更高等级控制。
-- `钟林毓秀` 的 DOT debuff（buffId `2502`）新增 `ATTACK_DAMAGE_MULTIPLIER 0.95`，使携带者攻击力降低5%，同时保留原有持续伤害。
-- 同步更新了 `abilities.ts` 中这几项的基础描述，避免基础表与当前实际效果继续分叉；`ability-property-overrides.json` 中相关 live 描述已是目标状态，因此未覆盖该文件中的其他近期修改。
-
-**Lesson**:
-- 对带 live override 的技能，先核对 override 是否已经是目标文案；若只是 runtime 缺失，应优先补 canonical 行为而不是重写 override，避免覆盖用户或编辑器刚写入的最新描述。
-
-## 龙战于野补拉后直伤与凌然天风免加速 (2026-05-30)
-
-**Implemented / checked**:
-- `龙战于野` 在拉拽分支后新增一次 `(3.4187 * 攻击力)` 的普通伤害，放在即时效果分支里结算，保持“先拉后打”的技能语义。
-- `凌然天风` 在技能定义中显式加入 `hasteUnaffected: true`，避免它的起跳位移和 7 秒特殊跳跃 Buff 被加速缩短。
-- 复查了加速入口：当前会被加速影响的主要是 `channelDurationMs`、`channelEffects` 里的周期性结算，以及未标记 `hasteUnaffected` 的周期性 Buff/DoT 持续时间。
-
-**Lesson**:
-- 如果一个技能的效果描述本来就是“固定时长/固定跳跃”，就应该把它标成 `hasteUnaffected`；否则它会同时被通道时长和 Buff 持续时间两条路径缩短。
-
-## 加速作用域收敛为仅 DOT Buff/DeBuff (2026-05-30)
-
-**Implemented / checked**:
-- 将 `shouldApplyHasteToBuffTiming()` 的判定从“`CHANNEL + periodic` 或 `PERIODIC_DAMAGE`”收敛为仅 `PERIODIC_DAMAGE`。
-- 结果是：读条/运功本身仍由 `activeChannel.durationMs` 走加速缩时，但不再因为“通道技能 + periodic buff”而把非 DOT 的控制/护盾/功能型 buff 跟着缩时。
-- 用户指定的 6 项已按新规则对齐：
-  - `云栖松` 周期恢复：不受加速。
-  - `蛊虫献祭`：不受加速。
-  - `花语酥心`：不受加速。
-  - `七星拱瑞`：读条受加速，buff 不受加速。
-  - `破风`：减防 buff 不受加速；`流血`（`PERIODIC_DAMAGE`）继续受加速。
-  - `应天授命`：不受加速。
-
-**Lesson**:
-- “读条是否受加速”和“附带 buff 是否受加速”必须分开处理。将 buff 缩时限定在真正 `PERIODIC_DAMAGE` 的 DOT，能避免把护盾/恢复/控制类效果错误纳入加速系统。
-
-## 首页模式选择 localStorage 持久化 (2026-05-30)
-
-**Implemented / checked**:
-- 在首页 `page.tsx` 新增 `zhenchuan.home.selectedStartMode` 本地存储键，用于记住上次选择的开局模式。
-- 页面初次加载时读取 localStorage 并校验模式值必须在当前可选模式集合内，避免非法值污染状态。
-- 用户在首页切换主模式/legacy 模式时同步写入 localStorage，下次回到首页会自动恢复上次选择（例如 `test`）。
-
-**Lesson**:
-- 对“频繁重复选择”的入口状态，最好做“读取时校验 + 写入时容错”的轻量持久化，既能减少重复操作，也避免历史脏值导致页面进入无效模式。
 
 ## Yumen duplicate shrink-start guard (2026-05-29)
 
@@ -5671,16 +5382,6 @@ When the old imports block was replaced (only the top few lines), the rest of th
 - **Engine path**: `addBuff()` in `buffRuntime.ts` receives the buff definition directly from `ABILITIES`. It does NOT go through `buildAbilityPreload`. To make the editor values actually affect gameplay, property overrides must also be applied inside `addBuff()`.
 - Fix: Added `applyPropertyOverridesToEffects()` in `buffEditorOverrides.ts` called from both `abilityPreload.ts` (UI) and `addBuff()` (engine). Now changes to 减伤/无敌/闪避 values in the editor actually affect combat calculations.
 - Property mapping: 减伤 → DAMAGE_REDUCTION (value 0–100 → 0–1.0), 无敌 → INVULNERABLE, 闪避 → DODGE (count).
-
-## 踏星行 momentum steering should prefer movement intent, not plain facing (2026-05-31)
-
-- **Bug**: `踏星行` used the shared `DIRECTIONAL_DASH` path with `steerByFacing`, and that path always seeded and re-steered the dash from `player.facing`. In traditional RMB movement, backend-facing intentionally stays camera-forward during backpedal/strafe, so the dash kept surging straight forward even when the player's live inertia was sideways or backward.
-- **Fix**: Added an opt-in `preferMomentumDirection` flag on `DIRECTIONAL_DASH`. The shared dash setup now seeds the dash from current planar momentum (`velocity` / active air nudge) before falling back to facing, and `movement.ts` steering now prefers live movement intent over plain facing for that opt-in path while still falling back to facing when there is no directional intent.
-- **Scope**: Enabled only for `踏星行` so other facing-locked dashes keep their previous behavior.
-- **Files**: `backend/game/engine/effects/definitions/DirectionalDash.ts`, `backend/game/engine/loop/movement.ts`, `backend/game/engine/state/types/effects.ts`, `backend/game/engine/state/types/state.ts`, `backend/game/abilities/abilities.ts`
-- **Buff duration sync**: `傍花随柳` and `啸如虎` already had override/editor text reflecting `8s` and `20s`, but the canonical runtime `ABILITIES` definitions still used `30_000` and `12_000`. Fix the runtime source in `abilities.ts`; editor/override text alone does not change combat behavior.
-- **Area/range sync**: `雾暗迷云` `迷云` duration plus `镇山河` area and `大狮子吼` range were already reflected in override/editor descriptions (`7s`, `10尺`, `6尺`), but runtime `abilities.ts` and legacy `cards.ts` still carried the old values (`8_000`, `8`, `8`). Update both runtime sources together; the override text is not authoritative for gameplay.
-- **Zone tuning sync**: `生太极` and `吞日月` had editor/override descriptions aligned to larger/longer zones, while runtime `abilities.ts` still used old zone payloads (`生太极` 15u/10s, `吞日月` 15u/10s). Update `channelEffects.PLACE_GROUND_ZONE` plus the runtime descriptions in `abilities.ts` so gameplay and displayed text stay consistent.
 - `properties: []` is now a valid override sentinel meaning "user explicitly cleared all code-defined properties". This required changing `normalizeProperties` to return `[]` instead of `undefined` for empty arrays.
 
 ### Buff detail page pattern
@@ -6137,21 +5838,3 @@ Lesson: damage/buff/movement reflection MUST hook at every chokepoint. Pre-immun
 
 ### Lesson
 - If style consistency requires ASCII punctuation, run punctuation normalization before formula migration to avoid mixed-width output and reduce cleanup passes.
-
-## 全颜色技能CSV导出与缺失倍率筛选 (2026-05-31)
-
-### What was changed
-- 新增全量导出文件 `reports/all_colors_full_list.csv`，覆盖 `精巧/卓越/珍奇/稀世` 四个稀有度（颜色）并统一字段：`color, rarity, id, name, hasDamage, damageMode, scaleNumbers, clause, originalDescription, missingScale`。
-- 新增缺失倍率文件 `reports/all_colors_missing_scale.csv`，仅保留“应当造成伤害但描述未给出倍率数字”的子集，用于后续文案修正。
-- 倍率列按需求只保留纯数字（例如 `3.2968|0.074|1.6484`），不保留 `*攻击力` 与“每X秒”文案。
-
-### Pitfall / fix
-- 首版脚本把“受到伤害降低/免疫伤害”等防御语句误判进缺失倍率集合。
-- 修正为双层判断：先命中伤害信号（造成/点伤害/反弹/引爆/爆炸/持续伤害），再排除纯防御语义（减伤、免伤、护盾、治疗等），只保留真实输出语句。
-
-### Validation
-- 导出统计：`all_colors_full_list.csv` 共 `169` 行；`all_colors_missing_scale.csv` 共 `10` 行。
-- 本轮结束前完成 `backend` 与 `frontend` 构建，并执行 `pm2 restart frontend backend`，两进程均 `online`。
-
-### Lesson
-- “缺失倍率”检测必须区分“造成伤害”与“承受/减免伤害”两类语义；仅靠 `伤害` 关键词会产生大量误报。

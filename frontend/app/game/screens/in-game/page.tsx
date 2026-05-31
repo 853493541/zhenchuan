@@ -23,7 +23,7 @@ async function getMe() {
   if (!res.ok) return null;
 
   const data = await res.json();
-  return data.user as { uid: string; username: string; displayName?: string };
+  return data.user as { uid: string; username: string; displayName?: string; isAdmin?: boolean };
 }
 
 export default async function InGamePage({ searchParams }: Props) {
@@ -39,6 +39,7 @@ export default async function InGamePage({ searchParams }: Props) {
       gameId={gameId}
       selfUserId={me.uid}
       selfUsername={me.displayName || me.username}
+      selfIsAdmin={me.isAdmin === true}
     />
   );
 }
