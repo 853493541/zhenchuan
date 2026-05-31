@@ -1196,6 +1196,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         durationTicks: 150,
         speedPerTick: 0.4166667,
         steerByFacing: true,
+        preferMomentumDirection: true,
         snapUpUnits: 8,
         wallDiveOnBlock: true,
         diveVzPerTick: -0.45,

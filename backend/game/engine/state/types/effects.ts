@@ -287,6 +287,12 @@ export interface AbilityEffect {
   steerByFacing?: boolean;
 
   /**
+   * For DIRECTIONAL_DASH: prefer current movement momentum / intent over plain
+   * facing when seeding and steering the dash direction.
+   */
+  preferMomentumDirection?: boolean;
+
+  /**
    * For DIRECTIONAL_DASH: explicit horizontal speed in units/tick.
    * If omitted, speed is derived from value / durationTicks.
    */

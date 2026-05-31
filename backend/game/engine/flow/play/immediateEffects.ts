@@ -1348,11 +1348,19 @@ export function applyImmediateEffects(params: {
         break;
 
       case "CLEANSE":
-        handleCleanse(source, {
-          cleanseRootSlow:
-            (ability as any).cleanseRootSlow === true ||
-            (effect as any).cleanseRootSlow === true,
-        });
+        {
+          const abilityRootFlag = (ability as any).cleanseRootSlow;
+          const effectRootFlag = (effect as any).cleanseRootSlow;
+          const resolvedRootFlag =
+            effectRootFlag === true || effectRootFlag === false
+              ? effectRootFlag
+              : (abilityRootFlag === true || abilityRootFlag === false ? abilityRootFlag : undefined);
+
+          handleCleanse(
+            source,
+            resolvedRootFlag === undefined ? undefined : { cleanseRootSlow: resolvedRootFlag === true }
+          );
+        }
         break;
 
       case "YOU_FENG_PIAO_ZONG": {

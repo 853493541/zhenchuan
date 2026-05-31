@@ -287,6 +287,7 @@ export interface PlayerState {
     sustainWhileChannelAbilityId?: string;
     speedPerTick?: number; // optional steering speed (units/tick)
     steerByFacing?: boolean;
+    preferMomentumDirection?: boolean;
     wallDiveOnBlock?: boolean;
     stopOnWall?: boolean;
     wallStunMs?: number;     // if >0 and wall blocks the dash, stop and stun for this duration

@@ -3,6 +3,54 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 最终技能系数核对表定版并清理旧版本 (2026-05-31)
+
+## 补齐伤害核对表空当前系数位 (2026-05-31)
+
+**Implemented / checked**:
+- 对 `reports/damage_output_coeff_check.csv` 与 `reports/damage_output_coeff_check.md` 的全部空 `当前系数` 槽位逐行补齐，不再保留空值。
+- 逐项按运行时代码核对：优先使用合并后的 `ABILITIES`（含覆盖层）中的 `effects/buffs/channelEffects` 数值；对自定义流程技能再追到 `immediateEffects.ts`、`GameLoop.ts`、`playService.ts` 的实际结算分支。
+- 已核对并回填的典型自定义分支：`棒打狗头` 跃进命中、`横扫六合` 单目标翻倍、`守缺式` 强化30%、`天绝地灭` 爆炸区、`跃潮斩波` 落地伤害、`鹤归孤山` 近身追加段、`连环弩` 1/2/3段、`绿野蔓生` 反击、`斩无常` 引导tick、`狂龙乱舞` 地面区tick。
+- 变更后执行 backend/frontend build，并执行 `pm2 restart frontend backend`；两进程在线。
+
+**Lesson**:
+- “文本倍率”与“当前系数”在该项目中经常不一一对应；必须以运行时结算分支为准，尤其是 dash 结束结算、地面区定时结算、以及条件分支（翻倍/追加/引爆）技能。
+
+**Implemented / checked**:
+- 删除 `reports/` 下此前所有旧导出，只保留当前最终版四个文件：有伤害/无伤害各一份 `csv` 与 `md`。
+- 在最终版表中新增 `当前系数` 列，来源于后端当前运行能力数据（含覆盖层与实际效果对象），用于对比 `文本系数` 与系统当前值。
+- 对用户明确指出的项目完成修正：`盾立` 归入无伤害；`绛唇珠袖` 归入有伤害；`横扫六合/银月斩/百足/无间狱` 等多系数项目按行拆开。
+- 额外确认：`无间狱` 两条空系数行是旧报表生成逻辑误产物，不是系统数据问题，已在最终版中移除。
+
+**Lesson**:
+- 这类“文本系数 vs 当前系统系数”核对表，不能只看描述文本或中间导出，必须直接对照合并后的运行时能力对象；否则自定义效果类型会把当前值看错或看漏。
+
+## CLEANSE无法清除ROOT紧急修复 (2026-05-31)
+
+**Implemented / checked**:
+- 定位到 `handleCleanse()`：ROOT 仅在 `cleanseRootSlow=true` 时才会被移除，导致大量仅配置 `CLEANSE` 的解控技能无法解锁足。
+- 修复为默认可清 ROOT：`cleanseRootSlow` 改为“默认 true，只有显式 false 才禁用”，兼容旧字段同时恢复全局解锁足预期。
+- 新增并通过 Playwright source guard，锁定 `Cleanse.ts` 中默认逻辑为 `effect?.cleanseRootSlow !== false`。
+- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，服务启动正常。
+
+**Lesson**:
+- 对核心通用语义（如 CLEANSE 是否解 ROOT）不应依赖“局部技能是否手写标记”；应先保证默认行为正确，再把字段用于少数显式例外。
+
+## CLEANSE解锁足二次回归：调用层显式false覆盖默认值 (2026-05-31)
+
+**Implemented / checked**:
+- 复盘发现仅修改 `Cleanse.ts` 默认值不够：`immediateEffects.ts` 的 `CLEANSE` 分支会把未配置场景也折叠成 `cleanseRootSlow: false` 传入，导致默认语义被调用层覆盖。
+- 修复 `backend/game/engine/flow/play/immediateEffects.ts`：仅在技能或效果显式给出 `true/false` 时才传 `cleanseRootSlow`；未配置时传 `undefined`，让 `handleCleanse()` 的默认“可解 ROOT”生效。
+- 补充 source guard：`frontend/tests/ability-followup-source.spec.ts` 新增断言，锁定 CLEANSE 调用路径不会再把缺省值强制成 `false`。
+- 新增并执行 live on-screen Playwright：`frontend/tests/cleanse-root.live.spec.ts`，在 `https://zhenchuan.renstoolbox.com` 实战流程验证：先被 `三才化生` 锁足，再用 `星楼月影`、`游风飘踪`，两者都能清除 ROOT；测试通过（`1 passed`）。
+- 本轮已完成构建与验证：backend build 通过、frontend build 通过，随后执行 `pm2 restart frontend backend`，两进程均 `online`。
+
+**Disproved approach**:
+- “只改 `Cleanse.ts` 默认值即可完全修复”是错误的；若调用层持续显式传 `false`，运行时仍会复现“解控不解锁足”。
+
+**Lesson**:
+- 对引擎默认语义改动，必须同步检查调用方是否在参数组装阶段做了布尔收窄（尤其是 `=== true` 这类写法），否则会出现“源码单测通过、实战仍失败”的假修复。
+
 ## 迷心蛊补齐不可打断效果 (2026-05-31)
 
 **Implemented / checked**:
@@ -5605,6 +5653,13 @@ When the old imports block was replaced (only the top few lines), the rest of th
 - **Engine path**: `addBuff()` in `buffRuntime.ts` receives the buff definition directly from `ABILITIES`. It does NOT go through `buildAbilityPreload`. To make the editor values actually affect gameplay, property overrides must also be applied inside `addBuff()`.
 - Fix: Added `applyPropertyOverridesToEffects()` in `buffEditorOverrides.ts` called from both `abilityPreload.ts` (UI) and `addBuff()` (engine). Now changes to 减伤/无敌/闪避 values in the editor actually affect combat calculations.
 - Property mapping: 减伤 → DAMAGE_REDUCTION (value 0–100 → 0–1.0), 无敌 → INVULNERABLE, 闪避 → DODGE (count).
+
+## 踏星行 momentum steering should prefer movement intent, not plain facing (2026-05-31)
+
+- **Bug**: `踏星行` used the shared `DIRECTIONAL_DASH` path with `steerByFacing`, and that path always seeded and re-steered the dash from `player.facing`. In traditional RMB movement, backend-facing intentionally stays camera-forward during backpedal/strafe, so the dash kept surging straight forward even when the player's live inertia was sideways or backward.
+- **Fix**: Added an opt-in `preferMomentumDirection` flag on `DIRECTIONAL_DASH`. The shared dash setup now seeds the dash from current planar momentum (`velocity` / active air nudge) before falling back to facing, and `movement.ts` steering now prefers live movement intent over plain facing for that opt-in path while still falling back to facing when there is no directional intent.
+- **Scope**: Enabled only for `踏星行` so other facing-locked dashes keep their previous behavior.
+- **Files**: `backend/game/engine/effects/definitions/DirectionalDash.ts`, `backend/game/engine/loop/movement.ts`, `backend/game/engine/state/types/effects.ts`, `backend/game/engine/state/types/state.ts`, `backend/game/abilities/abilities.ts`
 - `properties: []` is now a valid override sentinel meaning "user explicitly cleared all code-defined properties". This required changing `normalizeProperties` to return `[]` instead of `undefined` for empty arrays.
 
 ### Buff detail page pattern

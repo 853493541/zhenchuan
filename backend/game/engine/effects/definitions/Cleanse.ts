@@ -82,7 +82,7 @@ export function captureAndCleanseControls(
 
 /**
  * Control level cleansability:
- *   Level 0 – ROOT                 → REMOVABLE only when effect.cleanseRootSlow=true
+ *   Level 0 – ROOT                 → REMOVABLE by cleanse (default)
  *   Selected SLOW/QINGGONG_SEAL    → REMOVABLE by any cleanse (hardcoded list above)
  *   Level 1 – CONTROL, ATTACK_LOCK → REMOVABLE by cleanse
  *   Level 2 – KNOCKED_BACK         → NOT removable (physics effect, must expire)
@@ -92,7 +92,9 @@ export function handleCleanse(
   source: { buffs: ActiveBuff[] },
   effect?: { cleanseRootSlow?: boolean }
 ) {
-  const cleanseRootSlow = effect?.cleanseRootSlow === true;
+  // Keep backward compatibility with old metadata, but default to true:
+  // cleanse should remove ROOT unless explicitly disabled.
+  const cleanseRootSlow = effect?.cleanseRootSlow !== false;
 
   source.buffs = source.buffs.filter((b) => {
     if (HARDCODED_CLEANSEABLE_SLOW_BUFF_IDS.has(b.buffId)) return false;

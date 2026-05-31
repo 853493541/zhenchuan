@@ -96,6 +96,12 @@ function pointToSegmentDistance2D(
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+function normalizePlanarDirection(x: number, y: number): { x: number; y: number } | null {
+  const len = Math.sqrt(x * x + y * y);
+  if (len <= 0.01) return null;
+  return { x: x / len, y: y / len };
+}
+
 export function handleDirectionalDash(
   state: GameState,
   source: PlayerState,
@@ -126,30 +132,35 @@ export function handleDirectionalDash(
     : 0;
   const facingX = facingLen > 0.01 ? rawFacing!.x / facingLen : 0;
   const facingY = facingLen > 0.01 ? rawFacing!.y / facingLen : 1;
+  const momentumDir = effect.preferMomentumDirection
+    ? normalizePlanarDirection(source.velocity.vx ?? 0, source.velocity.vy ?? 0) ?? source.airNudgeDir ?? null
+    : null;
+  const baseDirX = momentumDir?.x ?? facingX;
+  const baseDirY = momentumDir?.y ?? facingY;
 
   let dirX: number;
   let dirY: number;
 
   switch (effect.dirMode) {
     case "TOWARD":
-      dirX = facingX;
-      dirY = facingY;
+      dirX = baseDirX;
+      dirY = baseDirY;
       break;
     case "AWAY":
-      dirX = -facingX;
-      dirY = -facingY;
+      dirX = -baseDirX;
+      dirY = -baseDirY;
       break;
     case "PERP_LEFT":
-      dirX = -facingY;
-      dirY = facingX;
+      dirX = -baseDirY;
+      dirY = baseDirX;
       break;
     case "PERP_RIGHT":
-      dirX = facingY;
-      dirY = -facingX;
+      dirX = baseDirY;
+      dirY = -baseDirX;
       break;
     default:
-      dirX = facingX;
-      dirY = facingY;
+      dirX = baseDirX;
+      dirY = baseDirY;
       break;
   }
 
@@ -202,6 +213,7 @@ export function handleDirectionalDash(
       ? gameplayUnitsToWorldUnits(effect.speedPerTick, storedUnitScale)
       : undefined,
     steerByFacing: effect.steerByFacing,
+    preferMomentumDirection: effect.preferMomentumDirection,
     wallDiveOnBlock: effect.wallDiveOnBlock,
     diveVzPerTick: effect.diveVzPerTick,
     // vzPerTick: undefined — captured on first tick in movement.ts

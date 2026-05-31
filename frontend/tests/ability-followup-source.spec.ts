@@ -13,6 +13,7 @@ const directionalDashPath = path.join(repoRoot, 'backend/game/engine/effects/def
 const buffRuntimePath = path.join(repoRoot, 'backend/game/engine/effects/buffRuntime.ts');
 const applyBuffsPath = path.join(repoRoot, 'backend/game/engine/flow/play/buffs.ts');
 const immediateEffectsPath = path.join(repoRoot, 'backend/game/engine/flow/play/immediateEffects.ts');
+const cleansePath = path.join(repoRoot, 'backend/game/engine/effects/definitions/Cleanse.ts');
 const movementPath = path.join(repoRoot, 'backend/game/engine/loop/movement.ts');
 const combatStatusPath = path.join(repoRoot, 'backend/game/engine/utils/combatStatus.ts');
 const validateActionPath = path.join(repoRoot, 'backend/game/engine/rules/validateAction.ts');
@@ -126,6 +127,15 @@ test('Mi Xin Gu grants lockout and interrupt immunity via SILENCE_IMMUNE', async
 
   expect(mixingu).toContain('{ type: "LOCKOUT_IMMUNE" }');
   expect(mixingu).toContain('{ type: "SILENCE_IMMUNE" }');
+});
+
+test('cleanse removes ROOT by default', async () => {
+  const cleanse = readFile(cleansePath);
+  const immediateEffects = readFile(immediateEffectsPath);
+
+  expect(cleanse).toContain('const cleanseRootSlow = effect?.cleanseRootSlow !== false;');
+  expect(cleanse).toContain('(e.type === "ROOT" && cleanseRootSlow)');
+  expect(immediateEffects).toContain('resolvedRootFlag === undefined ? undefined : { cleanseRootSlow: resolvedRootFlag === true }');
 });
 
 test('Sanliu dash arc uses discrete end-at-ground math for the full parabola', async () => {

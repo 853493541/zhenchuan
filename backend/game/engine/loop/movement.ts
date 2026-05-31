@@ -542,6 +542,34 @@ function getMovementTargetVelocity(
   };
 }
 
+function getDashSteeringDirection(
+  dash: NonNullable<PlayerState["activeDash"]>,
+  player: PlayerState,
+  input: MovementInput | null | undefined,
+): { x: number; y: number } | null {
+  if (dash.preferMomentumDirection) {
+    const movementIntent = getMovementTargetVelocity(input, 1);
+    const momentumIntentDir = normalizePlanar(movementIntent.vx, movementIntent.vy);
+    if (momentumIntentDir) {
+      player.facing = { x: momentumIntentDir.x, y: momentumIntentDir.y };
+      return momentumIntentDir;
+    }
+  }
+
+  if (input?.facing) {
+    const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
+    if (flen > 0.01) {
+      player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
+    }
+  }
+
+  const facingNow = player.facing;
+  if (!facingNow) return null;
+  const flen = Math.sqrt(facingNow.x * facingNow.x + facingNow.y * facingNow.y);
+  if (flen <= 0.01) return null;
+  return { x: facingNow.x / flen, y: facingNow.y / flen };
+}
+
 function startAirShift(
   player: PlayerState,
   dir: { x: number; y: number },
@@ -812,23 +840,11 @@ export function applyMovement(
 
     // Steering mode: keep moving forward, but heading follows live facing.
     if (dash.steerByFacing && !dashFacingLocked && !facingInputLocked) {
-      if (input?.facing) {
-        const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
-        if (flen > 0.01) {
-          player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
-        }
-      }
-
-      const facingNow = player.facing;
-      if (facingNow) {
-        const flen = Math.sqrt(facingNow.x * facingNow.x + facingNow.y * facingNow.y);
-        if (flen > 0.01) {
-          const nx = facingNow.x / flen;
-          const ny = facingNow.y / flen;
-          const speed = dash.speedPerTick ?? Math.sqrt(dash.vxPerTick * dash.vxPerTick + dash.vyPerTick * dash.vyPerTick);
-          dash.vxPerTick = nx * speed;
-          dash.vyPerTick = ny * speed;
-        }
+      const steeringDir = getDashSteeringDirection(dash, player, input);
+      if (steeringDir) {
+        const speed = dash.speedPerTick ?? Math.sqrt(dash.vxPerTick * dash.vxPerTick + dash.vyPerTick * dash.vyPerTick);
+        dash.vxPerTick = steeringDir.x * speed;
+        dash.vyPerTick = steeringDir.y * speed;
       }
     }
 
